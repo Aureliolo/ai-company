@@ -1,6 +1,7 @@
 import { Dialog as BaseDialog } from '@base-ui/react/dialog'
 import { X } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { Button } from './button'
 
 export interface DialogProps {
   open: boolean
@@ -90,15 +91,16 @@ export interface DialogCloseButtonProps {
 export function DialogCloseButton({ className }: DialogCloseButtonProps) {
   return (
     <BaseDialog.Close
-      aria-label="Close"
-      className={cn(
-        'rounded-md p-1 text-muted-foreground transition-colors',
-        'hover:bg-card-hover hover:text-foreground',
-        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent',
-        className,
-      )}
-    >
-      <X className="size-4" />
-    </BaseDialog.Close>
+      render={
+        <Button
+          variant="ghost"
+          size="icon"
+          aria-label="Close"
+          className={className}
+        >
+          <X className="size-4" />
+        </Button>
+      }
+    />
   )
 }

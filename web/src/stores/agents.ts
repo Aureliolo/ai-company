@@ -3,6 +3,7 @@ import { listAgents, getAgent, getAgentPerformance, getAgentActivity, getAgentHi
 import { listTasks } from '@/api/endpoints/tasks'
 import { useToastStore } from '@/stores/toast'
 import { getErrorMessage } from '@/utils/errors'
+import { sanitizeForLog } from '@/utils/logging'
 import { createLogger } from '@/lib/logger'
 import type {
   AgentActivityEvent,
@@ -161,7 +162,9 @@ export const useAgentsStore = create<AgentsState>()((set, get) => ({
       })
     } catch (err) {
       if (_detailRequestName !== name) return
-      log.warn('Failed to load agent detail', { agent: name }, err)
+      // `name` originates from a URL segment / router param and is therefore
+      // attacker-controlled; sanitize before embedding in the structured log.
+      log.warn('Failed to load agent detail', { agent: sanitizeForLog(name) }, err)
       set({ detailLoading: false, detailError: getErrorMessage(err) })
     }
   },
@@ -226,6 +229,16 @@ export const useAgentsStore = create<AgentsState>()((set, get) => ({
   },
 
   updateFromWsEvent: (event) => {
+    // Runtime null-guard: `event.payload` is typed as `Record<string, unknown>`
+    // on the wire, but a malformed broker could still send `null` or a
+    // non-object.  The `as` cast below would not catch that, so we filter
+    // here once and treat every invalid envelope as a dropped event.
+    if (typeof event.payload !== 'object' || event.payload === null) {
+      log.warn('WS event dropped: payload is not an object', {
+        event_type: sanitizeForLog(event.event_type),
+      })
+      return
+    }
     if (event.event_type === 'agent.status_changed') {
       const payload = event.payload as Record<string, unknown>
       const agentId = payload.agent_id
@@ -238,8 +251,10 @@ export const useAgentsStore = create<AgentsState>()((set, get) => ({
         return
       }
       if (!VALID_RUNTIME_STATUSES.has(status)) {
+        // `status` arrives from an untrusted WebSocket payload, so sanitize
+        // before embedding in the structured log.
         log.warn('agent.status_changed received unknown status', {
-          status,
+          status: sanitizeForLog(status),
           knownStatuses: [...VALID_RUNTIME_STATUSES],
         })
         return
