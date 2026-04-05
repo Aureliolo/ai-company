@@ -14,6 +14,7 @@ from synthorg.budget.currency import DEFAULT_CURRENCY
 from synthorg.budget.errors import BudgetExhaustedError, QuotaExhaustedError
 from synthorg.budget.quota import DegradationAction
 from synthorg.core.enums import FailureCategory  # noqa: TC001
+from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.engine._security_factory import (
     make_security_interceptor,
     registry_with_approval_tool,
@@ -169,14 +170,19 @@ class PersonalityTrimPayload(TypedDict):
     """Structured payload forwarded to :data:`PersonalityTrimNotifier` callbacks.
 
     All keys are always present when the engine invokes the notifier from
-    :meth:`AgentEngine._prepare_context`.  ``trim_tier`` is one of ``1``, ``2``,
-    or ``3`` (enforced upstream by
+    :meth:`AgentEngine._prepare_context`.  Identifier fields (``agent_id``,
+    ``agent_name``, ``task_id``) are typed as :data:`NotBlankStr` to match
+    the project-wide identifier convention documented in CLAUDE.md -- the
+    Pydantic constraint is not enforced inside a ``TypedDict`` at runtime,
+    but the alias communicates the contract to readers and keeps this
+    surface consistent with the rest of the codebase.  ``trim_tier`` is
+    one of ``1``, ``2``, or ``3`` (enforced upstream by
     :class:`synthorg.engine.prompt_helpers.PersonalityTrimInfo`).
     """
 
-    agent_id: str
-    agent_name: str
-    task_id: str
+    agent_id: NotBlankStr
+    agent_name: NotBlankStr
+    task_id: NotBlankStr
     before_tokens: int
     after_tokens: int
     max_tokens: int

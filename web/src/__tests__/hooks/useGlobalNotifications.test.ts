@@ -41,8 +41,12 @@ describe('useGlobalNotifications', () => {
     const { bindings } = options as {
       bindings: Array<{ channel: string; handler: (event: WsEvent) => void }>
     }
+    // Resolve by channel name rather than index so adding unrelated
+    // subscriptions upstream cannot silently break this test.
+    const agentsBinding = bindings.find((b) => b.channel === 'agents')
+    expect(agentsBinding).toBeDefined()
 
-    bindings[0]!.handler({
+    agentsBinding!.handler({
       event_type: 'agent.status_changed',
       channel: 'agents',
       timestamp: '2026-04-05T10:00:00Z',
@@ -59,8 +63,12 @@ describe('useGlobalNotifications', () => {
     const { bindings } = options as {
       bindings: Array<{ channel: string; handler: (event: WsEvent) => void }>
     }
+    // Resolve by channel name rather than index so adding unrelated
+    // subscriptions upstream cannot silently break this test.
+    const agentsBinding = bindings.find((b) => b.channel === 'agents')
+    expect(agentsBinding).toBeDefined()
 
-    bindings[0]!.handler({
+    agentsBinding!.handler({
       event_type: 'personality.trimmed',
       channel: 'agents',
       timestamp: '2026-04-05T10:00:00Z',
