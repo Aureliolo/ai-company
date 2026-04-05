@@ -125,6 +125,25 @@ def _is_unique_constraint_error(exc: sqlite3.IntegrityError) -> bool:
     }
 
 
+def _is_structural_constraint_error(exc: sqlite3.IntegrityError) -> bool:
+    """Return True for CHECK / FOREIGN KEY / NOT NULL constraint violations.
+
+    These represent schema-level invariants that the application
+    relies on (e.g. ``reviewer_agent_id != executing_agent_id``).
+    Masking them as generic ``QueryError`` would hide programming
+    errors or schema drift; letting the original
+    ``sqlite3.IntegrityError`` propagate keeps the structural
+    failure visible to operators and to the review-gate service's
+    narrowed ``except (QueryError, DuplicateRecordError)`` catch.
+    """
+    return exc.sqlite_errorname in {
+        "SQLITE_CONSTRAINT_CHECK",
+        "SQLITE_CONSTRAINT_FOREIGNKEY",
+        "SQLITE_CONSTRAINT_NOTNULL",
+        "SQLITE_CONSTRAINT_TRIGGER",
+    }
+
+
 class SQLiteDecisionRepository:
     """SQLite implementation of the ``DecisionRepository`` protocol.
 
@@ -132,22 +151,34 @@ class SQLiteDecisionRepository:
     review gate decisions.  Timestamps are normalized to UTC before
     storage for consistent lexicographic ordering.
 
-    A per-instance ``asyncio.Lock`` serializes the multi-statement
+    An ``asyncio.Lock`` serializes the multi-statement
     INSERT -> SELECT -> commit/rollback sequence in
-    ``append_with_next_version`` so concurrent coroutines sharing this
-    repository cannot interleave their statements or have one
-    coroutine's rollback wipe another's in-flight INSERT.  The lock
-    only guards this repository's own writes; cross-repository
-    coordination against the same underlying connection is the
-    responsibility of the backend.
+    ``append_with_next_version`` so concurrent coroutines cannot
+    interleave their statements or have one coroutine's rollback
+    wipe another's in-flight INSERT.  Production callers should
+    inject the shared ``SQLitePersistenceBackend._shared_write_lock``
+    so this repository coordinates with OTHER repositories that
+    mutate the same underlying ``aiosqlite.Connection``.  When the
+    lock argument is omitted (primarily direct-instantiation tests),
+    a per-instance lock is created as a fallback that only protects
+    against this repository's own concurrent callers.
 
     Args:
         db: An open aiosqlite connection.
+        write_lock: Optional shared lock protecting multi-statement
+            transactions on ``db``.  Defaults to a per-instance lock
+            for test ergonomics; production wiring injects the
+            backend's shared lock.
     """
 
-    def __init__(self, db: aiosqlite.Connection) -> None:
+    def __init__(
+        self,
+        db: aiosqlite.Connection,
+        *,
+        write_lock: asyncio.Lock | None = None,
+    ) -> None:
         self._db = db
-        self._write_lock = asyncio.Lock()
+        self._write_lock = write_lock if write_lock is not None else asyncio.Lock()
 
     async def append_with_next_version(  # noqa: PLR0913
         self,
@@ -343,6 +374,21 @@ class SQLiteDecisionRepository:
                     sqlite_errorname=exc.sqlite_errorname,
                 )
                 raise DuplicateRecordError(msg) from exc
+            if _is_structural_constraint_error(exc):
+                # CHECK / FOREIGN KEY / NOT NULL / trigger violations
+                # are schema-level programming errors -- log with full
+                # context and re-raise the original IntegrityError so
+                # callers see the structural failure rather than a
+                # generic QueryError that could be mistaken for a
+                # transient persistence hiccup.
+                logger.exception(
+                    PERSISTENCE_DECISION_RECORD_SAVE_FAILED,
+                    record_id=record_id,
+                    error=str(exc),
+                    sqlite_errorname=exc.sqlite_errorname,
+                    error_type="StructuralConstraintViolation",
+                )
+                raise
             msg = f"Failed to save decision record {record_id!r}"
             logger.exception(
                 PERSISTENCE_DECISION_RECORD_SAVE_FAILED,
@@ -555,15 +601,15 @@ class SQLiteDecisionRepository:
     def _row_to_record(self, row: dict[str, object]) -> DecisionRecord:
         """Convert a database row to a ``DecisionRecord`` model.
 
-        A missing required column indicates schema drift, a
-        programming error that must surface loudly as ``KeyError`` --
-        but we now log the missing column name first via
-        ``PERSISTENCE_DECISION_RECORD_DESERIALIZE_FAILED`` so
-        operators investigating the failure have context before
-        tracing the stack.  The ``KeyError`` is then re-raised
-        unchanged to preserve the existing contract.  Direct
-        ``row["col"]`` access (rather than ``.get()``) on ``NOT NULL``
-        columns keeps the semantics aligned with the schema.
+        Every required column is read via explicit ``row["col"]``
+        indexing so a missing column (schema drift) surfaces as
+        ``KeyError`` with the specific column name logged via
+        ``PERSISTENCE_DECISION_RECORD_DESERIALIZE_FAILED`` before the
+        exception re-raises.  Building ``parsed`` via ``dict(row)``
+        would silently copy whatever's present and defer the failure
+        to ``DecisionRecord.model_validate`` with a less informative
+        ``ValidationError``, so we assemble it field-by-field
+        instead.
 
         The JSON-encoded ``criteria_snapshot`` column is shape-checked
         after deserialization: a row that somehow stores a non-array
@@ -574,8 +620,21 @@ class SQLiteDecisionRepository:
         produce garbage data.
         """
         try:
-            parsed: dict[str, object] = dict(row)
             try:
+                # Explicit reads for every required column.  Any
+                # missing key raises KeyError and hits the log-and-
+                # re-raise handler below.
+                parsed: dict[str, object] = {
+                    "id": row["id"],
+                    "task_id": row["task_id"],
+                    "approval_id": row["approval_id"],
+                    "executing_agent_id": row["executing_agent_id"],
+                    "reviewer_agent_id": row["reviewer_agent_id"],
+                    "decision": row["decision"],
+                    "reason": row["reason"],
+                    "recorded_at": row["recorded_at"],
+                    "version": row["version"],
+                }
                 raw_criteria = row["criteria_snapshot"]
                 raw_metadata = row["metadata"]
             except KeyError as exc:
@@ -597,8 +656,12 @@ class SQLiteDecisionRepository:
                     )
                     raise TypeError(msg)  # noqa: TRY301
                 parsed["criteria_snapshot"] = tuple(decoded_criteria)
+            else:
+                parsed["criteria_snapshot"] = raw_criteria
             if isinstance(raw_metadata, str):
                 parsed["metadata"] = json.loads(raw_metadata)
+            else:
+                parsed["metadata"] = raw_metadata
             return DecisionRecord.model_validate(parsed)
         except (ValidationError, json.JSONDecodeError, TypeError) as exc:
             msg = (

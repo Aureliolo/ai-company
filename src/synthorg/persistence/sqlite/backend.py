@@ -97,6 +97,15 @@ class SQLitePersistenceBackend:
     def __init__(self, config: SQLiteConfig) -> None:
         self._config = config
         self._lifecycle_lock = asyncio.Lock()
+        # Shared write lock for multi-statement transactions on the
+        # single aiosqlite connection.  Repositories that perform
+        # INSERT/UPDATE/DELETE + commit sequences should acquire this
+        # lock around their critical section so one repo's rollback
+        # cannot wipe another repo's in-flight changes.  Currently
+        # injected into SQLiteDecisionRepository (the primary
+        # audit-integrity-critical writer); broader rollout to other
+        # repositories is tracked as a follow-up.
+        self._shared_write_lock = asyncio.Lock()
         self._db: aiosqlite.Connection | None = None
         self._artifacts: SQLiteArtifactRepository | None = None
         self._projects: SQLiteProjectRepository | None = None
@@ -229,7 +238,9 @@ class SQLitePersistenceBackend:
         self._workflow_definitions = SQLiteWorkflowDefinitionRepository(self._db)
         self._workflow_executions = SQLiteWorkflowExecutionRepository(self._db)
         self._workflow_versions = SQLiteWorkflowVersionRepository(self._db)
-        self._decision_records = SQLiteDecisionRepository(self._db)
+        self._decision_records = SQLiteDecisionRepository(
+            self._db, write_lock=self._shared_write_lock
+        )
 
     async def _cleanup_failed_connect(self, exc: sqlite3.Error | OSError) -> None:
         """Log failure, close partial connection, and raise.
