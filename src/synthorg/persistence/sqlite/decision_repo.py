@@ -7,6 +7,7 @@ to eliminate the TOCTOU race that a read-then-write pattern would
 create under concurrent review gate decisions.
 """
 
+import asyncio
 import json
 import sqlite3
 from datetime import UTC
@@ -130,12 +131,22 @@ class SQLiteDecisionRepository:
     review gate decisions.  Timestamps are normalized to UTC before
     storage for consistent lexicographic ordering.
 
+    A per-instance ``asyncio.Lock`` serializes the multi-statement
+    INSERT -> SELECT -> commit/rollback sequence in
+    ``append_with_next_version`` so concurrent coroutines sharing this
+    repository cannot interleave their statements or have one
+    coroutine's rollback wipe another's in-flight INSERT.  The lock
+    only guards this repository's own writes; cross-repository
+    coordination against the same underlying connection is the
+    responsibility of the backend.
+
     Args:
         db: An open aiosqlite connection.
     """
 
     def __init__(self, db: aiosqlite.Connection) -> None:
         self._db = db
+        self._write_lock = asyncio.Lock()
 
     async def append_with_next_version(  # noqa: PLR0913
         self,
@@ -226,19 +237,38 @@ class SQLiteDecisionRepository:
             )
             raise
 
-        params = _build_insert_params(
-            record_id=record_id,
-            task_id=task_id,
-            approval_id=approval_id,
-            executing_agent_id=executing_agent_id,
-            reviewer_agent_id=reviewer_agent_id,
-            decision=decision,
-            reason=draft_record.reason,
-            criteria_snapshot=draft_record.criteria_snapshot,
-            recorded_at=draft_record.recorded_at,
-            metadata=dict(draft_record.metadata),
-        )
-        assigned_version = await self._execute_insert(record_id, params)
+        try:
+            params = _build_insert_params(
+                record_id=record_id,
+                task_id=task_id,
+                approval_id=approval_id,
+                executing_agent_id=executing_agent_id,
+                reviewer_agent_id=reviewer_agent_id,
+                decision=decision,
+                reason=draft_record.reason,
+                criteria_snapshot=draft_record.criteria_snapshot,
+                recorded_at=draft_record.recorded_at,
+                metadata=dict(draft_record.metadata),
+            )
+        except TypeError:
+            # ``_build_insert_params`` calls ``json.dumps`` on metadata;
+            # non-JSON-serializable values (datetime objects, custom
+            # classes, etc.) surface as ``TypeError`` before any SQL
+            # runs.  Re-raise so the programming error propagates
+            # loudly instead of being masked as a silent persistence
+            # failure by callers that only catch ``QueryError``.
+            logger.warning(
+                PERSISTENCE_DECISION_RECORD_SAVE_FAILED,
+                record_id=record_id,
+                task_id=task_id,
+                approval_id=approval_id,
+                executing_agent_id=executing_agent_id,
+                reviewer_agent_id=reviewer_agent_id,
+                error_type="TypeError",
+            )
+            raise
+        async with self._write_lock:
+            assigned_version = await self._execute_insert(record_id, params)
         record = draft_record.model_copy(update={"version": assigned_version})
         logger.debug(
             PERSISTENCE_DECISION_RECORD_SAVED,
@@ -442,13 +472,29 @@ class SQLiteDecisionRepository:
         column indicates schema drift, a programming error that must
         surface loudly.  Direct ``row["col"]`` access (rather than
         ``.get()``) on ``NOT NULL`` columns preserves this behavior.
+
+        The JSON-encoded ``criteria_snapshot`` column is shape-checked
+        after deserialization: a row that somehow stores a non-array
+        (e.g. a bare string or object, from a migration bug or a
+        third-party backend) is rejected with ``QueryError`` rather
+        than being silently coerced via ``tuple(...)`` which would
+        iterate over the object's keys / string characters and
+        produce garbage data.
         """
         try:
             parsed: dict[str, object] = dict(row)
             raw_criteria = row["criteria_snapshot"]
             raw_metadata = row["metadata"]
             if isinstance(raw_criteria, str):
-                parsed["criteria_snapshot"] = tuple(json.loads(raw_criteria))
+                decoded_criteria = json.loads(raw_criteria)
+                if not isinstance(decoded_criteria, list):
+                    msg = (
+                        f"criteria_snapshot for decision record "
+                        f"{row.get('id')!r} is not a JSON array "
+                        f"(got {type(decoded_criteria).__name__})"
+                    )
+                    raise TypeError(msg)  # noqa: TRY301
+                parsed["criteria_snapshot"] = tuple(decoded_criteria)
             if isinstance(raw_metadata, str):
                 parsed["metadata"] = json.loads(raw_metadata)
             return DecisionRecord.model_validate(parsed)
