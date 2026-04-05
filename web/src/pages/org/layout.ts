@@ -1,7 +1,10 @@
 import { Graph, layout } from '@dagrejs/dagre'
 import type { Node, Edge } from '@xyflow/react'
 
-export type LayoutDirection = 'TB' | 'LR'
+// Only 'TB' is currently used.  The post-layout adjustment pass
+// (Steps 4-5) assumes a top-to-bottom layout.  Adding 'LR' support
+// would require mirroring those steps along the x-axis.
+export type LayoutDirection = 'TB'
 
 /**
  * Per-render visual preferences that affect how much space the
@@ -103,13 +106,13 @@ export function applyDagreLayout(
     nodeSep += DEFAULT_GROUP_PADDING * 2
   }
 
-  if (leafNodes.length === 0) {
-    const isLR = direction === 'LR'
+  const agentLeafNodes = leafNodes.filter((n) => n.type !== 'owner')
+  if (agentLeafNodes.length === 0) {
     return nodes.map((n, i) => {
       const major = i % 3
       const minor = Math.floor(i / 3)
-      const x = isLR ? minor * 260 : major * 260
-      const y = isLR ? major * 180 : minor * 180
+      const x = major * 260
+      const y = minor * 180
       return {
         ...n,
         position: { x, y },

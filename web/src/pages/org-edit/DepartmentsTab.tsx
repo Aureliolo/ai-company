@@ -196,7 +196,7 @@ export function DepartmentsTab({
 
   if (!config || config.departments.length === 0) {
     return (
-      <div className="space-y-4">
+      <div className="space-y-section-gap">
         <div className="flex justify-end gap-2">
           {/*
            * Add Team Pack stays enabled -- the backend's

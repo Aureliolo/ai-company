@@ -25,9 +25,10 @@ export function useLiveEdgeActivity(
   const expiryMapRef = useRef<Map<string, number>>(new Map())
 
   // Subscribe to new messages and mark matching edges active.  Using
-  // Zustand's subscribe (not a selector) means we only re-render
-  // this hook's consumer when the active-edges set actually changes
-  // (on first activity + on expiry), not on every message.
+  // Zustand's subscribe (not a selector) means we avoid re-rendering
+  // on every message for which no edge matches -- only matched
+  // messages update state, and we rebuild the Set so React can pick
+  // up the change via reference comparison.
   useEffect(() => {
     const unsubscribe = useMessagesStore.subscribe((state, prevState) => {
       if (state.messages === prevState.messages) return

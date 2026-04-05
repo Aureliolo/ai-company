@@ -1,3 +1,4 @@
+import { useRef } from 'react'
 import { AlertDialog } from '@base-ui/react/alert-dialog'
 import { Loader2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -38,6 +39,8 @@ export function ConfirmDialog({
   className,
   children,
 }: ConfirmDialogProps) {
+  const submittingRef = useRef(false)
+
   return (
     <AlertDialog.Root
       open={open}
@@ -86,8 +89,10 @@ export function ConfirmDialog({
             <Button
               variant={variant === 'destructive' ? 'destructive' : 'default'}
               data-variant={variant}
-              disabled={loading}
+              disabled={submittingRef.current || loading}
               onClick={async () => {
+                if (submittingRef.current || loading) return
+                submittingRef.current = true
                 try {
                   await onConfirm()
                   onOpenChange(false)
@@ -96,6 +101,8 @@ export function ConfirmDialog({
                   // the same surface. Log the cause so the failure is not
                   // invisible if the caller forgets to toast its own error.
                   log.warn('ConfirmDialog onConfirm threw', { title }, err)
+                } finally {
+                  submittingRef.current = false
                 }
               }}
             >

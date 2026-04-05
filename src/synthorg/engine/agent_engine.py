@@ -8,7 +8,7 @@ import asyncio
 import contextlib
 import time
 from collections.abc import Awaitable, Callable
-from typing import TYPE_CHECKING, TypedDict
+from typing import TYPE_CHECKING, Literal, TypedDict
 
 from synthorg.budget.currency import DEFAULT_CURRENCY
 from synthorg.budget.errors import BudgetExhaustedError, QuotaExhaustedError
@@ -186,7 +186,7 @@ class PersonalityTrimPayload(TypedDict):
     before_tokens: int
     after_tokens: int
     max_tokens: int
-    trim_tier: int
+    trim_tier: Literal[1, 2, 3]
     budget_met: bool
 
 
@@ -436,7 +436,7 @@ class AgentEngine:
             has_compaction_callback=self._compaction_callback is not None,
             has_plan_execute_config=self._plan_execute_config is not None,
             has_hybrid_loop_config=self._hybrid_loop_config is not None,
-            has_personality_trim_notifier=(self._personality_trim_notifier is not None),
+            has_personality_trim_notifier=self._personality_trim_notifier is not None,
         )
 
     @property
@@ -1158,45 +1158,17 @@ class AgentEngine:
         """
         if self._personality_trim_notifier is None:
             return
+        notify_enabled = await self._read_notify_enabled(payload)
+        if not notify_enabled:
+            return
         agent_id = payload["agent_id"]
         agent_name = payload["agent_name"]
         task_id = payload["task_id"]
         trim_tier = payload["trim_tier"]
-        # Fail-open: default is True, and a transient resolver failure must not
-        # silently disable notifications that the operator enabled. If the
-        # setting read fails we log and proceed with the built-in default.
-        notify_enabled = True
-        if self._config_resolver is not None:
-            try:
-                notify_enabled = await self._config_resolver.get_bool(
-                    "engine",
-                    "personality_trimming_notify",
-                )
-            except MemoryError, RecursionError:
-                raise
-            except Exception:
-                logger.warning(
-                    PROMPT_PERSONALITY_NOTIFY_FAILED,
-                    agent_id=agent_id,
-                    agent_name=agent_name,
-                    task_id=task_id,
-                    trim_tier=trim_tier,
-                    reason=(
-                        "failed to read personality_trimming_notify setting;"
-                        " fail-open with default notify_enabled=True"
-                    ),
-                    exc_info=True,
-                )
-        if not notify_enabled:
-            return
         # Bound the notifier call so a slow or hung implementation cannot
-        # stall ``run()``.  Trim notifications are best-effort and
-        # explicitly documented as non-critical, so a misbehaving external
-        # runner must not block prompt preparation on the main execution
-        # path.  2 seconds is comfortably above any legitimate
-        # fire-and-forget enqueue (``ChannelsPlugin.publish`` is
-        # microseconds) and still short enough that a real production
-        # stall surfaces loudly via the warning log below.
+        # stall ``run()``.  2 seconds is comfortably above any legitimate
+        # fire-and-forget enqueue and short enough that a real stall
+        # surfaces loudly via the warning log below.
         try:
             async with asyncio.timeout(2.0):
                 await self._personality_trim_notifier(payload)
@@ -1221,6 +1193,40 @@ class AgentEngine:
                 reason="notifier callback raised",
                 exc_info=True,
             )
+
+    async def _read_notify_enabled(
+        self,
+        payload: PersonalityTrimPayload,
+    ) -> bool:
+        """Read the ``personality_trimming_notify`` setting, fail-open.
+
+        Returns ``True`` when the resolver is unavailable or raises,
+        so a transient failure never silently disables notifications
+        the operator enabled.
+        """
+        if self._config_resolver is None:
+            return True
+        try:
+            return await self._config_resolver.get_bool(
+                "engine",
+                "personality_trimming_notify",
+            )
+        except MemoryError, RecursionError:
+            raise
+        except Exception:
+            logger.warning(
+                PROMPT_PERSONALITY_NOTIFY_FAILED,
+                agent_id=payload["agent_id"],
+                agent_name=payload["agent_name"],
+                task_id=payload["task_id"],
+                trim_tier=payload["trim_tier"],
+                reason=(
+                    "failed to read personality_trimming_notify setting;"
+                    " fail-open with default notify_enabled=True"
+                ),
+                exc_info=True,
+            )
+            return True
 
     # ── Helpers ──────────────────────────────────────────────────
 

@@ -1,10 +1,15 @@
 import { memo } from 'react'
-import { BaseEdge, type EdgeProps } from '@xyflow/react'
+import { BaseEdge, type Edge, type EdgeProps } from '@xyflow/react'
 import { useReducedMotion } from 'framer-motion'
 
 export interface HierarchyEdgeData {
+  /** When omitted or false, the edge renders as a static line. */
   particlesVisible?: boolean
+  // React Flow requires data to extend Record<string, unknown>.
+  [key: string]: unknown
 }
+
+type HierarchyEdgeType = Edge<HierarchyEdgeData, 'hierarchy'>
 
 /** Target particle speed, in pixels per second. */
 const PARTICLE_PX_PER_SEC = 140
@@ -45,10 +50,9 @@ const BEND_OFFSET = 30
  * three segments overlap perfectly and read as a single clean
  * T-junction under the parent.
  */
-function HierarchyEdgeComponent(props: EdgeProps) {
+function HierarchyEdgeComponent(props: EdgeProps<HierarchyEdgeType>) {
   const reducedMotion = useReducedMotion()
-  const data = props.data as HierarchyEdgeData | undefined
-  const showParticles = !reducedMotion && (data?.particlesVisible ?? false)
+  const showParticles = !reducedMotion && (props.data?.particlesVisible ?? false)
 
   const sx = props.sourceX
   const sy = props.sourceY
@@ -66,7 +70,9 @@ function HierarchyEdgeComponent(props: EdgeProps) {
 
   // Approximate path length (Manhattan distance) for uniform
   // particle speed across edges of different lengths.
-  const approxLength = Math.abs(tx - sx) + Math.abs(ty - sy) + BEND_OFFSET
+  const approxLength = Math.abs(tx - sx) < 0.5
+    ? Math.abs(ty - sy)
+    : Math.abs(tx - sx) + Math.abs(ty - sy) + BEND_OFFSET
   const durSec = Math.max(MIN_PARTICLE_DUR_SEC, approxLength / PARTICLE_PX_PER_SEC)
 
   return (

@@ -1,5 +1,5 @@
 import { Dialog } from '@base-ui/react/dialog'
-import { useCallback, useEffect, useState, type ReactElement } from 'react'
+import { useCallback, useEffect, useRef, useState, type ReactElement } from 'react'
 import {
   AlertTriangle,
   CheckCircle2,
@@ -173,14 +173,6 @@ function HeroStatus({ state }: { state: SubsystemState }) {
 export interface HealthPopoverProps {
   /** The trigger element -- cloned into `Dialog.Trigger render`. */
   children: ReactElement
-  /**
-   * Optional side / align props retained for backwards compatibility with
-   * the popover version of this component.  Ignored now that the health
-   * screen is a centered modal dialog -- kept so existing call sites do
-   * not break.
-   */
-  side?: 'top' | 'bottom' | 'left' | 'right'
-  align?: 'start' | 'center' | 'end'
 }
 
 /**
@@ -216,15 +208,20 @@ export function HealthPopover({ children }: HealthPopoverProps) {
   // from the refresh button -- deliberately NOT inside a useEffect, so
   // the state update is always a response to a user interaction rather
   // than a render-triggered side effect.
+  const latestProbeRef = useRef(0)
+
   const fetchHealth = useCallback(() => {
     setLoadState({ state: 'loading' })
+    const probeId = ++latestProbeRef.current
     getHealth()
       .then((data) => {
+        if (probeId !== latestProbeRef.current) return
         const fetchedAt = new Date()
         setLoadState({ state: 'ok', data, fetchedAt })
         setNowMs(fetchedAt.getTime())
       })
       .catch((err: unknown) => {
+        if (probeId !== latestProbeRef.current) return
         const fetchedAt = new Date()
         const message = err instanceof Error ? err.message : 'Health probe failed'
         log.warn('Health probe failed', err)
@@ -318,7 +315,6 @@ export function HealthPopover({ children }: HealthPopoverProps) {
             'data-[closed]:opacity-0 data-[starting-style]:opacity-0 data-[ending-style]:opacity-0',
             'data-[closed]:scale-95 data-[starting-style]:scale-95 data-[ending-style]:scale-95',
           )}
-          aria-describedby={undefined}
         >
           {/* Header */}
           <div className="mb-4 flex items-center justify-between gap-3">

@@ -31,8 +31,8 @@ function OwnerNodeComponent({ data }: NodeProps<OwnerNodeType>) {
         // Without this, React Flow measures the actual rendered
         // width (which drifts with avatar + display-name content)
         // and the centering math in layout.ts ends up ~10 px off,
-        // producing a visible "up then down" jog in the owner →
-        // root dept edge via the smoothstep corner radius.
+        // producing a visible horizontal kink in the owner to root
+        // dept edge's L-shape.
         'w-[240px]',
         'shadow-sm shadow-warning/20',
       )}

@@ -22,7 +22,7 @@ import { useToastStore } from '@/stores/toast'
 import { useCompanyStore } from '@/stores/company'
 import { useOrgChartPrefs } from '@/stores/org-chart-prefs'
 import { useLiveEdgeActivity } from '@/hooks/useLiveEdgeActivity'
-import { prefersReducedMotion } from '@/lib/motion'
+import { prefersReducedMotion, TRANSITION_SLOW_MS } from '@/lib/motion'
 import { findDropTarget, type DepartmentBounds } from './org/drop-target'
 import { AgentNode } from './org/AgentNode'
 import { CeoNode } from './org/CeoNode'
@@ -103,7 +103,7 @@ function saveViewport(viewport: ViewportState) {
 
 // ── View transition animation ─────────────────────────────────
 
-const TRANSITION_DURATION_MS = 400
+const TRANSITION_DURATION_MS = TRANSITION_SLOW_MS
 
 function tweenSlowEase(t: number): number {
   if (t <= 0) return 0
@@ -604,7 +604,7 @@ function OrgChartInner() {
         next.data = { ...next.data, isDropTarget: true }
       }
       if (dimmed) {
-        next.style = { ...n.style, opacity: 0.25, transition: 'opacity 180ms ease' }
+        next.style = { ...n.style, opacity: 0.25, transition: `opacity var(--so-transition-dim) ease` }
       } else if (n.style && typeof (n.style as { opacity?: number }).opacity === 'number') {
         const rest = { ...n.style } as Record<string, unknown>
         delete rest['opacity']
@@ -715,23 +715,6 @@ function OrgChartInner() {
       </div>
 
       <div className="relative flex-1 rounded-lg border border-border">
-        {/* Drag-drop visual feedback styles */}
-        <style>{`
-          .react-flow__node.dragging {
-            opacity: var(--so-opacity-dragging, 0.6);
-            transform: scale(1.02);
-            z-index: 1000 !important;
-          }
-          .react-flow__node.dragging > div {
-            box-shadow: var(--so-shadow-card-hover);
-          }
-          .react-flow__node {
-            transition: transform 0.4s cubic-bezier(0.17, 0.67, 0.29, 1.01);
-          }
-          @media (prefers-reduced-motion: reduce) {
-            .react-flow__node { transition: none; }
-          }
-        `}</style>
         <ReactFlow
           aria-label="Organization chart"
           nodes={renderedNodes}
@@ -779,25 +762,25 @@ function OrgChartInner() {
               zoomable
               ariaLabel="Org chart minimap"
               position="bottom-right"
-              bgColor="rgba(15, 18, 26, 0.92)"
-              maskColor="rgba(0, 0, 0, 0.55)"
-              maskStrokeColor="#38bdf8"
+              bgColor="var(--so-minimap-bg)"
+              maskColor="var(--so-minimap-mask)"
+              maskStrokeColor="var(--so-minimap-stroke)"
               maskStrokeWidth={1.5}
               style={{
                 width: 260,
                 height: 200,
                 resize: 'both',
                 overflow: 'hidden',
-                border: '1px solid rgba(148, 163, 184, 0.35)',
+                border: '1px solid var(--so-minimap-border)',
                 borderRadius: '10px',
-                boxShadow: '0 4px 16px rgba(0, 0, 0, 0.35)',
+                boxShadow: 'var(--so-minimap-shadow)',
               }}
               nodeColor={(n) => {
-                if (n.type === 'owner') return '#f59e0b'
-                if (n.type === 'department') return 'rgba(56, 189, 248, 0.22)'
-                return '#38bdf8'
+                if (n.type === 'owner') return 'var(--so-minimap-node-owner)'
+                if (n.type === 'department') return 'var(--so-minimap-node-dept)'
+                return 'var(--so-minimap-node-agent)'
               }}
-              nodeStrokeColor={(n) => (n.type === 'department' ? '#38bdf8' : 'transparent')}
+              nodeStrokeColor={(n) => (n.type === 'department' ? 'var(--so-minimap-stroke)' : 'transparent')}
               nodeStrokeWidth={1.5}
               nodeBorderRadius={4}
             />

@@ -74,7 +74,7 @@ export const OverBudget: Story = {
       displayName: 'Product',
       agentCount: 3,
       activeCount: 1,
-      budgetPercent: 20,
+      budgetPercent: 120,
       utilizationPercent: 95,
       cost7d: 22.3,
       currency: 'EUR',

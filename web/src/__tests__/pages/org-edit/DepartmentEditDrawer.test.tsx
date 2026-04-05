@@ -43,6 +43,7 @@ describe('DepartmentEditDrawer', () => {
     // drawer now shows a plain "N agent(s)" summary derived from the
     // health payload's agent_count field instead of a meter.
     renderDrawer()
+    expect(screen.getByText(/3\s+agent/i)).toBeInTheDocument()
     expect(screen.queryByRole('meter')).not.toBeInTheDocument()
   })
 

@@ -75,6 +75,9 @@ export const tweenSlow: Transition = {
   ease: [0.4, 0, 0.2, 1],
 };
 
+/** Slow tween duration in milliseconds (matches tweenSlow.duration). */
+export const TRANSITION_SLOW_MS = 400;
+
 /** Fast tween: micro-interactions, button press feedback. */
 export const tweenFast: Transition = {
   type: "tween",
@@ -87,6 +90,20 @@ export const tweenExitFast: Transition = {
   type: "tween",
   duration: 0.15,
   ease: "easeIn",
+};
+
+/** Crossfade enter tween: fast opacity-only page transition enter (120ms easeOut). */
+export const tweenCrossfadeEnter: Transition = {
+  type: "tween" as const,
+  duration: 0.12,
+  ease: "easeOut" as const,
+};
+
+/** Crossfade exit tween: very fast opacity-only page transition exit (60ms easeIn). */
+export const tweenCrossfadeExit: Transition = {
+  type: "tween" as const,
+  duration: 0.06,
+  ease: "easeIn" as const,
 };
 
 // ---------------------------------------------------------------------------

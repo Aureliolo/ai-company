@@ -156,12 +156,10 @@ export function useOrgChartData(
             ? { ...n, data: { ...n.data, isCollapsed: true } }
             : n,
         )
-      tree.edges = tree.edges.filter((e) => {
-        // Drop edges pointing at or from filtered-out child agents.
-        const source = tree.nodes.find((n) => n.id === e.source)
-        const target = tree.nodes.find((n) => n.id === e.target)
-        return source !== undefined && target !== undefined
-      })
+      const remainingNodeIds = new Set(tree.nodes.map((n) => n.id))
+      tree.edges = tree.edges.filter(
+        (e) => remainingNodeIds.has(e.source) && remainingNodeIds.has(e.target),
+      )
     }
 
     if (viewMode === 'force') {

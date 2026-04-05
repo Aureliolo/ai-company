@@ -153,8 +153,8 @@ export function buildOrgTree(
   // `width` and `height` are set explicitly so dagre (and the
   // post-layout centering pass in `layout.ts`) use the real card
   // size instead of the 160x80 default.  The OwnerNode component
-  // renders at `min-w-[200px] max-w-[240px]` with a title row + an
-  // avatar row, so 220x86 matches the rendered footprint closely.
+  // renders at a fixed `w-[240px]` with a title row + an
+  // avatar row, so 240x90 matches the rendered footprint exactly.
   // Without these, the centering pass would offset the owner by
   // ~20-40 px because it thought the card was narrower than it is.
   const OWNER_NODE_WIDTH = 240

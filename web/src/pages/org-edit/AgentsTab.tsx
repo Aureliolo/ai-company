@@ -106,7 +106,7 @@ function DepartmentAgentsSection({
         <p className="py-4 text-center text-sm text-text-secondary">No agents in this department</p>
       ) : (
         <SortableContext items={agents.map((a) => a.id ?? a.name)} strategy={verticalListSortingStrategy}>
-          <StaggerGroup className="grid gap-3">
+          <StaggerGroup className="grid gap-grid-gap">
             {agents.map((agent) => (
               <StaggerItem key={agent.id ?? agent.name}>
                 <SortableAgentItem
@@ -192,7 +192,7 @@ export function AgentsTab({
 
   if (!config || (config.agents.length === 0 && config.departments.length === 0)) {
     return (
-      <div className="space-y-4">
+      <div className="space-y-section-gap">
         <div className="flex justify-end">
           {/* Add Agent disabled until backend CRUD lands -- #1081 */}
           <Button

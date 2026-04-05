@@ -26,7 +26,7 @@ export default function AgentDetailPage() {
   const configAgent = useCompanyStore((s) =>
     s.config?.agents.find((a) => (a.id ?? a.name) === agentId),
   )
-  const resolvedAgentName = configAgent?.name ?? ''
+  const resolvedAgentName = configAgent?.name ?? agentId ?? ''
 
   const {
     agent,

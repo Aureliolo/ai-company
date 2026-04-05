@@ -286,13 +286,13 @@ def make_personality_trim_notifier(
         except Exception:
             logger.warning(
                 PROMPT_PERSONALITY_NOTIFY_FAILED,
-                note="Failed to publish personality.trimmed WebSocket event",
-                agent_id=payload["agent_id"],
-                agent_name=payload["agent_name"],
-                task_id=payload["task_id"],
-                trim_tier=payload["trim_tier"],
-                before_tokens=payload["before_tokens"],
-                after_tokens=payload["after_tokens"],
+                reason="failed to publish personality.trimmed WebSocket event",
+                agent_id=payload.get("agent_id"),
+                agent_name=payload.get("agent_name"),
+                task_id=payload.get("task_id"),
+                trim_tier=payload.get("trim_tier"),
+                before_tokens=payload.get("before_tokens"),
+                after_tokens=payload.get("after_tokens"),
                 exc_info=True,
             )
 

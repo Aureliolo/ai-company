@@ -41,16 +41,16 @@ function composeRefs<T>(
 }
 
 export function Slot({ children, ref, ...slotProps }: SlotProps) {
-  // eslint-disable-next-line @eslint-react/no-children-only -- Slot requires exactly one child
-  const child = Children.only(children)
-  if (!isValidElement<Record<string, unknown>>(child)) {
+  // eslint-disable-next-line @eslint-react/no-children-count -- Slot requires exactly one child; count is the only safe pre-check before cloneElement
+  if (Children.count(children) !== 1 || !isValidElement<Record<string, unknown>>(children)) {
     log.warn(
       'asChild received a non-element child. Props were not forwarded. ' +
         'Wrap the content in a single React element.',
     )
-    return child
+    return children
   }
 
+  const child = children
   const childProps = (child.props ?? {}) as Record<string, unknown>
   const merged = mergeProps(slotProps as Record<string, unknown>, childProps)
 

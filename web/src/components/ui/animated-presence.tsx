@@ -1,6 +1,6 @@
 import type { Variants } from 'framer-motion'
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
-import { reducedPageVariants } from '@/lib/motion'
+import { reducedPageVariants, tweenCrossfadeEnter, tweenCrossfadeExit } from '@/lib/motion'
 import { cn } from '@/lib/utils'
 
 export interface AnimatedPresenceProps {
@@ -32,11 +32,11 @@ const pageVariants: Variants = {
   initial: { opacity: 0 },
   animate: {
     opacity: 1,
-    transition: { type: 'tween', duration: 0.12, ease: 'easeOut' },
+    transition: tweenCrossfadeEnter,
   },
   exit: {
     opacity: 0,
-    transition: { type: 'tween', duration: 0.06, ease: 'easeIn' },
+    transition: tweenCrossfadeExit,
   },
 }
 

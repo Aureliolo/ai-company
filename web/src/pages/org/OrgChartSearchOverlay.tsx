@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react'
 import { Search, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { Button } from '@/components/ui/button'
 
 export interface OrgChartSearchOverlayProps {
   open: boolean
@@ -78,14 +79,14 @@ export function OrgChartSearchOverlay({
           {matchCount} match{matchCount === 1 ? '' : 'es'}
         </span>
       )}
-      <button
-        type="button"
+      <Button
+        variant="ghost"
+        size="icon"
         onClick={onClose}
         aria-label="Close search"
-        className="rounded p-0.5 text-text-muted transition-colors hover:bg-border/40 hover:text-foreground"
       >
         <X className="size-3.5" />
-      </button>
+      </Button>
     </div>
   )
 }

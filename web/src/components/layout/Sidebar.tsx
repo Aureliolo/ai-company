@@ -339,7 +339,7 @@ function SidebarFooter({
         </button>
 
         {/* WebSocket connection status -- click to open the full health popover */}
-        <HealthPopover side="top" align="start">
+        <HealthPopover>
           <button
             type="button"
             aria-label={

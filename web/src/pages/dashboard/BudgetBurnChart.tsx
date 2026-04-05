@@ -71,10 +71,11 @@ function getTodayLabel(): string {
   return new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
 }
 
-function ChartTooltipContent({ active, payload, label }: {
+function ChartTooltipContent({ active, payload, label, currency }: {
   active?: boolean
   payload?: Array<{ value: number; dataKey: string }>
   label?: string
+  currency?: string
 }) {
   if (!active || !payload?.length) return null
   return (
@@ -83,7 +84,7 @@ function ChartTooltipContent({ active, payload, label }: {
       {payload.map((entry) => (
         <p key={entry.dataKey} className="font-mono text-foreground">
           {entry.dataKey === 'projected' ? 'Forecast: ' : 'Spend: '}
-          {formatCurrency(entry.value)}
+          {formatCurrency(entry.value, currency)}
         </p>
       ))}
     </div>
@@ -154,7 +155,7 @@ export function BudgetBurnChart({ trendData, forecast, budgetTotal, budgetRemain
                 tickFormatter={(v: number) => formatCurrencyCompact(v, currency)}
                 width={48}
               />
-              <Tooltip content={<ChartTooltipContent />} />
+              <Tooltip content={<ChartTooltipContent currency={currency} />} />
 
               {budgetTotal > 0 && (
                 <ReferenceLine

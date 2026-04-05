@@ -77,6 +77,19 @@
   --so-shadow-card-hover: 0 4px 24px rgba(56, 189, 248, 0.08);
   --so-shadow-health-glow: 0 0 8px rgba(56, 189, 248, 0.3);
 
+  /* -- Transitions -- */
+  --so-transition-dim: 180ms;
+
+  /* -- Org chart minimap -- */
+  --so-minimap-bg: rgba(15, 18, 26, 0.92);
+  --so-minimap-mask: rgba(0, 0, 0, 0.55);
+  --so-minimap-stroke: var(--so-accent);
+  --so-minimap-border: rgba(148, 163, 184, 0.35);
+  --so-minimap-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+  --so-minimap-node-owner: var(--so-warning);
+  --so-minimap-node-dept: rgba(56, 189, 248, 0.22);
+  --so-minimap-node-agent: var(--so-accent);
+
   /* -- Opacity overlays -- */
   --so-overlay-hover: rgba(255, 255, 255, 0.04);
   --so-overlay-active: rgba(56, 189, 248, 0.06);

@@ -30,7 +30,11 @@ export function useGlobalNotifications(): void {
       GLOBAL_CHANNELS.map((channel) => ({
         channel,
         handler: (event) => {
-          useAgentsStore.getState().updateFromWsEvent(event)
+          try {
+            useAgentsStore.getState().updateFromWsEvent(event)
+          } catch (err) {
+            log.warn('updateFromWsEvent threw -- event dropped', { event_type: String(event?.event_type) }, err)
+          }
         },
       })),
     [],

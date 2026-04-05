@@ -181,7 +181,7 @@ export function StatusBar({ onHamburgerClick, sidebarOverlayOpen = false }: Stat
 
       <div className="flex-1" />
 
-      <HealthPopover align="end">
+      <HealthPopover>
         <button
           type="button"
           aria-label={`System health: ${statusCfg.label}. Click for details.`}

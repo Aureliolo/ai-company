@@ -180,7 +180,6 @@ export function AgentEditDrawer({
                 onClick={() => setDeleteOpen(true)}
                 className="text-danger hover:text-danger"
                 disabled
-                aria-disabled="true"
                 title={ORG_EDIT_COMING_SOON_TOOLTIP}
               >
                 <Trash2 className="mr-1.5 size-3.5" />
@@ -191,7 +190,6 @@ export function AgentEditDrawer({
                 <Button
                   onClick={handleSave}
                   disabled
-                  aria-disabled="true"
                   title={ORG_EDIT_COMING_SOON_TOOLTIP}
                 >
                   {saving && <Loader2 className="mr-2 size-4 animate-spin" />}

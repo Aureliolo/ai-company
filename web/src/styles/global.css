@@ -157,6 +157,29 @@ html {
   background: var(--so-text-muted);
 }
 
+/* ---------------------------------------------------------------------------
+ * React Flow node drag/drop visual feedback
+ * --------------------------------------------------------------------------- */
+.react-flow__node.dragging {
+  opacity: var(--so-opacity-dragging, 0.6);
+  transform: scale(1.02);
+  z-index: 1000 !important;
+}
+
+.react-flow__node.dragging > div {
+  box-shadow: var(--so-shadow-card-hover);
+}
+
+.react-flow__node {
+  transition: transform 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .react-flow__node {
+    transition: none;
+  }
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;
