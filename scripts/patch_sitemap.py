@@ -21,7 +21,6 @@ deploying the docs site.
 import sys
 import xml.etree.ElementTree as ET
 from pathlib import Path
-from typing import cast
 
 import defusedxml.ElementTree as DefusedET
 from defusedxml.common import DefusedXmlException
@@ -67,12 +66,9 @@ def _parse_sitemap() -> ET.ElementTree | None:
         # defusedxml guards against billion-laughs, XXE, and DTD abuse.
         # The sitemap is produced by our own zensical build step, but
         # using the hardened parser costs nothing and removes the
-        # supply-chain assumption from the code. defusedxml's stubs are
-        # ignored (no py.typed) so the cast pins the return type.
-        return cast(
-            "ET.ElementTree[ET.Element[str] | None]",
-            DefusedET.parse(SITEMAP_FILE),
-        )
+        # supply-chain assumption from the code. defusedxml has no
+        # py.typed, so mypy sees this as Any -- silence the warning.
+        return DefusedET.parse(SITEMAP_FILE)  # type: ignore[no-any-return]
     except (ET.ParseError, DefusedXmlException) as exc:
         print(
             f"Failed to parse sitemap at {SITEMAP_FILE.relative_to(REPO_ROOT)}: {exc}",
