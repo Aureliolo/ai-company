@@ -37,6 +37,9 @@ from synthorg.persistence.workflow_definition_repo import (
 from synthorg.persistence.workflow_execution_repo import (
     WorkflowExecutionRepository,  # noqa: TC001
 )
+from synthorg.persistence.workflow_version_repo import (
+    WorkflowVersionRepository,  # noqa: TC001
+)
 
 
 @runtime_checkable
@@ -69,6 +72,8 @@ class PersistenceBackend(Protocol):
         custom_presets: Repository for custom personality preset persistence.
         workflow_definitions: Repository for workflow definition persistence.
         workflow_executions: Repository for workflow execution persistence.
+        workflow_versions: Repository for workflow definition version
+            snapshot persistence.
         decision_records: Repository for DecisionRecord persistence
             (auditable approval-gate decisions drop-box).
     """
@@ -224,6 +229,11 @@ class PersistenceBackend(Protocol):
     @property
     def workflow_executions(self) -> WorkflowExecutionRepository:
         """Repository for workflow execution persistence."""
+        ...
+
+    @property
+    def workflow_versions(self) -> WorkflowVersionRepository:
+        """Repository for workflow definition version snapshot persistence."""
         ...
 
     async def get_setting(self, key: NotBlankStr) -> str | None:

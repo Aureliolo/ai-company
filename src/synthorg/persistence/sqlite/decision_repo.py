@@ -8,6 +8,7 @@ create under concurrent review gate decisions.
 """
 
 import asyncio
+import copy
 import json
 import sqlite3
 from datetime import UTC
@@ -184,6 +185,13 @@ class SQLiteDecisionRepository:
             DuplicateRecordError: If a record with ``record_id`` exists
                 OR a concurrent write won the ``UNIQUE(task_id, version)``
                 race.
+            ValueError: If ``recorded_at`` is a naive datetime (no
+                tzinfo).  Rejected before any SQL runs; the
+                parameter is typed as ``AwareDatetime`` but Python
+                does not enforce type hints at the function
+                boundary, so we guard explicitly to prevent silent
+                wall-clock drift from ``astimezone(UTC)``'s
+                assume-local behavior.
             ValidationError: If the model-level normalization (blank
                 ``reason`` -> ``None``, duplicate ``criteria_snapshot``,
                 blank ``NotBlankStr`` inputs, non-UTC ``recorded_at``)
@@ -198,8 +206,15 @@ class SQLiteDecisionRepository:
             QueryError: If the SQL operation fails (connection dropped,
                 schema mismatch, rollback failure, etc.).
         """
+        # Deep-copy the metadata up-front so nested dicts/lists the
+        # caller retains are never aliased by the stored record.  The
+        # Pydantic field validator on ``DecisionRecord.metadata``
+        # already runs ``deep_copy_mapping`` + ``_freeze_recursive``,
+        # so this is belt-and-suspenders -- but making the deep copy
+        # explicit at the repository boundary keeps the intent
+        # visible at the call site for future maintainers.
         metadata_view: MappingProxyType[str, object] = MappingProxyType(
-            dict(metadata or {})
+            copy.deepcopy(dict(metadata or {}))
         )
         # Reject naive datetimes explicitly.  The parameter type is
         # ``AwareDatetime``, which Pydantic validates at model
@@ -213,6 +228,14 @@ class SQLiteDecisionRepository:
             msg = (
                 f"recorded_at must be timezone-aware, got a naive "
                 f"datetime for decision record {record_id!r}"
+            )
+            logger.warning(
+                PERSISTENCE_DECISION_RECORD_SAVE_FAILED,
+                record_id=record_id,
+                task_id=task_id,
+                error_type="NaiveDatetimeRejected",
+                error=msg,
+                recorded_at=recorded_at.isoformat(),
             )
             raise ValueError(msg)
         # Normalize recorded_at to UTC up-front so the draft record,
@@ -372,13 +395,19 @@ class SQLiteDecisionRepository:
             )
 
     async def get(self, record_id: NotBlankStr) -> DecisionRecord | None:
-        """Retrieve a decision record by ID."""
+        """Retrieve a decision record by ID.
+
+        Serialized against concurrent writers via ``_write_lock`` so
+        reads never observe rows from an in-flight ``INSERT -> SELECT
+        -> commit`` sequence that has not yet committed.
+        """
         try:
-            cursor = await self._db.execute(
-                f"SELECT {_COLS} FROM decision_records WHERE id = ?",  # noqa: S608
-                (record_id,),
-            )
-            row = await cursor.fetchone()
+            async with self._write_lock:
+                cursor = await self._db.execute(
+                    f"SELECT {_COLS} FROM decision_records WHERE id = ?",  # noqa: S608
+                    (record_id,),
+                )
+                row = await cursor.fetchone()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = f"Failed to fetch decision record {record_id!r}"
             logger.exception(
@@ -392,14 +421,20 @@ class SQLiteDecisionRepository:
         return self._row_to_record(dict(row))
 
     async def list_by_task(self, task_id: NotBlankStr) -> tuple[DecisionRecord, ...]:
-        """List decision records for a task, ordered by version ascending."""
+        """List decision records for a task, ordered by version ascending.
+
+        Serialized against concurrent writers via ``_write_lock`` so
+        reads never observe phantom rows from a mid-transaction
+        ``append_with_next_version``.
+        """
         try:
-            cursor = await self._db.execute(
-                f"SELECT {_COLS} FROM decision_records "  # noqa: S608
-                "WHERE task_id = ? ORDER BY version ASC",
-                (task_id,),
-            )
-            rows = await cursor.fetchall()
+            async with self._write_lock:
+                cursor = await self._db.execute(
+                    f"SELECT {_COLS} FROM decision_records "  # noqa: S608
+                    "WHERE task_id = ? ORDER BY version ASC",
+                    (task_id,),
+                )
+                rows = await cursor.fetchall()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = f"Failed to list decision records for task {task_id!r}"
             logger.exception(
@@ -427,14 +462,36 @@ class SQLiteDecisionRepository:
         ``role`` is validated via ``Literal`` at the type level, but we
         re-check at runtime to guard against bad callers that bypass
         type checking.  A rejected role is logged before raising.
+        Serialized against concurrent writers via ``_write_lock``.
         """
         # Runtime defense in depth: the Literal prevents type-safe
-        # callers from passing bad values, but the ``_ROLE_TO_COLUMN``
-        # lookup re-validates for untyped call sites.  Using a dict
-        # lookup instead of if/elif keeps the column name derivation
-        # closed over a bounded set of hard-coded identifiers, which
-        # is what justifies the S608 noqa on the f-string SQL below.
-        role_str: str = role
+        # callers from passing bad values, but untyped callers can
+        # still pass anything.  Check the input TYPE first so a
+        # list/dict/None argument raises ``ValueError`` with the
+        # same message shape as an unknown-string role, instead of
+        # a surprising ``TypeError`` (unhashable) inside the dict
+        # lookup.  Using a dict lookup instead of if/elif keeps the
+        # column name derivation closed over a bounded set of
+        # hard-coded identifiers (see the closed-set comment on
+        # the SQL query below).  mypy narrows ``role`` to
+        # ``Literal[...]`` and treats this branch as unreachable,
+        # which is exactly the static case -- but runtime callers
+        # can still defeat the Literal.
+        # Cast to ``object`` so mypy doesn't narrow to ``Literal``
+        # and mark the untyped-caller defense as unreachable.
+        role_obj: object = role
+        if not isinstance(role_obj, str):
+            msg = (
+                f"role must be 'executor' or 'reviewer', got {type(role_obj).__name__}"
+            )
+            logger.warning(
+                PERSISTENCE_DECISION_RECORD_QUERY_FAILED,
+                agent_id=agent_id,
+                role_type=type(role_obj).__name__,
+                error=msg,
+            )
+            raise ValueError(msg)  # noqa: TRY004  # consistent with unknown-string ValueError below
+        role_str: str = role_obj
         try:
             column = _ROLE_TO_COLUMN[role_str]
         except KeyError as exc:
@@ -454,8 +511,9 @@ class SQLiteDecisionRepository:
                 f"SELECT {_COLS} FROM decision_records "  # noqa: S608
                 f"WHERE {column} = ? ORDER BY recorded_at DESC"
             )
-            cursor = await self._db.execute(query, (agent_id,))
-            rows = await cursor.fetchall()
+            async with self._write_lock:
+                cursor = await self._db.execute(query, (agent_id,))
+                rows = await cursor.fetchall()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = (
                 f"Failed to list decision records for agent {agent_id!r} (role={role})"

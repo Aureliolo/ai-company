@@ -552,6 +552,13 @@ class _FakeBackend:
     def workflow_executions(self) -> _FakeWorkflowExecutionRepository:
         return _FakeWorkflowExecutionRepository()
 
+    @property
+    def workflow_versions(self) -> object:
+        # Returns a bare object() satisfying the structural Protocol
+        # check; the full WorkflowVersionRepository fake lives
+        # separately and is not required for this conformance test.
+        return object()
+
     async def get_setting(self, key: str) -> str | None:
         return None
 
