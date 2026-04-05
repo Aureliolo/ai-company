@@ -93,6 +93,9 @@ export function DialogCloseButton({ className }: DialogCloseButtonProps) {
     <BaseDialog.Close
       render={
         <Button
+          // Explicit type="button" so a dialog wrapping a <form> does not
+          // accidentally submit the form when the close icon is clicked.
+          type="button"
           variant="ghost"
           size="icon"
           aria-label="Close"

@@ -7,6 +7,7 @@ lifecycle hooks (startup/shutdown).
 
 import asyncio
 import contextlib
+import functools
 import os
 import sys
 import time
@@ -236,10 +237,14 @@ def make_personality_trim_notifier(
     consumers.
 
     The callback is declared ``async`` to match the
-    :data:`PersonalityTrimNotifier` contract, but
-    :meth:`ChannelsPlugin.publish` is a synchronous fire-and-forget enqueue
-    onto the channels backlog -- no ``await`` is used or required on the
-    publish call itself.
+    :data:`PersonalityTrimNotifier` contract.  The underlying
+    :meth:`ChannelsPlugin.publish` call is synchronous -- a fire-and-forget
+    enqueue onto the channels backlog that normally completes in
+    microseconds.  We wrap it in :func:`asyncio.to_thread` so that:
+    (a) a pathological channels-plugin implementation cannot block the
+    event loop, and (b) the engine-side :func:`asyncio.timeout` has an
+    actual ``await`` point to cancel at.  Without the ``to_thread`` hop a
+    synchronous stall would bypass the timeout entirely.
 
     Best-effort: publish errors are logged via
     ``PROMPT_PERSONALITY_NOTIFY_FAILED`` and swallowed so that notification
@@ -264,9 +269,12 @@ def make_personality_trim_notifier(
             payload=dict(payload),
         )
         try:
-            channels_plugin.publish(
-                event.model_dump_json(),
-                channels=[CHANNEL_AGENTS],
+            await asyncio.to_thread(
+                functools.partial(
+                    channels_plugin.publish,
+                    event.model_dump_json(),
+                    channels=[CHANNEL_AGENTS],
+                ),
             )
         except MemoryError, RecursionError:
             raise

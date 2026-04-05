@@ -175,6 +175,40 @@ describe('useGlobalNotifications', () => {
     expect(useToastStore.getState().toasts).toHaveLength(1)
   })
 
+  it('resets the reconnect-exhausted ref when the WS recovers', () => {
+    // Mirror of the setupError dedupe sequence above, but for the separate
+    // reconnectExhaustedRef.  A flapping connection should emit a fresh
+    // error toast on each exhaustion, not silently stay quiet after the
+    // first one.
+    mockUseWebSocket.mockReturnValue({
+      connected: false,
+      reconnectExhausted: true,
+      setupError: null,
+    })
+    const { rerender } = renderHook(() => useGlobalNotifications())
+    expect(useToastStore.getState().toasts).toHaveLength(1)
+    useToastStore.getState().dismissAll()
+
+    // Reconnect succeeds -- refs should reset.
+    mockUseWebSocket.mockReturnValue({
+      connected: true,
+      reconnectExhausted: false,
+      setupError: null,
+    })
+    rerender()
+    expect(useToastStore.getState().toasts).toHaveLength(0)
+
+    // Second exhaustion -- if the ref was not reset the toast would be
+    // suppressed.
+    mockUseWebSocket.mockReturnValue({
+      connected: false,
+      reconnectExhausted: true,
+      setupError: null,
+    })
+    rerender()
+    expect(useToastStore.getState().toasts).toHaveLength(1)
+  })
+
   it('unmount is a no-op that leaves the store untouched', () => {
     // Teardown of the underlying WebSocket subscription is owned by
     // useWebSocket (which is mocked here) -- this hook has no side-effect
