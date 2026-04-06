@@ -2,11 +2,14 @@
 
 import asyncio
 from datetime import UTC, datetime
+from typing import Any
 from unittest.mock import AsyncMock
 
 import pytest
+from pydantic import ValidationError
 
 from synthorg.core.enums import MemoryCategory
+from synthorg.memory.consolidation.config import LLMConsolidationConfig
 from synthorg.memory.consolidation.llm_strategy import LLMConsolidationStrategy
 from synthorg.memory.consolidation.strategy import ConsolidationStrategy
 from synthorg.memory.models import MemoryEntry, MemoryMetadata
@@ -53,9 +56,15 @@ def _make_strategy(
     *,
     provider: AsyncMock | None = None,
     backend: AsyncMock | None = None,
-    group_threshold: int = 3,
+    config: LLMConsolidationConfig | None = None,
+    **config_overrides: Any,
 ) -> LLMConsolidationStrategy:
-    """Build an LLMConsolidationStrategy with mock dependencies."""
+    """Build an LLMConsolidationStrategy with mock dependencies.
+
+    Pass ``config`` for a full override, or individual ``config_overrides``
+    kwargs (e.g. ``group_threshold=5``) which are forwarded to
+    ``LLMConsolidationConfig``.
+    """
     if backend is None:
         backend = AsyncMock()
         backend.store = AsyncMock(return_value="summary-id-1")
@@ -63,11 +72,13 @@ def _make_strategy(
     if provider is None:
         provider = AsyncMock()
         provider.complete = AsyncMock(return_value=_make_response())
+    if config is None:
+        config = LLMConsolidationConfig(**config_overrides)
     return LLMConsolidationStrategy(
         backend=backend,
         provider=provider,
         model="test-model",
-        group_threshold=group_threshold,
+        config=config,
     )
 
 
@@ -81,16 +92,16 @@ class TestLLMConsolidationStrategyProtocol:
 @pytest.mark.unit
 class TestLLMConsolidationStrategyInit:
     def test_group_threshold_below_min_raises(self) -> None:
-        with pytest.raises(ValueError, match=r"group_threshold must be >= 3"):
+        with pytest.raises(ValidationError):
             _make_strategy(group_threshold=2)
 
     def test_group_threshold_one_rejected(self) -> None:
-        with pytest.raises(ValueError, match=r"group_threshold must be >= 3"):
+        with pytest.raises(ValidationError):
             _make_strategy(group_threshold=1)
 
     def test_group_threshold_three_accepted(self) -> None:
         strategy = _make_strategy(group_threshold=3)
-        assert strategy._group_threshold == 3
+        assert strategy._config.group_threshold == 3
 
 
 @pytest.mark.unit
@@ -114,10 +125,9 @@ class TestLLMConsolidationStrategyConsolidate:
         provider = AsyncMock()
         provider.complete = AsyncMock(return_value=_make_response())
 
-        strategy = LLMConsolidationStrategy(
+        strategy = _make_strategy(
             backend=backend,
             provider=provider,
-            model="test-model",
             group_threshold=3,
         )
 
@@ -153,10 +163,9 @@ class TestLLMConsolidationStrategyConsolidate:
         provider = AsyncMock()
         provider.complete = AsyncMock(return_value=_make_response())
 
-        strategy = LLMConsolidationStrategy(
+        strategy = _make_strategy(
             backend=backend,
             provider=provider,
-            model="test-model",
             group_threshold=3,
         )
 
@@ -197,10 +206,9 @@ class TestLLMConsolidationStrategyConsolidate:
         provider = AsyncMock()
         provider.complete = AsyncMock(return_value=_make_response())
 
-        strategy = LLMConsolidationStrategy(
+        strategy = _make_strategy(
             backend=backend,
             provider=provider,
-            model="test-model",
             group_threshold=3,
         )
 
@@ -230,10 +238,9 @@ class TestLLMConsolidationStrategyErrorHandling:
             side_effect=RateLimitError("rate limited"),
         )
 
-        strategy = LLMConsolidationStrategy(
+        strategy = _make_strategy(
             backend=backend,
             provider=provider,
-            model="test-model",
             group_threshold=3,
         )
 
@@ -255,10 +262,9 @@ class TestLLMConsolidationStrategyErrorHandling:
             side_effect=AuthenticationError("bad key"),
         )
 
-        strategy = LLMConsolidationStrategy(
+        strategy = _make_strategy(
             backend=AsyncMock(),
             provider=provider,
-            model="test-model",
             group_threshold=3,
         )
 
@@ -282,10 +288,9 @@ class TestLLMConsolidationStrategyErrorHandling:
         provider = AsyncMock()
         provider.complete = AsyncMock(side_effect=AuthenticationError("bad key"))
 
-        strategy = LLMConsolidationStrategy(
+        strategy = _make_strategy(
             backend=backend,
             provider=provider,
-            model="test-model",
             group_threshold=3,
             include_distillation_context=False,
         )
@@ -313,10 +318,9 @@ class TestLLMConsolidationStrategyErrorHandling:
         backend.delete = AsyncMock(return_value=True)
         provider = AsyncMock()
         provider.complete = AsyncMock(return_value=_make_response())
-        strategy = LLMConsolidationStrategy(
+        strategy = _make_strategy(
             backend=backend,
             provider=provider,
-            model="test-model",
             group_threshold=3,
             include_distillation_context=False,
         )
@@ -331,10 +335,9 @@ class TestLLMConsolidationStrategyErrorHandling:
         provider = AsyncMock()
         provider.complete = AsyncMock(side_effect=MemoryError("oom"))
 
-        strategy = LLMConsolidationStrategy(
+        strategy = _make_strategy(
             backend=AsyncMock(),
             provider=provider,
-            model="test-model",
             group_threshold=3,
         )
 
@@ -358,10 +361,9 @@ class TestLLMConsolidationStrategyErrorHandling:
             return_value=_make_response(content=empty_content),
         )
 
-        strategy = LLMConsolidationStrategy(
+        strategy = _make_strategy(
             backend=backend,
             provider=provider,
-            model="test-model",
             group_threshold=3,
         )
 
@@ -382,10 +384,9 @@ class TestLLMConsolidationStrategyErrorHandling:
         provider = AsyncMock()
         provider.complete = AsyncMock(side_effect=RuntimeError("oops"))
 
-        strategy = LLMConsolidationStrategy(
+        strategy = _make_strategy(
             backend=backend,
             provider=provider,
-            model="test-model",
             group_threshold=3,
         )
 
@@ -404,10 +405,9 @@ class TestLLMConsolidationStrategyErrorHandling:
         backend.store = AsyncMock(return_value="sum-1")
         backend.delete = AsyncMock(return_value=True)
 
-        strategy = LLMConsolidationStrategy(
+        strategy = _make_strategy(
             backend=backend,
             provider=provider,
-            model="test-model",
             group_threshold=3,
             include_distillation_context=False,
         )
@@ -431,10 +431,9 @@ class TestLLMConsolidationStrategyDetails:
         provider = AsyncMock()
         provider.complete = AsyncMock(return_value=_make_response())
 
-        strategy = LLMConsolidationStrategy(
+        strategy = _make_strategy(
             backend=backend,
             provider=provider,
-            model="test-model",
             group_threshold=3,
             include_distillation_context=False,
         )
@@ -467,10 +466,9 @@ class TestLLMConsolidationStrategyDetails:
         provider = AsyncMock()
         provider.complete = AsyncMock(return_value=_make_response())
 
-        strategy = LLMConsolidationStrategy(
+        strategy = _make_strategy(
             backend=backend,
             provider=provider,
-            model="test-model",
             group_threshold=3,
             include_distillation_context=False,
         )
@@ -492,10 +490,9 @@ class TestLLMConsolidationStrategyDetails:
         provider.complete = AsyncMock(
             side_effect=RateLimitError("rate limited"),
         )
-        strategy = LLMConsolidationStrategy(
+        strategy = _make_strategy(
             backend=backend,
             provider=provider,
-            model="test-model",
             group_threshold=3,
             include_distillation_context=False,
         )
@@ -525,10 +522,9 @@ class TestLLMConsolidationStrategyDetails:
         provider.complete = AsyncMock(
             return_value=_make_response(content="  synthesized answer  "),
         )
-        strategy = LLMConsolidationStrategy(
+        strategy = _make_strategy(
             backend=backend,
             provider=provider,
-            model="test-model",
             group_threshold=3,
             include_distillation_context=False,
         )
@@ -549,10 +545,9 @@ class TestLLMConsolidationStrategyDetails:
         backend.delete = AsyncMock(return_value=True)
         provider = AsyncMock()
         provider.complete = AsyncMock(return_value=_make_response(content=""))
-        strategy = LLMConsolidationStrategy(
+        strategy = _make_strategy(
             backend=backend,
             provider=provider,
-            model="test-model",
             group_threshold=3,
             include_distillation_context=False,
         )
@@ -578,10 +573,9 @@ class TestLLMConsolidationStrategyDetails:
         provider = AsyncMock()
         provider.complete = AsyncMock(return_value=_make_response())
 
-        strategy = LLMConsolidationStrategy(
+        strategy = _make_strategy(
             backend=backend,
             provider=provider,
-            model="test-model",
             group_threshold=4,
             include_distillation_context=False,
         )
@@ -619,10 +613,9 @@ class TestLLMConsolidationStrategyDetails:
         provider = AsyncMock()
         provider.complete = AsyncMock(return_value=_make_response())
 
-        strategy = LLMConsolidationStrategy(
+        strategy = _make_strategy(
             backend=backend,
             provider=provider,
-            model="test-model",
             group_threshold=3,
             include_distillation_context=True,
         )
@@ -648,10 +641,9 @@ class TestLLMConsolidationStrategyDetails:
         provider = AsyncMock()
         provider.complete = AsyncMock(return_value=_make_response())
 
-        strategy = LLMConsolidationStrategy(
+        strategy = _make_strategy(
             backend=backend,
             provider=provider,
-            model="test-model",
             group_threshold=3,
             include_distillation_context=False,
         )
@@ -673,10 +665,9 @@ class TestLLMConsolidationStrategyDetails:
         provider = AsyncMock()
         provider.complete = AsyncMock(return_value=_make_response())
 
-        strategy = LLMConsolidationStrategy(
+        strategy = _make_strategy(
             backend=backend,
             provider=provider,
-            model="test-model",
             group_threshold=3,
             include_distillation_context=True,
         )
@@ -689,16 +680,13 @@ class TestLLMConsolidationStrategyDetails:
         assert result.consolidated_count == 2
 
     async def test_trajectory_context_entry_limit_and_truncation(self) -> None:
-        """``_MAX_TRAJECTORY_CONTEXT_ENTRIES`` and per-entry char cap are enforced.
+        """Config entry limits and per-entry char cap are enforced.
 
         The backend query asks for at most 5 entries, and each snippet
         is truncated to ~500 chars before being embedded in the system
         prompt.  Regression guard against silent prompt-size blowups.
         """
-        from synthorg.memory.consolidation.llm_strategy import (
-            _MAX_TRAJECTORY_CHARS_PER_ENTRY,
-            _MAX_TRAJECTORY_CONTEXT_ENTRIES,
-        )
+        cfg = LLMConsolidationConfig()
 
         # Build an oversized trajectory entry (1000 chars) to verify truncation.
         long_content = "x" * 1000
@@ -713,11 +701,9 @@ class TestLLMConsolidationStrategyDetails:
         provider = AsyncMock()
         provider.complete = AsyncMock(return_value=_make_response())
 
-        strategy = LLMConsolidationStrategy(
+        strategy = _make_strategy(
             backend=backend,
             provider=provider,
-            model="test-model",
-            group_threshold=3,
             include_distillation_context=True,
         )
         entries = tuple(
@@ -727,10 +713,10 @@ class TestLLMConsolidationStrategyDetails:
 
         # Backend query uses an over-fetch factor so the local sort by
         # created_at has enough candidates to pick the N most recent;
-        # the final slice still caps at _MAX_TRAJECTORY_CONTEXT_ENTRIES.
+        # the final slice still caps at config.max_trajectory_context_entries.
         retrieve_args = backend.retrieve.call_args
         query = retrieve_args[0][1]
-        assert query.limit >= _MAX_TRAJECTORY_CONTEXT_ENTRIES
+        assert query.limit >= cfg.max_trajectory_context_entries
 
         # The embedded snippet was truncated to the per-entry char cap.
         messages = provider.complete.call_args[0][0]
@@ -739,7 +725,7 @@ class TestLLMConsolidationStrategyDetails:
         # The full 1000-char run of 'x' should NOT appear in the prompt;
         # only the truncated 500-char prefix should.
         assert "x" * 1000 not in system_prompt
-        assert "x" * _MAX_TRAJECTORY_CHARS_PER_ENTRY in system_prompt
+        assert "x" * cfg.max_trajectory_chars_per_entry in system_prompt
 
     async def test_multi_category_groups_processed_in_parallel(self) -> None:
         """Multiple category groups are actually processed concurrently.
@@ -779,11 +765,9 @@ class TestLLMConsolidationStrategyDetails:
         provider = AsyncMock()
         provider.complete = _barrier_complete
 
-        strategy = LLMConsolidationStrategy(
+        strategy = _make_strategy(
             backend=backend,
             provider=provider,
-            model="test-model",
-            group_threshold=3,
             include_distillation_context=False,
         )
 

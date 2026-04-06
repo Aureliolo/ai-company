@@ -17,6 +17,7 @@ from operator import attrgetter
 
 from synthorg.core.enums import MemoryCategory  # noqa: TC001
 from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.memory.consolidation.config import LLMConsolidationConfig
 from synthorg.memory.consolidation.models import ConsolidationResult
 from synthorg.memory.models import (
     MemoryEntry,
@@ -41,23 +42,6 @@ from synthorg.providers.resilience.errors import RetryExhaustedError
 
 logger = get_logger(__name__)
 
-_DEFAULT_GROUP_THRESHOLD = 3
-#: Minimum group size that yields a real consolidation: at threshold 3,
-#: ``_select_entries`` keeps one entry and ``_synthesize`` receives two,
-#: which is the smallest input for a meaningful LLM merge.  Threshold 2
-#: is rejected because it leaves a single entry after selection -- the
-#: LLM cannot deduplicate against the retained entry and the resulting
-#: "summary" is just a paraphrase of one entry.
-_MIN_GROUP_THRESHOLD = 3
-_FALLBACK_TRUNCATE_LENGTH = 200
-_MAX_ENTRY_INPUT_CHARS = 2000
-#: Maximum total characters in the concatenated user prompt sent to the
-#: LLM.  Caps cost for oversized groups; entries beyond this cap are
-#: dropped from the synthesis input (kept originals still get deleted
-#: on successful synthesis, but the dropped entries are logged).
-_MAX_TOTAL_USER_CONTENT_CHARS = 20000
-_MAX_TRAJECTORY_CONTEXT_ENTRIES = 5
-_MAX_TRAJECTORY_CHARS_PER_ENTRY = 500
 
 #: Tag read from the backend to locate distillation entries produced
 #: by ``synthorg.memory.consolidation.distillation.capture_distillation``.
@@ -136,43 +120,27 @@ class LLMConsolidationStrategy:
             distillation entries.
         provider: Completion provider for LLM synthesis calls.
         model: Model identifier for the synthesis LLM.
-        group_threshold: Minimum group size to trigger consolidation
-            (must be >= 3 -- see ``_MIN_GROUP_THRESHOLD`` rationale).
-        temperature: Sampling temperature for synthesis.
-        max_summary_tokens: Maximum tokens for the synthesis response.
-        include_distillation_context: When True (default), fetches
-            recent distillation entries as trajectory context for the
-            synthesis prompt.  Set False to skip the lookup entirely.
-
-    Raises:
-        ValueError: If ``group_threshold`` is less than 3.
+        config: LLM consolidation configuration.  All tuning knobs
+            (thresholds, token limits, distillation context toggles)
+            are encapsulated here.
     """
 
-    def __init__(  # noqa: PLR0913
+    def __init__(
         self,
         *,
         backend: MemoryBackend,
         provider: CompletionProvider,
         model: NotBlankStr,
-        group_threshold: int = _DEFAULT_GROUP_THRESHOLD,
-        temperature: float = 0.3,
-        max_summary_tokens: int = 500,
-        include_distillation_context: bool = True,
+        config: LLMConsolidationConfig | None = None,
     ) -> None:
-        if group_threshold < _MIN_GROUP_THRESHOLD:
-            msg = (
-                f"group_threshold must be >= {_MIN_GROUP_THRESHOLD}, "
-                f"got {group_threshold}"
-            )
-            raise ValueError(msg)
+        cfg = config if config is not None else LLMConsolidationConfig()
         self._backend = backend
         self._provider = provider
         self._model = model
-        self._group_threshold = group_threshold
-        self._include_distillation_context = include_distillation_context
+        self._config = cfg
         self._completion_config = CompletionConfig(
-            temperature=temperature,
-            max_tokens=max_summary_tokens,
+            temperature=cfg.temperature,
+            max_tokens=cfg.max_summary_tokens,
         )
 
     async def consolidate(
@@ -254,7 +222,7 @@ class LLMConsolidationStrategy:
         sorted_entries = sorted(entries, key=attrgetter("category"))
         for category, group_iter in groupby(sorted_entries, key=attrgetter("category")):
             group = list(group_iter)
-            if len(group) >= self._group_threshold:
+            if len(group) >= self._config.group_threshold:
                 groups.append((category, group))
         return groups
 
@@ -353,10 +321,10 @@ class LLMConsolidationStrategy:
         trajectory information included in the synthesis prompt) and
         are logged at WARNING so operators can observe the
         degradation.  System errors (``MemoryError``, ``RecursionError``)
-        propagate.  Returns at most ``_MAX_TRAJECTORY_CONTEXT_ENTRIES``
+        propagate.  Returns at most ``config.max_trajectory_context_entries``
         entries.
         """
-        if not self._include_distillation_context:
+        if not self._config.include_distillation_context:
             return ()
         try:
             # Backend.retrieve is relevance-ordered by contract; sort
@@ -365,7 +333,7 @@ class LLMConsolidationStrategy:
             # trajectory context regardless of backend ordering.
             query = MemoryQuery(
                 tags=(_DISTILLATION_TAG,),
-                limit=_MAX_TRAJECTORY_CONTEXT_ENTRIES * 4,
+                limit=self._config.max_trajectory_context_entries * 4,
             )
             raw = await self._backend.retrieve(agent_id, query)
             by_recency = sorted(
@@ -373,7 +341,7 @@ class LLMConsolidationStrategy:
                 key=attrgetter("created_at"),
                 reverse=True,
             )
-            return tuple(by_recency[:_MAX_TRAJECTORY_CONTEXT_ENTRIES])
+            return tuple(by_recency[: self._config.max_trajectory_context_entries])
         except MemoryError, RecursionError:
             logger.error(
                 LLM_STRATEGY_ERROR,
@@ -532,9 +500,9 @@ class LLMConsolidationStrategy:
     ) -> tuple[str, SynthesisOutcome, tuple[MemoryEntry, ...]]:
         """Synthesize multiple entries into a single summary via LLM.
 
-        The per-entry content is truncated to ``_MAX_ENTRY_INPUT_CHARS``
+        The per-entry content is truncated to ``config.max_entry_input_chars``
         before being sent to the LLM, and the total concatenated user
-        content is capped at ``_MAX_TOTAL_USER_CONTENT_CHARS`` to guard
+        content is capped at ``config.max_total_user_content_chars`` to guard
         against oversized groups that would blow out context windows or
         cost budgets.  When ``trajectory_context`` is non-empty,
         distillation entry trajectories are included in the system
@@ -547,7 +515,7 @@ class LLMConsolidationStrategy:
           or a concatenation fallback was used.
         - ``summarized_entries`` is the subset of ``entries`` that was
           actually represented in the summary.  When the user prompt is
-          truncated at ``_MAX_TOTAL_USER_CONTENT_CHARS``, dropped
+          truncated at ``config.max_total_user_content_chars``, dropped
           entries are NOT in this list and the caller MUST NOT delete
           them (they remain on the backend for the next consolidation
           pass).
@@ -605,7 +573,7 @@ class LLMConsolidationStrategy:
         distinguish data from instructions, and internal occurrences of
         the tags are escaped so untrusted memory content cannot close
         the delimiter.  The total concatenated length is capped at
-        ``_MAX_TOTAL_USER_CONTENT_CHARS``; if the cap is reached,
+        ``config.max_total_user_content_chars``; if the cap is reached,
         remaining entries are dropped, the truncation is logged, and
         they are omitted from the returned ``included`` tuple so the
         caller can avoid deleting memories that were never summarized.
@@ -619,14 +587,14 @@ class LLMConsolidationStrategy:
         included: list[MemoryEntry] = []
         total_chars = 0
         for entry in entries:
-            snippet = entry.content[:_MAX_ENTRY_INPUT_CHARS]
+            snippet = entry.content[: self._config.max_entry_input_chars]
             # Escape embedded delimiters so untrusted content cannot
             # close the <entry> tag and inject adversarial structure.
             snippet = snippet.replace("<entry>", "&lt;entry&gt;").replace(
                 "</entry>", "&lt;/entry&gt;"
             )
             piece = f'<entry category="{entry.category.value}">{snippet}</entry>'
-            if total_chars + len(piece) > _MAX_TOTAL_USER_CONTENT_CHARS:
+            if total_chars + len(piece) > self._config.max_total_user_content_chars:
                 break
             parts.append(piece)
             included.append(entry)
@@ -779,7 +747,7 @@ class LLMConsolidationStrategy:
             return _BASE_SYSTEM_PROMPT
         context_lines = ["\nRecent trajectory context (for disambiguation only):"]
         for entry in trajectory_context:
-            snippet = entry.content[:_MAX_TRAJECTORY_CHARS_PER_ENTRY]
+            snippet = entry.content[: self._config.max_trajectory_chars_per_entry]
             snippet = snippet.replace("<trajectory>", "&lt;trajectory&gt;").replace(
                 "</trajectory>", "&lt;/trajectory&gt;"
             )
@@ -798,8 +766,8 @@ class LLMConsolidationStrategy:
         lines = [f"Consolidated {entries[0].category.value} memories:"]
         for entry in entries:
             truncated = (
-                entry.content[:_FALLBACK_TRUNCATE_LENGTH] + "..."
-                if len(entry.content) > _FALLBACK_TRUNCATE_LENGTH
+                entry.content[: self._config.fallback_truncate_length] + "..."
+                if len(entry.content) > self._config.fallback_truncate_length
                 else entry.content
             )
             lines.append(f"- {truncated}")

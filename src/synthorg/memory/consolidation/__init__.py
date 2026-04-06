@@ -10,6 +10,7 @@ from synthorg.memory.consolidation.config import (
     ArchivalConfig,
     ConsolidationConfig,
     DualModeConfig,
+    LLMConsolidationConfig,
     RetentionConfig,
 )
 from synthorg.memory.consolidation.density import ContentDensity, DensityClassifier
@@ -58,6 +59,7 @@ __all__ = [
     "DualModeConfig",
     "DualModeConsolidationStrategy",
     "ExtractivePreserver",
+    "LLMConsolidationConfig",
     "LLMConsolidationStrategy",
     "MemoryConsolidationService",
     "MemoryToolName",

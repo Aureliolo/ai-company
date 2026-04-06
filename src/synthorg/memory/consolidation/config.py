@@ -1,7 +1,7 @@
 """Memory consolidation configuration models.
 
 Frozen Pydantic models for consolidation interval, retention,
-and archival settings.
+archival, and LLM consolidation strategy settings.
 """
 
 from typing import Self
@@ -199,4 +199,91 @@ class ConsolidationConfig(BaseModel):
     archival: ArchivalConfig = Field(
         default_factory=ArchivalConfig,
         description="Archival settings",
+    )
+
+
+_MIN_LLM_GROUP_THRESHOLD = 3
+
+
+class LLMConsolidationConfig(BaseModel):
+    """Configuration for the LLM-based consolidation strategy.
+
+    Encapsulates all tuning knobs previously passed as loose kwargs to
+    ``LLMConsolidationStrategy.__init__`` and module-level constants.
+    Aligns with the frozen Pydantic config convention used by sibling
+    strategies (``DualModeConfig``, ``RetentionConfig``).
+
+    Attributes:
+        group_threshold: Minimum category group size for consolidation.
+            At threshold 3, ``_select_entries`` keeps one entry and
+            ``_synthesize`` receives two -- the smallest input for a
+            meaningful LLM merge.
+        temperature: Sampling temperature for the synthesis LLM call.
+        max_summary_tokens: Maximum tokens for the synthesis response.
+        include_distillation_context: When True, fetches recent
+            distillation entries as trajectory context for the
+            synthesis prompt.
+        max_trajectory_context_entries: Maximum distillation entries
+            to include as trajectory context.
+        max_trajectory_chars_per_entry: Character limit per trajectory
+            snippet in the synthesis prompt.
+        max_entry_input_chars: Per-entry content character limit before
+            being sent to the LLM.
+        max_total_user_content_chars: Total character cap for the
+            concatenated user prompt sent to the LLM.
+        fallback_truncate_length: Per-entry truncation limit in
+            concatenation-fallback summaries.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+
+    group_threshold: int = Field(
+        default=3,
+        ge=_MIN_LLM_GROUP_THRESHOLD,
+        description=("Minimum category group size for consolidation (must be >= 3)"),
+    )
+    temperature: float = Field(
+        default=0.3,
+        ge=0.0,
+        le=2.0,
+        description="Sampling temperature for the synthesis LLM call",
+    )
+    max_summary_tokens: int = Field(
+        default=500,
+        ge=50,
+        description="Maximum tokens for the synthesis response",
+    )
+    include_distillation_context: bool = Field(
+        default=True,
+        description=(
+            "When True, fetch recent distillation entries as "
+            "trajectory context for the synthesis prompt"
+        ),
+    )
+    max_trajectory_context_entries: int = Field(
+        default=5,
+        ge=1,
+        description=("Maximum distillation entries to include as trajectory context"),
+    )
+    max_trajectory_chars_per_entry: int = Field(
+        default=500,
+        ge=50,
+        description=("Character limit per trajectory snippet in the synthesis prompt"),
+    )
+    max_entry_input_chars: int = Field(
+        default=2000,
+        ge=100,
+        description=("Per-entry content character limit before being sent to the LLM"),
+    )
+    max_total_user_content_chars: int = Field(
+        default=20000,
+        ge=1000,
+        description=(
+            "Total character cap for the concatenated user prompt sent to the LLM"
+        ),
+    )
+    fallback_truncate_length: int = Field(
+        default=200,
+        ge=50,
+        description=("Per-entry truncation limit in concatenation-fallback summaries"),
     )
