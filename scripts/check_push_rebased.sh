@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
-# PreToolUse hook: block git push if branch is behind origin/main.
-# Reads Bash tool input from stdin JSON. If the command is a git push,
-# fetches origin/main and checks if the branch needs rebasing.
+# PreToolUse/pre-push hook: block git push if branch is behind origin/main.
+# Works in two modes:
+#   1. With JSON stdin from OpenCode: extracts command and checks
+#   2. Without stdin (pre-commit): always checks if behind
 #
 # Exit behavior:
 #   - Non-push commands: exit 0 (allow)
@@ -10,11 +11,13 @@
 
 set -euo pipefail
 
-# Extract the bash command from stdin JSON
-COMMAND=$(jq -r '.tool_input.command // ""' 2>/dev/null)
+# Try to extract command from JSON stdin (OpenCode mode), or assume push (pre-commit mode)
+if ! COMMAND=$(jq -r '.tool_input.command // ""' 2>/dev/null); then
+    COMMAND="git push"
+fi
 
 # Only check git push commands (match anywhere for compound commands)
-if ! printf '%s\n' "$COMMAND" | grep -qE '\bgit[[:space:]]+push\b'; then
+if [[ -n "$COMMAND" ]] && ! printf '%s\n' "$COMMAND" | grep -qE '\bgit[[:space:]]+push\b'; then
     exit 0
 fi
 
