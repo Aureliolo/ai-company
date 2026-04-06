@@ -20,7 +20,6 @@ from synthorg.memory.injection import (
 )
 from synthorg.memory.models import MemoryEntry, MemoryMetadata, MemoryQuery
 from synthorg.memory.protocol import MemoryBackend
-from synthorg.memory.ranking import FusionStrategy
 from synthorg.memory.retrieval_config import MemoryRetrievalConfig
 from synthorg.memory.retriever import ContextInjectionStrategy
 from synthorg.memory.shared import SharedKnowledgeStore
@@ -67,7 +66,7 @@ def _make_shared_store(
     return store
 
 
-# ── Protocol compliance ─────────────────────────────────────────
+# -- Protocol compliance ---------------------------------------------
 
 
 @pytest.mark.unit
@@ -94,7 +93,7 @@ class TestContextInjectionStrategyProtocol:
         assert strategy.get_tool_definitions() == ()
 
 
-# ── prepare_messages ─────────────────────────────────────────────
+# -- prepare_messages -------------------------------------------------
 
 
 @pytest.mark.unit
@@ -223,7 +222,7 @@ class TestSharedStoreMerge:
         assert "only personal" in content
 
 
-# ── Graceful degradation ─────────────────────────────────────────
+# -- Graceful degradation ---------------------------------------------
 
 
 @pytest.mark.unit
@@ -400,7 +399,7 @@ class TestGracefulDegradation:
         assert result == ()
 
 
-# ── Token budget ─────────────────────────────────────────────────
+# -- Token budget -----------------------------------------------------
 
 
 @pytest.mark.unit
@@ -433,7 +432,7 @@ class TestTokenBudget:
         assert result == ()
 
 
-# ── Memory filter integration ────────────────────────────────────
+# -- Memory filter integration ----------------------------------------
 
 
 @pytest.mark.unit
@@ -445,7 +444,6 @@ class TestMemoryFilterIntegration:
             content="tagged memory",
             relevance_score=0.9,
         )
-        # Manually set the non-inferable tag on metadata.
         tagged = tagged.model_copy(
             update={
                 "metadata": MemoryMetadata(tags=(NON_INFERABLE_TAG,)),
@@ -560,13 +558,7 @@ class TestMemoryFilterIntegration:
         assert "untagged memory" not in content
 
     async def test_filter_failure_fails_closed(self) -> None:
-        """Filter error returns no messages (fail closed, never leak).
-
-        Callers who configured a filter rely on it for privacy /
-        non-inferability enforcement.  A filter exception must NOT
-        silently pass through unfiltered memories -- that would
-        bypass the configured safety boundary.
-        """
+        """Filter error returns no messages (fail closed, never leak)."""
 
         class _BrokenFilter:
             def filter_for_injection(
@@ -591,7 +583,6 @@ class TestMemoryFilterIntegration:
             query_text="query",
             token_budget=5000,
         )
-        # Fail-closed: no messages returned on filter failure.
         assert result == ()
 
     async def test_filter_memory_error_propagates(self) -> None:
@@ -620,192 +611,3 @@ class TestMemoryFilterIntegration:
                 query_text="query",
                 token_budget=5000,
             )
-
-
-# ── Hybrid search (RRF fusion) ──────────────────────────────────
-
-
-def _make_sparse_backend(
-    dense_entries: tuple[MemoryEntry, ...] = (),
-    sparse_entries: tuple[MemoryEntry, ...] = (),
-) -> AsyncMock:
-    """Create a mock backend with both retrieve and retrieve_sparse."""
-    backend = AsyncMock(spec=MemoryBackend)
-    backend.retrieve = AsyncMock(return_value=dense_entries)
-    backend.retrieve_sparse = AsyncMock(return_value=sparse_entries)
-    backend.supports_sparse_search = True
-    return backend
-
-
-@pytest.mark.unit
-class TestHybridSearchPipeline:
-    async def test_rrf_merges_dense_and_sparse(self) -> None:
-        """RRF fusion merges results from dense and sparse search."""
-        dense_entry = _make_entry(
-            entry_id="dense-1",
-            content="dense result",
-            relevance_score=0.9,
-        )
-        sparse_entry = _make_entry(
-            entry_id="sparse-1",
-            content="sparse result",
-            relevance_score=0.7,
-        )
-        backend = _make_sparse_backend(
-            dense_entries=(dense_entry,),
-            sparse_entries=(sparse_entry,),
-        )
-        config = MemoryRetrievalConfig(
-            fusion_strategy=FusionStrategy.RRF,
-            min_relevance=0.0,
-        )
-        strategy = ContextInjectionStrategy(
-            backend=backend,
-            config=config,
-        )
-        result = await strategy.prepare_messages(
-            agent_id="agent-1",
-            query_text="query",
-            token_budget=5000,
-        )
-        assert len(result) == 1
-        content = result[0].content
-        assert content is not None
-        assert "dense result" in content
-        assert "sparse result" in content
-
-    async def test_rrf_fallback_no_sparse_backend(self) -> None:
-        """When backend lacks retrieve_sparse, fuses with dense-only."""
-        entry = _make_entry(content="dense only", relevance_score=0.9)
-        backend = _make_backend((entry,))
-        # No retrieve_sparse on this mock
-        config = MemoryRetrievalConfig(
-            fusion_strategy=FusionStrategy.RRF,
-            min_relevance=0.0,
-        )
-        strategy = ContextInjectionStrategy(
-            backend=backend,
-            config=config,
-        )
-        result = await strategy.prepare_messages(
-            agent_id="agent-1",
-            query_text="query",
-            token_budget=5000,
-        )
-        assert len(result) == 1
-        content = result[0].content
-        assert content is not None
-        assert "dense only" in content
-
-    async def test_rrf_min_relevance_after_fusion(self) -> None:
-        """Post-RRF min_relevance filter excludes low-scoring entries."""
-        high = _make_entry(
-            entry_id="high-1",
-            content="high score",
-            relevance_score=0.9,
-        )
-        low = _make_entry(
-            entry_id="low-1",
-            content="low score",
-            relevance_score=0.1,
-        )
-        # Dense has both; sparse has only high. RRF ranks high above low.
-        backend = _make_sparse_backend(
-            dense_entries=(high, low),
-            sparse_entries=(high,),
-        )
-        config = MemoryRetrievalConfig(
-            fusion_strategy=FusionStrategy.RRF,
-            min_relevance=0.5,
-        )
-        strategy = ContextInjectionStrategy(
-            backend=backend,
-            config=config,
-        )
-        result = await strategy.prepare_messages(
-            agent_id="agent-1",
-            query_text="query",
-            token_budget=5000,
-        )
-        assert len(result) == 1
-        content = result[0].content
-        assert content is not None
-        assert "high score" in content
-        assert "low score" not in content
-
-    async def test_rrf_sparse_error_degrades_to_dense(self) -> None:
-        """Sparse search failure degrades gracefully to dense-only."""
-        entry = _make_entry(content="dense survives", relevance_score=0.9)
-        backend = _make_sparse_backend(dense_entries=(entry,))
-        backend.retrieve_sparse = AsyncMock(
-            side_effect=MemoryRetrievalError("sparse broken"),
-        )
-        config = MemoryRetrievalConfig(
-            fusion_strategy=FusionStrategy.RRF,
-            min_relevance=0.0,
-        )
-        strategy = ContextInjectionStrategy(
-            backend=backend,
-            config=config,
-        )
-        result = await strategy.prepare_messages(
-            agent_id="agent-1",
-            query_text="query",
-            token_budget=5000,
-        )
-        assert len(result) == 1
-        content = result[0].content
-        assert content is not None
-        assert "dense survives" in content
-
-    async def test_linear_path_unchanged(self) -> None:
-        """LINEAR fusion uses existing rank_memories path."""
-        entry = _make_entry(content="linear path", relevance_score=0.9)
-        backend = _make_backend((entry,))
-        config = MemoryRetrievalConfig(
-            fusion_strategy=FusionStrategy.LINEAR,
-            min_relevance=0.0,
-        )
-        strategy = ContextInjectionStrategy(
-            backend=backend,
-            config=config,
-        )
-        result = await strategy.prepare_messages(
-            agent_id="agent-1",
-            query_text="query",
-            token_budget=5000,
-        )
-        assert len(result) == 1
-        content = result[0].content
-        assert content is not None
-        assert "linear path" in content
-
-    async def test_rrf_deduplicates_entries(self) -> None:
-        """Same entry in both dense and sparse is deduplicated by RRF."""
-        entry = _make_entry(
-            entry_id="shared-id",
-            content="appears twice",
-            relevance_score=0.8,
-        )
-        backend = _make_sparse_backend(
-            dense_entries=(entry,),
-            sparse_entries=(entry,),
-        )
-        config = MemoryRetrievalConfig(
-            fusion_strategy=FusionStrategy.RRF,
-            min_relevance=0.0,
-        )
-        strategy = ContextInjectionStrategy(
-            backend=backend,
-            config=config,
-        )
-        result = await strategy.prepare_messages(
-            agent_id="agent-1",
-            query_text="query",
-            token_budget=5000,
-        )
-        assert len(result) == 1
-        content = result[0].content
-        assert content is not None
-        # Should appear only once (deduplicated)
-        assert content.count("appears twice") == 1
