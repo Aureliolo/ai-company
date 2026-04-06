@@ -65,6 +65,11 @@ function buildFrontmatter(entry: MemoryEntry): string {
   ].join("\n");
 }
 
+function extractLinkTarget(line: string): string | null {
+  const match = line.match(/\[.*?\]\((.*?)\)/);
+  return match ? match[1] : null;
+}
+
 function updateIndex(action: "add" | "remove", filename: string, title: string, hook: string): void {
   ensureMemoryDir();
   let index = "";
@@ -75,12 +80,16 @@ function updateIndex(action: "add" | "remove", filename: string, title: string, 
   }
 
   if (action === "add") {
-    const entry = `- [${title}](${filename}) -- ${hook}`;
-    if (!index.includes(filename)) {
+    // Check if entry already exists (exact link target match)
+    const lines = index.split("\n");
+    const exists = lines.some((line) => extractLinkTarget(line) === filename);
+    if (!exists) {
+      const entry = `- [${title}](${filename}) -- ${hook}`;
       index = index.trimEnd() + "\n" + entry + "\n";
     }
   } else if (action === "remove") {
-    const lines = index.split("\n").filter((line) => !line.includes(filename));
+    // Remove only lines whose link target exactly matches filename
+    const lines = index.split("\n").filter((line) => extractLinkTarget(line) !== filename);
     index = lines.join("\n") + "\n";
   }
 
@@ -101,7 +110,11 @@ export const MemoryPlugin: Plugin = async ({ client, $, app }) => {
               throw new Error("save_memory requires: name, description, type, content");
             }
             ensureMemoryDir();
-            const filename = `${slugify(name)}.md`;
+            const slug = slugify(name);
+            if (!slug || !slug.trim()) {
+              throw new Error("save_memory: name is invalid (cannot be all punctuation or non-ASCII)");
+            }
+            const filename = `${slug}.md`;
             const filepath = join(MEMORY_DIR, filename);
             const entry: MemoryEntry = {
               name,
@@ -118,6 +131,10 @@ export const MemoryPlugin: Plugin = async ({ client, $, app }) => {
             const { filename } = output.args as Record<string, string>;
             if (!filename) {
               throw new Error("delete_memory requires: filename");
+            }
+            // Block deletion of the shared index file
+            if (filename.toLowerCase() === "memory.md") {
+              throw new Error("delete_memory: cannot delete MEMORY.md (shared index)");
             }
             // Validate: only allow simple filenames, no path traversal
             const safeName = filename.replace(/[^a-zA-Z0-9_.-]/g, "");

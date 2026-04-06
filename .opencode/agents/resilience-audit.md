@@ -60,18 +60,19 @@ You audit resilience patterns in the SynthOrg codebase, ensuring retry, rate lim
 - Inconsistent timeout values across similar operations
 - Timeout not propagated through async call chains
 
-### 8. Soft Rules (SUGGESTION)
+### 8. Soft Rules (LOW)
 
-- New error types missing `is_retryable` classification for I/O or network failures (SUGGESTION)
-- Provider call site catching `ProviderError` without accounting for `RetryExhaustedError` (SUGGESTION)
-- Engine/orchestration code importing from `providers/` without considering `RetryExhaustedError` (SUGGESTION)
-- Non-retryable error types that should NOT be retryable -- verify they don't accidentally inherit retryable classification (SUGGESTION)
+- New error types missing `is_retryable` classification for I/O or network failures
+- Provider call site catching `ProviderError` without accounting for `RetryExhaustedError`
+- Engine/orchestration code importing from `providers/` without considering `RetryExhaustedError`
+- Non-retryable error types that should NOT be retryable -- verify they don't accidentally inherit retryable classification
 
 ## Severity Levels
 
 - **CRITICAL**: Retry logic in wrong layer causing cascading failures or data corruption
 - **HIGH**: Retry logic in wrong layer, error hierarchy violation, missing retry safety
 - **MEDIUM**: Configuration issues, missing rate limiting, timeout gaps
+- **LOW**: Soft rule violations, optimization opportunities
 - **LOW**: Optimization opportunities, minor pattern improvements
 
 ## Report Format

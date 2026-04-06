@@ -18,7 +18,7 @@
  */
 
 import type { Plugin } from "@opencode-ai/plugin";
-import { spawnSync } from "child_process";
+import { spawnSync, execSync } from "child_process";
 
 function runHookScript(
   scriptPath: string,
@@ -37,6 +37,10 @@ function runHookScript(
       // Hook denied the action
       return result.stdout ?? "Hook denied this action";
     }
+    if (result.status !== 0) {
+      // Fail closed: non-zero, non-2 exit codes are errors
+      return null;
+    }
     return result.stdout;
   } catch (error: unknown) {
     const err = error as { status?: number; stdout?: string };
@@ -44,6 +48,7 @@ function runHookScript(
       // Hook denied the action
       return err.stdout ?? "Hook denied this action";
     }
+    // Fail closed on catch errors too
     return null;
   }
 }

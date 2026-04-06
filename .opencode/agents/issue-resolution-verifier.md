@@ -18,7 +18,7 @@ You verify that a PR fully resolves the acceptance criteria of its linked GitHub
 ### 1. Identify Linked Issues
 
 - Look for `Closes #N`, `Fixes #N`, `Resolves #N` in the PR description
-- Use `gh issue view <number> --json title,body,labels` to fetch each issue
+- Use `gh issue view <number> --json title,body,labels,comments` to fetch each issue (including comments for Check #5)
 
 ### 2. Extract Acceptance Criteria
 

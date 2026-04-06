@@ -18,19 +18,44 @@ if [[ -z "$COMMAND" ]] || ! echo "$COMMAND" | grep -qE 'git[[:space:]]+-C[[:spac
     exit 0
 fi
 
-# Extract path after -C (handles quoted and unquoted)
-# Note: this simple sed may miss cases where options appear between git and -C
-# (e.g., git --no-pager -C path). For such cases, the script intentionally fails open.
-GIT_C_PATH=$(echo "$COMMAND" | sed -E 's/.*git[[:space:]]+-C[[:space:]]+("([^"]+)"|([^[:space:]]+)).*/\2\3/')
+# Robust token-based parsing: split command into tokens, find -C, capture next token
+GIT_C_PATH=""
+in_git=false
+for token in $COMMAND; do
+    if [[ "$token" == "git" ]]; then
+        in_git=true
+    elif [[ "$in_git" == true ]]; then
+        if [[ "$token" == "-C" ]] || [[ "$token" == "--git-dir" ]]; then
+            continue
+        elif [[ "$token" == -* ]]; then
+            # Skip other git options
+            continue
+        else
+            # This is the path after -C
+            GIT_C_PATH="$token"
+            break
+        fi
+    fi
+done
+
+# If no path found after -C, fail open
+if [[ -z "$GIT_C_PATH" ]]; then
+    exit 0
+fi
+
+# Handle quoted paths
 GIT_C_PATH="${GIT_C_PATH//\"/}"
 
+# Canonicalize both paths using realpath (or readlink -f) for robust comparison
 normalize() {
     local p="$1"
-    # C:\ or C:/ -> /c/
+    # If realpath available, use it for absolute canonical paths
+    if command -v realpath > /dev/null 2>&1; then
+        p=$(realpath -e "$p" 2>/dev/null || echo "$p")
+    fi
+    # Also handle Windows-style paths as fallback
     p=$(echo "$p" | sed -E 's|^([A-Za-z]):[/\\]|/\L\1/|')
-    # backslashes -> forward slashes
     p="${p//\\//}"
-    # trailing slash
     p="${p%/}"
     echo "$p"
 }

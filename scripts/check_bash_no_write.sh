@@ -31,15 +31,15 @@ ENDJSON
     exit 2
 }
 
-# Heredocs anywhere in command: << EOF, << 'EOF', <<-EOF, <<'PLAN_EOF'
-if printf '%s\n' "$COMMAND" | grep -qE "<<-?\s*'?[A-Za-z_]"; then
+# Heredocs anywhere in command: << EOF, << 'EOF', <<"EOF", <<\EOF, <<-EOF, <<-'PLAN_EOF'
+if printf '%s\n' "$COMMAND" | grep -qE '<<-?\s*\\?'"'"'?"?[A-Za-z_]'; then
     deny "Do not use heredocs (<< EOF) to write files. Use the Write tool to create new files or the Edit tool to modify existing files. Never use Bash for file creation or modification."
 fi
 
 # Output redirection: > file, >> file, > /path, > "./path", > file.txt
 # Block ALL redirects to files (only allow fd redirects like >&2, 2>&1)
-# This catches: echo > file.txt, cat > foo, > output, etc.
-if printf '%s\n' "$COMMAND" | grep -qE '(^|[|&;])\s*>>?\s*"?[^-]'; then
+# This catches: echo > file.txt, cat > foo, > output, etc. (anywhere in command)
+if printf '%s\n' "$COMMAND" | grep -qE '(^|[^|&;])\s*>>?\s*"?[^-]'; then
     # Extract redirect target to check if it's a file descriptor
     REDIR=$(printf '%s\n' "$COMMAND" | grep -oE '>>?\s*"?[^|&;<>]+' | head -1 | sed 's/^>>\?["'"'"']*//')
     # Only allow if it's a file descriptor (>&N or <&N format)

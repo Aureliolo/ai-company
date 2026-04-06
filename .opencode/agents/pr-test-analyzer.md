@@ -65,13 +65,13 @@ For each new feature, check that tests cover:
 
 ## Severity Levels
 
-- **HIGH**: New public API with zero tests
+- **HIGH**: New public API with zero tests, OR `src/synthorg/**/*.py` files with <80% test coverage (release-blocking)
 - **MEDIUM**: Missing edge cases, incomplete coverage
 - **LOW**: Test improvements, additional parametrize cases
 
 ## Report Format
 
-```
+```text
 ## Coverage Analysis
 
 ### New/Modified Source Files
