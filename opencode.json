@@ -53,6 +53,7 @@
   },
   "model": "ollama-cloud/minimax-m2.5:cloud",
   "instructions": [
+    "CLAUDE.md",
     ".claude/rules/common/agents.md",
     ".claude/rules/common/bash.md",
     ".claude/rules/common/hooks.md",
@@ -65,6 +66,8 @@
     ".claude/hookify.no-cd-prefix.md",
     ".claude/hookify.no-future-annotations.md",
     ".claude/hookify.no-local-coverage.md",
-    ".claude/hookify.pep758-except.md"
+    ".claude/hookify.pep758-except.md",
+    "web/CLAUDE.md",
+    "cli/CLAUDE.md"
   ]
 }
