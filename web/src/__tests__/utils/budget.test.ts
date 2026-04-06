@@ -208,6 +208,7 @@ describe('computeCategoryBreakdown', () => {
     expect(ratio.productive.percent).toBe(0)
     expect(ratio.coordination.cost).toBe(0)
     expect(ratio.system.cost).toBe(0)
+    expect(ratio.embedding.cost).toBe(0)
     expect(ratio.uncategorized.cost).toBe(0)
   })
 
@@ -248,6 +249,7 @@ describe('computeCategoryBreakdown', () => {
       ratio.productive.percent +
       ratio.coordination.percent +
       ratio.system.percent +
+      ratio.embedding.percent +
       ratio.uncategorized.percent
     expect(sum).toBeCloseTo(100)
   })
