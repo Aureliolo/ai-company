@@ -30,10 +30,10 @@ Files use markdown with YAML frontmatter (`name`, `description`, `type`). Struct
 
 ## Shell Compatibility
 
-This project runs on Windows. OpenCode uses PowerShell, Claude Code uses bash. When writing shell commands in skills:
-- Use PowerShell-compatible syntax (e.g., `ls` not `ls -la`, `Select-String` not `grep`)
+This project runs on Windows. OpenCode uses PowerShell, Claude Code uses bash. Shared skills in `.claude/skills/` should remain shell-neutral or bash-based. PowerShell translation happens in OpenCode adapters (`.opencode/commands/`), not in shared skill content:
+- Shared skills: Use POSIX/bash-compatible commands (`ls -la`, `grep`, pipes)
 - Git commands work the same in both shells
-- For bash-specific constructs (pipes, format strings), the model will self-correct to PowerShell equivalents
+- OpenCode adapters translate bash to PowerShell equivalents
 
 ## OpenCode-Specific Notes
 
@@ -45,9 +45,9 @@ This project runs on Windows. OpenCode uses PowerShell, Claude Code uses bash. W
 
 ## OpenCode Agents
 
-The project defines 21 review agents for automated code review, organized in a 2-tier model routing architecture:
-- **Quality tier** (Sonnet 4.5): code-reviewer, python-reviewer, frontend-reviewer, go-reviewer, conventions-enforcer, logging-audit, resilience-audit, api-contract-drift
-- **Parallel tier** (Haiku 4.5): async-concurrency-reviewer, comment-analyzer, design-token-audit, docs-consistency, frontend-reviewer, go-conventions-enforcer, go-security-reviewer, infra-reviewer, issue-resolution-verifier, persistence-reviewer, pr-test-analyzer, security-reviewer, silent-failure-hunter, test-quality-reviewer, type-design-analyzer
+The project defines 22 review agents for automated code review, organized in a 2-tier model routing architecture:
+- **Quality tier** (Sonnet-class: ollama-cloud/qwen3-coder-next:cloud): code-reviewer, python-reviewer, frontend-reviewer, go-reviewer, conventions-enforcer, logging-audit, resilience-audit, api-contract-drift
+- **Parallel tier** (Haiku-class: ollama-cloud/minimax-m2.5:cloud): async-concurrency-reviewer, comment-analyzer, design-token-audit, docs-consistency, go-conventions-enforcer, go-security-reviewer, infra-reviewer, issue-resolution-verifier, persistence-reviewer, pr-test-analyzer, security-reviewer, silent-failure-hunter, test-quality-reviewer, type-design-analyzer
 
 Agents verify: correctness, security, type design, documentation consistency, API contracts, logging practices, resilience patterns, infrastructure, test quality, and frontend design tokens.
 

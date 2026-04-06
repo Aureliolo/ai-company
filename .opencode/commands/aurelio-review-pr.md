@@ -2,7 +2,7 @@
 description: Full PR review pipeline (local agents + external feedback + triage + fixes)
 ---
 
-## OpenCode Adapter (read this FIRST, before the skill below)
+# OpenCode Adapter (read this FIRST, before the skill below)
 
 You are running in **OpenCode**, not Claude Code. Apply these overrides:
 

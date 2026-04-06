@@ -2,7 +2,7 @@
 description: Deep codebase audit with parallel specialized agents
 ---
 
-## OpenCode Adapter (read this FIRST, before the skill below)
+# OpenCode Adapter (read this FIRST, before the skill below)
 
 You are running in **OpenCode**, not Claude Code. Apply these overrides:
 

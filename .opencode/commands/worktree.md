@@ -2,14 +2,14 @@
 description: Manage parallel worktrees (setup, cleanup, status, tree, rebase)
 ---
 
-## OpenCode Adapter (read this FIRST, before the skill below)
+# OpenCode Adapter (read this FIRST, before the skill below)
 
 You are running in **OpenCode**, not Claude Code. Apply these overrides:
 
 ### Binary name
 
 Wherever the skill says `claude` as a command to run, use `opencode-cli` instead:
-- `cd <path> && claude` becomes `cd <path> && opencode-cli`
+- `cd <path> && claude` becomes `opencode-cli --cwd <path>`
 - "Claude Code prompts" means "OpenCode prompts"
 - "Claude Code instances" means "OpenCode instances"
 

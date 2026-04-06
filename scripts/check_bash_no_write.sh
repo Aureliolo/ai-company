@@ -9,9 +9,18 @@
 
 set -euo pipefail
 
-# Try to extract command from JSON stdin (OpenCode mode), or skip check if no stdin
-if ! COMMAND=$(jq -r '.tool_input.command // ""' 2>/dev/null); then
-    exit 0
+# Try to extract command from JSON stdin (OpenCode mode), or fail-closed if parsing fails
+if ! COMMAND=$(jq -r '.tool_input.command // ""' 2>&1); then
+    cat <<ENDJSON
+{
+  "hookSpecificOutput": {
+    "hookEventName": "PreToolUse",
+    "permissionDecision": "deny",
+    "permissionDecisionReason": "Failed to parse tool input JSON"
+  }
+}
+ENDJSON
+    exit 2
 fi
 if [[ -z "$COMMAND" ]]; then
     exit 0
