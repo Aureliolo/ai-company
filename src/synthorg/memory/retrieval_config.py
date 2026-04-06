@@ -18,6 +18,7 @@ logger = get_logger(__name__)
 _WEIGHT_SUM_TOLERANCE = 1e-6
 _DEFAULT_RRF_K = 60
 _DEFAULT_DIVERSITY_LAMBDA = 0.7
+_DEFAULT_CANDIDATE_POOL_MULTIPLIER = 3
 
 
 class MemoryRetrievalConfig(BaseModel):
@@ -145,6 +146,19 @@ class MemoryRetrievalConfig(BaseModel):
         description=(
             "MMR trade-off parameter: 1.0 = pure relevance (no "
             "diversity), 0.0 = maximum diversity"
+        ),
+    )
+    candidate_pool_multiplier: int = Field(
+        default=_DEFAULT_CANDIDATE_POOL_MULTIPLIER,
+        ge=1,
+        le=10,
+        description=(
+            "Over-fetch multiplier for the candidate pool when "
+            "diversity_penalty_enabled is True.  The backend query "
+            "fetches max_memories * candidate_pool_multiplier entries "
+            "so MMR can promote diverse candidates that would "
+            "otherwise fall below the top-K cutoff.  Ignored when "
+            "diversity_penalty_enabled is False."
         ),
     )
     query_reformulation_enabled: bool = Field(
@@ -290,6 +304,25 @@ class MemoryRetrievalConfig(BaseModel):
                     "personal_boost has no effect when pure RRF "
                     "fusion runs, but IS applied on the sparse-empty "
                     "fallback path that runs linear ranking"
+                ),
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _validate_pool_multiplier_consistency(self) -> Self:
+        """Warn when candidate_pool_multiplier is set but diversity is off."""
+        if (
+            not self.diversity_penalty_enabled
+            and self.candidate_pool_multiplier != _DEFAULT_CANDIDATE_POOL_MULTIPLIER
+            and "candidate_pool_multiplier" in self.model_fields_set
+        ):
+            logger.warning(
+                CONFIG_VALIDATION_FAILED,
+                field="candidate_pool_multiplier",
+                value=self.candidate_pool_multiplier,
+                reason=(
+                    "candidate_pool_multiplier is ignored when "
+                    "diversity_penalty_enabled is False"
                 ),
             )
         return self
