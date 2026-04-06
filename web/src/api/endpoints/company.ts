@@ -44,8 +44,8 @@ export async function getDepartmentHealth(name: string): Promise<DepartmentHealt
 
 // ── Mutations ────────────────────────────────────────────────
 
-export async function updateCompany(data: UpdateCompanyRequest): Promise<Record<string, unknown>> {
-  const response = await apiClient.patch<ApiResponse<Record<string, unknown>>>('/company', data)
+export async function updateCompany(data: UpdateCompanyRequest): Promise<Partial<CompanyConfig>> {
+  const response = await apiClient.patch<ApiResponse<Partial<CompanyConfig>>>('/company', data)
   return unwrap(response)
 }
 

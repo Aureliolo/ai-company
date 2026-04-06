@@ -214,6 +214,8 @@ describe('useCompanyStore', () => {
       await useCompanyStore.getState().updateCompany({ company_name: 'New Name' })
       expect(useCompanyStore.getState().config?.company_name).toBe('New Name')
       expect(useCompanyStore.getState().savingCount).toBe(0)
+      // updateCompany refetches full config after the API call
+      expect(mockGetCompanyConfig).toHaveBeenCalled()
     })
 
     it('sets saveError on failure', async () => {
@@ -339,11 +341,14 @@ describe('useCompanyStore', () => {
   describe('reorderAgents', () => {
     it('calls API and clears saving flag', async () => {
       mockReorderAgents.mockResolvedValue(mockConfig.agents)
+      mockGetCompanyConfig.mockResolvedValue(mockConfig)
       useCompanyStore.setState({ config: mockConfig })
 
       await useCompanyStore.getState().reorderAgents('engineering', ['a-2', 'a-1'])
       expect(mockReorderAgents).toHaveBeenCalledWith('engineering', { agent_names: ['a-2', 'a-1'] })
       expect(useCompanyStore.getState().savingCount).toBe(0)
+      // reorderAgents refetches full config after the API call
+      expect(mockGetCompanyConfig).toHaveBeenCalled()
     })
 
     it('sets saveError on failure', async () => {

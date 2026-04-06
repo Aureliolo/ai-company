@@ -62,14 +62,14 @@ def _row_to_user(row: aiosqlite.Row) -> User:
     data["created_at"] = datetime.fromisoformat(data["created_at"])
     data["updated_at"] = datetime.fromisoformat(data["updated_at"])
     # Deserialise JSON columns (may be missing in pre-migration rows).
-    raw_org = data.get("org_roles") or "[]"
-    parsed_org = json.loads(raw_org)
+    raw_org = data.get("org_roles")
+    parsed_org = json.loads("[]" if raw_org is None else raw_org)
     if not isinstance(parsed_org, list):
         msg = f"org_roles must be a JSON array, got {type(parsed_org).__name__}"
         raise TypeError(msg)
     data["org_roles"] = tuple(OrgRole(r) for r in parsed_org)
-    raw_dept = data.get("scoped_departments") or "[]"
-    parsed_dept = json.loads(raw_dept)
+    raw_dept = data.get("scoped_departments")
+    parsed_dept = json.loads("[]" if raw_dept is None else raw_dept)
     if not isinstance(parsed_dept, list):
         msg = (
             f"scoped_departments must be a JSON array, got {type(parsed_dept).__name__}"

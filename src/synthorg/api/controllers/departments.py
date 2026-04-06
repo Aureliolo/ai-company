@@ -13,7 +13,7 @@ from litestar.status_codes import HTTP_204_NO_CONTENT
 from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
 
 from synthorg.api.channels import CHANNEL_DEPARTMENTS, publish_ws_event
-from synthorg.api.concurrency import check_if_match, compute_etag
+from synthorg.api.concurrency import compute_etag
 from synthorg.api.dto import ApiResponse, PaginatedResponse
 from synthorg.api.dto_org import (  # noqa: TC001
     CreateDepartmentRequest,
@@ -136,8 +136,9 @@ def _filter_agents_by_department(
     agents: tuple[AgentConfig, ...],
     dept_name: str,
 ) -> tuple[AgentConfig, ...]:
-    """Return agents belonging to the named department."""
-    return tuple(a for a in agents if a.department == dept_name)
+    """Return agents belonging to the named department (case-insensitive)."""
+    lower = dept_name.lower()
+    return tuple(a for a in agents if a.department.lower() == lower)
 
 
 async def _resolve_active_count(
@@ -430,8 +431,9 @@ async def _require_department_exists(
         logger.warning(API_SERVICE_UNAVAILABLE, service="config_resolver")
         raise ServiceUnavailableError(msg)
     departments = await app_state.config_resolver.get_departments()
+    name_lower = name.lower()
     for dept in departments:
-        if dept.name == name:
+        if dept.name.lower() == name_lower:
             return
     msg = f"Department {name!r} not found"
     logger.warning(API_RESOURCE_NOT_FOUND, resource="department", name=name)
@@ -780,26 +782,10 @@ class DepartmentController(Controller):
         """
         app_state: AppState = state.app_state
         if_match = request.headers.get("if-match")
-        if if_match:
-            depts = await app_state.config_resolver.get_departments()
-            name_lower = name.lower()
-            for dept in depts:
-                if dept.name.lower() == name_lower:
-                    cur = json.dumps(
-                        dept.model_dump(mode="json"),
-                        sort_keys=True,
-                    )
-                    cur_etag = compute_etag(cur, "")
-                    check_if_match(
-                        if_match,
-                        cur_etag,
-                        f"department:{name}",
-                    )
-                    break
-
         updated = await app_state.org_mutation_service.update_department(
             name,
             data,
+            if_match=if_match,
         )
         publish_ws_event(
             request,
@@ -914,8 +900,8 @@ class DepartmentController(Controller):
 
         # Fetch departments and agents (both are config reads)
         departments = await app_state.config_resolver.get_departments()
-        dept_by_name = {dept.name: dept for dept in departments}
-        if name not in dept_by_name:
+        dept_by_name = {dept.name.lower(): dept for dept in departments}
+        if name.lower() not in dept_by_name:
             msg = f"Department {name!r} not found"
             logger.warning(
                 API_RESOURCE_NOT_FOUND,

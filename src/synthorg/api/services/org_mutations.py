@@ -11,6 +11,7 @@ import json
 import math
 from typing import Any
 
+from synthorg.api.concurrency import check_if_match, compute_etag
 from synthorg.api.dto_org import (  # noqa: TC001
     CreateAgentOrgRequest,
     CreateDepartmentRequest,
@@ -157,20 +158,44 @@ class OrgMutationService:
 
     # ── Company ───────────────────────────────────────────────
 
+    def _company_snapshot_etag(
+        self,
+        name: str,
+        agents: tuple[AgentConfig, ...],
+        departments: tuple[Department, ...],
+    ) -> str:
+        """Compute ETag for the full company snapshot."""
+        snapshot = {
+            "company_name": name,
+            "agents": [a.model_dump(mode="json") for a in agents],
+            "departments": [d.model_dump(mode="json") for d in departments],
+        }
+        return compute_etag(json.dumps(snapshot, sort_keys=True), "")
+
     async def update_company(
         self,
         data: UpdateCompanyRequest,
-    ) -> dict[str, Any]:
+        *,
+        if_match: str | None = None,
+    ) -> tuple[dict[str, Any], str]:
         """Update individual company scalar settings.
 
         Args:
             data: Partial update request.
+            if_match: If-Match header value for optimistic concurrency.
 
         Returns:
-            Dict of the updated field names and values.
+            Tuple of (updated fields dict, new ETag for full snapshot).
         """
         updated: dict[str, Any] = {}
         async with _org_lock:
+            if if_match:
+                cur_name = await self._resolver.get_str("company", "company_name")
+                cur_agents = await self._read_agents()
+                cur_depts = await self._read_departments()
+                cur_etag = self._company_snapshot_etag(cur_name, cur_agents, cur_depts)
+                check_if_match(if_match, cur_etag, "company")
+
             if data.company_name is not None:
                 await self._settings.set(
                     "company",
@@ -199,8 +224,13 @@ class OrgMutationService:
                     data.communication_pattern,
                 )
                 updated["communication_pattern"] = data.communication_pattern
+            # Compute new ETag from full snapshot while still under lock.
+            new_name = await self._resolver.get_str("company", "company_name")
+            new_agents = await self._read_agents()
+            new_depts = await self._read_departments()
+            new_etag = self._company_snapshot_etag(new_name, new_agents, new_depts)
         logger.info(API_COMPANY_UPDATED, fields=list(updated.keys()))
-        return updated
+        return updated, new_etag
 
     # ── Departments ───────────────────────────────────────────
 
@@ -247,12 +277,15 @@ class OrgMutationService:
         self,
         name: str,
         data: UpdateDepartmentRequest,
+        *,
+        if_match: str | None = None,
     ) -> Department:
         """Update an existing department.
 
         Args:
             name: Current department name.
             data: Partial update request.
+            if_match: If-Match header value for optimistic concurrency.
 
         Returns:
             The updated Department model.
@@ -265,24 +298,23 @@ class OrgMutationService:
             existing = self._find_department(departments, name)
             if existing is None:
                 msg = f"Department {name!r} not found"
+                logger.warning(API_RESOURCE_NOT_FOUND, reason=msg, department=name)
                 raise NotFoundError(msg)
 
+            if if_match:
+                cur = json.dumps(existing.model_dump(mode="json"), sort_keys=True)
+                check_if_match(if_match, compute_etag(cur, ""), f"department:{name}")
+
             updates: dict[str, Any] = {}
-            if "head" in data.model_fields_set and data.head is not None:
+            if "head" in data.model_fields_set:
                 updates["head"] = data.head
             if "budget_percent" in data.model_fields_set:
                 updates["budget_percent"] = data.budget_percent
-            if (
-                "autonomy_level" in data.model_fields_set
-                and data.autonomy_level is not None
-            ):
+            if "autonomy_level" in data.model_fields_set:
                 updates["autonomy_level"] = data.autonomy_level
             if "teams" in data.model_fields_set:
                 updates["teams"] = tuple(data.teams) if data.teams else ()
-            if (
-                "ceremony_policy" in data.model_fields_set
-                and data.ceremony_policy is not None
-            ):
+            if "ceremony_policy" in data.model_fields_set:
                 updates["ceremony_policy"] = data.ceremony_policy
 
             updated = existing.model_copy(update=updates, deep=True)
@@ -479,12 +511,15 @@ class OrgMutationService:
         self,
         name: str,
         data: UpdateAgentOrgRequest,
+        *,
+        if_match: str | None = None,
     ) -> AgentConfig:
         """Update an existing agent.
 
         Args:
             name: Current agent name.
             data: Partial update request.
+            if_match: If-Match header value for optimistic concurrency.
 
         Returns:
             The updated AgentConfig model.
@@ -499,7 +534,12 @@ class OrgMutationService:
             existing = self._find_agent(agents, name)
             if existing is None:
                 msg = f"Agent {name!r} not found"
+                logger.warning(API_RESOURCE_NOT_FOUND, reason=msg, agent=name)
                 raise NotFoundError(msg)
+
+            if if_match:
+                cur = json.dumps(existing.model_dump(mode="json"), sort_keys=True)
+                check_if_match(if_match, compute_etag(cur, ""), f"agent:{name}")
 
             updates = await self._validate_agent_update(name, data, agents)
 
@@ -531,14 +571,20 @@ class OrgMutationService:
             existing = self._find_agent(agents, name)
             if existing is None:
                 msg = f"Agent {name!r} not found"
+                logger.warning(API_RESOURCE_NOT_FOUND, reason=msg, agent=name)
                 raise NotFoundError(msg)
 
             if (
                 existing.level == SeniorityLevel.C_SUITE
                 and existing.role.lower() == "ceo"
             ):
-                msg = (
-                    f"Cannot delete c-suite agent {name!r} -- reassign or demote first"
+                msg = f"Cannot delete CEO agent {name!r} -- reassign or demote first"
+                logger.warning(
+                    API_RESOURCE_CONFLICT,
+                    reason=msg,
+                    agent=name,
+                    level=existing.level.value,
+                    role=existing.role,
                 )
                 raise ConflictError(msg)
 

@@ -74,6 +74,61 @@ class TestUpdateDepartment:
         )
         assert resp.status_code == 404
 
+    def test_update_department_stale_etag(
+        self,
+        test_client: TestClient[Any],
+    ) -> None:
+        test_client.post(
+            "/api/v1/departments",
+            json={"name": "eng"},
+        )
+        resp = test_client.patch(
+            "/api/v1/departments/eng",
+            json={"budget_percent": 50.0},
+            headers={"If-Match": '"stale-etag-value000"'},
+        )
+        assert resp.status_code == 409
+
+    def test_update_department_matching_etag(
+        self,
+        test_client: TestClient[Any],
+    ) -> None:
+        test_client.post(
+            "/api/v1/departments",
+            json={"name": "eng"},
+        )
+        # First update to get an ETag in the response
+        resp1 = test_client.patch(
+            "/api/v1/departments/eng",
+            json={"budget_percent": 30.0},
+        )
+        assert resp1.status_code == 200
+        etag = resp1.headers.get("etag")
+        assert etag is not None
+
+        # Use the returned ETag for a second update
+        resp2 = test_client.patch(
+            "/api/v1/departments/eng",
+            json={"budget_percent": 40.0},
+            headers={"If-Match": etag},
+        )
+        assert resp2.status_code == 200
+
+    def test_update_department_no_etag(
+        self,
+        test_client: TestClient[Any],
+    ) -> None:
+        test_client.post(
+            "/api/v1/departments",
+            json={"name": "eng"},
+        )
+        # No If-Match header -- should succeed
+        resp = test_client.patch(
+            "/api/v1/departments/eng",
+            json={"budget_percent": 60.0},
+        )
+        assert resp.status_code == 200
+
 
 @pytest.mark.unit
 class TestDeleteDepartment:

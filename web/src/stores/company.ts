@@ -45,6 +45,8 @@ interface CompanyState {
   healthError: string | null
   savingCount: number
   saveError: string | null
+  _refreshVersion: number
+  _healthRefreshVersion: number
 
   fetchCompanyData: () => Promise<void>
   fetchDepartmentHealths: () => Promise<void>
@@ -85,19 +87,26 @@ export const useCompanyStore = create<CompanyState>()((set, get) => ({
   healthError: null,
   savingCount: 0,
   saveError: null,
+  _refreshVersion: 0,
+  _healthRefreshVersion: 0,
 
   fetchCompanyData: async () => {
-    set({ loading: true, error: null })
+    const version = get()._refreshVersion + 1
+    set({ _refreshVersion: version, loading: true, error: null })
     try {
       const config = await getCompanyConfig()
+      if (get()._refreshVersion !== version) return // stale response
       set({ config, loading: false, error: null })
     } catch (err) {
+      if (get()._refreshVersion !== version) return // stale error
       set({ loading: false, error: getErrorMessage(err) })
       throw err
     }
   },
 
   fetchDepartmentHealths: async () => {
+    const version = get()._healthRefreshVersion + 1
+    set({ _healthRefreshVersion: version })
     try {
       const config = useCompanyStore.getState().config
       if (!config) return
@@ -108,6 +117,7 @@ export const useCompanyStore = create<CompanyState>()((set, get) => ({
         }),
       )
       const healthResults = await Promise.all(healthPromises)
+      if (get()._healthRefreshVersion !== version) return // stale response
       const departmentHealths = healthResults.filter(
         (h): h is DepartmentHealth => h !== null,
       )
@@ -117,6 +127,7 @@ export const useCompanyStore = create<CompanyState>()((set, get) => ({
         set({ departmentHealths, healthError: null })
       }
     } catch (err) {
+      if (get()._healthRefreshVersion !== version) return // stale error
       set({ healthError: getErrorMessage(err) })
     }
   },

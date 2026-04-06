@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import "./DashboardPreview.css";
 import OrgChartMini from "./mini/OrgChartMini";
 import TaskBoardMini from "./mini/TaskBoardMini";

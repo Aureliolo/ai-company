@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { AgentCreateDialog } from '@/pages/org-edit/AgentCreateDialog'
 import { makeDepartment } from '../../helpers/factories'
 
@@ -37,5 +37,26 @@ describe('AgentCreateDialog', () => {
   it('does not render when closed', () => {
     renderDialog(false)
     expect(screen.queryByText('New Agent')).not.toBeInTheDocument()
+  })
+
+  it('submits trimmed payload on Create Agent click', async () => {
+    renderDialog()
+
+    fireEvent.change(screen.getByLabelText(/name/i), { target: { value: '  Alice  ' } })
+    fireEvent.change(screen.getByLabelText(/role/i), { target: { value: '  Backend Dev  ' } })
+    fireEvent.change(screen.getByLabelText(/department/i), { target: { value: 'engineering' } })
+    // Level defaults to 'mid', leave as-is
+
+    fireEvent.click(screen.getByRole('button', { name: /create agent/i }))
+
+    await waitFor(() => {
+      expect(mockOnCreate).toHaveBeenCalledTimes(1)
+      expect(mockOnCreate).toHaveBeenCalledWith({
+        name: 'Alice',
+        role: 'Backend Dev',
+        department: 'engineering',
+        level: 'mid',
+      })
+    })
   })
 })

@@ -35,6 +35,8 @@ const mockUser: UserInfoResponse = {
   username: 'admin',
   role: 'ceo',
   must_change_password: false,
+  org_roles: [],
+  scoped_departments: [],
 }
 
 function resetStore() {

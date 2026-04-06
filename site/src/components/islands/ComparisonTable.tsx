@@ -1,4 +1,4 @@
-import { Fragment, useState, useMemo, useCallback, useRef, useEffect } from "react";
+import React, { Fragment, useState, useMemo, useCallback, useRef, useEffect } from "react";
 import "./ComparisonTable.css";
 
 /* ------------------------------------------------------------------ */

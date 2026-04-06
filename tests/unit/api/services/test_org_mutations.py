@@ -390,7 +390,7 @@ class TestDeleteAgent:
                 level=SeniorityLevel.C_SUITE,
             ),
         )
-        with pytest.raises(ConflictError, match="c-suite"):
+        with pytest.raises(ConflictError, match="CEO"):
             await service.delete_agent("chief")
 
 
@@ -474,16 +474,18 @@ class TestUpdateCompany:
         self,
         service: OrgMutationService,
     ) -> None:
-        result = await service.update_company(
+        result, etag = await service.update_company(
             UpdateCompanyRequest(company_name="New Name"),
         )
         assert result["company_name"] == "New Name"
+        assert etag.startswith('"')
+        assert etag.endswith('"')
 
     async def test_update_company_autonomy(
         self,
         service: OrgMutationService,
     ) -> None:
-        result = await service.update_company(
+        result, _etag = await service.update_company(
             UpdateCompanyRequest(autonomy_level=AutonomyLevel.SUPERVISED),
         )
         assert result["autonomy_level"] == "supervised"

@@ -8,7 +8,7 @@ from litestar.datastructures import State  # noqa: TC002
 from litestar.status_codes import HTTP_204_NO_CONTENT
 
 from synthorg.api.channels import CHANNEL_AGENTS, publish_ws_event
-from synthorg.api.concurrency import check_if_match, compute_etag
+from synthorg.api.concurrency import compute_etag
 from synthorg.api.dto import ApiResponse, PaginatedResponse
 from synthorg.api.dto_org import (  # noqa: TC001
     CreateAgentOrgRequest,
@@ -187,26 +187,10 @@ class AgentController(Controller):
         """
         app_state: AppState = state.app_state
         if_match = request.headers.get("if-match")
-        if if_match:
-            agents = await app_state.config_resolver.get_agents()
-            name_lower = agent_name.lower()
-            for agent in agents:
-                if agent.name.lower() == name_lower:
-                    cur = json.dumps(
-                        agent.model_dump(mode="json"),
-                        sort_keys=True,
-                    )
-                    cur_etag = compute_etag(cur, "")
-                    check_if_match(
-                        if_match,
-                        cur_etag,
-                        f"agent:{agent_name}",
-                    )
-                    break
-
         updated = await app_state.org_mutation_service.update_agent(
             agent_name,
             data,
+            if_match=if_match,
         )
         publish_ws_event(
             request,

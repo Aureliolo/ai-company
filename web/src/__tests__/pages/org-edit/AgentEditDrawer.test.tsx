@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { AgentEditDrawer } from '@/pages/org-edit/AgentEditDrawer'
 import { makeAgent, makeDepartment } from '../../helpers/factories'
 
@@ -49,5 +49,46 @@ describe('AgentEditDrawer', () => {
     const deleteButton = screen.getByRole('button', { name: /delete/i })
     expect(saveButton).not.toBeDisabled()
     expect(deleteButton).not.toBeDisabled()
+  })
+
+  it('calls onUpdate when Save is clicked', async () => {
+    renderDrawer()
+    fireEvent.click(screen.getByRole('button', { name: /save/i }))
+
+    await waitFor(() => {
+      expect(mockOnUpdate).toHaveBeenCalledTimes(1)
+      expect(mockOnUpdate).toHaveBeenCalledWith('alice', {
+        name: 'alice',
+        role: 'Lead Developer',
+        department: 'engineering',
+        level: 'lead',
+      })
+    })
+  })
+
+  it('calls onDelete after confirming in ConfirmDialog', async () => {
+    renderDrawer()
+
+    // Click the Delete button in the drawer to open the ConfirmDialog
+    fireEvent.click(screen.getByRole('button', { name: /delete/i }))
+
+    // The ConfirmDialog should now be open with a "Delete" confirm button
+    // The confirm button inside the ConfirmDialog uses the confirmLabel="Delete"
+    // The ConfirmDialog is now open with a destructive "Delete" confirm button.
+    // There are two "Delete" buttons -- the drawer one and the dialog one.
+    // Find the destructive-variant button via data-variant attribute.
+    await waitFor(() => {
+      const allDeleteButtons = screen.getAllByRole('button', { name: /delete/i })
+      const destructiveButton = allDeleteButtons.find(
+        (btn) => btn.getAttribute('data-variant') === 'destructive',
+      )
+      expect(destructiveButton).toBeDefined()
+      fireEvent.click(destructiveButton!)
+    })
+
+    await waitFor(() => {
+      expect(mockOnDelete).toHaveBeenCalledTimes(1)
+      expect(mockOnDelete).toHaveBeenCalledWith('alice')
+    })
   })
 })

@@ -1,7 +1,6 @@
 """Company configuration controller."""
 
 import asyncio
-import json
 from typing import Any
 
 from litestar import Controller, Request, Response, get, patch, post
@@ -12,7 +11,6 @@ from synthorg.api.channels import (
     CHANNEL_DEPARTMENTS,
     publish_ws_event,
 )
-from synthorg.api.concurrency import check_if_match, compute_etag
 from synthorg.api.dto import ApiResponse
 from synthorg.api.dto_org import (  # noqa: TC001
     ReorderDepartmentsRequest,
@@ -97,34 +95,16 @@ class CompanyController(Controller):
             Updated fields envelope with ETag header.
         """
         app_state: AppState = state.app_state
-        # Validate If-Match if provided
         if_match = request.headers.get("if-match")
-        if if_match:
-            resolver = app_state.config_resolver
-            name = await resolver.get_str("company", "company_name")
-            agents = await resolver.get_agents()
-            depts = await resolver.get_departments()
-            snapshot = {
-                "company_name": name,
-                "agents": [a.model_dump(mode="json") for a in agents],
-                "departments": [d.model_dump(mode="json") for d in depts],
-            }
-            cur_json = json.dumps(snapshot, sort_keys=True)
-            current_etag = compute_etag(cur_json, "")
-            check_if_match(if_match, current_etag, "company")
-
-        updated = await app_state.org_mutation_service.update_company(
+        updated, new_etag = await app_state.org_mutation_service.update_company(
             data,
+            if_match=if_match,
         )
         publish_ws_event(
             request,
             WsEventType.COMPANY_UPDATED,
             CHANNEL_COMPANY,
             updated,
-        )
-        new_etag = compute_etag(
-            json.dumps(updated, sort_keys=True),
-            "",
         )
         return Response(
             content=ApiResponse(data=updated),

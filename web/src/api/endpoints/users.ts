@@ -12,10 +12,9 @@ export interface UserResponse {
   updated_at: string
 }
 
-export interface GrantOrgRoleRequest {
-  role: OrgRole
-  scoped_departments?: readonly string[]
-}
+export type GrantOrgRoleRequest =
+  | { role: 'department_admin'; scoped_departments: readonly string[] }
+  | { role: Exclude<OrgRole, 'department_admin'>; scoped_departments?: never }
 
 export async function listUsers(): Promise<readonly UserResponse[]> {
   const response = await apiClient.get<ApiResponse<readonly UserResponse[]>>('/users')

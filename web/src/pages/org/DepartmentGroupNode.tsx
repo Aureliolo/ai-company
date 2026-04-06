@@ -208,7 +208,7 @@ function DepartmentGroupNodeComponent({ id, data }: NodeProps<DepartmentGroupTyp
           <span className="font-sans text-xs">No agents yet</span>
           {showAddAgentButton && (
             <span
-              className="inline-flex items-center gap-1 rounded-md border border-border bg-background/50 px-2 py-1 text-micro text-text-secondary hover:bg-background/80 cursor-pointer"
+              className="inline-flex items-center gap-1 rounded-md border border-border bg-background/50 px-2 py-1 text-micro text-text-secondary"
               title="Add agent"
             >
               <Plus className="size-3" aria-hidden="true" />
@@ -228,7 +228,7 @@ function DepartmentGroupNodeComponent({ id, data }: NodeProps<DepartmentGroupTyp
       {!isEmpty && showAddAgentButton && (
         <div className="mt-auto flex items-center justify-center pt-5">
           <span
-            className="inline-flex items-center gap-1 rounded-md border border-dashed border-border bg-background/30 px-2 py-0.5 text-micro text-text-muted hover:bg-background/50 cursor-pointer"
+            className="inline-flex items-center gap-1 rounded-md border border-dashed border-border bg-background/30 px-2 py-0.5 text-micro text-text-muted"
             title="Add agent"
           >
             <Plus className="size-3" aria-hidden="true" />

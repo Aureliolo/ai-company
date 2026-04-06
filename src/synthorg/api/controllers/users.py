@@ -69,7 +69,7 @@ class GrantOrgRoleRequest(BaseModel):
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     role: OrgRole
-    scoped_departments: tuple[str, ...] = ()
+    scoped_departments: tuple[NotBlankStr, ...] = ()
 
 
 class UserResponse(BaseModel):
@@ -472,7 +472,17 @@ class UserController(Controller):
                     "updated_at": now,
                 },
             )
-            await app_state.persistence.users.save(updated)
+            try:
+                await app_state.persistence.users.save(updated)
+            except QueryError:
+                logger.error(
+                    API_USER_UPDATED,
+                    user_id=user.id,
+                    intent="grant_org_role",
+                    role=data.role.value,
+                    exc_info=True,
+                )
+                raise
         logger.info(
             API_USER_UPDATED,
             user_id=user.id,
@@ -538,7 +548,17 @@ class UserController(Controller):
                     "updated_at": now,
                 },
             )
-            await app_state.persistence.users.save(updated)
+            try:
+                await app_state.persistence.users.save(updated)
+            except QueryError:
+                logger.error(
+                    API_USER_UPDATED,
+                    user_id=user.id,
+                    intent="revoke_org_role",
+                    role=role,
+                    exc_info=True,
+                )
+                raise
         logger.info(
             API_USER_UPDATED,
             user_id=user.id,
