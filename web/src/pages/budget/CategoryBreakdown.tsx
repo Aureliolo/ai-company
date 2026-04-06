@@ -18,13 +18,15 @@ const CATEGORIES: {
   { key: 'productive', label: 'Productive', barClass: 'bg-success', dotClass: 'bg-success' },
   { key: 'coordination', label: 'Coordination', barClass: 'bg-accent', dotClass: 'bg-accent' },
   { key: 'system', label: 'System', barClass: 'bg-warning', dotClass: 'bg-warning' },
+  { key: 'embedding', label: 'Embedding', barClass: 'bg-accent-dim', dotClass: 'bg-accent-dim' },
   { key: 'uncategorized', label: 'Uncategorized', barClass: 'bg-border', dotClass: 'bg-border' },
 ]
 
 function isAllZero(ratio: CategoryRatio): boolean {
   return (
     ratio.productive.count + ratio.coordination.count +
-    ratio.system.count + ratio.uncategorized.count === 0
+    ratio.system.count + ratio.embedding.count +
+    ratio.uncategorized.count === 0
   )
 }
 
@@ -60,7 +62,7 @@ export function CategoryBreakdown({ ratio, currency }: CategoryBreakdownProps) {
           description="Category breakdown will appear as agents consume tokens"
         />
       ) : (
-        <div className="space-y-4">
+        <div className="space-y-section-gap">
           {/* Stacked bar */}
           <div className="flex h-6 w-full overflow-hidden rounded-full">
             {CATEGORIES.map((cat) => (
@@ -74,7 +76,7 @@ export function CategoryBreakdown({ ratio, currency }: CategoryBreakdownProps) {
           </div>
 
           {/* Legend */}
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-2 gap-grid-gap">
             {CATEGORIES.map((cat) => (
               <CategoryLegendRow
                 key={cat.key}

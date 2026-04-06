@@ -9,6 +9,7 @@ import pytest
 from synthorg.core.enums import MemoryCategory, ToolCategory
 from synthorg.memory.injection import InjectionStrategy, MemoryInjectionStrategy
 from synthorg.memory.models import MemoryEntry, MemoryMetadata
+from synthorg.memory.protocol import MemoryBackend
 from synthorg.memory.retrieval_config import MemoryRetrievalConfig
 from synthorg.memory.tool_retriever import ToolBasedInjectionStrategy
 from synthorg.memory.tools import (
@@ -45,7 +46,7 @@ def _make_entry(
 def _make_backend(
     entries: tuple[MemoryEntry, ...] = (),
 ) -> AsyncMock:
-    backend = AsyncMock()
+    backend = AsyncMock(spec=MemoryBackend)
     backend.retrieve = AsyncMock(return_value=entries)
     backend.get = AsyncMock(return_value=entries[0] if entries else None)
     return backend
@@ -410,7 +411,7 @@ class TestCreateMemoryTools:
 
         # Verify the backend was called with the bound agent_id
         call_args = backend.retrieve.call_args
-        assert call_args[0][0] == "agent-42"
+        assert call_args.args[0] == "agent-42"
 
 
 # -- registry_with_memory_tools ---------------------------------------------

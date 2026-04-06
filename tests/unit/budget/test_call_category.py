@@ -15,17 +15,39 @@ class TestLLMCallCategory:
         assert LLMCallCategory.SYSTEM.value == "system"
 
     def test_member_count(self) -> None:
-        assert len(LLMCallCategory) == 3
+        assert len(LLMCallCategory) == 4
 
-    def test_string_conversion(self) -> None:
-        assert str(LLMCallCategory.PRODUCTIVE) == "productive"
-        assert str(LLMCallCategory.COORDINATION) == "coordination"
-        assert str(LLMCallCategory.SYSTEM) == "system"
+    @pytest.mark.parametrize(
+        ("member", "expected"),
+        [
+            (LLMCallCategory.PRODUCTIVE, "productive"),
+            (LLMCallCategory.COORDINATION, "coordination"),
+            (LLMCallCategory.SYSTEM, "system"),
+            (LLMCallCategory.EMBEDDING, "embedding"),
+        ],
+    )
+    def test_string_conversion(
+        self,
+        member: LLMCallCategory,
+        expected: str,
+    ) -> None:
+        assert str(member) == expected
 
-    def test_from_string(self) -> None:
-        assert LLMCallCategory("productive") == LLMCallCategory.PRODUCTIVE
-        assert LLMCallCategory("coordination") == LLMCallCategory.COORDINATION
-        assert LLMCallCategory("system") == LLMCallCategory.SYSTEM
+    @pytest.mark.parametrize(
+        ("value", "expected"),
+        [
+            ("productive", LLMCallCategory.PRODUCTIVE),
+            ("coordination", LLMCallCategory.COORDINATION),
+            ("system", LLMCallCategory.SYSTEM),
+            ("embedding", LLMCallCategory.EMBEDDING),
+        ],
+    )
+    def test_from_string(
+        self,
+        value: str,
+        expected: LLMCallCategory,
+    ) -> None:
+        assert LLMCallCategory(value) == expected
 
 
 @pytest.mark.unit

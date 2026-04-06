@@ -388,6 +388,7 @@ When multi-agent coordination exists, each `CostRecord` is tagged with a **call 
 | `productive` | Direct task work -- tool calls, code generation, task output | Agent writing code, running tests |
 | `coordination` | Inter-agent communication -- delegation, reviews, meetings | Manager reviewing work, agent presenting in meeting |
 | `system` | Framework overhead -- system prompt injection, context loading | Initial prompt, [memory retrieval injection](memory.md#memory-injection-strategies) |
+| `embedding` | Embedding model calls -- memory store/retrieve vectorization | Mem0 store embedding, similarity search query embedding |
 
 The **orchestration ratio** (`coordination / total`) is surfaced in metrics and alerts. If
 coordination tokens consistently exceed productive tokens, the company configuration needs
@@ -438,7 +439,7 @@ etc.).
     ```yaml
     call_analytics:
       track:
-        - call_category                    # productive, coordination, system
+        - call_category                    # productive, coordination, system, embedding
         - success                          # true/false
         - retry_count                      # 0 = first attempt succeeded
         - retry_reason                     # rate_limit, timeout, internal_error

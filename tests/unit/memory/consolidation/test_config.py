@@ -8,6 +8,7 @@ from synthorg.memory.consolidation.config import (
     ArchivalConfig,
     ConsolidationConfig,
     DualModeConfig,
+    LLMConsolidationConfig,
     RetentionConfig,
 )
 from synthorg.memory.consolidation.models import RetentionRule
@@ -190,3 +191,78 @@ class TestArchivalConfigDualMode:
         assert config.enabled is True
         assert config.dual_mode.enabled is True
         assert config.dual_mode.dense_threshold == 0.8
+
+
+@pytest.mark.unit
+class TestLLMConsolidationConfig:
+    """LLMConsolidationConfig defaults and validation."""
+
+    def test_defaults(self) -> None:
+        config = LLMConsolidationConfig()
+        assert config.group_threshold == 3
+        assert config.temperature == 0.3
+        assert config.max_summary_tokens == 500
+        assert config.include_distillation_context is True
+        assert config.max_trajectory_context_entries == 5
+        assert config.max_trajectory_chars_per_entry == 500
+        assert config.max_entry_input_chars == 2000
+        assert config.max_total_user_content_chars == 20000
+        assert config.fallback_truncate_length == 200
+
+    def test_frozen(self) -> None:
+        config = LLMConsolidationConfig()
+        with pytest.raises(ValidationError):
+            config.group_threshold = 5  # type: ignore[misc]
+
+    def test_group_threshold_below_min_rejected(self) -> None:
+        with pytest.raises(ValidationError):
+            LLMConsolidationConfig(group_threshold=2)
+
+    def test_group_threshold_one_rejected(self) -> None:
+        with pytest.raises(ValidationError):
+            LLMConsolidationConfig(group_threshold=1)
+
+    def test_group_threshold_three_accepted(self) -> None:
+        config = LLMConsolidationConfig(group_threshold=3)
+        assert config.group_threshold == 3
+
+    def test_temperature_out_of_range(self) -> None:
+        with pytest.raises(ValidationError):
+            LLMConsolidationConfig(temperature=3.0)
+
+    def test_max_summary_tokens_below_min(self) -> None:
+        with pytest.raises(ValidationError):
+            LLMConsolidationConfig(max_summary_tokens=10)
+
+    def test_nan_rejected(self) -> None:
+        with pytest.raises(ValidationError):
+            LLMConsolidationConfig(temperature=float("nan"))
+
+    def test_entry_chars_exceeds_total_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="must not exceed"):
+            LLMConsolidationConfig(
+                max_entry_input_chars=20001,
+                max_total_user_content_chars=20000,
+            )
+
+    def test_entry_chars_equals_total_accepted(self) -> None:
+        config = LLMConsolidationConfig(
+            max_entry_input_chars=20000,
+            max_total_user_content_chars=20000,
+        )
+        assert config.max_entry_input_chars == 20000
+        assert config.max_total_user_content_chars == 20000
+
+    def test_custom_values(self) -> None:
+        config = LLMConsolidationConfig(
+            group_threshold=5,
+            temperature=0.7,
+            max_summary_tokens=1000,
+            include_distillation_context=False,
+            max_entry_input_chars=500,
+        )
+        assert config.group_threshold == 5
+        assert config.temperature == 0.7
+        assert config.max_summary_tokens == 1000
+        assert config.include_distillation_context is False
+        assert config.max_entry_input_chars == 500

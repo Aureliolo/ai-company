@@ -12,7 +12,9 @@ from synthorg.core.task import Task
 from synthorg.engine.agent_engine import AgentEngine
 from synthorg.engine.context import AgentContext
 from synthorg.engine.loop_protocol import ExecutionResult, TerminationReason, TurnRecord
+from synthorg.memory.protocol import MemoryBackend
 from synthorg.providers.enums import FinishReason
+from synthorg.providers.protocol import CompletionProvider
 
 _AGENT_UUID = uuid4()
 
@@ -87,8 +89,8 @@ class TestAgentEngineDistillationCapture:
     async def test_distillation_captured_when_enabled(self) -> None:
         """Distillation is stored on successful task completion when enabled."""
         identity = _make_identity()
-        provider = AsyncMock()
-        memory_backend = AsyncMock()
+        provider = AsyncMock(spec=CompletionProvider)
+        memory_backend = AsyncMock(spec=MemoryBackend)
         memory_backend.store = AsyncMock(return_value="dist-1")
 
         engine = AgentEngine(
@@ -106,8 +108,8 @@ class TestAgentEngineDistillationCapture:
         )
 
         memory_backend.store.assert_awaited_once()
-        args, _ = memory_backend.store.call_args
-        store_request = args[1]
+        store_call = memory_backend.store.call_args
+        store_request = store_call.args[1]
         assert "distillation" in store_request.metadata.tags
         assert store_request.metadata.source == "distillation"
         assert "Task completed" in store_request.content
@@ -115,8 +117,8 @@ class TestAgentEngineDistillationCapture:
     async def test_distillation_captured_on_error_termination(self) -> None:
         """Distillation captures failed runs too -- trajectory context matters."""
         identity = _make_identity()
-        provider = AsyncMock()
-        memory_backend = AsyncMock()
+        provider = AsyncMock(spec=CompletionProvider)
+        memory_backend = AsyncMock(spec=MemoryBackend)
         memory_backend.store = AsyncMock(return_value="dist-err")
 
         engine = AgentEngine(
@@ -134,15 +136,15 @@ class TestAgentEngineDistillationCapture:
         )
 
         memory_backend.store.assert_awaited_once()
-        store_request = memory_backend.store.call_args[0][1]
+        store_request = memory_backend.store.call_args.args[1]
         assert "Task failed" in store_request.content
         assert "provider timeout" in store_request.content
 
     async def test_distillation_disabled_by_default(self) -> None:
         """Distillation capture is opt-in -- default is disabled."""
         identity = _make_identity()
-        provider = AsyncMock()
-        memory_backend = AsyncMock()
+        provider = AsyncMock(spec=CompletionProvider)
+        memory_backend = AsyncMock(spec=MemoryBackend)
 
         engine = AgentEngine(
             provider=provider,
@@ -163,7 +165,7 @@ class TestAgentEngineDistillationCapture:
     async def test_distillation_without_backend_is_noop(self) -> None:
         """No backend + flag set -> quietly skip, do not crash."""
         identity = _make_identity()
-        provider = AsyncMock()
+        provider = AsyncMock(spec=CompletionProvider)
 
         engine = AgentEngine(
             provider=provider,

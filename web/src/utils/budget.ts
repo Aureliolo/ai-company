@@ -52,6 +52,7 @@ export interface CategoryRatio {
   readonly productive: CategoryBucket
   readonly coordination: CategoryBucket
   readonly system: CategoryBucket
+  readonly embedding: CategoryBucket
   readonly uncategorized: CategoryBucket
 }
 
@@ -184,7 +185,7 @@ export function computeCostBreakdown(
  *
  * Buckets records by `call_category` (null treated as uncategorized).
  * Records with unrecognized call_category values fall through to the uncategorized bucket.
- * Returns cost, count, and percentage for each of the four categories.
+ * Returns cost, count, and percentage for each of the five categories.
  */
 export function computeCategoryBreakdown(
   records: readonly CostRecord[],
@@ -193,6 +194,7 @@ export function computeCategoryBreakdown(
     productive: { cost: 0, count: 0 },
     coordination: { cost: 0, count: 0 },
     system: { cost: 0, count: 0 },
+    embedding: { cost: 0, count: 0 },
     uncategorized: { cost: 0, count: 0 },
   }
   let totalCost = 0
@@ -211,6 +213,7 @@ export function computeCategoryBreakdown(
     productive: { ...buckets.productive, percent: pct(buckets.productive.cost) },
     coordination: { ...buckets.coordination, percent: pct(buckets.coordination.cost) },
     system: { ...buckets.system, percent: pct(buckets.system.cost) },
+    embedding: { ...buckets.embedding, percent: pct(buckets.embedding.cost) },
     uncategorized: { ...buckets.uncategorized, percent: pct(buckets.uncategorized.cost) },
   }
 }

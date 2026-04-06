@@ -73,6 +73,8 @@ class ScoredMemory(BaseModel):
         combined_score: Final ranking signal (0.0-1.0).  LINEAR
             weighted combination or RRF normalized fusion score.
         is_shared: Whether this came from SharedKnowledgeStore.
+        scoring_strategy: Which fusion strategy produced this instance,
+            or None when unset (backward compatibility).
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
@@ -96,6 +98,13 @@ class ScoredMemory(BaseModel):
     is_shared: bool = Field(
         default=False,
         description="Whether from SharedKnowledgeStore",
+    )
+    scoring_strategy: FusionStrategy | None = Field(
+        default=None,
+        description=(
+            "Which fusion strategy produced this instance "
+            "(None when unset by the producer)"
+        ),
     )
 
 
@@ -199,6 +208,7 @@ def _score_entry(
         recency_score=recency,
         combined_score=combined,
         is_shared=is_shared,
+        scoring_strategy=FusionStrategy.LINEAR,
     )
 
 
@@ -280,6 +290,7 @@ def _build_rrf_scored_memories(
                 relevance_score=raw_rel,
                 recency_score=0.0,
                 combined_score=normalized[eid],
+                scoring_strategy=FusionStrategy.RRF,
             )
         )
     return scored
@@ -415,7 +426,7 @@ def _word_bigrams(text: str) -> frozenset[tuple[str, str]]:
     return frozenset((words[i], words[i + 1]) for i in range(len(words) - 1))
 
 
-def _bigram_jaccard(text_a: str, text_b: str) -> float:
+def bigram_jaccard(text_a: str, text_b: str) -> float:
     """Word-bigram Jaccard similarity between two texts.
 
     Returns 0.0 when either text has fewer than 2 words (no bigrams

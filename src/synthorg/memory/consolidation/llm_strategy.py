@@ -11,11 +11,13 @@ retryable error (after retries are exhausted) or returns empty content.
 """
 
 import asyncio
+from enum import StrEnum
 from itertools import groupby
 from operator import attrgetter
 
 from synthorg.core.enums import MemoryCategory  # noqa: TC001
 from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.memory.consolidation.config import LLMConsolidationConfig
 from synthorg.memory.consolidation.models import ConsolidationResult
 from synthorg.memory.models import (
     MemoryEntry,
@@ -40,23 +42,6 @@ from synthorg.providers.resilience.errors import RetryExhaustedError
 
 logger = get_logger(__name__)
 
-_DEFAULT_GROUP_THRESHOLD = 3
-#: Minimum group size that yields a real consolidation: at threshold 3,
-#: ``_select_entries`` keeps one entry and ``_synthesize`` receives two,
-#: which is the smallest input for a meaningful LLM merge.  Threshold 2
-#: is rejected because it leaves a single entry after selection -- the
-#: LLM cannot deduplicate against the retained entry and the resulting
-#: "summary" is just a paraphrase of one entry.
-_MIN_GROUP_THRESHOLD = 3
-_FALLBACK_TRUNCATE_LENGTH = 200
-_MAX_ENTRY_INPUT_CHARS = 2000
-#: Maximum total characters in the concatenated user prompt sent to the
-#: LLM.  Caps cost for oversized groups; entries beyond this cap are
-#: dropped from the synthesis input (kept originals still get deleted
-#: on successful synthesis, but the dropped entries are logged).
-_MAX_TOTAL_USER_CONTENT_CHARS = 20000
-_MAX_TRAJECTORY_CONTEXT_ENTRIES = 5
-_MAX_TRAJECTORY_CHARS_PER_ENTRY = 500
 
 #: Tag read from the backend to locate distillation entries produced
 #: by ``synthorg.memory.consolidation.distillation.capture_distillation``.
@@ -71,6 +56,21 @@ _LLM_SYNTHESIZED_TAG: NotBlankStr = "llm-synthesized"
 
 #: Tag applied to concatenation-fallback summaries.
 _CONCAT_FALLBACK_TAG: NotBlankStr = "concat-fallback"
+
+
+class SynthesisOutcome(StrEnum):
+    """Outcome of an LLM synthesis attempt.
+
+    Replaces the bare ``bool`` that ``_synthesize`` previously returned
+    as its second element, making intent explicit.
+    """
+
+    LLM_SYNTHESIZED = "llm_synthesized"
+    """LLM returned non-empty content -- real synthesis occurred."""
+
+    CONCAT_FALLBACK = "concat_fallback"
+    """LLM call failed or returned empty -- concatenation fallback used."""
+
 
 _BASE_SYSTEM_PROMPT = (
     "You are a memory consolidation assistant. You will receive multiple "
@@ -120,43 +120,27 @@ class LLMConsolidationStrategy:
             distillation entries.
         provider: Completion provider for LLM synthesis calls.
         model: Model identifier for the synthesis LLM.
-        group_threshold: Minimum group size to trigger consolidation
-            (must be >= 3 -- see ``_MIN_GROUP_THRESHOLD`` rationale).
-        temperature: Sampling temperature for synthesis.
-        max_summary_tokens: Maximum tokens for the synthesis response.
-        include_distillation_context: When True (default), fetches
-            recent distillation entries as trajectory context for the
-            synthesis prompt.  Set False to skip the lookup entirely.
-
-    Raises:
-        ValueError: If ``group_threshold`` is less than 3.
+        config: LLM consolidation configuration.  All tuning knobs
+            (thresholds, token limits, distillation context toggles)
+            are encapsulated here.
     """
 
-    def __init__(  # noqa: PLR0913
+    def __init__(
         self,
         *,
         backend: MemoryBackend,
         provider: CompletionProvider,
         model: NotBlankStr,
-        group_threshold: int = _DEFAULT_GROUP_THRESHOLD,
-        temperature: float = 0.3,
-        max_summary_tokens: int = 500,
-        include_distillation_context: bool = True,
+        config: LLMConsolidationConfig | None = None,
     ) -> None:
-        if group_threshold < _MIN_GROUP_THRESHOLD:
-            msg = (
-                f"group_threshold must be >= {_MIN_GROUP_THRESHOLD}, "
-                f"got {group_threshold}"
-            )
-            raise ValueError(msg)
+        cfg = config if config is not None else LLMConsolidationConfig()
         self._backend = backend
         self._provider = provider
         self._model = model
-        self._group_threshold = group_threshold
-        self._include_distillation_context = include_distillation_context
+        self._config = cfg
         self._completion_config = CompletionConfig(
-            temperature=temperature,
-            max_tokens=max_summary_tokens,
+            temperature=cfg.temperature,
+            max_tokens=cfg.max_summary_tokens,
         )
 
     async def consolidate(
@@ -238,7 +222,7 @@ class LLMConsolidationStrategy:
         sorted_entries = sorted(entries, key=attrgetter("category"))
         for category, group_iter in groupby(sorted_entries, key=attrgetter("category")):
             group = list(group_iter)
-            if len(group) >= self._group_threshold:
+            if len(group) >= self._config.group_threshold:
                 groups.append((category, group))
         return groups
 
@@ -337,10 +321,10 @@ class LLMConsolidationStrategy:
         trajectory information included in the synthesis prompt) and
         are logged at WARNING so operators can observe the
         degradation.  System errors (``MemoryError``, ``RecursionError``)
-        propagate.  Returns at most ``_MAX_TRAJECTORY_CONTEXT_ENTRIES``
+        propagate.  Returns at most ``config.max_trajectory_context_entries``
         entries.
         """
-        if not self._include_distillation_context:
+        if not self._config.include_distillation_context:
             return ()
         try:
             # Backend.retrieve is relevance-ordered by contract; sort
@@ -349,7 +333,7 @@ class LLMConsolidationStrategy:
             # trajectory context regardless of backend ordering.
             query = MemoryQuery(
                 tags=(_DISTILLATION_TAG,),
-                limit=_MAX_TRAJECTORY_CONTEXT_ENTRIES * 4,
+                limit=self._config.max_trajectory_context_entries * 4,
             )
             raw = await self._backend.retrieve(agent_id, query)
             by_recency = sorted(
@@ -357,7 +341,7 @@ class LLMConsolidationStrategy:
                 key=attrgetter("created_at"),
                 reverse=True,
             )
-            return tuple(by_recency[:_MAX_TRAJECTORY_CONTEXT_ENTRIES])
+            return tuple(by_recency[: self._config.max_trajectory_context_entries])
         except MemoryError, RecursionError:
             logger.error(
                 LLM_STRATEGY_ERROR,
@@ -366,6 +350,8 @@ class LLMConsolidationStrategy:
                 error_type="system",
                 exc_info=True,
             )
+            raise
+        except asyncio.CancelledError:
             raise
         except Exception as exc:
             logger.warning(
@@ -406,7 +392,7 @@ class LLMConsolidationStrategy:
             Tuple of (summary_id, removed_ids).
         """
         _, to_remove = self._select_entries(group)
-        synthesized, used_llm, summarized = await self._synthesize(
+        synthesized, outcome, summarized = await self._synthesize(
             to_remove,
             agent_id=agent_id,
             category=category,
@@ -416,9 +402,9 @@ class LLMConsolidationStrategy:
             synthesized,
             category=category,
             agent_id=agent_id,
-            used_llm=used_llm,
+            outcome=outcome,
         )
-        if used_llm:
+        if outcome == SynthesisOutcome.LLM_SYNTHESIZED:
             logger.info(
                 LLM_STRATEGY_SYNTHESIZED,
                 agent_id=agent_id,
@@ -441,10 +427,14 @@ class LLMConsolidationStrategy:
         *,
         category: MemoryCategory,
         agent_id: NotBlankStr,
-        used_llm: bool,
+        outcome: SynthesisOutcome,
     ) -> NotBlankStr:
         """Store the synthesized summary and return the new entry id."""
-        tag = _LLM_SYNTHESIZED_TAG if used_llm else _CONCAT_FALLBACK_TAG
+        tag = (
+            _LLM_SYNTHESIZED_TAG
+            if outcome == SynthesisOutcome.LLM_SYNTHESIZED
+            else _CONCAT_FALLBACK_TAG
+        )
         store_request = MemoryStoreRequest(
             category=category,
             content=content,
@@ -457,7 +447,7 @@ class LLMConsolidationStrategy:
 
     async def _delete_consolidated(
         self,
-        to_remove: list[MemoryEntry],
+        to_remove: tuple[MemoryEntry, ...],
         *,
         agent_id: NotBlankStr,
         category: MemoryCategory,
@@ -483,6 +473,8 @@ class LLMConsolidationStrategy:
                     exc_info=True,
                 )
                 raise
+            except asyncio.CancelledError:
+                raise
             except Exception as exc:
                 logger.warning(
                     LLM_STRATEGY_ERROR,
@@ -500,35 +492,35 @@ class LLMConsolidationStrategy:
 
     async def _synthesize(
         self,
-        entries: list[MemoryEntry],
+        entries: tuple[MemoryEntry, ...],
         *,
         agent_id: NotBlankStr,
         category: MemoryCategory,
         trajectory_context: tuple[MemoryEntry, ...],
-    ) -> tuple[str, bool, list[MemoryEntry]]:
+    ) -> tuple[str, SynthesisOutcome, tuple[MemoryEntry, ...]]:
         """Synthesize multiple entries into a single summary via LLM.
 
-        The per-entry content is truncated to ``_MAX_ENTRY_INPUT_CHARS``
+        The per-entry content is truncated to ``config.max_entry_input_chars``
         before being sent to the LLM, and the total concatenated user
-        content is capped at ``_MAX_TOTAL_USER_CONTENT_CHARS`` to guard
+        content is capped at ``config.max_total_user_content_chars`` to guard
         against oversized groups that would blow out context windows or
         cost budgets.  When ``trajectory_context`` is non-empty,
         distillation entry trajectories are included in the system
         prompt.
 
-        Returns a ``(summary, used_llm, summarized_entries)`` triple:
+        Returns a ``(summary, outcome, summarized_entries)`` triple:
 
         - ``summary`` is the text to store on the backend.
-        - ``used_llm`` is ``True`` only when the LLM returned non-empty
-          content; any fallback path returns ``False``.
+        - ``outcome`` indicates whether the LLM produced the summary
+          or a concatenation fallback was used.
         - ``summarized_entries`` is the subset of ``entries`` that was
           actually represented in the summary.  When the user prompt is
-          truncated at ``_MAX_TOTAL_USER_CONTENT_CHARS``, dropped
+          truncated at ``config.max_total_user_content_chars``, dropped
           entries are NOT in this list and the caller MUST NOT delete
           them (they remain on the backend for the next consolidation
           pass).
 
-        Fallback paths (return ``(fallback, False, entries)``):
+        Fallback paths (return with ``CONCAT_FALLBACK``):
 
         - ``RetryExhaustedError`` (all retries exhausted)
         - Retryable ``ProviderError`` surfaced directly (tests,
@@ -548,7 +540,7 @@ class LLMConsolidationStrategy:
                 context (may be empty).
 
         Returns:
-            ``(summary, used_llm, summarized_entries)`` triple.
+            ``(summary, outcome, summarized_entries)`` triple.
         """
         user_content, summarized = self._build_user_prompt(entries, agent_id, category)
         system_prompt = self._build_system_prompt(trajectory_context)
@@ -560,48 +552,49 @@ class LLMConsolidationStrategy:
             entry_count=len(summarized),
         )
         if response_content is not None:
-            return response_content, True, summarized
+            return response_content, SynthesisOutcome.LLM_SYNTHESIZED, summarized
         # Fallback path: concatenate every input entry (no truncation
         # tradeoffs on the concat path -- a terse per-entry summary is
         # safe even for oversized groups), and allow the caller to
         # delete all of them since each one is represented in the
         # concatenation summary.
-        return self._fallback_summary(entries), False, list(entries)
+        fallback = self._fallback_summary(entries)
+        return fallback, SynthesisOutcome.CONCAT_FALLBACK, entries
 
     def _build_user_prompt(
         self,
-        entries: list[MemoryEntry],
+        entries: tuple[MemoryEntry, ...],
         agent_id: NotBlankStr,
         category: MemoryCategory,
-    ) -> tuple[str, list[MemoryEntry]]:
+    ) -> tuple[str, tuple[MemoryEntry, ...]]:
         """Build the user prompt with delimiter-escaped entry content.
 
         Each entry is wrapped in ``<entry>...</entry>`` so the model can
         distinguish data from instructions, and internal occurrences of
         the tags are escaped so untrusted memory content cannot close
         the delimiter.  The total concatenated length is capped at
-        ``_MAX_TOTAL_USER_CONTENT_CHARS``; if the cap is reached,
+        ``config.max_total_user_content_chars``; if the cap is reached,
         remaining entries are dropped, the truncation is logged, and
-        they are omitted from the returned ``included`` list so the
+        they are omitted from the returned ``included`` tuple so the
         caller can avoid deleting memories that were never summarized.
 
         Returns:
             ``(prompt_text, included_entries)`` -- the second element
-            is a list of the entries that actually made it into the
-            prompt, in prompt order.
+            contains the entries that actually made it into the prompt,
+            in prompt order.
         """
         parts: list[str] = []
         included: list[MemoryEntry] = []
         total_chars = 0
         for entry in entries:
-            snippet = entry.content[:_MAX_ENTRY_INPUT_CHARS]
+            snippet = entry.content[: self._config.max_entry_input_chars]
             # Escape embedded delimiters so untrusted content cannot
             # close the <entry> tag and inject adversarial structure.
             snippet = snippet.replace("<entry>", "&lt;entry&gt;").replace(
                 "</entry>", "&lt;/entry&gt;"
             )
             piece = f'<entry category="{entry.category.value}">{snippet}</entry>'
-            if total_chars + len(piece) > _MAX_TOTAL_USER_CONTENT_CHARS:
+            if total_chars + len(piece) > self._config.max_total_user_content_chars:
                 break
             parts.append(piece)
             included.append(entry)
@@ -617,7 +610,7 @@ class LLMConsolidationStrategy:
                 dropped_entries=dropped,
                 total_chars=total_chars,
             )
-        return "\n".join(parts), included
+        return "\n".join(parts), tuple(included)
 
     async def _call_llm(
         self,
@@ -674,6 +667,8 @@ class LLMConsolidationStrategy:
                 category=category,
                 entry_count=entry_count,
             )
+        except asyncio.CancelledError:
+            raise
         except Exception as exc:
             logger.warning(
                 LLM_STRATEGY_FALLBACK,
@@ -752,14 +747,14 @@ class LLMConsolidationStrategy:
             return _BASE_SYSTEM_PROMPT
         context_lines = ["\nRecent trajectory context (for disambiguation only):"]
         for entry in trajectory_context:
-            snippet = entry.content[:_MAX_TRAJECTORY_CHARS_PER_ENTRY]
+            snippet = entry.content[: self._config.max_trajectory_chars_per_entry]
             snippet = snippet.replace("<trajectory>", "&lt;trajectory&gt;").replace(
                 "</trajectory>", "&lt;/trajectory&gt;"
             )
             context_lines.append(f"- <trajectory>{snippet}</trajectory>")
         return _BASE_SYSTEM_PROMPT + "\n" + "\n".join(context_lines)
 
-    def _fallback_summary(self, entries: list[MemoryEntry]) -> str:
+    def _fallback_summary(self, entries: tuple[MemoryEntry, ...]) -> str:
         """Build a simple concatenation summary as fallback.
 
         Returns an empty string when ``entries`` is empty so that the
@@ -771,8 +766,8 @@ class LLMConsolidationStrategy:
         lines = [f"Consolidated {entries[0].category.value} memories:"]
         for entry in entries:
             truncated = (
-                entry.content[:_FALLBACK_TRUNCATE_LENGTH] + "..."
-                if len(entry.content) > _FALLBACK_TRUNCATE_LENGTH
+                entry.content[: self._config.fallback_truncate_length] + "..."
+                if len(entry.content) > self._config.fallback_truncate_length
                 else entry.content
             )
             lines.append(f"- {truncated}")
@@ -781,7 +776,7 @@ class LLMConsolidationStrategy:
     def _select_entries(
         self,
         group: list[MemoryEntry],
-    ) -> tuple[MemoryEntry, list[MemoryEntry]]:
+    ) -> tuple[MemoryEntry, tuple[MemoryEntry, ...]]:
         """Select the best entry to keep and the rest to remove.
 
         Entries with ``None`` relevance scores are treated as ``0.0``
@@ -801,5 +796,5 @@ class LLMConsolidationStrategy:
                 e.created_at,
             ),
         )
-        to_remove = [e for e in group if e.id != best.id]
+        to_remove = tuple(e for e in group if e.id != best.id)
         return best, to_remove

@@ -14,6 +14,7 @@ const callCategoryArb = fc.oneof(
   fc.constant('productive' as const),
   fc.constant('coordination' as const),
   fc.constant('system' as const),
+  fc.constant('embedding' as const),
   fc.constant(null),
 )
 
@@ -98,6 +99,7 @@ describe('computeCategoryBreakdown properties', () => {
             ratio.productive.percent +
             ratio.coordination.percent +
             ratio.system.percent +
+            ratio.embedding.percent +
             ratio.uncategorized.percent
           const totalCost = records.reduce((acc, r) => acc + r.cost_usd, 0)
           if (records.length === 0 || totalCost === 0) {

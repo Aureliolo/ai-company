@@ -13,8 +13,8 @@ from synthorg.core.enums import MemoryCategory
 from synthorg.memory.models import MemoryEntry, MemoryMetadata
 from synthorg.memory.ranking import (
     ScoredMemory,
-    _bigram_jaccard,
     apply_diversity_penalty,
+    bigram_jaccard,
 )
 
 
@@ -51,36 +51,36 @@ def _make_scored(
     )
 
 
-# ── _bigram_jaccard ────────────────────────────────────────────────
+# ── bigram_jaccard ────────────────────────────────────────────────
 
 
 @pytest.mark.unit
 class TestBigramJaccard:
     def test_identical_strings_return_one(self) -> None:
-        assert _bigram_jaccard("foo bar baz", "foo bar baz") == 1.0
+        assert bigram_jaccard("foo bar baz", "foo bar baz") == 1.0
 
     def test_completely_different_strings_return_zero(self) -> None:
-        assert _bigram_jaccard("alpha beta gamma", "delta epsilon zeta") == 0.0
+        assert bigram_jaccard("alpha beta gamma", "delta epsilon zeta") == 0.0
 
     def test_empty_string_returns_zero(self) -> None:
-        assert _bigram_jaccard("", "hello world") == 0.0
-        assert _bigram_jaccard("hello world", "") == 0.0
-        assert _bigram_jaccard("", "") == 0.0
+        assert bigram_jaccard("", "hello world") == 0.0
+        assert bigram_jaccard("hello world", "") == 0.0
+        assert bigram_jaccard("", "") == 0.0
 
     def test_single_word_returns_zero(self) -> None:
         """No bigrams possible with a single word."""
-        assert _bigram_jaccard("hello", "hello") == 0.0
-        assert _bigram_jaccard("hello", "world") == 0.0
+        assert bigram_jaccard("hello", "hello") == 0.0
+        assert bigram_jaccard("hello", "world") == 0.0
 
     def test_partial_overlap(self) -> None:
         # "a b c" bigrams: {(a,b), (b,c)}
         # "a b d" bigrams: {(a,b), (b,d)}
         # intersection: {(a,b)}, union: {(a,b), (b,c), (b,d)}
-        score = _bigram_jaccard("a b c", "a b d")
+        score = bigram_jaccard("a b c", "a b d")
         assert score == pytest.approx(1.0 / 3.0)
 
     def test_case_insensitive(self) -> None:
-        assert _bigram_jaccard("Hello World", "hello world") == 1.0
+        assert bigram_jaccard("Hello World", "hello world") == 1.0
 
 
 # ── apply_diversity_penalty ────────────────────────────────────────

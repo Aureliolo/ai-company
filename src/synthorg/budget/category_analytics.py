@@ -8,7 +8,7 @@ compute orchestration overhead ratios from cost records tagged with
 import math
 from typing import TYPE_CHECKING, Self
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
 
 from synthorg.budget.call_category import (
     LLMCallCategory,
@@ -41,6 +41,9 @@ class CategoryBreakdown(BaseModel):
         system_cost: Total cost for system calls.
         system_tokens: Total tokens for system calls.
         system_count: Number of system calls.
+        embedding_cost: Total cost for embedding calls.
+        embedding_tokens: Total tokens for embedding calls (input only).
+        embedding_count: Number of embedding calls.
         uncategorized_cost: Total cost for uncategorized calls.
         uncategorized_tokens: Total tokens for uncategorized calls.
         uncategorized_count: Number of uncategorized calls.
@@ -93,6 +96,21 @@ class CategoryBreakdown(BaseModel):
         ge=0,
         description="System call count",
     )
+    embedding_cost: float = Field(
+        default=0.0,
+        ge=0.0,
+        description="Embedding call cost",
+    )
+    embedding_tokens: int = Field(
+        default=0,
+        ge=0,
+        description="Embedding call tokens (input only)",
+    )
+    embedding_count: int = Field(
+        default=0,
+        ge=0,
+        description="Embedding call count",
+    )
     uncategorized_cost: float = Field(
         default=0.0,
         ge=0.0,
@@ -109,6 +127,42 @@ class CategoryBreakdown(BaseModel):
         description="Uncategorized call count",
     )
 
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def total_cost(self) -> float:
+        """Sum of all category costs."""
+        return (
+            self.productive_cost
+            + self.coordination_cost
+            + self.system_cost
+            + self.embedding_cost
+            + self.uncategorized_cost
+        )
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def total_tokens(self) -> int:
+        """Sum of all category tokens."""
+        return (
+            self.productive_tokens
+            + self.coordination_tokens
+            + self.system_tokens
+            + self.embedding_tokens
+            + self.uncategorized_tokens
+        )
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def total_count(self) -> int:
+        """Sum of all category call counts."""
+        return (
+            self.productive_count
+            + self.coordination_count
+            + self.system_count
+            + self.embedding_count
+            + self.uncategorized_count
+        )
+
 
 class OrchestrationRatio(BaseModel):
     """Orchestration overhead ratio and alert level.
@@ -120,7 +174,7 @@ class OrchestrationRatio(BaseModel):
         ratio: Orchestration ratio (0.0-1.0).
         alert_level: Alert level based on ratio thresholds.
         total_tokens: Total tokens across all categories (includes
-            uncategorized tokens in the denominator).
+            embedding and uncategorized tokens in the denominator).
         productive_tokens: Productive category tokens.
         coordination_tokens: Coordination category tokens.
         system_tokens: System category tokens.
@@ -182,6 +236,7 @@ def build_category_breakdown(
     p = buckets[LLMCallCategory.PRODUCTIVE]
     c = buckets[LLMCallCategory.COORDINATION]
     s = buckets[LLMCallCategory.SYSTEM]
+    e = buckets[LLMCallCategory.EMBEDDING]
     u = buckets[None]
 
     return CategoryBreakdown(
@@ -194,6 +249,9 @@ def build_category_breakdown(
         system_cost=_round(s[0]),
         system_tokens=s[1],
         system_count=s[2],
+        embedding_cost=_round(e[0]),
+        embedding_tokens=e[1],
+        embedding_count=e[2],
         uncategorized_cost=_round(u[0]),
         uncategorized_tokens=u[1],
         uncategorized_count=u[2],
@@ -218,12 +276,7 @@ def compute_orchestration_ratio(
     if thresholds is None:
         thresholds = OrchestrationAlertThresholds()
 
-    total = (
-        breakdown.productive_tokens
-        + breakdown.coordination_tokens
-        + breakdown.system_tokens
-        + breakdown.uncategorized_tokens
-    )
+    total = breakdown.total_tokens
 
     if total == 0:
         return OrchestrationRatio(

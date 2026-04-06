@@ -8,8 +8,9 @@ import pytest
 from synthorg.core.enums import MemoryCategory
 from synthorg.memory.injection import InjectionStrategy, MemoryInjectionStrategy
 from synthorg.memory.models import MemoryEntry, MemoryMetadata
+from synthorg.memory.protocol import MemoryBackend
 from synthorg.memory.retrieval_config import MemoryRetrievalConfig
-from synthorg.memory.tool_retriever import ToolBasedInjectionStrategy, _merge_results
+from synthorg.memory.tool_retriever import ToolBasedInjectionStrategy, merge_results
 
 
 def _make_entry(
@@ -33,7 +34,7 @@ def _make_entry(
 def _make_backend(
     entries: tuple[MemoryEntry, ...] = (),
 ) -> AsyncMock:
-    backend = AsyncMock()
+    backend = AsyncMock(spec=MemoryBackend)
     backend.retrieve = AsyncMock(return_value=entries)
     backend.get = AsyncMock(return_value=entries[0] if entries else None)
     return backend
@@ -500,8 +501,8 @@ class TestSearchWithReformulation:
 
         # Initial retrieve + 2 rounds = 3 retrieves
         assert backend.retrieve.call_count == 3
-        # 2 sufficiency checks (one per round)
-        assert sufficiency.check_sufficiency.call_count == 2
+        # 2 sufficiency checks (one per round) + 1 final check = 3
+        assert sufficiency.check_sufficiency.call_count == 3
         # 2 reformulations
         assert reformulator.reformulate.call_count == 2
 
@@ -678,12 +679,12 @@ class TestInvalidCategoryHandling:
 @pytest.mark.unit
 class TestMergeResults:
     def test_empty_inputs(self) -> None:
-        assert _merge_results((), ()) == ()
+        assert merge_results((), ()) == ()
 
     def test_disjoint_entries_concatenated(self) -> None:
         a = _make_entry(entry_id="a")
         b = _make_entry(entry_id="b")
-        result = _merge_results((a,), (b,))
+        result = merge_results((a,), (b,))
         assert len(result) == 2
         ids = [e.id for e in result]
         assert ids == ["a", "b"]
@@ -709,7 +710,7 @@ class TestMergeResults:
     ) -> None:
         existing = _make_entry(entry_id="dup", relevance_score=existing_rel)
         new = _make_entry(entry_id="dup", relevance_score=new_rel)
-        result = _merge_results((existing,), (new,))
+        result = merge_results((existing,), (new,))
         assert len(result) == 1
         assert result[0].relevance_score == expected_rel
 
@@ -722,7 +723,7 @@ class TestMergeResults:
         """
         low_first = _make_entry(entry_id="low", relevance_score=0.2)
         high_later = _make_entry(entry_id="high", relevance_score=0.9)
-        result = _merge_results((low_first,), (high_later,))
+        result = merge_results((low_first,), (high_later,))
         ids = [e.id for e in result]
         assert ids == ["high", "low"], (
             "merge must sort by relevance so later unseen high-relevance "

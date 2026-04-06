@@ -411,6 +411,7 @@ models in `memory/consolidation/config.py`:
 | `RetentionConfig` | Company-level per-category `RetentionRule` tuples (category + retention_days), optional `default_retention_days` fallback; agents can override via `MemoryConfig.retention_overrides` |
 | `ArchivalConfig` | Enables/disables archival of consolidated entries to `ArchivalStore`, nested `DualModeConfig` |
 | `DualModeConfig` | Density-aware dual-mode archival: threshold, summarization model, anchor/fact limits |
+| `LLMConsolidationConfig` | Tuning knobs for `LLMConsolidationStrategy`: group threshold, temperature, max summary tokens, distillation context toggle, prompt caps (`max_entry_input_chars`, `max_total_user_content_chars`) |
 
 #### Consolidation Strategies
 
@@ -448,7 +449,7 @@ the execution trajectory as an EPISODIC memory entry tagged `"distillation"`.
 | `agent_id`, `task_id` | Caller context |
 | `trajectory_summary` | Turn count, total tokens, unique tools, total tool calls |
 | `outcome` | `TerminationReason` + optional error message |
-| `memory_tool_invocations` | Names of `search_memory` / `recall_memory` invocations from `TurnRecord.tool_calls_made` (NOT memory entry IDs -- raw tool names, counted per invocation) |
+| `memory_tool_invocations` | `MemoryToolName` enum values (`SEARCH_MEMORY`, `RECALL_MEMORY`) extracted from `TurnRecord.tool_calls_made` (NOT memory entry IDs -- typed enum members, counted per invocation) |
 | `created_at` | Capture timestamp |
 
 `AgentEngine` wires this into `_post_execution_pipeline` when
@@ -815,7 +816,10 @@ the agent during execution.
     diversity.  The default similarity function is word-bigram Jaccard; callers
     can inject a custom `similarity_fn` (e.g., cosine on embeddings) for
     domain-specific redundancy measures.  Bigram sets are pre-computed once per
-    entry to keep complexity at `O(n**2)` rather than `O(n**2 * k)`.  This
+    entry to keep complexity at `O(n**2)` rather than `O(n**2 * k)`.  When
+    diversity is enabled, the backend over-fetches by a configurable
+    `candidate_pool_multiplier` (default 3x, range 1--10) so MMR can promote
+    diverse candidates that would otherwise fall below the top-K cutoff.  This
     feature applies only to `ContextInjectionStrategy` -- a `model_validator`
     warns when `diversity_penalty_enabled=True` is combined with a strategy
     that ignores it (e.g. `TOOL_BASED`).

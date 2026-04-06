@@ -148,14 +148,6 @@ class ContextInjectionStrategy:
         self._estimator = (
             token_estimator if token_estimator is not None else DefaultTokenEstimator()
         )
-        logger.debug(
-            MEMORY_RETRIEVAL_START,
-            strategy="context_injection",
-            backend=backend.backend_name
-            if hasattr(backend, "backend_name")
-            else type(backend).__qualname__,
-            has_shared_store=shared_store is not None,
-        )
 
     async def prepare_messages(
         self,
@@ -256,10 +248,11 @@ class ContextInjectionStrategy:
         categories: frozenset[MemoryCategory] | None,
     ) -> tuple[ChatMessage, ...]:
         """Execute the retrieval → rank → filter → diversity → format pipeline."""
+        pool_limit = self._compute_pool_limit()
         query = MemoryQuery(
             text=query_text,
             categories=categories,
-            limit=self._config.max_memories,
+            limit=pool_limit,
         )
         if self._config.fusion_strategy == FusionStrategy.RRF:
             ranked = await self._execute_rrf_pipeline(agent_id=agent_id, query=query)
@@ -280,6 +273,7 @@ class ContextInjectionStrategy:
                 ranked,
                 diversity_lambda=self._config.diversity_lambda,
             )
+            ranked = ranked[: self._config.max_memories]
         result = format_memory_context(
             ranked,
             estimator=self._estimator,
@@ -294,6 +288,17 @@ class ContextInjectionStrategy:
             fusion_strategy=self._config.fusion_strategy.value,
         )
         return result
+
+    def _compute_pool_limit(self) -> int:
+        """Compute the backend query limit for the candidate pool.
+
+        When diversity penalty is enabled, over-fetches by the
+        ``candidate_pool_multiplier`` so MMR can promote diverse
+        candidates that would otherwise fall below the top-K cutoff.
+        """
+        if self._config.diversity_penalty_enabled:
+            return self._config.max_memories * self._config.candidate_pool_multiplier
+        return self._config.max_memories
 
     def _filter_or_fail_closed(
         self,

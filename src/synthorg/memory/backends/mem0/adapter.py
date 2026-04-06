@@ -9,8 +9,11 @@ All Mem0 SDK calls run in ``asyncio.to_thread()``.
 
 import asyncio
 import builtins
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
+from synthorg.budget.call_category import LLMCallCategory
+from synthorg.budget.cost_record import CostRecord
 from synthorg.core.enums import MemoryCategory
 from synthorg.core.types import NotBlankStr
 from synthorg.memory.backends.mem0.config import (
@@ -49,6 +52,11 @@ from synthorg.memory.errors import (
 )
 from synthorg.memory.sparse import BM25Tokenizer
 from synthorg.observability import get_logger
+from synthorg.observability.events.budget import (
+    BUDGET_EMBEDDING_COST_FAILED,
+    BUDGET_EMBEDDING_COST_RECORDED,
+    BUDGET_EMBEDDING_MODEL_UNPRICED,
+)
 from synthorg.observability.events.memory import (
     MEMORY_BACKEND_AGENT_ID_REJECTED,
     MEMORY_BACKEND_CONFIG_INVALID,
@@ -75,6 +83,7 @@ from synthorg.observability.events.memory import (
 if TYPE_CHECKING:
     from typing import Protocol
 
+    from synthorg.budget.tracker import CostTracker
     from synthorg.memory.models import (
         MemoryEntry,
         MemoryQuery,
@@ -110,6 +119,7 @@ class Mem0MemoryBackend:
         *,
         mem0_config: Mem0BackendConfig,
         max_memories_per_agent: int = 10_000,
+        cost_tracker: CostTracker | None = None,
     ) -> None:
         if max_memories_per_agent < 1:
             msg = f"max_memories_per_agent must be >= 1, got {max_memories_per_agent}"
@@ -123,6 +133,7 @@ class Mem0MemoryBackend:
             raise ValueError(msg)
         self._mem0_config = mem0_config
         self._max_memories_per_agent = max_memories_per_agent
+        self._cost_tracker = cost_tracker
         self._client: Mem0Client | None = None
         self._connected = False
         self._connect_lock = asyncio.Lock()
@@ -130,6 +141,91 @@ class Mem0MemoryBackend:
         self._sparse_encoder: BM25Tokenizer | None = (
             BM25Tokenizer() if mem0_config.sparse_search_enabled else None
         )
+
+    # ── Embedding cost tracking ────────────────────────────────────
+
+    async def _record_embedding_cost(
+        self,
+        *,
+        agent_id: str,
+        task_id: str,
+        content_length: int,
+        operation: str,
+    ) -> None:
+        """Record an embedding cost estimate if tracking is enabled.
+
+        Best-effort: non-system failures are logged but never
+        propagate.  The ``task_id`` is a synthetic sentinel
+        (``"memory-store"`` / ``"memory-retrieve"``) because the
+        backend protocol does not carry task context.
+        """
+        cost_cfg = self._mem0_config.embedding_cost
+        if not cost_cfg.enabled or self._cost_tracker is None:
+            return
+        cpt = cost_cfg.default_chars_per_token
+        input_tokens = max(1, (content_length + cpt - 1) // cpt)
+        model = str(self._mem0_config.embedder.model)
+        cost_per_1k = cost_cfg.model_pricing.get(model, 0.0)
+        if cost_per_1k == 0.0 and model not in cost_cfg.model_pricing:
+            logger.debug(
+                BUDGET_EMBEDDING_MODEL_UNPRICED,
+                agent_id=agent_id,
+                operation=operation,
+                model=model,
+            )
+        cost_usd = input_tokens * cost_per_1k / 1000.0
+        record = CostRecord(
+            agent_id=agent_id,
+            task_id=task_id,
+            provider=str(self._mem0_config.embedder.provider),
+            model=model,
+            input_tokens=input_tokens,
+            output_tokens=0,
+            cost_usd=round(cost_usd, 8),
+            timestamp=datetime.now(UTC),
+            call_category=LLMCallCategory.EMBEDDING,
+        )
+        await self._record_cost(record, agent_id, operation, model)
+
+    async def _record_cost(
+        self,
+        record: CostRecord,
+        agent_id: str,
+        operation: str,
+        model: str,
+    ) -> None:
+        """Persist a CostRecord via the tracker (best-effort)."""
+        try:
+            await self._cost_tracker.record(record)  # type: ignore[union-attr]
+            logger.debug(
+                BUDGET_EMBEDDING_COST_RECORDED,
+                agent_id=agent_id,
+                operation=operation,
+                input_tokens=record.input_tokens,
+                cost_usd=record.cost_usd,
+                model=model,
+            )
+        except builtins.MemoryError, RecursionError:
+            logger.error(
+                BUDGET_EMBEDDING_COST_FAILED,
+                agent_id=agent_id,
+                operation=operation,
+                error_type="system",
+                model=model,
+                exc_info=True,
+            )
+            raise
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            logger.warning(
+                BUDGET_EMBEDDING_COST_FAILED,
+                agent_id=agent_id,
+                operation=operation,
+                error=str(exc),
+                error_type=type(exc).__name__,
+                reason="cost_tracking_failed",
+            )
 
     # ── Lifecycle ─────────────────────────────────────────────────
 
@@ -197,8 +293,19 @@ class Mem0MemoryBackend:
                     )
                 except builtins.MemoryError, RecursionError:
                     raise
-                except Exception:
-                    # Non-fatal: dense search still works.
+                except asyncio.CancelledError:
+                    self._client = None
+                    self._connected = False
+                    raise
+                except Exception as exc:
+                    logger.warning(
+                        MEMORY_BACKEND_CONNECTION_FAILED,
+                        backend="mem0",
+                        operation="sparse_init",
+                        error=str(exc),
+                        error_type=type(exc).__name__,
+                        reason="sparse_init_failed_falling_back_to_dense",
+                    )
                     qdrant = None
                 self._qdrant_client = qdrant
             logger.info(MEMORY_BACKEND_CONNECTED, backend="mem0")
@@ -451,6 +558,12 @@ class Mem0MemoryBackend:
             raise MemoryStoreError(msg) from exc
         else:
             await self._try_sparse_upsert(agent_id, memory_id, request.content)
+            await self._record_embedding_cost(
+                agent_id=str(agent_id),
+                task_id="memory-store",
+                content_length=len(request.content),
+                operation="store",
+            )
             logger.info(
                 MEMORY_ENTRY_STORED,
                 agent_id=agent_id,
@@ -519,6 +632,13 @@ class Mem0MemoryBackend:
             msg = f"Failed to retrieve memories: {exc}"
             raise MemoryRetrievalError(msg) from exc
         else:
+            if query.text is not None:
+                await self._record_embedding_cost(
+                    agent_id=str(agent_id),
+                    task_id="memory-retrieve",
+                    content_length=len(query.text),
+                    operation="retrieve",
+                )
             logger.info(
                 MEMORY_ENTRY_RETRIEVED,
                 agent_id=agent_id,

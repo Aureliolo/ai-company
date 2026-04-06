@@ -168,6 +168,71 @@ class Mem0EmbedderConfig(BaseModel):
     )
 
 
+class EmbeddingCostConfig(BaseModel):
+    """Configuration for embedding cost tracking.
+
+    When ``enabled`` is ``True``, the Mem0 adapter records a
+    ``CostRecord`` with ``call_category=EMBEDDING`` after each
+    ``store()`` and ``retrieve()`` call.  Cost is estimated from
+    text length using the ``default_chars_per_token`` heuristic
+    and the per-model pricing in ``model_pricing``.
+
+    .. note::
+
+        Currently only settable programmatically via
+        ``Mem0BackendConfig(embedding_cost=EmbeddingCostConfig(...))``.
+        The YAML company config path does not yet surface this field.
+
+    Attributes:
+        enabled: Whether embedding cost tracking is active.
+        model_pricing: Mapping of model name to cost per 1K input
+            tokens (USD).  When the active model is not in this map,
+            cost is recorded as 0.0 (free/local model).
+        default_chars_per_token: Heuristic for converting character
+            count to token count.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+
+    enabled: bool = Field(
+        default=False,
+        description="Whether embedding cost tracking is active",
+    )
+    model_pricing: dict[NotBlankStr, float] = Field(
+        default_factory=dict,
+        description=(
+            "Model name to cost per 1K input tokens (USD). "
+            "Missing models are treated as free."
+        ),
+    )
+    default_chars_per_token: int = Field(
+        default=4,
+        ge=1,
+        le=20,
+        description="Characters per token heuristic for estimation",
+    )
+
+    @model_validator(mode="after")
+    def _validate_pricing_non_negative(self) -> Self:
+        """Reject negative cost-per-1K values in model_pricing."""
+        for model_name, cost in self.model_pricing.items():
+            if cost < 0.0:
+                msg = (
+                    f"model_pricing[{model_name!r}] = {cost} "
+                    f"is negative -- cost must be >= 0.0"
+                )
+                logger.warning(
+                    MEMORY_BACKEND_CONFIG_INVALID,
+                    model="EmbeddingCostConfig",
+                    field="model_pricing",
+                    entry=model_name,
+                    value=cost,
+                    reason=msg,
+                )
+                raise ValueError(msg)
+        return self
+
+
 class Mem0BackendConfig(BaseModel):
     """Mem0-specific backend configuration.
 
@@ -197,6 +262,10 @@ class Mem0BackendConfig(BaseModel):
             "When True, a sparse vector field is added to the Qdrant "
             "collection and sparse vectors are upserted on store."
         ),
+    )
+    embedding_cost: EmbeddingCostConfig = Field(
+        default_factory=EmbeddingCostConfig,
+        description="Embedding cost tracking configuration",
     )
 
     @model_validator(mode="after")

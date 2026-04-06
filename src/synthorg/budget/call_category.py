@@ -24,6 +24,9 @@ class LLMCallCategory(StrEnum):
     SYSTEM = "system"
     """Framework overhead -- planning, re-planning, self-evaluation."""
 
+    EMBEDDING = "embedding"
+    """Embedding model calls -- memory store/retrieve vectorization."""
+
 
 class OrchestrationAlertLevel(StrEnum):
     """Alert levels for orchestration overhead ratio.

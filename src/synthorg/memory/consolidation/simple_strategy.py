@@ -133,7 +133,7 @@ class SimpleConsolidationStrategy:
     def _select_entries(
         self,
         group: list[MemoryEntry],
-    ) -> tuple[MemoryEntry, list[MemoryEntry]]:
+    ) -> tuple[MemoryEntry, tuple[MemoryEntry, ...]]:
         """Select the best entry to keep and the rest to remove.
 
         Entries with ``None`` relevance scores are treated as ``0.0``
@@ -153,13 +153,13 @@ class SimpleConsolidationStrategy:
                 e.created_at,
             ),
         )
-        to_remove = [e for e in group if e.id != best.id]
+        to_remove = tuple(e for e in group if e.id != best.id)
         return best, to_remove
 
     def _build_summary(
         self,
         category: MemoryCategory,
-        entries: list[MemoryEntry],
+        entries: tuple[MemoryEntry, ...],
     ) -> str:
         """Build a summary text from removed entries.
 

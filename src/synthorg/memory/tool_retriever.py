@@ -5,6 +5,7 @@ that agents invoke on-demand during execution.  Implements the
 ``MemoryInjectionStrategy`` protocol with tool-based retrieval.
 """
 
+import asyncio
 import builtins
 import copy
 from types import MappingProxyType
@@ -18,6 +19,7 @@ from synthorg.observability import get_logger
 from synthorg.observability.events.memory import (
     MEMORY_REFORMULATION_EXHAUSTED,
     MEMORY_REFORMULATION_FAILED,
+    MEMORY_REFORMULATION_FINAL_CHECK,
     MEMORY_REFORMULATION_ROUND,
     MEMORY_REFORMULATION_SUFFICIENT,
     MEMORY_RETRIEVAL_COMPLETE,
@@ -179,7 +181,7 @@ def _parse_categories(
     return parsed, tuple(rejected)
 
 
-def _merge_results(
+def merge_results(
     existing: tuple[MemoryEntry, ...],
     new: tuple[MemoryEntry, ...],
 ) -> tuple[MemoryEntry, ...]:
@@ -538,6 +540,8 @@ class ToolBasedInjectionStrategy:
                 exc_info=True,
             )
             raise
+        except asyncio.CancelledError:
+            raise
         except DomainMemoryError as exc:
             logger.warning(
                 MEMORY_RETRIEVAL_DEGRADED,
@@ -659,12 +663,22 @@ class ToolBasedInjectionStrategy:
             if step is None:
                 return _truncate_entries(entries, limit)
             entries, current_query = step
+        # Run a final sufficiency check so operators can distinguish
+        # "results were good enough" from "budget exhausted".
+        final_sufficient = await self._check_sufficiency(
+            sufficiency_checker,
+            current_query,
+            entries,
+            agent_id=agent_id,
+            round_idx=max_rounds,
+        )
         logger.info(
-            MEMORY_REFORMULATION_EXHAUSTED,
+            MEMORY_REFORMULATION_FINAL_CHECK,
             agent_id=agent_id,
             rounds_exhausted=max_rounds,
             result_count=len(entries),
-            reason="max_rounds_reached",
+            sufficient=final_sufficient,
+            sufficiency_check_failed=final_sufficient is None,
         )
         return _truncate_entries(entries, limit)
 
@@ -740,7 +754,7 @@ class ToolBasedInjectionStrategy:
         )
         if new_entries is None:
             return None
-        return _merge_results(entries, new_entries), new_query
+        return merge_results(entries, new_entries), new_query
 
     @staticmethod
     async def _check_sufficiency(
@@ -768,6 +782,8 @@ class ToolBasedInjectionStrategy:
                 reason="system_error_in_sufficiency_check",
                 exc_info=True,
             )
+            raise
+        except asyncio.CancelledError:
             raise
         except Exception as exc:
             logger.warning(
@@ -807,6 +823,8 @@ class ToolBasedInjectionStrategy:
                 reason="system_error_in_reformulate",
                 exc_info=True,
             )
+            raise
+        except asyncio.CancelledError:
             raise
         except Exception as exc:
             logger.warning(
@@ -860,6 +878,8 @@ class ToolBasedInjectionStrategy:
                 error_type=type(exc).__qualname__,
             )
             return None
+        except asyncio.CancelledError:
+            raise
         except Exception as exc:
             logger.error(
                 MEMORY_RETRIEVAL_DEGRADED,
@@ -913,6 +933,8 @@ class ToolBasedInjectionStrategy:
                 reason="system_error_in_recall",
                 exc_info=True,
             )
+            raise
+        except asyncio.CancelledError:
             raise
         except DomainMemoryError as exc:
             logger.warning(
