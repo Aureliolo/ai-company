@@ -57,6 +57,9 @@ export function PackApplyPreviewDialog({
             {pack
               ? `${pack.agent_count} agent(s), ${pack.department_count} department(s)`
               : ''}
+            {pack && pack.department_count > 0 && (
+              <span className="ml-1 text-warning"> -- Estimated values, final values come from API after apply</span>
+            )}
           </Dialog.Description>
 
           {preview && (
