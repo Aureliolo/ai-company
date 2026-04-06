@@ -1,12 +1,12 @@
 import { apiClient, unwrap, unwrapVoid } from '../client'
-import type { ApiResponse, OrgRole } from '../types'
+import type { ApiResponse, HumanRole, OrgRole } from '../types'
 
 export interface UserResponse {
   id: string
   username: string
-  role: string
+  role: HumanRole
   must_change_password: boolean
-  org_roles: readonly string[]
+  org_roles: readonly OrgRole[]
   scoped_departments: readonly string[]
   created_at: string
   updated_at: string

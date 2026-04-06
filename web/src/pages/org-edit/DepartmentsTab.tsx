@@ -32,7 +32,6 @@ import { useToastStore } from '@/stores/toast'
 import { DepartmentCreateDialog } from './DepartmentCreateDialog'
 import { DepartmentEditDrawer } from './DepartmentEditDrawer'
 import { PackSelectionDialog } from './PackSelectionDialog'
-import { ORG_EDIT_COMING_SOON_TOOLTIP } from './coming-soon'
 
 export interface DepartmentsTabProps {
   config: CompanyConfig | null
@@ -125,7 +124,7 @@ export function DepartmentsTab({
   config,
   departmentHealths,
   saving,
-  // onCreateDepartment -- #1081-gated: destructure when backend CRUD lands
+  onCreateDepartment,
   onUpdateDepartment,
   onDeleteDepartment,
   onReorderDepartments,
@@ -209,23 +208,11 @@ export function DepartmentsTab({
     return (
       <div className="space-y-section-gap">
         <div className="flex justify-end gap-2">
-          {/*
-           * Add Team Pack stays enabled -- the backend's
-           * /template-packs/apply endpoint is live and lets operators
-           * populate a fresh org while the general CRUD endpoints
-           * (#1081) are pending.
-           */}
           <Button variant="outline" onClick={() => setPackOpen(true)} disabled={saving}>
             <PackagePlus className="mr-1.5 size-3.5" />
             Add Team Pack
           </Button>
-          {/* Add Department disabled until backend CRUD lands -- #1081 */}
-          <Button
-            onClick={() => setCreateOpen(true)}
-            disabled
-            aria-disabled="true"
-            title={ORG_EDIT_COMING_SOON_TOOLTIP}
-          >
+          <Button onClick={() => setCreateOpen(true)} disabled={saving}>
             <Plus className="mr-1.5 size-3.5" />
             Add Department
           </Button>
@@ -238,6 +225,7 @@ export function DepartmentsTab({
         <DepartmentCreateDialog
           open={createOpen}
           onOpenChange={setCreateOpen}
+          onCreate={onCreateDepartment}
         />
         <PackSelectionDialog open={packOpen} onOpenChange={setPackOpen} disabled={saving} />
       </div>
@@ -268,18 +256,11 @@ export function DepartmentsTab({
           )}
         </div>
         <div className="flex gap-2">
-          {/* Add Team Pack stays enabled -- see comment on empty-state branch. */}
           <Button variant="outline" onClick={() => setPackOpen(true)} disabled={saving}>
             <PackagePlus className="mr-1.5 size-3.5" />
             Add Team Pack
           </Button>
-          {/* Add Department disabled until backend CRUD lands -- #1081 */}
-          <Button
-            onClick={() => setCreateOpen(true)}
-            disabled
-            aria-disabled="true"
-            title={ORG_EDIT_COMING_SOON_TOOLTIP}
-          >
+          <Button onClick={() => setCreateOpen(true)} disabled={saving}>
             <Plus className="mr-1.5 size-3.5" />
             Add Department
           </Button>
@@ -336,17 +317,10 @@ export function DepartmentsTab({
           <StaggerGroup className="grid grid-cols-2 gap-grid-gap max-[1023px]:grid-cols-1">
             {config.departments.map((dept) => (
               <StaggerItem key={dept.name}>
-                {/*
-                 * Drag-drop reorder is disabled until the backend CRUD
-                 * endpoints land -- see #1081. The card stays clickable
-                 * so operators can still open the drawer and view the
-                 * department's current configuration.
-                 */}
                 <SortableDepartmentCard
                   dept={dept}
                   agentCount={getAgentCount(dept.name)}
                   onClick={() => setEditDept(dept)}
-                  disabled
                 />
               </StaggerItem>
             ))}
@@ -365,6 +339,7 @@ export function DepartmentsTab({
       <DepartmentCreateDialog
         open={createOpen}
         onOpenChange={setCreateOpen}
+        onCreate={onCreateDepartment}
       />
 
       <DepartmentEditDrawer

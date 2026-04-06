@@ -639,14 +639,12 @@ export interface UpdateCompanyRequest {
 
 export interface CreateDepartmentRequest {
   name: string
-  display_name: string
   head?: string | null
   budget_percent?: number
   autonomy_level?: AutonomyLevel | null
 }
 
 export interface UpdateDepartmentRequest {
-  display_name?: string
   head?: string | null
   budget_percent?: number
   autonomy_level?: AutonomyLevel | null
@@ -681,7 +679,6 @@ export interface CreateAgentOrgRequest {
   role: string
   department: DepartmentName
   level: SeniorityLevel
-  personality_preset?: string
   model_provider?: string
   model_id?: string
 }
@@ -691,7 +688,6 @@ export interface UpdateAgentOrgRequest {
   role?: string
   department?: DepartmentName
   level?: SeniorityLevel
-  status?: AgentStatus
   autonomy_level?: AutonomyLevel | null
 }
 

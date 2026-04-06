@@ -1,12 +1,14 @@
 """Agent configuration, performance, activity, history, and CRUD mutations."""
 
+import json
 from typing import Any
 
-from litestar import Controller, Request, delete, get, patch, post
+from litestar import Controller, Request, Response, delete, get, patch, post
 from litestar.datastructures import State  # noqa: TC002
 from litestar.status_codes import HTTP_204_NO_CONTENT
 
 from synthorg.api.channels import CHANNEL_AGENTS, publish_ws_event
+from synthorg.api.concurrency import check_if_match, compute_etag
 from synthorg.api.dto import ApiResponse, PaginatedResponse
 from synthorg.api.dto_org import (  # noqa: TC001
     CreateAgentOrgRequest,
@@ -14,9 +16,8 @@ from synthorg.api.dto_org import (  # noqa: TC001
 )
 from synthorg.api.errors import NotFoundError
 from synthorg.api.guards import (
-    require_ceo_or_manager,
+    require_org_mutation,
     require_read_access,
-    require_write_access,
 )
 from synthorg.api.pagination import PaginationLimit, PaginationOffset, paginate
 from synthorg.api.path_params import PathName  # noqa: TC001
@@ -76,7 +77,7 @@ async def _resolve_agent_id(
 
 
 class AgentController(Controller):
-    """Read-only access to agent configurations, performance, activity, and history."""
+    """Agent configurations, CRUD mutations, performance, and history."""
 
     path = "/agents"
     tags = ("agents",)
@@ -132,7 +133,7 @@ class AgentController(Controller):
         logger.warning(API_RESOURCE_NOT_FOUND, resource="agent", name=agent_name)
         raise NotFoundError(msg)
 
-    @post("/", guards=[require_ceo_or_manager], status_code=201)
+    @post("/", guards=[require_org_mutation()], status_code=201)
     async def create_agent(
         self,
         request: Request[Any, Any, Any],
@@ -163,15 +164,17 @@ class AgentController(Controller):
         )
         return ApiResponse(data=agent)
 
-    @patch("/{agent_name:str}", guards=[require_write_access])
+    @patch("/{agent_name:str}", guards=[require_org_mutation()])
     async def update_agent(
         self,
         request: Request[Any, Any, Any],
         state: State,
         agent_name: PathName,
         data: UpdateAgentOrgRequest,
-    ) -> ApiResponse[AgentConfig]:
+    ) -> Response[ApiResponse[AgentConfig]]:
         """Update an existing agent.
+
+        Supports optimistic concurrency via ``If-Match`` header.
 
         Args:
             request: Incoming request (for WS publishing).
@@ -180,9 +183,27 @@ class AgentController(Controller):
             data: Partial update request.
 
         Returns:
-            Updated agent config envelope.
+            Updated agent config envelope with ETag header.
         """
         app_state: AppState = state.app_state
+        if_match = request.headers.get("if-match")
+        if if_match:
+            agents = await app_state.config_resolver.get_agents()
+            name_lower = agent_name.lower()
+            for agent in agents:
+                if agent.name.lower() == name_lower:
+                    cur = json.dumps(
+                        agent.model_dump(mode="json"),
+                        sort_keys=True,
+                    )
+                    cur_etag = compute_etag(cur, "")
+                    check_if_match(
+                        if_match,
+                        cur_etag,
+                        f"agent:{agent_name}",
+                    )
+                    break
+
         updated = await app_state.org_mutation_service.update_agent(
             agent_name,
             data,
@@ -193,11 +214,21 @@ class AgentController(Controller):
             CHANNEL_AGENTS,
             {"name": updated.name, "department": updated.department},
         )
-        return ApiResponse(data=updated)
+        new_etag = compute_etag(
+            json.dumps(
+                updated.model_dump(mode="json"),
+                sort_keys=True,
+            ),
+            "",
+        )
+        return Response(
+            content=ApiResponse(data=updated),
+            headers={"ETag": new_etag},
+        )
 
     @delete(
         "/{agent_name:str}",
-        guards=[require_ceo_or_manager],
+        guards=[require_org_mutation()],
         status_code=HTTP_204_NO_CONTENT,
     )
     async def delete_agent(

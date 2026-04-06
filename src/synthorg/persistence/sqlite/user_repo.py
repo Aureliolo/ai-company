@@ -62,10 +62,20 @@ def _row_to_user(row: aiosqlite.Row) -> User:
     data["created_at"] = datetime.fromisoformat(data["created_at"])
     data["updated_at"] = datetime.fromisoformat(data["updated_at"])
     # Deserialise JSON columns (may be missing in pre-migration rows).
-    raw_org = data.get("org_roles", "[]")
-    data["org_roles"] = tuple(OrgRole(r) for r in json.loads(raw_org or "[]"))
-    raw_dept = data.get("scoped_departments", "[]")
-    data["scoped_departments"] = tuple(json.loads(raw_dept or "[]"))
+    raw_org = data.get("org_roles") or "[]"
+    parsed_org = json.loads(raw_org)
+    if not isinstance(parsed_org, list):
+        msg = f"org_roles must be a JSON array, got {type(parsed_org).__name__}"
+        raise TypeError(msg)
+    data["org_roles"] = tuple(OrgRole(r) for r in parsed_org)
+    raw_dept = data.get("scoped_departments") or "[]"
+    parsed_dept = json.loads(raw_dept)
+    if not isinstance(parsed_dept, list):
+        msg = (
+            f"scoped_departments must be a JSON array, got {type(parsed_dept).__name__}"
+        )
+        raise TypeError(msg)
+    data["scoped_departments"] = tuple(parsed_dept)
     return User.model_validate(data)
 
 
@@ -182,7 +192,7 @@ ON CONFLICT(id) DO UPDATE SET
             return None
         try:
             user = _row_to_user(row)
-        except (ValueError, ValidationError) as exc:
+        except (ValueError, TypeError, ValidationError) as exc:
             msg = f"Failed to deserialize user {user_id!r}"
             logger.exception(
                 PERSISTENCE_USER_FETCH_FAILED,
@@ -222,7 +232,7 @@ ON CONFLICT(id) DO UPDATE SET
             return None
         try:
             return _row_to_user(row)
-        except (ValueError, ValidationError) as exc:
+        except (ValueError, TypeError, ValidationError) as exc:
             msg = f"Failed to deserialize user {username!r}"
             logger.exception(
                 PERSISTENCE_USER_FETCH_FAILED,
@@ -255,7 +265,7 @@ ON CONFLICT(id) DO UPDATE SET
             raise QueryError(msg) from exc
         try:
             users = tuple(_row_to_user(row) for row in rows)
-        except (ValueError, ValidationError) as exc:
+        except (ValueError, TypeError, ValidationError) as exc:
             msg = "Failed to deserialize users"
             logger.exception(PERSISTENCE_USER_LIST_FAILED, error=str(exc))
             raise QueryError(msg) from exc
@@ -454,7 +464,7 @@ ON CONFLICT(id) DO UPDATE SET
             return None
         try:
             key = _row_to_api_key(row)
-        except (ValueError, ValidationError) as exc:
+        except (ValueError, TypeError, ValidationError) as exc:
             msg = f"Failed to deserialize API key {key_id!r}"
             logger.exception(
                 PERSISTENCE_API_KEY_FETCH_FAILED,
@@ -491,7 +501,7 @@ ON CONFLICT(id) DO UPDATE SET
             return None
         try:
             return _row_to_api_key(row)
-        except (ValueError, ValidationError) as exc:
+        except (ValueError, TypeError, ValidationError) as exc:
             msg = "Failed to deserialize API key by hash"
             logger.exception(PERSISTENCE_API_KEY_FETCH_FAILED, error=str(exc))
             raise QueryError(msg) from exc
@@ -524,7 +534,7 @@ ON CONFLICT(id) DO UPDATE SET
             raise QueryError(msg) from exc
         try:
             keys = tuple(_row_to_api_key(row) for row in rows)
-        except (ValueError, ValidationError) as exc:
+        except (ValueError, TypeError, ValidationError) as exc:
             msg = f"Failed to deserialize API keys for user {user_id!r}"
             logger.exception(
                 PERSISTENCE_API_KEY_LIST_FAILED,

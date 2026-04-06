@@ -196,15 +196,20 @@ require_approval_roles = require_roles(
 
 
 # --- Org-level permission guards (OrgRole) ----------------------------
+# String constants matching OrgRole enum values (avoid circular import
+# with auth.models which imports HumanRole from this module).
+_ORG_ROLE_OWNER = "owner"
+_ORG_ROLE_EDITOR = "editor"
+_ORG_ROLE_DEPARTMENT_ADMIN = "department_admin"
 
 
 def _get_org_roles(
     connection: ASGIConnection,  # type: ignore[type-arg]
 ) -> tuple[str, ...]:
-    """Extract OrgRole values from the authenticated user."""
+    """Extract OrgRole string values from the authenticated user."""
     user = connection.scope.get("user")
     if user is not None and hasattr(user, "org_roles"):
-        return tuple(str(r) for r in user.org_roles)
+        return tuple(r.value if hasattr(r, "value") else str(r) for r in user.org_roles)
     return ()
 
 
@@ -264,11 +269,11 @@ def require_org_mutation(
             raise PermissionDeniedException(detail="Write access denied")
 
         # Owner and editor always allowed
-        if "owner" in org_roles or "editor" in org_roles:
+        if _ORG_ROLE_OWNER in org_roles or _ORG_ROLE_EDITOR in org_roles:
             return
 
         # Department admin: check scope
-        if "department_admin" in org_roles:
+        if _ORG_ROLE_DEPARTMENT_ADMIN in org_roles:
             if department_param is None:
                 # Company-level endpoint -- dept_admin cannot modify
                 logger.warning(

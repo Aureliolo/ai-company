@@ -366,8 +366,6 @@ async def _maybe_promote_first_owner(app_state: AppState) -> None:
 
     # Promote the first user (by created_at, oldest first from list_users)
     first = users[0]
-    from datetime import UTC, datetime  # noqa: PLC0415
-
     promoted = first.model_copy(
         update={
             "org_roles": (*first.org_roles, OrgRole.OWNER),

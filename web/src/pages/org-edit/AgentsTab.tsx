@@ -28,7 +28,6 @@ import { Button } from '@/components/ui/button'
 import { StaggerGroup, StaggerItem } from '@/components/ui/stagger-group'
 import { AgentCreateDialog } from './AgentCreateDialog'
 import { AgentEditDrawer } from './AgentEditDrawer'
-import { ORG_EDIT_COMING_SOON_TOOLTIP } from './coming-soon'
 
 export interface AgentsTabProps {
   config: CompanyConfig | null
@@ -194,13 +193,7 @@ export function AgentsTab({
     return (
       <div className="space-y-section-gap">
         <div className="flex justify-end">
-          {/* Add Agent disabled until backend CRUD lands -- #1081 */}
-          <Button
-            onClick={() => setCreateOpen(true)}
-            disabled
-            aria-disabled="true"
-            title={ORG_EDIT_COMING_SOON_TOOLTIP}
-          >
+          <Button onClick={() => setCreateOpen(true)} disabled={saving}>
             <Plus className="mr-1.5 size-3.5" />
             Add Agent
           </Button>
@@ -223,13 +216,7 @@ export function AgentsTab({
   return (
     <div className="space-y-section-gap">
       <div className="flex justify-end">
-        {/* Add Agent disabled until backend CRUD lands -- #1081 */}
-        <Button
-          onClick={() => setCreateOpen(true)}
-          disabled
-          aria-disabled="true"
-          title={ORG_EDIT_COMING_SOON_TOOLTIP}
-        >
+        <Button onClick={() => setCreateOpen(true)} disabled={saving}>
           <Plus className="mr-1.5 size-3.5" />
           Add Agent
         </Button>
@@ -250,7 +237,6 @@ export function AgentsTab({
               displayName={dept?.display_name ?? deptName}
               agents={agents}
               onEditAgent={setEditAgent}
-              dragDisabled
             />
           )
         })}

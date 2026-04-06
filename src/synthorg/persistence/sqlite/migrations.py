@@ -73,6 +73,10 @@ async def apply_schema(db: aiosqlite.Connection) -> None:
     logger.info(PERSISTENCE_MIGRATION_COMPLETED)
 
 
+_ALLOWED_TABLES = frozenset({"users", "api_keys", "sessions"})
+_ALLOWED_COLUMN_RE = __import__("re").compile(r"^[a-z_][a-z0-9_]*$")
+
+
 async def _add_column_if_missing(
     db: aiosqlite.Connection,
     table: str,
@@ -82,23 +86,39 @@ async def _add_column_if_missing(
     """Add a column to a table if it does not already exist.
 
     SQLite ``ALTER TABLE ADD COLUMN`` raises ``OperationalError``
-    if the column already exists.  This helper catches that error.
+    if the column already exists.  This helper catches that error
+    and ignores it; any other ``OperationalError`` is re-raised.
 
     Args:
         db: An open aiosqlite connection.
-        table: Table name.
-        column: Column name to add.
-        definition: Column type and constraints.
+        table: Table name (must be in the allowlist).
+        column: Column name to add (must match ``[a-z_][a-z0-9_]*``).
+        definition: Column type and constraints.  Must never be
+            derived from user input.
     """
+    if table not in _ALLOWED_TABLES:
+        msg = f"Table not in allowlist: {table!r}"
+        raise ValueError(msg)
+    if not _ALLOWED_COLUMN_RE.fullmatch(column):
+        msg = f"Invalid column name: {column!r}"
+        raise ValueError(msg)
     try:
         await db.execute(
-            f"ALTER TABLE {table} ADD COLUMN {column} {definition}",
+            f'ALTER TABLE "{table}" ADD COLUMN "{column}" {definition}',
         )
         await db.commit()
         logger.info(
             PERSISTENCE_MIGRATION_COMPLETED,
             detail=f"Added column {table}.{column}",
         )
-    except sqlite3.OperationalError, aiosqlite.OperationalError:
-        # Column already exists -- idempotent.
-        pass
+    except sqlite3.OperationalError as exc:
+        if "duplicate column name" in str(exc).lower():
+            # Column already exists -- idempotent.
+            pass
+        else:
+            logger.exception(
+                PERSISTENCE_MIGRATION_FAILED,
+                detail=f"Failed to add column {table}.{column}",
+            )
+            msg = f"Failed to add column {table}.{column}"
+            raise MigrationError(msg) from exc

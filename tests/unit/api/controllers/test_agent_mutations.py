@@ -17,7 +17,7 @@ class TestCreateAgent:
         # First create a department
         test_client.post(
             "/api/v1/departments",
-            json={"name": "eng", "display_name": "Engineering"},
+            json={"name": "eng"},
         )
         resp = test_client.post(
             "/api/v1/agents",
@@ -56,7 +56,7 @@ class TestCreateAgent:
     ) -> None:
         test_client.post(
             "/api/v1/departments",
-            json={"name": "eng", "display_name": "Engineering"},
+            json={"name": "eng"},
         )
         test_client.post(
             "/api/v1/agents",
@@ -103,7 +103,7 @@ class TestUpdateAgent:
     ) -> None:
         test_client.post(
             "/api/v1/departments",
-            json={"name": "eng", "display_name": "Engineering"},
+            json={"name": "eng"},
         )
         test_client.post(
             "/api/v1/agents",
@@ -140,7 +140,7 @@ class TestDeleteAgent:
     ) -> None:
         test_client.post(
             "/api/v1/departments",
-            json={"name": "eng", "display_name": "Engineering"},
+            json={"name": "eng"},
         )
         test_client.post(
             "/api/v1/agents",
@@ -160,3 +160,110 @@ class TestDeleteAgent:
     ) -> None:
         resp = test_client.delete("/api/v1/agents/nonexistent")
         assert resp.status_code == 404
+
+    def test_delete_c_suite_agent_409(
+        self,
+        test_client: TestClient[Any],
+    ) -> None:
+        test_client.post(
+            "/api/v1/departments",
+            json={"name": "exec"},
+        )
+        test_client.post(
+            "/api/v1/agents",
+            json={
+                "name": "chief",
+                "role": "ceo",
+                "department": "exec",
+                "level": "c_suite",
+            },
+        )
+        resp = test_client.delete("/api/v1/agents/chief")
+        assert resp.status_code == 409
+
+
+@pytest.mark.unit
+class TestUpdateAgentETag:
+    def test_stale_etag_returns_409(
+        self,
+        test_client: TestClient[Any],
+    ) -> None:
+        test_client.post(
+            "/api/v1/departments",
+            json={"name": "eng"},
+        )
+        test_client.post(
+            "/api/v1/agents",
+            json={
+                "name": "alice",
+                "role": "dev",
+                "department": "eng",
+                "level": "mid",
+            },
+        )
+        # Send a stale ETag
+        resp = test_client.patch(
+            "/api/v1/agents/alice",
+            json={"level": "senior"},
+            headers={"If-Match": '"stale-etag-value000"'},
+        )
+        assert resp.status_code == 409
+
+    def test_matching_etag_allows_update(
+        self,
+        test_client: TestClient[Any],
+    ) -> None:
+        test_client.post(
+            "/api/v1/departments",
+            json={"name": "eng"},
+        )
+        # Create agent and capture ETag
+        test_client.post(
+            "/api/v1/agents",
+            json={
+                "name": "bob",
+                "role": "dev",
+                "department": "eng",
+                "level": "mid",
+            },
+        )
+        # First update to get an ETag in the response
+        resp1 = test_client.patch(
+            "/api/v1/agents/bob",
+            json={"level": "senior"},
+        )
+        assert resp1.status_code == 200
+        etag = resp1.headers.get("etag")
+        assert etag is not None
+
+        # Use the returned ETag for a second update
+        resp2 = test_client.patch(
+            "/api/v1/agents/bob",
+            json={"level": "lead"},
+            headers={"If-Match": etag},
+        )
+        assert resp2.status_code == 200
+
+    def test_no_if_match_header_bypasses_check(
+        self,
+        test_client: TestClient[Any],
+    ) -> None:
+        test_client.post(
+            "/api/v1/departments",
+            json={"name": "eng"},
+        )
+        test_client.post(
+            "/api/v1/agents",
+            json={
+                "name": "carol",
+                "role": "dev",
+                "department": "eng",
+                "level": "mid",
+            },
+        )
+        # No If-Match header -- should succeed
+        resp = test_client.patch(
+            "/api/v1/agents/carol",
+            json={"level": "senior"},
+        )
+        assert resp.status_code == 200

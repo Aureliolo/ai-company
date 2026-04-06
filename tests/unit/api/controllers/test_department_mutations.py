@@ -16,7 +16,7 @@ class TestCreateDepartment:
     ) -> None:
         resp = test_client.post(
             "/api/v1/departments",
-            json={"name": "engineering", "display_name": "Engineering"},
+            json={"name": "engineering"},
         )
         assert resp.status_code == 201
         assert resp.json()["data"]["name"] == "engineering"
@@ -27,11 +27,11 @@ class TestCreateDepartment:
     ) -> None:
         test_client.post(
             "/api/v1/departments",
-            json={"name": "engineering", "display_name": "Engineering"},
+            json={"name": "engineering"},
         )
         resp = test_client.post(
             "/api/v1/departments",
-            json={"name": "engineering", "display_name": "Eng"},
+            json={"name": "engineering"},
         )
         assert resp.status_code == 409
 
@@ -42,7 +42,7 @@ class TestCreateDepartment:
         test_client.headers.update(make_auth_headers("observer"))
         resp = test_client.post(
             "/api/v1/departments",
-            json={"name": "eng", "display_name": "Engineering"},
+            json={"name": "eng"},
         )
         assert resp.status_code == 403
 
@@ -55,7 +55,7 @@ class TestUpdateDepartment:
     ) -> None:
         test_client.post(
             "/api/v1/departments",
-            json={"name": "eng", "display_name": "Engineering"},
+            json={"name": "eng"},
         )
         resp = test_client.patch(
             "/api/v1/departments/eng",
@@ -83,7 +83,7 @@ class TestDeleteDepartment:
     ) -> None:
         test_client.post(
             "/api/v1/departments",
-            json={"name": "eng", "display_name": "Engineering"},
+            json={"name": "eng"},
         )
         resp = test_client.delete("/api/v1/departments/eng")
         assert resp.status_code == 204
@@ -101,7 +101,7 @@ class TestDeleteDepartment:
     ) -> None:
         test_client.post(
             "/api/v1/departments",
-            json={"name": "eng", "display_name": "Engineering"},
+            json={"name": "eng"},
         )
         test_client.post(
             "/api/v1/agents",
@@ -124,7 +124,7 @@ class TestReorderAgents:
     ) -> None:
         test_client.post(
             "/api/v1/departments",
-            json={"name": "eng", "display_name": "Engineering"},
+            json={"name": "eng"},
         )
         test_client.post(
             "/api/v1/agents",

@@ -23,6 +23,7 @@ from synthorg.api.dto_org import (  # noqa: TC001
 from synthorg.api.errors import ApiValidationError, ConflictError, NotFoundError
 from synthorg.config.schema import AgentConfig
 from synthorg.core.company import Department
+from synthorg.core.enums import SeniorityLevel
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import (
     API_AGENT_CREATED,
@@ -41,7 +42,7 @@ from synthorg.settings.service import SettingsService  # noqa: TC001
 logger = get_logger(__name__)
 
 # Serialises all org config mutations.  Safe for single-process,
-# single-event-loop deployment (see departments.py:603 for precedent).
+# single-event-loop deployment (see _dept_policy_lock in departments.py).
 _org_lock = asyncio.Lock()
 
 _BUDGET_PERCENT_CAP = 100.0
@@ -257,12 +258,8 @@ class OrgMutationService:
                 raise NotFoundError(msg)
 
             updates: dict[str, Any] = {}
-            if data.display_name is not None:
-                # display_name maps to the name field for user-facing label
-                # The canonical key is 'name' in the domain model
-                pass  # name is immutable in the model; display_name is UI-only
             if data.head is not None:
-                updates["head"] = data.head or None
+                updates["head"] = data.head
             if data.budget_percent is not None:
                 updates["budget_percent"] = data.budget_percent
             if data.autonomy_level is not None:
@@ -384,7 +381,7 @@ class OrgMutationService:
                 raise ConflictError(msg)
 
             model_dict: dict[str, Any] = {}
-            if data.model_provider and data.model_id:
+            if data.model_provider is not None:
                 model_dict = {
                     "provider": str(data.model_provider),
                     "model_id": str(data.model_id),
@@ -425,6 +422,7 @@ class OrgMutationService:
         Raises:
             NotFoundError: If the agent does not exist.
             ApiValidationError: If the target department does not exist.
+            ConflictError: If an agent with the new name already exists.
         """
         async with _org_lock:
             agents = await self._read_agents()
@@ -453,10 +451,6 @@ class OrgMutationService:
                 updates["department"] = data.department
             if data.level is not None:
                 updates["level"] = data.level
-            if data.status is not None:
-                # status is not on AgentConfig -- it's runtime state.
-                # Log but skip.
-                pass
             if data.autonomy_level is not None:
                 updates["autonomy_level"] = data.autonomy_level
 
@@ -481,12 +475,20 @@ class OrgMutationService:
 
         Raises:
             NotFoundError: If the agent does not exist.
+            ConflictError: If the agent is the CEO (c_suite level).
         """
         async with _org_lock:
             agents = await self._read_agents()
-            if not self._find_agent(agents, name):
+            existing = self._find_agent(agents, name)
+            if existing is None:
                 msg = f"Agent {name!r} not found"
                 raise NotFoundError(msg)
+
+            if existing.level == SeniorityLevel.C_SUITE:
+                msg = (
+                    f"Cannot delete c-suite agent {name!r} -- reassign or demote first"
+                )
+                raise ConflictError(msg)
 
             new_agents = tuple(a for a in agents if a.name.lower() != name.lower())
             await self._write_agents(new_agents)

@@ -1,13 +1,11 @@
 """Request DTOs for company, department, and agent mutation endpoints."""
 
-from typing import Any
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from pydantic import BaseModel, ConfigDict, Field
-
-from synthorg.core.enums import AgentStatus, AutonomyLevel, SeniorityLevel
+from synthorg.core.enums import AutonomyLevel, SeniorityLevel
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 
-# ── Company ──────────────────────���───────────────────────────
+# -- Company -----------------------------------------------------------
 
 
 class UpdateCompanyRequest(BaseModel):
@@ -21,7 +19,7 @@ class UpdateCompanyRequest(BaseModel):
     communication_pattern: NotBlankStr | None = None
 
 
-# ── Departments ──────────────────────────────────────────────
+# -- Departments -------------------------------------------------------
 
 
 class CreateDepartmentRequest(BaseModel):
@@ -30,7 +28,6 @@ class CreateDepartmentRequest(BaseModel):
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     name: NotBlankStr = Field(max_length=128)
-    display_name: NotBlankStr = Field(max_length=256)
     head: NotBlankStr | None = None
     budget_percent: float = Field(default=0.0, ge=0.0, le=100.0)
     autonomy_level: AutonomyLevel | None = None
@@ -41,12 +38,11 @@ class UpdateDepartmentRequest(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
-    display_name: NotBlankStr | None = Field(default=None, max_length=256)
-    head: str | None = None
+    head: NotBlankStr | None = None
     budget_percent: float | None = Field(default=None, ge=0.0, le=100.0)
     autonomy_level: AutonomyLevel | None = None
-    teams: tuple[dict[str, Any], ...] | None = None
-    ceremony_policy: dict[str, Any] | None = None
+    teams: tuple[dict[str, object], ...] | None = None
+    ceremony_policy: dict[str, object] | None = None
 
 
 class ReorderDepartmentsRequest(BaseModel):
@@ -57,7 +53,7 @@ class ReorderDepartmentsRequest(BaseModel):
     department_names: tuple[NotBlankStr, ...] = Field(min_length=1)
 
 
-# ── Agents ────────────────────────────────────────��──────────
+# -- Agents ------------------------------------------------------------
 
 
 class CreateAgentOrgRequest(BaseModel):
@@ -69,9 +65,16 @@ class CreateAgentOrgRequest(BaseModel):
     role: NotBlankStr = Field(max_length=128)
     department: NotBlankStr = Field(max_length=128)
     level: SeniorityLevel = SeniorityLevel.MID
-    personality_preset: NotBlankStr | None = None
     model_provider: NotBlankStr | None = None
     model_id: NotBlankStr | None = None
+
+    @model_validator(mode="after")
+    def _validate_model_pair(self) -> CreateAgentOrgRequest:
+        """Require both model_provider and model_id or neither."""
+        if bool(self.model_provider) != bool(self.model_id):
+            msg = "model_provider and model_id must both be provided or both omitted"
+            raise ValueError(msg)
+        return self
 
 
 class UpdateAgentOrgRequest(BaseModel):
@@ -83,7 +86,6 @@ class UpdateAgentOrgRequest(BaseModel):
     role: NotBlankStr | None = Field(default=None, max_length=128)
     department: NotBlankStr | None = Field(default=None, max_length=128)
     level: SeniorityLevel | None = None
-    status: AgentStatus | None = None
     autonomy_level: AutonomyLevel | None = None
 
 

@@ -1,11 +1,6 @@
-import { render, screen, fireEvent } from '@testing-library/react'
+import { render, screen } from '@testing-library/react'
 import { AgentEditDrawer } from '@/pages/org-edit/AgentEditDrawer'
 import { makeAgent, makeDepartment } from '../../helpers/factories'
-
-// Save + Delete are disabled while the backend CRUD endpoints are
-// pending (#1081).  When the endpoints land, remove the
-// "disables Save+Delete" test and restore the click-behaviour tests
-// that were here previously -- see git history on this file.
 
 describe('AgentEditDrawer', () => {
   const mockOnUpdate = vi.fn().mockResolvedValue(makeAgent('alice'))
@@ -48,18 +43,11 @@ describe('AgentEditDrawer', () => {
     expect(screen.getByText(/test-medium-001/)).toBeInTheDocument()
   })
 
-  it('disables Save and Delete buttons with #1081 tooltip', () => {
+  it('renders Save and Delete buttons as enabled', () => {
     renderDrawer()
     const saveButton = screen.getByRole('button', { name: /save/i })
     const deleteButton = screen.getByRole('button', { name: /delete/i })
-    expect(saveButton).toBeDisabled()
-    expect(deleteButton).toBeDisabled()
-    expect(saveButton.getAttribute('title') ?? '').toContain('1081')
-    expect(deleteButton.getAttribute('title') ?? '').toContain('1081')
-    // Clicking the disabled buttons must not call the mutation props.
-    fireEvent.click(saveButton)
-    fireEvent.click(deleteButton)
-    expect(mockOnUpdate).not.toHaveBeenCalled()
-    expect(mockOnDelete).not.toHaveBeenCalled()
+    expect(saveButton).not.toBeDisabled()
+    expect(deleteButton).not.toBeDisabled()
   })
 })

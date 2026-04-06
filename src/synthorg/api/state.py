@@ -704,10 +704,15 @@ class AppState:
             app_state=self,
             config=self.config,
         )
+        org_mutations = OrgMutationService(
+            settings_service=settings_service,
+            config_resolver=resolver,
+        )
         self._settings_service = settings_service
         self._config_resolver = resolver
         self._provider_management = management
+        self._org_mutation_service = org_mutations
         logger.debug(
             API_APP_STARTUP,
-            note="Created ConfigResolver and ProviderManagementService",
+            note="Created ConfigResolver, ProviderManagement, OrgMutationService",
         )

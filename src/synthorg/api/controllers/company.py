@@ -1,9 +1,10 @@
 """Company configuration controller."""
 
 import asyncio
+import json
 from typing import Any
 
-from litestar import Controller, Request, get, patch, post
+from litestar import Controller, Request, Response, get, patch, post
 from litestar.datastructures import State  # noqa: TC002
 
 from synthorg.api.channels import (
@@ -11,15 +12,15 @@ from synthorg.api.channels import (
     CHANNEL_DEPARTMENTS,
     publish_ws_event,
 )
+from synthorg.api.concurrency import check_if_match, compute_etag
 from synthorg.api.dto import ApiResponse
 from synthorg.api.dto_org import (  # noqa: TC001
     ReorderDepartmentsRequest,
     UpdateCompanyRequest,
 )
 from synthorg.api.guards import (
-    require_ceo_or_manager,
+    require_org_mutation,
     require_read_access,
-    require_write_access,
 )
 from synthorg.api.state import AppState  # noqa: TC001
 from synthorg.api.ws_models import WsEventType
@@ -31,7 +32,7 @@ logger = get_logger(__name__)
 
 
 class CompanyController(Controller):
-    """Read-only access to company configuration."""
+    """Company configuration -- reads and mutations."""
 
     path = "/company"
     tags = ("company",)
@@ -76,14 +77,16 @@ class CompanyController(Controller):
         }
         return ApiResponse(data=data)
 
-    @patch("/", guards=[require_write_access])
+    @patch("/", guards=[require_org_mutation()])
     async def update_company(
         self,
         request: Request[Any, Any, Any],
         state: State,
         data: UpdateCompanyRequest,
-    ) -> ApiResponse[dict[str, Any]]:
+    ) -> Response[ApiResponse[dict[str, Any]]]:
         """Update company-level settings.
+
+        Supports optimistic concurrency via ``If-Match`` header.
 
         Args:
             request: Incoming request (for WS publishing).
@@ -91,19 +94,44 @@ class CompanyController(Controller):
             data: Partial update request.
 
         Returns:
-            Updated fields envelope.
+            Updated fields envelope with ETag header.
         """
         app_state: AppState = state.app_state
-        updated = await app_state.org_mutation_service.update_company(data)
+        # Validate If-Match if provided
+        if_match = request.headers.get("if-match")
+        if if_match:
+            resolver = app_state.config_resolver
+            name = await resolver.get_str("company", "company_name")
+            agents = await resolver.get_agents()
+            depts = await resolver.get_departments()
+            snapshot = {
+                "company_name": name,
+                "agents": [a.model_dump(mode="json") for a in agents],
+                "departments": [d.model_dump(mode="json") for d in depts],
+            }
+            cur_json = json.dumps(snapshot, sort_keys=True)
+            current_etag = compute_etag(cur_json, "")
+            check_if_match(if_match, current_etag, "company")
+
+        updated = await app_state.org_mutation_service.update_company(
+            data,
+        )
         publish_ws_event(
             request,
             WsEventType.COMPANY_UPDATED,
             CHANNEL_COMPANY,
             updated,
         )
-        return ApiResponse(data=updated)
+        new_etag = compute_etag(
+            json.dumps(updated, sort_keys=True),
+            "",
+        )
+        return Response(
+            content=ApiResponse(data=updated),
+            headers={"ETag": new_etag},
+        )
 
-    @post("/reorder-departments", guards=[require_ceo_or_manager])
+    @post("/reorder-departments", guards=[require_org_mutation()])
     async def reorder_departments(
         self,
         request: Request[Any, Any, Any],

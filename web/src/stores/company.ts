@@ -138,8 +138,10 @@ export const useCompanyStore = create<CompanyState>()((set, get) => ({
   updateCompany: async (data) => {
     set((s) => ({ savingCount: s.savingCount + 1, saveError: null }))
     try {
-      const updated = await apiUpdateCompany(data)
-      set((s) => ({ config: updated, savingCount: Math.max(0, s.savingCount - 1) }))
+      await apiUpdateCompany(data)
+      // Refetch full config to reflect partial-update response
+      await get().fetchCompanyData()
+      set((s) => ({ savingCount: Math.max(0, s.savingCount - 1) }))
     } catch (err) {
       set((s) => ({ savingCount: Math.max(0, s.savingCount - 1), saveError: getErrorMessage(err) }))
       throw err
@@ -196,8 +198,12 @@ export const useCompanyStore = create<CompanyState>()((set, get) => ({
   reorderDepartments: async (orderedNames) => {
     set((s) => ({ savingCount: s.savingCount + 1, saveError: null }))
     try {
-      const updated = await apiReorderDepartments({ department_names: orderedNames })
-      set((s) => ({ config: updated, savingCount: Math.max(0, s.savingCount - 1) }))
+      const reordered = await apiReorderDepartments({ department_names: orderedNames })
+      const prev = get().config
+      set((s) => ({
+        savingCount: Math.max(0, s.savingCount - 1),
+        ...(prev ? { config: { ...prev, departments: [...reordered] } } : {}),
+      }))
     } catch (err) {
       set((s) => ({ savingCount: Math.max(0, s.savingCount - 1), saveError: getErrorMessage(err) }))
       throw err
@@ -254,18 +260,11 @@ export const useCompanyStore = create<CompanyState>()((set, get) => ({
   reorderAgents: async (deptName, orderedIds) => {
     set((s) => ({ savingCount: s.savingCount + 1, saveError: null }))
     try {
-      const updatedDept = await apiReorderAgents(deptName, { agent_names: orderedIds })
-      const prev = get().config
+      await apiReorderAgents(deptName, { agent_names: orderedIds })
+      // Refetch to pick up the reordered agents consistently
+      await get().fetchCompanyData()
       set((s) => ({
         savingCount: Math.max(0, s.savingCount - 1),
-        ...(prev ? {
-          config: {
-            ...prev,
-            departments: prev.departments.map((d) =>
-              d.name === deptName ? updatedDept : d,
-            ),
-          },
-        } : {}),
       }))
     } catch (err) {
       set((s) => ({ savingCount: Math.max(0, s.savingCount - 1), saveError: getErrorMessage(err) }))

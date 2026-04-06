@@ -10,7 +10,6 @@ import { Button } from '@/components/ui/button'
 import { StatusBadge } from '@/components/ui/status-badge'
 import { getErrorMessage } from '@/utils/errors'
 import { toRuntimeStatus } from '@/utils/agents'
-import { ORG_EDIT_COMING_SOON_TOOLTIP } from './coming-soon'
 
 export interface AgentEditDrawerProps {
   open: boolean
@@ -92,7 +91,6 @@ export function AgentEditDrawer({
         role: form.role.trim() || undefined,
         department: form.department as UpdateAgentOrgRequest['department'],
         level: form.level,
-        status: form.status,
       })
       onClose()
     } catch (err) {
@@ -169,18 +167,12 @@ export function AgentEditDrawer({
               <p className="text-xs text-danger">{submitError}</p>
             )}
 
-            {/*
-             * Save + Delete are disabled until the backend CRUD
-             * endpoints land -- see #1081.  The drawer stays open for
-             * read-only inspection of the agent's current config.
-             */}
             <div className="flex items-center justify-between pt-2">
               <Button
                 variant="outline"
                 onClick={() => setDeleteOpen(true)}
                 className="text-danger hover:text-danger"
-                disabled
-                title={ORG_EDIT_COMING_SOON_TOOLTIP}
+                disabled={saving}
               >
                 <Trash2 className="mr-1.5 size-3.5" />
                 Delete
@@ -189,8 +181,7 @@ export function AgentEditDrawer({
                 <Button variant="outline" onClick={onClose}>Cancel</Button>
                 <Button
                   onClick={handleSave}
-                  disabled
-                  title={ORG_EDIT_COMING_SOON_TOOLTIP}
+                  disabled={saving}
                 >
                   {saving && <Loader2 className="mr-2 size-4 animate-spin" />}
                   Save

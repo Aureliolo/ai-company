@@ -1,7 +1,7 @@
 import { useCallback, useState } from 'react'
 import { Link, useSearchParams } from 'react-router'
 import { Tabs } from '@base-ui/react/tabs'
-import { AlertTriangle, ArrowLeft, Building2, Info, Settings, Users, WifiOff } from 'lucide-react'
+import { AlertTriangle, ArrowLeft, Building2, Settings, Users, WifiOff } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { ToggleField } from '@/components/ui/toggle-field'
@@ -10,11 +10,6 @@ import type { UpdateCompanyRequest } from '@/api/types'
 import { useOrgEditData } from '@/hooks/useOrgEditData'
 import { useToastStore } from '@/stores/toast'
 import { ROUTES } from '@/router/routes'
-import {
-  ORG_EDIT_COMING_SOON_DESCRIPTION,
-  ORG_EDIT_COMING_SOON_ISSUE,
-  ORG_EDIT_COMING_SOON_URL,
-} from './org-edit/coming-soon'
 import { OrgEditSkeleton } from './org-edit/OrgEditSkeleton'
 import { GeneralTab } from './org-edit/GeneralTab'
 import { AgentsTab } from './org-edit/AgentsTab'
@@ -156,40 +151,6 @@ export default function OrgEditPage() {
           {wsSetupError ?? 'Real-time updates disconnected. Data may be stale.'}
         </div>
       )}
-
-      {/*
-       * Read-only gate: the backend has no CRUD endpoints for the
-       * company / departments / agents resources yet (see #1081 -- all
-       * 9 mutation paths in `api/endpoints/company.ts` return 405).
-       * Until those land we keep the page viewable but hide the
-       * footguns so operators do not hit silent 405s.  Template packs
-       * still work (the `/template-packs/apply` endpoint is live) so
-       * operators can still populate a fresh org that way.
-       *
-       * Remove this banner and every "Coming soon (#1081)" tooltip in
-       * `./org-edit/` once the endpoints ship.
-       */}
-      <div
-        role="status"
-        className="flex items-start gap-3 rounded-lg border border-accent/30 bg-accent/5 p-card text-sm text-foreground"
-      >
-        <Info className="mt-0.5 size-4 shrink-0 text-accent" aria-hidden="true" />
-        <div className="flex-1">
-          <div className="font-semibold">Editing is temporarily read-only</div>
-          <p className="mt-1 text-compact text-text-secondary">
-            {ORG_EDIT_COMING_SOON_DESCRIPTION}{' '}
-            <a
-              href={ORG_EDIT_COMING_SOON_URL}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="font-medium text-accent underline hover:no-underline"
-            >
-              Track progress in #{ORG_EDIT_COMING_SOON_ISSUE}
-            </a>
-            .
-          </p>
-        </div>
-      </div>
 
       {/* Content: YAML or tabbed GUI */}
       {yamlMode ? (

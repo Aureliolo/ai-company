@@ -44,8 +44,8 @@ export async function getDepartmentHealth(name: string): Promise<DepartmentHealt
 
 // ── Mutations ────────────────────────────────────────────────
 
-export async function updateCompany(data: UpdateCompanyRequest): Promise<CompanyConfig> {
-  const response = await apiClient.patch<ApiResponse<CompanyConfig>>('/company', data)
+export async function updateCompany(data: UpdateCompanyRequest): Promise<Record<string, unknown>> {
+  const response = await apiClient.patch<ApiResponse<Record<string, unknown>>>('/company', data)
   return unwrap(response)
 }
 
@@ -69,8 +69,8 @@ export async function deleteDepartment(name: string): Promise<void> {
   unwrapVoid(response)
 }
 
-export async function reorderDepartments(data: ReorderDepartmentsRequest): Promise<CompanyConfig> {
-  const response = await apiClient.post<ApiResponse<CompanyConfig>>(
+export async function reorderDepartments(data: ReorderDepartmentsRequest): Promise<readonly Department[]> {
+  const response = await apiClient.post<ApiResponse<readonly Department[]>>(
     '/company/reorder-departments',
     data,
   )
@@ -97,8 +97,8 @@ export async function deleteAgent(name: string): Promise<void> {
   unwrapVoid(response)
 }
 
-export async function reorderAgents(departmentName: string, data: ReorderAgentsRequest): Promise<Department> {
-  const response = await apiClient.post<ApiResponse<Department>>(
+export async function reorderAgents(departmentName: string, data: ReorderAgentsRequest): Promise<readonly AgentConfig[]> {
+  const response = await apiClient.post<ApiResponse<readonly AgentConfig[]>>(
     `/departments/${encodeURIComponent(departmentName)}/reorder-agents`,
     data,
   )

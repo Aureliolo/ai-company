@@ -2,11 +2,6 @@ import { render, screen } from '@testing-library/react'
 import { YamlEditorPanel } from '@/pages/org-edit/YamlEditorPanel'
 import { makeCompanyConfig } from '../../helpers/factories'
 
-// The YAML panel is read-only while the backend CRUD endpoints are
-// pending (#1081).  When the endpoints land, restore the
-// parse/validation/save/reset tests that were here previously --
-// see git history on this file.
-
 describe('YamlEditorPanel', () => {
   const mockOnSave = vi.fn().mockResolvedValue(undefined)
 
@@ -20,12 +15,10 @@ describe('YamlEditorPanel', () => {
     expect((textarea as HTMLTextAreaElement).value).toContain('company_name')
   })
 
-  it('renders the textarea as read-only while #1081 is gated', () => {
+  it('renders the textarea as editable', () => {
     render(<YamlEditorPanel config={makeCompanyConfig()} onSave={mockOnSave} saving={false} />)
     const textarea = screen.getByLabelText(/yaml editor/i)
-    expect(textarea).toHaveAttribute('readonly')
-    // ARIA label must not expose internal issue numbers to screen readers
-    expect(textarea.getAttribute('aria-label')).not.toContain('#')
+    expect(textarea).not.toHaveAttribute('readonly')
   })
 
   it('renders Save and Reset buttons', () => {
@@ -34,10 +27,9 @@ describe('YamlEditorPanel', () => {
     expect(screen.getByText('Reset')).toBeInTheDocument()
   })
 
-  it('disables Save YAML button with #1081 tooltip', () => {
+  it('disables Save YAML button when form is not dirty', () => {
     render(<YamlEditorPanel config={makeCompanyConfig()} onSave={mockOnSave} saving={false} />)
     const saveButton = screen.getByText('Save YAML').closest('button')!
     expect(saveButton).toBeDisabled()
-    expect(saveButton.getAttribute('title') ?? '').toContain('1081')
   })
 })

@@ -36,19 +36,18 @@ class TestUpdateCompany:
 
 @pytest.mark.unit
 class TestReorderDepartments:
-    def test_reorder_empty_list(
+    def test_reorder_two_departments(
         self,
         test_client: TestClient[Any],
     ) -> None:
-        # No departments exist; reordering empty is valid
-        # First create two departments
+        # Create two departments and reorder them
         test_client.post(
             "/api/v1/departments",
-            json={"name": "alpha", "display_name": "Alpha"},
+            json={"name": "alpha"},
         )
         test_client.post(
             "/api/v1/departments",
-            json={"name": "beta", "display_name": "Beta"},
+            json={"name": "beta"},
         )
         resp = test_client.post(
             "/api/v1/company/reorder-departments",

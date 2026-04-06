@@ -611,6 +611,8 @@ class AuthController(Controller):
                     username=updated_user.username,
                     role=updated_user.role,
                     must_change_password=False,
+                    org_roles=tuple(r.value for r in updated_user.org_roles),
+                    scoped_departments=updated_user.scoped_departments,
                 ),
             ),
         )

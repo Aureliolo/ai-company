@@ -17,7 +17,6 @@ import { Button } from '@/components/ui/button'
 import { getErrorMessage } from '@/utils/errors'
 import { DepartmentCeremonyOverride } from './DepartmentCeremonyOverride'
 import { TeamListSection } from './TeamListSection'
-import { ORG_EDIT_COMING_SOON_TOOLTIP, ORG_EDIT_COMING_SOON_DESCRIPTION } from './coming-soon'
 
 export interface DepartmentEditDrawerProps {
   open: boolean
@@ -92,7 +91,6 @@ export function DepartmentEditDrawer({
     }
     try {
       await onUpdate(department.name, {
-        display_name: displayName.trim() || undefined,
         budget_percent: Number.isFinite(pct) ? pct : undefined,
         ceremony_policy: ceremonyPolicy,
       })
@@ -100,7 +98,7 @@ export function DepartmentEditDrawer({
     } catch (err) {
       setSubmitError(getErrorMessage(err))
     }
-  }, [department, displayName, budgetPercent, ceremonyPolicy, onUpdate, onClose])
+  }, [department, budgetPercent, ceremonyPolicy, onUpdate, onClose])
 
   const handleDelete = useCallback(async () => {
     if (!department) return
@@ -178,19 +176,12 @@ export function DepartmentEditDrawer({
               <p className="text-xs text-danger">{submitError}</p>
             )}
 
-            {/*
-             * Save + Delete are disabled until the backend CRUD
-             * endpoints land -- see #1081.  The drawer stays open for
-             * read-only inspection of the department's current config.
-             */}
             <div className="flex items-center justify-between pt-2">
               <Button
                 variant="outline"
                 onClick={() => setDeleteOpen(true)}
                 className="text-danger hover:text-danger"
-                disabled
-                aria-disabled="true"
-                title={ORG_EDIT_COMING_SOON_TOOLTIP}
+                disabled={saving}
               >
                 <Trash2 className="mr-1.5 size-3.5" />
                 Delete
@@ -199,16 +190,13 @@ export function DepartmentEditDrawer({
                 <Button variant="outline" onClick={onClose}>Cancel</Button>
                 <Button
                   onClick={handleSave}
-                  disabled
-                  aria-disabled="true"
-                  title={ORG_EDIT_COMING_SOON_TOOLTIP}
+                  disabled={saving}
                 >
                   {saving && <Loader2 className="mr-2 size-4 animate-spin" />}
                   Save
                 </Button>
               </div>
             </div>
-            <p className="text-xs text-text-muted mt-2">{ORG_EDIT_COMING_SOON_DESCRIPTION}</p>
           </div>
         )}
       </Drawer>

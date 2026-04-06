@@ -6,7 +6,6 @@ import { EmptyState } from '@/components/ui/empty-state'
 import { InputField } from '@/components/ui/input-field'
 import { SelectField } from '@/components/ui/select-field'
 import { Button } from '@/components/ui/button'
-import { ORG_EDIT_COMING_SOON_DESCRIPTION, ORG_EDIT_COMING_SOON_TOOLTIP } from './coming-soon'
 
 export interface GeneralTabProps {
   config: CompanyConfig | null
@@ -155,21 +154,13 @@ export function GeneralTab({ config, onUpdate, saving }: GeneralTabProps) {
           <p role="alert" className="text-xs text-danger">{submitError}</p>
         )}
 
-        {/*
-         * Save is disabled until the backend CRUD endpoints land -- see
-         * #1081.  The form stays editable so operators can still see
-         * which fields exist and plan changes.
-         */}
         <Button
           onClick={handleSave}
-          disabled
-          aria-disabled="true"
-          title={ORG_EDIT_COMING_SOON_TOOLTIP}
+          disabled={saving || !dirty}
         >
           {saving && <Loader2 className="mr-2 size-4 animate-spin" />}
           Save Settings
         </Button>
-        <p className="text-xs text-text-muted">{ORG_EDIT_COMING_SOON_DESCRIPTION}</p>
       </div>
     </SectionCard>
   )

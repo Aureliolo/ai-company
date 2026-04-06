@@ -741,21 +741,12 @@ function OrgChartInner() {
           onMoveEnd={handleMoveEnd}
           onNodeClick={handleNodeClick}
           onNodeContextMenu={handleNodeContextMenu}
-          // Drag-drop agent reassignment is disabled until the backend
-          // CRUD endpoints land -- see #1081.  `updateAgentOrg` (the
-          // PATCH /agents/{name} call wired into handleNodeDragStop)
-          // does not exist on the backend yet, so dropping an agent
-          // onto another department would roll back with a 405.  We
-          // set `nodesDraggable={false}` to block dragging entirely;
-          // the drag handlers stay wired so the code path is still
-          // exercised by tests and easy to re-enable once #1081 lands
-          // -- just flip `nodesDraggable` back to `viewMode === 'hierarchy'`.
           onNodeDragStart={viewMode === 'hierarchy' ? handleNodeDragStart : undefined}
           onNodeDrag={viewMode === 'hierarchy' ? handleNodeDrag : undefined}
           onNodeDragStop={viewMode === 'hierarchy' ? handleNodeDragStop : undefined}
           onPaneClick={handlePaneClick}
           nodesConnectable={false}
-          nodesDraggable={false}
+          nodesDraggable={viewMode === 'hierarchy'}
           minZoom={0.1}
           maxZoom={2}
           proOptions={{ hideAttribution: true }}

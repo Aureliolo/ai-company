@@ -81,7 +81,6 @@ class TestCreateDepartment:
     ) -> None:
         req = CreateDepartmentRequest(
             name="engineering",
-            display_name="Engineering",
             budget_percent=30.0,
         )
         dept = await service.create_department(req)
@@ -94,7 +93,6 @@ class TestCreateDepartment:
     ) -> None:
         req = CreateDepartmentRequest(
             name="engineering",
-            display_name="Engineering",
         )
         await service.create_department(req)
         with pytest.raises(ConflictError, match="already exists"):
@@ -106,12 +104,10 @@ class TestCreateDepartment:
     ) -> None:
         req1 = CreateDepartmentRequest(
             name="engineering",
-            display_name="Engineering",
         )
         await service.create_department(req1)
         req2 = CreateDepartmentRequest(
             name="Engineering",
-            display_name="Engineering Dept",
         )
         with pytest.raises(ConflictError, match="already exists"):
             await service.create_department(req2)
@@ -125,7 +121,6 @@ class TestUpdateDepartment:
     ) -> None:
         create_req = CreateDepartmentRequest(
             name="engineering",
-            display_name="Engineering",
             budget_percent=20.0,
         )
         await service.create_department(create_req)
@@ -152,7 +147,6 @@ class TestDeleteDepartment:
     ) -> None:
         create_req = CreateDepartmentRequest(
             name="engineering",
-            display_name="Engineering",
         )
         await service.create_department(create_req)
         await service.delete_department("engineering")
@@ -179,7 +173,6 @@ class TestDeleteDepartment:
         await service.create_department(
             CreateDepartmentRequest(
                 name="engineering",
-                display_name="Engineering",
             ),
         )
         await service.create_agent(
@@ -201,10 +194,10 @@ class TestReorderDepartments:
         service: OrgMutationService,
     ) -> None:
         await service.create_department(
-            CreateDepartmentRequest(name="alpha", display_name="Alpha"),
+            CreateDepartmentRequest(name="alpha"),
         )
         await service.create_department(
-            CreateDepartmentRequest(name="beta", display_name="Beta"),
+            CreateDepartmentRequest(name="beta"),
         )
         reordered = await service.reorder_departments(
             ReorderDepartmentsRequest(department_names=("beta", "alpha")),
@@ -216,10 +209,10 @@ class TestReorderDepartments:
         service: OrgMutationService,
     ) -> None:
         await service.create_department(
-            CreateDepartmentRequest(name="alpha", display_name="Alpha"),
+            CreateDepartmentRequest(name="alpha"),
         )
         await service.create_department(
-            CreateDepartmentRequest(name="beta", display_name="Beta"),
+            CreateDepartmentRequest(name="beta"),
         )
         with pytest.raises(ApiValidationError, match="exact permutation"):
             await service.reorder_departments(
@@ -231,7 +224,7 @@ class TestReorderDepartments:
         service: OrgMutationService,
     ) -> None:
         await service.create_department(
-            CreateDepartmentRequest(name="alpha", display_name="Alpha"),
+            CreateDepartmentRequest(name="alpha"),
         )
         with pytest.raises(ApiValidationError, match="exact permutation"):
             await service.reorder_departments(
@@ -251,7 +244,7 @@ class TestCreateAgent:
         service: OrgMutationService,
     ) -> None:
         await service.create_department(
-            CreateDepartmentRequest(name="eng", display_name="Engineering"),
+            CreateDepartmentRequest(name="eng"),
         )
         req = CreateAgentOrgRequest(
             name="alice",
@@ -283,7 +276,7 @@ class TestCreateAgent:
         service: OrgMutationService,
     ) -> None:
         await service.create_department(
-            CreateDepartmentRequest(name="eng", display_name="Engineering"),
+            CreateDepartmentRequest(name="eng"),
         )
         req = CreateAgentOrgRequest(
             name="alice",
@@ -303,7 +296,7 @@ class TestUpdateAgent:
         service: OrgMutationService,
     ) -> None:
         await service.create_department(
-            CreateDepartmentRequest(name="eng", display_name="Engineering"),
+            CreateDepartmentRequest(name="eng"),
         )
         await service.create_agent(
             CreateAgentOrgRequest(
@@ -334,7 +327,7 @@ class TestUpdateAgent:
         service: OrgMutationService,
     ) -> None:
         await service.create_department(
-            CreateDepartmentRequest(name="eng", display_name="Engineering"),
+            CreateDepartmentRequest(name="eng"),
         )
         await service.create_agent(
             CreateAgentOrgRequest(
@@ -358,7 +351,7 @@ class TestDeleteAgent:
         service: OrgMutationService,
     ) -> None:
         await service.create_department(
-            CreateDepartmentRequest(name="eng", display_name="Engineering"),
+            CreateDepartmentRequest(name="eng"),
         )
         await service.create_agent(
             CreateAgentOrgRequest(
@@ -382,6 +375,24 @@ class TestDeleteAgent:
         with pytest.raises(NotFoundError):
             await service.delete_agent("nonexistent")
 
+    async def test_delete_c_suite_agent_409(
+        self,
+        service: OrgMutationService,
+    ) -> None:
+        await service.create_department(
+            CreateDepartmentRequest(name="exec"),
+        )
+        await service.create_agent(
+            CreateAgentOrgRequest(
+                name="chief",
+                role="ceo",
+                department="exec",
+                level=SeniorityLevel.C_SUITE,
+            ),
+        )
+        with pytest.raises(ConflictError, match="c-suite"):
+            await service.delete_agent("chief")
+
 
 @pytest.mark.unit
 class TestReorderAgents:
@@ -390,7 +401,7 @@ class TestReorderAgents:
         service: OrgMutationService,
     ) -> None:
         await service.create_department(
-            CreateDepartmentRequest(name="eng", display_name="Engineering"),
+            CreateDepartmentRequest(name="eng"),
         )
         await service.create_agent(
             CreateAgentOrgRequest(
@@ -418,7 +429,7 @@ class TestReorderAgents:
         self,
         service: OrgMutationService,
     ) -> None:
-        with pytest.raises((NotFoundError, ApiValidationError)):
+        with pytest.raises(NotFoundError):
             await service.reorder_agents(
                 "nonexistent",
                 ReorderAgentsRequest(agent_names=("alice",)),
@@ -429,7 +440,7 @@ class TestReorderAgents:
         service: OrgMutationService,
     ) -> None:
         await service.create_department(
-            CreateDepartmentRequest(name="eng", display_name="Engineering"),
+            CreateDepartmentRequest(name="eng"),
         )
         await service.create_agent(
             CreateAgentOrgRequest(

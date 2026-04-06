@@ -1,11 +1,6 @@
-import { render, screen, fireEvent } from '@testing-library/react'
+import { render, screen } from '@testing-library/react'
 import { DepartmentEditDrawer } from '@/pages/org-edit/DepartmentEditDrawer'
 import { makeCompanyConfig, makeDepartment, makeDepartmentHealth } from '../../helpers/factories'
-
-// Save + Delete are disabled while the backend CRUD endpoints are
-// pending (#1081).  When the endpoints land, remove the
-// "disables Save+Delete" test and restore the click-behaviour tests
-// that were here previously -- see git history on this file.
 
 const noopAsync = vi.fn().mockResolvedValue(undefined)
 
@@ -47,9 +42,6 @@ describe('DepartmentEditDrawer', () => {
   })
 
   it('shows the agent count from the runtime health payload', () => {
-    // The runtime utilisation gauge was removed from the editor -- the
-    // drawer now shows a plain "N agent(s)" summary derived from the
-    // health payload's agent_count field instead of a meter.
     renderDrawer()
     expect(screen.getByText(/3\s+agent/i)).toBeInTheDocument()
     expect(screen.queryByRole('meter')).not.toBeInTheDocument()
@@ -66,22 +58,11 @@ describe('DepartmentEditDrawer', () => {
     expect(screen.getByText('Add Team')).toBeInTheDocument()
   })
 
-  it('disables Save and dept Delete buttons with #1081 tooltip', () => {
+  it('renders Save and Delete buttons as enabled', () => {
     renderDrawer()
-    const saveButton = screen.getByRole('button', { name: /^save$/i })
-    // Department-level delete button (distinguished from team delete icons)
-    const deptDeleteButtons = screen.getAllByRole('button', { name: /delete/i })
-    const deptDelete = deptDeleteButtons.find(
-      (btn) => btn.textContent?.toLowerCase().includes('delete') && btn.getAttribute('title')?.includes('1081'),
-    )
-    expect(saveButton).toBeDisabled()
-    expect(deptDelete).toBeDefined()
-    expect(deptDelete).toBeDisabled()
-    expect(saveButton.getAttribute('title') ?? '').toContain('1081')
-    // Clicking the disabled buttons must not call the mutation props.
-    fireEvent.click(saveButton)
-    if (deptDelete) fireEvent.click(deptDelete)
-    expect(mockOnUpdate).not.toHaveBeenCalled()
-    expect(mockOnDelete).not.toHaveBeenCalled()
+    const saveButton = screen.getByRole('button', { name: /save/i })
+    const deleteButton = screen.getByRole('button', { name: /delete/i })
+    expect(saveButton).not.toBeDisabled()
+    expect(deleteButton).not.toBeDisabled()
   })
 })

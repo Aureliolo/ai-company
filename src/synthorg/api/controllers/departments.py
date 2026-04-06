@@ -7,12 +7,13 @@ import math
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any, Self
 
-from litestar import Controller, Request, delete, get, patch, post, put
+from litestar import Controller, Request, Response, delete, get, patch, post, put
 from litestar.datastructures import State  # noqa: TC002
 from litestar.status_codes import HTTP_204_NO_CONTENT
 from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
 
 from synthorg.api.channels import CHANNEL_DEPARTMENTS, publish_ws_event
+from synthorg.api.concurrency import check_if_match, compute_etag
 from synthorg.api.dto import ApiResponse, PaginatedResponse
 from synthorg.api.dto_org import (  # noqa: TC001
     CreateDepartmentRequest,
@@ -25,9 +26,8 @@ from synthorg.api.errors import (
     ServiceUnavailableError,
 )
 from synthorg.api.guards import (
-    require_ceo_or_manager,
+    require_org_mutation,
     require_read_access,
-    require_write_access,
 )
 from synthorg.api.pagination import PaginationLimit, PaginationOffset, paginate
 from synthorg.api.path_params import PathName  # noqa: TC001
@@ -671,7 +671,7 @@ async def _clear_dept_ceremony_override(
 
 
 class DepartmentController(Controller):
-    """Departments -- listing, health aggregation, and ceremony policy."""
+    """Departments -- CRUD, health aggregation, ceremony policy."""
 
     path = "/departments"
     tags = ("departments",)
@@ -719,14 +719,15 @@ class DepartmentController(Controller):
         """
         app_state: AppState = state.app_state
         departments = await app_state.config_resolver.get_departments()
+        name_lower = name.lower()
         for dept in departments:
-            if dept.name == name:
+            if dept.name.lower() == name_lower:
                 return ApiResponse(data=dept)
         msg = f"Department {name!r} not found"
         logger.warning(API_RESOURCE_NOT_FOUND, resource="department", name=name)
         raise NotFoundError(msg)
 
-    @post("/", guards=[require_ceo_or_manager], status_code=201)
+    @post("/", guards=[require_org_mutation()], status_code=201)
     async def create_department(
         self,
         request: Request[Any, Any, Any],
@@ -753,15 +754,20 @@ class DepartmentController(Controller):
         )
         return ApiResponse(data=dept)
 
-    @patch("/{name:str}", guards=[require_write_access])
+    @patch(
+        "/{name:str}",
+        guards=[require_org_mutation(department_param="name")],
+    )
     async def update_department(
         self,
         request: Request[Any, Any, Any],
         state: State,
         name: PathName,
         data: UpdateDepartmentRequest,
-    ) -> ApiResponse[Department]:
+    ) -> Response[ApiResponse[Department]]:
         """Update an existing department.
+
+        Supports optimistic concurrency via ``If-Match`` header.
 
         Args:
             request: Incoming request (for WS publishing).
@@ -770,9 +776,27 @@ class DepartmentController(Controller):
             data: Partial update request.
 
         Returns:
-            Updated department envelope.
+            Updated department envelope with ETag header.
         """
         app_state: AppState = state.app_state
+        if_match = request.headers.get("if-match")
+        if if_match:
+            depts = await app_state.config_resolver.get_departments()
+            name_lower = name.lower()
+            for dept in depts:
+                if dept.name.lower() == name_lower:
+                    cur = json.dumps(
+                        dept.model_dump(mode="json"),
+                        sort_keys=True,
+                    )
+                    cur_etag = compute_etag(cur, "")
+                    check_if_match(
+                        if_match,
+                        cur_etag,
+                        f"department:{name}",
+                    )
+                    break
+
         updated = await app_state.org_mutation_service.update_department(
             name,
             data,
@@ -783,11 +807,21 @@ class DepartmentController(Controller):
             CHANNEL_DEPARTMENTS,
             {"name": updated.name},
         )
-        return ApiResponse(data=updated)
+        new_etag = compute_etag(
+            json.dumps(
+                updated.model_dump(mode="json"),
+                sort_keys=True,
+            ),
+            "",
+        )
+        return Response(
+            content=ApiResponse(data=updated),
+            headers={"ETag": new_etag},
+        )
 
     @delete(
         "/{name:str}",
-        guards=[require_ceo_or_manager],
+        guards=[require_org_mutation(department_param="name")],
         status_code=HTTP_204_NO_CONTENT,
     )
     async def delete_department(
@@ -814,7 +848,10 @@ class DepartmentController(Controller):
             {"name": name},
         )
 
-    @post("/{name:str}/reorder-agents", guards=[require_write_access])
+    @post(
+        "/{name:str}/reorder-agents",
+        guards=[require_org_mutation(department_param="name")],
+    )
     async def reorder_agents(
         self,
         request: Request[Any, Any, Any],
@@ -931,7 +968,10 @@ class DepartmentController(Controller):
         policy = await _get_dept_ceremony_override(app_state, name)
         return ApiResponse(data=policy)
 
-    @put("/{name:str}/ceremony-policy", guards=[require_ceo_or_manager])
+    @put(
+        "/{name:str}/ceremony-policy",
+        guards=[require_org_mutation(department_param="name")],
+    )
     async def update_department_ceremony_policy(
         self,
         state: State,
@@ -989,7 +1029,7 @@ class DepartmentController(Controller):
 
     @delete(
         "/{name:str}/ceremony-policy",
-        guards=[require_ceo_or_manager],
+        guards=[require_org_mutation(department_param="name")],
         status_code=HTTP_204_NO_CONTENT,
     )
     async def delete_department_ceremony_policy(

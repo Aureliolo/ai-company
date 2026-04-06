@@ -153,8 +153,7 @@ export function buildOrgTree(
   runtimeStatuses: Record<string, AgentRuntimeStatus>,
   departmentHealths: readonly DepartmentHealth[],
   owners: readonly OwnerInfo[] = [],
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- wired in a follow-up PR
-  _deptAdmins: readonly DeptAdminInfo[] = [],
+  deptAdmins: readonly DeptAdminInfo[] = [],
 ): OrgTree {
   const agents = config.agents.filter((a) => (a.status ?? 'active') !== 'terminated')
 
@@ -357,6 +356,34 @@ export function buildOrgTree(
         })
       }
     }
+  }
+
+  // ── Emit dept admin nodes inside their scoped departments ──
+  const DEPT_ADMIN_WIDTH = 200
+  const DEPT_ADMIN_HEIGHT = 70
+  for (const admin of deptAdmins) {
+    const deptLower = admin.department.toLowerCase()
+    const matchedDept = allDepartments.find(
+      (d) => d.name.toLowerCase() === deptLower,
+    )
+    if (!matchedDept) continue
+    const adminNodeId = `dept-admin-${admin.id}`
+    const groupId = `dept-${matchedDept.name}`
+    nodes.push({
+      id: adminNodeId,
+      type: 'deptAdmin',
+      position: { x: 0, y: 0 },
+      parentId: groupId,
+      extent: 'parent' as const,
+      width: DEPT_ADMIN_WIDTH,
+      height: DEPT_ADMIN_HEIGHT,
+      data: {
+        adminId: admin.id,
+        displayName: admin.displayName,
+        department: admin.department,
+        role: 'department_admin',
+      },
+    })
   }
 
   return { nodes, edges }

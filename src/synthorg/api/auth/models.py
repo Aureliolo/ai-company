@@ -2,7 +2,7 @@
 
 from enum import StrEnum
 
-from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.api.guards import HumanRole  # noqa: TC001
 from synthorg.core.types import NotBlankStr  # noqa: TC001
@@ -53,9 +53,17 @@ class User(BaseModel):
     role: HumanRole
     must_change_password: bool = True
     org_roles: tuple[OrgRole, ...] = ()
-    scoped_departments: tuple[str, ...] = ()
+    scoped_departments: tuple[NotBlankStr, ...] = ()
     created_at: AwareDatetime
     updated_at: AwareDatetime
+
+    @model_validator(mode="after")
+    def _validate_scoped_departments(self) -> User:
+        """Reject non-empty scoped_departments without DEPARTMENT_ADMIN."""
+        if self.scoped_departments and OrgRole.DEPARTMENT_ADMIN not in self.org_roles:
+            msg = "scoped_departments requires DEPARTMENT_ADMIN in org_roles"
+            raise ValueError(msg)
+        return self
 
 
 class ApiKey(BaseModel):
@@ -107,4 +115,12 @@ class AuthenticatedUser(BaseModel):
     auth_method: AuthMethod
     must_change_password: bool = False
     org_roles: tuple[OrgRole, ...] = ()
-    scoped_departments: tuple[str, ...] = ()
+    scoped_departments: tuple[NotBlankStr, ...] = ()
+
+    @model_validator(mode="after")
+    def _validate_scoped_departments(self) -> AuthenticatedUser:
+        """Reject non-empty scoped_departments without DEPARTMENT_ADMIN."""
+        if self.scoped_departments and OrgRole.DEPARTMENT_ADMIN not in self.org_roles:
+            msg = "scoped_departments requires DEPARTMENT_ADMIN in org_roles"
+            raise ValueError(msg)
+        return self

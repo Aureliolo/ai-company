@@ -207,7 +207,8 @@ describe('useCompanyStore', () => {
   describe('updateCompany', () => {
     it('updates config on success', async () => {
       const updated = { ...mockConfig, company_name: 'New Name' }
-      mockUpdateCompany.mockResolvedValue(updated)
+      mockUpdateCompany.mockResolvedValue({ company_name: 'New Name' })
+      mockGetCompanyConfig.mockResolvedValue(updated)
       useCompanyStore.setState({ config: mockConfig })
 
       await useCompanyStore.getState().updateCompany({ company_name: 'New Name' })
@@ -233,7 +234,6 @@ describe('useCompanyStore', () => {
 
       const result = await useCompanyStore.getState().createDepartment({
         name: 'design',
-        display_name: 'Design',
       })
       expect(result).toEqual(newDept)
       expect(useCompanyStore.getState().config!.departments).toHaveLength(2)
@@ -244,7 +244,7 @@ describe('useCompanyStore', () => {
       useCompanyStore.setState({ config: mockConfig })
 
       await expect(
-        useCompanyStore.getState().createDepartment({ name: 'x', display_name: 'X' }),
+        useCompanyStore.getState().createDepartment({ name: 'x' }),
       ).rejects.toThrow('Conflict')
       expect(useCompanyStore.getState().config!.departments).toHaveLength(1)
     })
@@ -257,10 +257,10 @@ describe('useCompanyStore', () => {
       useCompanyStore.setState({ config: mockConfig })
 
       const result = await useCompanyStore.getState().updateDepartment('engineering', {
-        display_name: 'Eng Team',
+        budget_percent: 50,
       })
-      expect(result.display_name).toBe('Eng Team')
-      expect(useCompanyStore.getState().config!.departments[0]!.display_name).toBe('Eng Team')
+      expect(result.name).toBe('engineering')
+      expect(useCompanyStore.getState().config!.departments[0]!.name).toBe('engineering')
     })
   })
 
@@ -276,10 +276,7 @@ describe('useCompanyStore', () => {
 
   describe('reorderDepartments', () => {
     it('updates config with reordered result', async () => {
-      const reordered = {
-        ...mockConfig,
-        departments: [makeDepartment('product'), makeDepartment('engineering')],
-      }
+      const reordered = [makeDepartment('product'), makeDepartment('engineering')]
       mockReorderDepartments.mockResolvedValue(reordered)
       useCompanyStore.setState({ config: mockConfig })
 
@@ -341,7 +338,7 @@ describe('useCompanyStore', () => {
 
   describe('reorderAgents', () => {
     it('calls API and clears saving flag', async () => {
-      mockReorderAgents.mockResolvedValue(mockConfig.departments[0]!)
+      mockReorderAgents.mockResolvedValue(mockConfig.agents)
       useCompanyStore.setState({ config: mockConfig })
 
       await useCompanyStore.getState().reorderAgents('engineering', ['a-2', 'a-1'])

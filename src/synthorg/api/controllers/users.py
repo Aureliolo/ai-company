@@ -406,7 +406,7 @@ class UserController(Controller):
 
     # -- Org role grant/revoke -------------------------------------------
 
-    @post("/{user_id:str}/org-roles", status_code=200)
+    @post("/{user_id:str}/org-roles", status_code=201)
     async def grant_org_role(
         self,
         state: State,
@@ -421,7 +421,7 @@ class UserController(Controller):
             data: Role grant payload.
 
         Returns:
-            Updated user response.
+            Updated user response (HTTP 201).
 
         Raises:
             NotFoundError: If the user is not found.
@@ -429,38 +429,44 @@ class UserController(Controller):
             ApiValidationError: If department_admin without departments.
         """
         app_state: AppState = state.app_state
-        user = await _get_user_or_404(app_state, user_id)
+        async with _CEO_LOCK:
+            user = await _get_user_or_404(app_state, user_id)
 
-        if user.role == HumanRole.SYSTEM:
-            msg = "Cannot assign org roles to the system user"
-            raise ApiValidationError(msg)
+            if user.role == HumanRole.SYSTEM:
+                msg = "Cannot assign org roles to the system user"
+                logger.warning(API_VALIDATION_FAILED, reason=msg)
+                raise ApiValidationError(msg)
 
-        existing_roles = set(user.org_roles)
-        if data.role in existing_roles:
-            msg = f"User already has role: {data.role.value}"
-            raise ConflictError(msg)
+            existing_roles = set(user.org_roles)
+            if data.role in existing_roles:
+                msg = f"User already has role: {data.role.value}"
+                logger.warning(API_RESOURCE_CONFLICT, reason=msg)
+                raise ConflictError(msg)
 
-        if data.role == OrgRole.DEPARTMENT_ADMIN and not data.scoped_departments:
-            msg = "department_admin role requires scoped_departments"
-            raise ApiValidationError(msg)
+            if data.role == OrgRole.DEPARTMENT_ADMIN and not data.scoped_departments:
+                msg = "department_admin role requires scoped_departments"
+                logger.warning(API_VALIDATION_FAILED, reason=msg)
+                raise ApiValidationError(msg)
 
-        new_roles = (*user.org_roles, data.role)
-        # Merge scoped departments (additive)
-        new_scoped = tuple(
-            {*user.scoped_departments, *data.scoped_departments},
-        )
-        now = datetime.now(UTC)
-        updated = user.model_copy(
-            update={
-                "org_roles": new_roles,
-                "scoped_departments": new_scoped,
-                "updated_at": now,
-            },
-        )
-        await app_state.persistence.users.save(updated)
+            new_roles = (*user.org_roles, data.role)
+            # Merge scoped departments (additive, sorted for stability)
+            new_scoped = tuple(
+                sorted(
+                    dict.fromkeys([*user.scoped_departments, *data.scoped_departments]),
+                )
+            )
+            now = datetime.now(UTC)
+            updated = user.model_copy(
+                update={
+                    "org_roles": new_roles,
+                    "scoped_departments": new_scoped,
+                    "updated_at": now,
+                },
+            )
+            await app_state.persistence.users.save(updated)
         logger.info(
             API_USER_UPDATED,
-            user_id=user_id,
+            user_id=user.id,
             granted_org_role=data.role.value,
         )
         return ApiResponse(data=_to_response(updated))
@@ -492,33 +498,37 @@ class UserController(Controller):
             org_role = OrgRole(role)
         except ValueError:
             msg = f"Invalid org role: {role}"
+            logger.warning(API_VALIDATION_FAILED, reason=msg)
             raise ApiValidationError(msg) from None
 
-        user = await _get_user_or_404(app_state, user_id)
+        async with _CEO_LOCK:
+            user = await _get_user_or_404(app_state, user_id)
 
-        if org_role not in user.org_roles:
-            msg = f"User does not have role: {role}"
-            raise NotFoundError(msg)
+            if org_role not in user.org_roles:
+                msg = f"User does not have role: {role}"
+                logger.warning(API_RESOURCE_NOT_FOUND, reason=msg)
+                raise NotFoundError(msg)
 
-        # Prevent revoking the last owner
-        if org_role == OrgRole.OWNER:
-            all_users = await app_state.persistence.users.list_users()
-            owner_count = sum(1 for u in all_users if OrgRole.OWNER in u.org_roles)
-            if owner_count <= 1:
-                msg = "Cannot revoke the last owner role"
-                raise ConflictError(msg)
+            # Prevent revoking the last owner
+            if org_role == OrgRole.OWNER:
+                all_users = await app_state.persistence.users.list_users()
+                owner_count = sum(1 for u in all_users if OrgRole.OWNER in u.org_roles)
+                if owner_count <= 1:
+                    msg = "Cannot revoke the last owner role"
+                    logger.warning(API_RESOURCE_CONFLICT, reason=msg)
+                    raise ConflictError(msg)
 
-        new_roles = tuple(r for r in user.org_roles if r != org_role)
-        now = datetime.now(UTC)
-        updated = user.model_copy(
-            update={
-                "org_roles": new_roles,
-                "updated_at": now,
-            },
-        )
-        await app_state.persistence.users.save(updated)
+            new_roles = tuple(r for r in user.org_roles if r != org_role)
+            now = datetime.now(UTC)
+            updated = user.model_copy(
+                update={
+                    "org_roles": new_roles,
+                    "updated_at": now,
+                },
+            )
+            await app_state.persistence.users.save(updated)
         logger.info(
             API_USER_UPDATED,
-            user_id=user_id,
+            user_id=user.id,
             revoked_org_role=role,
         )
