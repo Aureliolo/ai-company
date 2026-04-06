@@ -28,6 +28,7 @@ from synthorg.api.auth.system_user import SYSTEM_USERNAME, is_system_user
 from synthorg.api.auth.ticket_store import TicketLimitExceededError
 from synthorg.api.dto import ApiResponse
 from synthorg.api.errors import (
+    AccountLockedError,
     ApiValidationError,
     ConflictError,
     NotFoundError,
@@ -542,6 +543,20 @@ class AuthController(Controller):
         auth_service: AuthService = app_state.auth_service
         persistence = app_state.persistence
 
+        # Account lockout check (still run dummy hash for timing safety)
+        if app_state.has_lockout_store and app_state.lockout_store.is_locked(
+            data.username,
+        ):
+            await auth_service.verify_password_async(data.password, _DUMMY_ARGON2_HASH)
+            logger.warning(
+                API_AUTH_FAILED,
+                reason="account_locked",
+                username=data.username,
+            )
+            raise AccountLockedError(
+                retry_after=app_state.lockout_store.lockout_duration_seconds,
+            )
+
         user = await persistence.users.get_by_username(data.username)
         if user is not None and is_system_user(user.id):
             # System user cannot log in -- run dummy hash for
@@ -559,12 +574,23 @@ class AuthController(Controller):
             password_valid = False
 
         if not password_valid:
+            # Record failure for lockout tracking
+            if app_state.has_lockout_store:
+                client = request.client
+                ip = client.host if client else ""
+                await app_state.lockout_store.record_failure(
+                    data.username, ip_address=ip
+                )
             logger.warning(
                 API_AUTH_FAILED,
                 reason="invalid_credentials",
             )
             msg = "Invalid credentials"
             raise UnauthorizedError(msg)
+
+        # Clear lockout on success
+        if app_state.has_lockout_store:
+            await app_state.lockout_store.record_success(data.username)
 
         token, expires_in, session_id = auth_service.create_token(user)
 

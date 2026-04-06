@@ -14,7 +14,7 @@ vi.mock('@/api/endpoints/auth', () => ({
 function resetStores() {
   sessionStorage.clear()
   localStorage.clear()
-  useAuthStore.setState({ token: null, user: null, loading: false })
+  useAuthStore.setState({ authStatus: 'unauthenticated', user: null, loading: false })
   useWebSocketStore.getState().disconnect()
   useWebSocketStore.setState({ connected: false, reconnectExhausted: false, subscribedChannels: [] })
 }
@@ -37,7 +37,7 @@ describe('useWebSocket', () => {
   })
 
   it('connects and subscribes when authenticated', () => {
-    useAuthStore.setState({ token: 'test-token' })
+    useAuthStore.setState({ authStatus: 'authenticated' })
     // Pre-set connected to avoid actual WebSocket
     useWebSocketStore.setState({ connected: true })
 
@@ -54,7 +54,7 @@ describe('useWebSocket', () => {
   })
 
   it('removes handlers on unmount (without global unsubscribe)', () => {
-    useAuthStore.setState({ token: 'test-token' })
+    useAuthStore.setState({ authStatus: 'authenticated' })
     useWebSocketStore.setState({ connected: true })
 
     const unsubscribeSpy = vi.spyOn(useWebSocketStore.getState(), 'unsubscribe')
@@ -73,7 +73,7 @@ describe('useWebSocket', () => {
   })
 
   it('deduplicates channels from multiple bindings', () => {
-    useAuthStore.setState({ token: 'test-token' })
+    useAuthStore.setState({ authStatus: 'authenticated' })
     useWebSocketStore.setState({ connected: true })
 
     const subscribeSpy = vi.spyOn(useWebSocketStore.getState(), 'subscribe')
@@ -92,7 +92,7 @@ describe('useWebSocket', () => {
   })
 
   it('skips setup when explicitly disabled', () => {
-    useAuthStore.setState({ token: 'test-token' })
+    useAuthStore.setState({ authStatus: 'authenticated' })
     const connectSpy = vi.spyOn(useWebSocketStore.getState(), 'connect')
     const handler = vi.fn()
 

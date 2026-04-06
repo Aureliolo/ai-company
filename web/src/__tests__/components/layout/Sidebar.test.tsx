@@ -53,19 +53,17 @@ afterAll(() => {
 
 function resetStore() {
   useAuthStore.setState({
-    token: null,
+    authStatus: 'unauthenticated' as const,
     user: null,
     loading: false,
-    _mustChangePasswordFallback: false,
   })
 }
 
 function setup(initialEntries: string[] = ['/']) {
   useAuthStore.setState({
-    token: 'test-token',
+    authStatus: 'authenticated' as const,
     user: { id: '1', username: 'admin', role: 'ceo', must_change_password: false, org_roles: [], scoped_departments: [] },
     loading: false,
-    _mustChangePasswordFallback: false,
   })
   return renderWithRouter(<Sidebar />, { initialEntries })
 }
@@ -163,11 +161,10 @@ describe('Sidebar', () => {
     const logoutSpy = vi.fn()
     useAuthStore.setState({
       ...useAuthStore.getState(),
-      token: 'test-token',
+      authStatus: 'authenticated',
       user: { id: '1', username: 'admin', role: 'ceo', must_change_password: false, org_roles: [], scoped_departments: [] },
       loading: false,
-      _mustChangePasswordFallback: false,
-      logout: logoutSpy,
+        logout: logoutSpy,
     })
     renderWithRouter(<Sidebar />, { initialEntries: ['/'] })
 
@@ -262,11 +259,10 @@ describe('Sidebar', () => {
         isMobile: false,
       })
       useAuthStore.setState({
-        token: 'test-token',
+        authStatus: 'authenticated',
         user: { id: '1', username: 'admin', role: 'ceo', must_change_password: false, org_roles: [], scoped_departments: [] },
         loading: false,
-        _mustChangePasswordFallback: false,
-      })
+          })
       return {
         onOverlayClose,
         ...renderWithRouter(

@@ -1,10 +1,11 @@
 /**
- * Axios client with JWT interceptor and ApiResponse envelope unwrapping.
+ * Axios client with cookie-based auth and ApiResponse envelope unwrapping.
  */
 
 import axios, { type AxiosError, type AxiosResponse } from 'axios'
 import { createLogger } from '@/lib/logger'
 import { IS_DEV_AUTH_BYPASS } from '@/utils/dev'
+import { getCsrfToken } from '@/utils/csrf'
 import type { ApiResponse, ErrorDetail, PaginatedResponse } from './types'
 
 const log = createLogger('api-client')
@@ -13,29 +14,31 @@ const log = createLogger('api-client')
 const RAW_BASE = import.meta.env.VITE_API_BASE_URL ?? ''
 const BASE_URL = RAW_BASE.replace(/\/+$/, '').replace(/\/api\/v1\/?$/, '')
 
+/** CSRF-protected HTTP methods that require the X-CSRF-Token header. */
+const CSRF_METHODS = new Set(['post', 'put', 'patch', 'delete'])
+
 export const apiClient = axios.create({
   baseURL: `${BASE_URL}/api/v1`,
   headers: { 'Content-Type': 'application/json' },
   timeout: 30_000,
+  withCredentials: true,
 })
 
-// ── Request interceptor: attach JWT ──────────────────────────
-// SECURITY NOTE: JWT is stored in sessionStorage, which is accessible to any JS
-// running in the page context (XSS risk) but scoped to the browser tab (tokens
-// do not persist across sessions or leak to other tabs). HttpOnly cookies would
-// eliminate this attack surface entirely but require backend cookie-based auth
-// support plus CSRF protection. Mitigations in place: short-lived tokens with
-// server-controlled expiry, automatic 401 cleanup, expiry checks on page load
-// (see auth store), and tab-scoped storage. Default token lifetime is 24 hours
-// (configurable via jwt_expiry_minutes). CSP headers in security-headers.conf
-// (included by nginx.conf) restrict script sources. If the deployment
-// architecture changes to support cookie-based auth, migrate to HttpOnly cookies
-// -- see docs/security.md for the full threat model.
+// ── Request interceptor: attach CSRF token ─────────────────
+// SECURITY NOTE: Authentication uses HttpOnly session cookies set by the
+// backend. The browser sends them automatically on every request (via
+// withCredentials: true). The csrf_token cookie is non-HttpOnly so JS can
+// read it and attach it as the X-CSRF-Token header on mutating requests.
+// This eliminates the XSS token-theft attack surface that existed with
+// sessionStorage-based JWT management.
 
 apiClient.interceptors.request.use((config) => {
-  const token = sessionStorage.getItem('auth_token')
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`
+  const method = (config.method ?? '').toLowerCase()
+  if (CSRF_METHODS.has(method)) {
+    const csrfToken = getCsrfToken()
+    if (csrfToken) {
+      config.headers['X-CSRF-Token'] = csrfToken
+    }
   }
   return config
 })
@@ -46,15 +49,10 @@ apiClient.interceptors.response.use(
   (response: AxiosResponse) => response,
   (error: AxiosError<{ error?: string; success?: boolean }>) => {
     if (error.response?.status === 401 && !IS_DEV_AUTH_BYPASS) {
-      // Clear credentials synchronously to prevent stale-token retries
-      sessionStorage.removeItem('auth_token')
-      sessionStorage.removeItem('auth_token_expires_at')
-      sessionStorage.removeItem('auth_must_change_password')
-      // Sync Zustand auth state -- dynamic import avoids circular dependency.
-      // We intentionally fire-and-forget: the rejection below reaches the
-      // caller immediately, while auth state cleanup happens concurrently.
+      // The server clears the session cookie via Set-Cookie: Max-Age=0.
+      // We only need to sync the Zustand auth state.
       import('@/stores/auth').then(({ useAuthStore }) => {
-        useAuthStore.getState().logout()
+        useAuthStore.getState().handleUnauthorized()
       }).catch((importErr: unknown) => {
         log.error('Auth store cleanup failed during 401 handling:', importErr)
         // Fallback if store import fails: redirect directly

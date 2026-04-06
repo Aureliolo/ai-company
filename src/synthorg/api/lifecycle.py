@@ -230,6 +230,22 @@ async def _safe_startup(  # noqa: PLR0913, PLR0912, PLR0915, C901
                     note="Session store initialized",
                 )
 
+                # Lockout store shares the same DB connection.
+                from synthorg.api.auth.lockout_store import (  # noqa: PLC0415
+                    LockoutStore,
+                )
+
+                auth_cfg = (
+                    app_state.config.api.auth if app_state.config is not None else None
+                )
+                if auth_cfg is not None:
+                    lockout_store = LockoutStore(db, auth_cfg)
+                    app_state.set_lockout_store(lockout_store)
+                    logger.info(
+                        API_APP_STARTUP,
+                        note="Lockout store initialized",
+                    )
+
         if message_bus is not None:
             try:
                 await message_bus.start()

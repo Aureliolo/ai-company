@@ -1,7 +1,7 @@
 import type { AxiosResponse } from 'axios'
 import { vi } from 'vitest'
 
-// Mock dev auth bypass OFF so the 401 interceptor actually clears sessionStorage.
+// Mock dev auth bypass OFF so the 401 interceptor actually fires.
 // Must be hoisted before client.ts imports @/utils/dev at module level.
 vi.mock('@/utils/dev', () => ({ IS_DEV_AUTH_BYPASS: false }))
 
@@ -187,52 +187,61 @@ function getRequestInterceptor(): (config: Record<string, unknown>) => Record<st
   return fulfilled as (config: Record<string, unknown>) => Record<string, unknown>
 }
 
-describe('apiClient request interceptor', () => {
+describe('apiClient request interceptor (CSRF)', () => {
   afterEach(() => {
-    sessionStorage.removeItem('auth_token')
+    // Clear any test cookies
+    document.cookie = 'csrf_token=; Max-Age=0'
   })
 
-  it('injects auth token when present in sessionStorage', () => {
-    sessionStorage.setItem('auth_token', 'test-jwt-token')
+  it('attaches CSRF token on POST requests when cookie present', () => {
+    document.cookie = 'csrf_token=test-csrf-token'
     const fulfilled = getRequestInterceptor()
-    const result = fulfilled({ headers: {} }) as { headers: Record<string, string> }
-    expect(result.headers['Authorization']).toBe('Bearer test-jwt-token')
+    const result = fulfilled({ method: 'post', headers: {} }) as { headers: Record<string, string> }
+    expect(result.headers['X-CSRF-Token']).toBe('test-csrf-token')
   })
 
-  it('does not inject token when not in sessionStorage', () => {
-    sessionStorage.removeItem('auth_token')
+  it('attaches CSRF token on PUT requests when cookie present', () => {
+    document.cookie = 'csrf_token=test-csrf-token'
     const fulfilled = getRequestInterceptor()
-    const result = fulfilled({ headers: {} }) as { headers: Record<string, string> }
-    expect(result.headers['Authorization']).toBeUndefined()
+    const result = fulfilled({ method: 'put', headers: {} }) as { headers: Record<string, string> }
+    expect(result.headers['X-CSRF-Token']).toBe('test-csrf-token')
+  })
+
+  it('attaches CSRF token on PATCH requests when cookie present', () => {
+    document.cookie = 'csrf_token=test-csrf-token'
+    const fulfilled = getRequestInterceptor()
+    const result = fulfilled({ method: 'patch', headers: {} }) as { headers: Record<string, string> }
+    expect(result.headers['X-CSRF-Token']).toBe('test-csrf-token')
+  })
+
+  it('attaches CSRF token on DELETE requests when cookie present', () => {
+    document.cookie = 'csrf_token=test-csrf-token'
+    const fulfilled = getRequestInterceptor()
+    const result = fulfilled({ method: 'delete', headers: {} }) as { headers: Record<string, string> }
+    expect(result.headers['X-CSRF-Token']).toBe('test-csrf-token')
+  })
+
+  it('does not attach CSRF token on GET requests', () => {
+    document.cookie = 'csrf_token=test-csrf-token'
+    const fulfilled = getRequestInterceptor()
+    const result = fulfilled({ method: 'get', headers: {} }) as { headers: Record<string, string> }
+    expect(result.headers['X-CSRF-Token']).toBeUndefined()
+  })
+
+  it('does not attach CSRF token when cookie is absent', () => {
+    const fulfilled = getRequestInterceptor()
+    const result = fulfilled({ method: 'post', headers: {} }) as { headers: Record<string, string> }
+    expect(result.headers['X-CSRF-Token']).toBeUndefined()
+  })
+})
+
+describe('apiClient config', () => {
+  it('has withCredentials enabled', () => {
+    expect(apiClient.defaults.withCredentials).toBe(true)
   })
 })
 
 describe('apiClient 401 response interceptor', () => {
-  afterEach(() => {
-    sessionStorage.clear()
-  })
-
-  it('clears auth sessionStorage keys on 401', async () => {
-    sessionStorage.setItem('auth_token', 'old-token')
-    sessionStorage.setItem('auth_token_expires_at', '99999999')
-    sessionStorage.setItem('auth_must_change_password', 'true')
-
-    const error = new (await import('axios')).AxiosError(
-      'Unauthorized',
-      'ERR_BAD_RESPONSE',
-      undefined,
-      undefined,
-      { status: 401, data: {}, headers: {}, statusText: 'Unauthorized', config: {} as AxiosResponse['config'] } as AxiosResponse,
-    )
-
-    // The interceptor rejects with the error but clears sessionStorage as a side effect
-    await expect(apiClient.interceptors.response.handlers?.[0]?.rejected?.(error)).rejects.toBeDefined()
-
-    expect(sessionStorage.getItem('auth_token')).toBeNull()
-    expect(sessionStorage.getItem('auth_token_expires_at')).toBeNull()
-    expect(sessionStorage.getItem('auth_must_change_password')).toBeNull()
-  })
-
   it('passes through non-401 errors unchanged', async () => {
     const error = new (await import('axios')).AxiosError(
       'Server Error',
@@ -242,11 +251,6 @@ describe('apiClient 401 response interceptor', () => {
       { status: 500, data: {}, headers: {}, statusText: 'Error', config: {} as AxiosResponse['config'] } as AxiosResponse,
     )
 
-    sessionStorage.setItem('auth_token', 'should-remain')
-
     await expect(apiClient.interceptors.response.handlers?.[0]?.rejected?.(error)).rejects.toBeDefined()
-
-    // Token should NOT be cleared on non-401
-    expect(sessionStorage.getItem('auth_token')).toBe('should-remain')
   })
 })

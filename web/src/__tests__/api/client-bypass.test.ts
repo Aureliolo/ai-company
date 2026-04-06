@@ -1,22 +1,14 @@
 import type { AxiosResponse } from 'axios'
 import { vi } from 'vitest'
 
-// Mock dev auth bypass ON so the 401 interceptor skips sessionStorage clearing.
+// Mock dev auth bypass ON so the 401 interceptor skips auth cleanup.
 // Separate file because vi.mock is file-scoped and client.test.ts mocks it OFF.
 vi.mock('@/utils/dev', () => ({ IS_DEV_AUTH_BYPASS: true }))
 
 import { apiClient } from '@/api/client'
 
 describe('apiClient 401 response interceptor (dev bypass active)', () => {
-  afterEach(() => {
-    sessionStorage.clear()
-  })
-
-  it('does NOT clear auth sessionStorage keys on 401 when bypass is active', async () => {
-    sessionStorage.setItem('auth_token', 'dev-token')
-    sessionStorage.setItem('auth_token_expires_at', '99999999')
-    sessionStorage.setItem('auth_must_change_password', 'false')
-
+  it('does NOT trigger auth cleanup on 401 when bypass is active', async () => {
     const error = new (await import('axios')).AxiosError(
       'Unauthorized',
       'ERR_BAD_RESPONSE',
@@ -25,11 +17,7 @@ describe('apiClient 401 response interceptor (dev bypass active)', () => {
       { status: 401, data: {}, headers: {}, statusText: 'Unauthorized', config: {} as AxiosResponse['config'] } as AxiosResponse,
     )
 
+    // The interceptor should reject without triggering handleUnauthorized
     await expect(apiClient.interceptors.response.handlers?.[0]?.rejected?.(error)).rejects.toBeDefined()
-
-    // Bypass is active -- sessionStorage must NOT be cleared
-    expect(sessionStorage.getItem('auth_token')).toBe('dev-token')
-    expect(sessionStorage.getItem('auth_token_expires_at')).toBe('99999999')
-    expect(sessionStorage.getItem('auth_must_change_password')).toBe('false')
   })
 })

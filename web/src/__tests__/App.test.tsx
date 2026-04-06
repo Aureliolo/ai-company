@@ -41,10 +41,9 @@ afterAll(() => {
 describe('App', () => {
   beforeEach(() => {
     useAuthStore.setState({
-      token: null,
+      authStatus: 'unauthenticated',
       user: null,
       loading: false,
-      _mustChangePasswordFallback: false,
     })
     useSetupStore.setState({
       setupComplete: null,
@@ -68,7 +67,7 @@ describe('App', () => {
     'renders app shell for authenticated users with setup complete',
     async () => {
     useAuthStore.setState({
-      token: 'test-token',
+      authStatus: 'authenticated',
       user: { id: '1', username: 'admin', role: 'ceo', must_change_password: false, org_roles: [], scoped_departments: [] },
     })
     useSetupStore.setState({ setupComplete: true })

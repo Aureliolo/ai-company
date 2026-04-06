@@ -1,4 +1,5 @@
 import { createLogger } from '@/lib/logger'
+import { getCsrfToken } from '@/utils/csrf'
 import { apiClient, unwrap, unwrapVoid } from '../client'
 import type {
   AddAllowlistEntryRequest,
@@ -169,13 +170,13 @@ export async function pullModel(
 ): Promise<void> {
   const baseUrl = apiClient.defaults.baseURL ?? ''
   const url = `${baseUrl}/providers/${encodeURIComponent(name)}/models/pull`
-  const token = sessionStorage.getItem('auth_token')
 
   const response = await fetch(url, {
     method: 'POST',
+    credentials: 'include',
     headers: {
       'Content-Type': 'application/json',
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      'X-CSRF-Token': getCsrfToken() ?? '',
     },
     body: JSON.stringify({ model_name: modelName }),
     signal,
@@ -183,13 +184,9 @@ export async function pullModel(
 
   if (!response.ok || !response.body) {
     if (response.status === 401) {
-      // Clear credentials synchronously then sync Zustand auth state
-      // (matches client.ts 401 interceptor pattern).
-      sessionStorage.removeItem('auth_token')
-      sessionStorage.removeItem('auth_token_expires_at')
-      sessionStorage.removeItem('auth_must_change_password')
+      // Server clears the session cookie. Sync Zustand auth state.
       import('@/stores/auth').then(({ useAuthStore }) => {
-        useAuthStore.getState().logout()
+        useAuthStore.getState().handleUnauthorized()
       }).catch((importErr: unknown) => {
         log.error('Auth store cleanup failed during SSE 401 handling:', importErr)
         if (window.location.pathname !== '/login' && window.location.pathname !== '/setup') {

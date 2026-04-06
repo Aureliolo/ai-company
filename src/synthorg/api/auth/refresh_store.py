@@ -1,0 +1,202 @@
+"""Refresh token storage with one-time rotation support.
+
+Refresh tokens are opaque strings stored as HMAC-SHA256 hashes
+(same key as API keys).  Each token is single-use: consuming
+it atomically marks it as used and returns the associated
+session/user info for re-issuance.
+"""
+
+from datetime import UTC, datetime
+
+import aiosqlite  # noqa: TC002
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
+
+from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.observability import get_logger
+from synthorg.observability.events.api import (
+    API_AUTH_REFRESH_CLEANUP,
+    API_AUTH_REFRESH_CONSUMED,
+    API_AUTH_REFRESH_REJECTED,
+)
+
+logger = get_logger(__name__)
+
+
+class RefreshRecord(BaseModel):
+    """A stored refresh token record.
+
+    Attributes:
+        token_hash: HMAC-SHA256 hash of the opaque token.
+        session_id: Associated JWT session (``jti``).
+        user_id: Token owner's user ID.
+        expires_at: Expiry timestamp.
+        used: Whether the token has been consumed.
+        created_at: Creation timestamp.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+
+    token_hash: NotBlankStr
+    session_id: NotBlankStr
+    user_id: NotBlankStr
+    expires_at: AwareDatetime
+    used: bool = False
+    created_at: AwareDatetime = Field(
+        default_factory=lambda: datetime.now(UTC),
+    )
+
+
+class RefreshStore:
+    """Refresh token store backed by SQLite.
+
+    Args:
+        db: Open aiosqlite connection with ``row_factory`` set.
+    """
+
+    def __init__(self, db: aiosqlite.Connection) -> None:
+        self._db = db
+
+    async def create(
+        self,
+        token_hash: str,
+        session_id: str,
+        user_id: str,
+        expires_at: datetime,
+    ) -> None:
+        """Store a new refresh token.
+
+        Args:
+            token_hash: HMAC-SHA256 hash of the opaque token.
+            session_id: Associated JWT session ID.
+            user_id: Token owner's user ID.
+            expires_at: Expiry timestamp.
+        """
+        now = datetime.now(UTC)
+        await self._db.execute(
+            "INSERT INTO refresh_tokens "
+            "(token_hash, session_id, user_id, expires_at, "
+            "used, created_at) "
+            "VALUES (?, ?, ?, ?, 0, ?)",
+            (
+                token_hash,
+                session_id,
+                user_id,
+                expires_at.isoformat(),
+                now.isoformat(),
+            ),
+        )
+        await self._db.commit()
+
+    async def consume(self, token_hash: str) -> RefreshRecord | None:
+        """Atomically consume a refresh token.
+
+        Marks the token as used and returns its record.
+        Returns ``None`` if the token does not exist, is
+        expired, or was already consumed (replay detection).
+
+        Args:
+            token_hash: HMAC-SHA256 hash of the presented token.
+
+        Returns:
+            The token record, or ``None`` on failure.
+        """
+        now = datetime.now(UTC).isoformat()
+        cursor = await self._db.execute(
+            "UPDATE refresh_tokens "
+            "SET used = 1 "
+            "WHERE token_hash = ? AND used = 0 AND expires_at > ?",
+            (token_hash, now),
+        )
+        await self._db.commit()
+
+        if cursor.rowcount == 0:
+            # Check if it was a replay (token exists but already used)
+            check = await self._db.execute(
+                "SELECT used FROM refresh_tokens WHERE token_hash = ?",
+                (token_hash,),
+            )
+            row = await check.fetchone()
+            if row is not None and row["used"]:
+                logger.warning(
+                    API_AUTH_REFRESH_REJECTED,
+                    reason="replay_detected",
+                    token_hash=token_hash[:8],
+                )
+            else:
+                logger.warning(
+                    API_AUTH_REFRESH_REJECTED,
+                    reason="not_found_or_expired",
+                    token_hash=token_hash[:8],
+                )
+            return None
+
+        cursor = await self._db.execute(
+            "SELECT * FROM refresh_tokens WHERE token_hash = ?",
+            (token_hash,),
+        )
+        row = await cursor.fetchone()
+        if row is None:
+            return None
+
+        logger.info(
+            API_AUTH_REFRESH_CONSUMED,
+            session_id=row["session_id"],
+            user_id=row["user_id"],
+        )
+        return RefreshRecord(
+            token_hash=row["token_hash"],
+            session_id=row["session_id"],
+            user_id=row["user_id"],
+            expires_at=datetime.fromisoformat(row["expires_at"]),
+            used=bool(row["used"]),
+            created_at=datetime.fromisoformat(row["created_at"]),
+        )
+
+    async def revoke_by_session(self, session_id: str) -> int:
+        """Mark all refresh tokens for a session as used.
+
+        Args:
+            session_id: Session ID whose tokens to revoke.
+
+        Returns:
+            Number of tokens revoked.
+        """
+        cursor = await self._db.execute(
+            "UPDATE refresh_tokens SET used = 1 WHERE session_id = ? AND used = 0",
+            (session_id,),
+        )
+        await self._db.commit()
+        return cursor.rowcount
+
+    async def revoke_by_user(self, user_id: str) -> int:
+        """Mark all refresh tokens for a user as used.
+
+        Args:
+            user_id: User ID whose tokens to revoke.
+
+        Returns:
+            Number of tokens revoked.
+        """
+        cursor = await self._db.execute(
+            "UPDATE refresh_tokens SET used = 1 WHERE user_id = ? AND used = 0",
+            (user_id,),
+        )
+        await self._db.commit()
+        return cursor.rowcount
+
+    async def cleanup_expired(self) -> int:
+        """Remove expired and used tokens.
+
+        Returns:
+            Number of records removed.
+        """
+        now = datetime.now(UTC).isoformat()
+        cursor = await self._db.execute(
+            "DELETE FROM refresh_tokens WHERE expires_at <= ? OR used = 1",
+            (now,),
+        )
+        await self._db.commit()
+        count = cursor.rowcount
+        if count:
+            logger.debug(API_AUTH_REFRESH_CLEANUP, removed=count)
+        return count

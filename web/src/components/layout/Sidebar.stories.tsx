@@ -10,7 +10,7 @@ const meta = {
     (Story) => {
       // Set up auth state for user display
       useAuthStore.setState({
-        token: 'mock-token',
+        authStatus: 'authenticated',
         user: {
           id: '1',
           username: 'admin',

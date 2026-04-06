@@ -335,6 +335,18 @@ async def _ticket_cleanup_loop(app_state: AppState) -> None:
                 error="Periodic session cleanup failed",
                 exc_info=True,
             )
+        # Lockout cleanup.
+        try:
+            if app_state.has_lockout_store:
+                await app_state.lockout_store.cleanup_expired()
+        except MemoryError, RecursionError:
+            raise
+        except Exception:
+            logger.warning(
+                API_SESSION_CLEANUP,
+                error="Periodic lockout cleanup failed",
+                exc_info=True,
+            )
 
 
 async def _maybe_promote_first_owner(app_state: AppState) -> None:

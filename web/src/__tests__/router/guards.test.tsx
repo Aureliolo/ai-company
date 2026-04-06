@@ -10,16 +10,19 @@ vi.mock('@/api/endpoints/setup', () => ({
   getSetupStatus: vi.fn(),
 }))
 
-// Mock the auth API (AuthGuard proactively calls fetchUser to validate token)
+// Mock the auth API (AuthGuard calls checkSession -> getMe to validate session)
 vi.mock('@/api/endpoints/auth', () => ({
   getMe: vi.fn().mockResolvedValue({
     id: '1',
     username: 'admin',
     role: 'ceo',
     must_change_password: false,
+    org_roles: [],
+    scoped_departments: [],
   }),
   login: vi.fn(),
   setup: vi.fn(),
+  logout: vi.fn(),
   changePassword: vi.fn(),
 }))
 
@@ -40,18 +43,15 @@ afterAll(() => {
 
 function resetStores() {
   useAuthStore.setState({
-    token: null,
+    authStatus: 'unauthenticated',
     user: null,
     loading: false,
-    _mustChangePasswordFallback: false,
   })
   useSetupStore.setState({
     setupComplete: null,
     loading: false,
     error: false,
   })
-  sessionStorage.clear()
-  localStorage.clear()
 }
 
 describe('AuthGuard', () => {
@@ -60,7 +60,9 @@ describe('AuthGuard', () => {
     vi.clearAllMocks()
   })
 
-  it('redirects to /login when not authenticated', () => {
+  it('redirects to /login when unauthenticated', () => {
+    useAuthStore.setState({ authStatus: 'unauthenticated' })
+
     renderRoutes(
       [
         {
@@ -79,7 +81,7 @@ describe('AuthGuard', () => {
 
   it('renders children when authenticated', () => {
     useAuthStore.setState({
-      token: 'test-token',
+      authStatus: 'authenticated',
       user: {
         id: '1',
         username: 'admin',
@@ -106,9 +108,8 @@ describe('AuthGuard', () => {
     expect(screen.queryByText('Login Page')).not.toBeInTheDocument()
   })
 
-  it('shows loading while validating token on page refresh', async () => {
-    // Token present but no user -- simulates page refresh
-    useAuthStore.setState({ token: 'test-token' })
+  it('shows loading while auth status is unknown (page refresh)', async () => {
+    useAuthStore.setState({ authStatus: 'unknown' })
 
     renderRoutes(
       [
@@ -121,37 +122,11 @@ describe('AuthGuard', () => {
       { initialEntries: ['/'] },
     )
 
-    // Guard shows loading while fetchUser validates the token
+    // Guard shows loading while checkSession validates the session
     expect(screen.getByText('Loading...')).toBeInTheDocument()
     expect(screen.queryByText('Protected')).not.toBeInTheDocument()
 
-    // After validation completes, protected content renders
-    await waitFor(() => {
-      expect(screen.getByText('Protected')).toBeInTheDocument()
-    })
-  })
-
-  it('fails open on non-401 errors (transient network failure)', async () => {
-    const { getMe } = await import('@/api/endpoints/auth')
-    vi.mocked(getMe).mockRejectedValueOnce(new Error('Network error'))
-
-    useAuthStore.setState({ token: 'test-token' })
-
-    renderRoutes(
-      [
-        {
-          path: '/',
-          element: <AuthGuard />,
-          children: [{ index: true, element: <div>Protected</div> }],
-        },
-      ],
-      { initialEntries: ['/'] },
-    )
-
-    // Shows loading initially
-    expect(screen.getByText('Loading...')).toBeInTheDocument()
-
-    // After transient failure, guard renders children (degraded state)
+    // After validation completes (getMe succeeds), protected content renders
     await waitFor(() => {
       expect(screen.getByText('Protected')).toBeInTheDocument()
     })
@@ -165,7 +140,7 @@ describe('SetupGuard', () => {
   })
 
   it('redirects to /setup when setup is not complete', () => {
-    useAuthStore.setState({ token: 'test-token' })
+    useAuthStore.setState({ authStatus: 'authenticated' })
     useSetupStore.setState({ setupComplete: false })
 
     renderRoutes(
@@ -185,7 +160,7 @@ describe('SetupGuard', () => {
   })
 
   it('renders children when setup is complete', () => {
-    useAuthStore.setState({ token: 'test-token' })
+    useAuthStore.setState({ authStatus: 'authenticated' })
     useSetupStore.setState({ setupComplete: true })
 
     renderRoutes(
@@ -204,7 +179,7 @@ describe('SetupGuard', () => {
   })
 
   it('shows loading state when setup status is unknown', () => {
-    useAuthStore.setState({ token: 'test-token' })
+    useAuthStore.setState({ authStatus: 'authenticated' })
     useSetupStore.setState({ setupComplete: null, loading: true })
 
     renderRoutes(
@@ -234,7 +209,7 @@ describe('SetupGuard', () => {
       min_password_length: 12,
     })
 
-    useAuthStore.setState({ token: 'test-token' })
+    useAuthStore.setState({ authStatus: 'authenticated' })
     // setupComplete is null (not yet fetched), loading is false
 
     renderRoutes(
@@ -261,7 +236,7 @@ describe('SetupGuard', () => {
     const mockGetSetupStatus = vi.mocked(getSetupStatus)
     mockGetSetupStatus.mockRejectedValue(new Error('Network error'))
 
-    useAuthStore.setState({ token: 'test-token' })
+    useAuthStore.setState({ authStatus: 'authenticated' })
 
     renderRoutes(
       [
@@ -306,7 +281,9 @@ describe('GuestGuard', () => {
     vi.clearAllMocks()
   })
 
-  it('renders children when not authenticated', () => {
+  it('renders children when unauthenticated', () => {
+    useAuthStore.setState({ authStatus: 'unauthenticated' })
+
     renderRoutes(
       [
         {
@@ -326,7 +303,7 @@ describe('GuestGuard', () => {
   })
 
   it('redirects to / when already authenticated', () => {
-    useAuthStore.setState({ token: 'test-token' })
+    useAuthStore.setState({ authStatus: 'authenticated' })
 
     renderRoutes(
       [
@@ -346,6 +323,27 @@ describe('GuestGuard', () => {
     expect(screen.getByText('Dashboard')).toBeInTheDocument()
     expect(screen.queryByText('Login Form')).not.toBeInTheDocument()
   })
+
+  it('shows loading when auth status is unknown', () => {
+    useAuthStore.setState({ authStatus: 'unknown' })
+
+    renderRoutes(
+      [
+        {
+          path: '/login',
+          element: (
+            <GuestGuard>
+              <div>Login Form</div>
+            </GuestGuard>
+          ),
+        },
+      ],
+      { initialEntries: ['/login'] },
+    )
+
+    expect(screen.getByText('Loading...')).toBeInTheDocument()
+    expect(screen.queryByText('Login Form')).not.toBeInTheDocument()
+  })
 })
 
 describe('SetupCompleteGuard', () => {
@@ -355,6 +353,8 @@ describe('SetupCompleteGuard', () => {
   })
 
   it('renders children when not authenticated', () => {
+    useAuthStore.setState({ authStatus: 'unauthenticated' })
+
     renderRoutes(
       [
         {
@@ -373,7 +373,7 @@ describe('SetupCompleteGuard', () => {
   })
 
   it('redirects to / when authenticated and setup is complete', () => {
-    useAuthStore.setState({ token: 'test-token' })
+    useAuthStore.setState({ authStatus: 'authenticated' })
     useSetupStore.setState({ setupComplete: true })
 
     renderRoutes(
@@ -396,7 +396,7 @@ describe('SetupCompleteGuard', () => {
   })
 
   it('renders children when authenticated but setup is not complete', () => {
-    useAuthStore.setState({ token: 'test-token' })
+    useAuthStore.setState({ authStatus: 'authenticated' })
     useSetupStore.setState({ setupComplete: false })
 
     renderRoutes(
@@ -430,7 +430,7 @@ describe('SetupCompleteGuard', () => {
       min_password_length: 12,
     })
 
-    useAuthStore.setState({ token: 'test-token' })
+    useAuthStore.setState({ authStatus: 'authenticated' })
     // setupComplete is null (not yet fetched)
 
     renderRoutes(
@@ -459,7 +459,7 @@ describe('SetupCompleteGuard', () => {
     const mockGetSetupStatus = vi.mocked(getSetupStatus)
     mockGetSetupStatus.mockRejectedValue(new Error('Network error'))
 
-    useAuthStore.setState({ token: 'test-token' })
+    useAuthStore.setState({ authStatus: 'authenticated' })
 
     renderRoutes(
       [

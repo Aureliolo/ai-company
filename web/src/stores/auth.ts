@@ -1,8 +1,9 @@
 /**
  * Auth state management (Zustand).
  *
- * Manages JWT token lifecycle, login/logout flows, user profile, and session
- * expiry. Token is persisted to sessionStorage (tab-scoped) with expiry tracking.
+ * Manages cookie-based session lifecycle, login/logout flows, user profile,
+ * and session validation. The JWT is stored in an HttpOnly cookie by the
+ * backend -- the frontend never sees or manages the token directly.
  */
 
 import { create } from 'zustand'
@@ -14,99 +15,61 @@ import type { HumanRole, UserInfoResponse } from '@/api/types'
 
 const log = createLogger('auth')
 
-// ── Module-scoped internals (not renderable state) ──────────
-
-let expiryTimer: ReturnType<typeof setTimeout> | null = null
-
-// Clean up timer during HMR to avoid stale timers on dev reloads
-if (import.meta.hot) {
-  import.meta.hot.dispose(() => {
-    if (expiryTimer) {
-      clearTimeout(expiryTimer)
-      expiryTimer = null
-    }
-  })
-}
-
 // ── Store types ─────────────────────────────────────────────
 
+/**
+ * Tri-state auth status:
+ * - 'unknown': initial state, session not yet validated (page load)
+ * - 'authenticated': valid session confirmed by server
+ * - 'unauthenticated': no session or session expired/invalid
+ */
+type AuthStatus = 'unknown' | 'authenticated' | 'unauthenticated'
+
 interface AuthState {
-  token: string | null
+  authStatus: AuthStatus
   user: UserInfoResponse | null
   loading: boolean
-  /** Fallback for must_change_password when user is not yet loaded (page refresh). */
-  _mustChangePasswordFallback: boolean
 
-  setToken: (newToken: string, expiresIn: number) => void
-  clearAuth: () => void
   login: (username: string, password: string) => Promise<void>
   setup: (username: string, password: string) => Promise<void>
+  logout: () => Promise<void>
   fetchUser: () => Promise<void>
   changePassword: (currentPassword: string, newPassword: string) => Promise<UserInfoResponse>
-  logout: () => void
+  handleUnauthorized: () => void
+  checkSession: () => Promise<void>
 }
 
-// ── Initial state from sessionStorage ─────────────────────────
+// ── Dev-only fake user ─────────────────────────────────────
 
-// Dev-only fake user for bypassing auth when no backend is running.
 const DEV_USER: UserInfoResponse | null = IS_DEV_AUTH_BYPASS
   ? { id: 'dev-user', username: 'developer', role: 'ceo', must_change_password: false, org_roles: ['owner'], scoped_departments: [] }
   : null
 
-function getInitialToken(): string | null {
-  if (IS_DEV_AUTH_BYPASS) {
-    // UI-only bypass: API calls will receive 401 and trigger logout
-    log.warn('Auth bypass active -- UI-only, no real backend session')
-    return 'dev-bypass-token'
-  }
-  const storedToken = sessionStorage.getItem('auth_token')
-  const expiresAt = Number(sessionStorage.getItem('auth_token_expires_at') ?? 0)
-  if (storedToken && Date.now() < expiresAt) {
-    return storedToken
-  }
-  sessionStorage.removeItem('auth_token')
-  sessionStorage.removeItem('auth_token_expires_at')
-  sessionStorage.removeItem('auth_must_change_password')
-  return null
-}
-
 // ── Store ───────────────────────────────────────────────────
 
 export const useAuthStore = create<AuthState>()((set, get) => {
-  const initialToken = getInitialToken()
-
-  // Schedule expiry cleanup for restored token
-  if (initialToken) {
-    const expiresAt = Number(sessionStorage.getItem('auth_token_expires_at') ?? 0)
-    if (expiresAt > Date.now()) {
-      expiryTimer = setTimeout(() => {
-        get().clearAuth()
-      }, expiresAt - Date.now())
-    }
-  }
-
-  /** Common post-auth flow: set token, fetch user profile, handle failures. */
+  /** Common post-auth flow: authenticate, fetch user profile, handle failures. */
   async function performAuthFlow(
-    authFn: () => Promise<{ token: string; expires_in: number }>,
+    authFn: () => Promise<{ expires_in: number }>,
     flowName: string,
   ): Promise<void> {
     set({ loading: true })
     try {
-      const result = await authFn()
-      get().setToken(result.token, result.expires_in)
+      await authFn()
+      // Cookie is set by the server. Fetch user profile to confirm session.
       try {
         await get().fetchUser()
       } catch (fetchErr) {
-        // fetchUser already calls clearAuth() on 401 before throwing
-        if (!get().token) {
+        // fetchUser already calls handleUnauthorized() on 401 before throwing
+        if (get().authStatus === 'unauthenticated') {
           throw new Error(`${flowName} failed: session expired. Please try again.`, { cause: fetchErr })
         }
-        // Don't clear the fresh token on transient errors (network, 5xx).
+        // Don't invalidate the session on transient errors (network, 5xx).
         // The auth succeeded; the profile load can be retried.
         throw new Error(`${flowName} succeeded but failed to load user profile. Please check your connection and try again.`, { cause: fetchErr })
       }
       if (!get().user) {
-        get().clearAuth()
+        get().handleUnauthorized()
         throw new Error(`${flowName} succeeded but failed to load user profile. Please try again.`)
       }
     } finally {
@@ -115,49 +78,9 @@ export const useAuthStore = create<AuthState>()((set, get) => {
   }
 
   return {
-    token: initialToken,
+    authStatus: IS_DEV_AUTH_BYPASS ? 'authenticated' : 'unknown',
     user: DEV_USER,
     loading: false,
-    _mustChangePasswordFallback: sessionStorage.getItem('auth_must_change_password') === 'true',
-
-    setToken(newToken: string, expiresIn: number) {
-      if (!Number.isFinite(expiresIn) || expiresIn <= 0) {
-        throw new Error('Authentication failed: server returned invalid session duration. Please try again.')
-      }
-      // Clear any existing expiry timer
-      if (expiryTimer) {
-        clearTimeout(expiryTimer)
-        expiryTimer = null
-      }
-
-      set({ token: newToken })
-      const expiresAtMs = Date.now() + expiresIn * 1000
-      sessionStorage.setItem('auth_token', newToken)
-      sessionStorage.setItem('auth_token_expires_at', String(expiresAtMs))
-
-      // Schedule token cleanup
-      expiryTimer = setTimeout(() => {
-        get().clearAuth()
-      }, expiresIn * 1000)
-    },
-
-    clearAuth() {
-      if (expiryTimer) {
-        clearTimeout(expiryTimer)
-        expiryTimer = null
-      }
-      set({ token: null, user: null, _mustChangePasswordFallback: false })
-      sessionStorage.removeItem('auth_token')
-      sessionStorage.removeItem('auth_token_expires_at')
-      sessionStorage.removeItem('auth_must_change_password')
-      // Hard redirect to login -- intentionally uses window.location (not
-      // react-router) because this runs in a Zustand store outside the
-      // React tree.
-      const currentPath = window.location.pathname
-      if (currentPath !== '/login' && currentPath !== '/setup') {
-        window.location.href = '/login'
-      }
-    },
 
     async login(username: string, password: string) {
       await performAuthFlow(() => authApi.login({ username, password }), 'Login')
@@ -167,24 +90,26 @@ export const useAuthStore = create<AuthState>()((set, get) => {
       await performAuthFlow(() => authApi.setup({ username, password }), 'Setup')
     },
 
+    async logout() {
+      try {
+        await authApi.logout()
+      } catch (err) {
+        // Log but don't block -- server may have already cleared the cookie
+        log.warn('Logout API call failed:', getErrorMessage(err))
+      }
+      get().handleUnauthorized()
+    },
+
     async fetchUser() {
-      if (!get().token) return
+      if (get().authStatus === 'unauthenticated' && !IS_DEV_AUTH_BYPASS) return
       try {
         const user = await authApi.getMe()
-        set({ user })
-        // Persist must_change_password for the auth guard on page refresh
-        if (user?.must_change_password) {
-          sessionStorage.setItem('auth_must_change_password', 'true')
-          set({ _mustChangePasswordFallback: true })
-        } else {
-          sessionStorage.removeItem('auth_must_change_password')
-          set({ _mustChangePasswordFallback: false })
-        }
+        set({ user, authStatus: 'authenticated' })
       } catch (err) {
-        // Only clear auth on 401 (invalid/expired token)
+        // Only clear auth on 401 (invalid/expired session)
         if (isAxiosError(err) && err.response?.status === 401) {
-          log.warn('Session expired or invalid token -- clearing auth')
-          get().clearAuth()
+          log.warn('Session expired or invalid -- clearing auth')
+          get().handleUnauthorized()
           throw new Error('Session expired. Please log in again.', { cause: err })
         } else {
           log.error('Failed to fetch user profile:', getErrorMessage(err))
@@ -201,10 +126,6 @@ export const useAuthStore = create<AuthState>()((set, get) => {
           new_password: newPassword,
         })
         set({ user: result })
-        if (result && !result.must_change_password) {
-          sessionStorage.removeItem('auth_must_change_password')
-          set({ _mustChangePasswordFallback: false })
-        }
         return result
       } catch (err) {
         throw new Error(getErrorMessage(err), { cause: err })
@@ -213,19 +134,39 @@ export const useAuthStore = create<AuthState>()((set, get) => {
       }
     },
 
-    logout() {
-      get().clearAuth()
+    handleUnauthorized() {
+      set({ authStatus: 'unauthenticated', user: null })
+      // Hard redirect to login -- intentionally uses window.location (not
+      // react-router) because this runs in a Zustand store outside the
+      // React tree.
+      const currentPath = window.location.pathname
+      if (currentPath !== '/login' && currentPath !== '/setup') {
+        window.location.href = '/login'
+      }
+    },
+
+    async checkSession() {
+      if (IS_DEV_AUTH_BYPASS) {
+        set({ authStatus: 'authenticated', user: DEV_USER })
+        return
+      }
+      try {
+        const user = await authApi.getMe()
+        set({ authStatus: 'authenticated', user })
+      } catch {
+        set({ authStatus: 'unauthenticated', user: null })
+      }
     },
   }
 })
 
 // ── Selector hooks ──────────────────────────────────────────
 
-export const useIsAuthenticated = () => useAuthStore((s) => !!s.token)
+export const useAuthStatus = () => useAuthStore((s) => s.authStatus)
+
+export const useIsAuthenticated = () => useAuthStore((s) => s.authStatus === 'authenticated')
 
 export const useUserRole = () => useAuthStore((s): HumanRole | null => s.user?.role ?? null)
 
 export const useMustChangePassword = () =>
-  useAuthStore((s) =>
-    s.user?.must_change_password ?? s._mustChangePasswordFallback,
-  )
+  useAuthStore((s) => s.user?.must_change_password ?? false)

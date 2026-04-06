@@ -180,10 +180,30 @@ export interface ChangePasswordRequest {
   new_password: string
 }
 
+/** @deprecated Use {@link AuthResponse} -- backend no longer returns token in body. */
 export interface TokenResponse {
   token: string
   expires_in: number
   must_change_password: boolean
+}
+
+/** Cookie-based auth response (no token in body -- JWT is in HttpOnly cookie). */
+export interface AuthResponse {
+  expires_in: number
+  must_change_password: boolean
+}
+
+/** Active session metadata returned by the session management API. */
+export interface SessionInfo {
+  session_id: string
+  user_id: string
+  username: string
+  ip_address: string
+  user_agent: string
+  created_at: string
+  last_active_at: string
+  expires_at: string
+  is_current: boolean
 }
 
 export interface WsTicketResponse {

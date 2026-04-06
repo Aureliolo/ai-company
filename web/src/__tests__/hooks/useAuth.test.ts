@@ -7,20 +7,19 @@ import { WRITE_ROLES } from '@/utils/constants'
 vi.mock('@/api/endpoints/auth', () => ({
   login: vi.fn(),
   setup: vi.fn(),
+  logout: vi.fn(),
   getMe: vi.fn(),
   changePassword: vi.fn(),
 }))
 
 function resetStore() {
-  sessionStorage.clear()
-  localStorage.clear()
-  useAuthStore.setState({ token: null, user: null, loading: false, _mustChangePasswordFallback: false })
+  useAuthStore.setState({ authStatus: 'unauthenticated', user: null, loading: false })
 }
 
 describe('useAuth', () => {
   beforeEach(resetStore)
 
-  it('returns not authenticated when no token', () => {
+  it('returns not authenticated when unauthenticated', () => {
     const { result } = renderHook(() => useAuth())
     expect(result.current.isAuthenticated).toBe(false)
     expect(result.current.user).toBeNull()
@@ -37,7 +36,7 @@ describe('useAuth', () => {
       org_roles: [],
       scoped_departments: [],
     }
-    useAuthStore.setState({ token: 'test-token', user })
+    useAuthStore.setState({ authStatus: 'authenticated', user })
 
     const { result } = renderHook(() => useAuth())
     expect(result.current.isAuthenticated).toBe(true)
@@ -54,7 +53,7 @@ describe('useAuth', () => {
     for (const role of writeRoles) {
       it(`returns canWrite=true for ${role}`, () => {
         useAuthStore.setState({
-          token: 'test',
+          authStatus: 'authenticated',
           user: { id: '1', username: 'u', role, must_change_password: false, org_roles: [], scoped_departments: [] },
         })
         const { result } = renderHook(() => useAuth())
@@ -65,7 +64,7 @@ describe('useAuth', () => {
     for (const role of readOnlyRoles) {
       it(`returns canWrite=false for ${role}`, () => {
         useAuthStore.setState({
-          token: 'test',
+          authStatus: 'authenticated',
           user: { id: '1', username: 'u', role, must_change_password: false, org_roles: [], scoped_departments: [] },
         })
         const { result } = renderHook(() => useAuth())
@@ -76,16 +75,16 @@ describe('useAuth', () => {
 
   it('returns mustChangePassword from user', () => {
     useAuthStore.setState({
-      token: 'test',
+      authStatus: 'authenticated',
       user: { id: '1', username: 'u', role: 'ceo', must_change_password: true, org_roles: [], scoped_departments: [] },
     })
     const { result } = renderHook(() => useAuth())
     expect(result.current.mustChangePassword).toBe(true)
   })
 
-  it('falls back to _mustChangePasswordFallback when user is null', () => {
-    useAuthStore.setState({ token: 'test', user: null, _mustChangePasswordFallback: true })
+  it('returns false for mustChangePassword when user is null', () => {
+    useAuthStore.setState({ authStatus: 'unknown', user: null })
     const { result } = renderHook(() => useAuth())
-    expect(result.current.mustChangePassword).toBe(true)
+    expect(result.current.mustChangePassword).toBe(false)
   })
 })

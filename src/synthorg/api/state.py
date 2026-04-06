@@ -6,6 +6,7 @@ Holds typed references to core services, injected into
 """
 
 from synthorg.api.approval_store import ApprovalStore  # noqa: TC001
+from synthorg.api.auth.lockout_store import LockoutStore  # noqa: TC001
 from synthorg.api.auth.presence import UserPresence
 from synthorg.api.auth.service import AuthService  # noqa: TC001
 from synthorg.api.auth.session_store import SessionStore  # noqa: TC001
@@ -87,6 +88,7 @@ class AppState:
         "_cost_tracker",
         "_delegation_record_store",
         "_fine_tune_orchestrator",
+        "_lockout_store",
         "_meeting_orchestrator",
         "_meeting_scheduler",
         "_message_bus",
@@ -187,6 +189,7 @@ class AppState:
         self._review_gate_service: ReviewGateService | None = None
         self._approval_timeout_scheduler: ApprovalTimeoutScheduler | None = None
         self._session_store: SessionStore | None = None
+        self._lockout_store: LockoutStore | None = None
         self._ticket_store = WsTicketStore()
         self._user_presence = UserPresence()
         self.startup_time = startup_time
@@ -539,6 +542,38 @@ class AppState:
         logger.info(
             API_APP_STARTUP,
             note="Session store configured",
+        )
+
+    @property
+    def has_lockout_store(self) -> bool:
+        """Check whether the lockout store is configured."""
+        return self._lockout_store is not None
+
+    @property
+    def lockout_store(self) -> LockoutStore:
+        """Return the account lockout store."""
+        return self._require_service(
+            self._lockout_store,
+            "lockout_store",
+        )
+
+    def set_lockout_store(self, store: LockoutStore) -> None:
+        """Set the lockout store (deferred initialisation).
+
+        Args:
+            store: Configured lockout store.
+
+        Raises:
+            RuntimeError: If the lockout store has already been set.
+        """
+        if self._lockout_store is not None:
+            msg = "lockout_store is already configured"
+            logger.error(API_APP_STARTUP, error=msg)
+            raise RuntimeError(msg)
+        self._lockout_store = store
+        logger.info(
+            API_APP_STARTUP,
+            note="Lockout store configured",
         )
 
     @property

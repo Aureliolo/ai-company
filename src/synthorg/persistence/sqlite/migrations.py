@@ -74,7 +74,15 @@ async def apply_schema(db: aiosqlite.Connection) -> None:
     logger.info(PERSISTENCE_MIGRATION_COMPLETED)
 
 
-_ALLOWED_TABLES = frozenset({"users", "api_keys", "sessions"})
+_ALLOWED_TABLES = frozenset(
+    {
+        "users",
+        "api_keys",
+        "sessions",
+        "login_attempts",
+        "refresh_tokens",
+    }
+)
 _ALLOWED_COLUMN_RE = re.compile(r"^[a-z_][a-z0-9_]*$")
 
 

@@ -18,7 +18,7 @@ export interface WebSocketOptions {
   readonly bindings: readonly ChannelBinding[]
   /** Optional filters passed to wsStore.subscribe(). */
   readonly filters?: WsSubscriptionFilters
-  /** Whether WebSocket should be active. Defaults to checking auth token. */
+  /** Whether WebSocket should be active. Defaults to checking auth status. */
   readonly enabled?: boolean
 }
 
@@ -35,7 +35,7 @@ export interface WebSocketReturn {
 /**
  * Manage WebSocket subscription lifecycle for a page view.
  *
- * Connects when enabled (default: auth token present), subscribes to
+ * Connects when enabled (default: authenticated session), subscribes to
  * deduplicated channels, and wires event handlers on mount. Automatically
  * unsubscribes and removes handlers on unmount.
  *
@@ -46,13 +46,13 @@ export interface WebSocketReturn {
  */
 export function useWebSocket(options: WebSocketOptions): WebSocketReturn {
   const { bindings, filters, enabled } = options
-  const token = useAuthStore((s) => s.token)
+  const authStatus = useAuthStore((s) => s.authStatus)
   const connected = useWebSocketStore((s) => s.connected)
   const reconnectExhausted = useWebSocketStore((s) => s.reconnectExhausted)
   const [setupError, setSetupError] = useState<string | null>(null)
   const disposedRef = useRef(false)
 
-  const isEnabled = enabled !== undefined ? enabled : !!token
+  const isEnabled = enabled !== undefined ? enabled : authStatus === 'authenticated'
 
   useEffect(() => {
     disposedRef.current = false
