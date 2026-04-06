@@ -74,7 +74,7 @@ export function NotificationItemCard({
       )}
       onClick={handleClick}
       onKeyDown={(e) => {
-        if (e.key === 'Enter' || e.key === ' ') {
+        if ((e.key === 'Enter' || e.key === ' ') && !(e.target as HTMLElement).closest('button')) {
           e.preventDefault()
           handleClick()
         }
