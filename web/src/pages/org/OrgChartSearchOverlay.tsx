@@ -72,6 +72,7 @@ export function OrgChartSearchOverlay({
         onKeyDown={(e) => {
           if (e.key === 'Escape') {
             e.preventDefault()
+            e.stopPropagation()
             onClose()
           }
         }}

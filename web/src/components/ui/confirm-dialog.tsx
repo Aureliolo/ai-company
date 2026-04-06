@@ -1,4 +1,4 @@
-import { useRef } from 'react'
+import { useState } from 'react'
 import { AlertDialog } from '@base-ui/react/alert-dialog'
 import { Loader2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -40,7 +40,8 @@ export function ConfirmDialog({
   className,
   children,
 }: ConfirmDialogProps) {
-  const submittingRef = useRef(false)
+  const [submitting, setSubmitting] = useState(false)
+  const busy = loading || submitting
 
   return (
     <AlertDialog.Root
@@ -52,7 +53,7 @@ export function ConfirmDialog({
         // resetting its `comment` state) would drop the user's retry context
         // mid-operation, even though this component's intent is to stay open
         // on failure so the caller can retry from the same surface.
-        if (loading && !nextOpen) return
+        if (busy && !nextOpen) return
         onOpenChange(nextOpen)
       }}
     >
@@ -82,7 +83,7 @@ export function ConfirmDialog({
           <div className="mt-6 flex justify-end gap-3">
             <AlertDialog.Close
               render={
-                <Button variant="outline" disabled={loading}>
+                <Button variant="outline" disabled={busy}>
                   {cancelLabel}
                 </Button>
               }
@@ -90,10 +91,10 @@ export function ConfirmDialog({
             <Button
               variant={variant === 'destructive' ? 'destructive' : 'default'}
               data-variant={variant}
-              disabled={submittingRef.current || loading}
+              disabled={busy}
               onClick={async () => {
-                if (submittingRef.current || loading) return
-                submittingRef.current = true
+                if (busy) return
+                setSubmitting(true)
                 try {
                   await onConfirm()
                   onOpenChange(false)
@@ -103,11 +104,11 @@ export function ConfirmDialog({
                   // invisible if the caller forgets to toast its own error.
                   log.warn('ConfirmDialog onConfirm threw', { title: sanitizeForLog(title) }, err)
                 } finally {
-                  submittingRef.current = false
+                  setSubmitting(false)
                 }
               }}
             >
-              {loading && (
+              {busy && (
                 <Loader2 className="mr-2 size-4 animate-spin" aria-hidden="true" />
               )}
               {confirmLabel}

@@ -295,7 +295,7 @@ export const useAgentsStore = create<AgentsState>()((set, get) => ({
       // fallback copy instead of rendering the swapped numbers.
       const monotonic =
         beforeValid !== null && afterValid !== null
-          ? afterValid <= beforeValid
+          ? afterValid < beforeValid
           : true
       const before = monotonic ? beforeValid : null
       const after = monotonic ? afterValid : null

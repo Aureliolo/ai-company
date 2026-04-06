@@ -81,6 +81,9 @@
   /* -- Transitions -- */
   --so-transition-dim: 180ms;
 
+  /* -- Org chart -- */
+  --so-opacity-dragging: 0.6;
+
   /* -- Org chart minimap -- */
   --so-minimap-bg: rgba(15, 18, 26, 0.92);
   --so-minimap-mask: rgba(0, 0, 0, 0.55);
