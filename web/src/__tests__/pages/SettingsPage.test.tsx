@@ -160,7 +160,7 @@ describe('SettingsPage', () => {
   it('shows error banner when error is set', () => {
     hookReturn = { ...defaultHookReturn, error: 'Connection lost' }
     renderSettings()
-    expect(screen.getByText('Connection lost')).toBeInTheDocument()
+    expect(screen.getByRole('alert')).toHaveTextContent('Connection lost')
   })
 
   it('shows WebSocket disconnect warning when not connected', () => {

@@ -347,11 +347,14 @@ export default function SettingsPage() {
       <RestartBanner count={restartBannerCount} onDismiss={() => setRestartBannerCount(0)} />
 
       {error && (
-        <div className={cn(
-          'flex items-center gap-2 rounded-lg',
-          'border border-danger/30 bg-danger/5',
-          'p-card text-sm text-danger',
-        )}>
+        <div
+          role="alert"
+          className={cn(
+            'flex items-center gap-2 rounded-lg',
+            'border border-danger/30 bg-danger/5',
+            'p-card text-sm text-danger',
+          )}
+        >
           <AlertTriangle className="size-4 shrink-0" />
           {error}
         </div>

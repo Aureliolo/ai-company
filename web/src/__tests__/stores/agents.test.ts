@@ -477,7 +477,7 @@ describe('personality.trimmed toast dispatch', () => {
     useAgentsStore.setState({ runtimeStatuses: {} })
   })
 
-  it('adds an info toast when personality.trimmed event arrives with numeric token fields', () => {
+  it('does not dispatch a toast for personality.trimmed (handled by notifications pipeline)', () => {
     useAgentsStore.getState().updateFromWsEvent({
       event_type: 'personality.trimmed',
       channel: 'agents',
@@ -494,14 +494,10 @@ describe('personality.trimmed toast dispatch', () => {
       },
     })
 
-    const toasts = useToastStore.getState().toasts
-    expect(toasts).toHaveLength(1)
-    expect(toasts[0]!.variant).toBe('info')
-    expect(toasts[0]!.title).toBe('Personality trimmed')
-    expect(toasts[0]!.description).toBe('Alice personality trimmed: 600 → 120 tokens')
+    expect(useToastStore.getState().toasts).toHaveLength(0)
   })
 
-  it('falls back to generic description when token fields are missing', () => {
+  it('does not dispatch a toast when token fields are missing (handled by notifications pipeline)', () => {
     useAgentsStore.getState().updateFromWsEvent({
       event_type: 'personality.trimmed',
       channel: 'agents',
@@ -509,9 +505,7 @@ describe('personality.trimmed toast dispatch', () => {
       payload: { agent_name: 'Bob' },
     })
 
-    const toasts = useToastStore.getState().toasts
-    expect(toasts).toHaveLength(1)
-    expect(toasts[0]!.description).toBe('Bob personality was trimmed to fit token budget')
+    expect(useToastStore.getState().toasts).toHaveLength(0)
   })
 
   it('suppresses the toast when every payload field is missing', () => {
@@ -538,7 +532,7 @@ describe('personality.trimmed toast dispatch', () => {
     expect(Object.keys(useAgentsStore.getState().runtimeStatuses)).toHaveLength(0)
   })
 
-  it('caps agent_name at 64 characters in the toast description', () => {
+  it('does not dispatch a toast for long agent_name (handled by notifications pipeline)', () => {
     const longName = 'A'.repeat(200)
     useAgentsStore.getState().updateFromWsEvent({
       event_type: 'personality.trimmed',
@@ -551,18 +545,10 @@ describe('personality.trimmed toast dispatch', () => {
       },
     })
 
-    const toasts = useToastStore.getState().toasts
-    expect(toasts).toHaveLength(1)
-    // Defensive length bound: regressions removing .slice(0, 64) would let
-    // a 200-character name leak into the toast description.
-    const capped = 'A'.repeat(64)
-    expect(toasts[0]!.description).toBe(`${capped} personality trimmed: 600 → 120 tokens`)
-    expect(toasts[0]!.description!.length).toBeLessThan(200)
+    expect(useToastStore.getState().toasts).toHaveLength(0)
   })
 
-  it('rejects non-finite token values and falls back to the generic description', () => {
-    // Infinity and NaN must be rejected by Number.isFinite, otherwise the
-    // toast would show "Infinity → NaN tokens" which is worse than nothing.
+  it('does not dispatch a toast for non-finite token values (handled by notifications pipeline)', () => {
     useAgentsStore.getState().updateFromWsEvent({
       event_type: 'personality.trimmed',
       channel: 'agents',
@@ -574,15 +560,10 @@ describe('personality.trimmed toast dispatch', () => {
       },
     })
 
-    const toasts = useToastStore.getState().toasts
-    expect(toasts).toHaveLength(1)
-    expect(toasts[0]!.description).toBe('Carol personality was trimmed to fit token budget')
+    expect(useToastStore.getState().toasts).toHaveLength(0)
   })
 
-  it('rejects non-string agent_name and falls back to the default label', () => {
-    // Type-safety regression guard: if the defensive `typeof === 'string'`
-    // check is removed, a numeric agent_name could render as `123` instead
-    // of the safe `An agent` fallback.
+  it('does not dispatch a toast for non-string agent_name (handled by notifications pipeline)', () => {
     useAgentsStore.getState().updateFromWsEvent({
       event_type: 'personality.trimmed',
       channel: 'agents',
@@ -594,8 +575,6 @@ describe('personality.trimmed toast dispatch', () => {
       },
     })
 
-    const toasts = useToastStore.getState().toasts
-    expect(toasts).toHaveLength(1)
-    expect(toasts[0]!.description).toBe('An agent personality trimmed: 600 → 120 tokens')
+    expect(useToastStore.getState().toasts).toHaveLength(0)
   })
 })
