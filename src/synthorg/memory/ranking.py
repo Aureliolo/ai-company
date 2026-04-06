@@ -103,7 +103,7 @@ class ScoredMemory(BaseModel):
         default=None,
         description=(
             "Which fusion strategy produced this instance "
-            "(None for backward compatibility)"
+            "(None when unset by the producer)"
         ),
     )
 

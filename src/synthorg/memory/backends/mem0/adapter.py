@@ -52,7 +52,10 @@ from synthorg.memory.errors import (
 )
 from synthorg.memory.sparse import BM25Tokenizer
 from synthorg.observability import get_logger
-from synthorg.observability.events.budget import BUDGET_EMBEDDING_COST_RECORDED
+from synthorg.observability.events.budget import (
+    BUDGET_EMBEDDING_COST_FAILED,
+    BUDGET_EMBEDDING_COST_RECORDED,
+)
 from synthorg.observability.events.memory import (
     MEMORY_BACKEND_AGENT_ID_REJECTED,
     MEMORY_BACKEND_CONFIG_INVALID,
@@ -140,11 +143,6 @@ class Mem0MemoryBackend:
 
     # ── Embedding cost tracking ────────────────────────────────────
 
-    def _estimate_embedding_tokens(self, content: str) -> int:
-        """Estimate embedding input token count from text length."""
-        chars_per_token = self._mem0_config.embedding_cost.default_chars_per_token
-        return max(1, len(content) // chars_per_token)
-
     async def _record_embedding_cost(
         self,
         *,
@@ -155,7 +153,9 @@ class Mem0MemoryBackend:
     ) -> None:
         """Record an embedding cost estimate if tracking is enabled.
 
-        Best-effort: failures are logged but never propagate.
+        Best-effort: non-system failures are logged but never propagate.
+        System errors (``MemoryError``, ``RecursionError``) and
+        cancellation always propagate.
         """
         cost_cfg = self._mem0_config.embedding_cost
         if not cost_cfg.enabled or self._cost_tracker is None:
@@ -164,6 +164,16 @@ class Mem0MemoryBackend:
         input_tokens = max(1, content_length // cost_cfg.default_chars_per_token)
         model = str(self._mem0_config.embedder.model)
         cost_per_1k = cost_cfg.model_pricing.get(model, 0.0)
+        if cost_per_1k == 0.0 and model in cost_cfg.model_pricing:
+            pass  # Explicitly configured as free -- no warning needed.
+        elif cost_per_1k == 0.0:
+            logger.debug(
+                BUDGET_EMBEDDING_COST_RECORDED,
+                agent_id=agent_id,
+                operation=operation,
+                model=model,
+                reason="model_not_in_pricing_map",
+            )
         cost_usd = input_tokens * cost_per_1k / 1000.0
 
         record = CostRecord(
@@ -187,9 +197,13 @@ class Mem0MemoryBackend:
                 cost_usd=record.cost_usd,
                 model=model,
             )
+        except builtins.MemoryError, RecursionError:
+            raise
+        except asyncio.CancelledError:
+            raise
         except Exception as exc:
             logger.warning(
-                BUDGET_EMBEDDING_COST_RECORDED,
+                BUDGET_EMBEDDING_COST_FAILED,
                 agent_id=agent_id,
                 operation=operation,
                 error=str(exc),

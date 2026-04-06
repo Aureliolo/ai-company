@@ -11,6 +11,7 @@ import pytest
 from synthorg.core.enums import MemoryCategory
 from synthorg.memory.errors import MemoryRetrievalError
 from synthorg.memory.models import MemoryEntry, MemoryMetadata
+from synthorg.memory.protocol import MemoryBackend
 from synthorg.memory.ranking import FusionStrategy
 from synthorg.memory.retrieval_config import MemoryRetrievalConfig
 from synthorg.memory.retriever import ContextInjectionStrategy
@@ -38,7 +39,7 @@ def _make_entry(
 
 def _make_backend(entries: tuple[MemoryEntry, ...] = ()) -> AsyncMock:
     """Create a mock MemoryBackend (dense-only, no sparse support)."""
-    backend = AsyncMock()
+    backend = AsyncMock(spec=MemoryBackend)
     backend.retrieve = AsyncMock(return_value=entries)
     backend.supports_sparse_search = False
     return backend
@@ -49,7 +50,7 @@ def _make_sparse_backend(
     sparse_entries: tuple[MemoryEntry, ...] = (),
 ) -> AsyncMock:
     """Create a mock backend with both retrieve and retrieve_sparse."""
-    backend = AsyncMock()
+    backend = AsyncMock(spec=MemoryBackend)
     backend.retrieve = AsyncMock(return_value=dense_entries)
     backend.retrieve_sparse = AsyncMock(return_value=sparse_entries)
     backend.supports_sparse_search = True

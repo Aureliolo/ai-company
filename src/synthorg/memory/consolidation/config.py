@@ -287,3 +287,15 @@ class LLMConsolidationConfig(BaseModel):
         ge=50,
         description=("Per-entry truncation limit in concatenation-fallback summaries"),
     )
+
+    @model_validator(mode="after")
+    def _validate_entry_vs_total_chars(self) -> Self:
+        """Ensure per-entry cap does not exceed total prompt cap."""
+        if self.max_entry_input_chars > self.max_total_user_content_chars:
+            msg = (
+                f"max_entry_input_chars ({self.max_entry_input_chars}) "
+                f"must not exceed max_total_user_content_chars "
+                f"({self.max_total_user_content_chars})"
+            )
+            raise ValueError(msg)
+        return self

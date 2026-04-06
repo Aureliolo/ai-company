@@ -206,6 +206,18 @@ class EmbeddingCostConfig(BaseModel):
         description="Characters per token heuristic for estimation",
     )
 
+    @model_validator(mode="after")
+    def _validate_pricing_non_negative(self) -> Self:
+        """Reject negative cost-per-1K values in model_pricing."""
+        for model_name, cost in self.model_pricing.items():
+            if cost < 0.0:
+                msg = (
+                    f"model_pricing[{model_name!r}] = {cost} "
+                    f"is negative -- cost must be >= 0.0"
+                )
+                raise ValueError(msg)
+        return self
+
 
 class Mem0BackendConfig(BaseModel):
     """Mem0-specific backend configuration.

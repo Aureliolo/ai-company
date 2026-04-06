@@ -622,6 +622,6 @@ class TestFuseRankedLists:
 
 
 # ── Diversity re-ranking ───────────────────────────────────────────
-# Tests for ``_bigram_jaccard`` and ``apply_diversity_penalty`` live in
+# Tests for ``bigram_jaccard`` and ``apply_diversity_penalty`` live in
 # ``test_ranking_diversity.py`` -- split from this file to stay under
 # the 800-line file convention.

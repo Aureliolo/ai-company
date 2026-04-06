@@ -675,7 +675,8 @@ class ToolBasedInjectionStrategy:
             agent_id=agent_id,
             rounds_exhausted=max_rounds,
             result_count=len(entries),
-            sufficient=final_sufficient if final_sufficient is not None else False,
+            sufficient=final_sufficient,
+            sufficiency_check_failed=final_sufficient is None,
         )
         return _truncate_entries(entries, limit)
 
