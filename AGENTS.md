@@ -12,6 +12,29 @@ Read CLAUDE.md for:
 - Design spec (docs/design/) -- MANDATORY reading before implementation
 - Logging, resilience, security patterns
 
+## Memory Directory
+
+When skills or agents reference "the project's auto memory directory", derive the path as:
+
+```
+~/.claude/projects/<mangled-cwd>/memory/
+```
+
+Where `<mangled-cwd>` is the project root path with path separators replaced by `--` (e.g., `C--Users-Aurelio-synthorg`). The `MEMORY.md` index in that directory is loaded via the global OpenCode config (`~/.config/opencode/opencode.json`).
+
+Files use markdown with YAML frontmatter (`name`, `description`, `type`). Structure:
+- **MEMORY.md**: Index with one-line pointers to memory files
+- **research-log.md**: One-liner entries from `/research-link`
+- **research/**: Detailed research write-ups
+- **Individual memory files**: `user_*.md`, `feedback_*.md`, `project_*.md`, `reference_*.md`
+
+## Shell Compatibility
+
+This project runs on Windows. OpenCode uses PowerShell, Claude Code uses bash. When writing shell commands in skills:
+- Use PowerShell-compatible syntax (e.g., `ls` not `ls -la`, `Select-String` not `grep`)
+- Git commands work the same in both shells
+- For bash-specific constructs (pipes, format strings), the model will self-correct to PowerShell equivalents
+
 ## OpenCode-Specific Notes
 
 - **Model selection**: Use `/models` to switch between Ollama Cloud models
