@@ -79,5 +79,6 @@ class TestNtfyNotificationSink:
             title="Test",
             source="test",
         )
-        # Should not raise
-        await sink.send(n)
+        # Adapter logs the error and re-raises for the dispatcher to track
+        with pytest.raises(Exception, match="500"):
+            await sink.send(n)
