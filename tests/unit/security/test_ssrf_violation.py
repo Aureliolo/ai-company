@@ -16,9 +16,9 @@ class TestSsrfViolationStatus:
     """Tests for the SsrfViolationStatus enum."""
 
     def test_values(self) -> None:
-        assert SsrfViolationStatus.PENDING == "pending"
-        assert SsrfViolationStatus.ALLOWED == "allowed"
-        assert SsrfViolationStatus.DENIED == "denied"
+        assert SsrfViolationStatus.PENDING.value == "pending"
+        assert SsrfViolationStatus.ALLOWED.value == "allowed"
+        assert SsrfViolationStatus.DENIED.value == "denied"
 
 
 class TestSsrfViolationModel:

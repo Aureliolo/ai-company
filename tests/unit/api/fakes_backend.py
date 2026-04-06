@@ -174,6 +174,14 @@ class FakePersistenceBackend:
     def workflow_versions(self) -> FakeWorkflowVersionRepository:
         return self._workflow_versions
 
+    @property
+    def risk_overrides(self) -> object:
+        return object()
+
+    @property
+    def ssrf_violations(self) -> object:
+        return object()
+
     async def get_setting(self, key: str) -> str | None:
         return self._settings.get(key)
 

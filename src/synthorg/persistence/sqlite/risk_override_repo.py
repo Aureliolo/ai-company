@@ -2,7 +2,7 @@
 
 import sqlite3
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import aiosqlite
 
@@ -169,7 +169,7 @@ class SQLiteRiskOverrideRepository:
         return cursor.rowcount > 0
 
 
-def _row_to_override(row: tuple) -> RiskTierOverride:  # type: ignore[type-arg]
+def _row_to_override(row: Any) -> RiskTierOverride:
     """Convert a SQLite row tuple to a RiskTierOverride.
 
     Args:

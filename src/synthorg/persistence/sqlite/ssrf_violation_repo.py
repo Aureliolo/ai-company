@@ -2,7 +2,7 @@
 
 import sqlite3
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import aiosqlite
 
@@ -190,7 +190,7 @@ class SQLiteSsrfViolationRepository:
         return cursor.rowcount > 0
 
 
-def _row_to_violation(row: tuple) -> SsrfViolation:  # type: ignore[type-arg]
+def _row_to_violation(row: Any) -> SsrfViolation:
     """Convert a SQLite row tuple to an SsrfViolation.
 
     Args:
