@@ -212,7 +212,7 @@ class TestErrorHandling:
 
     async def test_timeout_returns_suspicious(self) -> None:
         async def slow_complete(*args: object, **kwargs: object) -> None:
-            await asyncio.sleep(100)
+            await asyncio.Event().wait()
 
         mock_driver = AsyncMock()
         mock_driver.complete = slow_complete

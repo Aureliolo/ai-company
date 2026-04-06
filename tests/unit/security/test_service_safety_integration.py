@@ -2,12 +2,12 @@
 
 from datetime import UTC, datetime
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock
 
 import pytest
 
 from synthorg.core.enums import ApprovalRiskLevel, ToolCategory
-from synthorg.security.config import SecurityConfig
+from synthorg.security.config import SafetyClassifierConfig, SecurityConfig
 from synthorg.security.models import (
     SecurityContext,
     SecurityVerdict,
@@ -52,13 +52,13 @@ def _make_service(
     *,
     safety_classifier: Any = None,
     uncertainty_checker: Any = None,
+    config: SecurityConfig | None = None,
 ) -> SecOpsService:
     """Build a SecOpsService with mock dependencies."""
     approval_store = AsyncMock()
     approval_store.add = AsyncMock()
 
-    rule_engine = MagicMock()
-    rule_engine.evaluate = MagicMock(return_value=None)
+    cfg = config or SecurityConfig()
 
     from synthorg.security.audit import AuditLog
     from synthorg.security.output_scanner import OutputScanner
@@ -68,11 +68,11 @@ def _make_service(
     real_rule_engine = RuleEngine(
         rules=(),
         risk_classifier=RiskClassifier(),
-        config=SecurityConfig().rule_engine,
+        config=cfg.rule_engine,
     )
 
     return SecOpsService(
-        config=SecurityConfig(),
+        config=cfg,
         rule_engine=real_rule_engine,
         audit_log=AuditLog(),
         output_scanner=OutputScanner(),
@@ -328,3 +328,43 @@ class TestBothFeatures:
         # Only default metadata keys
         assert "safety_classification" not in item.metadata
         assert "confidence_score" not in item.metadata
+
+
+@pytest.mark.unit
+class TestAutoRejectBlockedDisabled:
+    """When auto_reject_blocked=False, BLOCKED proceeds to approval."""
+
+    async def test_blocked_not_auto_rejected(self) -> None:
+        """BLOCKED with auto_reject_blocked=False creates approval item."""
+        mock_classifier = AsyncMock()
+        mock_classifier.classify = AsyncMock(
+            return_value=SafetyClassifierResult(
+                classification=SafetyClassification.BLOCKED,
+                stripped_description="stripped",
+                reason="Blocked action",
+                classification_duration_ms=5.0,
+            ),
+        )
+
+        cfg = SecurityConfig(
+            safety_classifier=SafetyClassifierConfig(
+                enabled=True,
+                auto_reject_blocked=False,
+            ),
+        )
+        service = _make_service(
+            safety_classifier=mock_classifier,
+            config=cfg,
+        )
+        context = _make_context()
+        verdict = _make_escalation_verdict()
+
+        result = await service._handle_escalation(context, verdict)
+
+        # Should NOT auto-reject -- proceeds to create approval item
+        assert result.verdict == SecurityVerdictType.ESCALATE
+        assert result.approval_id is not None
+        service._approval_store.add.assert_awaited_once()  # type: ignore[union-attr]
+        call_args = service._approval_store.add.call_args  # type: ignore[union-attr]
+        item = call_args[0][0]
+        assert item.metadata["safety_classification"] == "blocked"

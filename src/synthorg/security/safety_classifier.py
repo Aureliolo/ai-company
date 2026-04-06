@@ -19,6 +19,7 @@ Design invariants:
 """
 
 import asyncio
+import html
 import re
 import time
 from enum import StrEnum
@@ -37,7 +38,12 @@ from synthorg.observability.events.security import (
 )
 from synthorg.providers.enums import MessageRole
 from synthorg.providers.family import get_family, providers_excluding_family
-from synthorg.providers.models import ChatMessage, CompletionConfig, ToolDefinition
+from synthorg.providers.models import (
+    ChatMessage,
+    CompletionConfig,
+    CompletionResponse,
+    ToolDefinition,
+)
 from synthorg.security.config import SafetyClassifierConfig  # noqa: TC001
 from synthorg.security.rules.credential_detector import CREDENTIAL_PATTERNS
 from synthorg.security.rules.data_leak_detector import PII_PATTERNS
@@ -80,8 +86,17 @@ _EMAIL_PLACEHOLDER: Final[str] = "[EMAIL]"
 # Maximum length for LLM-returned reason string.
 _MAX_REASON_LENGTH: Final[int] = 300
 
-# Regex to strip control characters from LLM-returned reason.
-_CONTROL_CHAR_RE: Final[re.Pattern[str]] = re.compile(r"[\x00-\x1f\x7f]")
+# Regex to strip control and formatting characters from LLM-returned
+# reason.  Covers ASCII control (C0/DEL), Unicode bidi overrides
+# (U+200E-200F, U+202A-202E, U+2066-2069), and zero-width chars.
+_CONTROL_CHAR_RE: Final[re.Pattern[str]] = re.compile(
+    r"[\x00-\x1f\x7f"
+    r"\u200b-\u200f"  # zero-width and bidi marks
+    r"\u202a-\u202e"  # bidi embedding/override
+    r"\u2066-\u2069"  # bidi isolate
+    r"\ufeff"  # BOM / zero-width no-break space
+    r"]",
+)
 
 
 # ── Enums and models ─────────────────────────────────────────────
@@ -374,7 +389,7 @@ class SafetyClassifier:
         if not available:
             return None, None
 
-        # Try cross-family from a random starting point.
+        # Try cross-family selection.
         for name in available:
             family = get_family(name, self._configs)
             cross = providers_excluding_family(family, self._configs)
@@ -406,13 +421,22 @@ class SafetyClassifier:
         tool_name: str,
         risk_level: ApprovalRiskLevel,
     ) -> list[ChatMessage]:
-        """Build prompt messages from the stripped context."""
+        """Build prompt messages from the stripped context.
+
+        All interpolated values are XML-escaped to prevent tag
+        injection from agent-controlled fields, and stripped of
+        PII/secrets via the same ``InformationStripper``.
+        """
+        safe_tool = html.escape(self._stripper.strip(tool_name))
+        safe_type = html.escape(self._stripper.strip(action_type))
+        safe_risk = html.escape(risk_level.value)
+        safe_desc = html.escape(stripped_description)
         user_content = (
             "<action>\n"
-            f"  <tool>{tool_name}</tool>\n"
-            f"  <type>{action_type}</type>\n"
-            f"  <risk_level>{risk_level.value}</risk_level>\n"
-            f"  <description>{stripped_description}</description>\n"
+            f"  <tool>{safe_tool}</tool>\n"
+            f"  <type>{safe_type}</type>\n"
+            f"  <risk_level>{safe_risk}</risk_level>\n"
+            f"  <description>{safe_desc}</description>\n"
             "</action>"
         )
 
@@ -427,14 +451,14 @@ class SafetyClassifier:
 
     def _parse_response(
         self,
-        response: object,
+        response: CompletionResponse,
         stripped_description: str,
         start: float,
     ) -> SafetyClassifierResult:
         """Parse LLM response into a SafetyClassifierResult."""
         duration_ms = (time.monotonic() - start) * 1000
 
-        for tc in response.tool_calls:  # type: ignore[attr-defined]
+        for tc in response.tool_calls:
             if tc.name == "safety_classification_verdict":
                 return self._parse_tool_call(
                     tc.arguments,

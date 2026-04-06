@@ -64,6 +64,9 @@ export function ApprovalDetailDrawer({
 
   const isPending = approval?.status === 'pending'
   const riskColor = approval ? getRiskLevelColor(approval.risk_level) : 'accent'
+  const confidenceRaw = approval?.metadata.confidence_score
+  const confidenceScore = confidenceRaw ? parseFloat(confidenceRaw) : NaN
+  const confidenceLabel = !Number.isNaN(confidenceScore) ? `${(confidenceScore * 100).toFixed(0)}%` : null
   const panelRef = useRef<HTMLElement>(null)
   const openerRef = useRef<Element | null>(null)
 
@@ -290,12 +293,8 @@ export function ApprovalDetailDrawer({
                 {approval.decided_at && (
                   <MetaField icon={Calendar} label="Decided At" value={formatDate(approval.decided_at)} />
                 )}
-                {approval.metadata.confidence_score && (
-                  <MetaField
-                    icon={Shield}
-                    label="Confidence"
-                    value={`${(parseFloat(approval.metadata.confidence_score) * 100).toFixed(0)}%`}
-                  />
+                {confidenceLabel && (
+                  <MetaField icon={Shield} label="Confidence" value={confidenceLabel} />
                 )}
                 {approval.metadata.safety_classification && (
                   <MetaField
@@ -424,29 +423,14 @@ export function ApprovalDetailDrawer({
 }
 
 function DescriptionSection({ approval }: { approval: ApprovalResponse }) {
-  const hasStripped = Boolean(approval.metadata.stripped_description)
-  const [showOriginal, setShowOriginal] = useState(false)
-
-  const displayText = hasStripped && !showOriginal
-    ? approval.metadata.stripped_description
-    : approval.description
+  // Use stripped description when available (PII/secrets removed).
+  const displayText = approval.metadata.stripped_description || approval.description
 
   return (
     <div>
-      <div className="flex items-center justify-between">
-        <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-          Description
-        </span>
-        {hasStripped && (
-          <button
-            type="button"
-            onClick={() => setShowOriginal((prev) => !prev)}
-            className="text-[11px] text-accent hover:text-accent/80 transition-colors"
-          >
-            {showOriginal ? 'Show stripped' : 'Show original'}
-          </button>
-        )}
-      </div>
+      <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+        Description
+      </span>
       <p className="mt-1 text-sm text-secondary">{displayText}</p>
     </div>
   )

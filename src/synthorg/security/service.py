@@ -60,6 +60,9 @@ from synthorg.security.output_scan_policy_factory import (
 )
 from synthorg.security.output_scanner import OutputScanner  # noqa: TC001
 from synthorg.security.rules.engine import RuleEngine  # noqa: TC001
+from synthorg.security.safety_classifier import (
+    SafetyClassification,
+)
 from synthorg.security.timeout.protocol import RiskTierClassifier  # noqa: TC001
 
 if TYPE_CHECKING:
@@ -564,32 +567,36 @@ class SecOpsService:
 
         # Stage 1+2: safety classification (if configured).
         if self._safety_classifier is not None:
-            classify_result = await self._run_safety_classifier(
+            auto_rejected = await self._run_safety_classifier(
                 context,
                 verdict,
                 metadata,
             )
-            if classify_result is not None:
-                # BLOCKED -> auto-reject.
-                if classify_result == "blocked":
-                    return verdict.model_copy(
-                        update={
-                            "verdict": SecurityVerdictType.DENY,
-                            "reason": (
-                                f"{verdict.reason} (auto-rejected: "
-                                f"safety classifier blocked)"
-                            ),
-                        },
-                    )
-                # Use stripped description for the reviewer view.
-                stripped = metadata.get("stripped_description")
-                if stripped:
-                    description = stripped
+            if auto_rejected:
+                return verdict.model_copy(
+                    update={
+                        "verdict": SecurityVerdictType.DENY,
+                        "reason": (
+                            f"{verdict.reason} (auto-rejected: "
+                            f"safety classifier blocked)"
+                        ),
+                    },
+                )
+            # Use stripped description for the reviewer view.
+            stripped = metadata.get("stripped_description")
+            if stripped:
+                description = stripped
 
         # Cross-provider uncertainty check (if configured).
+        # Use stripped description when available to avoid
+        # broadcasting raw PII/secrets to all providers.
         if self._uncertainty_checker is not None:
+            check_text = metadata.get(
+                "stripped_description",
+                verdict.reason,
+            )
             await self._run_uncertainty_check(
-                verdict,
+                check_text,
                 metadata,
             )
 
@@ -637,17 +644,16 @@ class SecOpsService:
         context: SecurityContext,
         verdict: SecurityVerdict,
         metadata: dict[str, str],
-    ) -> str | None:
+    ) -> bool:
         """Run the safety classifier and populate metadata.
 
-        Returns the classification string, or ``None`` on error.
-        On BLOCKED, the caller should auto-reject.
+        Returns ``True`` if the action was auto-rejected (BLOCKED
+        with ``auto_reject_blocked`` enabled), ``False`` otherwise.
+        Metadata is populated with classification results on success.
+        On error, metadata is left unchanged and ``False`` is returned
+        (fail-safe: proceed to human review).
         """
         try:
-            from synthorg.security.safety_classifier import (  # noqa: PLC0415
-                SafetyClassification,
-            )
-
             result = await self._safety_classifier.classify(  # type: ignore[union-attr]
                 verdict.reason,
                 context.action_type,
@@ -658,15 +664,16 @@ class SecOpsService:
             metadata["stripped_description"] = result.stripped_description
             metadata["safety_reason"] = result.reason
 
-            if result.classification == SafetyClassification.BLOCKED:
-                auto_reject = self._config.safety_classifier.auto_reject_blocked
-                if auto_reject:
-                    logger.warning(
-                        SECURITY_SAFETY_CLASSIFY_BLOCKED,
-                        tool_name=context.tool_name,
-                        reason=result.reason,
-                    )
-                    return "blocked"
+            if (
+                result.classification == SafetyClassification.BLOCKED
+                and self._config.safety_classifier.auto_reject_blocked
+            ):
+                logger.warning(
+                    SECURITY_SAFETY_CLASSIFY_BLOCKED,
+                    tool_name=context.tool_name,
+                    reason=result.reason,
+                )
+                return True
         except MemoryError, RecursionError:
             raise
         except Exception:
@@ -675,19 +682,17 @@ class SecOpsService:
                 tool_name=context.tool_name,
                 note="Safety classifier failed -- proceeding without classification",
             )
-            return None
-        else:
-            return result.classification.value
+        return False
 
     async def _run_uncertainty_check(
         self,
-        verdict: SecurityVerdict,
+        prompt: str,
         metadata: dict[str, str],
     ) -> None:
         """Run the uncertainty checker and populate metadata."""
         try:
             result = await self._uncertainty_checker.check(  # type: ignore[union-attr]
-                verdict.reason,
+                prompt,
             )
             metadata["confidence_score"] = str(result.confidence_score)
             if result.keyword_overlap is not None:
@@ -703,3 +708,4 @@ class SecOpsService:
                 SECURITY_UNCERTAINTY_CHECK_ERROR,
                 note="Uncertainty check failed -- proceeding without score",
             )
+            metadata["uncertainty_check_error"] = "true"

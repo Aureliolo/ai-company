@@ -28,6 +28,10 @@ export function ApprovalCard({
   const riskColor = getRiskLevelColor(approval.risk_level)
   const urgencyColor = getUrgencyColor(approval.urgency_level)
   const isPending = approval.status === 'pending'
+  const isSuspicious = approval.metadata.safety_classification === 'suspicious'
+  const confidenceRaw = approval.metadata.confidence_score
+  const confidenceScore = confidenceRaw ? parseFloat(confidenceRaw) : NaN
+  const showLowConfidence = !Number.isNaN(confidenceScore) && confidenceScore < 0.5
 
   // Flash on status change
   const { flashStyle, triggerFlash } = useFlash()
@@ -134,7 +138,7 @@ export function ApprovalCard({
         )}
 
         {/* Safety classification badge */}
-        {approval.metadata.safety_classification === 'suspicious' && (
+        {isSuspicious && (
           <span
             className={cn(
               'inline-flex items-center gap-1 rounded border px-1.5 py-0.5 text-[11px] font-medium shrink-0',
@@ -148,12 +152,11 @@ export function ApprovalCard({
         )}
 
         {/* Low confidence indicator */}
-        {approval.metadata.confidence_score &&
-          parseFloat(approval.metadata.confidence_score) < 0.5 && (
-            <span className="text-[11px] text-warning shrink-0" aria-label="Low confidence score">
-              Low confidence
-            </span>
-          )}
+        {showLowConfidence && (
+          <span className="text-[11px] text-warning shrink-0" aria-label="Low confidence score">
+            Low confidence
+          </span>
+        )}
       </div>
 
       {/* Action buttons (pending only) */}

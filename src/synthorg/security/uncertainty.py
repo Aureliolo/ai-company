@@ -306,7 +306,7 @@ class UncertaintyChecker:
         # Compute similarity metrics.
         keyword_overlap = _compute_keyword_overlap(responses)
         embedding_sim = _compute_tfidf_cosine_similarity(responses)
-        confidence = 0.6 * embedding_sim + 0.4 * keyword_overlap
+        confidence = min(1.0, 0.6 * embedding_sim + 0.4 * keyword_overlap)
 
         if confidence < self._config.low_confidence_threshold:
             logger.warning(
@@ -354,6 +354,13 @@ class UncertaintyChecker:
         results: list[str] = []
 
         async def _call_provider(candidate: ResolvedModel) -> str | None:
+            """Call a single provider.
+
+            Inside a TaskGroup, all exceptions must be caught to
+            avoid ExceptionGroup propagation (even MemoryError /
+            RecursionError -- re-raising them would wrap in an
+            ExceptionGroup that escapes outer except clauses).
+            """
             driver: BaseCompletionProvider = self._registry.get(
                 candidate.provider_name,
             )
@@ -366,8 +373,6 @@ class UncertaintyChecker:
                     ),
                     timeout=self._config.timeout_seconds,
                 )
-            except MemoryError, RecursionError:
-                raise
             except Exception:
                 logger.exception(
                     SECURITY_UNCERTAINTY_CHECK_ERROR,
@@ -376,7 +381,18 @@ class UncertaintyChecker:
                 )
                 return None
             else:
-                return response.content or ""
+                # Filter empty/None content to avoid diluting
+                # similarity metrics (e.g. content-filtered responses).
+                text = response.content
+                if not text:
+                    logger.debug(
+                        SECURITY_UNCERTAINTY_CHECK_ERROR,
+                        provider=candidate.provider_name,
+                        model=candidate.model_id,
+                        note="Provider returned empty content",
+                    )
+                    return None
+                return text
 
         async with asyncio.TaskGroup() as tg:
             tasks = [tg.create_task(_call_provider(c)) for c in candidates]
