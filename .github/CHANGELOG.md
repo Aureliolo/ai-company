@@ -1,5 +1,31 @@
 # Changelog
 
+## [0.6.2](https://github.com/Aureliolo/synthorg/compare/v0.6.1...v0.6.2) (2026-04-06)
+
+
+### Features
+
+* add issue analyzer script for priority/scope management ([#1084](https://github.com/Aureliolo/synthorg/issues/1084)) ([1ccba27](https://github.com/Aureliolo/synthorg/commit/1ccba275e683e530bb3305e872788d1dffe0e483))
+* config fixes and deferred improvements from PR [#1058](https://github.com/Aureliolo/synthorg/issues/1058) review ([#1067](https://github.com/Aureliolo/synthorg/issues/1067)) ([2cac2d3](https://github.com/Aureliolo/synthorg/commit/2cac2d36ac0a80f9b34c7e0a89fe848642aec293)), closes [#1061](https://github.com/Aureliolo/synthorg/issues/1061) [#1060](https://github.com/Aureliolo/synthorg/issues/1060)
+* cumulative risk-unit action budgets ([#806](https://github.com/Aureliolo/synthorg/issues/806)) and automated reporting ([#245](https://github.com/Aureliolo/synthorg/issues/245)) ([#1063](https://github.com/Aureliolo/synthorg/issues/1063)) ([4689816](https://github.com/Aureliolo/synthorg/commit/468981622f8e80aee396b964364d8553b73016d5))
+* fine-tuning pipeline + CompositeBackend + workflow lifecycle ([#1065](https://github.com/Aureliolo/synthorg/issues/1065)) ([85b05bc](https://github.com/Aureliolo/synthorg/commit/85b05bcb92c3306739ab779fbf615821c271ecad)), closes [#1001](https://github.com/Aureliolo/synthorg/issues/1001) [#850](https://github.com/Aureliolo/synthorg/issues/850) [#1058](https://github.com/Aureliolo/synthorg/issues/1058)
+* memory consolidation upgrades (LLM Merge, Search-and-Ask, diversity penalty, distillation capture) ([#1071](https://github.com/Aureliolo/synthorg/issues/1071)) ([174e2be](https://github.com/Aureliolo/synthorg/commit/174e2beb51a945f82fe8c0711782ce8c209eab05)), closes [#704](https://github.com/Aureliolo/synthorg/issues/704)
+* migrate web dashboard from Radix UI to Base UI, activate CSP nonce, rebuild org chart page, and fix agent routing ([#1083](https://github.com/Aureliolo/synthorg/issues/1083)) ([ebc6921](https://github.com/Aureliolo/synthorg/commit/ebc6921262b4d918ad9740f7b81342bc8238a7ef))
+* v0.7.0 engine foundations -- structured failure diagnosis + auditable decisions ([#1072](https://github.com/Aureliolo/synthorg/issues/1072)) ([d341d37](https://github.com/Aureliolo/synthorg/commit/d341d37616d38a7f2e3a91070ad7692e914c8b12))
+* workflow templates and versioning with diff and rollback ([#1069](https://github.com/Aureliolo/synthorg/issues/1069)) ([7af94de](https://github.com/Aureliolo/synthorg/commit/7af94dea57fd8d459b142a563b9aa33cf12392aa)), closes [#1006](https://github.com/Aureliolo/synthorg/issues/1006) [#1008](https://github.com/Aureliolo/synthorg/issues/1008)
+
+
+### Documentation
+
+* unify REST API docs under /docs/openapi/ and patch sitemap ([#1073](https://github.com/Aureliolo/synthorg/issues/1073)) ([af19382](https://github.com/Aureliolo/synthorg/commit/af193829665398dcd4879bddd35c0ecf4b5d16f0))
+
+
+### Maintenance
+
+* bump hypothesis from 6.151.10 to 6.151.11 in the all group ([#1086](https://github.com/Aureliolo/synthorg/issues/1086)) ([3176318](https://github.com/Aureliolo/synthorg/commit/31763182a968266a767312b97d45231e2742849f))
+* bump nginxinc/nginx-unprivileged from `f99cc61` to `601c823` in /docker/web in the all group ([#1085](https://github.com/Aureliolo/synthorg/issues/1085)) ([5eb99ac](https://github.com/Aureliolo/synthorg/commit/5eb99acc30f80d8a33d44c5b154fd1dc35ba5c89))
+* bump the all group in /web with 3 updates ([#1087](https://github.com/Aureliolo/synthorg/issues/1087)) ([8deae44](https://github.com/Aureliolo/synthorg/commit/8deae44ec96b3c68eb95f3556c5ed9bb48214095))
+
 ## [0.6.1](https://github.com/Aureliolo/synthorg/compare/v0.6.0...v0.6.1) (2026-04-04)
 
 
