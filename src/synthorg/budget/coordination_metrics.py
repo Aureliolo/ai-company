@@ -14,6 +14,9 @@ from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validat
 
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.observability import get_logger
+from synthorg.observability.events.coordination_metrics import (
+    COORD_METRICS_VALIDATION_ERROR,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -582,6 +585,11 @@ def compute_straggler_gap(
     """
     if not agent_durations:
         msg = "agent_durations must not be empty"
+        logger.warning(
+            COORD_METRICS_VALIDATION_ERROR,
+            parameter="agent_durations",
+            error=msg,
+        )
         raise ValueError(msg)
 
     slowest_id, slowest_dur = max(
@@ -619,15 +627,39 @@ def compute_token_speedup_ratio(
     """
     if tokens_mas <= 0:
         msg = "tokens_mas must be positive"
+        logger.warning(
+            COORD_METRICS_VALIDATION_ERROR,
+            parameter="tokens_mas",
+            value=tokens_mas,
+            error=msg,
+        )
         raise ValueError(msg)
     if tokens_sas <= 0:
         msg = "tokens_sas must be positive"
+        logger.warning(
+            COORD_METRICS_VALIDATION_ERROR,
+            parameter="tokens_sas",
+            value=tokens_sas,
+            error=msg,
+        )
         raise ValueError(msg)
     if duration_mas <= 0:
         msg = "duration_mas must be positive"
+        logger.warning(
+            COORD_METRICS_VALIDATION_ERROR,
+            parameter="duration_mas",
+            value=duration_mas,
+            error=msg,
+        )
         raise ValueError(msg)
     if duration_sas <= 0:
         msg = "duration_sas must be positive"
+        logger.warning(
+            COORD_METRICS_VALIDATION_ERROR,
+            parameter="duration_sas",
+            value=duration_sas,
+            error=msg,
+        )
         raise ValueError(msg)
     return TokenSpeedupRatio(
         token_multiplier=tokens_mas / tokens_sas,

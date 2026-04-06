@@ -114,5 +114,15 @@ class TrajectoryScore(BaseModel):
     )
     @property
     def joint_score(self) -> float:
-        """Combined score: VC + Len (least-negative wins)."""
-        return self.vc_score + self.len_score
+        """Combined score: normalized VC + Len (least-negative wins).
+
+        VC is scaled by ``abs(len_score)`` so both signals contribute
+        proportionally.  When ``len_score`` is 0 (zero-token trace),
+        falls back to raw VC.
+        """
+        if self.len_score == 0.0:
+            return self.vc_score
+        # Scale VC into the same magnitude as len_score.
+        # VC range is ~[-4.6, 0], len_score range is ~[-2000, 0].
+        # Multiplying VC by abs(len_score) makes confidence matter.
+        return self.vc_score * abs(self.len_score) + self.len_score

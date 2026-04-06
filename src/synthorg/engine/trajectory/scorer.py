@@ -60,6 +60,11 @@ class TrajectoryScorer:
         """
         if not candidates:
             msg = "Cannot score empty candidate list"
+            logger.warning(
+                TRAJECTORY_SCORING_START,
+                k=0,
+                error=msg,
+            )
             raise ValueError(msg)
 
         logger.debug(
@@ -162,14 +167,15 @@ def _check_consistency(
             fps = ()
         fingerprint_sets.append(fps)
 
-    # Find majority fingerprint set.
+    # Find majority fingerprint set (strict >50% threshold).
     counter: Counter[tuple[str, ...]] = Counter(fingerprint_sets)
-    majority_fp, _ = counter.most_common(1)[0]
+    majority_fp, majority_count = counter.most_common(1)[0]
+    has_majority = majority_count > len(candidates) / 2
 
     result: dict[int, bool] = {}
     filtered_count = 0
     for candidate, fps in zip(candidates, fingerprint_sets, strict=True):
-        is_consistent = fps == majority_fp
+        is_consistent = (fps == majority_fp) if has_majority else True
         result[candidate.candidate_index] = is_consistent
         if not is_consistent:
             filtered_count += 1

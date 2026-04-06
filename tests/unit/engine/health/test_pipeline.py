@@ -165,8 +165,8 @@ class TestHealthMonitoringPipeline:
         assert notification.metadata["task_id"] == "task-1"
         assert "ticket_id" in notification.metadata
 
-    async def test_sink_error_swallowed(self) -> None:
-        """Pipeline errors are best-effort -- never propagate."""
+    async def test_sink_error_preserves_ticket(self) -> None:
+        """Notification failure is best-effort -- ticket still returned."""
         pipeline = HealthMonitoringPipeline(
             judge=HealthJudge(),
             triage=TriageFilter(),
@@ -178,5 +178,6 @@ class TestHealthMonitoringPipeline:
             agent_id="agent-1",
             task_id="task-1",
         )
-        # Returns None because of error swallowing.
-        assert ticket is None
+        # Ticket is preserved even when notification delivery fails.
+        assert ticket is not None
+        assert ticket.agent_id == "agent-1"

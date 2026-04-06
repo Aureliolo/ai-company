@@ -4,7 +4,7 @@ from datetime import date
 from uuid import uuid4
 
 import pytest
-from hypothesis import given, settings
+from hypothesis import given
 from hypothesis import strategies as st
 
 from synthorg.core.agent import (
@@ -88,7 +88,6 @@ class TestTrajectoryScorerProperties:
             max_size=5,
         ),
     )
-    @settings(max_examples=10, derandomize=True)
     def test_selection_is_deterministic(
         self,
         tokens: list[int],
@@ -107,17 +106,19 @@ class TestTrajectoryScorerProperties:
             max_size=5,
         ),
     )
-    @settings(max_examples=10, derandomize=True)
     def test_joint_score_ordering_consistent(
         self,
         tokens: list[int],
     ) -> None:
-        """Joint scores are ordered by (vc + len)."""
+        """Joint scores use the normalized formula."""
         scorer = TrajectoryScorer()
         candidates = tuple(_candidate(i, t) for i, t in enumerate(tokens))
         scores = scorer.score_candidates(candidates)
         for score in scores:
-            expected = score.vc_score + score.len_score
+            if score.len_score == 0.0:
+                expected = score.vc_score
+            else:
+                expected = score.vc_score * abs(score.len_score) + score.len_score
             assert score.joint_score == pytest.approx(expected)
 
     @given(
@@ -127,7 +128,6 @@ class TestTrajectoryScorerProperties:
             max_size=5,
         ),
     )
-    @settings(max_examples=10, derandomize=True)
     def test_len_score_always_non_positive(
         self,
         tokens: list[int],

@@ -12,3 +12,4 @@ COORD_METRICS_TOKEN_SPEEDUP_ALERT: Final[str] = (
 COORD_METRICS_MESSAGE_OVERHEAD_ALERT: Final[str] = (
     "coordination.metrics.message_overhead_alert"
 )
+COORD_METRICS_VALIDATION_ERROR: Final[str] = "coordination.metrics.validation_error"

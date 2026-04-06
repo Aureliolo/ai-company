@@ -1,7 +1,7 @@
 """Property-based tests for new coordination metrics (Hypothesis)."""
 
 import pytest
-from hypothesis import given, settings
+from hypothesis import given
 from hypothesis import strategies as st
 
 from synthorg.budget.coordination_metrics import (
@@ -22,7 +22,6 @@ class TestAmdahlCeilingProperties:
             allow_infinity=False,
         ),
     )
-    @settings(max_examples=10, derandomize=True)
     def test_max_speedup_monotonically_increases(self, p: float) -> None:
         """Max speedup increases with parallelizable fraction."""
         result = compute_amdahl_ceiling(parallelizable_fraction=p)
@@ -36,7 +35,6 @@ class TestAmdahlCeilingProperties:
             allow_infinity=False,
         ),
     )
-    @settings(max_examples=10, derandomize=True)
     def test_recommended_team_size_positive(self, p: float) -> None:
         """Recommended team size is always >= 1."""
         result = compute_amdahl_ceiling(parallelizable_fraction=p)
@@ -50,7 +48,6 @@ class TestAmdahlCeilingProperties:
             allow_infinity=False,
         ),
     )
-    @settings(max_examples=10, derandomize=True)
     def test_higher_p_higher_speedup(self, p1: float) -> None:
         """Higher parallelism fraction -> higher or equal speedup."""
         p2 = min(p1 + 0.001, 0.999)
@@ -75,7 +72,6 @@ class TestStragglerGapProperties:
             max_size=10,
         ),
     )
-    @settings(max_examples=10, derandomize=True)
     def test_gap_always_non_negative(self, durations: list[float]) -> None:
         """Gap is always >= 0 (slowest >= mean by definition)."""
         agent_durations = [(f"agent-{i}", d) for i, d in enumerate(durations)]

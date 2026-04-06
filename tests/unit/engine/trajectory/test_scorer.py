@@ -180,12 +180,12 @@ class TestTrajectoryScorer:
         # Candidate 2 has best Len but is inconsistent.
         assert best.candidate_index == 1
 
-    def test_all_inconsistent_falls_back(
+    def test_no_majority_all_consistent(
         self,
         scorer: TrajectoryScorer,
         minimal_context: AgentContext,
     ) -> None:
-        """All unique fingerprints -- all 'consistent' with majority."""
+        """No strict majority -- all candidates marked consistent."""
         candidates = (
             _candidate(
                 0,
@@ -200,10 +200,13 @@ class TestTrajectoryScorer:
                 trace_tokens=100,
             ),
         )
+        scores = scorer.score_candidates(candidates)
+        # No majority (1 vs 1) -- all marked consistent.
+        assert scores[0].consistent is True
+        assert scores[1].consistent is True
         best = scorer.select_best(candidates)
-        # Each has equal count -- first in counter wins majority.
-        # Selection falls through to joint score.
-        assert best.candidate_index in (0, 1)
+        # Shorter trace wins since both are consistent.
+        assert best.candidate_index == 1
 
     def test_empty_candidates_raises(
         self,

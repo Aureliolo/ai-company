@@ -31,6 +31,20 @@ def check_trajectory_budget(
     Returns:
         ``True`` if budget allows K candidates, ``False`` otherwise.
     """
+    if k < 1:
+        logger.warning(
+            TRAJECTORY_BUDGET_GUARD_BLOCKED,
+            k=k,
+            reason="k must be at least 1",
+        )
+        return False
+    if not 0.0 <= margin <= 1.0:
+        logger.warning(
+            TRAJECTORY_BUDGET_GUARD_BLOCKED,
+            margin=margin,
+            reason="margin must be in [0.0, 1.0]",
+        )
+        return False
     if remaining_budget <= 0 or estimated_step_cost <= 0:
         logger.info(
             TRAJECTORY_BUDGET_GUARD_BLOCKED,

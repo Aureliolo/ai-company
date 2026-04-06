@@ -11,6 +11,7 @@ from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validat
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.engine.quality.models import AccuracyEffortRatio
 from synthorg.observability import get_logger
+from synthorg.observability.events.execution import EXECUTION_METRICS_UNEXPECTED_TYPE
 
 if TYPE_CHECKING:
     from synthorg.engine.run_result import AgentRunResult
@@ -37,6 +38,9 @@ class TaskCompletionMetrics(BaseModel):
             (overhead indicator, derived via ``@computed_field``).  For
             multi-turn runs, the actual overhead is higher because the
             system prompt is resent on every turn.
+        accuracy_effort_ratio: Accuracy-effort ratio from step-level
+            quality signals (``None`` when quality signals are
+            unavailable).
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
@@ -118,7 +122,7 @@ class TaskCompletionMetrics(BaseModel):
                 ae_ratio = ae_data.ratio
             else:
                 logger.warning(
-                    "execution.metrics.accuracy_effort_unexpected_type",
+                    EXECUTION_METRICS_UNEXPECTED_TYPE,
                     type=type(ae_data).__name__,
                     task_id=result.task_id,
                 )

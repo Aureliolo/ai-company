@@ -65,7 +65,8 @@ class TestTrajectoryScore:
             len_score=-100.0,
             consistent=True,
         )
-        assert score.joint_score == pytest.approx(-100.5)
+        # Normalized formula: vc * abs(len) + len = -0.5 * 100 + -100 = -150
+        assert score.joint_score == pytest.approx(-150.0)
 
     def test_zero_scores(self) -> None:
         score = TrajectoryScore(

@@ -39,6 +39,16 @@ class HealthJudge:
         *,
         quality_degradation_threshold: int = (_DEFAULT_QUALITY_DEGRADATION_THRESHOLD),
     ) -> None:
+        if quality_degradation_threshold < 1:
+            msg = (
+                f"quality_degradation_threshold must be >= 1, "
+                f"got {quality_degradation_threshold}"
+            )
+            logger.warning(
+                HEALTH_TICKET_EMITTED,
+                error=msg,
+            )
+            raise ValueError(msg)
         self._quality_threshold = quality_degradation_threshold
 
     def emit_ticket(  # noqa: PLR0913

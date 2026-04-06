@@ -44,6 +44,14 @@ class TriageFilter:
         stall_duration_threshold: float = (_MEDIUM_STALL_DURATION_THRESHOLD),
         steps_threshold: int = _MEDIUM_STEPS_THRESHOLD,
     ) -> None:
+        if stall_duration_threshold < 0:
+            msg = (
+                f"stall_duration_threshold must be >= 0, got {stall_duration_threshold}"
+            )
+            raise ValueError(msg)
+        if steps_threshold < 0:
+            msg = f"steps_threshold must be >= 0, got {steps_threshold}"
+            raise ValueError(msg)
         self._stall_threshold = stall_duration_threshold
         self._steps_threshold = steps_threshold
 
@@ -73,7 +81,7 @@ class TriageFilter:
 
         # LOW always dismissed.
         if ticket.severity == EscalationSeverity.LOW:
-            logger.debug(
+            logger.info(
                 HEALTH_TICKET_DISMISSED,
                 ticket_id=ticket.id,
                 severity=ticket.severity.value,
@@ -98,7 +106,7 @@ class TriageFilter:
             )
             return True
 
-        logger.debug(
+        logger.info(
             HEALTH_TICKET_DISMISSED,
             ticket_id=ticket.id,
             severity=ticket.severity.value,

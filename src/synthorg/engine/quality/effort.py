@@ -42,6 +42,11 @@ def compute_accuracy_effort(
     """
     if not signals:
         msg = "Cannot compute accuracy-effort ratio from empty signals"
+        logger.warning(
+            QUALITY_ACCURACY_EFFORT_COMPUTED,
+            error=msg,
+            signal_count=0,
+        )
         raise ValueError(msg)
 
     correct = sum(1 for s in signals if s.quality == StepQuality.CORRECT)

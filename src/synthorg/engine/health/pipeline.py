@@ -134,9 +134,20 @@ class HealthMonitoringPipeline:
         if not self._triage.should_escalate(ticket):
             return None
 
-        # Layer 3: dispatch notification.
+        # Layer 3: dispatch notification (best-effort).
         notification = _ticket_to_notification(ticket)
-        await self._sink.send(notification)
+        try:
+            await self._sink.send(notification)
+        except MemoryError, RecursionError:
+            raise
+        except Exception:
+            logger.exception(
+                HEALTH_PIPELINE_ERROR,
+                agent_id=ticket.agent_id,
+                task_id=ticket.task_id,
+                ticket_id=ticket.id,
+                detail="notification delivery failed, ticket still returned",
+            )
         return ticket
 
 
