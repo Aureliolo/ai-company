@@ -13,6 +13,7 @@ that the caller can inject into the conversation.
 
 from typing import TYPE_CHECKING
 
+from synthorg.notifications.dispatcher import NotificationDispatcher  # noqa: TC001
 from synthorg.observability import get_logger
 from synthorg.observability.events.approval_gate import (
     APPROVAL_GATE_CONTEXT_PARK_FAILED,
@@ -33,7 +34,6 @@ from .approval_gate_models import EscalationInfo  # noqa: TC001
 
 if TYPE_CHECKING:
     from synthorg.engine.context import AgentContext
-    from synthorg.notifications.dispatcher import NotificationDispatcher
 
 logger = get_logger(__name__)
 

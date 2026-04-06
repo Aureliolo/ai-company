@@ -237,6 +237,7 @@ class TestEventConstants:
             "promotion",
             "checkpoint",
             "context_budget",
+            "notification",
             "settings",
             "setup",
             "shipping",

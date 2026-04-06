@@ -13,6 +13,7 @@ from collections.abc import Awaitable, Callable  # noqa: TC003
 from typing import TYPE_CHECKING
 
 from synthorg.core.enums import ApprovalStatus, TimeoutActionType
+from synthorg.notifications.dispatcher import NotificationDispatcher  # noqa: TC001
 from synthorg.observability import get_logger
 from synthorg.observability.events.timeout import (
     TIMEOUT_SCHEDULER_ERROR,
@@ -26,7 +27,6 @@ from synthorg.observability.events.timeout import (
 if TYPE_CHECKING:
     from synthorg.api.approval_store import ApprovalStore
     from synthorg.core.approval import ApprovalItem
-    from synthorg.notifications.dispatcher import NotificationDispatcher
     from synthorg.security.timeout.models import TimeoutAction
     from synthorg.security.timeout.timeout_checker import TimeoutChecker
 

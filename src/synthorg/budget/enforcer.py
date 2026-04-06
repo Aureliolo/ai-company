@@ -36,6 +36,7 @@ from synthorg.budget.quota import (
 )
 from synthorg.budget.risk_check import RiskCheckResult
 from synthorg.constants import BUDGET_ROUNDING_PRECISION
+from synthorg.notifications.dispatcher import NotificationDispatcher  # noqa: TC001
 from synthorg.observability import get_logger
 from synthorg.observability.events.budget import (
     BUDGET_BASELINE_ERROR,
@@ -73,7 +74,6 @@ if TYPE_CHECKING:
     from synthorg.core.agent import AgentIdentity
     from synthorg.core.task import Task
     from synthorg.engine.loop_protocol import BudgetChecker
-    from synthorg.notifications.dispatcher import NotificationDispatcher
     from synthorg.providers.routing.resolver import ModelResolver
     from synthorg.security.risk_scorer import RiskScorer
 
