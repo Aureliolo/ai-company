@@ -124,6 +124,7 @@ async def _read_setting_list(
     try:
         entry = await app_state.settings_service.get("company", key)
     except SettingNotFoundError:
+        logger.debug("Setting company/%s not found, returning empty list", key)
         return []
     if not entry.value:
         return []
@@ -350,6 +351,8 @@ class TemplatePackController(Controller):
         try:
             result = await _apply_pack_to_settings(app_state, data)
         except NotFoundError:
+            raise
+        except ConflictError:
             raise
         except Exception:
             logger.exception(

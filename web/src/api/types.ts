@@ -605,6 +605,8 @@ export interface Department {
   readonly teams: readonly TeamConfig[]
   autonomy_level?: AutonomyLevel | null
   ceremony_policy?: CeremonyPolicyConfig | null
+  reporting_lines?: readonly DepartmentReportingLine[]
+  policies?: Record<string, unknown>
 }
 
 export interface TeamConfig {

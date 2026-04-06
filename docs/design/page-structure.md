@@ -81,9 +81,9 @@ Agent profiles as card grid. Each card shows name, role, department, status dot,
 - **Task history**: Gantt-style horizontal bars sorted by time, type-colored, pulse on in-progress tasks, duration labels
 - **Activity log**: Paginated chronological event list with type icons, descriptions, timestamps
 
-**Deferred to future iteration**: Collaboration score/calibration endpoints, autonomy editing, spending breakdown, and tabbed layout (Access tab).
+**Deferred to future iteration**: Spending breakdown and tabbed layout (Access tab).
 
-**API endpoints**: `GET /agents`, `GET /agents/{name}`, `GET /agents/{name}/performance`, `GET /agents/{name}/activity`, `GET /agents/{name}/history`
+**API endpoints**: `GET /agents`, `GET /agents/{name}`, `GET /agents/{name}/performance`, `GET /agents/{name}/activity`, `GET /agents/{name}/history`, `GET /agents/{name}/collaboration/score`, `GET /agents/{name}/collaboration/override`, `POST /agents/{name}/collaboration/override`, `DELETE /agents/{name}/collaboration/override`, `GET /agents/{name}/autonomy`, `POST /agents/{name}/autonomy`
 **WS channels**: `agents`, `tasks` (detail page)
 
 #### Projects (`/projects`)

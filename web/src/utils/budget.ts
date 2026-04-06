@@ -393,6 +393,14 @@ export function computeBudgetPreview(
   currentDepts: readonly { name: string; budget_percent?: number }[],
   packDeptBudgets: readonly { name: string; budget_percent: number }[],
 ): BudgetPreview {
+  const PRECISION = 10
+  const MAX_BUDGET = 100
+
+  const roundTo = (value: number): number => {
+    const factor = 10 ** PRECISION
+    return Math.round(value * factor) / factor
+  }
+
   const currentTotal = currentDepts.reduce(
     (sum, d) => sum + (d.budget_percent ?? 0),
     0,
@@ -403,11 +411,11 @@ export function computeBudgetPreview(
   )
   const combined = currentTotal + packTotal
 
-  if (combined <= 100 || currentTotal <= 0) {
+  if (roundTo(combined) <= MAX_BUDGET) {
     return {
       currentTotal,
       packTotal,
-      projectedTotal: combined,
+      projectedTotal: roundTo(combined),
       scaleFactor: 1,
       departments: [
         ...currentDepts.map((d) => ({
@@ -424,15 +432,15 @@ export function computeBudgetPreview(
     }
   }
 
-  const targetExisting = 100 - packTotal
-  const factor = Math.max(0, Math.min(1, targetExisting / currentTotal))
+  const targetExisting = MAX_BUDGET - packTotal
+  const factor = currentTotal <= 0 ? 0 : Math.max(0, Math.min(1, targetExisting / currentTotal))
 
   const scaledExisting = currentDepts.map((d) => {
     const before = d.budget_percent ?? 0
     return {
       name: d.name,
       before,
-      after: Math.round(before * factor * 100) / 100,
+      after: roundTo(before * factor),
     }
   })
 
@@ -450,8 +458,8 @@ export function computeBudgetPreview(
   return {
     currentTotal,
     packTotal,
-    projectedTotal: Math.round(finalTotal * 100) / 100,
-    scaleFactor: Math.round(factor * 1000) / 1000,
+    projectedTotal: roundTo(finalTotal),
+    scaleFactor: roundTo(factor),
     departments: [...scaledExisting, ...newDepts],
   }
 }

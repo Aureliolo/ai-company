@@ -159,6 +159,11 @@ export function DepartmentEditDrawer({
                 Total would be {projectedTotal.toFixed(1)}% -- exceeds 100%.
               </p>
             )}
+            {!budgetWouldExceed && projectedTotal < 99.99 && (
+              <p className="text-xs text-warning">
+                Total would be {projectedTotal.toFixed(1)}% -- under-allocated.
+              </p>
+            )}
 
             <TeamListSection
               teams={department.teams}

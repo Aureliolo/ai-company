@@ -321,20 +321,25 @@ export const useCompanyStore = create<CompanyState>()((set, get) => ({
     set((s) => ({ savingCount: s.savingCount + 1, saveError: null }))
     try {
       await apiDeleteTeam(deptName, teamName, reassignTo)
-      const prev = get().config
-      set((s) => ({
-        savingCount: Math.max(0, s.savingCount - 1),
-        ...(prev ? {
-          config: {
-            ...prev,
-            departments: prev.departments.map((d) =>
-              d.name === deptName
-                ? { ...d, teams: d.teams.filter((t) => t.name !== teamName) }
-                : d,
-            ),
-          },
-        } : {}),
-      }))
+      if (reassignTo) {
+        await get().fetchCompanyData()
+        set((s) => ({ savingCount: Math.max(0, s.savingCount - 1) }))
+      } else {
+        const prev = get().config
+        set((s) => ({
+          savingCount: Math.max(0, s.savingCount - 1),
+          ...(prev ? {
+            config: {
+              ...prev,
+              departments: prev.departments.map((d) =>
+                d.name === deptName
+                  ? { ...d, teams: d.teams.filter((t) => t.name !== teamName) }
+                  : d,
+              ),
+            },
+          } : {}),
+        }))
+      }
     } catch (err) {
       set((s) => ({ savingCount: Math.max(0, s.savingCount - 1), saveError: getErrorMessage(err) }))
       throw err

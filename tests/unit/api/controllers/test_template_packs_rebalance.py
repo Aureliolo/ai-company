@@ -17,11 +17,12 @@ def _seed_departments(
     depts: list[dict[str, Any]],
 ) -> None:
     """Seed departments into settings."""
-    test_client.put(
+    resp = test_client.put(
         "/api/v1/settings/company/departments",
         json={"value": json.dumps(depts)},
         headers=make_auth_headers("ceo"),
     )
+    assert resp.status_code == 200, f"Failed to seed departments: {resp.text}"
 
 
 def _dept(name: str, budget: float) -> dict[str, Any]:
