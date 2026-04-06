@@ -34,6 +34,13 @@ logger = get_logger(__name__)
 
 _KNOWN_BACKENDS: frozenset[str] = frozenset({"subprocess", "docker"})
 
+# Default gVisor overrides for high-risk tool categories.
+# User-supplied runtime_overrides take precedence.
+_DEFAULT_GVISOR_OVERRIDES: dict[str, str] = {
+    "code_execution": "runsc",
+    "terminal": "runsc",
+}
+
 
 def _instantiate_backend(
     name: str,
@@ -114,6 +121,40 @@ def build_sandbox_backends(
         override_count=len(config.overrides),
     )
     return MappingProxyType(backends)
+
+
+def merge_gvisor_defaults(
+    config: SandboxingConfig,
+) -> SandboxingConfig:
+    """Return a new config with default gVisor runtime overrides merged.
+
+    User-supplied ``runtime_overrides`` take precedence over defaults.
+    Only merges when the Docker backend is referenced by the config.
+
+    Args:
+        config: Original sandboxing configuration.
+
+    Returns:
+        A new ``SandboxingConfig`` with merged runtime overrides
+        on the Docker sub-config, or the original config unchanged
+        if Docker is not referenced.
+    """
+    needed: set[str] = {config.default_backend}
+    needed.update(config.overrides.values())
+    if "docker" not in needed:
+        return config
+
+    effective_overrides = {
+        **_DEFAULT_GVISOR_OVERRIDES,
+        **config.docker.runtime_overrides,
+    }
+    if effective_overrides == dict(config.docker.runtime_overrides):
+        return config
+
+    new_docker = config.docker.model_copy(
+        update={"runtime_overrides": effective_overrides},
+    )
+    return config.model_copy(update={"docker": new_docker})
 
 
 def resolve_sandbox_for_category(

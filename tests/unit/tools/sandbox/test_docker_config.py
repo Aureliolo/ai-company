@@ -4,6 +4,7 @@ import pytest
 from pydantic import ValidationError
 
 from synthorg.tools.sandbox.docker_config import DockerSandboxConfig
+from synthorg.tools.sandbox.policy import NetworkPolicy, SandboxPolicy
 
 pytestmark = pytest.mark.unit
 
@@ -16,6 +17,7 @@ class TestDockerSandboxConfigDefaults:
         assert config.image == "synthorg-sandbox:latest"
         assert config.network == "none"
         assert config.network_overrides == {}
+        assert config.runtime_overrides == {}
         assert config.allowed_hosts == ()
         assert config.memory_limit == "512m"
         assert config.cpu_limit == 1.0
@@ -67,6 +69,23 @@ class TestDockerSandboxConfigCustomValues:
     def test_runtime_gvisor(self) -> None:
         config = DockerSandboxConfig(runtime="runsc")
         assert config.runtime == "runsc"
+
+    def test_runtime_overrides(self) -> None:
+        overrides = {"code_execution": "runsc", "terminal": "runsc"}
+        config = DockerSandboxConfig(runtime_overrides=overrides)
+        assert config.runtime_overrides == overrides
+
+    def test_policy_none_by_default(self) -> None:
+        config = DockerSandboxConfig()
+        assert config.policy is None
+
+    def test_policy_accepted(self) -> None:
+        policy = SandboxPolicy(
+            network=NetworkPolicy(mode="bridge"),
+        )
+        config = DockerSandboxConfig(policy=policy)
+        assert config.policy is not None
+        assert config.policy.network.mode == "bridge"
 
 
 class TestDockerSandboxConfigBounds:
