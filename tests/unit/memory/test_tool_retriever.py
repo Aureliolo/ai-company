@@ -500,8 +500,8 @@ class TestSearchWithReformulation:
 
         # Initial retrieve + 2 rounds = 3 retrieves
         assert backend.retrieve.call_count == 3
-        # 2 sufficiency checks (one per round)
-        assert sufficiency.check_sufficiency.call_count == 2
+        # 2 sufficiency checks (one per round) + 1 final check = 3
+        assert sufficiency.check_sufficiency.call_count == 3
         # 2 reformulations
         assert reformulator.reformulate.call_count == 2
 

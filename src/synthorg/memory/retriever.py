@@ -148,14 +148,6 @@ class ContextInjectionStrategy:
         self._estimator = (
             token_estimator if token_estimator is not None else DefaultTokenEstimator()
         )
-        logger.debug(
-            MEMORY_RETRIEVAL_START,
-            strategy="context_injection",
-            backend=backend.backend_name
-            if hasattr(backend, "backend_name")
-            else type(backend).__qualname__,
-            has_shared_store=shared_store is not None,
-        )
 
     async def prepare_messages(
         self,

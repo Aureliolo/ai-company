@@ -11,6 +11,7 @@ retryable error (after retries are exhausted) or returns empty content.
 """
 
 import asyncio
+from enum import StrEnum
 from itertools import groupby
 from operator import attrgetter
 
@@ -71,6 +72,21 @@ _LLM_SYNTHESIZED_TAG: NotBlankStr = "llm-synthesized"
 
 #: Tag applied to concatenation-fallback summaries.
 _CONCAT_FALLBACK_TAG: NotBlankStr = "concat-fallback"
+
+
+class SynthesisOutcome(StrEnum):
+    """Outcome of an LLM synthesis attempt.
+
+    Replaces the bare ``bool`` that ``_synthesize`` previously returned
+    as its second element, making intent explicit.
+    """
+
+    LLM_SYNTHESIZED = "llm_synthesized"
+    """LLM returned non-empty content -- real synthesis occurred."""
+
+    CONCAT_FALLBACK = "concat_fallback"
+    """LLM call failed or returned empty -- concatenation fallback used."""
+
 
 _BASE_SYSTEM_PROMPT = (
     "You are a memory consolidation assistant. You will receive multiple "
@@ -367,6 +383,8 @@ class LLMConsolidationStrategy:
                 exc_info=True,
             )
             raise
+        except asyncio.CancelledError:
+            raise
         except Exception as exc:
             logger.warning(
                 LLM_STRATEGY_FALLBACK,
@@ -406,7 +424,7 @@ class LLMConsolidationStrategy:
             Tuple of (summary_id, removed_ids).
         """
         _, to_remove = self._select_entries(group)
-        synthesized, used_llm, summarized = await self._synthesize(
+        synthesized, outcome, summarized = await self._synthesize(
             to_remove,
             agent_id=agent_id,
             category=category,
@@ -416,9 +434,9 @@ class LLMConsolidationStrategy:
             synthesized,
             category=category,
             agent_id=agent_id,
-            used_llm=used_llm,
+            outcome=outcome,
         )
-        if used_llm:
+        if outcome == SynthesisOutcome.LLM_SYNTHESIZED:
             logger.info(
                 LLM_STRATEGY_SYNTHESIZED,
                 agent_id=agent_id,
@@ -441,10 +459,14 @@ class LLMConsolidationStrategy:
         *,
         category: MemoryCategory,
         agent_id: NotBlankStr,
-        used_llm: bool,
+        outcome: SynthesisOutcome,
     ) -> NotBlankStr:
         """Store the synthesized summary and return the new entry id."""
-        tag = _LLM_SYNTHESIZED_TAG if used_llm else _CONCAT_FALLBACK_TAG
+        tag = (
+            _LLM_SYNTHESIZED_TAG
+            if outcome == SynthesisOutcome.LLM_SYNTHESIZED
+            else _CONCAT_FALLBACK_TAG
+        )
         store_request = MemoryStoreRequest(
             category=category,
             content=content,
@@ -457,7 +479,7 @@ class LLMConsolidationStrategy:
 
     async def _delete_consolidated(
         self,
-        to_remove: list[MemoryEntry],
+        to_remove: tuple[MemoryEntry, ...],
         *,
         agent_id: NotBlankStr,
         category: MemoryCategory,
@@ -483,6 +505,8 @@ class LLMConsolidationStrategy:
                     exc_info=True,
                 )
                 raise
+            except asyncio.CancelledError:
+                raise
             except Exception as exc:
                 logger.warning(
                     LLM_STRATEGY_ERROR,
@@ -500,12 +524,12 @@ class LLMConsolidationStrategy:
 
     async def _synthesize(
         self,
-        entries: list[MemoryEntry],
+        entries: tuple[MemoryEntry, ...],
         *,
         agent_id: NotBlankStr,
         category: MemoryCategory,
         trajectory_context: tuple[MemoryEntry, ...],
-    ) -> tuple[str, bool, list[MemoryEntry]]:
+    ) -> tuple[str, SynthesisOutcome, tuple[MemoryEntry, ...]]:
         """Synthesize multiple entries into a single summary via LLM.
 
         The per-entry content is truncated to ``_MAX_ENTRY_INPUT_CHARS``
@@ -516,11 +540,11 @@ class LLMConsolidationStrategy:
         distillation entry trajectories are included in the system
         prompt.
 
-        Returns a ``(summary, used_llm, summarized_entries)`` triple:
+        Returns a ``(summary, outcome, summarized_entries)`` triple:
 
         - ``summary`` is the text to store on the backend.
-        - ``used_llm`` is ``True`` only when the LLM returned non-empty
-          content; any fallback path returns ``False``.
+        - ``outcome`` indicates whether the LLM produced the summary
+          or a concatenation fallback was used.
         - ``summarized_entries`` is the subset of ``entries`` that was
           actually represented in the summary.  When the user prompt is
           truncated at ``_MAX_TOTAL_USER_CONTENT_CHARS``, dropped
@@ -528,7 +552,7 @@ class LLMConsolidationStrategy:
           them (they remain on the backend for the next consolidation
           pass).
 
-        Fallback paths (return ``(fallback, False, entries)``):
+        Fallback paths (return with ``CONCAT_FALLBACK``):
 
         - ``RetryExhaustedError`` (all retries exhausted)
         - Retryable ``ProviderError`` surfaced directly (tests,
@@ -548,7 +572,7 @@ class LLMConsolidationStrategy:
                 context (may be empty).
 
         Returns:
-            ``(summary, used_llm, summarized_entries)`` triple.
+            ``(summary, outcome, summarized_entries)`` triple.
         """
         user_content, summarized = self._build_user_prompt(entries, agent_id, category)
         system_prompt = self._build_system_prompt(trajectory_context)
@@ -560,20 +584,21 @@ class LLMConsolidationStrategy:
             entry_count=len(summarized),
         )
         if response_content is not None:
-            return response_content, True, summarized
+            return response_content, SynthesisOutcome.LLM_SYNTHESIZED, summarized
         # Fallback path: concatenate every input entry (no truncation
         # tradeoffs on the concat path -- a terse per-entry summary is
         # safe even for oversized groups), and allow the caller to
         # delete all of them since each one is represented in the
         # concatenation summary.
-        return self._fallback_summary(entries), False, list(entries)
+        fallback = self._fallback_summary(entries)
+        return fallback, SynthesisOutcome.CONCAT_FALLBACK, entries
 
     def _build_user_prompt(
         self,
-        entries: list[MemoryEntry],
+        entries: tuple[MemoryEntry, ...],
         agent_id: NotBlankStr,
         category: MemoryCategory,
-    ) -> tuple[str, list[MemoryEntry]]:
+    ) -> tuple[str, tuple[MemoryEntry, ...]]:
         """Build the user prompt with delimiter-escaped entry content.
 
         Each entry is wrapped in ``<entry>...</entry>`` so the model can
@@ -582,13 +607,13 @@ class LLMConsolidationStrategy:
         the delimiter.  The total concatenated length is capped at
         ``_MAX_TOTAL_USER_CONTENT_CHARS``; if the cap is reached,
         remaining entries are dropped, the truncation is logged, and
-        they are omitted from the returned ``included`` list so the
+        they are omitted from the returned ``included`` tuple so the
         caller can avoid deleting memories that were never summarized.
 
         Returns:
             ``(prompt_text, included_entries)`` -- the second element
-            is a list of the entries that actually made it into the
-            prompt, in prompt order.
+            contains the entries that actually made it into the prompt,
+            in prompt order.
         """
         parts: list[str] = []
         included: list[MemoryEntry] = []
@@ -617,7 +642,7 @@ class LLMConsolidationStrategy:
                 dropped_entries=dropped,
                 total_chars=total_chars,
             )
-        return "\n".join(parts), included
+        return "\n".join(parts), tuple(included)
 
     async def _call_llm(
         self,
@@ -674,6 +699,8 @@ class LLMConsolidationStrategy:
                 category=category,
                 entry_count=entry_count,
             )
+        except asyncio.CancelledError:
+            raise
         except Exception as exc:
             logger.warning(
                 LLM_STRATEGY_FALLBACK,
@@ -759,7 +786,7 @@ class LLMConsolidationStrategy:
             context_lines.append(f"- <trajectory>{snippet}</trajectory>")
         return _BASE_SYSTEM_PROMPT + "\n" + "\n".join(context_lines)
 
-    def _fallback_summary(self, entries: list[MemoryEntry]) -> str:
+    def _fallback_summary(self, entries: tuple[MemoryEntry, ...]) -> str:
         """Build a simple concatenation summary as fallback.
 
         Returns an empty string when ``entries`` is empty so that the
@@ -781,7 +808,7 @@ class LLMConsolidationStrategy:
     def _select_entries(
         self,
         group: list[MemoryEntry],
-    ) -> tuple[MemoryEntry, list[MemoryEntry]]:
+    ) -> tuple[MemoryEntry, tuple[MemoryEntry, ...]]:
         """Select the best entry to keep and the rest to remove.
 
         Entries with ``None`` relevance scores are treated as ``0.0``
@@ -801,5 +828,5 @@ class LLMConsolidationStrategy:
                 e.created_at,
             ),
         )
-        to_remove = [e for e in group if e.id != best.id]
+        to_remove = tuple(e for e in group if e.id != best.id)
         return best, to_remove

@@ -8,12 +8,14 @@ See ``DistillationRequest`` for why we capture tool *names* rather
 than the IDs of entries those tools returned.
 """
 
+import asyncio
 from datetime import UTC, datetime
+from enum import StrEnum
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
 
 from synthorg.core.enums import MemoryCategory
-from synthorg.core.types import NotBlankStr
+from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.engine.loop_protocol import (
     ExecutionResult,
     TerminationReason,
@@ -36,6 +38,21 @@ logger = get_logger(__name__)
 #: Tag applied to EPISODIC entries produced by ``capture_distillation``.
 #: Downstream consolidation reads entries with this tag as trajectory context.
 DISTILLATION_TAG: NotBlankStr = "distillation"
+
+
+class MemoryToolName(StrEnum):
+    """Names of memory tools an agent can invoke during execution.
+
+    Used to narrow ``DistillationRequest.memory_tool_invocations`` from
+    arbitrary strings to the known tool names, making downstream
+    consumers type-safe.
+    """
+
+    SEARCH_MEMORY = "search_memory"
+    """Agent searched for memories by query text."""
+
+    RECALL_MEMORY = "recall_memory"
+    """Agent recalled a specific memory by ID."""
 
 
 class DistillationRequest(BaseModel):
@@ -66,7 +83,7 @@ class DistillationRequest(BaseModel):
         description="Summarized execution trajectory",
     )
     outcome: NotBlankStr = Field(description="Task outcome description")
-    memory_tool_invocations: tuple[NotBlankStr, ...] = Field(
+    memory_tool_invocations: tuple[MemoryToolName, ...] = Field(
         default=(),
         description=(
             "Names of memory tools invoked during execution "
@@ -76,7 +93,10 @@ class DistillationRequest(BaseModel):
     created_at: AwareDatetime = Field(description="Capture timestamp")
 
 
-_MEMORY_TOOL_NAMES = frozenset({SEARCH_MEMORY_TOOL_NAME, RECALL_MEMORY_TOOL_NAME})
+_MEMORY_TOOL_NAME_MAP: dict[str, MemoryToolName] = {
+    SEARCH_MEMORY_TOOL_NAME: MemoryToolName.SEARCH_MEMORY,
+    RECALL_MEMORY_TOOL_NAME: MemoryToolName.RECALL_MEMORY,
+}
 
 
 def build_trajectory_summary(turns: tuple[TurnRecord, ...]) -> str:
@@ -127,13 +147,13 @@ def build_outcome(
 
 def extract_memory_tool_invocations(
     turns: tuple[TurnRecord, ...],
-) -> tuple[NotBlankStr, ...]:
+) -> tuple[MemoryToolName, ...]:
     """Extract memory tool invocation names from turn records.
 
     Scans turns for invocations of ``search_memory`` or
-    ``recall_memory`` and returns the tool names (one per invocation).
-    These are NOT memory entry IDs -- ``TurnRecord`` does not surface
-    the IDs of entries each tool call returned.
+    ``recall_memory`` and returns the typed tool names (one per
+    invocation).  These are NOT memory entry IDs -- ``TurnRecord``
+    does not surface the IDs of entries each tool call returned.
 
     Args:
         turns: Per-turn metadata from the execution.
@@ -143,10 +163,10 @@ def extract_memory_tool_invocations(
         order and counting repeats.
     """
     return tuple(
-        NotBlankStr(tool_name)
+        _MEMORY_TOOL_NAME_MAP[tool_name]
         for turn in turns
         for tool_name in turn.tool_calls_made
-        if tool_name in _MEMORY_TOOL_NAMES
+        if tool_name in _MEMORY_TOOL_NAME_MAP
     )
 
 
@@ -251,6 +271,8 @@ async def capture_distillation(
             error_type="system",
             exc_info=True,
         )
+        raise
+    except asyncio.CancelledError:
         raise
     except Exception as exc:
         logger.warning(

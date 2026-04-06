@@ -15,13 +15,17 @@ from synthorg.memory.consolidation.config import (
 from synthorg.memory.consolidation.density import ContentDensity, DensityClassifier
 from synthorg.memory.consolidation.distillation import (
     DistillationRequest,
+    MemoryToolName,
     capture_distillation,
 )
 from synthorg.memory.consolidation.dual_mode_strategy import (
     DualModeConsolidationStrategy,
 )
 from synthorg.memory.consolidation.extractive import ExtractivePreserver
-from synthorg.memory.consolidation.llm_strategy import LLMConsolidationStrategy
+from synthorg.memory.consolidation.llm_strategy import (
+    LLMConsolidationStrategy,
+    SynthesisOutcome,
+)
 from synthorg.memory.consolidation.models import (
     ArchivalEntry,
     ArchivalIndexEntry,
@@ -56,9 +60,11 @@ __all__ = [
     "ExtractivePreserver",
     "LLMConsolidationStrategy",
     "MemoryConsolidationService",
+    "MemoryToolName",
     "RetentionConfig",
     "RetentionEnforcer",
     "RetentionRule",
     "SimpleConsolidationStrategy",
+    "SynthesisOutcome",
     "capture_distillation",
 ]
