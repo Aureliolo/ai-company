@@ -30,7 +30,7 @@ class TestNotificationSinkConfig:
     def test_frozen(self) -> None:
         cfg = NotificationSinkConfig(type=NotificationSinkType.CONSOLE)
         with pytest.raises(ValidationError):
-            cfg.type = "other"  # type: ignore[misc]
+            cfg.type = NotificationSinkType.NTFY  # type: ignore[misc]
 
     def test_invalid_type_rejected(self) -> None:
         with pytest.raises(ValidationError):

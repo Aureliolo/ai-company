@@ -96,7 +96,7 @@ class TestNotification:
             )
 
     def test_metadata_deep_copy_isolation(self) -> None:
-        meta: dict[str, list[int]] = {"key": [1, 2, 3]}
+        meta: dict[str, object] = {"key": [1, 2, 3]}
         n = Notification(
             category=NotificationCategory.AGENT,
             severity=NotificationSeverity.INFO,
