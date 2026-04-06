@@ -46,7 +46,7 @@ const meta = {
     onCreateTeam: async (_d, data) => ({
       name: data.name ?? 'New Team',
       lead: data.lead ?? 'Unassigned',
-      members: data.members ?? [],
+      members: data.members ?? [data.lead ?? 'Unassigned'],
     }),
     onUpdateTeam: async (_d, _t, data) => ({
       name: data.name ?? _t,

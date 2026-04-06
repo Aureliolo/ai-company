@@ -145,6 +145,7 @@ class TestRebalanceModeScaleExisting:
         assert result.scale_factor == 0.0
         assert result.departments[0]["budget_percent"] == 0
         assert result.departments[1]["budget_percent"] == 0
+        assert result.new_total == 110
         assert result.rejected is False
 
     def test_new_depts_total_exceeds_max(self) -> None:

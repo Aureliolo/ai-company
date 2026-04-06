@@ -16,11 +16,12 @@ def _seed_departments(
     depts: list[dict[str, Any]],
 ) -> None:
     """Seed departments into settings via the settings endpoint."""
-    test_client.put(
+    resp = test_client.put(
         "/api/v1/settings/company/departments",
         json={"value": json.dumps(depts)},
         headers=make_auth_headers("ceo"),
     )
+    assert resp.status_code < 400, f"seed failed: {resp.text}"
 
 
 def _dept_with_teams(
@@ -432,6 +433,18 @@ class TestReorderTeams:
             json={"team_names": ["alpha", "nonexistent"]},
         )
         assert resp.status_code == 422
+
+    def test_reorder_zero_teams(
+        self,
+        test_client: TestClient[Any],
+    ) -> None:
+        _seed_departments(test_client, [_dept_with_teams(teams=[])])
+        resp = test_client.patch(
+            "/api/v1/departments/engineering/teams/reorder",
+            json={"team_names": []},
+        )
+        assert resp.status_code == 200
+        assert resp.json()["data"] == []
 
     def test_reorder_teams_department_not_found(
         self,

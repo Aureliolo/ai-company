@@ -19,8 +19,11 @@ import { CSS } from '@dnd-kit/utilities'
 import { GripVertical, Pencil, Plus, Trash2, Users } from 'lucide-react'
 import type { CreateTeamRequest, TeamConfig, UpdateTeamRequest } from '@/api/types'
 import { Button } from '@/components/ui/button'
+import { createLogger } from '@/lib/logger'
 import { StatPill } from '@/components/ui/stat-pill'
 import { useToastStore } from '@/stores/toast'
+
+const log = createLogger('TeamListSection')
 import { TeamEditDialog } from './TeamEditDialog'
 import { TeamDeleteConfirmDialog } from './TeamDeleteConfirmDialog'
 
@@ -129,7 +132,8 @@ export function TeamListSection({
     const reordered = arrayMove(names, oldIndex, newIndex)
     try {
       await onReorderTeams(reordered)
-    } catch {
+    } catch (err) {
+      log.error('Failed to reorder teams', { active: active.id, over: over.id, reordered }, err)
       useToastStore.getState().add({
         variant: 'error',
         title: 'Failed to reorder teams',
@@ -142,7 +146,8 @@ export function TeamListSection({
     try {
       await onDeleteTeam(teamName, reassignTo)
       setDeleteTeam(null)
-    } catch {
+    } catch (err) {
+      log.error('Failed to delete team', { teamName, reassignTo }, err)
       useToastStore.getState().add({
         variant: 'error',
         title: `Failed to delete team "${teamName}"`,
