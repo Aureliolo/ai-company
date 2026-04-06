@@ -121,3 +121,18 @@ API_TEAM_REORDERED: Final[str] = "api.team.reordered"
 # Budget validation
 API_BUDGET_REBALANCE_APPLIED: Final[str] = "api.budget.rebalance_applied"
 API_BUDGET_VALIDATION_FAILED: Final[str] = "api.budget.validation_failed"
+
+# Company mutations
+API_COMPANY_UPDATED: Final[str] = "api.company.updated"
+
+# Department mutations
+API_DEPARTMENT_CREATED: Final[str] = "api.department.created"
+API_DEPARTMENT_UPDATED: Final[str] = "api.department.updated"
+API_DEPARTMENT_DELETED: Final[str] = "api.department.deleted"
+API_DEPARTMENTS_REORDERED: Final[str] = "api.departments.reordered"
+
+# Agent mutations
+API_AGENT_CREATED: Final[str] = "api.agent.created"
+API_AGENT_UPDATED: Final[str] = "api.agent.updated"
+API_AGENT_DELETED: Final[str] = "api.agent.deleted"
+API_AGENTS_REORDERED: Final[str] = "api.agents.reordered"

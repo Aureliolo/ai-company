@@ -1,4 +1,4 @@
-"""Department controller -- listing, health aggregation, and ceremony policy."""
+"""Department controller -- listing, health, ceremony policy, and CRUD mutations."""
 
 import asyncio
 import copy
@@ -7,23 +7,35 @@ import math
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any, Self
 
-from litestar import Controller, delete, get, put
+from litestar import Controller, Request, delete, get, patch, post, put
 from litestar.datastructures import State  # noqa: TC002
 from litestar.status_codes import HTTP_204_NO_CONTENT
 from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
 
+from synthorg.api.channels import CHANNEL_DEPARTMENTS, publish_ws_event
 from synthorg.api.dto import ApiResponse, PaginatedResponse
+from synthorg.api.dto_org import (  # noqa: TC001
+    CreateDepartmentRequest,
+    ReorderAgentsRequest,
+    UpdateDepartmentRequest,
+)
 from synthorg.api.errors import (
     ApiValidationError,
     NotFoundError,
     ServiceUnavailableError,
 )
-from synthorg.api.guards import require_ceo_or_manager, require_read_access
+from synthorg.api.guards import (
+    require_ceo_or_manager,
+    require_read_access,
+    require_write_access,
+)
 from synthorg.api.pagination import PaginationLimit, PaginationOffset, paginate
 from synthorg.api.path_params import PathName  # noqa: TC001
 from synthorg.api.state import AppState  # noqa: TC001
+from synthorg.api.ws_models import WsEventType
 from synthorg.budget.currency import DEFAULT_CURRENCY
 from synthorg.budget.trends import BucketSize, TrendDataPoint, bucket_cost_records
+from synthorg.config.schema import AgentConfig  # noqa: TC001
 from synthorg.constants import BUDGET_ROUNDING_PRECISION
 from synthorg.core.company import Department  # noqa: TC001
 from synthorg.core.enums import AgentStatus
@@ -41,7 +53,6 @@ from synthorg.observability.events.api import (
 
 if TYPE_CHECKING:
     from synthorg.budget.cost_record import CostRecord
-    from synthorg.config.schema import AgentConfig
     from synthorg.hr.performance.models import AgentPerformanceSnapshot
 
 logger = get_logger(__name__)
@@ -714,6 +725,132 @@ class DepartmentController(Controller):
         msg = f"Department {name!r} not found"
         logger.warning(API_RESOURCE_NOT_FOUND, resource="department", name=name)
         raise NotFoundError(msg)
+
+    @post("/", guards=[require_ceo_or_manager], status_code=201)
+    async def create_department(
+        self,
+        request: Request[Any, Any, Any],
+        state: State,
+        data: CreateDepartmentRequest,
+    ) -> ApiResponse[Department]:
+        """Create a new department.
+
+        Args:
+            request: Incoming request (for WS publishing).
+            state: Application state.
+            data: Department creation request.
+
+        Returns:
+            Created department envelope (HTTP 201).
+        """
+        app_state: AppState = state.app_state
+        dept = await app_state.org_mutation_service.create_department(data)
+        publish_ws_event(
+            request,
+            WsEventType.DEPARTMENT_CREATED,
+            CHANNEL_DEPARTMENTS,
+            {"name": dept.name, "budget_percent": dept.budget_percent},
+        )
+        return ApiResponse(data=dept)
+
+    @patch("/{name:str}", guards=[require_write_access])
+    async def update_department(
+        self,
+        request: Request[Any, Any, Any],
+        state: State,
+        name: PathName,
+        data: UpdateDepartmentRequest,
+    ) -> ApiResponse[Department]:
+        """Update an existing department.
+
+        Args:
+            request: Incoming request (for WS publishing).
+            state: Application state.
+            name: Department name.
+            data: Partial update request.
+
+        Returns:
+            Updated department envelope.
+        """
+        app_state: AppState = state.app_state
+        updated = await app_state.org_mutation_service.update_department(
+            name,
+            data,
+        )
+        publish_ws_event(
+            request,
+            WsEventType.DEPARTMENT_UPDATED,
+            CHANNEL_DEPARTMENTS,
+            {"name": updated.name},
+        )
+        return ApiResponse(data=updated)
+
+    @delete(
+        "/{name:str}",
+        guards=[require_ceo_or_manager],
+        status_code=HTTP_204_NO_CONTENT,
+    )
+    async def delete_department(
+        self,
+        request: Request[Any, Any, Any],
+        state: State,
+        name: PathName,
+    ) -> None:
+        """Delete a department.
+
+        Rejects deletion if agents are attached (HTTP 409).
+
+        Args:
+            request: Incoming request (for WS publishing).
+            state: Application state.
+            name: Department name.
+        """
+        app_state: AppState = state.app_state
+        await app_state.org_mutation_service.delete_department(name)
+        publish_ws_event(
+            request,
+            WsEventType.DEPARTMENT_DELETED,
+            CHANNEL_DEPARTMENTS,
+            {"name": name},
+        )
+
+    @post("/{name:str}/reorder-agents", guards=[require_write_access])
+    async def reorder_agents(
+        self,
+        request: Request[Any, Any, Any],
+        state: State,
+        name: PathName,
+        data: ReorderAgentsRequest,
+    ) -> ApiResponse[tuple[AgentConfig, ...]]:
+        """Reorder agents within a department.
+
+        The payload must be an exact permutation of agents in the
+        department (no additions or removals).
+
+        Args:
+            request: Incoming request (for WS publishing).
+            state: Application state.
+            name: Department name.
+            data: Ordered agent names.
+
+        Returns:
+            Reordered agents envelope.
+        """
+        app_state: AppState = state.app_state
+        reordered = await app_state.org_mutation_service.reorder_agents(
+            name,
+            data,
+        )
+        publish_ws_event(
+            request,
+            WsEventType.AGENTS_REORDERED,
+            CHANNEL_DEPARTMENTS,
+            {
+                "department": name,
+                "agent_names": [a.name for a in reordered],
+            },
+        )
+        return ApiResponse(data=reordered)
 
     @get("/{name:str}/health")
     async def get_department_health(

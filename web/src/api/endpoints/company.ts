@@ -42,7 +42,7 @@ export async function getDepartmentHealth(name: string): Promise<DepartmentHealt
   return unwrap(response)
 }
 
-// ── Mutation stubs (backend endpoints not yet implemented) ───
+// ── Mutations ────────────────────────────────────────────────
 
 export async function updateCompany(data: UpdateCompanyRequest): Promise<CompanyConfig> {
   const response = await apiClient.patch<ApiResponse<CompanyConfig>>('/company', data)

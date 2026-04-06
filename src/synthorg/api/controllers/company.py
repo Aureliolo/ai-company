@@ -3,12 +3,26 @@
 import asyncio
 from typing import Any
 
-from litestar import Controller, get
+from litestar import Controller, Request, get, patch, post
 from litestar.datastructures import State  # noqa: TC002
 
+from synthorg.api.channels import (
+    CHANNEL_COMPANY,
+    CHANNEL_DEPARTMENTS,
+    publish_ws_event,
+)
 from synthorg.api.dto import ApiResponse
-from synthorg.api.guards import require_read_access
+from synthorg.api.dto_org import (  # noqa: TC001
+    ReorderDepartmentsRequest,
+    UpdateCompanyRequest,
+)
+from synthorg.api.guards import (
+    require_ceo_or_manager,
+    require_read_access,
+    require_write_access,
+)
 from synthorg.api.state import AppState  # noqa: TC001
+from synthorg.api.ws_models import WsEventType
 from synthorg.core.company import Department  # noqa: TC001
 from synthorg.observability import get_logger
 from synthorg.observability.events.settings import SETTINGS_FETCH_FAILED
@@ -61,6 +75,65 @@ class CompanyController(Controller):
             "departments": [d.model_dump(mode="json") for d in t_depts.result()],
         }
         return ApiResponse(data=data)
+
+    @patch("/", guards=[require_write_access])
+    async def update_company(
+        self,
+        request: Request[Any, Any, Any],
+        state: State,
+        data: UpdateCompanyRequest,
+    ) -> ApiResponse[dict[str, Any]]:
+        """Update company-level settings.
+
+        Args:
+            request: Incoming request (for WS publishing).
+            state: Application state.
+            data: Partial update request.
+
+        Returns:
+            Updated fields envelope.
+        """
+        app_state: AppState = state.app_state
+        updated = await app_state.org_mutation_service.update_company(data)
+        publish_ws_event(
+            request,
+            WsEventType.COMPANY_UPDATED,
+            CHANNEL_COMPANY,
+            updated,
+        )
+        return ApiResponse(data=updated)
+
+    @post("/reorder-departments", guards=[require_ceo_or_manager])
+    async def reorder_departments(
+        self,
+        request: Request[Any, Any, Any],
+        state: State,
+        data: ReorderDepartmentsRequest,
+    ) -> ApiResponse[tuple[Department, ...]]:
+        """Reorder departments.
+
+        The payload must be an exact permutation of existing
+        department names (no additions or removals).
+
+        Args:
+            request: Incoming request (for WS publishing).
+            state: Application state.
+            data: Ordered department names.
+
+        Returns:
+            Reordered departments envelope.
+        """
+        app_state: AppState = state.app_state
+        reordered = await app_state.org_mutation_service.reorder_departments(
+            data,
+        )
+        publish_ws_event(
+            request,
+            WsEventType.DEPARTMENTS_REORDERED,
+            CHANNEL_DEPARTMENTS,
+            {"department_names": [d.name for d in reordered]},
+        )
+        return ApiResponse(data=reordered)
 
     @get("/departments")
     async def list_departments(

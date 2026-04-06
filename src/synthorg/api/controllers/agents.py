@@ -1,14 +1,27 @@
-"""Agent configuration, performance, activity, and history controller."""
+"""Agent configuration, performance, activity, history, and CRUD mutations."""
 
-from litestar import Controller, get
+from typing import Any
+
+from litestar import Controller, Request, delete, get, patch, post
 from litestar.datastructures import State  # noqa: TC002
+from litestar.status_codes import HTTP_204_NO_CONTENT
 
+from synthorg.api.channels import CHANNEL_AGENTS, publish_ws_event
 from synthorg.api.dto import ApiResponse, PaginatedResponse
+from synthorg.api.dto_org import (  # noqa: TC001
+    CreateAgentOrgRequest,
+    UpdateAgentOrgRequest,
+)
 from synthorg.api.errors import NotFoundError
-from synthorg.api.guards import require_read_access
+from synthorg.api.guards import (
+    require_ceo_or_manager,
+    require_read_access,
+    require_write_access,
+)
 from synthorg.api.pagination import PaginationLimit, PaginationOffset, paginate
 from synthorg.api.path_params import PathName  # noqa: TC001
 from synthorg.api.state import AppState  # noqa: TC001
+from synthorg.api.ws_models import WsEventType
 from synthorg.budget.currency import DEFAULT_CURRENCY
 from synthorg.config.schema import AgentConfig  # noqa: TC001
 from synthorg.hr.activity import (
@@ -118,6 +131,96 @@ class AgentController(Controller):
         msg = "Agent not found"
         logger.warning(API_RESOURCE_NOT_FOUND, resource="agent", name=agent_name)
         raise NotFoundError(msg)
+
+    @post("/", guards=[require_ceo_or_manager], status_code=201)
+    async def create_agent(
+        self,
+        request: Request[Any, Any, Any],
+        state: State,
+        data: CreateAgentOrgRequest,
+    ) -> ApiResponse[AgentConfig]:
+        """Create a new agent in the org config.
+
+        Args:
+            request: Incoming request (for WS publishing).
+            state: Application state.
+            data: Agent creation request.
+
+        Returns:
+            Created agent config envelope (HTTP 201).
+        """
+        app_state: AppState = state.app_state
+        agent = await app_state.org_mutation_service.create_agent(data)
+        publish_ws_event(
+            request,
+            WsEventType.AGENT_CREATED,
+            CHANNEL_AGENTS,
+            {
+                "name": agent.name,
+                "role": agent.role,
+                "department": agent.department,
+            },
+        )
+        return ApiResponse(data=agent)
+
+    @patch("/{agent_name:str}", guards=[require_write_access])
+    async def update_agent(
+        self,
+        request: Request[Any, Any, Any],
+        state: State,
+        agent_name: PathName,
+        data: UpdateAgentOrgRequest,
+    ) -> ApiResponse[AgentConfig]:
+        """Update an existing agent.
+
+        Args:
+            request: Incoming request (for WS publishing).
+            state: Application state.
+            agent_name: Agent name.
+            data: Partial update request.
+
+        Returns:
+            Updated agent config envelope.
+        """
+        app_state: AppState = state.app_state
+        updated = await app_state.org_mutation_service.update_agent(
+            agent_name,
+            data,
+        )
+        publish_ws_event(
+            request,
+            WsEventType.AGENT_UPDATED,
+            CHANNEL_AGENTS,
+            {"name": updated.name, "department": updated.department},
+        )
+        return ApiResponse(data=updated)
+
+    @delete(
+        "/{agent_name:str}",
+        guards=[require_ceo_or_manager],
+        status_code=HTTP_204_NO_CONTENT,
+    )
+    async def delete_agent(
+        self,
+        request: Request[Any, Any, Any],
+        state: State,
+        agent_name: PathName,
+    ) -> None:
+        """Delete an agent from the org config.
+
+        Args:
+            request: Incoming request (for WS publishing).
+            state: Application state.
+            agent_name: Agent name.
+        """
+        app_state: AppState = state.app_state
+        await app_state.org_mutation_service.delete_agent(agent_name)
+        publish_ws_event(
+            request,
+            WsEventType.AGENT_DELETED,
+            CHANNEL_AGENTS,
+            {"name": agent_name},
+        )
 
     @get("/{agent_name:str}/performance")
     async def get_agent_performance(

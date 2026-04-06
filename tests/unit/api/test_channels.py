@@ -8,6 +8,8 @@ from synthorg.api.channels import (
     CHANNEL_APPROVALS,
     CHANNEL_ARTIFACTS,
     CHANNEL_BUDGET,
+    CHANNEL_COMPANY,
+    CHANNEL_DEPARTMENTS,
     CHANNEL_MEETINGS,
     CHANNEL_MESSAGES,
     CHANNEL_PROJECTS,
@@ -34,13 +36,15 @@ class TestChannels:
             CHANNEL_MEETINGS,
             CHANNEL_ARTIFACTS,
             CHANNEL_PROJECTS,
+            CHANNEL_COMPANY,
+            CHANNEL_DEPARTMENTS,
         ],
     )
     def test_all_channels_contains_expected(self, channel: str) -> None:
         assert channel in ALL_CHANNELS
 
-    def test_all_channels_has_nine_entries(self) -> None:
-        assert len(ALL_CHANNELS) == 9
+    def test_all_channels_has_eleven_entries(self) -> None:
+        assert len(ALL_CHANNELS) == 11
 
     def test_create_channels_plugin(self) -> None:
         plugin = create_channels_plugin()

@@ -115,7 +115,13 @@ export const useCompanyStore = create<CompanyState>()((set, get) => ({
   },
 
   updateFromWsEvent: (event) => {
-    if (event.event_type === 'agent.hired' || event.event_type === 'agent.fired') {
+    const orgMutationEvents: ReadonlySet<string> = new Set([
+      'agent.hired', 'agent.fired',
+      'company.updated',
+      'department.created', 'department.updated', 'department.deleted', 'departments.reordered',
+      'agent.created', 'agent.updated', 'agent.deleted', 'agents.reordered',
+    ])
+    if (orgMutationEvents.has(event.event_type)) {
       const store = useCompanyStore.getState()
       store.fetchCompanyData()
         .then(() => store.fetchDepartmentHealths())
@@ -248,7 +254,7 @@ export const useCompanyStore = create<CompanyState>()((set, get) => ({
   reorderAgents: async (deptName, orderedIds) => {
     set((s) => ({ savingCount: s.savingCount + 1, saveError: null }))
     try {
-      const updatedDept = await apiReorderAgents(deptName, { agent_ids: orderedIds })
+      const updatedDept = await apiReorderAgents(deptName, { agent_names: orderedIds })
       const prev = get().config
       set((s) => ({
         savingCount: Math.max(0, s.savingCount - 1),

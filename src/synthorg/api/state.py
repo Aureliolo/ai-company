@@ -11,6 +11,7 @@ from synthorg.api.auth.service import AuthService  # noqa: TC001
 from synthorg.api.auth.session_store import SessionStore  # noqa: TC001
 from synthorg.api.auth.ticket_store import WsTicketStore
 from synthorg.api.errors import ServiceUnavailableError
+from synthorg.api.services.org_mutations import OrgMutationService
 from synthorg.backup.service import BackupService  # noqa: TC001
 from synthorg.budget.tracker import CostTracker  # noqa: TC001
 from synthorg.communication.bus_protocol import MessageBus  # noqa: TC001
@@ -91,6 +92,7 @@ class AppState:
         "_message_bus",
         "_model_router",
         "_notification_dispatcher",
+        "_org_mutation_service",
         "_performance_tracker",
         "_persistence",
         "_provider_health_tracker",
@@ -170,6 +172,14 @@ class AppState:
                 config_resolver=self._config_resolver,
                 app_state=self,
                 config=config,
+            )
+            if settings_service is not None and self._config_resolver is not None
+            else None
+        )
+        self._org_mutation_service: OrgMutationService | None = (
+            OrgMutationService(
+                settings_service=settings_service,
+                config_resolver=self._config_resolver,
             )
             if settings_service is not None and self._config_resolver is not None
             else None
@@ -423,6 +433,14 @@ class AppState:
     def config_resolver(self) -> ConfigResolver:
         """Return the cached config resolver or raise 503."""
         return self._require_service(self._config_resolver, "config_resolver")
+
+    @property
+    def org_mutation_service(self) -> OrgMutationService:
+        """Return the org mutation service or raise 503."""
+        return self._require_service(
+            self._org_mutation_service,
+            "org_mutation_service",
+        )
 
     @property
     def provider_management(self) -> ProviderManagementService:

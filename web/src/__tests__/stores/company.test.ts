@@ -345,7 +345,7 @@ describe('useCompanyStore', () => {
       useCompanyStore.setState({ config: mockConfig })
 
       await useCompanyStore.getState().reorderAgents('engineering', ['a-2', 'a-1'])
-      expect(mockReorderAgents).toHaveBeenCalledWith('engineering', { agent_ids: ['a-2', 'a-1'] })
+      expect(mockReorderAgents).toHaveBeenCalledWith('engineering', { agent_names: ['a-2', 'a-1'] })
       expect(useCompanyStore.getState().savingCount).toBe(0)
     })
 
