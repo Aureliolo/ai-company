@@ -1,11 +1,6 @@
-import { render, screen, fireEvent } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { AgentCreateDialog } from '@/pages/org-edit/AgentCreateDialog'
 import { makeDepartment } from '../../helpers/factories'
-
-// Create is disabled while the backend CRUD endpoints are pending
-// (#1081).  When the endpoints land, remove the "disables Create"
-// test and restore the submit/validation click-behaviour tests that
-// were here previously -- see git history on this file.
 
 describe('AgentCreateDialog', () => {
   const mockOnCreate = vi.fn().mockResolvedValue({ id: 'new-agent', name: 'test' })
@@ -33,18 +28,35 @@ describe('AgentCreateDialog', () => {
     expect(screen.getByLabelText(/level/i)).toBeInTheDocument()
   })
 
-  it('disables Create Agent button with #1081 tooltip', () => {
+  it('renders Create Agent button as enabled', () => {
     renderDialog()
     const createButton = screen.getByRole('button', { name: /create agent/i })
-    expect(createButton).toBeDisabled()
-    expect(createButton.getAttribute('title') ?? '').toContain('1081')
-    // Clicking the disabled button must not call onCreate.
-    fireEvent.click(createButton)
-    expect(mockOnCreate).not.toHaveBeenCalled()
+    expect(createButton).not.toBeDisabled()
   })
 
   it('does not render when closed', () => {
     renderDialog(false)
     expect(screen.queryByText('New Agent')).not.toBeInTheDocument()
+  })
+
+  it('submits trimmed payload on Create Agent click', async () => {
+    renderDialog()
+
+    fireEvent.change(screen.getByLabelText(/name/i), { target: { value: '  Alice  ' } })
+    fireEvent.change(screen.getByLabelText(/role/i), { target: { value: '  Backend Dev  ' } })
+    fireEvent.change(screen.getByLabelText(/department/i), { target: { value: 'engineering' } })
+    // Level defaults to 'mid', leave as-is
+
+    fireEvent.click(screen.getByRole('button', { name: /create agent/i }))
+
+    await waitFor(() => {
+      expect(mockOnCreate).toHaveBeenCalledTimes(1)
+      expect(mockOnCreate).toHaveBeenCalledWith({
+        name: 'Alice',
+        role: 'Backend Dev',
+        department: 'engineering',
+        level: 'mid',
+      })
+    })
   })
 })

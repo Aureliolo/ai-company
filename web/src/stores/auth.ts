@@ -50,7 +50,7 @@ interface AuthState {
 
 // Dev-only fake user for bypassing auth when no backend is running.
 const DEV_USER: UserInfoResponse | null = IS_DEV_AUTH_BYPASS
-  ? { id: 'dev-user', username: 'developer', role: 'ceo', must_change_password: false }
+  ? { id: 'dev-user', username: 'developer', role: 'ceo', must_change_password: false, org_roles: ['owner'], scoped_departments: [] }
   : null
 
 function getInitialToken(): string | null {

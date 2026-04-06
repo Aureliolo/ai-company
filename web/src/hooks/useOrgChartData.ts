@@ -143,7 +143,7 @@ export function useOrgChartData(
   const { nodes, edges, allNodes } = useMemo(() => {
     if (!config) return { nodes: [], edges: [], allNodes: [] }
 
-    const tree = buildOrgTree(config, runtimeStatuses, departmentHealths, owners)
+    const tree = buildOrgTree(config, runtimeStatuses, departmentHealths, owners, [], currentUser?.id)
 
     // Snapshot the full tree BEFORE collapse filtering so consumers
     // (e.g. search) can index every node regardless of which
@@ -206,6 +206,7 @@ export function useOrgChartData(
     showBudgetBar,
     showStatusDots,
     showAddAgentButton,
+    currentUser?.id,
   ])
 
   return {

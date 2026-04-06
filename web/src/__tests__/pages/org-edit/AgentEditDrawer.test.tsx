@@ -1,11 +1,6 @@
-import { render, screen, fireEvent } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { AgentEditDrawer } from '@/pages/org-edit/AgentEditDrawer'
 import { makeAgent, makeDepartment } from '../../helpers/factories'
-
-// Save + Delete are disabled while the backend CRUD endpoints are
-// pending (#1081).  When the endpoints land, remove the
-// "disables Save+Delete" test and restore the click-behaviour tests
-// that were here previously -- see git history on this file.
 
 describe('AgentEditDrawer', () => {
   const mockOnUpdate = vi.fn().mockResolvedValue(makeAgent('alice'))
@@ -48,18 +43,48 @@ describe('AgentEditDrawer', () => {
     expect(screen.getByText(/test-medium-001/)).toBeInTheDocument()
   })
 
-  it('disables Save and Delete buttons with #1081 tooltip', () => {
+  it('renders Save and Delete buttons as enabled', () => {
     renderDrawer()
     const saveButton = screen.getByRole('button', { name: /save/i })
     const deleteButton = screen.getByRole('button', { name: /delete/i })
-    expect(saveButton).toBeDisabled()
-    expect(deleteButton).toBeDisabled()
-    expect(saveButton.getAttribute('title') ?? '').toContain('1081')
-    expect(deleteButton.getAttribute('title') ?? '').toContain('1081')
-    // Clicking the disabled buttons must not call the mutation props.
-    fireEvent.click(saveButton)
-    fireEvent.click(deleteButton)
-    expect(mockOnUpdate).not.toHaveBeenCalled()
-    expect(mockOnDelete).not.toHaveBeenCalled()
+    expect(saveButton).not.toBeDisabled()
+    expect(deleteButton).not.toBeDisabled()
+  })
+
+  it('calls onUpdate when Save is clicked', async () => {
+    renderDrawer()
+    fireEvent.click(screen.getByRole('button', { name: /save/i }))
+
+    await waitFor(() => {
+      expect(mockOnUpdate).toHaveBeenCalledTimes(1)
+      expect(mockOnUpdate).toHaveBeenCalledWith('alice', {
+        name: 'alice',
+        role: 'Lead Developer',
+        department: 'engineering',
+        level: 'lead',
+      })
+    })
+  })
+
+  it('calls onDelete after confirming in ConfirmDialog', async () => {
+    renderDrawer()
+
+    // Click the Delete button in the drawer to open the ConfirmDialog
+    fireEvent.click(screen.getByRole('button', { name: /delete/i }))
+
+    // The ConfirmDialog should now be open with a destructive "Delete" confirm button.
+    // Wait for all delete buttons to appear, then find the destructive one and
+    // click it OUTSIDE waitFor to avoid firing multiple times on retries.
+    const allDeleteButtons = await screen.findAllByRole('button', { name: /delete/i })
+    const destructiveButton = allDeleteButtons.find(
+      (btn) => btn.getAttribute('data-variant') === 'destructive',
+    )
+    expect(destructiveButton).toBeDefined()
+    fireEvent.click(destructiveButton!)
+
+    await waitFor(() => {
+      expect(mockOnDelete).toHaveBeenCalledTimes(1)
+      expect(mockOnDelete).toHaveBeenCalledWith('alice')
+    })
   })
 })

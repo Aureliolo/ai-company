@@ -9,8 +9,7 @@ export type OwnerNodeType = Node<OwnerNodeData, 'owner'>
 
 /**
  * Synthetic "human owner" node rendered at the very top of the org
- * chart.  Represents the logged-in user (and eventually, once #1082
- * ships, any other user with the `owner` permission).  Distinct
+ * chart.  Represents any user with the `owner` org role.  Distinct
  * visual treatment from agent/ceo nodes so operators can tell humans
  * from AI at a glance:
  *
@@ -62,7 +61,7 @@ function OwnerNodeComponent({ data }: NodeProps<OwnerNodeType>) {
             {data.displayName}
           </span>
           <span className="block truncate font-sans text-xs text-text-secondary">
-            You
+            {data.isCurrentUser ? 'You' : 'Owner'}
           </span>
         </div>
       </div>

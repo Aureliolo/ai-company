@@ -63,7 +63,7 @@ function resetStore() {
 function setup(initialEntries: string[] = ['/']) {
   useAuthStore.setState({
     token: 'test-token',
-    user: { id: '1', username: 'admin', role: 'ceo', must_change_password: false },
+    user: { id: '1', username: 'admin', role: 'ceo', must_change_password: false, org_roles: [], scoped_departments: [] },
     loading: false,
     _mustChangePasswordFallback: false,
   })
@@ -164,7 +164,7 @@ describe('Sidebar', () => {
     useAuthStore.setState({
       ...useAuthStore.getState(),
       token: 'test-token',
-      user: { id: '1', username: 'admin', role: 'ceo', must_change_password: false },
+      user: { id: '1', username: 'admin', role: 'ceo', must_change_password: false, org_roles: [], scoped_departments: [] },
       loading: false,
       _mustChangePasswordFallback: false,
       logout: logoutSpy,
@@ -263,7 +263,7 @@ describe('Sidebar', () => {
       })
       useAuthStore.setState({
         token: 'test-token',
-        user: { id: '1', username: 'admin', role: 'ceo', must_change_password: false },
+        user: { id: '1', username: 'admin', role: 'ceo', must_change_password: false, org_roles: [], scoped_departments: [] },
         loading: false,
         _mustChangePasswordFallback: false,
       })

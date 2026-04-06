@@ -1,38 +1,32 @@
-import { useRef, useState } from 'react'
+import { useCallback, useRef, useState } from 'react'
 import { Dialog } from '@base-ui/react/dialog'
 import { Loader2, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { InputField } from '@/components/ui/input-field'
-import { ORG_EDIT_COMING_SOON_TOOLTIP } from './coming-soon'
+import { getErrorMessage } from '@/utils/errors'
+import type { CreateDepartmentRequest, Department } from '@/api/types'
 
 export interface DepartmentCreateDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
-  // `existingNames`, `onCreate`, and `disabled` props removed temporarily --
-  // the Create button is unconditionally disabled while the backend CRUD
-  // endpoints are pending (#1081).  Restore these props once #1081 lands:
-  //   existingNames: readonly string[]
-  //   onCreate: (data: CreateDepartmentRequest) => Promise<Department>
-  //   disabled?: boolean
+  onCreate: (data: CreateDepartmentRequest) => Promise<Department>
 }
 
 interface FormState {
   name: string
-  display_name: string
   budget_percent: string
 }
 
 const INITIAL_FORM: FormState = {
   name: '',
-  display_name: '',
   budget_percent: '0',
 }
 
-export function DepartmentCreateDialog({ open, onOpenChange }: DepartmentCreateDialogProps) {
+export function DepartmentCreateDialog({ open, onOpenChange, onCreate }: DepartmentCreateDialogProps) {
   const [form, setForm] = useState<FormState>(INITIAL_FORM)
   const [errors, setErrors] = useState<Partial<Record<keyof FormState, string>>>({})
-  const submitting = false // #1081-gated: restore useState when backend lands
+  const [submitting, setSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState<string | null>(null)
 
   const prevOpenRef = useRef(open)
@@ -49,8 +43,31 @@ export function DepartmentCreateDialog({ open, onOpenChange }: DepartmentCreateD
     setSubmitError(null)
   }
 
-  // handleSubmit removed -- gated behind #1081 (backend CRUD).
-  // Restore validation + onCreate call when the backend lands.
+  const handleSubmit = useCallback(async () => {
+    const next: Partial<Record<keyof FormState, string>> = {}
+    if (!form.name.trim()) next.name = 'Name is required'
+    const pct = Number(form.budget_percent)
+    if (!Number.isFinite(pct) || pct < 0 || pct > 100) {
+      next.budget_percent = 'Budget percent must be between 0 and 100'
+    }
+    setErrors(next)
+    if (Object.keys(next).length > 0) return
+
+    setSubmitting(true)
+    setSubmitError(null)
+    try {
+      await onCreate({
+        name: form.name.trim(),
+        budget_percent: pct,
+      })
+      setForm(INITIAL_FORM)
+      onOpenChange(false)
+    } catch (err) {
+      setSubmitError(getErrorMessage(err))
+    } finally {
+      setSubmitting(false)
+    }
+  }, [form, onCreate, onOpenChange])
 
   return (
     <Dialog.Root open={open} onOpenChange={(v: boolean) => { if (!submitting) onOpenChange(v) }}>
@@ -95,15 +112,6 @@ export function DepartmentCreateDialog({ open, onOpenChange }: DepartmentCreateD
             />
 
             <InputField
-              label="Display Name"
-              value={form.display_name}
-              onChange={(e) => updateField('display_name', e.target.value)}
-              error={errors.display_name}
-              required
-              placeholder="e.g. Engineering"
-            />
-
-            <InputField
               label="Budget %"
               type="number"
               value={form.budget_percent}
@@ -122,16 +130,9 @@ export function DepartmentCreateDialog({ open, onOpenChange }: DepartmentCreateD
                   <Button variant="outline" disabled={submitting}>Cancel</Button>
                 }
               />
-              {/*
-               * Create is disabled until the backend CRUD endpoints
-               * land -- see #1081.  The trigger button on DepartmentsTab
-               * is also disabled so this dialog should rarely be
-               * reachable; the extra gate here is a defense-in-depth
-               * safety net.
-               */}
               <Button
-                disabled
-                title={ORG_EDIT_COMING_SOON_TOOLTIP}
+                disabled={submitting}
+                onClick={handleSubmit}
               >
                 {submitting && <Loader2 className="mr-2 size-4 animate-spin" />}
                 Create Department

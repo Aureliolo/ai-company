@@ -1,19 +1,16 @@
-import { render, screen } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { DepartmentCreateDialog } from '@/pages/org-edit/DepartmentCreateDialog'
-
-// Create is disabled while the backend CRUD endpoints are pending
-// (#1081).  When the endpoints land, remove the "disables Create"
-// test and restore the submit/validation click-behaviour tests that
-// were here previously -- see git history on this file.
 
 describe('DepartmentCreateDialog', () => {
   const mockOnOpenChange = vi.fn()
+  const mockOnCreate = vi.fn().mockResolvedValue({ name: 'test', display_name: 'Test' })
 
   function renderDialog(open = true) {
     return render(
       <DepartmentCreateDialog
         open={open}
         onOpenChange={mockOnOpenChange}
+        onCreate={mockOnCreate}
       />,
     )
   }
@@ -24,13 +21,28 @@ describe('DepartmentCreateDialog', () => {
     renderDialog()
     expect(screen.getByText('New Department')).toBeInTheDocument()
     expect(screen.getByPlaceholderText('e.g. engineering')).toBeInTheDocument()
-    expect(screen.getByPlaceholderText('e.g. Engineering')).toBeInTheDocument()
   })
 
-  it('disables Create Department button with #1081 tooltip', () => {
+  it('renders Create Department button as enabled', () => {
     renderDialog()
     const createButton = screen.getByRole('button', { name: /create department/i })
-    expect(createButton).toBeDisabled()
-    expect(createButton.getAttribute('title') ?? '').toContain('1081')
+    expect(createButton).not.toBeDisabled()
+  })
+
+  it('submits payload on Create Department click', async () => {
+    renderDialog()
+
+    fireEvent.change(screen.getByLabelText(/name/i), { target: { value: '  design  ' } })
+    fireEvent.change(screen.getByLabelText(/budget/i), { target: { value: '25' } })
+
+    fireEvent.click(screen.getByRole('button', { name: /create department/i }))
+
+    await waitFor(() => {
+      expect(mockOnCreate).toHaveBeenCalledTimes(1)
+      expect(mockOnCreate).toHaveBeenCalledWith({
+        name: 'design',
+        budget_percent: 25,
+      })
+    })
   })
 })

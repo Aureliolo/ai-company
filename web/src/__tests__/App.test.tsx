@@ -69,7 +69,7 @@ describe('App', () => {
     async () => {
     useAuthStore.setState({
       token: 'test-token',
-      user: { id: '1', username: 'admin', role: 'ceo', must_change_password: false },
+      user: { id: '1', username: 'admin', role: 'ceo', must_change_password: false, org_roles: [], scoped_departments: [] },
     })
     useSetupStore.setState({ setupComplete: true })
 

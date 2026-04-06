@@ -9,6 +9,8 @@ export interface OwnerNodeData {
   ownerId: string
   displayName: string
   role: 'owner'
+  /** True when this owner node represents the currently logged-in user. */
+  isCurrentUser?: boolean
   [key: string]: unknown
 }
 
@@ -73,6 +75,11 @@ export interface TeamGroupData {
   [key: string]: unknown
 }
 
+// ── Dept admin node dimensions ──────────────────────────────
+
+export const DEPT_ADMIN_WIDTH = 200
+export const DEPT_ADMIN_HEIGHT = 70
+
 // ── Seniority ordering ──────────────────────────────────────
 
 const SENIORITY_RANK: Record<SeniorityLevel, number> = {
@@ -94,13 +101,22 @@ function seniorityOf(level: SeniorityLevel): number {
 
 /**
  * Human operator info for synthesising owner nodes at the top of
- * the chart.  Array-shaped because the multi-user / permissions
- * model (#1082) will eventually render multiple owners; today the
- * caller passes a single-element array with the session user.
+ * the chart.  Multiple owners are rendered as a horizontal row
+ * above the CEO's department.
  */
 export interface OwnerInfo {
   id: string
   displayName: string
+}
+
+/**
+ * Department admin info for rendering human admin nodes inside
+ * their scoped department boxes.
+ */
+export interface DeptAdminInfo {
+  id: string
+  displayName: string
+  department: string
 }
 
 // ── Core tree-building function ─────────────────────────────
@@ -144,6 +160,8 @@ export function buildOrgTree(
   runtimeStatuses: Record<string, AgentRuntimeStatus>,
   departmentHealths: readonly DepartmentHealth[],
   owners: readonly OwnerInfo[] = [],
+  deptAdmins: readonly DeptAdminInfo[] = [],
+  currentUserId?: string,
 ): OrgTree {
   const agents = config.agents.filter((a) => (a.status ?? 'active') !== 'terminated')
 
@@ -181,6 +199,7 @@ export function buildOrgTree(
         ownerId: owner.id,
         displayName: owner.displayName,
         role: 'owner',
+        isCurrentUser: currentUserId != null && owner.id === currentUserId,
       } satisfies OwnerNodeData,
     })
   }
@@ -346,6 +365,32 @@ export function buildOrgTree(
         })
       }
     }
+  }
+
+  // ── Emit dept admin nodes inside their scoped departments ──
+  for (const admin of deptAdmins) {
+    const deptLower = admin.department.toLowerCase()
+    const matchedDept = allDepartments.find(
+      (d) => d.name.toLowerCase() === deptLower,
+    )
+    if (!matchedDept) continue
+    const adminNodeId = `dept-admin-${admin.id}`
+    const groupId = `dept-${matchedDept.name}`
+    nodes.push({
+      id: adminNodeId,
+      type: 'deptAdmin',
+      position: { x: 0, y: 0 },
+      parentId: groupId,
+      extent: 'parent' as const,
+      width: DEPT_ADMIN_WIDTH,
+      height: DEPT_ADMIN_HEIGHT,
+      data: {
+        adminId: admin.id,
+        displayName: admin.displayName,
+        department: admin.department,
+        role: 'department_admin',
+      },
+    })
   }
 
   return { nodes, edges }

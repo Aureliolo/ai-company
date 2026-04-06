@@ -53,6 +53,8 @@ export const AGENT_STATUS_VALUES = [
 
 export type AutonomyLevel = 'full' | 'semi' | 'supervised' | 'locked'
 
+export type OrgRole = 'owner' | 'department_admin' | 'editor' | 'viewer'
+
 export type HumanRole =
   | 'ceo'
   | 'manager'
@@ -194,6 +196,8 @@ export interface UserInfoResponse {
   username: string
   role: HumanRole
   must_change_password: boolean
+  org_roles: readonly OrgRole[]
+  scoped_departments: readonly string[]
 }
 
 // ── Tasks ────────────────────────────────────────────────────
@@ -635,14 +639,12 @@ export interface UpdateCompanyRequest {
 
 export interface CreateDepartmentRequest {
   name: string
-  display_name: string
   head?: string | null
   budget_percent?: number
   autonomy_level?: AutonomyLevel | null
 }
 
 export interface UpdateDepartmentRequest {
-  display_name?: string
   head?: string | null
   budget_percent?: number
   autonomy_level?: AutonomyLevel | null
@@ -677,7 +679,6 @@ export interface CreateAgentOrgRequest {
   role: string
   department: DepartmentName
   level: SeniorityLevel
-  personality_preset?: string
   model_provider?: string
   model_id?: string
 }
@@ -687,12 +688,11 @@ export interface UpdateAgentOrgRequest {
   role?: string
   department?: DepartmentName
   level?: SeniorityLevel
-  status?: AgentStatus
   autonomy_level?: AutonomyLevel | null
 }
 
 export interface ReorderAgentsRequest {
-  readonly agent_ids: readonly string[]
+  readonly agent_names: readonly string[]
 }
 
 // ── Providers ────────────────────────────────────────────────
@@ -1120,7 +1120,7 @@ export interface ProjectFilters {
 // ── WebSocket ────────────────────────────────────────────────
 
 /** All valid WebSocket channel names. Runtime set derived from this in websocket store. */
-export const WS_CHANNELS = ['tasks', 'agents', 'budget', 'messages', 'system', 'approvals', 'meetings', 'artifacts', 'projects'] as const
+export const WS_CHANNELS = ['tasks', 'agents', 'budget', 'messages', 'system', 'approvals', 'meetings', 'artifacts', 'projects', 'company', 'departments'] as const
 
 export type WsChannel = typeof WS_CHANNELS[number]
 
@@ -1159,6 +1159,15 @@ export type WsEventType =
   | 'memory.fine_tune.stage_changed'
   | 'memory.fine_tune.completed'
   | 'memory.fine_tune.failed'
+  | 'company.updated'
+  | 'department.created'
+  | 'department.updated'
+  | 'department.deleted'
+  | 'departments.reordered'
+  | 'agent.created'
+  | 'agent.updated'
+  | 'agent.deleted'
+  | 'agents.reordered'
 
 export const WS_EVENT_TYPE_VALUES = [
   'task.created', 'task.updated', 'task.status_changed', 'task.assigned',
@@ -1173,6 +1182,9 @@ export const WS_EVENT_TYPE_VALUES = [
   'artifact.created', 'artifact.deleted', 'artifact.content_uploaded',
   'project.created', 'project.status_changed',
   'memory.fine_tune.progress', 'memory.fine_tune.stage_changed', 'memory.fine_tune.completed', 'memory.fine_tune.failed',
+  'company.updated',
+  'department.created', 'department.updated', 'department.deleted', 'departments.reordered',
+  'agent.created', 'agent.updated', 'agent.deleted', 'agents.reordered',
 ] as const satisfies readonly WsEventType[]
 
 export const DEPARTMENT_NAME_VALUES = [

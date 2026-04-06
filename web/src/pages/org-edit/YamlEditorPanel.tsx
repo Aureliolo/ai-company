@@ -2,7 +2,6 @@ import { useCallback, useRef, useState } from 'react'
 import type { CompanyConfig } from '@/api/types'
 import { Button } from '@/components/ui/button'
 import { serializeToYaml, parseYaml, validateCompanyYaml } from '@/utils/yaml'
-import { ORG_EDIT_COMING_SOON_TOOLTIP } from './coming-soon'
 
 export interface YamlEditorPanelProps {
   config: CompanyConfig | null
@@ -59,10 +58,9 @@ export function YamlEditorPanel({ config, onSave, saving }: YamlEditorPanelProps
       <textarea
         value={yamlText}
         onChange={handleChange}
-        readOnly
         className="w-full min-h-96 rounded-lg border border-border bg-surface p-4 font-mono text-sm text-foreground outline-none focus:ring-2 focus:ring-accent resize-y"
         spellCheck={false}
-        aria-label="YAML editor (read-only, saving not yet available)"
+        aria-label="YAML editor"
       />
       <p className="text-xs text-text-muted">
         Save applies company-level settings only. Use the GUI tabs to manage agents and departments.
@@ -71,12 +69,9 @@ export function YamlEditorPanel({ config, onSave, saving }: YamlEditorPanelProps
         <p className="text-xs text-danger" role="alert">{parseError}</p>
       )}
       <div className="flex items-center gap-3">
-        {/* Save YAML disabled until backend CRUD lands -- #1081 */}
         <Button
           onClick={handleSave}
-          disabled
-          aria-disabled="true"
-          title={ORG_EDIT_COMING_SOON_TOOLTIP}
+          disabled={!dirty || saving}
         >
           {saving ? 'Saving...' : 'Save YAML'}
         </Button>

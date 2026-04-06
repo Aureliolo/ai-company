@@ -159,6 +159,8 @@ class UserInfoResponse(BaseModel):
         username: Login username.
         role: Access control role.
         must_change_password: Whether password change is required.
+        org_roles: Permission-level roles for org config access.
+        scoped_departments: Departments accessible to dept admins.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
@@ -167,6 +169,8 @@ class UserInfoResponse(BaseModel):
     username: NotBlankStr
     role: HumanRole
     must_change_password: bool
+    org_roles: tuple[str, ...] = ()
+    scoped_departments: tuple[str, ...] = ()
 
 
 class WsTicketResponse(BaseModel):
@@ -607,6 +611,8 @@ class AuthController(Controller):
                     username=updated_user.username,
                     role=updated_user.role,
                     must_change_password=False,
+                    org_roles=tuple(r.value for r in updated_user.org_roles),
+                    scoped_departments=updated_user.scoped_departments,
                 ),
             ),
         )
@@ -637,6 +643,8 @@ class AuthController(Controller):
                     username=auth_user.username,
                     role=auth_user.role,
                     must_change_password=auth_user.must_change_password,
+                    org_roles=tuple(r.value for r in auth_user.org_roles),
+                    scoped_departments=auth_user.scoped_departments,
                 ),
             ),
         )

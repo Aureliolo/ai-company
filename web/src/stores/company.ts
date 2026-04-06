@@ -45,6 +45,8 @@ interface CompanyState {
   healthError: string | null
   savingCount: number
   saveError: string | null
+  _refreshVersion: number
+  _healthRefreshVersion: number
 
   fetchCompanyData: () => Promise<void>
   fetchDepartmentHealths: () => Promise<void>
@@ -70,6 +72,13 @@ interface CompanyState {
   optimisticReassignAgent: (agentName: string, newDepartment: DepartmentName) => () => void
 }
 
+const ORG_MUTATION_EVENTS: ReadonlySet<string> = new Set([
+  'agent.hired', 'agent.fired',
+  'company.updated',
+  'department.created', 'department.updated', 'department.deleted', 'departments.reordered',
+  'agent.created', 'agent.updated', 'agent.deleted', 'agents.reordered',
+])
+
 export const useCompanyStore = create<CompanyState>()((set, get) => ({
   config: null,
   departmentHealths: [],
@@ -78,19 +87,26 @@ export const useCompanyStore = create<CompanyState>()((set, get) => ({
   healthError: null,
   savingCount: 0,
   saveError: null,
+  _refreshVersion: 0,
+  _healthRefreshVersion: 0,
 
   fetchCompanyData: async () => {
-    set({ loading: true, error: null })
+    const version = get()._refreshVersion + 1
+    set({ _refreshVersion: version, loading: true, error: null })
     try {
       const config = await getCompanyConfig()
+      if (get()._refreshVersion !== version) return // stale response
       set({ config, loading: false, error: null })
     } catch (err) {
+      if (get()._refreshVersion !== version) return // stale error
       set({ loading: false, error: getErrorMessage(err) })
       throw err
     }
   },
 
   fetchDepartmentHealths: async () => {
+    const version = get()._healthRefreshVersion + 1
+    set({ _healthRefreshVersion: version })
     try {
       const config = useCompanyStore.getState().config
       if (!config) return
@@ -101,6 +117,7 @@ export const useCompanyStore = create<CompanyState>()((set, get) => ({
         }),
       )
       const healthResults = await Promise.all(healthPromises)
+      if (get()._healthRefreshVersion !== version) return // stale response
       const departmentHealths = healthResults.filter(
         (h): h is DepartmentHealth => h !== null,
       )
@@ -110,12 +127,13 @@ export const useCompanyStore = create<CompanyState>()((set, get) => ({
         set({ departmentHealths, healthError: null })
       }
     } catch (err) {
+      if (get()._healthRefreshVersion !== version) return // stale error
       set({ healthError: getErrorMessage(err) })
     }
   },
 
   updateFromWsEvent: (event) => {
-    if (event.event_type === 'agent.hired' || event.event_type === 'agent.fired') {
+    if (ORG_MUTATION_EVENTS.has(event.event_type)) {
       const store = useCompanyStore.getState()
       store.fetchCompanyData()
         .then(() => store.fetchDepartmentHealths())
@@ -132,8 +150,10 @@ export const useCompanyStore = create<CompanyState>()((set, get) => ({
   updateCompany: async (data) => {
     set((s) => ({ savingCount: s.savingCount + 1, saveError: null }))
     try {
-      const updated = await apiUpdateCompany(data)
-      set((s) => ({ config: updated, savingCount: Math.max(0, s.savingCount - 1) }))
+      await apiUpdateCompany(data)
+      // Refetch full config to reflect partial-update response
+      await get().fetchCompanyData()
+      set((s) => ({ savingCount: Math.max(0, s.savingCount - 1) }))
     } catch (err) {
       set((s) => ({ savingCount: Math.max(0, s.savingCount - 1), saveError: getErrorMessage(err) }))
       throw err
@@ -190,8 +210,12 @@ export const useCompanyStore = create<CompanyState>()((set, get) => ({
   reorderDepartments: async (orderedNames) => {
     set((s) => ({ savingCount: s.savingCount + 1, saveError: null }))
     try {
-      const updated = await apiReorderDepartments({ department_names: orderedNames })
-      set((s) => ({ config: updated, savingCount: Math.max(0, s.savingCount - 1) }))
+      const reordered = await apiReorderDepartments({ department_names: orderedNames })
+      const prev = get().config
+      set((s) => ({
+        savingCount: Math.max(0, s.savingCount - 1),
+        ...(prev ? { config: { ...prev, departments: [...reordered] } } : {}),
+      }))
     } catch (err) {
       set((s) => ({ savingCount: Math.max(0, s.savingCount - 1), saveError: getErrorMessage(err) }))
       throw err
@@ -248,18 +272,19 @@ export const useCompanyStore = create<CompanyState>()((set, get) => ({
   reorderAgents: async (deptName, orderedIds) => {
     set((s) => ({ savingCount: s.savingCount + 1, saveError: null }))
     try {
-      const updatedDept = await apiReorderAgents(deptName, { agent_ids: orderedIds })
+      // Callers pass `a.id ?? a.name` as identifiers, but the API
+      // expects agent names.  Resolve each id back to its name so the
+      // payload is always correct even when id differs from name.
       const prev = get().config
+      const idToName = new Map(
+        (prev?.agents ?? []).map((a) => [a.id ?? a.name, a.name]),
+      )
+      const orderedNames = orderedIds.map((id) => idToName.get(id) ?? id)
+      await apiReorderAgents(deptName, { agent_names: orderedNames })
+      // Refetch to pick up the reordered agents consistently
+      await get().fetchCompanyData()
       set((s) => ({
         savingCount: Math.max(0, s.savingCount - 1),
-        ...(prev ? {
-          config: {
-            ...prev,
-            departments: prev.departments.map((d) =>
-              d.name === deptName ? updatedDept : d,
-            ),
-          },
-        } : {}),
       }))
     } catch (err) {
       set((s) => ({ savingCount: Math.max(0, s.savingCount - 1), saveError: getErrorMessage(err) }))

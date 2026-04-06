@@ -28,7 +28,6 @@ import { Button } from '@/components/ui/button'
 import { StaggerGroup, StaggerItem } from '@/components/ui/stagger-group'
 import { AgentCreateDialog } from './AgentCreateDialog'
 import { AgentEditDrawer } from './AgentEditDrawer'
-import { ORG_EDIT_COMING_SOON_TOOLTIP } from './coming-soon'
 
 export interface AgentsTabProps {
   config: CompanyConfig | null
@@ -43,16 +42,13 @@ export interface AgentsTabProps {
 function SortableAgentItem({
   agent,
   onClick,
-  dragDisabled,
 }: {
   agent: AgentConfig
   onClick: () => void
-  dragDisabled?: boolean
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: agent.id ?? agent.name,
     data: { agent },
-    disabled: dragDisabled,
   })
 
   const style = {
@@ -62,7 +58,7 @@ function SortableAgentItem({
   }
 
   return (
-    <div ref={setNodeRef} style={style} {...(dragDisabled ? {} : { ...attributes, ...listeners })}>
+    <div ref={setNodeRef} style={style} {...attributes} {...listeners}>
       <button
         type="button"
         className="w-full text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-accent rounded-lg"
@@ -85,12 +81,10 @@ function DepartmentAgentsSection({
   displayName,
   agents,
   onEditAgent,
-  dragDisabled,
 }: {
   displayName: string
   agents: AgentConfig[]
   onEditAgent: (agent: AgentConfig) => void
-  dragDisabled?: boolean
 }) {
   return (
     <SectionCard
@@ -112,7 +106,6 @@ function DepartmentAgentsSection({
                 <SortableAgentItem
                   agent={agent}
                   onClick={() => onEditAgent(agent)}
-                  dragDisabled={dragDisabled}
                 />
               </StaggerItem>
             ))}
@@ -194,13 +187,7 @@ export function AgentsTab({
     return (
       <div className="space-y-section-gap">
         <div className="flex justify-end">
-          {/* Add Agent disabled until backend CRUD lands -- #1081 */}
-          <Button
-            onClick={() => setCreateOpen(true)}
-            disabled
-            aria-disabled="true"
-            title={ORG_EDIT_COMING_SOON_TOOLTIP}
-          >
+          <Button onClick={() => setCreateOpen(true)} disabled={saving}>
             <Plus className="mr-1.5 size-3.5" />
             Add Agent
           </Button>
@@ -223,13 +210,7 @@ export function AgentsTab({
   return (
     <div className="space-y-section-gap">
       <div className="flex justify-end">
-        {/* Add Agent disabled until backend CRUD lands -- #1081 */}
-        <Button
-          onClick={() => setCreateOpen(true)}
-          disabled
-          aria-disabled="true"
-          title={ORG_EDIT_COMING_SOON_TOOLTIP}
-        >
+        <Button onClick={() => setCreateOpen(true)} disabled={saving}>
           <Plus className="mr-1.5 size-3.5" />
           Add Agent
         </Button>
@@ -250,7 +231,6 @@ export function AgentsTab({
               displayName={dept?.display_name ?? deptName}
               agents={agents}
               onEditAgent={setEditAgent}
-              dragDisabled
             />
           )
         })}

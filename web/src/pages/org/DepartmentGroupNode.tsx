@@ -198,19 +198,18 @@ function DepartmentGroupNodeComponent({ id, data }: NodeProps<DepartmentGroupTyp
        * Empty-state call to action.  Always shows "No agents yet"
        * icon+label so the empty dept is never blank; the "+ Add
        * agent" chip is only rendered when the user has that toggle
-       * enabled in the view menu.  The chip itself is disabled
-       * until #1081 backend CRUD lands.  `flex-1` fills the
-       * remaining card space so the stack is vertically centered
-       * instead of dangling below the border.
+       * enabled in the view menu.  `flex-1` fills the remaining
+       * card space so the stack is vertically centered instead of
+       * dangling below the border.
        */}
       {isEmpty && (
-        <div className="pointer-events-none flex flex-1 flex-col items-center justify-center gap-2 pb-2 text-text-muted">
+        <div className="flex flex-1 flex-col items-center justify-center gap-2 pb-2 text-text-muted">
           <Users className="size-5" aria-hidden="true" />
           <span className="font-sans text-xs">No agents yet</span>
           {showAddAgentButton && (
             <span
-              className="inline-flex cursor-not-allowed items-center gap-1 rounded-md border border-border bg-background/50 px-2 py-1 text-micro text-text-secondary opacity-70"
-              title="Add agent -- coming soon (#1081)"
+              className="inline-flex items-center gap-1 rounded-md border border-border bg-background/50 px-2 py-1 text-micro text-text-secondary"
+              title="Add agent"
             >
               <Plus className="size-3" aria-hidden="true" />
               Add agent
@@ -224,14 +223,13 @@ function DepartmentGroupNodeComponent({ id, data }: NodeProps<DepartmentGroupTyp
        * to the bottom of the card (below all member agents) via
        * `mt-auto`.  `pt-5` gives the chip breathing room from the
        * last member agent above it -- earlier `pt-2` was too tight
-       * and made the chip feel glued to the agent card.  Same
-       * disabled-until-#1081 treatment as the empty-state variant.
+       * and made the chip feel glued to the agent card.
        */}
       {!isEmpty && showAddAgentButton && (
         <div className="mt-auto flex items-center justify-center pt-5">
           <span
-            className="inline-flex cursor-not-allowed items-center gap-1 rounded-md border border-dashed border-border bg-background/30 px-2 py-0.5 text-micro text-text-muted opacity-70"
-            title="Add agent -- coming soon (#1081)"
+            className="inline-flex items-center gap-1 rounded-md border border-dashed border-border bg-background/30 px-2 py-0.5 text-micro text-text-muted"
+            title="Add agent"
           >
             <Plus className="size-3" aria-hidden="true" />
             Add agent

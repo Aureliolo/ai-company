@@ -34,6 +34,8 @@ describe('useAuth', () => {
       username: 'admin',
       role: 'ceo',
       must_change_password: false,
+      org_roles: [],
+      scoped_departments: [],
     }
     useAuthStore.setState({ token: 'test-token', user })
 
@@ -53,7 +55,7 @@ describe('useAuth', () => {
       it(`returns canWrite=true for ${role}`, () => {
         useAuthStore.setState({
           token: 'test',
-          user: { id: '1', username: 'u', role, must_change_password: false },
+          user: { id: '1', username: 'u', role, must_change_password: false, org_roles: [], scoped_departments: [] },
         })
         const { result } = renderHook(() => useAuth())
         expect(result.current.canWrite).toBe(true)
@@ -64,7 +66,7 @@ describe('useAuth', () => {
       it(`returns canWrite=false for ${role}`, () => {
         useAuthStore.setState({
           token: 'test',
-          user: { id: '1', username: 'u', role, must_change_password: false },
+          user: { id: '1', username: 'u', role, must_change_password: false, org_roles: [], scoped_departments: [] },
         })
         const { result } = renderHook(() => useAuth())
         expect(result.current.canWrite).toBe(false)
@@ -75,7 +77,7 @@ describe('useAuth', () => {
   it('returns mustChangePassword from user', () => {
     useAuthStore.setState({
       token: 'test',
-      user: { id: '1', username: 'u', role: 'ceo', must_change_password: true },
+      user: { id: '1', username: 'u', role: 'ceo', must_change_password: true, org_roles: [], scoped_departments: [] },
     })
     const { result } = renderHook(() => useAuth())
     expect(result.current.mustChangePassword).toBe(true)

@@ -178,6 +178,8 @@ CREATE TABLE IF NOT EXISTS users (
     password_hash TEXT NOT NULL,
     role TEXT NOT NULL,
     must_change_password INTEGER NOT NULL DEFAULT 1,
+    org_roles TEXT NOT NULL DEFAULT '[]',
+    scoped_departments TEXT NOT NULL DEFAULT '[]',
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
 );

@@ -1,5 +1,14 @@
 import type { Meta, StoryObj } from '@storybook/react'
+import type { Department } from '@/api/types'
 import { DepartmentCreateDialog } from './DepartmentCreateDialog'
+
+const MOCK_DEPARTMENT: Department = {
+  name: 'engineering',
+  display_name: 'Engineering',
+  teams: [],
+  head: null,
+  budget_percent: 0,
+}
 
 const meta = {
   title: 'OrgEdit/DepartmentCreateDialog',
@@ -10,6 +19,7 @@ const meta = {
   args: {
     open: true,
     onOpenChange: () => {},
+    onCreate: async () => MOCK_DEPARTMENT,
   },
 } satisfies Meta<typeof DepartmentCreateDialog>
 

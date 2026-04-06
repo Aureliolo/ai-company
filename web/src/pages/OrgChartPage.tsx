@@ -29,6 +29,7 @@ import { CeoNode } from './org/CeoNode'
 import { DepartmentGroupNode } from './org/DepartmentGroupNode'
 import { TeamGroupNode } from './org/TeamGroupNode'
 import { OwnerNode } from './org/OwnerNode'
+import { DeptAdminNode } from './org/DeptAdminNode'
 import { HierarchyEdge } from './org/HierarchyEdge'
 import { CommunicationEdge } from './org/CommunicationEdge'
 import { OrgChartToolbar, type ViewMode } from './org/OrgChartToolbar'
@@ -67,6 +68,7 @@ const nodeTypes = {
   department: DepartmentGroupNode,
   team: TeamGroupNode,
   owner: OwnerNode,
+  deptAdmin: DeptAdminNode,
 }
 const edgeTypes = { hierarchy: HierarchyEdge, communication: CommunicationEdge }
 
@@ -602,6 +604,10 @@ function OrgChartInner() {
       const dimmed = highlightedNodeIds !== null && !highlightedNodeIds.has(n.id)
       const next = { ...n }
 
+      // Only agent nodes are draggable, and only in hierarchy view.
+      // Other node types (department boxes, owner nodes) stay fixed.
+      next.draggable = viewMode === 'hierarchy' && n.type === 'agent'
+
       if (isDeptNode) {
         next.data = { ...n.data, onToggleCollapsed: toggleDeptCollapsed }
       }
@@ -617,7 +623,7 @@ function OrgChartInner() {
       }
       return next
     })
-  }, [sourceNodes, dragOverDeptId, highlightedNodeIds, toggleDeptCollapsed])
+  }, [sourceNodes, dragOverDeptId, highlightedNodeIds, toggleDeptCollapsed, viewMode])
 
   const renderedEdges = useMemo(() => {
     return transition.displayEdges.map((e) => {
@@ -741,21 +747,11 @@ function OrgChartInner() {
           onMoveEnd={handleMoveEnd}
           onNodeClick={handleNodeClick}
           onNodeContextMenu={handleNodeContextMenu}
-          // Drag-drop agent reassignment is disabled until the backend
-          // CRUD endpoints land -- see #1081.  `updateAgentOrg` (the
-          // PATCH /agents/{name} call wired into handleNodeDragStop)
-          // does not exist on the backend yet, so dropping an agent
-          // onto another department would roll back with a 405.  We
-          // set `nodesDraggable={false}` to block dragging entirely;
-          // the drag handlers stay wired so the code path is still
-          // exercised by tests and easy to re-enable once #1081 lands
-          // -- just flip `nodesDraggable` back to `viewMode === 'hierarchy'`.
           onNodeDragStart={viewMode === 'hierarchy' ? handleNodeDragStart : undefined}
           onNodeDrag={viewMode === 'hierarchy' ? handleNodeDrag : undefined}
           onNodeDragStop={viewMode === 'hierarchy' ? handleNodeDragStop : undefined}
           onPaneClick={handlePaneClick}
           nodesConnectable={false}
-          nodesDraggable={false}
           minZoom={0.1}
           maxZoom={2}
           proOptions={{ hideAttribution: true }}

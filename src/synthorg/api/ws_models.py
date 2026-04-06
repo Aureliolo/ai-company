@@ -30,6 +30,17 @@ class WsEventType(StrEnum):
     AGENT_HIRED = "agent.hired"
     AGENT_FIRED = "agent.fired"
     AGENT_STATUS_CHANGED = "agent.status_changed"
+    AGENT_CREATED = "agent.created"
+    AGENT_UPDATED = "agent.updated"
+    AGENT_DELETED = "agent.deleted"
+    AGENTS_REORDERED = "agents.reordered"
+
+    COMPANY_UPDATED = "company.updated"
+
+    DEPARTMENT_CREATED = "department.created"
+    DEPARTMENT_UPDATED = "department.updated"
+    DEPARTMENT_DELETED = "department.deleted"
+    DEPARTMENTS_REORDERED = "departments.reordered"
 
     PERSONALITY_TRIMMED = "personality.trimmed"
 

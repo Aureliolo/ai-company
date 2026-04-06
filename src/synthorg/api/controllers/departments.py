@@ -1,4 +1,4 @@
-"""Department controller -- listing, health aggregation, and ceremony policy."""
+"""Department controller -- listing, health, ceremony policy, and CRUD mutations."""
 
 import asyncio
 import copy
@@ -7,23 +7,35 @@ import math
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any, Self
 
-from litestar import Controller, delete, get, put
+from litestar import Controller, Request, Response, delete, get, patch, post, put
 from litestar.datastructures import State  # noqa: TC002
 from litestar.status_codes import HTTP_204_NO_CONTENT
 from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
 
+from synthorg.api.channels import CHANNEL_DEPARTMENTS, publish_ws_event
+from synthorg.api.concurrency import compute_etag
 from synthorg.api.dto import ApiResponse, PaginatedResponse
+from synthorg.api.dto_org import (  # noqa: TC001
+    CreateDepartmentRequest,
+    ReorderAgentsRequest,
+    UpdateDepartmentRequest,
+)
 from synthorg.api.errors import (
     ApiValidationError,
     NotFoundError,
     ServiceUnavailableError,
 )
-from synthorg.api.guards import require_ceo_or_manager, require_read_access
+from synthorg.api.guards import (
+    require_org_mutation,
+    require_read_access,
+)
 from synthorg.api.pagination import PaginationLimit, PaginationOffset, paginate
 from synthorg.api.path_params import PathName  # noqa: TC001
 from synthorg.api.state import AppState  # noqa: TC001
+from synthorg.api.ws_models import WsEventType
 from synthorg.budget.currency import DEFAULT_CURRENCY
 from synthorg.budget.trends import BucketSize, TrendDataPoint, bucket_cost_records
+from synthorg.config.schema import AgentConfig  # noqa: TC001
 from synthorg.constants import BUDGET_ROUNDING_PRECISION
 from synthorg.core.company import Department  # noqa: TC001
 from synthorg.core.enums import AgentStatus
@@ -41,7 +53,6 @@ from synthorg.observability.events.api import (
 
 if TYPE_CHECKING:
     from synthorg.budget.cost_record import CostRecord
-    from synthorg.config.schema import AgentConfig
     from synthorg.hr.performance.models import AgentPerformanceSnapshot
 
 logger = get_logger(__name__)
@@ -125,8 +136,9 @@ def _filter_agents_by_department(
     agents: tuple[AgentConfig, ...],
     dept_name: str,
 ) -> tuple[AgentConfig, ...]:
-    """Return agents belonging to the named department."""
-    return tuple(a for a in agents if a.department == dept_name)
+    """Return agents belonging to the named department (case-insensitive)."""
+    lower = dept_name.lower()
+    return tuple(a for a in agents if a.department.lower() == lower)
 
 
 async def _resolve_active_count(
@@ -403,12 +415,15 @@ async def _assemble_department_health(
 async def _require_department_exists(
     app_state: AppState,
     name: str,
-) -> None:
+) -> str:
     """Raise NotFoundError if the department does not exist.
 
     Args:
         app_state: Application state with config resolver.
-        name: Department name.
+        name: Department name (case-insensitive lookup).
+
+    Returns:
+        The canonical department name as stored.
 
     Raises:
         NotFoundError: If the department is not found.
@@ -419,9 +434,10 @@ async def _require_department_exists(
         logger.warning(API_SERVICE_UNAVAILABLE, service="config_resolver")
         raise ServiceUnavailableError(msg)
     departments = await app_state.config_resolver.get_departments()
+    name_lower = name.lower()
     for dept in departments:
-        if dept.name == name:
-            return
+        if dept.name.lower() == name_lower:
+            return dept.name
     msg = f"Department {name!r} not found"
     logger.warning(API_RESOURCE_NOT_FOUND, resource="department", name=name)
     raise NotFoundError(msg)
@@ -660,7 +676,7 @@ async def _clear_dept_ceremony_override(
 
 
 class DepartmentController(Controller):
-    """Departments -- listing, health aggregation, and ceremony policy."""
+    """Departments -- CRUD, health aggregation, ceremony policy."""
 
     path = "/departments"
     tags = ("departments",)
@@ -708,12 +724,159 @@ class DepartmentController(Controller):
         """
         app_state: AppState = state.app_state
         departments = await app_state.config_resolver.get_departments()
+        name_lower = name.lower()
         for dept in departments:
-            if dept.name == name:
+            if dept.name.lower() == name_lower:
                 return ApiResponse(data=dept)
         msg = f"Department {name!r} not found"
         logger.warning(API_RESOURCE_NOT_FOUND, resource="department", name=name)
         raise NotFoundError(msg)
+
+    @post("/", guards=[require_org_mutation()], status_code=201)
+    async def create_department(
+        self,
+        request: Request[Any, Any, Any],
+        state: State,
+        data: CreateDepartmentRequest,
+    ) -> ApiResponse[Department]:
+        """Create a new department.
+
+        Args:
+            request: Incoming request (for WS publishing).
+            state: Application state.
+            data: Department creation request.
+
+        Returns:
+            Created department envelope (HTTP 201).
+        """
+        app_state: AppState = state.app_state
+        dept = await app_state.org_mutation_service.create_department(data)
+        publish_ws_event(
+            request,
+            WsEventType.DEPARTMENT_CREATED,
+            CHANNEL_DEPARTMENTS,
+            {"name": dept.name, "budget_percent": dept.budget_percent},
+        )
+        return ApiResponse(data=dept)
+
+    @patch(
+        "/{name:str}",
+        guards=[require_org_mutation(department_param="name")],
+    )
+    async def update_department(
+        self,
+        request: Request[Any, Any, Any],
+        state: State,
+        name: PathName,
+        data: UpdateDepartmentRequest,
+    ) -> Response[ApiResponse[Department]]:
+        """Update an existing department.
+
+        Supports optimistic concurrency via ``If-Match`` header.
+
+        Args:
+            request: Incoming request (for WS publishing).
+            state: Application state.
+            name: Department name.
+            data: Partial update request.
+
+        Returns:
+            Updated department envelope with ETag header.
+        """
+        app_state: AppState = state.app_state
+        if_match = request.headers.get("if-match")
+        updated = await app_state.org_mutation_service.update_department(
+            name,
+            data,
+            if_match=if_match,
+        )
+        publish_ws_event(
+            request,
+            WsEventType.DEPARTMENT_UPDATED,
+            CHANNEL_DEPARTMENTS,
+            {"name": updated.name},
+        )
+        new_etag = compute_etag(
+            json.dumps(
+                updated.model_dump(mode="json"),
+                sort_keys=True,
+            ),
+            "",
+        )
+        return Response(
+            content=ApiResponse(data=updated),
+            headers={"ETag": new_etag},
+        )
+
+    @delete(
+        "/{name:str}",
+        guards=[require_org_mutation(department_param="name")],
+        status_code=HTTP_204_NO_CONTENT,
+    )
+    async def delete_department(
+        self,
+        request: Request[Any, Any, Any],
+        state: State,
+        name: PathName,
+    ) -> None:
+        """Delete a department.
+
+        Rejects deletion if agents are attached (HTTP 409).
+
+        Args:
+            request: Incoming request (for WS publishing).
+            state: Application state.
+            name: Department name.
+        """
+        app_state: AppState = state.app_state
+        await app_state.org_mutation_service.delete_department(name)
+        publish_ws_event(
+            request,
+            WsEventType.DEPARTMENT_DELETED,
+            CHANNEL_DEPARTMENTS,
+            {"name": name},
+        )
+
+    @post(
+        "/{name:str}/reorder-agents",
+        guards=[require_org_mutation(department_param="name")],
+    )
+    async def reorder_agents(
+        self,
+        request: Request[Any, Any, Any],
+        state: State,
+        name: PathName,
+        data: ReorderAgentsRequest,
+    ) -> ApiResponse[tuple[AgentConfig, ...]]:
+        """Reorder agents within a department.
+
+        The payload must be an exact permutation of agents in the
+        department (no additions or removals).
+
+        Args:
+            request: Incoming request (for WS publishing).
+            state: Application state.
+            name: Department name.
+            data: Ordered agent names.
+
+        Returns:
+            Reordered agents envelope.
+        """
+        app_state: AppState = state.app_state
+        reordered = await app_state.org_mutation_service.reorder_agents(
+            name,
+            data,
+        )
+        publish_ws_event(
+            request,
+            WsEventType.AGENTS_REORDERED,
+            CHANNEL_DEPARTMENTS,
+            {
+                "department": name,
+                "agent_names": [a.name for a in reordered],
+            },
+        )
+        return ApiResponse(data=reordered)
 
     @get("/{name:str}/health")
     async def get_department_health(
@@ -740,8 +903,8 @@ class DepartmentController(Controller):
 
         # Fetch departments and agents (both are config reads)
         departments = await app_state.config_resolver.get_departments()
-        dept_by_name = {dept.name: dept for dept in departments}
-        if name not in dept_by_name:
+        dept_by_name = {dept.name.lower(): dept for dept in departments}
+        if name.lower() not in dept_by_name:
             msg = f"Department {name!r} not found"
             logger.warning(
                 API_RESOURCE_NOT_FOUND,
@@ -750,19 +913,22 @@ class DepartmentController(Controller):
             )
             raise NotFoundError(msg)
 
+        dept = dept_by_name[name.lower()]
+        canonical_name = dept.name
+
         agents = await app_state.config_resolver.get_agents()
-        dept_agents = _filter_agents_by_department(agents, name)
+        dept_agents = _filter_agents_by_department(agents, canonical_name)
         budget_cfg = await app_state.config_resolver.get_budget_config()
         health = await _assemble_department_health(
             app_state,
-            name,
+            canonical_name,
             dept_agents,
             currency=budget_cfg.currency,
         )
 
         logger.debug(
             API_DEPARTMENT_HEALTH_QUERIED,
-            department=name,
+            department=canonical_name,
             agent_count=health.agent_count,
             active_count=health.active_agent_count,
             cost_7d=health.department_cost_7d,
@@ -791,10 +957,14 @@ class DepartmentController(Controller):
             NotFoundError: If the department is not found.
         """
         app_state: AppState = state.app_state
-        policy = await _get_dept_ceremony_override(app_state, name)
+        canonical = await _require_department_exists(app_state, name)
+        policy = await _get_dept_ceremony_override(app_state, canonical)
         return ApiResponse(data=policy)
 
-    @put("/{name:str}/ceremony-policy", guards=[require_ceo_or_manager])
+    @put(
+        "/{name:str}/ceremony-policy",
+        guards=[require_org_mutation(department_param="name")],
+    )
     async def update_department_ceremony_policy(
         self,
         state: State,
@@ -821,8 +991,8 @@ class DepartmentController(Controller):
         """
         app_state: AppState = state.app_state
 
-        # Verify the department exists
-        await _require_department_exists(app_state, name)
+        # Verify the department exists and get canonical name
+        canonical = await _require_department_exists(app_state, name)
 
         # Validate policy data via Pydantic
         try:
@@ -841,18 +1011,18 @@ class DepartmentController(Controller):
         clean_data = validated.model_dump(mode="json", exclude_none=True)
 
         # Merge into the dept_ceremony_policies JSON setting
-        await _set_dept_ceremony_override(app_state, name, clean_data)
+        await _set_dept_ceremony_override(app_state, canonical, clean_data)
 
         logger.info(
             API_CEREMONY_POLICY_DEPT_UPDATED,
-            department=name,
+            department=canonical,
             strategy=clean_data.get("strategy"),
         )
         return ApiResponse(data=clean_data)
 
     @delete(
         "/{name:str}/ceremony-policy",
-        guards=[require_ceo_or_manager],
+        guards=[require_org_mutation(department_param="name")],
         status_code=HTTP_204_NO_CONTENT,
     )
     async def delete_department_ceremony_policy(
@@ -873,9 +1043,9 @@ class DepartmentController(Controller):
             NotFoundError: If the department does not exist.
         """
         app_state: AppState = state.app_state
-        await _require_department_exists(app_state, name)
-        await _clear_dept_ceremony_override(app_state, name)
+        canonical = await _require_department_exists(app_state, name)
+        await _clear_dept_ceremony_override(app_state, canonical)
         logger.info(
             API_CEREMONY_POLICY_DEPT_CLEARED,
-            department=name,
+            department=canonical,
         )
