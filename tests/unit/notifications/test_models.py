@@ -96,7 +96,8 @@ class TestNotification:
             )
 
     def test_metadata_deep_copy_isolation(self) -> None:
-        meta: dict[str, object] = {"key": [1, 2, 3]}
+        values = [1, 2, 3]
+        meta: dict[str, object] = {"key": values}
         n = Notification(
             category=NotificationCategory.AGENT,
             severity=NotificationSeverity.INFO,
@@ -104,7 +105,7 @@ class TestNotification:
             source="test",
             metadata=meta,
         )
-        meta["key"].append(4)
+        values.append(4)
         assert n.metadata["key"] == [1, 2, 3]
 
     def test_unique_ids(self) -> None:
