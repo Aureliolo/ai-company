@@ -42,6 +42,7 @@ function mockUseOrgChartData() {
   return {
     nodes: mockNodes,
     edges: EMPTY_EDGES,
+    allNodes: mockNodes,
     loading: mockLoading,
     error: mockError,
     commLoading: mockCommLoading,

@@ -25,8 +25,8 @@ function CeoNodeComponent({ data }: NodeProps<CeoNodeType>) {
       className={cn(
         'group/ceo relative rounded-lg border-2 border-accent/40 bg-card px-4 py-3',
         'min-w-[200px] max-w-[240px]',
-        'shadow-md shadow-accent/20 transition-all duration-200',
-        'hover:shadow-lg hover:shadow-accent/30',
+        'shadow-[var(--so-shadow-card-hover)] transition-all duration-200',
+        'hover:shadow-[var(--so-shadow-card-hover)]',
       )}
       data-testid="ceo-node"
       aria-label={`CEO: ${data.name}, ${data.companyName}`}

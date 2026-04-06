@@ -160,9 +160,11 @@ html {
 /* ---------------------------------------------------------------------------
  * React Flow node drag/drop visual feedback
  * --------------------------------------------------------------------------- */
+/* Use the dedicated CSS `scale` property instead of `transform` so we
+   do not overwrite React Flow's `transform: translate(...)` positioning. */
 .react-flow__node.dragging {
   opacity: var(--so-opacity-dragging, 0.6);
-  transform: scale(1.02);
+  scale: 1.02;
   z-index: 1000 !important;
 }
 
@@ -171,7 +173,7 @@ html {
 }
 
 .react-flow__node {
-  transition: transform 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: scale 0.4s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.4s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 @media (prefers-reduced-motion: reduce) {

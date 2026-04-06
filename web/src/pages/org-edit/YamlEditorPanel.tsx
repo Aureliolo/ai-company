@@ -59,9 +59,10 @@ export function YamlEditorPanel({ config, onSave, saving }: YamlEditorPanelProps
       <textarea
         value={yamlText}
         onChange={handleChange}
+        readOnly
         className="w-full min-h-96 rounded-lg border border-border bg-surface p-4 font-mono text-sm text-foreground outline-none focus:ring-2 focus:ring-accent resize-y"
         spellCheck={false}
-        aria-label="YAML editor"
+        aria-label="YAML editor (read-only until #1081)"
       />
       <p className="text-xs text-text-muted">
         Save applies company-level settings only. Use the GUI tabs to manage agents and departments.

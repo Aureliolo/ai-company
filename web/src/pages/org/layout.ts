@@ -113,12 +113,14 @@ export function applyDagreLayout(
       const minor = Math.floor(i / 3)
       const x = major * 260
       const y = minor * 180
+      const w = n.type === 'owner' ? DEFAULT_NODE_WIDTH : EMPTY_GROUP_MIN_WIDTH
+      const h = n.type === 'owner' ? DEFAULT_NODE_HEIGHT : EMPTY_GROUP_HEIGHT
       return {
         ...n,
         position: { x, y },
-        width: EMPTY_GROUP_MIN_WIDTH,
-        height: EMPTY_GROUP_HEIGHT,
-        style: { ...n.style, width: EMPTY_GROUP_MIN_WIDTH, height: EMPTY_GROUP_HEIGHT },
+        width: w,
+        height: h,
+        style: { ...n.style, width: w, height: h },
       }
     })
   }

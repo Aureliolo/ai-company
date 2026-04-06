@@ -118,7 +118,7 @@ export function DepartmentsTab({
   config,
   departmentHealths,
   saving,
-  onCreateDepartment,
+  // onCreateDepartment -- #1081-gated: destructure when backend CRUD lands
   onUpdateDepartment,
   onDeleteDepartment,
   onReorderDepartments,
@@ -227,8 +227,6 @@ export function DepartmentsTab({
         <DepartmentCreateDialog
           open={createOpen}
           onOpenChange={setCreateOpen}
-          existingNames={[]}
-          onCreate={onCreateDepartment}
         />
         <PackSelectionDialog open={packOpen} onOpenChange={setPackOpen} disabled={saving} />
       </div>
@@ -356,8 +354,6 @@ export function DepartmentsTab({
       <DepartmentCreateDialog
         open={createOpen}
         onOpenChange={setCreateOpen}
-        existingNames={config.departments.map((d) => d.name)}
-        onCreate={onCreateDepartment}
       />
 
       <DepartmentEditDrawer

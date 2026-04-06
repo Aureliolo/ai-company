@@ -46,6 +46,12 @@ function resolveCombinedStatus(
     return { color: 'bg-warning', label: 'system degraded' }
   }
   if (healthStatus === 'unknown') {
+    // If WebSocket reconnection is exhausted and we still have no
+    // health response, the backend is likely unreachable -- show an
+    // error state instead of "checking..." forever.
+    if (wsReconnectExhausted) {
+      return { color: 'bg-danger', label: 'unable to connect' }
+    }
     return { color: 'bg-muted-foreground', label: 'checking...' }
   }
   if (wsReconnectExhausted) {

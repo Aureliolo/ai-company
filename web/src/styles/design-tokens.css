@@ -74,6 +74,7 @@
   --so-radius-xl: 12px;
 
   /* -- Shadows -- */
+  --so-shadow-card: 0 2px 8px rgba(0, 0, 0, 0.25);
   --so-shadow-card-hover: 0 4px 24px rgba(56, 189, 248, 0.08);
   --so-shadow-health-glow: 0 0 8px rgba(56, 189, 248, 0.3);
 
@@ -87,7 +88,7 @@
   --so-minimap-border: rgba(148, 163, 184, 0.35);
   --so-minimap-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
   --so-minimap-node-owner: var(--so-warning);
-  --so-minimap-node-dept: rgba(56, 189, 248, 0.22);
+  --so-minimap-node-dept: color-mix(in srgb, var(--so-accent) 22%, transparent);
   --so-minimap-node-agent: var(--so-accent);
 
   /* -- Opacity overlays -- */

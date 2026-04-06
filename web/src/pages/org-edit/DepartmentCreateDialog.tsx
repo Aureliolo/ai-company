@@ -4,18 +4,17 @@ import { Loader2, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { InputField } from '@/components/ui/input-field'
-import type { CreateDepartmentRequest, Department } from '@/api/types'
 import { ORG_EDIT_COMING_SOON_TOOLTIP } from './coming-soon'
 
 export interface DepartmentCreateDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
-  existingNames: readonly string[]
-  onCreate: (data: CreateDepartmentRequest) => Promise<Department>
-  // `disabled` prop removed temporarily -- the Create button is now
-  // unconditionally disabled while the backend CRUD endpoints are
-  // pending (#1081).  Restore this optional prop once #1081 lands and
-  // the caller's `saving` state needs to be threaded through again.
+  // `existingNames`, `onCreate`, and `disabled` props removed temporarily --
+  // the Create button is unconditionally disabled while the backend CRUD
+  // endpoints are pending (#1081).  Restore these props once #1081 lands:
+  //   existingNames: readonly string[]
+  //   onCreate: (data: CreateDepartmentRequest) => Promise<Department>
+  //   disabled?: boolean
 }
 
 interface FormState {

@@ -1,12 +1,10 @@
 import {
-  Activity,
   BadgeCheck,
   CircleDashed,
   DollarSign,
   GitBranch,
   Map as MapIcon,
   Maximize,
-  Minus,
   Network,
   Plus,
   Sparkles,
@@ -14,6 +12,7 @@ import {
   ZoomOut,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { SegmentedControl, type SegmentedControlOption } from '@/components/ui/segmented-control'
 import { cn } from '@/lib/utils'
 import {
   useOrgChartPrefs,
@@ -31,10 +30,10 @@ interface OrgChartToolbarProps {
   className?: string
 }
 
-const PARTICLE_OPTIONS: { value: ParticleFlowMode; label: string; icon: typeof Sparkles; tooltip: string }[] = [
-  { value: 'always', label: 'Flow', icon: Sparkles, tooltip: 'Particles flow on every edge continuously' },
-  { value: 'live', label: 'Live', icon: Activity, tooltip: 'Particles only on edges with recent activity' },
-  { value: 'off', label: 'Off', icon: Minus, tooltip: 'No particles, static lines' },
+const PARTICLE_OPTIONS: readonly SegmentedControlOption<ParticleFlowMode>[] = [
+  { value: 'always', label: 'Flow' },
+  { value: 'live', label: 'Live' },
+  { value: 'off', label: 'Off' },
 ]
 
 /**
@@ -72,49 +71,6 @@ function InlineToggle({
     >
       <Icon className="size-3.5" aria-hidden="true" />
     </button>
-  )
-}
-
-/**
- * Segmented button for the three particle-flow modes.  Exclusive
- * selection -- exactly one is pressed at a time.  Each segment is
- * icon-only with a label tooltip for compactness.
- */
-function ParticleFlowSegmented({
-  value,
-  onChange,
-}: {
-  value: ParticleFlowMode
-  onChange: (next: ParticleFlowMode) => void
-}) {
-  return (
-    <div className="inline-flex items-center rounded-md border border-border" role="radiogroup" aria-label="Particle flow">
-      {PARTICLE_OPTIONS.map((opt) => {
-        const Icon = opt.icon
-        const selected = value === opt.value
-        return (
-          <button
-            key={opt.value}
-            type="button"
-            role="radio"
-            aria-checked={selected}
-            title={opt.tooltip}
-            onClick={() => onChange(opt.value)}
-            className={cn(
-              'inline-flex h-7 items-center gap-1 px-1.5 text-xs font-medium transition-colors',
-              'first:rounded-l-md last:rounded-r-md',
-              'not-first:border-l border-border',
-              selected
-                ? 'bg-accent/20 text-accent'
-                : 'text-text-muted hover:bg-border/40 hover:text-foreground',
-            )}
-          >
-            <Icon className="size-3.5" aria-hidden="true" />
-            {opt.label}
-          </button>
-        )
-      })}
-    </div>
   )
 }
 
@@ -175,7 +131,13 @@ export function OrgChartToolbar({
       <div className="mx-1 h-5 w-px bg-border" />
 
       {/* Particle flow: tri-state segmented control inline */}
-      <ParticleFlowSegmented value={particleFlowMode} onChange={setParticleFlowMode} />
+      <SegmentedControl
+        label="Particle flow"
+        options={PARTICLE_OPTIONS}
+        value={particleFlowMode}
+        onChange={setParticleFlowMode}
+        size="sm"
+      />
 
       <div className="mx-1 h-5 w-px bg-border" />
 

@@ -3,6 +3,7 @@ import { AlertDialog } from '@base-ui/react/alert-dialog'
 import { Loader2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { createLogger } from '@/lib/logger'
+import { sanitizeForLog } from '@/utils/logging'
 import { Button } from './button'
 
 const log = createLogger('ConfirmDialog')
@@ -100,7 +101,7 @@ export function ConfirmDialog({
                   // Dialog stays open on error so the caller can retry from
                   // the same surface. Log the cause so the failure is not
                   // invisible if the caller forgets to toast its own error.
-                  log.warn('ConfirmDialog onConfirm threw', { title }, err)
+                  log.warn('ConfirmDialog onConfirm threw', { title: sanitizeForLog(title) }, err)
                 } finally {
                   submittingRef.current = false
                 }

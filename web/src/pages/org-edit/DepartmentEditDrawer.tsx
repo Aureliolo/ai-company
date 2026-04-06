@@ -7,7 +7,7 @@ import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { Button } from '@/components/ui/button'
 import { getErrorMessage } from '@/utils/errors'
 import { DepartmentCeremonyOverride } from './DepartmentCeremonyOverride'
-import { ORG_EDIT_COMING_SOON_TOOLTIP } from './coming-soon'
+import { ORG_EDIT_COMING_SOON_TOOLTIP, ORG_EDIT_COMING_SOON_DESCRIPTION } from './coming-soon'
 
 export interface DepartmentEditDrawerProps {
   open: boolean
@@ -189,6 +189,7 @@ export function DepartmentEditDrawer({
                 </Button>
               </div>
             </div>
+            <p className="text-xs text-text-muted mt-2">{ORG_EDIT_COMING_SOON_DESCRIPTION}</p>
           </div>
         )}
       </Drawer>

@@ -58,7 +58,7 @@ function AgentNodeComponent({ data }: NodeProps<AgentNodeType>) {
           when the user disables LEAD badges in the view menu. */}
       {data.isDeptLead && showLeadBadge && (
         <span
-          className="absolute -right-1 -top-1.5 rounded-full border border-accent/60 bg-accent px-1.5 py-0 font-mono text-[9px] font-bold uppercase leading-4 tracking-wider text-background shadow-sm"
+          className="absolute -right-1 -top-1.5 rounded-full border border-accent/60 bg-accent px-1.5 py-0 font-mono text-micro font-bold uppercase leading-4 tracking-wider text-background shadow-sm"
           aria-label="Department lead"
         >
           Lead

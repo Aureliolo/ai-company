@@ -329,6 +329,6 @@ export const useAgentsStore = create<AgentsState>()((set, get) => ({
       return
     }
 
-    log.debug('WS event ignored: unhandled event_type', { event_type: String(event?.event_type) })
+    log.debug('WS event ignored: unhandled event_type', { event_type: sanitizeForLog(event?.event_type) })
   },
 }))

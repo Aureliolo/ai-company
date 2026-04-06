@@ -34,7 +34,7 @@ function OwnerNodeComponent({ data }: NodeProps<OwnerNodeType>) {
         // producing a visible horizontal kink in the owner to root
         // dept edge's L-shape.
         'w-[240px]',
-        'shadow-sm shadow-warning/20',
+        'shadow-[var(--so-shadow-card)]',
       )}
       data-testid="owner-node"
       aria-label={`Owner: ${data.displayName}`}

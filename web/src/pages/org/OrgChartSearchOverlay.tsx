@@ -30,9 +30,14 @@ export function OrgChartSearchOverlay({
   matchCount,
 }: OrgChartSearchOverlayProps) {
   const inputRef = useRef<HTMLInputElement>(null)
+  const prevFocusRef = useRef<HTMLElement | null>(null)
 
   useEffect(() => {
     if (open) {
+      // Remember what was focused before the overlay opened so we
+      // can restore it when the overlay closes.
+      prevFocusRef.current = document.activeElement as HTMLElement | null
+
       // Defer focus to the next frame so the input is actually
       // mounted and visible before we try to focus it.
       const id = requestAnimationFrame(() => {
@@ -41,6 +46,9 @@ export function OrgChartSearchOverlay({
       })
       return () => cancelAnimationFrame(id)
     }
+    // Restore focus to the previously-focused element when closing.
+    prevFocusRef.current?.focus()
+    prevFocusRef.current = null
     return undefined
   }, [open])
 

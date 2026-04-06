@@ -211,8 +211,7 @@ export function buildOrgTree(
     : null
   const otherDepts = allDepartments.filter((d) => d !== rootDept)
 
-  // Compute per-dept budget utilisation (shared helper)
-  const companyMonthlyBudget = typeof config.budget_monthly === 'number' ? config.budget_monthly : null
+  // Compute per-dept data (shared helper)
   const buildDeptData = (dept: Department): DepartmentGroupData => {
     const deptMembers = deptAgents.get(dept.name) ?? []
     const health = healthMap.get(dept.name)
@@ -220,13 +219,12 @@ export function buildOrgTree(
       (a) => resolveRuntimeStatus(a.id ?? a.name, a.status ?? 'active', runtimeStatuses) === 'active',
     ).length
     const budgetPercent = typeof dept.budget_percent === 'number' ? dept.budget_percent : null
-    const deptBudgetCap = budgetPercent !== null && companyMonthlyBudget !== null
-      ? (budgetPercent / 100) * companyMonthlyBudget
-      : null
     const cost7d = health?.department_cost_7d ?? null
-    const utilizationPercent = deptBudgetCap !== null && cost7d !== null && deptBudgetCap > 0
-      ? Math.min(100, Math.round((cost7d / deptBudgetCap) * 100))
-      : null
+    // Prefer the backend-computed utilization_percent which uses a
+    // consistent time window (active_agent_count / agent_count * 100).
+    // The previous client-side calculation divided 7-day cost by
+    // monthly budget, mixing incompatible windows.
+    const utilizationPercent = health?.utilization_percent ?? null
     const statusDots: DepartmentAgentStatusDot[] = deptMembers.map((a) => ({
       agentId: a.id ?? a.name,
       runtimeStatus: resolveRuntimeStatus(a.id ?? a.name, a.status ?? 'active', runtimeStatuses),

@@ -79,7 +79,7 @@ function DepartmentGroupNodeComponent({ id, data }: NodeProps<DepartmentGroupTyp
         !isDropTarget && !isEmpty && 'border-border bg-card/40',
       )}
       data-testid="department-group-node"
-      aria-label={`Department: ${displayName}${agentCount > 0 ? `, ${agentCount} agents` : ', empty'}`}
+      aria-label={`Department: ${displayName}${agentCount > 0 ? `, ${agentCount} ${agentCount === 1 ? 'agent' : 'agents'}` : ', empty'}`}
     >
       {/*
        * Hidden target handle on top -- receives incoming edges from
@@ -209,7 +209,7 @@ function DepartmentGroupNodeComponent({ id, data }: NodeProps<DepartmentGroupTyp
           <span className="font-sans text-xs">No agents yet</span>
           {showAddAgentButton && (
             <span
-              className="inline-flex items-center gap-1 rounded-md border border-border bg-background/50 px-2 py-1 text-micro text-text-secondary opacity-70"
+              className="inline-flex cursor-not-allowed items-center gap-1 rounded-md border border-border bg-background/50 px-2 py-1 text-micro text-text-secondary opacity-70"
               title="Add agent -- coming soon (#1081)"
             >
               <Plus className="size-3" aria-hidden="true" />
@@ -228,9 +228,9 @@ function DepartmentGroupNodeComponent({ id, data }: NodeProps<DepartmentGroupTyp
        * disabled-until-#1081 treatment as the empty-state variant.
        */}
       {!isEmpty && showAddAgentButton && (
-        <div className="pointer-events-none mt-auto flex items-center justify-center pt-5">
+        <div className="mt-auto flex items-center justify-center pt-5">
           <span
-            className="inline-flex items-center gap-1 rounded-md border border-dashed border-border bg-background/30 px-2 py-0.5 text-micro text-text-muted opacity-70"
+            className="inline-flex cursor-not-allowed items-center gap-1 rounded-md border border-dashed border-border bg-background/30 px-2 py-0.5 text-micro text-text-muted opacity-70"
             title="Add agent -- coming soon (#1081)"
           >
             <Plus className="size-3" aria-hidden="true" />

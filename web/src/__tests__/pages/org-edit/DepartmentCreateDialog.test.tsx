@@ -1,4 +1,4 @@
-import { render, screen, fireEvent } from '@testing-library/react'
+import { render, screen } from '@testing-library/react'
 import { DepartmentCreateDialog } from '@/pages/org-edit/DepartmentCreateDialog'
 
 // Create is disabled while the backend CRUD endpoints are pending
@@ -7,16 +7,13 @@ import { DepartmentCreateDialog } from '@/pages/org-edit/DepartmentCreateDialog'
 // were here previously -- see git history on this file.
 
 describe('DepartmentCreateDialog', () => {
-  const mockOnCreate = vi.fn().mockResolvedValue({ name: 'design', display_name: 'Design', teams: [] })
   const mockOnOpenChange = vi.fn()
 
-  function renderDialog(open = true, existingNames = ['engineering', 'product']) {
+  function renderDialog(open = true) {
     return render(
       <DepartmentCreateDialog
         open={open}
         onOpenChange={mockOnOpenChange}
-        existingNames={existingNames}
-        onCreate={mockOnCreate}
       />,
     )
   }
@@ -35,8 +32,5 @@ describe('DepartmentCreateDialog', () => {
     const createButton = screen.getByRole('button', { name: /create department/i })
     expect(createButton).toBeDisabled()
     expect(createButton.getAttribute('title') ?? '').toContain('1081')
-    // Clicking the disabled button must not call onCreate.
-    fireEvent.click(createButton)
-    expect(mockOnCreate).not.toHaveBeenCalled()
   })
 })
