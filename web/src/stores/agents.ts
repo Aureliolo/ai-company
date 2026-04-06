@@ -243,7 +243,7 @@ export const useAgentsStore = create<AgentsState>()((set, get) => ({
       const payload = event.payload as Record<string, unknown>
       const agentId = payload.agent_id
       const status = payload.status
-      if (typeof agentId !== 'string' || typeof status !== 'string') {
+      if (typeof agentId !== 'string' || !agentId.trim() || typeof status !== 'string' || !status.trim()) {
         log.warn('agent.status_changed payload missing required fields', {
           hasAgentId: typeof agentId === 'string',
           hasStatus: typeof status === 'string',

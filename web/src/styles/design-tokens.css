@@ -85,11 +85,11 @@
   --so-opacity-dragging: 0.6;
 
   /* -- Org chart minimap -- */
-  --so-minimap-bg: rgba(15, 18, 26, 0.92);
-  --so-minimap-mask: rgba(0, 0, 0, 0.55);
+  --so-minimap-bg: color-mix(in srgb, var(--so-bg) 92%, transparent);
+  --so-minimap-mask: color-mix(in srgb, var(--so-bg) 55%, transparent);
   --so-minimap-stroke: var(--so-accent);
-  --so-minimap-border: rgba(148, 163, 184, 0.35);
-  --so-minimap-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+  --so-minimap-border: color-mix(in srgb, var(--so-border) 35%, transparent);
+  --so-minimap-shadow: 0 4px 16px color-mix(in srgb, var(--so-bg) 35%, transparent);
   --so-minimap-node-owner: var(--so-warning);
   --so-minimap-node-dept: color-mix(in srgb, var(--so-accent) 22%, transparent);
   --so-minimap-node-agent: var(--so-accent);
