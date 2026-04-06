@@ -80,17 +80,19 @@ export function NotificationDrawer({ open, onClose }: NotificationDrawerProps) {
           {filteredItems.length === 0 ? (
             <NotificationEmptyState filter={filter} />
           ) : (
-            <StaggerGroup className="flex flex-col gap-1" role="list">
-              {filteredItems.map((item) => (
-                <StaggerItem key={item.id}>
-                  <NotificationItemCard
-                    item={item}
-                    onMarkRead={markRead}
-                    onDismiss={dismiss}
-                  />
-                </StaggerItem>
-              ))}
-            </StaggerGroup>
+            <div role="list">
+              <StaggerGroup className="flex flex-col gap-1">
+                {filteredItems.map((item) => (
+                  <StaggerItem key={item.id}>
+                    <NotificationItemCard
+                      item={item}
+                      onMarkRead={markRead}
+                      onDismiss={dismiss}
+                    />
+                  </StaggerItem>
+                ))}
+              </StaggerGroup>
+            </div>
           )}
         </div>
 

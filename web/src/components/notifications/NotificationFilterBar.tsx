@@ -21,6 +21,7 @@ interface NotificationFilterBarProps {
 export function NotificationFilterBar({ value, onChange }: NotificationFilterBarProps) {
   return (
     <SegmentedControl<NotificationFilterGroup>
+      label="Notification filter"
       value={value}
       onChange={onChange}
       options={GROUPS.map((g) => ({ value: g, label: FILTER_GROUP_LABELS[g] }))}

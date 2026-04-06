@@ -61,7 +61,7 @@ export function NotificationsSection() {
   }
 
   return (
-    <SectionCard title="Notifications" icon={<Bell className="size-4" />}>
+    <SectionCard title="Notifications" icon={Bell}>
       <div className="flex flex-col gap-section-gap">
         {/* Global mute */}
         <ToggleField
