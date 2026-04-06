@@ -102,6 +102,7 @@ _EXPECTED_INDEXES = {
     "idx_dr_reviewer_agent_recorded",
     "idx_la_username_attempted",
     "idx_rt_user_id",
+    "idx_rt_session_id",
     "idx_rt_expires_at",
 }
 
