@@ -93,7 +93,7 @@ export default function AppLayout() {
       if (e.defaultPrevented || e.repeat) return
       const tag = (e.target as HTMLElement)?.tagName
       if (tag === 'INPUT' || tag === 'TEXTAREA' || (e.target as HTMLElement)?.isContentEditable) return
-      if (e.shiftKey && e.key === 'N') {
+      if (e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey && e.key === 'N') {
         e.preventDefault()
         window.dispatchEvent(new CustomEvent('toggle-notification-drawer'))
       }

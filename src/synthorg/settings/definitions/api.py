@@ -182,6 +182,7 @@ _r.register(
         level=SettingLevel.ADVANCED,
         enum_values=("second", "minute", "hour", "day"),
         yaml_path="api.rate_limit.time_unit",
+        restart_required=True,
     )
 )
 

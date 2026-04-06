@@ -114,6 +114,8 @@ class NotificationDispatcher:
             if hasattr(sink, "close"):
                 try:
                     await sink.close()
+                except MemoryError, RecursionError:
+                    raise
                 except Exception:
                     logger.warning(
                         NOTIFICATION_DISPATCH_FAILED,
