@@ -1,14 +1,20 @@
 import type { Meta, StoryObj } from '@storybook/react'
 import { DepartmentEditDrawer } from './DepartmentEditDrawer'
-import type { Department, DepartmentHealth } from '@/api/types'
+import type { CompanyConfig, Department, DepartmentHealth } from '@/api/types'
 
 const mockDept: Department = {
   name: 'engineering',
   display_name: 'Engineering',
   teams: [
-    { name: 'Backend', members: ['alice', 'bob'] },
-    { name: 'Frontend', members: ['carol'] },
+    { name: 'Backend', lead: 'alice', members: ['alice', 'bob'] },
+    { name: 'Frontend', lead: 'carol', members: ['carol'] },
   ],
+}
+
+const mockConfig: CompanyConfig = {
+  company_name: 'Test Company',
+  departments: [mockDept],
+  agents: [],
 }
 
 const mockHealth: DepartmentHealth = {
@@ -34,8 +40,13 @@ const meta = {
     onClose: () => {},
     department: mockDept,
     health: mockHealth,
+    config: mockConfig,
     onUpdate: async () => mockDept,
     onDelete: async () => {},
+    onCreateTeam: async (_d, data) => ({ name: data.name, lead: data.lead, members: [] }),
+    onUpdateTeam: async (_d, _t, data) => ({ name: data.name ?? '', lead: data.lead ?? '', members: [] }),
+    onDeleteTeam: async () => {},
+    onReorderTeams: async () => {},
     saving: false,
   },
 } satisfies Meta<typeof DepartmentEditDrawer>

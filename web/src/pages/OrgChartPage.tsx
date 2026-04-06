@@ -27,6 +27,7 @@ import { findDropTarget, type DepartmentBounds } from './org/drop-target'
 import { AgentNode } from './org/AgentNode'
 import { CeoNode } from './org/CeoNode'
 import { DepartmentGroupNode } from './org/DepartmentGroupNode'
+import { TeamGroupNode } from './org/TeamGroupNode'
 import { OwnerNode } from './org/OwnerNode'
 import { HierarchyEdge } from './org/HierarchyEdge'
 import { CommunicationEdge } from './org/CommunicationEdge'
@@ -64,6 +65,7 @@ const nodeTypes = {
   agent: AgentNode,
   ceo: CeoNode,
   department: DepartmentGroupNode,
+  team: TeamGroupNode,
   owner: OwnerNode,
 }
 const edgeTypes = { hierarchy: HierarchyEdge, communication: CommunicationEdge }

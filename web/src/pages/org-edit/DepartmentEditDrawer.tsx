@@ -1,12 +1,22 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Loader2, Trash2, Users } from 'lucide-react'
-import type { CeremonyPolicyConfig, Department, DepartmentHealth, UpdateDepartmentRequest } from '@/api/types'
+import type {
+  CeremonyPolicyConfig,
+  CompanyConfig,
+  CreateTeamRequest,
+  Department,
+  DepartmentHealth,
+  TeamConfig,
+  UpdateDepartmentRequest,
+  UpdateTeamRequest,
+} from '@/api/types'
 import { Drawer } from '@/components/ui/drawer'
 import { InputField } from '@/components/ui/input-field'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { Button } from '@/components/ui/button'
 import { getErrorMessage } from '@/utils/errors'
 import { DepartmentCeremonyOverride } from './DepartmentCeremonyOverride'
+import { TeamListSection } from './TeamListSection'
 import { ORG_EDIT_COMING_SOON_TOOLTIP, ORG_EDIT_COMING_SOON_DESCRIPTION } from './coming-soon'
 
 export interface DepartmentEditDrawerProps {
@@ -14,8 +24,13 @@ export interface DepartmentEditDrawerProps {
   onClose: () => void
   department: Department | null
   health: DepartmentHealth | null
+  config: CompanyConfig | null
   onUpdate: (name: string, data: UpdateDepartmentRequest) => Promise<Department>
   onDelete: (name: string) => Promise<void>
+  onCreateTeam: (deptName: string, data: CreateTeamRequest) => Promise<TeamConfig>
+  onUpdateTeam: (deptName: string, teamName: string, data: UpdateTeamRequest) => Promise<TeamConfig>
+  onDeleteTeam: (deptName: string, teamName: string, reassignTo?: string) => Promise<void>
+  onReorderTeams: (deptName: string, orderedNames: string[]) => Promise<void>
   saving: boolean
 }
 
@@ -24,8 +39,13 @@ export function DepartmentEditDrawer({
   onClose,
   department,
   health,
+  config,
   onUpdate,
   onDelete,
+  onCreateTeam,
+  onUpdateTeam,
+  onDeleteTeam,
+  onReorderTeams,
   saving,
 }: DepartmentEditDrawerProps) {
   const [displayName, setDisplayName] = useState('')
@@ -51,6 +71,16 @@ export function DepartmentEditDrawer({
     }
     /* eslint-enable @eslint-react/set-state-in-effect */
   }, [department])
+
+  const otherDeptsBudget = useMemo(() => {
+    if (!config) return 0
+    return config.departments
+      .filter((d) => d.name !== department?.name)
+      .reduce((sum, d) => sum + (d.budget_percent ?? 0), 0)
+  }, [config, department?.name])
+
+  const projectedTotal = otherDeptsBudget + (Number(budgetPercent) || 0)
+  const budgetWouldExceed = projectedTotal > 100.01
 
   const handleSave = useCallback(async () => {
     if (!department) return
@@ -124,36 +154,21 @@ export function DepartmentEditDrawer({
               disabled={saving}
             />
 
-            {/* Teams summary (read-only -- team editing is tracked as a
-              * deferred item in docs/design/page-structure.md:38 -- "nested
-              * teams/reporting/policies editing is deferred") */}
-            <div className="border-t border-border pt-4 space-y-2">
-              <p className="text-xs font-semibold uppercase tracking-wider text-text-muted">Teams</p>
-              <p className="text-xs text-text-secondary">
-                Teams are named sub-groups inside a department, each with a lead
-                and a set of member agents. They let you model reporting lines
-                more granularly than department alone (for example, a Frontend
-                and a Backend team inside Engineering).
+            {budgetWouldExceed && (
+              <p className="text-xs text-danger">
+                Total would be {projectedTotal.toFixed(1)}% -- exceeds 100%.
               </p>
-              {department.teams.length === 0 ? (
-                <p className="text-xs text-text-secondary">
-                  No teams yet. Add one from the Departments tab via the
-                  <span className="mx-1 font-medium text-foreground">Add Team</span>
-                  button -- it picks from pre-built team template packs. In-drawer
-                  team editing is not yet available.
-                </p>
-              ) : (
-                <ul className="space-y-1">
-                  {department.teams.map((team) => (
-                    <li key={team.name} className="text-xs text-text-secondary">
-                      <span className="font-medium text-foreground">{team.name}</span>
-                      {' -- '}
-                      {team.members.length} member{team.members.length !== 1 ? 's' : ''}
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
+            )}
+
+            <TeamListSection
+              departmentName={department.name}
+              teams={department.teams}
+              saving={saving}
+              onCreateTeam={(data) => onCreateTeam(department.name, data)}
+              onUpdateTeam={(teamName, data) => onUpdateTeam(department.name, teamName, data)}
+              onDeleteTeam={(teamName, reassignTo) => onDeleteTeam(department.name, teamName, reassignTo)}
+              onReorderTeams={(names) => onReorderTeams(department.name, names)}
+            />
 
             {submitError && (
               <p className="text-xs text-danger">{submitError}</p>

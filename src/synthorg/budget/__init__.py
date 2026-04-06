@@ -87,6 +87,7 @@ from synthorg.budget.quota import (
     effective_cost_per_1k,
 )
 from synthorg.budget.quota_tracker import QuotaTracker
+from synthorg.budget.rebalance import RebalanceMode, RebalanceResult, compute_rebalance
 from synthorg.budget.report_config import (
     AutomatedReportingConfig,
     ReportPeriod,
@@ -189,6 +190,8 @@ __all__ = [
     "QuotaSnapshot",
     "QuotaTracker",
     "QuotaWindow",
+    "RebalanceMode",
+    "RebalanceResult",
     "RedundancyRate",
     "ReportGenerator",
     "ReportPeriod",
@@ -212,6 +215,7 @@ __all__ = [
     "TeamBudget",
     "billing_period_start",
     "classify_model_tier",
+    "compute_rebalance",
     "daily_period_start",
     "effective_cost_per_1k",
     "format_cost",

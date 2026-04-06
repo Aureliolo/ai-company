@@ -55,6 +55,10 @@ export default function OrgEditPage() {
     updateAgent,
     deleteAgent,
     reorderAgents,
+    createTeam,
+    updateTeam,
+    deleteTeam,
+    reorderTeams,
     optimisticReorderDepartments,
     optimisticReorderAgents,
   } = useOrgEditData()
@@ -291,6 +295,10 @@ export default function OrgEditPage() {
                   onDeleteDepartment={deleteDepartment}
                   onReorderDepartments={reorderDepartments}
                   optimisticReorderDepartments={optimisticReorderDepartments}
+                  onCreateTeam={createTeam}
+                  onUpdateTeam={updateTeam}
+                  onDeleteTeam={deleteTeam}
+                  onReorderTeams={reorderTeams}
                 />
               </ErrorBoundary>
             </Tabs.Panel>

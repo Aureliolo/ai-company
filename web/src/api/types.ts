@@ -652,6 +652,24 @@ export interface ReorderDepartmentsRequest {
   readonly department_names: readonly string[]
 }
 
+// ── Team Mutation Requests ──────────────────────────────────
+
+export interface CreateTeamRequest {
+  name: string
+  lead: string
+  members?: readonly string[]
+}
+
+export interface UpdateTeamRequest {
+  name?: string
+  lead?: string
+  members?: readonly string[]
+}
+
+export interface ReorderTeamsRequest {
+  readonly team_names: readonly string[]
+}
+
 export interface CreateAgentOrgRequest {
   name: string
   role: string
@@ -1566,14 +1584,21 @@ export interface PackInfoResponse {
   readonly department_count: number
 }
 
+export type RebalanceMode = 'none' | 'scale_existing' | 'reject_if_over'
+
 export interface ApplyTemplatePackRequest {
   readonly pack_name: string
+  readonly rebalance_mode?: RebalanceMode
 }
 
 export interface ApplyTemplatePackResponse {
   readonly pack_name: string
   readonly agents_added: number
   readonly departments_added: number
+  readonly budget_before: number
+  readonly budget_after: number
+  readonly rebalance_mode: RebalanceMode
+  readonly scale_factor: number | null
 }
 
 // ── Workflow Definitions ───────────────────────────────────────

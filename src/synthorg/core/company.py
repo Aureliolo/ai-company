@@ -639,4 +639,12 @@ class Company(BaseModel):
             )
             logger.warning(COMPANY_VALIDATION_ERROR, error=msg)
             raise ValueError(msg)
+        if total > 0 and round(total, BUDGET_ROUNDING_PRECISION) < max_budget_percent:
+            logger.info(
+                COMPANY_VALIDATION_ERROR,
+                warning=(
+                    f"Department budgets sum to {total:.2f}%, "
+                    f"under {max_budget_percent:.0f}%"
+                ),
+            )
         return self

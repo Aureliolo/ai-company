@@ -65,6 +65,14 @@ export interface DepartmentGroupData {
   [key: string]: unknown
 }
 
+export interface TeamGroupData {
+  teamName: string
+  departmentName: DepartmentName
+  leadName: string | undefined
+  memberCount: number
+  [key: string]: unknown
+}
+
 // ── Seniority ordering ──────────────────────────────────────
 
 const SENIORITY_RANK: Record<SeniorityLevel, number> = {
@@ -363,16 +371,49 @@ function emitDeptChildren(
   const headId = head ? (head.id ?? head.name) : undefined
   const groupId = `dept-${dept.name}`
 
-  // Team membership map
+  // Build team membership: agentId -> teamGroupId
+  const agentTeamGroup = new Map<string, string>()
+  // Team lead map: agentId -> leadId (for intra-team edges)
   const teamMemberSet = new Map<string, string>()
+
   for (const team of dept.teams) {
+    const teamGroupId = `team-${dept.name}-${team.name}`
     const teamMembers = deptMembers.filter((a) => team.members.includes(a.name))
-    const teamLead = findHighestSeniority(teamMembers)
+    const teamLead = team.lead
+      ? deptMembers.find((a) => a.name === team.lead) ?? findHighestSeniority(teamMembers)
+      : findHighestSeniority(teamMembers)
+    const teamLeadId = teamLead ? (teamLead.id ?? teamLead.name) : undefined
+
+    // Emit team group node
+    const teamData: TeamGroupData = {
+      teamName: team.name,
+      departmentName: dept.name,
+      leadName: teamLead?.name,
+      memberCount: teamMembers.length,
+    }
+    nodes.push({
+      id: teamGroupId,
+      type: 'team',
+      position: { x: 0, y: 0 },
+      parentId: groupId,
+      data: teamData,
+    })
+
+    // Edge from dept head to team lead
+    if (headId && teamLeadId && headId !== teamLeadId) {
+      edges.push({
+        id: `e-${headId}-${teamLeadId}`,
+        source: headId,
+        target: teamLeadId,
+        type: 'hierarchy',
+      })
+    }
+
     for (const member of teamMembers) {
       const memberId = member.id ?? member.name
-      const leadId = teamLead ? (teamLead.id ?? teamLead.name) : undefined
-      if (leadId && memberId !== leadId && !teamMemberSet.has(memberId)) {
-        teamMemberSet.set(memberId, leadId)
+      agentTeamGroup.set(memberId, teamGroupId)
+      if (teamLeadId && memberId !== teamLeadId && !teamMemberSet.has(memberId)) {
+        teamMemberSet.set(memberId, teamLeadId)
       }
     }
   }
@@ -392,11 +433,14 @@ function emitDeptChildren(
       isCompanyCeo: ceoId != null && agentId === ceoId,
     }
 
+    // Parent to team group if assigned, otherwise to dept group
+    const parentId = agentTeamGroup.get(agentId) ?? groupId
+
     nodes.push({
       id: agentId,
       type: 'agent',
       position: { x: 0, y: 0 },
-      parentId: groupId,
+      parentId,
       data: nodeData,
     })
 
@@ -408,7 +452,8 @@ function emitDeptChildren(
         target: agentId,
         type: 'hierarchy',
       })
-    } else if (headId && agentId !== headId) {
+    } else if (headId && agentId !== headId && !agentTeamGroup.has(agentId)) {
+      // Only add dept-head-to-agent edge for unassigned agents
       edges.push({
         id: `e-${headId}-${agentId}`,
         source: headId,

@@ -403,3 +403,64 @@ describe('buildOrgTree', () => {
     expect(agentNames).not.toContain('Terminated')
   })
 })
+
+// ── Team group nodes ────────────────────────────────────────
+
+describe('team group nodes', () => {
+  it('emits team group nodes when department has teams', () => {
+    const agents = [
+      makeAgent({ id: 'a1', name: 'Alice', department: 'engineering', level: 'lead' }),
+      makeAgent({ id: 'a2', name: 'Bob', department: 'engineering', level: 'mid' }),
+    ]
+    const depts = [{
+      name: 'engineering' as DepartmentName,
+      display_name: 'Engineering',
+      teams: [{ name: 'backend', lead: 'Alice', members: ['Alice', 'Bob'] }],
+    }]
+    const result = buildOrgTree(makeConfig(agents, depts), {}, [])
+    const teamNodes = result.nodes.filter((n) => n.type === 'team')
+    expect(teamNodes).toHaveLength(1)
+    expect(teamNodes[0]!.id).toBe('team-engineering-backend')
+    expect(teamNodes[0]!.parentId).toBe('dept-engineering')
+  })
+
+  it('parents team members to the team group node', () => {
+    const agents = [
+      makeAgent({ id: 'a1', name: 'Alice', department: 'engineering', level: 'lead' }),
+      makeAgent({ id: 'a2', name: 'Bob', department: 'engineering', level: 'mid' }),
+    ]
+    const depts = [{
+      name: 'engineering' as DepartmentName,
+      display_name: 'Engineering',
+      teams: [{ name: 'backend', lead: 'Alice', members: ['Alice', 'Bob'] }],
+    }]
+    const result = buildOrgTree(makeConfig(agents, depts), {}, [])
+    const bob = result.nodes.find((n) => n.id === 'a2')
+    expect(bob?.parentId).toBe('team-engineering-backend')
+  })
+
+  it('does not emit team nodes when department has no teams', () => {
+    const agents = [
+      makeAgent({ id: 'a1', name: 'Alice', department: 'engineering', level: 'lead' }),
+    ]
+    const result = buildOrgTree(makeConfig(agents), {}, [])
+    const teamNodes = result.nodes.filter((n) => n.type === 'team')
+    expect(teamNodes).toHaveLength(0)
+  })
+
+  it('agents not in any team stay parented to dept group', () => {
+    const agents = [
+      makeAgent({ id: 'a1', name: 'Alice', department: 'engineering', level: 'lead' }),
+      makeAgent({ id: 'a2', name: 'Bob', department: 'engineering', level: 'mid' }),
+      makeAgent({ id: 'a3', name: 'Carol', department: 'engineering', level: 'mid' }),
+    ]
+    const depts = [{
+      name: 'engineering' as DepartmentName,
+      display_name: 'Engineering',
+      teams: [{ name: 'backend', lead: 'Alice', members: ['Alice', 'Bob'] }],
+    }]
+    const result = buildOrgTree(makeConfig(agents, depts), {}, [])
+    const carol = result.nodes.find((n) => n.id === 'a3')
+    expect(carol?.parentId).toBe('dept-engineering')
+  })
+})

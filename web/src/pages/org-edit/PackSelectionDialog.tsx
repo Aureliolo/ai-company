@@ -10,7 +10,10 @@ import { listTemplatePacks, applyTemplatePack } from '@/api/endpoints/template-p
 import { useToastStore } from '@/stores/toast'
 import { useCompanyStore } from '@/stores/company'
 import { getErrorMessage } from '@/utils/errors'
-import type { PackInfoResponse } from '@/api/types'
+import type { PackInfoResponse, RebalanceMode } from '@/api/types'
+import { PackApplyPreviewDialog } from './PackApplyPreviewDialog'
+
+const EMPTY_DEPTS: readonly import('@/api/types').Department[] = []
 
 export interface PackSelectionDialogProps {
   open: boolean
@@ -69,7 +72,9 @@ export function PackSelectionDialog({ open, onOpenChange, disabled }: PackSelect
   const [loading, setLoading] = useState(false)
   const [applying, setApplying] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [selectedPack, setSelectedPack] = useState<PackInfoResponse | null>(null)
   const addToast = useToastStore((s) => s.add)
+  const currentDepts = useCompanyStore((s) => s.config?.departments) ?? EMPTY_DEPTS
 
   // Track open transitions via ref so the effect only fires on changes.
   const prevOpenRef = useRef(open)
@@ -103,7 +108,7 @@ export function PackSelectionDialog({ open, onOpenChange, disabled }: PackSelect
     }
   }, [open])
 
-  const handleApply = useCallback(
+  const handleApplyDirect = useCallback(
     async (packName: string) => {
       setApplying(packName)
       setError(null)
@@ -114,7 +119,50 @@ export function PackSelectionDialog({ open, onOpenChange, disabled }: PackSelect
           title: `Added ${result.agents_added} agent(s) and ${result.departments_added} department(s)`,
         })
         onOpenChange(false)
-        // Refresh company data separately -- apply already succeeded.
+        try {
+          await useCompanyStore.getState().fetchCompanyData()
+        } catch {
+          addToast({
+            variant: 'warning',
+            title: 'Pack applied but failed to refresh data. Reload the page.',
+          })
+        }
+      } catch (err) {
+        setError(getErrorMessage(err))
+      } finally {
+        setApplying(null)
+      }
+    },
+    [addToast, onOpenChange],
+  )
+
+  const handleSelectPack = useCallback((pack: PackInfoResponse) => {
+    if (pack.department_count > 0) {
+      // Pack adds departments -- show budget preview before applying.
+      setSelectedPack(pack)
+    } else {
+      // No departments -- apply directly (no budget impact).
+      void handleApplyDirect(pack.name)
+    }
+  }, [handleApplyDirect])
+
+  const handleApplyWithMode = useCallback(
+    async (packName: string, rebalanceMode: RebalanceMode) => {
+      setApplying(packName)
+      setError(null)
+      try {
+        const result = await applyTemplatePack({
+          pack_name: packName,
+          rebalance_mode: rebalanceMode,
+        })
+        let title = `Added ${result.agents_added} agent(s) and ${result.departments_added} department(s).`
+        title += ` Budget: ${result.budget_before.toFixed(1)}% -> ${result.budget_after.toFixed(1)}%`
+        if (result.scale_factor !== null && result.scale_factor < 1) {
+          title += ` (existing scaled to ${(result.scale_factor * 100).toFixed(0)}%)`
+        }
+        addToast({ variant: 'success', title })
+        setSelectedPack(null)
+        onOpenChange(false)
         try {
           await useCompanyStore.getState().fetchCompanyData()
         } catch {
@@ -135,6 +183,7 @@ export function PackSelectionDialog({ open, onOpenChange, disabled }: PackSelect
   const busy = applying !== null
 
   return (
+    <>
     <Dialog.Root open={open} onOpenChange={(v: boolean) => { if (!busy) onOpenChange(v) }}>
       <Dialog.Portal>
         <Dialog.Backdrop className="fixed inset-0 z-50 bg-background/80 backdrop-blur-sm transition-opacity duration-200 ease-out data-[closed]:opacity-0 data-[starting-style]:opacity-0 data-[ending-style]:opacity-0" />
@@ -197,7 +246,10 @@ export function PackSelectionDialog({ open, onOpenChange, disabled }: PackSelect
                     disabled={disabled ?? false}
                     busy={busy}
                     applying={applying}
-                    onApply={handleApply}
+                    onApply={(name) => {
+                      const pack = packs.find((p) => p.name === name)
+                      if (pack) handleSelectPack(pack)
+                    }}
                   />
                 </StaggerItem>
               ))}
@@ -214,5 +266,15 @@ export function PackSelectionDialog({ open, onOpenChange, disabled }: PackSelect
         </Dialog.Popup>
       </Dialog.Portal>
     </Dialog.Root>
+
+      <PackApplyPreviewDialog
+        open={selectedPack !== null}
+        onOpenChange={(isOpen) => { if (!isOpen) setSelectedPack(null) }}
+        pack={selectedPack}
+        currentDepartments={currentDepts}
+        onApply={handleApplyWithMode}
+        applying={applying !== null}
+      />
+    </>
   )
 }

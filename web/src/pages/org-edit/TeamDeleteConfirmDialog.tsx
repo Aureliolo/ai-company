@@ -1,0 +1,72 @@
+import { useState } from 'react'
+import type { TeamConfig } from '@/api/types'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
+import { SelectField } from '@/components/ui/select-field'
+
+export interface TeamDeleteConfirmDialogProps {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  team: TeamConfig | null
+  siblingTeams: readonly TeamConfig[]
+  onConfirm: (teamName: string, reassignTo?: string) => Promise<void>
+  loading?: boolean
+}
+
+export function TeamDeleteConfirmDialog({
+  open,
+  onOpenChange,
+  team,
+  siblingTeams,
+  onConfirm,
+  loading,
+}: TeamDeleteConfirmDialogProps) {
+  const [reassignTo, setReassignTo] = useState('')
+
+  const memberCount = team?.members.length ?? 0
+  const hasMembers = memberCount > 0
+  const hasSiblings = siblingTeams.length > 0
+
+  const description = hasMembers
+    ? `The ${memberCount} member${memberCount !== 1 ? 's' : ''} of this team will ${
+        reassignTo
+          ? `be reassigned to "${reassignTo}".`
+          : 'become direct reports of the department head.'
+      }`
+    : 'This team has no members.'
+
+  return (
+    <ConfirmDialog
+      open={open}
+      onOpenChange={(isOpen) => {
+        if (!isOpen) setReassignTo('')
+        onOpenChange(isOpen)
+      }}
+      title={`Delete team "${team?.name ?? ''}"?`}
+      description={description}
+      variant="destructive"
+      confirmLabel="Delete"
+      onConfirm={async () => {
+        if (team) {
+          await onConfirm(team.name, reassignTo || undefined)
+        }
+      }}
+      loading={loading}
+    >
+      {hasMembers && hasSiblings && (
+        <div className="mt-3">
+          <SelectField
+            label="Reassign members to"
+            value={reassignTo}
+            onChange={setReassignTo}
+            hint="Optional -- leave empty to unassign members"
+            placeholder="None (unassign)"
+            options={siblingTeams.map((t) => ({
+              value: t.name,
+              label: t.name,
+            }))}
+          />
+        </div>
+      )}
+    </ConfirmDialog>
+  )
+}

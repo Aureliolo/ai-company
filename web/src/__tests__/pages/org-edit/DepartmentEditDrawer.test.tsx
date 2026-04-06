@@ -1,17 +1,20 @@
 import { render, screen, fireEvent } from '@testing-library/react'
 import { DepartmentEditDrawer } from '@/pages/org-edit/DepartmentEditDrawer'
-import { makeDepartment, makeDepartmentHealth } from '../../helpers/factories'
+import { makeCompanyConfig, makeDepartment, makeDepartmentHealth } from '../../helpers/factories'
 
 // Save + Delete are disabled while the backend CRUD endpoints are
 // pending (#1081).  When the endpoints land, remove the
 // "disables Save+Delete" test and restore the click-behaviour tests
 // that were here previously -- see git history on this file.
 
+const noopAsync = vi.fn().mockResolvedValue(undefined)
+
 describe('DepartmentEditDrawer', () => {
   const dept = makeDepartment('engineering', {
-    teams: [{ name: 'Backend', members: ['alice', 'bob'] }],
+    teams: [{ name: 'Backend', lead: 'alice', members: ['alice', 'bob'] }],
   })
   const health = makeDepartmentHealth('engineering')
+  const config = makeCompanyConfig()
   const mockOnUpdate = vi.fn().mockResolvedValue(dept)
   const mockOnDelete = vi.fn().mockResolvedValue(undefined)
   const mockOnClose = vi.fn()
@@ -24,8 +27,13 @@ describe('DepartmentEditDrawer', () => {
         onClose={mockOnClose}
         department={props?.department ?? dept}
         health={resolvedHealth}
+        config={config}
         onUpdate={mockOnUpdate}
         onDelete={mockOnDelete}
+        onCreateTeam={noopAsync}
+        onUpdateTeam={noopAsync}
+        onDeleteTeam={noopAsync}
+        onReorderTeams={noopAsync}
         saving={false}
       />,
     )
@@ -52,23 +60,27 @@ describe('DepartmentEditDrawer', () => {
     expect(screen.queryByRole('meter')).not.toBeInTheDocument()
   })
 
-  it('renders teams summary', () => {
+  it('renders teams section with team cards', () => {
     renderDrawer()
     expect(screen.getByText('Backend')).toBeInTheDocument()
-    expect(screen.getByText(/2 members/)).toBeInTheDocument()
+    expect(screen.getByText('Add Team')).toBeInTheDocument()
   })
 
-  it('disables Save and Delete buttons with #1081 tooltip', () => {
+  it('disables Save and dept Delete buttons with #1081 tooltip', () => {
     renderDrawer()
-    const saveButton = screen.getByRole('button', { name: /save/i })
-    const deleteButton = screen.getByRole('button', { name: /delete/i })
+    const saveButton = screen.getByRole('button', { name: /^save$/i })
+    // Department-level delete button (distinguished from team delete icons)
+    const deptDeleteButtons = screen.getAllByRole('button', { name: /delete/i })
+    const deptDelete = deptDeleteButtons.find(
+      (btn) => btn.textContent?.toLowerCase().includes('delete') && btn.getAttribute('title')?.includes('1081'),
+    )
     expect(saveButton).toBeDisabled()
-    expect(deleteButton).toBeDisabled()
+    expect(deptDelete).toBeDefined()
+    expect(deptDelete).toBeDisabled()
     expect(saveButton.getAttribute('title') ?? '').toContain('1081')
-    expect(deleteButton.getAttribute('title') ?? '').toContain('1081')
     // Clicking the disabled buttons must not call the mutation props.
     fireEvent.click(saveButton)
-    fireEvent.click(deleteButton)
+    if (deptDelete) fireEvent.click(deptDelete)
     expect(mockOnUpdate).not.toHaveBeenCalled()
     expect(mockOnDelete).not.toHaveBeenCalled()
   })

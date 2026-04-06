@@ -18,6 +18,10 @@ function renderTab(overrides?: Partial<DepartmentsTabProps>) {
     onDeleteDepartment: noopAsync,
     onReorderDepartments: noopAsync,
     optimisticReorderDepartments: noopRollback,
+    onCreateTeam: noopAsync,
+    onUpdateTeam: noopAsync,
+    onDeleteTeam: noopAsync,
+    onReorderTeams: noopAsync,
     ...overrides,
   }
   return render(<DepartmentsTab {...props} />)

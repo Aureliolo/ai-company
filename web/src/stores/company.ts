@@ -11,6 +11,10 @@ import {
   updateAgentOrg as apiUpdateAgent,
   deleteAgent as apiDeleteAgent,
   reorderAgents as apiReorderAgents,
+  createTeam as apiCreateTeam,
+  updateTeam as apiUpdateTeam,
+  deleteTeam as apiDeleteTeam,
+  reorderTeams as apiReorderTeams,
 } from '@/api/endpoints/company'
 import { getErrorMessage } from '@/utils/errors'
 import { createLogger } from '@/lib/logger'
@@ -19,12 +23,15 @@ import type {
   CompanyConfig,
   CreateAgentOrgRequest,
   CreateDepartmentRequest,
+  CreateTeamRequest,
   Department,
   DepartmentHealth,
   DepartmentName,
+  TeamConfig,
   UpdateAgentOrgRequest,
   UpdateCompanyRequest,
   UpdateDepartmentRequest,
+  UpdateTeamRequest,
   WsEvent,
 } from '@/api/types'
 
@@ -52,6 +59,11 @@ interface CompanyState {
   updateAgent: (name: string, data: UpdateAgentOrgRequest) => Promise<AgentConfig>
   deleteAgent: (name: string) => Promise<void>
   reorderAgents: (deptName: string, orderedIds: string[]) => Promise<void>
+
+  createTeam: (deptName: string, data: CreateTeamRequest) => Promise<TeamConfig>
+  updateTeam: (deptName: string, teamName: string, data: UpdateTeamRequest) => Promise<TeamConfig>
+  deleteTeam: (deptName: string, teamName: string, reassignTo?: string) => Promise<void>
+  reorderTeams: (deptName: string, orderedNames: string[]) => Promise<void>
 
   optimisticReorderDepartments: (orderedNames: string[]) => () => void
   optimisticReorderAgents: (deptName: string, orderedIds: string[]) => () => void
@@ -245,6 +257,102 @@ export const useCompanyStore = create<CompanyState>()((set, get) => ({
             ...prev,
             departments: prev.departments.map((d) =>
               d.name === deptName ? updatedDept : d,
+            ),
+          },
+        } : {}),
+      }))
+    } catch (err) {
+      set((s) => ({ savingCount: Math.max(0, s.savingCount - 1), saveError: getErrorMessage(err) }))
+      throw err
+    }
+  },
+
+  // ── Team mutations ────────────────────────────────────────
+
+  createTeam: async (deptName, data) => {
+    set((s) => ({ savingCount: s.savingCount + 1, saveError: null }))
+    try {
+      const team = await apiCreateTeam(deptName, data)
+      const prev = get().config
+      set((s) => ({
+        savingCount: Math.max(0, s.savingCount - 1),
+        ...(prev ? {
+          config: {
+            ...prev,
+            departments: prev.departments.map((d) =>
+              d.name === deptName ? { ...d, teams: [...d.teams, team] } : d,
+            ),
+          },
+        } : {}),
+      }))
+      return team
+    } catch (err) {
+      set((s) => ({ savingCount: Math.max(0, s.savingCount - 1), saveError: getErrorMessage(err) }))
+      throw err
+    }
+  },
+
+  updateTeam: async (deptName, teamName, data) => {
+    set((s) => ({ savingCount: s.savingCount + 1, saveError: null }))
+    try {
+      const team = await apiUpdateTeam(deptName, teamName, data)
+      const prev = get().config
+      set((s) => ({
+        savingCount: Math.max(0, s.savingCount - 1),
+        ...(prev ? {
+          config: {
+            ...prev,
+            departments: prev.departments.map((d) =>
+              d.name === deptName
+                ? { ...d, teams: d.teams.map((t) => (t.name === teamName ? team : t)) }
+                : d,
+            ),
+          },
+        } : {}),
+      }))
+      return team
+    } catch (err) {
+      set((s) => ({ savingCount: Math.max(0, s.savingCount - 1), saveError: getErrorMessage(err) }))
+      throw err
+    }
+  },
+
+  deleteTeam: async (deptName, teamName, reassignTo) => {
+    set((s) => ({ savingCount: s.savingCount + 1, saveError: null }))
+    try {
+      await apiDeleteTeam(deptName, teamName, reassignTo)
+      const prev = get().config
+      set((s) => ({
+        savingCount: Math.max(0, s.savingCount - 1),
+        ...(prev ? {
+          config: {
+            ...prev,
+            departments: prev.departments.map((d) =>
+              d.name === deptName
+                ? { ...d, teams: d.teams.filter((t) => t.name !== teamName) }
+                : d,
+            ),
+          },
+        } : {}),
+      }))
+    } catch (err) {
+      set((s) => ({ savingCount: Math.max(0, s.savingCount - 1), saveError: getErrorMessage(err) }))
+      throw err
+    }
+  },
+
+  reorderTeams: async (deptName, orderedNames) => {
+    set((s) => ({ savingCount: s.savingCount + 1, saveError: null }))
+    try {
+      const reordered = await apiReorderTeams(deptName, { team_names: orderedNames })
+      const prev = get().config
+      set((s) => ({
+        savingCount: Math.max(0, s.savingCount - 1),
+        ...(prev ? {
+          config: {
+            ...prev,
+            departments: prev.departments.map((d) =>
+              d.name === deptName ? { ...d, teams: reordered } : d,
             ),
           },
         } : {}),

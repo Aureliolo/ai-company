@@ -111,3 +111,13 @@ API_CEREMONY_POLICY_RESOLVED: Final[str] = "api.ceremony_policy.resolved"
 API_CEREMONY_POLICY_ACTIVE_QUERIED: Final[str] = "api.ceremony_policy.active_queried"
 API_CEREMONY_POLICY_DEPT_UPDATED: Final[str] = "api.ceremony_policy.department_updated"
 API_CEREMONY_POLICY_DEPT_CLEARED: Final[str] = "api.ceremony_policy.department_cleared"
+
+# Team CRUD
+API_TEAM_CREATED: Final[str] = "api.team.created"
+API_TEAM_UPDATED: Final[str] = "api.team.updated"
+API_TEAM_DELETED: Final[str] = "api.team.deleted"
+API_TEAM_REORDERED: Final[str] = "api.team.reordered"
+
+# Budget validation
+API_BUDGET_REBALANCE_APPLIED: Final[str] = "api.budget.rebalance_applied"
+API_BUDGET_VALIDATION_FAILED: Final[str] = "api.budget.validation_failed"

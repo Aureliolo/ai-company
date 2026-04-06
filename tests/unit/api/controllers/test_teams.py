@@ -1,0 +1,431 @@
+"""Tests for team CRUD controller."""
+
+import json
+from typing import Any
+
+import pytest
+from litestar.testing import TestClient
+
+from tests.unit.api.conftest import make_auth_headers
+
+# ── Helpers ────────────────────────────────────────────────
+
+
+def _seed_departments(
+    test_client: TestClient[Any],
+    depts: list[dict[str, Any]],
+) -> None:
+    """Seed departments into settings via the settings endpoint."""
+    test_client.put(
+        "/api/v1/settings/company/departments",
+        json={"value": json.dumps(depts)},
+        headers=make_auth_headers("ceo"),
+    )
+
+
+def _dept_with_teams(
+    name: str = "engineering",
+    budget: float = 60.0,
+    teams: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    return {
+        "name": name,
+        "budget_percent": budget,
+        "teams": teams or [],
+    }
+
+
+def _team(
+    name: str = "backend",
+    lead: str = "alice",
+    members: list[str] | None = None,
+) -> dict[str, Any]:
+    return {
+        "name": name,
+        "lead": lead,
+        "members": members or [],
+    }
+
+
+# ── Create Team ──────────────────────────────────────────
+
+
+@pytest.mark.unit
+class TestCreateTeam:
+    def test_create_team_success(self, test_client: TestClient[Any]) -> None:
+        _seed_departments(test_client, [_dept_with_teams()])
+        resp = test_client.post(
+            "/api/v1/departments/engineering/teams",
+            json={"name": "backend", "lead": "alice", "members": ["bob"]},
+        )
+        assert resp.status_code == 201
+        body = resp.json()
+        assert body["data"]["name"] == "backend"
+        assert body["data"]["lead"] == "alice"
+        assert body["data"]["members"] == ["bob"]
+
+    def test_create_team_department_not_found(
+        self,
+        test_client: TestClient[Any],
+    ) -> None:
+        resp = test_client.post(
+            "/api/v1/departments/nonexistent/teams",
+            json={"name": "backend", "lead": "alice"},
+        )
+        assert resp.status_code == 404
+
+    def test_create_team_duplicate_name_conflict(
+        self,
+        test_client: TestClient[Any],
+    ) -> None:
+        _seed_departments(
+            test_client,
+            [_dept_with_teams(teams=[_team("backend")])],
+        )
+        resp = test_client.post(
+            "/api/v1/departments/engineering/teams",
+            json={"name": "backend", "lead": "bob"},
+        )
+        assert resp.status_code == 409
+
+    def test_create_team_duplicate_name_case_insensitive(
+        self,
+        test_client: TestClient[Any],
+    ) -> None:
+        _seed_departments(
+            test_client,
+            [_dept_with_teams(teams=[_team("Backend")])],
+        )
+        resp = test_client.post(
+            "/api/v1/departments/engineering/teams",
+            json={"name": "backend", "lead": "bob"},
+        )
+        assert resp.status_code == 409
+
+    def test_create_team_duplicate_members_rejected(
+        self,
+        test_client: TestClient[Any],
+    ) -> None:
+        _seed_departments(test_client, [_dept_with_teams()])
+        resp = test_client.post(
+            "/api/v1/departments/engineering/teams",
+            json={"name": "t1", "lead": "a", "members": ["bob", "bob"]},
+        )
+        assert resp.status_code == 422
+
+    def test_create_team_blank_name_rejected(
+        self,
+        test_client: TestClient[Any],
+    ) -> None:
+        _seed_departments(test_client, [_dept_with_teams()])
+        resp = test_client.post(
+            "/api/v1/departments/engineering/teams",
+            json={"name": "  ", "lead": "alice"},
+        )
+        assert resp.status_code in {400, 422}
+
+    def test_create_team_no_members_defaults_empty(
+        self,
+        test_client: TestClient[Any],
+    ) -> None:
+        _seed_departments(test_client, [_dept_with_teams()])
+        resp = test_client.post(
+            "/api/v1/departments/engineering/teams",
+            json={"name": "backend", "lead": "alice"},
+        )
+        assert resp.status_code == 201
+        assert resp.json()["data"]["members"] == []
+
+    def test_create_team_requires_write_access(
+        self,
+        test_client: TestClient[Any],
+    ) -> None:
+        _seed_departments(test_client, [_dept_with_teams()])
+        resp = test_client.post(
+            "/api/v1/departments/engineering/teams",
+            json={"name": "backend", "lead": "alice"},
+            headers=make_auth_headers("observer"),
+        )
+        assert resp.status_code == 403
+
+
+# ── Update Team ──────────────────────────────────────────
+
+
+@pytest.mark.unit
+class TestUpdateTeam:
+    def test_update_team_rename(self, test_client: TestClient[Any]) -> None:
+        _seed_departments(
+            test_client,
+            [_dept_with_teams(teams=[_team("backend", lead="alice")])],
+        )
+        resp = test_client.patch(
+            "/api/v1/departments/engineering/teams/backend",
+            json={"name": "platform"},
+        )
+        assert resp.status_code == 200
+        assert resp.json()["data"]["name"] == "platform"
+        assert resp.json()["data"]["lead"] == "alice"
+
+    def test_update_team_change_lead(
+        self,
+        test_client: TestClient[Any],
+    ) -> None:
+        _seed_departments(
+            test_client,
+            [_dept_with_teams(teams=[_team("backend", lead="alice")])],
+        )
+        resp = test_client.patch(
+            "/api/v1/departments/engineering/teams/backend",
+            json={"lead": "bob"},
+        )
+        assert resp.status_code == 200
+        assert resp.json()["data"]["lead"] == "bob"
+
+    def test_update_team_replace_members(
+        self,
+        test_client: TestClient[Any],
+    ) -> None:
+        _seed_departments(
+            test_client,
+            [_dept_with_teams(teams=[_team("backend", members=["a"])])],
+        )
+        resp = test_client.patch(
+            "/api/v1/departments/engineering/teams/backend",
+            json={"members": ["x", "y"]},
+        )
+        assert resp.status_code == 200
+        assert resp.json()["data"]["members"] == ["x", "y"]
+
+    def test_update_team_not_found(
+        self,
+        test_client: TestClient[Any],
+    ) -> None:
+        _seed_departments(test_client, [_dept_with_teams()])
+        resp = test_client.patch(
+            "/api/v1/departments/engineering/teams/nonexistent",
+            json={"name": "new-name"},
+        )
+        assert resp.status_code == 404
+
+    def test_update_team_rename_conflict(
+        self,
+        test_client: TestClient[Any],
+    ) -> None:
+        _seed_departments(
+            test_client,
+            [
+                _dept_with_teams(
+                    teams=[_team("backend"), _team("frontend", lead="bob")],
+                ),
+            ],
+        )
+        resp = test_client.patch(
+            "/api/v1/departments/engineering/teams/backend",
+            json={"name": "frontend"},
+        )
+        assert resp.status_code == 409
+
+    def test_update_team_rename_same_name_ok(
+        self,
+        test_client: TestClient[Any],
+    ) -> None:
+        """Renaming a team to its own name should succeed."""
+        _seed_departments(
+            test_client,
+            [_dept_with_teams(teams=[_team("backend")])],
+        )
+        resp = test_client.patch(
+            "/api/v1/departments/engineering/teams/backend",
+            json={"name": "backend"},
+        )
+        assert resp.status_code == 200
+
+    def test_update_team_department_not_found(
+        self,
+        test_client: TestClient[Any],
+    ) -> None:
+        resp = test_client.patch(
+            "/api/v1/departments/nonexistent/teams/backend",
+            json={"name": "new"},
+        )
+        assert resp.status_code == 404
+
+
+# ── Delete Team ──────────────────────────────────────────
+
+
+@pytest.mark.unit
+class TestDeleteTeam:
+    def test_delete_team_success(
+        self,
+        test_client: TestClient[Any],
+    ) -> None:
+        _seed_departments(
+            test_client,
+            [_dept_with_teams(teams=[_team("backend")])],
+        )
+        resp = test_client.delete(
+            "/api/v1/departments/engineering/teams/backend",
+        )
+        assert resp.status_code == 204
+
+        # Verify team is gone.
+        resp2 = test_client.patch(
+            "/api/v1/departments/engineering/teams/backend",
+            json={"name": "backend"},
+        )
+        assert resp2.status_code == 404
+
+    def test_delete_team_not_found(
+        self,
+        test_client: TestClient[Any],
+    ) -> None:
+        _seed_departments(test_client, [_dept_with_teams()])
+        resp = test_client.delete(
+            "/api/v1/departments/engineering/teams/nonexistent",
+        )
+        assert resp.status_code == 404
+
+    def test_delete_team_with_reassign(
+        self,
+        test_client: TestClient[Any],
+    ) -> None:
+        _seed_departments(
+            test_client,
+            [
+                _dept_with_teams(
+                    teams=[
+                        _team("backend", lead="alice", members=["bob"]),
+                        _team("frontend", lead="carol", members=["dave"]),
+                    ],
+                ),
+            ],
+        )
+        resp = test_client.delete(
+            "/api/v1/departments/engineering/teams/backend?reassign_to=frontend",
+        )
+        assert resp.status_code == 204
+
+        # Verify backend members merged into frontend.
+        resp2 = test_client.patch(
+            "/api/v1/departments/engineering/teams/frontend",
+            json={},
+        )
+        assert resp2.status_code == 200
+        members = resp2.json()["data"]["members"]
+        assert "bob" in members
+        assert "dave" in members
+
+    def test_delete_team_reassign_target_not_found(
+        self,
+        test_client: TestClient[Any],
+    ) -> None:
+        _seed_departments(
+            test_client,
+            [_dept_with_teams(teams=[_team("backend")])],
+        )
+        resp = test_client.delete(
+            "/api/v1/departments/engineering/teams/backend?reassign_to=nonexistent",
+        )
+        assert resp.status_code == 404
+
+    def test_delete_team_reassign_deduplicates_members(
+        self,
+        test_client: TestClient[Any],
+    ) -> None:
+        _seed_departments(
+            test_client,
+            [
+                _dept_with_teams(
+                    teams=[
+                        _team("a", lead="lead-a", members=["shared"]),
+                        _team("b", lead="lead-b", members=["shared"]),
+                    ],
+                ),
+            ],
+        )
+        resp = test_client.delete(
+            "/api/v1/departments/engineering/teams/a?reassign_to=b",
+        )
+        assert resp.status_code == 204
+
+        resp2 = test_client.patch(
+            "/api/v1/departments/engineering/teams/b",
+            json={},
+        )
+        members = resp2.json()["data"]["members"]
+        # "shared" should appear only once.
+        assert members.count("shared") == 1
+
+
+# ── Reorder Teams ────────────────────────────────────────
+
+
+@pytest.mark.unit
+class TestReorderTeams:
+    def test_reorder_teams_success(
+        self,
+        test_client: TestClient[Any],
+    ) -> None:
+        _seed_departments(
+            test_client,
+            [
+                _dept_with_teams(
+                    teams=[
+                        _team("alpha", lead="a"),
+                        _team("beta", lead="b"),
+                        _team("gamma", lead="c"),
+                    ],
+                ),
+            ],
+        )
+        resp = test_client.patch(
+            "/api/v1/departments/engineering/teams/reorder",
+            json={"team_names": ["gamma", "alpha", "beta"]},
+        )
+        assert resp.status_code == 200
+        names = [t["name"] for t in resp.json()["data"]]
+        assert names == ["gamma", "alpha", "beta"]
+
+    def test_reorder_teams_missing_name_rejected(
+        self,
+        test_client: TestClient[Any],
+    ) -> None:
+        _seed_departments(
+            test_client,
+            [
+                _dept_with_teams(
+                    teams=[_team("alpha"), _team("beta")],
+                ),
+            ],
+        )
+        resp = test_client.patch(
+            "/api/v1/departments/engineering/teams/reorder",
+            json={"team_names": ["alpha"]},
+        )
+        assert resp.status_code == 422
+
+    def test_reorder_teams_extra_name_rejected(
+        self,
+        test_client: TestClient[Any],
+    ) -> None:
+        _seed_departments(
+            test_client,
+            [_dept_with_teams(teams=[_team("alpha")])],
+        )
+        resp = test_client.patch(
+            "/api/v1/departments/engineering/teams/reorder",
+            json={"team_names": ["alpha", "nonexistent"]},
+        )
+        assert resp.status_code == 422
+
+    def test_reorder_teams_department_not_found(
+        self,
+        test_client: TestClient[Any],
+    ) -> None:
+        resp = test_client.patch(
+            "/api/v1/departments/nonexistent/teams/reorder",
+            json={"team_names": []},
+        )
+        assert resp.status_code == 404

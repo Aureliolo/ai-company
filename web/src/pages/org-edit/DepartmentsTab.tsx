@@ -17,9 +17,12 @@ import { cn } from '@/lib/utils'
 import type {
   CompanyConfig,
   CreateDepartmentRequest,
+  CreateTeamRequest,
   Department,
   DepartmentHealth,
+  TeamConfig,
   UpdateDepartmentRequest,
+  UpdateTeamRequest,
 } from '@/api/types'
 import { SectionCard } from '@/components/ui/section-card'
 import { EmptyState } from '@/components/ui/empty-state'
@@ -40,6 +43,10 @@ export interface DepartmentsTabProps {
   onDeleteDepartment: (name: string) => Promise<void>
   onReorderDepartments: (orderedNames: string[]) => Promise<void>
   optimisticReorderDepartments: (orderedNames: string[]) => () => void
+  onCreateTeam: (deptName: string, data: CreateTeamRequest) => Promise<TeamConfig>
+  onUpdateTeam: (deptName: string, teamName: string, data: UpdateTeamRequest) => Promise<TeamConfig>
+  onDeleteTeam: (deptName: string, teamName: string, reassignTo?: string) => Promise<void>
+  onReorderTeams: (deptName: string, orderedNames: string[]) => Promise<void>
 }
 
 function SortableDepartmentCard({
@@ -123,6 +130,10 @@ export function DepartmentsTab({
   onDeleteDepartment,
   onReorderDepartments,
   optimisticReorderDepartments,
+  onCreateTeam,
+  onUpdateTeam,
+  onDeleteTeam,
+  onReorderTeams,
 }: DepartmentsTabProps) {
   const [createOpen, setCreateOpen] = useState(false)
   const [packOpen, setPackOpen] = useState(false)
@@ -361,8 +372,13 @@ export function DepartmentsTab({
         onClose={() => setEditDept(null)}
         department={editDept}
         health={editHealth}
+        config={config}
         onUpdate={onUpdateDepartment}
         onDelete={onDeleteDepartment}
+        onCreateTeam={onCreateTeam}
+        onUpdateTeam={onUpdateTeam}
+        onDeleteTeam={onDeleteTeam}
+        onReorderTeams={onReorderTeams}
         saving={saving}
       />
 

@@ -7,11 +7,14 @@ import type {
   CompanyConfig,
   CreateAgentOrgRequest,
   CreateDepartmentRequest,
+  CreateTeamRequest,
   Department,
   DepartmentHealth,
+  TeamConfig,
   UpdateAgentOrgRequest,
   UpdateCompanyRequest,
   UpdateDepartmentRequest,
+  UpdateTeamRequest,
   WsChannel,
 } from '@/api/types'
 
@@ -37,6 +40,10 @@ export interface UseOrgEditDataReturn {
   updateAgent: (name: string, data: UpdateAgentOrgRequest) => Promise<AgentConfig>
   deleteAgent: (name: string) => Promise<void>
   reorderAgents: (deptName: string, orderedIds: string[]) => Promise<void>
+  createTeam: (deptName: string, data: CreateTeamRequest) => Promise<TeamConfig>
+  updateTeam: (deptName: string, teamName: string, data: UpdateTeamRequest) => Promise<TeamConfig>
+  deleteTeam: (deptName: string, teamName: string, reassignTo?: string) => Promise<void>
+  reorderTeams: (deptName: string, orderedNames: string[]) => Promise<void>
   optimisticReorderDepartments: (orderedNames: string[]) => () => void
   optimisticReorderAgents: (deptName: string, orderedIds: string[]) => () => void
 }
@@ -59,6 +66,10 @@ export function useOrgEditData(): UseOrgEditDataReturn {
   const updateAgent = useCompanyStore((s) => s.updateAgent)
   const deleteAgent = useCompanyStore((s) => s.deleteAgent)
   const reorderAgents = useCompanyStore((s) => s.reorderAgents)
+  const createTeam = useCompanyStore((s) => s.createTeam)
+  const updateTeam = useCompanyStore((s) => s.updateTeam)
+  const deleteTeam = useCompanyStore((s) => s.deleteTeam)
+  const reorderTeams = useCompanyStore((s) => s.reorderTeams)
   const optimisticReorderDepartments = useCompanyStore((s) => s.optimisticReorderDepartments)
   const optimisticReorderAgents = useCompanyStore((s) => s.optimisticReorderAgents)
 
@@ -126,6 +137,10 @@ export function useOrgEditData(): UseOrgEditDataReturn {
     updateAgent,
     deleteAgent,
     reorderAgents,
+    createTeam,
+    updateTeam,
+    deleteTeam,
+    reorderTeams,
     optimisticReorderDepartments,
     optimisticReorderAgents,
   }

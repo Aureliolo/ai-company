@@ -24,6 +24,10 @@ const defaultHookReturn: UseOrgEditDataReturn = {
   updateAgent: noopAsync,
   deleteAgent: noopAsync,
   reorderAgents: noopAsync,
+  createTeam: noopAsync,
+  updateTeam: noopAsync,
+  deleteTeam: noopAsync,
+  reorderTeams: noopAsync,
   optimisticReorderDepartments: noopRollback,
   optimisticReorderAgents: noopRollback,
 }

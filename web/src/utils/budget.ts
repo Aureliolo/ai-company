@@ -366,3 +366,92 @@ export function computeBudgetMetricCards(
 
   return [spendCard, remainingCard, avgDayCard, daysLeftCard]
 }
+
+// ── Pack-Apply Budget Preview ─────────────────────────────
+
+export interface BudgetPreviewDept {
+  readonly name: string
+  readonly before: number
+  readonly after: number
+}
+
+export interface BudgetPreview {
+  readonly currentTotal: number
+  readonly packTotal: number
+  readonly projectedTotal: number
+  readonly scaleFactor: number
+  readonly departments: readonly BudgetPreviewDept[]
+}
+
+/**
+ * Client-side budget preview for pack application.
+ *
+ * Mirrors the backend `compute_rebalance(mode=SCALE_EXISTING)` logic
+ * so the preview dialog can show accurate before/after numbers.
+ */
+export function computeBudgetPreview(
+  currentDepts: readonly { name: string; budget_percent?: number }[],
+  packDeptBudgets: readonly { name: string; budget_percent: number }[],
+): BudgetPreview {
+  const currentTotal = currentDepts.reduce(
+    (sum, d) => sum + (d.budget_percent ?? 0),
+    0,
+  )
+  const packTotal = packDeptBudgets.reduce(
+    (sum, d) => sum + d.budget_percent,
+    0,
+  )
+  const combined = currentTotal + packTotal
+
+  if (combined <= 100 || currentTotal <= 0) {
+    return {
+      currentTotal,
+      packTotal,
+      projectedTotal: combined,
+      scaleFactor: 1,
+      departments: [
+        ...currentDepts.map((d) => ({
+          name: d.name,
+          before: d.budget_percent ?? 0,
+          after: d.budget_percent ?? 0,
+        })),
+        ...packDeptBudgets.map((d) => ({
+          name: d.name,
+          before: 0,
+          after: d.budget_percent,
+        })),
+      ],
+    }
+  }
+
+  const targetExisting = 100 - packTotal
+  const factor = Math.max(0, Math.min(1, targetExisting / currentTotal))
+
+  const scaledExisting = currentDepts.map((d) => {
+    const before = d.budget_percent ?? 0
+    return {
+      name: d.name,
+      before,
+      after: Math.round(before * factor * 100) / 100,
+    }
+  })
+
+  const newDepts = packDeptBudgets.map((d) => ({
+    name: d.name,
+    before: 0,
+    after: d.budget_percent,
+  }))
+
+  const finalTotal = [...scaledExisting, ...newDepts].reduce(
+    (sum, d) => sum + d.after,
+    0,
+  )
+
+  return {
+    currentTotal,
+    packTotal,
+    projectedTotal: Math.round(finalTotal * 100) / 100,
+    scaleFactor: Math.round(factor * 1000) / 1000,
+    departments: [...scaledExisting, ...newDepts],
+  }
+}

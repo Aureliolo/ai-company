@@ -12,9 +12,10 @@ from pydantic import BaseModel, ConfigDict, Field
 from synthorg.api.controllers.setup_agents import expand_template_agents
 from synthorg.api.controllers.setup_helpers import AGENT_LOCK as _AGENT_LOCK
 from synthorg.api.dto import ApiResponse
-from synthorg.api.errors import ApiError, NotFoundError
+from synthorg.api.errors import ApiError, ConflictError, NotFoundError
 from synthorg.api.guards import require_ceo_or_manager, require_read_access
 from synthorg.api.state import AppState  # noqa: TC001
+from synthorg.budget.rebalance import RebalanceMode, compute_rebalance
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.observability import get_logger
 from synthorg.observability.events.template import (
@@ -22,6 +23,8 @@ from synthorg.observability.events.template import (
     TEMPLATE_PACK_APPLY_ERROR,
     TEMPLATE_PACK_APPLY_START,
     TEMPLATE_PACK_APPLY_SUCCESS,
+    TEMPLATE_PACK_BUDGET_REBALANCED,
+    TEMPLATE_PACK_BUDGET_REJECTED,
     TEMPLATE_PACK_LIST,
 )
 from synthorg.settings.errors import SettingNotFoundError
@@ -59,6 +62,10 @@ class ApplyTemplatePackRequest(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
 
     pack_name: NotBlankStr = Field(description="Pack to apply")
+    rebalance_mode: RebalanceMode = Field(
+        default=RebalanceMode.SCALE_EXISTING,
+        description="Budget rebalance strategy for existing departments",
+    )
 
 
 class ApplyTemplatePackResponse(BaseModel):
@@ -69,6 +76,21 @@ class ApplyTemplatePackResponse(BaseModel):
     pack_name: NotBlankStr
     agents_added: int = Field(ge=0)
     departments_added: int = Field(ge=0)
+    budget_before: float = Field(
+        ge=0.0,
+        description="Sum of existing department budgets before apply",
+    )
+    budget_after: float = Field(
+        ge=0.0,
+        description="Sum of all department budgets after apply",
+    )
+    rebalance_mode: RebalanceMode = Field(
+        description="Rebalance strategy used",
+    )
+    scale_factor: float | None = Field(
+        default=None,
+        description="Scale factor applied to existing departments",
+    )
 
 
 # ---- Helpers --------------------------------------------------------------
@@ -218,6 +240,39 @@ async def _apply_pack_to_settings(
             current_depts,
         )
 
+        # Budget rebalancing.
+        rebalance_result = compute_rebalance(
+            existing_depts=current_depts,
+            new_depts=new_depts,
+            mode=data.rebalance_mode,
+        )
+
+        if rebalance_result.rejected:
+            logger.warning(
+                TEMPLATE_PACK_BUDGET_REJECTED,
+                pack_name=data.pack_name,
+                projected_total=rebalance_result.new_total,
+            )
+            msg = (
+                f"Applying pack {data.pack_name!r} would push budget "
+                f"total to {rebalance_result.new_total:.1f}%, exceeding 100%"
+            )
+            raise ConflictError(msg)
+
+        if (
+            rebalance_result.scale_factor is not None
+            and rebalance_result.scale_factor < 1.0
+        ):
+            logger.info(
+                TEMPLATE_PACK_BUDGET_REBALANCED,
+                pack_name=data.pack_name,
+                scale_factor=rebalance_result.scale_factor,
+                old_total=rebalance_result.old_total,
+                new_total=rebalance_result.new_total,
+            )
+
+        final_depts = list(rebalance_result.departments)
+
         settings_svc = app_state.settings_service
         await settings_svc.set(
             "company",
@@ -227,13 +282,17 @@ async def _apply_pack_to_settings(
         await settings_svc.set(
             "company",
             "departments",
-            json.dumps(current_depts + new_depts),
+            json.dumps(final_depts),
         )
 
     return ApplyTemplatePackResponse(
         pack_name=data.pack_name,
         agents_added=len(new_agents),
         departments_added=len(new_depts),
+        budget_before=rebalance_result.old_total,
+        budget_after=rebalance_result.new_total,
+        rebalance_mode=data.rebalance_mode,
+        scale_factor=rebalance_result.scale_factor,
     )
 
 
