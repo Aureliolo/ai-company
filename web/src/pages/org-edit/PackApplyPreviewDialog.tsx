@@ -49,7 +49,7 @@ export function PackApplyPreviewDialog({
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
       <Dialog.Portal>
         <Dialog.Backdrop className="fixed inset-0 z-50 bg-bg-base/80 backdrop-blur-sm transition-[opacity,translate] data-[closed]:opacity-0 data-[starting-style]:opacity-0" />
-        <Dialog.Popup className="fixed top-1/2 left-1/2 z-50 w-full max-w-lg -translate-x-1/2 -translate-y-1/2 rounded-lg border border-border bg-bg-card p-6 shadow-xl transition-[opacity,translate] data-[closed]:scale-95 data-[closed]:opacity-0 data-[starting-style]:scale-95 data-[starting-style]:opacity-0">
+        <Dialog.Popup className="fixed top-1/2 left-1/2 z-50 w-full max-w-lg -translate-x-1/2 -translate-y-1/2 rounded-xl border border-border-bright bg-surface p-card shadow-[var(--so-shadow-card-hover)] transition-[opacity,translate] data-[closed]:scale-95 data-[closed]:opacity-0 data-[starting-style]:scale-95 data-[starting-style]:opacity-0">
           <Dialog.Title className="text-base font-semibold text-text-primary">
             Apply {pack?.display_name ?? 'Pack'}
           </Dialog.Title>

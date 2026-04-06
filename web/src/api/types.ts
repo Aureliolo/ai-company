@@ -609,7 +609,7 @@ export interface Department {
 
 export interface TeamConfig {
   name: string
-  lead?: string
+  lead: string
   readonly members: readonly string[]
 }
 

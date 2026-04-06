@@ -430,6 +430,9 @@ class TeamController(Controller):
             team_idx, team = _find_team(teams, team_name)
 
             if reassign_to is not None:
+                if reassign_to.strip().casefold() == team_name.strip().casefold():
+                    msg = "Cannot reassign members to the team being deleted"
+                    raise ApiValidationError(msg)
                 target_idx, target = _find_team(teams, reassign_to)
                 # Merge members (deduplicate, case-insensitive).
                 existing_members = list(target.get("members", []))
@@ -444,7 +447,6 @@ class TeamController(Controller):
                 teams[target_idx] = updated_target
 
             teams.pop(team_idx)
-            # Adjust target_idx if it was after the removed team.
             dept = {**dept, "teams": teams}
             depts[dept_idx] = dept
 

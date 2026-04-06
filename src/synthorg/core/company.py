@@ -11,7 +11,10 @@ from synthorg.constants import BUDGET_ROUNDING_PRECISION
 from synthorg.core.enums import AutonomyLevel, CompanyType
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.observability import get_logger
-from synthorg.observability.events.company import COMPANY_VALIDATION_ERROR
+from synthorg.observability.events.company import (
+    COMPANY_BUDGET_UNDER_ALLOCATED,
+    COMPANY_VALIDATION_ERROR,
+)
 from synthorg.security.autonomy.models import AutonomyConfig
 from synthorg.security.timeout.config import (
     ApprovalTimeoutConfig,
@@ -641,10 +644,8 @@ class Company(BaseModel):
             raise ValueError(msg)
         if total > 0 and round(total, BUDGET_ROUNDING_PRECISION) < max_budget_percent:
             logger.info(
-                COMPANY_VALIDATION_ERROR,
-                warning=(
-                    f"Department budgets sum to {total:.2f}%, "
-                    f"under {max_budget_percent:.0f}%"
-                ),
+                COMPANY_BUDGET_UNDER_ALLOCATED,
+                total_percent=round(total, BUDGET_ROUNDING_PRECISION),
+                max_percent=max_budget_percent,
             )
         return self

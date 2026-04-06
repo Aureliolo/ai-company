@@ -25,7 +25,6 @@ import { TeamEditDialog } from './TeamEditDialog'
 import { TeamDeleteConfirmDialog } from './TeamDeleteConfirmDialog'
 
 export interface TeamListSectionProps {
-  departmentName: string
   teams: readonly TeamConfig[]
   saving: boolean
   onCreateTeam: (data: CreateTeamRequest) => Promise<TeamConfig>

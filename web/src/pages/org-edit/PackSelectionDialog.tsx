@@ -246,10 +246,7 @@ export function PackSelectionDialog({ open, onOpenChange, disabled }: PackSelect
                     disabled={disabled ?? false}
                     busy={busy}
                     applying={applying}
-                    onApply={(name) => {
-                      const pack = packs.find((p) => p.name === name)
-                      if (pack) handleSelectPack(pack)
-                    }}
+                    onApply={() => handleSelectPack(pack)}
                   />
                 </StaggerItem>
               ))}

@@ -161,7 +161,6 @@ export function DepartmentEditDrawer({
             )}
 
             <TeamListSection
-              departmentName={department.name}
               teams={department.teams}
               saving={saving}
               onCreateTeam={(data) => onCreateTeam(department.name, data)}

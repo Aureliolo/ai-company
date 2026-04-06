@@ -287,6 +287,19 @@ class TestDeleteTeam:
         )
         assert resp.status_code == 404
 
+    def test_delete_team_self_reassign_rejected(
+        self,
+        test_client: TestClient[Any],
+    ) -> None:
+        _seed_departments(
+            test_client,
+            [_dept_with_teams(teams=[_team("backend", members=["alice"])])],
+        )
+        resp = test_client.delete(
+            "/api/v1/departments/engineering/teams/backend?reassign_to=backend",
+        )
+        assert resp.status_code == 422
+
     def test_delete_team_with_reassign(
         self,
         test_client: TestClient[Any],

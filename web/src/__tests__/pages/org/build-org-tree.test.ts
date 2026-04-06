@@ -299,7 +299,7 @@ describe('buildOrgTree', () => {
         name: 'engineering',
         display_name: 'Engineering',
         teams: [
-          { name: 'backend', members: ['Lead', 'Senior', 'Junior'] },
+          { name: 'backend', lead: 'Lead', members: ['Lead', 'Senior', 'Junior'] },
         ],
       },
     ])

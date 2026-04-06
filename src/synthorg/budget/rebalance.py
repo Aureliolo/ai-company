@@ -9,6 +9,9 @@ from enum import StrEnum
 from typing import Any, NamedTuple
 
 from synthorg.constants import BUDGET_ROUNDING_PRECISION
+from synthorg.observability import get_logger
+
+logger = get_logger(__name__)
 
 
 class RebalanceMode(StrEnum):
