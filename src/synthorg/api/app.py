@@ -528,12 +528,6 @@ def _build_lifecycle(  # noqa: PLR0913, C901
                 await _ticket_cleanup_task
             _ticket_cleanup_task = None
         logger.info(API_APP_SHUTDOWN, version=__version__)
-        if app_state.has_notification_dispatcher:
-            await _try_stop(
-                app_state.notification_dispatcher.close(),
-                API_APP_SHUTDOWN,
-                "Failed to stop notification dispatcher",
-            )
         if _health_prober is not None:
             await _try_stop(
                 _health_prober.stop(),
@@ -559,6 +553,12 @@ def _build_lifecycle(  # noqa: PLR0913, C901
             persistence,
             performance_tracker=app_state._performance_tracker,  # noqa: SLF001
         )
+        if app_state.has_notification_dispatcher:
+            await _try_stop(
+                app_state.notification_dispatcher.close(),
+                API_APP_SHUTDOWN,
+                "Failed to stop notification dispatcher",
+            )
 
     return [on_startup], [on_shutdown]
 

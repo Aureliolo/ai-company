@@ -301,22 +301,20 @@ export const useNotificationsStore = create<NotificationsState>()((set, get) => 
     },
 
     markReadBatch(ids: readonly string[]) {
-      set((state) => ({
-        items: state.items.map((item) =>
-          ids.includes(item.id) ? { ...item, read: true } : item,
-        ),
-        unreadCount: countUnread(
-          state.items.map((item) =>
-            ids.includes(item.id) ? { ...item, read: true } : item,
-          ),
-        ),
-      }))
+      set((state) => {
+        const idSet = new Set(ids)
+        const updated = state.items.map((item) =>
+          idSet.has(item.id) ? { ...item, read: true } : item,
+        )
+        return { items: updated, unreadCount: countUnread(updated) }
+      })
       debouncedPersist(get())
     },
 
     dismissBatch(ids: readonly string[]) {
       set((state) => {
-        const items = state.items.filter((item) => !ids.includes(item.id))
+        const idSet = new Set(ids)
+        const items = state.items.filter((item) => !idSet.has(item.id))
         return { items, unreadCount: countUnread(items) }
       })
       debouncedPersist(get())
