@@ -1,12 +1,17 @@
 #!/usr/bin/env bash
 # check-git-c-cwd.sh
-# PreToolUse hook: blocks `git -C <current-dir>` (pointless),
+# PreToolUse/pre-push hook: blocks `git -C <current-dir>` (pointless),
 # allows `git -C <other-dir>` (legitimate cross-worktree ops).
+# Works in two modes:
+#   1. With JSON stdin from OpenCode: extracts command and checks
+#   2. Without stdin (pre-commit): always passes (not applicable)
 
 set -euo pipefail
 
-INPUT=$(cat)
-COMMAND=$(echo "$INPUT" | jq -r '.tool_input.command // empty')
+# Try to extract command from JSON stdin (OpenCode mode), or skip check if no stdin
+if ! COMMAND=$(jq -r '.tool_input.command // empty' 2>/dev/null); then
+    exit 0
+fi
 
 # Not a git -C command -- no opinion
 if [[ -z "$COMMAND" ]] || ! echo "$COMMAND" | grep -qE 'git[[:space:]]+-C[[:space:]]+'; then

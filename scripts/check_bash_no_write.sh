@@ -9,10 +9,12 @@
 
 set -euo pipefail
 
-COMMAND=$(jq -r '.tool_input.command // ""')
+# Try to extract command from JSON stdin (OpenCode mode), or skip check if no stdin
+if ! COMMAND=$(jq -r '.tool_input.command // ""' 2>/dev/null); then
+    exit 0
+fi
 if [[ -z "$COMMAND" ]]; then
-    echo '{"error": "Failed to parse command from input"}' >&2
-    exit 1
+    exit 0
 fi
 
 deny() {
