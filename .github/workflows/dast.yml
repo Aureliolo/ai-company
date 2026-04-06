@@ -105,7 +105,7 @@ jobs:
           fail_action: false
           cmd_options: >-
             -a -T 20
-            -J report.json -r report.html
+            -J report_json.json -r report_html.html
             -z "-config scanner.threadPerHost=5
                 -config scanner.maxRuleDurationInMins=5
                 -config scanner.maxScanDurationInMins=30"
@@ -117,8 +117,9 @@ jobs:
         with:
           name: zap-reports
           path: |
-            report.json
-            report.html
+            report_json.json
+            report_html.html
+          if-no-files-found: warn
           retention-days: 30
 
       - name: Stop backend
