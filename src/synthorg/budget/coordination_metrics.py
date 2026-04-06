@@ -1,15 +1,18 @@
 """Coordination metrics for multi-agent system tuning.
 
-Pure computation functions for five coordination metrics defined in
+Pure computation functions for nine coordination metrics defined in
 the Operations design page (Coordination Metrics): efficiency, overhead, error
-amplification, message density, and redundancy rate.
+amplification, message density, redundancy rate, Amdahl ceiling, straggler
+gap, token/speedup ratio, and message overhead.
 """
 
+import math
 import statistics
 from typing import TYPE_CHECKING
 
 from pydantic import BaseModel, ConfigDict, Field, computed_field
 
+from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.observability import get_logger
 
 if TYPE_CHECKING:
@@ -156,8 +159,178 @@ class RedundancyRate(BaseModel):
     )
 
 
+class AmdahlCeiling(BaseModel):
+    """Amdahl's Law speedup ceiling for team sizing.
+
+    ``S_max = 1 / (1 - p)`` where ``p`` is the parallelizable
+    fraction of the workload.
+
+    Attributes:
+        parallelizable_fraction: Fraction of workload that can be
+            parallelized (0.0--1.0, exclusive of 1.0).
+        max_speedup: Theoretical maximum speedup (computed).
+        recommended_team_size: Team size at 90% of max speedup.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+
+    parallelizable_fraction: float = Field(
+        ge=0.0,
+        lt=1.0,
+        description="Parallelizable workload fraction (0.0--<1.0)",
+    )
+
+    @computed_field(  # type: ignore[prop-decorator]
+        description="Maximum theoretical speedup",
+    )
+    @property
+    def max_speedup(self) -> float:
+        """Amdahl ceiling: ``1 / (1 - p)``."""
+        return 1.0 / (1.0 - self.parallelizable_fraction)
+
+    @computed_field(  # type: ignore[prop-decorator]
+        description="Team size at 90% of max speedup",
+    )
+    @property
+    def recommended_team_size(self) -> int:
+        """Team size where speedup reaches 90% of the ceiling.
+
+        Derived from ``S(n) = 1 / ((1-p) + p/n) >= 0.9 * S_max``.
+        Solves to ``n >= 9 * p / (1-p)`` (rounded up, minimum 1).
+        """
+        p = self.parallelizable_fraction
+        if p <= 0:
+            return 1
+        n = 9.0 * p / (1.0 - p)
+        return max(1, math.ceil(n))
+
+
+class StragglerGap(BaseModel):
+    """Straggler gap: slowest agent vs mean completion time.
+
+    Diagnostic for decentralized topology inefficiency.
+
+    Attributes:
+        slowest_duration_seconds: Duration of the slowest agent.
+        mean_duration_seconds: Mean duration across all agents.
+        gap_seconds: Absolute gap (slowest - mean, computed).
+        gap_ratio: Relative gap (gap / mean, computed).
+        slowest_agent_id: Identifier of the slowest agent.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+
+    slowest_duration_seconds: float = Field(
+        ge=0.0,
+        description="Slowest agent duration (seconds)",
+    )
+    mean_duration_seconds: float = Field(
+        gt=0.0,
+        description="Mean agent duration (seconds)",
+    )
+    slowest_agent_id: NotBlankStr = Field(
+        description="Identifier of the slowest agent",
+    )
+
+    @computed_field(  # type: ignore[prop-decorator]
+        description="Absolute gap (slowest - mean)",
+    )
+    @property
+    def gap_seconds(self) -> float:
+        """Absolute gap: slowest - mean."""
+        return self.slowest_duration_seconds - self.mean_duration_seconds
+
+    @computed_field(  # type: ignore[prop-decorator]
+        description="Relative gap (gap / mean)",
+    )
+    @property
+    def gap_ratio(self) -> float:
+        """Relative gap: gap / mean."""
+        return self.gap_seconds / self.mean_duration_seconds
+
+
+class TokenSpeedupRatio(BaseModel):
+    """Token cost vs latency speedup ratio.
+
+    Alerts when tokens scale faster than speedup (ratio > 2.0).
+
+    Attributes:
+        token_multiplier: ``tokens_mas / tokens_sas``.
+        latency_speedup: ``duration_sas / duration_mas``.
+        ratio: ``token_multiplier / latency_speedup`` (computed).
+        alert: Whether ratio exceeds 2.0 threshold (computed).
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+
+    token_multiplier: float = Field(
+        gt=0.0,
+        description="Token cost multiplier (MAS / SAS)",
+    )
+    latency_speedup: float = Field(
+        gt=0.0,
+        description="Latency speedup (SAS / MAS)",
+    )
+
+    @computed_field(  # type: ignore[prop-decorator]
+        description="Token/speedup ratio",
+    )
+    @property
+    def ratio(self) -> float:
+        """Token multiplier divided by latency speedup."""
+        return self.token_multiplier / self.latency_speedup
+
+    @computed_field(  # type: ignore[prop-decorator]
+        description="Alert when ratio > 2.0",
+    )
+    @property
+    def alert(self) -> bool:
+        """True when paying disproportionately more tokens than speed gained."""
+        _alert_threshold = 2.0
+        return self.ratio > _alert_threshold
+
+
+class MessageOverhead(BaseModel):
+    """O(n^2) message overhead detection.
+
+    Flags when inter-agent message count suggests quadratic
+    coordination overhead.
+
+    Attributes:
+        team_size: Number of agents in the coordination.
+        message_count: Actual inter-agent message count.
+        quadratic_threshold: Fraction of n^2 that triggers alert.
+        is_quadratic: Whether message count exceeds threshold.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+
+    team_size: int = Field(
+        gt=0,
+        description="Number of coordinating agents",
+    )
+    message_count: int = Field(
+        ge=0,
+        description="Actual inter-agent message count",
+    )
+    quadratic_threshold: float = Field(
+        default=0.5,
+        gt=0.0,
+        le=1.0,
+        description="Fraction of n^2 that triggers alert",
+    )
+
+    @computed_field(  # type: ignore[prop-decorator]
+        description="Whether message growth is quadratic",
+    )
+    @property
+    def is_quadratic(self) -> bool:
+        """True when messages exceed team_size^2 * threshold."""
+        return self.message_count > (self.team_size**2 * self.quadratic_threshold)
+
+
 class CoordinationMetrics(BaseModel):
-    """Container for all five coordination metrics.
+    """Container for all nine coordination metrics.
 
     All fields are optional (``None`` when not collected).
 
@@ -167,6 +340,10 @@ class CoordinationMetrics(BaseModel):
         error_amplification: Error amplification metric.
         message_density: Message density metric.
         redundancy_rate: Redundancy rate metric.
+        amdahl_ceiling: Amdahl's Law speedup ceiling.
+        straggler_gap: Slowest-agent gap metric.
+        token_speedup_ratio: Token cost vs speedup ratio.
+        message_overhead: O(n^2) message overhead detection.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
@@ -190,6 +367,22 @@ class CoordinationMetrics(BaseModel):
     redundancy_rate: RedundancyRate | None = Field(
         default=None,
         description="Redundancy rate",
+    )
+    amdahl_ceiling: AmdahlCeiling | None = Field(
+        default=None,
+        description="Amdahl's Law speedup ceiling",
+    )
+    straggler_gap: StragglerGap | None = Field(
+        default=None,
+        description="Slowest-agent gap metric",
+    )
+    token_speedup_ratio: TokenSpeedupRatio | None = Field(
+        default=None,
+        description="Token cost vs speedup ratio",
+    )
+    message_overhead: MessageOverhead | None = Field(
+        default=None,
+        description="O(n^2) message overhead detection",
     )
 
 
@@ -334,4 +527,115 @@ def compute_redundancy_rate(
     return RedundancyRate(
         value=value,
         sample_count=len(similarities),
+    )
+
+
+def compute_amdahl_ceiling(
+    *,
+    parallelizable_fraction: float,
+) -> AmdahlCeiling:
+    """Compute Amdahl's Law speedup ceiling.
+
+    Args:
+        parallelizable_fraction: Fraction of workload that can
+            be parallelized (0.0--<1.0).
+
+    Returns:
+        Amdahl ceiling model with max speedup and recommended
+        team size.
+
+    Raises:
+        ValidationError: If ``parallelizable_fraction`` is outside
+            [0.0, 1.0) (enforced by ``Field``).
+    """
+    return AmdahlCeiling(
+        parallelizable_fraction=parallelizable_fraction,
+    )
+
+
+def compute_straggler_gap(
+    *,
+    agent_durations: Sequence[tuple[str, float]],
+) -> StragglerGap:
+    """Compute straggler gap from agent completion durations.
+
+    Args:
+        agent_durations: Sequence of ``(agent_id, duration_seconds)``
+            pairs.
+
+    Returns:
+        Straggler gap model.
+
+    Raises:
+        ValueError: If ``agent_durations`` is empty.
+    """
+    if not agent_durations:
+        msg = "agent_durations must not be empty"
+        raise ValueError(msg)
+
+    slowest_id, slowest_dur = max(
+        agent_durations,
+        key=lambda x: x[1],
+    )
+    mean_dur = statistics.mean(d for _, d in agent_durations)
+    return StragglerGap(
+        slowest_duration_seconds=slowest_dur,
+        mean_duration_seconds=mean_dur,
+        slowest_agent_id=slowest_id,
+    )
+
+
+def compute_token_speedup_ratio(
+    *,
+    tokens_mas: float,
+    tokens_sas: float,
+    duration_mas: float,
+    duration_sas: float,
+) -> TokenSpeedupRatio:
+    """Compute token cost vs latency speedup ratio.
+
+    Args:
+        tokens_mas: Total tokens for multi-agent execution.
+        tokens_sas: Total tokens for single-agent baseline.
+        duration_mas: Wall-clock duration for multi-agent (seconds).
+        duration_sas: Wall-clock duration for single-agent (seconds).
+
+    Returns:
+        Token speedup ratio model (alerts when ratio > 2.0).
+
+    Raises:
+        ValueError: If any input is zero or negative.
+    """
+    if tokens_sas <= 0:
+        msg = "tokens_sas must be positive"
+        raise ValueError(msg)
+    if duration_mas <= 0:
+        msg = "duration_mas must be positive"
+        raise ValueError(msg)
+    return TokenSpeedupRatio(
+        token_multiplier=tokens_mas / tokens_sas,
+        latency_speedup=duration_sas / duration_mas,
+    )
+
+
+def compute_message_overhead(
+    *,
+    team_size: int,
+    message_count: int,
+    quadratic_threshold: float = 0.5,
+) -> MessageOverhead:
+    """Compute message overhead and detect O(n^2) growth.
+
+    Args:
+        team_size: Number of agents.
+        message_count: Actual inter-agent message count.
+        quadratic_threshold: Fraction of n^2 for alert (0.0--1.0).
+
+    Returns:
+        Message overhead model.
+    """
+    return MessageOverhead(
+        team_size=team_size,
+        message_count=message_count,
+        quadratic_threshold=quadratic_threshold,
     )
