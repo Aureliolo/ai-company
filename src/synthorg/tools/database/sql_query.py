@@ -5,6 +5,7 @@ are rejected unless the connection config has ``read_only=False``.
 Uses parameterized queries to prevent SQL injection.
 """
 
+import asyncio
 import re
 from typing import Any, Final
 
@@ -26,11 +27,12 @@ from synthorg.tools.database.config import DatabaseConnectionConfig  # noqa: TC0
 logger = get_logger(__name__)
 
 # Statement prefixes that are always considered read-only.
+# NOTE: WITH and PRAGMA are intentionally excluded -- WITH can prefix
+# DML (e.g. WITH ... INSERT), and PRAGMA can perform writes
+# (e.g. PRAGMA writable_schema=ON).  Both require write access.
 _READ_ONLY_PREFIXES: Final[tuple[str, ...]] = (
     "SELECT",
     "EXPLAIN",
-    "PRAGMA",
-    "WITH",
 )
 
 # Statement prefixes that require write access.
@@ -193,79 +195,87 @@ class SqlQueryTool(BaseDatabaseTool):
             A ``ToolExecutionResult`` with the result.
         """
         try:
-            async with aiosqlite.connect(self._config.database_path) as db:
-                db.row_factory = aiosqlite.Row
-                cursor = await db.execute(query, parameters)
-
-                if is_write:
-                    await db.commit()
-                    content = f"{keyword} affected {cursor.rowcount} row(s)"
-                    logger.info(
-                        DB_QUERY_SUCCESS,
-                        keyword=keyword,
-                        rowcount=cursor.rowcount,
-                    )
-                    return ToolExecutionResult(
-                        content=content,
-                        metadata={
-                            "keyword": keyword,
-                            "rowcount": cursor.rowcount,
-                        },
-                    )
-
-                rows = list(await cursor.fetchall())
-                if not rows:
-                    logger.info(DB_QUERY_SUCCESS, keyword=keyword, row_count=0)
-                    return ToolExecutionResult(
-                        content="Query returned no results.",
-                        metadata={"keyword": keyword, "row_count": 0},
-                    )
-
-                columns = [desc[0] for desc in cursor.description or []]
-                content = self._format_results(columns, rows)
-                logger.info(
-                    DB_QUERY_SUCCESS,
-                    keyword=keyword,
-                    row_count=len(rows),
-                    column_count=len(columns),
-                )
-                return ToolExecutionResult(
-                    content=content,
-                    metadata={
-                        "keyword": keyword,
-                        "row_count": len(rows),
-                        "columns": columns,
-                    },
-                )
-        except aiosqlite.OperationalError as exc:
-            error_str = str(exc)
-            if "timeout" in error_str.lower():
-                logger.warning(
-                    DB_QUERY_TIMEOUT,
-                    database=self._config.database_path,
-                )
-                return ToolExecutionResult(
-                    content=f"Query timed out: {exc}",
-                    is_error=True,
-                )
+            return await asyncio.wait_for(
+                self._run_query(query, parameters, keyword, is_write),
+                timeout=self._config.query_timeout,
+            )
+        except TimeoutError:
             logger.warning(
-                DB_QUERY_FAILED,
+                DB_QUERY_TIMEOUT,
                 database=self._config.database_path,
-                error=error_str,
+                timeout=self._config.query_timeout,
             )
             return ToolExecutionResult(
-                content=f"Query failed: {exc}",
+                content=(f"Query timed out after {self._config.query_timeout}s"),
                 is_error=True,
             )
-        except Exception as exc:
+        except aiosqlite.Error as exc:
             logger.warning(
                 DB_QUERY_FAILED,
                 database=self._config.database_path,
                 error=str(exc),
             )
             return ToolExecutionResult(
-                content=f"Database error: {exc}",
+                content="Query execution failed.",
                 is_error=True,
+            )
+
+    async def _run_query(
+        self,
+        query: str,
+        parameters: list[Any],
+        keyword: str,
+        is_write: bool,  # noqa: FBT001  -- private method
+    ) -> ToolExecutionResult:
+        """Execute the query against SQLite (inner coroutine for timeout wrapping)."""
+        if self._config.read_only:
+            db_uri = f"file:{self._config.database_path}?mode=ro"
+            db_conn = aiosqlite.connect(db_uri, uri=True)
+        else:
+            db_conn = aiosqlite.connect(self._config.database_path)
+        async with db_conn as db:
+            db.row_factory = aiosqlite.Row
+            cursor = await db.execute(query, parameters)
+
+            if is_write:
+                await db.commit()
+                content = f"{keyword} affected {cursor.rowcount} row(s)"
+                logger.info(
+                    DB_QUERY_SUCCESS,
+                    keyword=keyword,
+                    rowcount=cursor.rowcount,
+                )
+                return ToolExecutionResult(
+                    content=content,
+                    metadata={
+                        "keyword": keyword,
+                        "rowcount": cursor.rowcount,
+                    },
+                )
+
+            rows = list(await cursor.fetchall())
+            if not rows:
+                logger.info(DB_QUERY_SUCCESS, keyword=keyword, row_count=0)
+                return ToolExecutionResult(
+                    content="Query returned no results.",
+                    metadata={"keyword": keyword, "row_count": 0},
+                )
+
+            columns = [desc[0] for desc in cursor.description or []]
+            content = self._format_results(columns, rows)
+            logger.info(
+                DB_QUERY_SUCCESS,
+                keyword=keyword,
+                row_count=len(rows),
+                column_count=len(columns),
+            )
+            return ToolExecutionResult(
+                content=content,
+                metadata={
+                    "keyword": keyword,
+                    "row_count": len(rows),
+                    "columns": columns,
+                },
             )
 
     @staticmethod

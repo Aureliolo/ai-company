@@ -14,6 +14,7 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict
 
 from synthorg.core.enums import ActionType, ToolCategory
+from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.observability import get_logger
 from synthorg.observability.events.sub_constraint import (
     SUB_CONSTRAINT_DENIED,
@@ -42,8 +43,8 @@ class SubConstraintViolation(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
-    constraint: str
-    reason: str
+    constraint: NotBlankStr
+    reason: NotBlankStr
     requires_approval: bool = False
 
 
@@ -54,12 +55,11 @@ _GIT_PUSH_ACTIONS: frozenset[str] = frozenset(
     }
 )
 
-# Action types that involve cloning (external fetch).
-_GIT_CLONE_ACTIONS: frozenset[str] = frozenset(
-    {
-        ActionType.VCS_COMMIT,  # git_clone uses VCS_COMMIT as default
-    }
-)
+# Tool names that perform external git fetch (clone).
+# NOTE: name-based check because GitCloneTool shares VCS_READ with
+# read-only git tools (status, log, diff).  A dedicated VCS_CLONE
+# action type would allow action-type-based checking.
+_GIT_CLONE_TOOL_NAMES: frozenset[str] = frozenset({"git_clone"})
 
 # Categories that require network access.
 _NETWORK_CATEGORIES: frozenset[ToolCategory] = frozenset(
@@ -216,8 +216,8 @@ class SubConstraintEnforcer:
                         f"but git access is 'local_only'"
                     ),
                 )
-            # Also block clone for local_only
-            if tool_name == "git_clone":
+            # Block clone for local_only (by tool name -- see note above)
+            if tool_name in _GIT_CLONE_TOOL_NAMES:
                 return SubConstraintViolation(
                     constraint="git",
                     reason=(

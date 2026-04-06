@@ -309,7 +309,13 @@ def build_default_tools_from_config(
                 category=ToolCategory.TERMINAL,
             )
         except KeyError:
-            pass  # Fall back to no sandbox for terminal
+            logger.warning(
+                TOOL_FACTORY_ERROR,
+                error=(
+                    "No sandbox backend for TERMINAL category; "
+                    "terminal tools will operate without sandbox"
+                ),
+            )
 
     # Extract web config
     web_policy: NetworkPolicy | None = None

@@ -818,9 +818,11 @@ triggered by engine-level operations. No LLM in the security classification path
           description: "Per-agent custom configuration."
     ```
 
-The current `ToolPermissionChecker` implements **category-level gating only** -- each access
-level maps to a set of permitted `ToolCategory` values. The granular sub-constraints shown
-above (network mode, containerization) are planned for Docker/K8s sandbox backends.
+The `ToolPermissionChecker` implements two layers of enforcement: **category-level gating**
+(each access level maps to permitted `ToolCategory` values) and **granular sub-constraints**
+(`SubConstraintEnforcer`) checking network mode, terminal access, git access, and approval
+requirements against each tool invocation.  Per-agent overrides can customize sub-constraints
+via `ToolPermissions.sub_constraints`.  K8s sandbox backend integration is planned for Phase 3-4.
 
 ### Progressive Trust
 

@@ -210,7 +210,8 @@ def is_allowed_http_scheme(url: str) -> bool:
     """
     if url.startswith("-"):
         return False
-    return any(url.startswith(scheme) for scheme in _ALLOWED_HTTP_SCHEMES)
+    url_lower = url.lower()
+    return any(url_lower.startswith(scheme) for scheme in _ALLOWED_HTTP_SCHEMES)
 
 
 # ── DNS resolution helpers ──────────────────────────────────────

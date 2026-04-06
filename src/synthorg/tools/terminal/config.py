@@ -2,6 +2,8 @@
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from synthorg.core.types import NotBlankStr  # noqa: TC001
+
 
 class TerminalConfig(BaseModel):
     """Configuration for terminal/shell tools.
@@ -18,11 +20,11 @@ class TerminalConfig(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
-    command_allowlist: tuple[str, ...] = Field(
+    command_allowlist: tuple[NotBlankStr, ...] = Field(
         default=(),
         description="Allowed command prefixes (empty = all non-blocked)",
     )
-    command_blocklist: tuple[str, ...] = Field(
+    command_blocklist: tuple[NotBlankStr, ...] = Field(
         default=(
             "rm -rf /",
             "mkfs",

@@ -191,7 +191,7 @@ class HttpRequestTool(BaseWebTool):
                     headers=headers,
                     content=body,
                     timeout=timeout,
-                    follow_redirects=True,
+                    follow_redirects=False,
                 )
         except httpx.TimeoutException:
             logger.warning(WEB_REQUEST_TIMEOUT, url=url, timeout=timeout)

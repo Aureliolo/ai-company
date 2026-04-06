@@ -27,10 +27,14 @@ _PARAMETERS_SCHEMA: Final[dict[str, Any]] = {
             "type": "string",
             "description": "Shell command to execute",
         },
+        "working_directory": {
+            "type": "string",
+            "description": "Working directory (relative to workspace)",
+        },
         "timeout": {
             "type": "number",
             "description": "Command timeout in seconds",
-            "minimum": 0,
+            "minimum": 1,
             "maximum": 600,
         },
     },
@@ -80,12 +84,14 @@ class ShellCommandTool(BaseTerminalTool):
         """Execute a shell command.
 
         Args:
-            arguments: Must contain ``command``; optionally ``timeout``.
+            arguments: Must contain ``command``; optionally
+                ``working_directory`` and ``timeout``.
 
         Returns:
             A ``ToolExecutionResult`` with command output.
         """
         command: str = arguments["command"]
+        working_dir: str | None = arguments.get("working_directory")
         timeout: float = arguments.get("timeout") or self._config.default_timeout
 
         if not command.strip():
@@ -126,18 +132,20 @@ class ShellCommandTool(BaseTerminalTool):
             timeout=timeout,
         )
 
-        return await self._execute_sandboxed(command, timeout)
+        return await self._execute_sandboxed(command, timeout, working_dir)
 
     async def _execute_sandboxed(
         self,
         command: str,
         timeout: float,  # noqa: ASYNC109  -- passed to sandbox, not asyncio
+        working_dir: str | None = None,
     ) -> ToolExecutionResult:
         """Execute the command through the sandbox backend.
 
         Args:
             command: Shell command to execute.
             timeout: Execution timeout in seconds.
+            working_dir: Optional working directory path.
 
         Returns:
             A ``ToolExecutionResult`` with the output.
@@ -146,10 +154,15 @@ class ShellCommandTool(BaseTerminalTool):
             msg = "_execute_sandboxed called without sandbox"
             raise RuntimeError(msg)
 
+        from pathlib import Path  # noqa: PLC0415
+
+        cwd = Path(working_dir) if working_dir else None
+
         try:
             result = await self._sandbox.execute(
                 command="bash",
                 args=("-c", command),
+                cwd=cwd,
                 timeout=timeout,
             )
         except SandboxError as exc:

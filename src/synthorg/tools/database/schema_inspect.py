@@ -4,6 +4,7 @@ Provides table listing and column description for SQLite databases.
 Always read-only.
 """
 
+import re
 from typing import Any, Final
 
 import aiosqlite
@@ -20,6 +21,8 @@ from synthorg.tools.database.base_db_tool import BaseDatabaseTool
 from synthorg.tools.database.config import DatabaseConnectionConfig  # noqa: TC001
 
 logger = get_logger(__name__)
+
+_SAFE_IDENTIFIER_RE: Final[re.Pattern[str]] = re.compile(r"^[a-zA-Z_][a-zA-Z0-9_]*$")
 
 _ACTIONS: Final[tuple[str, ...]] = ("list_tables", "describe_table")
 
@@ -150,6 +153,17 @@ class SchemaInspectTool(BaseDatabaseTool):
 
     async def _describe_table(self, table_name: str) -> ToolExecutionResult:
         """Describe columns of a specific table."""
+        if not _SAFE_IDENTIFIER_RE.match(table_name):
+            logger.warning(
+                DB_SCHEMA_INSPECT_FAILED,
+                action="describe_table",
+                error=f"Invalid table name: {table_name!r}",
+            )
+            return ToolExecutionResult(
+                content=f"Invalid table name: {table_name!r}. "
+                "Must be alphanumeric/underscore.",
+                is_error=True,
+            )
         async with aiosqlite.connect(self._config.database_path) as db:
             cursor = await db.execute(f"PRAGMA table_info({table_name})")
             rows = await cursor.fetchall()

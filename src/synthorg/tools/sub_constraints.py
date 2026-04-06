@@ -138,7 +138,7 @@ class ToolSubConstraints(BaseModel):
         default=TerminalAccess.RESTRICTED_COMMANDS,
         description="Terminal command access level",
     )
-    requires_approval: tuple[str, ...] = Field(
+    requires_approval: tuple[NotBlankStr, ...] = Field(
         default=(),
         description="Action type prefixes requiring human approval",
     )
@@ -224,6 +224,12 @@ def get_sub_constraints(
     if access_level == ToolAccessLevel.CUSTOM:
         msg = (
             "CUSTOM access level requires explicit sub_constraints; none were provided"
+        )
+        logger.warning(
+            SUB_CONSTRAINT_RESOLVED,
+            access_level=access_level.value,
+            source="error",
+            error=msg,
         )
         raise ValueError(msg)
 

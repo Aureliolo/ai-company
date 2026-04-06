@@ -9,6 +9,8 @@ from abc import ABC
 from typing import Any
 
 from synthorg.core.enums import ToolCategory
+from synthorg.observability import get_logger
+from synthorg.observability.events.web import WEB_SSRF_BLOCKED
 from synthorg.tools.base import BaseTool
 from synthorg.tools.network_validator import (
     DnsValidationOk,
@@ -16,6 +18,8 @@ from synthorg.tools.network_validator import (
     is_allowed_http_scheme,
     validate_url_host,
 )
+
+logger = get_logger(__name__)
 
 
 class BaseWebTool(BaseTool, ABC):
@@ -75,6 +79,11 @@ class BaseWebTool(BaseTool, ABC):
             ``DnsValidationOk`` on success.
         """
         if not is_allowed_http_scheme(url):
+            logger.warning(
+                WEB_SSRF_BLOCKED,
+                url=url,
+                reason="disallowed_scheme",
+            )
             return (
                 f"URL scheme not allowed: {url!r}. "
                 "Only http:// and https:// are permitted."
