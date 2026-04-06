@@ -310,6 +310,6 @@ class TestConfigAndModel:
             result.classification = SafetyClassification.BLOCKED  # type: ignore[misc]
 
     def test_classification_enum_values(self) -> None:
-        assert SafetyClassification.SAFE == "safe"
-        assert SafetyClassification.SUSPICIOUS == "suspicious"
-        assert SafetyClassification.BLOCKED == "blocked"
+        assert SafetyClassification.SAFE.value == "safe"
+        assert SafetyClassification.SUSPICIOUS.value == "suspicious"
+        assert SafetyClassification.BLOCKED.value == "blocked"

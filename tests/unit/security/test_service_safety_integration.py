@@ -1,6 +1,7 @@
 """Tests for safety classifier and uncertainty checker integration in SecOpsService."""
 
 from datetime import UTC, datetime
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -49,8 +50,8 @@ def _make_escalation_verdict() -> SecurityVerdict:
 
 def _make_service(
     *,
-    safety_classifier: object | None = None,
-    uncertainty_checker: object | None = None,
+    safety_classifier: Any = None,
+    uncertainty_checker: Any = None,
 ) -> SecOpsService:
     """Build a SecOpsService with mock dependencies."""
     approval_store = AsyncMock()
@@ -112,7 +113,7 @@ class TestSafetyClassifierIntegration:
             or "auto-rejected" in result.reason.lower()
         )
         # Approval store should NOT have been called
-        service._approval_store.add.assert_not_awaited()
+        service._approval_store.add.assert_not_awaited()  # type: ignore[union-attr]
 
     async def test_suspicious_enriches_metadata(self) -> None:
         """SUSPICIOUS classification adds metadata to approval item."""
@@ -136,7 +137,7 @@ class TestSafetyClassifierIntegration:
         assert result.approval_id is not None
 
         # Check the approval item was stored with metadata
-        call_args = service._approval_store.add.call_args
+        call_args = service._approval_store.add.call_args  # type: ignore[union-attr]
         item = call_args[0][0]
         assert item.metadata["safety_classification"] == "suspicious"
         assert item.metadata["stripped_description"] == "stripped text here"
@@ -163,7 +164,7 @@ class TestSafetyClassifierIntegration:
         assert result.verdict == SecurityVerdictType.ESCALATE
         assert result.approval_id is not None
 
-        call_args = service._approval_store.add.call_args
+        call_args = service._approval_store.add.call_args  # type: ignore[union-attr]
         item = call_args[0][0]
         assert item.metadata["safety_classification"] == "safe"
 
@@ -183,7 +184,7 @@ class TestSafetyClassifierIntegration:
         # Should still create the approval item despite classifier error
         assert result.verdict == SecurityVerdictType.ESCALATE
         assert result.approval_id is not None
-        service._approval_store.add.assert_awaited_once()
+        service._approval_store.add.assert_awaited_once()  # type: ignore[union-attr]
 
 
 # ── Tests: uncertainty checker integration ────────────────────────
@@ -214,7 +215,7 @@ class TestUncertaintyCheckerIntegration:
         result = await service._handle_escalation(context, verdict)
 
         assert result.verdict == SecurityVerdictType.ESCALATE
-        call_args = service._approval_store.add.call_args
+        call_args = service._approval_store.add.call_args  # type: ignore[union-attr]
         item = call_args[0][0]
         assert item.metadata["confidence_score"] == "0.3"
         assert item.metadata["keyword_overlap"] == "0.2"
@@ -235,7 +236,7 @@ class TestUncertaintyCheckerIntegration:
 
         assert result.verdict == SecurityVerdictType.ESCALATE
         assert result.approval_id is not None
-        service._approval_store.add.assert_awaited_once()
+        service._approval_store.add.assert_awaited_once()  # type: ignore[union-attr]
 
 
 # ── Tests: both features together ─────────────────────────────────
@@ -279,7 +280,7 @@ class TestBothFeatures:
         result = await service._handle_escalation(context, verdict)
 
         assert result.verdict == SecurityVerdictType.ESCALATE
-        call_args = service._approval_store.add.call_args
+        call_args = service._approval_store.add.call_args  # type: ignore[union-attr]
         item = call_args[0][0]
         assert item.metadata["safety_classification"] == "suspicious"
         assert item.metadata["confidence_score"] == "0.7"
@@ -322,7 +323,7 @@ class TestBothFeatures:
 
         assert result.verdict == SecurityVerdictType.ESCALATE
         assert result.approval_id is not None
-        call_args = service._approval_store.add.call_args
+        call_args = service._approval_store.add.call_args  # type: ignore[union-attr]
         item = call_args[0][0]
         # Only default metadata keys
         assert "safety_classification" not in item.metadata
