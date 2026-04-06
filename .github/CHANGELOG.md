@@ -1,5 +1,31 @@
 # Changelog
 
+## [0.6.3](https://github.com/Aureliolo/synthorg/compare/v0.6.2...v0.6.3) (2026-04-06)
+
+
+### Features
+
+* backend CRUD + multi-user permissions ([#1081](https://github.com/Aureliolo/synthorg/issues/1081), [#1082](https://github.com/Aureliolo/synthorg/issues/1082)) ([#1094](https://github.com/Aureliolo/synthorg/issues/1094)) ([93e469b](https://github.com/Aureliolo/synthorg/commit/93e469b75441486249fae2c949bd8c8fb30d3f87))
+* in-dashboard team editing + budget rebalance on pack apply ([#1093](https://github.com/Aureliolo/synthorg/issues/1093)) ([35977c0](https://github.com/Aureliolo/synthorg/commit/35977c03b0219af1cf293bc7278903321cbc6491)), closes [#1079](https://github.com/Aureliolo/synthorg/issues/1079) [#1080](https://github.com/Aureliolo/synthorg/issues/1080)
+* tiered rate limiting, NotificationSink protocol, in-dashboard notifications ([#1092](https://github.com/Aureliolo/synthorg/issues/1092)) ([df2142c](https://github.com/Aureliolo/synthorg/commit/df2142c696855ee7d680fef4e7530994f9047d2c)), closes [#1077](https://github.com/Aureliolo/synthorg/issues/1077) [#1078](https://github.com/Aureliolo/synthorg/issues/1078) [#849](https://github.com/Aureliolo/synthorg/issues/849)
+* two-stage safety classifier and cross-provider uncertainty check for approval gates ([#1090](https://github.com/Aureliolo/synthorg/issues/1090)) ([0b2edee](https://github.com/Aureliolo/synthorg/commit/0b2edeecfa5ea414f9521d345f8afb89f020d073)), closes [#847](https://github.com/Aureliolo/synthorg/issues/847) [#701](https://github.com/Aureliolo/synthorg/issues/701)
+
+
+### Refactoring
+
+* memory pipeline improvements ([#1075](https://github.com/Aureliolo/synthorg/issues/1075), [#997](https://github.com/Aureliolo/synthorg/issues/997)) ([#1091](https://github.com/Aureliolo/synthorg/issues/1091)) ([a048a4c](https://github.com/Aureliolo/synthorg/commit/a048a4c5cb5116d422c2a2f6eca4f34ed46917c2))
+
+
+### Documentation
+
+* add OpenCode parity setup and hookify rule documentation ([#1095](https://github.com/Aureliolo/synthorg/issues/1095)) ([52e877a](https://github.com/Aureliolo/synthorg/commit/52e877a914571a47f89a89010b6b132d6d32e88a))
+
+
+### Maintenance
+
+* bump vite from 8.0.3 to 8.0.4 in /web in the all group across 1 directory ([#1088](https://github.com/Aureliolo/synthorg/issues/1088)) ([1e86ca6](https://github.com/Aureliolo/synthorg/commit/1e86ca6e0d45eeb59f512b5a483e04c6597b5fc4))
+* tune ZAP DAST scan -- auth, timeouts, rules, report artifacts ([#1097](https://github.com/Aureliolo/synthorg/issues/1097)) ([82bf0e1](https://github.com/Aureliolo/synthorg/commit/82bf0e100731573f4b5da1fec99c1f536c8de728)), closes [#1096](https://github.com/Aureliolo/synthorg/issues/1096)
+
 ## [0.6.2](https://github.com/Aureliolo/synthorg/compare/v0.6.1...v0.6.2) (2026-04-06)
 
 
