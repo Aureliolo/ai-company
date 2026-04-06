@@ -26,6 +26,14 @@ _CREDENTIAL_PATTERNS: Final[tuple[re.Pattern[str], ...]] = (
     re.compile(r"(?i)password"),
     re.compile(r"(?i)credential"),
     re.compile(r"(?i)private[_-]?key"),
+    re.compile(r"(?i)access[_-]?key"),
+    re.compile(r"(?i)signing[_-]?key"),
+    re.compile(r"(?i)encryption[_-]?key"),
+    re.compile(r"(?i)passphrase"),
+    re.compile(r"(?i)connection[_-]?string"),
+    re.compile(r"(?i)database[_-]?url"),
+    re.compile(r"(?i)\bauth\b"),
+    re.compile(r"(?i)\bdsn\b"),
 )
 
 

@@ -1,36 +1,48 @@
 """Security settings subscriber -- hot-reload discovery allowlist.
 
-Watches the ``security/discovery_allowlist`` setting and rebuilds
+Watches the ``providers/discovery_allowlist`` setting and rebuilds
 the ``ProviderDiscoveryPolicy`` when it changes.
 """
+
+import json
+from typing import TYPE_CHECKING
 
 from synthorg.observability import get_logger
 from synthorg.observability.events.security import SECURITY_ALLOWLIST_UPDATED
 
+if TYPE_CHECKING:
+    from collections.abc import Awaitable, Callable
+
+    from synthorg.settings.service import SettingsService
+
 logger = get_logger(__name__)
 
 _WATCHED: frozenset[tuple[str, str]] = frozenset(
-    {("security", "discovery_allowlist")},
+    {("providers", "discovery_allowlist")},
 )
 
 
 class SecuritySubscriber:
-    """React to ``security/discovery_allowlist`` changes.
+    """React to ``providers/discovery_allowlist`` changes.
 
-    Parses the JSON allowlist string and invokes a callback to
-    rebuild the provider discovery policy.
+    Reads the updated allowlist value from the settings service,
+    parses the JSON list, and invokes the callback to rebuild
+    the provider discovery policy.
 
     Args:
+        settings_service: Settings service for reading current values.
         on_allowlist_changed: Async callback receiving the parsed
-            ``host:port`` list.  Typically rebuilds
+            ``host:port`` tuple.  Typically rebuilds
             ``ProviderDiscoveryPolicy`` and swaps it into app state.
     """
 
     def __init__(
         self,
         *,
-        on_allowlist_changed: object,
+        settings_service: SettingsService,
+        on_allowlist_changed: Callable[[tuple[str, ...]], Awaitable[None]],
     ) -> None:
+        self._settings_service = settings_service
         self._on_changed = on_allowlist_changed
 
     @property
@@ -50,17 +62,42 @@ class SecuritySubscriber:
     ) -> None:
         """Handle a change to the discovery allowlist setting.
 
-        Parses the JSON-encoded allowlist and invokes the callback.
+        Reads the current value, parses the JSON-encoded list,
+        and invokes the callback to rebuild the policy.
 
         Args:
-            namespace: Setting namespace (expected ``"security"``).
+            namespace: Setting namespace (expected ``"providers"``).
             key: Setting key (expected ``"discovery_allowlist"``).
         """
         if (namespace, key) not in _WATCHED:
             return
 
+        try:
+            setting = await self._settings_service.get(namespace, key)
+            raw = setting.value if setting is not None else "[]"
+            entries = json.loads(raw)
+            if not isinstance(entries, list):
+                logger.warning(
+                    SECURITY_ALLOWLIST_UPDATED,
+                    namespace=namespace,
+                    key=key,
+                    error="expected JSON array",
+                )
+                return
+            allowlist = tuple(str(e) for e in entries)
+        except (json.JSONDecodeError, TypeError) as exc:
+            logger.warning(
+                SECURITY_ALLOWLIST_UPDATED,
+                namespace=namespace,
+                key=key,
+                error=f"failed to parse allowlist: {exc}",
+            )
+            return
+
+        await self._on_changed(allowlist)
         logger.info(
             SECURITY_ALLOWLIST_UPDATED,
             namespace=namespace,
             key=key,
+            count=len(allowlist),
         )

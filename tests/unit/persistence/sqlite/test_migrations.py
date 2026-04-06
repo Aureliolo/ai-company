@@ -108,8 +108,8 @@ _EXPECTED_INDEXES = {
     "idx_rt_session_id",
     "idx_rt_expires_at",
     "idx_ro_action_type",
-    "idx_ro_expires_at",
-    "idx_sv_status",
+    "idx_ro_active",
+    "idx_sv_status_timestamp",
     "idx_sv_timestamp",
 }
 

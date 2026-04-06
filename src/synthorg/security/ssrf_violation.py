@@ -44,8 +44,8 @@ class SsrfViolation(BaseModel):
     url: NotBlankStr
     hostname: NotBlankStr
     port: int = Field(ge=1, le=65535)
-    resolved_ip: str | None = None
-    blocked_range: str | None = None
+    resolved_ip: NotBlankStr | None = None
+    blocked_range: NotBlankStr | None = None
     provider_name: NotBlankStr | None = None
     status: SsrfViolationStatus = SsrfViolationStatus.PENDING
     resolved_by: NotBlankStr | None = None

@@ -103,7 +103,7 @@ class TestInferencePolicy:
 
     def test_defaults(self) -> None:
         policy = InferencePolicy()
-        assert policy.route_through_proxy is True
+        assert policy.route_through_proxy is False
         assert policy.allowed_providers == ()
 
     def test_custom_providers(self) -> None:

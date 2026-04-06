@@ -251,8 +251,14 @@ class SQLitePersistenceBackend:
         self._decision_records = SQLiteDecisionRepository(
             self._db, write_lock=self._shared_write_lock
         )
-        self._risk_overrides = SQLiteRiskOverrideRepository(self._db)
-        self._ssrf_violations = SQLiteSsrfViolationRepository(self._db)
+        self._risk_overrides = SQLiteRiskOverrideRepository(
+            self._db,
+            write_lock=self._shared_write_lock,
+        )
+        self._ssrf_violations = SQLiteSsrfViolationRepository(
+            self._db,
+            write_lock=self._shared_write_lock,
+        )
 
     async def _cleanup_failed_connect(self, exc: sqlite3.Error | OSError) -> None:
         """Log failure, close partial connection, and raise.

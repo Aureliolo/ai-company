@@ -12,9 +12,9 @@ class TestSanitizeEnv:
 
     def test_strips_api_key_vars(self) -> None:
         mgr = SandboxCredentialManager()
-        env = {"OPENAI_API_KEY": "sk-secret", "PATH": "/usr/bin"}
+        env = {"EXAMPLE_API_KEY": "sk-secret", "PATH": "/usr/bin"}
         result = mgr.sanitize_env(env)
-        assert "OPENAI_API_KEY" not in result
+        assert "EXAMPLE_API_KEY" not in result
         assert result["PATH"] == "/usr/bin"
 
     def test_strips_secret_vars(self) -> None:
@@ -82,12 +82,12 @@ class TestSanitizeEnv:
     def test_reports_stripped_keys(self) -> None:
         mgr = SandboxCredentialManager()
         env = {
-            "OPENAI_API_KEY": "sk-secret",
+            "EXAMPLE_API_KEY": "sk-secret",
             "MY_SECRET": "hidden",
             "PATH": "/usr/bin",
         }
         result, stripped = mgr.sanitize_env_with_report(env)
-        assert "OPENAI_API_KEY" in stripped
+        assert "EXAMPLE_API_KEY" in stripped
         assert "MY_SECRET" in stripped
         assert "PATH" not in stripped
         assert len(result) == 1

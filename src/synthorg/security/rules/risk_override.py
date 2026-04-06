@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING, Self
 from pydantic import AwareDatetime, BaseModel, ConfigDict, model_validator
 
 from synthorg.core.enums import ApprovalRiskLevel  # noqa: TC001
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
 from synthorg.observability.events.security import (
     SECURITY_RISK_OVERRIDE_APPLIED,
@@ -23,6 +23,8 @@ if TYPE_CHECKING:
     from synthorg.security.rules.risk_classifier import RiskClassifier
 
 logger = get_logger(__name__)
+
+_DEFAULT_REVOKED_BY = NotBlankStr("system")
 
 
 class RiskTierOverride(BaseModel):
@@ -47,7 +49,7 @@ class RiskTierOverride(BaseModel):
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     id: NotBlankStr
-    action_type: str
+    action_type: NotBlankStr
     original_tier: ApprovalRiskLevel
     override_tier: ApprovalRiskLevel
     reason: NotBlankStr
@@ -70,6 +72,16 @@ class RiskTierOverride(BaseModel):
         """Reject overrides that don't change the tier."""
         if self.original_tier == self.override_tier:
             msg = "override_tier must differ from original_tier"
+            raise ValueError(msg)
+        return self
+
+    @model_validator(mode="after")
+    def _validate_revocation_pair(self) -> Self:
+        """Enforce that revoked_at and revoked_by are both or neither set."""
+        has_at = self.revoked_at is not None
+        has_by = self.revoked_by is not None
+        if has_at != has_by:
+            msg = "revoked_at and revoked_by must both be set or both be None"
             raise ValueError(msg)
         return self
 
@@ -149,13 +161,19 @@ class SecOpsRiskClassifier:
         """
         self._overrides = [*self._overrides, override]
 
-    def revoke_override(self, override_id: str) -> RiskTierOverride | None:
+    def revoke_override(
+        self,
+        override_id: NotBlankStr,
+        *,
+        revoked_by: NotBlankStr = _DEFAULT_REVOKED_BY,
+    ) -> RiskTierOverride | None:
         """Mark an override as revoked and return it.
 
         Creates a new revoked copy of the override (frozen model).
 
         Args:
             override_id: ID of the override to revoke.
+            revoked_by: Identity of the user or system revoking.
 
         Returns:
             The revoked override, or None if not found.
@@ -166,7 +184,7 @@ class SecOpsRiskClassifier:
                 revoked = ovr.model_copy(
                     update={
                         "revoked_at": now,
-                        "revoked_by": "system",
+                        "revoked_by": revoked_by,
                     },
                 )
                 new_list = list(self._overrides)

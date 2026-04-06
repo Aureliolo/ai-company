@@ -542,7 +542,10 @@ CREATE TABLE IF NOT EXISTS risk_overrides (
 );
 
 CREATE INDEX IF NOT EXISTS idx_ro_action_type ON risk_overrides(action_type);
-CREATE INDEX IF NOT EXISTS idx_ro_expires_at ON risk_overrides(expires_at);
+-- Partial composite index for list_active query (WHERE revoked_at IS NULL).
+CREATE INDEX IF NOT EXISTS idx_ro_active
+    ON risk_overrides(expires_at, created_at DESC)
+    WHERE revoked_at IS NULL;
 
 -- ── SSRF violations ─────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS ssrf_violations (
@@ -554,10 +557,13 @@ CREATE TABLE IF NOT EXISTS ssrf_violations (
     resolved_ip TEXT,
     blocked_range TEXT,
     provider_name TEXT,
-    status TEXT NOT NULL DEFAULT 'pending',
+    status TEXT NOT NULL DEFAULT 'pending'
+        CHECK (status IN ('pending', 'allowed', 'denied')),
     resolved_by TEXT,
     resolved_at TEXT
 );
 
-CREATE INDEX IF NOT EXISTS idx_sv_status ON ssrf_violations(status);
+-- Composite index for list_violations filtered by status + ordered by timestamp.
+CREATE INDEX IF NOT EXISTS idx_sv_status_timestamp
+    ON ssrf_violations(status, timestamp DESC);
 CREATE INDEX IF NOT EXISTS idx_sv_timestamp ON ssrf_violations(timestamp);

@@ -92,7 +92,7 @@ class InferencePolicy(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
-    route_through_proxy: bool = True
+    route_through_proxy: bool = False
     allowed_providers: tuple[NotBlankStr, ...] = ()
 
 

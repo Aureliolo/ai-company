@@ -36,10 +36,12 @@ _KNOWN_BACKENDS: frozenset[str] = frozenset({"subprocess", "docker"})
 
 # Default gVisor overrides for high-risk tool categories.
 # User-supplied runtime_overrides take precedence.
-_DEFAULT_GVISOR_OVERRIDES: dict[str, str] = {
-    "code_execution": "runsc",
-    "terminal": "runsc",
-}
+_DEFAULT_GVISOR_OVERRIDES: MappingProxyType[str, str] = MappingProxyType(
+    {
+        "code_execution": "runsc",
+        "terminal": "runsc",
+    }
+)
 
 
 def _instantiate_backend(

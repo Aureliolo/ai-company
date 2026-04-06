@@ -1,10 +1,12 @@
 """SQLite repository implementation for SSRF violation records."""
 
+import asyncio
 import sqlite3
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
 import aiosqlite
+from pydantic import AwareDatetime, ValidationError
 
 from synthorg.observability import get_logger
 from synthorg.observability.events.persistence import (
@@ -26,15 +28,50 @@ _COLS = (
 )
 
 
+def _is_unique_constraint_error(exc: sqlite3.IntegrityError) -> bool:
+    """Return True for UNIQUE/PRIMARY KEY violations."""
+    return exc.sqlite_errorname in {
+        "SQLITE_CONSTRAINT_UNIQUE",
+        "SQLITE_CONSTRAINT_PRIMARYKEY",
+    }
+
+
+def _ensure_utc(dt: datetime) -> datetime:
+    """Attach UTC if the parsed datetime is naive."""
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=UTC)
+    return dt
+
+
 class SQLiteSsrfViolationRepository:
     """SQLite implementation of the SsrfViolationRepository protocol.
 
     Args:
         db: An open aiosqlite connection.
+        write_lock: Optional shared lock protecting multi-statement
+            transactions.  Defaults to a per-instance lock for test
+            ergonomics.
     """
 
-    def __init__(self, db: aiosqlite.Connection) -> None:
+    def __init__(
+        self,
+        db: aiosqlite.Connection,
+        *,
+        write_lock: asyncio.Lock | None = None,
+    ) -> None:
         self._db = db
+        self._write_lock = write_lock if write_lock is not None else asyncio.Lock()
+
+    async def _rollback_quietly(self) -> None:
+        """Roll back the current transaction, swallowing errors."""
+        try:
+            await self._db.rollback()
+        except Exception:
+            logger.warning(
+                PERSISTENCE_SSRF_VIOLATION_SAVE_FAILED,
+                error="rollback failed",
+                exc_info=True,
+            )
 
     async def save(self, violation: SsrfViolation) -> None:
         """Persist a new SSRF violation.
@@ -54,34 +91,43 @@ class SQLiteSsrfViolationRepository:
         )
 
         try:
-            await self._db.execute(
-                f"INSERT INTO ssrf_violations ({_COLS}) "  # noqa: S608
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                (
-                    violation.id,
-                    ts_utc,
-                    violation.url,
-                    violation.hostname,
-                    violation.port,
-                    violation.resolved_ip,
-                    violation.blocked_range,
-                    violation.provider_name,
-                    violation.status.value,
-                    violation.resolved_by,
-                    resolved_at_utc,
-                ),
-            )
-            await self._db.commit()
+            async with self._write_lock:
+                await self._db.execute(
+                    f"INSERT INTO ssrf_violations ({_COLS}) "  # noqa: S608
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    (
+                        violation.id,
+                        ts_utc,
+                        violation.url,
+                        violation.hostname,
+                        violation.port,
+                        violation.resolved_ip,
+                        violation.blocked_range,
+                        violation.provider_name,
+                        violation.status.value,
+                        violation.resolved_by,
+                        resolved_at_utc,
+                    ),
+                )
+                await self._db.commit()
         except sqlite3.IntegrityError as exc:
-            if "UNIQUE" in str(exc):
+            await self._rollback_quietly()
+            if _is_unique_constraint_error(exc):
                 msg = f"SSRF violation {violation.id!r} already exists"
                 raise DuplicateRecordError(msg) from exc
             msg = f"Failed to save SSRF violation: {exc}"
-            logger.exception(PERSISTENCE_SSRF_VIOLATION_SAVE_FAILED, error=msg)
+            logger.exception(
+                PERSISTENCE_SSRF_VIOLATION_SAVE_FAILED,
+                error=msg,
+            )
             raise PersistenceError(msg) from exc
         except (sqlite3.Error, aiosqlite.Error) as exc:
+            await self._rollback_quietly()
             msg = f"Failed to save SSRF violation: {exc}"
-            logger.exception(PERSISTENCE_SSRF_VIOLATION_SAVE_FAILED, error=msg)
+            logger.exception(
+                PERSISTENCE_SSRF_VIOLATION_SAVE_FAILED,
+                error=msg,
+            )
             raise PersistenceError(msg) from exc
         else:
             logger.debug(
@@ -93,23 +139,20 @@ class SQLiteSsrfViolationRepository:
         self,
         violation_id: NotBlankStr,
     ) -> SsrfViolation | None:
-        """Retrieve a violation by ID.
-
-        Args:
-            violation_id: The violation identifier.
-
-        Returns:
-            The violation, or None if not found.
-        """
+        """Retrieve a violation by ID."""
         try:
             cursor = await self._db.execute(
-                f"SELECT {_COLS} FROM ssrf_violations WHERE id = ?",  # noqa: S608
+                f"SELECT {_COLS} FROM ssrf_violations "  # noqa: S608
+                "WHERE id = ?",
                 (violation_id,),
             )
             row = await cursor.fetchone()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = f"Failed to get SSRF violation: {exc}"
-            logger.exception(PERSISTENCE_SSRF_VIOLATION_QUERY_FAILED, error=msg)
+            logger.exception(
+                PERSISTENCE_SSRF_VIOLATION_QUERY_FAILED,
+                error=msg,
+            )
             raise PersistenceError(msg) from exc
 
         if row is None:
@@ -122,15 +165,7 @@ class SQLiteSsrfViolationRepository:
         status: SsrfViolationStatus | None = None,
         limit: int = 100,
     ) -> tuple[SsrfViolation, ...]:
-        """List violations, optionally filtered by status.
-
-        Args:
-            status: Filter by status (None for all).
-            limit: Maximum number of results.
-
-        Returns:
-            Tuple of violations, ordered by timestamp DESC.
-        """
+        """List violations, optionally filtered by status."""
         if status is not None:
             query = (
                 f"SELECT {_COLS} FROM ssrf_violations "  # noqa: S608
@@ -149,10 +184,23 @@ class SQLiteSsrfViolationRepository:
             rows = await cursor.fetchall()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = f"Failed to list SSRF violations: {exc}"
-            logger.exception(PERSISTENCE_SSRF_VIOLATION_QUERY_FAILED, error=msg)
+            logger.exception(
+                PERSISTENCE_SSRF_VIOLATION_QUERY_FAILED,
+                error=msg,
+            )
             raise PersistenceError(msg) from exc
 
-        return tuple(_row_to_violation(row) for row in rows)
+        results: list[SsrfViolation] = []
+        for row in rows:
+            try:
+                results.append(_row_to_violation(row))
+            except ValueError, ValidationError:
+                logger.warning(
+                    PERSISTENCE_SSRF_VIOLATION_QUERY_FAILED,
+                    error="failed to deserialize row",
+                    row_id=row[0] if row else "unknown",
+                )
+        return tuple(results)
 
     async def update_status(
         self,
@@ -160,45 +208,48 @@ class SQLiteSsrfViolationRepository:
         *,
         status: SsrfViolationStatus,
         resolved_by: NotBlankStr,
-        resolved_at: datetime,
+        resolved_at: AwareDatetime,
     ) -> bool:
-        """Update a violation's status.
+        """Update a violation's status (allow or deny).
 
-        Args:
-            violation_id: The violation to update.
-            status: New status.
-            resolved_by: User who resolved it.
-            resolved_at: When it was resolved.
+        Rejects transitions back to PENDING.
 
-        Returns:
-            True if the violation was found and updated.
+        Raises:
+            ValueError: If status is PENDING.
         """
+        if status == SsrfViolationStatus.PENDING:
+            msg = "Cannot transition a violation back to PENDING"
+            raise ValueError(msg)
+
         resolved_at_utc = resolved_at.astimezone(UTC).isoformat()
         try:
-            cursor = await self._db.execute(
-                "UPDATE ssrf_violations "
-                "SET status = ?, resolved_by = ?, resolved_at = ? "
-                "WHERE id = ? AND status = 'pending'",
-                (status.value, resolved_by, resolved_at_utc, violation_id),
-            )
-            await self._db.commit()
+            async with self._write_lock:
+                cursor = await self._db.execute(
+                    "UPDATE ssrf_violations "
+                    "SET status = ?, resolved_by = ?, resolved_at = ? "
+                    "WHERE id = ? AND status = 'pending'",
+                    (
+                        status.value,
+                        resolved_by,
+                        resolved_at_utc,
+                        violation_id,
+                    ),
+                )
+                await self._db.commit()
         except (sqlite3.Error, aiosqlite.Error) as exc:
+            await self._rollback_quietly()
             msg = f"Failed to update SSRF violation status: {exc}"
-            logger.exception(PERSISTENCE_SSRF_VIOLATION_SAVE_FAILED, error=msg)
+            logger.exception(
+                PERSISTENCE_SSRF_VIOLATION_SAVE_FAILED,
+                error=msg,
+            )
             raise PersistenceError(msg) from exc
 
         return cursor.rowcount > 0
 
 
 def _row_to_violation(row: Any) -> SsrfViolation:
-    """Convert a SQLite row tuple to an SsrfViolation.
-
-    Args:
-        row: A tuple of column values matching _COLS order.
-
-    Returns:
-        An ``SsrfViolation`` instance.
-    """
+    """Convert a SQLite row to an SsrfViolation."""
     (
         id_,
         timestamp,
@@ -215,14 +266,16 @@ def _row_to_violation(row: Any) -> SsrfViolation:
 
     return SsrfViolation(
         id=id_,
-        timestamp=datetime.fromisoformat(timestamp),
+        timestamp=_ensure_utc(datetime.fromisoformat(timestamp)),
         url=url,
         hostname=hostname,
         port=port,
-        resolved_ip=resolved_ip,
-        blocked_range=blocked_range,
+        resolved_ip=resolved_ip or None,
+        blocked_range=blocked_range or None,
         provider_name=provider_name,
         status=SsrfViolationStatus(status),
         resolved_by=resolved_by,
-        resolved_at=datetime.fromisoformat(resolved_at) if resolved_at else None,
+        resolved_at=(
+            _ensure_utc(datetime.fromisoformat(resolved_at)) if resolved_at else None
+        ),
     )
