@@ -70,9 +70,6 @@ from synthorg.observability.correlation import correlation_scope
 from synthorg.observability.events.approval_gate import (
     APPROVAL_GATE_LOOP_WIRING_WARNING,
 )
-from synthorg.observability.events.consolidation import (
-    DISTILLATION_CAPTURE_SKIPPED,
-)
 from synthorg.observability.events.degradation import (
     DEGRADATION_PROVIDER_SWAPPED,
 )
@@ -93,9 +90,6 @@ from synthorg.observability.events.execution import (
     EXECUTION_RESUME_COMPLETE,
     EXECUTION_RESUME_FAILED,
     EXECUTION_RESUME_START,
-)
-from synthorg.observability.events.procedural_memory import (
-    PROCEDURAL_MEMORY_ERROR,
 )
 from synthorg.observability.events.prompt import (
     PROMPT_PERSONALITY_NOTIFY_FAILED,
@@ -835,43 +829,18 @@ class AgentEngine:
     ) -> None:
         """Capture trajectory distillation at task completion (non-critical).
 
-        Skips when distillation capture is disabled or no memory
-        backend is configured; both skip paths emit a DEBUG log so
-        operators investigating "why no distillation entries?" can
-        tell which branch was hit.  Captures regardless of termination
-        reason -- successful runs, errors, timeouts, and budget
-        exhaustions all produce useful trajectory context for
-        downstream consolidation.  Non-system failures are swallowed
-        and logged by ``capture_distillation``; system errors
-        (``MemoryError``, ``RecursionError``) propagate.
+        Delegates to :func:`post_execution.try_capture_distillation`.
         """
-        if not self._distillation_capture_enabled:
-            logger.debug(
-                DISTILLATION_CAPTURE_SKIPPED,
-                agent_id=agent_id,
-                task_id=task_id,
-                reason="capture_disabled",
-            )
-            return
-        if self._memory_backend is None:
-            logger.debug(
-                DISTILLATION_CAPTURE_SKIPPED,
-                agent_id=agent_id,
-                task_id=task_id,
-                reason="no_memory_backend",
-            )
-            return
-        from pydantic import TypeAdapter  # noqa: PLC0415
+        from synthorg.engine.post_execution import (  # noqa: PLC0415
+            try_capture_distillation,
+        )
 
-        from synthorg.core.types import NotBlankStr  # noqa: PLC0415
-        from synthorg.memory.consolidation import capture_distillation  # noqa: PLC0415
-
-        _nb = TypeAdapter(NotBlankStr)
-        await capture_distillation(
+        await try_capture_distillation(
             execution_result,
-            agent_id=_nb.validate_python(agent_id),
-            task_id=_nb.validate_python(task_id),
-            backend=self._memory_backend,
+            agent_id,
+            task_id,
+            distillation_capture_enabled=self._distillation_capture_enabled,
+            memory_backend=self._memory_backend,
         )
 
     async def _try_procedural_memory(
@@ -883,37 +852,21 @@ class AgentEngine:
     ) -> None:
         """Run procedural memory pipeline (non-critical, never fatal).
 
-        Skips silently when the proposer is not configured or no
-        recovery occurred (non-error terminations).
+        Delegates to :func:`post_execution.try_procedural_memory`.
         """
-        if self._procedural_proposer is None or recovery_result is None:
-            return
-        if self._memory_backend is None:  # pragma: no cover -- guarded by __init__
-            return
-        try:
-            from synthorg.memory.procedural.pipeline import (  # noqa: PLC0415
-                propose_procedural_memory,
-            )
+        from synthorg.engine.post_execution import (  # noqa: PLC0415
+            try_procedural_memory,
+        )
 
-            await propose_procedural_memory(
-                execution_result,
-                recovery_result,
-                agent_id,
-                task_id,
-                proposer=self._procedural_proposer,
-                memory_backend=self._memory_backend,
-                config=self._procedural_memory_config,
-            )
-        except MemoryError, RecursionError:
-            raise
-        except Exception as exc:
-            logger.warning(
-                PROCEDURAL_MEMORY_ERROR,
-                agent_id=agent_id,
-                task_id=task_id,
-                error=f"procedural memory failed: {type(exc).__name__}: {exc}",
-                exc_info=True,
-            )
+        await try_procedural_memory(
+            execution_result,
+            recovery_result,
+            agent_id,
+            task_id,
+            procedural_proposer=self._procedural_proposer,
+            memory_backend=self._memory_backend,
+            procedural_memory_config=self._procedural_memory_config,
+        )
 
     def _build_and_log_result(
         self,
