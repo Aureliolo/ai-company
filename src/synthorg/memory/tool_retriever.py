@@ -181,7 +181,7 @@ def _parse_categories(
     return parsed, tuple(rejected)
 
 
-def _merge_results(
+def merge_results(
     existing: tuple[MemoryEntry, ...],
     new: tuple[MemoryEntry, ...],
 ) -> tuple[MemoryEntry, ...]:
@@ -751,7 +751,7 @@ class ToolBasedInjectionStrategy:
         )
         if new_entries is None:
             return None
-        return _merge_results(entries, new_entries), new_query
+        return merge_results(entries, new_entries), new_query
 
     @staticmethod
     async def _check_sufficiency(

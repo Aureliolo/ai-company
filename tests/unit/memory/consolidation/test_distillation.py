@@ -6,6 +6,7 @@ from typing import cast
 from unittest.mock import AsyncMock
 
 import pytest
+import structlog.testing
 from pydantic import ValidationError
 
 from synthorg.core.enums import MemoryCategory
@@ -22,6 +23,8 @@ from synthorg.memory.consolidation.distillation import (
     extract_memory_tool_invocations,
 )
 from synthorg.memory.errors import MemoryStoreError
+from synthorg.memory.protocol import MemoryBackend
+from synthorg.observability.events.consolidation import DISTILLATION_CAPTURE_FAILED
 from synthorg.providers.enums import FinishReason
 
 
@@ -215,7 +218,7 @@ class TestExtractMemoryToolInvocations:
 @pytest.mark.unit
 class TestCaptureDistillation:
     async def test_successful_capture(self) -> None:
-        backend = AsyncMock()
+        backend = AsyncMock(spec=MemoryBackend)
         backend.store = AsyncMock(return_value="dist-1")
 
         exec_result = _make_execution_result(
@@ -239,29 +242,39 @@ class TestCaptureDistillation:
         backend.store.assert_called_once()
 
     async def test_backend_error_returns_none(self) -> None:
-        backend = AsyncMock()
+        backend = AsyncMock(spec=MemoryBackend)
         backend.store = AsyncMock(
             side_effect=MemoryStoreError("store failed"),
         )
 
         exec_result = _make_execution_result()
 
-        result = await capture_distillation(
-            exec_result,
-            agent_id="agent-1",
-            task_id="task-1",
-            backend=backend,
-        )
+        with structlog.testing.capture_logs() as logs:
+            result = await capture_distillation(
+                exec_result,
+                agent_id="agent-1",
+                task_id="task-1",
+                backend=backend,
+            )
 
         assert result is None
+        failed_events = [
+            e for e in logs if e.get("event") == DISTILLATION_CAPTURE_FAILED
+        ]
+        assert len(failed_events) == 1
+        assert failed_events[0]["agent_id"] == "agent-1"
+        assert failed_events[0]["task_id"] == "task-1"
 
     async def test_memory_error_propagates(self) -> None:
-        backend = AsyncMock()
+        backend = AsyncMock(spec=MemoryBackend)
         backend.store = AsyncMock(side_effect=MemoryError("oom"))
 
         exec_result = _make_execution_result()
 
-        with pytest.raises(MemoryError):
+        with (
+            structlog.testing.capture_logs() as logs,
+            pytest.raises(MemoryError),
+        ):
             await capture_distillation(
                 exec_result,
                 agent_id="agent-1",
@@ -269,8 +282,14 @@ class TestCaptureDistillation:
                 backend=backend,
             )
 
+        failed_events = [
+            e for e in logs if e.get("event") == DISTILLATION_CAPTURE_FAILED
+        ]
+        assert len(failed_events) == 1
+        assert failed_events[0]["error_type"] == "system"
+
     async def test_error_termination_captured(self) -> None:
-        backend = AsyncMock()
+        backend = AsyncMock(spec=MemoryBackend)
         backend.store = AsyncMock(return_value="dist-2")
 
         exec_result = _make_execution_result(
@@ -290,12 +309,15 @@ class TestCaptureDistillation:
         assert "something broke" in result.outcome
 
     async def test_recursion_error_propagates(self) -> None:
-        backend = AsyncMock()
+        backend = AsyncMock(spec=MemoryBackend)
         backend.store = AsyncMock(side_effect=RecursionError("stack overflow"))
 
         exec_result = _make_execution_result()
 
-        with pytest.raises(RecursionError):
+        with (
+            structlog.testing.capture_logs() as logs,
+            pytest.raises(RecursionError),
+        ):
             await capture_distillation(
                 exec_result,
                 agent_id="agent-1",
@@ -303,9 +325,15 @@ class TestCaptureDistillation:
                 backend=backend,
             )
 
+        failed_events = [
+            e for e in logs if e.get("event") == DISTILLATION_CAPTURE_FAILED
+        ]
+        assert len(failed_events) == 1
+        assert failed_events[0]["error_type"] == "system"
+
     async def test_store_request_shape(self) -> None:
         """Verify capture_distillation stores the expected EPISODIC tag shape."""
-        backend = AsyncMock()
+        backend = AsyncMock(spec=MemoryBackend)
         backend.store = AsyncMock(return_value="dist-3")
 
         exec_result = _make_execution_result(
@@ -320,9 +348,9 @@ class TestCaptureDistillation:
         )
 
         backend.store.assert_called_once()
-        args, _ = backend.store.call_args
-        assert args[0] == "agent-7"
-        store_request = args[1]
+        store_call = backend.store.call_args
+        assert store_call.args[0] == "agent-7"
+        store_request = store_call.args[1]
         assert store_request.category == MemoryCategory.EPISODIC
         assert store_request.metadata.source == "distillation"
         assert "distillation" in store_request.metadata.tags

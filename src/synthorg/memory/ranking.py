@@ -426,7 +426,7 @@ def _word_bigrams(text: str) -> frozenset[tuple[str, str]]:
     return frozenset((words[i], words[i + 1]) for i in range(len(words) - 1))
 
 
-def _bigram_jaccard(text_a: str, text_b: str) -> float:
+def bigram_jaccard(text_a: str, text_b: str) -> float:
     """Word-bigram Jaccard similarity between two texts.
 
     Returns 0.0 when either text has fewer than 2 words (no bigrams
