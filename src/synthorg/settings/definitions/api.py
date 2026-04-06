@@ -1,7 +1,7 @@
 """API namespace setting definitions.
 
-Registers 15 settings covering server, TLS, CORS, rate limiting,
-authentication, and setup.  Three are runtime-editable; twelve are
+Registers 16 settings covering server, TLS, CORS, rate limiting,
+authentication, and setup.  Three are runtime-editable; thirteen are
 bootstrap-only (``restart_required=True``) because Litestar bakes
 middleware, rate-limit budgets, and CORS into the application at
 construction time.

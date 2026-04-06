@@ -28,7 +28,7 @@ class TestApiConfig:
     def test_rate_limit_defaults(self) -> None:
         rl = RateLimitConfig()
         assert rl.unauth_max_requests == 20
-        assert rl.auth_max_requests == 600
+        assert rl.auth_max_requests == 6000
         assert rl.time_unit == RateLimitTimeUnit.MINUTE
         assert rl.time_unit.value == "minute"
         assert "/api/v1/health" in rl.exclude_paths

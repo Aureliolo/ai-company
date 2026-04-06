@@ -82,7 +82,9 @@ class NotificationDispatcher:
         Args:
             notification: The notification to deliver.
         """
-        if not self._sinks:
+        # Snapshot the sink list so register() during dispatch is safe.
+        sinks = list(self._sinks)
+        if not sinks:
             logger.debug(
                 NOTIFICATION_NO_SINKS,
                 notification_id=notification.id,
@@ -92,10 +94,10 @@ class NotificationDispatcher:
         if self._should_filter(notification):
             return
 
-        errors: list[str | None] = [None] * len(self._sinks)
+        errors: list[str | None] = [None] * len(sinks)
         try:
             async with asyncio.TaskGroup() as tg:
-                for idx, sink in enumerate(self._sinks):
+                for idx, sink in enumerate(sinks):
                     tg.create_task(
                         self._guarded_send(sink, notification, errors, idx),
                     )
@@ -156,7 +158,7 @@ class NotificationDispatcher:
                 NOTIFICATION_DISPATCHED,
                 notification_id=notification.id,
                 category=notification.category,
-                sinks=len(self._sinks),
+                sinks=len(errors),
             )
 
     def _log_exception_group(

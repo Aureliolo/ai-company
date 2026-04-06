@@ -11,6 +11,7 @@ import functools
 import os
 import sys
 import time
+from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path, PurePath
 from typing import TYPE_CHECKING, Any
@@ -91,6 +92,7 @@ from synthorg.observability.events.api import (
     API_APP_SHUTDOWN,
     API_APP_STARTUP,
     API_APPROVAL_PUBLISH_FAILED,
+    API_NETWORK_EXPOSURE_WARNING,
     API_SESSION_CLEANUP,
     API_WS_SEND_FAILED,
     API_WS_TICKET_CLEANUP,
@@ -1062,6 +1064,40 @@ def _build_settings_dispatcher(
     )
 
 
+def _build_unauth_identifier(
+    trusted: frozenset[str],
+) -> Callable[[Request[Any, Any, Any]], str]:
+    """Build a proxy-aware client IP extractor for the unauth tier.
+
+    When ``trusted_proxies`` is configured, extracts the real client
+    IP from the ``X-Forwarded-For`` header (rightmost untrusted hop).
+    Without trusted proxies, falls back to ``request.client.host``.
+
+    Args:
+        trusted: Frozen set of trusted proxy IPs/CIDRs.
+
+    Returns:
+        Callable that extracts a rate-limit key from a request.
+    """
+    if not trusted:
+        return get_remote_address
+
+    def _extract_forwarded_ip(
+        request: Request[Any, Any, Any],
+    ) -> str:
+        forwarded = request.headers.get("x-forwarded-for", "")
+        if forwarded:
+            # X-Forwarded-For: client, proxy1, proxy2
+            # Walk from the right, skip trusted proxies.
+            hops = [h.strip() for h in forwarded.split(",")]
+            for hop in reversed(hops):
+                if hop not in trusted:
+                    return hop
+        return get_remote_address(request)
+
+    return _extract_forwarded_ip
+
+
 def _auth_identifier_for_request(
     request: Request[Any, Any, Any],
 ) -> str:
@@ -1118,18 +1154,36 @@ def _build_middleware(api_config: ApiConfig) -> list[Middleware]:
     2. Auth middleware -- populates ``scope["user"]``.
     3. Request logging.
     4. **Auth tier** (innermost) -- keyed by user ID, high budget.
+
+    When ``trusted_proxies`` is configured, the unauth tier reads
+    ``X-Forwarded-For`` to extract the real client IP. Without it,
+    all clients behind a proxy share one IP-based rate limit bucket.
     """
     rl = api_config.rate_limit
     prefix = api_config.api_prefix
     ws_path = f"^{prefix}/ws$"
+    trusted = frozenset(api_config.server.trusted_proxies)
+
+    if not trusted and api_config.server.host not in ("127.0.0.1", "localhost", "::1"):
+        logger.warning(
+            API_NETWORK_EXPOSURE_WARNING,
+            note=(
+                "No trusted_proxies configured. If this server is behind "
+                "a reverse proxy or load balancer, all proxied clients "
+                "will share a single unauth rate-limit bucket. Set "
+                "api.server.trusted_proxies to the proxy IPs."
+            ),
+        )
 
     rl_exclude = list(rl.exclude_paths)
     if ws_path not in rl_exclude:
         rl_exclude.append(ws_path)
 
+    unauth_identifier = _build_unauth_identifier(trusted)
     unauth_rate_limit = LitestarRateLimitConfig(
         rate_limit=(rl.time_unit, rl.unauth_max_requests),  # type: ignore[arg-type]
         exclude=rl_exclude,
+        identifier_for_request=unauth_identifier,
         store="rate_limit_unauth",
     )
     auth_rate_limit = LitestarRateLimitConfig(

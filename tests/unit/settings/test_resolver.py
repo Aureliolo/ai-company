@@ -80,7 +80,7 @@ class _FakeAuthConfig(BaseModel):
 class _FakeRateLimitConfig(BaseModel):
     model_config = ConfigDict(frozen=True)
     unauth_max_requests: int = 20
-    auth_max_requests: int = 600
+    auth_max_requests: int = 6000
     time_unit: RateLimitTimeUnit = RateLimitTimeUnit.MINUTE
     exclude_paths: tuple[str, ...] = ("/api/v1/health",)
 
@@ -627,7 +627,7 @@ def _api_get_side_effect(
     """Create a mock .get() that returns API defaults with optional overrides."""
     defaults = {
         ("api", "rate_limit_unauth_max_requests"): "20",
-        ("api", "rate_limit_auth_max_requests"): "600",
+        ("api", "rate_limit_auth_max_requests"): "6000",
         ("api", "rate_limit_time_unit"): "minute",
         ("api", "jwt_expiry_minutes"): "1440",
         ("api", "min_password_length"): "12",
@@ -767,7 +767,7 @@ class TestGetApiConfig:
                 raise SettingNotFoundError(msg)
             defaults = {
                 ("api", "rate_limit_unauth_max_requests"): "20",
-                ("api", "rate_limit_auth_max_requests"): "600",
+                ("api", "rate_limit_auth_max_requests"): "6000",
                 ("api", "rate_limit_time_unit"): "minute",
                 ("api", "min_password_length"): "12",
             }
