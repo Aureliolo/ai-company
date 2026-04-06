@@ -4,17 +4,17 @@
  * Mirrors the Claude Code hooks defined in .claude/settings.json and
  * .claude/settings.local.json by calling the same shell scripts.
  *
- * Claude Code hooks:
+ * Committed Claude Code hooks (from .claude/settings.json):
  *   PreToolUse (Bash): scripts/check_push_rebased.sh
- *   PreToolUse (Bash): scripts/check_bash_no_write.sh
- *   PreToolUse (Bash): scripts/check_git_c_cwd.sh
- *   PostToolUse (Edit|Write): scripts/check_web_design_system.py
  *
- * Hookify rules (from .claude/hookify.*.md):
+ * Hookify rules enforced via this plugin (from .claude/hookify.*.md):
  *   block-pr-create: blocks direct `gh pr create`
  *   enforce-parallel-tests: enforces `-n 8` with pytest
  *   no-cd-prefix: blocks `cd` prefix in Bash commands
  *   no-local-coverage: blocks `--cov` flags locally
+ *   check_bash_no_write.sh: blocks file writes via Bash
+ *   check_git_c_cwd.sh: blocks unnecessary git -C to cwd
+ *   check_web_design_system.py: validates design tokens on web file edits
  */
 
 import type { Plugin } from "@opencode-ai/plugin";
@@ -69,8 +69,8 @@ export const SynthOrgHooks: Plugin = async ({ client, $, app }) => {
               );
             }
 
-            // no-cd-prefix: block cd prefix in Bash commands
-            if (/^cd\s+/i.test(command)) {
+            // no-cd-prefix: block cd prefix in Bash commands (with optional leading whitespace)
+            if (/^\s*cd\s+/i.test(command)) {
               throw new Error(
                 "BLOCKED: Do not use `cd` in Bash commands -- it poisons the cwd for all subsequent calls. The working directory is ALREADY set to the project root. Run commands directly. For Go commands: use `go -C cli <command>`. For subdir tools without a `-C`/`--prefix` equivalent: use `bash -c \"cd <dir> && <cmd>\"`.",
               );
@@ -93,8 +93,18 @@ export const SynthOrgHooks: Plugin = async ({ client, $, app }) => {
                 { command },
                 15000,
               );
-              if (result && result.includes("block")) {
-                throw new Error(result);
+              if (result) {
+                try {
+                  const parsed = JSON.parse(result);
+                  if (parsed.hookSpecificOutput?.permissionDecision === "deny") {
+                    throw new Error(parsed.hookSpecificOutput?.permissionDecisionReason || "Push blocked");
+                  }
+                } catch {
+                  // Not JSON or parse error - check for legacy "block" pattern
+                  if (result.includes("block")) {
+                    throw new Error(result);
+                  }
+                }
               }
             }
 
@@ -133,9 +143,10 @@ export const SynthOrgHooks: Plugin = async ({ client, $, app }) => {
                 `python scripts/check_web_design_system.py`,
                 { timeout: 10000, encoding: "utf-8" },
               );
-            } catch {
+            } catch (error: unknown) {
+              const err = error as { message?: string; stderr?: string };
               // Log but don't block -- PostToolUse is advisory
-              console.error("Design system check failed for:", output.args.file_path);
+              console.error("Design system check failed for:", output.args.file_path, "-", err.message || err.stderr || "Unknown error");
             }
           }
         },

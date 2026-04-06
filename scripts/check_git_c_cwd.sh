@@ -32,5 +32,14 @@ NORM_ARG=$(normalize "$GIT_C_PATH")
 NORM_PWD=$(normalize "$PWD")
 
 if [[ "$NORM_ARG" == "$NORM_PWD" ]]; then
-    echo '{"decision":"block","reason":"BLOCKED: git -C points to the current working directory. Just use git directly -- the Bash tool already runs in the project root."}'
+    cat <<ENDJSON
+{
+  "hookSpecificOutput": {
+    "hookEventName": "PreToolUse",
+    "permissionDecision": "deny",
+    "permissionDecisionReason": "BLOCKED: git -C points to the current working directory. Just use git directly -- the Bash tool already runs in the project root."
+  }
+}
+ENDJSON
+    exit 2
 fi

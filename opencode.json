@@ -54,11 +54,7 @@
   "model": "ollama-cloud/minimax-m2.5:cloud",
   "instructions": [
     "CLAUDE.md",
-    ".claude/rules/common/agents.md",
-    ".claude/rules/common/bash.md",
-    ".claude/rules/common/hooks.md",
-    ".claude/rules/common/patterns.md",
-    ".claude/rules/common/performance.md",
+    "AGENTS.md",
     ".claude/hookify.block-pr-create.md",
     ".claude/hookify.enforce-parallel-tests.md",
     ".claude/hookify.function-length.md",

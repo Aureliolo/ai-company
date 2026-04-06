@@ -5,7 +5,7 @@ event: bash
 conditions:
   - field: command
     operator: regex_match
-    pattern: (?:run\s+pytest|python\s+-m\s+pytest)\b
+    pattern: (?:^|\s)(?:pytest|run\s+pytest|python\s+-m\s+pytest)\b
   - field: command
     operator: not_contains
     pattern: "-n 8"

@@ -30,10 +30,16 @@ if printf '%s\n' "$COMMAND" | grep -qE "<<-?\s*'?[A-Za-z_]"; then
     deny "Do not use heredocs (<< EOF) to write files. Use the Write tool to create new files or the Edit tool to modify existing files. Never use Bash for file creation or modification."
 fi
 
-# Output redirection to a file: > file, >> file, > /path, > "./path"
-# Skip >/dev/null, >&2, etc.
-if printf '%s\n' "$COMMAND" | grep -qE '>\s*"?(/[^d>]|\.\.?/|[a-zA-Z]:\\)'; then
-    deny "Do not use shell redirects (> or >>) to write files. Use the Write tool to create new files or the Edit tool to modify existing files. Never use Bash for file creation or modification."
+# Output redirection: > file, >> file, > /path, > "./path", > file.txt
+# Block ALL redirects to files (only allow fd redirects like >&2, 2>&1)
+# This catches: echo > file.txt, cat > foo, > output, etc.
+if printf '%s\n' "$COMMAND" | grep -qE '(^|[|&;])\s*>>?\s*"?[^-]'; then
+    # Extract redirect target to check if it's a file descriptor
+    REDIR=$(printf '%s\n' "$COMMAND" | grep -oE '>>?\s*"?[^|&;<>]+' | head -1 | sed 's/^>>\?["'"'"']*//')
+    # Only allow if it's a file descriptor (>&N or <&N format)
+    if [[ ! "$REDIR" =~ ^&[0-9]+$ ]]; then
+        deny "Do not use shell redirects (> or >>) to write files. Use the Write tool to create new files or the Edit tool to modify existing files. Never use Bash for file creation or modification."
+    fi
 fi
 
 # echo/printf > filename.ext (catches echo "text" > file.txt)

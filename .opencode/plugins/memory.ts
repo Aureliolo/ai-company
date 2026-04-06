@@ -3,7 +3,7 @@
  *
  * Provides read/write access to the shared MEMORY.md system used by
  * both Claude Code and OpenCode. Memory files live in:
- *   ~/.claude/projects/C--Users-Aurelio-synthorg/memory/
+ *   ~/.claude/projects/<mangled-cwd>/memory/
  *
  * Format (same as Claude Code):
  *   - MEMORY.md: index file with one-line pointers
@@ -13,16 +13,16 @@
 
 import type { Plugin } from "@opencode-ai/plugin";
 import { existsSync, mkdirSync, readFileSync, writeFileSync, unlinkSync } from "fs";
-import { join, basename } from "path";
+import { join, resolve, dirname } from "path";
 import { homedir } from "os";
 
-const MEMORY_DIR = join(
-  homedir(),
-  ".claude",
-  "projects",
-  "C--Users-Aurelio-synthorg",
-  "memory",
-);
+function getMemoryDir(): string {
+  const cwd = process.cwd();
+  const mangled = cwd.replace(/[:/\\]/g, "_").replace(/^_/, "").replace(/_$/, "");
+  return join(homedir(), ".claude", "projects", mangled, "memory");
+}
+
+const MEMORY_DIR = getMemoryDir();
 const MEMORY_INDEX = join(MEMORY_DIR, "MEMORY.md");
 
 interface MemoryEntry {
@@ -112,10 +112,19 @@ export const MemoryPlugin: Plugin = async ({ client, $, app }) => {
             if (!filename) {
               throw new Error("delete_memory requires: filename");
             }
-            const filepath = join(MEMORY_DIR, filename);
+            // Validate: only allow simple filenames, no path traversal
+            const safeName = filename.replace(/[^a-zA-Z0-9_.-]/g, "");
+            if (safeName !== filename || filename.includes("..")) {
+              throw new Error("delete_memory: invalid filename (no path traversal allowed)");
+            }
+            const filepath = resolve(MEMORY_DIR, safeName);
+            // Ensure resolved path is within MEMORY_DIR
+            if (!filepath.startsWith(MEMORY_DIR)) {
+              throw new Error("delete_memory: path traversal detected");
+            }
             if (existsSync(filepath)) {
               unlinkSync(filepath);
-              updateIndex("remove", filename, "", "");
+              updateIndex("remove", safeName, "", "");
             }
             return;
           }

@@ -152,31 +152,35 @@ git diff main --name-only
 
 Based on changed files, launch applicable review agents **in parallel** using the Task tool. **Do NOT use `run_in_background`** -- launch them as regular parallel Task calls so results arrive together and the user sees all agents complete before triage begins. Background agents cause confusing late-arriving `task-notification` messages that make it look like you presented triage before agents finished.
 
+> **IMPORTANT - OpenCode Agent Mapping**: When running in OpenCode (not Claude Code), you MUST use these working subagent types. NEVER use the Claude Code plugin names directly -- they will fail with "Unknown agent type".
+
 | Agent | When to launch | subagent_type |
 |---|---|---|
-| **docs-consistency** | **ALWAYS** -- runs on every PR regardless of change type | `pr-review-toolkit:code-reviewer` (custom prompt below) |
-| **code-reviewer** | Any `src_py` or `test_py` | `pr-review-toolkit:code-reviewer` |
-| **python-reviewer** | Any `src_py` or `test_py` | `everything-claude-code:python-reviewer` |
-| **pr-test-analyzer** | `test_py` changed, OR `src_py` changed with no corresponding test changes | `pr-review-toolkit:pr-test-analyzer` |
-| **silent-failure-hunter** | Diff contains `try`, `except`, `raise`, error handling patterns | `pr-review-toolkit:silent-failure-hunter` |
-| **comment-analyzer** | Diff contains docstring changes (`"""`) or significant comment changes | `pr-review-toolkit:comment-analyzer` |
-| **type-design-analyzer** | Diff contains `class ` definitions, `BaseModel`, `TypedDict`, type aliases | `pr-review-toolkit:type-design-analyzer` |
-| **logging-audit** | Any `src_py` changed | `pr-review-toolkit:code-reviewer` (custom prompt below) |
-| **resilience-audit** | Any `src_py` changed | `pr-review-toolkit:code-reviewer` (custom prompt below) |
-| **conventions-enforcer** | Any `src_py` or `test_py` | `pr-review-toolkit:code-reviewer` (custom prompt below) |
-| **security-reviewer** | Files in `src/synthorg/api/`, `src/synthorg/security/`, `src/synthorg/tools/`, `src/synthorg/config/`, `src/synthorg/persistence/`, `src/synthorg/engine/` changed, OR any `web_src` changed, OR diff contains `subprocess`, `eval`, `exec`, `pickle`, `yaml.load`, `sql`, auth/credential patterns | `everything-claude-code:security-reviewer` |
-| **frontend-reviewer** | Any `web_src` or `web_test` | `pr-review-toolkit:code-reviewer` (custom prompt below) |
-| **design-token-audit** | Any `web_src` | `.claude/agents/design-token-audit.md` prompt (scans for density, animation, spacing token violations) |
-| **api-contract-drift** | Any file in `src/synthorg/api/` OR `web/src/api/` OR `src/synthorg/core/enums.py` | `pr-review-toolkit:code-reviewer` (custom prompt below) |
-| **infra-reviewer** | Any `docker`, `ci`, or `infra_config` file | `pr-review-toolkit:code-reviewer` (custom prompt below) |
-| **persistence-reviewer** | Any file in `src/synthorg/persistence/` | `everything-claude-code:database-reviewer` |
-| **test-quality-reviewer** | Any `test_py` or `web_test` | `pr-review-toolkit:pr-test-analyzer` (custom prompt below) |
-| **async-concurrency-reviewer** | Diff contains `async def`, `await`, `asyncio`, `TaskGroup`, `create_task`, `aiosqlite` in `src_py` files | `pr-review-toolkit:code-reviewer` (custom prompt below) |
-| **go-reviewer** | Any `cli_go` | `everything-claude-code:go-reviewer` |
-| **go-security-reviewer** | Any `cli_go` -- diff contains `exec.Command`, `os/exec`, `http`, `os.Remove`, `os.WriteFile`, `filepath`, user-supplied paths | `everything-claude-code:security-reviewer` |
-| **go-conventions-enforcer** | Any `cli_go` | `pr-review-toolkit:code-reviewer` (go-conventions-enforcer custom prompt -- same as in pre-pr-review skill) |
-| **issue-resolution-verifier** | Issue is linked (pre-existing or auto-linked in Phase 2) | `pr-review-toolkit:code-reviewer` (custom prompt below) |
-| **tool-parity-checker** | Any `.claude/` or `.opencode/` or `opencode.json` or `AGENTS.md` or `CLAUDE.md` file changed | `.claude/agents/tool-parity-checker.md` prompt (verifies Claude Code <-> OpenCode config parity) |
+| **docs-consistency** | **ALWAYS** -- runs on every PR regardless of change type | `explore` (use custom prompt below) |
+| **tool-parity-checker** | Any `.claude/` or `.opencode/` or `opencode.json` or `AGENTS.md` or `CLAUDE.md` file changed | `explore` (use custom prompt below) |
+| **code-reviewer** | Any `src_py` or `test_py` | `explore` |
+| **python-reviewer** | Any `src_py` or `test_py` | `explore` |
+| **pr-test-analyzer** | `test_py` changed, OR `src_py` changed with no corresponding test changes | `explore` |
+| **silent-failure-hunter** | Diff contains `try`, `except`, `raise`, error handling patterns | `explore` |
+| **comment-analyzer** | Diff contains docstring changes (`"""`) or significant comment changes | `explore` |
+| **type-design-analyzer** | Diff contains `class ` definitions, `BaseModel`, `TypedDict`, type aliases | `explore` |
+| **logging-audit** | Any `src_py` changed | `explore` (use custom prompt below) |
+| **resilience-audit** | Any `src_py` changed | `explore` (use custom prompt below) |
+| **conventions-enforcer** | Any `src_py` or `test_py` | `explore` (use custom prompt below) |
+| **security-reviewer** | Files in sensitive paths OR any `web_src` changed OR diff contains dangerous patterns | `explore` |
+| **frontend-reviewer** | Any `web_src` or `web_test` | `explore` (use custom prompt below) |
+| **design-token-audit** | Any `web_src` | `explore` |
+| **api-contract-drift** | Any file in `src/synthorg/api/` OR `web/src/api/` OR `src/synthorg/core/enums.py` | `explore` (use custom prompt below) |
+| **infra-reviewer** | Any `docker`, `ci`, or `infra_config` file | `explore` (use custom prompt below) |
+| **persistence-reviewer** | Any file in `src/synthorg/persistence/` | `explore` |
+| **test-quality-reviewer** | Any `test_py` or `web_test` | `explore` (use custom prompt below) |
+| **async-concurrency-reviewer** | Diff contains `async def`, `await`, `asyncio`, `TaskGroup`, `create_task`, `aiosqlite` in `src_py` files | `explore` (use custom prompt below) |
+| **go-reviewer** | Any `cli_go` | `explore` |
+| **go-security-reviewer** | Any `cli_go` with dangerous patterns | `explore` |
+| **go-conventions-enforcer** | Any `cli_go` | `explore` |
+| **issue-resolution-verifier** | Issue is linked (pre-existing or auto-linked in Phase 2) | `explore` (use custom prompt below) |
+
+**If the Task tool fails** (e.g., "Unknown agent type"), fall back to running the check manually using Read/Grep tools on the changed files.
 
 The **issue-resolution-verifier** agent checks whether the PR fully resolves the linked issue. It only runs when an issue is linked -- either from a pre-existing `closes #N` in the PR body, or auto-linked/user-selected during Phase 2's search.
 
@@ -547,10 +551,14 @@ Collect all findings with their severity/confidence scores.
 
 **CRITICAL: Fetch ALL reviewers -- do NOT filter by known bot names.** The set of external reviewers varies per repo and can include any combination of bots (CodeRabbit, Gemini, Copilot, Greptile, etc.) and human reviewers. Always fetch unfiltered results and categorize by author from the response.
 
-**CRITICAL: Wait for all bots to finish processing.** Before triaging, check if any bot reviewer is still processing (e.g. CodeRabbit's "Currently processing" placeholder, or a review with an empty body). If a bot appears to still be processing:
-1. Poll every 30 seconds for up to 3 minutes (6 checks)
-2. If still not ready after 3 minutes, proceed without it and mark its coverage as "pending" in the triage table
-3. After implementing fixes and pushing, re-check for the bot's feedback in Phase 9
+**CRITICAL: Wait for all bots to finish processing.** Before triaging, check if any bot reviewer is still processing:
+1. First check the ISSUE comments (not PR reviews) for bot status - CodeRabbit posts "Currently processing" placeholder there
+2. If found, poll every 30 seconds for up to 3 minutes (6 checks)
+3. After each poll, re-fetch the issue comments to check if processing is complete
+4. If still not ready after 3 minutes, proceed and mark its coverage as "pending" in the triage table
+5. After implementing fixes and pushing, re-check for the bot's feedback in Phase 9
+
+**ALWAYS check both issue comments AND review submissions for bots** -- some bots (CodeRabbit) use issue comments to signal processing status, while others (Gemini, Copilot) use PR review submissions.
 
 Fetch from three GitHub API sources **in parallel** using `gh api` -- **always unfiltered** (no `select(.user.login == ...)` filtering):
 

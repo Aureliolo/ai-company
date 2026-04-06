@@ -2,7 +2,7 @@
 name: no-cd-prefix
 enabled: true
 event: bash
-pattern: ^cd\s+
+pattern: ^\s*cd\s+
 action: block
 ---
 
