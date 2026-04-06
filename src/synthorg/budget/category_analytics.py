@@ -93,6 +93,21 @@ class CategoryBreakdown(BaseModel):
         ge=0,
         description="System call count",
     )
+    embedding_cost: float = Field(
+        default=0.0,
+        ge=0.0,
+        description="Embedding call cost",
+    )
+    embedding_tokens: int = Field(
+        default=0,
+        ge=0,
+        description="Embedding call tokens (input only)",
+    )
+    embedding_count: int = Field(
+        default=0,
+        ge=0,
+        description="Embedding call count",
+    )
     uncategorized_cost: float = Field(
         default=0.0,
         ge=0.0,
@@ -182,6 +197,7 @@ def build_category_breakdown(
     p = buckets[LLMCallCategory.PRODUCTIVE]
     c = buckets[LLMCallCategory.COORDINATION]
     s = buckets[LLMCallCategory.SYSTEM]
+    e = buckets[LLMCallCategory.EMBEDDING]
     u = buckets[None]
 
     return CategoryBreakdown(
@@ -194,6 +210,9 @@ def build_category_breakdown(
         system_cost=_round(s[0]),
         system_tokens=s[1],
         system_count=s[2],
+        embedding_cost=_round(e[0]),
+        embedding_tokens=e[1],
+        embedding_count=e[2],
         uncategorized_cost=_round(u[0]),
         uncategorized_tokens=u[1],
         uncategorized_count=u[2],
@@ -222,6 +241,7 @@ def compute_orchestration_ratio(
         breakdown.productive_tokens
         + breakdown.coordination_tokens
         + breakdown.system_tokens
+        + breakdown.embedding_tokens
         + breakdown.uncategorized_tokens
     )
 

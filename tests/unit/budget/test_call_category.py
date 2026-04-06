@@ -15,17 +15,19 @@ class TestLLMCallCategory:
         assert LLMCallCategory.SYSTEM.value == "system"
 
     def test_member_count(self) -> None:
-        assert len(LLMCallCategory) == 3
+        assert len(LLMCallCategory) == 4
 
     def test_string_conversion(self) -> None:
         assert str(LLMCallCategory.PRODUCTIVE) == "productive"
         assert str(LLMCallCategory.COORDINATION) == "coordination"
         assert str(LLMCallCategory.SYSTEM) == "system"
+        assert str(LLMCallCategory.EMBEDDING) == "embedding"
 
     def test_from_string(self) -> None:
         assert LLMCallCategory("productive") == LLMCallCategory.PRODUCTIVE
         assert LLMCallCategory("coordination") == LLMCallCategory.COORDINATION
         assert LLMCallCategory("system") == LLMCallCategory.SYSTEM
+        assert LLMCallCategory("embedding") == LLMCallCategory.EMBEDDING
 
 
 @pytest.mark.unit
