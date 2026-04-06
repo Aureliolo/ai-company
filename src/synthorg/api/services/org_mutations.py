@@ -40,6 +40,7 @@ from synthorg.observability.events.api import (
     API_RESOURCE_NOT_FOUND,
     API_VALIDATION_FAILED,
 )
+from synthorg.settings.errors import SettingNotFoundError
 from synthorg.settings.resolver import ConfigResolver  # noqa: TC001
 from synthorg.settings.service import SettingsService  # noqa: TC001
 
@@ -158,17 +159,31 @@ class OrgMutationService:
 
     # ── Company ───────────────────────────────────────────────
 
-    def _company_snapshot_etag(
-        self,
-        name: str,
-        agents: tuple[AgentConfig, ...],
-        departments: tuple[Department, ...],
-    ) -> str:
-        """Compute ETag for the full company snapshot."""
+    async def _get_str_safe(self, namespace: str, key: str) -> str:
+        """Get a setting string, returning empty string if not set."""
+        try:
+            return await self._resolver.get_str(namespace, key)
+        except SettingNotFoundError:
+            return ""
+
+    async def _company_snapshot_etag(self) -> str:
+        """Compute ETag for the full company snapshot.
+
+        Includes all writable company scalars plus agents and departments.
+        """
+        name = await self._get_str_safe("company", "company_name")
+        autonomy = await self._get_str_safe("company", "autonomy_level")
+        budget = await self._get_str_safe("company", "total_monthly")
+        comm = await self._get_str_safe("company", "communication_pattern")
+        agents = await self._read_agents()
+        depts = await self._read_departments()
         snapshot = {
             "company_name": name,
+            "autonomy_level": autonomy,
+            "budget_monthly": budget,
+            "communication_pattern": comm,
             "agents": [a.model_dump(mode="json") for a in agents],
-            "departments": [d.model_dump(mode="json") for d in departments],
+            "departments": [d.model_dump(mode="json") for d in depts],
         }
         return compute_etag(json.dumps(snapshot, sort_keys=True), "")
 
@@ -190,10 +205,7 @@ class OrgMutationService:
         updated: dict[str, Any] = {}
         async with _org_lock:
             if if_match:
-                cur_name = await self._resolver.get_str("company", "company_name")
-                cur_agents = await self._read_agents()
-                cur_depts = await self._read_departments()
-                cur_etag = self._company_snapshot_etag(cur_name, cur_agents, cur_depts)
+                cur_etag = await self._company_snapshot_etag()
                 check_if_match(if_match, cur_etag, "company")
 
             if data.company_name is not None:
@@ -225,10 +237,7 @@ class OrgMutationService:
                 )
                 updated["communication_pattern"] = data.communication_pattern
             # Compute new ETag from full snapshot while still under lock.
-            new_name = await self._resolver.get_str("company", "company_name")
-            new_agents = await self._read_agents()
-            new_depts = await self._read_departments()
-            new_etag = self._company_snapshot_etag(new_name, new_agents, new_depts)
+            new_etag = await self._company_snapshot_etag()
         logger.info(API_COMPANY_UPDATED, fields=list(updated.keys()))
         return updated, new_etag
 
@@ -504,6 +513,11 @@ class OrgMutationService:
 
         if "autonomy_level" in fields_set:
             updates["autonomy_level"] = data.autonomy_level
+
+        if "model_provider" in fields_set:
+            updates["model_provider"] = data.model_provider
+        if "model_id" in fields_set:
+            updates["model_id"] = data.model_id
 
         return updates
 

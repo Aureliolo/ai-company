@@ -415,12 +415,15 @@ async def _assemble_department_health(
 async def _require_department_exists(
     app_state: AppState,
     name: str,
-) -> None:
+) -> str:
     """Raise NotFoundError if the department does not exist.
 
     Args:
         app_state: Application state with config resolver.
-        name: Department name.
+        name: Department name (case-insensitive lookup).
+
+    Returns:
+        The canonical department name as stored.
 
     Raises:
         NotFoundError: If the department is not found.
@@ -434,7 +437,7 @@ async def _require_department_exists(
     name_lower = name.lower()
     for dept in departments:
         if dept.name.lower() == name_lower:
-            return
+            return dept.name
     msg = f"Department {name!r} not found"
     logger.warning(API_RESOURCE_NOT_FOUND, resource="department", name=name)
     raise NotFoundError(msg)
@@ -954,7 +957,8 @@ class DepartmentController(Controller):
             NotFoundError: If the department is not found.
         """
         app_state: AppState = state.app_state
-        policy = await _get_dept_ceremony_override(app_state, name)
+        canonical = await _require_department_exists(app_state, name)
+        policy = await _get_dept_ceremony_override(app_state, canonical)
         return ApiResponse(data=policy)
 
     @put(
@@ -987,8 +991,8 @@ class DepartmentController(Controller):
         """
         app_state: AppState = state.app_state
 
-        # Verify the department exists
-        await _require_department_exists(app_state, name)
+        # Verify the department exists and get canonical name
+        canonical = await _require_department_exists(app_state, name)
 
         # Validate policy data via Pydantic
         try:
@@ -1007,11 +1011,11 @@ class DepartmentController(Controller):
         clean_data = validated.model_dump(mode="json", exclude_none=True)
 
         # Merge into the dept_ceremony_policies JSON setting
-        await _set_dept_ceremony_override(app_state, name, clean_data)
+        await _set_dept_ceremony_override(app_state, canonical, clean_data)
 
         logger.info(
             API_CEREMONY_POLICY_DEPT_UPDATED,
-            department=name,
+            department=canonical,
             strategy=clean_data.get("strategy"),
         )
         return ApiResponse(data=clean_data)
@@ -1039,9 +1043,9 @@ class DepartmentController(Controller):
             NotFoundError: If the department does not exist.
         """
         app_state: AppState = state.app_state
-        await _require_department_exists(app_state, name)
-        await _clear_dept_ceremony_override(app_state, name)
+        canonical = await _require_department_exists(app_state, name)
+        await _clear_dept_ceremony_override(app_state, canonical)
         logger.info(
             API_CEREMONY_POLICY_DEPT_CLEARED,
-            department=name,
+            department=canonical,
         )

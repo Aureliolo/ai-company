@@ -29,6 +29,7 @@ import { CeoNode } from './org/CeoNode'
 import { DepartmentGroupNode } from './org/DepartmentGroupNode'
 import { TeamGroupNode } from './org/TeamGroupNode'
 import { OwnerNode } from './org/OwnerNode'
+import { DeptAdminNode } from './org/DeptAdminNode'
 import { HierarchyEdge } from './org/HierarchyEdge'
 import { CommunicationEdge } from './org/CommunicationEdge'
 import { OrgChartToolbar, type ViewMode } from './org/OrgChartToolbar'
@@ -67,6 +68,7 @@ const nodeTypes = {
   department: DepartmentGroupNode,
   team: TeamGroupNode,
   owner: OwnerNode,
+  deptAdmin: DeptAdminNode,
 }
 const edgeTypes = { hierarchy: HierarchyEdge, communication: CommunicationEdge }
 

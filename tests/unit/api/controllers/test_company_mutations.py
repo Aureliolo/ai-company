@@ -61,9 +61,9 @@ class TestReorderDepartments:
         self,
         test_client: TestClient[Any],
     ) -> None:
-        test_client.headers.update(make_auth_headers("observer"))
         resp = test_client.post(
             "/api/v1/company/reorder-departments",
             json={"department_names": []},
+            headers=make_auth_headers("observer"),
         )
         assert resp.status_code == 403

@@ -98,6 +98,16 @@ class UpdateAgentOrgRequest(BaseModel):
     department: NotBlankStr | None = Field(default=None, max_length=128)
     level: SeniorityLevel | None = None
     autonomy_level: AutonomyLevel | None = None
+    model_provider: NotBlankStr | None = None
+    model_id: NotBlankStr | None = None
+
+    @model_validator(mode="after")
+    def _validate_model_pair(self) -> UpdateAgentOrgRequest:
+        """Require both model_provider and model_id or neither."""
+        if bool(self.model_provider) != bool(self.model_id):
+            msg = "model_provider and model_id must both be provided or both omitted"
+            raise ValueError(msg)
+        return self
 
 
 class ReorderAgentsRequest(BaseModel):
