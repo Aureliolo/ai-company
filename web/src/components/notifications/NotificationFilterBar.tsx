@@ -1,17 +1,11 @@
 import { SegmentedControl } from '@/components/ui/segmented-control'
 import type { NotificationFilterGroup } from '@/types/notifications'
-import { FILTER_GROUP_LABELS } from '@/types/notifications'
+import { CATEGORY_CONFIGS, FILTER_GROUP_LABELS } from '@/types/notifications'
 
 const GROUPS: readonly NotificationFilterGroup[] = [
-  'all',
-  'approvals',
-  'budget',
-  'system',
-  'tasks',
-  'agents',
-  'providers',
-  'connection',
-] as const
+  'all' as const,
+  ...([...new Set(Object.values(CATEGORY_CONFIGS).map((c) => c.group))] as NotificationFilterGroup[]),
+]
 
 interface NotificationFilterBarProps {
   readonly value: NotificationFilterGroup

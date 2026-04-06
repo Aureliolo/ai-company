@@ -199,7 +199,7 @@ class ApprovalTimeoutScheduler:
                 escalate_to=action.escalate_to,
                 reason=action.reason,
             )
-            await self._notify_escalation(item, action)
+            asyncio.create_task(self._notify_escalation(item, action))  # noqa: RUF006
 
     async def _resolve_item(
         self,

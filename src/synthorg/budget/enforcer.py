@@ -6,6 +6,7 @@ checks, in-flight budget checking, and task-boundary auto-downgrade
 as described in the Cost Controls section of the Operations design page.
 """
 
+import asyncio
 import copy
 from datetime import UTC, datetime
 from functools import partial
@@ -390,10 +391,12 @@ class BudgetEnforcer:
                 f"({cfg.alerts.hard_stop_at}% of "
                 f"{_fmt(cfg.total_monthly, _cur)})"
             )
-            await self._notify_budget_event(
-                "Monthly budget exhausted",
-                msg,
-                "critical",
+            asyncio.create_task(  # noqa: RUF006
+                self._notify_budget_event(
+                    "Monthly budget exhausted",
+                    msg,
+                    "critical",
+                ),
             )
             raise BudgetExhaustedError(msg)
 
@@ -423,10 +426,12 @@ class BudgetEnforcer:
                 f"{format_cost(daily_cost, cfg.currency)} >= "
                 f"{format_cost(cfg.per_agent_daily_limit, cfg.currency)}"
             )
-            await self._notify_budget_event(
-                "Daily agent limit exceeded",
-                msg,
-                "warning",
+            asyncio.create_task(  # noqa: RUF006
+                self._notify_budget_event(
+                    "Daily agent limit exceeded",
+                    msg,
+                    "warning",
+                ),
             )
             raise DailyLimitExceededError(msg)
 

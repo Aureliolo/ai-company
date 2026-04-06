@@ -11,6 +11,7 @@ from synthorg.observability import get_logger
 from synthorg.observability.events.notification import (
     NOTIFICATION_EMAIL_DELIVERED,
     NOTIFICATION_EMAIL_FAILED,
+    NOTIFICATION_EMAIL_PARTIAL_CREDENTIALS,
 )
 
 if TYPE_CHECKING:
@@ -112,7 +113,7 @@ class EmailNotificationSink:
             f"Timestamp: {notification.timestamp.isoformat()}"
         )
 
-        with smtplib.SMTP(self._host, self._port) as smtp:
+        with smtplib.SMTP(self._host, self._port, timeout=10) as smtp:
             if self._use_tls:
                 context = ssl.create_default_context()
                 smtp.starttls(context=context)
@@ -125,7 +126,7 @@ class EmailNotificationSink:
         has_pass = bool(self._password)
         if has_user != has_pass:
             logger.warning(
-                "notification.email.partial_credentials",
+                NOTIFICATION_EMAIL_PARTIAL_CREDENTIALS,
                 has_username=has_user,
                 has_password=has_pass,
             )

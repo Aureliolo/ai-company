@@ -8,6 +8,8 @@
  * is shared 1:1 between backend and frontend.
  */
 
+import type { ToastVariant } from '@/stores/toast'
+
 // ---------------------------------------------------------------------------
 // Core types
 // ---------------------------------------------------------------------------
@@ -180,7 +182,7 @@ export const CATEGORY_CONFIGS: Record<NotificationCategory, CategoryConfig> = {
 // Severity mapping to toast variant
 // ---------------------------------------------------------------------------
 
-export type ToastVariant = 'success' | 'error' | 'warning' | 'info'
+export type { ToastVariant }
 
 export const SEVERITY_TO_TOAST_VARIANT: Record<NotificationSeverity, ToastVariant> = {
   info: 'info',

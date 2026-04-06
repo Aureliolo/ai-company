@@ -25,7 +25,16 @@ const meta = {
 export default meta
 type Story = StoryObj<typeof meta>
 
-export const Empty: Story = {}
+export const Empty: Story = {
+  decorators: [
+    (Story) => {
+      useEffect(() => {
+        useNotificationsStore.getState().clearAll()
+      }, [])
+      return <Story />
+    },
+  ],
+}
 
 function SeedNotifications({ children }: { readonly children: React.ReactNode }) {
   useEffect(() => {

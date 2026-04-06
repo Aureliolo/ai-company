@@ -71,6 +71,8 @@ interface NotificationsState {
   markRead: (id: string) => void
   markAllRead: () => void
   dismiss: (id: string) => void
+  markReadBatch: (ids: readonly string[]) => void
+  dismissBatch: (ids: readonly string[]) => void
   clearAll: () => void
 
   setRouteOverride: (category: NotificationCategory, routes: readonly NotificationRoute[]) => void
@@ -293,6 +295,28 @@ export const useNotificationsStore = create<NotificationsState>()((set, get) => 
     dismiss(id) {
       set((state) => {
         const items = state.items.filter((item) => item.id !== id)
+        return { items, unreadCount: countUnread(items) }
+      })
+      debouncedPersist(get())
+    },
+
+    markReadBatch(ids: readonly string[]) {
+      set((state) => ({
+        items: state.items.map((item) =>
+          ids.includes(item.id) ? { ...item, read: true } : item,
+        ),
+        unreadCount: countUnread(
+          state.items.map((item) =>
+            ids.includes(item.id) ? { ...item, read: true } : item,
+          ),
+        ),
+      }))
+      debouncedPersist(get())
+    },
+
+    dismissBatch(ids: readonly string[]) {
+      set((state) => {
+        const items = state.items.filter((item) => !ids.includes(item.id))
         return { items, unreadCount: countUnread(items) }
       })
       debouncedPersist(get())

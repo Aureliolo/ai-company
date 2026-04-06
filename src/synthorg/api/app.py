@@ -528,6 +528,12 @@ def _build_lifecycle(  # noqa: PLR0913, C901
                 await _ticket_cleanup_task
             _ticket_cleanup_task = None
         logger.info(API_APP_SHUTDOWN, version=__version__)
+        if app_state.has_notification_dispatcher:
+            await _try_stop(
+                app_state.notification_dispatcher.close(),
+                API_APP_SHUTDOWN,
+                "Failed to stop notification dispatcher",
+            )
         if _health_prober is not None:
             await _try_stop(
                 _health_prober.stop(),
@@ -1073,7 +1079,7 @@ def _auth_identifier_for_request(
     """
     user = request.scope.get("user")
     if user is not None and hasattr(user, "user_id"):
-        return user.user_id  # type: ignore[no-any-return]
+        return str(user.user_id)
     return get_remote_address(request)
 
 

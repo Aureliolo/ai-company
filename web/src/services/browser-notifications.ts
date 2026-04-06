@@ -20,7 +20,7 @@ const recentTimestamps: number[] = []
 function isRateLimited(): boolean {
   const now = Date.now()
   // Prune timestamps outside the window
-  while (recentTimestamps.length > 0 && now - (recentTimestamps[0] ?? now) > WINDOW_MS) {
+  while (recentTimestamps.length > 0 && now - recentTimestamps[0]! > WINDOW_MS) {
     recentTimestamps.shift()
   }
   return recentTimestamps.length >= MAX_NOTIFICATIONS
@@ -78,7 +78,7 @@ export function show(payload: BrowserNotificationPayload): void {
   try {
     const notification = new Notification(payload.title, {
       body: payload.body,
-      icon: '/synthorg-icon.png',
+      icon: '/favicon.svg',
       tag: payload.tag,
     })
 

@@ -100,6 +100,5 @@ class Notification(BaseModel):
     @model_validator(mode="after")
     def _deep_copy_metadata(self) -> Notification:
         """Snapshot metadata at construction to prevent caller mutation."""
-        if self.metadata:
-            object.__setattr__(self, "metadata", copy.deepcopy(self.metadata))
+        object.__setattr__(self, "metadata", copy.deepcopy(self.metadata))
         return self

@@ -20,7 +20,9 @@ interface NotificationDrawerProps {
 export function NotificationDrawer({ open, onClose }: NotificationDrawerProps) {
   const items = useNotificationsStore((s) => s.items)
   const markRead = useNotificationsStore((s) => s.markRead)
+  const markReadBatch = useNotificationsStore((s) => s.markReadBatch)
   const dismiss = useNotificationsStore((s) => s.dismiss)
+  const dismissBatch = useNotificationsStore((s) => s.dismissBatch)
 
   const [filter, setFilter] = useState<NotificationFilterGroup>('all')
 
@@ -37,15 +39,13 @@ export function NotificationDrawer({ open, onClose }: NotificationDrawerProps) {
   )
 
   function handleMarkAllRead() {
-    for (const item of filteredItems) {
-      if (!item.read) markRead(item.id)
-    }
+    const ids = filteredItems.filter((item) => !item.read).map((item) => item.id)
+    if (ids.length > 0) markReadBatch(ids)
   }
 
   function handleClearAll() {
-    for (const item of filteredItems) {
-      dismiss(item.id)
-    }
+    const ids = filteredItems.map((item) => item.id)
+    if (ids.length > 0) dismissBatch(ids)
   }
 
   return (
