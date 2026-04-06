@@ -143,8 +143,8 @@ class TestAgentEngineDistillationCapture:
     async def test_distillation_disabled_by_default(self) -> None:
         """Distillation capture is opt-in -- default is disabled."""
         identity = _make_identity()
-        provider = AsyncMock()
-        memory_backend = AsyncMock()
+        provider = AsyncMock(spec=CompletionProvider)
+        memory_backend = AsyncMock(spec=MemoryBackend)
 
         engine = AgentEngine(
             provider=provider,
@@ -165,7 +165,7 @@ class TestAgentEngineDistillationCapture:
     async def test_distillation_without_backend_is_noop(self) -> None:
         """No backend + flag set -> quietly skip, do not crash."""
         identity = _make_identity()
-        provider = AsyncMock()
+        provider = AsyncMock(spec=CompletionProvider)
 
         engine = AgentEngine(
             provider=provider,
