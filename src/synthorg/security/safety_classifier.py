@@ -210,6 +210,10 @@ class InformationStripper:
         # patterns that look like email-with-token).
         result = _EMAIL_PATTERN.sub(_EMAIL_PLACEHOLDER, result)
 
+        # Strip bidi overrides and zero-width characters that
+        # could hide prompt injection payloads.
+        result = _CONTROL_CHAR_RE.sub(" ", result)
+
         logger.debug(
             SECURITY_INFO_STRIP_COMPLETE,
             original_length=len(text),

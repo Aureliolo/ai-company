@@ -580,15 +580,12 @@ class SecOpsService:
                 description = stripped
 
         # Cross-provider uncertainty check (if configured).
-        # Use stripped description when available to avoid
-        # broadcasting raw PII/secrets to all providers.
-        if self._uncertainty_checker is not None:
-            check_text = metadata.get(
-                "stripped_description",
-                verdict.reason,
-            )
+        # Only run when a stripped description is available --
+        # never broadcast raw verdict.reason (may contain PII).
+        stripped_for_check = metadata.get("stripped_description")
+        if self._uncertainty_checker is not None and stripped_for_check:
             await self._run_uncertainty_check(
-                check_text,
+                stripped_for_check,
                 metadata,
             )
 
@@ -732,7 +729,12 @@ class SecOpsService:
         reason: str,
         metadata: dict[str, str],
     ) -> bool:
-        """Handle BLOCKED with denial tracking.  Always returns True."""
+        """Handle BLOCKED with denial tracking.
+
+        Returns ``True`` when the request should be auto-rejected
+        and ``False`` when max denials are reached and the action
+        should proceed to human approval instead.
+        """
         if self._denial_tracker is None:
             logger.warning(
                 SECURITY_SAFETY_CLASSIFY_BLOCKED,
@@ -752,11 +754,11 @@ class SecOpsService:
                 SECURITY_SAFETY_CLASSIFY_BLOCKED,
                 tool_name=tool_name,
                 reason=reason,
-                note="max denials reached -- escalating",
+                note="max denials reached -- escalating to human",
                 consecutive=consecutive,
                 total=total,
             )
-            return True
+            return False  # proceed to human approval
 
         # RETRY: agent may retry with safer approach.
         logger.warning(
@@ -779,10 +781,21 @@ class SecOpsService:
             result = await self._uncertainty_checker.check(
                 prompt,
             )
-            metadata["confidence_score"] = str(result.confidence_score)
-            threshold = self._config.uncertainty_check.low_confidence_threshold
-            if result.confidence_score < threshold:
-                metadata["low_confidence"] = "true"
+            metadata["uncertainty_provider_count"] = str(
+                result.provider_count,
+            )
+            # Only report confidence when 2+ providers compared.
+            # Skipped/single-provider returns 1.0 which would
+            # mislead reviewers into thinking agreement is high.
+            if result.provider_count >= 2:  # noqa: PLR2004
+                metadata["confidence_score"] = str(
+                    result.confidence_score,
+                )
+                threshold = self._config.uncertainty_check.low_confidence_threshold
+                if result.confidence_score < threshold:
+                    metadata["low_confidence"] = "true"
+            else:
+                metadata["uncertainty_check_skipped"] = "true"
             if result.keyword_overlap is not None:
                 metadata["keyword_overlap"] = str(result.keyword_overlap)
             if result.embedding_similarity is not None:

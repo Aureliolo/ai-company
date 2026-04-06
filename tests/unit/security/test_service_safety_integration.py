@@ -215,8 +215,12 @@ class TestUncertaintyCheckerIntegration:
                 check_duration_ms=50.0,
             ),
         )
-
-        service = _make_service(uncertainty_checker=mock_checker)
+        # Need a safety classifier to produce stripped_description
+        # (uncertainty check only runs when stripped text is available).
+        service = _make_service(
+            safety_classifier=_make_safe_classifier(),
+            uncertainty_checker=mock_checker,
+        )
         context = _make_context()
         verdict = _make_escalation_verdict()
 
@@ -228,6 +232,7 @@ class TestUncertaintyCheckerIntegration:
         assert item.metadata["confidence_score"] == "0.3"
         assert item.metadata["keyword_overlap"] == "0.2"
         assert item.metadata["embedding_similarity"] == "0.4"
+        assert item.metadata["uncertainty_provider_count"] == "2"
 
     async def test_checker_error_still_creates_approval(self) -> None:
         """Checker failure still creates approval item."""
@@ -236,7 +241,10 @@ class TestUncertaintyCheckerIntegration:
             side_effect=RuntimeError("Provider timeout"),
         )
 
-        service = _make_service(uncertainty_checker=mock_checker)
+        service = _make_service(
+            safety_classifier=_make_safe_classifier(),
+            uncertainty_checker=mock_checker,
+        )
         context = _make_context()
         verdict = _make_escalation_verdict()
 
@@ -435,7 +443,7 @@ class TestDenialTrackerIntegration:
         assert "safer approach" in result.reason.lower()
 
     async def test_blocked_with_tracker_escalate(self) -> None:
-        """BLOCKED after max denials returns DENY with auto-reject reason."""
+        """BLOCKED after max denials proceeds to human approval."""
         tracker = DenialTracker(max_consecutive=2, max_total=20)
         service = _make_service(
             safety_classifier=_make_blocked_classifier(),
@@ -444,13 +452,13 @@ class TestDenialTrackerIntegration:
         context = _make_context()
         verdict = _make_escalation_verdict()
 
-        # First denial: RETRY
+        # First denial: RETRY -> DENY
         await service._handle_escalation(context, verdict)
-        # Second denial: ESCALATE (max consecutive = 2)
+        # Second denial: ESCALATE -> human review (not auto-reject)
         result = await service._handle_escalation(context, verdict)
 
-        assert result.verdict == SecurityVerdictType.DENY
-        assert "auto-rejected" in result.reason.lower()
+        assert result.verdict == SecurityVerdictType.ESCALATE
+        assert result.approval_id is not None
 
     async def test_safe_resets_consecutive(self) -> None:
         """SAFE classification resets consecutive denial count."""
@@ -501,8 +509,9 @@ class TestDenialTrackerIntegration:
         await safe_svc._handle_escalation(context, verdict)
         result = await blocked_svc._handle_escalation(context, verdict)
 
-        assert result.verdict == SecurityVerdictType.DENY
-        assert "auto-rejected" in result.reason.lower()
+        # ESCALATE -> proceeds to human approval (not auto-reject).
+        assert result.verdict == SecurityVerdictType.ESCALATE
+        assert result.approval_id is not None
 
     async def test_no_tracker_blocked_immediate_deny(self) -> None:
         """Without denial tracker, BLOCKED is immediate DENY."""

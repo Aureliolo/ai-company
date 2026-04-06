@@ -239,8 +239,17 @@ class UncertaintyChecker:
                 check_duration_ms=duration_ms,
             )
 
-        # Resolve all provider variants for the model ref.
-        candidates = self._resolver.resolve_all(self._config.model_ref)
+        # Resolve all provider variants for the model ref and
+        # deduplicate by provider_name -- resolve_all returns model
+        # variants, not unique providers.
+        all_variants = self._resolver.resolve_all(self._config.model_ref)
+        seen: set[str] = set()
+        unique: list[ResolvedModel] = []
+        for c in all_variants:
+            if c.provider_name not in seen:
+                seen.add(c.provider_name)
+                unique.append(c)
+        candidates = tuple(unique)
         if len(candidates) < self._config.min_providers:
             duration_ms = (time.monotonic() - start) * 1000
             logger.info(
