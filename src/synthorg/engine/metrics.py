@@ -63,6 +63,13 @@ class TaskCompletionMetrics(BaseModel):
         ge=0,
         description="Estimated system prompt tokens",
     )
+    accuracy_effort_ratio: float | None = Field(
+        default=None,
+        description=(
+            "Accuracy-effort ratio from step-level quality signals "
+            "(None when quality signals are unavailable)"
+        ),
+    )
 
     @model_validator(mode="after")
     def _cap_prompt_tokens(self) -> TaskCompletionMetrics:
@@ -100,6 +107,10 @@ class TaskCompletionMetrics(BaseModel):
             the result's execution context and metadata.
         """
         accumulated = result.execution_result.context.accumulated_cost
+        ae_data = result.execution_result.metadata.get("accuracy_effort")
+        ae_ratio: float | None = None
+        if ae_data is not None and hasattr(ae_data, "ratio"):
+            ae_ratio = ae_data.ratio
         return cls(
             task_id=result.task_id,
             agent_id=result.agent_id,
@@ -108,4 +119,5 @@ class TaskCompletionMetrics(BaseModel):
             cost_per_task=result.total_cost_usd,
             duration_seconds=result.duration_seconds,
             prompt_tokens=result.system_prompt.estimated_tokens,
+            accuracy_effort_ratio=ae_ratio,
         )

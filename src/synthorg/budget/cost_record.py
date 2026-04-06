@@ -47,6 +47,14 @@ class CostRecord(BaseModel):
         default=None,
         description="LLM call category (productive, coordination, system, embedding)",
     )
+    accuracy_effort_ratio: float | None = Field(
+        default=None,
+        ge=0.0,
+        description=(
+            "Accuracy-effort ratio for the task this call belongs to "
+            "(populated at task completion when quality signals are available)"
+        ),
+    )
 
     @model_validator(mode="after")
     def _validate_token_consistency(self) -> Self:
