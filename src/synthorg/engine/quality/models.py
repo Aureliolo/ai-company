@@ -9,6 +9,8 @@ from typing import Self
 
 from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
 
+from synthorg.core.types import NotBlankStr  # noqa: TC001
+
 
 class StepQuality(StrEnum):
     """Ternary step quality classification.
@@ -41,7 +43,7 @@ class StepQualitySignal(BaseModel):
         le=1.0,
         description="Classifier confidence (0.0--1.0)",
     )
-    reason: str = Field(description="Human-readable classification reason")
+    reason: NotBlankStr = Field(description="Human-readable classification reason")
     step_index: int = Field(ge=0, description="Zero-based step index")
     turn_range: tuple[int, int] = Field(
         description="Inclusive (start, end) turn numbers",
@@ -77,11 +79,6 @@ class AccuracyEffortRatio(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
-    accuracy: float = Field(
-        ge=0.0,
-        le=1.0,
-        description="Fraction of correct steps",
-    )
     effort: float = Field(
         gt=0.0,
         description="Normalized step count (total / expected)",
@@ -90,6 +87,14 @@ class AccuracyEffortRatio(BaseModel):
     neutral_steps: int = Field(ge=0, description="Count of NEUTRAL steps")
     incorrect_steps: int = Field(ge=0, description="Count of INCORRECT steps")
     total_steps: int = Field(gt=0, description="Total step count")
+
+    @computed_field(  # type: ignore[prop-decorator]
+        description="Fraction of correct steps (0.0--1.0)",
+    )
+    @property
+    def accuracy(self) -> float:
+        """Fraction of correct steps."""
+        return self.correct_steps / self.total_steps
 
     @computed_field(  # type: ignore[prop-decorator]
         description="Accuracy / effort ratio (higher is better)",

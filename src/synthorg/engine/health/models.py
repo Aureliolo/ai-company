@@ -68,7 +68,7 @@ class EscalationTicket(BaseModel):
     severity: EscalationSeverity = Field(
         description="Escalation severity level",
     )
-    evidence: str = Field(
+    evidence: NotBlankStr = Field(
         description="Human-readable evidence description",
     )
     agent_id: NotBlankStr = Field(

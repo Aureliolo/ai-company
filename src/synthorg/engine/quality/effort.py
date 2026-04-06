@@ -49,12 +49,10 @@ def compute_accuracy_effort(
     incorrect = sum(1 for s in signals if s.quality == StepQuality.INCORRECT)
     total = len(signals)
 
-    accuracy = correct / total
     denominator = max(1, expected_steps) if expected_steps > 0 else total
     effort = total / denominator
 
     result = AccuracyEffortRatio(
-        accuracy=accuracy,
         effort=effort,
         correct_steps=correct,
         neutral_steps=neutral,
@@ -75,10 +73,10 @@ def compute_accuracy_effort(
 
     # Weak model trap: high accuracy + very few steps may indicate
     # early termination rather than genuine efficiency.
-    if total <= _WEAK_MODEL_MAX_STEPS and accuracy >= _WEAK_MODEL_MIN_ACCURACY:
+    if total <= _WEAK_MODEL_MAX_STEPS and result.accuracy >= _WEAK_MODEL_MIN_ACCURACY:
         logger.warning(
             QUALITY_WEAK_MODEL_WARNING,
-            accuracy=accuracy,
+            accuracy=result.accuracy,
             total_steps=total,
             detail=(
                 "High accuracy with very few steps -- model may be "

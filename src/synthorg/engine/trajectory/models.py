@@ -6,6 +6,7 @@ results, and scoring outputs.
 
 from pydantic import BaseModel, ConfigDict, Field, computed_field
 
+from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.engine.loop_protocol import ExecutionResult  # noqa: TC001
 
 
@@ -36,7 +37,7 @@ class TrajectoryConfig(BaseModel):
         le=5,
         description="Number of parallel candidates to sample",
     )
-    complexity_gate: tuple[str, ...] = Field(
+    complexity_gate: tuple[NotBlankStr, ...] = Field(
         default=("complex", "epic"),
         description="Task complexities that activate scoring",
     )

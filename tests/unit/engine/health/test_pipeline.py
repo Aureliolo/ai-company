@@ -7,7 +7,7 @@ from synthorg.engine.health.pipeline import HealthMonitoringPipeline
 from synthorg.engine.health.triage import TriageFilter
 from synthorg.engine.loop_protocol import TerminationReason
 from synthorg.engine.quality.models import StepQuality, StepQualitySignal
-from synthorg.notifications.models import Notification
+from synthorg.notifications.models import Notification, NotificationCategory
 
 
 class _FakeSink:
@@ -137,6 +137,18 @@ class TestHealthMonitoringPipeline:
         )
         assert ticket is not None
         assert len(sink.sent) == 1
+
+    async def test_stagnation_uses_health_category(
+        self,
+        pipeline: HealthMonitoringPipeline,
+        sink: _FakeSink,
+    ) -> None:
+        await pipeline.process(
+            termination_reason=TerminationReason.STAGNATION,
+            agent_id="agent-1",
+            task_id="task-1",
+        )
+        assert sink.sent[0].category == NotificationCategory.HEALTH
 
     async def test_notification_metadata_contains_ticket_info(
         self,

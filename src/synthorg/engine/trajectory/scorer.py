@@ -32,9 +32,9 @@ class TrajectoryScorer:
     1. **Self-consistency filter**: Majority-vote on final tool call
        fingerprints.  Candidates disagreeing with the majority are
        marked inconsistent.
-    2. **Verbalized confidence (VC)**: ``sum(log(nu_t / 100))`` per
-       candidate -- log-space aggregation so a single low-confidence
-       step penalizes the entire candidate.
+    2. **Verbalized confidence (VC)**: ``log(nu / 100)`` where ``nu``
+       is the candidate's verbalized confidence (0--100).  Log-space
+       so low confidence is heavily penalized.
     3. **Trace length (Len)**: ``-total_output_tokens`` (shorter is
        more confident).
     4. **Joint**: ``VC + Len`` -- least-negative wins.
@@ -117,6 +117,7 @@ class TrajectoryScorer:
             ValueError: If candidates is empty.
         """
         scores = self.score_candidates(candidates)
+        by_index = {c.candidate_index: c for c in candidates}
 
         # Prefer consistent candidates.
         consistent_scores = [s for s in scores if s.consistent]
@@ -128,7 +129,7 @@ class TrajectoryScorer:
         else:
             best_score = max(scores, key=lambda s: s.joint_score)
 
-        best_candidate = candidates[best_score.candidate_index]
+        best_candidate = by_index[best_score.candidate_index]
 
         logger.info(
             TRAJECTORY_BEST_SELECTED,
@@ -186,15 +187,28 @@ def _check_consistency(
 def _compute_vc_score(candidate: CandidateResult) -> float:
     """Compute log-space verbalized confidence score.
 
-    ``VC(p) = sum(log(nu_t / 100))`` for each turn.
+    ``VC(p) = log(nu / 100)`` where ``nu`` is the candidate's
+    single verbalized confidence value (0--100).
 
     When verbalized_confidence is None, returns 0.0 (graceful
     degradation to Len-only scoring).
     """
     if candidate.verbalized_confidence is None:
+        logger.debug(
+            TRAJECTORY_CANDIDATE_SCORED,
+            candidate_index=candidate.candidate_index,
+            vc_unavailable=True,
+            reason="verbalized_confidence is None, using Len-only",
+        )
         return 0.0
 
     vc = candidate.verbalized_confidence
     if vc <= 0:
+        logger.warning(
+            TRAJECTORY_CANDIDATE_SCORED,
+            candidate_index=candidate.candidate_index,
+            vc=vc,
+            reason="zero or negative VC, flooring to -100.0",
+        )
         return -100.0  # Floor for zero/negative confidence.
     return math.log(vc / 100.0)

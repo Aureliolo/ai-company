@@ -32,11 +32,11 @@ logger = get_logger(__name__)
 
 # Map escalation causes to notification categories.
 _CAUSE_TO_CATEGORY: dict[EscalationCause, NotificationCategory] = {
-    EscalationCause.STAGNATION: NotificationCategory.STAGNATION,
-    EscalationCause.QUALITY_DEGRADATION: NotificationCategory.AGENT,
-    EscalationCause.REPEATED_FAILURE: NotificationCategory.SYSTEM,
+    EscalationCause.STAGNATION: NotificationCategory.HEALTH,
+    EscalationCause.QUALITY_DEGRADATION: NotificationCategory.HEALTH,
+    EscalationCause.REPEATED_FAILURE: NotificationCategory.HEALTH,
     EscalationCause.BUDGET_BREACH: NotificationCategory.BUDGET,
-    EscalationCause.TIMEOUT: NotificationCategory.SYSTEM,
+    EscalationCause.TIMEOUT: NotificationCategory.HEALTH,
 }
 
 

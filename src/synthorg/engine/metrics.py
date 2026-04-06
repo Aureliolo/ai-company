@@ -9,9 +9,13 @@ from typing import TYPE_CHECKING
 from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
 
 from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.engine.quality.models import AccuracyEffortRatio
+from synthorg.observability import get_logger
 
 if TYPE_CHECKING:
     from synthorg.engine.run_result import AgentRunResult
+
+logger = get_logger(__name__)
 
 
 class TaskCompletionMetrics(BaseModel):
@@ -109,8 +113,15 @@ class TaskCompletionMetrics(BaseModel):
         accumulated = result.execution_result.context.accumulated_cost
         ae_data = result.execution_result.metadata.get("accuracy_effort")
         ae_ratio: float | None = None
-        if ae_data is not None and hasattr(ae_data, "ratio"):
-            ae_ratio = ae_data.ratio
+        if ae_data is not None:
+            if isinstance(ae_data, AccuracyEffortRatio):
+                ae_ratio = ae_data.ratio
+            else:
+                logger.warning(
+                    "execution.metrics.accuracy_effort_unexpected_type",
+                    type=type(ae_data).__name__,
+                    task_id=result.task_id,
+                )
         return cls(
             task_id=result.task_id,
             agent_id=result.agent_id,

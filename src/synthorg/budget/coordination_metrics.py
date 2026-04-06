@@ -8,9 +8,9 @@ gap, token/speedup ratio, and message overhead.
 
 import math
 import statistics
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Self
 
-from pydantic import BaseModel, ConfigDict, Field, computed_field
+from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
 
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.observability import get_logger
@@ -231,6 +231,17 @@ class StragglerGap(BaseModel):
     slowest_agent_id: NotBlankStr = Field(
         description="Identifier of the slowest agent",
     )
+
+    @model_validator(mode="after")
+    def _validate_slowest_ge_mean(self) -> Self:
+        if self.slowest_duration_seconds < self.mean_duration_seconds:
+            msg = (
+                f"slowest_duration_seconds ({self.slowest_duration_seconds}) "
+                f"must be >= mean_duration_seconds "
+                f"({self.mean_duration_seconds})"
+            )
+            raise ValueError(msg)
+        return self
 
     @computed_field(  # type: ignore[prop-decorator]
         description="Absolute gap (slowest - mean)",
@@ -606,11 +617,17 @@ def compute_token_speedup_ratio(
     Raises:
         ValueError: If any input is zero or negative.
     """
+    if tokens_mas <= 0:
+        msg = "tokens_mas must be positive"
+        raise ValueError(msg)
     if tokens_sas <= 0:
         msg = "tokens_sas must be positive"
         raise ValueError(msg)
     if duration_mas <= 0:
         msg = "duration_mas must be positive"
+        raise ValueError(msg)
+    if duration_sas <= 0:
+        msg = "duration_sas must be positive"
         raise ValueError(msg)
     return TokenSpeedupRatio(
         token_multiplier=tokens_mas / tokens_sas,

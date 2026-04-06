@@ -316,6 +316,18 @@ class TestComputeStragglerGap:
         with pytest.raises(ValueError, match="empty"):
             compute_straggler_gap(agent_durations=[])
 
+    def test_slowest_below_mean_rejected(self) -> None:
+        from pydantic import ValidationError
+
+        from synthorg.budget.coordination_metrics import StragglerGap
+
+        with pytest.raises(ValidationError, match="slowest_duration_seconds"):
+            StragglerGap(
+                slowest_duration_seconds=1.0,
+                mean_duration_seconds=5.0,
+                slowest_agent_id="agent-a",
+            )
+
 
 @pytest.mark.unit
 class TestComputeTokenSpeedupRatio:
@@ -370,6 +382,24 @@ class TestComputeTokenSpeedupRatio:
                 tokens_sas=100.0,
                 duration_mas=0.0,
                 duration_sas=10.0,
+            )
+
+    def test_zero_mas_tokens_raises(self) -> None:
+        with pytest.raises(ValueError, match="tokens_mas"):
+            compute_token_speedup_ratio(
+                tokens_mas=0.0,
+                tokens_sas=100.0,
+                duration_mas=10.0,
+                duration_sas=10.0,
+            )
+
+    def test_zero_sas_duration_raises(self) -> None:
+        with pytest.raises(ValueError, match="duration_sas"):
+            compute_token_speedup_ratio(
+                tokens_mas=100.0,
+                tokens_sas=100.0,
+                duration_mas=10.0,
+                duration_sas=0.0,
             )
 
 
