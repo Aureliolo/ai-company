@@ -503,13 +503,14 @@ class SafetyClassifier:
         safe_tool = html.escape(self._stripper.strip(tool_name))
         safe_type = html.escape(self._stripper.strip(action_type))
         safe_risk = html.escape(risk_level.value)
-        safe_desc = html.escape(stripped_description)
-
-        # Truncate description before XML assembly so closing
-        # tags are never orphaned by a mid-structure cut.
+        # Truncate before escaping so we never cut mid-escape
+        # sequence (e.g. &amp; -> &am), and closing XML tags are
+        # never orphaned by a mid-structure cut.
         max_desc_chars = self._config.max_input_tokens * 4
-        if len(safe_desc) > max_desc_chars:
-            safe_desc = safe_desc[:max_desc_chars] + "... [truncated]"
+        desc_text = stripped_description
+        if len(desc_text) > max_desc_chars:
+            desc_text = desc_text[:max_desc_chars] + "... [truncated]"
+        safe_desc = html.escape(desc_text)
 
         user_content = (
             "<action>\n"
