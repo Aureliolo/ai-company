@@ -17,10 +17,19 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 
+def _escape_mrkdwn(text: str) -> str:
+    """Escape text for Slack mrkdwn to prevent injection of mentions."""
+    return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
+
 def _build_slack_payload(notification: Notification) -> dict[str, object]:
     """Build the Slack Block Kit payload for a notification."""
-    header = f"*[{notification.severity.value.upper()}]* {notification.title}"
-    body_text = f"{header}\n{notification.body}" if notification.body else header
+    safe_title = _escape_mrkdwn(notification.title)
+    safe_body = _escape_mrkdwn(notification.body) if notification.body else ""
+    safe_category = _escape_mrkdwn(notification.category)
+    safe_source = _escape_mrkdwn(notification.source)
+    header = f"*[{notification.severity.value.upper()}]* {safe_title}"
+    body_text = f"{header}\n{safe_body}" if safe_body else header
     return {
         "text": header,
         "blocks": [
@@ -33,10 +42,7 @@ def _build_slack_payload(notification: Notification) -> dict[str, object]:
                 "elements": [
                     {
                         "type": "mrkdwn",
-                        "text": (
-                            f"Category: {notification.category} | "
-                            f"Source: {notification.source}"
-                        ),
+                        "text": (f"Category: {safe_category} | Source: {safe_source}"),
                     },
                 ],
             },

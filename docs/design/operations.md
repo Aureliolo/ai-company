@@ -1702,8 +1702,8 @@ and timeout escalations.
 
 All notification adapters implement the `NotificationSink` protocol:
 
-- `send(notification: Notification) -> None` -- deliver a single notification
-- `close() -> None` -- release resources (connections, file handles)
+- ``async send(notification: Notification) -> None`` -- deliver a single notification
+- ``async close() -> None`` -- release resources (connections, file handles)
 
 The protocol is intentionally minimal so new adapters (PagerDuty, Teams, Discord, etc.)
 can be added without modifying dispatcher logic.

@@ -38,7 +38,8 @@ export const Empty: Story = {
 
 function SeedNotifications({ children }: { readonly children: React.ReactNode }) {
   useEffect(() => {
-    const { enqueue } = useNotificationsStore.getState()
+    const { clearAll, enqueue } = useNotificationsStore.getState()
+    clearAll()
     enqueue({
       category: 'approvals.pending',
       title: 'Approval requested for agent deployment',

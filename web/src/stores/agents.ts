@@ -268,6 +268,7 @@ export const useAgentsStore = create<AgentsState>()((set, get) => ({
     }
     // personality.trimmed is now handled by the unified notification
     // pipeline in useNotificationsStore.handleWsEvent (see #1078).
+    if (event.event_type === 'personality.trimmed') return
 
     log.debug('WS event ignored: unhandled event_type', { event_type: sanitizeForLog(event?.event_type) })
   },

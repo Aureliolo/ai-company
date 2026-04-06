@@ -15,14 +15,14 @@ from synthorg.notifications.config import (
 )
 from synthorg.notifications.dispatcher import NotificationDispatcher
 from synthorg.observability import get_logger
-
-if TYPE_CHECKING:
-    from synthorg.notifications.protocol import NotificationSink
 from synthorg.observability.events.notification import (
     NOTIFICATION_SINK_CONFIG_INVALID,
     NOTIFICATION_SINK_DISABLED,
     NOTIFICATION_SINK_UNKNOWN_TYPE,
 )
+
+if TYPE_CHECKING:
+    from synthorg.notifications.protocol import NotificationSink
 
 logger = get_logger(__name__)
 

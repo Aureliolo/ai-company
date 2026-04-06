@@ -276,7 +276,7 @@ Slide-in drawer aggregating system notifications: budget alerts, approval arriva
 | `connection.lost` | toast + panel | critical |
 | `connection.exhausted` | toast + panel | error |
 
-"toast + panel" categories trigger a brief toast notification in addition to appearing in the panel drawer. "panel only" categories appear silently in the drawer and increment the unread badge. Users can override routing defaults per category in notification preferences (future iteration).
+"toast + panel" categories trigger a brief toast notification in addition to appearing in the panel drawer. "panel only" categories appear silently in the drawer and increment the unread badge. Users can override routing defaults per category via the Notifications section in Settings (per-category toggles for toast, drawer, and browser routes).
 
 #### Agent Detail Page
 

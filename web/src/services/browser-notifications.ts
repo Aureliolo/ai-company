@@ -73,14 +73,13 @@ export function show(payload: BrowserNotificationPayload): void {
     return
   }
 
-  recordNotification()
-
   try {
     const notification = new Notification(payload.title, {
       body: payload.body,
       icon: '/favicon.svg',
       tag: payload.tag,
     })
+    recordNotification()
 
     notification.onclick = () => {
       window.focus()

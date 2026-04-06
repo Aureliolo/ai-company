@@ -91,6 +91,7 @@ export function NotificationItemCard({
           <button
             type="button"
             className="rounded p-0.5 text-muted-foreground hover:bg-accent/10 hover:text-accent"
+            aria-label="Mark as read"
             title="Mark as read"
             onClick={(e) => {
               e.stopPropagation()
@@ -103,6 +104,7 @@ export function NotificationItemCard({
         <button
           type="button"
           className="rounded p-0.5 text-muted-foreground hover:bg-danger/10 hover:text-danger"
+          aria-label="Dismiss notification"
           title="Dismiss"
           onClick={(e) => {
             e.stopPropagation()

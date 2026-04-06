@@ -160,7 +160,7 @@ _r.register(
         namespace=SettingNamespace.API,
         key="rate_limit_auth_max_requests",
         type=SettingType.INTEGER,
-        default="600",
+        default="6000",
         description="Maximum authenticated requests per time window (by user ID)",
         group="Rate Limiting",
         level=SettingLevel.ADVANCED,
