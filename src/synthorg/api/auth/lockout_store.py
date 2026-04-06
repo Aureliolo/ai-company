@@ -97,7 +97,7 @@ class LockoutStore:
         rows = await cursor.fetchall()
         restored = 0
         for row in rows:
-            uname = row["username"] if isinstance(row, dict) else row[0]
+            uname = row["username"]
             uname = uname.lower()
             if uname not in self._locked:
                 self._locked[uname] = time.monotonic() + self._duration_seconds
