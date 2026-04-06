@@ -1141,8 +1141,8 @@ class TestBuildMiddleware:
         mw = _build_middleware(root_config.api)
         # First and last entries are the rate-limit DefineMiddleware
         # wrappers. Extract the underlying config from kwargs.
-        rl_configs = [
-            entry.kwargs.get("config")
+        rl_configs: list[LsRL] = [
+            entry.kwargs["config"]
             for entry in mw
             if hasattr(entry, "kwargs") and isinstance(entry.kwargs.get("config"), LsRL)
         ]

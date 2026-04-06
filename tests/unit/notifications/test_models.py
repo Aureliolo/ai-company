@@ -16,21 +16,21 @@ from synthorg.notifications.models import (
 @pytest.mark.unit
 class TestNotificationCategory:
     def test_values(self) -> None:
-        assert NotificationCategory.APPROVAL == "approval"
-        assert NotificationCategory.BUDGET == "budget"
-        assert NotificationCategory.SECURITY == "security"
-        assert NotificationCategory.STAGNATION == "stagnation"
-        assert NotificationCategory.SYSTEM == "system"
-        assert NotificationCategory.AGENT == "agent"
+        assert NotificationCategory.APPROVAL.value == "approval"
+        assert NotificationCategory.BUDGET.value == "budget"
+        assert NotificationCategory.SECURITY.value == "security"
+        assert NotificationCategory.STAGNATION.value == "stagnation"
+        assert NotificationCategory.SYSTEM.value == "system"
+        assert NotificationCategory.AGENT.value == "agent"
 
 
 @pytest.mark.unit
 class TestNotificationSeverity:
     def test_values(self) -> None:
-        assert NotificationSeverity.INFO == "info"
-        assert NotificationSeverity.WARNING == "warning"
-        assert NotificationSeverity.ERROR == "error"
-        assert NotificationSeverity.CRITICAL == "critical"
+        assert NotificationSeverity.INFO.value == "info"
+        assert NotificationSeverity.WARNING.value == "warning"
+        assert NotificationSeverity.ERROR.value == "error"
+        assert NotificationSeverity.CRITICAL.value == "critical"
 
 
 @pytest.mark.unit
@@ -97,7 +97,7 @@ class TestNotification:
             )
 
     def test_metadata_deep_copy_isolation(self) -> None:
-        meta = {"key": [1, 2, 3]}
+        meta: dict[str, object] = {"key": [1, 2, 3]}
         n = Notification(
             category=NotificationCategory.AGENT,
             severity=NotificationSeverity.INFO,
