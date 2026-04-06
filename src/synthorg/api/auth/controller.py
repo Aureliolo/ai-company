@@ -404,7 +404,7 @@ def _get_auth_config(app_state: AppState) -> AuthConfig:
         Auth configuration.
     """
     try:
-        return app_state.config.api.auth  # type: ignore[union-attr]
+        return app_state.config.api.auth
     except AttributeError, TypeError:
         return AuthConfig()
 

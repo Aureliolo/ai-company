@@ -15,6 +15,8 @@ import json
 from http.cookies import SimpleCookie
 from typing import Any
 
+from litestar.types import ASGIApp, Receive, Scope, Send  # noqa: TC002
+
 from synthorg.api.auth.config import AuthConfig  # noqa: TC001
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import (
@@ -44,7 +46,7 @@ class CsrfMiddleware:
 
     def __init__(
         self,
-        app: Any,
+        app: ASGIApp,
         *,
         config: AuthConfig,
         exempt_paths: frozenset[str] = frozenset(),
@@ -57,9 +59,9 @@ class CsrfMiddleware:
 
     async def __call__(
         self,
-        scope: dict[str, Any],
-        receive: Any,
-        send: Any,
+        scope: Scope,
+        receive: Receive,
+        send: Send,
     ) -> None:
         """ASGI entrypoint.
 
@@ -68,7 +70,7 @@ class CsrfMiddleware:
             receive: ASGI receive callable.
             send: ASGI send callable.
         """
-        if scope["type"] != "http":
+        if scope.get("type") != "http":  # type: ignore[comparison-overlap]
             await self.app(scope, receive, send)
             return
 
@@ -123,7 +125,7 @@ class CsrfMiddleware:
         await self.app(scope, receive, send)
 
 
-async def _send_403(send: Any) -> None:
+async def _send_403(send: Send) -> None:
     """Send a 403 CSRF rejection response via raw ASGI.
 
     Raw ASGI middleware cannot raise Litestar exceptions because
@@ -140,25 +142,25 @@ async def _send_403(send: Any) -> None:
             "error": "CSRF token missing or invalid",
         }
     ).encode("utf-8")
-    await send(
-        {
-            "type": "http.response.start",
-            "status": 403,
-            "headers": [
-                (b"content-type", b"application/json"),
-                (b"content-length", str(len(body)).encode("ascii")),
-            ],
-        }
-    )
-    await send(
-        {
-            "type": "http.response.body",
-            "body": body,
-        }
-    )
+    start: Any = {
+        "type": "http.response.start",
+        "status": 403,
+        "headers": [
+            (b"content-type", b"application/json"),
+            (b"content-length", str(len(body)).encode("ascii")),
+        ],
+    }
+    await send(start)
+    body_msg: Any = {
+        "type": "http.response.body",
+        "body": body,
+    }
+    await send(body_msg)
 
 
-def _parse_cookies(headers: list[tuple[bytes, bytes]]) -> dict[str, str]:
+def _parse_cookies(
+    headers: list[tuple[bytes, bytes]] | Any,
+) -> dict[str, str]:
     """Parse cookies from raw ASGI headers.
 
     Args:
@@ -177,7 +179,7 @@ def _parse_cookies(headers: list[tuple[bytes, bytes]]) -> dict[str, str]:
 
 
 def _get_header(
-    headers: list[tuple[bytes, bytes]],
+    headers: list[tuple[bytes, bytes]] | Any,
     name: str,
 ) -> str | None:
     """Extract a header value by name (case-insensitive).
@@ -218,7 +220,7 @@ def create_csrf_middleware_class(
     class ConfiguredCsrfMiddleware(CsrfMiddleware):
         """CSRF middleware with pre-configured settings."""
 
-        def __init__(self, app: Any) -> None:
+        def __init__(self, app: ASGIApp) -> None:
             super().__init__(app, config=config, exempt_paths=paths)
 
     return ConfiguredCsrfMiddleware

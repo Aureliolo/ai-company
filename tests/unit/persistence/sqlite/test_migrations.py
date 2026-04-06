@@ -37,6 +37,8 @@ _EXPECTED_TABLES = {
     "fine_tune_runs",
     "fine_tune_checkpoints",
     "decision_records",
+    "login_attempts",
+    "refresh_tokens",
 }
 
 _EXPECTED_INDEXES = {
@@ -98,6 +100,9 @@ _EXPECTED_INDEXES = {
     "idx_wdv_definition_saved",
     "idx_dr_executing_agent_recorded",
     "idx_dr_reviewer_agent_recorded",
+    "idx_la_username_attempted",
+    "idx_rt_user_id",
+    "idx_rt_expires_at",
 }
 
 

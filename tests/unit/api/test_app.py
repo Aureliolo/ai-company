@@ -1119,14 +1119,14 @@ def _raise_runtime_error(_config: object) -> None:
 class TestBuildMiddleware:
     """Tests for the tiered rate-limit middleware stack."""
 
-    def test_middleware_stack_has_four_entries(
+    def test_middleware_stack_has_five_entries(
         self,
         root_config: Any,
     ) -> None:
         from synthorg.api.app import _build_middleware
 
         mw = _build_middleware(root_config.api)
-        assert len(mw) == 4
+        assert len(mw) == 5
 
     def test_unauth_and_auth_rate_limiters_have_distinct_stores(
         self,
