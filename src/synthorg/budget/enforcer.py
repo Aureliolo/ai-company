@@ -73,6 +73,7 @@ if TYPE_CHECKING:
     from synthorg.core.agent import AgentIdentity
     from synthorg.core.task import Task
     from synthorg.engine.loop_protocol import BudgetChecker
+    from synthorg.notifications.dispatcher import NotificationDispatcher
     from synthorg.providers.routing.resolver import ModelResolver
     from synthorg.security.risk_scorer import RiskScorer
 
@@ -106,11 +107,13 @@ class BudgetEnforcer:
         degradation_configs: Mapping[str, DegradationConfig] | None = None,
         risk_tracker: RiskTracker | None = None,
         risk_scorer: RiskScorer | None = None,
+        notification_dispatcher: NotificationDispatcher | None = None,
     ) -> None:
         self._budget_config = budget_config
         self._cost_tracker = cost_tracker
         self._model_resolver = model_resolver
         self._quota_tracker = quota_tracker
+        self._notification_dispatcher = notification_dispatcher
         self._degradation_configs: MappingProxyType[str, DegradationConfig] | None = (
             MappingProxyType(copy.deepcopy(dict(degradation_configs)))
             if degradation_configs is not None
@@ -386,6 +389,22 @@ class BudgetEnforcer:
                 f"({cfg.alerts.hard_stop_at}% of "
                 f"{_fmt(cfg.total_monthly, _cur)})"
             )
+            if self._notification_dispatcher is not None:
+                from synthorg.notifications.models import (  # noqa: PLC0415
+                    Notification,
+                    NotificationCategory,
+                    NotificationSeverity,
+                )
+
+                await self._notification_dispatcher.dispatch(
+                    Notification(
+                        category=NotificationCategory.BUDGET,
+                        severity=NotificationSeverity.CRITICAL,
+                        title="Monthly budget exhausted",
+                        body=msg,
+                        source="budget.enforcer",
+                    ),
+                )
             raise BudgetExhaustedError(msg)
 
     async def _check_daily_limit(

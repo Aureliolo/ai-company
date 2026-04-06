@@ -15,11 +15,16 @@ from datetime import UTC, datetime
 from pathlib import Path, PurePath
 from typing import TYPE_CHECKING, Any
 
-from litestar import Litestar, Router
+from litestar import Litestar, Request, Router
 from litestar.config.compression import CompressionConfig
 from litestar.config.cors import CORSConfig
 from litestar.datastructures import State
-from litestar.middleware.rate_limit import RateLimitConfig as LitestarRateLimitConfig
+from litestar.middleware.rate_limit import (
+    RateLimitConfig as LitestarRateLimitConfig,
+)
+from litestar.middleware.rate_limit import (
+    get_remote_address,
+)
 from litestar.openapi import OpenAPIConfig
 from litestar.openapi.plugins import ScalarRenderPlugin
 
@@ -79,6 +84,13 @@ from synthorg.hr.performance.quality_protocol import (
 )
 from synthorg.hr.performance.tracker import PerformanceTracker
 from synthorg.hr.registry import AgentRegistryService  # noqa: TC001
+from synthorg.notifications.adapters.console import ConsoleNotificationSink
+from synthorg.notifications.config import (
+    NotificationConfig,  # noqa: TC001
+    NotificationSinkConfig,  # noqa: TC001
+)
+from synthorg.notifications.dispatcher import NotificationDispatcher
+from synthorg.notifications.protocol import NotificationSink  # noqa: TC001
 from synthorg.observability import get_logger
 from synthorg.observability.config import DEFAULT_SINKS, LogConfig
 from synthorg.observability.events.api import (
@@ -880,6 +892,10 @@ def create_app(  # noqa: PLR0913, PLR0915
             perf_config=effective_config.performance,
         )
 
+    notification_dispatcher = _build_notification_dispatcher(
+        effective_config.notifications,
+    )
+
     app_state = AppState(
         config=effective_config,
         persistence=persistence,
@@ -900,6 +916,7 @@ def create_app(  # noqa: PLR0913, PLR0915
         tool_invocation_tracker=tool_invocation_tracker,
         delegation_record_store=delegation_record_store,
         artifact_storage=artifact_storage,
+        notification_dispatcher=notification_dispatcher,
         startup_time=time.monotonic(),
     )
 
@@ -1044,8 +1061,135 @@ def _build_settings_dispatcher(
     )
 
 
+def _build_notification_dispatcher(
+    config: NotificationConfig,
+) -> NotificationDispatcher:
+    """Build a ``NotificationDispatcher`` from configuration.
+
+    Always includes a console sink as a fallback if no sinks are
+    configured or all configured sinks are disabled.
+
+    Args:
+        config: Notification subsystem configuration.
+
+    Returns:
+        Configured notification dispatcher.
+    """
+    sinks: list[NotificationSink] = []
+    for sink_cfg in config.sinks:
+        if not sink_cfg.enabled:
+            continue
+        sink = _create_notification_sink(sink_cfg)
+        if sink is not None:
+            sinks.append(sink)
+    if not sinks:
+        sinks.append(ConsoleNotificationSink())
+    return NotificationDispatcher(
+        sinks=tuple(sinks),
+        min_severity=config.min_severity,
+    )
+
+
+def _create_notification_sink(  # noqa: PLR0911
+    cfg: NotificationSinkConfig,
+) -> NotificationSink | None:
+    """Instantiate a notification sink from config.
+
+    Args:
+        cfg: Single sink configuration.
+
+    Returns:
+        Sink instance or ``None`` for unknown types.
+    """
+    sink_type = cfg.type.lower()
+    params = cfg.params
+    if sink_type == "console":
+        return ConsoleNotificationSink()
+    if sink_type == "ntfy":
+        from synthorg.notifications.adapters.ntfy import (  # noqa: PLC0415
+            NtfyNotificationSink,
+        )
+
+        return NtfyNotificationSink(
+            server_url=params.get("server_url", "https://ntfy.sh"),
+            topic=params.get("topic", "synthorg-alerts"),
+            token=params.get("token"),
+        )
+    if sink_type == "slack":
+        from synthorg.notifications.adapters.slack import (  # noqa: PLC0415
+            SlackNotificationSink,
+        )
+
+        webhook_url = params.get("webhook_url", "")
+        if not webhook_url:
+            logger.warning(
+                "notification.sink.config_invalid",
+                sink_type=sink_type,
+                error="webhook_url is required",
+            )
+            return None
+        return SlackNotificationSink(webhook_url=webhook_url)
+    if sink_type == "email":
+        from synthorg.notifications.adapters.email import (  # noqa: PLC0415
+            EmailNotificationSink,
+        )
+
+        host = params.get("host", "")
+        if not host:
+            logger.warning(
+                "notification.sink.config_invalid",
+                sink_type=sink_type,
+                error="host is required",
+            )
+            return None
+        to_addrs_raw = params.get("to_addrs", "")
+        return EmailNotificationSink(
+            host=host,
+            port=int(params.get("port", "587")),
+            username=params.get("username"),
+            password=params.get("password"),
+            from_addr=params.get("from_addr", "synthorg@localhost"),
+            to_addrs=tuple(a.strip() for a in to_addrs_raw.split(",") if a.strip()),
+            use_tls=params.get("use_tls", "true").lower() == "true",
+        )
+    logger.warning(
+        "notification.sink.unknown_type",
+        sink_type=sink_type,
+    )
+    return None
+
+
+def _auth_identifier_for_request(
+    request: Request[Any, Any, Any],
+) -> str:
+    """Return the authenticated user's ID as the rate limit key.
+
+    Falls back to client IP when the user is not set in scope
+    (e.g. auth-excluded paths that are not excluded from the
+    auth rate limiter).
+
+    Args:
+        request: The incoming request.
+
+    Returns:
+        User ID string or client IP as fallback.
+    """
+    user = request.scope.get("user")
+    if user is not None and hasattr(user, "user_id"):
+        return user.user_id  # type: ignore[no-any-return]
+    return get_remote_address(request)
+
+
 def _build_middleware(api_config: ApiConfig) -> list[Middleware]:
-    """Build the middleware stack from configuration."""
+    """Build the middleware stack from configuration.
+
+    Two rate-limit tiers are stacked around the auth middleware:
+
+    1. **Unauth tier** (outermost) -- keyed by client IP, low budget.
+    2. Auth middleware -- populates ``scope["user"]``.
+    3. Request logging.
+    4. **Auth tier** (innermost) -- keyed by user ID, high budget.
+    """
     rl = api_config.rate_limit
     prefix = api_config.api_prefix
     ws_path = f"^{prefix}/ws$"
@@ -1055,10 +1199,22 @@ def _build_middleware(api_config: ApiConfig) -> list[Middleware]:
     rl_exclude = list(rl.exclude_paths)
     if ws_path not in rl_exclude:
         rl_exclude.append(ws_path)
-    rate_limit = LitestarRateLimitConfig(
-        rate_limit=(rl.time_unit, rl.max_requests),  # type: ignore[arg-type]
+
+    # Tier 1: unauthenticated rate limit (by IP, before auth).
+    unauth_rate_limit = LitestarRateLimitConfig(
+        rate_limit=(rl.time_unit, rl.unauth_max_requests),  # type: ignore[arg-type]
         exclude=rl_exclude,
+        store="rate_limit_unauth",
     )
+
+    # Tier 2: authenticated rate limit (by user ID, after auth).
+    auth_rate_limit = LitestarRateLimitConfig(
+        rate_limit=(rl.time_unit, rl.auth_max_requests),  # type: ignore[arg-type]
+        exclude=rl_exclude,
+        identifier_for_request=_auth_identifier_for_request,
+        store="rate_limit_auth",
+    )
+
     auth = api_config.auth
     setup_status_path = f"^{prefix}/setup/status$"
     exclude_paths = (
@@ -1085,7 +1241,8 @@ def _build_middleware(api_config: ApiConfig) -> list[Middleware]:
     auth = auth.model_copy(update={"exclude_paths": exclude_paths})
     auth_middleware = create_auth_middleware_class(auth)
     return [
+        unauth_rate_limit.middleware,
         auth_middleware,
         RequestLoggingMiddleware,
-        rate_limit.middleware,
+        auth_rate_limit.middleware,
     ]

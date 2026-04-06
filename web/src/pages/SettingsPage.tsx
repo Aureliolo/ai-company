@@ -34,6 +34,7 @@ import {
   SETTINGS_ADVANCED_WARNED_KEY,
 } from '@/utils/constants'
 import { AdvancedModeBanner } from './settings/AdvancedModeBanner'
+import { NotificationsSection } from './settings/NotificationsSection'
 import { CodeEditorPanel } from './settings/CodeEditorPanel'
 import { FloatingSaveBar } from './settings/FloatingSaveBar'
 import { NamespaceSection } from './settings/NamespaceSection'
@@ -438,6 +439,9 @@ export default function SettingsPage() {
           </StaggerGroup>
           </motion.div>
           </AnimatePresence>
+
+          {/* Notifications preferences (client-side, not backend settings) */}
+          <NotificationsSection />
 
           <FloatingSaveBar
             dirtyCount={dirtyValues.size}

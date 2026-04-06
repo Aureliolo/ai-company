@@ -1,6 +1,7 @@
-import { Suspense, useCallback, useMemo, useState } from 'react'
+import { Suspense, useCallback, useEffect, useMemo, useState } from 'react'
 import { Outlet, useLocation, useNavigate } from 'react-router'
 import {
+  Bell,
   BookOpen,
   Cpu,
   DollarSign,
@@ -62,6 +63,33 @@ export default function AppLayout() {
   // Global WebSocket subscription for app-wide notifications (e.g. personality
   // trimming toasts) so they render regardless of the current page.
   useGlobalNotifications()
+
+  // Shift+N toggles the notification drawer (handled by NotificationBell
+  // in SidebarFooter via a custom event).
+  useEffect(() => {
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.defaultPrevented || e.repeat) return
+      const tag = (e.target as HTMLElement)?.tagName
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || (e.target as HTMLElement)?.isContentEditable) return
+      if (e.shiftKey && e.key === 'N') {
+        e.preventDefault()
+        window.dispatchEvent(new CustomEvent('toggle-notification-drawer'))
+      }
+    }
+    document.addEventListener('keydown', handleKeyDown)
+    return () => document.removeEventListener('keydown', handleKeyDown)
+  }, [])
+
+  // Click-to-focus from browser notifications navigates via React Router
+  useEffect(() => {
+    function handleNav(e: Event) {
+      const detail = (e as CustomEvent<{ href: string }>).detail
+      if (detail?.href) void navigate(detail.href)
+    }
+    window.addEventListener('notification-navigate', handleNav)
+    return () => window.removeEventListener('notification-navigate', handleNav)
+  }, [navigate])
+
   const openSidebarOverlay = useCallback(() => setSidebarOverlayOpen(true), [])
   const closeSidebarOverlay = useCallback(() => setSidebarOverlayOpen(false), [])
 
@@ -80,6 +108,7 @@ export default function AppLayout() {
       // Full-page navigation -- /docs/ is static HTML served by nginx, not an SPA route
       { id: 'nav-docs', label: 'Documentation', icon: BookOpen, action: () => { window.location.href = ROUTES.DOCUMENTATION }, group: 'Navigation', keywords: ['docs', 'help', 'guide', 'reference'] },
       { id: 'nav-settings', label: 'Settings', icon: Settings, action: () => navigate(ROUTES.SETTINGS), group: 'Navigation', shortcut: ['ctrl', ','] },
+      { id: 'notifications-open', label: 'Notifications', icon: Bell, action: () => window.dispatchEvent(new CustomEvent('toggle-notification-drawer')), group: 'Navigation', shortcut: ['shift', 'N'] },
     ],
     [navigate],
   )

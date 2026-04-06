@@ -141,15 +141,30 @@ _r.register(
 _r.register(
     SettingDefinition(
         namespace=SettingNamespace.API,
-        key="rate_limit_max_requests",
+        key="rate_limit_unauth_max_requests",
         type=SettingType.INTEGER,
-        default="100",
-        description="Maximum requests per time window",
+        default="20",
+        description="Maximum unauthenticated requests per time window (by IP)",
         group="Rate Limiting",
         level=SettingLevel.ADVANCED,
         min_value=1,
         max_value=10000,
-        yaml_path="api.rate_limit.max_requests",
+        yaml_path="api.rate_limit.unauth_max_requests",
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.API,
+        key="rate_limit_auth_max_requests",
+        type=SettingType.INTEGER,
+        default="600",
+        description="Maximum authenticated requests per time window (by user ID)",
+        group="Rate Limiting",
+        level=SettingLevel.ADVANCED,
+        min_value=1,
+        max_value=100000,
+        yaml_path="api.rate_limit.auth_max_requests",
     )
 )
 

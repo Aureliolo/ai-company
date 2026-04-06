@@ -27,15 +27,36 @@ class TestApiConfig:
 
     def test_rate_limit_defaults(self) -> None:
         rl = RateLimitConfig()
-        assert rl.max_requests == 100
+        assert rl.unauth_max_requests == 20
+        assert rl.auth_max_requests == 600
         assert rl.time_unit == RateLimitTimeUnit.MINUTE
         assert rl.time_unit.value == "minute"
         assert "/api/v1/health" in rl.exclude_paths
+
+    def test_rate_limit_custom_values(self) -> None:
+        rl = RateLimitConfig(
+            unauth_max_requests=10,
+            auth_max_requests=1000,
+        )
+        assert rl.unauth_max_requests == 10
+        assert rl.auth_max_requests == 1000
+
+    def test_rate_limit_legacy_max_requests_rejected(self) -> None:
+        with pytest.raises(
+            ValidationError,
+            match=r"max_requests.*replaced",
+        ):
+            RateLimitConfig(max_requests=100)  # type: ignore[call-arg]
 
     def test_rate_limit_time_unit_values(self) -> None:
         for unit in RateLimitTimeUnit:
             rl = RateLimitConfig(time_unit=unit)
             assert rl.time_unit == unit
+
+    def test_rate_limit_frozen(self) -> None:
+        rl = RateLimitConfig()
+        with pytest.raises(ValidationError):
+            rl.unauth_max_requests = 50  # type: ignore[misc]
 
     def test_server_ws_ping_defaults(self) -> None:
         server = ServerConfig()

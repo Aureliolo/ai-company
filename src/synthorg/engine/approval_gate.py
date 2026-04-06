@@ -33,6 +33,7 @@ from .approval_gate_models import EscalationInfo  # noqa: TC001
 
 if TYPE_CHECKING:
     from synthorg.engine.context import AgentContext
+    from synthorg.notifications.dispatcher import NotificationDispatcher
 
 logger = get_logger(__name__)
 
@@ -52,9 +53,11 @@ class ApprovalGate:
         *,
         park_service: ParkService,
         parked_context_repo: ParkedContextRepository | None = None,
+        notification_dispatcher: NotificationDispatcher | None = None,
     ) -> None:
         self._park_service = park_service
         self._parked_context_repo = parked_context_repo
+        self._notification_dispatcher = notification_dispatcher
         logger.debug(
             APPROVAL_GATE_INITIALIZED,
             has_parked_context_repo=parked_context_repo is not None,
@@ -119,6 +122,27 @@ class ApprovalGate:
             task_id,
         )
         await self._persist_parked(parked, escalation)
+        if self._notification_dispatcher is not None:
+            from synthorg.notifications.models import (  # noqa: PLC0415
+                Notification,
+                NotificationCategory,
+                NotificationSeverity,
+            )
+
+            await self._notification_dispatcher.dispatch(
+                Notification(
+                    category=NotificationCategory.APPROVAL,
+                    severity=NotificationSeverity.WARNING,
+                    title=f"Approval required: {escalation.approval_id}",
+                    body=escalation.reason or "",
+                    source="engine.approval_gate",
+                    metadata={
+                        "approval_id": escalation.approval_id,
+                        "agent_id": agent_id,
+                        "task_id": task_id,
+                    },
+                ),
+            )
         return parked
 
     def _serialize_context(

@@ -29,6 +29,7 @@ from synthorg.hr.performance.config import PerformanceConfig
 from synthorg.hr.promotion.config import PromotionConfig
 from synthorg.memory.config import CompanyMemoryConfig
 from synthorg.memory.org.config import OrgMemoryConfig
+from synthorg.notifications.config import NotificationConfig
 from synthorg.observability import get_logger
 from synthorg.observability.config import LogConfig  # noqa: TC001
 from synthorg.observability.events.config import CONFIG_VALIDATION_FAILED
@@ -571,6 +572,7 @@ class RootConfig(BaseModel):
         git_clone: Git clone SSRF prevention network policy.
         backup: Backup and restore configuration.
         workflow: Workflow type configuration.
+        notifications: Notification subsystem configuration.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
@@ -701,6 +703,10 @@ class RootConfig(BaseModel):
     workflow: WorkflowConfig = Field(
         default_factory=WorkflowConfig,
         description="Workflow type configuration",
+    )
+    notifications: NotificationConfig = Field(
+        default_factory=NotificationConfig,
+        description="Notification subsystem configuration",
     )
 
     @model_validator(mode="after")

@@ -86,11 +86,21 @@ class TestApiSettingsIntegration:
         Writes a rate-limit override via ``SettingsService`` and reads
         it back through ``ConfigResolver.get_api_config()``.
         """
-        await settings_service.set("api", "rate_limit_max_requests", "500")
+        await settings_service.set(
+            "api",
+            "rate_limit_unauth_max_requests",
+            "50",
+        )
+        await settings_service.set(
+            "api",
+            "rate_limit_auth_max_requests",
+            "1000",
+        )
 
         result = await resolver.get_api_config()
 
-        assert result.rate_limit.max_requests == 500
+        assert result.rate_limit.unauth_max_requests == 50
+        assert result.rate_limit.auth_max_requests == 1000
         # Non-overridden fields keep code defaults
         assert result.rate_limit.time_unit.value == "minute"
         assert result.auth.jwt_expiry_minutes == 1440
@@ -102,12 +112,13 @@ class TestApiSettingsIntegration:
     ) -> None:
         """Verify code defaults are used when no DB overrides exist.
 
-        All four runtime-editable API settings should resolve to their
+        All five runtime-editable API settings should resolve to their
         ``SettingDefinition`` defaults.
         """
         result = await resolver.get_api_config()
 
-        assert result.rate_limit.max_requests == 100
+        assert result.rate_limit.unauth_max_requests == 20
+        assert result.rate_limit.auth_max_requests == 600
         assert result.rate_limit.time_unit.value == "minute"
         assert result.auth.jwt_expiry_minutes == 1440
         assert result.auth.min_password_length == 12

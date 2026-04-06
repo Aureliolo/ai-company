@@ -1,0 +1,217 @@
+/**
+ * Notification types and routing configuration.
+ *
+ * The category taxonomy is shared with the backend `NotificationCategory`
+ * and `NotificationSeverity` enums in `src/synthorg/notifications/models.py`.
+ * Changes here MUST be mirrored there.
+ */
+
+// ---------------------------------------------------------------------------
+// Core types
+// ---------------------------------------------------------------------------
+
+export type NotificationSeverity = 'info' | 'warning' | 'error' | 'critical'
+
+export type NotificationCategory =
+  | 'approvals.pending'
+  | 'approvals.expiring'
+  | 'approvals.decided'
+  | 'budget.threshold'
+  | 'budget.exhausted'
+  | 'system.error'
+  | 'system.restart_required'
+  | 'system.shutdown'
+  | 'agents.personality_trimmed'
+  | 'agents.hired'
+  | 'agents.fired'
+  | 'tasks.failed'
+  | 'tasks.blocked'
+  | 'providers.down'
+  | 'providers.degraded'
+  | 'connection.lost'
+  | 'connection.exhausted'
+
+export type NotificationRoute = 'toast' | 'drawer' | 'browser'
+
+export type NotificationFilterGroup =
+  | 'all'
+  | 'approvals'
+  | 'budget'
+  | 'system'
+  | 'tasks'
+  | 'agents'
+  | 'providers'
+  | 'connection'
+
+export interface NotificationItem {
+  readonly id: string
+  readonly category: NotificationCategory
+  readonly severity: NotificationSeverity
+  readonly title: string
+  readonly description?: string
+  readonly timestamp: string
+  read: boolean
+  readonly href?: string
+  readonly entityId?: string
+  readonly dispatchedTo: readonly NotificationRoute[]
+}
+
+// ---------------------------------------------------------------------------
+// Routing configuration
+// ---------------------------------------------------------------------------
+
+export interface CategoryConfig {
+  readonly severity: NotificationSeverity
+  readonly defaultRoutes: readonly NotificationRoute[]
+  readonly label: string
+  readonly group: NotificationFilterGroup
+}
+
+export const CATEGORY_CONFIGS: Record<NotificationCategory, CategoryConfig> = {
+  'approvals.pending': {
+    severity: 'warning',
+    defaultRoutes: ['drawer', 'toast', 'browser'],
+    label: 'Approval pending',
+    group: 'approvals',
+  },
+  'approvals.expiring': {
+    severity: 'warning',
+    defaultRoutes: ['drawer', 'browser'],
+    label: 'Approval expiring',
+    group: 'approvals',
+  },
+  'approvals.decided': {
+    severity: 'info',
+    defaultRoutes: ['drawer'],
+    label: 'Approval decided',
+    group: 'approvals',
+  },
+  'budget.threshold': {
+    severity: 'warning',
+    defaultRoutes: ['drawer', 'toast', 'browser'],
+    label: 'Budget threshold',
+    group: 'budget',
+  },
+  'budget.exhausted': {
+    severity: 'critical',
+    defaultRoutes: ['drawer', 'toast', 'browser'],
+    label: 'Budget exhausted',
+    group: 'budget',
+  },
+  'system.error': {
+    severity: 'error',
+    defaultRoutes: ['drawer', 'toast'],
+    label: 'System error',
+    group: 'system',
+  },
+  'system.restart_required': {
+    severity: 'warning',
+    defaultRoutes: ['drawer', 'toast'],
+    label: 'Restart required',
+    group: 'system',
+  },
+  'system.shutdown': {
+    severity: 'critical',
+    defaultRoutes: ['drawer', 'toast', 'browser'],
+    label: 'System shutdown',
+    group: 'system',
+  },
+  'agents.personality_trimmed': {
+    severity: 'info',
+    defaultRoutes: ['toast'],
+    label: 'Personality trimmed',
+    group: 'agents',
+  },
+  'agents.hired': {
+    severity: 'info',
+    defaultRoutes: ['drawer'],
+    label: 'Agent hired',
+    group: 'agents',
+  },
+  'agents.fired': {
+    severity: 'info',
+    defaultRoutes: ['drawer'],
+    label: 'Agent fired',
+    group: 'agents',
+  },
+  'tasks.failed': {
+    severity: 'error',
+    defaultRoutes: ['drawer', 'toast'],
+    label: 'Task failed',
+    group: 'tasks',
+  },
+  'tasks.blocked': {
+    severity: 'warning',
+    defaultRoutes: ['drawer'],
+    label: 'Task blocked',
+    group: 'tasks',
+  },
+  'providers.down': {
+    severity: 'error',
+    defaultRoutes: ['drawer', 'toast', 'browser'],
+    label: 'Provider down',
+    group: 'providers',
+  },
+  'providers.degraded': {
+    severity: 'warning',
+    defaultRoutes: ['drawer', 'toast'],
+    label: 'Provider degraded',
+    group: 'providers',
+  },
+  'connection.lost': {
+    severity: 'warning',
+    defaultRoutes: ['toast'],
+    label: 'Connection lost',
+    group: 'connection',
+  },
+  'connection.exhausted': {
+    severity: 'error',
+    defaultRoutes: ['drawer', 'toast', 'browser'],
+    label: 'Connection exhausted',
+    group: 'connection',
+  },
+} as const
+
+// ---------------------------------------------------------------------------
+// Severity mapping to toast variant
+// ---------------------------------------------------------------------------
+
+export type ToastVariant = 'success' | 'error' | 'warning' | 'info'
+
+export const SEVERITY_TO_TOAST_VARIANT: Record<NotificationSeverity, ToastVariant> = {
+  info: 'info',
+  warning: 'warning',
+  error: 'error',
+  critical: 'error',
+}
+
+// ---------------------------------------------------------------------------
+// Preferences
+// ---------------------------------------------------------------------------
+
+export interface NotificationPreferences {
+  readonly routeOverrides: Partial<Record<NotificationCategory, readonly NotificationRoute[]>>
+  readonly globalMute: boolean
+  readonly browserPermission: NotificationPermission
+}
+
+export const DEFAULT_PREFERENCES: NotificationPreferences = {
+  routeOverrides: {},
+  globalMute: false,
+  browserPermission: 'default',
+}
+
+// ---------------------------------------------------------------------------
+// Filter group labels
+// ---------------------------------------------------------------------------
+
+export const FILTER_GROUP_LABELS: Record<NotificationFilterGroup, string> = {
+  all: 'All',
+  approvals: 'Approvals',
+  budget: 'Budget',
+  system: 'System',
+  tasks: 'Tasks',
+  agents: 'Agents',
+  providers: 'Providers',
+  connection: 'Connection',
+}

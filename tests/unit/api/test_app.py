@@ -1113,3 +1113,83 @@ class TestBootstrapAppLogging:
 def _raise_runtime_error(_config: object) -> None:
     msg = "boom"
     raise RuntimeError(msg)
+
+
+@pytest.mark.unit
+class TestBuildMiddleware:
+    """Tests for the tiered rate-limit middleware stack."""
+
+    def test_middleware_stack_has_four_entries(
+        self,
+        root_config: Any,
+    ) -> None:
+        from synthorg.api.app import _build_middleware
+
+        mw = _build_middleware(root_config.api)
+        assert len(mw) == 4
+
+    def test_unauth_and_auth_rate_limiters_have_distinct_stores(
+        self,
+        root_config: Any,
+    ) -> None:
+        from litestar.middleware.rate_limit import (
+            RateLimitConfig as LsRL,
+        )
+
+        from synthorg.api.app import _build_middleware
+
+        mw = _build_middleware(root_config.api)
+        # First and last entries are the rate-limit DefineMiddleware
+        # wrappers. Extract the underlying config from kwargs.
+        rl_configs = [
+            entry.kwargs.get("config")
+            for entry in mw
+            if hasattr(entry, "kwargs") and isinstance(entry.kwargs.get("config"), LsRL)
+        ]
+        stores = [cfg.store for cfg in rl_configs]
+        assert len(stores) == 2
+        assert stores[0] != stores[1]
+        assert "unauth" in stores[0]
+        assert "auth" in stores[1]
+
+
+@pytest.mark.unit
+class TestAuthIdentifierForRequest:
+    """Tests for _auth_identifier_for_request."""
+
+    def test_returns_user_id_when_user_in_scope(self) -> None:
+        from unittest.mock import MagicMock
+
+        from synthorg.api.app import _auth_identifier_for_request
+
+        request = MagicMock()
+        user = MagicMock()
+        user.user_id = "user-abc-123"
+        request.scope = {"user": user}
+        assert _auth_identifier_for_request(request) == "user-abc-123"
+
+    def test_falls_back_to_ip_when_no_user(self) -> None:
+        from unittest.mock import MagicMock, patch
+
+        from synthorg.api.app import _auth_identifier_for_request
+
+        request = MagicMock()
+        request.scope = {}
+        with patch(
+            "synthorg.api.app.get_remote_address",
+            return_value="10.0.0.1",
+        ):
+            assert _auth_identifier_for_request(request) == "10.0.0.1"
+
+    def test_falls_back_to_ip_when_user_is_none(self) -> None:
+        from unittest.mock import MagicMock, patch
+
+        from synthorg.api.app import _auth_identifier_for_request
+
+        request = MagicMock()
+        request.scope = {"user": None}
+        with patch(
+            "synthorg.api.app.get_remote_address",
+            return_value="192.168.1.1",
+        ):
+            assert _auth_identifier_for_request(request) == "192.168.1.1"

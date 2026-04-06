@@ -571,8 +571,11 @@ class ConfigResolver:
 
         try:
             async with asyncio.TaskGroup() as tg:
-                t_max_req = tg.create_task(
-                    self.get_int("api", "rate_limit_max_requests")
+                t_unauth = tg.create_task(
+                    self.get_int("api", "rate_limit_unauth_max_requests")
+                )
+                t_auth = tg.create_task(
+                    self.get_int("api", "rate_limit_auth_max_requests")
                 )
                 t_time_unit = tg.create_task(
                     self.get_enum("api", "rate_limit_time_unit", RateLimitTimeUnit)
@@ -593,7 +596,8 @@ class ConfigResolver:
             update={
                 "rate_limit": base.rate_limit.model_copy(
                     update={
-                        "max_requests": t_max_req.result(),
+                        "unauth_max_requests": t_unauth.result(),
+                        "auth_max_requests": t_auth.result(),
                         "time_unit": t_time_unit.result(),
                     },
                 ),

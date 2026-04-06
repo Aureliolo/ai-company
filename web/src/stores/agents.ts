@@ -1,7 +1,6 @@
 import { create } from 'zustand'
 import { listAgents, getAgent, getAgentPerformance, getAgentActivity, getAgentHistory } from '@/api/endpoints/agents'
 import { listTasks } from '@/api/endpoints/tasks'
-import { useToastStore } from '@/stores/toast'
 import { getErrorMessage } from '@/utils/errors'
 import { sanitizeForLog } from '@/utils/logging'
 import { createLogger } from '@/lib/logger'
@@ -267,67 +266,8 @@ export const useAgentsStore = create<AgentsState>()((set, get) => ({
       }))
       return
     }
-    if (event.event_type === 'personality.trimmed') {
-      const payload = event.payload as Record<string, unknown>
-      const agentNameRaw = payload.agent_name
-      const beforeRaw = payload.before_tokens
-      const afterRaw = payload.after_tokens
-
-      const agentName =
-        typeof agentNameRaw === 'string'
-          // Length-bound defence-in-depth: the backend payload is trusted but
-          // bounding the visual blast radius of a malformed or oversized
-          // agent_name is cheap insurance. React escapes text content, so
-          // there is no XSS risk -- this is purely display hygiene.
-          ? agentNameRaw.slice(0, 64)
-          : null
-      // Token counts must be non-negative integers -- reject anything else
-      // so a malformed payload (negative, fractional, Infinity, NaN) falls
-      // through to the generic fallback description instead of rendering
-      // nonsense like "-1 -> 3.14 tokens".
-      const isTokenCount = (v: unknown): v is number =>
-        typeof v === 'number' && Number.isInteger(v) && v >= 0
-      const beforeValid = isTokenCount(beforeRaw) ? beforeRaw : null
-      const afterValid = isTokenCount(afterRaw) ? afterRaw : null
-      // Monotonicity: trimming must reduce token count.  A payload where
-      // after_tokens > before_tokens is contradictory (we would be
-      // "trimming" to a larger size), so fall through to the generic
-      // fallback copy instead of rendering the swapped numbers.
-      const monotonic =
-        beforeValid !== null && afterValid !== null
-          ? afterValid < beforeValid
-          : true
-      const before = monotonic ? beforeValid : null
-      const after = monotonic ? afterValid : null
-
-      if (agentName === null || before === null || after === null) {
-        log.warn('personality.trimmed payload has missing/invalid fields', {
-          hasAgentName: agentName !== null,
-          hasBeforeTokens: before !== null,
-          hasAfterTokens: after !== null,
-        })
-      }
-
-      // If every field is missing or invalid the toast would carry zero
-      // actionable information ("An agent personality was trimmed" with no
-      // name or numbers), so suppress it entirely. The warn log above is
-      // retained as the diagnostic signal for the dropped event.
-      if (agentName === null && before === null && after === null) {
-        return
-      }
-
-      const displayName = agentName ?? 'An agent'
-      const description =
-        before !== null && after !== null
-          ? `${displayName} personality trimmed: ${before} → ${after} tokens`
-          : `${displayName} personality was trimmed to fit token budget`
-      useToastStore.getState().add({
-        variant: 'info',
-        title: 'Personality trimmed',
-        description,
-      })
-      return
-    }
+    // personality.trimmed is now handled by the unified notification
+    // pipeline in useNotificationsStore.handleWsEvent (see #1078).
 
     log.debug('WS event ignored: unhandled event_type', { event_type: sanitizeForLog(event?.event_type) })
   },

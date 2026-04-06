@@ -7,7 +7,7 @@ them all.
 
 import ipaddress
 from enum import StrEnum
-from typing import Self
+from typing import Any, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -79,10 +79,19 @@ class RateLimitTimeUnit(StrEnum):
 class RateLimitConfig(BaseModel):
     """API rate limiting configuration.
 
-    Maps to Litestar's built-in ``RateLimitConfig`` middleware.
+    Supports two tiers stacked around the auth middleware:
+
+    - **Unauthenticated**: applied before auth, keyed by client IP.
+    - **Authenticated**: applied after auth, keyed by user ID.
+
+    This prevents multi-user deployments behind a shared gateway
+    from collectively exhausting a single per-IP budget.
 
     Attributes:
-        max_requests: Maximum requests per time window.
+        unauth_max_requests: Maximum unauthenticated requests per
+            time window (by IP).
+        auth_max_requests: Maximum authenticated requests per time
+            window (by user ID).
         time_unit: Time window (``second``, ``minute``, ``hour``,
             ``day``).
         exclude_paths: Paths excluded from rate limiting.
@@ -90,10 +99,15 @@ class RateLimitConfig(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
-    max_requests: int = Field(
-        default=100,
+    unauth_max_requests: int = Field(
+        default=20,
         ge=1,
-        description="Maximum requests per time window",
+        description="Maximum unauthenticated requests per time window (by IP)",
+    )
+    auth_max_requests: int = Field(
+        default=600,
+        ge=1,
+        description="Maximum authenticated requests per time window (by user ID)",
     )
     time_unit: RateLimitTimeUnit = Field(
         default=RateLimitTimeUnit.MINUTE,
@@ -103,6 +117,18 @@ class RateLimitConfig(BaseModel):
         default=("/api/v1/health",),
         description="Paths excluded from rate limiting",
     )
+
+    @model_validator(mode="before")
+    @classmethod
+    def _reject_legacy_max_requests(cls, data: Any) -> Any:
+        """Reject the removed ``max_requests`` field with guidance."""
+        if isinstance(data, dict) and "max_requests" in data:
+            msg = (
+                "'max_requests' was replaced by 'unauth_max_requests' "
+                "and 'auth_max_requests' in v0.6.3"
+            )
+            raise ValueError(msg)
+        return data
 
 
 class ServerConfig(BaseModel):

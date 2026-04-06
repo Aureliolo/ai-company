@@ -219,7 +219,10 @@ def root_config() -> RootConfig:
     return RootConfig(
         company_name="test-company",
         api=ApiConfig(
-            rate_limit=RateLimitConfig(max_requests=1_000_000),
+            rate_limit=RateLimitConfig(
+                unauth_max_requests=1_000_000,
+                auth_max_requests=1_000_000,
+            ),
         ),
     )
 

@@ -26,6 +26,7 @@ from synthorg.observability.events.timeout import (
 if TYPE_CHECKING:
     from synthorg.api.approval_store import ApprovalStore
     from synthorg.core.approval import ApprovalItem
+    from synthorg.notifications.dispatcher import NotificationDispatcher
     from synthorg.security.timeout.models import TimeoutAction
     from synthorg.security.timeout.timeout_checker import TimeoutChecker
 
@@ -45,6 +46,8 @@ class ApprovalTimeoutScheduler:
         interval_seconds: Seconds between poll cycles.
         on_timeout_resolve: Async callback invoked when a timeout
             action resolves an approval (APPROVE or DENY).
+        notification_dispatcher: Optional dispatcher for out-of-band
+            operator alerts on escalation.
     """
 
     def __init__(
@@ -56,6 +59,7 @@ class ApprovalTimeoutScheduler:
         on_timeout_resolve: (
             Callable[[ApprovalItem, TimeoutAction], Awaitable[None]] | None
         ) = None,
+        notification_dispatcher: NotificationDispatcher | None = None,
     ) -> None:
         if interval_seconds <= 0:
             msg = f"interval_seconds must be positive, got {interval_seconds}"
@@ -64,6 +68,7 @@ class ApprovalTimeoutScheduler:
         self._checker = timeout_checker
         self._interval = interval_seconds
         self._on_resolve = on_timeout_resolve
+        self._notification_dispatcher = notification_dispatcher
         self._task: asyncio.Task[None] | None = None
         self._wake_event = asyncio.Event()
 
@@ -187,9 +192,6 @@ class ApprovalTimeoutScheduler:
         if action.action in {TimeoutActionType.APPROVE, TimeoutActionType.DENY}:
             await self._resolve_item(updated, action)
         elif action.action == TimeoutActionType.ESCALATE:
-            # TODO: Wire escalation to a notification sink so the
-            # escalate_to target is actually notified.  Currently
-            # log-only with no downstream effect.
             logger.info(
                 TIMEOUT_SCHEDULER_RESOLVED,
                 approval_id=item.id,
@@ -197,6 +199,26 @@ class ApprovalTimeoutScheduler:
                 escalate_to=action.escalate_to,
                 reason=action.reason,
             )
+            if self._notification_dispatcher is not None:
+                from synthorg.notifications.models import (  # noqa: PLC0415
+                    Notification,
+                    NotificationCategory,
+                    NotificationSeverity,
+                )
+
+                await self._notification_dispatcher.dispatch(
+                    Notification(
+                        category=NotificationCategory.SECURITY,
+                        severity=NotificationSeverity.WARNING,
+                        title=f"Approval escalated: {item.id}",
+                        body=action.reason or "",
+                        source="security.timeout.scheduler",
+                        metadata={
+                            "approval_id": item.id,
+                            "escalate_to": action.escalate_to,
+                        },
+                    ),
+                )
 
     async def _resolve_item(
         self,

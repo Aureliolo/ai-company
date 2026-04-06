@@ -1,0 +1,125 @@
+"""Tests for notification domain models."""
+
+import copy
+from datetime import UTC, datetime
+
+import pytest
+from pydantic import ValidationError
+
+from synthorg.notifications.models import (
+    Notification,
+    NotificationCategory,
+    NotificationSeverity,
+)
+
+
+@pytest.mark.unit
+class TestNotificationCategory:
+    def test_values(self) -> None:
+        assert NotificationCategory.APPROVAL == "approval"
+        assert NotificationCategory.BUDGET == "budget"
+        assert NotificationCategory.SECURITY == "security"
+        assert NotificationCategory.STAGNATION == "stagnation"
+        assert NotificationCategory.SYSTEM == "system"
+        assert NotificationCategory.AGENT == "agent"
+
+
+@pytest.mark.unit
+class TestNotificationSeverity:
+    def test_values(self) -> None:
+        assert NotificationSeverity.INFO == "info"
+        assert NotificationSeverity.WARNING == "warning"
+        assert NotificationSeverity.ERROR == "error"
+        assert NotificationSeverity.CRITICAL == "critical"
+
+
+@pytest.mark.unit
+class TestNotification:
+    def test_construction_with_defaults(self) -> None:
+        n = Notification(
+            category=NotificationCategory.BUDGET,
+            severity=NotificationSeverity.WARNING,
+            title="Budget threshold crossed",
+            source="budget.enforcer",
+        )
+        assert n.category == NotificationCategory.BUDGET
+        assert n.severity == NotificationSeverity.WARNING
+        assert n.title == "Budget threshold crossed"
+        assert n.body == ""
+        assert n.source == "budget.enforcer"
+        assert n.id  # auto-generated
+        assert n.timestamp.tzinfo is not None
+        assert n.metadata == {}
+
+    def test_construction_with_all_fields(self) -> None:
+        ts = datetime(2026, 4, 6, 12, 0, tzinfo=UTC)
+        n = Notification(
+            id="custom-id",
+            category=NotificationCategory.APPROVAL,
+            severity=NotificationSeverity.CRITICAL,
+            title="Approval escalated",
+            body="Approval timed out for agent X",
+            source="security.timeout.scheduler",
+            timestamp=ts,
+            metadata={"approval_id": "abc-123"},
+        )
+        assert n.id == "custom-id"
+        assert n.body == "Approval timed out for agent X"
+        assert n.timestamp == ts
+        assert n.metadata == {"approval_id": "abc-123"}
+
+    def test_frozen(self) -> None:
+        n = Notification(
+            category=NotificationCategory.SYSTEM,
+            severity=NotificationSeverity.ERROR,
+            title="System error",
+            source="engine",
+        )
+        with pytest.raises(ValidationError):
+            n.title = "changed"  # type: ignore[misc]
+
+    def test_blank_title_rejected(self) -> None:
+        with pytest.raises(ValidationError):
+            Notification(
+                category=NotificationCategory.BUDGET,
+                severity=NotificationSeverity.INFO,
+                title="   ",
+                source="test",
+            )
+
+    def test_blank_source_rejected(self) -> None:
+        with pytest.raises(ValidationError):
+            Notification(
+                category=NotificationCategory.BUDGET,
+                severity=NotificationSeverity.INFO,
+                title="Test",
+                source="  ",
+            )
+
+    def test_metadata_deep_copy_isolation(self) -> None:
+        meta = {"key": [1, 2, 3]}
+        n = Notification(
+            category=NotificationCategory.AGENT,
+            severity=NotificationSeverity.INFO,
+            title="Test",
+            source="test",
+            metadata=meta,
+        )
+        copied = copy.deepcopy(n.metadata)
+        copied["key"] = [4, 5, 6]
+        assert n.metadata["key"] == [1, 2, 3]
+
+    def test_unique_ids(self) -> None:
+        n1 = Notification(
+            category=NotificationCategory.SYSTEM,
+            severity=NotificationSeverity.INFO,
+            title="A",
+            source="test",
+        )
+        n2 = Notification(
+            category=NotificationCategory.SYSTEM,
+            severity=NotificationSeverity.INFO,
+            title="B",
+            source="test",
+        )
+        assert n1.id != n2.id

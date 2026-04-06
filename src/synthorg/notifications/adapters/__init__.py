@@ -1,0 +1,1 @@
+"""Notification sink adapter implementations."""

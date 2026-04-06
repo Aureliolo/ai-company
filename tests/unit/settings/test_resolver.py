@@ -79,7 +79,8 @@ class _FakeAuthConfig(BaseModel):
 
 class _FakeRateLimitConfig(BaseModel):
     model_config = ConfigDict(frozen=True)
-    max_requests: int = 100
+    unauth_max_requests: int = 20
+    auth_max_requests: int = 600
     time_unit: RateLimitTimeUnit = RateLimitTimeUnit.MINUTE
     exclude_paths: tuple[str, ...] = ("/api/v1/health",)
 
@@ -625,7 +626,8 @@ def _api_get_side_effect(
 ) -> AsyncMock:
     """Create a mock .get() that returns API defaults with optional overrides."""
     defaults = {
-        ("api", "rate_limit_max_requests"): "100",
+        ("api", "rate_limit_unauth_max_requests"): "20",
+        ("api", "rate_limit_auth_max_requests"): "600",
         ("api", "rate_limit_time_unit"): "minute",
         ("api", "jwt_expiry_minutes"): "1440",
         ("api", "min_password_length"): "12",
@@ -652,7 +654,7 @@ class TestGetApiConfig:
         mock_settings.get = _api_get_side_effect()
         result = await resolver.get_api_config()
 
-        assert result.rate_limit.max_requests == 100
+        assert result.rate_limit.unauth_max_requests == 20
         assert result.rate_limit.time_unit == RateLimitTimeUnit.MINUTE
         assert result.auth.jwt_expiry_minutes == 1440
         assert result.auth.min_password_length == 12
@@ -662,13 +664,15 @@ class TestGetApiConfig:
     ) -> None:
         mock_settings.get = _api_get_side_effect(
             {
-                ("api", "rate_limit_max_requests"): "500",
+                ("api", "rate_limit_unauth_max_requests"): "50",
+                ("api", "rate_limit_auth_max_requests"): "1000",
                 ("api", "min_password_length"): "16",
             }
         )
         result = await resolver.get_api_config()
 
-        assert result.rate_limit.max_requests == 500
+        assert result.rate_limit.unauth_max_requests == 50
+        assert result.rate_limit.auth_max_requests == 1000
         assert result.auth.min_password_length == 16
         # Non-overridden fields keep defaults
         assert result.rate_limit.time_unit == RateLimitTimeUnit.MINUTE
@@ -720,7 +724,7 @@ class TestGetApiConfig:
     ) -> None:
         """ValueError from a corrupted DB value propagates directly."""
         mock_settings.get = _api_get_side_effect(
-            {("api", "rate_limit_max_requests"): "not-a-number"}
+            {("api", "rate_limit_unauth_max_requests"): "not-a-number"}
         )
         with pytest.raises(ValueError, match="invalid"):
             await resolver.get_api_config()
@@ -762,7 +766,8 @@ class TestGetApiConfig:
                 msg = "jwt_expiry_minutes"
                 raise SettingNotFoundError(msg)
             defaults = {
-                ("api", "rate_limit_max_requests"): "100",
+                ("api", "rate_limit_unauth_max_requests"): "20",
+                ("api", "rate_limit_auth_max_requests"): "600",
                 ("api", "rate_limit_time_unit"): "minute",
                 ("api", "min_password_length"): "12",
             }

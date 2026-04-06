@@ -32,6 +32,9 @@ from synthorg.hr.registry import AgentRegistryService  # noqa: TC001
 from synthorg.memory.embedding.fine_tune_orchestrator import (
     FineTuneOrchestrator,  # noqa: TC001
 )
+from synthorg.notifications.dispatcher import (
+    NotificationDispatcher,  # noqa: TC001
+)
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import API_APP_STARTUP, API_SERVICE_UNAVAILABLE
 from synthorg.observability.events.settings import SETTINGS_SERVICE_SWAPPED
@@ -87,6 +90,7 @@ class AppState:
         "_meeting_scheduler",
         "_message_bus",
         "_model_router",
+        "_notification_dispatcher",
         "_performance_tracker",
         "_persistence",
         "_provider_health_tracker",
@@ -128,6 +132,7 @@ class AppState:
         tool_invocation_tracker: ToolInvocationTracker | None = None,
         delegation_record_store: DelegationRecordStore | None = None,
         artifact_storage: ArtifactStorageBackend | None = None,
+        notification_dispatcher: NotificationDispatcher | None = None,
         startup_time: float = 0.0,
     ) -> None:
         self.config = config
@@ -135,6 +140,7 @@ class AppState:
         self._approval_gate = approval_gate
         self._artifact_storage = artifact_storage
         self._backup_service: BackupService | None = None
+        self._notification_dispatcher = notification_dispatcher
         self._persistence = persistence
         self._message_bus = message_bus
         self._cost_tracker = cost_tracker
@@ -573,6 +579,18 @@ class AppState:
             service="provider_registry",
             old_provider_count=old_count,
             new_provider_count=len(registry),
+        )
+
+    @property
+    def has_notification_dispatcher(self) -> bool:
+        """Check whether the notification dispatcher is configured."""
+        return self._notification_dispatcher is not None
+
+    @property
+    def notification_dispatcher(self) -> NotificationDispatcher:
+        """Return notification dispatcher or raise 503."""
+        return self._require_service(
+            self._notification_dispatcher, "notification_dispatcher"
         )
 
     @property

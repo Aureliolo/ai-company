@@ -275,7 +275,8 @@ class TestWsTicketAuth:
 
         api_config = ApiConfig()
         middleware = _build_middleware(api_config)
-        auth_cls = middleware[0]
+        # Index 1: auth middleware sits between the two rate limiters.
+        auth_cls = middleware[1]
 
         from litestar import Litestar
 
@@ -394,7 +395,8 @@ class TestWsTicketAuth:
 
         api_config = ApiConfig()
         middleware = _build_middleware(api_config)
-        auth_cls = middleware[0]
+        # Index 1: auth middleware sits between the two rate limiters.
+        auth_cls = middleware[1]
 
         dummy_app = Litestar(route_handlers=[])
         instance = auth_cls(dummy_app)  # type: ignore[operator,call-arg]
