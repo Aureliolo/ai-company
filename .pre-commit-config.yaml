@@ -36,6 +36,12 @@ repos:
         args: [--maxkb=1024]
       - id: no-commit-to-branch
         args: [--branch, main]
+      - id: check-symlinks
+      - id: check-case-conflict
+      - id: debug-statements
+        types: [python]
+      - id: detect-private-key
+      - id: mixed-line-ending
 
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.15.9
