@@ -9,6 +9,22 @@ _r = get_registry()
 _r.register(
     SettingDefinition(
         namespace=SettingNamespace.SECURITY,
+        key="discovery_allowlist",
+        type=SettingType.STRING,
+        default="[]",
+        description=(
+            "JSON-encoded list of host:port pairs trusted "
+            "for provider discovery SSRF bypass"
+        ),
+        group="SSRF Protection",
+        level=SettingLevel.ADVANCED,
+        yaml_path="security.discovery_allowlist",
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.SECURITY,
         key="enabled",
         type=SettingType.BOOLEAN,
         default="true",

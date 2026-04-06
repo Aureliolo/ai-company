@@ -31,6 +31,12 @@ from synthorg.persistence.repositories import (
     TaskRepository,  # noqa: TC001
     UserRepository,  # noqa: TC001
 )
+from synthorg.persistence.risk_override_repo import (
+    RiskOverrideRepository,  # noqa: TC001
+)
+from synthorg.persistence.ssrf_violation_repo import (
+    SsrfViolationRepository,  # noqa: TC001
+)
 from synthorg.persistence.workflow_definition_repo import (
     WorkflowDefinitionRepository,  # noqa: TC001
 )
@@ -234,6 +240,16 @@ class PersistenceBackend(Protocol):
     @property
     def workflow_versions(self) -> WorkflowVersionRepository:
         """Repository for workflow definition version snapshot persistence."""
+        ...
+
+    @property
+    def risk_overrides(self) -> RiskOverrideRepository:
+        """Repository for risk tier override persistence."""
+        ...
+
+    @property
+    def ssrf_violations(self) -> SsrfViolationRepository:
+        """Repository for SSRF violation record persistence."""
         ...
 
     async def get_setting(self, key: NotBlankStr) -> str | None:
