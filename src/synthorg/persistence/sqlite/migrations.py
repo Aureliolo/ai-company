@@ -7,6 +7,7 @@ current DB).
 """
 
 import importlib.resources
+import re
 import sqlite3
 
 import aiosqlite
@@ -74,7 +75,7 @@ async def apply_schema(db: aiosqlite.Connection) -> None:
 
 
 _ALLOWED_TABLES = frozenset({"users", "api_keys", "sessions"})
-_ALLOWED_COLUMN_RE = __import__("re").compile(r"^[a-z_][a-z0-9_]*$")
+_ALLOWED_COLUMN_RE = re.compile(r"^[a-z_][a-z0-9_]*$")
 
 
 async def _add_column_if_missing(

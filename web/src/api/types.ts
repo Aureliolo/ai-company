@@ -196,8 +196,8 @@ export interface UserInfoResponse {
   username: string
   role: HumanRole
   must_change_password: boolean
-  org_roles?: readonly OrgRole[]
-  scoped_departments?: readonly string[]
+  org_roles: readonly OrgRole[]
+  scoped_departments: readonly string[]
 }
 
 // ── Tasks ────────────────────────────────────────────────────

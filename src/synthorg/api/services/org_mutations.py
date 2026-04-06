@@ -35,6 +35,9 @@ from synthorg.observability.events.api import (
     API_DEPARTMENT_DELETED,
     API_DEPARTMENT_UPDATED,
     API_DEPARTMENTS_REORDERED,
+    API_RESOURCE_CONFLICT,
+    API_RESOURCE_NOT_FOUND,
+    API_VALIDATION_FAILED,
 )
 from synthorg.settings.resolver import ConfigResolver  # noqa: TC001
 from synthorg.settings.service import SettingsService  # noqa: TC001
@@ -131,6 +134,12 @@ class OrgMutationService:
             current_names,
         ):
             msg = f"Reorder must be an exact permutation of existing {entity} names"
+            logger.warning(
+                API_VALIDATION_FAILED,
+                entity=entity,
+                current_names=list(current_names),
+                requested_names=list(requested_names),
+            )
             raise ApiValidationError(msg)
 
     def _check_budget_sum(
@@ -214,6 +223,7 @@ class OrgMutationService:
             departments = await self._read_departments()
             if self._find_department(departments, data.name):
                 msg = f"Department {data.name!r} already exists"
+                logger.warning(API_RESOURCE_CONFLICT, reason=msg, department=data.name)
                 raise ConflictError(msg)
 
             dept = Department(
@@ -258,15 +268,21 @@ class OrgMutationService:
                 raise NotFoundError(msg)
 
             updates: dict[str, Any] = {}
-            if data.head is not None:
+            if "head" in data.model_fields_set and data.head is not None:
                 updates["head"] = data.head
-            if data.budget_percent is not None:
+            if "budget_percent" in data.model_fields_set:
                 updates["budget_percent"] = data.budget_percent
-            if data.autonomy_level is not None:
+            if (
+                "autonomy_level" in data.model_fields_set
+                and data.autonomy_level is not None
+            ):
                 updates["autonomy_level"] = data.autonomy_level
-            if data.teams is not None:
-                updates["teams"] = tuple(data.teams)
-            if data.ceremony_policy is not None:
+            if "teams" in data.model_fields_set:
+                updates["teams"] = tuple(data.teams) if data.teams else ()
+            if (
+                "ceremony_policy" in data.model_fields_set
+                and data.ceremony_policy is not None
+            ):
                 updates["ceremony_policy"] = data.ceremony_policy
 
             updated = existing.model_copy(update=updates, deep=True)
@@ -298,6 +314,7 @@ class OrgMutationService:
             existing = self._find_department(departments, name)
             if existing is None:
                 msg = f"Department {name!r} not found"
+                logger.warning(API_RESOURCE_NOT_FOUND, reason=msg, department=name)
                 raise NotFoundError(msg)
 
             # Referential integrity: reject if agents are attached
@@ -307,6 +324,12 @@ class OrgMutationService:
                 msg = (
                     f"Cannot delete department {name!r}: "
                     f"{len(attached)} agents attached"
+                )
+                logger.warning(
+                    API_RESOURCE_CONFLICT,
+                    reason=msg,
+                    department=name,
+                    agent_count=len(attached),
                 )
                 raise ConflictError(msg)
 
@@ -373,11 +396,15 @@ class OrgMutationService:
             departments = await self._read_departments()
             if not self._find_department(departments, data.department):
                 msg = f"Department {data.department!r} does not exist"
+                logger.warning(
+                    API_VALIDATION_FAILED, reason=msg, department=data.department
+                )
                 raise ApiValidationError(msg)
 
             agents = await self._read_agents()
             if self._find_agent(agents, data.name):
                 msg = f"Agent {data.name!r} already exists"
+                logger.warning(API_RESOURCE_CONFLICT, reason=msg, agent=data.name)
                 raise ConflictError(msg)
 
             model_dict: dict[str, Any] = {}
@@ -405,6 +432,49 @@ class OrgMutationService:
         )
         return agent
 
+    async def _validate_agent_update(
+        self,
+        name: str,
+        data: UpdateAgentOrgRequest,
+        agents: tuple[AgentConfig, ...],
+    ) -> dict[str, Any]:
+        """Validate agent update and collect field changes."""
+        updates: dict[str, Any] = {}
+        fields_set = data.model_fields_set
+
+        if "name" in fields_set and data.name is not None:
+            if self._find_agent(
+                tuple(a for a in agents if a.name.lower() != name.lower()),
+                str(data.name),
+            ):
+                msg = f"Agent {data.name!r} already exists"
+                logger.warning(
+                    API_RESOURCE_CONFLICT, reason=msg, agent_name=str(data.name)
+                )
+                raise ConflictError(msg)
+            updates["name"] = data.name
+
+        if "role" in fields_set and data.role is not None:
+            updates["role"] = data.role
+
+        if "department" in fields_set and data.department is not None:
+            departments = await self._read_departments()
+            if not self._find_department(departments, str(data.department)):
+                msg = f"Department {data.department!r} does not exist"
+                logger.warning(
+                    API_VALIDATION_FAILED, reason=msg, department=str(data.department)
+                )
+                raise ApiValidationError(msg)
+            updates["department"] = data.department
+
+        if "level" in fields_set and data.level is not None:
+            updates["level"] = data.level
+
+        if "autonomy_level" in fields_set and data.autonomy_level is not None:
+            updates["autonomy_level"] = data.autonomy_level
+
+        return updates
+
     async def update_agent(
         self,
         name: str,
@@ -431,28 +501,7 @@ class OrgMutationService:
                 msg = f"Agent {name!r} not found"
                 raise NotFoundError(msg)
 
-            updates: dict[str, Any] = {}
-            if data.name is not None:
-                # Check for name collision
-                if self._find_agent(
-                    tuple(a for a in agents if a.name.lower() != name.lower()),
-                    data.name,
-                ):
-                    msg = f"Agent {data.name!r} already exists"
-                    raise ConflictError(msg)
-                updates["name"] = data.name
-            if data.role is not None:
-                updates["role"] = data.role
-            if data.department is not None:
-                departments = await self._read_departments()
-                if not self._find_department(departments, data.department):
-                    msg = f"Department {data.department!r} does not exist"
-                    raise ApiValidationError(msg)
-                updates["department"] = data.department
-            if data.level is not None:
-                updates["level"] = data.level
-            if data.autonomy_level is not None:
-                updates["autonomy_level"] = data.autonomy_level
+            updates = await self._validate_agent_update(name, data, agents)
 
             updated = existing.model_copy(update=updates, deep=True)
             new_agents = tuple(
@@ -484,7 +533,10 @@ class OrgMutationService:
                 msg = f"Agent {name!r} not found"
                 raise NotFoundError(msg)
 
-            if existing.level == SeniorityLevel.C_SUITE:
+            if (
+                existing.level == SeniorityLevel.C_SUITE
+                and existing.role.lower() == "ceo"
+            ):
                 msg = (
                     f"Cannot delete c-suite agent {name!r} -- reassign or demote first"
                 )
@@ -517,6 +569,7 @@ class OrgMutationService:
             departments = await self._read_departments()
             if not self._find_department(departments, dept_name):
                 msg = f"Department {dept_name!r} not found"
+                logger.warning(API_RESOURCE_NOT_FOUND, reason=msg, department=dept_name)
                 raise NotFoundError(msg)
 
             agents = await self._read_agents()

@@ -15,13 +15,11 @@ export interface DepartmentCreateDialogProps {
 
 interface FormState {
   name: string
-  display_name: string
   budget_percent: string
 }
 
 const INITIAL_FORM: FormState = {
   name: '',
-  display_name: '',
   budget_percent: '0',
 }
 
@@ -48,7 +46,6 @@ export function DepartmentCreateDialog({ open, onOpenChange, onCreate }: Departm
   const handleSubmit = useCallback(async () => {
     const next: Partial<Record<keyof FormState, string>> = {}
     if (!form.name.trim()) next.name = 'Name is required'
-    if (!form.display_name.trim()) next.display_name = 'Display name is required'
     const pct = Number(form.budget_percent)
     if (!Number.isFinite(pct) || pct < 0 || pct > 100) {
       next.budget_percent = 'Budget percent must be between 0 and 100'
@@ -112,15 +109,6 @@ export function DepartmentCreateDialog({ open, onOpenChange, onCreate }: Departm
               required
               autoFocus
               placeholder="e.g. engineering"
-            />
-
-            <InputField
-              label="Display Name"
-              value={form.display_name}
-              onChange={(e) => updateField('display_name', e.target.value)}
-              error={errors.display_name}
-              required
-              placeholder="e.g. Engineering"
             />
 
             <InputField

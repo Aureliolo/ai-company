@@ -70,6 +70,13 @@ interface CompanyState {
   optimisticReassignAgent: (agentName: string, newDepartment: DepartmentName) => () => void
 }
 
+const ORG_MUTATION_EVENTS: ReadonlySet<string> = new Set([
+  'agent.hired', 'agent.fired',
+  'company.updated',
+  'department.created', 'department.updated', 'department.deleted', 'departments.reordered',
+  'agent.created', 'agent.updated', 'agent.deleted', 'agents.reordered',
+])
+
 export const useCompanyStore = create<CompanyState>()((set, get) => ({
   config: null,
   departmentHealths: [],
@@ -115,13 +122,7 @@ export const useCompanyStore = create<CompanyState>()((set, get) => ({
   },
 
   updateFromWsEvent: (event) => {
-    const orgMutationEvents: ReadonlySet<string> = new Set([
-      'agent.hired', 'agent.fired',
-      'company.updated',
-      'department.created', 'department.updated', 'department.deleted', 'departments.reordered',
-      'agent.created', 'agent.updated', 'agent.deleted', 'agents.reordered',
-    ])
-    if (orgMutationEvents.has(event.event_type)) {
+    if (ORG_MUTATION_EVENTS.has(event.event_type)) {
       const store = useCompanyStore.getState()
       store.fetchCompanyData()
         .then(() => store.fetchDepartmentHealths())

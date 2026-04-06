@@ -447,13 +447,22 @@ class UserController(Controller):
                 msg = "department_admin role requires scoped_departments"
                 logger.warning(API_VALIDATION_FAILED, reason=msg)
                 raise ApiValidationError(msg)
+            if data.role != OrgRole.DEPARTMENT_ADMIN and data.scoped_departments:
+                msg = "scoped_departments can only be set for department_admin"
+                logger.warning(API_VALIDATION_FAILED, reason=msg)
+                raise ApiValidationError(msg)
 
             new_roles = (*user.org_roles, data.role)
-            # Merge scoped departments (additive, sorted for stability)
-            new_scoped = tuple(
-                sorted(
-                    dict.fromkeys([*user.scoped_departments, *data.scoped_departments]),
+            new_scoped = (
+                tuple(
+                    sorted(
+                        dict.fromkeys(
+                            [*user.scoped_departments, *data.scoped_departments]
+                        ),
+                    )
                 )
+                if data.role == OrgRole.DEPARTMENT_ADMIN
+                else user.scoped_departments
             )
             now = datetime.now(UTC)
             updated = user.model_copy(
@@ -523,6 +532,9 @@ class UserController(Controller):
             updated = user.model_copy(
                 update={
                     "org_roles": new_roles,
+                    "scoped_departments": ()
+                    if org_role == OrgRole.DEPARTMENT_ADMIN
+                    else user.scoped_departments,
                     "updated_at": now,
                 },
             )

@@ -63,6 +63,9 @@ class User(BaseModel):
         if self.scoped_departments and OrgRole.DEPARTMENT_ADMIN not in self.org_roles:
             msg = "scoped_departments requires DEPARTMENT_ADMIN in org_roles"
             raise ValueError(msg)
+        if OrgRole.DEPARTMENT_ADMIN in self.org_roles and not self.scoped_departments:
+            msg = "DEPARTMENT_ADMIN requires non-empty scoped_departments"
+            raise ValueError(msg)
         return self
 
 
@@ -122,5 +125,8 @@ class AuthenticatedUser(BaseModel):
         """Reject non-empty scoped_departments without DEPARTMENT_ADMIN."""
         if self.scoped_departments and OrgRole.DEPARTMENT_ADMIN not in self.org_roles:
             msg = "scoped_departments requires DEPARTMENT_ADMIN in org_roles"
+            raise ValueError(msg)
+        if OrgRole.DEPARTMENT_ADMIN in self.org_roles and not self.scoped_departments:
+            msg = "DEPARTMENT_ADMIN requires non-empty scoped_departments"
             raise ValueError(msg)
         return self

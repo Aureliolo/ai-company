@@ -47,7 +47,6 @@ export function DepartmentEditDrawer({
   onReorderTeams,
   saving,
 }: DepartmentEditDrawerProps) {
-  const [displayName, setDisplayName] = useState('')
   const [budgetPercent, setBudgetPercent] = useState('0')
   const [ceremonyPolicy, setCeremonyPolicy] = useState<CeremonyPolicyConfig | null>(null)
   const [submitError, setSubmitError] = useState<string | null>(null)
@@ -60,7 +59,6 @@ export function DepartmentEditDrawer({
     if (department !== prevDepartmentRef.current) {
       prevDepartmentRef.current = department
       if (department) {
-        setDisplayName(department.display_name ?? department.name)
         setBudgetPercent(department.budget_percent != null ? String(department.budget_percent) : '0')
         setCeremonyPolicy(department.ceremony_policy ?? null)
         setSubmitError(null)
@@ -130,12 +128,6 @@ export function DepartmentEditDrawer({
               <Users className="size-3.5" aria-hidden="true" />
               {(health?.agent_count ?? 0)} agent{(health?.agent_count ?? 0) === 1 ? '' : 's'}
             </div>
-
-            <InputField
-              label="Display Name"
-              value={displayName}
-              onChange={(e) => setDisplayName(e.target.value)}
-            />
 
             <InputField
               label="Budget %"

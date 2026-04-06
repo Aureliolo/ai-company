@@ -1,7 +1,7 @@
 import { useCallback, useMemo, useRef, useState } from 'react'
 import { Loader2, Trash2 } from 'lucide-react'
 import type { AgentConfig, Department, SeniorityLevel, UpdateAgentOrgRequest } from '@/api/types'
-import { SENIORITY_LEVEL_VALUES, AGENT_STATUS_VALUES } from '@/api/types'
+import { SENIORITY_LEVEL_VALUES } from '@/api/types'
 import { Drawer } from '@/components/ui/drawer'
 import { InputField } from '@/components/ui/input-field'
 import { SelectField } from '@/components/ui/select-field'
@@ -22,7 +22,6 @@ export interface AgentEditDrawerProps {
 }
 
 const LEVEL_OPTIONS = SENIORITY_LEVEL_VALUES.map((l) => ({ value: l, label: l }))
-const STATUS_OPTIONS = AGENT_STATUS_VALUES.map((s) => ({ value: s, label: s.replace('_', ' ') }))
 
 export function AgentEditDrawer({
   open,
@@ -38,7 +37,6 @@ export function AgentEditDrawer({
     role: '',
     department: '',
     level: 'mid' as SeniorityLevel,
-    status: 'active' as AgentConfig['status'],
   })
   const [submitError, setSubmitError] = useState<string | null>(null)
   const [deleteOpen, setDeleteOpen] = useState(false)
@@ -53,7 +51,6 @@ export function AgentEditDrawer({
         role: agent.role,
         department: agent.department,
         level: agent.level,
-        status: agent.status ?? 'active',
       })
       setSubmitError(null)
     }
@@ -148,12 +145,11 @@ export function AgentEditDrawer({
               onChange={(v) => setForm((prev) => ({ ...prev, level: v as SeniorityLevel }))}
             />
 
-            <SelectField
-              label="Status"
-              options={STATUS_OPTIONS}
-              value={form.status ?? 'active'}
-              onChange={(v) => setForm((prev) => ({ ...prev, status: v as AgentConfig['status'] }))}
-            />
+            {/* Status is read-only; managed by system */}
+            <div className="space-y-1">
+              <p className="text-xs font-semibold uppercase tracking-wider text-text-muted">Status</p>
+              <StatusBadge status={toRuntimeStatus(agent?.status ?? 'active')} />
+            </div>
 
             {/* Read-only info */}
             <div className="border-t border-border pt-4 space-y-2">
