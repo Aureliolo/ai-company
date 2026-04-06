@@ -602,6 +602,10 @@ function OrgChartInner() {
       const dimmed = highlightedNodeIds !== null && !highlightedNodeIds.has(n.id)
       const next = { ...n }
 
+      // Only agent nodes are draggable, and only in hierarchy view.
+      // Other node types (department boxes, owner nodes) stay fixed.
+      next.draggable = viewMode === 'hierarchy' && n.type === 'agent'
+
       if (isDeptNode) {
         next.data = { ...n.data, onToggleCollapsed: toggleDeptCollapsed }
       }
@@ -617,7 +621,7 @@ function OrgChartInner() {
       }
       return next
     })
-  }, [sourceNodes, dragOverDeptId, highlightedNodeIds, toggleDeptCollapsed])
+  }, [sourceNodes, dragOverDeptId, highlightedNodeIds, toggleDeptCollapsed, viewMode])
 
   const renderedEdges = useMemo(() => {
     return transition.displayEdges.map((e) => {
@@ -746,7 +750,6 @@ function OrgChartInner() {
           onNodeDragStop={viewMode === 'hierarchy' ? handleNodeDragStop : undefined}
           onPaneClick={handlePaneClick}
           nodesConnectable={false}
-          nodesDraggable={viewMode === 'hierarchy'}
           minZoom={0.1}
           maxZoom={2}
           proOptions={{ hideAttribution: true }}

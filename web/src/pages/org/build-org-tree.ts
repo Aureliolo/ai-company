@@ -9,6 +9,8 @@ export interface OwnerNodeData {
   ownerId: string
   displayName: string
   role: 'owner'
+  /** True when this owner node represents the currently logged-in user. */
+  isCurrentUser?: boolean
   [key: string]: unknown
 }
 
@@ -72,6 +74,11 @@ export interface TeamGroupData {
   memberCount: number
   [key: string]: unknown
 }
+
+// ── Dept admin node dimensions ──────────────────────────────
+
+export const DEPT_ADMIN_WIDTH = 200
+export const DEPT_ADMIN_HEIGHT = 70
 
 // ── Seniority ordering ──────────────────────────────────────
 
@@ -154,6 +161,7 @@ export function buildOrgTree(
   departmentHealths: readonly DepartmentHealth[],
   owners: readonly OwnerInfo[] = [],
   deptAdmins: readonly DeptAdminInfo[] = [],
+  currentUserId?: string,
 ): OrgTree {
   const agents = config.agents.filter((a) => (a.status ?? 'active') !== 'terminated')
 
@@ -191,6 +199,7 @@ export function buildOrgTree(
         ownerId: owner.id,
         displayName: owner.displayName,
         role: 'owner',
+        isCurrentUser: currentUserId != null && owner.id === currentUserId,
       } satisfies OwnerNodeData,
     })
   }
@@ -359,8 +368,6 @@ export function buildOrgTree(
   }
 
   // ── Emit dept admin nodes inside their scoped departments ──
-  const DEPT_ADMIN_WIDTH = 200
-  const DEPT_ADMIN_HEIGHT = 70
   for (const admin of deptAdmins) {
     const deptLower = admin.department.toLowerCase()
     const matchedDept = allDepartments.find(

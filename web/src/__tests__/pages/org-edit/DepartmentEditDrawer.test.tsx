@@ -61,9 +61,7 @@ describe('DepartmentEditDrawer', () => {
   it('renders Save and Delete buttons as enabled', () => {
     renderDrawer()
     const saveButton = screen.getByRole('button', { name: /save/i })
-    // Department-level delete (distinguished from team-level delete icons)
-    const deleteButtons = screen.getAllByRole('button', { name: /delete/i })
-    const deptDelete = deleteButtons[deleteButtons.length - 1]
+    const deptDelete = screen.getByTestId('dept-delete')
     expect(saveButton).not.toBeDisabled()
     expect(deptDelete).not.toBeDisabled()
   })

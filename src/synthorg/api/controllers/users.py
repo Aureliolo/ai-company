@@ -25,6 +25,7 @@ from synthorg.observability.events.api import (
     API_USER_CREATED,
     API_USER_DELETED,
     API_USER_LISTED,
+    API_USER_SAVE_FAILED,
     API_USER_UPDATED,
     API_VALIDATION_FAILED,
 )
@@ -476,7 +477,7 @@ class UserController(Controller):
                 await app_state.persistence.users.save(updated)
             except QueryError:
                 logger.error(
-                    API_USER_UPDATED,
+                    API_USER_SAVE_FAILED,
                     user_id=user.id,
                     intent="grant_org_role",
                     role=data.role.value,
@@ -552,7 +553,7 @@ class UserController(Controller):
                 await app_state.persistence.users.save(updated)
             except QueryError:
                 logger.error(
-                    API_USER_UPDATED,
+                    API_USER_SAVE_FAILED,
                     user_id=user.id,
                     intent="revoke_org_role",
                     role=role,

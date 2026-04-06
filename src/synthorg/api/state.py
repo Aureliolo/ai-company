@@ -435,6 +435,11 @@ class AppState:
         return self._require_service(self._config_resolver, "config_resolver")
 
     @property
+    def has_org_mutation_service(self) -> bool:
+        """Check whether the org mutation service is configured."""
+        return self._org_mutation_service is not None
+
+    @property
     def org_mutation_service(self) -> OrgMutationService:
         """Return the org mutation service or raise 503."""
         return self._require_service(

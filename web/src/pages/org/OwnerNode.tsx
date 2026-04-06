@@ -61,7 +61,7 @@ function OwnerNodeComponent({ data }: NodeProps<OwnerNodeType>) {
             {data.displayName}
           </span>
           <span className="block truncate font-sans text-xs text-text-secondary">
-            You
+            {data.isCurrentUser ? 'You' : 'Owner'}
           </span>
         </div>
       </div>

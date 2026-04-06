@@ -26,10 +26,10 @@ class TestUpdateCompany:
         self,
         test_client: TestClient[Any],
     ) -> None:
-        test_client.headers.update(make_auth_headers("observer"))
         resp = test_client.patch(
             "/api/v1/company",
             json={"company_name": "New Name"},
+            headers=make_auth_headers("observer"),
         )
         assert resp.status_code == 403
 
@@ -53,7 +53,7 @@ class TestReorderDepartments:
             "/api/v1/company/reorder-departments",
             json={"department_names": ["beta", "alpha"]},
         )
-        assert resp.status_code == 201
+        assert resp.status_code == 200
         names = [d["name"] for d in resp.json()["data"]]
         assert names == ["beta", "alpha"]
 

@@ -72,19 +72,15 @@ describe('AgentEditDrawer', () => {
     // Click the Delete button in the drawer to open the ConfirmDialog
     fireEvent.click(screen.getByRole('button', { name: /delete/i }))
 
-    // The ConfirmDialog should now be open with a "Delete" confirm button
-    // The confirm button inside the ConfirmDialog uses the confirmLabel="Delete"
-    // The ConfirmDialog is now open with a destructive "Delete" confirm button.
-    // There are two "Delete" buttons -- the drawer one and the dialog one.
-    // Find the destructive-variant button via data-variant attribute.
-    await waitFor(() => {
-      const allDeleteButtons = screen.getAllByRole('button', { name: /delete/i })
-      const destructiveButton = allDeleteButtons.find(
-        (btn) => btn.getAttribute('data-variant') === 'destructive',
-      )
-      expect(destructiveButton).toBeDefined()
-      fireEvent.click(destructiveButton!)
-    })
+    // The ConfirmDialog should now be open with a destructive "Delete" confirm button.
+    // Wait for all delete buttons to appear, then find the destructive one and
+    // click it OUTSIDE waitFor to avoid firing multiple times on retries.
+    const allDeleteButtons = await screen.findAllByRole('button', { name: /delete/i })
+    const destructiveButton = allDeleteButtons.find(
+      (btn) => btn.getAttribute('data-variant') === 'destructive',
+    )
+    expect(destructiveButton).toBeDefined()
+    fireEvent.click(destructiveButton!)
 
     await waitFor(() => {
       expect(mockOnDelete).toHaveBeenCalledTimes(1)

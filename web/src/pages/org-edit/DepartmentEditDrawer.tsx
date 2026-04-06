@@ -174,6 +174,7 @@ export function DepartmentEditDrawer({
                 onClick={() => setDeleteOpen(true)}
                 className="text-danger hover:text-danger"
                 disabled={saving}
+                data-testid="dept-delete"
               >
                 <Trash2 className="mr-1.5 size-3.5" />
                 Delete

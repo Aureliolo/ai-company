@@ -98,6 +98,18 @@ class TestGrantOrgRole:
         assert "eng" in data["scoped_departments"]
         assert "sales" in data["scoped_departments"]
 
+    def test_grant_non_department_admin_with_scopes_422(
+        self,
+        test_client: TestClient[Any],
+        fake_persistence: FakePersistenceBackend,
+    ) -> None:
+        user = _seed_target_user(fake_persistence)
+        resp = test_client.post(
+            f"/api/v1/users/{user.id}/org-roles",
+            json={"role": "owner", "scoped_departments": ["eng"]},
+        )
+        assert resp.status_code == 422
+
     def test_grant_duplicate_role_409(
         self,
         test_client: TestClient[Any],

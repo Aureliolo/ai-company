@@ -272,7 +272,15 @@ export const useCompanyStore = create<CompanyState>()((set, get) => ({
   reorderAgents: async (deptName, orderedIds) => {
     set((s) => ({ savingCount: s.savingCount + 1, saveError: null }))
     try {
-      await apiReorderAgents(deptName, { agent_names: orderedIds })
+      // Callers pass `a.id ?? a.name` as identifiers, but the API
+      // expects agent names.  Resolve each id back to its name so the
+      // payload is always correct even when id differs from name.
+      const prev = get().config
+      const idToName = new Map(
+        (prev?.agents ?? []).map((a) => [a.id ?? a.name, a.name]),
+      )
+      const orderedNames = orderedIds.map((id) => idToName.get(id) ?? id)
+      await apiReorderAgents(deptName, { agent_names: orderedNames })
       // Refetch to pick up the reordered agents consistently
       await get().fetchCompanyData()
       set((s) => ({

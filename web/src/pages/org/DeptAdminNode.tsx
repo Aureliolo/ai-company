@@ -3,6 +3,7 @@ import { Handle, Position, type NodeProps, type Node } from '@xyflow/react'
 import { Shield } from 'lucide-react'
 import { Avatar } from '@/components/ui/avatar'
 import { cn } from '@/lib/utils'
+import { DEPT_ADMIN_WIDTH } from './build-org-tree'
 
 export interface DeptAdminNodeData extends Record<string, unknown> {
   adminId: string
@@ -27,9 +28,9 @@ function DeptAdminNodeComponent({ data }: NodeProps<DeptAdminNodeType>) {
     <div
       className={cn(
         'relative rounded-lg border-2 border-info/50 bg-card px-3 py-2',
-        'w-[200px]',
         'shadow-[var(--so-shadow-card)]',
       )}
+      style={{ width: DEPT_ADMIN_WIDTH }}
       data-testid="dept-admin-node"
       aria-label={`Department Admin: ${data.displayName}`}
     >

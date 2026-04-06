@@ -111,7 +111,7 @@ class CompanyController(Controller):
             headers={"ETag": new_etag},
         )
 
-    @post("/reorder-departments", guards=[require_org_mutation()])
+    @post("/reorder-departments", guards=[require_org_mutation()], status_code=200)
     async def reorder_departments(
         self,
         request: Request[Any, Any, Any],

@@ -910,19 +910,22 @@ class DepartmentController(Controller):
             )
             raise NotFoundError(msg)
 
+        dept = dept_by_name[name.lower()]
+        canonical_name = dept.name
+
         agents = await app_state.config_resolver.get_agents()
-        dept_agents = _filter_agents_by_department(agents, name)
+        dept_agents = _filter_agents_by_department(agents, canonical_name)
         budget_cfg = await app_state.config_resolver.get_budget_config()
         health = await _assemble_department_health(
             app_state,
-            name,
+            canonical_name,
             dept_agents,
             currency=budget_cfg.currency,
         )
 
         logger.debug(
             API_DEPARTMENT_HEALTH_QUERIED,
-            department=name,
+            department=canonical_name,
             agent_count=health.agent_count,
             active_count=health.active_agent_count,
             cost_7d=health.department_cost_7d,

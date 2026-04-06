@@ -502,7 +502,7 @@ class OrgMutationService:
         if "level" in fields_set and data.level is not None:
             updates["level"] = data.level
 
-        if "autonomy_level" in fields_set and data.autonomy_level is not None:
+        if "autonomy_level" in fields_set:
             updates["autonomy_level"] = data.autonomy_level
 
         return updates

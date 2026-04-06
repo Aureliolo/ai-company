@@ -99,9 +99,11 @@ async def _add_column_if_missing(
     """
     if table not in _ALLOWED_TABLES:
         msg = f"Table not in allowlist: {table!r}"
+        logger.warning("migration.validation_failed", table=table, reason=msg)
         raise ValueError(msg)
     if not _ALLOWED_COLUMN_RE.fullmatch(column):
         msg = f"Invalid column name: {column!r}"
+        logger.warning("migration.validation_failed", column=column, reason=msg)
         raise ValueError(msg)
     try:
         await db.execute(

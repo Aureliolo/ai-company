@@ -254,7 +254,7 @@ describe('useCompanyStore', () => {
 
   describe('updateDepartment', () => {
     it('replaces department in config', async () => {
-      const updated = makeDepartment('engineering', { display_name: 'Eng Team' })
+      const updated = makeDepartment('engineering', { display_name: 'Eng Team', budget_percent: 50 })
       mockUpdateDepartment.mockResolvedValue(updated)
       useCompanyStore.setState({ config: mockConfig })
 
@@ -262,7 +262,9 @@ describe('useCompanyStore', () => {
         budget_percent: 50,
       })
       expect(result.name).toBe('engineering')
+      expect(result.budget_percent).toBe(50)
       expect(useCompanyStore.getState().config!.departments[0]!.name).toBe('engineering')
+      expect(useCompanyStore.getState().config!.departments[0]!.budget_percent).toBe(50)
     })
   })
 

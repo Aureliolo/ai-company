@@ -1,9 +1,10 @@
 """Request DTOs for company, department, and agent mutation endpoints."""
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from synthorg.core.enums import AutonomyLevel, SeniorityLevel
 from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.engine.workflow.ceremony_policy import CeremonyPolicyConfig
 
 # -- Company -----------------------------------------------------------
 
@@ -43,6 +44,16 @@ class UpdateDepartmentRequest(BaseModel):
     autonomy_level: AutonomyLevel | None = None
     teams: tuple[dict[str, object], ...] | None = None
     ceremony_policy: dict[str, object] | None = None
+
+    @field_validator("ceremony_policy", mode="before")
+    @classmethod
+    def _validate_ceremony_policy(
+        cls, v: dict[str, object] | None
+    ) -> dict[str, object] | None:
+        """Validate ceremony_policy against CeremonyPolicyConfig schema."""
+        if v is not None:
+            CeremonyPolicyConfig.model_validate(v)
+        return v
 
 
 class ReorderDepartmentsRequest(BaseModel):

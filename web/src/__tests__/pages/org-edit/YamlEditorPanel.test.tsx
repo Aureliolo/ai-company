@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
 import { YamlEditorPanel } from '@/pages/org-edit/YamlEditorPanel'
 import { makeCompanyConfig } from '../../helpers/factories'
 
@@ -31,5 +31,13 @@ describe('YamlEditorPanel', () => {
     render(<YamlEditorPanel config={makeCompanyConfig()} onSave={mockOnSave} saving={false} />)
     const saveButton = screen.getByText('Save YAML').closest('button')!
     expect(saveButton).toBeDisabled()
+  })
+
+  it('enables Save YAML button after editor content changes', () => {
+    render(<YamlEditorPanel config={makeCompanyConfig()} onSave={mockOnSave} saving={false} />)
+    const textarea = screen.getByLabelText(/yaml editor/i)
+    fireEvent.change(textarea, { target: { value: 'company_name: Updated' } })
+    const saveButton = screen.getByText('Save YAML').closest('button')!
+    expect(saveButton).not.toBeDisabled()
   })
 })

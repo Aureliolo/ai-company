@@ -85,6 +85,7 @@ API_BUDGET_RECORDS_LISTED: Final[str] = "api.budget.records_listed"
 API_USER_CREATED: Final[str] = "api.user.created"
 API_USER_UPDATED: Final[str] = "api.user.updated"
 API_USER_DELETED: Final[str] = "api.user.deleted"
+API_USER_SAVE_FAILED: Final[str] = "api.user.save_failed"
 API_USER_LISTED: Final[str] = "api.user.listed"
 
 # Session management
