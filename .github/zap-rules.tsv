@@ -1,4 +1,4 @@
-# ZAP DAST rules -- see docs/security.md "DAST Tuning" for rationale.
+# ZAP DAST rules -- this file is the source of truth for current rule actions.
 # Format: rule_id<TAB>action<TAB>description (description is informational only).
 # Valid actions: PASS, IGNORE, INFO, WARN, FAIL.
 #
@@ -7,6 +7,10 @@
 90020	FAIL	Remote OS Command Injection
 40046	FAIL	Server Side Request Forgery
 90023	FAIL	XML External Entity (XXE)
+40012	FAIL	Cross Site Scripting (Reflected)
+40014	FAIL	Cross Site Scripting (Persistent)
+6	FAIL	Path Traversal
+90024	FAIL	Generic Remote Code Execution
 #
 # --- Triaged false positives / informational noise ---
 100001	IGNORE	Unexpected Content-Type was returned

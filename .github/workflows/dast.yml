@@ -62,18 +62,20 @@ jobs:
       # aud=synthorg-backend) that the Go CLI uses.  The system user is
       # bootstrapped at backend startup and skips pwd_sig validation --
       # the JWT HMAC signature is the sole auth gate.
+      # See: src/synthorg/api/auth/middleware.py _resolve_jwt_user()
       - name: Generate DAST JWT
         id: jwt
         run: |
           TOKEN=$(docker compose -f docker/compose.yml exec -T backend \
             python -c "
-          import os, jwt, datetime
+          import os, jwt, datetime, uuid
           secret = os.environ['SYNTHORG_JWT_SECRET']
           payload = {
               'sub': 'system',
               'iss': 'synthorg-cli',
               'aud': 'synthorg-backend',
               'role': 'system',
+              'jti': uuid.uuid4().hex,
               'iat': datetime.datetime.now(datetime.timezone.utc),
               'exp': datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(hours=2),
           }
@@ -108,6 +110,16 @@ jobs:
                 -config scanner.maxRuleDurationInMins=5
                 -config scanner.maxScanDurationInMins=30"
           rules_file_name: .github/zap-rules.tsv
+
+      - name: Upload ZAP reports
+        if: always()
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7
+        with:
+          name: zap-reports
+          path: |
+            report.json
+            report.html
+          retention-days: 30
 
       - name: Stop backend
         if: always()
