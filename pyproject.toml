@@ -55,7 +55,7 @@ test = [
     "pytest-xdist==3.8.0",
     "polyfactory==3.3.0",
     "respx==0.22.0",
-    "hypothesis==6.151.10",
+    "hypothesis==6.151.11",
 ]
 docs = [
     "zensical==0.0.31",
