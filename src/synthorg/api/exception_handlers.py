@@ -348,13 +348,19 @@ def handle_api_error(
         msg = type(exc).default_message
     else:
         msg = str(exc)
+    retry_after_val: int | None = getattr(exc, "retry_after", None) or None
+    headers: dict[str, str] | None = None
+    if retry_after_val:
+        headers = {"Retry-After": str(retry_after_val)}
     return _build_response(
         request,
         detail=msg,
         error_code=exc.error_code,
         error_category=exc.error_category,
         retryable=exc.retryable,
+        retry_after=retry_after_val,
         status_code=exc.status_code,
+        headers=headers,
     )
 
 

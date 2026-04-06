@@ -509,6 +509,13 @@ class AuthController(Controller):
             expires_in,
         )
 
+        if app_state.has_session_store:
+            auth_config = _get_auth_config(app_state)
+            await app_state.session_store.enforce_session_limit(
+                user.id,
+                auth_config.max_concurrent_sessions,
+            )
+
         logger.info(
             API_AUTH_SETUP_COMPLETE,
             user_id=user.id,
@@ -602,6 +609,13 @@ class AuthController(Controller):
             expires_in,
         )
 
+        if app_state.has_session_store:
+            auth_config = _get_auth_config(app_state)
+            await app_state.session_store.enforce_session_limit(
+                user.id,
+                auth_config.max_concurrent_sessions,
+            )
+
         logger.info(
             API_AUTH_TOKEN_ISSUED,
             user_id=user.id,
@@ -685,6 +699,19 @@ class AuthController(Controller):
         )
         await persistence.users.save(updated_user)
 
+        # Rotate session cookie so the new pwd_sig is embedded.
+        token, expires_in, session_id = auth_service.create_token(
+            updated_user,
+        )
+        await _create_session(
+            request,
+            app_state,
+            session_id,
+            updated_user,
+            expires_in,
+        )
+        auth_config = _get_auth_config(app_state)
+
         logger.info(
             API_AUTH_PASSWORD_CHANGED,
             user_id=user.id,
@@ -701,6 +728,11 @@ class AuthController(Controller):
                     org_roles=tuple(r.value for r in updated_user.org_roles),
                     scoped_departments=updated_user.scoped_departments,
                 ),
+            ),
+            cookies=_make_session_cookies(
+                token,
+                expires_in,
+                auth_config,
             ),
         )
 

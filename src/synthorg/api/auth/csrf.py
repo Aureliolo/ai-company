@@ -79,7 +79,7 @@ class CsrfMiddleware:
             await self.app(scope, receive, send)
             return
 
-        path = scope.get("path", "")
+        path = (scope.get("path", "") or "").rstrip("/") or "/"
         if path in self._exempt_paths:
             await self.app(scope, receive, send)
             return
@@ -140,6 +140,8 @@ async def _send_403(send: Send) -> None:
             "success": False,
             "data": None,
             "error": "CSRF token missing or invalid",
+            "error_code": 1004,
+            "error_category": "auth",
         }
     ).encode("utf-8")
     start: Any = {

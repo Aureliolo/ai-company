@@ -240,6 +240,7 @@ async def _safe_startup(  # noqa: PLR0913, PLR0912, PLR0915, C901
                 )
                 if auth_cfg is not None:
                     lockout_store = LockoutStore(db, auth_cfg)
+                    await lockout_store.load_locked()
                     app_state.set_lockout_store(lockout_store)
                     logger.info(
                         API_APP_STARTUP,

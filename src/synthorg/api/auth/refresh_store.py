@@ -7,9 +7,10 @@ session/user info for re-issuance.
 """
 
 from datetime import UTC, datetime
+from typing import Self
 
 import aiosqlite  # noqa: TC002
-from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.observability import get_logger
@@ -44,6 +45,14 @@ class RefreshRecord(BaseModel):
     created_at: AwareDatetime = Field(
         default_factory=lambda: datetime.now(UTC),
     )
+
+    @model_validator(mode="after")
+    def _validate_temporal_order(self) -> Self:
+        """Ensure created_at does not exceed expires_at."""
+        if self.created_at > self.expires_at:
+            msg = "created_at must not be after expires_at"
+            raise ValueError(msg)
+        return self
 
 
 class RefreshStore:
@@ -102,55 +111,53 @@ class RefreshStore:
         """
         now = datetime.now(UTC).isoformat()
         cursor = await self._db.execute(
-            "UPDATE refresh_tokens "
-            "SET used = 1 "
-            "WHERE token_hash = ? AND used = 0 AND expires_at > ?",
+            "UPDATE refresh_tokens SET used = 1 "
+            "WHERE token_hash = ? AND used = 0 AND expires_at > ? "
+            "RETURNING token_hash, session_id, user_id, "
+            "expires_at, used, created_at",
             (token_hash, now),
         )
+        row = await cursor.fetchone()
         await self._db.commit()
 
-        if cursor.rowcount == 0:
-            # Check if it was a replay (token exists but already used)
-            check = await self._db.execute(
-                "SELECT used FROM refresh_tokens WHERE token_hash = ?",
-                (token_hash,),
+        if row is not None:
+            logger.info(
+                API_AUTH_REFRESH_CONSUMED,
+                session_id=row["session_id"],
+                user_id=row["user_id"],
             )
-            row = await check.fetchone()
-            if row is not None and row["used"]:
-                logger.warning(
-                    API_AUTH_REFRESH_REJECTED,
-                    reason="replay_detected",
-                    token_hash=token_hash[:8],
-                )
-            else:
-                logger.warning(
-                    API_AUTH_REFRESH_REJECTED,
-                    reason="not_found_or_expired",
-                    token_hash=token_hash[:8],
-                )
-            return None
+            return RefreshRecord(
+                token_hash=row["token_hash"],
+                session_id=row["session_id"],
+                user_id=row["user_id"],
+                expires_at=datetime.fromisoformat(
+                    row["expires_at"],
+                ),
+                used=bool(row["used"]),
+                created_at=datetime.fromisoformat(
+                    row["created_at"],
+                ),
+            )
 
-        cursor = await self._db.execute(
-            "SELECT * FROM refresh_tokens WHERE token_hash = ?",
+        # Check if it was a replay (token exists but already used)
+        check = await self._db.execute(
+            "SELECT used FROM refresh_tokens WHERE token_hash = ?",
             (token_hash,),
         )
-        row = await cursor.fetchone()
-        if row is None:
-            return None
-
-        logger.info(
-            API_AUTH_REFRESH_CONSUMED,
-            session_id=row["session_id"],
-            user_id=row["user_id"],
-        )
-        return RefreshRecord(
-            token_hash=row["token_hash"],
-            session_id=row["session_id"],
-            user_id=row["user_id"],
-            expires_at=datetime.fromisoformat(row["expires_at"]),
-            used=bool(row["used"]),
-            created_at=datetime.fromisoformat(row["created_at"]),
-        )
+        replay_row = await check.fetchone()
+        if replay_row is not None and replay_row["used"]:
+            logger.warning(
+                API_AUTH_REFRESH_REJECTED,
+                reason="replay_detected",
+                token_hash=token_hash[:8],
+            )
+        else:
+            logger.warning(
+                API_AUTH_REFRESH_REJECTED,
+                reason="not_found_or_expired",
+                token_hash=token_hash[:8],
+            )
+        return None
 
     async def revoke_by_session(self, session_id: str) -> int:
         """Mark all refresh tokens for a session as used.

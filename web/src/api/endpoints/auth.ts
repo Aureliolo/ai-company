@@ -4,13 +4,11 @@ import type {
   AuthResponse,
   ChangePasswordRequest,
   LoginRequest,
-  PaginatedResponse,
   SessionInfo,
   SetupRequest,
   UserInfoResponse,
   WsTicketResponse,
 } from '../types'
-import { unwrapPaginated, type PaginatedResult } from '../client'
 
 export async function setup(data: SetupRequest): Promise<AuthResponse> {
   const response = await apiClient.post<ApiResponse<AuthResponse>>('/auth/setup', data)
@@ -43,14 +41,13 @@ export async function getWsTicket(): Promise<WsTicketResponse> {
 }
 
 export async function listSessions(
-  offset = 0,
-  limit = 50,
-): Promise<PaginatedResult<SessionInfo>> {
-  const response = await apiClient.get<PaginatedResponse<SessionInfo>>(
+  scope: 'own' | 'all' = 'own',
+): Promise<SessionInfo[]> {
+  const response = await apiClient.get<ApiResponse<SessionInfo[]>>(
     '/auth/sessions',
-    { params: { offset, limit } },
+    { params: { scope } },
   )
-  return unwrapPaginated(response)
+  return unwrap(response)
 }
 
 export async function revokeSession(sessionId: string): Promise<void> {

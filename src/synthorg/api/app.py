@@ -93,6 +93,7 @@ from synthorg.observability.events.api import (
     API_APP_SHUTDOWN,
     API_APP_STARTUP,
     API_APPROVAL_PUBLISH_FAILED,
+    API_AUTH_LOCKOUT_CLEANUP,
     API_NETWORK_EXPOSURE_WARNING,
     API_SESSION_CLEANUP,
     API_WS_SEND_FAILED,
@@ -343,7 +344,7 @@ async def _ticket_cleanup_loop(app_state: AppState) -> None:
             raise
         except Exception:
             logger.warning(
-                API_SESSION_CLEANUP,
+                API_AUTH_LOCKOUT_CLEANUP,
                 error="Periodic lockout cleanup failed",
                 exc_info=True,
             )

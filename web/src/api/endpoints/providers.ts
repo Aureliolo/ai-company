@@ -171,12 +171,13 @@ export async function pullModel(
   const baseUrl = apiClient.defaults.baseURL ?? ''
   const url = `${baseUrl}/providers/${encodeURIComponent(name)}/models/pull`
 
+  const csrfToken = getCsrfToken()
   const response = await fetch(url, {
     method: 'POST',
     credentials: 'include',
     headers: {
       'Content-Type': 'application/json',
-      'X-CSRF-Token': getCsrfToken() ?? '',
+      ...(csrfToken ? { 'X-CSRF-Token': csrfToken } : {}),
     },
     body: JSON.stringify({ model_name: modelName }),
     signal,

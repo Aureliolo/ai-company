@@ -107,10 +107,8 @@ API_AUTH_LOCKOUT_CLEARED: Final[str] = "api.auth.lockout_cleared"
 API_AUTH_LOCKOUT_CLEANUP: Final[str] = "api.auth.lockout_cleanup"
 
 # Refresh tokens
-API_AUTH_REFRESH_ISSUED: Final[str] = "api.auth.refresh_issued"
 API_AUTH_REFRESH_CONSUMED: Final[str] = "api.auth.refresh_consumed"
 API_AUTH_REFRESH_REJECTED: Final[str] = "api.auth.refresh_rejected"
-API_AUTH_REFRESH_REPLAY: Final[str] = "api.auth.refresh_replay"
 API_AUTH_REFRESH_CLEANUP: Final[str] = "api.auth.refresh_cleanup"
 
 # Cookie auth

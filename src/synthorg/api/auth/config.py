@@ -4,6 +4,8 @@ from typing import Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from synthorg.core.types import NotBlankStr  # noqa: TC001
+
 MIN_SECRET_LENGTH = 32
 DEFAULT_COOKIE_NAME = "session"
 DEFAULT_CSRF_COOKIE_NAME = "csrf_token"
@@ -43,15 +45,6 @@ class AuthConfig(BaseModel):
 
     At construction time the secret may be empty -- it is populated
     before the first request is served.
-
-    Attributes:
-        jwt_secret: HMAC signing key for JWT tokens and API key
-            hashing (resolved at startup, repr-hidden).  Rotating
-            this invalidates all stored API key hashes.
-        jwt_algorithm: JWT signing algorithm (HMAC family only).
-        jwt_expiry_minutes: Token lifetime in minutes.
-        min_password_length: Minimum password length for setup/change.
-        exclude_paths: URL paths excluded from auth middleware.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
@@ -94,7 +87,7 @@ class AuthConfig(BaseModel):
     )
 
     # Cookie settings
-    cookie_name: str = Field(
+    cookie_name: NotBlankStr = Field(
         default=DEFAULT_COOKIE_NAME,
         description="Session cookie name",
     )
@@ -106,21 +99,21 @@ class AuthConfig(BaseModel):
         default="strict",
         description="SameSite attribute for session cookies",
     )
-    cookie_path: str = Field(
+    cookie_path: NotBlankStr = Field(
         default="/api",
         description="Path scope for session cookies",
     )
-    cookie_domain: str | None = Field(
+    cookie_domain: NotBlankStr | None = Field(
         default=None,
         description="Domain for session cookies (None = current host)",
     )
 
     # CSRF
-    csrf_cookie_name: str = Field(
+    csrf_cookie_name: NotBlankStr = Field(
         default=DEFAULT_CSRF_COOKIE_NAME,
         description="CSRF token cookie name (non-HttpOnly, JS-readable)",
     )
-    csrf_header_name: str = Field(
+    csrf_header_name: NotBlankStr = Field(
         default=DEFAULT_CSRF_HEADER_NAME,
         description="Header name for CSRF token submission",
     )
@@ -144,11 +137,11 @@ class AuthConfig(BaseModel):
         le=43200,
         description="Refresh token lifetime in minutes (default 7 days)",
     )
-    refresh_cookie_name: str = Field(
+    refresh_cookie_name: NotBlankStr = Field(
         default=DEFAULT_REFRESH_COOKIE_NAME,
         description="Refresh token cookie name",
     )
-    refresh_cookie_path: str = Field(
+    refresh_cookie_path: NotBlankStr = Field(
         default=DEFAULT_REFRESH_COOKIE_PATH,
         description="Path scope for refresh token cookie (narrow)",
     )
@@ -177,6 +170,20 @@ class AuthConfig(BaseModel):
     def _validate_secret_length(self) -> Self:
         """Reject non-empty secrets shorter than the minimum."""
         _require_valid_secret(self.jwt_secret)
+        return self
+
+    @model_validator(mode="after")
+    def _validate_refresh_expiry(self) -> Self:
+        """Ensure refresh token outlives the access token."""
+        if (
+            self.jwt_refresh_enabled
+            and self.jwt_refresh_expiry_minutes <= self.jwt_expiry_minutes
+        ):
+            msg = (
+                "jwt_refresh_expiry_minutes must be greater than "
+                "jwt_expiry_minutes when refresh tokens are enabled"
+            )
+            raise ValueError(msg)
         return self
 
     def with_secret(self, secret: str) -> AuthConfig:

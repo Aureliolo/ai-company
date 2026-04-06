@@ -112,6 +112,13 @@ class ApiAuthMiddleware(AbstractAuthenticationMiddleware):
                 )
                 return AuthenticationResult(user=user, auth=session_cookie)
 
+        if session_cookie:
+            logger.warning(
+                API_AUTH_FAILED,
+                reason="cookie_jwt_invalid",
+                path=path,
+            )
+
         # 2. Fall back to Authorization header (API keys, system user)
         auth_header = connection.headers.get("authorization")
         if not auth_header:

@@ -153,8 +153,13 @@ export const useAuthStore = create<AuthState>()((set, get) => {
       try {
         const user = await authApi.getMe()
         set({ authStatus: 'authenticated', user })
-      } catch {
-        set({ authStatus: 'unauthenticated', user: null })
+      } catch (err) {
+        if (isAxiosError(err) && err.response?.status === 401) {
+          set({ authStatus: 'unauthenticated', user: null })
+        } else {
+          log.error('Session check failed:', getErrorMessage(err))
+          set({ authStatus: 'unauthenticated', user: null })
+        }
       }
     },
   }

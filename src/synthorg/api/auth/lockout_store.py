@@ -27,8 +27,9 @@ logger = get_logger(__name__)
 class LockoutStore:
     """Track failed login attempts and account lockout state.
 
-    In-memory dict provides O(1) sync ``is_locked`` checks.
-    SQLite provides durability across restarts.
+    SQLite records individual login attempts; in-memory lockout
+    state is restored from the database at startup via
+    ``load_locked()``.
 
     Args:
         db: Open aiosqlite connection with ``row_factory`` set.
@@ -59,6 +60,7 @@ class LockoutStore:
         Returns:
             ``True`` if the account is currently locked.
         """
+        username = username.lower()
         locked_until = self._locked.get(username)
         if locked_until is None:
             return False
@@ -71,6 +73,42 @@ class LockoutStore:
     def lockout_duration_seconds(self) -> int:
         """Return the lockout duration in seconds for Retry-After."""
         return self._duration_seconds
+
+    async def load_locked(self) -> int:
+        """Restore in-memory lockout state from recent failure records.
+
+        Queries the database for usernames that have accumulated
+        enough failures within the sliding window to be locked.
+        Called once at startup so that lockout survives restarts.
+
+        Returns:
+            Number of accounts restored to locked state.
+        """
+        now = datetime.now(UTC)
+        window_start = (now - self._window).isoformat()
+        cursor = await self._db.execute(
+            "SELECT username, COUNT(*) AS cnt "
+            "FROM login_attempts "
+            "WHERE attempted_at >= ? "
+            "GROUP BY username "
+            "HAVING cnt >= ?",
+            (window_start, self._threshold),
+        )
+        rows = await cursor.fetchall()
+        restored = 0
+        for row in rows:
+            uname = row["username"] if isinstance(row, dict) else row[0]
+            uname = uname.lower()
+            if uname not in self._locked:
+                self._locked[uname] = time.monotonic() + self._duration_seconds
+                restored += 1
+        if restored:
+            logger.info(
+                API_AUTH_ACCOUNT_LOCKED,
+                note="Restored lockout state from database",
+                restored=restored,
+            )
+        return restored
 
     async def record_failure(
         self,
@@ -90,6 +128,7 @@ class LockoutStore:
         Returns:
             ``True`` if the account is now locked.
         """
+        username = username.lower()
         now = datetime.now(UTC)
         await self._db.execute(
             "INSERT INTO login_attempts "
@@ -129,6 +168,7 @@ class LockoutStore:
         Args:
             username: Login username.
         """
+        username = username.lower()
         await self._db.execute(
             "DELETE FROM login_attempts WHERE username = ?",
             (username,),

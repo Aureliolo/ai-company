@@ -24,7 +24,7 @@ def make_session_cookie(
         config: Auth configuration.
 
     Returns:
-        HttpOnly, Secure, SameSite=Strict cookie.
+        HttpOnly session cookie configured per AuthConfig.
     """
     return Cookie(
         key=config.cookie_name,

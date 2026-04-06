@@ -278,17 +278,6 @@ class AccountLockedError(ApiError):
         self.retry_after = retry_after
 
 
-class CsrfRejectedError(ApiError):
-    """Raised when a CSRF token is missing or invalid (403)."""
-
-    default_message: ClassVar[str] = "CSRF token missing or invalid"
-    error_category: ClassVar[ErrorCategory] = ErrorCategory.AUTH
-    error_code: ClassVar[ErrorCode] = ErrorCode.CSRF_REJECTED
-
-    def __init__(self, message: str | None = None) -> None:
-        super().__init__(message, status_code=403)
-
-
 class ServiceUnavailableError(ApiError):
     """Raised when a required service is not configured (503)."""
 
