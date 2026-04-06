@@ -22,10 +22,10 @@ import { Button } from '@/components/ui/button'
 import { createLogger } from '@/lib/logger'
 import { StatPill } from '@/components/ui/stat-pill'
 import { useToastStore } from '@/stores/toast'
-
-const log = createLogger('TeamListSection')
 import { TeamEditDialog } from './TeamEditDialog'
 import { TeamDeleteConfirmDialog } from './TeamDeleteConfirmDialog'
+
+const log = createLogger('TeamListSection')
 
 export interface TeamListSectionProps {
   teams: readonly TeamConfig[]
@@ -60,7 +60,7 @@ function SortableTeamCard({
     <div
       ref={setNodeRef}
       style={style}
-      className="flex items-center gap-2 rounded-md border border-border bg-bg-card p-3"
+      className="flex items-center gap-2 rounded-md border border-border bg-card p-3"
     >
       <button
         type="button"
@@ -83,7 +83,7 @@ function SortableTeamCard({
       <button
         type="button"
         onClick={onEdit}
-        className="rounded p-1 text-text-muted hover:bg-bg-card-hover hover:text-text-secondary"
+        className="rounded p-1 text-text-muted hover:bg-card-hover hover:text-text-secondary"
         aria-label={`Edit ${team.name}`}
         disabled={disabled}
       >
@@ -92,7 +92,7 @@ function SortableTeamCard({
       <button
         type="button"
         onClick={onDelete}
-        className="rounded p-1 text-text-muted hover:bg-bg-card-hover hover:text-danger"
+        className="rounded p-1 text-text-muted hover:bg-card-hover hover:text-danger"
         aria-label={`Delete ${team.name}`}
         disabled={disabled}
       >
