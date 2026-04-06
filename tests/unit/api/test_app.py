@@ -1149,8 +1149,8 @@ class TestBuildMiddleware:
         stores = [cfg.store for cfg in rl_configs]
         assert len(stores) == 2
         assert stores[0] != stores[1]
-        assert "unauth" in stores[0]
-        assert "auth" in stores[1]
+        assert stores[0] == "rate_limit_unauth"
+        assert stores[1] == "rate_limit_auth"
 
     def test_sandwich_ordering(
         self,

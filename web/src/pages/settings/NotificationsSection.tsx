@@ -55,7 +55,7 @@ export function NotificationsSection() {
   ) {
     const current = preferences.routeOverrides[category] ?? [...CATEGORY_CONFIGS[category].defaultRoutes]
     const routes = enabled
-      ? [...current, route]
+      ? current.includes(route) ? current : [...current, route]
       : current.filter((r) => r !== route)
     setRouteOverride(category, routes)
   }

@@ -1085,6 +1085,11 @@ def _build_unauth_identifier(
     def _extract_forwarded_ip(
         request: Request[Any, Any, Any],
     ) -> str:
+        # Only trust X-Forwarded-For when the immediate peer is a
+        # known proxy. Otherwise any client can spoof the header.
+        peer_ip = get_remote_address(request)
+        if peer_ip not in trusted:
+            return peer_ip
         forwarded = request.headers.get("x-forwarded-for", "")
         if forwarded:
             # X-Forwarded-For: client, proxy1, proxy2
@@ -1093,7 +1098,7 @@ def _build_unauth_identifier(
             for hop in reversed(hops):
                 if hop not in trusted:
                     return hop
-        return get_remote_address(request)
+        return peer_ip
 
     return _extract_forwarded_ip
 
