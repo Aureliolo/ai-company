@@ -7,6 +7,7 @@ turn limits, progress-summary checkpoints, and optional replanning.
 from pydantic import BaseModel, ConfigDict, Field
 
 from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.engine.trajectory.models import TrajectoryConfig  # noqa: TC001
 
 
 class HybridLoopConfig(BaseModel):
@@ -70,4 +71,8 @@ class HybridLoopConfig(BaseModel):
         description=(
             "Allow the progress summary to trigger replanning on successful steps"
         ),
+    )
+    trajectory: TrajectoryConfig | None = Field(
+        default=None,
+        description=("Best-of-K trajectory scoring configuration (None = disabled)"),
     )
