@@ -1,6 +1,6 @@
 """Tests for persistence protocol compliance."""
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import pytest
 
@@ -566,11 +566,11 @@ class _FakeBackend:
         return object()
 
     @property
-    def risk_overrides(self) -> object:
+    def risk_overrides(self) -> Any:
         return object()
 
     @property
-    def ssrf_violations(self) -> object:
+    def ssrf_violations(self) -> Any:
         return object()
 
     async def get_setting(self, key: str) -> str | None:

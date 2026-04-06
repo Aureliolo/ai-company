@@ -136,7 +136,7 @@ class SQLiteSsrfViolationRepository:
                 f"SELECT {_COLS} FROM ssrf_violations "  # noqa: S608
                 "WHERE status = ? ORDER BY timestamp DESC LIMIT ?"
             )
-            params: tuple = (status.value, limit)  # type: ignore[assignment]
+            params: tuple[Any, ...] = (status.value, limit)
         else:
             query = (
                 f"SELECT {_COLS} FROM ssrf_violations "  # noqa: S608
