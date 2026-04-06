@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Check, Clock, X } from 'lucide-react'
+import { AlertTriangle, Check, Clock, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { useFlash } from '@/hooks/useFlash'
@@ -132,6 +132,28 @@ export function ApprovalCard({
         {isPending && countdown === null && (
           <span className="text-[11px] text-muted-foreground shrink-0">No expiry</span>
         )}
+
+        {/* Safety classification badge */}
+        {approval.metadata.safety_classification === 'suspicious' && (
+          <span
+            className={cn(
+              'inline-flex items-center gap-1 rounded border px-1.5 py-0.5 text-[11px] font-medium shrink-0',
+              'border-warning/30 bg-warning/10 text-warning',
+            )}
+            aria-label="Flagged as suspicious"
+          >
+            <AlertTriangle className="size-3" aria-hidden="true" />
+            Suspicious
+          </span>
+        )}
+
+        {/* Low confidence indicator */}
+        {approval.metadata.confidence_score &&
+          parseFloat(approval.metadata.confidence_score) < 0.5 && (
+            <span className="text-[11px] text-warning shrink-0" aria-label="Low confidence score">
+              Low confidence
+            </span>
+          )}
       </div>
 
       {/* Action buttons (pending only) */}

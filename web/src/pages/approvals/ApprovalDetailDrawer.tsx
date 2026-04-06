@@ -252,14 +252,19 @@ export function ApprovalDetailDrawer({
               {/* Title */}
               <h2 className="text-lg font-semibold text-foreground">{approval.title}</h2>
 
-              {/* Description */}
-              {approval.description && (
-                <div>
-                  <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                    Description
+              {/* Safety warning banner */}
+              {approval.metadata.safety_classification === 'suspicious' && (
+                <div className="flex items-center gap-2 rounded-lg border border-warning/30 bg-warning/10 px-3 py-2">
+                  <AlertTriangle className="size-4 text-warning shrink-0" aria-hidden="true" />
+                  <span className="text-sm text-warning">
+                    This action has been flagged as suspicious by the safety classifier.
                   </span>
-                  <p className="mt-1 text-sm text-secondary">{approval.description}</p>
                 </div>
+              )}
+
+              {/* Description (with stripped view toggle when available) */}
+              {approval.description && (
+                <DescriptionSection approval={approval} />
               )}
 
               {/* Timeline */}
@@ -284,6 +289,20 @@ export function ApprovalDetailDrawer({
                 )}
                 {approval.decided_at && (
                   <MetaField icon={Calendar} label="Decided At" value={formatDate(approval.decided_at)} />
+                )}
+                {approval.metadata.confidence_score && (
+                  <MetaField
+                    icon={Shield}
+                    label="Confidence"
+                    value={`${(parseFloat(approval.metadata.confidence_score) * 100).toFixed(0)}%`}
+                  />
+                )}
+                {approval.metadata.safety_classification && (
+                  <MetaField
+                    icon={Shield}
+                    label="Safety"
+                    value={approval.metadata.safety_classification}
+                  />
                 )}
               </div>
 
@@ -401,6 +420,35 @@ export function ApprovalDetailDrawer({
         />
       </ConfirmDialog>
     </>
+  )
+}
+
+function DescriptionSection({ approval }: { approval: ApprovalResponse }) {
+  const hasStripped = Boolean(approval.metadata.stripped_description)
+  const [showOriginal, setShowOriginal] = useState(false)
+
+  const displayText = hasStripped && !showOriginal
+    ? approval.metadata.stripped_description
+    : approval.description
+
+  return (
+    <div>
+      <div className="flex items-center justify-between">
+        <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+          Description
+        </span>
+        {hasStripped && (
+          <button
+            type="button"
+            onClick={() => setShowOriginal((prev) => !prev)}
+            className="text-[11px] text-accent hover:text-accent/80 transition-colors"
+          >
+            {showOriginal ? 'Show stripped' : 'Show original'}
+          </button>
+        )}
+      </div>
+      <p className="mt-1 text-sm text-secondary">{displayText}</p>
+    </div>
   )
 }
 

@@ -31,9 +31,11 @@ from synthorg.security.config import (
     LlmFallbackErrorPolicy,
     OutputScanPolicyType,
     RuleEngineConfig,
+    SafetyClassifierConfig,
     SecurityConfig,
     SecurityEnforcementMode,
     SecurityPolicyRule,
+    UncertaintyCheckConfig,
     VerdictReasonVisibility,
 )
 from synthorg.security.models import (
@@ -66,7 +68,17 @@ from synthorg.security.risk_scorer import (
 from synthorg.security.rules.custom_policy_rule import CustomPolicyRule
 from synthorg.security.rules.engine import RuleEngine
 from synthorg.security.rules.protocol import SecurityRule
+from synthorg.security.safety_classifier import (
+    InformationStripper,
+    SafetyClassification,
+    SafetyClassifier,
+    SafetyClassifierResult,
+)
 from synthorg.security.service import SecOpsService
+from synthorg.security.uncertainty import (
+    UncertaintyChecker,
+    UncertaintyResult,
+)
 
 __all__ = [
     "ActionTypeCategory",
@@ -78,6 +90,7 @@ __all__ = [
     "CustomPolicyRule",
     "DefaultRiskScorer",
     "EvaluationConfidence",
+    "InformationStripper",
     "LlmFallbackConfig",
     "LlmFallbackErrorPolicy",
     "LogOnlyPolicy",
@@ -91,6 +104,10 @@ __all__ = [
     "RiskScorerWeights",
     "RuleEngine",
     "RuleEngineConfig",
+    "SafetyClassification",
+    "SafetyClassifier",
+    "SafetyClassifierConfig",
+    "SafetyClassifierResult",
     "ScanOutcome",
     "SecOpsService",
     "SecurityConfig",
@@ -101,6 +118,9 @@ __all__ = [
     "SecurityRule",
     "SecurityVerdict",
     "SecurityVerdictType",
+    "UncertaintyCheckConfig",
+    "UncertaintyChecker",
+    "UncertaintyResult",
     "VerdictReasonVisibility",
     "WithholdPolicy",
     "build_output_scan_policy",

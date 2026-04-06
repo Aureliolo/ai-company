@@ -28,7 +28,10 @@ from synthorg.observability.events.security import (
     SECURITY_EVALUATE_START,
     SECURITY_INTERCEPTOR_ERROR,
     SECURITY_LLM_EVAL_SKIPPED_FULL_AUTONOMY,
+    SECURITY_SAFETY_CLASSIFY_BLOCKED,
+    SECURITY_SAFETY_CLASSIFY_ERROR,
     SECURITY_SHADOW_WOULD_BLOCK,
+    SECURITY_UNCERTAINTY_CHECK_ERROR,
     SECURITY_VERDICT_ALLOW,
     SECURITY_VERDICT_DENY,
     SECURITY_VERDICT_ESCALATE,
@@ -62,6 +65,8 @@ from synthorg.security.timeout.protocol import RiskTierClassifier  # noqa: TC001
 if TYPE_CHECKING:
     from synthorg.api.approval_store import ApprovalStore
     from synthorg.security.llm_evaluator import LlmSecurityEvaluator
+    from synthorg.security.safety_classifier import SafetyClassifier
+    from synthorg.security.uncertainty import UncertaintyChecker
 
 logger = get_logger(__name__)
 
@@ -102,6 +107,8 @@ class SecOpsService:
         risk_classifier: RiskTierClassifier | None = None,
         output_scan_policy: OutputScanResponsePolicy | None = None,
         llm_evaluator: LlmSecurityEvaluator | None = None,
+        safety_classifier: SafetyClassifier | None = None,
+        uncertainty_checker: UncertaintyChecker | None = None,
     ) -> None:
         """Initialize the SecOps service.
 
@@ -126,6 +133,14 @@ class SecOpsService:
                 When provided and ``config.llm_fallback.enabled`` is
                 ``True``, low-confidence verdicts are re-evaluated
                 by an LLM from a different provider family.
+            safety_classifier: Optional two-stage safety classifier
+                for approval gates.  When provided, escalated actions
+                are classified as safe/suspicious/blocked before
+                creating the approval item.
+            uncertainty_checker: Optional cross-provider uncertainty
+                checker for hallucination detection.  When provided,
+                escalated actions are cross-validated across multiple
+                providers and a confidence score is attached.
         """
         self._config = config
         self._rule_engine = rule_engine
@@ -135,6 +150,8 @@ class SecOpsService:
         self._effective_autonomy = effective_autonomy
         self._risk_classifier = risk_classifier
         self._llm_evaluator = llm_evaluator
+        self._safety_classifier = safety_classifier
+        self._uncertainty_checker = uncertainty_checker
         self._output_scan_policy: OutputScanResponsePolicy = (
             output_scan_policy
             if output_scan_policy is not None
@@ -513,6 +530,13 @@ class SecOpsService:
     ) -> SecurityVerdict:
         """Create an approval item in the approval store.
 
+        When a safety classifier is configured, the action is
+        classified before creating the approval item.  BLOCKED
+        actions are auto-rejected (returned as DENY).  SUSPICIOUS
+        actions get a warning badge via metadata.  When an
+        uncertainty checker is configured, a cross-provider
+        confidence score is attached.
+
         Falls back to DENY if no approval store is configured or if
         the store raises an exception.
         """
@@ -532,20 +556,54 @@ class SecOpsService:
 
         approval_id = str(uuid.uuid4())
         now = datetime.now(UTC)
+        description = verdict.reason
+        metadata: dict[str, str] = {
+            "tool_name": context.tool_name,
+            "tool_category": context.tool_category.value,
+        }
+
+        # Stage 1+2: safety classification (if configured).
+        if self._safety_classifier is not None:
+            classify_result = await self._run_safety_classifier(
+                context,
+                verdict,
+                metadata,
+            )
+            if classify_result is not None:
+                # BLOCKED -> auto-reject.
+                if classify_result == "blocked":
+                    return verdict.model_copy(
+                        update={
+                            "verdict": SecurityVerdictType.DENY,
+                            "reason": (
+                                f"{verdict.reason} (auto-rejected: "
+                                f"safety classifier blocked)"
+                            ),
+                        },
+                    )
+                # Use stripped description for the reviewer view.
+                stripped = metadata.get("stripped_description")
+                if stripped:
+                    description = stripped
+
+        # Cross-provider uncertainty check (if configured).
+        if self._uncertainty_checker is not None:
+            await self._run_uncertainty_check(
+                verdict,
+                metadata,
+            )
+
         item = ApprovalItem(
             id=approval_id,
             action_type=context.action_type,
             title=f"Security escalation: {context.tool_name}",
-            description=verdict.reason,
+            description=description,
             requested_by=context.agent_id or "system",
             risk_level=verdict.risk_level,
             status=ApprovalStatus.PENDING,
             created_at=now,
             task_id=context.task_id,
-            metadata={
-                "tool_name": context.tool_name,
-                "tool_category": context.tool_category.value,
-            },
+            metadata=metadata,
         )
         try:
             await self._approval_store.add(item)
@@ -573,3 +631,75 @@ class SecOpsService:
         return verdict.model_copy(
             update={"approval_id": approval_id},
         )
+
+    async def _run_safety_classifier(
+        self,
+        context: SecurityContext,
+        verdict: SecurityVerdict,
+        metadata: dict[str, str],
+    ) -> str | None:
+        """Run the safety classifier and populate metadata.
+
+        Returns the classification string, or ``None`` on error.
+        On BLOCKED, the caller should auto-reject.
+        """
+        try:
+            from synthorg.security.safety_classifier import (  # noqa: PLC0415
+                SafetyClassification,
+            )
+
+            result = await self._safety_classifier.classify(  # type: ignore[union-attr]
+                verdict.reason,
+                context.action_type,
+                context.tool_name,
+                verdict.risk_level,
+            )
+            metadata["safety_classification"] = result.classification.value
+            metadata["stripped_description"] = result.stripped_description
+            metadata["safety_reason"] = result.reason
+
+            if result.classification == SafetyClassification.BLOCKED:
+                auto_reject = self._config.safety_classifier.auto_reject_blocked
+                if auto_reject:
+                    logger.warning(
+                        SECURITY_SAFETY_CLASSIFY_BLOCKED,
+                        tool_name=context.tool_name,
+                        reason=result.reason,
+                    )
+                    return "blocked"
+        except MemoryError, RecursionError:
+            raise
+        except Exception:
+            logger.exception(
+                SECURITY_SAFETY_CLASSIFY_ERROR,
+                tool_name=context.tool_name,
+                note="Safety classifier failed -- proceeding without classification",
+            )
+            return None
+        else:
+            return result.classification.value
+
+    async def _run_uncertainty_check(
+        self,
+        verdict: SecurityVerdict,
+        metadata: dict[str, str],
+    ) -> None:
+        """Run the uncertainty checker and populate metadata."""
+        try:
+            result = await self._uncertainty_checker.check(  # type: ignore[union-attr]
+                verdict.reason,
+            )
+            metadata["confidence_score"] = str(result.confidence_score)
+            if result.keyword_overlap is not None:
+                metadata["keyword_overlap"] = str(result.keyword_overlap)
+            if result.embedding_similarity is not None:
+                metadata["embedding_similarity"] = str(
+                    result.embedding_similarity,
+                )
+        except MemoryError, RecursionError:
+            raise
+        except Exception:
+            logger.exception(
+                SECURITY_UNCERTAINTY_CHECK_ERROR,
+                note="Uncertainty check failed -- proceeding without score",
+            )
