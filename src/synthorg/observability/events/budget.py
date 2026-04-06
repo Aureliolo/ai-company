@@ -42,6 +42,7 @@ BUDGET_RECORDS_AUTO_PRUNED: Final[str] = "budget.records.auto_pruned"
 BUDGET_QUERY_EXCEEDS_RETENTION: Final[str] = "budget.query.exceeds_retention"
 
 BUDGET_PROVIDER_USAGE_QUERIED: Final[str] = "budget.provider_usage.queried"
+BUDGET_NOTIFICATION_FAILED: Final[str] = "budget.notification.failed"
 
 # -- Embedding cost tracking events --
 BUDGET_EMBEDDING_COST_RECORDED: Final[str] = "budget.embedding_cost.recorded"

@@ -9,8 +9,10 @@ sinks concurrently.
 from synthorg.notifications.config import (
     NotificationConfig,
     NotificationSinkConfig,
+    NotificationSinkType,
 )
 from synthorg.notifications.dispatcher import NotificationDispatcher
+from synthorg.notifications.factory import build_notification_dispatcher
 from synthorg.notifications.models import (
     Notification,
     NotificationCategory,
@@ -26,4 +28,6 @@ __all__ = [
     "NotificationSeverity",
     "NotificationSink",
     "NotificationSinkConfig",
+    "NotificationSinkType",
+    "build_notification_dispatcher",
 ]

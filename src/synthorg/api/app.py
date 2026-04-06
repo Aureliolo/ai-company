@@ -84,13 +84,7 @@ from synthorg.hr.performance.quality_protocol import (
 )
 from synthorg.hr.performance.tracker import PerformanceTracker
 from synthorg.hr.registry import AgentRegistryService  # noqa: TC001
-from synthorg.notifications.adapters.console import ConsoleNotificationSink
-from synthorg.notifications.config import (
-    NotificationConfig,  # noqa: TC001
-    NotificationSinkConfig,  # noqa: TC001
-)
-from synthorg.notifications.dispatcher import NotificationDispatcher
-from synthorg.notifications.protocol import NotificationSink  # noqa: TC001
+from synthorg.notifications.factory import build_notification_dispatcher
 from synthorg.observability import get_logger
 from synthorg.observability.config import DEFAULT_SINKS, LogConfig
 from synthorg.observability.events.api import (
@@ -100,11 +94,6 @@ from synthorg.observability.events.api import (
     API_SESSION_CLEANUP,
     API_WS_SEND_FAILED,
     API_WS_TICKET_CLEANUP,
-)
-from synthorg.observability.events.notification import (
-    NOTIFICATION_SINK_CONFIG_INVALID,
-    NOTIFICATION_SINK_DISABLED,
-    NOTIFICATION_SINK_UNKNOWN_TYPE,
 )
 from synthorg.observability.events.prompt import (
     PROMPT_PERSONALITY_NOTIFY_FAILED,
@@ -898,7 +887,7 @@ def create_app(  # noqa: PLR0913, PLR0915
             perf_config=effective_config.performance,
         )
 
-    notification_dispatcher = _build_notification_dispatcher(
+    notification_dispatcher = build_notification_dispatcher(
         effective_config.notifications,
     )
 
@@ -1064,147 +1053,6 @@ def _build_settings_dispatcher(
     return SettingsChangeDispatcher(
         message_bus=message_bus,
         subscribers=tuple(subs),
-    )
-
-
-def _build_notification_dispatcher(
-    config: NotificationConfig,
-) -> NotificationDispatcher:
-    """Build a ``NotificationDispatcher`` from configuration.
-
-    Always includes a console sink as a fallback if no sinks are
-    configured or all configured sinks are disabled.
-
-    Args:
-        config: Notification subsystem configuration.
-
-    Returns:
-        Configured notification dispatcher.
-    """
-    sinks: list[NotificationSink] = []
-    for sink_cfg in config.sinks:
-        if not sink_cfg.enabled:
-            logger.debug(
-                NOTIFICATION_SINK_DISABLED,
-                sink_type=sink_cfg.type,
-            )
-            continue
-        sink = _create_notification_sink(sink_cfg)
-        if sink is not None:
-            sinks.append(sink)
-    if not sinks:
-        sinks.append(ConsoleNotificationSink())
-    return NotificationDispatcher(
-        sinks=tuple(sinks),
-        min_severity=config.min_severity,
-    )
-
-
-def _create_notification_sink(
-    cfg: NotificationSinkConfig,
-) -> NotificationSink | None:
-    """Instantiate a notification sink from config.
-
-    Args:
-        cfg: Single sink configuration.
-
-    Returns:
-        Sink instance or ``None`` for unknown or invalid types.
-    """
-    sink_type = cfg.type.lower()
-    params = cfg.params
-    if sink_type == "console":
-        return ConsoleNotificationSink()
-    if sink_type == "ntfy":
-        return _create_ntfy_sink(params)
-    if sink_type == "slack":
-        return _create_slack_sink(params)
-    if sink_type == "email":
-        return _create_email_sink(params)
-    logger.warning(
-        NOTIFICATION_SINK_UNKNOWN_TYPE,
-        sink_type=sink_type,
-    )
-    return None
-
-
-def _create_ntfy_sink(
-    params: dict[str, str],
-) -> NotificationSink:
-    """Create an ntfy notification sink."""
-    from synthorg.notifications.adapters.ntfy import (  # noqa: PLC0415
-        NtfyNotificationSink,
-    )
-
-    return NtfyNotificationSink(
-        server_url=params.get("server_url", "https://ntfy.sh"),
-        topic=params.get("topic", "synthorg-alerts"),
-        token=params.get("token"),
-    )
-
-
-def _create_slack_sink(
-    params: dict[str, str],
-) -> NotificationSink | None:
-    """Create a Slack webhook notification sink."""
-    from synthorg.notifications.adapters.slack import (  # noqa: PLC0415
-        SlackNotificationSink,
-    )
-
-    webhook_url = params.get("webhook_url", "")
-    if not webhook_url:
-        logger.warning(
-            NOTIFICATION_SINK_CONFIG_INVALID,
-            sink_type="slack",
-            error="webhook_url is required",
-        )
-        return None
-    return SlackNotificationSink(webhook_url=webhook_url)
-
-
-def _create_email_sink(
-    params: dict[str, str],
-) -> NotificationSink | None:
-    """Create an email SMTP notification sink."""
-    from synthorg.notifications.adapters.email import (  # noqa: PLC0415
-        EmailNotificationSink,
-    )
-
-    host = params.get("host", "")
-    if not host:
-        logger.warning(
-            NOTIFICATION_SINK_CONFIG_INVALID,
-            sink_type="email",
-            error="host is required",
-        )
-        return None
-    to_addrs = tuple(
-        a.strip() for a in params.get("to_addrs", "").split(",") if a.strip()
-    )
-    if not to_addrs:
-        logger.warning(
-            NOTIFICATION_SINK_CONFIG_INVALID,
-            sink_type="email",
-            error="to_addrs is required",
-        )
-        return None
-    try:
-        port = int(params.get("port", "587"))
-    except ValueError:
-        logger.warning(
-            NOTIFICATION_SINK_CONFIG_INVALID,
-            sink_type="email",
-            error=f"invalid port: {params.get('port')!r}",
-        )
-        return None
-    return EmailNotificationSink(
-        host=host,
-        port=port,
-        username=params.get("username"),
-        password=params.get("password"),
-        from_addr=params.get("from_addr", "synthorg@localhost"),
-        to_addrs=to_addrs,
-        use_tls=params.get("use_tls", "true").lower() == "true",
     )
 
 

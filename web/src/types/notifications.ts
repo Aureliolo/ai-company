@@ -52,7 +52,7 @@ export interface NotificationItem {
   readonly title: string
   readonly description?: string
   readonly timestamp: string
-  read: boolean
+  readonly read: boolean
   readonly href?: string
   readonly entityId?: string
   readonly dispatchedTo: readonly NotificationRoute[]
@@ -148,6 +148,8 @@ export const CATEGORY_CONFIGS: Record<NotificationCategory, CategoryConfig> = {
     label: 'Task blocked',
     group: 'tasks',
   },
+  // TODO: providers.* and connection.* categories will be wired when
+  // the backend emits provider health and WS connection events.
   'providers.down': {
     severity: 'error',
     defaultRoutes: ['drawer', 'toast', 'browser'],

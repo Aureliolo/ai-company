@@ -1,7 +1,9 @@
 """Email notification sink -- SMTP via asyncio.to_thread."""
 
 import asyncio
+import re
 import smtplib
+import ssl
 from email.message import EmailMessage
 from typing import TYPE_CHECKING
 
@@ -15,6 +17,8 @@ if TYPE_CHECKING:
     from synthorg.notifications.models import Notification
 
 logger = get_logger(__name__)
+
+_CONTROL_CHAR_RE = re.compile(r"[\x00-\x1f\x7f]")
 
 
 class EmailNotificationSink:
@@ -93,9 +97,10 @@ class EmailNotificationSink:
 
     def _send_sync(self, notification: Notification) -> None:
         """Synchronous SMTP send (runs in a thread)."""
+        safe_title = _CONTROL_CHAR_RE.sub("", notification.title)
         msg = EmailMessage()
         msg["Subject"] = (
-            f"[SynthOrg {notification.severity.upper()}] {notification.title}"
+            f"[SynthOrg {notification.severity.value.upper()}] {safe_title}"
         )
         msg["From"] = self._from_addr
         msg["To"] = ", ".join(self._to_addrs)
@@ -109,7 +114,20 @@ class EmailNotificationSink:
 
         with smtplib.SMTP(self._host, self._port) as smtp:
             if self._use_tls:
-                smtp.starttls()
-            if self._username and self._password:
-                smtp.login(self._username, self._password)
+                context = ssl.create_default_context()
+                smtp.starttls(context=context)
+            self._login_if_configured(smtp)
             smtp.send_message(msg)
+
+    def _login_if_configured(self, smtp: smtplib.SMTP) -> None:
+        """Log in to SMTP if both username and password are set."""
+        has_user = bool(self._username)
+        has_pass = bool(self._password)
+        if has_user != has_pass:
+            logger.warning(
+                "notification.email.partial_credentials",
+                has_username=has_user,
+                has_password=has_pass,
+            )
+        if self._username and self._password:
+            smtp.login(self._username, self._password)

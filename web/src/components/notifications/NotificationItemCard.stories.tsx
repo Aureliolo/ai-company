@@ -11,7 +11,7 @@ const baseItem: NotificationItem = {
   severity: 'warning',
   title: 'Approval requested for agent deployment',
   description: 'Engineering department needs approval for new agent hire',
-  timestamp: new Date().toISOString(),
+  timestamp: '2026-04-06T12:00:00.000Z',
   read: false,
   href: '/approvals',
   dispatchedTo: ['drawer', 'toast'],

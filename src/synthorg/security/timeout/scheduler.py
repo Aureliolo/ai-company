@@ -199,36 +199,7 @@ class ApprovalTimeoutScheduler:
                 escalate_to=action.escalate_to,
                 reason=action.reason,
             )
-            if self._notification_dispatcher is not None:
-                from synthorg.notifications.models import (  # noqa: PLC0415
-                    Notification,
-                    NotificationCategory,
-                    NotificationSeverity,
-                )
-
-                try:
-                    await self._notification_dispatcher.dispatch(
-                        Notification(
-                            category=NotificationCategory.SECURITY,
-                            severity=NotificationSeverity.WARNING,
-                            title=f"Approval escalated: {item.id}",
-                            body=action.reason or "",
-                            source="security.timeout.scheduler",
-                            metadata={
-                                "approval_id": item.id,
-                                "escalate_to": action.escalate_to,
-                            },
-                        ),
-                    )
-                except MemoryError, RecursionError:
-                    raise
-                except Exception:
-                    logger.warning(
-                        TIMEOUT_SCHEDULER_ERROR,
-                        approval_id=item.id,
-                        error="notification dispatch failed",
-                        exc_info=True,
-                    )
+            await self._notify_escalation(item, action)
 
     async def _resolve_item(
         self,
@@ -272,3 +243,41 @@ class ApprovalTimeoutScheduler:
                     error="on_timeout_resolve callback failed",
                     exc_info=True,
                 )
+
+    async def _notify_escalation(
+        self,
+        item: ApprovalItem,
+        action: TimeoutAction,
+    ) -> None:
+        """Best-effort notification for an approval escalation."""
+        if self._notification_dispatcher is None:
+            return
+        from synthorg.notifications.models import (  # noqa: PLC0415
+            Notification,
+            NotificationCategory,
+            NotificationSeverity,
+        )
+
+        try:
+            await self._notification_dispatcher.dispatch(
+                Notification(
+                    category=NotificationCategory.SECURITY,
+                    severity=NotificationSeverity.WARNING,
+                    title=f"Approval escalated: {item.id}",
+                    body=action.reason or "",
+                    source="security.timeout.scheduler",
+                    metadata={
+                        "approval_id": item.id,
+                        "escalate_to": action.escalate_to,
+                    },
+                ),
+            )
+        except MemoryError, RecursionError:
+            raise
+        except Exception:
+            logger.warning(
+                TIMEOUT_SCHEDULER_ERROR,
+                approval_id=item.id,
+                error="notification dispatch failed",
+                exc_info=True,
+            )

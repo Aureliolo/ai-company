@@ -26,3 +26,19 @@ export const BudgetFilter: Story = {
 export const SystemFilter: Story = {
   args: { filter: 'system' },
 }
+
+export const TasksFilter: Story = {
+  args: { filter: 'tasks' },
+}
+
+export const AgentsFilter: Story = {
+  args: { filter: 'agents' },
+}
+
+export const ProvidersFilter: Story = {
+  args: { filter: 'providers' },
+}
+
+export const ConnectionFilter: Story = {
+  args: { filter: 'connection' },
+}

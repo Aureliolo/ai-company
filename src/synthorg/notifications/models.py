@@ -8,19 +8,24 @@ fine-grained subcategories (``approvals.pending``,
 enum is shared 1:1 between backend and frontend.
 """
 
+import copy
 from datetime import UTC, datetime
 from enum import StrEnum
 from uuid import uuid4
 
-from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 
 
 class NotificationCategory(StrEnum):
-    """Notification event categories.
+    """Backend coarse notification categories for sink-level routing.
 
-    Shared with frontend ``NotificationItem.category``.
+    The frontend uses fine-grained subcategories (e.g.
+    ``approvals.pending``, ``budget.exhausted``) in
+    ``web/src/types/notifications.ts``. The two taxonomies share
+    the severity enum 1:1 but categories are intentionally different
+    granularities.
     """
 
     APPROVAL = "approval"
@@ -91,3 +96,10 @@ class Notification(BaseModel):
         default_factory=dict,
         description="Arbitrary structured context for adapters",
     )
+
+    @model_validator(mode="after")
+    def _deep_copy_metadata(self) -> Notification:
+        """Snapshot metadata at construction to prevent caller mutation."""
+        if self.metadata:
+            object.__setattr__(self, "metadata", copy.deepcopy(self.metadata))
+        return self

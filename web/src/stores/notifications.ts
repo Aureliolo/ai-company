@@ -102,13 +102,23 @@ function pruneStale(items: readonly NotificationItem[]): readonly NotificationIt
   return items.filter((item) => new Date(item.timestamp).getTime() > cutoff)
 }
 
+const VALID_CATEGORIES = new Set(Object.keys(CATEGORY_CONFIGS))
+const VALID_SEVERITIES: ReadonlySet<string> = new Set<NotificationSeverity>([
+  'info',
+  'warning',
+  'error',
+  'critical',
+])
+
 function isValidItem(item: unknown): item is NotificationItem {
   if (typeof item !== 'object' || item === null) return false
   const obj = item as Record<string, unknown>
   return (
     typeof obj.id === 'string' &&
     typeof obj.category === 'string' &&
+    VALID_CATEGORIES.has(obj.category) &&
     typeof obj.severity === 'string' &&
+    VALID_SEVERITIES.has(obj.severity) &&
     typeof obj.title === 'string' &&
     typeof obj.timestamp === 'string' &&
     typeof obj.read === 'boolean' &&
@@ -178,6 +188,12 @@ export const useNotificationsStore = create<NotificationsState>()((set, get) => 
     preferences: initialPrefs,
 
     enqueue(params) {
+      if (!VALID_CATEGORIES.has(params.category)) {
+        log.warn('enqueue called with unknown category -- ignored', {
+          category: sanitizeForLog(params.category),
+        })
+        return ''
+      }
       const severity = params.severity ?? CATEGORY_CONFIGS[params.category].severity
       const prefs = get().preferences
       const routes = computeRoutes(params.category, prefs)

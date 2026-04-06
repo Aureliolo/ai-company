@@ -31,3 +31,4 @@ APPROVAL_GATE_DECISION_RECORD_FAILED: Final[str] = (
 )
 APPROVAL_GATE_TASK_NOT_FOUND: Final[str] = "approval_gate.task.not_found"
 APPROVAL_GATE_TASK_UNASSIGNED: Final[str] = "approval_gate.task.unassigned"
+APPROVAL_GATE_NOTIFICATION_FAILED: Final[str] = "approval_gate.notification.failed"

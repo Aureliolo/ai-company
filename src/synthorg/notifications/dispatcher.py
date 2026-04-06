@@ -37,6 +37,9 @@ class NotificationDispatcher:
 
     Notifications below ``min_severity`` are silently filtered.
 
+    ``register()`` is only safe to call before the event loop
+    starts processing requests.
+
     Args:
         sinks: Initial set of notification sinks.
         min_severity: Minimum severity to dispatch.
@@ -76,9 +79,6 @@ class NotificationDispatcher:
         Best-effort: individual sink errors are logged and
         swallowed. ``MemoryError`` and ``RecursionError`` propagate.
 
-        Notifications below the configured ``min_severity`` are
-        silently filtered.
-
         Args:
             notification: The notification to deliver.
         """
@@ -89,17 +89,10 @@ class NotificationDispatcher:
             )
             return
 
-        if _SEVERITY_ORDER[notification.severity] < _SEVERITY_ORDER[self._min_severity]:
-            logger.debug(
-                NOTIFICATION_FILTERED,
-                notification_id=notification.id,
-                severity=notification.severity,
-                min_severity=self._min_severity,
-            )
+        if self._should_filter(notification):
             return
 
         errors: list[str | None] = [None] * len(self._sinks)
-
         try:
             async with asyncio.TaskGroup() as tg:
                 for idx, sink in enumerate(self._sinks):
@@ -110,14 +103,43 @@ class NotificationDispatcher:
             for exc in eg.exceptions:
                 if isinstance(exc, MemoryError | RecursionError):
                     raise exc from eg
-            logger.warning(
-                NOTIFICATION_DISPATCH_FAILED,
-                notification_id=notification.id,
-                category=notification.category,
-                error=f"TaskGroup errors: {eg.exceptions}",
-            )
+            self._log_exception_group(notification, errors, eg)
             return
 
+        self._log_result(notification, errors)
+
+    async def close(self) -> None:
+        """Close all sinks that support cleanup."""
+        for sink in self._sinks:
+            if hasattr(sink, "close"):
+                try:
+                    await sink.close()
+                except Exception:
+                    logger.warning(
+                        NOTIFICATION_DISPATCH_FAILED,
+                        sink_name=sink.sink_name,
+                        error="close() failed",
+                        exc_info=True,
+                    )
+
+    def _should_filter(self, notification: Notification) -> bool:
+        """Return True if the notification is below min_severity."""
+        if _SEVERITY_ORDER[notification.severity] < _SEVERITY_ORDER[self._min_severity]:
+            logger.debug(
+                NOTIFICATION_FILTERED,
+                notification_id=notification.id,
+                severity=notification.severity,
+                min_severity=self._min_severity,
+            )
+            return True
+        return False
+
+    def _log_result(
+        self,
+        notification: Notification,
+        errors: list[str | None],
+    ) -> None:
+        """Log dispatch outcome after TaskGroup completes."""
         failed = sum(1 for e in errors if e is not None)
         if failed:
             logger.warning(
@@ -134,6 +156,22 @@ class NotificationDispatcher:
                 category=notification.category,
                 sinks=len(self._sinks),
             )
+
+    def _log_exception_group(
+        self,
+        notification: Notification,
+        errors: list[str | None],
+        eg: ExceptionGroup,
+    ) -> None:
+        """Log ExceptionGroup with per-sink context preserved."""
+        partial_errors = [e for e in errors if e is not None]
+        logger.warning(
+            NOTIFICATION_DISPATCH_FAILED,
+            notification_id=notification.id,
+            category=notification.category,
+            error=f"TaskGroup errors: {eg.exceptions}",
+            partial_sink_errors=partial_errors,
+        )
 
     @staticmethod
     async def _guarded_send(

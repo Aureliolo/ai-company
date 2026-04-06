@@ -254,6 +254,30 @@ Global search overlay: navigate to any page, search agents by name, search tasks
 **Trigger**: Bell icon in sidebar bottom + unread badge
 Slide-in drawer aggregating system notifications: budget alerts, approval arrivals, agent status changes, system errors. Sources from WS `system`, `approvals`, and `budget` channels.
 
+**Category taxonomy** -- 17 notification categories with routing defaults and severity mappings:
+
+| Category | Default Route | Severity |
+|----------|--------------|----------|
+| `approvals.pending` | toast + panel | info |
+| `approvals.expiring` | toast + panel | warning |
+| `approvals.decided` | panel only | info |
+| `budget.threshold` | toast + panel | warning |
+| `budget.exhausted` | toast + panel | critical |
+| `system.error` | toast + panel | error |
+| `system.restart_required` | toast + panel | warning |
+| `system.shutdown` | toast + panel | critical |
+| `agents.personality_trimmed` | panel only | info |
+| `agents.hired` | panel only | info |
+| `agents.fired` | panel only | warning |
+| `tasks.failed` | toast + panel | error |
+| `tasks.blocked` | panel only | warning |
+| `providers.down` | toast + panel | error |
+| `providers.degraded` | panel only | warning |
+| `connection.lost` | toast + panel | critical |
+| `connection.exhausted` | toast + panel | error |
+
+"toast + panel" categories trigger a brief toast notification in addition to appearing in the panel drawer. "panel only" categories appear silently in the drawer and increment the unread badge. Users can override routing defaults per category in notification preferences (future iteration).
+
 #### Agent Detail Page
 
 **Trigger**: Click agent in Agents list, Org Chart node, or any agent name link

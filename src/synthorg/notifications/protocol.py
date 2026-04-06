@@ -25,8 +25,9 @@ class NotificationSink(Protocol):
     async def send(self, notification: Notification) -> None:
         """Deliver a notification.
 
-        Implementations MUST NOT raise -- errors are logged
-        internally and swallowed.
+        Implementations should log errors internally and re-raise
+        so ``NotificationDispatcher`` can track delivery status.
+        ``MemoryError`` and ``RecursionError`` must always propagate.
 
         Args:
             notification: The notification to deliver.

@@ -74,7 +74,30 @@ on resolution.
 - **Timing-attack prevention** -- dummy hash computation for non-existent users
 - **Forced password change** -- `must_change_password` flag blocks API access
 - **One-time WebSocket tickets** -- short-lived (30 s), single-use, cryptographically random tokens exchanged via ``POST /api/v1/auth/ws-ticket`` (requires valid JWT). Prevents long-lived JWT leakage by replacing it with an ephemeral ticket in the WebSocket query parameter. In-memory store, monotonic clock expiry, per-process scope. JWT/API key auth middleware is scoped to HTTP requests only (`ScopeType.HTTP`) -- WebSocket connections bypass the middleware entirely and rely on handler-level ticket validation.
-- **Tiered rate limiting** -- two separate budgets stacked around the auth middleware. **Unauthenticated** requests are limited to 20 req/min by client IP (protects against brute-force on login, setup, and health endpoints). **Authenticated** requests are limited to 600 req/min by user ID (generous budget for normal dashboard usage). Keying authenticated limits by user ID instead of IP prevents multi-user deployments behind a shared gateway or NAT from collectively exhausting a single budget. Both limits are configurable via ``api.rate_limit.unauth_max_requests`` and ``api.rate_limit.auth_max_requests`` in the YAML config (or ``SYNTHORG_API__RATE_LIMIT__UNAUTH_MAX`` / ``SYNTHORG_API__RATE_LIMIT__AUTH_MAX`` environment variables for Docker deployments). The WebSocket path is excluded from both tiers -- HTTP-style per-request rate limiting is inappropriate for persistent WebSocket connections. In-memory rate-limit storage is single-replica; multi-replica deployments with shared rate limiting require an external store (not yet supported).
+- **Tiered rate limiting** -- two separate budgets stacked around the auth middleware. **Unauthenticated** requests are limited to 20 req/min by client IP (protects against brute-force on login, setup, and health endpoints). **Authenticated** requests are limited to 600 req/min by user ID (generous budget for normal dashboard usage). Keying authenticated limits by user ID instead of IP prevents multi-user deployments behind a shared gateway or NAT from collectively exhausting a single budget. Both limits are configurable via ``api.rate_limit.unauth_max_requests`` and ``api.rate_limit.auth_max_requests`` in the YAML config (or ``SYNTHORG_API_RATE_LIMIT_UNAUTH_MAX_REQUESTS`` / ``SYNTHORG_API_RATE_LIMIT_AUTH_MAX_REQUESTS`` environment variables for Docker deployments). These are bootstrap-only settings -- changes require a restart. The health endpoint (``/api/v1/health``) is excluded from rate limiting by default via ``rate_limit.exclude_paths``. The WebSocket path is excluded from both tiers -- HTTP-style per-request rate limiting is inappropriate for persistent WebSocket connections. In-memory rate-limit storage is single-replica; multi-replica deployments with shared rate limiting require an external store (not yet supported).
+
+    !!! warning "Breaking Change (v0.6.3)"
+        The legacy ``max_requests`` field on ``RateLimitConfig`` has been removed.
+        Configurations using ``api.rate_limit.max_requests`` are now rejected at
+        startup with a validation error directing operators to use
+        ``unauth_max_requests`` and ``auth_max_requests`` instead.
+
+### Notification Security
+
+Notification adapter configuration may contain credentials (SMTP passwords,
+ntfy tokens, Slack webhook URLs). These values are stored in the ``params``
+dict of each ``NotificationSinkConfig`` entry in the YAML config.
+
+- **Credentials in params**: Treat ``password``, ``token``, and ``webhook_url``
+  params as sensitive. Use environment variable substitution in YAML
+  (``${SMTP_PASSWORD}``) rather than embedding plain-text secrets.
+- **Log redaction**: The observability pipeline's ``sanitize_sensitive_fields``
+  processor automatically redacts keys matching ``password``, ``token``, and
+  ``secret`` at all nesting depths, so adapter params are not leaked in logs.
+- **Transport security**: The email adapter enforces STARTTLS when
+  ``use_tls=true`` (default). The ntfy and Slack adapters validate that their
+  target URLs use HTTPS before sending (SSRF-safe: private/loopback IPs are
+  rejected).
 
 ### Frontend Security
 

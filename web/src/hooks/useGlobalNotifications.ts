@@ -19,12 +19,17 @@ const log = createLogger('useGlobalNotifications')
  * Channel-specific stores (e.g. agents) are still updated directly for their
  * domain-specific state tracking (runtime statuses, etc.).
  *
- * Connection failures are surfaced via the notification pipeline so they appear
- * in both the toast queue and the notification drawer.
+ * Connection failures are surfaced via the notification pipeline: initial loss
+ * goes to toast-only (`connection.lost`), exhausted reconnect goes to drawer +
+ * toast + browser (`connection.exhausted`).
  *
  * This hook is intentionally minimal -- it only covers *global* notifications.
  * Page-scoped WebSocket handling remains in the per-page data hooks.
  */
+// NOTE: 'providers' and 'connection' channels are not included yet -- the
+// backend does not emit those WS events. Add them here once backend support
+// lands so the notification pipeline can route provider.* and connection.*
+// categories end-to-end.
 const GLOBAL_CHANNELS = [
   'agents',
   'approvals',

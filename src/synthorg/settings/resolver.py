@@ -544,15 +544,21 @@ class ConfigResolver:
     async def get_api_config(self) -> ApiConfig:
         """Assemble an ``ApiConfig`` with runtime-editable overrides.
 
-        Resolves the four runtime-editable API settings (rate-limit
-        max requests, rate-limit time unit, JWT expiry, min password
-        length) and merges them onto the YAML-loaded base config.
+        Resolves the five runtime-relevant API settings (rate-limit
+        max requests for both tiers, rate-limit time unit, JWT expiry,
+        min password length) and merges them onto the YAML-loaded base
+        config.
 
         Bootstrap-only settings (``server_host``, ``server_port``,
-        ``api_prefix``, ``cors_allowed_origins``,
+        ``api_prefix``, ``ssl_certfile``, ``ssl_keyfile``,
+        ``ssl_ca_certs``, ``trusted_proxies``,
+        ``cors_allowed_origins``,
         ``rate_limit_exclude_paths``, ``auth_exclude_paths``) are
         **not** resolved -- they are baked into the Litestar app at
-        construction and require a restart to take effect.
+        construction and require a restart to take effect.  The two
+        rate-limit max-request settings are also bootstrap-only
+        (``restart_required=True``) but are resolved here so the
+        assembled ``ApiConfig`` reflects DB/env overrides at startup.
 
         Uses ``asyncio.TaskGroup`` to resolve all settings in parallel.
 

@@ -1,5 +1,6 @@
 """Tests for the ntfy notification sink."""
 
+import httpx
 import pytest
 import respx
 from httpx import Response
@@ -80,5 +81,45 @@ class TestNtfyNotificationSink:
             source="test",
         )
         # Adapter logs the error and re-raises for the dispatcher to track
-        with pytest.raises(Exception, match="500"):
+        with pytest.raises(httpx.HTTPStatusError):
             await sink.send(n)
+
+    async def test_close_before_any_send(self) -> None:
+        sink = NtfyNotificationSink(
+            server_url="https://ntfy.example.com",
+            topic="t",
+        )
+        # close() should succeed even if no send() was ever called
+        await sink.close()
+
+    @respx.mock
+    async def test_close_after_send(self) -> None:
+        respx.post("https://ntfy.example.com/t").mock(
+            return_value=Response(200),
+        )
+        sink = NtfyNotificationSink(
+            server_url="https://ntfy.example.com",
+            topic="t",
+        )
+        n = Notification(
+            category=NotificationCategory.SYSTEM,
+            severity=NotificationSeverity.INFO,
+            title="Close test",
+            source="test",
+        )
+        await sink.send(n)
+        await sink.close()
+
+    def test_rejects_loopback_url(self) -> None:
+        with pytest.raises(ValueError, match="loopback"):
+            NtfyNotificationSink(
+                server_url="http://localhost:8080",
+                topic="t",
+            )
+
+    def test_rejects_private_ip_url(self) -> None:
+        with pytest.raises(ValueError, match="private"):
+            NtfyNotificationSink(
+                server_url="http://192.168.1.1:8080",
+                topic="t",
+            )

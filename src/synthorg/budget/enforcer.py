@@ -43,6 +43,7 @@ from synthorg.observability.events.budget import (
     BUDGET_DAILY_LIMIT_EXCEEDED,
     BUDGET_ENFORCEMENT_CHECK,
     BUDGET_HARD_STOP_EXCEEDED,
+    BUDGET_NOTIFICATION_FAILED,
     BUDGET_PREFLIGHT_ERROR,
     BUDGET_RESOLVE_MODEL_ERROR,
     BUDGET_UTILIZATION_ERROR,
@@ -389,31 +390,11 @@ class BudgetEnforcer:
                 f"({cfg.alerts.hard_stop_at}% of "
                 f"{_fmt(cfg.total_monthly, _cur)})"
             )
-            if self._notification_dispatcher is not None:
-                from synthorg.notifications.models import (  # noqa: PLC0415
-                    Notification,
-                    NotificationCategory,
-                    NotificationSeverity,
-                )
-
-                try:
-                    await self._notification_dispatcher.dispatch(
-                        Notification(
-                            category=NotificationCategory.BUDGET,
-                            severity=NotificationSeverity.CRITICAL,
-                            title="Monthly budget exhausted",
-                            body=msg,
-                            source="budget.enforcer",
-                        ),
-                    )
-                except MemoryError, RecursionError:
-                    raise
-                except Exception:
-                    logger.warning(
-                        BUDGET_HARD_STOP_EXCEEDED,
-                        note="notification dispatch failed",
-                        exc_info=True,
-                    )
+            await self._notify_budget_event(
+                "Monthly budget exhausted",
+                msg,
+                "critical",
+            )
             raise BudgetExhaustedError(msg)
 
     async def _check_daily_limit(
@@ -442,7 +423,46 @@ class BudgetEnforcer:
                 f"{format_cost(daily_cost, cfg.currency)} >= "
                 f"{format_cost(cfg.per_agent_daily_limit, cfg.currency)}"
             )
+            await self._notify_budget_event(
+                "Daily agent limit exceeded",
+                msg,
+                "warning",
+            )
             raise DailyLimitExceededError(msg)
+
+    async def _notify_budget_event(
+        self,
+        title: str,
+        body: str,
+        severity: str,
+    ) -> None:
+        """Best-effort notification for a budget event."""
+        if self._notification_dispatcher is None:
+            return
+        from synthorg.notifications.models import (  # noqa: PLC0415
+            Notification,
+            NotificationCategory,
+            NotificationSeverity,
+        )
+
+        sev = NotificationSeverity(severity)
+        try:
+            await self._notification_dispatcher.dispatch(
+                Notification(
+                    category=NotificationCategory.BUDGET,
+                    severity=sev,
+                    title=title,
+                    body=body,
+                    source="budget.enforcer",
+                ),
+            )
+        except MemoryError, RecursionError:
+            raise
+        except Exception:
+            logger.warning(
+                BUDGET_NOTIFICATION_FAILED,
+                exc_info=True,
+            )
 
     async def resolve_model(
         self,

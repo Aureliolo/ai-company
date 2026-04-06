@@ -1,5 +1,9 @@
 """ntfy notification sink -- HTTP POST to an ntfy server."""
 
+import ipaddress
+import re
+from urllib.parse import urlparse
+
 import httpx
 
 from synthorg.notifications.models import (
@@ -21,18 +25,46 @@ _SEVERITY_TO_PRIORITY: dict[NotificationSeverity, str] = {
     NotificationSeverity.CRITICAL: "max",
 }
 
+_CONTROL_CHAR_RE = re.compile(r"[\x00-\x1f\x7f]")
+_ALLOWED_SCHEMES = frozenset({"http", "https"})
+_BLOCKED_HOSTS = frozenset({"localhost", "127.0.0.1", "::1"})
+
+
+def _validate_outbound_url(url: str, field: str) -> None:
+    """Reject URLs that target internal/loopback hosts or non-HTTP schemes."""
+    parsed = urlparse(url)
+    if parsed.scheme not in _ALLOWED_SCHEMES:
+        msg = f"{field} must use http or https scheme, got {parsed.scheme!r}"
+        raise ValueError(msg)
+    host = parsed.hostname or ""
+    if host in _BLOCKED_HOSTS:
+        msg = f"{field} must not target loopback address"
+        raise ValueError(msg)
+    try:
+        addr = ipaddress.ip_address(host)
+    except ValueError:
+        # Not a literal IP -- hostname like "ntfy.example.com".
+        # Already checked against _BLOCKED_HOSTS above.
+        return
+    if addr.is_private or addr.is_link_local or addr.is_loopback:
+        msg = f"{field} must not target private/internal IP"
+        raise ValueError(msg)
+
 
 class NtfyNotificationSink:
     """Notification sink that posts to an ntfy server.
 
     Uses ``httpx.AsyncClient`` for a single HTTP POST per
-    notification. The client is lazily created and reused for
-    connection pooling.
+    notification. The client is eagerly created for connection
+    pooling and properly cleaned up via ``close()``.
 
     Args:
         server_url: ntfy server base URL (e.g. ``"https://ntfy.sh"``).
         topic: ntfy topic name.
         token: Optional authentication token.
+
+    Raises:
+        ValueError: If *server_url* targets a private/loopback host.
     """
 
     __slots__ = ("_client", "_server_url", "_token", "_topic")
@@ -44,10 +76,14 @@ class NtfyNotificationSink:
         topic: str,
         token: str | None = None,
     ) -> None:
+        _validate_outbound_url(server_url, "server_url")
         self._server_url = server_url.rstrip("/")
         self._topic = topic
         self._token = token
-        self._client: httpx.AsyncClient | None = None
+        self._client = httpx.AsyncClient(
+            timeout=10.0,
+            follow_redirects=False,
+        )
 
     @property
     def sink_name(self) -> str:
@@ -60,13 +96,14 @@ class NtfyNotificationSink:
         Args:
             notification: The notification to deliver.
         """
-        if self._client is None:
-            self._client = httpx.AsyncClient(timeout=10.0)
-
+        safe_title = _CONTROL_CHAR_RE.sub("", notification.title)
         url = f"{self._server_url}/{self._topic}"
         headers: dict[str, str] = {
-            "Title": notification.title,
-            "Priority": _SEVERITY_TO_PRIORITY.get(notification.severity, "default"),
+            "Title": safe_title,
+            "Priority": _SEVERITY_TO_PRIORITY.get(
+                notification.severity,
+                "default",
+            ),
             "Tags": notification.category,
         }
         if self._token:
@@ -96,6 +133,4 @@ class NtfyNotificationSink:
 
     async def close(self) -> None:
         """Close the underlying HTTP client."""
-        if self._client is not None:
-            await self._client.aclose()
-            self._client = None
+        await self._client.aclose()

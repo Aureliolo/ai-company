@@ -1152,6 +1152,42 @@ class TestBuildMiddleware:
         assert "unauth" in stores[0]
         assert "auth" in stores[1]
 
+    def test_sandwich_ordering(
+        self,
+        root_config: Any,
+    ) -> None:
+        """Unauth RL wraps auth middleware which wraps auth RL."""
+        from litestar.middleware.rate_limit import (
+            RateLimitConfig as LsRL,
+        )
+
+        from synthorg.api.app import _build_middleware
+
+        mw = _build_middleware(root_config.api)
+
+        # Find indices of each layer.
+        unauth_idx: int | None = None
+        auth_mw_idx: int | None = None
+        auth_rl_idx: int | None = None
+
+        for i, entry in enumerate(mw):
+            if hasattr(entry, "kwargs"):
+                cfg = entry.kwargs.get("config")
+                if isinstance(cfg, LsRL):
+                    if cfg.store and "unauth" in cfg.store:
+                        unauth_idx = i
+                    elif cfg.store and "auth" in cfg.store:
+                        auth_rl_idx = i
+            elif isinstance(entry, type):
+                # Auth middleware is a class, not a DefineMiddleware
+                auth_mw_idx = i
+
+        assert unauth_idx is not None, "unauth rate limiter not found"
+        assert auth_mw_idx is not None, "auth middleware not found"
+        assert auth_rl_idx is not None, "auth rate limiter not found"
+        # Sandwich: unauth RL < auth MW < auth RL
+        assert unauth_idx < auth_mw_idx < auth_rl_idx
+
 
 @pytest.mark.unit
 class TestAuthIdentifierForRequest:

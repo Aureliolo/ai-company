@@ -19,11 +19,8 @@ interface NotificationDrawerProps {
 
 export function NotificationDrawer({ open, onClose }: NotificationDrawerProps) {
   const items = useNotificationsStore((s) => s.items)
-  const unreadCount = useNotificationsStore((s) => s.unreadCount)
   const markRead = useNotificationsStore((s) => s.markRead)
-  const markAllRead = useNotificationsStore((s) => s.markAllRead)
   const dismiss = useNotificationsStore((s) => s.dismiss)
-  const clearAll = useNotificationsStore((s) => s.clearAll)
 
   const [filter, setFilter] = useState<NotificationFilterGroup>('all')
 
@@ -34,9 +31,26 @@ export function NotificationDrawer({ open, onClose }: NotificationDrawerProps) {
     )
   }, [items, filter])
 
+  const filteredUnreadCount = useMemo(
+    () => filteredItems.filter((item) => !item.read).length,
+    [filteredItems],
+  )
+
+  function handleMarkAllRead() {
+    for (const item of filteredItems) {
+      if (!item.read) markRead(item.id)
+    }
+  }
+
+  function handleClearAll() {
+    for (const item of filteredItems) {
+      dismiss(item.id)
+    }
+  }
+
   return (
     <Drawer open={open} onClose={onClose} title="Notifications" side="right">
-      <div className="flex h-full flex-col gap-3 p-3">
+      <div className="flex h-full flex-col gap-3 p-card">
         {/* Filter bar */}
         <NotificationFilterBar value={filter} onChange={setFilter} />
 
@@ -44,16 +58,16 @@ export function NotificationDrawer({ open, onClose }: NotificationDrawerProps) {
         <div className="flex items-center justify-between">
           <LiveRegion>
             <span className="text-xs text-muted-foreground">
-              {unreadCount > 0
-                ? `${String(unreadCount)} unread`
+              {filteredUnreadCount > 0
+                ? `${filteredUnreadCount} unread`
                 : 'All read'}
             </span>
           </LiveRegion>
-          {unreadCount > 0 && (
+          {filteredUnreadCount > 0 && (
             <Button
               variant="ghost"
               size="sm"
-              onClick={markAllRead}
+              onClick={handleMarkAllRead}
               className="text-xs"
             >
               Mark all read
@@ -81,12 +95,12 @@ export function NotificationDrawer({ open, onClose }: NotificationDrawerProps) {
         </div>
 
         {/* Footer */}
-        {items.length > 0 && (
+        {filteredItems.length > 0 && (
           <div className="border-t border-border pt-2">
             <Button
               variant="ghost"
               size="sm"
-              onClick={clearAll}
+              onClick={handleClearAll}
               className="w-full text-xs text-muted-foreground"
             >
               Clear all

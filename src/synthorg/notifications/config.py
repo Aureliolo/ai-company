@@ -1,9 +1,19 @@
 """Notification subsystem configuration."""
 
+from enum import StrEnum
+
 from pydantic import BaseModel, ConfigDict, Field
 
-from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.notifications.models import NotificationSeverity
+
+
+class NotificationSinkType(StrEnum):
+    """Supported notification sink adapter types."""
+
+    CONSOLE = "console"
+    NTFY = "ntfy"
+    SLACK = "slack"
+    EMAIL = "email"
 
 
 class NotificationSinkConfig(BaseModel):
@@ -14,11 +24,13 @@ class NotificationSinkConfig(BaseModel):
             ``email``).
         enabled: Whether this sink is active.
         params: Adapter-specific parameters (URL, topic, etc.).
+            May contain credentials (``password``, ``token``,
+            ``webhook_url``) -- treat as sensitive.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
-    type: NotBlankStr = Field(description="Adapter type")
+    type: NotificationSinkType = Field(description="Adapter type")
     enabled: bool = Field(
         default=True,
         description="Whether this sink is active",
@@ -40,7 +52,7 @@ class NotificationConfig(BaseModel):
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     sinks: tuple[NotificationSinkConfig, ...] = Field(
-        default=(NotificationSinkConfig(type="console"),),
+        default=(NotificationSinkConfig(type=NotificationSinkType.CONSOLE),),
         description="Configured notification sinks",
     )
     min_severity: NotificationSeverity = Field(

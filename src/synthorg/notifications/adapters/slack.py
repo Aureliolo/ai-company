@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING
 
 import httpx
 
+from synthorg.notifications.adapters.ntfy import _validate_outbound_url
 from synthorg.observability import get_logger
 from synthorg.observability.events.notification import (
     NOTIFICATION_SLACK_DELIVERED,
@@ -16,18 +17,52 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 
+def _build_slack_payload(notification: Notification) -> dict[str, object]:
+    """Build the Slack Block Kit payload for a notification."""
+    header = f"*[{notification.severity.value.upper()}]* {notification.title}"
+    body_text = f"{header}\n{notification.body}" if notification.body else header
+    return {
+        "text": header,
+        "blocks": [
+            {
+                "type": "section",
+                "text": {"type": "mrkdwn", "text": body_text},
+            },
+            {
+                "type": "context",
+                "elements": [
+                    {
+                        "type": "mrkdwn",
+                        "text": (
+                            f"Category: {notification.category} | "
+                            f"Source: {notification.source}"
+                        ),
+                    },
+                ],
+            },
+        ],
+    }
+
+
 class SlackNotificationSink:
     """Notification sink that posts to a Slack incoming webhook.
 
     Args:
         webhook_url: Slack incoming webhook URL.
+
+    Raises:
+        ValueError: If *webhook_url* targets a private/loopback host.
     """
 
     __slots__ = ("_client", "_webhook_url")
 
     def __init__(self, *, webhook_url: str) -> None:
+        _validate_outbound_url(webhook_url, "webhook_url")
         self._webhook_url = webhook_url
-        self._client: httpx.AsyncClient | None = None
+        self._client = httpx.AsyncClient(
+            timeout=10.0,
+            follow_redirects=False,
+        )
 
     @property
     def sink_name(self) -> str:
@@ -40,43 +75,7 @@ class SlackNotificationSink:
         Args:
             notification: The notification to deliver.
         """
-        if self._client is None:
-            self._client = httpx.AsyncClient(timeout=10.0)
-
-        payload = {
-            "text": (f"*[{notification.severity.value.upper()}]* {notification.title}"),
-            "blocks": [
-                {
-                    "type": "section",
-                    "text": {
-                        "type": "mrkdwn",
-                        "text": (
-                            f"*[{notification.severity.value.upper()}]* "
-                            f"{notification.title}\n"
-                            f"{notification.body}"
-                            if notification.body
-                            else (
-                                f"*[{notification.severity.value.upper()}]* "
-                                f"{notification.title}"
-                            )
-                        ),
-                    },
-                },
-                {
-                    "type": "context",
-                    "elements": [
-                        {
-                            "type": "mrkdwn",
-                            "text": (
-                                f"Category: {notification.category} | "
-                                f"Source: {notification.source}"
-                            ),
-                        },
-                    ],
-                },
-            ],
-        }
-
+        payload = _build_slack_payload(notification)
         try:
             response = await self._client.post(
                 self._webhook_url,
@@ -99,6 +98,4 @@ class SlackNotificationSink:
 
     async def close(self) -> None:
         """Close the underlying HTTP client."""
-        if self._client is not None:
-            await self._client.aclose()
-            self._client = None
+        await self._client.aclose()

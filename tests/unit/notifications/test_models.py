@@ -1,6 +1,5 @@
 """Tests for notification domain models."""
 
-import copy
 from datetime import UTC, datetime
 
 import pytest
@@ -97,7 +96,7 @@ class TestNotification:
             )
 
     def test_metadata_deep_copy_isolation(self) -> None:
-        meta: dict[str, object] = {"key": [1, 2, 3]}
+        meta: dict[str, list[int]] = {"key": [1, 2, 3]}
         n = Notification(
             category=NotificationCategory.AGENT,
             severity=NotificationSeverity.INFO,
@@ -105,8 +104,7 @@ class TestNotification:
             source="test",
             metadata=meta,
         )
-        copied = copy.deepcopy(n.metadata)
-        copied["key"] = [4, 5, 6]
+        meta["key"].append(4)
         assert n.metadata["key"] == [1, 2, 3]
 
     def test_unique_ids(self) -> None:

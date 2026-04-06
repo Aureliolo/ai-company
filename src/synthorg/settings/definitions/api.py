@@ -1,9 +1,10 @@
 """API namespace setting definitions.
 
 Registers 15 settings covering server, TLS, CORS, rate limiting,
-authentication, and setup.  Five are runtime-editable; ten are
+authentication, and setup.  Three are runtime-editable; twelve are
 bootstrap-only (``restart_required=True``) because Litestar bakes
-middleware and CORS into the application at construction time.
+middleware, rate-limit budgets, and CORS into the application at
+construction time.
 """
 
 from synthorg.settings.enums import SettingLevel, SettingNamespace, SettingType
@@ -147,6 +148,7 @@ _r.register(
         description="Maximum unauthenticated requests per time window (by IP)",
         group="Rate Limiting",
         level=SettingLevel.ADVANCED,
+        restart_required=True,
         min_value=1,
         max_value=10000,
         yaml_path="api.rate_limit.unauth_max_requests",
@@ -162,6 +164,7 @@ _r.register(
         description="Maximum authenticated requests per time window (by user ID)",
         group="Rate Limiting",
         level=SettingLevel.ADVANCED,
+        restart_required=True,
         min_value=1,
         max_value=100000,
         yaml_path="api.rate_limit.auth_max_requests",

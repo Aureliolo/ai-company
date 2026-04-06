@@ -1,3 +1,4 @@
+import { useEffect } from 'react'
 import { Bell } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
@@ -27,6 +28,19 @@ export function NotificationsSection() {
   const setRouteOverride = useNotificationsStore((s) => s.setRouteOverride)
   const setBrowserPermission = useNotificationsStore((s) => s.setBrowserPermission)
 
+  // Sync browser permission state on mount -- the actual permission may have
+  // changed externally (e.g. user toggled it in browser site settings).
+  useEffect(() => {
+    if (typeof Notification !== 'undefined') {
+      const actual = Notification.permission
+      if (actual !== preferences.browserPermission) {
+        setBrowserPermission(actual)
+      }
+    }
+    // Only run on mount
+    // eslint-disable-next-line @eslint-react/exhaustive-deps
+  }, [])
+
   const permission = preferences.browserPermission
 
   async function handleRequestPermission() {
@@ -48,7 +62,7 @@ export function NotificationsSection() {
 
   return (
     <SectionCard title="Notifications" icon={<Bell className="size-4" />}>
-      <div className="flex flex-col gap-6">
+      <div className="flex flex-col gap-section-gap">
         {/* Global mute */}
         <ToggleField
           label="Mute all notifications"

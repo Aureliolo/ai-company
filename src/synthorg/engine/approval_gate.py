@@ -22,6 +22,7 @@ from synthorg.observability.events.approval_gate import (
     APPROVAL_GATE_ESCALATION_DETECTED,
     APPROVAL_GATE_INITIALIZED,
     APPROVAL_GATE_NO_PARKED_CONTEXT,
+    APPROVAL_GATE_NOTIFICATION_FAILED,
     APPROVAL_GATE_RESUME_DELETE_FAILED,
     APPROVAL_GATE_RESUME_FAILED,
     APPROVAL_GATE_RESUME_STARTED,
@@ -122,38 +123,47 @@ class ApprovalGate:
             task_id,
         )
         await self._persist_parked(parked, escalation)
-        if self._notification_dispatcher is not None:
-            from synthorg.notifications.models import (  # noqa: PLC0415
-                Notification,
-                NotificationCategory,
-                NotificationSeverity,
-            )
-
-            try:
-                await self._notification_dispatcher.dispatch(
-                    Notification(
-                        category=NotificationCategory.APPROVAL,
-                        severity=NotificationSeverity.WARNING,
-                        title=f"Approval required: {escalation.approval_id}",
-                        body=escalation.reason or "",
-                        source="engine.approval_gate",
-                        metadata={
-                            "approval_id": escalation.approval_id,
-                            "agent_id": agent_id,
-                            "task_id": task_id,
-                        },
-                    ),
-                )
-            except MemoryError, RecursionError:
-                raise
-            except Exception:
-                logger.warning(
-                    APPROVAL_GATE_CONTEXT_PARKED,
-                    note="notification dispatch failed after parking",
-                    approval_id=escalation.approval_id,
-                    exc_info=True,
-                )
+        await self._notify_approval_required(escalation, agent_id, task_id)
         return parked
+
+    async def _notify_approval_required(
+        self,
+        escalation: EscalationInfo,
+        agent_id: str,
+        task_id: str | None,
+    ) -> None:
+        """Best-effort notification that a context was parked."""
+        if self._notification_dispatcher is None:
+            return
+        from synthorg.notifications.models import (  # noqa: PLC0415
+            Notification,
+            NotificationCategory,
+            NotificationSeverity,
+        )
+
+        try:
+            await self._notification_dispatcher.dispatch(
+                Notification(
+                    category=NotificationCategory.APPROVAL,
+                    severity=NotificationSeverity.WARNING,
+                    title=f"Approval required: {escalation.approval_id}",
+                    body=escalation.reason or "",
+                    source="engine.approval_gate",
+                    metadata={
+                        "approval_id": escalation.approval_id,
+                        "agent_id": agent_id,
+                        "task_id": task_id,
+                    },
+                ),
+            )
+        except MemoryError, RecursionError:
+            raise
+        except Exception:
+            logger.warning(
+                APPROVAL_GATE_NOTIFICATION_FAILED,
+                approval_id=escalation.approval_id,
+                exc_info=True,
+            )
 
     def _serialize_context(
         self,

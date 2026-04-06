@@ -33,7 +33,6 @@ import { useNotificationsStore } from '@/stores/notifications'
 import { useThemeStore } from '@/stores/theme'
 import { useWebSocketStore } from '@/stores/websocket'
 import { ROUTES } from '@/router/routes'
-import { NotificationDrawer } from '@/components/notifications/NotificationDrawer'
 import { Drawer } from '@/components/ui/drawer'
 import { HealthPopover } from '@/components/ui/health-popover'
 import { StatusBadge } from '@/components/ui/status-badge'
@@ -258,53 +257,40 @@ interface SidebarFooterProps {
 
 function NotificationBell({ collapsed }: { collapsed: boolean }) {
   const unreadCount = useNotificationsStore((s) => s.unreadCount)
-  const [drawerOpen, setDrawerOpen] = useState(false)
-
-  // Listen for Shift+N toggle event from AppLayout
-  useEffect(() => {
-    function handleToggle() {
-      setDrawerOpen((prev) => !prev)
-    }
-    window.addEventListener('toggle-notification-drawer', handleToggle)
-    return () => window.removeEventListener('toggle-notification-drawer', handleToggle)
-  }, [])
 
   return (
-    <>
-      <button
-        type="button"
-        title="Notifications (Shift+N)"
-        aria-label={unreadCount > 0 ? `Notifications (${String(unreadCount)} unread)` : 'Notifications'}
-        className={SIDEBAR_BUTTON_CLASS}
-        onClick={() => setDrawerOpen(true)}
-      >
-        <span className="relative">
-          <Bell
-            className={cn('size-5 shrink-0', collapsed && 'mx-auto')}
+    <button
+      type="button"
+      title="Notifications (Shift+N)"
+      aria-label={unreadCount > 0 ? `Notifications (${String(unreadCount)} unread)` : 'Notifications'}
+      className={SIDEBAR_BUTTON_CLASS}
+      onClick={() => window.dispatchEvent(new CustomEvent('open-notification-drawer'))}
+    >
+      <span className="relative">
+        <Bell
+          className={cn('size-5 shrink-0', collapsed && 'mx-auto')}
+          aria-hidden="true"
+        />
+        {unreadCount > 0 && (
+          <span
+            className="absolute -right-1.5 -top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-danger px-1 text-[10px] font-semibold text-white"
             aria-hidden="true"
-          />
+          >
+            {unreadCount > 99 ? '99+' : String(unreadCount)}
+          </span>
+        )}
+      </span>
+      {!collapsed && (
+        <span className="flex flex-1 items-center justify-between gap-2">
+          <span>Notifications</span>
           {unreadCount > 0 && (
-            <span
-              className="absolute -right-1.5 -top-1.5 flex size-4 items-center justify-center rounded-full bg-danger text-[10px] font-semibold text-white"
-              aria-hidden="true"
-            >
-              {unreadCount > 99 ? '99+' : String(unreadCount)}
+            <span className="text-xs text-muted-foreground" aria-live="polite">
+              {String(unreadCount)}
             </span>
           )}
         </span>
-        {!collapsed && (
-          <span className="flex flex-1 items-center justify-between gap-2">
-            <span>Notifications</span>
-            {unreadCount > 0 && (
-              <span className="text-xs text-muted-foreground" aria-live="polite">
-                {String(unreadCount)}
-              </span>
-            )}
-          </span>
-        )}
-      </button>
-      <NotificationDrawer open={drawerOpen} onClose={() => setDrawerOpen(false)} />
-    </>
+      )}
+    </button>
   )
 }
 

@@ -30,11 +30,11 @@ function formatRelativeTime(timestamp: string): string {
   const seconds = Math.floor(diff / 1000)
   if (seconds < 60) return 'just now'
   const minutes = Math.floor(seconds / 60)
-  if (minutes < 60) return `${String(minutes)}m ago`
+  if (minutes < 60) return `${minutes}m ago`
   const hours = Math.floor(minutes / 60)
-  if (hours < 24) return `${String(hours)}h ago`
+  if (hours < 24) return `${hours}h ago`
   const days = Math.floor(hours / 24)
-  return `${String(days)}d ago`
+  return `${days}d ago`
 }
 
 interface NotificationItemCardProps {
@@ -53,25 +53,24 @@ export function NotificationItemCard({
 
   function handleClick() {
     if (!item.read) onMarkRead(item.id)
-    if (item.href) void navigate(item.href)
+    if (item.href && item.href.startsWith('/') && !item.href.startsWith('//')) {
+      void navigate(item.href)
+    }
   }
 
   return (
-    <div
+    <button
+      type="button"
       role="listitem"
       aria-label={`${item.severity} notification: ${item.title}`}
       className={cn(
-        'group relative flex gap-3 rounded-md border-l-2 px-3 py-2',
+        'group relative flex w-full gap-3 rounded-md border-l-2 px-3 py-2 text-left',
         'transition-colors hover:bg-card-hover',
         item.read ? 'border-l-transparent' : BORDER_COLORS[item.severity],
         !item.read && 'bg-accent/5',
         item.href && 'cursor-pointer',
       )}
       onClick={handleClick}
-      onKeyDown={(e) => {
-        if (e.key === 'Enter') handleClick()
-      }}
-      tabIndex={0}
     >
       <Icon className={cn('mt-0.5 size-4 shrink-0', SEVERITY_COLORS[item.severity])} />
 
@@ -113,6 +112,6 @@ export function NotificationItemCard({
           <X className="size-3.5" />
         </button>
       </div>
-    </div>
+    </button>
   )
 }
