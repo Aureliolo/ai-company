@@ -17,6 +17,7 @@ from synthorg.engine.loop_protocol import (
 )
 from synthorg.memory.consolidation.distillation import (
     DistillationRequest,
+    MemoryToolName,
     build_outcome,
     build_trajectory_summary,
     capture_distillation,
@@ -78,12 +79,12 @@ class TestDistillationRequest:
             task_id="task-1",
             trajectory_summary="3 turns, 450 tokens",
             outcome="Task completed successfully.",
-            memory_tool_invocations=("search_memory",),
+            memory_tool_invocations=(MemoryToolName.SEARCH_MEMORY,),
             created_at=now,
         )
         assert req.agent_id == "agent-1"
         assert req.task_id == "task-1"
-        assert req.memory_tool_invocations == ("search_memory",)
+        assert req.memory_tool_invocations == (MemoryToolName.SEARCH_MEMORY,)
 
     def test_frozen_rejects_mutation(self) -> None:
         now = datetime.now(UTC)
