@@ -1,7 +1,7 @@
 ---
 description: "PR test coverage analysis: checks if new functionality has adequate test coverage"
 mode: subagent
-model: ollama-cloud/glm-4.7:cloud
+model: glm-4.7:cloud
 permission:
   Read: allow
   Grep: allow
@@ -15,34 +15,40 @@ You analyze whether new or modified functionality in a PR has adequate test cove
 ## What to Check
 
 ### 1. New Public Functions (HIGH)
+
 - Public functions added without corresponding unit tests
 - New class methods without test coverage
 - New API endpoints without integration tests
 
 ### 2. Modified Logic (MEDIUM)
+
 - Changed conditional logic without updated tests
 - New branches/paths added without test cases
 - Error handling changes without negative test cases
 - Default value changes without tests verifying new defaults
 
 ### 3. Edge Case Coverage (MEDIUM)
+
 - Empty input handling not tested
 - Boundary values not tested (min, max, zero, negative)
 - None/null inputs not tested where applicable
 - Error response paths not tested
 
 ### 4. Test Type Appropriateness (MEDIUM)
+
 - New features without unit tests (must have `@pytest.mark.unit`)
 - Database-touching code without integration tests
 - User-facing flows without e2e consideration
 - Missing `@pytest.mark.parametrize` for input variations
 
 ### 5. Test File Location (LOW)
+
 - Tests not in parallel directory structure (`tests/` mirrors `src/synthorg/`)
 - Test files not named `test_<module>.py`
 - Missing conftest.py fixtures for shared setup
 
 ### 6. Missing Test Scenarios
+
 For each new feature, check that tests cover:
 - Happy path (normal operation)
 - Validation failures (invalid input)

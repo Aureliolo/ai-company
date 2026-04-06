@@ -1,7 +1,7 @@
 ---
 description: "Comment and docstring analysis: accuracy, completeness, maintainability, Google style"
 mode: subagent
-model: ollama-cloud/glm-4.7:cloud
+model: glm-4.7:cloud
 permission:
   Read: allow
   Grep: allow

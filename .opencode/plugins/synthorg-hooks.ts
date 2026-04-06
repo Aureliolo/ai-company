@@ -18,7 +18,7 @@
  */
 
 import type { Plugin } from "@opencode-ai/plugin";
-import { execSync } from "child_process";
+import { spawnSync } from "child_process";
 
 function runHookScript(
   scriptPath: string,
@@ -27,12 +27,17 @@ function runHookScript(
 ): string | null {
   try {
     const input = JSON.stringify({ tool_input: toolInput });
-    const result = execSync(`echo '${input.replace(/'/g, "\\'")}' | bash ${scriptPath}`, {
+    const result = spawnSync("bash", [scriptPath], {
+      input,
       timeout: timeoutMs,
       encoding: "utf-8",
       stdio: ["pipe", "pipe", "pipe"],
     });
-    return result;
+    if (result.status === 2) {
+      // Hook denied the action
+      return result.stdout ?? "Hook denied this action";
+    }
+    return result.stdout;
   } catch (error: unknown) {
     const err = error as { status?: number; stdout?: string };
     if (err.status === 2) {
@@ -61,7 +66,7 @@ export const SynthOrgHooks: Plugin = async ({ client, $, app }) => {
 
             // enforce-parallel-tests: enforce -n 8 with pytest
             if (
-              /(?:run\s+pytest|python\s+-m\s+pytest)\b/i.test(command) &&
+              /(?:^|\s)(?:pytest|run\s+pytest|python\s+-m\s+pytest)\b/i.test(command) &&
               !/-n 8/.test(command)
             ) {
               throw new Error(
@@ -78,7 +83,7 @@ export const SynthOrgHooks: Plugin = async ({ client, $, app }) => {
 
             // no-local-coverage: block --cov flags locally
             if (
-              /(?:run\s+pytest|python\s+-m\s+pytest)\b/i.test(command) &&
+              /(?:^|\s)(?:pytest|run\s+pytest|python\s+-m\s+pytest)\b/i.test(command) &&
               /--cov\b/.test(command)
             ) {
               throw new Error(
@@ -125,7 +130,7 @@ export const SynthOrgHooks: Plugin = async ({ client, $, app }) => {
                 { command },
                 5000,
               );
-              if (gitResult && gitResult.includes("block")) {
+              if (gitResult && gitResult.includes("deny")) {
                 throw new Error(gitResult);
               }
             }
@@ -145,8 +150,8 @@ export const SynthOrgHooks: Plugin = async ({ client, $, app }) => {
               );
             } catch (error: unknown) {
               const err = error as { message?: string; stderr?: string };
-              // Log but don't block -- PostToolUse is advisory
-              console.error("Design system check failed for:", output.args.file_path, "-", err.message || err.stderr || "Unknown error");
+              const errMsg = err.message || err.stderr || "Unknown error";
+              throw new Error(`Design system check failed for ${output.args.file_path}: ${errMsg}`);
             }
           }
         },

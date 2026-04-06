@@ -15,6 +15,7 @@ You audit resilience patterns in the SynthOrg codebase, ensuring retry, rate lim
 ## What to Check
 
 ### 1. Provider Layer Hard Rules (CRITICAL)
+
 - Driver subclass implements its own retry/backoff logic instead of relying on `BaseCompletionProvider` base class (CRITICAL)
 - Calling code wraps provider calls in manual retry loops (CRITICAL)
 - New `BaseCompletionProvider` subclass doesn't pass `retry_handler`/`rate_limiter` to `super().__init__()` (MAJOR)
@@ -22,45 +23,53 @@ You audit resilience patterns in the SynthOrg codebase, ensuring retry, rate lim
 - Retryable error type created without `is_retryable = True` (MAJOR)
 
 ### 2. Manual Retry Detection -- Any Code (CRITICAL)
+
 - Manual retry/backoff patterns ANYWHERE: `for attempt in range(...)`, `while retries > 0`, `time.sleep` in retry loops -- retries belong in `RetryHandler` only (CRITICAL)
 - Error hierarchy overlap -- new exception classes that accidentally inherit from or shadow `ProviderError` (MAJOR)
 - Code that catches broad `Exception`/`BaseException` and silently swallows provider errors that should propagate (MAJOR)
 
 ### 3. Error Hierarchy (HIGH)
+
 - Retryable errors not marked with `is_retryable=True`: `RateLimitError`, `ProviderTimeoutError`, `ProviderConnectionError`, `ProviderInternalError`
 - Non-retryable errors incorrectly marked as retryable
 - `RetryExhaustedError` not caught at engine layer for fallback chains
 - Custom exceptions not fitting into the error hierarchy
 
 ### 4. Rate Limiting (MEDIUM)
+
 - Not respecting `RateLimitError.retry_after` from providers
 - Missing rate limiter configuration in `ProviderConfig`
 - Hardcoded sleep values instead of using rate limiter backoff
 
 ### 5. Retry Configuration (MEDIUM)
+
 - `RetryConfig` and `RateLimiterConfig` set in wrong location (should be per-provider in `ProviderConfig`)
 - Infinite retry without max attempts
 - Missing exponential backoff
 - Retry on non-retryable errors
 
 ### 6. Circuit Breaking (MEDIUM)
+
 - No health tracking for repeatedly failing providers
 - Missing fallback provider configuration
 - Cascading failures from one provider affecting others
 
 ### 7. Timeout Handling (MEDIUM)
 
-### 8. Soft Rules (SUGGESTION)
-- New error types missing `is_retryable` classification for I/O or network failures (SUGGESTION)
-- Provider call site catching `ProviderError` without accounting for `RetryExhaustedError` (SUGGESTION)
-- Engine/orchestration code importing from `providers/` without considering `RetryExhaustedError` (SUGGESTION)
-- Non-retryable error types that should NOT be retryable -- verify they don't accidentally inherit retryable classification (SUGGESTION)
 - Missing timeouts on external calls
 - Inconsistent timeout values across similar operations
 - Timeout not propagated through async call chains
 
+### 8. Soft Rules (SUGGESTION)
+
+- New error types missing `is_retryable` classification for I/O or network failures (SUGGESTION)
+- Provider call site catching `ProviderError` without accounting for `RetryExhaustedError` (SUGGESTION)
+- Engine/orchestration code importing from `providers/` without considering `RetryExhaustedError` (SUGGESTION)
+- Non-retryable error types that should NOT be retryable -- verify they don't accidentally inherit retryable classification (SUGGESTION)
+
 ## Severity Levels
 
+- **CRITICAL**: Retry logic in wrong layer causing cascading failures or data corruption
 - **HIGH**: Retry logic in wrong layer, error hierarchy violation, missing retry safety
 - **MEDIUM**: Configuration issues, missing rate limiting, timeout gaps
 - **LOW**: Optimization opportunities, minor pattern improvements
@@ -68,7 +77,8 @@ You audit resilience patterns in the SynthOrg codebase, ensuring retry, rate lim
 ## Report Format
 
 For each finding:
-```
+
+```text
 [SEVERITY] file:line -- Resilience issue
   Problem: What the code does wrong
   Risk: What failure mode this enables

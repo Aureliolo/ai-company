@@ -1,7 +1,7 @@
 ---
 description: "Documentation consistency: CLAUDE.md, README, design spec drift from codebase"
 mode: subagent
-model: ollama-cloud/glm-4.7:cloud
+model: glm-4.7:cloud
 permission:
   Read: allow
   Grep: allow

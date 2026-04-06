@@ -18,7 +18,7 @@ import { homedir } from "os";
 
 function getMemoryDir(): string {
   const cwd = process.cwd();
-  const mangled = cwd.replace(/[:/\\]/g, "_").replace(/^_/, "").replace(/_$/, "");
+  const mangled = cwd.replace(/[:/\\]/g, "-").replace(/^-/, "").replace(/-$/, "");
   return join(homedir(), ".claude", "projects", mangled, "memory");
 }
 
@@ -45,11 +45,18 @@ function slugify(name: string): string {
     .replace(/^_|_$/g, "");
 }
 
+function escapeYamlField(value: string): string {
+  return value
+    .replace(/\\/g, "\\\\")
+    .replace(/"/g, '\\"')
+    .replace(/\n/g, "\\n");
+}
+
 function buildFrontmatter(entry: MemoryEntry): string {
   return [
     "---",
-    `name: ${entry.name}`,
-    `description: ${entry.description}`,
+    `name: "${escapeYamlField(entry.name)}"`,
+    `description: "${escapeYamlField(entry.description)}"`,
     `type: ${entry.type}`,
     "---",
     "",

@@ -19,7 +19,7 @@ For each changed `web/src/**/*.{tsx,ts}` file in the diff, check for these viola
 
 Hardcoded `transition: { duration: N }` or `transition={{ duration: N }}` instead of importing presets from `@/lib/motion` (`tweenDefault`, `tweenFast`, `tweenExitFast`, `springDefault`, etc.) or using the `useAnimationPreset()` hook.
 
-**Skip:** `lib/motion.ts` (preset definitions), `hooks/useAnimationPreset.ts`, `.stories.tsx` files, `ThemePreview.tsx` (intentional demo).
+**Skip:** `lib/motion.ts` (preset definitions), `hooks/useAnimationPreset.ts`, `.stories.tsx`/`.stories.ts` files, `ThemePreview.tsx` (intentional demo).
 
 ### 2. Card container padding (MEDIUM)
 
@@ -63,4 +63,4 @@ Only report violations with HIGH confidence. Do not flag:
 - Tailwind bridge: `web/src/styles/global.css` (`@theme inline` block)
 - Motion presets: `web/src/lib/motion.ts`
 - Animation hook: `web/src/hooks/useAnimationPreset.ts`
-- Design spec: `docs/design/brand-and-ux.md`
+- Design spec: `docs/design/index.md` (and relevant linked pages: agents, organization, communication, engine, memory, operations)

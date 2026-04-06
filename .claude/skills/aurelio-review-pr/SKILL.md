@@ -163,7 +163,7 @@ Based on changed files, launch applicable review agents **in parallel** using th
 | **pr-test-analyzer** | `test_py` changed, OR `src_py` changed with no corresponding test changes | `explore` |
 | **silent-failure-hunter** | Diff contains `try`, `except`, `raise`, error handling patterns | `explore` |
 | **comment-analyzer** | Diff contains docstring changes (`"""`) or significant comment changes | `explore` |
-| **type-design-analyzer** | Diff contains `class ` definitions, `BaseModel`, `TypedDict`, type aliases | `explore` |
+| **type-design-analyzer** | Diff contains `class` definitions, `BaseModel`, `TypedDict`, type aliases | `explore (type-design-analyzer)` |
 | **logging-audit** | Any `src_py` changed | `explore` (use custom prompt below) |
 | **resilience-audit** | Any `src_py` changed | `explore` (use custom prompt below) |
 | **conventions-enforcer** | Any `src_py` or `test_py` | `explore` (use custom prompt below) |

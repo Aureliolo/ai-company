@@ -16,15 +16,18 @@ You verify that a PR fully resolves the acceptance criteria of its linked GitHub
 ## Process
 
 ### 1. Identify Linked Issues
+
 - Look for `Closes #N`, `Fixes #N`, `Resolves #N` in the PR description
 - Use `gh issue view <number> --json title,body,labels` to fetch each issue
 
 ### 2. Extract Acceptance Criteria
+
 - Parse the issue body for explicit acceptance criteria, checkboxes, or requirements
 - Note any "must", "should", "needs to" language as implicit criteria
 - Check labels for scope hints (e.g., `scope:backend`, `scope:web`)
 
 ### 3. Verify Each Criterion
+
 For each acceptance criterion, check the changed files:
 - Is the feature implemented as described?
 - Are edge cases mentioned in the issue handled?
@@ -32,6 +35,7 @@ For each acceptance criterion, check the changed files:
 - Does the implementation match the issue's scope (no under- or over-delivery)?
 
 ### 4. Check for Gaps
+
 - Requirements mentioned but not implemented
 - Partial implementations (e.g., backend done but frontend missing)
 - Missing error handling for scenarios described in the issue

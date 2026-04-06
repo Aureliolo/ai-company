@@ -54,7 +54,8 @@ You are a security reviewer for the SynthOrg project. Analyze changed files for 
 ## Report Format
 
 For each finding:
-```
+
+```text
 [SEVERITY] file:line -- Vulnerability class
   Risk: What an attacker could do
   Fix: Specific remediation

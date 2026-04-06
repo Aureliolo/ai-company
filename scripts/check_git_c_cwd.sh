@@ -14,6 +14,8 @@ if [[ -z "$COMMAND" ]] || ! echo "$COMMAND" | grep -qE 'git[[:space:]]+-C[[:spac
 fi
 
 # Extract path after -C (handles quoted and unquoted)
+# Note: this simple sed may miss cases where options appear between git and -C
+# (e.g., git --no-pager -C path). For such cases, the script intentionally fails open.
 GIT_C_PATH=$(echo "$COMMAND" | sed -E 's/.*git[[:space:]]+-C[[:space:]]+("([^"]+)"|([^[:space:]]+)).*/\2\3/')
 GIT_C_PATH="${GIT_C_PATH//\"/}"
 
