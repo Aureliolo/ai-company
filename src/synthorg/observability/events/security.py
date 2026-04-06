@@ -51,3 +51,27 @@ SECURITY_CUSTOM_POLICY_MATCHED: Final[str] = "security.custom_policy.matched"
 
 # Shadow mode events.
 SECURITY_SHADOW_WOULD_BLOCK: Final[str] = "security.shadow.would_block"
+
+# Safety classifier events.
+SECURITY_SAFETY_CLASSIFY_START: Final[str] = "security.safety_classify.start"
+SECURITY_SAFETY_CLASSIFY_COMPLETE: Final[str] = "security.safety_classify.complete"
+SECURITY_SAFETY_CLASSIFY_ERROR: Final[str] = "security.safety_classify.error"
+SECURITY_SAFETY_CLASSIFY_BLOCKED: Final[str] = "security.safety_classify.blocked"
+SECURITY_SAFETY_CLASSIFY_SUSPICIOUS: Final[str] = "security.safety_classify.suspicious"
+SECURITY_INFO_STRIP_COMPLETE: Final[str] = "security.info_strip.complete"
+
+# Uncertainty check events.
+SECURITY_UNCERTAINTY_CHECK_START: Final[str] = "security.uncertainty_check.start"
+SECURITY_UNCERTAINTY_CHECK_COMPLETE: Final[str] = "security.uncertainty_check.complete"
+SECURITY_UNCERTAINTY_CHECK_ERROR: Final[str] = "security.uncertainty_check.error"
+SECURITY_UNCERTAINTY_CHECK_SKIPPED: Final[str] = "security.uncertainty_check.skipped"
+SECURITY_UNCERTAINTY_LOW_CONFIDENCE: Final[str] = "security.uncertainty.low_confidence"
+
+# Denial tracker events.
+SECURITY_DENIAL_RECORDED: Final[str] = "security.denial.recorded"
+SECURITY_DENIAL_ESCALATED: Final[str] = "security.denial.escalated"
+SECURITY_DENIAL_RESET: Final[str] = "security.denial.reset"
+
+# Permission tier events.
+SECURITY_TIER_SAFE_TOOL: Final[str] = "security.tier.safe_tool"
+SECURITY_TIER_CLASSIFIED: Final[str] = "security.tier.classified"

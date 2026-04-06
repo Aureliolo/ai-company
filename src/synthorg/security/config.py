@@ -208,6 +208,76 @@ class RuleEngineConfig(BaseModel):
     custom_allow_bypasses_detectors: bool = False
 
 
+class SafetyClassifierConfig(BaseModel):
+    """Configuration for the two-stage safety classifier at approval gates.
+
+    When enabled, escalated actions are processed through two stages:
+    Stage 1 strips PII, secrets, and internal IDs from the reviewer
+    view.  Stage 2 runs an LLM classifier to categorize the action
+    as safe, suspicious, or blocked.
+
+    Attributes:
+        enabled: Whether the safety classifier is active.
+        model: Explicit model ID for classification.  When ``None``,
+            the classifier picks the first model from the selected
+            provider (cross-family preferred, same-family fallback).
+        timeout_seconds: Maximum time for the LLM classification call.
+        max_input_tokens: Token budget cap for classification prompts.
+        auto_reject_blocked: Automatically reject actions classified
+            as BLOCKED (returns DENY verdict without creating an
+            approval item).
+        max_consecutive_denials: Maximum consecutive denials before
+            escalation to human review.  Used by ``DenialTracker``.
+        max_total_denials: Maximum total denials across the agent's
+            lifetime before escalation.  Used by ``DenialTracker``.
+        safe_tool_categories: Action types that bypass the safety
+            classifier entirely (permission tier: SAFE_TOOL).
+            Matched against the ``action_type`` field of the
+            security context.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+
+    enabled: bool = False
+    model: NotBlankStr | None = None
+    timeout_seconds: float = Field(default=10.0, gt=0.0)
+    max_input_tokens: int = Field(default=2000, gt=0)
+    auto_reject_blocked: bool = True
+    max_consecutive_denials: int = Field(default=3, ge=1)
+    max_total_denials: int = Field(default=20, ge=1)
+    safe_tool_categories: tuple[str, ...] = ("code:read", "docs:write")
+
+
+class UncertaintyCheckConfig(BaseModel):
+    """Configuration for cross-provider uncertainty checks.
+
+    When enabled, the same prompt is sent to multiple providers and
+    the responses are compared via keyword overlap and TF-IDF cosine
+    similarity.  Low agreement produces a low confidence score,
+    signaling potential hallucination.
+
+    Attributes:
+        enabled: Whether the uncertainty check is active.
+        model_ref: Model alias to resolve via
+            ``ModelResolver.resolve_all`` for multi-provider
+            candidates.  When ``None``, the check is skipped.
+        min_providers: Minimum number of providers required to run
+            the check.  If fewer candidates are available the check
+            is skipped and confidence defaults to 1.0.
+        low_confidence_threshold: Confidence scores below this
+            threshold are flagged as potentially hallucinated.
+        timeout_seconds: Maximum time per provider call.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+
+    enabled: bool = False
+    model_ref: NotBlankStr | None = None
+    min_providers: int = Field(default=2, ge=2)
+    low_confidence_threshold: float = Field(default=0.5, ge=0.0, le=1.0)
+    timeout_seconds: float = Field(default=15.0, gt=0.0)
+
+
 class SecurityConfig(BaseModel):
     """Top-level security configuration.
 
@@ -252,6 +322,12 @@ class SecurityConfig(BaseModel):
     )
     output_scan_policy_type: OutputScanPolicyType = OutputScanPolicyType.AUTONOMY_TIERED
     custom_policies: tuple[SecurityPolicyRule, ...] = ()
+    safety_classifier: SafetyClassifierConfig = Field(
+        default_factory=SafetyClassifierConfig,
+    )
+    uncertainty_check: UncertaintyCheckConfig = Field(
+        default_factory=UncertaintyCheckConfig,
+    )
 
     @model_validator(mode="after")
     def _check_disjoint_action_types(self) -> SecurityConfig:

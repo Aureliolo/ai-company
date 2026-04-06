@@ -31,8 +31,13 @@ from synthorg.security.service import SecOpsService
 from synthorg.security.timeout.risk_tier_classifier import DefaultRiskTierClassifier
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping
+
     from synthorg.api.approval_store import ApprovalStore
+    from synthorg.config.schema import ProviderConfig
     from synthorg.core.agent import AgentIdentity
+    from synthorg.providers.registry import ProviderRegistry
+    from synthorg.providers.routing.resolver import ModelResolver
     from synthorg.security.autonomy.models import EffectiveAutonomy
     from synthorg.security.protocol import SecurityInterceptionStrategy
     from synthorg.tools.registry import ToolRegistry
@@ -40,12 +45,15 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 
-def make_security_interceptor(
+def make_security_interceptor(  # noqa: PLR0913
     security_config: SecurityConfig | None,
     audit_log: AuditLog,
     *,
     approval_store: ApprovalStore | None = None,
     effective_autonomy: EffectiveAutonomy | None = None,
+    provider_registry: ProviderRegistry | None = None,
+    provider_configs: Mapping[str, ProviderConfig] | None = None,
+    model_resolver: ModelResolver | None = None,
 ) -> SecurityInterceptionStrategy | None:
     """Build the SecOps security interceptor if configured.
 
@@ -54,6 +62,12 @@ def make_security_interceptor(
         audit_log: Audit log for security events.
         approval_store: Optional approval store for escalation items.
         effective_autonomy: Optional autonomy level override.
+        provider_registry: Optional provider registry for LLM-based
+            features (safety classifier, uncertainty checker, LLM
+            fallback evaluator).
+        provider_configs: Provider config dict for family lookup.
+        model_resolver: Optional model resolver for multi-provider
+            uncertainty checks.
 
     Returns:
         A ``SecOpsService`` interceptor, or ``None`` if security is
@@ -85,6 +99,60 @@ def make_security_interceptor(
 
     cfg = security_config
     rule_engine = _build_rule_engine(cfg)
+
+    # Build optional LLM-based services when provider infrastructure
+    # is available.
+    has_providers = provider_registry is not None and provider_configs is not None
+
+    # Warn when LLM-based features are configured but providers are
+    # not available -- the features will be silently disabled.
+    if not has_providers:
+        _warn_disabled_features(cfg)
+
+    llm_evaluator = None
+    if has_providers and cfg.llm_fallback.enabled:
+        from synthorg.security.llm_evaluator import (  # noqa: PLC0415
+            LlmSecurityEvaluator,
+        )
+
+        llm_evaluator = LlmSecurityEvaluator(
+            provider_registry=provider_registry,  # type: ignore[arg-type]
+            provider_configs=provider_configs,  # type: ignore[arg-type]
+            config=cfg.llm_fallback,
+        )
+
+    safety_classifier = None
+    denial_tracker = None
+    if has_providers and cfg.safety_classifier.enabled:
+        from synthorg.security.denial_tracker import (  # noqa: PLC0415
+            DenialTracker,
+        )
+        from synthorg.security.safety_classifier import (  # noqa: PLC0415
+            SafetyClassifier,
+        )
+
+        safety_classifier = SafetyClassifier(
+            provider_registry=provider_registry,  # type: ignore[arg-type]
+            provider_configs=provider_configs,  # type: ignore[arg-type]
+            config=cfg.safety_classifier,
+        )
+        denial_tracker = DenialTracker(
+            max_consecutive=cfg.safety_classifier.max_consecutive_denials,
+            max_total=cfg.safety_classifier.max_total_denials,
+        )
+
+    uncertainty_checker = None
+    if has_providers and model_resolver is not None and cfg.uncertainty_check.enabled:
+        from synthorg.security.uncertainty import (  # noqa: PLC0415
+            UncertaintyChecker,
+        )
+
+        uncertainty_checker = UncertaintyChecker(
+            provider_registry=provider_registry,  # type: ignore[arg-type]
+            model_resolver=model_resolver,
+            config=cfg.uncertainty_check,
+        )
+
     return SecOpsService(
         config=cfg,
         rule_engine=rule_engine,
@@ -93,6 +161,10 @@ def make_security_interceptor(
         approval_store=approval_store,
         effective_autonomy=effective_autonomy,
         risk_classifier=DefaultRiskTierClassifier(),
+        llm_evaluator=llm_evaluator,
+        safety_classifier=safety_classifier,
+        uncertainty_checker=uncertainty_checker,
+        denial_tracker=denial_tracker,
     )
 
 
@@ -148,6 +220,27 @@ def _build_rule_engine(cfg: SecurityConfig) -> RuleEngine:
         risk_classifier=RiskClassifier(),
         config=re_cfg,
     )
+
+
+def _warn_disabled_features(cfg: SecurityConfig) -> None:
+    """Log warnings for enabled LLM features with no providers."""
+    features = []
+    if cfg.llm_fallback.enabled:
+        features.append("llm_fallback")
+    if cfg.safety_classifier.enabled:
+        features.append("safety_classifier")
+    if cfg.uncertainty_check.enabled:
+        features.append("uncertainty_check")
+    if features:
+        logger.warning(
+            SECURITY_CONFIG_LOADED,
+            note=(
+                "LLM-based security features are enabled but no "
+                "provider infrastructure was supplied -- these "
+                "features will be inactive"
+            ),
+            disabled_features=", ".join(features),
+        )
 
 
 def registry_with_approval_tool(

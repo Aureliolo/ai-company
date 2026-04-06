@@ -105,11 +105,14 @@ from synthorg.tools.invoker import ToolInvoker
 from synthorg.tools.permissions import ToolPermissionChecker
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping
+
     from synthorg.api.approval_store import ApprovalStore
     from synthorg.budget.coordination_config import ErrorTaxonomyConfig
     from synthorg.budget.degradation import PreFlightResult
     from synthorg.budget.enforcer import BudgetEnforcer
     from synthorg.budget.tracker import CostTracker
+    from synthorg.config.schema import ProviderConfig
     from synthorg.core.agent import AgentIdentity
     from synthorg.core.task import Task
     from synthorg.engine.compaction import CompactionCallback
@@ -139,6 +142,7 @@ if TYPE_CHECKING:
     from synthorg.providers.models import CompletionConfig
     from synthorg.providers.protocol import CompletionProvider
     from synthorg.providers.registry import ProviderRegistry
+    from synthorg.providers.routing.resolver import ModelResolver
     from synthorg.security.config import SecurityConfig
     from synthorg.security.protocol import SecurityInterceptionStrategy
     from synthorg.settings.resolver import ConfigResolver
@@ -322,6 +326,8 @@ class AgentEngine:
         compaction_callback: CompactionCallback | None = None,
         plan_execute_config: PlanExecuteConfig | None = None,
         provider_registry: ProviderRegistry | None = None,
+        provider_configs: Mapping[str, ProviderConfig] | None = None,
+        model_resolver: ModelResolver | None = None,
         tool_invocation_tracker: ToolInvocationTracker | None = None,
         memory_injection_strategy: MemoryInjectionStrategy | None = None,
         procedural_memory_config: ProceduralMemoryConfig | None = None,
@@ -339,6 +345,8 @@ class AgentEngine:
             raise ValueError(msg)
         self._provider = provider
         self._provider_registry = provider_registry
+        self._provider_configs = provider_configs
+        self._model_resolver = model_resolver
         self._approval_store = approval_store
         self._parked_context_repo = parked_context_repo
         self._stagnation_detector = stagnation_detector
@@ -1560,6 +1568,9 @@ class AgentEngine:
             self._audit_log,
             approval_store=self._approval_store,
             effective_autonomy=effective_autonomy,
+            provider_registry=self._provider_registry,
+            provider_configs=self._provider_configs,
+            model_resolver=self._model_resolver,
         )
 
     def _make_tool_invoker(

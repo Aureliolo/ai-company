@@ -28,7 +28,12 @@ from synthorg.observability.events.security import (
     SECURITY_EVALUATE_START,
     SECURITY_INTERCEPTOR_ERROR,
     SECURITY_LLM_EVAL_SKIPPED_FULL_AUTONOMY,
+    SECURITY_SAFETY_CLASSIFY_BLOCKED,
+    SECURITY_SAFETY_CLASSIFY_ERROR,
+    SECURITY_SAFETY_CLASSIFY_SUSPICIOUS,
     SECURITY_SHADOW_WOULD_BLOCK,
+    SECURITY_TIER_SAFE_TOOL,
+    SECURITY_UNCERTAINTY_CHECK_ERROR,
     SECURITY_VERDICT_ALLOW,
     SECURITY_VERDICT_DENY,
     SECURITY_VERDICT_ESCALATE,
@@ -39,6 +44,10 @@ from synthorg.security.config import (
     LlmFallbackErrorPolicy,
     SecurityConfig,
     SecurityEnforcementMode,
+)
+from synthorg.security.denial_tracker import (
+    DenialAction,
+    DenialTracker,
 )
 from synthorg.security.models import (
     OUTPUT_SCAN_VERDICT,
@@ -57,23 +66,23 @@ from synthorg.security.output_scan_policy_factory import (
 )
 from synthorg.security.output_scanner import OutputScanner  # noqa: TC001
 from synthorg.security.rules.engine import RuleEngine  # noqa: TC001
+from synthorg.security.safety_classifier import (
+    PermissionTier,
+    SafetyClassification,
+)
 from synthorg.security.timeout.protocol import RiskTierClassifier  # noqa: TC001
 
 if TYPE_CHECKING:
     from synthorg.api.approval_store import ApprovalStore
     from synthorg.security.llm_evaluator import LlmSecurityEvaluator
+    from synthorg.security.safety_classifier import SafetyClassifier
+    from synthorg.security.uncertainty import UncertaintyChecker
 
 logger = get_logger(__name__)
 
 
 def _hash_arguments(arguments: dict[str, object]) -> str:
-    """Produce a SHA-256 hex digest of serialized arguments.
-
-    Uses ``default=str`` for non-JSON-serializable values.  This means
-    two distinct objects with the same ``str()`` will produce identical
-    hashes -- acceptable for tool arguments (strings, ints, lists, dicts)
-    but not a guaranteed-unique fingerprint for arbitrary types.
-    """
+    """SHA-256 hex digest of serialized arguments (``default=str``)."""
     serialized = json.dumps(arguments, sort_keys=True, default=str)
     return hashlib.sha256(serialized.encode()).hexdigest()
 
@@ -102,6 +111,9 @@ class SecOpsService:
         risk_classifier: RiskTierClassifier | None = None,
         output_scan_policy: OutputScanResponsePolicy | None = None,
         llm_evaluator: LlmSecurityEvaluator | None = None,
+        safety_classifier: SafetyClassifier | None = None,
+        uncertainty_checker: UncertaintyChecker | None = None,
+        denial_tracker: DenialTracker | None = None,
     ) -> None:
         """Initialize the SecOps service.
 
@@ -111,21 +123,17 @@ class SecOpsService:
             audit_log: Audit log for recording evaluations.
             output_scanner: Post-tool output scanner.
             approval_store: Optional store for escalation items.
-            effective_autonomy: Resolved autonomy for the current run.
-                When provided, autonomy routing is applied *after*
-                the rule engine -- never bypassing security detectors.
-            risk_classifier: Optional classifier for determining action
-                risk levels in autonomy escalations.  Defaults to HIGH
-                when absent (fail-safe).
-            output_scan_policy: Policy applied to scan results before
-                returning.  When ``None``, a default policy is built
-                from ``config.output_scan_policy_type`` via the
-                factory.  Pass an explicit instance to override.
-            llm_evaluator: Optional LLM-based security evaluator for
-                uncertain verdicts (``EvaluationConfidence.LOW``).
-                When provided and ``config.llm_fallback.enabled`` is
-                ``True``, low-confidence verdicts are re-evaluated
-                by an LLM from a different provider family.
+            effective_autonomy: Resolved autonomy for the current
+                run.  Autonomy can only tighten verdicts.
+            risk_classifier: Risk level classifier for autonomy
+                escalations.  Defaults to HIGH when absent.
+            output_scan_policy: Output scan policy override.
+            llm_evaluator: LLM fallback for uncertain verdicts.
+            safety_classifier: Two-stage safety classifier for
+                approval gates.
+            uncertainty_checker: Cross-provider uncertainty checker.
+            denial_tracker: Deny-and-continue retry tracker for
+                BLOCKED classifications.
         """
         self._config = config
         self._rule_engine = rule_engine
@@ -135,6 +143,9 @@ class SecOpsService:
         self._effective_autonomy = effective_autonomy
         self._risk_classifier = risk_classifier
         self._llm_evaluator = llm_evaluator
+        self._safety_classifier = safety_classifier
+        self._uncertainty_checker = uncertainty_checker
+        self._denial_tracker = denial_tracker
         self._output_scan_policy: OutputScanResponsePolicy = (
             output_scan_policy
             if output_scan_policy is not None
@@ -513,6 +524,13 @@ class SecOpsService:
     ) -> SecurityVerdict:
         """Create an approval item in the approval store.
 
+        When a safety classifier is configured, the action is
+        classified before creating the approval item.  BLOCKED
+        actions are auto-rejected (returned as DENY).  SUSPICIOUS
+        actions get a warning badge via metadata.  When an
+        uncertainty checker is configured, a cross-provider
+        confidence score is attached.
+
         Falls back to DENY if no approval store is configured or if
         the store raises an exception.
         """
@@ -532,20 +550,56 @@ class SecOpsService:
 
         approval_id = str(uuid.uuid4())
         now = datetime.now(UTC)
+        description = verdict.reason
+        metadata: dict[str, str] = {
+            "tool_name": context.tool_name,
+            "tool_category": context.tool_category.value,
+        }
+
+        # Stage 1+2: safety classification (if configured).
+        if self._safety_classifier is not None:
+            auto_rejected = await self._run_safety_classifier(
+                context,
+                verdict,
+                metadata,
+            )
+            if auto_rejected:
+                deny_reason = self._build_deny_reason(
+                    verdict.reason,
+                    metadata,
+                )
+                return verdict.model_copy(
+                    update={
+                        "verdict": SecurityVerdictType.DENY,
+                        "reason": deny_reason,
+                    },
+                )
+            # Use stripped description for the reviewer view.
+            stripped = metadata.get("stripped_description")
+            if stripped:
+                description = stripped
+
+        # Cross-provider uncertainty check (if configured).
+        # Only run when a stripped description is available --
+        # never broadcast raw verdict.reason (may contain PII).
+        stripped_for_check = metadata.get("stripped_description")
+        if self._uncertainty_checker is not None and stripped_for_check:
+            await self._run_uncertainty_check(
+                stripped_for_check,
+                metadata,
+            )
+
         item = ApprovalItem(
             id=approval_id,
             action_type=context.action_type,
             title=f"Security escalation: {context.tool_name}",
-            description=verdict.reason,
+            description=description,
             requested_by=context.agent_id or "system",
             risk_level=verdict.risk_level,
             status=ApprovalStatus.PENDING,
             created_at=now,
             task_id=context.task_id,
-            metadata={
-                "tool_name": context.tool_name,
-                "tool_category": context.tool_category.value,
-            },
+            metadata=metadata,
         )
         try:
             await self._approval_store.add(item)
@@ -573,3 +627,186 @@ class SecOpsService:
         return verdict.model_copy(
             update={"approval_id": approval_id},
         )
+
+    @staticmethod
+    def _build_deny_reason(
+        base_reason: str,
+        metadata: dict[str, str],
+    ) -> str:
+        """Build DENY reason -- retry hint when tracker signals RETRY."""
+        if metadata.get("denial_action") == DenialAction.RETRY:
+            return f"{base_reason} (blocked -- agent may retry with safer approach)"
+        return f"{base_reason} (auto-rejected: safety classifier blocked)"
+
+    async def _run_safety_classifier(
+        self,
+        context: SecurityContext,
+        verdict: SecurityVerdict,
+        metadata: dict[str, str],
+    ) -> bool:
+        """Run the safety classifier and populate metadata.
+
+        Returns ``True`` if the action should be auto-rejected,
+        ``False`` otherwise.  SAFE_TOOL tier bypasses the classifier.
+        On error, returns ``False`` (fail-safe: proceed to review).
+        """
+        assert self._safety_classifier is not None  # noqa: S101 -- caller guarantees
+
+        # Permission tier: SAFE_TOOL bypasses the classifier.
+        tier = self._safety_classifier.classify_tier(context.action_type)
+        if tier == PermissionTier.SAFE_TOOL:
+            logger.info(
+                SECURITY_TIER_SAFE_TOOL,
+                tool_name=context.tool_name,
+                action_type=context.action_type,
+            )
+            return False
+
+        try:
+            result = await self._safety_classifier.classify(
+                verdict.reason,
+                context.action_type,
+                context.tool_name,
+                verdict.risk_level,
+            )
+            metadata["safety_classification"] = result.classification.value
+            metadata["stripped_description"] = result.stripped_description
+            metadata["safety_reason"] = result.reason
+
+            return self._process_classification(
+                result.classification,
+                context,
+                result.reason,
+                metadata,
+            )
+        except MemoryError, RecursionError:
+            raise
+        except Exception:
+            logger.exception(
+                SECURITY_SAFETY_CLASSIFY_ERROR,
+                tool_name=context.tool_name,
+                note="Safety classifier failed -- proceeding without classification",
+            )
+        return False
+
+    def _process_classification(
+        self,
+        classification: SafetyClassification,
+        context: SecurityContext,
+        reason: str,
+        metadata: dict[str, str],
+    ) -> bool:
+        """Process classification: denial tracking + consecutive reset."""
+        agent_id = context.agent_id or "unknown"
+
+        if (
+            classification == SafetyClassification.BLOCKED
+            and self._config.safety_classifier.auto_reject_blocked
+        ):
+            return self._handle_blocked_denial(
+                agent_id,
+                context.tool_name,
+                reason,
+                metadata,
+            )
+
+        # SAFE or SUSPICIOUS: reset consecutive denial count.
+        if self._denial_tracker is not None:
+            self._denial_tracker.reset_consecutive(agent_id)
+
+        if classification == SafetyClassification.SUSPICIOUS:
+            logger.warning(
+                SECURITY_SAFETY_CLASSIFY_SUSPICIOUS,
+                tool_name=context.tool_name,
+                reason=reason,
+            )
+        return False
+
+    def _handle_blocked_denial(
+        self,
+        agent_id: str,
+        tool_name: str,
+        reason: str,
+        metadata: dict[str, str],
+    ) -> bool:
+        """Handle BLOCKED with denial tracking.
+
+        Returns ``True`` when the request should be auto-rejected
+        and ``False`` when max denials are reached and the action
+        should proceed to human approval instead.
+        """
+        if self._denial_tracker is None:
+            logger.warning(
+                SECURITY_SAFETY_CLASSIFY_BLOCKED,
+                tool_name=tool_name,
+                reason=reason,
+            )
+            return True
+
+        action = self._denial_tracker.record_denial(agent_id)
+        metadata["denial_action"] = action.value
+        consecutive, total = self._denial_tracker.get_counts(agent_id)
+        metadata["denial_consecutive"] = str(consecutive)
+        metadata["denial_total"] = str(total)
+
+        if action == DenialAction.ESCALATE:
+            logger.warning(
+                SECURITY_SAFETY_CLASSIFY_BLOCKED,
+                tool_name=tool_name,
+                reason=reason,
+                note="max denials reached -- escalating to human",
+                consecutive=consecutive,
+                total=total,
+            )
+            return False  # proceed to human approval
+
+        # RETRY: agent may retry with safer approach.
+        logger.warning(
+            SECURITY_SAFETY_CLASSIFY_BLOCKED,
+            tool_name=tool_name,
+            reason=f"{reason} -- agent may retry with safer approach",
+            consecutive=consecutive,
+            total=total,
+        )
+        return True
+
+    async def _run_uncertainty_check(
+        self,
+        prompt: str,
+        metadata: dict[str, str],
+    ) -> None:
+        """Run the uncertainty checker and populate metadata."""
+        assert self._uncertainty_checker is not None  # noqa: S101 -- caller guarantees
+        try:
+            result = await self._uncertainty_checker.check(
+                prompt,
+            )
+            metadata["uncertainty_provider_count"] = str(
+                result.provider_count,
+            )
+            # Only report confidence when 2+ providers compared.
+            # Skipped/single-provider returns 1.0 which would
+            # mislead reviewers into thinking agreement is high.
+            if result.provider_count >= 2:  # noqa: PLR2004
+                metadata["confidence_score"] = str(
+                    result.confidence_score,
+                )
+                threshold = self._config.uncertainty_check.low_confidence_threshold
+                if result.confidence_score < threshold:
+                    metadata["low_confidence"] = "true"
+            else:
+                metadata["uncertainty_check_skipped"] = "true"
+            if result.keyword_overlap is not None:
+                metadata["keyword_overlap"] = str(result.keyword_overlap)
+            if result.embedding_similarity is not None:
+                metadata["embedding_similarity"] = str(
+                    result.embedding_similarity,
+                )
+        except MemoryError, RecursionError:
+            raise
+        except Exception:
+            logger.exception(
+                SECURITY_UNCERTAINTY_CHECK_ERROR,
+                note="Uncertainty check failed -- proceeding without score",
+            )
+            metadata["uncertainty_check_error"] = "true"
