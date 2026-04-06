@@ -34,7 +34,15 @@ _FS_TOOL_NAMES: frozenset[str] = frozenset(
     }
 )
 
-_EXPECTED_TOOL_COUNT: int = len(_GIT_TOOL_NAMES) + len(_FS_TOOL_NAMES)
+_WEB_TOOL_NAMES: frozenset[str] = frozenset({"http_request", "html_parser"})
+_TERMINAL_TOOL_NAMES: frozenset[str] = frozenset({"shell_command"})
+
+_EXPECTED_TOOL_COUNT: int = (
+    len(_GIT_TOOL_NAMES)
+    + len(_FS_TOOL_NAMES)
+    + len(_WEB_TOOL_NAMES)
+    + len(_TERMINAL_TOOL_NAMES)
+)
 
 
 def _git_tools(

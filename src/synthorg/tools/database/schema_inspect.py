@@ -1,0 +1,190 @@
+"""Schema inspection tool -- inspect database structure.
+
+Provides table listing and column description for SQLite databases.
+Always read-only.
+"""
+
+from typing import Any, Final
+
+import aiosqlite
+
+from synthorg.core.enums import ActionType
+from synthorg.observability import get_logger
+from synthorg.observability.events.database import (
+    DB_SCHEMA_INSPECT_FAILED,
+    DB_SCHEMA_INSPECT_START,
+    DB_SCHEMA_INSPECT_SUCCESS,
+)
+from synthorg.tools.base import ToolExecutionResult
+from synthorg.tools.database.base_db_tool import BaseDatabaseTool
+from synthorg.tools.database.config import DatabaseConnectionConfig  # noqa: TC001
+
+logger = get_logger(__name__)
+
+_ACTIONS: Final[tuple[str, ...]] = ("list_tables", "describe_table")
+
+_PARAMETERS_SCHEMA: Final[dict[str, Any]] = {
+    "type": "object",
+    "properties": {
+        "action": {
+            "type": "string",
+            "enum": list(_ACTIONS),
+            "description": "Inspection action: list_tables or describe_table",
+        },
+        "table_name": {
+            "type": "string",
+            "description": "Table name (required for describe_table)",
+        },
+    },
+    "required": ["action"],
+    "additionalProperties": False,
+}
+
+
+class SchemaInspectTool(BaseDatabaseTool):
+    """Inspect database schema: list tables or describe columns.
+
+    Always read-only.  Uses SQLite ``sqlite_master`` and
+    ``PRAGMA table_info`` for metadata queries.
+
+    Examples:
+        List all tables::
+
+            tool = SchemaInspectTool(config=db_config)
+            result = await tool.execute(arguments={"action": "list_tables"})
+    """
+
+    def __init__(self, *, config: DatabaseConnectionConfig) -> None:
+        """Initialize the schema inspection tool.
+
+        Args:
+            config: Database connection configuration.
+        """
+        super().__init__(
+            name="schema_inspect",
+            description=(
+                "Inspect database schema: list tables or describe table columns."
+            ),
+            parameters_schema=dict(_PARAMETERS_SCHEMA),
+            action_type=ActionType.DB_QUERY,
+            config=config,
+        )
+
+    async def execute(
+        self,
+        *,
+        arguments: dict[str, Any],
+    ) -> ToolExecutionResult:
+        """Inspect the database schema.
+
+        Args:
+            arguments: Must contain ``action``; ``table_name`` required
+                for ``describe_table``.
+
+        Returns:
+            A ``ToolExecutionResult`` with schema information.
+        """
+        action: str = arguments["action"]
+        table_name: str | None = arguments.get("table_name")
+
+        if action not in _ACTIONS:
+            return ToolExecutionResult(
+                content=(f"Invalid action: {action!r}. Must be one of: {_ACTIONS}"),
+                is_error=True,
+            )
+
+        if action == "describe_table" and not table_name:
+            return ToolExecutionResult(
+                content="table_name is required for describe_table",
+                is_error=True,
+            )
+
+        logger.info(
+            DB_SCHEMA_INSPECT_START,
+            action=action,
+            table_name=table_name,
+            database=self._config.database_path,
+        )
+
+        try:
+            if action == "list_tables":
+                return await self._list_tables()
+            return await self._describe_table(table_name or "")
+        except Exception as exc:
+            logger.warning(
+                DB_SCHEMA_INSPECT_FAILED,
+                action=action,
+                error=str(exc),
+            )
+            return ToolExecutionResult(
+                content=f"Schema inspection failed: {exc}",
+                is_error=True,
+            )
+
+    async def _list_tables(self) -> ToolExecutionResult:
+        """List all tables in the database."""
+        async with aiosqlite.connect(self._config.database_path) as db:
+            cursor = await db.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name"
+            )
+            rows = await cursor.fetchall()
+
+        if not rows:
+            logger.info(DB_SCHEMA_INSPECT_SUCCESS, action="list_tables", count=0)
+            return ToolExecutionResult(
+                content="No tables found.",
+                metadata={"action": "list_tables", "count": 0},
+            )
+
+        tables = [row[0] for row in rows]
+        content = "Tables:\n" + "\n".join(f"  - {t}" for t in tables)
+        logger.info(
+            DB_SCHEMA_INSPECT_SUCCESS,
+            action="list_tables",
+            count=len(tables),
+        )
+        return ToolExecutionResult(
+            content=content,
+            metadata={"action": "list_tables", "tables": tables},
+        )
+
+    async def _describe_table(self, table_name: str) -> ToolExecutionResult:
+        """Describe columns of a specific table."""
+        async with aiosqlite.connect(self._config.database_path) as db:
+            cursor = await db.execute(f"PRAGMA table_info({table_name})")
+            rows = await cursor.fetchall()
+
+        if not rows:
+            return ToolExecutionResult(
+                content=f"Table {table_name!r} not found or has no columns.",
+                is_error=True,
+            )
+
+        lines = [f"Table: {table_name}", ""]
+        lines.append("name | type | notnull | default | pk")
+        lines.append("-" * 50)
+        columns = []
+        for row in rows:
+            # PRAGMA table_info returns: cid, name, type, notnull, dflt_value, pk
+            name = row[1]
+            col_type = row[2]
+            notnull = bool(row[3])
+            default = row[4]
+            pk = bool(row[5])
+            lines.append(f"{name} | {col_type} | {notnull} | {default} | {pk}")
+            columns.append(name)
+
+        logger.info(
+            DB_SCHEMA_INSPECT_SUCCESS,
+            action="describe_table",
+            table=table_name,
+            column_count=len(columns),
+        )
+        return ToolExecutionResult(
+            content="\n".join(lines),
+            metadata={
+                "action": "describe_table",
+                "table": table_name,
+                "columns": columns,
+            },
+        )

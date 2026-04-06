@@ -47,6 +47,7 @@ from synthorg.observability.events.git import (
     GIT_CLONE_SSRF_BLOCKED,
     GIT_CLONE_SSRF_DISABLED,
 )
+from synthorg.tools.network_validator import BLOCKED_NETWORKS
 
 _CONTROL_CHAR_RE: Final[re.Pattern[str]] = re.compile(r"[\x00-\x1f\x7f]")
 
@@ -62,35 +63,8 @@ ALLOWED_CLONE_SCHEMES: Final[tuple[str, ...]] = (
 # Matches scheme://userinfo@host patterns in clone URLs.
 _CREDENTIAL_RE: Final[re.Pattern[str]] = re.compile(r"(\w+://)[^@/]+@")
 
-_BLOCKED_NETWORKS: Final[tuple[ipaddress.IPv4Network | ipaddress.IPv6Network, ...]] = (
-    # IPv4 -- loopback, private, link-local, reserved
-    ipaddress.IPv4Network("0.0.0.0/8"),
-    ipaddress.IPv4Network("10.0.0.0/8"),
-    ipaddress.IPv4Network("100.64.0.0/10"),  # CGNAT (RFC 6598)
-    ipaddress.IPv4Network("127.0.0.0/8"),
-    ipaddress.IPv4Network("169.254.0.0/16"),
-    ipaddress.IPv4Network("172.16.0.0/12"),
-    ipaddress.IPv4Network("192.0.0.0/24"),  # IETF Protocol Assignments
-    ipaddress.IPv4Network("192.0.2.0/24"),  # TEST-NET-1 (RFC 5737)
-    ipaddress.IPv4Network("192.168.0.0/16"),
-    ipaddress.IPv4Network("198.18.0.0/15"),  # Benchmarking (RFC 2544)
-    ipaddress.IPv4Network("198.51.100.0/24"),  # TEST-NET-2 (RFC 5737)
-    ipaddress.IPv4Network("203.0.113.0/24"),  # TEST-NET-3 (RFC 5737)
-    ipaddress.IPv4Network("224.0.0.0/4"),  # Multicast (RFC 5771)
-    ipaddress.IPv4Network("240.0.0.0/4"),  # Reserved (RFC 1112)
-    ipaddress.IPv4Network("255.255.255.255/32"),  # Broadcast
-    # IPv6 -- loopback, link-local, ULA, tunneling, multicast, reserved
-    ipaddress.IPv6Network("::/128"),
-    ipaddress.IPv6Network("::1/128"),
-    ipaddress.IPv6Network("64:ff9b::/96"),  # NAT64 (RFC 6052)
-    ipaddress.IPv6Network("100::/64"),  # Discard (RFC 6666)
-    ipaddress.IPv6Network("2001::/32"),  # Teredo (RFC 4380)
-    ipaddress.IPv6Network("2001:db8::/32"),  # Documentation (RFC 3849)
-    ipaddress.IPv6Network("2002::/16"),  # 6to4 (RFC 3056) -- encodes IPv4
-    ipaddress.IPv6Network("fc00::/7"),
-    ipaddress.IPv6Network("fe80::/10"),
-    ipaddress.IPv6Network("ff00::/8"),  # Multicast (RFC 4291)
-)
+# Canonical blocklist shared with network_validator.py.
+_BLOCKED_NETWORKS = BLOCKED_NETWORKS
 
 
 # ── Network policy model ─────────────────────────────────────────

@@ -184,6 +184,53 @@ class ToolInvoker:
             is_error=True,
         )
 
+    def _check_sub_constraints(
+        self,
+        tool: BaseTool,
+        tool_call: ToolCall,
+    ) -> ToolResult | None:
+        """Check granular sub-constraints via the permission checker.
+
+        Returns ``None`` if permitted, or a ``ToolResult`` if denied or
+        if the action requires approval (escalation).
+        """
+        if self._permission_checker is None:
+            return None
+        violation = self._permission_checker.check_sub_constraints(
+            tool.name,
+            tool.category,
+            tool.action_type,
+            dict(tool_call.arguments),
+        )
+        if violation is None:
+            return None
+        if violation.requires_approval:
+            logger.warning(
+                TOOL_SECURITY_ESCALATED,
+                tool_call_id=tool_call.id,
+                tool_name=tool_call.name,
+                reason=violation.reason,
+            )
+            return ToolResult(
+                tool_call_id=tool_call.id,
+                content=(
+                    f"Sub-constraint escalation: {violation.reason}. "
+                    "Human approval required."
+                ),
+                is_error=True,
+            )
+        logger.warning(
+            TOOL_PERMISSION_DENIED,
+            tool_call_id=tool_call.id,
+            tool_name=tool_call.name,
+            reason=violation.reason,
+        )
+        return ToolResult(
+            tool_call_id=tool_call.id,
+            content=f"Sub-constraint denied: {violation.reason}",
+            is_error=True,
+        )
+
     def _build_security_context(
         self,
         tool: BaseTool,
@@ -370,6 +417,10 @@ class ToolInvoker:
         permission_error = self._check_permission(tool_or_error, tool_call)
         if permission_error is not None:
             return permission_error
+
+        sub_constraint_error = self._check_sub_constraints(tool_or_error, tool_call)
+        if sub_constraint_error is not None:
+            return sub_constraint_error
 
         param_error = self._validate_params(tool_or_error, tool_call)
         if param_error is not None:

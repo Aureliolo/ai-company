@@ -25,8 +25,11 @@ _EXPECTED_TOOL_NAMES: tuple[str, ...] = (
     "git_diff",
     "git_log",
     "git_status",
+    "html_parser",
+    "http_request",
     "list_directory",
     "read_file",
+    "shell_command",
     "write_file",
 )
 

@@ -24,6 +24,7 @@ from synthorg.core.role import Authority
 from synthorg.core.types import ModelTier, NotBlankStr  # noqa: TC001
 from synthorg.observability import get_logger
 from synthorg.observability.events.config import CONFIG_VALIDATION_FAILED
+from synthorg.tools.sub_constraints import ToolSubConstraints  # noqa: TC001
 
 logger = get_logger(__name__)
 
@@ -298,6 +299,9 @@ class ToolPermissions(BaseModel):
             are available.
         allowed: Explicitly allowed tool names.
         denied: Explicitly denied tool names.
+        sub_constraints: Optional per-agent sub-constraints overriding
+            the access level defaults.  When ``None``, the checker
+            resolves defaults from the access level.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
@@ -313,6 +317,10 @@ class ToolPermissions(BaseModel):
     denied: tuple[NotBlankStr, ...] = Field(
         default=(),
         description="Explicitly denied tools",
+    )
+    sub_constraints: ToolSubConstraints | None = Field(
+        default=None,
+        description="Per-agent sub-constraint overrides",
     )
 
     @model_validator(mode="after")
