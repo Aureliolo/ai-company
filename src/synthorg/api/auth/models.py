@@ -16,6 +16,20 @@ class AuthMethod(StrEnum):
     WS_TICKET = "ws_ticket"
 
 
+class OrgRole(StrEnum):
+    """Permission-level role for org configuration access.
+
+    Orthogonal to ``HumanRole`` (operational persona).
+    ``HumanRole`` controls who you are in the org simulation;
+    ``OrgRole`` controls what you can do to the org config.
+    """
+
+    OWNER = "owner"
+    DEPARTMENT_ADMIN = "department_admin"
+    EDITOR = "editor"
+    VIEWER = "viewer"
+
+
 class User(BaseModel):
     """Persisted user account.
 
@@ -25,6 +39,8 @@ class User(BaseModel):
         password_hash: Argon2id hash (excluded from repr).
         role: Access control role.
         must_change_password: Whether the user must change password.
+        org_roles: Permission-level roles for org config access.
+        scoped_departments: Departments accessible to dept admins.
         created_at: Account creation timestamp.
         updated_at: Last modification timestamp.
     """
@@ -36,6 +52,8 @@ class User(BaseModel):
     password_hash: str = Field(repr=False)
     role: HumanRole
     must_change_password: bool = True
+    org_roles: tuple[OrgRole, ...] = ()
+    scoped_departments: tuple[str, ...] = ()
     created_at: AwareDatetime
     updated_at: AwareDatetime
 
@@ -77,6 +95,8 @@ class AuthenticatedUser(BaseModel):
         role: Access control role.
         auth_method: How the user authenticated.
         must_change_password: Whether forced password change is pending.
+        org_roles: Permission-level roles for org config access.
+        scoped_departments: Departments accessible to dept admins.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
@@ -86,3 +106,5 @@ class AuthenticatedUser(BaseModel):
     role: HumanRole
     auth_method: AuthMethod
     must_change_password: bool = False
+    org_roles: tuple[OrgRole, ...] = ()
+    scoped_departments: tuple[str, ...] = ()

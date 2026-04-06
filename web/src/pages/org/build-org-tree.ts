@@ -94,13 +94,22 @@ function seniorityOf(level: SeniorityLevel): number {
 
 /**
  * Human operator info for synthesising owner nodes at the top of
- * the chart.  Array-shaped because the multi-user / permissions
- * model (#1082) will eventually render multiple owners; today the
- * caller passes a single-element array with the session user.
+ * the chart.  Multiple owners are rendered as a horizontal row
+ * above the CEO's department.
  */
 export interface OwnerInfo {
   id: string
   displayName: string
+}
+
+/**
+ * Department admin info for rendering human admin nodes inside
+ * their scoped department boxes.
+ */
+export interface DeptAdminInfo {
+  id: string
+  displayName: string
+  department: string
 }
 
 // ── Core tree-building function ─────────────────────────────
@@ -144,6 +153,8 @@ export function buildOrgTree(
   runtimeStatuses: Record<string, AgentRuntimeStatus>,
   departmentHealths: readonly DepartmentHealth[],
   owners: readonly OwnerInfo[] = [],
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- wired in a follow-up PR
+  _deptAdmins: readonly DeptAdminInfo[] = [],
 ): OrgTree {
   const agents = config.agents.filter((a) => (a.status ?? 'active') !== 'terminated')
 

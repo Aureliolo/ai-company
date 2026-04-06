@@ -265,6 +265,8 @@ async def _resolve_jwt_user(
         role=db_user.role,
         auth_method=AuthMethod.JWT,
         must_change_password=db_user.must_change_password,
+        org_roles=db_user.org_roles,
+        scoped_departments=db_user.scoped_departments,
     )
 
 
@@ -352,6 +354,8 @@ async def _resolve_api_key_user(
         role=api_key.role,
         auth_method=AuthMethod.API_KEY,
         must_change_password=db_user.must_change_password,
+        org_roles=db_user.org_roles,
+        scoped_departments=db_user.scoped_departments,
     )
 
 

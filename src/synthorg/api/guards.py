@@ -193,3 +193,116 @@ require_approval_roles = require_roles(
     HumanRole.BOARD_MEMBER,
 )
 """Guard allowing roles that can approve or reject actions."""
+
+
+# --- Org-level permission guards (OrgRole) ----------------------------
+
+
+def _get_org_roles(
+    connection: ASGIConnection,  # type: ignore[type-arg]
+) -> tuple[str, ...]:
+    """Extract OrgRole values from the authenticated user."""
+    user = connection.scope.get("user")
+    if user is not None and hasattr(user, "org_roles"):
+        return tuple(str(r) for r in user.org_roles)
+    return ()
+
+
+def _get_scoped_departments(
+    connection: ASGIConnection,  # type: ignore[type-arg]
+) -> tuple[str, ...]:
+    """Extract scoped departments from the authenticated user."""
+    user = connection.scope.get("user")
+    if user is not None and hasattr(user, "scoped_departments"):
+        return tuple(str(d) for d in user.scoped_departments)
+    return ()
+
+
+def require_org_mutation(
+    department_param: str | None = None,
+) -> Callable[[ASGIConnection, object], None]:  # type: ignore[type-arg]
+    """Guard factory for org config mutations.
+
+    Access is granted if the user has one of:
+
+    - ``OrgRole.OWNER`` -- always allowed
+    - ``OrgRole.EDITOR`` -- always allowed
+    - ``OrgRole.DEPARTMENT_ADMIN`` -- allowed only when the
+      target department (read from the path parameter named
+      *department_param*) is in the user's ``scoped_departments``
+
+    If the user has no ``org_roles`` (empty tuple), falls back to
+    the existing ``HumanRole`` write-access check for backward
+    compatibility with pre-#1082 installations.
+
+    Args:
+        department_param: Path parameter name containing the target
+            department (e.g. ``"name"``).  ``None`` skips department
+            scope checking (company-level endpoints).
+
+    Returns:
+        A guard function compatible with Litestar's guard protocol.
+    """
+
+    def guard(
+        connection: ASGIConnection,  # type: ignore[type-arg]
+        _: object,
+    ) -> None:
+        org_roles = _get_org_roles(connection)
+
+        # Backward compat: if no org_roles set, fall back to HumanRole
+        if not org_roles:
+            role = _get_role(connection)
+            if role in _WRITE_ROLES:
+                return
+            logger.warning(
+                API_GUARD_DENIED,
+                guard="require_org_mutation(fallback)",
+                role=role,
+                path=str(connection.url.path),
+            )
+            raise PermissionDeniedException(detail="Write access denied")
+
+        # Owner and editor always allowed
+        if "owner" in org_roles or "editor" in org_roles:
+            return
+
+        # Department admin: check scope
+        if "department_admin" in org_roles:
+            if department_param is None:
+                # Company-level endpoint -- dept_admin cannot modify
+                logger.warning(
+                    API_GUARD_DENIED,
+                    guard="require_org_mutation(dept_admin_no_scope)",
+                    path=str(connection.url.path),
+                )
+                raise PermissionDeniedException(
+                    detail="Department admins cannot modify company-level settings",
+                )
+            target_dept = connection.path_params.get(department_param, "")
+            scoped = _get_scoped_departments(connection)
+            if target_dept.lower() in (d.lower() for d in scoped):
+                return
+            logger.warning(
+                API_GUARD_DENIED,
+                guard="require_org_mutation(dept_admin_out_of_scope)",
+                target_department=target_dept,
+                scoped_departments=scoped,
+                path=str(connection.url.path),
+            )
+            raise PermissionDeniedException(
+                detail=f"Department admin access denied for {target_dept!r}",
+            )
+
+        # Viewer or unrecognised role
+        logger.warning(
+            API_GUARD_DENIED,
+            guard="require_org_mutation(insufficient_org_role)",
+            org_roles=org_roles,
+            path=str(connection.url.path),
+        )
+        raise PermissionDeniedException(detail="Org mutation access denied")
+
+    guard.__name__ = "require_org_mutation"
+    guard.__qualname__ = "require_org_mutation"
+    return guard

@@ -5,13 +5,14 @@ persist ``User`` and ``ApiKey`` domain models to SQLite via aiosqlite.
 Both use upsert semantics for ``save`` operations.
 """
 
+import json
 import sqlite3
 from datetime import UTC, datetime
 
 import aiosqlite
 from pydantic import ValidationError
 
-from synthorg.api.auth.models import ApiKey, User
+from synthorg.api.auth.models import ApiKey, OrgRole, User
 from synthorg.api.auth.system_user import is_system_user
 from synthorg.api.guards import HumanRole
 from synthorg.core.types import NotBlankStr  # noqa: TC001
@@ -60,6 +61,11 @@ def _row_to_user(row: aiosqlite.Row) -> User:
     data["role"] = HumanRole(data["role"])
     data["created_at"] = datetime.fromisoformat(data["created_at"])
     data["updated_at"] = datetime.fromisoformat(data["updated_at"])
+    # Deserialise JSON columns (may be missing in pre-migration rows).
+    raw_org = data.get("org_roles", "[]")
+    data["org_roles"] = tuple(OrgRole(r) for r in json.loads(raw_org or "[]"))
+    raw_dept = data.get("scoped_departments", "[]")
+    data["scoped_departments"] = tuple(json.loads(raw_dept or "[]"))
     return User.model_validate(data)
 
 
@@ -112,13 +118,16 @@ class SQLiteUserRepository:
             await self._db.execute(
                 """\
 INSERT INTO users (id, username, password_hash, role,
-                   must_change_password, created_at, updated_at)
-VALUES (?, ?, ?, ?, ?, ?, ?)
+                   must_change_password, org_roles,
+                   scoped_departments, created_at, updated_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT(id) DO UPDATE SET
     username=excluded.username,
     password_hash=excluded.password_hash,
     role=excluded.role,
     must_change_password=excluded.must_change_password,
+    org_roles=excluded.org_roles,
+    scoped_departments=excluded.scoped_departments,
     updated_at=excluded.updated_at""",
                 (
                     user.id,
@@ -126,6 +135,8 @@ ON CONFLICT(id) DO UPDATE SET
                     user.password_hash,
                     user.role.value,
                     int(user.must_change_password),
+                    json.dumps([r.value for r in user.org_roles]),
+                    json.dumps(list(user.scoped_departments)),
                     user.created_at.astimezone(UTC).isoformat(),
                     user.updated_at.astimezone(UTC).isoformat(),
                 ),

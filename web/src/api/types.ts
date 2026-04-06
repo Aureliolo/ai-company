@@ -53,6 +53,8 @@ export const AGENT_STATUS_VALUES = [
 
 export type AutonomyLevel = 'full' | 'semi' | 'supervised' | 'locked'
 
+export type OrgRole = 'owner' | 'department_admin' | 'editor' | 'viewer'
+
 export type HumanRole =
   | 'ceo'
   | 'manager'
@@ -194,6 +196,8 @@ export interface UserInfoResponse {
   username: string
   role: HumanRole
   must_change_password: boolean
+  org_roles?: readonly OrgRole[]
+  scoped_departments?: readonly string[]
 }
 
 // ── Tasks ────────────────────────────────────────────────────

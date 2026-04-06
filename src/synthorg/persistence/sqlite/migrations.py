@@ -54,4 +54,51 @@ async def apply_schema(db: aiosqlite.Connection) -> None:
         logger.exception(PERSISTENCE_MIGRATION_FAILED, error=str(exc))
         raise MigrationError(msg) from exc
 
+    # Incremental column additions for existing databases.
+    # SQLite ADD COLUMN is idempotent when the column already exists
+    # only raises if the column name conflicts -- catch and ignore.
+    await _add_column_if_missing(
+        db,
+        "users",
+        "org_roles",
+        "TEXT NOT NULL DEFAULT '[]'",
+    )
+    await _add_column_if_missing(
+        db,
+        "users",
+        "scoped_departments",
+        "TEXT NOT NULL DEFAULT '[]'",
+    )
+
     logger.info(PERSISTENCE_MIGRATION_COMPLETED)
+
+
+async def _add_column_if_missing(
+    db: aiosqlite.Connection,
+    table: str,
+    column: str,
+    definition: str,
+) -> None:
+    """Add a column to a table if it does not already exist.
+
+    SQLite ``ALTER TABLE ADD COLUMN`` raises ``OperationalError``
+    if the column already exists.  This helper catches that error.
+
+    Args:
+        db: An open aiosqlite connection.
+        table: Table name.
+        column: Column name to add.
+        definition: Column type and constraints.
+    """
+    try:
+        await db.execute(
+            f"ALTER TABLE {table} ADD COLUMN {column} {definition}",
+        )
+        await db.commit()
+        logger.info(
+            PERSISTENCE_MIGRATION_COMPLETED,
+            detail=f"Added column {table}.{column}",
+        )
+    except sqlite3.OperationalError, aiosqlite.OperationalError:
+        # Column already exists -- idempotent.
+        pass

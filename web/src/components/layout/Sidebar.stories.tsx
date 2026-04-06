@@ -16,6 +16,8 @@ const meta = {
           username: 'admin',
           role: 'ceo',
           must_change_password: false,
+          org_roles: ['owner'],
+          scoped_departments: [],
         },
       })
       return (

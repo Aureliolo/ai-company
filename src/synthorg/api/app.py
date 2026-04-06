@@ -336,6 +336,63 @@ async def _ticket_cleanup_loop(app_state: AppState) -> None:
             )
 
 
+async def _maybe_promote_first_owner(app_state: AppState) -> None:
+    """Promote the first user to owner if no owner exists.
+
+    This is a one-time idempotent migration that runs on every boot
+    until at least one user has the ``OrgRole.OWNER`` role.
+    """
+    if not app_state.has_persistence:
+        return
+    try:
+        users = await app_state.persistence.users.list_users()
+    except MemoryError, RecursionError:
+        raise
+    except Exception:
+        logger.warning(
+            API_APP_STARTUP,
+            note="Owner auto-promote skipped: failed to list users",
+            exc_info=True,
+        )
+        return
+    if not users:
+        return
+
+    from synthorg.api.auth.models import OrgRole  # noqa: PLC0415
+
+    has_owner = any(OrgRole.OWNER in u.org_roles for u in users)
+    if has_owner:
+        return
+
+    # Promote the first user (by created_at, oldest first from list_users)
+    first = users[0]
+    from datetime import UTC, datetime  # noqa: PLC0415
+
+    promoted = first.model_copy(
+        update={
+            "org_roles": (*first.org_roles, OrgRole.OWNER),
+            "updated_at": datetime.now(UTC),
+        },
+    )
+    try:
+        await app_state.persistence.users.save(promoted)
+    except MemoryError, RecursionError:
+        raise
+    except Exception:
+        logger.warning(
+            API_APP_STARTUP,
+            note="Owner auto-promote failed",
+            exc_info=True,
+        )
+        return
+    logger.info(
+        API_APP_STARTUP,
+        note="Auto-promoted first user to owner",
+        user_id=first.id,
+        username=first.username,
+    )
+
+
 async def _maybe_bootstrap_agents(app_state: AppState) -> None:
     """Bootstrap agents if setup is complete and services are available.
 
@@ -515,6 +572,7 @@ def _build_lifecycle(  # noqa: PLR0913, C901
                 )
                 raise
         await _maybe_bootstrap_agents(app_state)
+        await _maybe_promote_first_owner(app_state)
         _ticket_cleanup_task = asyncio.create_task(
             _ticket_cleanup_loop(app_state),
             name="ws-ticket-cleanup",
