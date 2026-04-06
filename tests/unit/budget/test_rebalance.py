@@ -302,7 +302,7 @@ def test_edge_cases(
     expected_total: float,
     expected_rejected: bool,
 ) -> None:
-    result = compute_rebalance(existing, new, mode)  # type: ignore[arg-type]
+    result = compute_rebalance(existing, new, mode)
     assert result.new_total == pytest.approx(expected_total, abs=1e-8)
     assert result.rejected is expected_rejected
 
