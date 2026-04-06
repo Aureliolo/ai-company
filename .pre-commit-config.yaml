@@ -41,6 +41,7 @@ repos:
       - id: debug-statements
         types: [python]
       - id: detect-private-key
+        exclude: ^tests/
       - id: mixed-line-ending
 
   - repo: https://github.com/astral-sh/ruff-pre-commit
@@ -70,13 +71,15 @@ repos:
     hooks:
       - id: no-em-dashes
         name: no em-dashes (U+2014)
-        entry: bash -c 'uv run python scripts/check_no_em_dashes.py "$@"' --
+        entry: uv
+        args: [run, python, scripts/check_no_em_dashes.py]
         language: system
         types: [text]
 
       - id: no-redundant-timeout
         name: no redundant pytest.mark.timeout(30)
-        entry: bash -c 'uv run python scripts/check_no_redundant_timeout.py "$@"' --
+        entry: uv
+        args: [run, python, scripts/check_no_redundant_timeout.py]
         language: system
         files: ^tests/.*\.py$
 
