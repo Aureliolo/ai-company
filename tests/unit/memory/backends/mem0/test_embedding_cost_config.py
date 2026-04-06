@@ -51,3 +51,7 @@ class TestEmbeddingCostConfig:
     def test_blank_model_name_rejected(self) -> None:
         with pytest.raises(ValidationError):
             EmbeddingCostConfig(model_pricing={"": 0.5})
+
+    def test_whitespace_only_model_name_rejected(self) -> None:
+        with pytest.raises(ValidationError):
+            EmbeddingCostConfig(model_pricing={"   ": 0.5})

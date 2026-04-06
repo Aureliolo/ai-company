@@ -644,6 +644,10 @@ class TestCandidatePoolMultiplier:
         config = MemoryRetrievalConfig()
         assert config.candidate_pool_multiplier == 3
 
-    def test_multiplier_out_of_range(self) -> None:
+    def test_multiplier_above_max_rejected(self) -> None:
         with pytest.raises(ValidationError):
             MemoryRetrievalConfig(candidate_pool_multiplier=11)
+
+    def test_multiplier_below_min_rejected(self) -> None:
+        with pytest.raises(ValidationError):
+            MemoryRetrievalConfig(candidate_pool_multiplier=0)

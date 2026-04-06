@@ -294,6 +294,8 @@ class Mem0MemoryBackend:
                 except builtins.MemoryError, RecursionError:
                     raise
                 except asyncio.CancelledError:
+                    self._client = None
+                    self._connected = False
                     raise
                 except Exception as exc:
                     logger.warning(
