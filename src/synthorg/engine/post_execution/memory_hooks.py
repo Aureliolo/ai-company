@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING
 
 from synthorg.observability import get_logger
 from synthorg.observability.events.consolidation import (
+    DISTILLATION_CAPTURE_FAILED,
     DISTILLATION_CAPTURE_SKIPPED,
 )
 from synthorg.observability.events.procedural_memory import (
@@ -37,14 +38,9 @@ async def try_capture_distillation(
 ) -> None:
     """Capture trajectory distillation at task completion (non-critical).
 
-    Skips when distillation capture is disabled or no memory backend is
-    configured; both skip paths emit a DEBUG log so operators
-    investigating "why no distillation entries?" can tell which branch
-    was hit.  Captures regardless of termination reason -- successful
-    runs, errors, timeouts, and budget exhaustions all produce useful
-    trajectory context for downstream consolidation.  Non-system
-    failures are swallowed and logged by ``capture_distillation``;
-    system errors (``MemoryError``, ``RecursionError``) propagate.
+    Skips when disabled or no backend; failures are swallowed and
+    logged.  System errors (``MemoryError``, ``RecursionError``)
+    and cancellation propagate.
     """
     if not distillation_capture_enabled:
         logger.debug(
@@ -81,10 +77,11 @@ async def try_capture_distillation(
         raise
     except Exception as exc:
         logger.warning(
-            DISTILLATION_CAPTURE_SKIPPED,
+            DISTILLATION_CAPTURE_FAILED,
             agent_id=agent_id,
             task_id=task_id,
-            reason=f"validation_or_capture_failed: {type(exc).__name__}: {exc}",
+            error=f"{type(exc).__name__}: {exc}",
+            reason="validation_or_capture_failed",
             exc_info=True,
         )
 
@@ -101,9 +98,8 @@ async def try_procedural_memory(  # noqa: PLR0913
 ) -> None:
     """Run procedural memory pipeline (non-critical, never fatal).
 
-    Skips when the proposer is not configured or no recovery occurred
-    (non-error terminations).  Both skip paths emit a DEBUG log so
-    operators can diagnose "why no procedural memories?"
+    Skips when proposer is absent or no recovery occurred.  System
+    errors and cancellation propagate; all others are swallowed.
     """
     if procedural_proposer is None or recovery_result is None:
         logger.debug(
@@ -124,15 +120,19 @@ async def try_procedural_memory(  # noqa: PLR0913
         )
         return
     try:
+        from pydantic import TypeAdapter  # noqa: PLC0415
+
+        from synthorg.core.types import NotBlankStr  # noqa: PLC0415
         from synthorg.memory.procedural.pipeline import (  # noqa: PLC0415
             propose_procedural_memory,
         )
 
+        _nb = TypeAdapter(NotBlankStr)
         await propose_procedural_memory(
             execution_result,
             recovery_result,
-            agent_id,
-            task_id,
+            _nb.validate_python(agent_id),
+            _nb.validate_python(task_id),
             proposer=procedural_proposer,
             memory_backend=memory_backend,
             config=procedural_memory_config,

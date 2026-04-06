@@ -621,6 +621,37 @@ class TestFuseRankedLists:
             fuse_ranked_lists((), max_results=bad_max)
 
 
+# ── scoring_strategy field ────────────────────────────────────────
+
+
+@pytest.mark.unit
+class TestScoringStrategyField:
+    def test_linear_scoring_strategy_set(self) -> None:
+        now = datetime.now(UTC)
+        entry = _make_entry(relevance_score=0.8, created_at=now)
+        config = MemoryRetrievalConfig(min_relevance=0.0)
+        result = rank_memories((entry,), config=config, now=now)
+        assert len(result) == 1
+        assert result[0].scoring_strategy == FusionStrategy.LINEAR
+
+    def test_rrf_scoring_strategy_set(self) -> None:
+        now = datetime.now(UTC)
+        entry = _make_entry(entry_id="a", created_at=now)
+        result = fuse_ranked_lists(((entry,),))
+        assert len(result) == 1
+        assert result[0].scoring_strategy == FusionStrategy.RRF
+
+    def test_scored_memory_default_strategy_none(self) -> None:
+        entry = _make_entry()
+        sm = ScoredMemory(
+            entry=entry,
+            relevance_score=0.5,
+            recency_score=0.5,
+            combined_score=0.5,
+        )
+        assert sm.scoring_strategy is None
+
+
 # ── Diversity re-ranking ───────────────────────────────────────────
 # Tests for ``bigram_jaccard`` and ``apply_diversity_penalty`` live in
 # ``test_ranking_diversity.py`` -- split from this file to stay under

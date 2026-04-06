@@ -29,8 +29,8 @@ class CostRecord(BaseModel):
         output_tokens: Output token count.
         cost_usd: Cost in USD (base currency).
         timestamp: Timezone-aware timestamp of the API call.
-        call_category: Optional LLM call category for coordination
-            metrics (productive, coordination, system).
+        call_category: Optional LLM call category (productive,
+            coordination, system, embedding).
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
@@ -45,7 +45,7 @@ class CostRecord(BaseModel):
     timestamp: AwareDatetime = Field(description="Timestamp of the API call")
     call_category: LLMCallCategory | None = Field(
         default=None,
-        description="LLM call category (productive, coordination, system)",
+        description="LLM call category (productive, coordination, system, embedding)",
     )
 
     @model_validator(mode="after")

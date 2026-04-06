@@ -55,6 +55,7 @@ from synthorg.observability import get_logger
 from synthorg.observability.events.budget import (
     BUDGET_EMBEDDING_COST_FAILED,
     BUDGET_EMBEDDING_COST_RECORDED,
+    BUDGET_EMBEDDING_MODEL_UNPRICED,
 )
 from synthorg.observability.events.memory import (
     MEMORY_BACKEND_AGENT_ID_REJECTED,
@@ -153,29 +154,26 @@ class Mem0MemoryBackend:
     ) -> None:
         """Record an embedding cost estimate if tracking is enabled.
 
-        Best-effort: non-system failures are logged but never propagate.
-        System errors (``MemoryError``, ``RecursionError``) and
-        cancellation always propagate.
+        Best-effort: non-system failures are logged but never
+        propagate.  The ``task_id`` is a synthetic sentinel
+        (``"memory-store"`` / ``"memory-retrieve"``) because the
+        backend protocol does not carry task context.
         """
         cost_cfg = self._mem0_config.embedding_cost
         if not cost_cfg.enabled or self._cost_tracker is None:
             return
-
-        input_tokens = max(1, content_length // cost_cfg.default_chars_per_token)
+        cpt = cost_cfg.default_chars_per_token
+        input_tokens = max(1, (content_length + cpt - 1) // cpt)
         model = str(self._mem0_config.embedder.model)
         cost_per_1k = cost_cfg.model_pricing.get(model, 0.0)
-        if cost_per_1k == 0.0 and model in cost_cfg.model_pricing:
-            pass  # Explicitly configured as free -- no warning needed.
-        elif cost_per_1k == 0.0:
+        if cost_per_1k == 0.0 and model not in cost_cfg.model_pricing:
             logger.debug(
-                BUDGET_EMBEDDING_COST_RECORDED,
+                BUDGET_EMBEDDING_MODEL_UNPRICED,
                 agent_id=agent_id,
                 operation=operation,
                 model=model,
-                reason="model_not_in_pricing_map",
             )
         cost_usd = input_tokens * cost_per_1k / 1000.0
-
         record = CostRecord(
             agent_id=agent_id,
             task_id=task_id,
@@ -187,17 +185,35 @@ class Mem0MemoryBackend:
             timestamp=datetime.now(UTC),
             call_category=LLMCallCategory.EMBEDDING,
         )
+        await self._record_cost(record, agent_id, operation, model)
+
+    async def _record_cost(
+        self,
+        record: CostRecord,
+        agent_id: str,
+        operation: str,
+        model: str,
+    ) -> None:
+        """Persist a CostRecord via the tracker (best-effort)."""
         try:
-            await self._cost_tracker.record(record)
+            await self._cost_tracker.record(record)  # type: ignore[union-attr]
             logger.debug(
                 BUDGET_EMBEDDING_COST_RECORDED,
                 agent_id=agent_id,
                 operation=operation,
-                input_tokens=input_tokens,
+                input_tokens=record.input_tokens,
                 cost_usd=record.cost_usd,
                 model=model,
             )
         except builtins.MemoryError, RecursionError:
+            logger.error(
+                BUDGET_EMBEDDING_COST_FAILED,
+                agent_id=agent_id,
+                operation=operation,
+                error_type="system",
+                model=model,
+                exc_info=True,
+            )
             raise
         except asyncio.CancelledError:
             raise
@@ -277,8 +293,17 @@ class Mem0MemoryBackend:
                     )
                 except builtins.MemoryError, RecursionError:
                     raise
-                except Exception:
-                    # Non-fatal: dense search still works.
+                except asyncio.CancelledError:
+                    raise
+                except Exception as exc:
+                    logger.warning(
+                        MEMORY_BACKEND_CONNECTION_FAILED,
+                        backend="mem0",
+                        operation="sparse_init",
+                        error=str(exc),
+                        error_type=type(exc).__name__,
+                        reason="sparse_init_failed_falling_back_to_dense",
+                    )
                     qdrant = None
                 self._qdrant_client = qdrant
             logger.info(MEMORY_BACKEND_CONNECTED, backend="mem0")

@@ -158,7 +158,7 @@ class TestLLMConsolidationStrategyConsolidate:
         assert backend.delete.call_count == 3
 
     async def test_multi_category_groups_independent(self) -> None:
-        backend = AsyncMock()
+        backend = AsyncMock(spec=MemoryBackend)
         store_ids = iter(["sum-ep", "sum-sem"])
         backend.store = AsyncMock(side_effect=lambda *_a, **_kw: next(store_ids))
         backend.delete = AsyncMock(return_value=True)
@@ -760,7 +760,7 @@ class TestLLMConsolidationStrategyDetails:
             in_flight -= 1
             return _make_response()
 
-        backend = AsyncMock()
+        backend = AsyncMock(spec=MemoryBackend)
         store_ids = iter(["sum-a", "sum-b"])
         backend.store = AsyncMock(side_effect=lambda *_a, **_kw: next(store_ids))
         backend.delete = AsyncMock(return_value=True)

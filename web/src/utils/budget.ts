@@ -185,7 +185,7 @@ export function computeCostBreakdown(
  *
  * Buckets records by `call_category` (null treated as uncategorized).
  * Records with unrecognized call_category values fall through to the uncategorized bucket.
- * Returns cost, count, and percentage for each of the four categories.
+ * Returns cost, count, and percentage for each of the five categories.
  */
 export function computeCategoryBreakdown(
   records: readonly CostRecord[],

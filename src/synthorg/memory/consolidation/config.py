@@ -297,5 +297,13 @@ class LLMConsolidationConfig(BaseModel):
                 f"must not exceed max_total_user_content_chars "
                 f"({self.max_total_user_content_chars})"
             )
+            logger.warning(
+                CONFIG_VALIDATION_FAILED,
+                model="LLMConsolidationConfig",
+                field="max_entry_input_chars",
+                max_entry_input_chars=self.max_entry_input_chars,
+                max_total_user_content_chars=self.max_total_user_content_chars,
+                reason=msg,
+            )
             raise ValueError(msg)
         return self

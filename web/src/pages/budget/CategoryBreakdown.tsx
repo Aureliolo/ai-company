@@ -62,7 +62,7 @@ export function CategoryBreakdown({ ratio, currency }: CategoryBreakdownProps) {
           description="Category breakdown will appear as agents consume tokens"
         />
       ) : (
-        <div className="space-y-4">
+        <div className="space-y-section-gap">
           {/* Stacked bar */}
           <div className="flex h-6 w-full overflow-hidden rounded-full">
             {CATEGORIES.map((cat) => (
@@ -76,7 +76,7 @@ export function CategoryBreakdown({ ratio, currency }: CategoryBreakdownProps) {
           </div>
 
           {/* Legend */}
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-2 gap-grid-gap">
             {CATEGORIES.map((cat) => (
               <CategoryLegendRow
                 key={cat.key}

@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock
 
 import pytest
+from pydantic import ValidationError
 
 from synthorg.core.enums import MemoryCategory
 from synthorg.memory.errors import MemoryRetrievalError
@@ -611,3 +612,38 @@ class TestMemoryFilterIntegration:
                 query_text="query",
                 token_budget=5000,
             )
+
+
+# -- Candidate pool multiplier ----------------------------------------
+
+
+@pytest.mark.unit
+class TestCandidatePoolMultiplier:
+    def test_pool_limit_with_diversity_enabled(self) -> None:
+        strategy = ContextInjectionStrategy(
+            backend=_make_backend(),
+            config=MemoryRetrievalConfig(
+                diversity_penalty_enabled=True,
+                candidate_pool_multiplier=3,
+                max_memories=10,
+            ),
+        )
+        assert strategy._compute_pool_limit() == 30
+
+    def test_pool_limit_without_diversity(self) -> None:
+        strategy = ContextInjectionStrategy(
+            backend=_make_backend(),
+            config=MemoryRetrievalConfig(
+                diversity_penalty_enabled=False,
+                max_memories=10,
+            ),
+        )
+        assert strategy._compute_pool_limit() == 10
+
+    def test_default_multiplier_is_three(self) -> None:
+        config = MemoryRetrievalConfig()
+        assert config.candidate_pool_multiplier == 3
+
+    def test_multiplier_out_of_range(self) -> None:
+        with pytest.raises(ValidationError):
+            MemoryRetrievalConfig(candidate_pool_multiplier=11)

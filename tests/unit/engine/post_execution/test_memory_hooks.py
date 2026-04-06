@@ -19,6 +19,7 @@ from synthorg.engine.post_execution.memory_hooks import (
     try_capture_distillation,
     try_procedural_memory,
 )
+from synthorg.memory.protocol import MemoryBackend
 from synthorg.providers.enums import FinishReason
 
 _AGENT_UUID = uuid4()
@@ -95,7 +96,7 @@ def _make_recovery_result() -> MagicMock:
 class TestTryCaptureDistillation:
     async def test_capture_called_when_enabled(self) -> None:
         """Delegates to capture_distillation when flag and backend set."""
-        backend = AsyncMock()
+        backend = AsyncMock(spec=MemoryBackend)
         backend.store = AsyncMock(return_value="dist-1")
         result = _make_completed_result()
 
@@ -111,7 +112,7 @@ class TestTryCaptureDistillation:
 
     async def test_skipped_when_disabled(self) -> None:
         """No-op when distillation capture is disabled."""
-        backend = AsyncMock()
+        backend = AsyncMock(spec=MemoryBackend)
         result = _make_completed_result()
 
         await try_capture_distillation(
@@ -139,7 +140,7 @@ class TestTryCaptureDistillation:
 
     async def test_captures_error_termination(self) -> None:
         """Distillation captures failed runs too."""
-        backend = AsyncMock()
+        backend = AsyncMock(spec=MemoryBackend)
         backend.store = AsyncMock(return_value="dist-err")
         result = _make_error_result()
 
@@ -152,7 +153,7 @@ class TestTryCaptureDistillation:
         )
 
         backend.store.assert_awaited_once()
-        store_request = backend.store.call_args[0][1]
+        store_request = backend.store.call_args.args[1]
         assert "Task failed" in store_request.content
         assert "provider timeout" in store_request.content
 
@@ -166,7 +167,7 @@ class TestTryProceduralMemory:
         """No-op when procedural proposer is None."""
         result = _make_error_result()
         recovery = _make_recovery_result()
-        backend = AsyncMock()
+        backend = AsyncMock(spec=MemoryBackend)
 
         await try_procedural_memory(
             result,
@@ -183,7 +184,7 @@ class TestTryProceduralMemory:
         """No-op when recovery_result is None."""
         result = _make_completed_result()
         proposer = AsyncMock()
-        backend = AsyncMock()
+        backend = AsyncMock(spec=MemoryBackend)
 
         await try_procedural_memory(
             result,
@@ -203,7 +204,7 @@ class TestTryProceduralMemory:
         result = _make_error_result()
         recovery = _make_recovery_result()
         proposer = AsyncMock()
-        backend = AsyncMock()
+        backend = AsyncMock(spec=MemoryBackend)
         backend.store = AsyncMock(return_value="mem-001")
 
         with patch(
@@ -229,7 +230,7 @@ class TestTryProceduralMemory:
         result = _make_error_result()
         recovery = _make_recovery_result()
         proposer = AsyncMock()
-        backend = AsyncMock()
+        backend = AsyncMock(spec=MemoryBackend)
 
         with patch(
             "synthorg.memory.procedural.pipeline.propose_procedural_memory",
@@ -251,7 +252,7 @@ class TestTryProceduralMemory:
         result = _make_error_result()
         recovery = _make_recovery_result()
         proposer = AsyncMock()
-        backend = AsyncMock()
+        backend = AsyncMock(spec=MemoryBackend)
 
         with (
             patch(

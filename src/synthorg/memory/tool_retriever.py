@@ -540,6 +540,8 @@ class ToolBasedInjectionStrategy:
                 exc_info=True,
             )
             raise
+        except asyncio.CancelledError:
+            raise
         except DomainMemoryError as exc:
             logger.warning(
                 MEMORY_RETRIEVAL_DEGRADED,
@@ -931,6 +933,8 @@ class ToolBasedInjectionStrategy:
                 reason="system_error_in_recall",
                 exc_info=True,
             )
+            raise
+        except asyncio.CancelledError:
             raise
         except DomainMemoryError as exc:
             logger.warning(

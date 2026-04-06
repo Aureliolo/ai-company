@@ -46,3 +46,4 @@ BUDGET_PROVIDER_USAGE_QUERIED: Final[str] = "budget.provider_usage.queried"
 # -- Embedding cost tracking events --
 BUDGET_EMBEDDING_COST_RECORDED: Final[str] = "budget.embedding_cost.recorded"
 BUDGET_EMBEDDING_COST_FAILED: Final[str] = "budget.embedding_cost.failed"
+BUDGET_EMBEDDING_MODEL_UNPRICED: Final[str] = "budget.embedding_cost.model_unpriced"

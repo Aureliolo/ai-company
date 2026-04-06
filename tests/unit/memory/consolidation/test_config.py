@@ -238,6 +238,21 @@ class TestLLMConsolidationConfig:
         with pytest.raises(ValidationError):
             LLMConsolidationConfig(temperature=float("nan"))
 
+    def test_entry_chars_exceeds_total_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="must not exceed"):
+            LLMConsolidationConfig(
+                max_entry_input_chars=20001,
+                max_total_user_content_chars=20000,
+            )
+
+    def test_entry_chars_equals_total_accepted(self) -> None:
+        config = LLMConsolidationConfig(
+            max_entry_input_chars=20000,
+            max_total_user_content_chars=20000,
+        )
+        assert config.max_entry_input_chars == 20000
+        assert config.max_total_user_content_chars == 20000
+
     def test_custom_values(self) -> None:
         config = LLMConsolidationConfig(
             group_threshold=5,

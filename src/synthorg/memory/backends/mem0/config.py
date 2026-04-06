@@ -177,6 +177,12 @@ class EmbeddingCostConfig(BaseModel):
     text length using the ``default_chars_per_token`` heuristic
     and the per-model pricing in ``model_pricing``.
 
+    .. note::
+
+        Currently only settable programmatically via
+        ``Mem0BackendConfig(embedding_cost=EmbeddingCostConfig(...))``.
+        The YAML company config path does not yet surface this field.
+
     Attributes:
         enabled: Whether embedding cost tracking is active.
         model_pricing: Mapping of model name to cost per 1K input
@@ -192,7 +198,7 @@ class EmbeddingCostConfig(BaseModel):
         default=False,
         description="Whether embedding cost tracking is active",
     )
-    model_pricing: dict[str, float] = Field(
+    model_pricing: dict[NotBlankStr, float] = Field(
         default_factory=dict,
         description=(
             "Model name to cost per 1K input tokens (USD). "
@@ -214,6 +220,14 @@ class EmbeddingCostConfig(BaseModel):
                 msg = (
                     f"model_pricing[{model_name!r}] = {cost} "
                     f"is negative -- cost must be >= 0.0"
+                )
+                logger.warning(
+                    MEMORY_BACKEND_CONFIG_INVALID,
+                    model="EmbeddingCostConfig",
+                    field="model_pricing",
+                    entry=model_name,
+                    value=cost,
+                    reason=msg,
                 )
                 raise ValueError(msg)
         return self

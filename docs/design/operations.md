@@ -438,7 +438,7 @@ etc.).
     ```yaml
     call_analytics:
       track:
-        - call_category                    # productive, coordination, system
+        - call_category                    # productive, coordination, system, embedding
         - success                          # true/false
         - retry_count                      # 0 = first attempt succeeded
         - retry_reason                     # rate_limit, timeout, internal_error
