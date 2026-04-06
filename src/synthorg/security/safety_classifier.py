@@ -460,7 +460,7 @@ class SafetyClassifier:
             candidates = providers_excluding_family(family, self._configs)
             all_cross.extend(p for p in candidates if p in available)
         if all_cross:
-            selected = secrets.choice(all_cross)
+            selected = secrets.choice(list(set(all_cross)))
             return selected, self._registry.get(selected)
 
         # Fallback: use first available (same-family).
