@@ -43,7 +43,6 @@ const STORAGE_KEY_PREFS = 'so_notification_prefs'
 // Module-scoped state
 // ---------------------------------------------------------------------------
 
-let nextId = 0
 let persistTimer: ReturnType<typeof setTimeout> | null = null
 
 // ---------------------------------------------------------------------------
@@ -98,18 +97,32 @@ function computeRoutes(
   return routes
 }
 
-function pruneStale(items: readonly NotificationItem[]): NotificationItem[] {
+function pruneStale(items: readonly NotificationItem[]): readonly NotificationItem[] {
   const cutoff = Date.now() - STALE_THRESHOLD_MS
-  return items.filter((item) => new Date(item.timestamp).getTime() > cutoff) as NotificationItem[]
+  return items.filter((item) => new Date(item.timestamp).getTime() > cutoff)
 }
 
-function hydrateItems(): NotificationItem[] {
+function isValidItem(item: unknown): item is NotificationItem {
+  if (typeof item !== 'object' || item === null) return false
+  const obj = item as Record<string, unknown>
+  return (
+    typeof obj.id === 'string' &&
+    typeof obj.category === 'string' &&
+    typeof obj.severity === 'string' &&
+    typeof obj.title === 'string' &&
+    typeof obj.timestamp === 'string' &&
+    typeof obj.read === 'boolean' &&
+    Array.isArray(obj.dispatchedTo)
+  )
+}
+
+function hydrateItems(): readonly NotificationItem[] {
   try {
     const raw = localStorage.getItem(STORAGE_KEY_ITEMS)
     if (!raw) return []
     const parsed = JSON.parse(raw) as unknown
     if (!Array.isArray(parsed)) return []
-    return pruneStale(parsed as NotificationItem[])
+    return pruneStale(parsed.filter(isValidItem))
   } catch {
     return []
   }
@@ -147,9 +160,17 @@ function countUnread(items: readonly NotificationItem[]): number {
 // Store
 // ---------------------------------------------------------------------------
 
+// Initialize nextId from hydrated items to prevent ID collisions
+// after page reload (items persisted in localStorage retain their IDs).
+let nextId = 0
+
 export const useNotificationsStore = create<NotificationsState>()((set, get) => {
   const initialItems = hydrateItems()
   const initialPrefs = hydratePrefs()
+  nextId = initialItems.reduce((max, item) => {
+    const n = Number(item.id)
+    return Number.isFinite(n) && n > max ? n : max
+  }, 0)
 
   return {
     items: initialItems,
@@ -387,6 +408,24 @@ export const useNotificationsStore = create<NotificationsState>()((set, get) => 
             description: typeof payload.agent_name === 'string'
               ? `${payload.agent_name.slice(0, 64)} personality was trimmed`
               : undefined,
+            entityId: typeof payload.agent_id === 'string' ? payload.agent_id : undefined,
+          })
+          break
+
+        case 'agent.hired':
+          enqueue({
+            category: 'agents.hired',
+            title: 'Agent hired',
+            description: typeof payload.agent_name === 'string' ? payload.agent_name.slice(0, 64) : undefined,
+            entityId: typeof payload.agent_id === 'string' ? payload.agent_id : undefined,
+          })
+          break
+
+        case 'agent.fired':
+          enqueue({
+            category: 'agents.fired',
+            title: 'Agent fired',
+            description: typeof payload.agent_name === 'string' ? payload.agent_name.slice(0, 64) : undefined,
             entityId: typeof payload.agent_id === 'string' ? payload.agent_id : undefined,
           })
           break

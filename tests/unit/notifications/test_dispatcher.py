@@ -126,5 +126,5 @@ class TestNotificationDispatcher:
                 raise MemoryError
 
         dispatcher = NotificationDispatcher(sinks=(_MemSink(),))
-        with pytest.raises(ExceptionGroup):
+        with pytest.raises(MemoryError):
             await dispatcher.dispatch(_make_notification())

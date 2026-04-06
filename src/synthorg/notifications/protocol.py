@@ -10,8 +10,9 @@ if TYPE_CHECKING:
 class NotificationSink(Protocol):
     """Protocol for notification delivery adapters.
 
-    All implementations must be async and best-effort: failures
-    are logged internally and never crash the caller.
+    Implementations should log errors internally and re-raise so
+    the ``NotificationDispatcher`` can track delivery status.
+    ``MemoryError`` and ``RecursionError`` must always propagate.
 
     The ``sink_name`` property is used for logging and diagnostics.
     """

@@ -1,9 +1,11 @@
 /**
  * Notification types and routing configuration.
  *
- * The category taxonomy is shared with the backend `NotificationCategory`
- * and `NotificationSeverity` enums in `src/synthorg/notifications/models.py`.
- * Changes here MUST be mirrored there.
+ * The frontend defines fine-grained subcategories (e.g. `approvals.pending`,
+ * `budget.exhausted`) for UI routing. The backend defines coarse categories
+ * (`approval`, `budget`, etc.) for sink-level routing in
+ * `src/synthorg/notifications/models.py`. The `NotificationSeverity` type
+ * is shared 1:1 between backend and frontend.
  */
 
 // ---------------------------------------------------------------------------

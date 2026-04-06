@@ -101,6 +101,11 @@ from synthorg.observability.events.api import (
     API_WS_SEND_FAILED,
     API_WS_TICKET_CLEANUP,
 )
+from synthorg.observability.events.notification import (
+    NOTIFICATION_SINK_CONFIG_INVALID,
+    NOTIFICATION_SINK_DISABLED,
+    NOTIFICATION_SINK_UNKNOWN_TYPE,
+)
 from synthorg.observability.events.prompt import (
     PROMPT_PERSONALITY_NOTIFY_FAILED,
 )
@@ -136,6 +141,7 @@ if TYPE_CHECKING:
     from litestar.channels import ChannelsPlugin
     from litestar.types import Middleware
 
+    from synthorg.api.auth.config import AuthConfig
     from synthorg.api.config import ApiConfig
     from synthorg.settings.service import SettingsService
     from synthorg.settings.subscriber import SettingsSubscriber
@@ -1078,6 +1084,10 @@ def _build_notification_dispatcher(
     sinks: list[NotificationSink] = []
     for sink_cfg in config.sinks:
         if not sink_cfg.enabled:
+            logger.debug(
+                NOTIFICATION_SINK_DISABLED,
+                sink_type=sink_cfg.type,
+            )
             continue
         sink = _create_notification_sink(sink_cfg)
         if sink is not None:
@@ -1090,7 +1100,7 @@ def _build_notification_dispatcher(
     )
 
 
-def _create_notification_sink(  # noqa: PLR0911
+def _create_notification_sink(
     cfg: NotificationSinkConfig,
 ) -> NotificationSink | None:
     """Instantiate a notification sink from config.
@@ -1099,64 +1109,103 @@ def _create_notification_sink(  # noqa: PLR0911
         cfg: Single sink configuration.
 
     Returns:
-        Sink instance or ``None`` for unknown types.
+        Sink instance or ``None`` for unknown or invalid types.
     """
     sink_type = cfg.type.lower()
     params = cfg.params
     if sink_type == "console":
         return ConsoleNotificationSink()
     if sink_type == "ntfy":
-        from synthorg.notifications.adapters.ntfy import (  # noqa: PLC0415
-            NtfyNotificationSink,
-        )
-
-        return NtfyNotificationSink(
-            server_url=params.get("server_url", "https://ntfy.sh"),
-            topic=params.get("topic", "synthorg-alerts"),
-            token=params.get("token"),
-        )
+        return _create_ntfy_sink(params)
     if sink_type == "slack":
-        from synthorg.notifications.adapters.slack import (  # noqa: PLC0415
-            SlackNotificationSink,
-        )
-
-        webhook_url = params.get("webhook_url", "")
-        if not webhook_url:
-            logger.warning(
-                "notification.sink.config_invalid",
-                sink_type=sink_type,
-                error="webhook_url is required",
-            )
-            return None
-        return SlackNotificationSink(webhook_url=webhook_url)
+        return _create_slack_sink(params)
     if sink_type == "email":
-        from synthorg.notifications.adapters.email import (  # noqa: PLC0415
-            EmailNotificationSink,
-        )
-
-        host = params.get("host", "")
-        if not host:
-            logger.warning(
-                "notification.sink.config_invalid",
-                sink_type=sink_type,
-                error="host is required",
-            )
-            return None
-        to_addrs_raw = params.get("to_addrs", "")
-        return EmailNotificationSink(
-            host=host,
-            port=int(params.get("port", "587")),
-            username=params.get("username"),
-            password=params.get("password"),
-            from_addr=params.get("from_addr", "synthorg@localhost"),
-            to_addrs=tuple(a.strip() for a in to_addrs_raw.split(",") if a.strip()),
-            use_tls=params.get("use_tls", "true").lower() == "true",
-        )
+        return _create_email_sink(params)
     logger.warning(
-        "notification.sink.unknown_type",
+        NOTIFICATION_SINK_UNKNOWN_TYPE,
         sink_type=sink_type,
     )
     return None
+
+
+def _create_ntfy_sink(
+    params: dict[str, str],
+) -> NotificationSink:
+    """Create an ntfy notification sink."""
+    from synthorg.notifications.adapters.ntfy import (  # noqa: PLC0415
+        NtfyNotificationSink,
+    )
+
+    return NtfyNotificationSink(
+        server_url=params.get("server_url", "https://ntfy.sh"),
+        topic=params.get("topic", "synthorg-alerts"),
+        token=params.get("token"),
+    )
+
+
+def _create_slack_sink(
+    params: dict[str, str],
+) -> NotificationSink | None:
+    """Create a Slack webhook notification sink."""
+    from synthorg.notifications.adapters.slack import (  # noqa: PLC0415
+        SlackNotificationSink,
+    )
+
+    webhook_url = params.get("webhook_url", "")
+    if not webhook_url:
+        logger.warning(
+            NOTIFICATION_SINK_CONFIG_INVALID,
+            sink_type="slack",
+            error="webhook_url is required",
+        )
+        return None
+    return SlackNotificationSink(webhook_url=webhook_url)
+
+
+def _create_email_sink(
+    params: dict[str, str],
+) -> NotificationSink | None:
+    """Create an email SMTP notification sink."""
+    from synthorg.notifications.adapters.email import (  # noqa: PLC0415
+        EmailNotificationSink,
+    )
+
+    host = params.get("host", "")
+    if not host:
+        logger.warning(
+            NOTIFICATION_SINK_CONFIG_INVALID,
+            sink_type="email",
+            error="host is required",
+        )
+        return None
+    to_addrs = tuple(
+        a.strip() for a in params.get("to_addrs", "").split(",") if a.strip()
+    )
+    if not to_addrs:
+        logger.warning(
+            NOTIFICATION_SINK_CONFIG_INVALID,
+            sink_type="email",
+            error="to_addrs is required",
+        )
+        return None
+    try:
+        port = int(params.get("port", "587"))
+    except ValueError:
+        logger.warning(
+            NOTIFICATION_SINK_CONFIG_INVALID,
+            sink_type="email",
+            error=f"invalid port: {params.get('port')!r}",
+        )
+        return None
+    return EmailNotificationSink(
+        host=host,
+        port=port,
+        username=params.get("username"),
+        password=params.get("password"),
+        from_addr=params.get("from_addr", "synthorg@localhost"),
+        to_addrs=to_addrs,
+        use_tls=params.get("use_tls", "true").lower() == "true",
+    )
 
 
 def _auth_identifier_for_request(
@@ -1180,6 +1229,32 @@ def _auth_identifier_for_request(
     return get_remote_address(request)
 
 
+def _build_auth_exclude_paths(
+    auth: AuthConfig,
+    prefix: str,
+    ws_path: str,
+) -> tuple[str, ...]:
+    """Compute auth middleware exclude paths with fail-safe defaults."""
+    setup_status_path = f"^{prefix}/setup/status$"
+    exclude_paths = (
+        auth.exclude_paths
+        if auth.exclude_paths is not None
+        else (
+            f"^{prefix}/health$",
+            "^/docs",
+            "^/api$",
+            f"^{prefix}/auth/setup$",
+            f"^{prefix}/auth/login$",
+            setup_status_path,
+        )
+    )
+    if setup_status_path not in exclude_paths:
+        exclude_paths = (*exclude_paths, setup_status_path)
+    if ws_path not in exclude_paths:
+        exclude_paths = (*exclude_paths, ws_path)
+    return exclude_paths
+
+
 def _build_middleware(api_config: ApiConfig) -> list[Middleware]:
     """Build the middleware stack from configuration.
 
@@ -1194,20 +1269,15 @@ def _build_middleware(api_config: ApiConfig) -> list[Middleware]:
     prefix = api_config.api_prefix
     ws_path = f"^{prefix}/ws$"
 
-    # Exclude the WS path from rate limiting -- rate limiting
-    # HTTP-style makes no sense for persistent WebSocket connections.
     rl_exclude = list(rl.exclude_paths)
     if ws_path not in rl_exclude:
         rl_exclude.append(ws_path)
 
-    # Tier 1: unauthenticated rate limit (by IP, before auth).
     unauth_rate_limit = LitestarRateLimitConfig(
         rate_limit=(rl.time_unit, rl.unauth_max_requests),  # type: ignore[arg-type]
         exclude=rl_exclude,
         store="rate_limit_unauth",
     )
-
-    # Tier 2: authenticated rate limit (by user ID, after auth).
     auth_rate_limit = LitestarRateLimitConfig(
         rate_limit=(rl.time_unit, rl.auth_max_requests),  # type: ignore[arg-type]
         exclude=rl_exclude,
@@ -1215,30 +1285,14 @@ def _build_middleware(api_config: ApiConfig) -> list[Middleware]:
         store="rate_limit_auth",
     )
 
-    auth = api_config.auth
-    setup_status_path = f"^{prefix}/setup/status$"
-    exclude_paths = (
-        auth.exclude_paths
-        if auth.exclude_paths is not None
-        else (
-            f"^{prefix}/health$",
-            "^/docs",
-            "^/api$",
-            f"^{prefix}/auth/setup$",
-            f"^{prefix}/auth/login$",
-            setup_status_path,
-        )
+    exclude_paths = _build_auth_exclude_paths(
+        api_config.auth,
+        prefix,
+        ws_path,
     )
-    # Always ensure the setup status endpoint is publicly accessible
-    # even when custom exclude_paths are provided via config.
-    if setup_status_path not in exclude_paths:
-        exclude_paths = (*exclude_paths, setup_status_path)
-    # Always ensure the WS upgrade path is excluded -- the WS handler
-    # performs its own ticket-based auth, so the JWT middleware must
-    # not run on the upgrade request.
-    if ws_path not in exclude_paths:
-        exclude_paths = (*exclude_paths, ws_path)
-    auth = auth.model_copy(update={"exclude_paths": exclude_paths})
+    auth = api_config.auth.model_copy(
+        update={"exclude_paths": exclude_paths},
+    )
     auth_middleware = create_auth_middleware_class(auth)
     return [
         unauth_rate_limit.middleware,

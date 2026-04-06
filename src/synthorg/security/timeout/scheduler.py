@@ -206,19 +206,29 @@ class ApprovalTimeoutScheduler:
                     NotificationSeverity,
                 )
 
-                await self._notification_dispatcher.dispatch(
-                    Notification(
-                        category=NotificationCategory.SECURITY,
-                        severity=NotificationSeverity.WARNING,
-                        title=f"Approval escalated: {item.id}",
-                        body=action.reason or "",
-                        source="security.timeout.scheduler",
-                        metadata={
-                            "approval_id": item.id,
-                            "escalate_to": action.escalate_to,
-                        },
-                    ),
-                )
+                try:
+                    await self._notification_dispatcher.dispatch(
+                        Notification(
+                            category=NotificationCategory.SECURITY,
+                            severity=NotificationSeverity.WARNING,
+                            title=f"Approval escalated: {item.id}",
+                            body=action.reason or "",
+                            source="security.timeout.scheduler",
+                            metadata={
+                                "approval_id": item.id,
+                                "escalate_to": action.escalate_to,
+                            },
+                        ),
+                    )
+                except MemoryError, RecursionError:
+                    raise
+                except Exception:
+                    logger.warning(
+                        TIMEOUT_SCHEDULER_ERROR,
+                        approval_id=item.id,
+                        error="notification dispatch failed",
+                        exc_info=True,
+                    )
 
     async def _resolve_item(
         self,

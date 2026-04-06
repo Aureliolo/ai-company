@@ -44,19 +44,19 @@ class SlackNotificationSink:
             self._client = httpx.AsyncClient(timeout=10.0)
 
         payload = {
-            "text": (f"*[{notification.severity.upper()}]* {notification.title}"),
+            "text": (f"*[{notification.severity.value.upper()}]* {notification.title}"),
             "blocks": [
                 {
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
                         "text": (
-                            f"*[{notification.severity.upper()}]* "
+                            f"*[{notification.severity.value.upper()}]* "
                             f"{notification.title}\n"
                             f"{notification.body}"
                             if notification.body
                             else (
-                                f"*[{notification.severity.upper()}]* "
+                                f"*[{notification.severity.value.upper()}]* "
                                 f"{notification.title}"
                             )
                         ),
@@ -87,9 +87,18 @@ class SlackNotificationSink:
                 NOTIFICATION_SLACK_DELIVERED,
                 notification_id=notification.id,
             )
+        except MemoryError, RecursionError:
+            raise
         except Exception as exc:
             logger.warning(
                 NOTIFICATION_SLACK_FAILED,
                 notification_id=notification.id,
                 error=str(exc),
             )
+            raise
+
+    async def close(self) -> None:
+        """Close the underlying HTTP client."""
+        if self._client is not None:
+            await self._client.aclose()
+            self._client = None

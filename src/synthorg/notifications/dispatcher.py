@@ -12,6 +12,7 @@ from synthorg.observability.events.notification import (
     NOTIFICATION_DISPATCH_FAILED,
     NOTIFICATION_DISPATCHED,
     NOTIFICATION_FILTERED,
+    NOTIFICATION_NO_SINKS,
     NOTIFICATION_SINK_REGISTERED,
 )
 
@@ -82,6 +83,10 @@ class NotificationDispatcher:
             notification: The notification to deliver.
         """
         if not self._sinks:
+            logger.debug(
+                NOTIFICATION_NO_SINKS,
+                notification_id=notification.id,
+            )
             return
 
         if _SEVERITY_ORDER[notification.severity] < _SEVERITY_ORDER[self._min_severity]:
@@ -95,11 +100,23 @@ class NotificationDispatcher:
 
         errors: list[str | None] = [None] * len(self._sinks)
 
-        async with asyncio.TaskGroup() as tg:
-            for idx, sink in enumerate(self._sinks):
-                tg.create_task(
-                    self._guarded_send(sink, notification, errors, idx),
-                )
+        try:
+            async with asyncio.TaskGroup() as tg:
+                for idx, sink in enumerate(self._sinks):
+                    tg.create_task(
+                        self._guarded_send(sink, notification, errors, idx),
+                    )
+        except ExceptionGroup as eg:
+            for exc in eg.exceptions:
+                if isinstance(exc, MemoryError | RecursionError):
+                    raise exc from eg
+            logger.warning(
+                NOTIFICATION_DISPATCH_FAILED,
+                notification_id=notification.id,
+                category=notification.category,
+                error=f"TaskGroup errors: {eg.exceptions}",
+            )
+            return
 
         failed = sum(1 for e in errors if e is not None)
         if failed:

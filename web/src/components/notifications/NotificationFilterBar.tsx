@@ -9,6 +9,8 @@ const GROUPS: readonly NotificationFilterGroup[] = [
   'system',
   'tasks',
   'agents',
+  'providers',
+  'connection',
 ] as const
 
 interface NotificationFilterBarProps {

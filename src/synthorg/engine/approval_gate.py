@@ -129,20 +129,30 @@ class ApprovalGate:
                 NotificationSeverity,
             )
 
-            await self._notification_dispatcher.dispatch(
-                Notification(
-                    category=NotificationCategory.APPROVAL,
-                    severity=NotificationSeverity.WARNING,
-                    title=f"Approval required: {escalation.approval_id}",
-                    body=escalation.reason or "",
-                    source="engine.approval_gate",
-                    metadata={
-                        "approval_id": escalation.approval_id,
-                        "agent_id": agent_id,
-                        "task_id": task_id,
-                    },
-                ),
-            )
+            try:
+                await self._notification_dispatcher.dispatch(
+                    Notification(
+                        category=NotificationCategory.APPROVAL,
+                        severity=NotificationSeverity.WARNING,
+                        title=f"Approval required: {escalation.approval_id}",
+                        body=escalation.reason or "",
+                        source="engine.approval_gate",
+                        metadata={
+                            "approval_id": escalation.approval_id,
+                            "agent_id": agent_id,
+                            "task_id": task_id,
+                        },
+                    ),
+                )
+            except MemoryError, RecursionError:
+                raise
+            except Exception:
+                logger.warning(
+                    APPROVAL_GATE_CONTEXT_PARKED,
+                    note="notification dispatch failed after parking",
+                    approval_id=escalation.approval_id,
+                    exc_info=True,
+                )
         return parked
 
     def _serialize_context(

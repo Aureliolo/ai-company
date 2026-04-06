@@ -84,9 +84,18 @@ class NtfyNotificationSink:
                 notification_id=notification.id,
                 status_code=response.status_code,
             )
+        except MemoryError, RecursionError:
+            raise
         except Exception as exc:
             logger.warning(
                 NOTIFICATION_NTFY_FAILED,
                 notification_id=notification.id,
                 error=str(exc),
             )
+            raise
+
+    async def close(self) -> None:
+        """Close the underlying HTTP client."""
+        if self._client is not None:
+            await self._client.aclose()
+            self._client = None

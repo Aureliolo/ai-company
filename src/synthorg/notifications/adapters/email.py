@@ -81,12 +81,15 @@ class EmailNotificationSink:
                 notification_id=notification.id,
                 to_count=len(self._to_addrs),
             )
+        except MemoryError, RecursionError:
+            raise
         except Exception as exc:
             logger.warning(
                 NOTIFICATION_EMAIL_FAILED,
                 notification_id=notification.id,
                 error=str(exc),
             )
+            raise
 
     def _send_sync(self, notification: Notification) -> None:
         """Synchronous SMTP send (runs in a thread)."""

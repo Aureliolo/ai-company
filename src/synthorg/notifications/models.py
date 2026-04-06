@@ -1,9 +1,11 @@
 """Notification domain models.
 
-The ``Notification`` model defines the event taxonomy shared with
-the frontend's ``NotificationItem`` TypeScript type (#1078).
-Changes to categories or severity levels MUST be mirrored in
-``web/src/types/notifications.ts``.
+The backend defines coarse categories (``approval``, ``budget``,
+etc.) for sink-level routing. The frontend refines these into
+fine-grained subcategories (``approvals.pending``,
+``budget.exhausted``, etc.) for UI routing in
+``web/src/types/notifications.ts``. The ``NotificationSeverity``
+enum is shared 1:1 between backend and frontend.
 """
 
 from datetime import UTC, datetime

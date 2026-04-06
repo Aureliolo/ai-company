@@ -396,15 +396,24 @@ class BudgetEnforcer:
                     NotificationSeverity,
                 )
 
-                await self._notification_dispatcher.dispatch(
-                    Notification(
-                        category=NotificationCategory.BUDGET,
-                        severity=NotificationSeverity.CRITICAL,
-                        title="Monthly budget exhausted",
-                        body=msg,
-                        source="budget.enforcer",
-                    ),
-                )
+                try:
+                    await self._notification_dispatcher.dispatch(
+                        Notification(
+                            category=NotificationCategory.BUDGET,
+                            severity=NotificationSeverity.CRITICAL,
+                            title="Monthly budget exhausted",
+                            body=msg,
+                            source="budget.enforcer",
+                        ),
+                    )
+                except MemoryError, RecursionError:
+                    raise
+                except Exception:
+                    logger.warning(
+                        BUDGET_HARD_STOP_EXCEEDED,
+                        note="notification dispatch failed",
+                        exc_info=True,
+                    )
             raise BudgetExhaustedError(msg)
 
     async def _check_daily_limit(
