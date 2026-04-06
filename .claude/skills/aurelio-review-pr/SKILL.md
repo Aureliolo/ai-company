@@ -176,6 +176,7 @@ Based on changed files, launch applicable review agents **in parallel** using th
 | **go-security-reviewer** | Any `cli_go` -- diff contains `exec.Command`, `os/exec`, `http`, `os.Remove`, `os.WriteFile`, `filepath`, user-supplied paths | `everything-claude-code:security-reviewer` |
 | **go-conventions-enforcer** | Any `cli_go` | `pr-review-toolkit:code-reviewer` (go-conventions-enforcer custom prompt -- same as in pre-pr-review skill) |
 | **issue-resolution-verifier** | Issue is linked (pre-existing or auto-linked in Phase 2) | `pr-review-toolkit:code-reviewer` (custom prompt below) |
+| **tool-parity-checker** | Any `.claude/` or `.opencode/` or `opencode.json` or `AGENTS.md` or `CLAUDE.md` file changed | `.claude/agents/tool-parity-checker.md` prompt (verifies Claude Code <-> OpenCode config parity) |
 
 The **issue-resolution-verifier** agent checks whether the PR fully resolves the linked issue. It only runs when an issue is linked -- either from a pre-existing `closes #N` in the PR body, or auto-linked/user-selected during Phase 2's search.
 

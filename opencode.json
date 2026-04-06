@@ -1,0 +1,70 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "provider": {
+    "ollama-cloud": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "Ollama Cloud",
+      "options": {
+        "baseURL": "https://ollama.com/v1"
+      },
+      "models": {
+        "minimax-m2.5:cloud": {
+          "name": "MiniMax M2.5 (80.2% SWE-bench)",
+          "limit": { "context": 204800, "output": 16384 }
+        },
+        "minimax-m2.7:cloud": {
+          "name": "MiniMax M2.7",
+          "limit": { "context": 204800, "output": 16384 }
+        },
+        "glm-5:cloud": {
+          "name": "GLM-5 (77.8% SWE-bench)",
+          "limit": { "context": 202752, "output": 16384 }
+        },
+        "kimi-k2.5:cloud": {
+          "name": "Kimi K2.5 (76.8% SWE-bench)",
+          "limit": { "context": 262144, "output": 16384 }
+        },
+        "qwen3.5:cloud": {
+          "name": "Qwen 3.5",
+          "limit": { "context": 262144, "output": 16384 }
+        },
+        "deepseek-v3.2:cloud": {
+          "name": "DeepSeek V3.2",
+          "limit": { "context": 163840, "output": 16384 }
+        },
+        "qwen3-coder-next:cloud": {
+          "name": "Qwen3 Coder Next (agentic coding)",
+          "limit": { "context": 131072, "output": 16384 }
+        },
+        "nemotron-3-super:cloud": {
+          "name": "Nemotron 3 Super (multi-agent MoE)",
+          "limit": { "context": 131072, "output": 16384 }
+        },
+        "glm-4.7:cloud": {
+          "name": "GLM 4.7",
+          "limit": { "context": 131072, "output": 16384 }
+        },
+        "gpt-oss:120b-cloud": {
+          "name": "GPT-OSS 120B",
+          "limit": { "context": 131072, "output": 16384 }
+        }
+      }
+    }
+  },
+  "model": "ollama-cloud/minimax-m2.5:cloud",
+  "instructions": [
+    ".claude/rules/common/agents.md",
+    ".claude/rules/common/bash.md",
+    ".claude/rules/common/hooks.md",
+    ".claude/rules/common/patterns.md",
+    ".claude/rules/common/performance.md",
+    ".claude/hookify.block-pr-create.md",
+    ".claude/hookify.enforce-parallel-tests.md",
+    ".claude/hookify.function-length.md",
+    ".claude/hookify.missing-logger.md",
+    ".claude/hookify.no-cd-prefix.md",
+    ".claude/hookify.no-future-annotations.md",
+    ".claude/hookify.no-local-coverage.md",
+    ".claude/hookify.pep758-except.md"
+  ]
+}
