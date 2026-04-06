@@ -16,6 +16,22 @@ def bare_client(test_client: TestClient[Any]) -> TestClient[Any]:
     return test_client
 
 
+def _extract_auth_cookies(response: Any) -> dict[str, str]:
+    """Extract session and CSRF cookies from Set-Cookie headers.
+
+    Returns a dict with ``session`` and ``csrf_token`` keys.
+    """
+    result: dict[str, str] = {}
+    for _k, v in response.headers.multi_items():
+        if _k != "set-cookie":
+            continue
+        if v.startswith("session="):
+            result["session"] = v.split("session=")[1].split(";")[0]
+        elif v.startswith("csrf_token="):
+            result["csrf_token"] = v.split("csrf_token=")[1].split(";")[0]
+    return result
+
+
 @pytest.mark.unit
 class TestSetup:
     def test_setup_creates_admin(self, bare_client: TestClient[Any]) -> None:
@@ -31,9 +47,13 @@ class TestSetup:
         )
         assert response.status_code == 201
         data = response.json()["data"]
-        assert "token" in data
+        assert "token" not in data  # JWT is in HttpOnly cookie, not body
         assert data["must_change_password"] is False
         assert data["expires_in"] > 0
+        # Verify session cookie is set via Set-Cookie header
+        set_cookie = response.headers.get("set-cookie", "")
+        assert "session=" in set_cookie
+        assert "httponly" in set_cookie.lower()
 
     def test_setup_409_when_users_exist(
         self,
@@ -104,8 +124,10 @@ class TestLogin:
         )
         assert response.status_code == 200
         data = response.json()["data"]
-        assert "token" in data
+        assert "token" not in data  # JWT is in HttpOnly cookie
         assert data["expires_in"] > 0
+        set_cookie = response.headers.get("set-cookie", "")
+        assert "session=" in set_cookie
 
     def test_login_wrong_password(self, bare_client: TestClient[Any]) -> None:
         response = bare_client.post(
@@ -141,7 +163,8 @@ class TestChangePassword:
                 "password": "old-password-12chars",
             },
         )
-        token = setup_resp.json()["data"]["token"]
+        # Extract session JWT and CSRF token from Set-Cookie headers
+        cookies = _extract_auth_cookies(setup_resp)
 
         response = bare_client.post(
             "/api/v1/auth/change-password",
@@ -149,7 +172,12 @@ class TestChangePassword:
                 "current_password": "old-password-12chars",
                 "new_password": "new-password-12chars",
             },
-            headers={"Authorization": f"Bearer {token}"},
+            headers={
+                "Cookie": (
+                    f"session={cookies['session']}; csrf_token={cookies['csrf_token']}"
+                ),
+                "X-CSRF-Token": cookies["csrf_token"],
+            },
         )
         assert response.status_code == 200
         data = response.json()["data"]
@@ -190,7 +218,7 @@ class TestChangePassword:
                 "password": "old-password-12chars",
             },
         )
-        token = setup_resp.json()["data"]["token"]
+        cookies = _extract_auth_cookies(setup_resp)
 
         response = bare_client.post(
             "/api/v1/auth/change-password",
@@ -198,7 +226,12 @@ class TestChangePassword:
                 "current_password": "old-password-12chars",
                 "new_password": "short",
             },
-            headers={"Authorization": f"Bearer {token}"},
+            headers={
+                "Cookie": (
+                    f"session={cookies['session']}; csrf_token={cookies['csrf_token']}"
+                ),
+                "X-CSRF-Token": cookies["csrf_token"],
+            },
         )
         assert response.status_code == 400
 

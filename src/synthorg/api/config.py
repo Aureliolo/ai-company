@@ -43,12 +43,12 @@ class CorsConfig(BaseModel):
         description="HTTP methods permitted in cross-origin requests",
     )
     allow_headers: tuple[str, ...] = Field(
-        default=("Content-Type", "Authorization"),
+        default=("Content-Type", "Authorization", "X-CSRF-Token"),
         description="Headers permitted in cross-origin requests",
     )
     allow_credentials: bool = Field(
-        default=False,
-        description="Whether credentials are allowed",
+        default=True,
+        description="Whether credentials (cookies) are allowed",
     )
 
     @model_validator(mode="after")

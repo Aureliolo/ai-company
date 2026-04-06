@@ -19,6 +19,7 @@ from synthorg.api.auth.system_user import SYSTEM_AUDIENCE, SYSTEM_ISSUER
 from synthorg.api.guards import HumanRole
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import (
+    API_AUTH_COOKIE_USED,
     API_AUTH_FAILED,
     API_AUTH_SUCCESS,
 )
@@ -34,50 +35,38 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 _BEARER_PARTS = 2
+_DEFAULT_COOKIE_NAME = "session"
 
 
-def _validate_auth_header(
-    connection: ASGIConnection[Any, Any, Any, Any],
-) -> str:
-    """Extract and validate the bearer token from the request.
+def _get_cookie_name(app_state: AppState) -> str:
+    """Return the configured session cookie name.
+
+    Falls back to the default ``"session"`` when the config
+    is not available on the app state (e.g. in minimal test
+    fixtures).
+
+    Args:
+        app_state: Application state container.
 
     Returns:
-        The bearer token string.
-
-    Raises:
-        NotAuthorizedException: On missing or invalid header.
+        Session cookie name string.
     """
-    path = str(connection.url.path)
-    auth_header = connection.headers.get("authorization")
-    if not auth_header:
-        logger.warning(
-            API_AUTH_FAILED,
-            reason="missing_header",
-            path=path,
-        )
-        raise NotAuthorizedException(
-            detail="Missing Authorization header",
-        )
-    token = _extract_bearer_token(auth_header)
-    if token is None:
-        logger.warning(
-            API_AUTH_FAILED,
-            reason="invalid_scheme",
-            path=path,
-        )
-        raise NotAuthorizedException(
-            detail="Invalid authorization scheme",
-        )
-    return token
+    try:
+        return app_state.config.api.auth.cookie_name  # type: ignore[union-attr]
+    except AttributeError, TypeError:
+        return _DEFAULT_COOKIE_NAME
 
 
 class ApiAuthMiddleware(AbstractAuthenticationMiddleware):
-    """Authenticate requests via JWT or API key.
+    """Authenticate requests via cookie, JWT header, or API key.
 
-    Reads ``Authorization: Bearer <token>`` from the request.
-    Tokens containing ``.`` are treated exclusively as JWTs.
-    Tokens without dots are tried as API keys via HMAC-SHA256
-    hash lookup.
+    Authentication priority:
+
+    1. **Session cookie** -- HttpOnly cookie set by login/setup.
+       Primary auth path for browser sessions.
+    2. **Authorization header** -- ``Bearer <token>``.
+       Tokens with dots are JWTs (system user CLI tokens).
+       Tokens without dots are API keys (HMAC-SHA256 lookup).
 
     Requires ``auth_service``, persistence backend on
     ``app.state["app_state"]``.
@@ -87,7 +76,10 @@ class ApiAuthMiddleware(AbstractAuthenticationMiddleware):
         self,
         connection: ASGIConnection[Any, Any, Any, Any],
     ) -> AuthenticationResult:
-        """Validate the Authorization header.
+        """Validate the session cookie or Authorization header.
+
+        Tries the session cookie first.  Falls back to the
+        Authorization header for API keys and system user JWTs.
 
         Args:
             connection: Incoming ASGI connection.
@@ -98,10 +90,50 @@ class ApiAuthMiddleware(AbstractAuthenticationMiddleware):
         Raises:
             NotAuthorizedException: If authentication fails.
         """
-        token = _validate_auth_header(connection)
         app_state = connection.app.state["app_state"]
         auth_service: AuthService = app_state.auth_service
         path = str(connection.url.path)
+
+        # 1. Try session cookie (primary path for browser sessions)
+        cookie_name = _get_cookie_name(app_state)
+        session_cookie = connection.cookies.get(cookie_name)
+        if session_cookie and "." in session_cookie:
+            user = await _try_jwt_auth(
+                session_cookie,
+                auth_service,
+                app_state,
+                path,
+            )
+            if user is not None:
+                logger.debug(
+                    API_AUTH_COOKIE_USED,
+                    user_id=user.user_id,
+                    path=path,
+                )
+                return AuthenticationResult(user=user, auth=session_cookie)
+
+        # 2. Fall back to Authorization header (API keys, system user)
+        auth_header = connection.headers.get("authorization")
+        if not auth_header:
+            if session_cookie:
+                # Cookie was present but invalid
+                raise NotAuthorizedException(
+                    detail="Invalid session cookie",
+                )
+            raise NotAuthorizedException(
+                detail="Missing authentication",
+            )
+
+        token = _extract_bearer_token(auth_header)
+        if token is None:
+            logger.warning(
+                API_AUTH_FAILED,
+                reason="invalid_scheme",
+                path=path,
+            )
+            raise NotAuthorizedException(
+                detail="Invalid authorization scheme",
+            )
 
         if "." in token:
             user = await _try_jwt_auth(

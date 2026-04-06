@@ -41,6 +41,10 @@ class ErrorCode(IntEnum):
     UNAUTHORIZED = 1000
     FORBIDDEN = 1001
     SESSION_REVOKED = 1002
+    ACCOUNT_LOCKED = 1003
+    CSRF_REJECTED = 1004
+    REFRESH_TOKEN_INVALID = 1005
+    SESSION_LIMIT_EXCEEDED = 1006
 
     # 2xxx -- validation
     VALIDATION_ERROR = 2000
@@ -250,6 +254,39 @@ class UnauthorizedError(ApiError):
 
     def __init__(self, message: str | None = None) -> None:
         super().__init__(message, status_code=401)
+
+
+class AccountLockedError(ApiError):
+    """Raised when login is blocked by account lockout (429).
+
+    Uses HTTP 429 (Too Many Requests) with an optional
+    ``Retry-After`` header indicating when the lockout expires.
+    """
+
+    default_message: ClassVar[str] = "Account temporarily locked"
+    error_category: ClassVar[ErrorCategory] = ErrorCategory.AUTH
+    error_code: ClassVar[ErrorCode] = ErrorCode.ACCOUNT_LOCKED
+    retryable: ClassVar[bool] = True
+
+    def __init__(
+        self,
+        message: str | None = None,
+        *,
+        retry_after: int = 0,
+    ) -> None:
+        super().__init__(message, status_code=429)
+        self.retry_after = retry_after
+
+
+class CsrfRejectedError(ApiError):
+    """Raised when a CSRF token is missing or invalid (403)."""
+
+    default_message: ClassVar[str] = "CSRF token missing or invalid"
+    error_category: ClassVar[ErrorCategory] = ErrorCategory.AUTH
+    error_code: ClassVar[ErrorCode] = ErrorCode.CSRF_REJECTED
+
+    def __init__(self, message: str | None = None) -> None:
+        super().__init__(message, status_code=403)
 
 
 class ServiceUnavailableError(ApiError):

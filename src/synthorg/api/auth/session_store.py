@@ -16,6 +16,7 @@ from synthorg.observability import get_logger
 from synthorg.observability.events.api import (
     API_SESSION_CLEANUP,
     API_SESSION_CREATED,
+    API_SESSION_LIMIT_ENFORCED,
     API_SESSION_REVOKED,
 )
 
@@ -218,6 +219,48 @@ class SessionStore:
             count=count,
         )
         return count
+
+    async def enforce_session_limit(
+        self,
+        user_id: str,
+        max_sessions: int,
+    ) -> int:
+        """Revoke oldest sessions if user exceeds the concurrent limit.
+
+        Called after creating a new session.  ``list_by_user``
+        returns sessions newest-first, so the tail of the list
+        contains the oldest sessions to evict.
+
+        Args:
+            user_id: User whose sessions to check.
+            max_sessions: Maximum allowed (0 = unlimited).
+
+        Returns:
+            Number of sessions revoked.
+        """
+        if max_sessions == 0:
+            return 0
+
+        active = await self.list_by_user(user_id)
+        excess = len(active) - max_sessions
+        if excess <= 0:
+            return 0
+
+        # list_by_user returns newest-first; revoke the oldest (tail).
+        to_revoke = active[-excess:]
+        revoked = 0
+        for session in to_revoke:
+            if await self.revoke(session.session_id):
+                revoked += 1
+
+        if revoked:
+            logger.info(
+                API_SESSION_LIMIT_ENFORCED,
+                user_id=user_id,
+                revoked=revoked,
+                max_sessions=max_sessions,
+            )
+        return revoked
 
     def is_revoked(self, session_id: str) -> bool:
         """Check whether a session is revoked (sync, O(1)).

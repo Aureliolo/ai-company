@@ -5,6 +5,11 @@ from typing import Literal, Self
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 MIN_SECRET_LENGTH = 32
+DEFAULT_COOKIE_NAME = "session"
+DEFAULT_CSRF_COOKIE_NAME = "csrf_token"
+DEFAULT_CSRF_HEADER_NAME = "x-csrf-token"
+DEFAULT_REFRESH_COOKIE_NAME = "refresh_token"
+DEFAULT_REFRESH_COOKIE_PATH = "/api/v1/auth/refresh"
 
 
 def _require_valid_secret(secret: str) -> None:
@@ -86,6 +91,86 @@ class AuthConfig(BaseModel):
             "Use ^ to anchor at the start of the path and add $ when "
             "an exact match (rather than a prefix match) is required."
         ),
+    )
+
+    # Cookie settings
+    cookie_name: str = Field(
+        default=DEFAULT_COOKIE_NAME,
+        description="Session cookie name",
+    )
+    cookie_secure: bool = Field(
+        default=True,
+        description="Secure flag on session cookies (HTTPS-only)",
+    )
+    cookie_samesite: Literal["strict", "lax", "none"] = Field(
+        default="strict",
+        description="SameSite attribute for session cookies",
+    )
+    cookie_path: str = Field(
+        default="/api",
+        description="Path scope for session cookies",
+    )
+    cookie_domain: str | None = Field(
+        default=None,
+        description="Domain for session cookies (None = current host)",
+    )
+
+    # CSRF
+    csrf_cookie_name: str = Field(
+        default=DEFAULT_CSRF_COOKIE_NAME,
+        description="CSRF token cookie name (non-HttpOnly, JS-readable)",
+    )
+    csrf_header_name: str = Field(
+        default=DEFAULT_CSRF_HEADER_NAME,
+        description="Header name for CSRF token submission",
+    )
+
+    # Concurrent sessions
+    max_concurrent_sessions: int = Field(
+        default=5,
+        ge=0,
+        le=100,
+        description="Max concurrent sessions per user (0 = unlimited)",
+    )
+
+    # Refresh tokens
+    jwt_refresh_enabled: bool = Field(
+        default=False,
+        description="Enable refresh token rotation",
+    )
+    jwt_refresh_expiry_minutes: int = Field(
+        default=10080,
+        ge=1,
+        le=43200,
+        description="Refresh token lifetime in minutes (default 7 days)",
+    )
+    refresh_cookie_name: str = Field(
+        default=DEFAULT_REFRESH_COOKIE_NAME,
+        description="Refresh token cookie name",
+    )
+    refresh_cookie_path: str = Field(
+        default=DEFAULT_REFRESH_COOKIE_PATH,
+        description="Path scope for refresh token cookie (narrow)",
+    )
+
+    # Account lockout
+    lockout_threshold: int = Field(
+        default=10,
+        ge=1,
+        le=100,
+        description="Failed login attempts before account lockout",
+    )
+    lockout_window_minutes: int = Field(
+        default=15,
+        ge=1,
+        le=1440,
+        description="Sliding window for counting failed attempts",
+    )
+    lockout_duration_minutes: int = Field(
+        default=15,
+        ge=1,
+        le=1440,
+        description="Auto-unlock duration after lockout",
     )
 
     @model_validator(mode="after")

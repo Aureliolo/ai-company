@@ -95,6 +95,26 @@ API_SESSION_REVOKED: Final[str] = "api.session.revoked"
 API_SESSION_LISTED: Final[str] = "api.session.listed"
 API_SESSION_CLEANUP: Final[str] = "api.session.cleanup"
 API_SESSION_FORCE_LOGOUT: Final[str] = "api.session.force_logout"
+API_SESSION_LIMIT_ENFORCED: Final[str] = "api.session.limit_enforced"
+
+# CSRF
+API_CSRF_REJECTED: Final[str] = "api.csrf.rejected"
+API_CSRF_SKIPPED: Final[str] = "api.csrf.skipped"
+
+# Account lockout
+API_AUTH_ACCOUNT_LOCKED: Final[str] = "api.auth.account_locked"
+API_AUTH_LOCKOUT_CLEARED: Final[str] = "api.auth.lockout_cleared"
+API_AUTH_LOCKOUT_CLEANUP: Final[str] = "api.auth.lockout_cleanup"
+
+# Refresh tokens
+API_AUTH_REFRESH_ISSUED: Final[str] = "api.auth.refresh_issued"
+API_AUTH_REFRESH_CONSUMED: Final[str] = "api.auth.refresh_consumed"
+API_AUTH_REFRESH_REJECTED: Final[str] = "api.auth.refresh_rejected"
+API_AUTH_REFRESH_REPLAY: Final[str] = "api.auth.refresh_replay"
+API_AUTH_REFRESH_CLEANUP: Final[str] = "api.auth.refresh_cleanup"
+
+# Cookie auth
+API_AUTH_COOKIE_USED: Final[str] = "api.auth.cookie_used"
 
 # Network exposure
 API_TLS_CONFIGURED: Final[str] = "api.tls.configured"

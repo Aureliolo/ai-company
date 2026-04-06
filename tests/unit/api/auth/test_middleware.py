@@ -10,7 +10,9 @@ from synthorg.api.auth.config import AuthConfig
 from synthorg.api.auth.middleware import create_auth_middleware_class
 from synthorg.api.auth.models import ApiKey, User
 from synthorg.api.auth.service import AuthService
+from synthorg.api.config import ApiConfig
 from synthorg.api.guards import HumanRole
+from synthorg.config.schema import RootConfig
 from tests.unit.api.conftest import _TEST_JWT_SECRET as _SECRET
 from tests.unit.api.conftest import FakePersistenceBackend
 
@@ -698,3 +700,178 @@ class TestAuthMiddlewareSystemUser:
                 headers={"Authorization": f"Bearer {token}"},
             )
             assert resp.status_code == 401
+
+
+@pytest.mark.unit
+class TestAuthMiddlewareCookieAuth:
+    """Cookie-based JWT authentication tests."""
+
+    async def test_valid_jwt_in_cookie_authenticates(self) -> None:
+        """JWT delivered via session cookie is accepted."""
+        svc = _make_auth_service()
+        user = _make_user(svc)
+        persistence = FakePersistenceBackend()
+        await persistence.connect()
+        await persistence.users.save(user)
+
+        app = _build_app(auth_service=svc, persistence=persistence)
+        token, _, _ = svc.create_token(user)
+
+        with TestClient(app) as client:
+            resp = client.get(
+                "/protected",
+                headers={"Cookie": f"session={token}"},
+            )
+            assert resp.status_code == 200
+
+    async def test_invalid_jwt_in_cookie_falls_back_to_header(self) -> None:
+        """Bad cookie JWT falls back to Authorization header."""
+        svc = _make_auth_service()
+        user = _make_user(svc)
+        persistence = FakePersistenceBackend()
+        await persistence.connect()
+        await persistence.users.save(user)
+
+        app = _build_app(auth_service=svc, persistence=persistence)
+        token, _, _ = svc.create_token(user)
+
+        with TestClient(app) as client:
+            resp = client.get(
+                "/protected",
+                headers={
+                    "Cookie": "session=bad.jwt.token",
+                    "Authorization": f"Bearer {token}",
+                },
+            )
+            assert resp.status_code == 200
+
+    async def test_cookie_takes_precedence_over_header(self) -> None:
+        """When both cookie and header are present, cookie wins."""
+        svc = _make_auth_service()
+        user = _make_user(svc)
+        persistence = FakePersistenceBackend()
+        await persistence.connect()
+        await persistence.users.save(user)
+
+        app = _build_app(auth_service=svc, persistence=persistence)
+        token, _, _ = svc.create_token(user)
+
+        with TestClient(app) as client:
+            # Cookie has valid token, header has garbage
+            resp = client.get(
+                "/protected",
+                headers={
+                    "Cookie": f"session={token}",
+                    "Authorization": "Bearer garbage.jwt.token",
+                },
+            )
+            assert resp.status_code == 200
+
+    async def test_no_cookie_no_header_returns_401(self) -> None:
+        """Neither cookie nor header present returns 401."""
+        svc = _make_auth_service()
+        persistence = FakePersistenceBackend()
+        await persistence.connect()
+        app = _build_app(auth_service=svc, persistence=persistence)
+
+        with TestClient(app) as client:
+            resp = client.get("/protected")
+            assert resp.status_code == 401
+
+    async def test_cookie_revoked_session_returns_401(self) -> None:
+        """Revoked session via cookie is rejected."""
+        from unittest.mock import MagicMock
+
+        svc = _make_auth_service()
+        user = _make_user(svc)
+        persistence = FakePersistenceBackend()
+        await persistence.connect()
+        await persistence.users.save(user)
+
+        token, _, session_id = svc.create_token(user)
+
+        mock_store = MagicMock()
+        mock_store.is_revoked.return_value = True
+
+        auth_config = AuthConfig(jwt_secret=_SECRET)
+
+        @get("/protected")
+        async def protected_route() -> dict[str, str]:
+            return {"status": "ok"}
+
+        middleware_cls = create_auth_middleware_class(auth_config)
+
+        class _RevokedState:
+            def __init__(self) -> None:
+                self.auth_service = svc
+                self.persistence = persistence
+                self.has_session_store = True
+                self.session_store = mock_store
+                self.config = RootConfig(company_name="test")
+
+        app = Litestar(
+            route_handlers=[protected_route],
+            middleware=[middleware_cls],
+        )
+        app.state["app_state"] = _RevokedState()
+
+        with TestClient(app) as client:
+            resp = client.get(
+                "/protected",
+                headers={"Cookie": f"session={token}"},
+            )
+            assert resp.status_code == 401
+
+        mock_store.is_revoked.assert_called_once_with(session_id)
+
+    async def test_cookie_with_custom_name(self) -> None:
+        """Middleware reads from the configured cookie name."""
+        svc = _make_auth_service()
+        user = _make_user(svc)
+        persistence = FakePersistenceBackend()
+        await persistence.connect()
+        await persistence.users.save(user)
+
+        auth_config = AuthConfig(
+            jwt_secret=_SECRET,
+            cookie_name="custom_session",
+        )
+
+        @get("/protected")
+        async def protected_route() -> dict[str, str]:
+            return {"status": "ok"}
+
+        middleware_cls = create_auth_middleware_class(auth_config)
+
+        class _CustomState:
+            def __init__(self) -> None:
+                self.auth_service = svc
+                self.persistence = persistence
+                self.has_session_store = False
+                self.config = RootConfig(
+                    company_name="test",
+                    api=ApiConfig(auth=auth_config),
+                )
+
+        app = Litestar(
+            route_handlers=[protected_route],
+            middleware=[middleware_cls],
+        )
+        app.state["app_state"] = _CustomState()
+
+        token, _, _ = svc.create_token(user)
+
+        with TestClient(app) as client:
+            # Default cookie name should NOT work
+            resp = client.get(
+                "/protected",
+                headers={"Cookie": f"session={token}"},
+            )
+            assert resp.status_code == 401
+
+            # Custom cookie name should work
+            resp = client.get(
+                "/protected",
+                headers={"Cookie": f"custom_session={token}"},
+            )
+            assert resp.status_code == 200

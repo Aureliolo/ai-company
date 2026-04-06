@@ -308,6 +308,81 @@ class TestSessionStoreCleanup:
         assert store.is_revoked("expired") is False
 
 
+class TestSessionStoreEnforceLimit:
+    async def test_enforce_limit_revokes_oldest(
+        self,
+        store: SessionStore,
+    ) -> None:
+        """When user exceeds the limit, oldest sessions are revoked."""
+        for i in range(5):
+            await store.create(
+                _make_session(
+                    session_id=f"s{i}",
+                    created_at=_NOW + timedelta(minutes=i),
+                ),
+            )
+
+        with _patch_now():
+            revoked = await store.enforce_session_limit("user-1", 3)
+        assert revoked == 2
+        # Oldest two (s0, s1) should be revoked
+        assert store.is_revoked("s0") is True
+        assert store.is_revoked("s1") is True
+        # Newest three (s2, s3, s4) should be active
+        assert store.is_revoked("s2") is False
+        assert store.is_revoked("s3") is False
+        assert store.is_revoked("s4") is False
+
+    async def test_enforce_limit_zero_means_unlimited(
+        self,
+        store: SessionStore,
+    ) -> None:
+        """max_sessions=0 means unlimited -- no revocations."""
+        for i in range(10):
+            await store.create(
+                _make_session(session_id=f"s{i}"),
+            )
+
+        with _patch_now():
+            revoked = await store.enforce_session_limit("user-1", 0)
+        assert revoked == 0
+
+    async def test_enforce_limit_under_limit_no_revoke(
+        self,
+        store: SessionStore,
+    ) -> None:
+        """No revocations when session count is at or below the limit."""
+        await store.create(_make_session(session_id="s0"))
+        await store.create(_make_session(session_id="s1"))
+
+        with _patch_now():
+            revoked = await store.enforce_session_limit("user-1", 5)
+        assert revoked == 0
+
+    async def test_enforce_limit_only_affects_target_user(
+        self,
+        store: SessionStore,
+    ) -> None:
+        """Sessions from other users are not revoked."""
+        for i in range(3):
+            await store.create(
+                _make_session(session_id=f"u1-s{i}"),
+            )
+        await store.create(
+            _make_session(
+                session_id="u2-s0",
+                user_id="user-2",
+                username="bob",
+                role=HumanRole.MANAGER,
+            ),
+        )
+
+        with _patch_now():
+            revoked = await store.enforce_session_limit("user-1", 2)
+        assert revoked == 1
+        assert store.is_revoked("u2-s0") is False
+
+
 class TestSessionStoreLoadRevoked:
     async def test_load_revoked_restores_state(
         self,
