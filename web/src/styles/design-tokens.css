@@ -74,9 +74,9 @@
   --so-radius-xl: 12px;
 
   /* -- Shadows -- */
-  --so-shadow-card: 0 2px 8px rgba(0, 0, 0, 0.25);
-  --so-shadow-card-hover: 0 4px 24px rgba(56, 189, 248, 0.08);
-  --so-shadow-health-glow: 0 0 8px rgba(56, 189, 248, 0.3);
+  --so-shadow-card: 0 2px 8px color-mix(in srgb, var(--so-bg-base) 25%, transparent);
+  --so-shadow-card-hover: 0 4px 24px color-mix(in srgb, var(--so-accent) 8%, transparent);
+  --so-shadow-health-glow: 0 0 8px color-mix(in srgb, var(--so-accent) 30%, transparent);
 
   /* -- Transitions -- */
   --so-transition-dim: 180ms;
@@ -95,11 +95,11 @@
   --so-minimap-node-agent: var(--so-accent);
 
   /* -- Opacity overlays -- */
-  --so-overlay-hover: rgba(255, 255, 255, 0.04);
-  --so-overlay-active: rgba(56, 189, 248, 0.06);
-  --so-overlay-flash: rgba(56, 189, 248, 0.10);
-  --so-overlay-selection: rgba(56, 189, 248, 0.15);
-  --so-overlay-selection-focused: rgba(56, 189, 248, 0.25);
+  --so-overlay-hover: color-mix(in srgb, white 4%, transparent);
+  --so-overlay-active: color-mix(in srgb, var(--so-accent) 6%, transparent);
+  --so-overlay-flash: color-mix(in srgb, var(--so-accent) 10%, transparent);
+  --so-overlay-selection: color-mix(in srgb, var(--so-accent) 15%, transparent);
+  --so-overlay-selection-focused: color-mix(in srgb, var(--so-accent) 25%, transparent);
 }
 
 /*
