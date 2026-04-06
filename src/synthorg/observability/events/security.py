@@ -66,3 +66,12 @@ SECURITY_UNCERTAINTY_CHECK_COMPLETE: Final[str] = "security.uncertainty_check.co
 SECURITY_UNCERTAINTY_CHECK_ERROR: Final[str] = "security.uncertainty_check.error"
 SECURITY_UNCERTAINTY_CHECK_SKIPPED: Final[str] = "security.uncertainty_check.skipped"
 SECURITY_UNCERTAINTY_LOW_CONFIDENCE: Final[str] = "security.uncertainty.low_confidence"
+
+# Denial tracker events.
+SECURITY_DENIAL_RECORDED: Final[str] = "security.denial.recorded"
+SECURITY_DENIAL_ESCALATED: Final[str] = "security.denial.escalated"
+SECURITY_DENIAL_RESET: Final[str] = "security.denial.reset"
+
+# Permission tier events.
+SECURITY_TIER_SAFE_TOOL: Final[str] = "security.tier.safe_tool"
+SECURITY_TIER_CLASSIFIED: Final[str] = "security.tier.classified"

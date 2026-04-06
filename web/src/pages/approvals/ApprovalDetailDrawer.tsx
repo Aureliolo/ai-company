@@ -65,7 +65,7 @@ export function ApprovalDetailDrawer({
   const isPending = approval?.status === 'pending'
   const riskColor = approval ? getRiskLevelColor(approval.risk_level) : 'accent'
   const confidenceRaw = approval?.metadata.confidence_score
-  const confidenceScore = confidenceRaw ? parseFloat(confidenceRaw) : NaN
+  const confidenceScore = confidenceRaw != null ? parseFloat(confidenceRaw) : NaN
   const confidenceLabel = !Number.isNaN(confidenceScore) ? `${(confidenceScore * 100).toFixed(0)}%` : null
   const panelRef = useRef<HTMLElement>(null)
   const openerRef = useRef<Element | null>(null)
@@ -256,6 +256,14 @@ export function ApprovalDetailDrawer({
               <h2 className="text-lg font-semibold text-foreground">{approval.title}</h2>
 
               {/* Safety warning banner */}
+              {approval.metadata.safety_classification === 'blocked' && (
+                <div className="flex items-center gap-2 rounded-lg border border-danger/30 bg-danger/10 px-3 py-2">
+                  <AlertTriangle className="size-4 text-danger shrink-0" aria-hidden="true" />
+                  <span className="text-sm text-danger">
+                    This action was classified as blocked by the safety classifier.
+                  </span>
+                </div>
+              )}
               {approval.metadata.safety_classification === 'suspicious' && (
                 <div className="flex items-center gap-2 rounded-lg border border-warning/30 bg-warning/10 px-3 py-2">
                   <AlertTriangle className="size-4 text-warning shrink-0" aria-hidden="true" />
@@ -265,7 +273,7 @@ export function ApprovalDetailDrawer({
                 </div>
               )}
 
-              {/* Description (with stripped view toggle when available) */}
+              {/* Description (stripped version shown when PII was redacted) */}
               {approval.description && (
                 <DescriptionSection approval={approval} />
               )}
@@ -423,13 +431,18 @@ export function ApprovalDetailDrawer({
 }
 
 function DescriptionSection({ approval }: { approval: ApprovalResponse }) {
-  // Use stripped description when available (PII/secrets removed).
+  const isStripped = !!approval.metadata.stripped_description
   const displayText = approval.metadata.stripped_description || approval.description
 
   return (
     <div>
       <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
         Description
+        {isStripped && (
+          <span className="ml-1.5 text-[10px] font-normal normal-case text-warning">
+            (PII redacted)
+          </span>
+        )}
       </span>
       <p className="mt-1 text-sm text-secondary">{displayText}</p>
     </div>

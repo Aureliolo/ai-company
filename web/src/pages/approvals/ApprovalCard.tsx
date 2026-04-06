@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { AlertTriangle, Check, Clock, X } from 'lucide-react'
+import { AlertTriangle, Check, Clock, ShieldOff, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { useFlash } from '@/hooks/useFlash'
@@ -28,10 +28,13 @@ export function ApprovalCard({
   const riskColor = getRiskLevelColor(approval.risk_level)
   const urgencyColor = getUrgencyColor(approval.urgency_level)
   const isPending = approval.status === 'pending'
-  const isSuspicious = approval.metadata.safety_classification === 'suspicious'
+  const safetyClassification = approval.metadata.safety_classification
+  const isSuspicious = safetyClassification === 'suspicious'
+  const isBlocked = safetyClassification === 'blocked'
   const confidenceRaw = approval.metadata.confidence_score
-  const confidenceScore = confidenceRaw ? parseFloat(confidenceRaw) : NaN
-  const showLowConfidence = !Number.isNaN(confidenceScore) && confidenceScore < 0.5
+  const confidenceScore = confidenceRaw != null ? parseFloat(confidenceRaw) : NaN
+  const showLowConfidence = approval.metadata.low_confidence === 'true'
+    || (!Number.isNaN(confidenceScore) && confidenceScore < 0.5)
 
   // Flash on status change
   const { flashStyle, triggerFlash } = useFlash()
@@ -138,6 +141,18 @@ export function ApprovalCard({
         )}
 
         {/* Safety classification badge */}
+        {isBlocked && (
+          <span
+            className={cn(
+              'inline-flex items-center gap-1 rounded border px-1.5 py-0.5 text-[11px] font-medium shrink-0',
+              'border-danger/30 bg-danger/10 text-danger',
+            )}
+            aria-label="Blocked by safety classifier"
+          >
+            <ShieldOff className="size-3" aria-hidden="true" />
+            Blocked
+          </span>
+        )}
         {isSuspicious && (
           <span
             className={cn(

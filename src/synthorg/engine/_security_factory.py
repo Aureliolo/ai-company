@@ -104,6 +104,11 @@ def make_security_interceptor(  # noqa: PLR0913
     # is available.
     has_providers = provider_registry is not None and provider_configs is not None
 
+    # Warn when LLM-based features are configured but providers are
+    # not available -- the features will be silently disabled.
+    if not has_providers:
+        _warn_disabled_features(cfg)
+
     llm_evaluator = None
     if has_providers and cfg.llm_fallback.enabled:
         from synthorg.security.llm_evaluator import (  # noqa: PLC0415
@@ -117,7 +122,11 @@ def make_security_interceptor(  # noqa: PLR0913
         )
 
     safety_classifier = None
+    denial_tracker = None
     if has_providers and cfg.safety_classifier.enabled:
+        from synthorg.security.denial_tracker import (  # noqa: PLC0415
+            DenialTracker,
+        )
         from synthorg.security.safety_classifier import (  # noqa: PLC0415
             SafetyClassifier,
         )
@@ -126,6 +135,10 @@ def make_security_interceptor(  # noqa: PLR0913
             provider_registry=provider_registry,  # type: ignore[arg-type]
             provider_configs=provider_configs,  # type: ignore[arg-type]
             config=cfg.safety_classifier,
+        )
+        denial_tracker = DenialTracker(
+            max_consecutive=cfg.safety_classifier.max_consecutive_denials,
+            max_total=cfg.safety_classifier.max_total_denials,
         )
 
     uncertainty_checker = None
@@ -136,7 +149,6 @@ def make_security_interceptor(  # noqa: PLR0913
 
         uncertainty_checker = UncertaintyChecker(
             provider_registry=provider_registry,  # type: ignore[arg-type]
-            provider_configs=provider_configs,  # type: ignore[arg-type]
             model_resolver=model_resolver,
             config=cfg.uncertainty_check,
         )
@@ -152,6 +164,7 @@ def make_security_interceptor(  # noqa: PLR0913
         llm_evaluator=llm_evaluator,
         safety_classifier=safety_classifier,
         uncertainty_checker=uncertainty_checker,
+        denial_tracker=denial_tracker,
     )
 
 
@@ -207,6 +220,27 @@ def _build_rule_engine(cfg: SecurityConfig) -> RuleEngine:
         risk_classifier=RiskClassifier(),
         config=re_cfg,
     )
+
+
+def _warn_disabled_features(cfg: SecurityConfig) -> None:
+    """Log warnings for enabled LLM features with no providers."""
+    features = []
+    if cfg.llm_fallback.enabled:
+        features.append("llm_fallback")
+    if cfg.safety_classifier.enabled:
+        features.append("safety_classifier")
+    if cfg.uncertainty_check.enabled:
+        features.append("uncertainty_check")
+    if features:
+        logger.warning(
+            SECURITY_CONFIG_LOADED,
+            note=(
+                "LLM-based security features are enabled but no "
+                "provider infrastructure was supplied -- these "
+                "features will be inactive"
+            ),
+            disabled_features=", ".join(features),
+        )
 
 
 def registry_with_approval_tool(

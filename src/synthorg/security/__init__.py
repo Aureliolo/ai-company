@@ -38,6 +38,7 @@ from synthorg.security.config import (
     UncertaintyCheckConfig,
     VerdictReasonVisibility,
 )
+from synthorg.security.denial_tracker import DenialAction, DenialTracker
 from synthorg.security.models import (
     AuditEntry,
     EvaluationConfidence,
@@ -70,6 +71,7 @@ from synthorg.security.rules.engine import RuleEngine
 from synthorg.security.rules.protocol import SecurityRule
 from synthorg.security.safety_classifier import (
     InformationStripper,
+    PermissionTier,
     SafetyClassification,
     SafetyClassifier,
     SafetyClassifierResult,
@@ -89,6 +91,8 @@ __all__ = [
     "AutonomyTieredPolicy",
     "CustomPolicyRule",
     "DefaultRiskScorer",
+    "DenialAction",
+    "DenialTracker",
     "EvaluationConfidence",
     "InformationStripper",
     "LlmFallbackConfig",
@@ -98,6 +102,7 @@ __all__ = [
     "OutputScanResponsePolicy",
     "OutputScanResult",
     "OutputScanner",
+    "PermissionTier",
     "RedactPolicy",
     "RiskScore",
     "RiskScorer",

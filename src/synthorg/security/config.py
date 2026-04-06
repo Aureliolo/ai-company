@@ -226,6 +226,14 @@ class SafetyClassifierConfig(BaseModel):
         auto_reject_blocked: Automatically reject actions classified
             as BLOCKED (returns DENY verdict without creating an
             approval item).
+        max_consecutive_denials: Maximum consecutive denials before
+            escalation to human review.  Used by ``DenialTracker``.
+        max_total_denials: Maximum total denials across the agent's
+            lifetime before escalation.  Used by ``DenialTracker``.
+        safe_tool_categories: Action types that bypass the safety
+            classifier entirely (permission tier: SAFE_TOOL).
+            Matched against the ``action_type`` field of the
+            security context.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
@@ -235,6 +243,9 @@ class SafetyClassifierConfig(BaseModel):
     timeout_seconds: float = Field(default=10.0, gt=0.0)
     max_input_tokens: int = Field(default=2000, gt=0)
     auto_reject_blocked: bool = True
+    max_consecutive_denials: int = Field(default=3, ge=1)
+    max_total_denials: int = Field(default=20, ge=1)
+    safe_tool_categories: tuple[str, ...] = ("code:read", "docs:write")
 
 
 class UncertaintyCheckConfig(BaseModel):

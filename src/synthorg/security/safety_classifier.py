@@ -21,6 +21,7 @@ Design invariants:
 import asyncio
 import html
 import re
+import secrets
 import time
 from enum import StrEnum
 from typing import TYPE_CHECKING, Final
@@ -35,6 +36,8 @@ from synthorg.observability.events.security import (
     SECURITY_SAFETY_CLASSIFY_COMPLETE,
     SECURITY_SAFETY_CLASSIFY_ERROR,
     SECURITY_SAFETY_CLASSIFY_START,
+    SECURITY_TIER_CLASSIFIED,
+    SECURITY_TIER_SAFE_TOOL,
 )
 from synthorg.providers.enums import MessageRole
 from synthorg.providers.family import get_family, providers_excluding_family
@@ -87,13 +90,17 @@ _EMAIL_PLACEHOLDER: Final[str] = "[EMAIL]"
 _MAX_REASON_LENGTH: Final[int] = 300
 
 # Regex to strip control and formatting characters from LLM-returned
-# reason.  Covers ASCII control (C0/DEL), Unicode bidi overrides
-# (U+200E-200F, U+202A-202E, U+2066-2069), and zero-width chars.
+# reason.  Best-effort coverage: ASCII control (C0/DEL), Unicode bidi
+# overrides, zero-width chars, line/paragraph separators, and known
+# invisible characters used in prompt injection payloads.
 _CONTROL_CHAR_RE: Final[re.Pattern[str]] = re.compile(
     r"[\x00-\x1f\x7f"
     r"\u200b-\u200f"  # zero-width and bidi marks
+    r"\u2028-\u2029"  # line / paragraph separators
     r"\u202a-\u202e"  # bidi embedding/override
     r"\u2066-\u2069"  # bidi isolate
+    r"\u2800"  # braille blank (invisible)
+    r"\u3164"  # hangul filler (invisible)
     r"\ufeff"  # BOM / zero-width no-break space
     r"]",
 )
@@ -116,6 +123,27 @@ class SafetyClassification(StrEnum):
     SAFE = "safe"
     SUSPICIOUS = "suspicious"
     BLOCKED = "blocked"
+
+
+class PermissionTier(StrEnum):
+    """Permission tier for safety classifier routing.
+
+    Determines how much scrutiny an action receives before
+    approval.
+
+    Members:
+        SAFE_TOOL: Action type is in the safe-tool allowlist --
+            bypass the classifier entirely.
+        IN_PROJECT: In-project operation -- lighter review
+            (reserved for future use; currently falls through
+            to CLASSIFIER_GATED).
+        CLASSIFIER_GATED: Full classifier scrutiny (external
+            operations, shell commands, network calls).
+    """
+
+    SAFE_TOOL = "safe_tool"
+    IN_PROJECT = "in_project"
+    CLASSIFIER_GATED = "classifier_gated"
 
 
 class SafetyClassifierResult(BaseModel):
@@ -212,6 +240,10 @@ _SAFETY_VERDICT_TOOL = ToolDefinition(
                     "blocked (unsafe, should be auto-rejected)."
                 ),
             },
+            # "concerns" is optional in the schema so the LLM can
+            # reason about safety concerns, but the value is not
+            # consumed by _parse_tool_call -- it exists only to
+            # improve classification quality via chain-of-thought.
             "concerns": {
                 "type": "string",
                 "description": "List of specific safety concerns found.",
@@ -274,6 +306,29 @@ class SafetyClassifier:
         self._configs = provider_configs
         self._config = config
         self._stripper = InformationStripper()
+
+    def classify_tier(self, action_type: str) -> PermissionTier:
+        """Determine the permission tier for an action type.
+
+        Args:
+            action_type: The action type (``category:action``).
+
+        Returns:
+            The permission tier governing classifier behavior.
+        """
+        if action_type in self._config.safe_tool_categories:
+            logger.debug(
+                SECURITY_TIER_SAFE_TOOL,
+                action_type=action_type,
+            )
+            return PermissionTier.SAFE_TOOL
+
+        logger.debug(
+            SECURITY_TIER_CLASSIFIED,
+            action_type=action_type,
+            tier=PermissionTier.CLASSIFIER_GATED.value,
+        )
+        return PermissionTier.CLASSIFIER_GATED
 
     async def classify(
         self,
@@ -343,6 +398,10 @@ class SafetyClassifier:
         provider_name, driver = self._select_provider()
         if provider_name is None or driver is None:
             duration_ms = (time.monotonic() - start) * 1000
+            logger.warning(
+                SECURITY_SAFETY_CLASSIFY_ERROR,
+                note="No provider available for safety classification",
+            )
             return SafetyClassifierResult(
                 classification=SafetyClassification.SUSPICIOUS,
                 stripped_description=stripped_description,
@@ -389,16 +448,18 @@ class SafetyClassifier:
         if not available:
             return None, None
 
-        # Try cross-family selection.
+        # Try cross-family selection with randomization to avoid
+        # always hitting the same external provider.
+        all_cross: list[str] = []
         for name in available:
             family = get_family(name, self._configs)
-            cross = providers_excluding_family(family, self._configs)
-            cross = tuple(p for p in cross if p in available)
-            if cross:
-                selected = cross[0]
-                return selected, self._registry.get(selected)
+            candidates = providers_excluding_family(family, self._configs)
+            all_cross.extend(p for p in candidates if p in available)
+        if all_cross:
+            selected = secrets.choice(all_cross)
+            return selected, self._registry.get(selected)
 
-        # Fallback: use first available.
+        # Fallback: use first available (same-family).
         name = available[0]
         return name, self._registry.get(name)
 
@@ -412,6 +473,14 @@ class SafetyClassifier:
             first = config.models[0]
             return first.alias or first.id
 
+        logger.warning(
+            SECURITY_SAFETY_CLASSIFY_ERROR,
+            note=(
+                f"No model configured for provider {provider_name!r}, "
+                "using provider name as model hint"
+            ),
+            provider_name=provider_name,
+        )
         return provider_name
 
     def _build_messages(
@@ -431,6 +500,13 @@ class SafetyClassifier:
         safe_type = html.escape(self._stripper.strip(action_type))
         safe_risk = html.escape(risk_level.value)
         safe_desc = html.escape(stripped_description)
+
+        # Truncate description before XML assembly so closing
+        # tags are never orphaned by a mid-structure cut.
+        max_desc_chars = self._config.max_input_tokens * 4
+        if len(safe_desc) > max_desc_chars:
+            safe_desc = safe_desc[:max_desc_chars] + "... [truncated]"
+
         user_content = (
             "<action>\n"
             f"  <tool>{safe_tool}</tool>\n"
@@ -439,10 +515,6 @@ class SafetyClassifier:
             f"  <description>{safe_desc}</description>\n"
             "</action>"
         )
-
-        max_chars = self._config.max_input_tokens * 4
-        if len(user_content) > max_chars:
-            user_content = user_content[:max_chars] + "\n... [truncated]"
 
         return [
             ChatMessage(role=MessageRole.SYSTEM, content=_SYSTEM_PROMPT),
@@ -499,9 +571,18 @@ class SafetyClassifier:
                 classification_duration_ms=duration_ms,
             )
 
-        reason_raw = str(raw_reason).strip() if raw_reason else "Safety classification"
-        reason_clean = _CONTROL_CHAR_RE.sub(" ", reason_raw)
-        reason = reason_clean[:_MAX_REASON_LENGTH]
+        # Strip control chars first, then whitespace -- a reason
+        # composed entirely of control chars becomes empty after
+        # substitution, which would violate NotBlankStr.
+        reason_clean = _CONTROL_CHAR_RE.sub(
+            " ",
+            str(raw_reason) if raw_reason else "",
+        ).strip()
+        reason = (
+            reason_clean[:_MAX_REASON_LENGTH]
+            if reason_clean
+            else "Safety classification"
+        )
 
         classification = SafetyClassification(raw_classification)
         logger.info(

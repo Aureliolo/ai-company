@@ -19,6 +19,7 @@ import math
 import re
 import time
 from collections import Counter
+from itertools import combinations
 from typing import TYPE_CHECKING, Final
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -36,9 +37,6 @@ from synthorg.providers.models import ChatMessage, CompletionConfig
 from synthorg.security.config import UncertaintyCheckConfig  # noqa: TC001
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
-
-    from synthorg.config.schema import ProviderConfig
     from synthorg.providers.base import BaseCompletionProvider
     from synthorg.providers.registry import ProviderRegistry
     from synthorg.providers.routing.models import ResolvedModel
@@ -110,15 +108,10 @@ def _compute_keyword_overlap(responses: list[str]) -> float:
 
     total = 0.0
     pairs = 0
-    for i in range(len(word_sets)):
-        for j in range(i + 1, len(word_sets)):
-            a, b = word_sets[i], word_sets[j]
-            union = a | b
-            if not union:
-                total += 1.0
-            else:
-                total += len(a & b) / len(union)
-            pairs += 1
+    for a, b in combinations(word_sets, 2):
+        union = a | b
+        total += len(a & b) / len(union) if union else 1.0
+        pairs += 1
 
     return total / pairs if pairs > 0 else 1.0
 
@@ -161,25 +154,20 @@ def _compute_tfidf_cosine_similarity(responses: list[str]) -> float:
             df[word] += 1
     idf = {word: math.log(1.0 + n_docs / (1.0 + df[word])) for word in vocab}
 
-    # Build TF-IDF vectors.  When all documents contain the same
-    # terms, IDF is zero for every term (log(N/N) = 0) and all
-    # vectors are empty -- this means the documents are identical
-    # (or near-identical), so return 1.0.
+    # Build TF-IDF vectors.  With the smoothed IDF above, even
+    # terms shared by all documents retain a positive weight, so
+    # identical documents do not normally produce empty vectors.
     tfidf_vecs: list[dict[str, float]] = []
     for tf in tf_docs:
-        vec = {word: tf[word] * idf[word] for word in tf if idf[word] > 0}
+        vec = {word: tf[word] * idf[word] for word in tf}
         tfidf_vecs.append(vec)
-
-    if all(len(v) == 0 for v in tfidf_vecs):
-        return 1.0
 
     # Compute pairwise cosine similarity.
     total = 0.0
     pairs = 0
-    for i in range(len(tfidf_vecs)):
-        for j in range(i + 1, len(tfidf_vecs)):
-            total += _cosine_sim(tfidf_vecs[i], tfidf_vecs[j])
-            pairs += 1
+    for a, b in combinations(tfidf_vecs, 2):
+        total += _cosine_sim(a, b)
+        pairs += 1
 
     return total / pairs if pairs > 0 else 1.0
 
@@ -210,7 +198,6 @@ class UncertaintyChecker:
 
     Args:
         provider_registry: Registry of provider drivers.
-        provider_configs: Provider config dict for model selection.
         model_resolver: Resolver for multi-provider model lookup.
         config: Uncertainty check configuration.
     """
@@ -219,12 +206,10 @@ class UncertaintyChecker:
         self,
         *,
         provider_registry: ProviderRegistry,
-        provider_configs: Mapping[str, ProviderConfig],
         model_resolver: ModelResolver,
         config: UncertaintyCheckConfig,
     ) -> None:
         self._registry = provider_registry
-        self._configs = provider_configs
         self._resolver = model_resolver
         self._config = config
 

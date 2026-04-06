@@ -57,19 +57,11 @@ def _make_checker(
     registry = MagicMock()
     registry.get = MagicMock(side_effect=lambda name: drivers[name])
 
-    provider_configs: dict[str, MagicMock] = {}
-    for name in drivers:
-        pc = MagicMock()
-        pc.family = f"family-{name}"
-        pc.models = (MagicMock(id=f"model-{name}", alias="small"),)
-        provider_configs[name] = pc
-
     resolver = MagicMock()
     resolver.resolve_all = MagicMock(return_value=tuple(resolved_models))
 
     return UncertaintyChecker(
         provider_registry=registry,
-        provider_configs=provider_configs,
         model_resolver=resolver,
         config=config
         or UncertaintyCheckConfig(
@@ -242,16 +234,8 @@ class TestCheckerErrors:
             ),
         )
 
-        provider_configs: dict[str, MagicMock] = {}
-        for name in ("provider-a", "provider-b"):
-            pc = MagicMock()
-            pc.family = f"family-{name}"
-            pc.models = (MagicMock(id=f"model-{name}", alias="small"),)
-            provider_configs[name] = pc
-
         checker = UncertaintyChecker(
             provider_registry=registry,
-            provider_configs=provider_configs,
             model_resolver=resolver,
             config=UncertaintyCheckConfig(
                 enabled=True,
