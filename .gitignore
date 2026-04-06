@@ -88,5 +88,8 @@ cli/synthorg.exe
 cli/dist/
 cli/cover.out
 
+# OpenCode (plugin deps -- config and commands are committed via git add -f)
+.opencode/plugins/node_modules/
+
 # uv
 .python-version
