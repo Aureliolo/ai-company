@@ -49,12 +49,12 @@ const meta = {
       members: data.members ?? [],
     }),
     onUpdateTeam: async (_d, _t, data) => ({
-      name: data.name ?? _t.name,
-      lead: data.lead ?? _t.lead,
-      members: data.members ?? _t.members,
+      name: data.name ?? _t,
+      lead: data.lead ?? 'Unassigned',
+      members: data.members ?? [],
     }),
-    onDeleteTeam: async () => true,
-    onReorderTeams: async () => true,
+    onDeleteTeam: async () => {},
+    onReorderTeams: async () => {},
     saving: false,
   },
 } satisfies Meta<typeof DepartmentEditDrawer>
