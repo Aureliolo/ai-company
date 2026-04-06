@@ -39,7 +39,7 @@ import { ROUTES } from '@/router/routes'
 
 const log = createLogger('OrgChart')
 
-const VALID_NODE_TYPES = new Set(['agent', 'ceo', 'department', 'owner'])
+const VALID_NODE_TYPES = new Set(['agent', 'ceo', 'department'])
 
 function getNodeLabel(node: Node): string {
   switch (node.type) {
@@ -220,7 +220,7 @@ function OrgChartInner() {
     })
   }, [])
 
-  const { nodes, edges, loading, error, commLoading, commError, commTruncated, wsConnected, wsSetupError } =
+  const { nodes, edges, allNodes, loading, error, commLoading, commError, commTruncated, wsConnected, wsSetupError } =
     useOrgChartData(viewMode, collapsedDepts)
 
   const particleFlowMode = useOrgChartPrefs((s) => s.particleFlowMode)
@@ -530,18 +530,6 @@ function OrgChartInner() {
   // empty for one frame even with fresh data in hand.
   const sourceNodes = transition.displayNodes.length > 0 ? transition.displayNodes : nodes
 
-  // O(1) lookup by node id for the highlight / search memos below.
-  // Avoids O(N) `.find()` scans on every keystroke + hover, which
-  // added noticeable cost to the initial mount when React Flow,
-  // Dagre, framer-motion, and the MiniMap were all doing their
-  // own per-node work in the same frame (the ~58ms setTimeout
-  // violation users saw in devtools).
-  const sourceNodeById = useMemo(() => {
-    const map = new Map<string, typeof sourceNodes[number]>()
-    for (const n of sourceNodes) map.set(n.id, n)
-    return map
-  }, [sourceNodes])
-
   // Search query normalisation: trimmed and lowercased once here so
   // the predicate in the match set loop is a cheap string includes.
   const normalisedQuery = searchOpen ? searchQuery.trim().toLowerCase() : ''
@@ -550,10 +538,16 @@ function OrgChartInner() {
   // the search overlay is open AND the query is non-empty -- an
   // empty query matches nothing (rather than everything) so the
   // user sees zero matches until they start typing.
+  //
+  // The search indexes `allNodes` (the full pre-collapse tree) so
+  // agents inside collapsed departments are still discoverable.
+  // Matched nodes that are not currently visible in `sourceNodes`
+  // still contribute to the match count so the operator knows
+  // results exist even if the department is collapsed.
   const searchMatchIds = useMemo<Set<string> | null>(() => {
     if (!normalisedQuery) return null
     const matches = new Set<string>()
-    for (const n of sourceNodes) {
+    for (const n of allNodes) {
       const label = getNodeLabel(n).toLowerCase()
       if (label.includes(normalisedQuery)) {
         matches.add(n.id)
@@ -568,7 +562,7 @@ function OrgChartInner() {
       }
     }
     return matches
-  }, [normalisedQuery, sourceNodes])
+  }, [normalisedQuery, allNodes])
 
   // Dim-other-nodes highlighting fires ONLY when the search
   // overlay is open and has matches.  Earlier iterations also
@@ -577,15 +571,24 @@ function OrgChartInner() {
   // move between cards retriggered opacity transitions.  Search
   // is an explicit deliberate action so the dim makes sense there;
   // hover is not and should stay stable.
+  // O(1) lookup for all (pre-collapse) nodes -- used by the
+  // highlight memo to resolve parent departments for matched
+  // agents that may still be in collapsed groups.
+  const allNodeById = useMemo(() => {
+    const map = new Map<string, (typeof allNodes)[number]>()
+    for (const n of allNodes) map.set(n.id, n)
+    return map
+  }, [allNodes])
+
   const highlightedNodeIds = useMemo<Set<string> | null>(() => {
     if (!searchMatchIds) return null
     const expanded = new Set<string>(searchMatchIds)
     for (const id of searchMatchIds) {
-      const node = sourceNodeById.get(id)
+      const node = allNodeById.get(id)
       if (node?.parentId) expanded.add(node.parentId)
     }
     return expanded
-  }, [sourceNodeById, searchMatchIds])
+  }, [allNodeById, searchMatchIds])
 
   const renderedNodes = useMemo(() => {
     return sourceNodes.map((n) => {

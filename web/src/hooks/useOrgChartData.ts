@@ -24,6 +24,8 @@ const ORG_CHANNELS = ['agents'] as const satisfies readonly WsChannel[]
 export interface UseOrgChartDataReturn {
   nodes: Node[]
   edges: Edge[]
+  /** All tree nodes before collapse filtering -- used for search indexing. */
+  allNodes: Node[]
   loading: boolean
   error: string | null
   commLoading: boolean
@@ -138,17 +140,23 @@ export function useOrgChartData(
   )
 
   // Derive React Flow nodes/edges from store data
-  const { nodes, edges } = useMemo(() => {
-    if (!config) return { nodes: [], edges: [] }
+  const { nodes, edges, allNodes } = useMemo(() => {
+    if (!config) return { nodes: [], edges: [], allNodes: [] }
 
     const tree = buildOrgTree(config, runtimeStatuses, departmentHealths, owners)
+
+    // Snapshot the full tree BEFORE collapse filtering so consumers
+    // (e.g. search) can index every node regardless of which
+    // departments are collapsed.
+    const allNodes = [...tree.nodes]
 
     // Filter out child agents of collapsed departments BEFORE layout
     // so the dagre pass computes correct (smaller) dept box sizes.
     // The dept group nodes themselves stay, with an `isCollapsed`
     // flag injected into their data so the UI can render the correct
-    // chevron state.
-    if (collapsedDeptIds && collapsedDeptIds.size > 0) {
+    // chevron state.  Only applies in hierarchy mode -- the force
+    // view strips departments entirely, so collapsing is irrelevant.
+    if (viewMode === 'hierarchy' && collapsedDeptIds && collapsedDeptIds.size > 0) {
       tree.nodes = tree.nodes
         .filter((n) => !(n.parentId && collapsedDeptIds.has(n.parentId)))
         .map((n) =>
@@ -177,7 +185,7 @@ export function useOrgChartData(
       )
       const layoutNodes = computeForceLayout(freeNodes, filteredLinks)
       const commEdges = buildCommunicationEdges(filteredLinks)
-      return { nodes: layoutNodes, edges: commEdges }
+      return { nodes: layoutNodes, edges: commEdges, allNodes }
     }
 
     // Hierarchy view: dagre layout with department groups
@@ -186,7 +194,7 @@ export function useOrgChartData(
       showStatusDots,
       showAddAgentButton,
     })
-    return { nodes: layoutNodes, edges: tree.edges }
+    return { nodes: layoutNodes, edges: tree.edges, allNodes }
   }, [
     config,
     runtimeStatuses,
@@ -203,6 +211,7 @@ export function useOrgChartData(
   return {
     nodes,
     edges,
+    allNodes,
     loading,
     error,
     commLoading,

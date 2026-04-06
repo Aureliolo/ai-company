@@ -6,7 +6,7 @@ import { EmptyState } from '@/components/ui/empty-state'
 import { InputField } from '@/components/ui/input-field'
 import { SelectField } from '@/components/ui/select-field'
 import { Button } from '@/components/ui/button'
-import { ORG_EDIT_COMING_SOON_TOOLTIP } from './coming-soon'
+import { ORG_EDIT_COMING_SOON_DESCRIPTION, ORG_EDIT_COMING_SOON_TOOLTIP } from './coming-soon'
 
 export interface GeneralTabProps {
   config: CompanyConfig | null
@@ -140,12 +140,12 @@ export function GeneralTab({ config, onUpdate, saving }: GeneralTabProps) {
 
         <SelectField
           label="Communication Pattern"
-          options={COMMUNICATION_PATTERN_OPTIONS}
-          value={
+          options={
             VALID_COMM_PATTERNS.has(form.communication_pattern)
-              ? form.communication_pattern
-              : 'hybrid'
+              ? COMMUNICATION_PATTERN_OPTIONS
+              : [...COMMUNICATION_PATTERN_OPTIONS, { value: form.communication_pattern, label: `${form.communication_pattern} (unknown)` }]
           }
+          value={form.communication_pattern}
           onChange={(value) => {
             if (VALID_COMM_PATTERNS.has(value)) updateForm('communication_pattern', value)
           }}
@@ -169,6 +169,7 @@ export function GeneralTab({ config, onUpdate, saving }: GeneralTabProps) {
           {saving && <Loader2 className="mr-2 size-4 animate-spin" />}
           Save Settings
         </Button>
+        <p className="text-xs text-text-muted">{ORG_EDIT_COMING_SOON_DESCRIPTION}</p>
       </div>
     </SectionCard>
   )

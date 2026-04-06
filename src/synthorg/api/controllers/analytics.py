@@ -270,12 +270,29 @@ async def _resolve_agent_counts(
         Tuple of (active_count, idle_count).
     """
     if not app_state.has_agent_registry:
+        if not all_tasks:
+            logger.debug(
+                ANALYTICS_OVERVIEW_QUERIED,
+                note="no agent registry -- all agents reported as idle",
+                config_agent_count=config_agent_count,
+            )
+            return 0, config_agent_count
+        # Without the registry we cannot distinguish employed agents,
+        # but we can still count busy assignees from the task list.
+        active_ids: set[str] = set()
+        for task in all_tasks:
+            if task.status == TaskStatus.IN_PROGRESS and task.assigned_to:
+                active_ids.add(task.assigned_to)
+        active = len(active_ids)
+        idle = max(config_agent_count - active, 0)
         logger.debug(
             ANALYTICS_OVERVIEW_QUERIED,
-            note="no agent registry -- all agents reported as idle",
+            note="no agent registry -- derived active from tasks",
+            active=active,
+            idle=idle,
             config_agent_count=config_agent_count,
         )
-        return 0, config_agent_count
+        return active, idle
     try:
         employed = await app_state.agent_registry.list_active()
     except MemoryError, RecursionError:
