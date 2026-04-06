@@ -449,7 +449,7 @@ export interface CostRecord {
   output_tokens: number
   cost_usd: number
   timestamp: string
-  call_category: 'productive' | 'coordination' | 'system' | null
+  call_category: 'productive' | 'coordination' | 'system' | 'embedding' | null
 }
 
 export interface DailySummary {
