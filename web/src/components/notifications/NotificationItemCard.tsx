@@ -26,7 +26,9 @@ const BORDER_COLORS: Record<NotificationSeverity, string> = {
 }
 
 function formatRelativeTime(timestamp: string): string {
-  const diff = Date.now() - new Date(timestamp).getTime()
+  const ts = new Date(timestamp).getTime()
+  if (Number.isNaN(ts)) return 'just now'
+  const diff = Math.max(0, Date.now() - ts)
   const seconds = Math.floor(diff / 1000)
   if (seconds < 60) return 'just now'
   const minutes = Math.floor(seconds / 60)
@@ -59,9 +61,9 @@ export function NotificationItemCard({
   }
 
   return (
-    <button
-      type="button"
+    <div
       role="listitem"
+      tabIndex={0}
       aria-label={`${item.severity} notification: ${item.title}`}
       className={cn(
         'group relative flex w-full gap-3 rounded-md border-l-2 px-3 py-2 text-left',
@@ -71,6 +73,12 @@ export function NotificationItemCard({
         item.href && 'cursor-pointer',
       )}
       onClick={handleClick}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault()
+          handleClick()
+        }
+      }}
     >
       <Icon className={cn('mt-0.5 size-4 shrink-0', SEVERITY_COLORS[item.severity])} />
 
@@ -86,7 +94,7 @@ export function NotificationItemCard({
         </p>
       </div>
 
-      <div className="flex shrink-0 items-start gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+      <div className="flex shrink-0 items-start gap-1 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
         {!item.read && (
           <button
             type="button"
@@ -114,6 +122,6 @@ export function NotificationItemCard({
           <X className="size-3.5" />
         </button>
       </div>
-    </button>
+    </div>
   )
 }

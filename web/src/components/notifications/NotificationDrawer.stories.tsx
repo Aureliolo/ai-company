@@ -1,6 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
 import { useEffect } from 'react'
 import { MemoryRouter } from 'react-router'
+import { fn } from 'storybook/test'
 
 import { useNotificationsStore } from '@/stores/notifications'
 
@@ -18,7 +19,7 @@ const meta = {
   ],
   args: {
     open: true,
-    onClose: () => {},
+    onClose: fn(),
   },
 } satisfies Meta<typeof NotificationDrawer>
 

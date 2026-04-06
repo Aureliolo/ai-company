@@ -92,7 +92,8 @@ export default function AppLayout() {
     function handleKeyDown(e: KeyboardEvent) {
       if (e.defaultPrevented || e.repeat) return
       const tag = (e.target as HTMLElement)?.tagName
-      if (tag === 'INPUT' || tag === 'TEXTAREA' || (e.target as HTMLElement)?.isContentEditable) return
+      const el = e.target as HTMLElement
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || el?.isContentEditable || el?.closest('[role="combobox"]')) return
       if (e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey && e.key === 'N') {
         e.preventDefault()
         window.dispatchEvent(new CustomEvent('toggle-notification-drawer'))
@@ -106,8 +107,9 @@ export default function AppLayout() {
   useEffect(() => {
     function handleNav(e: Event) {
       const detail = (e as CustomEvent<{ href: string }>).detail
-      if (detail?.href && detail.href.startsWith('/') && !detail.href.startsWith('//')) {
-        void navigate(detail.href)
+      const href = detail?.href
+      if (typeof href === 'string' && href.startsWith('/') && !href.startsWith('//')) {
+        void navigate(href)
       }
     }
     window.addEventListener('notification-navigate', handleNav)
