@@ -549,7 +549,7 @@ CREATE TABLE IF NOT EXISTS risk_overrides (
 CREATE INDEX IF NOT EXISTS idx_ro_action_type ON risk_overrides(action_type);
 -- Partial composite index for list_active query (WHERE revoked_at IS NULL).
 CREATE INDEX IF NOT EXISTS idx_ro_active
-    ON risk_overrides(expires_at, created_at DESC)
+    ON risk_overrides(created_at DESC, expires_at)
     WHERE revoked_at IS NULL;
 
 -- ── SSRF violations ─────────────────────────────────────────

@@ -39,9 +39,9 @@ class TestSanitizeEnv:
 
     def test_strips_credential_vars(self) -> None:
         mgr = SandboxCredentialManager()
-        env = {"AWS_CREDENTIAL": "cred"}
+        env = {"SOME_CREDENTIAL": "cred"}
         result = mgr.sanitize_env(env)
-        assert "AWS_CREDENTIAL" not in result
+        assert "SOME_CREDENTIAL" not in result
 
     def test_strips_private_key_vars(self) -> None:
         mgr = SandboxCredentialManager()

@@ -316,7 +316,7 @@ class DockerSandbox:
         Delegates to the ``SandboxRuntimeResolver`` when available,
         otherwise falls back to ``config.runtime``.
         """
-        if self._runtime_resolver is not None and category:
+        if self._runtime_resolver is not None:
             return self._runtime_resolver.resolve_runtime(category)
         return self._config.runtime
 

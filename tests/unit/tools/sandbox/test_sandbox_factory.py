@@ -280,6 +280,31 @@ class TestCleanupSandboxBackends:
 
         mock_backend.cleanup.assert_awaited_once()
 
+    async def test_cleanup_continues_on_error(self) -> None:
+        """All backends are cleaned up even when one raises."""
+        failing = AsyncMock(spec=SandboxBackend)
+        failing.cleanup.side_effect = RuntimeError("container gone")
+        healthy = AsyncMock(spec=SandboxBackend)
+
+        backends: Mapping[str, SandboxBackend] = {
+            "broken": failing,
+            "ok": healthy,
+        }
+
+        with patch(
+            "synthorg.tools.sandbox.factory.logger",
+        ) as mock_logger:
+            # Should not raise -- errors are logged and swallowed
+            await cleanup_sandbox_backends(backends=backends)
+
+        failing.cleanup.assert_awaited_once()
+        healthy.cleanup.assert_awaited_once()
+        # Verify the error was actually logged
+        mock_logger.warning.assert_called_once()
+        call_args = mock_logger.warning.call_args
+        assert call_args[0][0] == SANDBOX_FACTORY_CLEANUP_FAILED
+        assert call_args[1]["backend"] == "broken"
+
 
 @pytest.mark.unit
 class TestMergeGvisorDefaults:
@@ -328,28 +353,3 @@ class TestMergeGvisorDefaults:
         )
         merged = merge_gvisor_defaults(config)
         assert merged is config
-
-    async def test_cleanup_continues_on_error(self) -> None:
-        """All backends are cleaned up even when one raises."""
-        failing = AsyncMock(spec=SandboxBackend)
-        failing.cleanup.side_effect = RuntimeError("container gone")
-        healthy = AsyncMock(spec=SandboxBackend)
-
-        backends: Mapping[str, SandboxBackend] = {
-            "broken": failing,
-            "ok": healthy,
-        }
-
-        with patch(
-            "synthorg.tools.sandbox.factory.logger",
-        ) as mock_logger:
-            # Should not raise -- errors are logged and swallowed
-            await cleanup_sandbox_backends(backends=backends)
-
-        failing.cleanup.assert_awaited_once()
-        healthy.cleanup.assert_awaited_once()
-        # Verify the error was actually logged
-        mock_logger.warning.assert_called_once()
-        call_args = mock_logger.warning.call_args
-        assert call_args[0][0] == SANDBOX_FACTORY_CLEANUP_FAILED
-        assert call_args[1]["backend"] == "broken"

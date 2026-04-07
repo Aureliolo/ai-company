@@ -33,7 +33,7 @@ class TestSsrfViolationModel:
             port=11434,
             resolved_ip="192.168.65.254",
             blocked_range="192.168.0.0/16",
-            provider_name="ollama",
+            provider_name="test-provider",
         )
         assert v.status == SsrfViolationStatus.PENDING
         assert v.resolved_by is None
@@ -141,7 +141,7 @@ class TestSsrfViolationModel:
             port=11434,
             resolved_ip="192.168.65.254",
             blocked_range="192.168.0.0/16",
-            provider_name="ollama",
+            provider_name="test-provider",
         )
         data = v.model_dump()
         restored = SsrfViolation.model_validate(data)
