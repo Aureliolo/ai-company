@@ -508,6 +508,8 @@ CREATE TABLE IF NOT EXISTS login_attempts (
 
 CREATE INDEX IF NOT EXISTS idx_la_username_attempted
     ON login_attempts(username, attempted_at);
+CREATE INDEX IF NOT EXISTS idx_la_attempted_at
+    ON login_attempts(attempted_at);
 
 -- ── Refresh Tokens ───────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS refresh_tokens (

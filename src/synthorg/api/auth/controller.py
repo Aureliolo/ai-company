@@ -509,8 +509,8 @@ class AuthController(Controller):
             expires_in,
         )
 
+        auth_config = _get_auth_config(app_state)
         if app_state.has_session_store:
-            auth_config = _get_auth_config(app_state)
             await app_state.session_store.enforce_session_limit(
                 user.id,
                 auth_config.max_concurrent_sessions,
@@ -522,7 +522,6 @@ class AuthController(Controller):
             username=user.username,
         )
 
-        auth_config = _get_auth_config(app_state)
         return Response(
             content=ApiResponse(
                 data=CookieSessionResponse(
@@ -609,8 +608,8 @@ class AuthController(Controller):
             expires_in,
         )
 
+        auth_config = _get_auth_config(app_state)
         if app_state.has_session_store:
-            auth_config = _get_auth_config(app_state)
             await app_state.session_store.enforce_session_limit(
                 user.id,
                 auth_config.max_concurrent_sessions,
@@ -622,7 +621,6 @@ class AuthController(Controller):
             username=user.username,
         )
 
-        auth_config = _get_auth_config(app_state)
         return Response(
             content=ApiResponse(
                 data=CookieSessionResponse(
@@ -698,6 +696,11 @@ class AuthController(Controller):
             }
         )
         await persistence.users.save(updated_user)
+
+        # Revoke the old session before issuing a new one.
+        old_jti = _extract_jti(request)
+        if old_jti and app_state.has_session_store:
+            await app_state.session_store.revoke(old_jti)
 
         # Rotate session cookie so the new pwd_sig is embedded.
         token, expires_in, session_id = auth_service.create_token(

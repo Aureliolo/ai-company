@@ -17,6 +17,25 @@ from tests.unit.api.conftest import _TEST_JWT_SECRET as _SECRET
 from tests.unit.api.conftest import FakePersistenceBackend
 
 
+class _FakeState:
+    """Reusable fake app state for middleware tests."""
+
+    def __init__(
+        self,
+        *,
+        auth_service: AuthService,
+        persistence: FakePersistenceBackend,
+        has_session_store: bool = False,
+        session_store: object | None = None,
+        config: RootConfig | None = None,
+    ) -> None:
+        self.auth_service = auth_service
+        self.persistence = persistence
+        self.has_session_store = has_session_store
+        self.session_store = session_store
+        self.config = config
+
+
 def _make_auth_service() -> AuthService:
     return AuthService(AuthConfig(jwt_secret=_SECRET))
 
@@ -56,17 +75,14 @@ def _build_app(
 
     middleware_cls = create_auth_middleware_class(auth_config)
 
-    class _FakeState:
-        def __init__(self) -> None:
-            self.auth_service = auth_service
-            self.persistence = persistence
-            self.has_session_store = False
-
     app = Litestar(
         route_handlers=[protected_route, public_route],
         middleware=[middleware_cls],
     )
-    app.state["app_state"] = _FakeState()
+    app.state["app_state"] = _FakeState(
+        auth_service=auth_service,
+        persistence=persistence,
+    )
     return app
 
 
@@ -801,19 +817,17 @@ class TestAuthMiddlewareCookieAuth:
 
         middleware_cls = create_auth_middleware_class(auth_config)
 
-        class _RevokedState:
-            def __init__(self) -> None:
-                self.auth_service = svc
-                self.persistence = persistence
-                self.has_session_store = True
-                self.session_store = mock_store
-                self.config = RootConfig(company_name="test")
-
         app = Litestar(
             route_handlers=[protected_route],
             middleware=[middleware_cls],
         )
-        app.state["app_state"] = _RevokedState()
+        app.state["app_state"] = _FakeState(
+            auth_service=svc,
+            persistence=persistence,
+            has_session_store=True,
+            session_store=mock_store,
+            config=RootConfig(company_name="test"),
+        )
 
         with TestClient(app) as client:
             resp = client.get(
@@ -843,21 +857,18 @@ class TestAuthMiddlewareCookieAuth:
 
         middleware_cls = create_auth_middleware_class(auth_config)
 
-        class _CustomState:
-            def __init__(self) -> None:
-                self.auth_service = svc
-                self.persistence = persistence
-                self.has_session_store = False
-                self.config = RootConfig(
-                    company_name="test",
-                    api=ApiConfig(auth=auth_config),
-                )
-
         app = Litestar(
             route_handlers=[protected_route],
             middleware=[middleware_cls],
         )
-        app.state["app_state"] = _CustomState()
+        app.state["app_state"] = _FakeState(
+            auth_service=svc,
+            persistence=persistence,
+            config=RootConfig(
+                company_name="test",
+                api=ApiConfig(auth=auth_config),
+            ),
+        )
 
         token, _, _ = svc.create_token(user)
 

@@ -7,16 +7,18 @@ const mockAuthResponse: AuthResponse = {
   must_change_password: false,
 }
 
-/** POST /api/v1/auth/login -> success with mock auth response (cookie set by server). */
+/** POST /api/v1/auth/login -> success with mock auth response + CSRF cookie. */
 export const authLoginSuccess = [
-  http.post('/api/v1/auth/login', () =>
-    HttpResponse.json(apiSuccess(mockAuthResponse)),
-  ),
+  http.post('/api/v1/auth/login', () => {
+    document.cookie = 'csrf_token=mock-csrf-token; path=/api'
+    return HttpResponse.json(apiSuccess(mockAuthResponse))
+  }),
 ]
 
-/** POST /api/v1/auth/setup -> success with mock auth response (cookie set by server). */
+/** POST /api/v1/auth/setup -> success with mock auth response + CSRF cookie. */
 export const authSetupSuccess = [
-  http.post('/api/v1/auth/setup', () =>
-    HttpResponse.json(apiSuccess(mockAuthResponse)),
-  ),
+  http.post('/api/v1/auth/setup', () => {
+    document.cookie = 'csrf_token=mock-csrf-token; path=/api'
+    return HttpResponse.json(apiSuccess(mockAuthResponse))
+  }),
 ]

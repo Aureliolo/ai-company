@@ -124,10 +124,9 @@ class TestLockoutCleanup:
 
 
 class TestLockoutDurationSeconds:
-    def test_returns_correct_duration(self) -> None:
+    async def test_returns_correct_duration(self, db: aiosqlite.Connection) -> None:
         config = _make_config(duration_minutes=15)
-        store_obj = LockoutStore.__new__(LockoutStore)
-        store_obj._duration_seconds = config.lockout_duration_minutes * 60
+        store_obj = LockoutStore(db, config)
         assert store_obj.lockout_duration_seconds == 900
 
 

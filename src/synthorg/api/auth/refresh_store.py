@@ -6,6 +6,7 @@ it atomically marks it as used and returns the associated
 session/user info for re-issuance.
 """
 
+from collections.abc import Callable  # noqa: TC003
 from datetime import UTC, datetime
 from typing import Self
 
@@ -96,15 +97,24 @@ class RefreshStore:
         )
         await self._db.commit()
 
-    async def consume(self, token_hash: str) -> RefreshRecord | None:
+    async def consume(
+        self,
+        token_hash: str,
+        *,
+        is_session_revoked: Callable[[str], bool] | None = None,
+    ) -> RefreshRecord | None:
         """Atomically consume a refresh token.
 
         Marks the token as used and returns its record.
         Returns ``None`` if the token does not exist, is
-        expired, or was already consumed (replay detection).
+        expired, was already consumed (replay detection), or
+        belongs to a revoked session.
 
         Args:
             token_hash: HMAC-SHA256 hash of the presented token.
+            is_session_revoked: Optional sync callback (e.g.
+                ``SessionStore.is_revoked``) to reject tokens
+                whose session has been revoked.
 
         Returns:
             The token record, or ``None`` on failure.
@@ -121,6 +131,16 @@ class RefreshStore:
         await self._db.commit()
 
         if row is not None:
+            # Reject if the associated session has been revoked.
+            if is_session_revoked and is_session_revoked(
+                row["session_id"],
+            ):
+                logger.warning(
+                    API_AUTH_REFRESH_REJECTED,
+                    reason="session_revoked",
+                    session_id=row["session_id"][:8],
+                )
+                return None
             logger.info(
                 API_AUTH_REFRESH_CONSUMED,
                 session_id=row["session_id"],

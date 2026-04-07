@@ -136,6 +136,12 @@ export const useAuthStore = create<AuthState>()((set, get) => {
 
     handleUnauthorized() {
       set({ authStatus: 'unauthenticated', user: null })
+      // Tear down WebSocket transport so it stops reconnecting.
+      import('@/stores/websocket').then(({ useWebSocketStore }) => {
+        useWebSocketStore.getState().disconnect()
+      }).catch(() => {
+        // Best-effort -- import may fail during HMR or teardown.
+      })
       // Hard redirect to login -- intentionally uses window.location (not
       // react-router) because this runs in a Zustand store outside the
       // React tree.
@@ -157,8 +163,9 @@ export const useAuthStore = create<AuthState>()((set, get) => {
         if (isAxiosError(err) && err.response?.status === 401) {
           set({ authStatus: 'unauthenticated', user: null })
         } else {
+          // Non-auth error (network, 5xx) -- don't drop valid sessions.
           log.error('Session check failed:', getErrorMessage(err))
-          set({ authStatus: 'unauthenticated', user: null })
+          set({ authStatus: 'unknown', user: null })
         }
       }
     },

@@ -1285,7 +1285,6 @@ def _build_middleware(api_config: ApiConfig) -> list[Middleware]:
             f"{prefix}/auth/login",
             f"{prefix}/auth/setup",
             f"{prefix}/health",
-            f"{prefix}/auth/refresh",
         }
     )
     csrf_middleware = create_csrf_middleware_class(

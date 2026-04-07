@@ -275,7 +275,7 @@ class AccountLockedError(ApiError):
         retry_after: int = 0,
     ) -> None:
         super().__init__(message, status_code=429)
-        self.retry_after = retry_after
+        self.retry_after = max(0, int(retry_after))
 
 
 class ServiceUnavailableError(ApiError):

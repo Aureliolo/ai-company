@@ -238,7 +238,7 @@ class SessionStore:
         Returns:
             Number of sessions revoked.
         """
-        if max_sessions == 0:
+        if max_sessions <= 0:
             return 0
 
         active = await self.list_by_user(user_id)

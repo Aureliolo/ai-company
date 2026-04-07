@@ -219,13 +219,37 @@ describe('auth store', () => {
       expect(useAuthStore.getState().user).toEqual(mockUser)
     })
 
-    it('sets unauthenticated when server rejects', async () => {
+    it('sets unauthenticated on 401 response', async () => {
+      const { AxiosError } = await import('axios')
       const authApi = await import('@/api/endpoints/auth')
-      vi.mocked(authApi.getMe).mockRejectedValue(new Error('401'))
+      const err = new AxiosError(
+        'Unauthorized',
+        'ERR_BAD_RESPONSE',
+        undefined,
+        undefined,
+        {
+          status: 401,
+          data: {},
+          headers: {},
+          statusText: 'Unauthorized',
+          config: {} as import('axios').AxiosResponse['config'],
+        } as import('axios').AxiosResponse,
+      )
+      vi.mocked(authApi.getMe).mockRejectedValue(err)
 
       await useAuthStore.getState().checkSession()
 
       expect(useAuthStore.getState().authStatus).toBe('unauthenticated')
+      expect(useAuthStore.getState().user).toBeNull()
+    })
+
+    it('stays unknown on non-401 error (network/5xx)', async () => {
+      const authApi = await import('@/api/endpoints/auth')
+      vi.mocked(authApi.getMe).mockRejectedValue(new Error('Network Error'))
+
+      await useAuthStore.getState().checkSession()
+
+      expect(useAuthStore.getState().authStatus).toBe('unknown')
       expect(useAuthStore.getState().user).toBeNull()
     })
   })

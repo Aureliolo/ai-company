@@ -63,10 +63,10 @@ class TestAuthConfig:
         assert config.cookie_path == "/api"
         assert config.cookie_domain is None
 
-    def test_cookie_samesite_accepts_valid(self) -> None:
-        for value in ("strict", "lax", "none"):
-            config = AuthConfig(cookie_samesite=value)
-            assert config.cookie_samesite == value
+    @pytest.mark.parametrize("value", ["strict", "lax", "none"])
+    def test_cookie_samesite_accepts_valid(self, value: str) -> None:
+        config = AuthConfig(cookie_samesite=value)
+        assert config.cookie_samesite == value
 
     def test_cookie_samesite_rejects_invalid(self) -> None:
         with pytest.raises(Exception):  # noqa: B017, PT011

@@ -275,8 +275,12 @@ class TestWsTicketAuth:
 
         api_config = ApiConfig()
         middleware = _build_middleware(api_config)
-        # Index 2: auth middleware sits after unauth RL and CSRF.
-        auth_cls = middleware[2]
+        # Find auth middleware by class name (avoids brittle index).
+        auth_cls = next(
+            m
+            for m in middleware
+            if getattr(m, "__name__", "").endswith("AuthMiddleware")
+        )
 
         from litestar import Litestar
 
@@ -395,8 +399,12 @@ class TestWsTicketAuth:
 
         api_config = ApiConfig()
         middleware = _build_middleware(api_config)
-        # Index 2: auth middleware sits after unauth RL and CSRF.
-        auth_cls = middleware[2]
+        # Find auth middleware by class name (avoids brittle index).
+        auth_cls = next(
+            m
+            for m in middleware
+            if getattr(m, "__name__", "").endswith("AuthMiddleware")
+        )
 
         dummy_app = Litestar(route_handlers=[])
         instance = auth_cls(dummy_app)  # type: ignore[operator,call-arg]
