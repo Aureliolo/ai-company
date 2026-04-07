@@ -90,8 +90,8 @@ class TestSandboxRuntimeResolverResolve:
         assert resolver.resolve_runtime("terminal") == "runsc"
 
 
-class TestSandboxRuntimeResolverWithDefaults:
-    """Tests for factory default gVisor overrides."""
+class TestSandboxRuntimeResolverWithExplicitOverrides:
+    """Tests for explicit gVisor runtime overrides."""
 
     def test_default_gvisor_overrides_for_high_risk_categories(self) -> None:
         config = DockerSandboxConfig(
