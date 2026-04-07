@@ -1,6 +1,7 @@
 """Unit tests for the sub-constraint enforcer."""
 
 import pytest
+from pydantic import ValidationError
 
 from synthorg.core.enums import ActionType, ToolCategory
 from synthorg.tools.sub_constraint_enforcer import (
@@ -40,7 +41,7 @@ class TestSubConstraintViolation:
     @pytest.mark.unit
     def test_frozen(self) -> None:
         v = SubConstraintViolation(constraint="test", reason="test")
-        with pytest.raises(Exception):  # noqa: B017, PT011
+        with pytest.raises(ValidationError):
             v.constraint = "other"  # type: ignore[misc]
 
 
@@ -166,7 +167,7 @@ class TestGitConstraint:
         result = enforcer.check(
             "git_clone",
             ToolCategory.VERSION_CONTROL,
-            ActionType.VCS_COMMIT,
+            ActionType.VCS_READ,
             {},
         )
         assert result is not None

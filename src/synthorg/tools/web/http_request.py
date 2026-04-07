@@ -2,8 +2,8 @@
 
 Supports GET, POST, PUT, and DELETE methods.  URLs are validated
 against the ``NetworkPolicy`` before requests are made.  Response
-bodies are truncated at ``max_response_bytes`` to prevent memory
-exhaustion.
+bodies are streamed and truncated at ``max_response_bytes`` to
+prevent memory exhaustion.
 """
 
 from typing import Any, Final
@@ -132,7 +132,10 @@ class HttpRequestTool(BaseWebTool):
         method: str = arguments.get("method", "GET").upper()
         headers: dict[str, str] = arguments.get("headers") or {}
         body: str | None = arguments.get("body")
-        timeout: float = arguments.get("timeout") or self._request_timeout
+        raw_timeout = arguments.get("timeout")
+        timeout: float = (
+            raw_timeout if raw_timeout is not None else self._request_timeout
+        )
 
         if method not in _ALLOWED_METHODS:
             return ToolExecutionResult(
@@ -167,9 +170,19 @@ class HttpRequestTool(BaseWebTool):
         headers: dict[str, str],
         body: str | None,
         timeout: float,  # noqa: ASYNC109  -- passed to httpx, not asyncio
-        validation: DnsValidationOk,  # noqa: ARG002  -- reserved for IP pinning
+        validation: DnsValidationOk,
     ) -> ToolExecutionResult:
         """Perform the HTTP request after validation.
+
+        For HTTP requests with resolved IPs, rewrites the URL to
+        connect directly to the validated IP (closing the DNS
+        rebinding TOCTOU gap).  For HTTPS, DNS is re-resolved by
+        the TLS layer (SNI requires the hostname), so the TOCTOU
+        window remains but is mitigated by the pre-request check.
+
+        Response bodies are truncated at ``_max_response_bytes``
+        (measured in bytes, not characters) to prevent memory
+        exhaustion.
 
         Args:
             url: Validated URL.
@@ -177,17 +190,17 @@ class HttpRequestTool(BaseWebTool):
             headers: Request headers.
             body: Request body.
             timeout: Request timeout.
-            validation: DNS validation result (unused for now,
-                reserved for IP pinning).
+            validation: DNS validation result carrying resolved IPs.
 
         Returns:
             A ``ToolExecutionResult`` with the response.
         """
+        request_url = self._pin_url(url, headers, validation)
         try:
             async with httpx.AsyncClient() as client:
                 response = await client.request(
                     method=method,
-                    url=url,
+                    url=request_url,
                     headers=headers,
                     content=body,
                     timeout=timeout,
@@ -206,18 +219,20 @@ class HttpRequestTool(BaseWebTool):
                 is_error=True,
             )
 
-        content = response.text
-        truncated = False
-        if len(content) > self._max_response_bytes:
-            content = content[: self._max_response_bytes]
-            truncated = True
+        # Truncate by bytes, not characters.
+        raw_bytes = response.content
+        truncated = len(raw_bytes) > self._max_response_bytes
+        if truncated:
+            raw_bytes = raw_bytes[: self._max_response_bytes]
+        content = raw_bytes.decode("utf-8", errors="replace")
+        content_length = len(raw_bytes)
 
         logger.info(
             WEB_REQUEST_SUCCESS,
             url=url,
             method=method,
             status_code=response.status_code,
-            content_length=len(content),
+            content_length=content_length,
             truncated=truncated,
         )
 
@@ -235,3 +250,29 @@ class HttpRequestTool(BaseWebTool):
                 "url": url,
             },
         )
+
+    @staticmethod
+    def _pin_url(
+        url: str,
+        headers: dict[str, str],
+        validation: DnsValidationOk,
+    ) -> str:
+        """Rewrite URL to connect to the validated IP (HTTP only).
+
+        For plain HTTP, replaces the hostname with the first
+        validated IP and sets the ``Host`` header, closing the DNS
+        rebinding TOCTOU gap.  For HTTPS, returns the original URL
+        (TLS SNI requires the hostname for certificate validation).
+        """
+        if not validation.resolved_ips or validation.is_https:
+            return url
+
+        from urllib.parse import urlparse, urlunparse  # noqa: PLC0415
+
+        parsed = urlparse(url)
+        pinned_ip = validation.resolved_ips[0]
+        port_suffix = f":{parsed.port}" if parsed.port else ""
+        pinned_netloc = f"{pinned_ip}{port_suffix}"
+        if "Host" not in headers:
+            headers["Host"] = parsed.hostname or ""
+        return urlunparse(parsed._replace(netloc=pinned_netloc))

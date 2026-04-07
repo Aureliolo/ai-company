@@ -113,7 +113,7 @@ class SchemaInspectTool(BaseDatabaseTool):
             if action == "list_tables":
                 return await self._list_tables()
             return await self._describe_table(table_name or "")
-        except Exception as exc:
+        except aiosqlite.Error as exc:
             logger.warning(
                 DB_SCHEMA_INSPECT_FAILED,
                 action=action,
@@ -126,7 +126,11 @@ class SchemaInspectTool(BaseDatabaseTool):
 
     async def _list_tables(self) -> ToolExecutionResult:
         """List all tables in the database."""
-        async with aiosqlite.connect(self._config.database_path) as db:
+        import urllib.parse  # noqa: PLC0415
+
+        encoded = urllib.parse.quote(str(self._config.database_path))
+        db_uri = f"file:{encoded}?mode=ro"
+        async with aiosqlite.connect(db_uri, uri=True) as db:
             cursor = await db.execute(
                 "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name"
             )
@@ -164,7 +168,11 @@ class SchemaInspectTool(BaseDatabaseTool):
                 "Must be alphanumeric/underscore.",
                 is_error=True,
             )
-        async with aiosqlite.connect(self._config.database_path) as db:
+        import urllib.parse  # noqa: PLC0415
+
+        encoded = urllib.parse.quote(str(self._config.database_path))
+        db_uri = f"file:{encoded}?mode=ro"
+        async with aiosqlite.connect(db_uri, uri=True) as db:
             cursor = await db.execute(f"PRAGMA table_info({table_name})")
             rows = await cursor.fetchall()
 

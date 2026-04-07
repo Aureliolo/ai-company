@@ -1,6 +1,8 @@
 """Configuration models for database tools."""
 
-from pydantic import BaseModel, ConfigDict, Field
+from typing import Self
+
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 
@@ -49,3 +51,14 @@ class DatabaseConfig(BaseModel):
         default="default",
         description="Name of the default connection",
     )
+
+    @model_validator(mode="after")
+    def _validate_default_connection(self) -> Self:
+        """Ensure default_connection is a key in connections (when non-empty)."""
+        if self.connections and self.default_connection not in self.connections:
+            msg = (
+                f"default_connection {self.default_connection!r} not found "
+                f"in connections: {sorted(self.connections)}"
+            )
+            raise ValueError(msg)
+        return self

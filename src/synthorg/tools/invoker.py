@@ -200,7 +200,7 @@ class ToolInvoker:
             tool.name,
             tool.category,
             tool.action_type,
-            dict(tool_call.arguments),
+            copy.deepcopy(dict(tool_call.arguments)),
         )
         if violation is None:
             return None

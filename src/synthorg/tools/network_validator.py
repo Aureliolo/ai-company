@@ -208,9 +208,10 @@ def is_allowed_http_scheme(url: str) -> bool:
     Returns:
         ``True`` if the URL scheme is allowed.
     """
-    if url.startswith("-"):
+    stripped = url.lstrip()
+    if stripped.startswith("-"):
         return False
-    url_lower = url.lower()
+    url_lower = stripped.lower()
     return any(url_lower.startswith(scheme) for scheme in _ALLOWED_HTTP_SCHEMES)
 
 
@@ -377,7 +378,7 @@ async def validate_url_host(  # noqa: PLR0911, C901
         return f"Could not extract hostname from URL: {url!r}"
 
     normalized = hostname.lower()
-    is_https = url.startswith("https://")
+    is_https = urlparse(url).scheme.casefold() == "https"
 
     port: int | None = None
     try:

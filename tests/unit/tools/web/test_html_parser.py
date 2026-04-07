@@ -56,9 +56,10 @@ class TestHtmlParserLinkExtraction:
             arguments={"html_content": html, "extract_mode": "links"}
         )
         assert result.is_error is False
-        assert "https://example.com" in result.content
-        assert "Example" in result.content
-        assert "/page" in result.content
+        # Output format: "- [text](href)"
+        assert "(https://example.com)" in result.content
+        assert "[Example]" in result.content
+        assert "(/page)" in result.content
 
     @pytest.mark.unit
     async def test_no_links(self, html_tool: HtmlParserTool) -> None:

@@ -5,6 +5,7 @@ import ipaddress
 from unittest.mock import AsyncMock, patch
 
 import pytest
+from pydantic import ValidationError
 
 from synthorg.tools.network_validator import (
     BLOCKED_NETWORKS,
@@ -35,7 +36,7 @@ class TestNetworkPolicy:
     @pytest.mark.unit
     def test_frozen(self) -> None:
         policy = NetworkPolicy()
-        with pytest.raises(Exception):  # noqa: B017, PT011
+        with pytest.raises(ValidationError):
             policy.block_private_ips = False  # type: ignore[misc]
 
     @pytest.mark.unit
@@ -54,9 +55,9 @@ class TestNetworkPolicy:
     def test_dns_timeout_bounds(self) -> None:
         NetworkPolicy(dns_resolution_timeout=0.1)
         NetworkPolicy(dns_resolution_timeout=30.0)
-        with pytest.raises(Exception):  # noqa: B017, PT011
+        with pytest.raises(ValidationError):
             NetworkPolicy(dns_resolution_timeout=0)
-        with pytest.raises(Exception):  # noqa: B017, PT011
+        with pytest.raises(ValidationError):
             NetworkPolicy(dns_resolution_timeout=31.0)
 
 

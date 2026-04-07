@@ -57,6 +57,7 @@ class TestFactoryWebTools:
         from synthorg.tools.web.http_request import HttpRequestTool
 
         assert isinstance(http_tool, HttpRequestTool)
+        assert http_tool._network_policy.block_private_ips is False
 
 
 class TestFactoryDatabaseTools:

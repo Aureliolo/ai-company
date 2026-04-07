@@ -228,28 +228,6 @@ def build_default_tools(  # noqa: PLR0913
     return result
 
 
-def _resolve_vc_sandbox(
-    *,
-    config: RootConfig,
-    sandbox_backends: Mapping[str, SandboxBackend] | None,
-    workspace: Path,
-) -> SandboxBackend:
-    """Resolve the sandbox backend for the VERSION_CONTROL category.
-
-    Builds backends from config when *sandbox_backends* is ``None``.
-    """
-    if sandbox_backends is None:
-        sandbox_backends = build_sandbox_backends(
-            config=config.sandboxing,
-            workspace=workspace,
-        )
-    return resolve_sandbox_for_category(
-        config=config.sandboxing,
-        backends=sandbox_backends,
-        category=ToolCategory.VERSION_CONTROL,
-    )
-
-
 def build_default_tools_from_config(
     *,
     workspace: Path,
@@ -289,23 +267,25 @@ def build_default_tools_from_config(
         source="config",
     )
 
-    vc_sandbox = _resolve_vc_sandbox(
-        config=config,
-        sandbox_backends=sandbox_backends,
+    # Build sandbox backends once for all categories.
+    resolved_backends = sandbox_backends or build_sandbox_backends(
+        config=config.sandboxing,
         workspace=workspace,
+    )
+
+    vc_sandbox = resolve_sandbox_for_category(
+        config=config.sandboxing,
+        backends=resolved_backends,
+        category=ToolCategory.VERSION_CONTROL,
     )
 
     # Resolve terminal sandbox if configured
     terminal_sandbox: SandboxBackend | None = None
     if config.terminal is not None:
         try:
-            backends = sandbox_backends or build_sandbox_backends(
-                config=config.sandboxing,
-                workspace=workspace,
-            )
             terminal_sandbox = resolve_sandbox_for_category(
                 config=config.sandboxing,
-                backends=backends,
+                backends=resolved_backends,
                 category=ToolCategory.TERMINAL,
             )
         except KeyError:

@@ -166,7 +166,7 @@ _LEVEL_SUB_CONSTRAINTS: Final[MappingProxyType[ToolAccessLevel, ToolSubConstrain
                 git=GitAccess.READ_AND_BRANCH,
                 code_execution=CodeExecutionIsolation.CONTAINERIZED,
                 terminal=TerminalAccess.NONE,
-                requires_approval=("deployment", "database_write"),
+                requires_approval=("deployment", "db:mutate"),
             ),
             ToolAccessLevel.STANDARD: ToolSubConstraints(
                 file_system=FileSystemScope.PROJECT_DIRECTORY,
@@ -233,7 +233,16 @@ def get_sub_constraints(
         )
         raise ValueError(msg)
 
-    constraints = _LEVEL_SUB_CONSTRAINTS[access_level]
+    constraints = _LEVEL_SUB_CONSTRAINTS.get(access_level)
+    if constraints is None:
+        msg = f"No default sub-constraints for access level: {access_level.value}"
+        logger.warning(
+            SUB_CONSTRAINT_RESOLVED,
+            access_level=access_level.value,
+            source="error",
+            error=msg,
+        )
+        raise ValueError(msg)
     logger.debug(
         SUB_CONSTRAINT_RESOLVED,
         access_level=access_level.value,

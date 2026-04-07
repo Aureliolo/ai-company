@@ -7,6 +7,7 @@ Uses parameterized queries to prevent SQL injection.
 
 import asyncio
 import re
+import urllib.parse
 from typing import Any, Final
 
 import aiosqlite
@@ -116,6 +117,9 @@ class SqlQueryTool(BaseDatabaseTool):
         Args:
             config: Database connection configuration.
         """
+        # Use DB_MUTATE when writes are permitted so security
+        # policies can gate write-capable connections appropriately.
+        action = ActionType.DB_QUERY if config.read_only else ActionType.DB_MUTATE
         super().__init__(
             name="sql_query",
             description=(
@@ -124,7 +128,7 @@ class SqlQueryTool(BaseDatabaseTool):
                 "explicit configuration."
             ),
             parameters_schema=dict(_PARAMETERS_SCHEMA),
-            action_type=ActionType.DB_QUERY,
+            action_type=action,
             config=config,
         )
 
@@ -151,8 +155,11 @@ class SqlQueryTool(BaseDatabaseTool):
                 is_error=True,
             )
 
-        # Write protection
-        is_write = keyword in _WRITE_PREFIXES
+        # Read-only enforcement: only SELECT/EXPLAIN are allowed in
+        # read-only mode.  Everything else (including WITH, PRAGMA, and
+        # unrecognised keywords) requires write access.
+        is_read = keyword in _READ_ONLY_PREFIXES
+        is_write = not is_read
         if is_write and self._config.read_only:
             logger.warning(
                 DB_WRITE_BLOCKED,
@@ -229,7 +236,8 @@ class SqlQueryTool(BaseDatabaseTool):
     ) -> ToolExecutionResult:
         """Execute the query against SQLite (inner coroutine for timeout wrapping)."""
         if self._config.read_only:
-            db_uri = f"file:{self._config.database_path}?mode=ro"
+            encoded = urllib.parse.quote(str(self._config.database_path))
+            db_uri = f"file:{encoded}?mode=ro"
             db_conn = aiosqlite.connect(db_uri, uri=True)
         else:
             db_conn = aiosqlite.connect(self._config.database_path)

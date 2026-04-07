@@ -36,7 +36,12 @@ class TerminalConfig(BaseModel):
             "poweroff",
             "format c:",
         ),
-        description="Command patterns that are always blocked",
+        description=(
+            "Blocked command patterns (substring match). Each pattern is "
+            "matched anywhere in the normalised (lowercase, stripped) "
+            "command string -- not just as a prefix. Use specific "
+            "multi-word patterns to avoid false positives."
+        ),
     )
     max_output_bytes: int = Field(
         default=1_048_576,

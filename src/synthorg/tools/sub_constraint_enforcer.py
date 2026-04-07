@@ -121,13 +121,12 @@ class SubConstraintEnforcer:
             A ``SubConstraintViolation`` if any constraint is breached,
             or ``None`` if all checks pass.
         """
-        checks = (
+        for violation in (
             self._check_network(tool_name, category),
             self._check_terminal(tool_name, category),
             self._check_git(tool_name, action_type),
             self._check_requires_approval(tool_name, action_type),
-        )
-        for violation in checks:
+        ):
             if violation is not None:
                 logger.warning(
                     SUB_CONSTRAINT_DENIED,

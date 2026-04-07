@@ -92,7 +92,10 @@ class ShellCommandTool(BaseTerminalTool):
         """
         command: str = arguments["command"]
         working_dir: str | None = arguments.get("working_directory")
-        timeout: float = arguments.get("timeout") or self._config.default_timeout
+        raw_timeout = arguments.get("timeout")
+        timeout: float = (
+            raw_timeout if raw_timeout is not None else self._config.default_timeout
+        )
 
         if not command.strip():
             return ToolExecutionResult(
@@ -156,7 +159,18 @@ class ShellCommandTool(BaseTerminalTool):
 
         from pathlib import Path  # noqa: PLC0415
 
-        cwd = Path(working_dir) if working_dir else None
+        if working_dir:
+            cwd = Path(working_dir)
+            if cwd.is_absolute():
+                return ToolExecutionResult(
+                    content=(
+                        f"Absolute working_directory not allowed: {working_dir!r}. "
+                        "Use a path relative to the workspace."
+                    ),
+                    is_error=True,
+                )
+        else:
+            cwd = None
 
         try:
             result = await self._sandbox.execute(
@@ -195,15 +209,16 @@ class ShellCommandTool(BaseTerminalTool):
                 output += "\n"
             output += result.stderr
 
-        # Truncate if needed
+        # Truncate if needed (account for marker in the byte budget)
         truncated = False
         if len(output) > self._config.max_output_bytes:
-            output = output[: self._config.max_output_bytes]
             truncated = True
-            output += (
-                f"\n\n[Truncated: output exceeded "
-                f"{self._config.max_output_bytes:,} bytes]"
+            marker = (
+                f"\n\n[Truncated: output exceeded"
+                f" {self._config.max_output_bytes:,} bytes]"
             )
+            output = output[: max(0, self._config.max_output_bytes - len(marker))]
+            output += marker
 
         if result.success:
             logger.info(

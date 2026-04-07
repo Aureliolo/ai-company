@@ -42,7 +42,7 @@ class TestBuildDefaultTools:
         self,
         tmp_path: Path,
     ) -> None:
-        """Factory returns all 11 built-in tools sorted by name."""
+        """Factory returns all 14 built-in tools sorted by name."""
         tools = build_default_tools(workspace=tmp_path)
         names = tuple(t.name for t in tools)
         assert names == _EXPECTED_TOOL_NAMES

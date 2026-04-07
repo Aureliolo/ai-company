@@ -713,7 +713,7 @@ class RootConfig(BaseModel):
     )
     web: WebToolsConfig | None = Field(
         default=None,
-        description="Web tool configuration (None = no web tools)",
+        description="Web tool configuration (None = default web config)",
     )
     database: DatabaseConfig | None = Field(
         default=None,

@@ -6,6 +6,7 @@ a provider at construction time (e.g. via MCP bridge or a custom
 implementation).
 """
 
+import copy
 from typing import Any, Final, Protocol, runtime_checkable
 
 from pydantic import BaseModel, ConfigDict
@@ -116,7 +117,7 @@ class WebSearchTool(BaseWebTool):
                 "Search the web for information. Returns titles, "
                 "URLs, and snippets for matching results."
             ),
-            parameters_schema=dict(_PARAMETERS_SCHEMA),
+            parameters_schema=copy.deepcopy(_PARAMETERS_SCHEMA),
             action_type=ActionType.COMMS_EXTERNAL,
             network_policy=network_policy,
         )
