@@ -1,6 +1,7 @@
 """Auth controller -- setup, login, password change, me, ws-ticket, sessions."""
 
 import math
+import secrets
 import uuid
 from datetime import UTC, datetime, timedelta
 from typing import Any, Self
@@ -233,7 +234,8 @@ def _make_session_cookies(
 ) -> list[Any]:
     """Build the cookie list for a login/setup response.
 
-    Returns session cookie + CSRF cookie.
+    Returns session cookie + CSRF cookie, plus a refresh
+    cookie when ``jwt_refresh_enabled`` is ``True``.
 
     Args:
         token: Encoded JWT string.
@@ -243,10 +245,19 @@ def _make_session_cookies(
     Returns:
         List of ``Cookie`` objects to attach to the response.
     """
-    return [
+    from synthorg.api.auth.cookies import make_refresh_cookie  # noqa: PLC0415
+
+    cookies: list[Any] = [
         make_session_cookie(token, expires_in, config),
         make_csrf_cookie(generate_csrf_token(), expires_in, config),
     ]
+    if config.jwt_refresh_enabled:
+        refresh_token = secrets.token_urlsafe(32)
+        refresh_max_age = config.jwt_refresh_expiry_minutes * 60
+        cookies.append(
+            make_refresh_cookie(refresh_token, refresh_max_age, config),
+        )
+    return cookies
 
 
 _PWD_CHANGE_EXEMPT_SUFFIXES = ("/auth/change-password", "/auth/me")
@@ -584,9 +595,13 @@ class AuthController(Controller):
             if app_state.has_lockout_store:
                 client = request.client
                 ip = client.host if client else ""
-                await app_state.lockout_store.record_failure(
+                locked = await app_state.lockout_store.record_failure(
                     data.username, ip_address=ip
                 )
+                if locked:
+                    raise AccountLockedError(
+                        retry_after=app_state.lockout_store.lockout_duration_seconds,
+                    )
             logger.warning(
                 API_AUTH_FAILED,
                 reason="invalid_credentials",
@@ -965,11 +980,10 @@ class AuthController(Controller):
             msg = "Authentication required"
             raise UnauthorizedError(msg)
 
+        app_state = request.app.state["app_state"]
         jti = _extract_jti(request)
-        if jti:
-            app_state = request.app.state["app_state"]
-            store = app_state.session_store
-            await store.revoke(jti)
+        if jti and app_state.has_session_store:
+            await app_state.session_store.revoke(jti)
             logger.info(
                 API_SESSION_FORCE_LOGOUT,
                 session_id=jti,
