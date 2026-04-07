@@ -81,7 +81,7 @@ class BaselineStore:
             baseline: Baseline record to store.
         """
         self._records.append(baseline)
-        logger.debug(
+        logger.info(
             COORD_METRICS_BASELINE_RECORDED,
             agent_id=baseline.agent_id,
             task_id=baseline.task_id,

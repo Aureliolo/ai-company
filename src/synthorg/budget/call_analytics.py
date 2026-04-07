@@ -221,12 +221,21 @@ async def _dispatch_retry_rate_alert(
     )
 
     body = f"Retry rate {retry_rate:.1%} exceeds warning threshold {warn_rate:.1%}."
-    await dispatcher.dispatch(
-        Notification(
-            category=NotificationCategory.BUDGET,
-            severity=NotificationSeverity.WARNING,
-            title="High retry rate alert",
-            body=body,
-            source="budget.call_analytics",
-        ),
-    )
+    try:
+        await dispatcher.dispatch(
+            Notification(
+                category=NotificationCategory.BUDGET,
+                severity=NotificationSeverity.WARNING,
+                title="High retry rate alert",
+                body=body,
+                source="budget.call_analytics",
+            ),
+        )
+    except MemoryError, RecursionError:
+        raise
+    except Exception:
+        logger.warning(
+            ANALYTICS_RETRY_RATE_ALERT,
+            error="retry_rate_alert_dispatch_failed",
+            exc_info=True,
+        )

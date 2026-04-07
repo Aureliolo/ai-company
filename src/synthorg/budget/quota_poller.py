@@ -123,6 +123,8 @@ class QuotaPoller:
                 await self.poll_once()
             except asyncio.CancelledError:
                 raise
+            except MemoryError, RecursionError:
+                raise
             except Exception as exc:
                 logger.exception(
                     QUOTA_POLL_FAILED,
@@ -176,6 +178,8 @@ class QuotaPoller:
                     level=level,
                     usage_pct=usage_pct,
                 )
+            except MemoryError, RecursionError:
+                raise
             except Exception:
                 logger.exception(
                     QUOTA_POLL_FAILED,

@@ -380,7 +380,7 @@ class TestCompletionResponse:
             tool_calls=(ToolCall(id="c1", name="ping", arguments={}),),
             finish_reason=FinishReason.TOOL_USE,
             usage=sample_token_usage,
-            model="test",
+            model="test-small-001",
         )
         assert resp.content is None
         assert len(resp.tool_calls) == 1
@@ -403,7 +403,7 @@ class TestCompletionResponse:
                 content=None,
                 finish_reason=FinishReason.STOP,
                 usage=sample_token_usage,
-                model="test",
+                model="test-small-001",
             )
 
     def test_empty_response_rejected_for_max_tokens(
@@ -415,7 +415,7 @@ class TestCompletionResponse:
                 content=None,
                 finish_reason=FinishReason.MAX_TOKENS,
                 usage=sample_token_usage,
-                model="test",
+                model="test-small-001",
             )
 
     def test_empty_response_rejected_for_tool_use(
@@ -427,7 +427,7 @@ class TestCompletionResponse:
                 content=None,
                 finish_reason=FinishReason.TOOL_USE,
                 usage=sample_token_usage,
-                model="test",
+                model="test-small-001",
             )
 
     def test_empty_response_allowed_for_content_filter(
@@ -438,7 +438,7 @@ class TestCompletionResponse:
             content=None,
             finish_reason=FinishReason.CONTENT_FILTER,
             usage=sample_token_usage,
-            model="test",
+            model="test-small-001",
         )
         assert resp.content is None
 
@@ -450,7 +450,7 @@ class TestCompletionResponse:
             content=None,
             finish_reason=FinishReason.ERROR,
             usage=sample_token_usage,
-            model="test",
+            model="test-small-001",
         )
         assert resp.finish_reason == FinishReason.ERROR
 
@@ -471,7 +471,7 @@ class TestCompletionResponse:
             content="hi",
             finish_reason=FinishReason.STOP,
             usage=sample_token_usage,
-            model="test",
+            model="test-small-001",
         )
         assert resp.provider_metadata == {}
 
@@ -484,7 +484,7 @@ class TestCompletionResponse:
             content="hi",
             finish_reason=FinishReason.STOP,
             usage=sample_token_usage,
-            model="test",
+            model="test-small-001",
             provider_metadata={
                 "_synthorg_latency_ms": 123.4,
                 "_synthorg_retry_count": 2,
@@ -502,13 +502,13 @@ class TestCompletionResponse:
             content="a",
             finish_reason=FinishReason.STOP,
             usage=sample_token_usage,
-            model="test",
+            model="test-small-001",
         )
         resp2 = CompletionResponse(
             content="b",
             finish_reason=FinishReason.STOP,
             usage=sample_token_usage,
-            model="test",
+            model="test-small-001",
         )
         assert resp1.provider_metadata is not resp2.provider_metadata
 

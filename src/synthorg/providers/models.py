@@ -264,6 +264,8 @@ class CompletionResponse(BaseModel):
         usage: Token usage and cost breakdown.
         model: Model identifier that served the request.
         provider_request_id: Provider-assigned request ID for debugging.
+        provider_metadata: Provider metadata injected by the base class
+            (``_synthorg_*`` keys for latency, retry count, retry reason).
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
