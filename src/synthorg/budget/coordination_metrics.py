@@ -581,7 +581,8 @@ def compute_straggler_gap(
         Straggler gap model.
 
     Raises:
-        ValueError: If ``agent_durations`` is empty.
+        ValueError: If ``agent_durations`` is empty or contains
+            invalid entries.
     """
     if not agent_durations:
         msg = "agent_durations must not be empty"
@@ -591,6 +592,27 @@ def compute_straggler_gap(
             error=msg,
         )
         raise ValueError(msg)
+
+    for agent_id, duration in agent_durations:
+        if not agent_id or not agent_id.strip():
+            msg = "agent_id must not be blank"
+            logger.warning(
+                COORD_METRICS_VALIDATION_ERROR,
+                parameter="agent_id",
+                value=agent_id,
+                error=msg,
+            )
+            raise ValueError(msg)
+        if not math.isfinite(duration) or duration < 0:
+            msg = "duration_seconds must be finite and non-negative"
+            logger.warning(
+                COORD_METRICS_VALIDATION_ERROR,
+                parameter="duration_seconds",
+                agent_id=agent_id,
+                value=duration,
+                error=msg,
+            )
+            raise ValueError(msg)
 
     slowest_id, slowest_dur = max(
         agent_durations,
@@ -623,44 +645,23 @@ def compute_token_speedup_ratio(
         Token speedup ratio model (alerts when ratio > 2.0).
 
     Raises:
-        ValueError: If any input is zero or negative.
+        ValueError: If any input is non-finite, zero, or negative.
     """
-    if tokens_mas <= 0:
-        msg = "tokens_mas must be positive"
-        logger.warning(
-            COORD_METRICS_VALIDATION_ERROR,
-            parameter="tokens_mas",
-            value=tokens_mas,
-            error=msg,
-        )
-        raise ValueError(msg)
-    if tokens_sas <= 0:
-        msg = "tokens_sas must be positive"
-        logger.warning(
-            COORD_METRICS_VALIDATION_ERROR,
-            parameter="tokens_sas",
-            value=tokens_sas,
-            error=msg,
-        )
-        raise ValueError(msg)
-    if duration_mas <= 0:
-        msg = "duration_mas must be positive"
-        logger.warning(
-            COORD_METRICS_VALIDATION_ERROR,
-            parameter="duration_mas",
-            value=duration_mas,
-            error=msg,
-        )
-        raise ValueError(msg)
-    if duration_sas <= 0:
-        msg = "duration_sas must be positive"
-        logger.warning(
-            COORD_METRICS_VALIDATION_ERROR,
-            parameter="duration_sas",
-            value=duration_sas,
-            error=msg,
-        )
-        raise ValueError(msg)
+    for name, value in (
+        ("tokens_mas", tokens_mas),
+        ("tokens_sas", tokens_sas),
+        ("duration_mas", duration_mas),
+        ("duration_sas", duration_sas),
+    ):
+        if not math.isfinite(value) or value <= 0:
+            msg = f"{name} must be finite and positive"
+            logger.warning(
+                COORD_METRICS_VALIDATION_ERROR,
+                parameter=name,
+                value=value,
+                error=msg,
+            )
+            raise ValueError(msg)
     return TokenSpeedupRatio(
         token_multiplier=tokens_mas / tokens_sas,
         latency_speedup=duration_sas / duration_mas,

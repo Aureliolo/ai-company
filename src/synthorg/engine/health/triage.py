@@ -48,9 +48,17 @@ class TriageFilter:
             msg = (
                 f"stall_duration_threshold must be >= 0, got {stall_duration_threshold}"
             )
+            logger.warning(
+                HEALTH_TICKET_DISMISSED,
+                error=msg,
+            )
             raise ValueError(msg)
         if steps_threshold < 0:
             msg = f"steps_threshold must be >= 0, got {steps_threshold}"
+            logger.warning(
+                HEALTH_TICKET_DISMISSED,
+                error=msg,
+            )
             raise ValueError(msg)
         self._stall_threshold = stall_duration_threshold
         self._steps_threshold = steps_threshold
