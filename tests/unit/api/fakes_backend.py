@@ -149,8 +149,11 @@ class FakeVersionRepository:
     def __init__(self) -> None:
         self._store: dict[tuple[str, int], VersionSnapshot[Any]] = {}
 
-    async def save_version(self, version: VersionSnapshot[Any]) -> None:
-        self._store.setdefault((version.entity_id, version.version), version)
+    async def save_version(self, version: VersionSnapshot[Any]) -> bool:
+        key = (version.entity_id, version.version)
+        was_new = key not in self._store
+        self._store.setdefault(key, version)
+        return was_new
 
     async def get_version(
         self, entity_id: NotBlankStr, version: int

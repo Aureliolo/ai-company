@@ -143,6 +143,12 @@ class ReviewGateService:
                 triggered this decision -- persisted on the
                 ``DecisionRecord`` for cross-referencing audit trails.
 
+        The ``DecisionRecord`` will include a ``charter_version`` key in
+        its metadata when the executing agent has a versioned identity on
+        record.  If the version lookup fails with a ``QueryError``, the
+        metadata will contain ``{"charter_version_lookup_failed": True}``
+        instead, so the failure is surfaced without blocking the decision.
+
         Raises:
             TaskNotFoundError: If the task cannot be found.
             SelfReviewError: If the decider is the task's original
@@ -306,7 +312,8 @@ class ReviewGateService:
                         "content_hash": latest_charter.content_hash,
                     }
                 }
-        except Exception as exc:
+        except QueryError as exc:
+            metadata = {"charter_version_lookup_failed": True}
             logger.warning(
                 VERSION_FETCH_FAILED,
                 entity_id=task.assigned_to,

@@ -85,6 +85,9 @@ def _make_mock_persistence(repo: MagicMock) -> MagicMock:
     """
     persistence = MagicMock()
     persistence.decision_records = repo
+    identity_versions = AsyncMock()
+    identity_versions.get_latest_version.return_value = None
+    persistence.identity_versions = identity_versions
     return persistence
 
 

@@ -298,3 +298,91 @@ class TestDeleteVersions:
         await repo.delete_versions_for_entity("ent-A")
         assert await repo.count_versions("ent-A") == 0
         assert await repo.count_versions("ent-B") == 1
+
+
+class TestSaveVersionBoolReturn:
+    """save_version returns True on insert, False on duplicate."""
+
+    @pytest.mark.unit
+    async def test_first_save_returns_true(
+        self, repo: SQLiteVersionRepository[_Stub]
+    ) -> None:
+        v = _make_version()
+        inserted = await repo.save_version(v)
+        assert inserted is True
+
+    @pytest.mark.unit
+    async def test_duplicate_save_returns_false(
+        self, repo: SQLiteVersionRepository[_Stub]
+    ) -> None:
+        v = _make_version()
+        await repo.save_version(v)
+        inserted_again = await repo.save_version(v)
+        assert inserted_again is False
+
+
+class TestTableNameValidationEdgeCases:
+    """Additional table name validation: empty string and leading digit."""
+
+    @pytest.mark.unit
+    async def test_empty_table_name_raises(
+        self, migrated_db: aiosqlite.Connection
+    ) -> None:
+        with pytest.raises(ValueError, match="Invalid table name"):
+            SQLiteVersionRepository(
+                migrated_db,
+                table_name="",
+                serialize_snapshot=_serialize,
+                deserialize_snapshot=_deserialize,
+            )
+
+    @pytest.mark.unit
+    async def test_leading_digit_table_name_raises(
+        self, migrated_db: aiosqlite.Connection
+    ) -> None:
+        with pytest.raises(ValueError, match="Invalid table name"):
+            SQLiteVersionRepository(
+                migrated_db,
+                table_name="1_versions",
+                serialize_snapshot=_serialize,
+                deserialize_snapshot=_deserialize,
+            )
+
+
+class TestDeserializeRowErrors:
+    """_deserialize_row raises QueryError with descriptive messages."""
+
+    @pytest.mark.unit
+    async def test_corrupt_json_raises_query_error(
+        self, repo: SQLiteVersionRepository[_Stub]
+    ) -> None:
+        from synthorg.persistence.errors import QueryError
+
+        # Insert a row with corrupt JSON directly
+        await repo._db.execute(
+            "INSERT INTO test_versions "
+            "(entity_id, version, content_hash, snapshot, saved_by, saved_at) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            ("ent-corrupt", 1, "a" * 64, "not-valid-json{{{", "user", _NOW.isoformat()),
+        )
+        await repo._db.commit()
+        with pytest.raises(QueryError, match="Corrupt JSON"):
+            await repo.get_version("ent-corrupt", 1)
+
+    @pytest.mark.unit
+    async def test_schema_drift_raises_query_error(
+        self, repo: SQLiteVersionRepository[_Stub]
+    ) -> None:
+        from synthorg.persistence.errors import QueryError
+
+        # Insert a row whose JSON is valid but doesn't match _Stub schema
+        bad_snapshot = json.dumps({"unexpected_field": "oops"})
+        await repo._db.execute(
+            "INSERT INTO test_versions "
+            "(entity_id, version, content_hash, snapshot, saved_by, saved_at) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            ("ent-drift", 1, "b" * 64, bad_snapshot, "user", _NOW.isoformat()),
+        )
+        await repo._db.commit()
+        with pytest.raises(QueryError, match="Schema mismatch"):
+            await repo.get_version("ent-drift", 1)

@@ -250,3 +250,51 @@ class TestCharterVersionInDecisionRecord:
         )
 
         assert captured_metadata is None
+
+    @pytest.mark.integration
+    async def test_charter_version_lookup_error_sets_failure_flag(
+        self,
+        version_repo: SQLiteVersionRepository[AgentIdentity],
+    ) -> None:
+        """QueryError during charter lookup results in failure-flag metadata."""
+        from synthorg.engine.review_gate import ReviewGateService
+        from synthorg.persistence.errors import QueryError
+
+        captured_metadata: dict[str, object] | None = None
+
+        async def _capture(**kwargs: object) -> object:
+            nonlocal captured_metadata
+            captured_metadata = kwargs.get("metadata")  # type: ignore[assignment]
+            record = MagicMock()
+            record.decision = DecisionOutcome.APPROVED
+            record.version = 1
+            return record
+
+        mock_decision_repo = AsyncMock()
+        mock_decision_repo.append_with_next_version.side_effect = _capture
+
+        # identity_versions raises QueryError on lookup
+        failing_version_repo = AsyncMock()
+        failing_version_repo.get_latest_version.side_effect = QueryError(
+            "DB failure simulated"
+        )
+
+        mock_persistence = MagicMock()
+        mock_persistence.identity_versions = failing_version_repo
+        mock_persistence.decision_records = mock_decision_repo
+
+        mock_task = MagicMock()
+        mock_task.id = str(uuid4())
+        mock_task.assigned_to = "any-agent-id"
+        mock_task.acceptance_criteria = []
+
+        svc = ReviewGateService(task_engine=MagicMock(), persistence=mock_persistence)
+        await svc._record_decision(
+            task=mock_task,
+            decided_by="reviewer-001",
+            approved=True,
+            reason=None,
+            approval_id=None,
+        )
+
+        assert captured_metadata == {"charter_version_lookup_failed": True}

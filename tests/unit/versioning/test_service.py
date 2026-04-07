@@ -4,6 +4,8 @@ from datetime import UTC, datetime
 from unittest.mock import AsyncMock
 
 import pytest
+from hypothesis import given, settings
+from hypothesis import strategies as st
 from pydantic import BaseModel, ConfigDict
 
 from synthorg.versioning.hashing import compute_content_hash
@@ -42,7 +44,7 @@ def _make_repo(
     """Build a mock VersionRepository."""
     repo = AsyncMock()
     repo.get_latest_version.return_value = latest
-    repo.save_version.return_value = None
+    repo.save_version.return_value = True
     return repo
 
 
@@ -131,3 +133,59 @@ class TestGetLatest:
         result = await svc.get_latest("ent-001")
         assert result is not None
         assert result.version == 5
+
+
+class TestConcurrentSave:
+    """Handles INSERT OR IGNORE concurrent duplicate detection."""
+
+    @pytest.mark.unit
+    async def test_returns_existing_when_insert_ignored(self) -> None:
+        # save_version returns False: concurrent writer already inserted the row.
+        existing = _make_snapshot(version=1)
+        repo = AsyncMock()
+        repo.get_latest_version.return_value = None  # no prior version
+        repo.save_version.return_value = False  # INSERT OR IGNORE dropped our write
+        # Re-fetch returns the winner's snapshot
+        repo.get_latest_version.side_effect = [None, existing]
+        svc = VersioningService(repo)
+
+        model = _Simple(name="first", value=1)
+        result = await svc.snapshot_if_changed("ent-001", model, "user")
+
+        repo.save_version.assert_called_once()
+        # Service re-fetched after the ignored insert
+        assert repo.get_latest_version.call_count == 2
+        assert result is existing
+
+
+class TestSnapshotDeterminism:
+    """Property: same content always produces the same hash."""
+
+    @pytest.mark.unit
+    @given(
+        name=st.text(min_size=1, max_size=50),
+        value=st.integers(min_value=0, max_value=10_000),
+    )
+    @settings(max_examples=100)
+    def test_same_model_same_hash(self, name: str, value: int) -> None:
+        model = _Simple(name=name, value=value)
+        h1 = compute_content_hash(model)
+        h2 = compute_content_hash(model)
+        assert h1 == h2
+
+    @pytest.mark.unit
+    @given(
+        name_a=st.text(min_size=1, max_size=50),
+        value_a=st.integers(min_value=0, max_value=10_000),
+        name_b=st.text(min_size=1, max_size=50),
+        value_b=st.integers(min_value=0, max_value=10_000),
+    )
+    @settings(max_examples=100)
+    def test_different_models_different_hash(
+        self, name_a: str, value_a: int, name_b: str, value_b: int
+    ) -> None:
+        model_a = _Simple(name=name_a, value=value_a)
+        model_b = _Simple(name=name_b, value=value_b)
+        if model_a == model_b:
+            return  # same input -- skip, not a violation
+        assert compute_content_hash(model_a) != compute_content_hash(model_b)

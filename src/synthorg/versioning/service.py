@@ -89,7 +89,12 @@ class VersioningService[T: BaseModel]:
             saved_by=saved_by,
             saved_at=datetime.now(UTC),
         )
-        await self._repo.save_version(version)
+        inserted = await self._repo.save_version(version)
+        if not inserted:
+            # A concurrent writer beat us to this (entity_id, version) pair.
+            # Return the version that was actually persisted rather than the
+            # one we constructed, so the caller always sees a live snapshot.
+            return await self._repo.get_latest_version(entity_id)
         logger.info(
             VERSION_SAVED,
             entity_id=entity_id,

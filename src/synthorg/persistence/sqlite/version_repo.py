@@ -125,21 +125,50 @@ class SQLiteVersionRepository[T: BaseModel]:
                 saved_by=data["saved_by"],
                 saved_at=dt,
             )
-        except (ValueError, ValidationError, KeyError, json.JSONDecodeError) as exc:
+        except json.JSONDecodeError as exc:
             context = f"{data.get('entity_id', '?')}@v{data.get('version', '?')}"
-            msg = f"Failed to deserialize version snapshot {context!r}"
+            msg = f"Corrupt JSON in version snapshot {context!r}: {exc}"
             logger.exception(
                 VERSION_FETCH_FAILED,
                 table=self._table,
                 context=context,
                 error=str(exc),
+                reason="json_corrupt",
+            )
+            raise QueryError(msg) from exc
+        except ValidationError as exc:
+            context = f"{data.get('entity_id', '?')}@v{data.get('version', '?')}"
+            msg = f"Schema mismatch in version snapshot {context!r}: {exc}"
+            logger.exception(
+                VERSION_FETCH_FAILED,
+                table=self._table,
+                context=context,
+                error=str(exc),
+                reason="schema_drift",
+            )
+            raise QueryError(msg) from exc
+        except (ValueError, KeyError) as exc:
+            context = f"{data.get('entity_id', '?')}@v{data.get('version', '?')}"
+            msg = f"Failed to deserialize version snapshot {context!r}: {exc}"
+            logger.exception(
+                VERSION_FETCH_FAILED,
+                table=self._table,
+                context=context,
+                error=str(exc),
+                reason="unexpected",
             )
             raise QueryError(msg) from exc
 
-    async def save_version(self, version: VersionSnapshot[T]) -> None:
-        """Persist a version snapshot (insert only, idempotent)."""
+    async def save_version(self, version: VersionSnapshot[T]) -> bool:
+        """Persist a version snapshot (insert only, idempotent).
+
+        Returns:
+            ``True`` if the row was actually inserted; ``False`` if the
+            ``(entity_id, version)`` pair already existed and the write
+            was silently dropped by ``INSERT OR IGNORE``.
+        """
         try:
-            await self._db.execute(
+            cursor = await self._db.execute(
                 self._insert_sql,
                 (
                     version.entity_id,
@@ -151,11 +180,13 @@ class SQLiteVersionRepository[T: BaseModel]:
                 ),
             )
             await self._db.commit()
+            inserted = cursor.rowcount > 0
             logger.debug(
                 VERSION_SAVED,
                 table=self._table,
                 entity_id=version.entity_id,
                 version=version.version,
+                inserted=inserted,
             )
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = (
@@ -170,6 +201,8 @@ class SQLiteVersionRepository[T: BaseModel]:
                 error=str(exc),
             )
             raise QueryError(msg) from exc
+        else:
+            return inserted
 
     async def get_version(
         self,

@@ -23,14 +23,19 @@ class VersionRepository[T: BaseModel](Protocol):
     type they manage (e.g., ``VersionRepository[AgentIdentity]``).
     """
 
-    async def save_version(self, version: VersionSnapshot[T]) -> None:
+    async def save_version(self, version: VersionSnapshot[T]) -> bool:
         """Persist a version snapshot (insert only, idempotent).
 
-        A second save of an identical ``(entity_id, version)`` pair is
-        silently ignored rather than raising an error.
+        Uses ``INSERT OR IGNORE`` semantics: a second save of the same
+        ``(entity_id, version)`` pair is silently dropped rather than
+        raising an error.
 
         Args:
             version: The version snapshot to persist.
+
+        Returns:
+            ``True`` if the row was actually inserted, ``False`` if it
+            was already present (duplicate silently ignored).
 
         Raises:
             PersistenceError: If the operation fails.

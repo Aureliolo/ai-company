@@ -8,7 +8,7 @@ like ``personality.risk_tolerance``.
 import json
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
 
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 
@@ -27,6 +27,11 @@ class IdentityFieldChange(BaseModel):
         change_type: Whether the field was modified, added, or removed.
         old_value: JSON-serialized previous value, or ``None`` if added.
         new_value: JSON-serialized new value, or ``None`` if removed.
+
+    Invariants:
+        - ``"added"``: ``old_value`` must be ``None`` (there was no prior value).
+        - ``"removed"``: ``new_value`` must be ``None`` (the field no longer exists).
+        - ``"modified"``: both ``old_value`` and ``new_value`` must be non-``None``.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
@@ -35,6 +40,21 @@ class IdentityFieldChange(BaseModel):
     change_type: ChangeType
     old_value: str | None = None
     new_value: str | None = None
+
+    @model_validator(mode="after")
+    def _validate_change_invariants(self) -> IdentityFieldChange:
+        if self.change_type == "added" and self.old_value is not None:
+            msg = "change_type='added' requires old_value=None"
+            raise ValueError(msg)
+        if self.change_type == "removed" and self.new_value is not None:
+            msg = "change_type='removed' requires new_value=None"
+            raise ValueError(msg)
+        if self.change_type == "modified" and (
+            self.old_value is None or self.new_value is None
+        ):
+            msg = "change_type='modified' requires both old_value and new_value"
+            raise ValueError(msg)
+        return self
 
 
 class AgentIdentityDiff(BaseModel):
@@ -45,7 +65,8 @@ class AgentIdentityDiff(BaseModel):
         from_version: Version number of the older snapshot.
         to_version: Version number of the newer snapshot.
         field_changes: All detected field changes, ordered by field path.
-        summary: Human-readable one-line summary (e.g. ``"2 fields changed"``).
+        summary: Human-readable one-line summary (e.g. ``"2 fields changed"``),
+            derived from ``field_changes``.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
@@ -54,7 +75,24 @@ class AgentIdentityDiff(BaseModel):
     from_version: int = Field(ge=1)
     to_version: int = Field(ge=1)
     field_changes: tuple[IdentityFieldChange, ...] = ()
-    summary: str = ""
+
+    @model_validator(mode="after")
+    def _validate_version_order(self) -> AgentIdentityDiff:
+        if self.from_version == self.to_version:
+            msg = f"from_version and to_version must differ (got {self.from_version})"
+            raise ValueError(msg)
+        return self
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def summary(self) -> str:
+        """Human-readable one-line summary of the diff."""
+        n = len(self.field_changes)
+        if n == 0:
+            return "no changes"
+        if n == 1:
+            return "1 field changed"
+        return f"{n} fields changed"
 
 
 def _serialize(value: Any) -> str:
@@ -128,18 +166,9 @@ def compute_diff(
     changes: list[IdentityFieldChange] = []
     _diff_dicts(old_dict, new_dict, "", changes)
 
-    n = len(changes)
-    if n == 0:
-        summary = "no changes"
-    elif n == 1:
-        summary = "1 field changed"
-    else:
-        summary = f"{n} fields changed"
-
     return AgentIdentityDiff(
         agent_id=agent_id,
         from_version=from_version,
         to_version=to_version,
         field_changes=tuple(changes),
-        summary=summary,
     )

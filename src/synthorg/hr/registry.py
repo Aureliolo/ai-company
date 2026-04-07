@@ -270,14 +270,27 @@ class AgentRegistryService:
             return len(self._agents)
 
     async def _snapshot(self, identity: AgentIdentity, *, saved_by: str) -> None:
-        """Snapshot identity via versioning service (best-effort, no-op if absent)."""
+        """Snapshot identity via versioning service (best-effort, no-op if absent).
+
+        Called **outside** the registry lock in both ``register`` and
+        ``update_identity`` -- this is intentional: holding the lock during
+        I/O would block all concurrent reads for the duration of the DB write.
+        The versioning call is fire-and-forget; a ``PersistenceError`` is logged
+        but never re-raised so that registry operations always succeed even when
+        the versioning back-end is unavailable.
+        """
         if self._versioning is None:
             return
+        # Local import breaks a circular dependency:
+        # persistence.__init__ -> workflow_definition_repo -> engine.workflow
+        # -> communication -> hr.registry
+        from synthorg.persistence.errors import PersistenceError  # noqa: PLC0415
+
         try:
             await self._versioning.snapshot_if_changed(
                 str(identity.id), identity, saved_by
             )
-        except Exception as exc:
+        except PersistenceError as exc:
             logger.warning(
                 VERSION_SNAPSHOT_FAILED,
                 agent_id=str(identity.id),
