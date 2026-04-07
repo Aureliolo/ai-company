@@ -65,7 +65,9 @@ class FakeRiskOverrideRepository:
         return self._overrides.get(override_id)
 
     async def list_active(self) -> tuple[RiskTierOverride, ...]:
-        return tuple(o for o in self._overrides.values() if o.is_active)
+        active = [o for o in self._overrides.values() if o.is_active]
+        active.sort(key=lambda o: o.created_at, reverse=True)
+        return tuple(active)
 
     async def revoke(
         self,
