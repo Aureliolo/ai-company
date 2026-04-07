@@ -2,6 +2,7 @@
 
 import json
 import logging
+import queue
 from typing import Any
 from unittest.mock import MagicMock
 
@@ -102,7 +103,7 @@ class TestOtlpHandler:
             while True:
                 try:
                     records.append(handler._queue.get_nowait())
-                except Exception:
+                except queue.Empty:
                     break
             assert len(records) == 2
         finally:
@@ -190,8 +191,55 @@ class TestBuildOtlpHandler:
         finally:
             handler.close()
 
+    def test_uses_config_batch_size_and_timeout(self) -> None:
+        sink = SinkConfig(
+            sink_type=SinkType.OTLP,
+            otlp_endpoint="http://localhost:4318",
+            otlp_batch_size=50,
+            otlp_timeout_seconds=30.0,
+        )
+        handler = build_otlp_handler(sink, [])
+        try:
+            assert handler._batch_size == 50
+            assert handler._timeout == 30.0
+        finally:
+            handler.close()
+
     def test_rejects_missing_endpoint(self) -> None:
         sink = MagicMock()
         sink.otlp_endpoint = None
         with pytest.raises(ValueError, match="non-empty otlp_endpoint"):
             build_otlp_handler(sink, [])
+
+
+@pytest.mark.unit
+class TestOtlpHandlerExportFailure:
+    """Tests for export batch error handling."""
+
+    def test_export_failure_increments_dropped_count(self) -> None:
+        handler = _make_handler(batch_size=1)
+        try:
+            handler.emit(_make_record("will fail"))
+            # Manually drain and try to export (will fail because no server)
+            records: list[logging.LogRecord] = []
+            while True:
+                try:
+                    records.append(handler._queue.get_nowait())
+                except queue.Empty:
+                    break
+            if records:
+                handler._export_batch(records)
+            with handler._pending_lock:
+                assert handler._dropped_count > 0
+        finally:
+            handler.close()
+
+    def test_close_always_drains_remaining_records(self) -> None:
+        handler = _make_handler(batch_size=100)
+        try:
+            handler.emit(_make_record("one"))
+            handler.emit(_make_record("two"))
+        finally:
+            handler.close()
+        # After close, queue should be empty
+        assert handler._queue.empty()

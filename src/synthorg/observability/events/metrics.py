@@ -10,6 +10,9 @@ METRICS_SCRAPE_COMPLETED: Final[str] = "metrics.scrape.completed"
 METRICS_SCRAPE_FAILED: Final[str] = "metrics.scrape.failed"
 METRICS_COLLECTOR_INITIALIZED: Final[str] = "metrics.collector.initialized"
 
+# Coordination metrics push events
+METRICS_COORDINATION_RECORDED: Final[str] = "metrics.coordination.recorded"
+
 # OTLP export events
 METRICS_OTLP_EXPORT_COMPLETED: Final[str] = "metrics.otlp.export_completed"
 METRICS_OTLP_EXPORT_FAILED: Final[str] = "metrics.otlp.export_failed"

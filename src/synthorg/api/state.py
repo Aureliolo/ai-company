@@ -252,6 +252,24 @@ class AppState:
             "prometheus_collector",
         )
 
+    def set_prometheus_collector(
+        self,
+        collector: PrometheusCollector,
+    ) -> None:
+        """Set the Prometheus collector (deferred initialisation).
+
+        Args:
+            collector: Fully configured Prometheus collector.
+
+        Raises:
+            RuntimeError: If the collector was already configured.
+        """
+        if self._prometheus_collector is not None:
+            msg = "Prometheus collector already configured"
+            logger.error(API_APP_STARTUP, error=msg)
+            raise RuntimeError(msg)
+        self._prometheus_collector = collector
+
     @property
     def has_artifact_storage(self) -> bool:
         """Check whether the artifact storage backend is configured."""

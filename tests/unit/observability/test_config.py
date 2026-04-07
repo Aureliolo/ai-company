@@ -731,6 +731,8 @@ class TestSinkConfigOtlp:
         assert cfg.otlp_protocol == OtlpProtocol.HTTP_PROTOBUF
         assert cfg.otlp_headers == ()
         assert cfg.otlp_export_interval_seconds == 5.0
+        assert cfg.otlp_batch_size == 100
+        assert cfg.otlp_timeout_seconds == 10.0
 
     def test_custom_otlp_settings(self) -> None:
         cfg = SinkConfig(
@@ -815,6 +817,32 @@ class TestSinkConfigOtlp:
         with pytest.raises(ValidationError):
             cfg.otlp_endpoint = "other"  # type: ignore[misc]
 
+    def test_custom_batch_size_and_timeout(self) -> None:
+        cfg = SinkConfig(
+            sink_type=SinkType.OTLP,
+            otlp_endpoint="http://localhost:4318",
+            otlp_batch_size=50,
+            otlp_timeout_seconds=30.0,
+        )
+        assert cfg.otlp_batch_size == 50
+        assert cfg.otlp_timeout_seconds == 30.0
+
+    def test_batch_size_must_be_positive(self) -> None:
+        with pytest.raises(ValidationError):
+            SinkConfig(
+                sink_type=SinkType.OTLP,
+                otlp_endpoint="http://localhost:4318",
+                otlp_batch_size=0,
+            )
+
+    def test_timeout_must_be_positive(self) -> None:
+        with pytest.raises(ValidationError):
+            SinkConfig(
+                sink_type=SinkType.OTLP,
+                otlp_endpoint="http://localhost:4318",
+                otlp_timeout_seconds=0.0,
+            )
+
     def test_json_roundtrip(self) -> None:
         cfg = SinkConfig(
             sink_type=SinkType.OTLP,
@@ -822,6 +850,8 @@ class TestSinkConfigOtlp:
             otlp_protocol=OtlpProtocol.GRPC,
             otlp_headers=(("X-Source", "synthorg"),),
             otlp_export_interval_seconds=15.0,
+            otlp_batch_size=200,
+            otlp_timeout_seconds=20.0,
             level=LogLevel.WARNING,
         )
         restored = SinkConfig.model_validate_json(cfg.model_dump_json())

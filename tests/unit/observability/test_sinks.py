@@ -445,6 +445,38 @@ class TestBuildHandlerSyslogHttpDispatch:
 
 
 @pytest.mark.unit
+class TestBuildHandlerPrometheusOtlpDispatch:
+    """Tests for PROMETHEUS/OTLP dispatch in build_handler."""
+
+    def test_prometheus_returns_null_handler(
+        self, tmp_path: Path, handler_cleanup: list[logging.Handler]
+    ) -> None:
+        sink = SinkConfig(sink_type=SinkType.PROMETHEUS)
+        handler = build_handler(sink, tmp_path, _foreign_pre_chain())
+        handler_cleanup.append(handler)
+        assert isinstance(handler, logging.NullHandler)
+
+    def test_otlp_dispatches_to_otlp_builder(
+        self, tmp_path: Path, handler_cleanup: list[logging.Handler]
+    ) -> None:
+        sink = SinkConfig(
+            sink_type=SinkType.OTLP,
+            otlp_endpoint="http://localhost:4318",
+        )
+        with patch(
+            "synthorg.observability.otlp_handler.build_otlp_handler",
+        ) as mock_build:
+            mock_build.return_value = logging.StreamHandler()
+            handler = build_handler(
+                sink,
+                tmp_path,
+                _foreign_pre_chain(),
+            )
+            handler_cleanup.append(handler)
+            mock_build.assert_called_once()
+
+
+@pytest.mark.unit
 class TestLoggerNameFilterValidation:
     """Tests for _LoggerNameFilter input validation."""
 

@@ -191,6 +191,16 @@ class SinkConfig(BaseModel):
         gt=0,
         description="Seconds between OTLP export batches",
     )
+    otlp_batch_size: int = Field(
+        default=100,
+        gt=0,
+        description="Records per OTLP export batch",
+    )
+    otlp_timeout_seconds: float = Field(
+        default=10.0,
+        gt=0,
+        description="HTTP request timeout in seconds for OTLP export",
+    )
 
     @model_validator(mode="after")
     def _validate_sink_type_fields(self) -> Self:
@@ -390,6 +400,12 @@ class SinkConfig(BaseModel):
             msg = (
                 f"otlp_protocol must be default (http/protobuf) for {sink_label} sinks"
             )
+            raise ValueError(msg)
+        if self.otlp_batch_size != 100:  # noqa: PLR2004
+            msg = f"otlp_batch_size must be default (100) for {sink_label} sinks"
+            raise ValueError(msg)
+        if self.otlp_timeout_seconds != 10.0:  # noqa: PLR2004
+            msg = f"otlp_timeout_seconds must be default (10.0) for {sink_label} sinks"
             raise ValueError(msg)
 
 

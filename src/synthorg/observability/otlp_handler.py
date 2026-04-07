@@ -26,7 +26,8 @@ if TYPE_CHECKING:
 # Correlation ID field names injected by structlog contextvars
 _CORRELATION_FIELDS = ("request_id", "task_id", "agent_id")
 
-# Mapping from Python log levels to OTLP severity numbers
+# Mapping from Python log levels to OTLP severity numbers.
+# Python's CRITICAL maps to OTEL's FATAL range (21-24).
 # https://opentelemetry.io/docs/specs/otel/logs/data-model/#severity-fields
 _SEVERITY_MAP: dict[int, int] = {
     logging.DEBUG: 5,
@@ -93,6 +94,11 @@ class OtlpHandler(logging.Handler):
                     self._batch_ready.set()
         except Exception:
             self.handleError(record)
+
+    def _increment_dropped(self, count: int) -> None:
+        """Atomically increment the dropped record counter."""
+        with self._pending_lock:
+            self._dropped_count += count
 
     def _format_as_otlp_dict(self, record: logging.LogRecord) -> dict[str, Any]:
         """Convert a log record to an OTLP-compatible dictionary.
@@ -163,8 +169,7 @@ class OtlpHandler(logging.Handler):
                 log_records.append(self._format_as_otlp_dict(record))
             except Exception:
                 self.handleError(record)
-                with self._pending_lock:
-                    self._dropped_count += 1
+                self._increment_dropped(1)
 
         if not log_records:
             return
@@ -199,15 +204,17 @@ class OtlpHandler(logging.Handler):
             ):
                 pass
         except Exception as exc:
-            # HTTPError wraps a response FP -- close to avoid FD leak.
+            # urllib.error.HTTPError wraps a file pointer to the response
+            # body.  Close it explicitly to avoid leaking file descriptors.
             if isinstance(exc, urllib.error.HTTPError):
                 exc.close()
+            self._increment_dropped(len(log_records))
             with self._pending_lock:
-                self._dropped_count += len(log_records)
+                total_dropped = self._dropped_count
             print(  # noqa: T201
                 f"WARNING: OTLP log export failed to {url}: {exc} "
                 f"(dropped {len(log_records)} records, "
-                f"total dropped: {self._dropped_count})",
+                f"total dropped: {total_dropped})",
                 file=sys.stderr,
                 flush=True,
             )
@@ -218,8 +225,15 @@ class OtlpHandler(logging.Handler):
         self._batch_ready.set()
         join_timeout = self._timeout * 2
         self._flusher.join(timeout=join_timeout)
-        if not self._flusher.is_alive():
-            self._drain_and_flush()
+        if self._flusher.is_alive():
+            print(  # noqa: T201
+                "WARNING: log-otlp-flusher thread did not stop within "
+                f"{join_timeout:.1f}s timeout",
+                file=sys.stderr,
+                flush=True,
+            )
+        # Always drain remaining records regardless of thread state.
+        self._drain_and_flush()
         super().close()
 
 
@@ -243,8 +257,9 @@ def build_otlp_handler(
         endpoint=sink.otlp_endpoint,
         protocol=sink.otlp_protocol,
         headers=sink.otlp_headers,
-        batch_size=100,
+        batch_size=sink.otlp_batch_size,
         flush_interval=sink.otlp_export_interval_seconds,
+        timeout=sink.otlp_timeout_seconds,
     )
     handler.setLevel(sink.level.value)
 
