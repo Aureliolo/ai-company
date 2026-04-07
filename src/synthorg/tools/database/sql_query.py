@@ -67,7 +67,7 @@ _WRITE_PREFIXES: Final[tuple[str, ...]] = (
 )
 
 _LEADING_COMMENT_RE: Final[re.Pattern[str]] = re.compile(
-    r"^\s*(?:--[^\n]*(?:\n|$)|/\*.*?\*/\s*)*",
+    r"^\s*(?:(?:--[^\n]*(?:\n|$)|/\*.*?\*/)\s*)*",
     re.DOTALL,
 )
 
@@ -293,11 +293,14 @@ class SqlQueryTool(BaseDatabaseTool):
                     },
                 )
 
-            # Row-returning statement -- fetch bounded rows.
-            if is_write:
-                await db.commit()
+            # Row-returning statement -- fetch bounded rows, then
+            # close the cursor before committing.
+            desc = cursor.description
             limit = self._config.max_rows
             rows = list(await cursor.fetchmany(limit + 1))
+            await cursor.close()
+            if is_write:
+                await db.commit()
             row_truncated = len(rows) > limit
             if row_truncated:
                 rows = rows[:limit]
@@ -309,7 +312,7 @@ class SqlQueryTool(BaseDatabaseTool):
                     metadata={"keyword": keyword, "row_count": 0},
                 )
 
-            columns = [desc[0] for desc in cursor.description]
+            columns = [d[0] for d in (desc or [])]
             content = self._format_results(columns, rows)
             if row_truncated:
                 content += f"\n\n[Truncated: result exceeded {limit:,} rows]"
