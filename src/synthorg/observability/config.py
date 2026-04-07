@@ -18,6 +18,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.observability.enums import (
     LogLevel,
+    OtlpProtocol,
     RotationStrategy,
     SinkType,
     SyslogFacility,
@@ -30,6 +31,7 @@ _DEFAULT_HTTP_BATCH_SIZE: Final[int] = 100
 _DEFAULT_HTTP_FLUSH_INTERVAL: Final[float] = 5.0
 _DEFAULT_HTTP_TIMEOUT: Final[float] = 10.0
 _DEFAULT_HTTP_MAX_RETRIES: Final[int] = 3
+_DEFAULT_OTLP_EXPORT_INTERVAL: Final[float] = 5.0
 
 
 class RotationConfig(BaseModel):
@@ -166,6 +168,29 @@ class SinkConfig(BaseModel):
         ge=0,
         description="Retry count on HTTP failure",
     )
+    # PROMETHEUS fields
+    prometheus_port: int | None = Field(
+        default=None,
+        description="Dedicated port for /metrics (None = main API port)",
+    )
+    # OTLP fields
+    otlp_endpoint: str | None = Field(
+        default=None,
+        description="OTLP collector endpoint URL",
+    )
+    otlp_protocol: OtlpProtocol = Field(
+        default=OtlpProtocol.HTTP_PROTOBUF,
+        description="OTLP transport protocol",
+    )
+    otlp_headers: tuple[tuple[str, str], ...] = Field(
+        default=(),
+        description="Extra OTLP headers as (name, value) pairs",
+    )
+    otlp_export_interval_seconds: float = Field(
+        default=5.0,
+        gt=0,
+        description="Seconds between OTLP export batches",
+    )
 
     @model_validator(mode="after")
     def _validate_sink_type_fields(self) -> Self:
@@ -173,20 +198,41 @@ class SinkConfig(BaseModel):
         match self.sink_type:
             case SinkType.FILE:
                 self._validate_file_fields()
+                self._reject_prometheus_fields("FILE")
+                self._reject_otlp_fields("FILE")
             case SinkType.CONSOLE:
                 self._reject_file_fields("CONSOLE")
                 self._reject_syslog_fields("CONSOLE")
                 self._reject_http_fields("CONSOLE")
+                self._reject_prometheus_fields("CONSOLE")
+                self._reject_otlp_fields("CONSOLE")
             case SinkType.SYSLOG:
                 self._reject_file_fields("SYSLOG")
                 self._validate_syslog_fields()
                 self._reject_http_fields("SYSLOG")
                 self._require_json_format("SYSLOG")
+                self._reject_prometheus_fields("SYSLOG")
+                self._reject_otlp_fields("SYSLOG")
             case SinkType.HTTP:
                 self._reject_file_fields("HTTP")
                 self._reject_syslog_fields("HTTP")
                 self._validate_http_fields()
                 self._require_json_format("HTTP")
+                self._reject_prometheus_fields("HTTP")
+                self._reject_otlp_fields("HTTP")
+            case SinkType.PROMETHEUS:
+                self._reject_file_fields("PROMETHEUS")
+                self._reject_syslog_fields("PROMETHEUS")
+                self._reject_http_fields("PROMETHEUS")
+                self._reject_otlp_fields("PROMETHEUS")
+                self._validate_prometheus_fields()
+            case SinkType.OTLP:
+                self._reject_file_fields("OTLP")
+                self._reject_syslog_fields("OTLP")
+                self._reject_http_fields("OTLP")
+                self._reject_prometheus_fields("OTLP")
+                self._validate_otlp_fields()
+                self._require_json_format("OTLP")
         return self
 
     def _validate_file_fields(self) -> None:
@@ -289,6 +335,61 @@ class SinkConfig(BaseModel):
     def _require_json_format(self, sink_label: str) -> None:
         if not self.json_format:
             msg = f"json_format must be True for {sink_label} sinks (always JSON)"
+            raise ValueError(msg)
+
+    def _validate_prometheus_fields(self) -> None:
+        if self.prometheus_port is not None and (
+            self.prometheus_port < 1 or self.prometheus_port > 65535  # noqa: PLR2004
+        ):
+            msg = "prometheus_port must be between 1 and 65535"
+            raise ValueError(msg)
+
+    def _reject_prometheus_fields(self, sink_label: str) -> None:
+        if self.prometheus_port is not None:
+            msg = f"prometheus_port must be None for {sink_label} sinks"
+            raise ValueError(msg)
+
+    def _validate_otlp_fields(self) -> None:
+        if self.otlp_endpoint is None:
+            msg = "otlp_endpoint is required for OTLP sinks"
+            raise ValueError(msg)
+        if not self.otlp_endpoint.strip():
+            msg = "otlp_endpoint must not be blank"
+            raise ValueError(msg)
+        if not (
+            self.otlp_endpoint.startswith("http://")
+            or self.otlp_endpoint.startswith("https://")
+        ):
+            msg = "otlp_endpoint must start with http:// or https://"
+            raise ValueError(msg)
+        from urllib.parse import urlparse  # noqa: PLC0415
+
+        parsed = urlparse(self.otlp_endpoint)
+        if not parsed.hostname:
+            msg = "otlp_endpoint must include a host"
+            raise ValueError(msg)
+        for i, (name, _value) in enumerate(self.otlp_headers):
+            if not name or not name.strip():
+                msg = f"otlp_headers[{i}] has an empty header name"
+                raise ValueError(msg)
+
+    def _reject_otlp_fields(self, sink_label: str) -> None:
+        if self.otlp_endpoint is not None:
+            msg = f"otlp_endpoint must be None for {sink_label} sinks"
+            raise ValueError(msg)
+        if self.otlp_headers != ():
+            msg = f"otlp_headers must be empty for {sink_label} sinks"
+            raise ValueError(msg)
+        if self.otlp_export_interval_seconds != _DEFAULT_OTLP_EXPORT_INTERVAL:
+            msg = (
+                "otlp_export_interval_seconds must be default (5.0) "
+                f"for {sink_label} sinks"
+            )
+            raise ValueError(msg)
+        if self.otlp_protocol != OtlpProtocol.HTTP_PROTOBUF:
+            msg = (
+                f"otlp_protocol must be default (http/protobuf) for {sink_label} sinks"
+            )
             raise ValueError(msg)
 
 

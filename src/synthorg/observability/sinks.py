@@ -383,6 +383,18 @@ def build_handler(
             )
 
             return build_http_handler(sink, foreign_pre_chain)
+        case SinkType.PROMETHEUS:
+            # Prometheus is pull-based (scrape endpoint), not a log handler.
+            # Return a no-op handler -- the /metrics controller serves metrics.
+            handler = logging.NullHandler()
+            handler.setLevel(sink.level.value)
+            return handler
+        case SinkType.OTLP:
+            from synthorg.observability.otlp_handler import (  # noqa: PLC0415
+                build_otlp_handler,
+            )
+
+            return build_otlp_handler(sink, foreign_pre_chain)
         case _:  # pragma: no cover
             msg = f"Unsupported sink type: {sink.sink_type}"  # type: ignore[unreachable]
             raise ValueError(msg)

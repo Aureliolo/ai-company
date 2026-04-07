@@ -43,6 +43,9 @@ from synthorg.notifications.dispatcher import (
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import API_APP_STARTUP, API_SERVICE_UNAVAILABLE
 from synthorg.observability.events.settings import SETTINGS_SERVICE_SWAPPED
+from synthorg.observability.prometheus_collector import (
+    PrometheusCollector,  # noqa: TC001
+)
 from synthorg.persistence.artifact_storage import (
     ArtifactStorageBackend,  # noqa: TC001
 )
@@ -104,6 +107,7 @@ class AppState:
         "_org_mutation_service",
         "_performance_tracker",
         "_persistence",
+        "_prometheus_collector",
         "_provider_health_tracker",
         "_provider_management",
         "_provider_registry",
@@ -176,6 +180,7 @@ class AppState:
         self._provider_health_tracker = provider_health_tracker
         self._tool_invocation_tracker = tool_invocation_tracker
         self._delegation_record_store = delegation_record_store
+        self._prometheus_collector: PrometheusCollector | None = None
         self._fine_tune_orchestrator: FineTuneOrchestrator | None = None
         self._config_resolver: ConfigResolver | None = (
             ConfigResolver(settings_service=settings_service, config=config)
@@ -233,6 +238,19 @@ class AppState:
     def persistence(self) -> PersistenceBackend:
         """Return persistence backend or raise 503."""
         return self._require_service(self._persistence, "persistence")
+
+    @property
+    def has_prometheus_collector(self) -> bool:
+        """Check whether the Prometheus collector is configured."""
+        return self._prometheus_collector is not None
+
+    @property
+    def prometheus_collector(self) -> PrometheusCollector:
+        """Return Prometheus collector or raise 503."""
+        return self._require_service(
+            self._prometheus_collector,
+            "prometheus_collector",
+        )
 
     @property
     def has_artifact_storage(self) -> bool:

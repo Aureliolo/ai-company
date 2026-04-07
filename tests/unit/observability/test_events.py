@@ -206,6 +206,7 @@ class TestEventConstants:
             "mcp",
             "meeting",
             "memory",
+            "metrics",
             "org_memory",
             "parallel",
             "performance",

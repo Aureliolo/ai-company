@@ -1239,6 +1239,7 @@ def _build_auth_exclude_paths(
         if auth.exclude_paths is not None
         else (
             f"^{prefix}/health$",
+            f"^{prefix}/metrics$",
             "^/docs",
             "^/api$",
             f"^{prefix}/auth/setup$",

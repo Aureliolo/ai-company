@@ -1,0 +1,57 @@
+"""Prometheus metrics scrape endpoint."""
+
+from litestar import Controller, Response, get
+from litestar.datastructures import State  # noqa: TC002
+from prometheus_client import generate_latest
+
+from synthorg.api.state import AppState  # noqa: TC001
+from synthorg.observability import get_logger
+from synthorg.observability.events.metrics import (
+    METRICS_SCRAPE_COMPLETED,
+    METRICS_SCRAPE_FAILED,
+)
+
+logger = get_logger(__name__)
+
+_PROMETHEUS_CONTENT_TYPE = "text/plain; version=0.0.4; charset=utf-8"
+
+
+class MetricsController(Controller):
+    """Prometheus metrics scrape endpoint.
+
+    Unauthenticated -- standard Prometheus scrape target.
+    Follows the same pattern as ``HealthController``.
+    """
+
+    path = "/metrics"
+    tags = ("metrics",)
+
+    @get()
+    async def metrics(self, state: State) -> Response[bytes]:
+        """Refresh and return Prometheus metrics in exposition format.
+
+        Args:
+            state: Application state.
+
+        Returns:
+            Prometheus exposition format response.
+        """
+        app_state: AppState = state.app_state
+
+        if not app_state.has_prometheus_collector:
+            logger.warning(METRICS_SCRAPE_FAILED, reason="collector not configured")
+            return Response(
+                content=b"# No metrics collector configured\n",
+                media_type=_PROMETHEUS_CONTENT_TYPE,
+                status_code=503,
+            )
+
+        collector = app_state.prometheus_collector
+        await collector.refresh(app_state)
+
+        body = generate_latest(collector.registry)
+        logger.debug(METRICS_SCRAPE_COMPLETED, size_bytes=len(body))
+        return Response(
+            content=body,
+            media_type=_PROMETHEUS_CONTENT_TYPE,
+        )

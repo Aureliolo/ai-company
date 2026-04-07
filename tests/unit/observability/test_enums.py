@@ -4,6 +4,7 @@ import pytest
 
 from synthorg.observability.enums import (
     LogLevel,
+    OtlpProtocol,
     RotationStrategy,
     SinkType,
     SyslogFacility,
@@ -63,17 +64,21 @@ class TestSinkType:
 
     def test_all_members_exist(self) -> None:
         members = set(SinkType)
-        assert len(members) == 4
+        assert len(members) == 6
         assert SinkType.CONSOLE in members
         assert SinkType.FILE in members
         assert SinkType.SYSLOG in members
         assert SinkType.HTTP in members
+        assert SinkType.PROMETHEUS in members
+        assert SinkType.OTLP in members
 
     def test_values_are_strings(self) -> None:
         assert SinkType.CONSOLE.value == "console"
         assert SinkType.FILE.value == "file"
         assert SinkType.SYSLOG.value == "syslog"
         assert SinkType.HTTP.value == "http"
+        assert SinkType.PROMETHEUS.value == "prometheus"
+        assert SinkType.OTLP.value == "otlp"
 
     def test_is_str_subclass(self) -> None:
         assert isinstance(SinkType.CONSOLE, str)
@@ -127,3 +132,21 @@ class TestSyslogProtocol:
 
     def test_is_str_subclass(self) -> None:
         assert isinstance(SyslogProtocol.TCP, str)
+
+
+@pytest.mark.unit
+class TestOtlpProtocol:
+    """Tests for OtlpProtocol enum."""
+
+    def test_all_members_exist(self) -> None:
+        members = set(OtlpProtocol)
+        assert len(members) == 2
+        assert OtlpProtocol.HTTP_PROTOBUF in members
+        assert OtlpProtocol.GRPC in members
+
+    def test_values_are_strings(self) -> None:
+        assert OtlpProtocol.HTTP_PROTOBUF.value == "http/protobuf"
+        assert OtlpProtocol.GRPC.value == "grpc"
+
+    def test_is_str_subclass(self) -> None:
+        assert isinstance(OtlpProtocol.HTTP_PROTOBUF, str)

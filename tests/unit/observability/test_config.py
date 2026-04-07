@@ -11,6 +11,7 @@ from synthorg.observability.config import (
 )
 from synthorg.observability.enums import (
     LogLevel,
+    OtlpProtocol,
     RotationStrategy,
     SinkType,
     SyslogFacility,
@@ -654,3 +655,228 @@ class TestDefaultSinks:
     def test_valid_as_log_config(self) -> None:
         cfg = LogConfig(sinks=DEFAULT_SINKS)
         assert len(cfg.sinks) == 11
+
+
+# -- SinkConfig (Prometheus) -----------------------------------------
+
+
+@pytest.mark.unit
+class TestSinkConfigPrometheus:
+    """Tests for PROMETHEUS sink configuration validation."""
+
+    def test_valid_prometheus_sink_defaults(self) -> None:
+        cfg = SinkConfig(sink_type=SinkType.PROMETHEUS)
+        assert cfg.prometheus_port is None
+
+    def test_valid_prometheus_sink_with_port(self) -> None:
+        cfg = SinkConfig(sink_type=SinkType.PROMETHEUS, prometheus_port=9090)
+        assert cfg.prometheus_port == 9090
+
+    def test_prometheus_rejects_file_path(self) -> None:
+        with pytest.raises(ValidationError, match="file_path must be None"):
+            SinkConfig(
+                sink_type=SinkType.PROMETHEUS,
+                file_path="nope.log",
+            )
+
+    def test_prometheus_rejects_syslog_host(self) -> None:
+        with pytest.raises(ValidationError, match="syslog_host must be None"):
+            SinkConfig(
+                sink_type=SinkType.PROMETHEUS,
+                syslog_host="localhost",
+            )
+
+    def test_prometheus_rejects_http_url(self) -> None:
+        with pytest.raises(ValidationError, match="http_url must be None"):
+            SinkConfig(
+                sink_type=SinkType.PROMETHEUS,
+                http_url="https://example.com",
+            )
+
+    def test_prometheus_rejects_otlp_endpoint(self) -> None:
+        with pytest.raises(ValidationError, match="otlp_endpoint must be None"):
+            SinkConfig(
+                sink_type=SinkType.PROMETHEUS,
+                otlp_endpoint="http://localhost:4318",
+            )
+
+    def test_frozen(self) -> None:
+        cfg = SinkConfig(sink_type=SinkType.PROMETHEUS)
+        with pytest.raises(ValidationError):
+            cfg.prometheus_port = 9090  # type: ignore[misc]
+
+    def test_json_roundtrip(self) -> None:
+        cfg = SinkConfig(
+            sink_type=SinkType.PROMETHEUS,
+            prometheus_port=9090,
+            level=LogLevel.INFO,
+        )
+        restored = SinkConfig.model_validate_json(cfg.model_dump_json())
+        assert restored == cfg
+
+
+# -- SinkConfig (OTLP) ----------------------------------------------
+
+
+@pytest.mark.unit
+class TestSinkConfigOtlp:
+    """Tests for OTLP sink configuration validation."""
+
+    def test_valid_otlp_sink(self) -> None:
+        cfg = SinkConfig(
+            sink_type=SinkType.OTLP,
+            otlp_endpoint="http://localhost:4318",
+        )
+        assert cfg.otlp_endpoint == "http://localhost:4318"
+        assert cfg.otlp_protocol == OtlpProtocol.HTTP_PROTOBUF
+        assert cfg.otlp_headers == ()
+        assert cfg.otlp_export_interval_seconds == 5.0
+
+    def test_custom_otlp_settings(self) -> None:
+        cfg = SinkConfig(
+            sink_type=SinkType.OTLP,
+            otlp_endpoint="https://otel-collector.example.com:4318",
+            otlp_protocol=OtlpProtocol.GRPC,
+            otlp_headers=(("Authorization", "Bearer test-token"),),
+            otlp_export_interval_seconds=10.0,
+        )
+        assert cfg.otlp_protocol == OtlpProtocol.GRPC
+        assert len(cfg.otlp_headers) == 1
+        assert cfg.otlp_export_interval_seconds == 10.0
+
+    def test_otlp_requires_endpoint(self) -> None:
+        with pytest.raises(ValidationError, match="otlp_endpoint is required"):
+            SinkConfig(sink_type=SinkType.OTLP)
+
+    def test_otlp_rejects_blank_endpoint(self) -> None:
+        with pytest.raises(ValidationError, match="otlp_endpoint must not be blank"):
+            SinkConfig(sink_type=SinkType.OTLP, otlp_endpoint="   ")
+
+    def test_otlp_rejects_non_http_scheme(self) -> None:
+        with pytest.raises(ValidationError, match="otlp_endpoint must start with"):
+            SinkConfig(
+                sink_type=SinkType.OTLP,
+                otlp_endpoint="grpc://localhost:4317",
+            )
+
+    def test_otlp_rejects_file_path(self) -> None:
+        with pytest.raises(ValidationError, match="file_path must be None"):
+            SinkConfig(
+                sink_type=SinkType.OTLP,
+                otlp_endpoint="http://localhost:4318",
+                file_path="nope.log",
+            )
+
+    def test_otlp_rejects_syslog_host(self) -> None:
+        with pytest.raises(ValidationError, match="syslog_host must be None"):
+            SinkConfig(
+                sink_type=SinkType.OTLP,
+                otlp_endpoint="http://localhost:4318",
+                syslog_host="localhost",
+            )
+
+    def test_otlp_rejects_http_url(self) -> None:
+        with pytest.raises(ValidationError, match="http_url must be None"):
+            SinkConfig(
+                sink_type=SinkType.OTLP,
+                otlp_endpoint="http://localhost:4318",
+                http_url="https://example.com",
+            )
+
+    def test_otlp_rejects_prometheus_port(self) -> None:
+        with pytest.raises(ValidationError, match="prometheus_port must be None"):
+            SinkConfig(
+                sink_type=SinkType.OTLP,
+                otlp_endpoint="http://localhost:4318",
+                prometheus_port=9090,
+            )
+
+    def test_otlp_rejects_empty_header_name(self) -> None:
+        with pytest.raises(ValidationError, match="empty header name"):
+            SinkConfig(
+                sink_type=SinkType.OTLP,
+                otlp_endpoint="http://localhost:4318",
+                otlp_headers=(("", "value"),),
+            )
+
+    def test_otlp_export_interval_must_be_positive(self) -> None:
+        with pytest.raises(ValidationError):
+            SinkConfig(
+                sink_type=SinkType.OTLP,
+                otlp_endpoint="http://localhost:4318",
+                otlp_export_interval_seconds=0.0,
+            )
+
+    def test_frozen(self) -> None:
+        cfg = SinkConfig(
+            sink_type=SinkType.OTLP,
+            otlp_endpoint="http://localhost:4318",
+        )
+        with pytest.raises(ValidationError):
+            cfg.otlp_endpoint = "other"  # type: ignore[misc]
+
+    def test_json_roundtrip(self) -> None:
+        cfg = SinkConfig(
+            sink_type=SinkType.OTLP,
+            otlp_endpoint="https://otel.example.com:4318",
+            otlp_protocol=OtlpProtocol.GRPC,
+            otlp_headers=(("X-Source", "synthorg"),),
+            otlp_export_interval_seconds=15.0,
+            level=LogLevel.WARNING,
+        )
+        restored = SinkConfig.model_validate_json(cfg.model_dump_json())
+        assert restored == cfg
+
+
+# -- Cross-type rejection (Prometheus/OTLP) --------------------------
+
+
+@pytest.mark.unit
+class TestSinkConfigCrossTypeRejectionNewTypes:
+    """Ensure Prometheus/OTLP fields are rejected by other sink types."""
+
+    def test_console_rejects_prometheus_port(self) -> None:
+        with pytest.raises(ValidationError, match="prometheus_port must be None"):
+            SinkConfig(
+                sink_type=SinkType.CONSOLE,
+                prometheus_port=9090,
+            )
+
+    def test_console_rejects_otlp_endpoint(self) -> None:
+        with pytest.raises(ValidationError, match="otlp_endpoint must be None"):
+            SinkConfig(
+                sink_type=SinkType.CONSOLE,
+                otlp_endpoint="http://localhost:4318",
+            )
+
+    def test_file_rejects_prometheus_port(self) -> None:
+        with pytest.raises(ValidationError, match="prometheus_port must be None"):
+            SinkConfig(
+                sink_type=SinkType.FILE,
+                file_path="app.log",
+                prometheus_port=9090,
+            )
+
+    def test_file_rejects_otlp_endpoint(self) -> None:
+        with pytest.raises(ValidationError, match="otlp_endpoint must be None"):
+            SinkConfig(
+                sink_type=SinkType.FILE,
+                file_path="app.log",
+                otlp_endpoint="http://localhost:4318",
+            )
+
+    def test_http_rejects_prometheus_port(self) -> None:
+        with pytest.raises(ValidationError, match="prometheus_port must be None"):
+            SinkConfig(
+                sink_type=SinkType.HTTP,
+                http_url="https://example.com",
+                prometheus_port=9090,
+            )
+
+    def test_syslog_rejects_otlp_endpoint(self) -> None:
+        with pytest.raises(ValidationError, match="otlp_endpoint must be None"):
+            SinkConfig(
+                sink_type=SinkType.SYSLOG,
+                syslog_host="localhost",
+                otlp_endpoint="http://localhost:4318",
+            )

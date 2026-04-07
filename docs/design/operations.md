@@ -1301,6 +1301,7 @@ future CLI tool are thin clients that call the API -- they contain no business l
 | Endpoint | Purpose |
 |----------|---------|
 | `/api/v1/health` | Health check, readiness |
+| `/api/v1/metrics` | Prometheus metrics scrape endpoint (unauthenticated). Exposes: agent counts by status, cost totals, budget utilization, coordination efficiency/overhead, security verdict counts. Refreshed per-scrape from in-memory services. |
 | `/api/v1/auth` | Authentication: setup, login (HttpOnly cookie sessions, CSRF double-submit), password change (rotates session cookie), ws-ticket, session management (list/revoke, concurrent session limits), logout, account lockout (429 with Retry-After), refresh token rotation (tiered rate limiting: 20 req/min unauth by IP, 6,000 req/min auth by user ID -- see `docs/security.md`) |
 | `/api/v1/company` | CRUD company config |
 | `/api/v1/agents` | List, hire, fire, modify agents |
@@ -1548,6 +1549,7 @@ log aggregation:
 |-----------|-----------|--------|-------------|
 | Syslog | UDP or TCP to a configurable endpoint | JSON | Ship structured logs to rsyslog, syslog-ng, or Graylog |
 | HTTP | Batched POST to a configurable URL | JSON array | Ship log batches to any JSON-accepting endpoint |
+| OTLP | HTTP POST to an OpenTelemetry collector | OTLP JSON | Map structlog events to OTLP log records with correlation IDs as trace context |
 
 The HTTP sink sends raw JSON arrays.  Backends that expect different payload formats
 (e.g., Grafana Loki's `/loki/api/v1/push`, Elasticsearch's `/_bulk`) require a
@@ -1847,7 +1849,7 @@ them is required to support the full control-plane positioning claim.
 
 | # | Gap | Severity | Recommendation |
 |---|-----|----------|----------------|
-| G1 | No telemetry export (Prometheus `/metrics` or OTLP) | High | Add `/metrics` route + metrics aggregator. The 82+ structured events provide all raw data. |
+| G1 | ~~No telemetry export (Prometheus `/metrics` or OTLP)~~ | ~~High~~ | **Closed.** `PrometheusCollector` instantiated in `on_startup()`, `/metrics` returns 200 with 9 metric families, OTLP HTTP/JSON sink type implemented. Deviation: OTLP uses HTTP/JSON (not protobuf); gRPC rejected at config validation (approved). |
 | G2 | ~~No per-agent health endpoint~~ | ~~Medium~~ | **Implemented** -- `GET /agents/{name}/health` composites performance, trust, and lifecycle status. (Issue #1118 scoped as `{id}` but implemented as `{name}` for consistency with existing agent routes.) |
 | G3 | ~~No policy-as-code export/import~~ | ~~Medium~~ | **Implemented** -- `GET /settings/security/export` and `POST /settings/security/import` (persists registered settings; code-defined policies require matching Python code). |
 | G4 | ~~No coordination metrics API~~ | ~~Medium~~ | **Implemented** -- `GET /coordination/metrics` exposes the 9 Kim et al. metrics with filtering. |

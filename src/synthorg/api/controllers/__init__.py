@@ -26,6 +26,7 @@ from synthorg.api.controllers.health import HealthController
 from synthorg.api.controllers.meetings import MeetingController
 from synthorg.api.controllers.memory import MemoryAdminController
 from synthorg.api.controllers.messages import MessageController
+from synthorg.api.controllers.metrics import MetricsController
 from synthorg.api.controllers.personalities import (
     PersonalityPresetController,
 )
@@ -53,6 +54,7 @@ from synthorg.api.controllers.ws import ws_handler
 
 ALL_CONTROLLERS: tuple[type[Controller], ...] = (
     HealthController,
+    MetricsController,
     CompanyController,
     AgentController,
     ActivityController,
@@ -112,6 +114,7 @@ __all__ = [
     "MeetingController",
     "MemoryAdminController",
     "MessageController",
+    "MetricsController",
     "PersonalityPresetController",
     "ProjectController",
     "ProviderController",
