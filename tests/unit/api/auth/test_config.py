@@ -65,7 +65,7 @@ class TestAuthConfig:
 
     @pytest.mark.parametrize("value", ["strict", "lax", "none"])
     def test_cookie_samesite_accepts_valid(self, value: str) -> None:
-        config = AuthConfig(cookie_samesite=value)
+        config = AuthConfig(cookie_samesite=value)  # type: ignore[arg-type]
         assert config.cookie_samesite == value
 
     def test_cookie_samesite_rejects_invalid(self) -> None:
