@@ -250,15 +250,35 @@ class CoordinationMetricsCollector:
             )
             return
 
+        if turns == 0:
+            logger.debug(
+                COORD_METRICS_COLLECTION_COMPLETED,
+                agent_id=agent_id,
+                task_id=task_id,
+                is_multi_agent=False,
+                metrics_computed=0,
+            )
+            return
+
         from synthorg.budget.baseline_store import BaselineRecord  # noqa: PLC0415
 
         duration_seconds = (
             sum(t.latency_ms or 0.0 for t in execution_result.turns) / 1000.0
         )
+        if duration_seconds <= 0:
+            logger.debug(
+                COORD_METRICS_COLLECTION_COMPLETED,
+                agent_id=agent_id,
+                task_id=task_id,
+                is_multi_agent=False,
+                metrics_computed=0,
+            )
+            return
+
         baseline = BaselineRecord(
             agent_id=agent_id,
             task_id=task_id,
-            turns=max(float(turns), 1.0),
+            turns=float(turns),
             error_rate=error_rate,
             total_tokens=float(total_tokens),
             duration_seconds=duration_seconds,
@@ -667,13 +687,6 @@ class CoordinationMetricsCollector:
             f"{overhead.turns_sas:.0f} SAS turns) -- "
             f"agent={agent_id} task={task_id}"
         )
-        logger.warning(
-            COORD_METRICS_ALERT_FIRED,
-            agent_id=agent_id,
-            task_id=task_id,
-            severity=severity,
-            overhead_percent=overhead.value_percent,
-        )
         try:
             await self._notification_dispatcher.dispatch(
                 Notification(
@@ -692,3 +705,12 @@ class CoordinationMetricsCollector:
                 metric="alert_dispatch",
                 exc_info=True,
             )
+            return
+
+        logger.warning(
+            COORD_METRICS_ALERT_FIRED,
+            agent_id=agent_id,
+            task_id=task_id,
+            severity=severity,
+            overhead_percent=overhead.value_percent,
+        )

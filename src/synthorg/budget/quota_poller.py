@@ -10,7 +10,7 @@ Individual poll failures are logged and do not propagate.
 
 import asyncio
 import contextlib
-from datetime import UTC, datetime
+import time
 from typing import TYPE_CHECKING
 
 from synthorg.budget.quota import QuotaSnapshot, QuotaWindow
@@ -56,7 +56,7 @@ class QuotaPoller:
         self._config = config
         self._dispatcher = notification_dispatcher
         self._task: asyncio.Task[None] | None = None
-        self._cooldown: dict[_CooldownKey, datetime] = {}
+        self._cooldown: dict[_CooldownKey, float] = {}
 
     async def start(self) -> None:
         """Start the background polling loop.
@@ -99,6 +99,8 @@ class QuotaPoller:
         logger.debug(QUOTA_POLL_STARTED)
         try:
             snapshots = await self._tracker.get_all_snapshots()
+        except MemoryError, RecursionError:
+            raise
         except Exception as exc:
             logger.exception(
                 QUOTA_POLL_FAILED,
@@ -143,17 +145,17 @@ class QuotaPoller:
             return
 
         key: _CooldownKey = (snap.provider_name, snap.window, level)
-        now = datetime.now(UTC)
+        now = time.monotonic()
         last = self._cooldown.get(key)
         if last is not None:
-            elapsed = (now - last).total_seconds()
+            elapsed = now - last
             if elapsed < self._config.cooldown_seconds:
                 logger.debug(
                     QUOTA_ALERT_COOLDOWN_ACTIVE,
                     provider=snap.provider_name,
                     window=snap.window.value,
                     level=level,
-                    remaining=self._config.cooldown_seconds - elapsed,
+                    remaining=max(0.0, self._config.cooldown_seconds - elapsed),
                 )
                 return
 
@@ -164,7 +166,7 @@ class QuotaPoller:
             level=level,
             usage_pct=usage_pct,
         )
-        self._cooldown[key] = datetime.now(UTC)
+        self._cooldown[key] = time.monotonic()
 
         if self._dispatcher is not None:
             try:

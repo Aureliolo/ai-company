@@ -22,6 +22,10 @@ class TestCoordinationMetricName:
         assert CoordinationMetricName.ERROR_AMPLIFICATION.value == "error_amplification"
         assert CoordinationMetricName.MESSAGE_DENSITY.value == "message_density"
         assert CoordinationMetricName.REDUNDANCY.value == "redundancy"
+        assert CoordinationMetricName.AMDAHL_CEILING.value == "amdahl_ceiling"
+        assert CoordinationMetricName.STRAGGLER_GAP.value == "straggler_gap"
+        assert CoordinationMetricName.TOKEN_SPEEDUP_RATIO.value == "token_speedup_ratio"
+        assert CoordinationMetricName.MESSAGE_OVERHEAD.value == "message_overhead"
 
     def test_member_count(self) -> None:
         assert len(CoordinationMetricName) == 9

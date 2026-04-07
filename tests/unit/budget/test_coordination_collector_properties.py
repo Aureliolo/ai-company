@@ -25,6 +25,7 @@ def _turn(finish_reason: FinishReason = FinishReason.STOP) -> MagicMock:
     turn = MagicMock()
     turn.finish_reason = finish_reason
     turn.total_tokens = 100
+    turn.latency_ms = 50.0
     return turn
 
 

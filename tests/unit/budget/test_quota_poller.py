@@ -221,15 +221,9 @@ class TestCooldown:
         dispatcher.dispatch = AsyncMock()
         snap = _snapshot(requests_used=90, requests_limit=100)
 
-        with patch("synthorg.budget.quota_poller.datetime") as mock_dt:
-            from datetime import timedelta
-
-            t0 = datetime(2026, 4, 1, 12, 0, 0, tzinfo=UTC)
-            t1 = t0 + timedelta(seconds=301)
-            # mock_dt.now.side_effect controls datetime.now() returns
-            mock_dt.now.side_effect = [t0, t0, t1, t1]
-            # mock_dt.side_effect = datetime preserves constructor
-            mock_dt.side_effect = datetime
+        # Monotonic clock: first poll at t=0, second poll at t=301 (past cooldown)
+        with patch("synthorg.budget.quota_poller.time") as mock_time:
+            mock_time.monotonic.side_effect = [0.0, 0.0, 301.0, 301.0]
 
             poller, _ = _make_poller(
                 {"test-provider": (snap,)},
@@ -291,6 +285,14 @@ class TestStartStop:
         poller, _ = _make_poller()
         await poller.start()
         assert poller._task is not None
+        await poller.stop()
+
+    async def test_start_idempotent(self) -> None:
+        poller, _ = _make_poller()
+        await poller.start()
+        original = poller._task
+        await poller.start()
+        assert poller._task is original
         await poller.stop()
 
     async def test_stop_cancels_task(self) -> None:

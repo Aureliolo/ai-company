@@ -42,11 +42,13 @@ def _turn(
     finish_reason: FinishReason = FinishReason.STOP,
     input_tokens: int = 100,
     output_tokens: int = 50,
+    latency_ms: float | None = 50.0,
 ) -> MagicMock:
     """Build a minimal mock TurnRecord."""
     turn = MagicMock()
     turn.finish_reason = finish_reason
     turn.total_tokens = input_tokens + output_tokens
+    turn.latency_ms = latency_ms
     return turn
 
 

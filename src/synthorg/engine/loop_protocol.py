@@ -94,7 +94,7 @@ class TurnRecord(BaseModel):
         ge=0,
         description="Number of retry attempts before success",
     )
-    retry_reason: str | None = Field(
+    retry_reason: NotBlankStr | None = Field(
         default=None,
         description="Exception type name of the last retried error",
     )
