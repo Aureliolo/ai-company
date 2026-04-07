@@ -6,6 +6,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.observability import get_logger
+from synthorg.observability.events.database import DB_CONFIG_DEFAULT_MISSING
 
 logger = get_logger(__name__)
 
@@ -64,7 +65,7 @@ class DatabaseConfig(BaseModel):
         """
         if self.connections and self.default_connection not in self.connections:
             logger.warning(
-                "database_config_default_missing",
+                DB_CONFIG_DEFAULT_MISSING,
                 default_connection=self.default_connection,
                 available=sorted(self.connections),
             )

@@ -399,11 +399,12 @@ class ToolInvoker:
         Steps:
             1. Look up the tool in the registry.
             2. Check permissions against the permission checker (if any).
-            3. Validate arguments against the tool's JSON Schema (if any).
-            4. Run security interceptor pre-tool check (if any).
-            5. Call ``tool.execute(arguments=...)``.
-            6. Scan tool output for sensitive data (if interceptor is set).
-            7. Return a ``ToolResult`` with the output.
+            3. Check sub-constraints (network, terminal, git, approval).
+            4. Validate arguments against the tool's JSON Schema (if any).
+            5. Run security interceptor pre-tool check (if any).
+            6. Call ``tool.execute(arguments=...)``.
+            7. Scan tool output for sensitive data (if interceptor is set).
+            8. Return a ``ToolResult`` with the output.
 
         Recoverable errors produce ``ToolResult(is_error=True)``.
         Non-recoverable errors are re-raised.
