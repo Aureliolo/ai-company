@@ -3,6 +3,14 @@
 Read-only by default.  Write queries (INSERT, UPDATE, DELETE, etc.)
 are rejected unless the connection config has ``read_only=False``.
 Uses parameterized queries to prevent SQL injection.
+
+Defense-in-depth: read-only mode uses an allowlist (SELECT, EXPLAIN)
+rather than a denylist.  WITH and PRAGMA are intentionally blocked in
+read-only mode because WITH can prefix DML (WITH ... INSERT) and
+PRAGMA can perform writes (PRAGMA writable_schema=ON).  The SQLite
+URI ``mode=ro`` provides a second enforcement layer at the database
+level.  ATTACH, DETACH, and VACUUM are unconditionally blocked to
+prevent filesystem escape regardless of read_only setting.
 """
 
 import asyncio
