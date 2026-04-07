@@ -1,11 +1,8 @@
 """Data models for call analytics aggregation results."""
 
-from typing import TYPE_CHECKING
-
 from pydantic import BaseModel, ConfigDict, Field
 
-if TYPE_CHECKING:
-    from synthorg.budget.category_analytics import OrchestrationRatio
+from synthorg.budget.category_analytics import OrchestrationRatio  # noqa: TC001
 
 
 class AnalyticsAggregation(BaseModel):

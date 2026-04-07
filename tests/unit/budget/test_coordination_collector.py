@@ -99,7 +99,7 @@ def _mock_bus(message_counts: dict[str, int] | None = None) -> AsyncMock:
     bus.list_channels = AsyncMock(return_value=tuple(channels))
 
     # Configure get_channel_history based on channel name
-    async def _get_history(ch_name: str, /, **__: object) -> tuple:
+    async def _get_history(ch_name: str, /, **__: object) -> tuple[object, ...]:
         return tuple(MagicMock() for _ in range(message_counts.get(ch_name, 0)))
 
     bus.get_channel_history = AsyncMock(side_effect=_get_history)

@@ -1,6 +1,7 @@
 """Property-based tests for CallAnalyticsService aggregation."""
 
 from datetime import UTC, datetime
+from typing import Any
 from unittest.mock import AsyncMock
 
 import pytest
@@ -39,7 +40,7 @@ def _record(
     )
 
 
-def _make_service(records: tuple[CostRecord, ...]):
+def _make_service(records: tuple[CostRecord, ...]) -> Any:
     from synthorg.budget.call_analytics import CallAnalyticsService
 
     tracker = AsyncMock()

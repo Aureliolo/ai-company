@@ -1,6 +1,7 @@
 """Tests for QuotaPoller lifecycle, polling, alerting, and cooldown."""
 
 from datetime import UTC, datetime
+from typing import Any
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -33,8 +34,8 @@ def _make_poller(
     snapshots: dict[str, tuple[QuotaSnapshot, ...]] | None = None,
     *,
     config: QuotaPollerConfig | None = None,
-    notification_dispatcher=None,
-):
+    notification_dispatcher: Any = None,
+) -> Any:
     from synthorg.budget.quota_poller import QuotaPoller
 
     tracker = AsyncMock()

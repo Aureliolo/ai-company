@@ -177,13 +177,13 @@ class TestBaseProviderMetadataEnrichment:
         calls = 0
 
         class _RetryableProvider(_StubProvider):
-            async def _do_complete(  # type: ignore[override]
+            async def _do_complete(
                 self,
                 messages: list[ChatMessage],
                 model: str,
                 *,
-                tools=None,
-                config=None,
+                tools: object | None = None,
+                config: object | None = None,
             ) -> CompletionResponse:
                 nonlocal calls
                 calls += 1
