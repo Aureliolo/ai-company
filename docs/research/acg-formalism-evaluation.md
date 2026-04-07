@@ -354,8 +354,9 @@ composition" rather than erroring.
 ## Summary of Recommendations
 
 1. **Bidirectional ACG glossary** in `docs/architecture/acg-glossary.md` -- no code changes
-2. **Structural credit assignment**: Extend `CoordinationResult` with `AgentContribution`
-   list; run attribution in `_post_execution_pipeline`; feed into `PerformanceTracker`
+2. **Structural credit assignment**: Add `CoordinationResultWithAttribution` wrapper
+   (frozen `CoordinationResult` + `AgentContribution` list); run attribution in
+   `_post_execution_pipeline`; feed into `PerformanceTracker`
 3. **Agent pruning**: Implement `PruningService` + `PruningPolicy`; wire to existing
    `OffboardingService`; human approval gate required
 4. **Optional node typing**: Add `NodeType` enum to `TurnRecord` for richer trace analysis

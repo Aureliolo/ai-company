@@ -322,7 +322,7 @@ within a single cycle, but slow-burn patterns -- where the same pair redelegates
 
 This is a genuine slow-burn delegation vulnerability. The existing 5-mechanism design would
 benefit from an exponential backoff strategy on the circuit breaker reset (e.g., first
-reset at 5min, second at 10min, third at 20min) or a global per-pair bounce counter that
+reset at 5 min, second at 10 min, third at 20 min) or a global per-pair bounce counter that
 persists across resets.
 
 **Additional concern**: All delegation guard state is in-memory. A service restart resets
