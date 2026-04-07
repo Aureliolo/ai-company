@@ -60,8 +60,14 @@ from synthorg.persistence.sqlite.repositories import (
     SQLiteMessageRepository,
     SQLiteTaskRepository,
 )
+from synthorg.persistence.sqlite.risk_override_repo import (
+    SQLiteRiskOverrideRepository,
+)
 from synthorg.persistence.sqlite.settings_repo import (
     SQLiteSettingsRepository,
+)
+from synthorg.persistence.sqlite.ssrf_violation_repo import (
+    SQLiteSsrfViolationRepository,
 )
 from synthorg.persistence.sqlite.user_repo import (
     SQLiteApiKeyRepository,
@@ -128,6 +134,8 @@ class SQLitePersistenceBackend:
         self._workflow_executions: SQLiteWorkflowExecutionRepository | None = None
         self._workflow_versions: SQLiteWorkflowVersionRepository | None = None
         self._decision_records: SQLiteDecisionRepository | None = None
+        self._risk_overrides: SQLiteRiskOverrideRepository | None = None
+        self._ssrf_violations: SQLiteSsrfViolationRepository | None = None
 
     def _clear_state(self) -> None:
         """Reset connection and repository references to ``None``."""
@@ -153,6 +161,8 @@ class SQLitePersistenceBackend:
         self._workflow_executions = None
         self._workflow_versions = None
         self._decision_records = None
+        self._risk_overrides = None
+        self._ssrf_violations = None
 
     async def connect(self) -> None:
         """Open the SQLite database and configure WAL mode."""
@@ -240,6 +250,14 @@ class SQLitePersistenceBackend:
         self._workflow_versions = SQLiteWorkflowVersionRepository(self._db)
         self._decision_records = SQLiteDecisionRepository(
             self._db, write_lock=self._shared_write_lock
+        )
+        self._risk_overrides = SQLiteRiskOverrideRepository(
+            self._db,
+            write_lock=self._shared_write_lock,
+        )
+        self._ssrf_violations = SQLiteSsrfViolationRepository(
+            self._db,
+            write_lock=self._shared_write_lock,
         )
 
     async def _cleanup_failed_connect(self, exc: sqlite3.Error | OSError) -> None:
@@ -547,6 +565,30 @@ class SQLitePersistenceBackend:
         return self._require_connected(
             self._workflow_versions,
             "workflow_versions",
+        )
+
+    @property
+    def risk_overrides(self) -> SQLiteRiskOverrideRepository:
+        """Repository for risk tier override persistence.
+
+        Raises:
+            PersistenceConnectionError: If not connected.
+        """
+        return self._require_connected(
+            self._risk_overrides,
+            "risk_overrides",
+        )
+
+    @property
+    def ssrf_violations(self) -> SQLiteSsrfViolationRepository:
+        """Repository for SSRF violation record persistence.
+
+        Raises:
+            PersistenceConnectionError: If not connected.
+        """
+        return self._require_connected(
+            self._ssrf_violations,
+            "ssrf_violations",
         )
 
     async def get_setting(self, key: NotBlankStr) -> str | None:

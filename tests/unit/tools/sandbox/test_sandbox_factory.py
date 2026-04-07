@@ -14,6 +14,7 @@ from synthorg.tools.sandbox.docker_config import DockerSandboxConfig
 from synthorg.tools.sandbox.factory import (
     build_sandbox_backends,
     cleanup_sandbox_backends,
+    merge_gvisor_defaults,
     resolve_sandbox_for_category,
 )
 from synthorg.tools.sandbox.protocol import SandboxBackend
@@ -303,3 +304,52 @@ class TestCleanupSandboxBackends:
         call_args = mock_logger.warning.call_args
         assert call_args[0][0] == SANDBOX_FACTORY_CLEANUP_FAILED
         assert call_args[1]["backend"] == "broken"
+
+
+@pytest.mark.unit
+class TestMergeGvisorDefaults:
+    """Tests for merge_gvisor_defaults()."""
+
+    def test_injects_gvisor_defaults_for_docker_backend(self) -> None:
+        """Default gVisor overrides are injected for Docker backends."""
+        config = SandboxingConfig(
+            default_backend="subprocess",
+            overrides={"code_execution": "docker"},
+        )
+        merged = merge_gvisor_defaults(config)
+        assert merged.docker.runtime_overrides["code_execution"] == "runsc"
+        assert merged.docker.runtime_overrides["terminal"] == "runsc"
+
+    def test_user_overrides_take_precedence(self) -> None:
+        """User-supplied runtime_overrides are not overwritten."""
+        docker_config = DockerSandboxConfig(
+            runtime_overrides={"code_execution": "runc"},
+        )
+        config = SandboxingConfig(
+            default_backend="docker",
+            docker=docker_config,
+        )
+        merged = merge_gvisor_defaults(config)
+        assert merged.docker.runtime_overrides["code_execution"] == "runc"
+        assert merged.docker.runtime_overrides["terminal"] == "runsc"
+
+    def test_no_change_when_docker_not_referenced(self) -> None:
+        """Config is returned unchanged when Docker is not needed."""
+        config = SandboxingConfig(default_backend="subprocess")
+        merged = merge_gvisor_defaults(config)
+        assert merged is config
+
+    def test_no_change_when_user_already_set_all(self) -> None:
+        """No copy when user already set all gVisor defaults."""
+        docker_config = DockerSandboxConfig(
+            runtime_overrides={
+                "code_execution": "runsc",
+                "terminal": "runsc",
+            },
+        )
+        config = SandboxingConfig(
+            default_backend="docker",
+            docker=docker_config,
+        )
+        merged = merge_gvisor_defaults(config)
+        assert merged is config

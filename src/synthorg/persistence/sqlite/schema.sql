@@ -526,3 +526,57 @@ CREATE TABLE IF NOT EXISTS refresh_tokens (
 CREATE INDEX IF NOT EXISTS idx_rt_user_id ON refresh_tokens(user_id);
 CREATE INDEX IF NOT EXISTS idx_rt_session_id ON refresh_tokens(session_id);
 CREATE INDEX IF NOT EXISTS idx_rt_expires_at ON refresh_tokens(expires_at);
+
+-- ── Risk tier overrides ─────────────────────────────────────
+CREATE TABLE IF NOT EXISTS risk_overrides (
+    id TEXT PRIMARY KEY,
+    action_type TEXT NOT NULL,
+    original_tier TEXT NOT NULL,
+    override_tier TEXT NOT NULL,
+    reason TEXT NOT NULL,
+    created_by TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    expires_at TEXT NOT NULL,
+    revoked_at TEXT,
+    revoked_by TEXT,
+    CHECK (
+        (revoked_at IS NULL AND revoked_by IS NULL)
+        OR
+        (revoked_at IS NOT NULL AND revoked_by IS NOT NULL)
+    )
+);
+
+CREATE INDEX IF NOT EXISTS idx_ro_action_type ON risk_overrides(action_type);
+-- Partial composite index for list_active query (WHERE revoked_at IS NULL).
+CREATE INDEX IF NOT EXISTS idx_ro_active
+    ON risk_overrides(created_at DESC, expires_at)
+    WHERE revoked_at IS NULL;
+
+-- ── SSRF violations ─────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS ssrf_violations (
+    id TEXT PRIMARY KEY,
+    timestamp TEXT NOT NULL,
+    url TEXT NOT NULL,
+    hostname TEXT NOT NULL,
+    port INTEGER NOT NULL CHECK (port BETWEEN 1 AND 65535),
+    resolved_ip TEXT,
+    blocked_range TEXT,
+    provider_name TEXT,
+    status TEXT NOT NULL DEFAULT 'pending'
+        CHECK (status IN ('pending', 'allowed', 'denied')),
+    resolved_by TEXT,
+    resolved_at TEXT,
+    CHECK (
+        (status = 'pending' AND resolved_by IS NULL AND resolved_at IS NULL)
+        OR
+        (status IN ('allowed', 'denied')
+         AND resolved_by IS NOT NULL
+         AND resolved_at IS NOT NULL)
+    )
+);
+
+-- Composite index for list_violations filtered by status + ordered by timestamp.
+CREATE INDEX IF NOT EXISTS idx_sv_status_timestamp
+    ON ssrf_violations(status, timestamp DESC);
+CREATE INDEX IF NOT EXISTS idx_sv_timestamp ON ssrf_violations(timestamp);
+CREATE INDEX IF NOT EXISTS idx_sv_hostname ON ssrf_violations(hostname, port);

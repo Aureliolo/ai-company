@@ -7,6 +7,12 @@ compatibility so existing test imports keep working.
 
 from typing import Any
 
+from pydantic import AwareDatetime
+
+from synthorg.core.types import NotBlankStr
+from synthorg.persistence.errors import DuplicateRecordError
+from synthorg.security.rules.risk_override import RiskTierOverride
+from synthorg.security.ssrf_violation import SsrfViolation, SsrfViolationStatus
 from tests.unit.api.fakes import (
     FakeAgentStateRepository,
     FakeApiKeyRepository,
@@ -33,7 +39,107 @@ from tests.unit.api.fakes_workflow import (
     FakeWorkflowVersionRepository,
 )
 
-__all__ = ["FakePersistenceBackend"]
+__all__ = [
+    "FakePersistenceBackend",
+    "FakeRiskOverrideRepository",
+    "FakeSsrfViolationRepository",
+]
+
+
+class FakeRiskOverrideRepository:
+    """In-memory risk override repository for tests."""
+
+    def __init__(self) -> None:
+        self._overrides: dict[str, RiskTierOverride] = {}
+
+    async def save(self, override: RiskTierOverride) -> None:
+        if override.id in self._overrides:
+            msg = f"Risk override {override.id!r} already exists"
+            raise DuplicateRecordError(msg)
+        self._overrides[override.id] = override
+
+    async def get(
+        self,
+        override_id: NotBlankStr,
+    ) -> RiskTierOverride | None:
+        return self._overrides.get(override_id)
+
+    async def list_active(self) -> tuple[RiskTierOverride, ...]:
+        active = [o for o in self._overrides.values() if o.is_active]
+        active.sort(key=lambda o: o.created_at, reverse=True)
+        return tuple(active)
+
+    async def revoke(
+        self,
+        override_id: NotBlankStr,
+        *,
+        revoked_by: NotBlankStr,
+        revoked_at: AwareDatetime,
+    ) -> bool:
+        ovr = self._overrides.get(override_id)
+        if ovr is None or ovr.revoked_at is not None:
+            return False
+        self._overrides[override_id] = ovr.model_copy(
+            update={"revoked_at": revoked_at, "revoked_by": revoked_by},
+        )
+        return True
+
+
+class FakeSsrfViolationRepository:
+    """In-memory SSRF violation repository for tests."""
+
+    def __init__(self) -> None:
+        self._violations: dict[str, SsrfViolation] = {}
+
+    async def save(self, violation: SsrfViolation) -> None:
+        if violation.id in self._violations:
+            msg = f"SSRF violation {violation.id!r} already exists"
+            raise DuplicateRecordError(msg)
+        self._violations[violation.id] = violation
+
+    async def get(
+        self,
+        violation_id: NotBlankStr,
+    ) -> SsrfViolation | None:
+        return self._violations.get(violation_id)
+
+    async def list_violations(
+        self,
+        *,
+        status: SsrfViolationStatus | None = None,
+        limit: int = 100,
+    ) -> tuple[SsrfViolation, ...]:
+        if limit <= 0:
+            msg = "limit must be positive"
+            raise ValueError(msg)
+        items = list(self._violations.values())
+        if status is not None:
+            items = [v for v in items if v.status == status]
+        items.sort(key=lambda v: v.timestamp, reverse=True)
+        return tuple(items[:limit])
+
+    async def update_status(
+        self,
+        violation_id: NotBlankStr,
+        *,
+        status: SsrfViolationStatus,
+        resolved_by: NotBlankStr,
+        resolved_at: AwareDatetime,
+    ) -> bool:
+        if status == SsrfViolationStatus.PENDING:
+            msg = "Cannot transition a violation back to PENDING"
+            raise ValueError(msg)
+        v = self._violations.get(violation_id)
+        if v is None or v.status != SsrfViolationStatus.PENDING:
+            return False
+        self._violations[violation_id] = v.model_copy(
+            update={
+                "status": status,
+                "resolved_by": resolved_by,
+                "resolved_at": resolved_at,
+            },
+        )
+        return True
 
 
 class FakePersistenceBackend:
@@ -46,6 +152,8 @@ class FakePersistenceBackend:
         self._workflow_definitions = FakeWorkflowDefinitionRepository()
         self._workflow_executions = FakeWorkflowExecutionRepository()
         self._workflow_versions = FakeWorkflowVersionRepository()
+        self._risk_overrides = FakeRiskOverrideRepository()
+        self._ssrf_violations = FakeSsrfViolationRepository()
         self._tasks = FakeTaskRepository()
         self._cost_records = FakeCostRecordRepository()
         self._messages = FakeMessageRepository()
@@ -173,6 +281,14 @@ class FakePersistenceBackend:
     @property
     def workflow_versions(self) -> FakeWorkflowVersionRepository:
         return self._workflow_versions
+
+    @property
+    def risk_overrides(self) -> FakeRiskOverrideRepository:
+        return self._risk_overrides
+
+    @property
+    def ssrf_violations(self) -> FakeSsrfViolationRepository:
+        return self._ssrf_violations
 
     async def get_setting(self, key: str) -> str | None:
         return self._settings.get(key)

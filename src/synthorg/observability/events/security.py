@@ -75,3 +75,16 @@ SECURITY_DENIAL_RESET: Final[str] = "security.denial.reset"
 # Permission tier events.
 SECURITY_TIER_SAFE_TOOL: Final[str] = "security.tier.safe_tool"
 SECURITY_TIER_CLASSIFIED: Final[str] = "security.tier.classified"
+
+# Risk tier override events.
+SECURITY_RISK_OVERRIDE_CREATED: Final[str] = "security.risk_override.created"
+SECURITY_RISK_OVERRIDE_REVOKED: Final[str] = "security.risk_override.revoked"
+SECURITY_RISK_OVERRIDE_APPLIED: Final[str] = "security.risk_override.applied"
+SECURITY_RISK_OVERRIDE_EXPIRED: Final[str] = "security.risk_override.expired"
+
+# SSRF violation events.
+SECURITY_SSRF_VIOLATION_RECORDED: Final[str] = "security.ssrf_violation.recorded"
+SECURITY_SSRF_VIOLATION_ALLOWED: Final[str] = "security.ssrf_violation.allowed"
+SECURITY_SSRF_VIOLATION_DENIED: Final[str] = "security.ssrf_violation.denied"
+SECURITY_ALLOWLIST_UPDATED: Final[str] = "security.allowlist.updated"
+SECURITY_ALLOWLIST_UPDATE_FAILED: Final[str] = "security.allowlist.update_failed"

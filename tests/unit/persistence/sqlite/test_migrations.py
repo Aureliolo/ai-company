@@ -39,6 +39,8 @@ _EXPECTED_TABLES = {
     "decision_records",
     "login_attempts",
     "refresh_tokens",
+    "risk_overrides",
+    "ssrf_violations",
 }
 
 _EXPECTED_INDEXES = {
@@ -105,6 +107,11 @@ _EXPECTED_INDEXES = {
     "idx_rt_user_id",
     "idx_rt_session_id",
     "idx_rt_expires_at",
+    "idx_ro_action_type",
+    "idx_ro_active",
+    "idx_sv_status_timestamp",
+    "idx_sv_timestamp",
+    "idx_sv_hostname",
 }
 
 

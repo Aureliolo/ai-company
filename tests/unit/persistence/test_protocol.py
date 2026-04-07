@@ -1,6 +1,6 @@
 """Tests for persistence protocol compliance."""
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import pytest
 
@@ -563,6 +563,14 @@ class _FakeBackend:
         # fake with ``save_version`` / ``get_version`` / etc. lives
         # in ``tests/unit/api/fakes_workflow.py`` and is used by
         # tests that actually exercise the workflow-version behavior.
+        return object()
+
+    @property
+    def risk_overrides(self) -> Any:
+        return object()
+
+    @property
+    def ssrf_violations(self) -> Any:
         return object()
 
     async def get_setting(self, key: str) -> str | None:

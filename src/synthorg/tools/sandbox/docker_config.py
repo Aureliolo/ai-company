@@ -7,6 +7,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.observability import get_logger
 from synthorg.observability.events.config import CONFIG_VALIDATION_FAILED
+from synthorg.tools.sandbox.policy import SandboxPolicy  # noqa: TC001
 
 logger = get_logger(__name__)
 
@@ -50,6 +51,10 @@ class DockerSandboxConfig(BaseModel):
         default_factory=dict,
         description="Per-category network mode overrides",
     )
+    runtime_overrides: dict[NotBlankStr, NotBlankStr] = Field(
+        default_factory=dict,
+        description="Per-category container runtime overrides",
+    )
     allowed_hosts: tuple[NotBlankStr, ...] = Field(
         default=(),
         description="Host:port allowlist for network filtering",
@@ -78,6 +83,14 @@ class DockerSandboxConfig(BaseModel):
     runtime: NotBlankStr | None = Field(
         default=None,
         description="Optional container runtime (e.g. 'runsc' for gVisor)",
+    )
+    policy: SandboxPolicy | None = Field(
+        default=None,
+        description=(
+            "Structured 4-domain policy overlay (filesystem, network, "
+            "process, inference).  Consumed by the sandbox execution "
+            "layer to apply domain-specific constraints at runtime."
+        ),
     )
 
     @model_validator(mode="after")
