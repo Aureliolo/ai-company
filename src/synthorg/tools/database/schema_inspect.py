@@ -4,6 +4,7 @@ Provides table listing and column description for SQLite databases.
 Always read-only.
 """
 
+import copy
 import re
 from typing import Any, Final
 
@@ -68,7 +69,7 @@ class SchemaInspectTool(BaseDatabaseTool):
             description=(
                 "Inspect database schema: list tables or describe table columns."
             ),
-            parameters_schema=dict(_PARAMETERS_SCHEMA),
+            parameters_schema=copy.deepcopy(_PARAMETERS_SCHEMA),
             action_type=ActionType.DB_QUERY,
             config=config,
         )

@@ -6,6 +6,7 @@ bodies are streamed and truncated at ``max_response_bytes`` to
 prevent memory exhaustion.
 """
 
+import copy
 from typing import Any, Final
 
 import httpx
@@ -107,7 +108,7 @@ class HttpRequestTool(BaseWebTool):
                 "Execute HTTP requests (GET, POST, PUT, DELETE). "
                 "URLs are validated against SSRF policies."
             ),
-            parameters_schema=dict(_PARAMETERS_SCHEMA),
+            parameters_schema=copy.deepcopy(_PARAMETERS_SCHEMA),
             action_type=ActionType.COMMS_EXTERNAL,
             network_policy=network_policy,
             request_timeout=request_timeout,

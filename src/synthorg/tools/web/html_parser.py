@@ -5,6 +5,7 @@ text extraction, link extraction, and metadata extraction using the
 stdlib ``html.parser`` module.
 """
 
+import copy
 from html.parser import HTMLParser
 from typing import Any, Final
 
@@ -174,7 +175,7 @@ class HtmlParserTool(BaseWebTool):
                 "Parse HTML content and extract text, links, "
                 "or metadata (title, meta tags)."
             ),
-            parameters_schema=dict(_PARAMETERS_SCHEMA),
+            parameters_schema=copy.deepcopy(_PARAMETERS_SCHEMA),
             action_type=ActionType.CODE_READ,
         )
 

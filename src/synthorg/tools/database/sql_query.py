@@ -6,6 +6,7 @@ Uses parameterized queries to prevent SQL injection.
 """
 
 import asyncio
+import copy
 import re
 import urllib.parse
 from typing import Any, Final
@@ -127,7 +128,7 @@ class SqlQueryTool(BaseDatabaseTool):
                 "Read-only by default; write queries require "
                 "explicit configuration."
             ),
-            parameters_schema=dict(_PARAMETERS_SCHEMA),
+            parameters_schema=copy.deepcopy(_PARAMETERS_SCHEMA),
             action_type=action,
             config=config,
         )

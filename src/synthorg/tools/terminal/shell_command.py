@@ -5,6 +5,7 @@ are validated against allow/blocklist before execution.  Output is
 truncated at ``max_output_bytes``.
 """
 
+import copy
 from typing import Any, Final
 
 from synthorg.observability import get_logger
@@ -72,7 +73,7 @@ class ShellCommandTool(BaseTerminalTool):
                 "Execute a shell command in a sandboxed environment. "
                 "Output is captured and returned."
             ),
-            parameters_schema=dict(_PARAMETERS_SCHEMA),
+            parameters_schema=copy.deepcopy(_PARAMETERS_SCHEMA),
             **kwargs,
         )
 
