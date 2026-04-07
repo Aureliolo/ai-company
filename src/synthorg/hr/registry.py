@@ -218,8 +218,6 @@ class AgentRegistryService:
     async def update_identity(
         self,
         agent_id: NotBlankStr,
-        *,
-        saved_by: str = "system",
         **updates: Any,
     ) -> AgentIdentity:
         """Update agent identity fields via model_copy(update=...).
@@ -229,8 +227,6 @@ class AgentRegistryService:
 
         Args:
             agent_id: The agent identifier.
-            saved_by: Actor triggering the update (recorded in version
-                history).  Defaults to ``"system"``.
             **updates: Fields to update on the AgentIdentity.
 
         Returns:
@@ -272,7 +268,7 @@ class AgentRegistryService:
             agent_id=key,
             updated_fields=sorted(updates.keys()),
         )
-        await self._snapshot(updated, saved_by=saved_by)
+        await self._snapshot(updated, saved_by=f"update_identity:{key}")
         return updated
 
     async def agent_count(self) -> int:
