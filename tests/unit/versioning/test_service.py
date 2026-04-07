@@ -4,7 +4,7 @@ from datetime import UTC, datetime
 from unittest.mock import AsyncMock
 
 import pytest
-from hypothesis import given, settings
+from hypothesis import given
 from hypothesis import strategies as st
 from pydantic import BaseModel, ConfigDict
 
@@ -186,7 +186,6 @@ class TestSnapshotDeterminism:
         name=st.text(min_size=1, max_size=50),
         value=st.integers(min_value=0, max_value=10_000),
     )
-    @settings(max_examples=100)
     def test_same_model_same_hash(self, name: str, value: int) -> None:
         model = _Simple(name=name, value=value)
         h1 = compute_content_hash(model)
@@ -200,7 +199,6 @@ class TestSnapshotDeterminism:
         name_b=st.text(min_size=1, max_size=50),
         value_b=st.integers(min_value=0, max_value=10_000),
     )
-    @settings(max_examples=100)
     def test_different_models_different_hash(
         self, name_a: str, value_a: int, name_b: str, value_b: int
     ) -> None:

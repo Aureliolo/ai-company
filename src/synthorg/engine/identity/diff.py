@@ -78,9 +78,9 @@ class AgentIdentityDiff(BaseModel):
 
     @model_validator(mode="after")
     def _validate_version_order(self) -> AgentIdentityDiff:
-        if self.from_version == self.to_version:
+        if self.from_version >= self.to_version:
             msg = (
-                f"from_version and to_version must differ "
+                f"from_version must be less than to_version "
                 f"(from_version={self.from_version}, "
                 f"to_version={self.to_version})"
             )

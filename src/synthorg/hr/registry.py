@@ -46,11 +46,18 @@ class AgentRegistryService:
         self._lock = asyncio.Lock()
         self._versioning = versioning
 
-    async def register(self, identity: AgentIdentity) -> None:
+    async def register(
+        self,
+        identity: AgentIdentity,
+        *,
+        saved_by: str = "system",
+    ) -> None:
         """Register a new agent.
 
         Args:
             identity: The agent identity to register.
+            saved_by: Actor triggering the registration (recorded in
+                version history).  Defaults to ``"system"``.
 
         Raises:
             AgentAlreadyRegisteredError: If the agent is already registered.
@@ -73,7 +80,7 @@ class AgentRegistryService:
             agent_name=str(identity.name),
             status=identity.status.value,
         )
-        await self._snapshot(identity, saved_by="system")
+        await self._snapshot(identity, saved_by=saved_by)
 
     async def unregister(self, agent_id: NotBlankStr) -> AgentIdentity:
         """Remove an agent from the registry.
@@ -211,6 +218,8 @@ class AgentRegistryService:
     async def update_identity(
         self,
         agent_id: NotBlankStr,
+        *,
+        saved_by: str = "system",
         **updates: Any,
     ) -> AgentIdentity:
         """Update agent identity fields via model_copy(update=...).
@@ -220,6 +229,8 @@ class AgentRegistryService:
 
         Args:
             agent_id: The agent identifier.
+            saved_by: Actor triggering the update (recorded in version
+                history).  Defaults to ``"system"``.
             **updates: Fields to update on the AgentIdentity.
 
         Returns:
@@ -261,7 +272,7 @@ class AgentRegistryService:
             agent_id=key,
             updated_fields=sorted(updates.keys()),
         )
-        await self._snapshot(updated, saved_by="system")
+        await self._snapshot(updated, saved_by=saved_by)
         return updated
 
     async def agent_count(self) -> int:

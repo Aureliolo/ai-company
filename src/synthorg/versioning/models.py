@@ -20,9 +20,14 @@ Usage::
     )
 """
 
-from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
+import re
+from datetime import timedelta
+
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, field_validator
 
 from synthorg.core.types import NotBlankStr  # noqa: TC001
+
+_CONTENT_HASH_RE = re.compile(r"^[0-9a-f]{64}$")
 
 
 class VersionSnapshot[T: BaseModel](BaseModel):
@@ -53,3 +58,22 @@ class VersionSnapshot[T: BaseModel](BaseModel):
     snapshot: T = Field(description="Full frozen entity model at this version")
     saved_by: NotBlankStr = Field(description="Actor that triggered the snapshot")
     saved_at: AwareDatetime = Field(description="When the snapshot was captured")
+
+    @field_validator("content_hash")
+    @classmethod
+    def _validate_content_hash(cls, v: str) -> str:
+        if not _CONTENT_HASH_RE.match(v):
+            msg = (
+                "content_hash must be a 64-character lowercase hex string "
+                f"(SHA-256 digest), got {v!r}"
+            )
+            raise ValueError(msg)
+        return v
+
+    @field_validator("saved_at")
+    @classmethod
+    def _validate_saved_at_utc(cls, v: AwareDatetime) -> AwareDatetime:
+        if v.utcoffset() != timedelta(0):
+            msg = f"saved_at must be UTC, got offset {v.utcoffset()}"
+            raise ValueError(msg)
+        return v

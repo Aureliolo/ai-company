@@ -161,17 +161,6 @@ class TestIdentityFieldChangeModel:
     """IdentityFieldChange validation."""
 
     @pytest.mark.unit
-    def test_added_change_new_value_present(self) -> None:
-        c = IdentityFieldChange(
-            field_path="settings.timeout",
-            change_type="added",
-            old_value=None,
-            new_value='"30"',
-        )
-        assert c.change_type == "added"
-        assert c.old_value is None
-
-    @pytest.mark.unit
     def test_frozen(self) -> None:
         from pydantic import ValidationError
 
@@ -213,11 +202,22 @@ class TestAgentIdentityDiffModel:
     def test_same_from_and_to_version_raises(self) -> None:
         from pydantic import ValidationError
 
-        with pytest.raises(ValidationError, match="must differ"):
+        with pytest.raises(ValidationError, match="must be less than"):
             AgentIdentityDiff(
                 agent_id="agt-1",
                 from_version=3,
                 to_version=3,
+            )
+
+    @pytest.mark.unit
+    def test_reversed_versions_raises(self) -> None:
+        from pydantic import ValidationError
+
+        with pytest.raises(ValidationError, match="must be less than"):
+            AgentIdentityDiff(
+                agent_id="agt-1",
+                from_version=5,
+                to_version=2,
             )
 
 

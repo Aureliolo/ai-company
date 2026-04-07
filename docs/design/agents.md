@@ -159,10 +159,12 @@ with `model_copy`:
 
 ## Identity Versioning
 
-Every mutation to an `AgentIdentity` (registration, model swap, level change) is
-captured as an immutable `VersionSnapshot[AgentIdentity]` record. This provides a
-full audit trail of charter changes and enables `DecisionRecord` entries to cite the
-exact charter version that was active during execution.
+`AgentRegistryService` creates ``VersionSnapshot[AgentIdentity]`` records for
+``register()`` and ``update_identity()`` (charter/config changes such as model
+swaps and level changes). ``update_status()`` (status transitions) is **not**
+versioned -- status changes are transient runtime state, not charter mutations.
+This provides a full audit trail of charter changes and enables ``DecisionRecord``
+entries to cite the exact charter version that was active during execution.
 
 ### Generic Infrastructure
 

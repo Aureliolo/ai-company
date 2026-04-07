@@ -159,6 +159,8 @@ class SQLiteVersionRepository[T: BaseModel]:
                 reason="unexpected",
             )
             raise QueryError(msg) from exc
+        except MemoryError, RecursionError:
+            raise
         except Exception as exc:
             # Catch-all for unconstrained deserialize_snapshot callbacks
             # (e.g. TypeError, AttributeError) so all callback errors
@@ -184,6 +186,8 @@ class SQLiteVersionRepository[T: BaseModel]:
         """
         try:
             serialized = self._serialize(version.snapshot)
+        except MemoryError, RecursionError:
+            raise
         except Exception as exc:
             msg = (
                 f"Failed to serialize snapshot for version "
@@ -319,6 +323,12 @@ class SQLiteVersionRepository[T: BaseModel]:
         offset: int = 0,
     ) -> tuple[VersionSnapshot[T], ...]:
         """List version snapshots ordered by version descending."""
+        if limit < 0:
+            msg = f"limit must be non-negative, got {limit}"
+            raise ValueError(msg)
+        if offset < 0:
+            msg = f"offset must be non-negative, got {offset}"
+            raise ValueError(msg)
         try:
             cursor = await self._db.execute(
                 self._select_list_sql,
