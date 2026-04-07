@@ -445,3 +445,77 @@ protocols are registered with default configs. A stub `agent_caller` returns
 empty `AgentResponse` instances, making the meeting endpoints structurally
 available (no 503 on listing) while actual agent invocation requires a
 coordinator to be explicitly provided.
+
+---
+
+## Multi-Agent Failure Pattern Guardrails
+
+*Research findings from #690. See also: `docs/research/multi-agent-failure-audit.md`.*
+
+Empirical data (CIO, 2026) shows swarm topologies fail at 68% vs. 36% for hierarchical
+orchestration. SynthOrg's orchestrated approach is validated, but the same failure modes
+emerge if agent boundaries are poorly managed. This section documents current guardrails
+and known risks.
+
+### Meeting Protocol Safety
+
+All three meeting protocols (StructuredPhases, RoundRobin, PositionPapers) guarantee
+bounded execution via `TokenTracker` phase-boundary checks, hard token budgets with 20%
+synthesis reserve, and turn/round limits. No protocol has unbounded execution paths.
+
+**Known risk -- meeting-task feedback loop**: `MeetingProtocolConfig.auto_create_tasks`
+defaults to `True`. The meeting orchestrator can spawn tasks from action items, and
+`MeetingScheduler.trigger_event()` has no deduplication or cooldown. Event-triggered
+meetings should use a `min_interval_seconds` guard to prevent runaway task/meeting cycles.
+This is a production risk for deployments using event-triggered meetings at scale.
+
+### Conflict Resolution Termination
+
+All four conflict resolution strategies terminate with bounded resource use:
+
+- **AuthorityResolver**: Deterministic seniority comparison. Always terminates; no LLM calls.
+- **DebateResolver**: Single LLM judge call (one-shot, no retry loop). Falls back to
+  Authority if no evaluator configured. Exception in evaluator propagates without automatic fallback.
+- **HumanEscalationResolver**: Returns `ESCALATED_TO_HUMAN` immediately. **Stub
+  implementation** pending #37 -- no actual blocking for human input yet.
+- **HybridResolver**: Single LLM review call; deterministic fallback to Authority on ambiguity.
+
+### Delegation Guard
+
+Five mechanisms protect against swarm drift (`communication/loop_prevention/guard.py`):
+
+1. Ancestry check (cycle prevention)
+2. Max delegation depth (default 5)
+3. Content deduplication (60s window)
+4. Per-pair rate limiting (10/min)
+5. Circuit breaker (3 bounces, 300s cooldown)
+
+**Known risk -- circuit breaker bounce count reset**: After cooldown, the state entry is
+evicted entirely, resetting the bounce count to 0. Slow-burn delegation patterns (>60s
+between delegations) can bypass all five guards after each cooldown expiry.
+
+Recommended mitigation -- two options:
+
+1. **Exponential backoff on cooldown**: instead of evicting the entry, retain it and
+   apply `cooldown_seconds = base_cooldown * 2^bounce_count`. Each bounce extends the
+   cooldown duration exponentially, making slow-burn bypass progressively harder.
+2. **Non-resetting global bounce counter**: store a per-pair lifetime bounce count
+   separate from the per-window circuit breaker. Once the lifetime count exceeds a
+   threshold (e.g., 10), escalate to a permanent circuit-open state requiring manual
+   reset.
+
+Option 1 is simpler to implement within `circuit_breaker.py` without breaking the
+existing eviction model. Option 2 is more robust against very long-horizon patterns.
+
+**Known risk -- in-memory state**: All guard state (circuit breaker, dedup window, rate
+limiter) is in-memory. Service restart resets all guardrails. Consider persisting circuit
+breaker state to SQLite for restart resilience.
+
+### Microservices Anti-Patterns: Assessment
+
+| Pattern | SynthOrg Risk | Mitigation |
+|---|---|---|
+| Chatty interfaces | Low -- detected via `MessageOverhead.is_quadratic` | Detection exists; no enforcement circuit breaker |
+| Distributed monolith | None -- async pull message bus, no synchronous coupling | |
+| Ownership ambiguity | None -- TaskEngine single-writer actor | |
+| Cascading failure | Low -- `fail_fast` bounds wave propagation | No upstream contamination detection |

@@ -1787,3 +1787,68 @@ notifications:
 When no sinks are configured or all configured sinks are disabled, the factory
 automatically includes a console sink as a fallback so notifications are never
 silently dropped.
+
+---
+
+## SynthOrg as Agent Control Plane
+
+*Research findings from #688. See also: `docs/research/control-plane-audit.md`.*
+
+SynthOrg functions as an **orchestrated agent control plane** -- a distinct architectural
+tier above individual agents that provides centralized policy enforcement, agent inventory,
+token metering, and structured telemetry. This framing is accurate today and distinguishes
+SynthOrg from both infrastructure control planes (Kubernetes, Terraform) and from
+swarm-style agent frameworks that lack centralized policy enforcement.
+
+### Control-Plane Primitive Coverage
+
+| Primitive | SynthOrg Module | Status |
+|-----------|----------------|--------|
+| Agent Inventory | `hr/registry.py`, `hr/hiring_service.py`, `hr/performance/tracker.py` | Full CRUD + lifecycle state + 5-pillar evaluation |
+| Policy Enforcement | `security/service.py`, `security/rules/engine.py`, `security/autonomy/resolver.py` | Fail-closed rule engine; 3-level inheritance (agent > department > company) |
+| Token Metering | `budget/enforcer.py`, `budget/tracker.py`, `budget/quota.py` | 3-layer enforcement (pre-flight, in-flight, task boundary) |
+| Telemetry | `observability/setup.py`, `observability/sinks.py`, `observability/events/` | 82+ structured events; multi-sink routing; 3 correlation IDs |
+
+The integration advantage is real and hard to replicate by composing separate tools: budget
+enforcement gates security escalation, performance tracking feeds autonomy decisions, and
+trust levels gate model upgrades -- all sharing context through a single runtime.
+
+### "Write Once, Enforce Everywhere" Assessment
+
+Security policies are stored in the settings layer, loaded into `SecurityConfig`, and
+applied by `SecOpsService.evaluate_pre_tool()` at every tool invocation. The 3-level
+autonomy resolution ensures company-wide defaults are inherited without per-agent
+configuration.
+
+**Constraint**: `SecOpsService` takes config at construction time. Active long-running
+sessions do not receive policy updates mid-session -- this is the correct safe default
+(consistency within a session). The effective guarantee is: "write policies once, enforce
+across all new agent sessions." Custom policy rules require code changes (Pydantic models),
+not settings API calls, limiting the "write once" claim for custom rules to developers
+rather than operators.
+
+### API Surface Gaps
+
+The following gaps exist between internal capability and external API surface. Addressing
+them is required to support the full control-plane positioning claim.
+
+| # | Gap | Severity | Recommendation |
+|---|-----|----------|----------------|
+| G1 | No telemetry export (Prometheus `/metrics` or OTLP) | High | Add `/metrics` route + metrics aggregator. The 82+ structured events provide all raw data. |
+| G2 | No per-agent health endpoint | Medium | Add `GET /agents/{id}/health` compositing `PerformanceTracker.get_snapshot()`, `TrustService.get_trust_state()`, and last-active timestamp. |
+| G3 | No policy-as-code export/import | Medium | Add `GET /settings/security/export` and `POST /settings/security/import` to enable GitOps-style policy management. |
+| G4 | No coordination metrics API | Medium | Add `GET /coordination/metrics` endpoint. The 9 Kim et al. metrics are already computed in `budget/coordination_metrics.py` but not queryable. |
+| G5 | No audit log query API | Medium | Add `GET /security/audit` with filters. The `AuditLog` is write-only from an API perspective -- log sinks are the only read path. |
+| G6 | Budget history granularity | Low | `CostTracker` is in-memory with TTL eviction. Multi-dimensional queries (provider X, agent Y, period Z) require persistence layer investigation. |
+
+Priority for closing gaps: G1 (telemetry export) is the most significant for enterprise
+positioning. G3 (policy-as-code) and G4 (coordination metrics API) are the highest
+differentiation opportunities. G2 is the smallest implementation scope.
+
+### Recommended Framing
+
+SynthOrg should be positioned as an **orchestrated agent control plane**: policy-as-code,
+metered coordination, and observable agent behavior -- all enforced from a single control
+surface. This framing is accurate today for inventory, policy enforcement, and token
+metering. Telemetry export (G1) is the primary gap between internal capability and the
+external claim.
