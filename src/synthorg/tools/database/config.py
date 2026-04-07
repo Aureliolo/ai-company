@@ -5,6 +5,9 @@ from typing import Self
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.observability import get_logger
+
+logger = get_logger(__name__)
 
 
 class DatabaseConnectionConfig(BaseModel):
@@ -54,11 +57,15 @@ class DatabaseConfig(BaseModel):
 
     @model_validator(mode="after")
     def _validate_default_connection(self) -> Self:
-        """Ensure default_connection is a key in connections (when non-empty)."""
+        """Warn when default_connection is missing from connections.
+
+        Does not raise -- the tool factory falls back to the first
+        available connection when the default is not found.
+        """
         if self.connections and self.default_connection not in self.connections:
-            msg = (
-                f"default_connection {self.default_connection!r} not found "
-                f"in connections: {sorted(self.connections)}"
+            logger.warning(
+                "database_config_default_missing",
+                default_connection=self.default_connection,
+                available=sorted(self.connections),
             )
-            raise ValueError(msg)
         return self
