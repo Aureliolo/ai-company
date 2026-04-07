@@ -60,7 +60,7 @@ if printf '%s\n' "$COMMAND_FOR_REDIR" | grep -qE '(^|[^|&;])\s*>>?\s*"?[^-]'; th
     # Extract redirect target.  grep returns 1 when there is no match (e.g.
     # ">&1" where & is excluded from [^|&;<>]+); || true prevents set -e from
     # exiting the script when extraction yields no output.
-    REDIR=$(printf '%s\n' "$COMMAND_FOR_REDIR" | grep -oE '>>?\s*"?[^|&;<>]+' | head -1 | sed -E 's/^>>?["'"'"']*//' || true)
+    REDIR=$(printf '%s\n' "$COMMAND_FOR_REDIR" | grep -oE '>>?\s*"?[^|&;<>]+' | head -1 | sed -E 's/^>>?\s*["'"'"']*//' || true)
     # Only deny if a non-empty target was extracted and it is not a file
     # descriptor.  Empty REDIR means the target was &N (fd redirect such as
     # 2>&1) whose & could not be captured; those are always safe.
