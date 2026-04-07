@@ -403,6 +403,7 @@ class TestCostRecordAnalyticsFields:
             output_tokens=50,
             cost_usd=0.01,
             timestamp=datetime(2026, 2, 27, tzinfo=UTC),
+            retry_count=1,
             retry_reason="RateLimitError",
         )
         assert record.retry_reason == "RateLimitError"

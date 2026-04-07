@@ -106,6 +106,8 @@ class CostRecordFactory(ModelFactory[CostRecord]):
     input_tokens = 1000
     output_tokens = 500
     cost_usd = 0.05
+    # Ensure retry fields are consistent: no reason without a retry count.
+    retry_reason = None
 
 
 class PeriodSpendingFactory(ModelFactory[PeriodSpending]):

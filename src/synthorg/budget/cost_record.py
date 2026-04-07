@@ -99,3 +99,17 @@ class CostRecord(BaseModel):
             msg = "cost_usd is positive but both token counts are zero"
             raise ValueError(msg)
         return self
+
+    @model_validator(mode="after")
+    def _validate_retry_consistency(self) -> Self:
+        """Ensure retry_reason and retry_count are consistent.
+
+        If a retry reason is set, at least one retry must have occurred.
+        If retry_count is zero or unset, there can be no retry reason.
+        """
+        if self.retry_reason is not None and (
+            self.retry_count is None or self.retry_count == 0
+        ):
+            msg = "retry_reason set implies retry_count must be >= 1"
+            raise ValueError(msg)
+        return self

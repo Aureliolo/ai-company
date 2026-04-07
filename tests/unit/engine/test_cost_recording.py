@@ -269,7 +269,7 @@ class TestAnalyticsFieldPropagation:
         assert tracker.records[0].retry_count == 2
 
     async def test_retry_reason_propagated(self) -> None:
-        turn = self._turn_with_analytics(retry_reason="RateLimitError")
+        turn = self._turn_with_analytics(retry_count=2, retry_reason="RateLimitError")
         tracker = _FakeTracker()
         await record_execution_costs(
             _result((turn,)),

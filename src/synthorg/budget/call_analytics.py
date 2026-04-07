@@ -178,16 +178,16 @@ def _build_aggregation(
     )
 
 
-def _p95(sorted_values: list[float]) -> float:
+def _p95(values: list[float]) -> float:
     """Compute the 95th percentile via linear interpolation.
 
     Args:
-        sorted_values: Pre-sorted list of values (at least one element).
+        values: List of values (at least one element).
 
     Returns:
         95th-percentile value.
     """
-    values = sorted(sorted_values)
+    values = sorted(values)
     n = len(values)
     if n == 1:
         return values[0]

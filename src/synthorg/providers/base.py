@@ -115,7 +115,12 @@ class BaseCompletionProvider(ABC):
         try:
             result = await self._resilient_execute(_attempt)
         except Exception:
-            logger.error(PROVIDER_CALL_ERROR, model=model, exc_info=True)
+            logger.error(
+                PROVIDER_CALL_ERROR,
+                model=model,
+                latency_ms=(time.monotonic() - t_start) * 1000.0,
+                exc_info=True,
+            )
             raise
         latency_ms = (time.monotonic() - t_start) * 1000.0
 

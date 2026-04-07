@@ -1,6 +1,8 @@
 """Data models for call analytics aggregation results."""
 
-from pydantic import BaseModel, ConfigDict, Field
+from typing import Self
+
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.budget.category_analytics import OrchestrationRatio  # noqa: TC001
 
@@ -67,3 +69,14 @@ class AnalyticsAggregation(BaseModel):
             "Per finish-reason call counts, sorted alphabetically by reason string."
         ),
     )
+
+    @model_validator(mode="after")
+    def _validate_count_consistency(self) -> Self:
+        """Enforce count invariants across aggregation fields."""
+        if self.retry_count > self.total_calls:
+            msg = "retry_count cannot exceed total_calls"
+            raise ValueError(msg)
+        if self.success_count + self.failure_count > self.total_calls:
+            msg = "success_count + failure_count cannot exceed total_calls"
+            raise ValueError(msg)
+        return self
