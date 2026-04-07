@@ -159,25 +159,39 @@ class WebSearchTool(BaseWebTool):
                 metadata={"query": query, "result_count": 0},
             )
 
-        # Cap to requested max and normalize results defensively.
-        capped = list(results)[:max_results]
+        # Cap to requested max and coerce to SearchResult.
+        validated: list[SearchResult] = []
+        for item in list(results)[:max_results]:
+            try:
+                validated.append(
+                    item
+                    if isinstance(item, SearchResult)
+                    else SearchResult.model_validate(item, from_attributes=True)
+                )
+            except Exception:  # noqa: S112  -- skip malformed items
+                continue
+
+        if not validated:
+            logger.info(WEB_SEARCH_SUCCESS, query=query, result_count=0)
+            return ToolExecutionResult(
+                content="No results found.",
+                metadata={"query": query, "result_count": 0},
+            )
+
         lines: list[str] = []
-        for i, r in enumerate(capped, 1):
-            title = getattr(r, "title", "(no title)")
-            url = getattr(r, "url", "")
-            snippet = getattr(r, "snippet", "")
-            lines.append(f"{i}. {title}")
-            lines.append(f"   URL: {url}")
-            lines.append(f"   {snippet}")
+        for i, r in enumerate(validated, 1):
+            lines.append(f"{i}. {r.title}")
+            lines.append(f"   URL: {r.url}")
+            lines.append(f"   {r.snippet}")
             lines.append("")
 
         logger.info(
             WEB_SEARCH_SUCCESS,
             query=query,
-            result_count=len(capped),
+            result_count=len(validated),
         )
 
         return ToolExecutionResult(
             content="\n".join(lines).rstrip(),
-            metadata={"query": query, "result_count": len(capped)},
+            metadata={"query": query, "result_count": len(validated)},
         )

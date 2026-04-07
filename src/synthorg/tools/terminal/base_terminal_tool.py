@@ -74,11 +74,12 @@ class BaseTerminalTool(BaseTool, ABC):
             ``True`` if the command is blocked.
         """
         normalized = command.strip().lower()
+        executable = command.split(maxsplit=1)[0] if command.split() else ""
         for pattern in self._config.command_blocklist:
             if pattern.lower() in normalized:
                 logger.warning(
                     TERMINAL_COMMAND_BLOCKED,
-                    command=command,
+                    executable=executable,
                     pattern=pattern,
                     reason="blocklist_match",
                 )
@@ -108,22 +109,26 @@ class BaseTerminalTool(BaseTool, ABC):
             return True
         normalized = command.strip().lower()
 
+        executable = command.split(maxsplit=1)[0] if command.split() else ""
+
         # Reject shell metacharacters when allowlist is active --
         # prevents `ls; curl ...` or `ls && cat /etc/passwd`.
         if self._SHELL_META_RE.search(command):
             logger.warning(
                 TERMINAL_COMMAND_BLOCKED,
-                command=command,
+                executable=executable,
                 reason="shell_metacharacters_with_allowlist",
             )
             return False
 
+        # Match on word boundaries to prevent "ls" matching "lscpu".
         for prefix in self._config.command_allowlist:
-            if normalized.startswith(prefix.lower()):
+            prefix_lower = prefix.lower()
+            if normalized == prefix_lower or normalized.startswith(prefix_lower + " "):
                 return True
         logger.warning(
             TERMINAL_COMMAND_BLOCKED,
-            command=command,
+            executable=executable,
             reason="not_in_allowlist",
         )
         return False

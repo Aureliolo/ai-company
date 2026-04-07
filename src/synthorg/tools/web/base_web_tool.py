@@ -58,6 +58,9 @@ class BaseWebTool(BaseTool, ABC):
             parameters_schema=parameters_schema,
             action_type=action_type,
         )
+        if request_timeout <= 0:
+            msg = f"request_timeout must be positive, got {request_timeout}"
+            raise ValueError(msg)
         self._network_policy = network_policy or NetworkPolicy()
         self._request_timeout = request_timeout
 

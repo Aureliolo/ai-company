@@ -576,6 +576,11 @@ class RootConfig(BaseModel):
         backup: Backup and restore configuration.
         workflow: Workflow type configuration.
         notifications: Notification subsystem configuration.
+        web: Web tool configuration (``None`` = default web config).
+        database: Database tool configuration (``None`` = no database
+            tools).
+        terminal: Terminal tool configuration (``None`` = default
+            terminal config).
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)

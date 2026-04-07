@@ -353,7 +353,7 @@ def _ok(
     )
 
 
-async def validate_url_host(  # noqa: PLR0911, C901
+async def validate_url_host(  # noqa: PLR0911, PLR0912, C901
     url: str,
     policy: NetworkPolicy,
 ) -> str | DnsValidationOk:
@@ -414,7 +414,15 @@ async def validate_url_host(  # noqa: PLR0911, C901
     # Allowlist bypass -- still resolve DNS for IP pinning.
     if normalized in policy.hostname_allowlist:
         result = await resolve_and_check(normalized, policy.dns_resolution_timeout)
-        resolved = result if isinstance(result, tuple) else ()
+        if isinstance(result, tuple):
+            resolved = result
+        else:
+            logger.warning(
+                WEB_DNS_FAILED,
+                hostname=normalized,
+                reason=f"allowlisted_host_dns_failed: {result}",
+            )
+            resolved = ()
         return _ok(normalized, port, is_https=is_https, resolved_ips=resolved)
 
     # Master switch

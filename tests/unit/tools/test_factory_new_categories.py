@@ -12,7 +12,9 @@ from synthorg.tools.terminal.config import TerminalConfig
 
 @pytest.fixture
 def workspace(tmp_path: Path) -> Path:
-    return tmp_path / "workspace"
+    path = tmp_path / "workspace"
+    path.mkdir()
+    return path
 
 
 class TestFactoryWebTools:
@@ -20,7 +22,7 @@ class TestFactoryWebTools:
 
     @pytest.mark.unit
     def test_web_tools_included_by_default(self, workspace: Path) -> None:
-        workspace.mkdir()
+
         tools = build_default_tools(workspace=workspace)
         names = {t.name for t in tools}
         assert "http_request" in names
@@ -28,7 +30,7 @@ class TestFactoryWebTools:
 
     @pytest.mark.unit
     def test_web_search_excluded_without_provider(self, workspace: Path) -> None:
-        workspace.mkdir()
+
         tools = build_default_tools(workspace=workspace)
         names = {t.name for t in tools}
         assert "web_search" not in names
@@ -37,7 +39,6 @@ class TestFactoryWebTools:
     def test_web_search_included_with_provider(self, workspace: Path) -> None:
         from tests.unit.tools.web.conftest import MockSearchProvider
 
-        workspace.mkdir()
         tools = build_default_tools(
             workspace=workspace,
             web_search_provider=MockSearchProvider(),
@@ -47,7 +48,7 @@ class TestFactoryWebTools:
 
     @pytest.mark.unit
     def test_custom_network_policy(self, workspace: Path) -> None:
-        workspace.mkdir()
+
         policy = NetworkPolicy(block_private_ips=False)
         tools = build_default_tools(
             workspace=workspace,
@@ -65,7 +66,7 @@ class TestFactoryDatabaseTools:
 
     @pytest.mark.unit
     def test_no_database_tools_by_default(self, workspace: Path) -> None:
-        workspace.mkdir()
+
         tools = build_default_tools(workspace=workspace)
         names = {t.name for t in tools}
         assert "sql_query" not in names
@@ -73,7 +74,7 @@ class TestFactoryDatabaseTools:
 
     @pytest.mark.unit
     def test_database_tools_with_config(self, workspace: Path, tmp_path: Path) -> None:
-        workspace.mkdir()
+
         db_path = tmp_path / "test.db"
         config = DatabaseConfig(
             connections={
@@ -92,7 +93,7 @@ class TestFactoryDatabaseTools:
 
     @pytest.mark.unit
     def test_empty_connections_skips_tools(self, workspace: Path) -> None:
-        workspace.mkdir()
+
         config = DatabaseConfig(connections={})
         tools = build_default_tools(
             workspace=workspace,
@@ -108,14 +109,14 @@ class TestFactoryTerminalTools:
 
     @pytest.mark.unit
     def test_terminal_tool_included_by_default(self, workspace: Path) -> None:
-        workspace.mkdir()
+
         tools = build_default_tools(workspace=workspace)
         names = {t.name for t in tools}
         assert "shell_command" in names
 
     @pytest.mark.unit
     def test_custom_terminal_config(self, workspace: Path) -> None:
-        workspace.mkdir()
+
         config = TerminalConfig(command_allowlist=("ls", "cat"))
         tools = build_default_tools(
             workspace=workspace,
@@ -134,13 +135,13 @@ class TestFactoryToolCount:
     @pytest.mark.unit
     def test_default_tool_count(self, workspace: Path) -> None:
         """Default: 5 fs + 6 git + 2 web + 1 terminal = 14 tools."""
-        workspace.mkdir()
+
         tools = build_default_tools(workspace=workspace)
         assert len(tools) == 14
 
     @pytest.mark.unit
     def test_tools_sorted_by_name(self, workspace: Path) -> None:
-        workspace.mkdir()
+
         tools = build_default_tools(workspace=workspace)
         names = [t.name for t in tools]
         assert names == sorted(names)

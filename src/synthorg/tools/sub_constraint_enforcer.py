@@ -61,10 +61,10 @@ _GIT_PUSH_ACTIONS: frozenset[str] = frozenset(
 # action type would allow action-type-based checking.
 _GIT_CLONE_TOOL_NAMES: frozenset[str] = frozenset({"git_clone"})
 
-# Categories that require network access.
-_NETWORK_CATEGORIES: frozenset[ToolCategory] = frozenset(
+# Action types that require outbound network access.
+_NETWORK_ACTION_TYPES: frozenset[str] = frozenset(
     {
-        ToolCategory.WEB,
+        ActionType.COMMS_EXTERNAL,
     }
 )
 
@@ -122,7 +122,7 @@ class SubConstraintEnforcer:
             or ``None`` if all checks pass.
         """
         for violation in (
-            self._check_network(tool_name, category),
+            self._check_network(tool_name, action_type),
             self._check_terminal(tool_name, category),
             self._check_git(tool_name, action_type),
             self._check_requires_approval(tool_name, action_type),
@@ -146,18 +146,18 @@ class SubConstraintEnforcer:
     def _check_network(
         self,
         tool_name: str,
-        category: ToolCategory,
+        action_type: str,
     ) -> SubConstraintViolation | None:
         """Enforce network mode constraint.
 
-        ``NONE`` blocks all tools in network-requiring categories.
-        ``ALLOWLIST_ONLY`` is enforced at the transport level (not here),
-        but tools in network-requiring categories are allowed through.
+        ``NONE`` blocks tools that perform outbound network requests
+        (``COMMS_EXTERNAL`` action type) and git clone (external fetch).
+        Local-only tools like ``HtmlParserTool`` (``CODE_READ``) are
+        allowed even under ``NONE``.
         """
         if self._constraints.network != NetworkMode.NONE:
             return None
-        # Block web-category tools and git clone (external fetch).
-        if category in _NETWORK_CATEGORIES or tool_name in _GIT_CLONE_TOOL_NAMES:
+        if action_type in _NETWORK_ACTION_TYPES or tool_name in _GIT_CLONE_TOOL_NAMES:
             return SubConstraintViolation(
                 constraint="network",
                 reason=(
