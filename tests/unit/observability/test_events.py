@@ -247,6 +247,7 @@ class TestEventConstants:
             "quality",
             "health",
             "trajectory",
+            "call_classification",
             "coordination_metrics",
             "database",
             "sub_constraint",

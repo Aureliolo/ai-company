@@ -269,6 +269,7 @@ async def call_planner(  # noqa: PLR0913
             turn_number,
             response,
             call_category=LLMCallCategory.SYSTEM,
+            provider_metadata=response.provider_metadata,
         )
     )
 
@@ -485,6 +486,7 @@ async def run_progress_summary(  # noqa: PLR0913
             turn_number,
             response,
             call_category=LLMCallCategory.SYSTEM,
+            provider_metadata=response.provider_metadata,
         )
     )
 

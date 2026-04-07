@@ -203,3 +203,116 @@ class TestRecordExecutionCosts:
                 "task-1",
                 tracker=_RecursionErrorTracker(),  # type: ignore[arg-type]
             )
+
+
+@pytest.mark.unit
+class TestAnalyticsFieldPropagation:
+    """New per-call analytics fields are propagated from TurnRecord to CostRecord."""
+
+    def _turn_with_analytics(
+        self,
+        *,
+        latency_ms: float | None = None,
+        cache_hit: bool | None = None,
+        retry_count: int | None = None,
+        retry_reason: str | None = None,
+    ) -> TurnRecord:
+        from synthorg.providers.enums import FinishReason
+
+        return TurnRecord(
+            turn_number=1,
+            input_tokens=100,
+            output_tokens=50,
+            cost_usd=0.01,
+            finish_reason=FinishReason.STOP,
+            latency_ms=latency_ms,
+            cache_hit=cache_hit,
+            retry_count=retry_count,
+            retry_reason=retry_reason,
+        )
+
+    async def test_latency_ms_propagated(self) -> None:
+        """latency_ms from TurnRecord lands in CostRecord."""
+        turn = self._turn_with_analytics(latency_ms=250.5)
+        tracker = _FakeTracker()
+        await record_execution_costs(
+            _result((turn,)),
+            _identity(),
+            "agent-1",
+            "task-1",
+            tracker=tracker,  # type: ignore[arg-type]
+        )
+        assert tracker.records[0].latency_ms == 250.5
+
+    async def test_cache_hit_propagated(self) -> None:
+        turn = self._turn_with_analytics(cache_hit=True)
+        tracker = _FakeTracker()
+        await record_execution_costs(
+            _result((turn,)),
+            _identity(),
+            "agent-1",
+            "task-1",
+            tracker=tracker,  # type: ignore[arg-type]
+        )
+        assert tracker.records[0].cache_hit is True
+
+    async def test_retry_count_propagated(self) -> None:
+        turn = self._turn_with_analytics(retry_count=2)
+        tracker = _FakeTracker()
+        await record_execution_costs(
+            _result((turn,)),
+            _identity(),
+            "agent-1",
+            "task-1",
+            tracker=tracker,  # type: ignore[arg-type]
+        )
+        assert tracker.records[0].retry_count == 2
+
+    async def test_retry_reason_propagated(self) -> None:
+        turn = self._turn_with_analytics(retry_reason="RateLimitError")
+        tracker = _FakeTracker()
+        await record_execution_costs(
+            _result((turn,)),
+            _identity(),
+            "agent-1",
+            "task-1",
+            tracker=tracker,  # type: ignore[arg-type]
+        )
+        assert tracker.records[0].retry_reason == "RateLimitError"
+
+    async def test_finish_reason_and_success_propagated(self) -> None:
+        from synthorg.providers.enums import FinishReason
+
+        turn = TurnRecord(
+            turn_number=1,
+            input_tokens=100,
+            output_tokens=50,
+            cost_usd=0.01,
+            finish_reason=FinishReason.ERROR,
+        )
+        tracker = _FakeTracker()
+        await record_execution_costs(
+            _result((turn,)),
+            _identity(),
+            "agent-1",
+            "task-1",
+            tracker=tracker,  # type: ignore[arg-type]
+        )
+        assert tracker.records[0].finish_reason == FinishReason.ERROR
+        assert tracker.records[0].success is False
+
+    async def test_none_analytics_fields_propagated_as_none(self) -> None:
+        """When analytics fields are None on TurnRecord, CostRecord gets None."""
+        turn = _turn()
+        tracker = _FakeTracker()
+        await record_execution_costs(
+            _result((turn,)),
+            _identity(),
+            "agent-1",
+            "task-1",
+            tracker=tracker,  # type: ignore[arg-type]
+        )
+        assert tracker.records[0].latency_ms is None
+        assert tracker.records[0].cache_hit is None
+        assert tracker.records[0].retry_count is None
+        assert tracker.records[0].retry_reason is None

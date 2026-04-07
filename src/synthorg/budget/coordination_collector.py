@@ -1,0 +1,608 @@
+"""Runtime coordination metrics collection pipeline.
+
+Collects raw data from live execution results, communication bus,
+and baseline store; calls pure computation functions; logs results
+via observability events; and fires alerts via NotificationDispatcher.
+
+All collection is post-execution and never blocks the agent.
+Individual metric failures are logged and skipped without blocking
+remaining metric collection.
+"""
+
+from typing import TYPE_CHECKING, Protocol, runtime_checkable
+
+from synthorg.budget.coordination_config import (
+    CoordinationMetricName,
+    CoordinationMetricsConfig,
+    OrchestrationAlertThresholds,
+)
+from synthorg.budget.coordination_metrics import (
+    AmdahlCeiling,
+    CoordinationEfficiency,
+    CoordinationMetrics,
+    CoordinationOverhead,
+    ErrorAmplification,
+    MessageDensity,
+    MessageOverhead,
+    RedundancyRate,
+    StragglerGap,
+    TokenSpeedupRatio,
+    compute_amdahl_ceiling,
+    compute_efficiency,
+    compute_error_amplification,
+    compute_message_density,
+    compute_message_overhead,
+    compute_overhead,
+    compute_redundancy_rate,
+    compute_straggler_gap,
+    compute_token_speedup_ratio,
+)
+from synthorg.observability import get_logger
+from synthorg.observability.events.coordination_metrics import (
+    COORD_METRICS_ALERT_FIRED,
+    COORD_METRICS_COLLECTION_COMPLETED,
+    COORD_METRICS_COLLECTION_FAILED,
+    COORD_METRICS_COLLECTION_STARTED,
+    COORD_METRICS_EFFICIENCY_COMPUTED,
+    COORD_METRICS_ERROR_AMPLIFICATION_COMPUTED,
+    COORD_METRICS_MESSAGE_DENSITY_COMPUTED,
+    COORD_METRICS_OVERHEAD_COMPUTED,
+    COORD_METRICS_REDUNDANCY_COMPUTED,
+)
+
+if TYPE_CHECKING:
+    from synthorg.budget.baseline_store import BaselineStore
+    from synthorg.budget.tracker import CostTracker
+    from synthorg.communication.bus_protocol import MessageBus
+    from synthorg.engine.loop_protocol import ExecutionResult
+    from synthorg.notifications.dispatcher import NotificationDispatcher
+
+logger = get_logger(__name__)
+
+_MIN_TEAM_SIZE: int = 2
+
+
+@runtime_checkable
+class SimilarityComputer(Protocol):
+    """Protocol for computing pairwise output similarity.
+
+    Implementations compute the mean cosine (or other) similarity
+    across agent output pairs for the redundancy rate metric (R).
+    The embedding technology is intentionally left as TBD per the
+    design spec -- this protocol decouples the collector from any
+    specific embedding provider.
+    """
+
+    async def compute_pairwise_similarity(
+        self,
+        outputs: tuple[str, ...],
+    ) -> tuple[float, ...]:
+        """Compute pairwise similarity scores for agent outputs.
+
+        Args:
+            outputs: Agent output strings to compare.
+
+        Returns:
+            Sequence of similarity scores in [0.0, 1.0], one per
+            unique pair (order: lexicographic pair enumeration).
+        """
+        ...
+
+
+class CoordinationMetricsCollector:
+    """Runtime collector for coordination metrics.
+
+    Gathers raw data from execution results, CostTracker, and
+    MessageBus; calls pure computation functions; logs events;
+    dispatches alerts when overhead thresholds are exceeded.
+
+    Collection is opt-in via ``config.enabled`` and
+    ``config.collect``.  All operations are post-execution and
+    never block the agent.
+
+    Args:
+        config: Coordination metrics configuration.
+        cost_tracker: Cost tracker for turn/token data queries.
+        message_bus: Optional message bus for message density (c).
+            When ``None``, message_density is skipped.
+        notification_dispatcher: Optional dispatcher for alerts.
+            When ``None``, alerts are logged but not dispatched.
+        similarity_computer: Optional protocol for redundancy rate
+            (R) embedding computation. When ``None``, redundancy_rate
+            is skipped.
+        baseline_store: Optional store for single-agent baselines.
+            When ``None``, efficiency, overhead, and error_amplification
+            are skipped (no comparison data).
+    """
+
+    def __init__(  # noqa: PLR0913
+        self,
+        *,
+        config: CoordinationMetricsConfig,
+        cost_tracker: CostTracker,
+        message_bus: MessageBus | None = None,
+        notification_dispatcher: NotificationDispatcher | None = None,
+        similarity_computer: SimilarityComputer | None = None,
+        baseline_store: BaselineStore | None = None,
+    ) -> None:
+        self._config = config
+        self._cost_tracker = cost_tracker
+        self._message_bus = message_bus
+        self._notification_dispatcher = notification_dispatcher
+        self._similarity_computer = similarity_computer
+        self._baseline_store = baseline_store
+
+    def _is_enabled(self, metric: CoordinationMetricName) -> bool:
+        """Return True if the metric is in config.collect."""
+        return metric in self._config.collect
+
+    async def collect(  # noqa: PLR0913
+        self,
+        *,
+        execution_result: ExecutionResult,
+        agent_id: str,
+        task_id: str,
+        team_size: int = 1,
+        agent_durations: tuple[tuple[str, float], ...] | None = None,
+        agent_outputs: tuple[str, ...] | None = None,
+        is_multi_agent: bool = False,
+    ) -> CoordinationMetrics:
+        """Collect all enabled coordination metrics post-execution.
+
+        For single-agent runs (``is_multi_agent=False``), records
+        baseline data and returns an empty ``CoordinationMetrics``.
+        For multi-agent runs, computes all enabled metrics using the
+        accumulated baseline data.
+
+        All individual metric failures are logged and skipped without
+        blocking the remaining metrics.
+
+        Args:
+            execution_result: Completed execution result.
+            agent_id: Executing agent identifier.
+            task_id: Task identifier.
+            team_size: Number of agents (1 for single-agent runs).
+            agent_durations: Per-agent completion times as
+                ``(agent_id, seconds)`` pairs.
+            agent_outputs: Agent output strings for redundancy
+                computation (multi-agent only).
+            is_multi_agent: Whether this is a multi-agent execution.
+
+        Returns:
+            Container of all collected metrics (None for skipped ones).
+        """
+        if not self._config.enabled:
+            return CoordinationMetrics()
+
+        logger.debug(
+            COORD_METRICS_COLLECTION_STARTED,
+            agent_id=agent_id,
+            task_id=task_id,
+            is_multi_agent=is_multi_agent,
+            team_size=team_size,
+        )
+
+        turns = len(execution_result.turns)
+        error_turns = sum(
+            1
+            for t in execution_result.turns
+            if t.finish_reason.value in ("error", "content_filter")
+        )
+        error_rate = error_turns / turns if turns > 0 else 0.0
+        total_tokens = sum(t.total_tokens for t in execution_result.turns)
+
+        # For single-agent runs: record baseline, return empty metrics.
+        if not is_multi_agent and self._baseline_store is not None:
+            from synthorg.budget.baseline_store import BaselineRecord  # noqa: PLC0415
+
+            baseline = BaselineRecord(
+                agent_id=agent_id,
+                task_id=task_id,
+                turns=max(float(turns), 1.0),
+                error_rate=error_rate,
+                total_tokens=float(total_tokens),
+                duration_seconds=0.0,  # Not available from ExecutionResult
+            )
+            self._baseline_store.record(baseline)
+            logger.debug(
+                COORD_METRICS_COLLECTION_COMPLETED,
+                agent_id=agent_id,
+                task_id=task_id,
+                is_multi_agent=False,
+                metrics_computed=0,
+            )
+            return CoordinationMetrics()
+
+        # Multi-agent run: compute all enabled metrics.
+        efficiency = await self._try_collect_efficiency(turns)
+        overhead = await self._try_collect_overhead(turns)
+        error_amplification = await self._try_collect_error_amplification(error_rate)
+        message_density = await self._try_collect_message_density(turns)
+        redundancy_rate = await self._try_collect_redundancy(agent_outputs)
+        amdahl_ceiling = await self._try_collect_amdahl(team_size)
+        straggler_gap = await self._try_collect_straggler_gap(agent_durations)
+        token_speedup = await self._try_collect_token_speedup(
+            total_tokens, agent_durations
+        )
+        message_overhead = await self._try_collect_message_overhead(
+            team_size, message_density
+        )
+
+        metrics = CoordinationMetrics(
+            efficiency=efficiency,
+            overhead=overhead,
+            error_amplification=error_amplification,
+            message_density=message_density,
+            redundancy_rate=redundancy_rate,
+            amdahl_ceiling=amdahl_ceiling,
+            straggler_gap=straggler_gap,
+            token_speedup_ratio=token_speedup,
+            message_overhead=message_overhead,
+        )
+
+        computed_count = sum(
+            1
+            for m in (
+                efficiency,
+                overhead,
+                error_amplification,
+                message_density,
+                redundancy_rate,
+                amdahl_ceiling,
+                straggler_gap,
+                token_speedup,
+                message_overhead,
+            )
+            if m is not None
+        )
+        logger.info(
+            COORD_METRICS_COLLECTION_COMPLETED,
+            agent_id=agent_id,
+            task_id=task_id,
+            is_multi_agent=True,
+            metrics_computed=computed_count,
+        )
+
+        await self._fire_alerts(metrics, agent_id=agent_id, task_id=task_id)
+        return metrics
+
+    # -- Private collection helpers --
+
+    async def _try_collect_efficiency(
+        self, turns_mas: int
+    ) -> CoordinationEfficiency | None:
+        """Collect CoordinationEfficiency (Ec) if enabled and baseline available."""
+        if not self._is_enabled(CoordinationMetricName.EFFICIENCY):
+            return None
+        if self._baseline_store is None:
+            return None
+        turns_sas = self._baseline_store.get_baseline_turns()
+        if turns_sas is None:
+            return None
+        try:
+            result = compute_efficiency(
+                success_rate=1.0,  # Approx: no per-task success rate in ExecutionResult
+                turns_mas=max(float(turns_mas), 1.0),
+                turns_sas=turns_sas,
+            )
+            logger.info(
+                COORD_METRICS_EFFICIENCY_COMPUTED,
+                value=result.value,
+                turns_mas=turns_mas,
+                turns_sas=turns_sas,
+            )
+        except MemoryError, RecursionError:
+            raise
+        except Exception as exc:
+            logger.warning(
+                COORD_METRICS_COLLECTION_FAILED,
+                metric="efficiency",
+                error=f"{type(exc).__name__}: {exc}",
+            )
+            return None
+        else:
+            return result
+
+    async def _try_collect_overhead(
+        self, turns_mas: int
+    ) -> CoordinationOverhead | None:
+        """Collect CoordinationOverhead (O%) if enabled and baseline available."""
+        if not self._is_enabled(CoordinationMetricName.OVERHEAD):
+            return None
+        if self._baseline_store is None:
+            return None
+        turns_sas = self._baseline_store.get_baseline_turns()
+        if turns_sas is None:
+            return None
+        try:
+            result = compute_overhead(
+                turns_mas=max(float(turns_mas), 1.0),
+                turns_sas=turns_sas,
+            )
+            logger.info(
+                COORD_METRICS_OVERHEAD_COMPUTED,
+                value_percent=result.value_percent,
+                turns_mas=turns_mas,
+                turns_sas=turns_sas,
+            )
+        except MemoryError, RecursionError:
+            raise
+        except Exception as exc:
+            logger.warning(
+                COORD_METRICS_COLLECTION_FAILED,
+                metric="overhead",
+                error=f"{type(exc).__name__}: {exc}",
+            )
+            return None
+        else:
+            return result
+
+    async def _try_collect_error_amplification(
+        self, error_rate_mas: float
+    ) -> ErrorAmplification | None:
+        """Collect ErrorAmplification (Ae) if enabled and baseline available."""
+        if not self._is_enabled(CoordinationMetricName.ERROR_AMPLIFICATION):
+            return None
+        if self._baseline_store is None:
+            return None
+        error_rate_sas = self._baseline_store.get_baseline_error_rate()
+        if error_rate_sas is None:
+            return None
+        # Cannot compute Ae when SAS baseline is 0 (no errors in baseline)
+        if error_rate_sas <= 0:
+            return None
+        try:
+            result = compute_error_amplification(
+                error_rate_mas=error_rate_mas,
+                error_rate_sas=error_rate_sas,
+            )
+            logger.info(
+                COORD_METRICS_ERROR_AMPLIFICATION_COMPUTED,
+                value=result.value,
+                error_rate_mas=error_rate_mas,
+                error_rate_sas=error_rate_sas,
+            )
+        except MemoryError, RecursionError:
+            raise
+        except Exception as exc:
+            logger.warning(
+                COORD_METRICS_COLLECTION_FAILED,
+                metric="error_amplification",
+                error=f"{type(exc).__name__}: {exc}",
+            )
+            return None
+        else:
+            return result
+
+    async def _try_collect_message_density(
+        self, reasoning_turns: int
+    ) -> MessageDensity | None:
+        """Collect MessageDensity (c) if enabled and message bus available."""
+        if not self._is_enabled(CoordinationMetricName.MESSAGE_DENSITY):
+            return None
+        if self._message_bus is None:
+            return None
+        if reasoning_turns <= 0:
+            return None
+        try:
+            channels = await self._message_bus.list_channels()
+            inter_agent_messages = 0
+            for channel in channels:
+                history = await self._message_bus.get_channel_history(
+                    channel.name,
+                )
+                inter_agent_messages += len(history)
+            result = compute_message_density(
+                inter_agent_messages=inter_agent_messages,
+                reasoning_turns=reasoning_turns,
+            )
+            logger.info(
+                COORD_METRICS_MESSAGE_DENSITY_COMPUTED,
+                value=result.value,
+                inter_agent_messages=inter_agent_messages,
+                reasoning_turns=reasoning_turns,
+            )
+        except MemoryError, RecursionError:
+            raise
+        except Exception as exc:
+            logger.warning(
+                COORD_METRICS_COLLECTION_FAILED,
+                metric="message_density",
+                error=f"{type(exc).__name__}: {exc}",
+            )
+            return None
+        else:
+            return result
+
+    async def _try_collect_redundancy(
+        self, agent_outputs: tuple[str, ...] | None
+    ) -> RedundancyRate | None:
+        """Collect RedundancyRate (R) if enabled and similarity computer available."""
+        if not self._is_enabled(CoordinationMetricName.REDUNDANCY):
+            return None
+        if self._similarity_computer is None:
+            return None
+        if not agent_outputs or len(agent_outputs) < _MIN_TEAM_SIZE:
+            return None
+        try:
+            similarities = await self._similarity_computer.compute_pairwise_similarity(
+                agent_outputs
+            )
+            if not similarities:
+                return None
+            result = compute_redundancy_rate(similarities=list(similarities))
+            logger.info(
+                COORD_METRICS_REDUNDANCY_COMPUTED,
+                value=result.value,
+                sample_count=result.sample_count,
+            )
+        except MemoryError, RecursionError:
+            raise
+        except Exception as exc:
+            logger.warning(
+                COORD_METRICS_COLLECTION_FAILED,
+                metric="redundancy",
+                error=f"{type(exc).__name__}: {exc}",
+            )
+            return None
+        else:
+            return result
+
+    async def _try_collect_amdahl(self, team_size: int) -> AmdahlCeiling | None:
+        """Collect AmdahlCeiling if team_size > 1."""
+        if team_size < _MIN_TEAM_SIZE:
+            return None
+        try:
+            # Estimate parallelizable fraction from team size: p = (n-1)/n
+            p = (team_size - 1) / team_size
+            return compute_amdahl_ceiling(parallelizable_fraction=p)
+        except MemoryError, RecursionError:
+            raise
+        except Exception as exc:
+            logger.warning(
+                COORD_METRICS_COLLECTION_FAILED,
+                metric="amdahl_ceiling",
+                error=f"{type(exc).__name__}: {exc}",
+            )
+            return None
+
+    async def _try_collect_straggler_gap(
+        self, agent_durations: tuple[tuple[str, float], ...] | None
+    ) -> StragglerGap | None:
+        """Collect StragglerGap if agent_durations provided."""
+        if not agent_durations or len(agent_durations) < _MIN_TEAM_SIZE:
+            return None
+        try:
+            return compute_straggler_gap(agent_durations=list(agent_durations))
+        except MemoryError, RecursionError:
+            raise
+        except Exception as exc:
+            logger.warning(
+                COORD_METRICS_COLLECTION_FAILED,
+                metric="straggler_gap",
+                error=f"{type(exc).__name__}: {exc}",
+            )
+            return None
+
+    async def _try_collect_token_speedup(
+        self,
+        total_tokens_mas: int,
+        agent_durations: tuple[tuple[str, float], ...] | None,
+    ) -> TokenSpeedupRatio | None:
+        """Collect TokenSpeedupRatio if baseline and duration data available."""
+        if self._baseline_store is None or not agent_durations:
+            return None
+        tokens_sas = self._baseline_store.get_baseline_tokens()
+        duration_sas = self._baseline_store.get_baseline_duration()
+        if tokens_sas is None or duration_sas is None:
+            return None
+        if tokens_sas <= 0 or duration_sas <= 0:
+            return None
+        duration_mas = sum(d for _, d in agent_durations)
+        if duration_mas <= 0:
+            return None
+        try:
+            return compute_token_speedup_ratio(
+                tokens_mas=max(float(total_tokens_mas), 1.0),
+                tokens_sas=tokens_sas,
+                duration_mas=duration_mas,
+                duration_sas=duration_sas,
+            )
+        except MemoryError, RecursionError:
+            raise
+        except Exception as exc:
+            logger.warning(
+                COORD_METRICS_COLLECTION_FAILED,
+                metric="token_speedup_ratio",
+                error=f"{type(exc).__name__}: {exc}",
+            )
+            return None
+
+    async def _try_collect_message_overhead(
+        self,
+        team_size: int,
+        message_density: MessageDensity | None,
+    ) -> MessageOverhead | None:
+        """Collect MessageOverhead if message_density was computed."""
+        if message_density is None:
+            return None
+        try:
+            return compute_message_overhead(
+                team_size=team_size,
+                message_count=message_density.inter_agent_messages,
+            )
+        except MemoryError, RecursionError:
+            raise
+        except Exception as exc:
+            logger.warning(
+                COORD_METRICS_COLLECTION_FAILED,
+                metric="message_overhead",
+                error=f"{type(exc).__name__}: {exc}",
+            )
+            return None
+
+    async def _fire_alerts(
+        self,
+        metrics: CoordinationMetrics,
+        *,
+        agent_id: str,
+        task_id: str,
+    ) -> None:
+        """Fire notifications for coordination overhead threshold crossings."""
+        if self._notification_dispatcher is None:
+            return
+
+        overhead = metrics.overhead
+        if overhead is None:
+            return
+
+        thresholds: OrchestrationAlertThresholds = self._config.orchestration_alerts
+        # O% is in percent; thresholds are fractions -> convert O% to fraction
+        overhead_fraction = overhead.value_percent / 100.0
+
+        if overhead_fraction >= thresholds.critical:
+            severity = "critical"
+        elif overhead_fraction >= thresholds.warn:
+            severity = "warning"
+        elif overhead_fraction >= thresholds.info:
+            severity = "info"
+        else:
+            return
+
+        from synthorg.notifications.models import (  # noqa: PLC0415
+            Notification,
+            NotificationCategory,
+            NotificationSeverity,
+        )
+
+        body = (
+            f"Coordination overhead is {overhead.value_percent:.1f}% "
+            f"({overhead.turns_mas:.0f} MAS turns vs "
+            f"{overhead.turns_sas:.0f} SAS turns) -- "
+            f"agent={agent_id} task={task_id}"
+        )
+        logger.warning(
+            COORD_METRICS_ALERT_FIRED,
+            agent_id=agent_id,
+            task_id=task_id,
+            severity=severity,
+            overhead_percent=overhead.value_percent,
+        )
+        try:
+            await self._notification_dispatcher.dispatch(
+                Notification(
+                    category=NotificationCategory.BUDGET,
+                    severity=NotificationSeverity(severity),
+                    title="Coordination overhead alert",
+                    body=body,
+                    source="budget.coordination_collector",
+                ),
+            )
+        except MemoryError, RecursionError:
+            raise
+        except Exception:
+            logger.warning(
+                COORD_METRICS_COLLECTION_FAILED,
+                metric="alert_dispatch",
+                exc_info=True,
+            )

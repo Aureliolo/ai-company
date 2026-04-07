@@ -7,7 +7,7 @@ on their control-flow logic.
 
 import hashlib
 import json
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from synthorg.observability import get_logger
 from synthorg.observability.events.approval_gate import (
@@ -465,8 +465,25 @@ def make_turn_record(
     response: CompletionResponse,
     *,
     call_category: LLMCallCategory | None = None,
+    provider_metadata: dict[str, object] | None = None,
 ) -> TurnRecord:
-    """Create a ``TurnRecord`` from a provider response."""
+    """Create a ``TurnRecord`` from a provider response.
+
+    Args:
+        turn_number: 1-indexed turn number.
+        response: Provider completion response.
+        call_category: Optional LLM call category.
+        provider_metadata: Optional metadata dict from
+            ``CompletionResponse.provider_metadata``. Keys
+            ``_synthorg_latency_ms``, ``_synthorg_cache_hit``,
+            ``_synthorg_retry_count``, and ``_synthorg_retry_reason``
+            are extracted when present.
+    """
+    md = provider_metadata or {}
+    latency_ms_raw = md.get("_synthorg_latency_ms")
+    cache_hit_raw = md.get("_synthorg_cache_hit")
+    retry_count_raw = md.get("_synthorg_retry_count")
+    retry_reason_raw = md.get("_synthorg_retry_reason")
     return TurnRecord(
         turn_number=turn_number,
         input_tokens=response.usage.input_tokens,
@@ -476,6 +493,14 @@ def make_turn_record(
         tool_call_fingerprints=compute_fingerprints(response.tool_calls),
         finish_reason=response.finish_reason,
         call_category=call_category,
+        latency_ms=float(cast("float", latency_ms_raw))
+        if latency_ms_raw is not None
+        else None,
+        cache_hit=bool(cache_hit_raw) if cache_hit_raw is not None else None,
+        retry_count=int(cast("int", retry_count_raw))
+        if retry_count_raw is not None
+        else None,
+        retry_reason=str(retry_reason_raw) if retry_reason_raw is not None else None,
     )
 
 

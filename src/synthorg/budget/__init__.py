@@ -6,13 +6,27 @@ the Operations design page.
 """
 
 from synthorg.budget.automated_reports import AutomatedReportService
+from synthorg.budget.baseline_store import BaselineRecord, BaselineStore
 from synthorg.budget.billing import billing_period_start, daily_period_start
+from synthorg.budget.call_analytics import CallAnalyticsService
+from synthorg.budget.call_analytics_config import CallAnalyticsConfig, RetryAlertConfig
+from synthorg.budget.call_analytics_models import AnalyticsAggregation
 from synthorg.budget.call_category import LLMCallCategory, OrchestrationAlertLevel
+from synthorg.budget.call_classifier import (
+    CallClassificationStrategy,
+    ClassificationContext,
+    RulesBasedClassifier,
+    classify_call,
+)
 from synthorg.budget.category_analytics import CategoryBreakdown, OrchestrationRatio
 from synthorg.budget.config import (
     AutoDowngradeConfig,
     BudgetAlertConfig,
     BudgetConfig,
+)
+from synthorg.budget.coordination_collector import (
+    CoordinationMetricsCollector,
+    SimilarityComputer,
 )
 from synthorg.budget.coordination_config import (
     CoordinationMetricName,
@@ -90,6 +104,8 @@ from synthorg.budget.quota import (
     SubscriptionConfig,
     effective_cost_per_1k,
 )
+from synthorg.budget.quota_poller import QuotaPoller
+from synthorg.budget.quota_poller_config import QuotaAlertThresholds, QuotaPollerConfig
 from synthorg.budget.quota_tracker import QuotaTracker
 from synthorg.budget.rebalance import RebalanceMode, RebalanceResult, compute_rebalance
 from synthorg.budget.report_config import (
@@ -136,6 +152,7 @@ __all__ = [
     "AgentPerformanceSummary",
     "AgentSpending",
     "AmdahlCeiling",
+    "AnalyticsAggregation",
     "AnomalyDetectionResult",
     "AnomalySeverity",
     "AnomalyType",
@@ -143,17 +160,24 @@ __all__ = [
     "AutoDowngradeConfig",
     "AutomatedReportService",
     "AutomatedReportingConfig",
+    "BaselineRecord",
+    "BaselineStore",
     "BudgetAlertConfig",
     "BudgetAlertLevel",
     "BudgetConfig",
     "BudgetEnforcer",
     "BudgetExhaustedError",
     "BudgetHierarchy",
+    "CallAnalyticsConfig",
+    "CallAnalyticsService",
+    "CallClassificationStrategy",
     "CategoryBreakdown",
+    "ClassificationContext",
     "ComprehensiveReport",
     "CoordinationEfficiency",
     "CoordinationMetricName",
     "CoordinationMetrics",
+    "CoordinationMetricsCollector",
     "CoordinationMetricsConfig",
     "CoordinationOverhead",
     "CostOptimizer",
@@ -190,9 +214,12 @@ __all__ = [
     "PreFlightResult",
     "ProviderCostModel",
     "ProviderDistribution",
+    "QuotaAlertThresholds",
     "QuotaCheckResult",
     "QuotaExhaustedError",
     "QuotaLimit",
+    "QuotaPoller",
+    "QuotaPollerConfig",
     "QuotaSnapshot",
     "QuotaTracker",
     "QuotaWindow",
@@ -203,6 +230,7 @@ __all__ = [
     "ReportPeriod",
     "ReportScheduleConfig",
     "ReportTemplateName",
+    "RetryAlertConfig",
     "RiskBudgetAlertConfig",
     "RiskBudgetConfig",
     "RiskBudgetExhaustedError",
@@ -212,6 +240,8 @@ __all__ = [
     "RiskTrendsReport",
     "RoutingOptimizationAnalysis",
     "RoutingSuggestion",
+    "RulesBasedClassifier",
+    "SimilarityComputer",
     "SpendingAnomaly",
     "SpendingReport",
     "SpendingSummary",
@@ -222,6 +252,7 @@ __all__ = [
     "TeamBudget",
     "TokenSpeedupRatio",
     "billing_period_start",
+    "classify_call",
     "classify_model_tier",
     "compute_rebalance",
     "daily_period_start",

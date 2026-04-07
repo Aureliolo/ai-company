@@ -6,6 +6,7 @@ automatic retry, rate limiting, and provides a cost-computation helper.
 """
 
 import math
+import time
 from abc import ABC, abstractmethod
 from collections.abc import AsyncIterator, Callable, Coroutine
 from typing import Any, TypeVar
@@ -110,11 +111,25 @@ class BaseCompletionProvider(ABC):
                 config=config,
             )
 
+        t_start = time.monotonic()
         try:
             result = await self._resilient_execute(_attempt)
         except Exception:
             logger.error(PROVIDER_CALL_ERROR, model=model, exc_info=True)
             raise
+        latency_ms = (time.monotonic() - t_start) * 1000.0
+
+        metadata: dict[str, object] = {"_synthorg_latency_ms": latency_ms}
+        if self._retry_handler is not None:
+            metadata["_synthorg_retry_count"] = max(
+                0, self._retry_handler.last_attempt_count - 1
+            )
+            if self._retry_handler.last_retry_reason is not None:
+                metadata["_synthorg_retry_reason"] = (
+                    self._retry_handler.last_retry_reason
+                )
+
+        result = result.model_copy(update={"provider_metadata": metadata})
         logger.debug(
             PROVIDER_CALL_SUCCESS,
             model=model,

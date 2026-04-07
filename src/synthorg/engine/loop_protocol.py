@@ -17,7 +17,7 @@ from synthorg.budget.call_category import LLMCallCategory  # noqa: TC001
 from synthorg.core.task import Task  # noqa: TC001
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.engine.context import AgentContext
-from synthorg.providers.enums import FinishReason  # noqa: TC001
+from synthorg.providers.enums import FinishReason
 
 if TYPE_CHECKING:
     from synthorg.providers.models import CompletionConfig
@@ -52,6 +52,11 @@ class TurnRecord(BaseModel):
         finish_reason: LLM finish reason for this turn.
         call_category: Optional LLM call category for coordination
             metrics (productive, coordination, system).
+        latency_ms: Round-trip latency in milliseconds (``None`` if not measured).
+        cache_hit: Whether the provider served this turn from cache.
+        retry_count: Number of retry attempts before success.
+        retry_reason: Exception type name of the last retried error.
+        success: Whether this turn completed without error or content filter (computed).
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
@@ -75,12 +80,41 @@ class TurnRecord(BaseModel):
         default=None,
         description="LLM call category (productive, coordination, system)",
     )
+    latency_ms: float | None = Field(
+        default=None,
+        ge=0.0,
+        description="Round-trip latency in milliseconds from provider base class",
+    )
+    cache_hit: bool | None = Field(
+        default=None,
+        description="Whether the provider served this turn from cache",
+    )
+    retry_count: int | None = Field(
+        default=None,
+        ge=0,
+        description="Number of retry attempts before success",
+    )
+    retry_reason: str | None = Field(
+        default=None,
+        description="Exception type name of the last retried error",
+    )
 
     @computed_field(description="Total token count")  # type: ignore[prop-decorator]
     @property
     def total_tokens(self) -> int:
         """Sum of input and output tokens."""
         return self.input_tokens + self.output_tokens
+
+    @computed_field(  # type: ignore[prop-decorator]
+        description="Whether this turn completed without error or content filter",
+    )
+    @property
+    def success(self) -> bool:
+        """True unless finish_reason is ERROR or CONTENT_FILTER."""
+        return self.finish_reason not in (
+            FinishReason.ERROR,
+            FinishReason.CONTENT_FILTER,
+        )
 
 
 class ExecutionResult(BaseModel):

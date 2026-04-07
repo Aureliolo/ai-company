@@ -11,6 +11,7 @@ from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validato
 
 from synthorg.budget.call_category import LLMCallCategory  # noqa: TC001
 from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.providers.enums import FinishReason  # noqa: TC001
 
 
 class CostRecord(BaseModel):
@@ -34,6 +35,12 @@ class CostRecord(BaseModel):
         accuracy_effort_ratio: Accuracy-effort ratio for the task
             this call belongs to (populated at task completion when
             quality signals are available, ``None`` otherwise).
+        latency_ms: Round-trip latency in milliseconds (``None`` if not measured).
+        cache_hit: Whether the provider served this call from cache.
+        retry_count: Number of retry attempts before success (0 = first try succeeded).
+        retry_reason: Exception type name of the last retried error.
+        finish_reason: LLM finish reason for this call.
+        success: Whether the call completed without error or content filter.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
@@ -57,6 +64,32 @@ class CostRecord(BaseModel):
             "Accuracy-effort ratio for the task this call belongs to "
             "(populated at task completion when quality signals are available)"
         ),
+    )
+    latency_ms: float | None = Field(
+        default=None,
+        ge=0.0,
+        description="Round-trip latency in milliseconds",
+    )
+    cache_hit: bool | None = Field(
+        default=None,
+        description="Whether the provider served this call from cache",
+    )
+    retry_count: int | None = Field(
+        default=None,
+        ge=0,
+        description="Number of retry attempts before success",
+    )
+    retry_reason: str | None = Field(
+        default=None,
+        description="Exception type name of the last retried error",
+    )
+    finish_reason: FinishReason | None = Field(
+        default=None,
+        description="LLM finish reason for this call",
+    )
+    success: bool | None = Field(
+        default=None,
+        description="Whether the call completed without error or content filter",
     )
 
     @model_validator(mode="after")

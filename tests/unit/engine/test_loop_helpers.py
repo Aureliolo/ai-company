@@ -551,6 +551,80 @@ class TestMakeTurnRecord:
         )
         assert record.call_category == LLMCallCategory.SYSTEM
 
+    def test_provider_metadata_latency_extracted(self) -> None:
+        """latency_ms extracted from _synthorg_latency_ms key."""
+        response = _stop_response()
+        response = response.model_copy(
+            update={"provider_metadata": {"_synthorg_latency_ms": 123.5}},
+        )
+        record = make_turn_record(
+            1, response, provider_metadata=response.provider_metadata
+        )
+        assert record.latency_ms == 123.5
+
+    def test_provider_metadata_retry_count_extracted(self) -> None:
+        """retry_count extracted from _synthorg_retry_count key."""
+        response = _stop_response()
+        response = response.model_copy(
+            update={"provider_metadata": {"_synthorg_retry_count": 2}},
+        )
+        record = make_turn_record(
+            1, response, provider_metadata=response.provider_metadata
+        )
+        assert record.retry_count == 2
+
+    def test_provider_metadata_retry_reason_extracted(self) -> None:
+        """retry_reason extracted from _synthorg_retry_reason key."""
+        response = _stop_response()
+        response = response.model_copy(
+            update={"provider_metadata": {"_synthorg_retry_reason": "RateLimitError"}},
+        )
+        record = make_turn_record(
+            1, response, provider_metadata=response.provider_metadata
+        )
+        assert record.retry_reason == "RateLimitError"
+
+    def test_provider_metadata_cache_hit_extracted(self) -> None:
+        """cache_hit extracted from _synthorg_cache_hit key."""
+        response = _stop_response()
+        response = response.model_copy(
+            update={"provider_metadata": {"_synthorg_cache_hit": True}},
+        )
+        record = make_turn_record(
+            1, response, provider_metadata=response.provider_metadata
+        )
+        assert record.cache_hit is True
+
+    def test_no_provider_metadata_all_none(self) -> None:
+        """Without provider_metadata all new fields default to None."""
+        record = make_turn_record(1, _stop_response())
+        assert record.latency_ms is None
+        assert record.cache_hit is None
+        assert record.retry_count is None
+        assert record.retry_reason is None
+
+    def test_empty_provider_metadata_all_none(self) -> None:
+        """Empty provider_metadata dict leaves all new fields as None."""
+        record = make_turn_record(1, _stop_response(), provider_metadata={})
+        assert record.latency_ms is None
+        assert record.retry_count is None
+
+    def test_success_computed_stop(self) -> None:
+        """success=True for STOP finish_reason."""
+        record = make_turn_record(1, _stop_response())
+        assert record.success is True
+
+    def test_success_computed_error(self) -> None:
+        """success=False for ERROR finish_reason."""
+        response = CompletionResponse(
+            content=None,
+            finish_reason=FinishReason.ERROR,
+            usage=_usage(),
+            model="test-model-001",
+        )
+        record = make_turn_record(1, response)
+        assert record.success is False
+
 
 # ── build_result ────────────────────────────────────────────────────
 

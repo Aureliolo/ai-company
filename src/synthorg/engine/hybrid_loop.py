@@ -705,6 +705,7 @@ class HybridLoop:
                 turn_number,
                 response,
                 call_category=LLMCallCategory.PRODUCTIVE,
+                provider_metadata=response.provider_metadata,
             )
         )
 

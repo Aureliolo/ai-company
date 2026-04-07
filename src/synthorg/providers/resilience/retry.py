@@ -38,6 +38,8 @@ class RetryHandler:
 
     def __init__(self, config: RetryConfig) -> None:
         self._config = config
+        self.last_attempt_count: int = 0
+        self.last_retry_reason: str | None = None
 
     async def execute(
         self,
@@ -55,15 +57,19 @@ class RetryHandler:
             RetryExhaustedError: If all retries are exhausted.
             ProviderError: If the error is non-retryable.
         """
+        self.last_attempt_count = 0
+        self.last_retry_reason = None
         last_error: ProviderError | None = None
 
         for attempt in range(1 + self._config.max_retries):
+            self.last_attempt_count = attempt + 1
             try:
                 return await func()
             except ProviderError as exc:
                 last_error = self._handle_retryable_error(exc)
                 if last_error is None:
                     raise
+                self.last_retry_reason = type(exc).__name__
                 if attempt >= self._config.max_retries:
                     break
                 delay = self._compute_delay(attempt, exc)

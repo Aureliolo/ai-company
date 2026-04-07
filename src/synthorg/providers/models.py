@@ -280,6 +280,10 @@ class CompletionResponse(BaseModel):
         default=None,
         description="Provider request ID",
     )
+    provider_metadata: dict[str, object] = Field(
+        default_factory=dict,
+        description="Provider metadata injected by the base class (_synthorg_* keys).",
+    )
 
     @model_validator(mode="after")
     def _validate_has_output(self) -> Self:

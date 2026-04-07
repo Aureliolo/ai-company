@@ -122,3 +122,76 @@ class TestBaseProviderLogging:
             await provider.complete([_msg()], "  ")
         events = [e for e in cap if e.get("event") == PROVIDER_CALL_ERROR]
         assert len(events) == 1
+
+
+@pytest.mark.unit
+class TestBaseProviderMetadataEnrichment:
+    """BaseCompletionProvider injects _synthorg_* keys into provider_metadata."""
+
+    async def test_latency_ms_injected(self) -> None:
+        """_synthorg_latency_ms is a non-negative float."""
+        provider = _StubProvider()
+        response = await provider.complete([_msg()], "test-model")
+        assert "_synthorg_latency_ms" in response.provider_metadata
+        assert isinstance(response.provider_metadata["_synthorg_latency_ms"], float)
+        assert response.provider_metadata["_synthorg_latency_ms"] >= 0.0
+
+    async def test_no_retry_handler_no_retry_keys(self) -> None:
+        """Without a retry handler, retry keys are absent."""
+        provider = _StubProvider()
+        response = await provider.complete([_msg()], "test-model")
+        assert "_synthorg_retry_count" not in response.provider_metadata
+        assert "_synthorg_retry_reason" not in response.provider_metadata
+
+    async def test_retry_handler_zero_retries_on_first_success(self) -> None:
+        """With a retry handler, _synthorg_retry_count=0 when no retries needed."""
+        from synthorg.core.resilience_config import RetryConfig
+        from synthorg.providers.resilience.retry import RetryHandler
+
+        config = RetryConfig(
+            max_retries=3,
+            base_delay=0.001,
+            max_delay=0.001,
+            exponential_base=2.0,
+            jitter=False,
+        )
+        provider = _StubProvider(retry_handler=RetryHandler(config))
+        response = await provider.complete([_msg()], "test-model")
+        assert response.provider_metadata["_synthorg_retry_count"] == 0
+        assert "_synthorg_retry_reason" not in response.provider_metadata
+
+    async def test_retry_handler_retry_count_reflects_attempts(self) -> None:
+        """_synthorg_retry_count equals retry attempts (attempts - 1)."""
+        from synthorg.core.resilience_config import RetryConfig
+        from synthorg.providers.errors import RateLimitError
+        from synthorg.providers.resilience.retry import RetryHandler
+
+        config = RetryConfig(
+            max_retries=3,
+            base_delay=0.001,
+            max_delay=0.001,
+            exponential_base=2.0,
+            jitter=False,
+        )
+
+        calls = 0
+
+        class _RetryableProvider(_StubProvider):
+            async def _do_complete(  # type: ignore[override]
+                self,
+                messages: list[ChatMessage],
+                model: str,
+                *,
+                tools=None,
+                config=None,
+            ) -> CompletionResponse:
+                nonlocal calls
+                calls += 1
+                if calls < 3:
+                    raise RateLimitError("retry me")  # noqa: TRY003, EM101
+                return await super()._do_complete(messages, model)
+
+        provider = _RetryableProvider(retry_handler=RetryHandler(config))
+        response = await provider.complete([_msg()], "test-model")
+        assert response.provider_metadata["_synthorg_retry_count"] == 2
+        assert response.provider_metadata["_synthorg_retry_reason"] == "RateLimitError"

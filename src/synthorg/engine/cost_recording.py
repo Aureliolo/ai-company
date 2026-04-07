@@ -75,6 +75,12 @@ async def record_execution_costs(
             cost_usd=turn.cost_usd,
             timestamp=datetime.now(UTC),
             call_category=turn.call_category,
+            latency_ms=turn.latency_ms,
+            cache_hit=turn.cache_hit,
+            retry_count=turn.retry_count,
+            retry_reason=turn.retry_reason,
+            finish_reason=turn.finish_reason,
+            success=turn.success,
         )
         await _submit_cost_record(
             record,

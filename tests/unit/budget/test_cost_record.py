@@ -293,3 +293,167 @@ class TestCostRecord:
         """Verify factory produces a valid instance."""
         record = CostRecordFactory.build()
         assert isinstance(record, CostRecord)
+
+
+@pytest.mark.unit
+class TestCostRecordAnalyticsFields:
+    """New per-call analytics fields added in #227."""
+
+    def _base(self) -> CostRecord:
+        return CostRecord(
+            agent_id="agent-1",
+            task_id="task-1",
+            provider="test",
+            model="test-model",
+            input_tokens=100,
+            output_tokens=50,
+            cost_usd=0.01,
+            timestamp=datetime(2026, 2, 27, tzinfo=UTC),
+        )
+
+    def test_latency_ms_default_none(self) -> None:
+        assert self._base().latency_ms is None
+
+    def test_latency_ms_positive_accepted(self) -> None:
+        record = CostRecord(
+            agent_id="agent-1",
+            task_id="task-1",
+            provider="test",
+            model="test-model",
+            input_tokens=100,
+            output_tokens=50,
+            cost_usd=0.01,
+            timestamp=datetime(2026, 2, 27, tzinfo=UTC),
+            latency_ms=123.4,
+        )
+        assert record.latency_ms == 123.4
+
+    def test_latency_ms_negative_rejected(self) -> None:
+        with pytest.raises(ValidationError):
+            CostRecord(
+                agent_id="agent-1",
+                task_id="task-1",
+                provider="test",
+                model="test-model",
+                input_tokens=100,
+                output_tokens=50,
+                cost_usd=0.01,
+                timestamp=datetime(2026, 2, 27, tzinfo=UTC),
+                latency_ms=-1.0,
+            )
+
+    def test_cache_hit_default_none(self) -> None:
+        assert self._base().cache_hit is None
+
+    def test_cache_hit_true(self) -> None:
+        record = CostRecord(
+            agent_id="agent-1",
+            task_id="task-1",
+            provider="test",
+            model="test-model",
+            input_tokens=100,
+            output_tokens=50,
+            cost_usd=0.01,
+            timestamp=datetime(2026, 2, 27, tzinfo=UTC),
+            cache_hit=True,
+        )
+        assert record.cache_hit is True
+
+    def test_retry_count_default_none(self) -> None:
+        assert self._base().retry_count is None
+
+    def test_retry_count_zero_accepted(self) -> None:
+        record = CostRecord(
+            agent_id="agent-1",
+            task_id="task-1",
+            provider="test",
+            model="test-model",
+            input_tokens=100,
+            output_tokens=50,
+            cost_usd=0.01,
+            timestamp=datetime(2026, 2, 27, tzinfo=UTC),
+            retry_count=0,
+        )
+        assert record.retry_count == 0
+
+    def test_retry_count_negative_rejected(self) -> None:
+        with pytest.raises(ValidationError):
+            CostRecord(
+                agent_id="agent-1",
+                task_id="task-1",
+                provider="test",
+                model="test-model",
+                input_tokens=100,
+                output_tokens=50,
+                cost_usd=0.01,
+                timestamp=datetime(2026, 2, 27, tzinfo=UTC),
+                retry_count=-1,
+            )
+
+    def test_retry_reason_default_none(self) -> None:
+        assert self._base().retry_reason is None
+
+    def test_retry_reason_set(self) -> None:
+        record = CostRecord(
+            agent_id="agent-1",
+            task_id="task-1",
+            provider="test",
+            model="test-model",
+            input_tokens=100,
+            output_tokens=50,
+            cost_usd=0.01,
+            timestamp=datetime(2026, 2, 27, tzinfo=UTC),
+            retry_reason="RateLimitError",
+        )
+        assert record.retry_reason == "RateLimitError"
+
+    def test_finish_reason_default_none(self) -> None:
+        assert self._base().finish_reason is None
+
+    def test_success_default_none(self) -> None:
+        assert self._base().success is None
+
+    def test_success_true(self) -> None:
+        from synthorg.providers.enums import FinishReason
+
+        record = CostRecord(
+            agent_id="agent-1",
+            task_id="task-1",
+            provider="test",
+            model="test-model",
+            input_tokens=100,
+            output_tokens=50,
+            cost_usd=0.01,
+            timestamp=datetime(2026, 2, 27, tzinfo=UTC),
+            finish_reason=FinishReason.STOP,
+            success=True,
+        )
+        assert record.success is True
+        assert record.finish_reason == FinishReason.STOP
+
+    def test_analytics_fields_json_roundtrip(self) -> None:
+        from synthorg.providers.enums import FinishReason
+
+        record = CostRecord(
+            agent_id="agent-1",
+            task_id="task-1",
+            provider="test",
+            model="test-model",
+            input_tokens=100,
+            output_tokens=50,
+            cost_usd=0.01,
+            timestamp=datetime(2026, 2, 27, tzinfo=UTC),
+            latency_ms=150.0,
+            cache_hit=True,
+            retry_count=1,
+            retry_reason="RateLimitError",
+            finish_reason=FinishReason.STOP,
+            success=True,
+        )
+        restored = CostRecord.model_validate_json(record.model_dump_json())
+        assert restored.latency_ms == 150.0
+        assert restored.cache_hit is True
+        assert restored.retry_count == 1
+        assert restored.retry_reason == "RateLimitError"
+        assert restored.finish_reason == FinishReason.STOP
+        assert restored.success is True

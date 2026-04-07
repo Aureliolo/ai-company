@@ -108,6 +108,7 @@ if TYPE_CHECKING:
     from collections.abc import Mapping
 
     from synthorg.api.approval_store import ApprovalStore
+    from synthorg.budget.coordination_collector import CoordinationMetricsCollector
     from synthorg.budget.coordination_config import ErrorTaxonomyConfig
     from synthorg.budget.degradation import PreFlightResult
     from synthorg.budget.enforcer import BudgetEnforcer
@@ -335,6 +336,7 @@ class AgentEngine:
         distillation_capture_enabled: bool = False,
         config_resolver: ConfigResolver | None = None,
         personality_trim_notifier: PersonalityTrimNotifier | None = None,
+        coordination_metrics_collector: CoordinationMetricsCollector | None = None,
     ) -> None:
         if execution_loop is not None and auto_loop_config is not None:
             msg = "execution_loop and auto_loop_config are mutually exclusive"
@@ -409,6 +411,7 @@ class AgentEngine:
         self._distillation_capture_enabled = distillation_capture_enabled
         self._config_resolver = config_resolver
         self._personality_trim_notifier = personality_trim_notifier
+        self._coordination_metrics_collector = coordination_metrics_collector
         self._procedural_proposer: ProceduralMemoryProposer | None = None
         if (
             procedural_memory_config is not None
@@ -827,6 +830,11 @@ class AgentEngine:
             agent_id,
             task_id,
         )
+        await self._try_collect_coordination_metrics(
+            execution_result,
+            agent_id,
+            task_id,
+        )
         return execution_result
 
     async def _try_capture_distillation(
@@ -850,6 +858,37 @@ class AgentEngine:
             distillation_capture_enabled=self._distillation_capture_enabled,
             memory_backend=self._memory_backend,
         )
+
+    async def _try_collect_coordination_metrics(
+        self,
+        execution_result: ExecutionResult,
+        agent_id: str,
+        task_id: str,
+    ) -> None:
+        """Collect coordination metrics post-execution (non-critical, never fatal).
+
+        Mirrors the ``_try_capture_distillation`` best-effort pattern.
+        When ``coordination_metrics_collector`` is not configured, this
+        is a no-op.
+        """
+        if self._coordination_metrics_collector is None:
+            return
+        try:
+            await self._coordination_metrics_collector.collect(
+                execution_result=execution_result,
+                agent_id=agent_id,
+                task_id=task_id,
+            )
+        except MemoryError, RecursionError:
+            raise
+        except Exception as exc:
+            logger.warning(
+                EXECUTION_ENGINE_ERROR,
+                agent_id=agent_id,
+                task_id=task_id,
+                error=f"coordination metrics failed: {type(exc).__name__}: {exc}",
+                exc_info=True,
+            )
 
     async def _try_procedural_memory(
         self,

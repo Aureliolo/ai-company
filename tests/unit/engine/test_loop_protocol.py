@@ -186,6 +186,146 @@ class TestTurnRecord:
 
 
 @pytest.mark.unit
+class TestTurnRecordAnalyticsFields:
+    """New per-call analytics fields on TurnRecord."""
+
+    def _base(self, *, finish_reason: FinishReason = FinishReason.STOP) -> TurnRecord:
+        return TurnRecord(
+            turn_number=1,
+            input_tokens=10,
+            output_tokens=5,
+            cost_usd=0.001,
+            finish_reason=finish_reason,
+        )
+
+    def test_latency_ms_default_none(self) -> None:
+        assert self._base().latency_ms is None
+
+    def test_latency_ms_positive_accepted(self) -> None:
+        record = TurnRecord(
+            turn_number=1,
+            input_tokens=10,
+            output_tokens=5,
+            cost_usd=0.001,
+            finish_reason=FinishReason.STOP,
+            latency_ms=250.0,
+        )
+        assert record.latency_ms == 250.0
+
+    def test_latency_ms_zero_accepted(self) -> None:
+        record = TurnRecord(
+            turn_number=1,
+            input_tokens=10,
+            output_tokens=5,
+            cost_usd=0.001,
+            finish_reason=FinishReason.STOP,
+            latency_ms=0.0,
+        )
+        assert record.latency_ms == 0.0
+
+    def test_latency_ms_negative_rejected(self) -> None:
+        with pytest.raises(ValidationError):
+            TurnRecord(
+                turn_number=1,
+                input_tokens=10,
+                output_tokens=5,
+                cost_usd=0.001,
+                finish_reason=FinishReason.STOP,
+                latency_ms=-1.0,
+            )
+
+    def test_cache_hit_default_none(self) -> None:
+        assert self._base().cache_hit is None
+
+    def test_cache_hit_true(self) -> None:
+        record = TurnRecord(
+            turn_number=1,
+            input_tokens=10,
+            output_tokens=5,
+            cost_usd=0.001,
+            finish_reason=FinishReason.STOP,
+            cache_hit=True,
+        )
+        assert record.cache_hit is True
+
+    def test_cache_hit_false(self) -> None:
+        record = TurnRecord(
+            turn_number=1,
+            input_tokens=10,
+            output_tokens=5,
+            cost_usd=0.001,
+            finish_reason=FinishReason.STOP,
+            cache_hit=False,
+        )
+        assert record.cache_hit is False
+
+    def test_retry_count_default_none(self) -> None:
+        assert self._base().retry_count is None
+
+    def test_retry_count_positive_accepted(self) -> None:
+        record = TurnRecord(
+            turn_number=1,
+            input_tokens=10,
+            output_tokens=5,
+            cost_usd=0.001,
+            finish_reason=FinishReason.STOP,
+            retry_count=3,
+        )
+        assert record.retry_count == 3
+
+    def test_retry_count_zero_accepted(self) -> None:
+        record = TurnRecord(
+            turn_number=1,
+            input_tokens=10,
+            output_tokens=5,
+            cost_usd=0.001,
+            finish_reason=FinishReason.STOP,
+            retry_count=0,
+        )
+        assert record.retry_count == 0
+
+    def test_retry_count_negative_rejected(self) -> None:
+        with pytest.raises(ValidationError):
+            TurnRecord(
+                turn_number=1,
+                input_tokens=10,
+                output_tokens=5,
+                cost_usd=0.001,
+                finish_reason=FinishReason.STOP,
+                retry_count=-1,
+            )
+
+    def test_retry_reason_default_none(self) -> None:
+        assert self._base().retry_reason is None
+
+    def test_retry_reason_set(self) -> None:
+        record = TurnRecord(
+            turn_number=1,
+            input_tokens=10,
+            output_tokens=5,
+            cost_usd=0.001,
+            finish_reason=FinishReason.STOP,
+            retry_reason="RateLimitError",
+        )
+        assert record.retry_reason == "RateLimitError"
+
+    def test_success_true_for_stop(self) -> None:
+        assert self._base(finish_reason=FinishReason.STOP).success is True
+
+    def test_success_true_for_tool_use(self) -> None:
+        assert self._base(finish_reason=FinishReason.TOOL_USE).success is True
+
+    def test_success_true_for_max_tokens(self) -> None:
+        assert self._base(finish_reason=FinishReason.MAX_TOKENS).success is True
+
+    def test_success_false_for_error(self) -> None:
+        assert self._base(finish_reason=FinishReason.ERROR).success is False
+
+    def test_success_false_for_content_filter(self) -> None:
+        assert self._base(finish_reason=FinishReason.CONTENT_FILTER).success is False
+
+
+@pytest.mark.unit
 class TestExecutionResult:
     """ExecutionResult frozen model."""
 

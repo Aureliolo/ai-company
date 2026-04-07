@@ -601,6 +601,7 @@ class PlanExecuteLoop:
                 turn_number,
                 response,
                 call_category=LLMCallCategory.SYSTEM,
+                provider_metadata=response.provider_metadata,
             )
         )
 
@@ -775,6 +776,7 @@ class PlanExecuteLoop:
                 turn_number,
                 response,
                 call_category=LLMCallCategory.PRODUCTIVE,
+                provider_metadata=response.provider_metadata,
             )
         )
 
