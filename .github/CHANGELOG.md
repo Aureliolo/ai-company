@@ -1,5 +1,39 @@
 # Changelog
 
+## [0.6.4](https://github.com/Aureliolo/synthorg/compare/v0.6.3...v0.6.4) (2026-04-07)
+
+
+### Features
+
+* analytics and metrics runtime pipeline ([#226](https://github.com/Aureliolo/synthorg/issues/226), [#225](https://github.com/Aureliolo/synthorg/issues/225), [#227](https://github.com/Aureliolo/synthorg/issues/227), [#224](https://github.com/Aureliolo/synthorg/issues/224)) ([#1127](https://github.com/Aureliolo/synthorg/issues/1127)) ([ec57641](https://github.com/Aureliolo/synthorg/commit/ec57641bcf207716546a54882c5da5079e27acb1))
+* engine intelligence -- quality signals, health monitoring, trajectory scoring, coordination metrics ([#1099](https://github.com/Aureliolo/synthorg/issues/1099)) ([aac2029](https://github.com/Aureliolo/synthorg/commit/aac2029b2e2e6dbd39e661fbd53c47e3d2829309)), closes [#697](https://github.com/Aureliolo/synthorg/issues/697) [#707](https://github.com/Aureliolo/synthorg/issues/707) [#705](https://github.com/Aureliolo/synthorg/issues/705) [#703](https://github.com/Aureliolo/synthorg/issues/703)
+* enterprise-grade auth -- HttpOnly cookie sessions, CSRF, lockout, session limits ([#1102](https://github.com/Aureliolo/synthorg/issues/1102)) ([d3022c7](https://github.com/Aureliolo/synthorg/commit/d3022c78132148791a04e948dafa67037a3442e1)), closes [#1068](https://github.com/Aureliolo/synthorg/issues/1068)
+* implement core tool categories and granular sub-constraints ([#1101](https://github.com/Aureliolo/synthorg/issues/1101)) ([0611b53](https://github.com/Aureliolo/synthorg/commit/0611b5363ee21f21da36f0ebda16d6eabdd2cb59)), closes [#1034](https://github.com/Aureliolo/synthorg/issues/1034) [#220](https://github.com/Aureliolo/synthorg/issues/220)
+* memory evolution -- GraphRAG/consistency research + SelfEditingMemoryStrategy ([#1036](https://github.com/Aureliolo/synthorg/issues/1036), [#208](https://github.com/Aureliolo/synthorg/issues/208)) ([#1129](https://github.com/Aureliolo/synthorg/issues/1129)) ([a9acda3](https://github.com/Aureliolo/synthorg/commit/a9acda3bb565bbecaaa479ca00ac4407d7d6e8a9))
+* security hardening -- sandbox, risk override, SSRF self-heal, DAST fix ([#1100](https://github.com/Aureliolo/synthorg/issues/1100)) ([31e7273](https://github.com/Aureliolo/synthorg/commit/31e72736244a634052b231179abd18cbff8dab77)), closes [#1098](https://github.com/Aureliolo/synthorg/issues/1098) [#696](https://github.com/Aureliolo/synthorg/issues/696) [#222](https://github.com/Aureliolo/synthorg/issues/222) [#671](https://github.com/Aureliolo/synthorg/issues/671)
+
+
+### Bug Fixes
+
+* harden agent identity versioning post-review ([#1128](https://github.com/Aureliolo/synthorg/issues/1128)) ([8eb2859](https://github.com/Aureliolo/synthorg/commit/8eb2859d28513d069e8a8ce622bcc6d23358c72e)), closes [#1076](https://github.com/Aureliolo/synthorg/issues/1076)
+
+
+### Documentation
+
+* engine architecture research ([#688](https://github.com/Aureliolo/synthorg/issues/688) [#690](https://github.com/Aureliolo/synthorg/issues/690) [#848](https://github.com/Aureliolo/synthorg/issues/848) [#687](https://github.com/Aureliolo/synthorg/issues/687)) ([#1114](https://github.com/Aureliolo/synthorg/issues/1114)) ([59b31f9](https://github.com/Aureliolo/synthorg/commit/59b31f99a50354346f7d9b39d2e7f2ee427834b4))
+
+
+### Maintenance
+
+* add .claudeignore and split CLAUDE.md for token optimization ([#1112](https://github.com/Aureliolo/synthorg/issues/1112)) ([b0fbd18](https://github.com/Aureliolo/synthorg/commit/b0fbd18ff9f4ff4e81401002e986e730509193b9))
+* bump github.com/sigstore/protobuf-specs from 0.5.0 to 0.5.1 in /cli in the all group ([#1106](https://github.com/Aureliolo/synthorg/issues/1106)) ([73089c9](https://github.com/Aureliolo/synthorg/commit/73089c9aa2f3a675bce345cc9ca3baf879eb7dc8))
+* bump jsdom from 29.0.1 to 29.0.2 in /site in the all group ([#1107](https://github.com/Aureliolo/synthorg/issues/1107)) ([8e99dce](https://github.com/Aureliolo/synthorg/commit/8e99dce56829e539d367200fc632f5cc387aec2f))
+* bump jsdom from 29.0.1 to 29.0.2 in /web in the all group ([#1108](https://github.com/Aureliolo/synthorg/issues/1108)) ([ce8c749](https://github.com/Aureliolo/synthorg/commit/ce8c7492f32e2f77acbd01061f29832e5152deb5))
+* bump python from `fb83750` to `6869258` in /docker/backend in the all group ([#1104](https://github.com/Aureliolo/synthorg/issues/1104)) ([4911726](https://github.com/Aureliolo/synthorg/commit/4911726059703e1df06958cb3f07cef131853007))
+* bump python from `fb83750` to `6869258` in /docker/web in the all group ([#1103](https://github.com/Aureliolo/synthorg/issues/1103)) ([87bdf09](https://github.com/Aureliolo/synthorg/commit/87bdf091708f2c68bdf99d429ecd0b5b816e789b))
+* bump the all group across 1 directory with 4 updates ([#1111](https://github.com/Aureliolo/synthorg/issues/1111)) ([f702464](https://github.com/Aureliolo/synthorg/commit/f7024640e3dc4b62cbc25cca2d450d46c6aa4e21))
+* bump the all group in /docker/sandbox with 2 updates ([#1105](https://github.com/Aureliolo/synthorg/issues/1105)) ([05a91ca](https://github.com/Aureliolo/synthorg/commit/05a91ca6a15d0d113f1102983e56e725e9e27758))
+
 ## [0.6.3](https://github.com/Aureliolo/synthorg/compare/v0.6.2...v0.6.3) (2026-04-06)
 
 
