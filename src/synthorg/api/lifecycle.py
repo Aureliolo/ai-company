@@ -239,13 +239,22 @@ async def _safe_startup(  # noqa: PLR0913, PLR0912, PLR0915, C901
                     app_state.config.api.auth if app_state.config is not None else None
                 )
                 if auth_cfg is not None:
-                    lockout_store = LockoutStore(db, auth_cfg)
-                    await lockout_store.load_locked()
-                    app_state.set_lockout_store(lockout_store)
-                    logger.info(
-                        API_APP_STARTUP,
-                        note="Lockout store initialized",
-                    )
+                    try:
+                        lockout_store = LockoutStore(db, auth_cfg)
+                        await lockout_store.load_locked()
+                        app_state.set_lockout_store(lockout_store)
+                        logger.info(
+                            API_APP_STARTUP,
+                            note="Lockout store initialized",
+                        )
+                    except MemoryError, RecursionError:
+                        raise
+                    except Exception:
+                        logger.error(
+                            API_APP_STARTUP,
+                            note="Lockout store initialization failed",
+                            exc_info=True,
+                        )
 
         if message_bus is not None:
             try:

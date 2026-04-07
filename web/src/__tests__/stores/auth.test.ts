@@ -124,9 +124,9 @@ describe('auth store', () => {
   })
 
   describe('fetchUser', () => {
-    it('does nothing when unauthenticated', async () => {
+    it('skips when already authenticated with user loaded', async () => {
       const authApi = await import('@/api/endpoints/auth')
-      useAuthStore.setState({ authStatus: 'unauthenticated' })
+      useAuthStore.setState({ authStatus: 'authenticated', user: mockUser })
 
       await useAuthStore.getState().fetchUser()
 

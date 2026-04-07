@@ -174,7 +174,11 @@ def _parse_cookies(
     result: dict[str, str] = {}
     for name, value in headers:
         if name.lower() == b"cookie":
-            morsel = SimpleCookie(value.decode("latin-1"))
+            try:
+                morsel = SimpleCookie(value.decode("latin-1"))
+            except Exception:  # noqa: S112
+                # Malformed cookie header -- treat as absent.
+                continue
             for key, m in morsel.items():
                 result[key] = m.value
     return result

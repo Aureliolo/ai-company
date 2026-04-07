@@ -154,7 +154,8 @@ class TestFirstRunFlow:
         assert resp.status_code == 201
         assert resp.json()["data"]["expires_in"] > 0
         session_token, csrf_token = _extract_auth_cookies(resp)
-        assert session_token
+        assert session_token, "missing session cookie after setup"
+        assert csrf_token, "missing CSRF cookie after setup"
 
         # ── 3. POST /auth/login -- verify credentials work ──
         resp = client.post(

@@ -262,10 +262,9 @@ async def _make_session_cookies(  # noqa: PLR0913
     if config.jwt_refresh_enabled:
         refresh_token = secrets.token_urlsafe(32)
         refresh_max_age = config.jwt_refresh_expiry_minutes * 60
-        cookies.append(
-            make_refresh_cookie(refresh_token, refresh_max_age, config),
-        )
-        # Persist hashed refresh token for single-use validation.
+        # Persist hashed refresh token BEFORE setting the cookie.
+        # Only append the cookie if persistence succeeds.
+        refresh_persisted = False
         if app_state is not None and session_id and user_id:
             try:
                 from synthorg.api.auth.refresh_store import (  # noqa: PLC0415, TC001
@@ -286,6 +285,12 @@ async def _make_session_cookies(  # noqa: PLR0913
                         user_id=user_id,
                         expires_at=refresh_expiry,
                     )
+                    refresh_persisted = True
+                else:
+                    logger.warning(
+                        API_AUTH_FAILED,
+                        reason="refresh_store_not_available",
+                    )
             except MemoryError, RecursionError:
                 raise
             except Exception:
@@ -294,6 +299,18 @@ async def _make_session_cookies(  # noqa: PLR0913
                     reason="refresh_token_persist_failed",
                     exc_info=True,
                 )
+        else:
+            logger.warning(
+                API_AUTH_FAILED,
+                reason="refresh_token_persist_skipped",
+                has_app_state=app_state is not None,
+                has_session_id=bool(session_id),
+                has_user_id=bool(user_id),
+            )
+        if refresh_persisted:
+            cookies.append(
+                make_refresh_cookie(refresh_token, refresh_max_age, config),
+            )
     return cookies
 
 

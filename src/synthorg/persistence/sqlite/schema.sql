@@ -519,7 +519,7 @@ CREATE TABLE IF NOT EXISTS refresh_tokens (
     user_id TEXT NOT NULL
         REFERENCES users(id) ON DELETE CASCADE,
     expires_at TEXT NOT NULL,
-    used INTEGER NOT NULL DEFAULT 0,
+    used INTEGER NOT NULL DEFAULT 0 CHECK(used IN (0, 1)),
     created_at TEXT NOT NULL
 );
 

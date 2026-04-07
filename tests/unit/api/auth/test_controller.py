@@ -29,6 +29,8 @@ def _extract_auth_cookies(response: Any) -> dict[str, str]:
             result["session"] = v.split("session=")[1].split(";")[0]
         elif v.startswith("csrf_token="):
             result["csrf_token"] = v.split("csrf_token=")[1].split(";")[0]
+    assert "session" in result, "missing session cookie"
+    assert "csrf_token" in result, "missing csrf_token cookie"
     return result
 
 

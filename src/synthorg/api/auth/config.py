@@ -186,6 +186,33 @@ class AuthConfig(BaseModel):
             raise ValueError(msg)
         return self
 
+    @model_validator(mode="after")
+    def _validate_cookie_settings(self) -> Self:
+        """Reject invalid cookie configuration combinations.
+
+        - ``SameSite=None`` requires ``Secure=True`` (browser
+          requirement).
+        - Cookie names must be distinct to avoid collisions.
+        """
+        if self.cookie_samesite == "none" and not self.cookie_secure:
+            msg = (
+                "cookie_secure must be True when "
+                "cookie_samesite is 'none' (browser requirement)"
+            )
+            raise ValueError(msg)
+        names = [
+            self.cookie_name,
+            self.csrf_cookie_name,
+            self.refresh_cookie_name,
+        ]
+        if len(set(names)) != len(names):
+            msg = (
+                "cookie_name, csrf_cookie_name, and "
+                "refresh_cookie_name must all be distinct"
+            )
+            raise ValueError(msg)
+        return self
+
     def with_secret(self, secret: str) -> AuthConfig:
         """Return a copy with the JWT secret set.
 

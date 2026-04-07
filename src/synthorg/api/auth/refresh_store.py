@@ -18,7 +18,9 @@ from synthorg.observability import get_logger
 from synthorg.observability.events.api import (
     API_AUTH_REFRESH_CLEANUP,
     API_AUTH_REFRESH_CONSUMED,
+    API_AUTH_REFRESH_CREATED,
     API_AUTH_REFRESH_REJECTED,
+    API_AUTH_REFRESH_REVOKED,
 )
 
 logger = get_logger(__name__)
@@ -96,6 +98,11 @@ class RefreshStore:
             ),
         )
         await self._db.commit()
+        logger.info(
+            API_AUTH_REFRESH_CREATED,
+            session_id=session_id,
+            user_id=user_id,
+        )
 
     async def consume(
         self,
@@ -193,7 +200,14 @@ class RefreshStore:
             (session_id,),
         )
         await self._db.commit()
-        return cursor.rowcount
+        count = cursor.rowcount
+        if count:
+            logger.info(
+                API_AUTH_REFRESH_REVOKED,
+                session_id=session_id,
+                revoked=count,
+            )
+        return count
 
     async def revoke_by_user(self, user_id: str) -> int:
         """Mark all refresh tokens for a user as used.
@@ -209,7 +223,14 @@ class RefreshStore:
             (user_id,),
         )
         await self._db.commit()
-        return cursor.rowcount
+        count = cursor.rowcount
+        if count:
+            logger.info(
+                API_AUTH_REFRESH_REVOKED,
+                user_id=user_id,
+                revoked=count,
+            )
+        return count
 
     async def cleanup_expired(self) -> int:
         """Remove expired and used tokens.

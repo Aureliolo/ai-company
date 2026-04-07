@@ -18,5 +18,10 @@ export function getCsrfToken(): string | null {
     .find((row) => row.startsWith('csrf_token='))
   if (!match) return null
   const eqIdx = match.indexOf('=')
-  return eqIdx === -1 ? null : decodeURIComponent(match.slice(eqIdx + 1))
+  if (eqIdx === -1) return null
+  try {
+    return decodeURIComponent(match.slice(eqIdx + 1))
+  } catch {
+    return null
+  }
 }

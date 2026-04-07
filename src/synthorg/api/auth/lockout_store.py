@@ -87,7 +87,8 @@ class LockoutStore:
         now = datetime.now(UTC)
         window_start = (now - self._window).isoformat()
         cursor = await self._db.execute(
-            "SELECT username, COUNT(*) AS cnt "
+            "SELECT username, COUNT(*) AS cnt, "
+            "MAX(attempted_at) AS max_attempted_at "
             "FROM login_attempts "
             "WHERE attempted_at >= ? "
             "GROUP BY username "
@@ -95,13 +96,20 @@ class LockoutStore:
             (window_start, self._threshold),
         )
         rows = await cursor.fetchall()
+        mono_now = time.monotonic()
         restored = 0
         for row in rows:
             uname = row["username"]
             uname = uname.lower()
             if uname not in self._locked:
-                self._locked[uname] = time.monotonic() + self._duration_seconds
-                restored += 1
+                max_at = datetime.fromisoformat(
+                    row["max_attempted_at"],
+                )
+                locked_until = max_at + self._duration
+                remaining = (locked_until - now).total_seconds()
+                if remaining > 0:
+                    self._locked[uname] = mono_now + remaining
+                    restored += 1
         if restored:
             logger.info(
                 API_AUTH_ACCOUNT_LOCKED,

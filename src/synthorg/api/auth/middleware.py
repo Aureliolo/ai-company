@@ -127,6 +127,11 @@ class ApiAuthMiddleware(AbstractAuthenticationMiddleware):
                 raise NotAuthorizedException(
                     detail="Invalid session cookie",
                 )
+            logger.warning(
+                API_AUTH_FAILED,
+                reason="missing_authentication",
+                path=path,
+            )
             raise NotAuthorizedException(
                 detail="Missing authentication",
             )

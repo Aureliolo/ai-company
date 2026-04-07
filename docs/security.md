@@ -70,7 +70,7 @@ on resolution.
 - **HttpOnly cookie sessions** -- JWTs are delivered via HttpOnly, Secure, SameSite=Strict cookies (never exposed to JavaScript). Password changes rotate the session cookie so the embedded `pwd_sig` stays current.
 - **CSRF protection** -- double-submit cookie pattern: a non-HttpOnly CSRF cookie is set alongside the session cookie; JavaScript reads it and sends it as the `X-CSRF-Token` header on mutating requests. The middleware validates header-vs-cookie match using constant-time comparison.
 - **Account lockout** -- after exceeding a configurable threshold of failed login attempts within a sliding window, the account is temporarily locked (HTTP 429 with `Retry-After` header). Lockout state is restored from SQLite on restart.
-- **Refresh token rotation** -- optional single-use refresh tokens with replay detection (reuse of a consumed token triggers a warning).
+- **Refresh token rotation** -- optional single-use refresh tokens with replay detection; reuse of a consumed token logs the event and the affected session's refresh tokens are cascade-revoked.
 - **Concurrent session limits** -- configurable maximum active sessions per user; oldest sessions are revoked when the limit is exceeded.
 - **JWT bearer tokens** with password-change detection (`pwd_sig` claim, skipped for system user)
 - **System user (CLI)** -- internal identity bootstrapped at startup with a random Argon2id password hash. CLI tokens use `sub: "system"` with `iss: "synthorg-cli"` and skip `pwd_sig` validation (JWT HMAC signature is the sole authentication gate). The system user cannot log in, change its password, or be modified through the API.

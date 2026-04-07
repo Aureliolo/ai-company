@@ -101,7 +101,7 @@ export const useAuthStore = create<AuthState>()((set, get) => {
     },
 
     async fetchUser() {
-      if (get().authStatus === 'unauthenticated' && !IS_DEV_AUTH_BYPASS) return
+      if (get().authStatus === 'authenticated' && get().user && !IS_DEV_AUTH_BYPASS) return
       try {
         const user = await authApi.getMe()
         set({ user, authStatus: 'authenticated' })

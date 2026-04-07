@@ -1,5 +1,6 @@
 import { createLogger } from '@/lib/logger'
 import { getCsrfToken } from '@/utils/csrf'
+import { IS_DEV_AUTH_BYPASS } from '@/utils/dev'
 import { apiClient, unwrap, unwrapVoid } from '../client'
 import type {
   AddAllowlistEntryRequest,
@@ -184,7 +185,7 @@ export async function pullModel(
   })
 
   if (!response.ok || !response.body) {
-    if (response.status === 401) {
+    if (response.status === 401 && !IS_DEV_AUTH_BYPASS) {
       // Server clears the session cookie. Sync Zustand auth state.
       import('@/stores/auth').then(({ useAuthStore }) => {
         useAuthStore.getState().handleUnauthorized()
