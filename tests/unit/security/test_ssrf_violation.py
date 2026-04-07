@@ -52,6 +52,7 @@ class TestSsrfViolationModel:
         )
         assert v.status == SsrfViolationStatus.ALLOWED
         assert v.resolved_by == "user-1"
+        assert v.resolved_at == _NOW + timedelta(minutes=5)
 
     def test_denied_violation(self) -> None:
         v = SsrfViolation(
@@ -65,6 +66,8 @@ class TestSsrfViolationModel:
             resolved_at=_NOW + timedelta(minutes=5),
         )
         assert v.status == SsrfViolationStatus.DENIED
+        assert v.resolved_by == "admin-1"
+        assert v.resolved_at == _NOW + timedelta(minutes=5)
 
     def test_frozen(self) -> None:
         v = SsrfViolation(
@@ -89,6 +92,18 @@ class TestSsrfViolationModel:
                 resolved_by="user-1",
             )
 
+    def test_pending_with_resolved_at_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="resolved_at"):
+            SsrfViolation(
+                id="v-bad",
+                timestamp=_NOW,
+                url="http://example.com:80",
+                hostname="example.com",
+                port=80,
+                status=SsrfViolationStatus.PENDING,
+                resolved_at=_NOW + timedelta(minutes=5),
+            )
+
     def test_allowed_without_resolved_by_rejected(self) -> None:
         with pytest.raises(ValidationError, match="resolved_by"):
             SsrfViolation(
@@ -98,6 +113,17 @@ class TestSsrfViolationModel:
                 hostname="example.com",
                 port=80,
                 status=SsrfViolationStatus.ALLOWED,
+            )
+
+    def test_denied_without_resolved_by_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="resolved_by"):
+            SsrfViolation(
+                id="v-bad",
+                timestamp=_NOW,
+                url="http://example.com:80",
+                hostname="example.com",
+                port=80,
+                status=SsrfViolationStatus.DENIED,
             )
 
     def test_port_bounds(self) -> None:

@@ -111,6 +111,7 @@ _EXPECTED_INDEXES = {
     "idx_ro_active",
     "idx_sv_status_timestamp",
     "idx_sv_timestamp",
+    "idx_sv_hostname",
 }
 
 

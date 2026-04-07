@@ -579,3 +579,4 @@ CREATE TABLE IF NOT EXISTS ssrf_violations (
 CREATE INDEX IF NOT EXISTS idx_sv_status_timestamp
     ON ssrf_violations(status, timestamp DESC);
 CREATE INDEX IF NOT EXISTS idx_sv_timestamp ON ssrf_violations(timestamp);
+CREATE INDEX IF NOT EXISTS idx_sv_hostname ON ssrf_violations(hostname, port);
