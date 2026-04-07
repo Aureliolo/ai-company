@@ -184,6 +184,72 @@ class ToolInvoker:
             is_error=True,
         )
 
+    def _check_sub_constraints(
+        self,
+        tool: BaseTool,
+        tool_call: ToolCall,
+    ) -> ToolResult | None:
+        """Check granular sub-constraints via the permission checker.
+
+        Returns ``None`` if permitted, or a ``ToolResult`` if denied or
+        if the action requires approval (escalation).
+        """
+        if self._permission_checker is None:
+            return None
+        safe_args = self._safe_deepcopy_args(tool_call)
+        if isinstance(safe_args, ToolResult):
+            return safe_args
+        violation = self._permission_checker.check_sub_constraints(
+            tool.name,
+            tool.category,
+            tool.action_type,
+            safe_args,
+        )
+        if violation is None:
+            return None
+        if violation.requires_approval:
+            from synthorg.engine.approval_gate_models import (  # noqa: PLC0415
+                EscalationInfo,
+            )
+
+            approval_id = f"sub-constraint-{tool_call.id}"
+            self._pending_escalations.append(
+                EscalationInfo(
+                    approval_id=approval_id,
+                    tool_call_id=tool_call.id,
+                    tool_name=tool_call.name,
+                    action_type=tool.action_type,
+                    risk_level=ApprovalRiskLevel.HIGH,
+                    reason=violation.reason,
+                ),
+            )
+            logger.warning(
+                TOOL_SECURITY_ESCALATED,
+                tool_call_id=tool_call.id,
+                tool_name=tool_call.name,
+                reason=violation.reason,
+                approval_id=approval_id,
+            )
+            return ToolResult(
+                tool_call_id=tool_call.id,
+                content=(
+                    f"Sub-constraint escalation: {violation.reason}. "
+                    f"Human approval required (id={approval_id})"
+                ),
+                is_error=True,
+            )
+        logger.warning(
+            TOOL_PERMISSION_DENIED,
+            tool_call_id=tool_call.id,
+            tool_name=tool_call.name,
+            reason=violation.reason,
+        )
+        return ToolResult(
+            tool_call_id=tool_call.id,
+            content=f"Sub-constraint denied: {violation.reason}",
+            is_error=True,
+        )
+
     def _build_security_context(
         self,
         tool: BaseTool,
@@ -333,11 +399,12 @@ class ToolInvoker:
         Steps:
             1. Look up the tool in the registry.
             2. Check permissions against the permission checker (if any).
-            3. Validate arguments against the tool's JSON Schema (if any).
-            4. Run security interceptor pre-tool check (if any).
-            5. Call ``tool.execute(arguments=...)``.
-            6. Scan tool output for sensitive data (if interceptor is set).
-            7. Return a ``ToolResult`` with the output.
+            3. Check sub-constraints (network, terminal, git, approval).
+            4. Validate arguments against the tool's JSON Schema (if any).
+            5. Run security interceptor pre-tool check (if any).
+            6. Call ``tool.execute(arguments=...)``.
+            7. Scan tool output for sensitive data (if interceptor is set).
+            8. Return a ``ToolResult`` with the output.
 
         Recoverable errors produce ``ToolResult(is_error=True)``.
         Non-recoverable errors are re-raised.
@@ -370,6 +437,10 @@ class ToolInvoker:
         permission_error = self._check_permission(tool_or_error, tool_call)
         if permission_error is not None:
             return permission_error
+
+        sub_constraint_error = self._check_sub_constraints(tool_or_error, tool_call)
+        if sub_constraint_error is not None:
+            return sub_constraint_error
 
         param_error = self._validate_params(tool_or_error, tool_call)
         if param_error is not None:

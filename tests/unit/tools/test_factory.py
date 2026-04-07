@@ -25,8 +25,11 @@ _EXPECTED_TOOL_NAMES: tuple[str, ...] = (
     "git_diff",
     "git_log",
     "git_status",
+    "html_parser",
+    "http_request",
     "list_directory",
     "read_file",
+    "shell_command",
     "write_file",
 )
 
@@ -39,7 +42,7 @@ class TestBuildDefaultTools:
         self,
         tmp_path: Path,
     ) -> None:
-        """Factory returns all 11 built-in tools sorted by name."""
+        """Factory returns all 14 built-in tools sorted by name."""
         tools = build_default_tools(workspace=tmp_path)
         names = tuple(t.name for t in tools)
         assert names == _EXPECTED_TOOL_NAMES

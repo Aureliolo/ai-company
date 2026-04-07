@@ -37,9 +37,12 @@ from synthorg.persistence.config import PersistenceConfig
 from synthorg.providers.enums import AuthType
 from synthorg.security.config import SecurityConfig
 from synthorg.security.trust.config import TrustConfig
+from synthorg.tools.database.config import DatabaseConfig  # noqa: TC001
 from synthorg.tools.git_url_validator import GitCloneNetworkPolicy
 from synthorg.tools.mcp.config import MCPConfig
 from synthorg.tools.sandbox.sandboxing_config import SandboxingConfig
+from synthorg.tools.terminal.config import TerminalConfig  # noqa: TC001
+from synthorg.tools.web.config import WebToolsConfig  # noqa: TC001
 
 logger = get_logger(__name__)
 
@@ -573,6 +576,11 @@ class RootConfig(BaseModel):
         backup: Backup and restore configuration.
         workflow: Workflow type configuration.
         notifications: Notification subsystem configuration.
+        web: Web tool configuration (``None`` = default web config).
+        database: Database tool configuration (``None`` = no database
+            tools).
+        terminal: Terminal tool configuration (``None`` = default
+            terminal config).
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
@@ -707,6 +715,18 @@ class RootConfig(BaseModel):
     notifications: NotificationConfig = Field(
         default_factory=NotificationConfig,
         description="Notification subsystem configuration",
+    )
+    web: WebToolsConfig | None = Field(
+        default=None,
+        description="Web tool configuration (None = default web config)",
+    )
+    database: DatabaseConfig | None = Field(
+        default=None,
+        description="Database tool configuration (None = no database tools)",
+    )
+    terminal: TerminalConfig | None = Field(
+        default=None,
+        description="Terminal tool configuration (None = default terminal config)",
     )
 
     @model_validator(mode="after")

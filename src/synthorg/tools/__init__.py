@@ -3,6 +3,13 @@
 from .approval_tool import RequestHumanApprovalTool
 from .base import BaseTool, ToolExecutionResult
 from .code_runner import CodeRunnerTool
+from .database import (
+    BaseDatabaseTool,
+    DatabaseConfig,
+    DatabaseConnectionConfig,
+    SchemaInspectTool,
+    SqlQueryTool,
+)
 from .errors import (
     ToolError,
     ToolExecutionError,
@@ -31,6 +38,7 @@ from .git_tools import (
 )
 from .git_url_validator import GitCloneNetworkPolicy
 from .invoker import ToolInvoker
+from .network_validator import NetworkPolicy
 from .permissions import ToolPermissionChecker
 from .registry import ToolRegistry
 from .sandbox import (
@@ -45,14 +53,30 @@ from .sandbox import (
     SubprocessSandbox,
     SubprocessSandboxConfig,
 )
+from .sub_constraints import ToolSubConstraints
+from .terminal import BaseTerminalTool, ShellCommandTool, TerminalConfig
+from .web import (
+    BaseWebTool,
+    HtmlParserTool,
+    HttpRequestTool,
+    SearchResult,
+    WebSearchProvider,
+    WebSearchTool,
+    WebToolsConfig,
+)
 
 # MCP types are re-exported from synthorg.tools.mcp to avoid
 # circular imports (config.schema -> tools.mcp -> tools.base).
 
 __all__ = [
+    "BaseDatabaseTool",
     "BaseFileSystemTool",
+    "BaseTerminalTool",
     "BaseTool",
+    "BaseWebTool",
     "CodeRunnerTool",
+    "DatabaseConfig",
+    "DatabaseConnectionConfig",
     "DeleteFileTool",
     "DockerSandbox",
     "DockerSandboxConfig",
@@ -65,7 +89,10 @@ __all__ = [
     "GitDiffTool",
     "GitLogTool",
     "GitStatusTool",
+    "HtmlParserTool",
+    "HttpRequestTool",
     "ListDirectoryTool",
+    "NetworkPolicy",
     "PathValidator",
     "ReadFileTool",
     "RequestHumanApprovalTool",
@@ -75,8 +102,13 @@ __all__ = [
     "SandboxStartError",
     "SandboxTimeoutError",
     "SandboxingConfig",
+    "SchemaInspectTool",
+    "SearchResult",
+    "ShellCommandTool",
+    "SqlQueryTool",
     "SubprocessSandbox",
     "SubprocessSandboxConfig",
+    "TerminalConfig",
     "ToolError",
     "ToolExecutionError",
     "ToolExecutionResult",
@@ -86,6 +118,10 @@ __all__ = [
     "ToolPermissionChecker",
     "ToolPermissionDeniedError",
     "ToolRegistry",
+    "ToolSubConstraints",
+    "WebSearchProvider",
+    "WebSearchTool",
+    "WebToolsConfig",
     "WriteFileTool",
     "build_default_tools",
     "build_default_tools_from_config",

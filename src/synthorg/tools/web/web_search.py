@@ -1,0 +1,203 @@
+"""Web search tool -- search the web via an abstracted provider.
+
+The ``WebSearchProvider`` protocol defines a vendor-agnostic interface
+for web search.  No concrete implementation is shipped -- users inject
+a provider at construction time (e.g. via MCP bridge or a custom
+implementation).
+"""
+
+import copy
+from typing import Any, Final, Protocol, runtime_checkable
+
+from pydantic import BaseModel, ConfigDict
+
+from synthorg.core.enums import ActionType
+from synthorg.observability import get_logger
+from synthorg.observability.events.web import (
+    WEB_SEARCH_FAILED,
+    WEB_SEARCH_START,
+    WEB_SEARCH_SUCCESS,
+)
+from synthorg.tools.base import ToolExecutionResult
+from synthorg.tools.network_validator import NetworkPolicy  # noqa: TC001
+from synthorg.tools.web.base_web_tool import BaseWebTool
+
+logger = get_logger(__name__)
+
+
+class SearchResult(BaseModel):
+    """A single web search result.
+
+    Attributes:
+        title: Result title.
+        url: Result URL.
+        snippet: Text snippet from the result page.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+
+    title: str
+    url: str
+    snippet: str
+
+
+@runtime_checkable
+class WebSearchProvider(Protocol):
+    """Abstracted web search provider protocol.
+
+    Implementations must be async and return a list of
+    ``SearchResult`` objects.
+    """
+
+    async def search(
+        self,
+        query: str,
+        max_results: int = 10,
+    ) -> list[SearchResult]:
+        """Execute a web search query.
+
+        Args:
+            query: Search query string.
+            max_results: Maximum number of results to return.
+
+        Returns:
+            List of search results.
+        """
+        ...
+
+
+_PARAMETERS_SCHEMA: Final[dict[str, Any]] = {
+    "type": "object",
+    "properties": {
+        "query": {
+            "type": "string",
+            "description": "Search query string",
+        },
+        "max_results": {
+            "type": "integer",
+            "description": "Maximum results to return (default: 10)",
+            "minimum": 1,
+            "maximum": 100,
+            "default": 10,
+        },
+    },
+    "required": ["query"],
+    "additionalProperties": False,
+}
+
+
+class WebSearchTool(BaseWebTool):
+    """Search the web using an injected provider.
+
+    The search provider is vendor-agnostic -- any implementation
+    satisfying the ``WebSearchProvider`` protocol can be used.
+
+    Examples:
+        Search with a custom provider::
+
+            tool = WebSearchTool(provider=my_search_provider)
+            result = await tool.execute(arguments={"query": "Python async patterns"})
+    """
+
+    def __init__(
+        self,
+        *,
+        provider: WebSearchProvider,
+        network_policy: NetworkPolicy | None = None,
+    ) -> None:
+        """Initialize the web search tool.
+
+        Args:
+            provider: Web search provider implementation.
+            network_policy: Network policy (for base class).
+        """
+        super().__init__(
+            name="web_search",
+            description=(
+                "Search the web for information. Returns titles, "
+                "URLs, and snippets for matching results."
+            ),
+            parameters_schema=copy.deepcopy(_PARAMETERS_SCHEMA),
+            action_type=ActionType.COMMS_EXTERNAL,
+            network_policy=network_policy,
+        )
+        self._provider = provider
+
+    async def execute(
+        self,
+        *,
+        arguments: dict[str, Any],
+    ) -> ToolExecutionResult:
+        """Execute a web search.
+
+        Args:
+            arguments: Must contain ``query``; optionally ``max_results``.
+
+        Returns:
+            A ``ToolExecutionResult`` with formatted search results.
+        """
+        query: str = arguments["query"]
+        max_results: int = arguments.get("max_results", 10)
+
+        logger.info(WEB_SEARCH_START, query=query, max_results=max_results)
+
+        try:
+            results = await self._provider.search(query, max_results)
+        except MemoryError, RecursionError:
+            raise
+        except Exception as exc:
+            logger.warning(WEB_SEARCH_FAILED, query=query, error=str(exc))
+            return ToolExecutionResult(
+                content=f"Web search failed: {exc}",
+                is_error=True,
+            )
+
+        if not results:
+            logger.info(WEB_SEARCH_SUCCESS, query=query, result_count=0)
+            return ToolExecutionResult(
+                content="No results found.",
+                metadata={"query": query, "result_count": 0},
+            )
+
+        # Cap to requested max and coerce to SearchResult.
+        validated: list[SearchResult] = []
+        for item in list(results)[:max_results]:
+            try:
+                validated.append(
+                    item
+                    if isinstance(item, SearchResult)
+                    else SearchResult.model_validate(item, from_attributes=True)
+                )
+            except Exception:
+                logger.debug(
+                    WEB_SEARCH_FAILED,
+                    query=query,
+                    error="malformed_provider_result",
+                    exc_info=True,
+                )
+                continue
+
+        if not validated:
+            logger.info(WEB_SEARCH_SUCCESS, query=query, result_count=0)
+            return ToolExecutionResult(
+                content="No results found.",
+                metadata={"query": query, "result_count": 0},
+            )
+
+        lines: list[str] = []
+        for i, r in enumerate(validated, 1):
+            lines.append(f"{i}. {r.title}")
+            lines.append(f"   URL: {r.url}")
+            lines.append(f"   {r.snippet}")
+            lines.append("")
+
+        logger.info(
+            WEB_SEARCH_SUCCESS,
+            query=query,
+            result_count=len(validated),
+        )
+
+        return ToolExecutionResult(
+            content="\n".join(lines).rstrip(),
+            metadata={"query": query, "result_count": len(validated)},
+        )

@@ -248,6 +248,10 @@ class TestEventConstants:
             "health",
             "trajectory",
             "coordination_metrics",
+            "database",
+            "sub_constraint",
+            "terminal",
+            "web",
         }
         discovered = {info.name for info in pkgutil.iter_modules(events.__path__)}
         assert discovered == expected
