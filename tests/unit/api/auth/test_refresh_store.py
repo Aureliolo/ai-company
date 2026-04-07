@@ -139,19 +139,19 @@ class TestRefreshRevoke:
 
 
 class TestRefreshCleanup:
-    async def test_cleanup_removes_expired_and_used(
+    async def test_cleanup_removes_only_expired(
         self,
         db: aiosqlite.Connection,
     ) -> None:
         store = RefreshStore(db)
-        # Expired token
+        # Expired token -- will be removed
         await store.create(
             token_hash="expired",
             session_id="s1",
             user_id="u1",
             expires_at=_PAST,
         )
-        # Used token (consume it)
+        # Used but not expired -- retained for replay detection
         await store.create(
             token_hash="used",
             session_id="s2",
@@ -168,6 +168,8 @@ class TestRefreshCleanup:
         )
 
         removed = await store.cleanup_expired()
-        assert removed == 2
-        # Active token should still be consumable
+        assert removed == 1  # only the expired row
+        # Used token still in DB (replay detection works)
+        assert await store.consume("used") is None  # already consumed
+        # Active token still consumable
         assert await store.consume("active") is not None

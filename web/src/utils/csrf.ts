@@ -14,7 +14,8 @@
  */
 export function getCsrfToken(): string | null {
   const match = document.cookie
-    .split('; ')
+    .split(';')
+    .map((s) => s.trim())
     .find((row) => row.startsWith('csrf_token='))
   if (!match) return null
   const eqIdx = match.indexOf('=')

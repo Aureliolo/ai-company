@@ -233,18 +233,21 @@ class RefreshStore:
         return count
 
     async def cleanup_expired(self) -> int:
-        """Remove expired and used tokens.
+        """Remove expired tokens.
+
+        Used (consumed) tokens are retained until their expiry so
+        that replay detection can still identify double-use attempts.
 
         Returns:
             Number of records removed.
         """
         now = datetime.now(UTC).isoformat()
         cursor = await self._db.execute(
-            "DELETE FROM refresh_tokens WHERE expires_at <= ? OR used = 1",
+            "DELETE FROM refresh_tokens WHERE expires_at <= ?",
             (now,),
         )
         await self._db.commit()
         count = cursor.rowcount
         if count:
-            logger.debug(API_AUTH_REFRESH_CLEANUP, removed=count)
+            logger.info(API_AUTH_REFRESH_CLEANUP, removed=count)
         return count

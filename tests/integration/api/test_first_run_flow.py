@@ -172,6 +172,8 @@ class TestFirstRunFlow:
         assert resp.status_code == 200
         assert resp.json()["data"]["expires_in"] > 0
         jwt_token, csrf_token = _extract_auth_cookies(resp)
+        assert jwt_token, "login did not issue session cookie"
+        assert csrf_token, "login did not issue CSRF cookie"
 
         # Use cookie + CSRF for all subsequent requests.
         client.headers["Cookie"] = f"session={jwt_token}; csrf_token={csrf_token}"

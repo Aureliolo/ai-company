@@ -349,9 +349,14 @@ def handle_api_error(
     else:
         msg = str(exc)
     retry_after_raw = getattr(exc, "retry_after", None)
-    retry_after_val: int | None = (
-        retry_after_raw if retry_after_raw is not None else None
-    )
+    retry_after_val: int | None = None
+    if (
+        retry_after_raw is not None
+        and not isinstance(retry_after_raw, bool)
+        and isinstance(retry_after_raw, int)
+        and retry_after_raw >= 0
+    ):
+        retry_after_val = retry_after_raw
     headers: dict[str, str] | None = None
     if retry_after_val is not None:
         headers = {"Retry-After": str(retry_after_val)}
