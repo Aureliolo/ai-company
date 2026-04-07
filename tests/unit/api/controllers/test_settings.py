@@ -203,3 +203,110 @@ class TestSettingsController:
             headers=auth_headers,
         )
         assert resp.status_code == 400
+
+
+# -- Security config export/import tests ─────────────────────────
+
+
+@pytest.mark.unit
+class TestSecurityConfigExportImport:
+    def test_export_returns_config(
+        self,
+        test_client: TestClient[Any],
+        auth_headers: dict[str, str],
+    ) -> None:
+        resp = test_client.get(
+            "/api/v1/settings/security/export",
+            headers=auth_headers,
+        )
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["success"] is True
+        data = body["data"]
+        assert "config" in data
+        assert "exported_at" in data
+        assert "enabled" in data["config"]
+
+    def test_export_warning_when_no_custom_policies(
+        self,
+        test_client: TestClient[Any],
+        auth_headers: dict[str, str],
+    ) -> None:
+        resp = test_client.get(
+            "/api/v1/settings/security/export",
+            headers=auth_headers,
+        )
+        body = resp.json()
+        assert body["data"]["custom_policies_warning"] is None
+
+    def test_import_valid_config(
+        self,
+        test_client: TestClient[Any],
+        auth_headers: dict[str, str],
+    ) -> None:
+        # First export to get valid config shape
+        export_resp = test_client.get(
+            "/api/v1/settings/security/export",
+            headers=auth_headers,
+        )
+        config = export_resp.json()["data"]["config"]
+
+        # Import the same config
+        resp = test_client.post(
+            "/api/v1/settings/security/import",
+            json={"config": config},
+            headers=auth_headers,
+        )
+        assert resp.status_code == 201
+        body = resp.json()
+        assert body["success"] is True
+        assert body["data"]["config"]["enabled"] == config["enabled"]
+
+    def test_import_rejects_invalid_config(
+        self,
+        test_client: TestClient[Any],
+        auth_headers: dict[str, str],
+    ) -> None:
+        resp = test_client.post(
+            "/api/v1/settings/security/import",
+            json={"config": {"enabled": "not-a-bool"}},
+            headers=auth_headers,
+        )
+        assert resp.status_code == 400
+
+    def test_import_requires_ceo_or_manager(
+        self,
+        test_client: TestClient[Any],
+        observer_headers: dict[str, str],
+    ) -> None:
+        resp = test_client.post(
+            "/api/v1/settings/security/import",
+            json={"config": {}},
+            headers=observer_headers,
+        )
+        assert resp.status_code == 403
+
+    def test_round_trip(
+        self,
+        test_client: TestClient[Any],
+        auth_headers: dict[str, str],
+    ) -> None:
+        """Export, then import, then export again -- configs match."""
+        resp1 = test_client.get(
+            "/api/v1/settings/security/export",
+            headers=auth_headers,
+        )
+        config1 = resp1.json()["data"]["config"]
+
+        test_client.post(
+            "/api/v1/settings/security/import",
+            json={"config": config1},
+            headers=auth_headers,
+        )
+
+        resp2 = test_client.get(
+            "/api/v1/settings/security/export",
+            headers=auth_headers,
+        )
+        config2 = resp2.json()["data"]["config"]
+        assert config1 == config2

@@ -310,3 +310,71 @@ class TestAuditLogTotalRecorded:
     def test_total_recorded_zero_initially(self) -> None:
         log = AuditLog()
         assert log.total_recorded == 0
+
+
+@pytest.mark.unit
+class TestAuditLogNewFilters:
+    """Tests for the until and action_type query filters."""
+
+    @staticmethod
+    def _populate(log: AuditLog) -> None:
+        t = datetime(2026, 4, 1, tzinfo=UTC)
+        log.record(
+            _make_entry(
+                entry_id="e1",
+                agent_id="a",
+                timestamp=t,
+                action_type="code:write",
+            ),
+        )
+        log.record(
+            _make_entry(
+                entry_id="e2",
+                agent_id="b",
+                timestamp=t + timedelta(hours=1),
+                action_type="deploy:production",
+            ),
+        )
+        log.record(
+            _make_entry(
+                entry_id="e3",
+                agent_id="c",
+                timestamp=t + timedelta(hours=2),
+                action_type="code:write",
+            ),
+        )
+
+    def test_filter_by_action_type(self) -> None:
+        log = AuditLog()
+        self._populate(log)
+        results = log.query(action_type="code:write")
+        assert len(results) == 2
+
+    def test_filter_by_until(self) -> None:
+        log = AuditLog()
+        self._populate(log)
+        t = datetime(2026, 4, 1, tzinfo=UTC)
+        results = log.query(until=t + timedelta(hours=1))
+        assert len(results) == 2
+
+    def test_filter_by_since_and_until(self) -> None:
+        log = AuditLog()
+        self._populate(log)
+        t = datetime(2026, 4, 1, tzinfo=UTC)
+        results = log.query(
+            since=t + timedelta(minutes=30),
+            until=t + timedelta(hours=1, minutes=30),
+        )
+        assert len(results) == 1
+        assert results[0].id == "e2"
+
+    def test_combined_action_type_and_until(self) -> None:
+        log = AuditLog()
+        self._populate(log)
+        t = datetime(2026, 4, 1, tzinfo=UTC)
+        results = log.query(
+            action_type="code:write",
+            until=t + timedelta(minutes=30),
+        )
+        assert len(results) == 1
+        assert results[0].id == "e1"

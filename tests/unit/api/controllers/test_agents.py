@@ -550,3 +550,47 @@ class TestAgentHistory:
     ) -> None:
         resp = test_client.get("/api/v1/agents/nonexistent/history")
         assert resp.status_code == 404
+
+
+# -- Health endpoint tests ------------------------------------------------
+
+
+@pytest.mark.unit
+class TestAgentHealth:
+    async def test_health_returns_composite_data(
+        self,
+        test_client: TestClient[Any],
+        agent_registry: AgentRegistryService,
+    ) -> None:
+        await agent_registry.register(_make_identity())
+        resp = test_client.get(
+            f"/api/v1/agents/{_AGENT_NAME}/health",
+        )
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["success"] is True
+        data = body["data"]
+        assert data["agent_id"] == _AGENT_ID
+        assert data["agent_name"] == _AGENT_NAME
+        assert data["lifecycle_status"] == "active"
+        assert data["performance"] is not None
+
+    async def test_health_trust_none_when_not_tracked(
+        self,
+        test_client: TestClient[Any],
+        agent_registry: AgentRegistryService,
+    ) -> None:
+        """Trust is None when TrustService has no state for agent."""
+        await agent_registry.register(_make_identity())
+        resp = test_client.get(
+            f"/api/v1/agents/{_AGENT_NAME}/health",
+        )
+        body = resp.json()
+        assert body["data"]["trust"] is None
+
+    def test_health_agent_not_found(
+        self,
+        test_client: TestClient[Any],
+    ) -> None:
+        resp = test_client.get("/api/v1/agents/nonexistent/health")
+        assert resp.status_code == 404

@@ -126,6 +126,14 @@ API_CONCURRENCY_CONFLICT: Final[str] = "api.concurrency.conflict"
 # WebSocket user channels
 API_WS_USER_CHANNEL_DENIED: Final[str] = "api.ws.user_channel_denied"
 
+# Control-plane query endpoints
+API_AUDIT_QUERIED: Final[str] = "api.audit.queried"
+API_AGENT_HEALTH_QUERIED: Final[str] = "api.agent.health_queried"
+API_SECURITY_CONFIG_EXPORTED: Final[str] = "api.security_config.exported"
+API_SECURITY_CONFIG_IMPORTED: Final[str] = "api.security_config.imported"
+API_SECURITY_CONFIG_IMPORT_FAILED: Final[str] = "api.security_config.import_failed"
+API_COORDINATION_METRICS_QUERIED: Final[str] = "api.coordination_metrics.queried"
+
 # Ceremony policy
 API_CEREMONY_POLICY_QUERIED: Final[str] = "api.ceremony_policy.queried"
 API_CEREMONY_POLICY_RESOLVED: Final[str] = "api.ceremony_policy.resolved"

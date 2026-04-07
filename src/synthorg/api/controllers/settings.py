@@ -1,6 +1,7 @@
 """Settings controller -- CRUD for runtime-editable settings."""
 
 import asyncio
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any, Self
 
 from litestar import Controller, Request, Response, delete, get, post, put
@@ -11,7 +12,7 @@ from litestar.exceptions import (
     NotFoundException,
 )
 from litestar.status_codes import HTTP_204_NO_CONTENT
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.api.concurrency import check_if_match, compute_etag
 from synthorg.api.dto import ApiResponse
@@ -22,6 +23,11 @@ from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.observability import get_logger
 from synthorg.observability.config import DEFAULT_SINKS, SinkConfig
 from synthorg.observability.enums import LogLevel, SinkType
+from synthorg.observability.events.api import (
+    API_SECURITY_CONFIG_EXPORTED,
+    API_SECURITY_CONFIG_IMPORT_FAILED,
+    API_SECURITY_CONFIG_IMPORTED,
+)
 from synthorg.observability.events.settings import (
     SETTINGS_ENCRYPTION_ERROR,
     SETTINGS_NOT_FOUND,
@@ -33,6 +39,7 @@ from synthorg.observability.sink_config_builder import (
     SinkBuildResult,
     build_log_config_from_settings,
 )
+from synthorg.security.config import SecurityConfig
 from synthorg.settings.enums import SettingNamespace
 from synthorg.settings.errors import (
     SettingNotFoundError,
@@ -106,6 +113,24 @@ class TestSinkConfigResponse(BaseModel):
             msg = "valid=False requires a non-None error"
             raise ValueError(msg)
         return self
+
+
+class SecurityConfigExportResponse(BaseModel):
+    """Exported security configuration with metadata."""
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+
+    config: dict[str, Any]
+    exported_at: AwareDatetime
+    custom_policies_warning: NotBlankStr | None = None
+
+
+class SecurityConfigImportRequest(BaseModel):
+    """Request body to import a security configuration."""
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+
+    config: dict[str, Any]
 
 
 def _sink_to_dict(
@@ -488,6 +513,85 @@ class SettingsController(Controller):
             )
         return ApiResponse(
             data=TestSinkConfigResponse(valid=True),
+        )
+
+    # ── Security config export/import ──────────────────────────
+
+    @get("/security/export")
+    async def export_security_config(
+        self,
+        state: State,
+    ) -> ApiResponse[SecurityConfigExportResponse]:
+        """Export the current security configuration as JSON.
+
+        Returns:
+            Security config dump with export timestamp.
+        """
+        app_state: AppState = state.app_state
+        security_cfg = app_state.config.security
+        dumped = security_cfg.model_dump(mode="json")
+        warning = (
+            "custom_policies are code-defined Pydantic models; "
+            "they export as data but may require matching "
+            "Python code on import"
+            if security_cfg.custom_policies
+            else None
+        )
+        logger.info(API_SECURITY_CONFIG_EXPORTED)
+        return ApiResponse(
+            data=SecurityConfigExportResponse(
+                config=dumped,
+                exported_at=datetime.now(UTC),
+                custom_policies_warning=warning,
+            ),
+        )
+
+    @post("/security/import", guards=[require_ceo_or_manager])
+    async def import_security_config(
+        self,
+        state: State,
+        data: SecurityConfigImportRequest,
+    ) -> ApiResponse[SecurityConfigExportResponse]:
+        """Import and validate a security configuration.
+
+        Validates the payload as a ``SecurityConfig``.  The
+        validated config is returned for operator confirmation.
+
+        Args:
+            state: Application state.
+            data: Import request with config dict.
+
+        Returns:
+            The validated config.
+
+        Raises:
+            ClientException: If the config fails validation.
+        """
+        _ = state  # ensures state is available for future use
+        try:
+            validated = SecurityConfig.model_validate(data.config)
+        except Exception as exc:
+            logger.warning(
+                API_SECURITY_CONFIG_IMPORT_FAILED,
+                error=str(exc),
+            )
+            msg = f"Invalid security config: {exc}"
+            raise ClientException(msg) from exc
+
+        warning = (
+            "custom_policies are code-defined Pydantic models; "
+            "they export as data but may require matching "
+            "Python code on import"
+            if validated.custom_policies
+            else None
+        )
+        logger.info(API_SECURITY_CONFIG_IMPORTED)
+        return ApiResponse(
+            data=SecurityConfigExportResponse(
+                config=validated.model_dump(mode="json"),
+                exported_at=datetime.now(UTC),
+                custom_policies_warning=warning,
+            ),
         )
 
 
