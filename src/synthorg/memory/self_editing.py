@@ -653,15 +653,23 @@ class SelfEditingMemoryStrategy:
             try:
                 categories = frozenset({MemoryCategory(str(cat_raw))})
             except ValueError:
-                return (
-                    f"{ERROR_PREFIX} Unknown memory category. "
-                    "Valid values: episodic, semantic, procedural, social."
+                valid = ", ".join(
+                    sorted(
+                        c.value for c in MemoryCategory if c != MemoryCategory.WORKING
+                    )
                 )
+                return f"{ERROR_PREFIX} Unknown memory category. Valid values: {valid}."
 
         limit_raw = arguments.get("limit", self._config.archival_search_limit)
         try:
             limit = int(limit_raw)
         except TypeError, ValueError:
+            logger.debug(
+                MEMORY_SELF_EDIT_ARCHIVAL_SEARCH,
+                agent_id=agent_id,
+                detail="invalid_limit_fallback",
+                raw_limit=str(limit_raw)[:50],
+            )
             limit = self._config.archival_search_limit
         limit = max(1, min(limit, self._config.archival_search_limit))
 
@@ -700,16 +708,17 @@ class SelfEditingMemoryStrategy:
         try:
             category = MemoryCategory(str(cat_raw))
         except ValueError:
-            return (
-                f"{ERROR_PREFIX} Unknown memory category. "
-                "Valid values: episodic, semantic, procedural, social."
+            valid = ", ".join(
+                sorted(c.value for c in MemoryCategory if c != MemoryCategory.WORKING)
             )
+            return f"{ERROR_PREFIX} Unknown memory category. Valid values: {valid}."
 
         if category not in self._config.archival_categories:
+            valid = ", ".join(sorted(c.value for c in self._config.archival_categories))
             return (
                 f"{ERROR_PREFIX} Category {category.value!r} cannot be "
                 "written to archival memory. "
-                "Valid values: episodic, semantic, procedural, social."
+                f"Valid values: {valid}."
             )
 
         tags: tuple[str, ...] = (_AUTO_TAG,) if self._config.write_auto_tag else ()

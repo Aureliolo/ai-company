@@ -28,7 +28,7 @@ class InjectionStrategy(StrEnum):
     Attributes:
         CONTEXT: Pre-execution context injection (implemented).
         TOOL_BASED: On-demand via agent tools (implemented).
-        SELF_EDITING: Structured read/write memory blocks (future).
+        SELF_EDITING: Structured read/write memory blocks (implemented).
     """
 
     CONTEXT = "context"
