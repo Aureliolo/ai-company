@@ -29,11 +29,11 @@ def _make_record(
         exc_info=None,
     )
     if request_id is not None:
-        record.request_id = request_id  # type: ignore[attr-defined]
+        record.request_id = request_id
     if task_id is not None:
-        record.task_id = task_id  # type: ignore[attr-defined]
+        record.task_id = task_id
     if agent_id is not None:
-        record.agent_id = agent_id  # type: ignore[attr-defined]
+        record.agent_id = agent_id
     return record
 
 
