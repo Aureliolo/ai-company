@@ -234,8 +234,12 @@ class TestIdentityFieldChangeModelValidator:
             ("modified", '"old"', '"new"', None),
             # Invalid: added with old_value present
             ("added", '"previous"', '"new"', "old_value=None"),
+            # Invalid: added with new_value missing
+            ("added", None, None, "new_value to be set"),
             # Invalid: removed with new_value present
             ("removed", '"old"', '"should-not-be-here"', "new_value=None"),
+            # Invalid: removed with old_value missing
+            ("removed", None, None, "old_value to be set"),
             # Invalid: modified with None old_value
             ("modified", None, '"new"', "both old_value and new_value"),
             # Invalid: modified with None new_value

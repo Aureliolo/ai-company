@@ -142,8 +142,10 @@ class TestAgentIdentityRoundTrip:
     ) -> None:
         identity = _make_identity()
         v = _make_version(identity=identity)
-        await repo.save_version(v)
-        await repo.save_version(v)
+        first = await repo.save_version(v)
+        second = await repo.save_version(v)
+        assert first is True
+        assert second is False
         assert await repo.count_versions("agt-001") == 1
 
     @pytest.mark.unit

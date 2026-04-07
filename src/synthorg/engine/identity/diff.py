@@ -43,12 +43,20 @@ class IdentityFieldChange(BaseModel):
 
     @model_validator(mode="after")
     def _validate_change_invariants(self) -> IdentityFieldChange:
-        if self.change_type == "added" and self.old_value is not None:
-            msg = "change_type='added' requires old_value=None"
-            raise ValueError(msg)
-        if self.change_type == "removed" and self.new_value is not None:
-            msg = "change_type='removed' requires new_value=None"
-            raise ValueError(msg)
+        if self.change_type == "added":
+            if self.old_value is not None:
+                msg = "change_type='added' requires old_value=None"
+                raise ValueError(msg)
+            if self.new_value is None:
+                msg = "change_type='added' requires new_value to be set"
+                raise ValueError(msg)
+        if self.change_type == "removed":
+            if self.new_value is not None:
+                msg = "change_type='removed' requires new_value=None"
+                raise ValueError(msg)
+            if self.old_value is None:
+                msg = "change_type='removed' requires old_value to be set"
+                raise ValueError(msg)
         if self.change_type == "modified" and (
             self.old_value is None or self.new_value is None
         ):

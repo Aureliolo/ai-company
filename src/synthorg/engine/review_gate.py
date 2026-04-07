@@ -296,13 +296,13 @@ class ReviewGateService:
         repeated criteria would raise ``ValidationError``.
         """
         seen: set[str] = set()
-        result: tuple[str, ...] = ()
+        result: list[str] = []
         for c in task.acceptance_criteria:
             stripped = c.description.strip()
             if stripped and stripped not in seen:
                 seen.add(stripped)
-                result = (*result, stripped)
-        return result
+                result.append(stripped)
+        return tuple(result)
 
     async def _fetch_charter_metadata(
         self,

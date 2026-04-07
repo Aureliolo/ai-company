@@ -1,6 +1,6 @@
 """Tests for the generic VersionSnapshot model."""
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from pydantic import BaseModel, ConfigDict, ValidationError
@@ -84,6 +84,11 @@ class TestVersionSnapshotValidation:
             _make_snapshot(content_hash="")
 
     @pytest.mark.unit
+    def test_malformed_content_hash_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="64-character lowercase hex"):
+            _make_snapshot(content_hash="not-a-sha256-hash")
+
+    @pytest.mark.unit
     def test_blank_saved_by_rejected(self) -> None:
         with pytest.raises(ValidationError):
             _make_snapshot(saved_by="")
@@ -92,6 +97,14 @@ class TestVersionSnapshotValidation:
     def test_naive_datetime_rejected(self) -> None:
         with pytest.raises(ValidationError):
             _make_snapshot(saved_at=datetime(2026, 4, 7, 12, 0))  # noqa: DTZ001
+
+    @pytest.mark.unit
+    def test_non_utc_aware_datetime_rejected(self) -> None:
+        from datetime import timezone as tz
+
+        non_utc = datetime(2026, 4, 7, 12, 0, tzinfo=tz(timedelta(hours=5)))
+        with pytest.raises(ValidationError, match="must be UTC"):
+            _make_snapshot(saved_at=non_utc)
 
     @pytest.mark.unit
     def test_version_two_accepted(self) -> None:
