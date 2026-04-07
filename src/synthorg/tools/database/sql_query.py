@@ -266,12 +266,11 @@ class SqlQueryTool(BaseDatabaseTool):
             db.row_factory = aiosqlite.Row
             cursor = await db.execute(query, parameters)
 
-            # Use cursor.description to decide whether the statement
-            # returned rows (SELECT, INSERT RETURNING, PRAGMA, WITH SELECT)
-            # vs. a DML that only reports rowcount.
-            if cursor.description is None:
-                if is_write:
-                    await db.commit()
+            # For write DML that doesn't return rows, commit and
+            # report rowcount.  For row-returning statements (SELECT,
+            # INSERT RETURNING, PRAGMA, WITH SELECT), fetch below.
+            if is_write and not cursor.description:
+                await db.commit()
                 content = f"{keyword} affected {cursor.rowcount} row(s)"
                 logger.info(
                     DB_QUERY_SUCCESS,

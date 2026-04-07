@@ -6,6 +6,7 @@ truncated at ``max_output_bytes``.
 """
 
 import copy
+from pathlib import Path
 from typing import Any, Final
 
 from synthorg.observability import get_logger
@@ -80,7 +81,7 @@ class ShellCommandTool(BaseTerminalTool):
     @staticmethod
     def _validate_working_dir(
         working_dir: str | None,
-    ) -> ToolExecutionResult | None:
+    ) -> ToolExecutionResult | Path | None:
         """Validate and resolve the working directory.
 
         Returns ``None`` when no working dir is specified, a ``Path``
@@ -89,8 +90,6 @@ class ShellCommandTool(BaseTerminalTool):
         """
         if not working_dir:
             return None
-
-        from pathlib import Path  # noqa: PLC0415
 
         cwd = Path(working_dir)
         if cwd.is_absolute():
@@ -116,7 +115,7 @@ class ShellCommandTool(BaseTerminalTool):
                 content=f"Invalid working_directory: {working_dir!r}",
                 is_error=True,
             )
-        return cwd  # type: ignore[return-value]  -- Path, not ToolExecutionResult
+        return cwd
 
     async def execute(
         self,

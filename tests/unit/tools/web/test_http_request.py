@@ -2,6 +2,7 @@
 
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from typing import Any
 from unittest.mock import AsyncMock, patch
 
 import httpx
@@ -9,6 +10,19 @@ import pytest
 
 from synthorg.tools.network_validator import NetworkPolicy
 from synthorg.tools.web.http_request import HttpRequestTool
+
+
+class _RaisingStream:
+    """Async context manager that raises on entry."""
+
+    def __init__(self, exc: Exception) -> None:
+        self._exc = exc
+
+    async def __aenter__(self) -> None:
+        raise self._exc
+
+    async def __aexit__(self, *_args: Any) -> None:
+        pass  # pragma: no cover
 
 
 def _mock_stream_client(
@@ -26,13 +40,7 @@ def _mock_stream_client(
     client.__aexit__ = AsyncMock(return_value=False)
 
     if side_effect is not None:
-
-        @asynccontextmanager
-        async def _raise(**_kwargs: object) -> AsyncIterator[httpx.Response]:
-            raise side_effect
-            yield  # type: ignore[misc]  # unreachable, satisfies generator
-
-        client.stream = _raise
+        client.stream = lambda **_kw: _RaisingStream(side_effect)
     elif response is not None:
 
         async def _aiter_bytes() -> AsyncIterator[bytes]:
