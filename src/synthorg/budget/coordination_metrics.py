@@ -243,6 +243,12 @@ class StragglerGap(BaseModel):
                 f"must be >= mean_duration_seconds "
                 f"({self.mean_duration_seconds})"
             )
+            logger.warning(
+                COORD_METRICS_VALIDATION_ERROR,
+                slowest=self.slowest_duration_seconds,
+                mean=self.mean_duration_seconds,
+                error=msg,
+            )
             raise ValueError(msg)
         return self
 

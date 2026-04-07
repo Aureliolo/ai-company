@@ -10,6 +10,7 @@ from synthorg.observability import get_logger
 from synthorg.observability.events.health import (
     HEALTH_TICKET_DISMISSED,
     HEALTH_TICKET_ESCALATED,
+    HEALTH_TRIAGE_CONFIG_ERROR,
 )
 
 logger = get_logger(__name__)
@@ -49,14 +50,14 @@ class TriageFilter:
                 f"stall_duration_threshold must be >= 0, got {stall_duration_threshold}"
             )
             logger.warning(
-                HEALTH_TICKET_DISMISSED,
+                HEALTH_TRIAGE_CONFIG_ERROR,
                 error=msg,
             )
             raise ValueError(msg)
         if steps_threshold < 0:
             msg = f"steps_threshold must be >= 0, got {steps_threshold}"
             logger.warning(
-                HEALTH_TICKET_DISMISSED,
+                HEALTH_TRIAGE_CONFIG_ERROR,
                 error=msg,
             )
             raise ValueError(msg)

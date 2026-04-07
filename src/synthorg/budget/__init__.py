@@ -22,12 +22,16 @@ from synthorg.budget.coordination_config import (
     OrchestrationAlertThresholds,
 )
 from synthorg.budget.coordination_metrics import (
+    AmdahlCeiling,
     CoordinationEfficiency,
     CoordinationMetrics,
     CoordinationOverhead,
     ErrorAmplification,
     MessageDensity,
+    MessageOverhead,
     RedundancyRate,
+    StragglerGap,
+    TokenSpeedupRatio,
 )
 from synthorg.budget.cost_record import CostRecord
 from synthorg.budget.cost_tiers import (
