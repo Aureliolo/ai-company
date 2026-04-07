@@ -21,7 +21,7 @@ class TestSandboxRuntimeResolverResolve:
         )
         assert resolver.resolve_runtime("code_execution") == "runsc"
 
-    def test_falls_back_to_runc_when_override_unavailable(self) -> None:
+    def test_returns_none_when_override_unavailable_and_no_global(self) -> None:
         config = DockerSandboxConfig(
             runtime_overrides={"code_execution": "runsc"},
         )

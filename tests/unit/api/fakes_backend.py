@@ -10,6 +10,7 @@ from typing import Any
 from pydantic import AwareDatetime
 
 from synthorg.core.types import NotBlankStr
+from synthorg.persistence.errors import DuplicateRecordError
 from synthorg.security.rules.risk_override import RiskTierOverride
 from synthorg.security.ssrf_violation import SsrfViolation, SsrfViolationStatus
 from tests.unit.api.fakes import (
@@ -52,6 +53,9 @@ class FakeRiskOverrideRepository:
         self._overrides: dict[str, RiskTierOverride] = {}
 
     async def save(self, override: RiskTierOverride) -> None:
+        if override.id in self._overrides:
+            msg = f"Risk override {override.id!r} already exists"
+            raise DuplicateRecordError(msg)
         self._overrides[override.id] = override
 
     async def get(
@@ -86,6 +90,9 @@ class FakeSsrfViolationRepository:
         self._violations: dict[str, SsrfViolation] = {}
 
     async def save(self, violation: SsrfViolation) -> None:
+        if violation.id in self._violations:
+            msg = f"SSRF violation {violation.id!r} already exists"
+            raise DuplicateRecordError(msg)
         self._violations[violation.id] = violation
 
     async def get(
