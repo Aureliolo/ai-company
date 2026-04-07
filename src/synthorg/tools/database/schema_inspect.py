@@ -4,6 +4,7 @@ Provides table listing and column description for SQLite databases.
 Always read-only.
 """
 
+import asyncio
 import copy
 import re
 from typing import Any, Final
@@ -111,9 +112,28 @@ class SchemaInspectTool(BaseDatabaseTool):
         )
 
         try:
-            if action == "list_tables":
-                return await self._list_tables()
-            return await self._describe_table(table_name or "")
+            coro = (
+                self._list_tables()
+                if action == "list_tables"
+                else self._describe_table(table_name or "")
+            )
+            return await asyncio.wait_for(
+                coro,
+                timeout=self._config.query_timeout,
+            )
+        except TimeoutError:
+            logger.warning(
+                DB_SCHEMA_INSPECT_FAILED,
+                action=action,
+                error="timed out",
+                timeout=self._config.query_timeout,
+            )
+            return ToolExecutionResult(
+                content=(
+                    f"Schema inspection timed out after {self._config.query_timeout}s"
+                ),
+                is_error=True,
+            )
         except aiosqlite.Error as exc:
             logger.warning(
                 DB_SCHEMA_INSPECT_FAILED,

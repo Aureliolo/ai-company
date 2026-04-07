@@ -35,6 +35,12 @@ class DatabaseConnectionConfig(BaseModel):
         default=True,
         description="Whether the connection is read-only",
     )
+    max_rows: int = Field(
+        default=1000,
+        gt=0,
+        le=100_000,
+        description="Maximum rows to return from a query",
+    )
 
 
 class DatabaseConfig(BaseModel):

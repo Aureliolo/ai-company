@@ -77,6 +77,47 @@ class ShellCommandTool(BaseTerminalTool):
             **kwargs,
         )
 
+    @staticmethod
+    def _validate_working_dir(
+        working_dir: str | None,
+    ) -> ToolExecutionResult | None:
+        """Validate and resolve the working directory.
+
+        Returns ``None`` when no working dir is specified, a ``Path``
+        for valid relative paths, or a ``ToolExecutionResult`` error
+        for absolute or traversal paths.
+        """
+        if not working_dir:
+            return None
+
+        from pathlib import Path  # noqa: PLC0415
+
+        cwd = Path(working_dir)
+        if cwd.is_absolute():
+            return ToolExecutionResult(
+                content=(
+                    f"Absolute working_directory not allowed: {working_dir!r}. "
+                    "Use a path relative to the workspace."
+                ),
+                is_error=True,
+            )
+        try:
+            resolved = (Path.cwd() / cwd).resolve()
+            if not resolved.is_relative_to(Path.cwd().resolve()):
+                return ToolExecutionResult(
+                    content=(
+                        f"Path traversal not allowed: {working_dir!r} "
+                        "escapes the workspace."
+                    ),
+                    is_error=True,
+                )
+        except ValueError, OSError:
+            return ToolExecutionResult(
+                content=f"Invalid working_directory: {working_dir!r}",
+                is_error=True,
+            )
+        return cwd  # type: ignore[return-value]  -- Path, not ToolExecutionResult
+
     async def execute(
         self,
         *,
@@ -158,20 +199,10 @@ class ShellCommandTool(BaseTerminalTool):
             msg = "_execute_sandboxed called without sandbox"
             raise RuntimeError(msg)
 
-        from pathlib import Path  # noqa: PLC0415
-
-        if working_dir:
-            cwd = Path(working_dir)
-            if cwd.is_absolute():
-                return ToolExecutionResult(
-                    content=(
-                        f"Absolute working_directory not allowed: {working_dir!r}. "
-                        "Use a path relative to the workspace."
-                    ),
-                    is_error=True,
-                )
-        else:
-            cwd = None
+        cwd_or_error = self._validate_working_dir(working_dir)
+        if isinstance(cwd_or_error, ToolExecutionResult):
+            return cwd_or_error
+        cwd = cwd_or_error
 
         try:
             result = await self._sandbox.execute(
@@ -210,16 +241,18 @@ class ShellCommandTool(BaseTerminalTool):
                 output += "\n"
             output += result.stderr
 
-        # Truncate if needed (account for marker in the byte budget)
+        # Truncate by bytes, not characters.
         truncated = False
-        if len(output) > self._config.max_output_bytes:
+        out_bytes = output.encode("utf-8")
+        if len(out_bytes) > self._config.max_output_bytes:
             truncated = True
             marker = (
                 f"\n\n[Truncated: output exceeded"
                 f" {self._config.max_output_bytes:,} bytes]"
             )
-            output = output[: max(0, self._config.max_output_bytes - len(marker))]
-            output += marker
+            marker_bytes = marker.encode("utf-8")
+            limit = max(0, self._config.max_output_bytes - len(marker_bytes))
+            output = out_bytes[:limit].decode("utf-8", errors="ignore") + marker
 
         if result.success:
             logger.info(

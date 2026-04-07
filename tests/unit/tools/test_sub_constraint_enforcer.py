@@ -182,7 +182,7 @@ class TestGitConstraint:
         result = enforcer.check(
             "git_status",
             ToolCategory.VERSION_CONTROL,
-            ActionType.VCS_COMMIT,
+            ActionType.VCS_READ,
             {},
         )
         assert result is None

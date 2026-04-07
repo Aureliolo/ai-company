@@ -246,8 +246,12 @@ class SqlQueryTool(BaseDatabaseTool):
             db.row_factory = aiosqlite.Row
             cursor = await db.execute(query, parameters)
 
-            if is_write:
-                await db.commit()
+            # Use cursor.description to decide whether the statement
+            # returned rows (SELECT, INSERT RETURNING, PRAGMA, WITH SELECT)
+            # vs. a DML that only reports rowcount.
+            if cursor.description is None:
+                if is_write:
+                    await db.commit()
                 content = f"{keyword} affected {cursor.rowcount} row(s)"
                 logger.info(
                     DB_QUERY_SUCCESS,
@@ -262,7 +266,15 @@ class SqlQueryTool(BaseDatabaseTool):
                     },
                 )
 
-            rows = list(await cursor.fetchall())
+            # Row-returning statement -- fetch bounded rows.
+            if is_write:
+                await db.commit()
+            limit = self._config.max_rows
+            rows = list(await cursor.fetchmany(limit + 1))
+            row_truncated = len(rows) > limit
+            if row_truncated:
+                rows = rows[:limit]
+
             if not rows:
                 logger.info(DB_QUERY_SUCCESS, keyword=keyword, row_count=0)
                 return ToolExecutionResult(
@@ -270,13 +282,16 @@ class SqlQueryTool(BaseDatabaseTool):
                     metadata={"keyword": keyword, "row_count": 0},
                 )
 
-            columns = [desc[0] for desc in cursor.description or []]
+            columns = [desc[0] for desc in cursor.description]
             content = self._format_results(columns, rows)
+            if row_truncated:
+                content += f"\n\n[Truncated: result exceeded {limit:,} rows]"
             logger.info(
                 DB_QUERY_SUCCESS,
                 keyword=keyword,
                 row_count=len(rows),
                 column_count=len(columns),
+                truncated=row_truncated,
             )
             return ToolExecutionResult(
                 content=content,
@@ -284,6 +299,7 @@ class SqlQueryTool(BaseDatabaseTool):
                     "keyword": keyword,
                     "row_count": len(rows),
                     "columns": columns,
+                    "truncated": row_truncated,
                 },
             )
 

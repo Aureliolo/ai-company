@@ -198,15 +198,9 @@ class HttpRequestTool(BaseWebTool):
         """
         request_url, pinned_headers = self._pin_url(url, headers, validation)
         try:
-            async with httpx.AsyncClient() as client:
-                response = await client.request(
-                    method=method,
-                    url=request_url,
-                    headers=pinned_headers,
-                    content=body,
-                    timeout=timeout,
-                    follow_redirects=False,
-                )
+            raw_bytes, status_code, resp_headers = await self._stream_response(
+                request_url, method, pinned_headers, body, timeout
+            )
         except httpx.TimeoutException:
             logger.warning(WEB_REQUEST_TIMEOUT, url=url, timeout=timeout)
             return ToolExecutionResult(
@@ -220,8 +214,6 @@ class HttpRequestTool(BaseWebTool):
                 is_error=True,
             )
 
-        # Truncate by bytes, not characters.
-        raw_bytes = response.content
         truncated = len(raw_bytes) > self._max_response_bytes
         if truncated:
             raw_bytes = raw_bytes[: self._max_response_bytes]
@@ -232,7 +224,7 @@ class HttpRequestTool(BaseWebTool):
             WEB_REQUEST_SUCCESS,
             url=url,
             method=method,
-            status_code=response.status_code,
+            status_code=status_code,
             content_length=content_length,
             truncated=truncated,
         )
@@ -245,12 +237,50 @@ class HttpRequestTool(BaseWebTool):
         return ToolExecutionResult(
             content=content,
             metadata={
-                "status_code": response.status_code,
-                "headers": dict(response.headers),
+                "status_code": status_code,
+                "headers": dict(resp_headers),
                 "truncated": truncated,
                 "url": url,
             },
         )
+
+    async def _stream_response(
+        self,
+        url: str,
+        method: str,
+        headers: dict[str, str],
+        body: str | None,
+        timeout: float,  # noqa: ASYNC109  -- passed to httpx, not asyncio
+    ) -> tuple[bytes, int, httpx.Headers]:
+        """Stream an HTTP response, reading at most ``_max_response_bytes + 1``.
+
+        Returns ``(raw_bytes, status_code, headers)``.  Reading one
+        extra byte lets the caller detect truncation without
+        buffering the entire body.
+        """
+        # Read limit + 1 to detect truncation.
+        budget = self._max_response_bytes + 1
+        async with (
+            httpx.AsyncClient() as client,
+            client.stream(
+                method=method,
+                url=url,
+                headers=headers,
+                content=body,
+                timeout=timeout,
+                follow_redirects=False,
+            ) as response,
+        ):
+            chunks: list[bytes] = []
+            total = 0
+            async for chunk in response.aiter_bytes():
+                chunks.append(chunk)
+                total += len(chunk)
+                if total >= budget:
+                    break
+            status_code = response.status_code
+            resp_headers = response.headers
+        return b"".join(chunks)[:budget], status_code, resp_headers
 
     @staticmethod
     def _pin_url(
@@ -288,9 +318,8 @@ class HttpRequestTool(BaseWebTool):
         else:
             pinned_netloc = f"{pinned_ip}{port_suffix}"
 
-        pinned_headers = {**headers}
-        if "Host" not in pinned_headers:
-            pinned_headers["Host"] = parsed.hostname or ""
+        pinned_headers = {k: v for k, v in headers.items() if k.lower() != "host"}
+        pinned_headers["Host"] = parsed.hostname or ""
         return (
             urlunparse(parsed._replace(netloc=pinned_netloc)),
             pinned_headers,

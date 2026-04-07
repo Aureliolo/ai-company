@@ -5,8 +5,9 @@ Provides the common ``ToolCategory.TERMINAL`` category, a
 and command allow/blocklist validation.
 """
 
+import re
 from abc import ABC
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Final
 
 from synthorg.core.enums import ToolCategory
 from synthorg.observability import get_logger
@@ -84,12 +85,18 @@ class BaseTerminalTool(BaseTool, ABC):
                 return True
         return False
 
+    # Shell metacharacters that enable chaining or subshells.
+    _SHELL_META_RE: Final[re.Pattern[str]] = re.compile(
+        r"[;&|`$(){}<>\n]",
+    )
+
     def _is_command_allowed(self, command: str) -> bool:
         """Check if the command matches the allowlist.
 
         When the allowlist is empty, all non-blocked commands
         are allowed.  When non-empty, the command must start
-        with one of the allowed prefixes.
+        with one of the allowed prefixes **and** contain no
+        shell metacharacters that could chain additional commands.
 
         Args:
             command: The command string to check.
@@ -100,6 +107,17 @@ class BaseTerminalTool(BaseTool, ABC):
         if not self._config.command_allowlist:
             return True
         normalized = command.strip().lower()
+
+        # Reject shell metacharacters when allowlist is active --
+        # prevents `ls; curl ...` or `ls && cat /etc/passwd`.
+        if self._SHELL_META_RE.search(command):
+            logger.warning(
+                TERMINAL_COMMAND_BLOCKED,
+                command=command,
+                reason="shell_metacharacters_with_allowlist",
+            )
+            return False
+
         for prefix in self._config.command_allowlist:
             if normalized.startswith(prefix.lower()):
                 return True

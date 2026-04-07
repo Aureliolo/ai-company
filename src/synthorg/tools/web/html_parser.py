@@ -197,6 +197,12 @@ class HtmlParserTool(BaseWebTool):
         mode: str = arguments.get("extract_mode", "text")
 
         if mode not in _EXTRACT_MODES:
+            logger.warning(
+                WEB_PARSE_FAILED,
+                mode=mode,
+                error=f"Invalid extract_mode: {mode!r}",
+                valid_modes=_EXTRACT_MODES,
+            )
             return ToolExecutionResult(
                 content=(
                     f"Invalid extract_mode: {mode!r}. Must be one of: {_EXTRACT_MODES}"
@@ -213,6 +219,8 @@ class HtmlParserTool(BaseWebTool):
                 content = self._extract_links(html_content)
             else:
                 content = self._extract_metadata(html_content)
+        except MemoryError, RecursionError:
+            raise
         except Exception as exc:
             logger.warning(WEB_PARSE_FAILED, mode=mode, error=str(exc))
             return ToolExecutionResult(
@@ -235,6 +243,7 @@ class HtmlParserTool(BaseWebTool):
         """Extract visible text from HTML."""
         extractor = _TextExtractor()
         extractor.feed(html)
+        extractor.close()
         return extractor.get_text()
 
     @staticmethod
@@ -242,6 +251,7 @@ class HtmlParserTool(BaseWebTool):
         """Extract links from HTML and format as list."""
         extractor = _LinkExtractor()
         extractor.feed(html)
+        extractor.close()
         links = extractor.get_links()
         if not links:
             return ""
@@ -253,6 +263,7 @@ class HtmlParserTool(BaseWebTool):
         """Extract title and meta tags from HTML."""
         extractor = _MetadataExtractor()
         extractor.feed(html)
+        extractor.close()
         parts: list[str] = []
         title = extractor.get_title()
         if title:
