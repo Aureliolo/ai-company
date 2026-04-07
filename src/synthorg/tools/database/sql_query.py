@@ -59,7 +59,7 @@ _WRITE_PREFIXES: Final[tuple[str, ...]] = (
 )
 
 _LEADING_COMMENT_RE: Final[re.Pattern[str]] = re.compile(
-    r"^\s*(?:--[^\n]*\n|/\*.*?\*/\s*)*",
+    r"^\s*(?:--[^\n]*(?:\n|$)|/\*.*?\*/\s*)*",
     re.DOTALL,
 )
 
