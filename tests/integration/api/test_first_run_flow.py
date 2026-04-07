@@ -111,6 +111,20 @@ def integration_client(
         yield client
 
 
+def _extract_auth_cookies(resp: Any) -> tuple[str, str]:
+    """Extract session token and CSRF token from Set-Cookie headers."""
+    session = ""
+    csrf = ""
+    for k, v in resp.headers.multi_items():
+        if k != "set-cookie":
+            continue
+        if v.startswith("session="):
+            session = v.split("session=")[1].split(";")[0]
+        elif v.startswith("csrf_token="):
+            csrf = v.split("csrf_token=")[1].split(";")[0]
+    return session, csrf
+
+
 @pytest.mark.integration
 class TestFirstRunFlow:
     """Full first-run setup wizard integration test."""
@@ -138,8 +152,9 @@ class TestFirstRunFlow:
             },
         )
         assert resp.status_code == 201
-        setup_body = resp.json()
-        assert setup_body["data"]["token"]
+        assert resp.json()["data"]["expires_in"] > 0
+        session_token, csrf_token = _extract_auth_cookies(resp)
+        assert session_token
 
         # ── 3. POST /auth/login -- verify credentials work ──
         resp = client.post(
@@ -148,14 +163,18 @@ class TestFirstRunFlow:
                 "username": _TEST_USERNAME,
                 "password": _TEST_PASSWORD,
             },
+            headers={
+                "Cookie": f"session={session_token}; csrf_token={csrf_token}",
+                "X-CSRF-Token": csrf_token,
+            },
         )
         assert resp.status_code == 200
-        login_body = resp.json()
-        jwt_token = login_body["data"]["token"]
-        assert jwt_token
+        assert resp.json()["data"]["expires_in"] > 0
+        jwt_token, csrf_token = _extract_auth_cookies(resp)
 
-        # Use the JWT for all subsequent requests.
-        client.headers["Authorization"] = f"Bearer {jwt_token}"
+        # Use cookie + CSRF for all subsequent requests.
+        client.headers["Cookie"] = f"session={jwt_token}; csrf_token={csrf_token}"
+        client.headers["X-CSRF-Token"] = csrf_token
 
         # ── 4. GET /setup/templates -- list available templates ──
         resp = client.get("/api/v1/setup/templates")
