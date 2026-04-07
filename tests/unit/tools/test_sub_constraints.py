@@ -127,7 +127,7 @@ class TestLevelSubConstraints:
         assert sc.network == NetworkMode.ALLOWLIST_ONLY
         assert sc.git == GitAccess.READ_AND_BRANCH
         assert sc.terminal == TerminalAccess.NONE
-        assert "deployment" in sc.requires_approval
+        assert "deploy" in sc.requires_approval
 
     @pytest.mark.unit
     def test_standard_has_open_network(self) -> None:

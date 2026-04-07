@@ -18,7 +18,6 @@ from synthorg.observability.events.web import (
     WEB_REQUEST_START,
     WEB_REQUEST_SUCCESS,
     WEB_REQUEST_TIMEOUT,
-    WEB_SSRF_BLOCKED,
 )
 from synthorg.tools.base import ToolExecutionResult
 from synthorg.tools.network_validator import (  # noqa: TC001
@@ -144,10 +143,9 @@ class HttpRequestTool(BaseWebTool):
                 is_error=True,
             )
 
-        # SSRF validation
+        # SSRF validation (validate_url_host already logs WEB_SSRF_BLOCKED)
         validation = await self._validate_url(url)
         if isinstance(validation, str):
-            logger.warning(WEB_SSRF_BLOCKED, url=url, reason=validation)
             return ToolExecutionResult(
                 content=f"URL blocked: {validation}",
                 is_error=True,
@@ -319,7 +317,7 @@ class HttpRequestTool(BaseWebTool):
         try:
             addr = ip_address(pinned_ip)
         except ValueError:
-            return url, headers
+            return url, normalized_headers
         if isinstance(addr, IPv6Address):
             pinned_netloc = f"[{pinned_ip}]{port_suffix}"
         else:
