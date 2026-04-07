@@ -196,11 +196,14 @@ class ToolInvoker:
         """
         if self._permission_checker is None:
             return None
+        safe_args = self._safe_deepcopy_args(tool_call)
+        if isinstance(safe_args, ToolResult):
+            return safe_args
         violation = self._permission_checker.check_sub_constraints(
             tool.name,
             tool.category,
             tool.action_type,
-            copy.deepcopy(dict(tool_call.arguments)),
+            safe_args,
         )
         if violation is None:
             return None

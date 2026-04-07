@@ -31,7 +31,6 @@ class TestClassifyStatement:
             ("   ", ""),
         ],
     )
-    @pytest.mark.unit
     def test_classify(self, query: str, expected: str) -> None:
         assert _classify_statement(query) == expected
 

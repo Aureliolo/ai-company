@@ -195,13 +195,13 @@ class HttpRequestTool(BaseWebTool):
         Returns:
             A ``ToolExecutionResult`` with the response.
         """
-        request_url = self._pin_url(url, headers, validation)
+        request_url, pinned_headers = self._pin_url(url, headers, validation)
         try:
             async with httpx.AsyncClient() as client:
                 response = await client.request(
                     method=method,
                     url=request_url,
-                    headers=headers,
+                    headers=pinned_headers,
                     content=body,
                     timeout=timeout,
                     follow_redirects=False,
@@ -256,23 +256,41 @@ class HttpRequestTool(BaseWebTool):
         url: str,
         headers: dict[str, str],
         validation: DnsValidationOk,
-    ) -> str:
+    ) -> tuple[str, dict[str, str]]:
         """Rewrite URL to connect to the validated IP (HTTP only).
 
         For plain HTTP, replaces the hostname with the first
         validated IP and sets the ``Host`` header, closing the DNS
         rebinding TOCTOU gap.  For HTTPS, returns the original URL
         (TLS SNI requires the hostname for certificate validation).
+
+        Returns a **(url, headers)** tuple.  The headers dict is
+        copied before mutation to avoid mutating the caller's input.
         """
         if not validation.resolved_ips or validation.is_https:
-            return url
+            return url, headers
 
+        from ipaddress import IPv6Address, ip_address  # noqa: PLC0415
         from urllib.parse import urlparse, urlunparse  # noqa: PLC0415
 
         parsed = urlparse(url)
         pinned_ip = validation.resolved_ips[0]
         port_suffix = f":{parsed.port}" if parsed.port else ""
-        pinned_netloc = f"{pinned_ip}{port_suffix}"
-        if "Host" not in headers:
-            headers["Host"] = parsed.hostname or ""
-        return urlunparse(parsed._replace(netloc=pinned_netloc))
+
+        # Bracket IPv6 literals in the netloc.
+        try:
+            addr = ip_address(pinned_ip)
+        except ValueError:
+            return url, headers
+        if isinstance(addr, IPv6Address):
+            pinned_netloc = f"[{pinned_ip}]{port_suffix}"
+        else:
+            pinned_netloc = f"{pinned_ip}{port_suffix}"
+
+        pinned_headers = {**headers}
+        if "Host" not in pinned_headers:
+            pinned_headers["Host"] = parsed.hostname or ""
+        return (
+            urlunparse(parsed._replace(netloc=pinned_netloc)),
+            pinned_headers,
+        )

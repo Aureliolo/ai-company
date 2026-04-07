@@ -268,9 +268,13 @@ def build_default_tools_from_config(
     )
 
     # Build sandbox backends once for all categories.
-    resolved_backends = sandbox_backends or build_sandbox_backends(
-        config=config.sandboxing,
-        workspace=workspace,
+    resolved_backends = (
+        sandbox_backends
+        if sandbox_backends is not None
+        else build_sandbox_backends(
+            config=config.sandboxing,
+            workspace=workspace,
+        )
     )
 
     vc_sandbox = resolve_sandbox_for_category(
