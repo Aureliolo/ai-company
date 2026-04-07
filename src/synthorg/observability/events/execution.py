@@ -98,3 +98,6 @@ EXECUTION_HYBRID_PROGRESS_SUMMARY_EMPTY: Final[str] = (
     "execution.hybrid.progress_summary_empty"
 )
 EXECUTION_PLAN_SUMMARY_FALLBACK: Final[str] = "execution.plan.summary_fallback"
+
+# Metrics events
+EXECUTION_METRICS_UNEXPECTED_TYPE: Final[str] = "execution.metrics.unexpected_type"

@@ -1,0 +1,170 @@
+"""Step quality classifier protocol and rule-based implementation.
+
+The ``StepQualityClassifier`` protocol allows pluggable classification
+strategies (rule-based, LLM-based, hybrid).  The default
+``RuleBasedStepClassifier`` uses deterministic heuristics derived from
+turn metadata -- no LLM cost.
+"""
+
+from typing import Protocol, runtime_checkable
+
+from synthorg.engine.loop_protocol import TerminationReason, TurnRecord
+from synthorg.engine.quality.models import StepQuality, StepQualitySignal
+from synthorg.engine.stagnation.models import (
+    StagnationResult,
+    StagnationVerdict,
+)
+from synthorg.observability import get_logger
+from synthorg.observability.events.quality import QUALITY_STEP_CLASSIFIED
+from synthorg.providers.enums import FinishReason
+
+logger = get_logger(__name__)
+
+# Confidence levels for rule-based classification.
+_CONFIDENCE_DEFINITIVE: float = 1.0
+_CONFIDENCE_RULE_MATCHED: float = 0.7
+_CONFIDENCE_FALLBACK: float = 0.5
+
+
+@runtime_checkable
+class StepQualityClassifier(Protocol):
+    """Protocol for step-level quality classification.
+
+    Async to allow future LLM-based implementations without
+    breaking the interface.
+    """
+
+    async def classify(
+        self,
+        *,
+        step_index: int,
+        turns: tuple[TurnRecord, ...],
+        termination_reason: TerminationReason,
+        stagnation_result: StagnationResult | None = None,
+    ) -> StepQualitySignal:
+        """Classify a completed step's quality.
+
+        Args:
+            step_index: Zero-based index of the step in the plan.
+            turns: Turn records from this step's execution.
+            termination_reason: Why the step's execution stopped.
+            stagnation_result: Stagnation check result, if any.
+
+        Returns:
+            Quality signal with ternary classification and confidence.
+        """
+        ...
+
+
+class RuleBasedStepClassifier:
+    """Deterministic step quality classifier using turn metadata.
+
+    Classification rules (evaluated in order):
+
+    1. **INCORRECT** (definitive): Step terminated by stagnation
+       (TERMINATE verdict).
+    2. **INCORRECT** (rule-matched): Termination reason is ERROR,
+       or final turn finished with an error reason.
+    3. **CORRECT** (rule-matched): Step completed normally with at
+       least one tool call producing results.
+    4. **NEUTRAL** (fallback): Everything else -- exploratory steps,
+       partial progress, no tool calls.
+    """
+
+    async def classify(
+        self,
+        *,
+        step_index: int,
+        turns: tuple[TurnRecord, ...],
+        termination_reason: TerminationReason,
+        stagnation_result: StagnationResult | None = None,
+    ) -> StepQualitySignal:
+        """Classify a step using deterministic heuristics."""
+        turn_range = _compute_turn_range(turns)
+
+        # Rule 1: stagnation-triggered termination is definitively incorrect.
+        if (
+            stagnation_result is not None
+            and stagnation_result.verdict == StagnationVerdict.TERMINATE
+        ):
+            signal = StepQualitySignal(
+                quality=StepQuality.INCORRECT,
+                confidence=_CONFIDENCE_DEFINITIVE,
+                reason="Step terminated by stagnation detection",
+                step_index=step_index,
+                turn_range=turn_range,
+            )
+            _log_classification(signal)
+            return signal
+
+        # Rule 2: error termination or error finish reason.
+        if termination_reason == TerminationReason.ERROR:
+            signal = StepQualitySignal(
+                quality=StepQuality.INCORRECT,
+                confidence=_CONFIDENCE_RULE_MATCHED,
+                reason="Step terminated with ERROR",
+                step_index=step_index,
+                turn_range=turn_range,
+            )
+            _log_classification(signal)
+            return signal
+
+        if turns and turns[-1].finish_reason == FinishReason.ERROR:
+            signal = StepQualitySignal(
+                quality=StepQuality.INCORRECT,
+                confidence=_CONFIDENCE_RULE_MATCHED,
+                reason="Final turn finished with error",
+                step_index=step_index,
+                turn_range=turn_range,
+            )
+            _log_classification(signal)
+            return signal
+
+        # Rule 3: normal completion with tool calls -> correct.
+        has_tool_calls = any(len(t.tool_calls_made) > 0 for t in turns)
+        if termination_reason == TerminationReason.COMPLETED and has_tool_calls:
+            signal = StepQualitySignal(
+                quality=StepQuality.CORRECT,
+                confidence=_CONFIDENCE_RULE_MATCHED,
+                reason="Step completed with tool calls",
+                step_index=step_index,
+                turn_range=turn_range,
+            )
+            _log_classification(signal)
+            return signal
+
+        # Rule 4: fallback -- neutral/exploratory.
+        reason = "Exploratory step (no definitive outcome signal)"
+        if not turns:
+            reason = "Empty step (no turns executed)"
+        elif not has_tool_calls:
+            reason = "Step completed without tool calls"
+
+        signal = StepQualitySignal(
+            quality=StepQuality.NEUTRAL,
+            confidence=_CONFIDENCE_FALLBACK,
+            reason=reason,
+            step_index=step_index,
+            turn_range=turn_range,
+        )
+        _log_classification(signal)
+        return signal
+
+
+def _compute_turn_range(turns: tuple[TurnRecord, ...]) -> tuple[int, int]:
+    """Extract inclusive (start, end) turn numbers from turn records."""
+    if not turns:
+        return (1, 1)
+    return (turns[0].turn_number, turns[-1].turn_number)
+
+
+def _log_classification(signal: StepQualitySignal) -> None:
+    """Log a quality classification event."""
+    logger.debug(
+        QUALITY_STEP_CLASSIFIED,
+        step_index=signal.step_index,
+        quality=signal.quality.value,
+        confidence=signal.confidence,
+        reason=signal.reason,
+        turn_range=signal.turn_range,
+    )

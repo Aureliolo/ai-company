@@ -22,12 +22,16 @@ from synthorg.budget.coordination_config import (
     OrchestrationAlertThresholds,
 )
 from synthorg.budget.coordination_metrics import (
+    AmdahlCeiling,
     CoordinationEfficiency,
     CoordinationMetrics,
     CoordinationOverhead,
     ErrorAmplification,
     MessageDensity,
+    MessageOverhead,
     RedundancyRate,
+    StragglerGap,
+    TokenSpeedupRatio,
 )
 from synthorg.budget.cost_record import CostRecord
 from synthorg.budget.cost_tiers import (
@@ -131,6 +135,7 @@ __all__ = [
     "AgentEfficiency",
     "AgentPerformanceSummary",
     "AgentSpending",
+    "AmdahlCeiling",
     "AnomalyDetectionResult",
     "AnomalySeverity",
     "AnomalyType",
@@ -174,6 +179,7 @@ __all__ = [
     "ErrorTaxonomyConfig",
     "LLMCallCategory",
     "MessageDensity",
+    "MessageOverhead",
     "ModelDistribution",
     "OrchestrationAlertLevel",
     "OrchestrationAlertThresholds",
@@ -209,10 +215,12 @@ __all__ = [
     "SpendingAnomaly",
     "SpendingReport",
     "SpendingSummary",
+    "StragglerGap",
     "SubscriptionConfig",
     "TaskCompletionReport",
     "TaskSpending",
     "TeamBudget",
+    "TokenSpeedupRatio",
     "billing_period_start",
     "classify_model_tier",
     "compute_rebalance",

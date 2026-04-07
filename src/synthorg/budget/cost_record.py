@@ -31,6 +31,9 @@ class CostRecord(BaseModel):
         timestamp: Timezone-aware timestamp of the API call.
         call_category: Optional LLM call category (productive,
             coordination, system, embedding).
+        accuracy_effort_ratio: Accuracy-effort ratio for the task
+            this call belongs to (populated at task completion when
+            quality signals are available, ``None`` otherwise).
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
@@ -46,6 +49,14 @@ class CostRecord(BaseModel):
     call_category: LLMCallCategory | None = Field(
         default=None,
         description="LLM call category (productive, coordination, system, embedding)",
+    )
+    accuracy_effort_ratio: float | None = Field(
+        default=None,
+        ge=0.0,
+        description=(
+            "Accuracy-effort ratio for the task this call belongs to "
+            "(populated at task completion when quality signals are available)"
+        ),
     )
 
     @model_validator(mode="after")

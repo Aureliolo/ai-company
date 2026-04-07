@@ -34,6 +34,7 @@ class NotificationCategory(StrEnum):
     STAGNATION = "stagnation"
     SYSTEM = "system"
     AGENT = "agent"
+    HEALTH = "health"
 
 
 class NotificationSeverity(StrEnum):

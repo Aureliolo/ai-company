@@ -9,9 +9,14 @@ from typing import TYPE_CHECKING
 from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
 
 from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.engine.quality.models import AccuracyEffortRatio
+from synthorg.observability import get_logger
+from synthorg.observability.events.execution import EXECUTION_METRICS_UNEXPECTED_TYPE
 
 if TYPE_CHECKING:
     from synthorg.engine.run_result import AgentRunResult
+
+logger = get_logger(__name__)
 
 
 class TaskCompletionMetrics(BaseModel):
@@ -33,6 +38,9 @@ class TaskCompletionMetrics(BaseModel):
             (overhead indicator, derived via ``@computed_field``).  For
             multi-turn runs, the actual overhead is higher because the
             system prompt is resent on every turn.
+        accuracy_effort_ratio: Accuracy-effort ratio from step-level
+            quality signals (``None`` when quality signals are
+            unavailable).
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
@@ -62,6 +70,13 @@ class TaskCompletionMetrics(BaseModel):
         default=0,
         ge=0,
         description="Estimated system prompt tokens",
+    )
+    accuracy_effort_ratio: float | None = Field(
+        default=None,
+        description=(
+            "Accuracy-effort ratio from step-level quality signals "
+            "(None when quality signals are unavailable)"
+        ),
     )
 
     @model_validator(mode="after")
@@ -100,6 +115,17 @@ class TaskCompletionMetrics(BaseModel):
             the result's execution context and metadata.
         """
         accumulated = result.execution_result.context.accumulated_cost
+        ae_data = result.execution_result.metadata.get("accuracy_effort")
+        ae_ratio: float | None = None
+        if ae_data is not None:
+            if isinstance(ae_data, AccuracyEffortRatio):
+                ae_ratio = ae_data.ratio
+            else:
+                logger.warning(
+                    EXECUTION_METRICS_UNEXPECTED_TYPE,
+                    type=type(ae_data).__name__,
+                    task_id=result.task_id,
+                )
         return cls(
             task_id=result.task_id,
             agent_id=result.agent_id,
@@ -108,4 +134,5 @@ class TaskCompletionMetrics(BaseModel):
             cost_per_task=result.total_cost_usd,
             duration_seconds=result.duration_seconds,
             prompt_tokens=result.system_prompt.estimated_tokens,
+            accuracy_effort_ratio=ae_ratio,
         )
