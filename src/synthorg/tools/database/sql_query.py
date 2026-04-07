@@ -37,6 +37,14 @@ _READ_ONLY_PREFIXES: Final[tuple[str, ...]] = (
     "EXPLAIN",
 )
 
+# Statements that can affect the filesystem beyond the configured DB.
+# Always blocked regardless of read_only setting.
+_ALWAYS_BLOCKED_PREFIXES: Final[tuple[str, ...]] = (
+    "ATTACH",
+    "DETACH",
+    "VACUUM",
+)
+
 # Statement prefixes that require write access.
 _WRITE_PREFIXES: Final[tuple[str, ...]] = (
     "INSERT",
@@ -47,10 +55,7 @@ _WRITE_PREFIXES: Final[tuple[str, ...]] = (
     "CREATE",
     "TRUNCATE",
     "REPLACE",
-    "ATTACH",
-    "DETACH",
     "REINDEX",
-    "VACUUM",
 )
 
 _LEADING_COMMENT_RE: Final[re.Pattern[str]] = re.compile(
@@ -153,6 +158,21 @@ class SqlQueryTool(BaseDatabaseTool):
         if not keyword:
             return ToolExecutionResult(
                 content="Empty query",
+                is_error=True,
+            )
+
+        # Block filesystem-affecting statements unconditionally.
+        if keyword in _ALWAYS_BLOCKED_PREFIXES:
+            logger.warning(
+                DB_WRITE_BLOCKED,
+                keyword=keyword,
+                database=self._config.database_path,
+            )
+            return ToolExecutionResult(
+                content=(
+                    f"{keyword} statements are blocked for security "
+                    f"(filesystem escape prevention)"
+                ),
                 is_error=True,
             )
 

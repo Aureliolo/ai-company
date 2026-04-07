@@ -13,7 +13,7 @@ before checking.  Unparseable IPs are blocked (fail-closed).
 
 import asyncio
 import ipaddress
-from typing import Any, Final, Self
+from typing import Any, Final
 from urllib.parse import urlparse
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -100,13 +100,17 @@ class NetworkPolicy(BaseModel):
         description="Timeout in seconds for DNS resolution",
     )
 
-    @model_validator(mode="after")
-    def _normalize_allowlist(self) -> Self:
-        """Lowercase and deduplicate allowlist entries."""
-        normalized = tuple(dict.fromkeys(h.lower() for h in self.hostname_allowlist))
-        if normalized != self.hostname_allowlist:
-            object.__setattr__(self, "hostname_allowlist", normalized)
-        return self
+    @model_validator(mode="before")
+    @classmethod
+    def _normalize_allowlist(cls, data: Any) -> Any:
+        """Lowercase and deduplicate allowlist entries before construction."""
+        if isinstance(data, dict) and "hostname_allowlist" in data:
+            raw = data["hostname_allowlist"]
+            if isinstance(raw, tuple | list):
+                data["hostname_allowlist"] = tuple(
+                    dict.fromkeys(h.lower() for h in raw)
+                )
+        return data
 
 
 # ── Validation result model ─────────────────────────────────────
@@ -257,6 +261,8 @@ async def resolve_dns(
             f"DNS resolution for {hostname!r} failed: {exc}",
         )
     except Exception as exc:
+        if isinstance(exc, MemoryError | RecursionError):
+            raise
         logger.error(
             WEB_DNS_FAILED,
             hostname=hostname,
@@ -405,9 +411,11 @@ async def validate_url_host(  # noqa: PLR0911, C901
     else:
         port = 80
 
-    # Allowlist bypass
+    # Allowlist bypass -- still resolve DNS for IP pinning.
     if normalized in policy.hostname_allowlist:
-        return _ok(normalized, port, is_https=is_https)
+        result = await resolve_and_check(normalized, policy.dns_resolution_timeout)
+        resolved = result if isinstance(result, tuple) else ()
+        return _ok(normalized, port, is_https=is_https, resolved_ips=resolved)
 
     # Master switch
     if not policy.block_private_ips:

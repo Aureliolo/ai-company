@@ -143,6 +143,8 @@ class WebSearchTool(BaseWebTool):
 
         try:
             results = await self._provider.search(query, max_results)
+        except MemoryError, RecursionError:
+            raise
         except Exception as exc:
             logger.warning(WEB_SEARCH_FAILED, query=query, error=str(exc))
             return ToolExecutionResult(
@@ -157,20 +159,25 @@ class WebSearchTool(BaseWebTool):
                 metadata={"query": query, "result_count": 0},
             )
 
+        # Cap to requested max and normalize results defensively.
+        capped = list(results)[:max_results]
         lines: list[str] = []
-        for i, r in enumerate(results, 1):
-            lines.append(f"{i}. {r.title}")
-            lines.append(f"   URL: {r.url}")
-            lines.append(f"   {r.snippet}")
+        for i, r in enumerate(capped, 1):
+            title = getattr(r, "title", "(no title)")
+            url = getattr(r, "url", "")
+            snippet = getattr(r, "snippet", "")
+            lines.append(f"{i}. {title}")
+            lines.append(f"   URL: {url}")
+            lines.append(f"   {snippet}")
             lines.append("")
 
         logger.info(
             WEB_SEARCH_SUCCESS,
             query=query,
-            result_count=len(results),
+            result_count=len(capped),
         )
 
         return ToolExecutionResult(
             content="\n".join(lines).rstrip(),
-            metadata={"query": query, "result_count": len(results)},
+            metadata={"query": query, "result_count": len(capped)},
         )

@@ -154,10 +154,10 @@ class SubConstraintEnforcer:
         ``ALLOWLIST_ONLY`` is enforced at the transport level (not here),
         but tools in network-requiring categories are allowed through.
         """
-        if (
-            self._constraints.network == NetworkMode.NONE
-            and category in _NETWORK_CATEGORIES
-        ):
+        if self._constraints.network != NetworkMode.NONE:
+            return None
+        # Block web-category tools and git clone (external fetch).
+        if category in _NETWORK_CATEGORIES or tool_name in _GIT_CLONE_TOOL_NAMES:
             return SubConstraintViolation(
                 constraint="network",
                 reason=(

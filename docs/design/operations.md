@@ -820,9 +820,10 @@ triggered by engine-level operations. No LLM in the security classification path
 
 The `ToolPermissionChecker` implements two layers of enforcement: **category-level gating**
 (each access level maps to permitted `ToolCategory` values) and **granular sub-constraints**
-(`SubConstraintEnforcer`) checking network mode, terminal access, git access, and approval
-requirements against each tool invocation.  Per-agent overrides can customize sub-constraints
-via `ToolPermissions.sub_constraints`.  K8s sandbox backend integration is planned for Phase 3-4.
+(`SubConstraintEnforcer`) checking file system scope, network mode, terminal access, git access,
+code execution isolation, and approval requirements against each tool invocation.  Per-agent
+overrides can customize all six dimensions via `ToolPermissions.sub_constraints`.  K8s sandbox
+backend integration is planned for Phase 3-4.
 
 ### Progressive Trust
 

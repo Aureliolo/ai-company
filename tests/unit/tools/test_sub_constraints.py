@@ -187,5 +187,7 @@ class TestGetSubConstraints:
     def test_custom_overrides_built_in_level(self) -> None:
         custom = ToolSubConstraints(network=NetworkMode.NONE)
         result = get_sub_constraints(ToolAccessLevel.STANDARD, custom)
-        assert result is custom
+        # Overridden field uses the custom value.
         assert result.network == NetworkMode.NONE
+        # Non-overridden fields retain STANDARD level defaults.
+        assert result.terminal == TerminalAccess.RESTRICTED_COMMANDS

@@ -128,12 +128,7 @@ class ToolPermissionChecker:
         # constraints, sub-constraint enforcement is skipped (only
         # allow/deny lists apply).
         self._sub_enforcer: SubConstraintEnforcer | None = None
-        if access_level == ToolAccessLevel.CUSTOM and sub_constraints is None:
-            logger.debug(
-                TOOL_PERMISSION_CHECKER_CREATED,
-                note="bare CUSTOM level -- sub-constraint enforcement disabled",
-            )
-        else:
+        if not (access_level == ToolAccessLevel.CUSTOM and sub_constraints is None):
             resolved = get_sub_constraints(access_level, sub_constraints)
             self._sub_enforcer = SubConstraintEnforcer(resolved)
 

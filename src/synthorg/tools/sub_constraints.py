@@ -214,12 +214,26 @@ def get_sub_constraints(
             ``custom_constraints``.
     """
     if custom_constraints is not None:
+        if access_level == ToolAccessLevel.CUSTOM:
+            logger.debug(
+                SUB_CONSTRAINT_RESOLVED,
+                access_level=access_level.value,
+                source="custom",
+            )
+            return custom_constraints
+        # Non-CUSTOM with overrides: merge into level defaults so
+        # unset fields retain the secure baseline.
+        base = _LEVEL_SUB_CONSTRAINTS.get(access_level, ToolSubConstraints())
+        merged = {
+            **base.model_dump(),
+            **custom_constraints.model_dump(exclude_unset=True),
+        }
         logger.debug(
             SUB_CONSTRAINT_RESOLVED,
             access_level=access_level.value,
-            source="custom",
+            source="merged",
         )
-        return custom_constraints
+        return ToolSubConstraints(**merged)
 
     if access_level == ToolAccessLevel.CUSTOM:
         msg = (

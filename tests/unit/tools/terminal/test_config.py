@@ -30,10 +30,10 @@ class TestTerminalConfig:
     @pytest.mark.unit
     def test_default_blocklist_contains_dangerous(self) -> None:
         cfg = TerminalConfig()
-        blocked = " ".join(cfg.command_blocklist).lower()
-        assert "rm -rf /" in blocked
-        assert "mkfs" in blocked
-        assert "shutdown" in blocked
+        normalized = {e.strip().lower() for e in cfg.command_blocklist}
+        assert "rm -rf /" in normalized
+        assert "mkfs" in normalized
+        assert "shutdown" in normalized
 
     @pytest.mark.unit
     def test_timeout_bounds(self) -> None:

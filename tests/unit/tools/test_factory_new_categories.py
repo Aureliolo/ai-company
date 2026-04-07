@@ -100,6 +100,7 @@ class TestFactoryDatabaseTools:
         )
         names = {t.name for t in tools}
         assert "sql_query" not in names
+        assert "schema_inspect" not in names
 
 
 class TestFactoryTerminalTools:

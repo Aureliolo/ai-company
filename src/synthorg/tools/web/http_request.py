@@ -298,13 +298,20 @@ class HttpRequestTool(BaseWebTool):
         Returns a **(url, headers)** tuple.  The headers dict is
         copied before mutation to avoid mutating the caller's input.
         """
-        if not validation.resolved_ips or validation.is_https:
-            return url, headers
-
-        from ipaddress import IPv6Address, ip_address  # noqa: PLC0415
-        from urllib.parse import urlparse, urlunparse  # noqa: PLC0415
+        from urllib.parse import urlparse  # noqa: PLC0415
 
         parsed = urlparse(url)
+
+        # Always normalize Host header (case-insensitive dedup).
+        normalized_headers = {k: v for k, v in headers.items() if k.lower() != "host"}
+        normalized_headers["Host"] = parsed.hostname or ""
+
+        if not validation.resolved_ips or validation.is_https:
+            return url, normalized_headers
+
+        from ipaddress import IPv6Address, ip_address  # noqa: PLC0415
+        from urllib.parse import urlunparse  # noqa: PLC0415
+
         pinned_ip = validation.resolved_ips[0]
         port_suffix = f":{parsed.port}" if parsed.port else ""
 
@@ -318,9 +325,7 @@ class HttpRequestTool(BaseWebTool):
         else:
             pinned_netloc = f"{pinned_ip}{port_suffix}"
 
-        pinned_headers = {k: v for k, v in headers.items() if k.lower() != "host"}
-        pinned_headers["Host"] = parsed.hostname or ""
         return (
             urlunparse(parsed._replace(netloc=pinned_netloc)),
-            pinned_headers,
+            normalized_headers,
         )

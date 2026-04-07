@@ -202,11 +202,14 @@ def build_default_tools(  # noqa: PLR0913
             network_policy=web_network_policy,
             search_provider=web_search_provider,
         ),
-        *_build_terminal_tools(
+    ]
+
+    all_tools.extend(
+        _build_terminal_tools(
             sandbox=terminal_sandbox,
             config=terminal_config,
         ),
-    ]
+    )
 
     if database_config is not None:
         all_tools.extend(
