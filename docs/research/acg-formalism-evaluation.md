@@ -200,9 +200,11 @@ class AgentContribution(BaseModel):
 - Surface in `GET /tasks/{id}` response metadata for operator inspection
 
 **Scope note**: This is a research recommendation, not an implementation spec. The
-minimum viable version extends `CoordinationResult` with a list of `AgentContribution`
-objects populated by the existing keyword-heuristic from `infer_failure_category()` applied
-per-agent subtask result.
+minimum viable version introduces a `CoordinationResultWithAttribution` wrapper containing
+the original (immutable) `CoordinationResult` plus a list of `AgentContribution` objects
+populated per-agent subtask result using the existing keyword-heuristic from
+`infer_failure_category()`. This preserves `CoordinationResult` immutability -- no changes
+to the frozen model.
 
 ---
 
