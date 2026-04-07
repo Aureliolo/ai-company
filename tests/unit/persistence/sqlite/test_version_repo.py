@@ -386,3 +386,58 @@ class TestDeserializeRowErrors:
         await repo._db.commit()
         with pytest.raises(QueryError, match="Schema mismatch"):
             await repo.get_version("ent-drift", 1)
+
+    @pytest.mark.unit
+    async def test_unexpected_callback_error_raises_query_error(
+        self, repo: SQLiteVersionRepository[_Stub]
+    ) -> None:
+        """Deserialize callback raising TypeError is wrapped as QueryError."""
+        from synthorg.persistence.errors import QueryError
+
+        # Insert a valid row, then swap the deserializer to one that fails
+        await repo._db.execute(
+            "INSERT INTO test_versions "
+            "(entity_id, version, content_hash, snapshot, saved_by, saved_at) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            (
+                "ent-callback",
+                1,
+                "c" * 64,
+                json.dumps({"name": "test", "value": 1}),
+                "user",
+                _NOW.isoformat(),
+            ),
+        )
+        await repo._db.commit()
+
+        def _bad_deserialize(_s: str) -> _Stub:
+            msg = "simulated callback failure"
+            raise TypeError(msg)
+
+        repo._deserialize = _bad_deserialize
+        with pytest.raises(QueryError, match="Failed to deserialize"):
+            await repo.get_version("ent-callback", 1)
+
+    @pytest.mark.unit
+    async def test_serializer_error_raises_query_error(
+        self, repo: SQLiteVersionRepository[_Stub]
+    ) -> None:
+        """Serialize callback raising TypeError is wrapped as QueryError."""
+        from synthorg.persistence.errors import QueryError
+        from synthorg.versioning.models import VersionSnapshot
+
+        def _bad_serialize(_m: _Stub) -> str:
+            msg = "simulated serializer failure"
+            raise TypeError(msg)
+
+        repo._serialize = _bad_serialize
+        version = VersionSnapshot(
+            entity_id="ent-ser",
+            version=1,
+            content_hash="d" * 64,
+            snapshot=_Stub(name="test", value=1),
+            saved_by="user",
+            saved_at=_NOW,
+        )
+        with pytest.raises(QueryError, match="Failed to serialize"):
+            await repo.save_version(version)

@@ -5,6 +5,7 @@ to provide content-addressable snapshot creation: a new version is only
 persisted when the entity content has actually changed.
 """
 
+import copy
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
@@ -68,7 +69,10 @@ class VersioningService[T: BaseModel]:
         Raises:
             PersistenceError: If the repository operation fails.
         """
-        content_hash = compute_content_hash(snapshot)
+        # Freeze the snapshot before any awaits so that shared mutable
+        # models cannot change between hash computation and persistence.
+        frozen = copy.deepcopy(snapshot)
+        content_hash = compute_content_hash(frozen)
         latest = await self._repo.get_latest_version(entity_id)
 
         if latest is not None and latest.content_hash == content_hash:
@@ -80,28 +84,83 @@ class VersioningService[T: BaseModel]:
             )
             return None
 
-        new_version_num = (latest.version + 1) if latest is not None else 1
-        version = VersionSnapshot(
-            entity_id=entity_id,
-            version=new_version_num,
-            content_hash=content_hash,
-            snapshot=snapshot,
-            saved_by=saved_by,
-            saved_at=datetime.now(UTC),
+        version = self._build_snapshot(
+            entity_id,
+            latest,
+            content_hash,
+            frozen,
+            saved_by,
         )
         inserted = await self._repo.save_version(version)
         if not inserted:
-            # A concurrent writer beat us to this (entity_id, version) pair.
-            # Return the version that was actually persisted rather than the
-            # one we constructed, so the caller always sees a live snapshot.
-            return await self._repo.get_latest_version(entity_id)
+            return await self._resolve_conflict(
+                entity_id,
+                content_hash,
+                frozen,
+                saved_by,
+            )
         logger.info(
             VERSION_SAVED,
             entity_id=entity_id,
-            version=new_version_num,
+            version=version.version,
             saved_by=saved_by,
         )
         return version
+
+    def _build_snapshot(
+        self,
+        entity_id: str,
+        latest: VersionSnapshot[T] | None,
+        content_hash: str,
+        frozen: T,
+        saved_by: str,
+    ) -> VersionSnapshot[T]:
+        """Build a VersionSnapshot with the next version number."""
+        new_version = (latest.version + 1) if latest is not None else 1
+        return VersionSnapshot(
+            entity_id=entity_id,
+            version=new_version,
+            content_hash=content_hash,
+            snapshot=frozen,
+            saved_by=saved_by,
+            saved_at=datetime.now(UTC),
+        )
+
+    async def _resolve_conflict(
+        self,
+        entity_id: str,
+        content_hash: str,
+        frozen: T,
+        saved_by: str,
+    ) -> VersionSnapshot[T] | None:
+        """Handle a concurrent-write conflict on version number.
+
+        Re-fetches the persisted row and returns it if the content
+        matches.  If different content won the race, builds a new
+        snapshot at the next version number and retries once.
+        """
+        persisted = await self._repo.get_latest_version(entity_id)
+        if persisted is not None and persisted.content_hash == content_hash:
+            return persisted
+        # Different content won the race -- retry with next version.
+        retry = self._build_snapshot(
+            entity_id,
+            persisted,
+            content_hash,
+            frozen,
+            saved_by,
+        )
+        inserted = await self._repo.save_version(retry)
+        if inserted:
+            logger.info(
+                VERSION_SAVED,
+                entity_id=entity_id,
+                version=retry.version,
+                saved_by=saved_by,
+            )
+            return retry
+        # Second collision (extremely unlikely). Return persisted state.
+        return await self._repo.get_latest_version(entity_id)
 
     async def get_latest(
         self,

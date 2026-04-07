@@ -225,71 +225,45 @@ class TestIdentityFieldChangeModelValidator:
     """IdentityFieldChange model_validator enforces change_type invariants."""
 
     @pytest.mark.unit
-    def test_added_with_old_value_raises(self) -> None:
+    @pytest.mark.parametrize(
+        ("change_type", "old_value", "new_value", "error_match"),
+        [
+            # Valid cases (error_match=None means no error expected)
+            ("added", None, '"value"', None),
+            ("removed", '"value"', None, None),
+            ("modified", '"old"', '"new"', None),
+            # Invalid: added with old_value present
+            ("added", '"previous"', '"new"', "old_value=None"),
+            # Invalid: removed with new_value present
+            ("removed", '"old"', '"should-not-be-here"', "new_value=None"),
+            # Invalid: modified with None old_value
+            ("modified", None, '"new"', "both old_value and new_value"),
+            # Invalid: modified with None new_value
+            ("modified", '"old"', None, "both old_value and new_value"),
+        ],
+    )
+    def test_change_invariant_matrix(
+        self,
+        change_type: str,
+        old_value: str | None,
+        new_value: str | None,
+        error_match: str | None,
+    ) -> None:
         from pydantic import ValidationError
 
-        with pytest.raises(ValidationError, match="old_value=None"):
-            IdentityFieldChange(
+        if error_match is None:
+            c = IdentityFieldChange(
                 field_path="settings.x",
-                change_type="added",
-                old_value='"previous"',
-                new_value='"new"',
+                change_type=change_type,  # type: ignore[arg-type]
+                old_value=old_value,
+                new_value=new_value,
             )
-
-    @pytest.mark.unit
-    def test_removed_with_new_value_raises(self) -> None:
-        from pydantic import ValidationError
-
-        with pytest.raises(ValidationError, match="new_value=None"):
-            IdentityFieldChange(
-                field_path="settings.x",
-                change_type="removed",
-                old_value='"old"',
-                new_value='"should-not-be-here"',
-            )
-
-    @pytest.mark.unit
-    def test_modified_with_none_old_value_raises(self) -> None:
-        from pydantic import ValidationError
-
-        with pytest.raises(ValidationError, match="both old_value and new_value"):
-            IdentityFieldChange(
-                field_path="settings.x",
-                change_type="modified",
-                old_value=None,
-                new_value='"new"',
-            )
-
-    @pytest.mark.unit
-    def test_modified_with_none_new_value_raises(self) -> None:
-        from pydantic import ValidationError
-
-        with pytest.raises(ValidationError, match="both old_value and new_value"):
-            IdentityFieldChange(
-                field_path="settings.x",
-                change_type="modified",
-                old_value='"old"',
-                new_value=None,
-            )
-
-    @pytest.mark.unit
-    def test_added_with_only_new_value_valid(self) -> None:
-        c = IdentityFieldChange(
-            field_path="settings.x",
-            change_type="added",
-            old_value=None,
-            new_value='"value"',
-        )
-        assert c.change_type == "added"
-        assert c.old_value is None
-
-    @pytest.mark.unit
-    def test_removed_with_only_old_value_valid(self) -> None:
-        c = IdentityFieldChange(
-            field_path="settings.x",
-            change_type="removed",
-            old_value='"value"',
-            new_value=None,
-        )
-        assert c.change_type == "removed"
-        assert c.new_value is None
+            assert c.change_type == change_type
+        else:
+            with pytest.raises(ValidationError, match=error_match):
+                IdentityFieldChange(
+                    field_path="settings.x",
+                    change_type=change_type,  # type: ignore[arg-type]
+                    old_value=old_value,
+                    new_value=new_value,
+                )

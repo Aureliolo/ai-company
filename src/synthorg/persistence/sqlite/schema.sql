@@ -587,7 +587,9 @@ CREATE TABLE IF NOT EXISTS agent_identity_versions (
     content_hash TEXT NOT NULL CHECK(length(content_hash) > 0),
     snapshot TEXT NOT NULL CHECK(length(snapshot) > 0),
     saved_by TEXT NOT NULL CHECK(length(saved_by) > 0),
-    saved_at TEXT NOT NULL,
+    saved_at TEXT NOT NULL CHECK(
+        saved_at LIKE '%+00:00' OR saved_at LIKE '%Z'
+    ),
     PRIMARY KEY (entity_id, version)
 );
 

@@ -231,10 +231,12 @@ metadata = {
 }
 ```
 
-This lookup is best-effort. A failure is logged at WARNING and the decision record is
-written without the `charter_version` key. No schema migration is required: the
-`metadata` field on `DecisionRecord` was designed as a forward-compatible extension
-point.
+This lookup is best-effort. On ``QueryError`` the decision record is written with
+``{"charter_version_lookup_failed": True}`` in its metadata so operators can
+distinguish lookup failures from the no-version-found case (where ``metadata``
+is ``None``). The failure is logged at WARNING. No schema migration is required:
+the ``metadata`` field on ``DecisionRecord`` was designed as a forward-compatible
+extension point.
 
 ---
 

@@ -101,7 +101,8 @@ class SQLiteVersionRepository[T: BaseModel]:
         )
         self._select_by_hash_sql = (
             f"SELECT {_c} FROM {_t} "  # noqa: S608
-            f"WHERE entity_id = ? AND content_hash = ?"
+            f"WHERE entity_id = ? AND content_hash = ? "
+            f"ORDER BY version DESC LIMIT 1"
         )
         self._select_list_sql = (
             f"SELECT {_c} FROM {_t} "  # noqa: S608
@@ -158,6 +159,20 @@ class SQLiteVersionRepository[T: BaseModel]:
                 reason="unexpected",
             )
             raise QueryError(msg) from exc
+        except Exception as exc:
+            # Catch-all for unconstrained deserialize_snapshot callbacks
+            # (e.g. TypeError, AttributeError) so all callback errors
+            # are normalized to QueryError.
+            context = f"{data.get('entity_id', '?')}@v{data.get('version', '?')}"
+            msg = f"Failed to deserialize version snapshot {context!r}: {exc}"
+            logger.exception(
+                VERSION_FETCH_FAILED,
+                table=self._table,
+                context=context,
+                error=str(exc),
+                reason="callback_error",
+            )
+            raise QueryError(msg) from exc
 
     async def save_version(self, version: VersionSnapshot[T]) -> bool:
         """Persist a version snapshot (insert only, idempotent).
@@ -168,13 +183,29 @@ class SQLiteVersionRepository[T: BaseModel]:
             was silently dropped by ``INSERT OR IGNORE``.
         """
         try:
+            serialized = self._serialize(version.snapshot)
+        except Exception as exc:
+            msg = (
+                f"Failed to serialize snapshot for version "
+                f"{version.version} of {version.entity_id!r} "
+                f"in {self._table}"
+            )
+            logger.exception(
+                VERSION_SAVE_FAILED,
+                table=self._table,
+                entity_id=version.entity_id,
+                version=version.version,
+                error=str(exc),
+            )
+            raise QueryError(msg) from exc
+        try:
             cursor = await self._db.execute(
                 self._insert_sql,
                 (
                     version.entity_id,
                     version.version,
                     version.content_hash,
-                    self._serialize(version.snapshot),
+                    serialized,
                     version.saved_by,
                     version.saved_at.isoformat(),
                 ),

@@ -139,23 +139,43 @@ class TestConcurrentSave:
     """Handles INSERT OR IGNORE concurrent duplicate detection."""
 
     @pytest.mark.unit
-    async def test_returns_existing_when_insert_ignored(self) -> None:
-        # save_version returns False: concurrent writer already inserted the row.
-        existing = _make_snapshot(version=1)
+    async def test_returns_existing_when_insert_ignored_same_content(self) -> None:
+        # save_version returns False: concurrent writer already inserted
+        # the same content. _resolve_conflict re-fetches and finds a
+        # matching content_hash, so it returns the persisted row.
+        model = _Simple(name="first", value=1)
+        existing = _make_snapshot(version=1, model=model)
         repo = AsyncMock()
-        repo.get_latest_version.return_value = None  # no prior version
-        repo.save_version.return_value = False  # INSERT OR IGNORE dropped our write
-        # Re-fetch returns the winner's snapshot
+        # First call: no prior version. Second call (from _resolve_conflict):
+        # returns the winner's snapshot (same content hash).
         repo.get_latest_version.side_effect = [None, existing]
+        repo.save_version.return_value = False
         svc = VersioningService(repo)
 
-        model = _Simple(name="first", value=1)
         result = await svc.snapshot_if_changed("ent-001", model, "user")
 
         repo.save_version.assert_called_once()
-        # Service re-fetched after the ignored insert
         assert repo.get_latest_version.call_count == 2
         assert result is existing
+
+    @pytest.mark.unit
+    async def test_retries_when_insert_ignored_different_content(self) -> None:
+        # save_version returns False then True: concurrent writer had
+        # different content, so _resolve_conflict retries with next version.
+        model = _Simple(name="ours", value=42)
+        other = _Simple(name="theirs", value=99)
+        other_snap = _make_snapshot(version=1, model=other)
+        repo = AsyncMock()
+        # First call: no prior. Second call (resolve): returns other's snap.
+        repo.get_latest_version.side_effect = [None, other_snap]
+        repo.save_version.side_effect = [False, True]
+        svc = VersioningService(repo)
+
+        result = await svc.snapshot_if_changed("ent-001", model, "user")
+
+        assert repo.save_version.call_count == 2
+        assert result is not None
+        assert result.version == 2  # retried with other.version + 1
 
 
 class TestSnapshotDeterminism:
@@ -184,8 +204,9 @@ class TestSnapshotDeterminism:
     def test_different_models_different_hash(
         self, name_a: str, value_a: int, name_b: str, value_b: int
     ) -> None:
+        from hypothesis import assume
+
         model_a = _Simple(name=name_a, value=value_a)
         model_b = _Simple(name=name_b, value=value_b)
-        if model_a == model_b:
-            return  # same input -- skip, not a violation
+        assume(model_a != model_b)
         assert compute_content_hash(model_a) != compute_content_hash(model_b)

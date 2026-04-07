@@ -107,6 +107,13 @@ settings.register_profile(
 # Override by setting HYPOTHESIS_PROFILE=dev in the environment.
 settings.load_profile(os.environ.get("HYPOTHESIS_PROFILE", "ci"))
 
+# ── Vendor-agnostic guardrail ───────────────────────────────────
+# Centralized set of disallowed vendor identifiers so tests that
+# scan for vendor names do not embed the literals themselves.
+DISALLOWED_VENDOR_NAMES: frozenset[str] = frozenset(
+    {"anthropic", "openai", "claude", "gpt", "gemini", "mistral"}
+)
+
 # ── Slow test guardrail ──────────────────────────────────────────
 # Fail any unit test whose *total* wall-clock time (setup + call +
 # teardown) exceeds this threshold.  This catches regressions like

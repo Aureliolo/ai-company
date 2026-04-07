@@ -203,9 +203,9 @@ class AgentRegistryService:
         return updated
 
     # Allowlist of fields that may be updated via update_identity.
-    # This prevents mass assignment of security-sensitive fields
-    # (e.g. authority, status, tools.access_level) through the
-    # generic update path.
+    # Only fields listed here are accepted; all others (authority,
+    # status, tools.access_level, etc.) are rejected to prevent
+    # mass assignment of security-sensitive fields.
     _UPDATABLE_FIELDS: frozenset[str] = frozenset({"level", "model"})
 
     async def update_identity(
@@ -275,9 +275,10 @@ class AgentRegistryService:
         Called **outside** the registry lock in both ``register`` and
         ``update_identity`` -- this is intentional: holding the lock during
         I/O would block all concurrent reads for the duration of the DB write.
-        The versioning call is fire-and-forget; a ``PersistenceError`` is logged
-        but never re-raised so that registry operations always succeed even when
-        the versioning back-end is unavailable.
+        The versioning call is awaited here, but failures are best-effort:
+        a ``PersistenceError`` is logged and never re-raised so that registry
+        operations always succeed even when the versioning back-end is
+        unavailable.
         """
         if self._versioning is None:
             return

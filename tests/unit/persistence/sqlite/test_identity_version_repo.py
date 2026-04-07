@@ -1,4 +1,4 @@
-"""Integration test: AgentIdentity round-trip through SQLiteVersionRepository.
+"""Unit test: AgentIdentity round-trip through SQLiteVersionRepository.
 
 Validates that the serialize/deserialize callables used in the backend
 correctly preserve an ``AgentIdentity`` through a DB round-trip.

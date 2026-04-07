@@ -79,7 +79,11 @@ class AgentIdentityDiff(BaseModel):
     @model_validator(mode="after")
     def _validate_version_order(self) -> AgentIdentityDiff:
         if self.from_version == self.to_version:
-            msg = f"from_version and to_version must differ (got {self.from_version})"
+            msg = (
+                f"from_version and to_version must differ "
+                f"(from_version={self.from_version}, "
+                f"to_version={self.to_version})"
+            )
             raise ValueError(msg)
         return self
 
@@ -106,7 +110,14 @@ def _diff_dicts(
     prefix: str,
     changes: list[IdentityFieldChange],
 ) -> None:
-    """Recursively compare two dicts and append changes to *changes*."""
+    """Recursively compare two dicts and append changes to *changes*.
+
+    Args:
+        old: JSON-serializable dict from the older model dump.
+        new: JSON-serializable dict from the newer model dump.
+        prefix: Dot-notation path prefix for nested fields.
+        changes: Accumulator list -- new changes are appended in-place.
+    """
     all_keys = old.keys() | new.keys()
     for key in sorted(all_keys):
         path = f"{prefix}.{key}" if prefix else key
@@ -142,7 +153,7 @@ def _diff_dicts(
 
 
 def compute_diff(
-    agent_id: str,
+    agent_id: NotBlankStr,
     old_snapshot: BaseModel,
     new_snapshot: BaseModel,
     from_version: int,

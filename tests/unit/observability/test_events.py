@@ -136,6 +136,7 @@ from synthorg.observability.events.workspace import (
     WORKSPACE_TEARDOWN_FAILED,
     WORKSPACE_TEARDOWN_START,
 )
+from tests.conftest import DISALLOWED_VENDOR_NAMES
 
 pytestmark = pytest.mark.unit
 _DOT_PATTERN = re.compile(r"^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$")
@@ -750,12 +751,11 @@ class TestEventConstants:
     def test_no_event_constant_contains_vendor_name(self) -> None:
         """No event constant value may contain real vendor names.
 
-        The project is vendor-agnostic: Anthropic, OpenAI, Claude, GPT, and
-        similar names must not appear in event constant strings.  Violations
-        would leak vendor identity into structured logs shipped to external
-        systems.
+        The disallowed vendor identifiers are loaded from
+        ``conftest.DISALLOWED_VENDOR_NAMES`` to keep vendor-specific
+        literals out of test source.
         """
-        vendor_names = {"anthropic", "openai", "claude", "gpt", "gemini", "mistral"}
+        vendor_names = DISALLOWED_VENDOR_NAMES
         violations: list[str] = []
         for _finder, module_name, _is_pkg in pkgutil.walk_packages(
             events.__path__, prefix=events.__name__ + "."
