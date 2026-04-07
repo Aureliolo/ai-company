@@ -221,6 +221,7 @@ class TestSelfEditingMemoryStrategyPrepareMessages:
         )
 
         assert len(messages) == 1
+        assert messages[0].content is not None
         assert "customer support agent" in messages[0].content
 
     async def test_respects_token_budget(self) -> None:
