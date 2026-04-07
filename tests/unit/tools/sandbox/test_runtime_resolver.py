@@ -3,7 +3,9 @@
 import pytest
 
 from synthorg.tools.sandbox.docker_config import DockerSandboxConfig
+from synthorg.tools.sandbox.factory import merge_gvisor_defaults
 from synthorg.tools.sandbox.runtime_resolver import SandboxRuntimeResolver
+from synthorg.tools.sandbox.sandboxing_config import SandboxingConfig
 
 pytestmark = pytest.mark.unit
 
@@ -90,18 +92,15 @@ class TestSandboxRuntimeResolverResolve:
         assert resolver.resolve_runtime("terminal") == "runsc"
 
 
-class TestSandboxRuntimeResolverWithExplicitOverrides:
-    """Tests for explicit gVisor runtime overrides."""
+class TestSandboxRuntimeResolverWithMergedDefaults:
+    """Tests for factory-default gVisor overrides via merge_gvisor_defaults."""
 
     def test_default_gvisor_overrides_for_high_risk_categories(self) -> None:
-        config = DockerSandboxConfig(
-            runtime_overrides={
-                "code_execution": "runsc",
-                "terminal": "runsc",
-            },
-        )
+        """merge_gvisor_defaults injects runsc for code_execution/terminal."""
+        base = SandboxingConfig(default_backend="docker")
+        merged = merge_gvisor_defaults(base)
         resolver = SandboxRuntimeResolver(
-            config=config,
+            config=merged.docker,
             available_runtimes=frozenset({"runc", "runsc"}),
         )
         assert resolver.resolve_runtime("code_execution") == "runsc"
@@ -110,14 +109,19 @@ class TestSandboxRuntimeResolverWithExplicitOverrides:
     def test_user_override_takes_precedence_over_factory_default(
         self,
     ) -> None:
-        config = DockerSandboxConfig(
-            runtime_overrides={
-                "code_execution": "runc",
-                "terminal": "runc",
-            },
+        """User-supplied runtime_overrides beat the factory defaults."""
+        base = SandboxingConfig(
+            default_backend="docker",
+            docker=DockerSandboxConfig(
+                runtime_overrides={
+                    "code_execution": "runc",
+                    "terminal": "runc",
+                },
+            ),
         )
+        merged = merge_gvisor_defaults(base)
         resolver = SandboxRuntimeResolver(
-            config=config,
+            config=merged.docker,
             available_runtimes=frozenset({"runc", "runsc"}),
         )
         assert resolver.resolve_runtime("code_execution") == "runc"
