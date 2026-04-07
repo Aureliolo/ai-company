@@ -157,7 +157,16 @@ class SQLiteSsrfViolationRepository:
 
         if row is None:
             return None
-        return _row_to_violation(row)
+        try:
+            return _row_to_violation(row)
+        except (ValueError, ValidationError) as exc:
+            msg = f"Failed to deserialize SSRF violation {violation_id!r}: {exc}"
+            logger.exception(
+                PERSISTENCE_SSRF_VIOLATION_QUERY_FAILED,
+                error=msg,
+                violation_id=violation_id,
+            )
+            raise PersistenceError(msg) from exc
 
     async def list_violations(
         self,

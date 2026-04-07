@@ -113,8 +113,11 @@ class FakeSsrfViolationRepository:
         resolved_by: NotBlankStr,
         resolved_at: AwareDatetime,
     ) -> bool:
+        if status == SsrfViolationStatus.PENDING:
+            msg = "Cannot transition a violation back to PENDING"
+            raise ValueError(msg)
         v = self._violations.get(violation_id)
-        if v is None:
+        if v is None or v.status != SsrfViolationStatus.PENDING:
             return False
         self._violations[violation_id] = v.model_copy(
             update={

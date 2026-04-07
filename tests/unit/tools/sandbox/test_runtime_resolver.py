@@ -125,38 +125,60 @@ class TestSandboxRuntimeResolverWithDefaults:
 
 
 class TestSandboxRuntimeResolverProbe:
-    """Tests for probe_available_runtimes()."""
+    """Tests for probe_available_runtimes() with mocked aiodocker."""
 
-    async def test_probe_returns_discovered_runtimes_when_docker_available(
+    async def test_probe_returns_discovered_runtimes(
         self,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        """When Docker is available, return discovered runtimes."""
+        """Probe parses Runtimes from Docker info."""
 
-        async def _mock_probe() -> frozenset[str]:
-            return frozenset({"runc", "runsc"})
+        class _MockSystem:
+            @staticmethod
+            async def info() -> dict[str, object]:
+                return {"Runtimes": {"runc": {}, "runsc": {}}}
 
-        monkeypatch.setattr(
-            SandboxRuntimeResolver,
-            "probe_available_runtimes",
-            staticmethod(_mock_probe),
-        )
+        class _MockDocker:
+            system = _MockSystem()
+
+            async def close(self) -> None:
+                pass
+
+        monkeypatch.setattr("aiodocker.Docker", _MockDocker)
         result = await SandboxRuntimeResolver.probe_available_runtimes()
         assert result == frozenset({"runc", "runsc"})
 
-    async def test_probe_returns_runc_fallback_when_docker_unavailable(
+    async def test_probe_falls_back_on_missing_runtimes_key(
         self,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        """When Docker is unavailable, return runc as minimum fallback."""
+        """Missing Runtimes key falls back to runc."""
 
-        async def _mock_probe() -> frozenset[str]:
-            return frozenset({"runc"})
+        class _MockSystem:
+            @staticmethod
+            async def info() -> dict[str, object]:
+                return {}
 
-        monkeypatch.setattr(
-            SandboxRuntimeResolver,
-            "probe_available_runtimes",
-            staticmethod(_mock_probe),
-        )
+        class _MockDocker:
+            system = _MockSystem()
+
+            async def close(self) -> None:
+                pass
+
+        monkeypatch.setattr("aiodocker.Docker", _MockDocker)
+        result = await SandboxRuntimeResolver.probe_available_runtimes()
+        assert result == frozenset({"runc"})
+
+    async def test_probe_falls_back_on_exception(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Probe returns runc fallback when Docker is unavailable."""
+
+        def _raise_error() -> None:
+            msg = "daemon unavailable"
+            raise ConnectionError(msg)
+
+        monkeypatch.setattr("aiodocker.Docker", _raise_error)
         result = await SandboxRuntimeResolver.probe_available_runtimes()
         assert result == frozenset({"runc"})

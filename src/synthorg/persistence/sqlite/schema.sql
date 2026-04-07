@@ -538,7 +538,12 @@ CREATE TABLE IF NOT EXISTS risk_overrides (
     created_at TEXT NOT NULL,
     expires_at TEXT NOT NULL,
     revoked_at TEXT,
-    revoked_by TEXT
+    revoked_by TEXT,
+    CHECK (
+        (revoked_at IS NULL AND revoked_by IS NULL)
+        OR
+        (revoked_at IS NOT NULL AND revoked_by IS NOT NULL)
+    )
 );
 
 CREATE INDEX IF NOT EXISTS idx_ro_action_type ON risk_overrides(action_type);
@@ -560,7 +565,14 @@ CREATE TABLE IF NOT EXISTS ssrf_violations (
     status TEXT NOT NULL DEFAULT 'pending'
         CHECK (status IN ('pending', 'allowed', 'denied')),
     resolved_by TEXT,
-    resolved_at TEXT
+    resolved_at TEXT,
+    CHECK (
+        (status = 'pending' AND resolved_by IS NULL AND resolved_at IS NULL)
+        OR
+        (status IN ('allowed', 'denied')
+         AND resolved_by IS NOT NULL
+         AND resolved_at IS NOT NULL)
+    )
 );
 
 -- Composite index for list_violations filtered by status + ordered by timestamp.

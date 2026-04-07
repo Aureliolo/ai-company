@@ -87,7 +87,17 @@ class SecuritySubscriber:
                     error="expected JSON array",
                 )
                 return
-            allowlist = tuple(str(e) for e in entries)
+            if any(
+                not isinstance(entry, str) or not entry.strip() for entry in entries
+            ):
+                logger.warning(
+                    SECURITY_ALLOWLIST_UPDATE_FAILED,
+                    namespace=namespace,
+                    key=key,
+                    error="allowlist entries must be non-empty strings",
+                )
+                return
+            allowlist = tuple(entry.strip() for entry in entries)
         except (json.JSONDecodeError, TypeError) as exc:
             logger.warning(
                 SECURITY_ALLOWLIST_UPDATE_FAILED,
@@ -97,7 +107,16 @@ class SecuritySubscriber:
             )
             return
 
-        await self._on_changed(allowlist)
+        try:
+            await self._on_changed(allowlist)
+        except Exception as exc:
+            logger.exception(
+                SECURITY_ALLOWLIST_UPDATE_FAILED,
+                namespace=namespace,
+                key=key,
+                error=f"failed to apply allowlist: {exc}",
+            )
+            raise
         logger.info(
             SECURITY_ALLOWLIST_UPDATED,
             namespace=namespace,

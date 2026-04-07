@@ -12,6 +12,10 @@ provider endpoint.  Credentials never enter the container.
 """
 
 from synthorg.observability import get_logger
+from synthorg.observability.events.sandbox import (
+    SANDBOX_AUTH_PROXY_NOT_IMPLEMENTED,
+    SANDBOX_AUTH_PROXY_STOPPED,
+)
 
 logger = get_logger(__name__)
 
@@ -59,7 +63,7 @@ class SandboxAuthProxy:
             "is built on top of aiohttp."
         )
         logger.warning(
-            "sandbox.auth_proxy.not_implemented",
+            SANDBOX_AUTH_PROXY_NOT_IMPLEMENTED,
             port=port,
         )
         raise NotImplementedError(msg)
@@ -69,5 +73,10 @@ class SandboxAuthProxy:
 
         Safe to call when not started.
         """
+        if self._port != 0:
+            logger.info(
+                SANDBOX_AUTH_PROXY_STOPPED,
+                port=self._port,
+            )
         self._port = 0
         self._url = ""
