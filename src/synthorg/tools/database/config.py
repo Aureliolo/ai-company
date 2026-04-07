@@ -46,7 +46,7 @@ class DatabaseConfig(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
-    connections: dict[str, DatabaseConnectionConfig] = Field(
+    connections: dict[NotBlankStr, DatabaseConnectionConfig] = Field(
         default_factory=dict,
         description="Named database connections",
     )

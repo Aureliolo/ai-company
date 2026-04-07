@@ -208,17 +208,33 @@ class ToolInvoker:
         if violation is None:
             return None
         if violation.requires_approval:
+            from synthorg.engine.approval_gate_models import (  # noqa: PLC0415
+                EscalationInfo,
+            )
+
+            approval_id = f"sub-constraint-{tool_call.id}"
+            self._pending_escalations.append(
+                EscalationInfo(
+                    approval_id=approval_id,
+                    tool_call_id=tool_call.id,
+                    tool_name=tool_call.name,
+                    action_type=tool.action_type,
+                    risk_level=ApprovalRiskLevel.HIGH,
+                    reason=violation.reason,
+                ),
+            )
             logger.warning(
                 TOOL_SECURITY_ESCALATED,
                 tool_call_id=tool_call.id,
                 tool_name=tool_call.name,
                 reason=violation.reason,
+                approval_id=approval_id,
             )
             return ToolResult(
                 tool_call_id=tool_call.id,
                 content=(
                     f"Sub-constraint escalation: {violation.reason}. "
-                    "Human approval required."
+                    f"Human approval required (id={approval_id})"
                 ),
                 is_error=True,
             )
