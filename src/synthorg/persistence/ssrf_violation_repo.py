@@ -69,13 +69,21 @@ class SsrfViolationRepository(Protocol):
     ) -> bool:
         """Update a violation's status (allow or deny).
 
+        Only transitions violations currently in PENDING status.
+        Violations already resolved (ALLOWED or DENIED) are not
+        updated and the method returns ``False``.
+
         Args:
             violation_id: The violation to update.
-            status: New status (ALLOWED or DENIED).
+            status: New status (ALLOWED or DENIED, not PENDING).
             resolved_by: User who resolved it.
             resolved_at: When it was resolved.
 
         Returns:
-            True if the violation was found and updated.
+            ``True`` if a pending violation was found and transitioned,
+            ``False`` if the violation was not found or already resolved.
+
+        Raises:
+            ValueError: If *status* is PENDING.
         """
         ...

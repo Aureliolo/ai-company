@@ -75,7 +75,7 @@ class FakeRiskOverrideRepository:
         revoked_at: AwareDatetime,
     ) -> bool:
         ovr = self._overrides.get(override_id)
-        if ovr is None or not ovr.is_active:
+        if ovr is None or ovr.revoked_at is not None:
             return False
         self._overrides[override_id] = ovr.model_copy(
             update={"revoked_at": revoked_at, "revoked_by": revoked_by},

@@ -381,7 +381,7 @@ class DockerSandbox:
             raise ValueError(msg)
         return result
 
-    async def execute(
+    async def execute(  # noqa: PLR0913
         self,
         *,
         command: str,
@@ -389,6 +389,7 @@ class DockerSandbox:
         cwd: Path | None = None,
         env_overrides: Mapping[str, str] | None = None,
         timeout: float | None = None,  # noqa: ASYNC109
+        category: str = "",
     ) -> SandboxResult:
         """Execute a command inside a Docker container.
 
@@ -399,6 +400,7 @@ class DockerSandbox:
             env_overrides: Extra env vars (only these -- no host leakage).
             timeout: Seconds before the container is killed. Clamped
                 to ``config.timeout_seconds`` if larger.
+            category: Tool category for per-category runtime selection.
 
         Returns:
             A ``SandboxResult`` with captured output and exit status.
@@ -433,6 +435,7 @@ class DockerSandbox:
             container_cwd=container_cwd,
             env_overrides=env_overrides,
             timeout=effective_timeout,
+            category=category,
         )
 
     async def _run_container(  # noqa: PLR0913
@@ -444,6 +447,7 @@ class DockerSandbox:
         container_cwd: str,
         env_overrides: Mapping[str, str] | None,
         timeout: float,  # noqa: ASYNC109
+        category: str = "",
     ) -> SandboxResult:
         """Create, start, and wait for a container.
 
@@ -454,6 +458,7 @@ class DockerSandbox:
             container_cwd: Container working directory.
             env_overrides: Environment variables.
             timeout: Timeout in seconds.
+            category: Tool category for runtime resolution.
 
         Returns:
             A ``SandboxResult`` with captured output and exit status.
@@ -463,6 +468,7 @@ class DockerSandbox:
             args=args,
             container_cwd=container_cwd,
             env_overrides=env_overrides,
+            category=category,
         )
 
         try:

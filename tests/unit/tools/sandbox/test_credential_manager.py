@@ -68,9 +68,9 @@ class TestSanitizeEnv:
 
     def test_case_insensitive_matching(self) -> None:
         mgr = SandboxCredentialManager()
-        env = {"openai_api_key": "sk-secret", "Api_Key": "val"}
+        env = {"test_provider_api_key": "sk-secret", "Api_Key": "val"}
         result = mgr.sanitize_env(env)
-        assert "openai_api_key" not in result
+        assert "test_provider_api_key" not in result
         assert "Api_Key" not in result
 
     def test_returns_new_dict(self) -> None:

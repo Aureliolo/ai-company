@@ -88,8 +88,8 @@ class DockerSandboxConfig(BaseModel):
         default=None,
         description=(
             "Structured 4-domain policy overlay (filesystem, network, "
-            "process, inference).  When set, domain fields override "
-            "the flat configuration fields."
+            "process, inference).  Consumed by the sandbox execution "
+            "layer to apply domain-specific constraints at runtime."
         ),
     )
 
