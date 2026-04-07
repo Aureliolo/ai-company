@@ -29,7 +29,10 @@ from synthorg.observability.events.docker import (
     DOCKER_EXECUTE_TIMEOUT,
     DOCKER_HEALTH_CHECK,
 )
-from synthorg.observability.events.sandbox import SANDBOX_NETWORK_ENFORCEMENT
+from synthorg.observability.events.sandbox import (
+    SANDBOX_NETWORK_ENFORCEMENT,
+    SANDBOX_RUNTIME_RESOLVER_ATTACHED,
+)
 from synthorg.tools.sandbox.credential_manager import SandboxCredentialManager
 from synthorg.tools.sandbox.docker_config import DockerSandboxConfig
 from synthorg.tools.sandbox.errors import SandboxError, SandboxStartError
@@ -143,6 +146,10 @@ class DockerSandbox:
             resolver: The resolver with probed runtime availability.
         """
         self._runtime_resolver = resolver
+        logger.info(
+            SANDBOX_RUNTIME_RESOLVER_ATTACHED,
+            resolver_type=type(resolver).__name__,
+        )
 
     async def _ensure_docker(self) -> aiodocker.Docker:
         """Lazily connect to the Docker daemon.

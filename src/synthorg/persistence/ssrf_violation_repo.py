@@ -52,10 +52,13 @@ class SsrfViolationRepository(Protocol):
 
         Args:
             status: Filter by status (None for all).
-            limit: Maximum number of results.
+            limit: Maximum number of results (must be positive).
 
         Returns:
             Tuple of violations, ordered by timestamp DESC.
+
+        Raises:
+            ValueError: If *limit* is not positive.
         """
         ...
 

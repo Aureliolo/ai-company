@@ -79,6 +79,31 @@ class TestSanitizeEnv:
         result = mgr.sanitize_env(env)
         assert result is not env
 
+    @pytest.mark.parametrize(
+        ("key", "description"),
+        [
+            ("CLOUD_ACCESS_KEY", "access_key pattern"),
+            ("APP_SIGNING_KEY", "signing_key pattern"),
+            ("DATA_ENCRYPTION_KEY", "encryption_key pattern"),
+            ("GPG_PASSPHRASE", "passphrase pattern"),
+            ("POSTGRES_CONNECTION_STRING", "connection_string pattern"),
+            ("BACKEND_DATABASE_URL", "database_url pattern"),
+            ("auth", "auth word boundary pattern"),
+            ("dsn", "dsn word boundary pattern"),
+        ],
+    )
+    def test_strips_remaining_credential_patterns(
+        self,
+        key: str,
+        description: str,
+    ) -> None:
+        """Cover all 14 credential regex families ({description})."""
+        mgr = SandboxCredentialManager()
+        env = {key: "sensitive-value", "PATH": "/usr/bin"}
+        result = mgr.sanitize_env(env)
+        assert key not in result, f"{key} ({description}) should be stripped"
+        assert result["PATH"] == "/usr/bin"
+
     def test_reports_stripped_keys(self) -> None:
         mgr = SandboxCredentialManager()
         env = {
