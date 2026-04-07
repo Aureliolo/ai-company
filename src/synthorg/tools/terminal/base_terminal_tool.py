@@ -73,7 +73,9 @@ class BaseTerminalTool(BaseTool, ABC):
         Returns:
             ``True`` if the command is blocked.
         """
-        normalized = command.strip().lower()
+        # Collapse whitespace to prevent bypass via extra spaces
+        # (e.g. "rm  -rf  /" bypassing "rm -rf /").
+        normalized = " ".join(command.strip().lower().split())
         parts = normalized.split(maxsplit=1)
         executable = parts[0] if parts else ""
         for pattern in self._config.command_blocklist:
