@@ -37,3 +37,10 @@ ORG_MEMORY_CONFIG_INVALID: Final[str] = "org_memory.config.invalid"
 # ── Model validation ────────────────────────────────────────────
 
 ORG_MEMORY_MODEL_INVALID: Final[str] = "org_memory.model.invalid"
+
+# ── MVCC operations (Phase 1.5 -- D26) ─────────────────────────
+
+ORG_MEMORY_MVCC_PUBLISH_APPENDED: Final[str] = "org_memory.mvcc.publish_appended"
+ORG_MEMORY_MVCC_RETRACT_APPENDED: Final[str] = "org_memory.mvcc.retract_appended"
+ORG_MEMORY_MVCC_SNAPSHOT_AT_QUERIED: Final[str] = "org_memory.mvcc.snapshot_at_queried"
+ORG_MEMORY_MVCC_LOG_QUERIED: Final[str] = "org_memory.mvcc.log_queried"

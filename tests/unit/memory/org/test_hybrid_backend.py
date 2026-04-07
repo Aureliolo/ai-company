@@ -203,6 +203,23 @@ class TestHybridBackendWrite:
         assert fact_id
         await backend.disconnect()
 
+    async def test_write_with_tags_persists(self) -> None:
+        backend = await _make_backend()
+        await backend.write(
+            OrgFactWriteRequest(
+                content="Tagged convention",
+                category=OrgFactCategory.CONVENTION,
+                tags=("important", "security"),
+            ),
+            author=_SENIOR,
+        )
+        results = await backend.query(
+            OrgMemoryQuery(context="Tagged"),
+        )
+        assert len(results) == 1
+        assert set(results[0].tags) == {"important", "security"}
+        await backend.disconnect()
+
     async def test_write_when_not_connected(self) -> None:
         backend = await _make_backend()
         await backend.disconnect()

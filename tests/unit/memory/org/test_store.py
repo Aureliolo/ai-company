@@ -1,4 +1,4 @@
-"""Tests for SQLiteOrgFactStore."""
+"""Tests for SQLiteOrgFactStore (MVCC implementation)."""
 
 import sqlite3
 from datetime import UTC, datetime
@@ -13,7 +13,7 @@ from synthorg.memory.org.errors import (
     OrgMemoryWriteError,
 )
 from synthorg.memory.org.models import OrgFact, OrgFactAuthor
-from synthorg.memory.org.store import SQLiteOrgFactStore, _row_to_org_fact
+from synthorg.memory.org.store import SQLiteOrgFactStore, _snapshot_row_to_org_fact
 
 _NOW = datetime.now(UTC)
 _HUMAN_AUTHOR = OrgFactAuthor(is_human=True)
@@ -97,7 +97,9 @@ class TestSQLiteOrgFactStoreOperations:
         await store.connect()
         try:
             await store.save(_make_fact("f1", "Fact A", OrgFactCategory.ADR))
-            await store.save(_make_fact("f2", "Fact B", OrgFactCategory.PROCEDURE))
+            await store.save(
+                _make_fact("f2", "Fact B", OrgFactCategory.PROCEDURE),
+            )
             await store.save(_make_fact("f3", "Fact C", OrgFactCategory.ADR))
 
             results = await store.query(
@@ -136,11 +138,17 @@ class TestSQLiteOrgFactStoreOperations:
         store = SQLiteOrgFactStore(":memory:")
         await store.connect()
         try:
-            await store.save(_make_fact("f1", category=OrgFactCategory.CONVENTION))
-            await store.save(_make_fact("f2", category=OrgFactCategory.CONVENTION))
+            await store.save(
+                _make_fact("f1", category=OrgFactCategory.CONVENTION),
+            )
+            await store.save(
+                _make_fact("f2", category=OrgFactCategory.CONVENTION),
+            )
             await store.save(_make_fact("f3", category=OrgFactCategory.ADR))
 
-            results = await store.list_by_category(OrgFactCategory.CONVENTION)
+            results = await store.list_by_category(
+                OrgFactCategory.CONVENTION,
+            )
             assert len(results) == 2
         finally:
             await store.disconnect()
@@ -199,18 +207,16 @@ class TestSQLiteOrgFactStoreOperations:
         with pytest.raises(OrgMemoryConnectionError):
             await store.list_by_category(OrgFactCategory.ADR)
 
-    async def test_save_duplicate_id_raises(self) -> None:
-        """INSERT (not INSERT OR REPLACE) preserves audit trail."""
+    async def test_save_duplicate_id_republishes(self) -> None:
+        """Re-publishing a fact creates a new version in the log."""
         store = SQLiteOrgFactStore(":memory:")
         await store.connect()
         try:
             await store.save(_make_fact("f1", "Original content"))
-            with pytest.raises(OrgMemoryWriteError):
-                await store.save(_make_fact("f1", "Updated content"))
-            # Original still intact
+            await store.save(_make_fact("f1", "Updated content"))
             retrieved = await store.get("f1")
             assert retrieved is not None
-            assert retrieved.content == "Original content"
+            assert retrieved.content == "Updated content"
         finally:
             await store.disconnect()
 
@@ -219,13 +225,25 @@ class TestSQLiteOrgFactStoreOperations:
         await store.connect()
         try:
             await store.save(
-                _make_fact("f1", "Code review required", OrgFactCategory.ADR),
+                _make_fact(
+                    "f1",
+                    "Code review required",
+                    OrgFactCategory.ADR,
+                ),
             )
             await store.save(
-                _make_fact("f2", "Code review optional", OrgFactCategory.PROCEDURE),
+                _make_fact(
+                    "f2",
+                    "Code review optional",
+                    OrgFactCategory.PROCEDURE,
+                ),
             )
             await store.save(
-                _make_fact("f3", "Deploy on Friday", OrgFactCategory.ADR),
+                _make_fact(
+                    "f3",
+                    "Deploy on Friday",
+                    OrgFactCategory.ADR,
+                ),
             )
 
             results = await store.query(
@@ -244,9 +262,6 @@ class TestSQLiteOrgFactStoreOperations:
         assert exc_info.value.__cause__ is not None
 
     async def test_save_sqlite_error_wraps(self) -> None:
-        # Assign a mock directly -- never create a real aiosqlite
-        # connection.  This avoids the worker thread entirely, which
-        # prevents PytestUnhandledThreadExceptionWarning under xdist.
         store = SQLiteOrgFactStore(":memory:")
         store._db = AsyncMock()
         store._db.execute = AsyncMock(
@@ -287,7 +302,10 @@ class TestSQLiteOrgFactStoreOperations:
         store._db = None
 
     def test_path_traversal_rejected(self) -> None:
-        with pytest.raises(OrgMemoryConnectionError, match="Path traversal"):
+        with pytest.raises(
+            OrgMemoryConnectionError,
+            match="Path traversal",
+        ):
             SQLiteOrgFactStore("../../../etc/db")
 
     async def test_like_special_chars_escaped(self) -> None:
@@ -309,7 +327,7 @@ class TestSQLiteOrgFactStoreOperations:
             await store.disconnect()
 
     async def test_list_by_category_sqlite_error_wraps(self) -> None:
-        """Item 12: list_by_category wraps sqlite3.Error."""
+        """list_by_category wraps sqlite3.Error."""
         store = SQLiteOrgFactStore(":memory:")
         store._db = AsyncMock()
         store._db.execute = AsyncMock(
@@ -321,15 +339,42 @@ class TestSQLiteOrgFactStoreOperations:
 
     async def test_row_parse_error_wraps_in_query_error(self) -> None:
         malformed_row = {
-            "id": "f1",
+            "fact_id": "f1",
             "content": "test",
             "category": "INVALID_CATEGORY",
+            "tags": "[]",
             "author_agent_id": None,
             "author_seniority": None,
             "author_is_human": 1,
+            "author_autonomy_level": None,
             "created_at": _NOW.isoformat(),
+            "retracted_at": None,
+            "version": 1,
         }
         mock_row = AsyncMock()
         mock_row.__getitem__ = lambda self, key: malformed_row[key]
-        with pytest.raises(OrgMemoryQueryError, match="Failed to deserialize"):
-            _row_to_org_fact(mock_row)
+        with pytest.raises(
+            OrgMemoryQueryError,
+            match="Failed to deserialize",
+        ):
+            _snapshot_row_to_org_fact(mock_row)
+
+    async def test_save_with_tags(self) -> None:
+        """Tags are persisted and retrievable."""
+        store = SQLiteOrgFactStore(":memory:")
+        await store.connect()
+        try:
+            fact = OrgFact(
+                id="f1",
+                content="Tagged fact",
+                category=OrgFactCategory.ADR,
+                tags=("core-policy", "security"),
+                author=_HUMAN_AUTHOR,
+                created_at=_NOW,
+            )
+            await store.save(fact)
+            retrieved = await store.get("f1")
+            assert retrieved is not None
+            assert set(retrieved.tags) == {"core-policy", "security"}
+        finally:
+            await store.disconnect()

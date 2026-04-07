@@ -225,6 +225,7 @@ class HybridPromptRetrievalBackend:
             id=fact_id,
             content=request.content,
             category=request.category,
+            tags=request.tags,
             author=author,
             created_at=now,
         )

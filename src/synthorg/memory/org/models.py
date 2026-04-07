@@ -2,13 +2,20 @@
 
 Frozen Pydantic models for organizational facts -- shared company-wide
 knowledge such as policies, ADRs, procedures, and conventions.
+
+Includes MVCC models for the append-only operation log and materialized
+snapshot (Phase 1.5 -- D26).
 """
 
-from typing import Self
+from typing import Literal, Self
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
 
-from synthorg.core.enums import OrgFactCategory, SeniorityLevel  # noqa: TC001
+from synthorg.core.enums import (
+    AutonomyLevel,  # noqa: TC001
+    OrgFactCategory,  # noqa: TC001
+    SeniorityLevel,  # noqa: TC001
+)
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.observability import get_logger
 from synthorg.observability.events.org_memory import ORG_MEMORY_MODEL_INVALID
@@ -39,6 +46,10 @@ class OrgFactAuthor(BaseModel):
         default=None,
         description="Agent seniority level (None for human authors)",
     )
+    autonomy_level: AutonomyLevel | None = Field(
+        default=None,
+        description="Agent autonomy level at write time (None for human authors)",
+    )
     is_human: bool = Field(
         default=False,
         description="Whether the author is a human operator",
@@ -46,7 +57,7 @@ class OrgFactAuthor(BaseModel):
 
     @model_validator(mode="after")
     def _validate_author_consistency(self) -> Self:
-        """Ensure human authors have no agent_id and agents have required fields."""
+        """Ensure human authors have no agent fields and agents have required fields."""
         if self.is_human:
             if self.agent_id is not None:
                 msg = "Human authors must not have an agent_id"
@@ -63,6 +74,15 @@ class OrgFactAuthor(BaseModel):
                     ORG_MEMORY_MODEL_INVALID,
                     model="OrgFactAuthor",
                     field="seniority",
+                    reason=msg,
+                )
+                raise ValueError(msg)
+            if self.autonomy_level is not None:
+                msg = "Human authors must not have an autonomy level"
+                logger.warning(
+                    ORG_MEMORY_MODEL_INVALID,
+                    model="OrgFactAuthor",
+                    field="autonomy_level",
                     reason=msg,
                 )
                 raise ValueError(msg)
@@ -95,6 +115,7 @@ class OrgFact(BaseModel):
         id: Unique identifier for this fact.
         content: The fact content text.
         category: Category classification.
+        tags: Metadata tags for cross-cutting concerns.
         author: Who created this fact.
         created_at: Creation timestamp.
     """
@@ -104,6 +125,10 @@ class OrgFact(BaseModel):
     id: NotBlankStr = Field(description="Unique fact identifier")
     content: NotBlankStr = Field(description="Fact content text")
     category: OrgFactCategory = Field(description="Category classification")
+    tags: tuple[NotBlankStr, ...] = Field(
+        default=(),
+        description="Metadata tags for cross-cutting concerns",
+    )
     author: OrgFactAuthor = Field(description="Who created this fact")
     created_at: AwareDatetime = Field(description="Creation timestamp")
 
@@ -114,12 +139,17 @@ class OrgFactWriteRequest(BaseModel):
     Attributes:
         content: The fact content text.
         category: Category classification.
+        tags: Metadata tags for cross-cutting concerns.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     content: NotBlankStr = Field(description="Fact content text")
     category: OrgFactCategory = Field(description="Category classification")
+    tags: tuple[NotBlankStr, ...] = Field(
+        default=(),
+        description="Metadata tags for cross-cutting concerns",
+    )
 
 
 class OrgMemoryQuery(BaseModel):
@@ -147,3 +177,87 @@ class OrgMemoryQuery(BaseModel):
         le=100,
         description="Maximum number of results",
     )
+
+
+# ── MVCC models (Phase 1.5 -- D26) ──────────────────────────────
+
+
+class OperationLogEntry(BaseModel):
+    """Single row in the append-only operation log.
+
+    Every publish or retract is recorded as an immutable log entry.
+    The version counter is monotonically increasing per ``fact_id``.
+
+    Attributes:
+        operation_id: Globally unique operation identifier.
+        fact_id: Logical fact identifier.
+        operation_type: ``PUBLISH`` or ``RETRACT``.
+        content: Fact body (``None`` for RETRACT operations).
+        tags: Metadata tags at time of operation.
+        author_agent_id: Agent that performed the operation
+            (``None`` for human authors).
+        author_autonomy_level: Agent autonomy level at write time.
+        timestamp: UTC timestamp of the operation.
+        version: Per-fact version counter (starts at 1).
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+
+    operation_id: NotBlankStr = Field(
+        description="Globally unique operation identifier",
+    )
+    fact_id: NotBlankStr = Field(description="Logical fact identifier")
+    operation_type: Literal["PUBLISH", "RETRACT"] = Field(
+        description="Operation type",
+    )
+    content: NotBlankStr | None = Field(
+        default=None,
+        description="Fact body (None for RETRACT)",
+    )
+    tags: tuple[NotBlankStr, ...] = Field(
+        default=(),
+        description="Metadata tags at time of operation",
+    )
+    author_agent_id: NotBlankStr | None = Field(
+        default=None,
+        description="Agent that performed the operation",
+    )
+    author_autonomy_level: AutonomyLevel | None = Field(
+        default=None,
+        description="Agent autonomy level at write time",
+    )
+    timestamp: AwareDatetime = Field(description="UTC timestamp")
+    version: int = Field(ge=1, description="Per-fact version counter")
+
+
+class OperationLogSnapshot(BaseModel):
+    """Materialized snapshot row for current committed state.
+
+    Represents the state of a single fact at a point in time.
+    Active facts have ``retracted_at=None``.
+
+    Attributes:
+        fact_id: Logical fact identifier (primary key).
+        content: Current fact body.
+        tags: Current metadata tags.
+        created_at: Timestamp of first PUBLISH.
+        retracted_at: Timestamp of retraction (``None`` = active).
+        version: Version matching most recent operation log entry.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+
+    fact_id: NotBlankStr = Field(description="Logical fact identifier")
+    content: NotBlankStr = Field(description="Current fact body")
+    tags: tuple[NotBlankStr, ...] = Field(
+        default=(),
+        description="Current metadata tags",
+    )
+    created_at: AwareDatetime = Field(
+        description="Timestamp of first PUBLISH",
+    )
+    retracted_at: AwareDatetime | None = Field(
+        default=None,
+        description="Retraction timestamp (None = active)",
+    )
+    version: int = Field(ge=1, description="Most recent operation version")

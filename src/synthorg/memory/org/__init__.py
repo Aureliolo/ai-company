@@ -22,6 +22,8 @@ from synthorg.memory.org.errors import (
 from synthorg.memory.org.factory import create_org_memory_backend
 from synthorg.memory.org.hybrid_backend import HybridPromptRetrievalBackend
 from synthorg.memory.org.models import (
+    OperationLogEntry,
+    OperationLogSnapshot,
     OrgFact,
     OrgFactAuthor,
     OrgFactWriteRequest,
@@ -34,6 +36,8 @@ __all__ = [
     "CategoryWriteRule",
     "ExtendedStoreConfig",
     "HybridPromptRetrievalBackend",
+    "OperationLogEntry",
+    "OperationLogSnapshot",
     "OrgFact",
     "OrgFactAuthor",
     "OrgFactStore",

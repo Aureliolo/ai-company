@@ -1,29 +1,44 @@
-"""Org fact store -- protocol and SQLite implementation.
+"""Org fact store -- protocol and SQLite MVCC implementation.
 
-Self-contained storage for organizational facts, separate from the
-operational persistence layer.
+Self-contained storage for organizational facts with append-only
+operation log and materialized snapshot (Phase 1.5 -- D26).
 """
 
+import json
 import sqlite3
+import uuid
 from datetime import UTC, datetime
 from pathlib import PurePosixPath, PureWindowsPath
-from typing import Protocol, runtime_checkable
+from typing import Literal, Protocol, runtime_checkable
 
 import aiosqlite
 from pydantic import ValidationError
 
-from synthorg.core.enums import OrgFactCategory, SeniorityLevel
+from synthorg.core.enums import (
+    AutonomyLevel,
+    OrgFactCategory,
+    SeniorityLevel,
+)
 from synthorg.core.types import NotBlankStr
 from synthorg.memory.org.errors import (
     OrgMemoryConnectionError,
     OrgMemoryQueryError,
     OrgMemoryWriteError,
 )
-from synthorg.memory.org.models import OrgFact, OrgFactAuthor
+from synthorg.memory.org.models import (
+    OperationLogEntry,
+    OperationLogSnapshot,
+    OrgFact,
+    OrgFactAuthor,
+)
 from synthorg.observability import get_logger
 from synthorg.observability.events.org_memory import (
     ORG_MEMORY_CONNECT_FAILED,
     ORG_MEMORY_DISCONNECT_FAILED,
+    ORG_MEMORY_MVCC_LOG_QUERIED,
+    ORG_MEMORY_MVCC_PUBLISH_APPENDED,
+    ORG_MEMORY_MVCC_RETRACT_APPENDED,
+    ORG_MEMORY_MVCC_SNAPSHOT_AT_QUERIED,
     ORG_MEMORY_NOT_CONNECTED,
     ORG_MEMORY_QUERY_FAILED,
     ORG_MEMORY_ROW_PARSE_FAILED,
@@ -32,27 +47,66 @@ from synthorg.observability.events.org_memory import (
 
 logger = get_logger(__name__)
 
-_CREATE_TABLE_SQL = """\
-CREATE TABLE IF NOT EXISTS org_facts (
-    id TEXT PRIMARY KEY,
-    content TEXT NOT NULL,
-    category TEXT NOT NULL,
+# ── Schema DDL ──────────────────────────────────────────────────
+
+_CREATE_OPERATION_LOG_SQL = """\
+CREATE TABLE IF NOT EXISTS org_facts_operation_log (
+    operation_id TEXT PRIMARY KEY,
+    fact_id TEXT NOT NULL,
+    operation_type TEXT NOT NULL CHECK(operation_type IN ('PUBLISH', 'RETRACT')),
+    content TEXT,
+    tags TEXT NOT NULL DEFAULT '[]',
     author_agent_id TEXT,
-    author_seniority TEXT,
-    author_is_human INTEGER NOT NULL DEFAULT 0,
-    created_at TEXT NOT NULL
+    author_autonomy_level TEXT,
+    timestamp TEXT NOT NULL,
+    version INTEGER NOT NULL,
+    UNIQUE(fact_id, version)
 )
 """
 
-_CREATE_CATEGORY_INDEX_SQL = """\
-CREATE INDEX IF NOT EXISTS idx_org_facts_category
-ON org_facts (category)
+_CREATE_OPLOG_FACT_INDEX_SQL = """\
+CREATE INDEX IF NOT EXISTS idx_oplog_fact_id
+ON org_facts_operation_log (fact_id)
 """
+
+_CREATE_OPLOG_TIMESTAMP_INDEX_SQL = """\
+CREATE INDEX IF NOT EXISTS idx_oplog_timestamp
+ON org_facts_operation_log (timestamp)
+"""
+
+_CREATE_SNAPSHOT_SQL = """\
+CREATE TABLE IF NOT EXISTS org_facts_snapshot (
+    fact_id TEXT PRIMARY KEY,
+    content TEXT NOT NULL,
+    category TEXT NOT NULL,
+    tags TEXT NOT NULL DEFAULT '[]',
+    author_agent_id TEXT,
+    author_seniority TEXT,
+    author_is_human INTEGER NOT NULL DEFAULT 0,
+    author_autonomy_level TEXT,
+    created_at TEXT NOT NULL,
+    retracted_at TEXT,
+    version INTEGER NOT NULL
+)
+"""
+
+_CREATE_SNAPSHOT_CATEGORY_INDEX_SQL = """\
+CREATE INDEX IF NOT EXISTS idx_snapshot_category
+ON org_facts_snapshot (category)
+"""
+
+_CREATE_SNAPSHOT_ACTIVE_INDEX_SQL = """\
+CREATE INDEX IF NOT EXISTS idx_snapshot_active
+ON org_facts_snapshot (retracted_at) WHERE retracted_at IS NULL
+"""
+
+
+# ── Protocol ────────────────────────────────────────────────────
 
 
 @runtime_checkable
 class OrgFactStore(Protocol):
-    """Protocol for organizational fact persistence."""
+    """Protocol for organizational fact persistence with MVCC."""
 
     async def connect(self) -> None:
         """Establish connection to the store."""
@@ -68,7 +122,11 @@ class OrgFactStore(Protocol):
         ...
 
     async def save(self, fact: OrgFact) -> None:
-        """Save an organizational fact.
+        """Publish an organizational fact.
+
+        Appends a PUBLISH entry to the operation log and updates
+        the materialized snapshot.  Re-publishing a fact with the
+        same ``fact_id`` creates a new version.
 
         Args:
             fact: The fact to persist.
@@ -80,13 +138,13 @@ class OrgFactStore(Protocol):
         ...
 
     async def get(self, fact_id: NotBlankStr) -> OrgFact | None:
-        """Get a fact by ID.
+        """Get an active fact by ID.
 
         Args:
             fact_id: The fact identifier.
 
         Returns:
-            The fact, or ``None`` if not found.
+            The fact, or ``None`` if not found or retracted.
 
         Raises:
             OrgMemoryConnectionError: If not connected.
@@ -101,15 +159,15 @@ class OrgFactStore(Protocol):
         text: str | None = None,
         limit: int = 5,
     ) -> tuple[OrgFact, ...]:
-        """Query facts by category and/or text.
+        """Query active facts by category and/or text.
 
         Args:
-            categories: Optional category filter.
-            text: Optional text search (substring match).
+            categories: Category filter.
+            text: Text substring filter.
             limit: Maximum results.
 
         Returns:
-            Matching facts.
+            Matching active facts.
 
         Raises:
             OrgMemoryConnectionError: If not connected.
@@ -121,13 +179,13 @@ class OrgFactStore(Protocol):
         self,
         category: OrgFactCategory,
     ) -> tuple[OrgFact, ...]:
-        """List all facts in a category.
+        """List all active facts in a category.
 
         Args:
             category: The category to list.
 
         Returns:
-            All facts in the category.
+            Active facts in the category.
 
         Raises:
             OrgMemoryConnectionError: If not connected.
@@ -136,19 +194,66 @@ class OrgFactStore(Protocol):
         ...
 
     async def delete(self, fact_id: NotBlankStr) -> bool:
-        """Delete a fact by ID.
+        """Retract a fact by ID.
+
+        Appends a RETRACT entry to the operation log and marks the
+        snapshot as retracted.
 
         Args:
             fact_id: Fact identifier.
 
         Returns:
-            ``True`` if deleted, ``False`` if not found.
+            ``True`` if retracted, ``False`` if not found or
+            already retracted.
 
         Raises:
             OrgMemoryConnectionError: If not connected.
-            OrgMemoryWriteError: If the delete fails.
+            OrgMemoryWriteError: If the retraction fails.
         """
         ...
+
+    async def snapshot_at(
+        self,
+        timestamp: datetime,
+    ) -> tuple[OperationLogSnapshot, ...]:
+        """Point-in-time snapshot of facts at a given timestamp.
+
+        Reconstructs the state of all facts from the operation log
+        up to and including the given timestamp.
+
+        Args:
+            timestamp: UTC timestamp for the snapshot.
+
+        Returns:
+            Facts as they existed at the given time.  Active facts
+            have ``retracted_at=None``.
+
+        Raises:
+            OrgMemoryConnectionError: If not connected.
+            OrgMemoryQueryError: If the query fails.
+        """
+        ...
+
+    async def get_operation_log(
+        self,
+        fact_id: NotBlankStr,
+    ) -> tuple[OperationLogEntry, ...]:
+        """Retrieve full audit trail for a fact.
+
+        Args:
+            fact_id: Fact identifier.
+
+        Returns:
+            All operations in chronological (version) order.
+
+        Raises:
+            OrgMemoryConnectionError: If not connected.
+            OrgMemoryQueryError: If the query fails.
+        """
+        ...
+
+
+# ── Helpers ─────────────────────────────────────────────────────
 
 
 def _reject_traversal(db_path: str) -> None:
@@ -173,11 +278,32 @@ def _reject_traversal(db_path: str) -> None:
             raise OrgMemoryConnectionError(msg)
 
 
-def _row_to_org_fact(row: aiosqlite.Row) -> OrgFact:
-    """Reconstruct an ``OrgFact`` from a database row.
+def _tags_to_json(tags: tuple[NotBlankStr, ...]) -> str:
+    """Serialize tags tuple to sorted JSON array."""
+    return json.dumps(sorted(tags))
+
+
+def _tags_from_json(raw: str) -> tuple[NotBlankStr, ...]:
+    """Deserialize JSON array to tags tuple."""
+    parsed = json.loads(raw)
+    if not isinstance(parsed, list):
+        return ()
+    return tuple(NotBlankStr(t) for t in parsed if isinstance(t, str) and t.strip())
+
+
+def _parse_timestamp(raw: str) -> datetime:
+    """Parse an ISO timestamp, defaulting to UTC if naive."""
+    dt = datetime.fromisoformat(raw)
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=UTC)
+    return dt
+
+
+def _snapshot_row_to_org_fact(row: aiosqlite.Row) -> OrgFact:
+    """Reconstruct an ``OrgFact`` from a snapshot row.
 
     Args:
-        row: A database row with org_facts columns.
+        row: A database row with org_facts_snapshot columns.
 
     Returns:
         An ``OrgFact`` model instance.
@@ -186,11 +312,7 @@ def _row_to_org_fact(row: aiosqlite.Row) -> OrgFact:
         OrgMemoryQueryError: If the row cannot be deserialized.
     """
     try:
-        created_at_str: str = row["created_at"]
-        created_at = datetime.fromisoformat(created_at_str)
-        if created_at.tzinfo is None:
-            created_at = created_at.replace(tzinfo=UTC)
-
+        created_at = _parse_timestamp(row["created_at"])
         author = OrgFactAuthor(
             agent_id=row["author_agent_id"],
             seniority=(
@@ -198,12 +320,18 @@ def _row_to_org_fact(row: aiosqlite.Row) -> OrgFact:
                 if row["author_seniority"]
                 else None
             ),
+            autonomy_level=(
+                AutonomyLevel(row["author_autonomy_level"])
+                if row["author_autonomy_level"]
+                else None
+            ),
             is_human=bool(row["author_is_human"]),
         )
         return OrgFact(
-            id=row["id"],
+            id=row["fact_id"],
             content=row["content"],
             category=OrgFactCategory(row["category"]),
+            tags=_tags_from_json(row["tags"]),
             author=author,
             created_at=created_at,
         )
@@ -213,12 +341,99 @@ def _row_to_org_fact(row: aiosqlite.Row) -> OrgFact:
             error=str(exc),
             error_type=type(exc).__name__,
         )
-        msg = f"Failed to deserialize org fact row: {exc}"
+        msg = f"Failed to deserialize snapshot row: {exc}"
         raise OrgMemoryQueryError(msg) from exc
 
 
+def _row_to_operation_log_entry(
+    row: aiosqlite.Row,
+) -> OperationLogEntry:
+    """Reconstruct an ``OperationLogEntry`` from a database row.
+
+    Args:
+        row: A database row with org_facts_operation_log columns.
+
+    Returns:
+        An ``OperationLogEntry`` model instance.
+
+    Raises:
+        OrgMemoryQueryError: If the row cannot be deserialized.
+    """
+    try:
+        return OperationLogEntry(
+            operation_id=row["operation_id"],
+            fact_id=row["fact_id"],
+            operation_type=row["operation_type"],
+            content=row["content"],
+            tags=_tags_from_json(row["tags"]),
+            author_agent_id=row["author_agent_id"],
+            author_autonomy_level=(
+                AutonomyLevel(row["author_autonomy_level"])
+                if row["author_autonomy_level"]
+                else None
+            ),
+            timestamp=_parse_timestamp(row["timestamp"]),
+            version=row["version"],
+        )
+    except (KeyError, ValueError, ValidationError) as exc:
+        logger.warning(
+            ORG_MEMORY_ROW_PARSE_FAILED,
+            error=str(exc),
+            error_type=type(exc).__name__,
+        )
+        msg = f"Failed to deserialize operation log row: {exc}"
+        raise OrgMemoryQueryError(msg) from exc
+
+
+def _row_to_snapshot(row: aiosqlite.Row) -> OperationLogSnapshot:
+    """Reconstruct an ``OperationLogSnapshot`` from a time-travel query row.
+
+    Args:
+        row: A result row from the ``snapshot_at`` CTE query.
+
+    Returns:
+        An ``OperationLogSnapshot`` model instance.
+
+    Raises:
+        OrgMemoryQueryError: If the row cannot be deserialized.
+    """
+    try:
+        op_type: str = row["operation_type"]
+        retracted_at = (
+            _parse_timestamp(row["timestamp"]) if op_type == "RETRACT" else None
+        )
+        created_at_raw: str | None = row["created_at"]
+        if created_at_raw is None:
+            created_at = _parse_timestamp(row["timestamp"])
+        else:
+            created_at = _parse_timestamp(created_at_raw)
+        return OperationLogSnapshot(
+            fact_id=row["fact_id"],
+            content=row["content"],
+            tags=_tags_from_json(row["tags"]),
+            created_at=created_at,
+            retracted_at=retracted_at,
+            version=row["version"],
+        )
+    except (KeyError, ValueError, ValidationError) as exc:
+        logger.warning(
+            ORG_MEMORY_ROW_PARSE_FAILED,
+            error=str(exc),
+            error_type=type(exc).__name__,
+        )
+        msg = f"Failed to deserialize snapshot_at row: {exc}"
+        raise OrgMemoryQueryError(msg) from exc
+
+
+# ── SQLite Implementation ───────────────────────────────────────
+
+
 class SQLiteOrgFactStore:
-    """SQLite-backed organizational fact store.
+    """SQLite-backed organizational fact store with MVCC.
+
+    All writes are appended to an operation log; a materialized
+    snapshot table maintains the current committed state.  Reads
+    query the snapshot.  Time-travel queries replay the log.
 
     Uses a separate database from the operational persistence layer
     to keep institutional knowledge decoupled.
@@ -273,8 +488,12 @@ class SQLiteOrgFactStore:
     async def _ensure_schema(self) -> None:
         """Create tables and indexes if they don't exist."""
         db = self._require_connected()
-        await db.execute(_CREATE_TABLE_SQL)
-        await db.execute(_CREATE_CATEGORY_INDEX_SQL)
+        await db.execute(_CREATE_OPERATION_LOG_SQL)
+        await db.execute(_CREATE_OPLOG_FACT_INDEX_SQL)
+        await db.execute(_CREATE_OPLOG_TIMESTAMP_INDEX_SQL)
+        await db.execute(_CREATE_SNAPSHOT_SQL)
+        await db.execute(_CREATE_SNAPSHOT_CATEGORY_INDEX_SQL)
+        await db.execute(_CREATE_SNAPSHOT_ACTIVE_INDEX_SQL)
         await db.commit()
 
     async def disconnect(self) -> None:
@@ -301,39 +520,116 @@ class SQLiteOrgFactStore:
         """
         if self._db is None:
             msg = "Not connected -- call connect() first"
-            logger.warning(ORG_MEMORY_NOT_CONNECTED, db_path=self._db_path)
+            logger.warning(
+                ORG_MEMORY_NOT_CONNECTED,
+                db_path=self._db_path,
+            )
             raise OrgMemoryConnectionError(msg)
         return self._db
 
-    async def save(self, fact: OrgFact) -> None:
-        """Persist a fact to the database.
+    # ── Write operations ────────────────────────────────────────
 
-        Uses ``INSERT`` (not ``INSERT OR REPLACE``) to preserve the
-        append-only audit trail.  Duplicate IDs raise
-        ``OrgMemoryWriteError``.
+    async def _append_to_operation_log(  # noqa: PLR0913
+        self,
+        db: aiosqlite.Connection,
+        *,
+        fact_id: str,
+        operation_type: Literal["PUBLISH", "RETRACT"],
+        content: str | None,
+        tags: tuple[NotBlankStr, ...],
+        author_agent_id: str | None,
+        author_autonomy_level: AutonomyLevel | None,
+    ) -> tuple[int, datetime]:
+        """Append an operation to the log within the caller's transaction.
 
         Args:
-            fact: The fact to save.
+            db: Active database connection.
+            fact_id: Logical fact identifier.
+            operation_type: ``PUBLISH`` or ``RETRACT``.
+            content: Fact body (``None`` for RETRACT).
+            tags: Metadata tags.
+            author_agent_id: Agent ID (``None`` for human).
+            author_autonomy_level: Autonomy level at write time.
+
+        Returns:
+            Tuple of ``(version, timestamp)``.
+        """
+        operation_id = str(uuid.uuid4())
+        now = datetime.now(UTC)
+        cursor = await db.execute(
+            "SELECT COALESCE(MAX(version), 0) "
+            "FROM org_facts_operation_log WHERE fact_id = ?",
+            (fact_id,),
+        )
+        row = await cursor.fetchone()
+        # COALESCE(MAX(version), 0) always returns exactly one row.
+        current: int = row[0] if row is not None else 0
+        next_version = current + 1
+        await db.execute(
+            "INSERT INTO org_facts_operation_log "
+            "(operation_id, fact_id, operation_type, content, tags, "
+            "author_agent_id, author_autonomy_level, timestamp, version) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                operation_id,
+                fact_id,
+                operation_type,
+                content,
+                _tags_to_json(tags),
+                author_agent_id,
+                (author_autonomy_level.value if author_autonomy_level else None),
+                now.isoformat(),
+                next_version,
+            ),
+        )
+        return next_version, now
+
+    async def save(self, fact: OrgFact) -> None:
+        """Publish a fact: append PUBLISH to log, upsert snapshot.
+
+        Re-publishing a fact with the same ``fact_id`` creates a
+        new version in the operation log and updates the snapshot.
+
+        Args:
+            fact: The fact to persist.
 
         Raises:
             OrgMemoryConnectionError: If not connected.
-            OrgMemoryWriteError: If the save fails or the ID exists.
+            OrgMemoryWriteError: If the save fails.
         """
         db = self._require_connected()
         try:
+            version, _ = await self._append_to_operation_log(
+                db,
+                fact_id=fact.id,
+                operation_type="PUBLISH",
+                content=fact.content,
+                tags=fact.tags,
+                author_agent_id=fact.author.agent_id,
+                author_autonomy_level=fact.author.autonomy_level,
+            )
             await db.execute(
-                "INSERT INTO org_facts "
-                "(id, content, category, author_agent_id, "
-                "author_seniority, author_is_human, created_at) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                "INSERT OR REPLACE INTO org_facts_snapshot "
+                "(fact_id, content, category, tags, "
+                "author_agent_id, author_seniority, author_is_human, "
+                "author_autonomy_level, created_at, retracted_at, "
+                "version) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?)",
                 (
                     fact.id,
                     fact.content,
                     fact.category.value,
+                    _tags_to_json(fact.tags),
                     fact.author.agent_id,
-                    fact.author.seniority.value if fact.author.seniority else None,
+                    (fact.author.seniority.value if fact.author.seniority else None),
                     int(fact.author.is_human),
+                    (
+                        fact.author.autonomy_level.value
+                        if fact.author.autonomy_level
+                        else None
+                    ),
                     fact.created_at.isoformat(),
+                    version,
                 ),
             )
             await db.commit()
@@ -345,15 +641,84 @@ class SQLiteOrgFactStore:
             )
             msg = f"Failed to save org fact: {exc}"
             raise OrgMemoryWriteError(msg) from exc
+        else:
+            logger.info(
+                ORG_MEMORY_MVCC_PUBLISH_APPENDED,
+                fact_id=fact.id,
+                version=version,
+            )
 
-    async def get(self, fact_id: NotBlankStr) -> OrgFact | None:
-        """Get a fact by its ID.
+    async def delete(self, fact_id: NotBlankStr) -> bool:
+        """Retract a fact: append RETRACT to log, mark snapshot.
 
         Args:
             fact_id: Fact identifier.
 
         Returns:
-            The fact or ``None``.
+            ``True`` if retracted, ``False`` if not found or
+            already retracted.
+
+        Raises:
+            OrgMemoryConnectionError: If not connected.
+            OrgMemoryWriteError: If the retraction fails.
+        """
+        db = self._require_connected()
+        try:
+            cursor = await db.execute(
+                "SELECT fact_id, author_agent_id, author_autonomy_level "
+                "FROM org_facts_snapshot "
+                "WHERE fact_id = ? AND retracted_at IS NULL",
+                (fact_id,),
+            )
+            row = await cursor.fetchone()
+            if row is None:
+                return False
+            version, now = await self._append_to_operation_log(
+                db,
+                fact_id=fact_id,
+                operation_type="RETRACT",
+                content=None,
+                tags=(),
+                author_agent_id=row["author_agent_id"],
+                author_autonomy_level=(
+                    AutonomyLevel(row["author_autonomy_level"])
+                    if row["author_autonomy_level"]
+                    else None
+                ),
+            )
+            await db.execute(
+                "UPDATE org_facts_snapshot "
+                "SET retracted_at = ?, version = ? "
+                "WHERE fact_id = ?",
+                (now.isoformat(), version, fact_id),
+            )
+            await db.commit()
+        except sqlite3.Error as exc:
+            logger.exception(
+                ORG_MEMORY_WRITE_FAILED,
+                fact_id=fact_id,
+                error=str(exc),
+            )
+            msg = f"Failed to delete org fact: {exc}"
+            raise OrgMemoryWriteError(msg) from exc
+        else:
+            logger.info(
+                ORG_MEMORY_MVCC_RETRACT_APPENDED,
+                fact_id=fact_id,
+                version=version,
+            )
+            return True
+
+    # ── Read operations ─────────────────────────────────────────
+
+    async def get(self, fact_id: NotBlankStr) -> OrgFact | None:
+        """Get an active fact by its ID.
+
+        Args:
+            fact_id: Fact identifier.
+
+        Returns:
+            The fact or ``None`` if not found or retracted.
 
         Raises:
             OrgMemoryConnectionError: If not connected.
@@ -362,7 +727,8 @@ class SQLiteOrgFactStore:
         db = self._require_connected()
         try:
             cursor = await db.execute(
-                "SELECT * FROM org_facts WHERE id = ?",
+                "SELECT * FROM org_facts_snapshot "
+                "WHERE fact_id = ? AND retracted_at IS NULL",
                 (fact_id,),
             )
             row = await cursor.fetchone()
@@ -376,7 +742,7 @@ class SQLiteOrgFactStore:
             raise OrgMemoryQueryError(msg) from exc
         if row is None:
             return None
-        return _row_to_org_fact(row)
+        return _snapshot_row_to_org_fact(row)
 
     async def query(
         self,
@@ -385,11 +751,9 @@ class SQLiteOrgFactStore:
         text: str | None = None,
         limit: int = 5,
     ) -> tuple[OrgFact, ...]:
-        """Query facts by category and/or text content.
+        """Query active facts by category and/or text content.
 
         All dynamic values are passed as parameterized query parameters.
-        The ``WHERE`` clause is constructed from safe column/operator
-        constants only -- no user input is interpolated into SQL.
 
         Args:
             categories: Category filter.
@@ -397,14 +761,14 @@ class SQLiteOrgFactStore:
             limit: Maximum results.
 
         Returns:
-            Matching facts.
+            Matching active facts.
 
         Raises:
             OrgMemoryConnectionError: If not connected.
             OrgMemoryQueryError: If the query fails.
         """
         db = self._require_connected()
-        clauses: list[str] = []
+        clauses: list[str] = ["retracted_at IS NULL"]
         params: list[str | int] = []
 
         if categories is not None and categories:
@@ -418,10 +782,7 @@ class SQLiteOrgFactStore:
             clauses.append("content LIKE ? ESCAPE '\\'")
             params.append(f"%{escaped}%")
 
-        where = f" WHERE {' AND '.join(clauses)}" if clauses else ""
-        # When a text filter is active, rank by match position (earlier
-        # = more relevant), then content length (shorter = more focused),
-        # then recency.  Without text, fall back to pure recency.
+        where = f" WHERE {' AND '.join(clauses)}"
         if text is not None:
             order = (
                 "ORDER BY INSTR(LOWER(content), LOWER(?)) ASC, "
@@ -430,7 +791,7 @@ class SQLiteOrgFactStore:
             params.append(escaped)
         else:
             order = "ORDER BY created_at DESC"
-        sql = f"SELECT * FROM org_facts{where} {order} LIMIT ?"  # noqa: S608
+        sql = f"SELECT * FROM org_facts_snapshot{where} {order} LIMIT ?"  # noqa: S608
         params.append(limit)
 
         try:
@@ -443,19 +804,19 @@ class SQLiteOrgFactStore:
             )
             msg = f"Failed to query org facts: {exc}"
             raise OrgMemoryQueryError(msg) from exc
-        return tuple(_row_to_org_fact(row) for row in rows)
+        return tuple(_snapshot_row_to_org_fact(row) for row in rows)
 
     async def list_by_category(
         self,
         category: OrgFactCategory,
     ) -> tuple[OrgFact, ...]:
-        """List all facts in a category.
+        """List all active facts in a category.
 
         Args:
             category: The category to list.
 
         Returns:
-            All facts in the category.
+            Active facts in the category.
 
         Raises:
             OrgMemoryConnectionError: If not connected.
@@ -464,7 +825,9 @@ class SQLiteOrgFactStore:
         db = self._require_connected()
         try:
             cursor = await db.execute(
-                "SELECT * FROM org_facts WHERE category = ? ORDER BY created_at DESC",
+                "SELECT * FROM org_facts_snapshot "
+                "WHERE category = ? AND retracted_at IS NULL "
+                "ORDER BY created_at DESC",
                 (category.value,),
             )
             rows = await cursor.fetchall()
@@ -476,38 +839,131 @@ class SQLiteOrgFactStore:
             )
             msg = f"Failed to list org facts by category: {exc}"
             raise OrgMemoryQueryError(msg) from exc
-        return tuple(_row_to_org_fact(row) for row in rows)
+        return tuple(_snapshot_row_to_org_fact(row) for row in rows)
 
-    async def delete(self, fact_id: NotBlankStr) -> bool:
-        """Delete a fact by ID.
+    # ── Time-travel queries ─────────────────────────────────────
+
+    async def snapshot_at(
+        self,
+        timestamp: datetime,
+    ) -> tuple[OperationLogSnapshot, ...]:
+        """Point-in-time snapshot of all facts at a given timestamp.
+
+        Reconstructs fact state from the operation log.  Active facts
+        have ``retracted_at=None``; retracted facts carry the retract
+        timestamp.
+
+        Args:
+            timestamp: UTC timestamp for the snapshot.
+
+        Returns:
+            Snapshot entries as they existed at the given time.
+
+        Raises:
+            OrgMemoryConnectionError: If not connected.
+            OrgMemoryQueryError: If the query fails.
+        """
+        db = self._require_connected()
+        query_ts = timestamp.isoformat()
+        sql = """\
+WITH latest_ops AS (
+    SELECT fact_id, operation_type, content, tags,
+           timestamp, version,
+           ROW_NUMBER() OVER (
+               PARTITION BY fact_id ORDER BY version DESC
+           ) AS rn
+    FROM org_facts_operation_log
+    WHERE timestamp <= ?
+)
+SELECT lo.fact_id, lo.operation_type,
+       COALESCE(lo.content,
+           (SELECT p.content FROM org_facts_operation_log p
+            WHERE p.fact_id = lo.fact_id
+              AND p.operation_type = 'PUBLISH'
+              AND p.timestamp <= ?
+            ORDER BY p.version DESC LIMIT 1)
+       ) AS content,
+       COALESCE(
+           CASE WHEN lo.operation_type = 'PUBLISH' THEN lo.tags END,
+           (SELECT p.tags FROM org_facts_operation_log p
+            WHERE p.fact_id = lo.fact_id
+              AND p.operation_type = 'PUBLISH'
+              AND p.timestamp <= ?
+            ORDER BY p.version DESC LIMIT 1)
+       ) AS tags,
+       lo.version, lo.timestamp,
+       (SELECT MIN(timestamp)
+        FROM org_facts_operation_log
+        WHERE fact_id = lo.fact_id
+          AND operation_type = 'PUBLISH'
+          AND timestamp <= ?) AS created_at
+FROM latest_ops lo
+WHERE lo.rn = 1
+ORDER BY lo.fact_id
+"""
+        try:
+            cursor = await db.execute(
+                sql,
+                (query_ts, query_ts, query_ts, query_ts),
+            )
+            rows = await cursor.fetchall()
+        except sqlite3.Error as exc:
+            logger.exception(
+                ORG_MEMORY_QUERY_FAILED,
+                timestamp=query_ts,
+                error=str(exc),
+            )
+            msg = f"Failed to query snapshot at {query_ts}: {exc}"
+            raise OrgMemoryQueryError(msg) from exc
+        else:
+            result = tuple(_row_to_snapshot(row) for row in rows)
+            logger.debug(
+                ORG_MEMORY_MVCC_SNAPSHOT_AT_QUERIED,
+                timestamp=query_ts,
+                count=len(result),
+            )
+            return result
+
+    async def get_operation_log(
+        self,
+        fact_id: NotBlankStr,
+    ) -> tuple[OperationLogEntry, ...]:
+        """Retrieve full audit trail for a fact.
 
         Args:
             fact_id: Fact identifier.
 
         Returns:
-            ``True`` if deleted, ``False`` if not found.
+            All operations in chronological (version) order.
 
         Raises:
             OrgMemoryConnectionError: If not connected.
-            OrgMemoryWriteError: If the delete fails.
+            OrgMemoryQueryError: If the query fails.
         """
         db = self._require_connected()
         try:
             cursor = await db.execute(
-                "DELETE FROM org_facts WHERE id = ?",
+                "SELECT * FROM org_facts_operation_log "
+                "WHERE fact_id = ? ORDER BY version ASC",
                 (fact_id,),
             )
-            await db.commit()
+            rows = await cursor.fetchall()
         except sqlite3.Error as exc:
             logger.exception(
-                ORG_MEMORY_WRITE_FAILED,
+                ORG_MEMORY_QUERY_FAILED,
                 fact_id=fact_id,
                 error=str(exc),
             )
-            msg = f"Failed to delete org fact: {exc}"
-            raise OrgMemoryWriteError(msg) from exc
+            msg = f"Failed to get operation log for {fact_id}: {exc}"
+            raise OrgMemoryQueryError(msg) from exc
         else:
-            return cursor.rowcount > 0
+            result = tuple(_row_to_operation_log_entry(row) for row in rows)
+            logger.debug(
+                ORG_MEMORY_MVCC_LOG_QUERIED,
+                fact_id=fact_id,
+                count=len(result),
+            )
+            return result
 
     @property
     def is_connected(self) -> bool:
