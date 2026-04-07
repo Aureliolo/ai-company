@@ -104,6 +104,11 @@ class MeetingProtocolConfig(BaseModel):
         default=True,
         description="Auto-create tasks from action items",
     )
+    max_tasks_per_meeting: int | None = Field(
+        default=None,
+        ge=1,
+        description="Maximum tasks to create from a single meeting's action items",
+    )
     round_robin: RoundRobinConfig = Field(
         default_factory=RoundRobinConfig,
         description="Round-robin protocol settings",

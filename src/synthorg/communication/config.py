@@ -119,6 +119,11 @@ class MeetingTypeConfig(BaseModel):
         default_factory=MeetingProtocolConfig,
         description="Meeting protocol configuration",
     )
+    min_interval_seconds: int | None = Field(
+        default=None,
+        ge=1,
+        description="Minimum seconds between event-triggered meetings of this type",
+    )
 
     @model_validator(mode="after")
     def _validate_frequency_or_trigger(self) -> Self:

@@ -524,3 +524,103 @@ class TestMeetingOrchestratorTaskCreation:
         )
 
         assert record.status == MeetingStatus.COMPLETED
+
+    async def test_max_tasks_per_meeting_caps_creation(self) -> None:
+        """Only the first N action items create tasks when capped."""
+        created_tasks: list[str] = []
+
+        def _creator(
+            desc: str,
+            assignee: str | None,
+            priority: Priority,
+        ) -> None:
+            created_tasks.append(desc)
+
+        now = datetime.now(UTC)
+        agenda = MeetingAgenda(title="Test")
+        action_items = tuple(ActionItem(description=f"Task {i}") for i in range(5))
+        minutes = MeetingMinutes(
+            meeting_id="m-1",
+            protocol_type=MeetingProtocolType.ROUND_ROBIN,
+            leader_id="leader",
+            participant_ids=("agent-a",),
+            agenda=agenda,
+            action_items=action_items,
+            started_at=now,
+            ended_at=now,
+        )
+
+        mock_protocol = MagicMock()
+        mock_protocol.get_protocol_type.return_value = MeetingProtocolType.ROUND_ROBIN
+        mock_protocol.run = AsyncMock(return_value=minutes)
+
+        registry: dict[MeetingProtocolType, MeetingProtocol] = {
+            MeetingProtocolType.ROUND_ROBIN: mock_protocol,
+        }
+        orchestrator = MeetingOrchestrator(
+            protocol_registry=registry,
+            agent_caller=make_mock_agent_caller(),
+            task_creator=_creator,
+        )
+
+        config = MeetingProtocolConfig(max_tasks_per_meeting=2)
+        await orchestrator.run_meeting(
+            meeting_type_name="standup",
+            protocol_config=config,
+            agenda=agenda,
+            leader_id="leader",
+            participant_ids=("agent-a",),
+            token_budget=10000,
+        )
+
+        assert len(created_tasks) == 2
+        assert created_tasks == ["Task 0", "Task 1"]
+
+    async def test_max_tasks_none_creates_all(self) -> None:
+        """Without cap, all action items create tasks."""
+        created_tasks: list[str] = []
+
+        def _creator(
+            desc: str,
+            assignee: str | None,
+            priority: Priority,
+        ) -> None:
+            created_tasks.append(desc)
+
+        now = datetime.now(UTC)
+        agenda = MeetingAgenda(title="Test")
+        action_items = tuple(ActionItem(description=f"Task {i}") for i in range(5))
+        minutes = MeetingMinutes(
+            meeting_id="m-1",
+            protocol_type=MeetingProtocolType.ROUND_ROBIN,
+            leader_id="leader",
+            participant_ids=("agent-a",),
+            agenda=agenda,
+            action_items=action_items,
+            started_at=now,
+            ended_at=now,
+        )
+
+        mock_protocol = MagicMock()
+        mock_protocol.get_protocol_type.return_value = MeetingProtocolType.ROUND_ROBIN
+        mock_protocol.run = AsyncMock(return_value=minutes)
+
+        registry: dict[MeetingProtocolType, MeetingProtocol] = {
+            MeetingProtocolType.ROUND_ROBIN: mock_protocol,
+        }
+        orchestrator = MeetingOrchestrator(
+            protocol_registry=registry,
+            agent_caller=make_mock_agent_caller(),
+            task_creator=_creator,
+        )
+
+        await orchestrator.run_meeting(
+            meeting_type_name="standup",
+            protocol_config=MeetingProtocolConfig(),
+            agenda=agenda,
+            leader_id="leader",
+            participant_ids=("agent-a",),
+            token_budget=10000,
+        )
+
+        assert len(created_tasks) == 5

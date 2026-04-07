@@ -77,11 +77,13 @@ def _make_trigger_type(
     name: str = "review",
     trigger: str = "code_review_complete",
     participants: tuple[str, ...] = ("engineering",),
+    min_interval_seconds: int | None = None,
 ) -> MeetingTypeConfig:
     return MeetingTypeConfig(
         name=name,
         trigger=trigger,
         participants=participants,
+        min_interval_seconds=min_interval_seconds,
     )
 
 
@@ -408,3 +410,129 @@ class TestMeetingScheduler:
         assert publisher.call_args_list[0][0][0] == "meeting.started"
         # Second call: meeting.completed (after run_meeting)
         assert publisher.call_args_list[1][0][0] == "meeting.completed"
+
+
+@pytest.mark.unit
+class TestMeetingSchedulerCooldown:
+    """Tests for event-triggered meeting cooldown guard."""
+
+    @pytest.fixture
+    def orchestrator(self) -> MagicMock:
+        orch = MagicMock()
+        orch.run_meeting = AsyncMock(return_value=_make_record())
+        return orch
+
+    @pytest.fixture
+    def resolver(self) -> MagicMock:
+        res = MagicMock()
+        res.resolve = AsyncMock(
+            return_value=("leader-id", "participant-1", "participant-2"),
+        )
+        return res
+
+    async def test_cooldown_skips_second_trigger(
+        self,
+        orchestrator: MagicMock,
+        resolver: MagicMock,
+    ) -> None:
+        clock_time = 1000.0
+
+        def clock() -> float:
+            return clock_time
+
+        trigger_type = _make_trigger_type(min_interval_seconds=60)
+        config = _make_config(types=(trigger_type,))
+        scheduler = MeetingScheduler(
+            config=config,
+            orchestrator=orchestrator,
+            participant_resolver=resolver,
+            clock=clock,
+        )
+
+        records = await scheduler.trigger_event("code_review_complete")
+        assert len(records) == 1
+
+        # Second trigger at same time -- should be skipped
+        records = await scheduler.trigger_event("code_review_complete")
+        assert len(records) == 0
+
+    async def test_cooldown_allows_after_expiry(
+        self,
+        orchestrator: MagicMock,
+        resolver: MagicMock,
+    ) -> None:
+        clock_time = 1000.0
+
+        def clock() -> float:
+            return clock_time
+
+        trigger_type = _make_trigger_type(min_interval_seconds=60)
+        config = _make_config(types=(trigger_type,))
+        scheduler = MeetingScheduler(
+            config=config,
+            orchestrator=orchestrator,
+            participant_resolver=resolver,
+            clock=clock,
+        )
+
+        await scheduler.trigger_event("code_review_complete")
+
+        clock_time = 1061.0  # 61s later
+        records = await scheduler.trigger_event("code_review_complete")
+        assert len(records) == 1
+
+    async def test_no_cooldown_fires_immediately(
+        self,
+        orchestrator: MagicMock,
+        resolver: MagicMock,
+    ) -> None:
+        """Default (no cooldown) triggers every time."""
+        trigger_type = _make_trigger_type()  # min_interval_seconds=None
+        config = _make_config(types=(trigger_type,))
+        scheduler = MeetingScheduler(
+            config=config,
+            orchestrator=orchestrator,
+            participant_resolver=resolver,
+        )
+
+        await scheduler.trigger_event("code_review_complete")
+        records = await scheduler.trigger_event("code_review_complete")
+        assert len(records) == 1
+        assert orchestrator.run_meeting.await_count == 2
+
+    async def test_independent_cooldowns_per_type(
+        self,
+        orchestrator: MagicMock,
+        resolver: MagicMock,
+    ) -> None:
+        clock_time = 1000.0
+
+        def clock() -> float:
+            return clock_time
+
+        type_a = _make_trigger_type(
+            name="review_short",
+            trigger="task_done",
+            min_interval_seconds=30,
+        )
+        type_b = _make_trigger_type(
+            name="review_long",
+            trigger="task_done",
+            min_interval_seconds=120,
+        )
+        config = _make_config(types=(type_a, type_b))
+        scheduler = MeetingScheduler(
+            config=config,
+            orchestrator=orchestrator,
+            participant_resolver=resolver,
+            clock=clock,
+        )
+
+        # First trigger fires both
+        records = await scheduler.trigger_event("task_done")
+        assert len(records) == 2
+
+        # Advance 31s -- only type_a should fire
+        clock_time = 1031.0
+        records = await scheduler.trigger_event("task_done")
+        assert len(records) == 1

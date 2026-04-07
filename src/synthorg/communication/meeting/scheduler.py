@@ -6,6 +6,7 @@ an API for event-triggered meetings.
 """
 
 import asyncio
+import time
 from collections.abc import Callable  # noqa: TC003
 from typing import TYPE_CHECKING, Any
 
@@ -27,6 +28,7 @@ from synthorg.communication.meeting.participant import (
 )
 from synthorg.observability import get_logger
 from synthorg.observability.events.meeting import (
+    MEETING_EVENT_COOLDOWN_SKIPPED,
     MEETING_EVENT_TRIGGERED,
     MEETING_NO_PARTICIPANTS,
     MEETING_PERIODIC_TRIGGERED,
@@ -67,8 +69,10 @@ class MeetingScheduler:
     """
 
     __slots__ = (
+        "_clock",
         "_config",
         "_event_publisher",
+        "_last_triggered",
         "_orchestrator",
         "_resolver",
         "_running",
@@ -82,13 +86,16 @@ class MeetingScheduler:
         orchestrator: MeetingOrchestrator,
         participant_resolver: ParticipantResolver,
         event_publisher: Callable[[str, dict[str, Any]], None] | None = None,
+        clock: Callable[[], float] | None = None,
     ) -> None:
         self._config = config
         self._orchestrator = orchestrator
         self._resolver = participant_resolver
         self._event_publisher = event_publisher
+        self._clock = clock or time.monotonic
         self._tasks: list[asyncio.Task[None]] = []
         self._running = False
+        self._last_triggered: dict[str, float] = {}
 
     @property
     def running(self) -> bool:
@@ -186,15 +193,39 @@ class MeetingScheduler:
         if not matching:
             return ()
 
+        # Filter by cooldown
+        now = self._clock()
+        eligible: list[MeetingTypeConfig] = []
+        for mt in matching:
+            if mt.min_interval_seconds is not None:
+                last = self._last_triggered.get(mt.name, 0.0)
+                if (now - last) < mt.min_interval_seconds:
+                    logger.info(
+                        MEETING_EVENT_COOLDOWN_SKIPPED,
+                        meeting_type=mt.name,
+                        event_name=event_name,
+                        elapsed_seconds=now - last,
+                        min_interval_seconds=mt.min_interval_seconds,
+                    )
+                    continue
+            eligible.append(mt)
+
+        if not eligible:
+            return ()
+
         logger.info(
             MEETING_EVENT_TRIGGERED,
             event_name=event_name,
-            matching_count=len(matching),
+            matching_count=len(eligible),
         )
+
+        # Record trigger time BEFORE execution to prevent concurrent fires
+        for mt in eligible:
+            self._last_triggered[mt.name] = now
 
         async with asyncio.TaskGroup() as tg:
             tasks = [
-                tg.create_task(self._execute_meeting(mt, context)) for mt in matching
+                tg.create_task(self._execute_meeting(mt, context)) for mt in eligible
             ]
 
         return tuple(r for t in tasks if (r := t.result()) is not None)
