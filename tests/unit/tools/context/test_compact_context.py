@@ -32,6 +32,7 @@ class TestCompactContextTool:
         """Parameters schema includes strategy and reason."""
         tool = CompactContextTool()
         schema = tool.parameters_schema
+        assert schema is not None
         assert "properties" in schema
         assert "strategy" in schema["properties"]
         assert "reason" in schema["properties"]
@@ -43,6 +44,7 @@ class TestCompactContextTool:
         """preserve_markers is optional with default True."""
         tool = CompactContextTool()
         schema = tool.parameters_schema
+        assert schema is not None
         assert "preserve_markers" in schema["properties"]
         # Should NOT be in required list since it has a default
         assert "preserve_markers" not in schema["required"]
