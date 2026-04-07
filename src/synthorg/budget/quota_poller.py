@@ -62,8 +62,13 @@ class QuotaPoller:
         """Start the background polling loop.
 
         Creates an ``asyncio.Task`` that calls :meth:`poll_once`
-        repeatedly at the configured interval.
+        repeatedly at the configured interval.  Calling ``start()``
+        when already running is a no-op.
         """
+        if self._task is not None and not self._task.done():
+            return
+        if self._task is not None and self._task.done():
+            self._task = None
         self._task = asyncio.get_running_loop().create_task(
             self._poll_loop(),
             name="quota-poller",
@@ -112,7 +117,15 @@ class QuotaPoller:
     async def _poll_loop(self) -> None:
         """Background task: poll repeatedly until cancelled."""
         while True:
-            await self.poll_once()
+            try:
+                await self.poll_once()
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:
+                logger.exception(
+                    QUOTA_POLL_FAILED,
+                    error=type(exc).__name__,
+                )
             await asyncio.sleep(self._config.poll_interval_seconds)
 
     async def _check_snapshot(self, snap: QuotaSnapshot) -> None:
@@ -154,12 +167,18 @@ class QuotaPoller:
         self._cooldown[key] = datetime.now(UTC)
 
         if self._dispatcher is not None:
-            await _dispatch_quota_alert(
-                self._dispatcher,
-                snap=snap,
-                level=level,
-                usage_pct=usage_pct,
-            )
+            try:
+                await _dispatch_quota_alert(
+                    self._dispatcher,
+                    snap=snap,
+                    level=level,
+                    usage_pct=usage_pct,
+                )
+            except Exception:
+                logger.exception(
+                    QUOTA_POLL_FAILED,
+                    error="quota_alert_dispatch_failed",
+                )
 
 
 def _compute_usage_pct(snap: QuotaSnapshot) -> float | None:

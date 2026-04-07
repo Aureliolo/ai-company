@@ -53,11 +53,11 @@ class ClassificationContext(BaseModel):
         default=False, description="Embedding model call"
     )
     is_quality_judge: bool = Field(default=False, description="Quality judging turn")
-    tool_calls_made: tuple[str, ...] = Field(
+    tool_calls_made: tuple[NotBlankStr, ...] = Field(
         default=(),
         description="Tool names invoked this turn (context only)",
     )
-    agent_role: str | None = Field(
+    agent_role: NotBlankStr | None = Field(
         default=None,
         description="Semantic role of the agent (context only)",
     )

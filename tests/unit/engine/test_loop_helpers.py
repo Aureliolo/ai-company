@@ -577,12 +577,18 @@ class TestMakeTurnRecord:
         """retry_reason extracted from _synthorg_retry_reason key."""
         response = _stop_response()
         response = response.model_copy(
-            update={"provider_metadata": {"_synthorg_retry_reason": "RateLimitError"}},
+            update={
+                "provider_metadata": {
+                    "_synthorg_retry_reason": "RateLimitError",
+                    "_synthorg_retry_count": 1,
+                },
+            },
         )
         record = make_turn_record(
             1, response, provider_metadata=response.provider_metadata
         )
         assert record.retry_reason == "RateLimitError"
+        assert record.retry_count == 1
 
     def test_provider_metadata_cache_hit_extracted(self) -> None:
         """cache_hit extracted from _synthorg_cache_hit key."""
@@ -750,7 +756,7 @@ class TestClearLastTurnToolCalls:
 # ---------------------------------------------------------------------------
 
 
-def _turn(
+def _stagnation_turn(
     turn_number: int,
     fingerprints: tuple[str, ...] = (),
 ) -> TurnRecord:
@@ -830,7 +836,7 @@ class TestCheckStagnation:
         result = await check_stagnation(
             sample_agent_context,
             detector,  # type: ignore[arg-type]
-            [_turn(1, ("a:1234567890123456",))],
+            [_stagnation_turn(1, ("a:1234567890123456",))],
             0,
             execution_id="exec-1",
         )
@@ -854,7 +860,7 @@ class TestCheckStagnation:
         result = await check_stagnation(
             sample_agent_context,
             detector,  # type: ignore[arg-type]
-            [_turn(1, ("a:1234567890123456",))],
+            [_stagnation_turn(1, ("a:1234567890123456",))],
             0,
             execution_id="exec-1",
         )
@@ -880,7 +886,7 @@ class TestCheckStagnation:
         result = await check_stagnation(
             sample_agent_context,
             detector,  # type: ignore[arg-type]
-            [_turn(1, ("a:1234567890123456",))],
+            [_stagnation_turn(1, ("a:1234567890123456",))],
             0,
             execution_id="exec-1",
             step_number=3,
@@ -906,7 +912,7 @@ class TestCheckStagnation:
         result = await check_stagnation(
             sample_agent_context,
             detector,  # type: ignore[arg-type]
-            [_turn(1, ("a:1234567890123456",))],
+            [_stagnation_turn(1, ("a:1234567890123456",))],
             2,
             execution_id="exec-1",
         )

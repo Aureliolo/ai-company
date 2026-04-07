@@ -42,8 +42,8 @@ class TestRetryHandlerSuccess:
     async def test_returns_result_on_first_success(self) -> None:
         handler = RetryHandler(_fast_config())
         func = AsyncMock(return_value="ok")
-        result = await handler.execute(func)
-        assert result == "ok"
+        retry_result = await handler.execute(func)
+        assert retry_result.value == "ok"
         func.assert_awaited_once()
 
     async def test_retries_then_succeeds(self) -> None:
@@ -55,16 +55,16 @@ class TestRetryHandlerSuccess:
                 "ok",
             ],
         )
-        result = await handler.execute(func)
-        assert result == "ok"
+        retry_result = await handler.execute(func)
+        assert retry_result.value == "ok"
         assert func.await_count == 3
 
     async def test_internal_error_is_retried(self) -> None:
         handler = RetryHandler(_fast_config(max_retries=2))
         error = ProviderInternalError("server error")
         func = AsyncMock(side_effect=[error, "ok"])
-        result = await handler.execute(func)
-        assert result == "ok"
+        retry_result = await handler.execute(func)
+        assert retry_result.value == "ok"
         assert func.await_count == 2
 
 

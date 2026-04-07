@@ -49,6 +49,7 @@ from synthorg.observability.events.coordination_metrics import (
     COORD_METRICS_OVERHEAD_COMPUTED,
     COORD_METRICS_REDUNDANCY_COMPUTED,
 )
+from synthorg.providers.enums import FinishReason
 
 if TYPE_CHECKING:
     from synthorg.budget.baseline_store import BaselineStore
@@ -60,6 +61,25 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 _MIN_TEAM_SIZE: int = 2
+
+
+def _extract_run_stats(
+    execution_result: ExecutionResult,
+) -> tuple[int, float, int]:
+    """Extract basic run stats from an execution result.
+
+    Returns:
+        Tuple of (turns, error_rate, total_tokens).
+    """
+    turns = len(execution_result.turns)
+    error_turns = sum(
+        1
+        for t in execution_result.turns
+        if t.finish_reason in (FinishReason.ERROR, FinishReason.CONTENT_FILTER)
+    )
+    error_rate = error_turns / turns if turns > 0 else 0.0
+    total_tokens = sum(t.total_tokens for t in execution_result.turns)
+    return turns, error_rate, total_tokens
 
 
 @runtime_checkable
@@ -182,28 +202,45 @@ class CoordinationMetricsCollector:
             team_size=team_size,
         )
 
-        turns = len(execution_result.turns)
-        error_turns = sum(
-            1
-            for t in execution_result.turns
-            if t.finish_reason.value in ("error", "content_filter")
+        turns, error_rate, total_tokens = _extract_run_stats(
+            execution_result,
         )
-        error_rate = error_turns / turns if turns > 0 else 0.0
-        total_tokens = sum(t.total_tokens for t in execution_result.turns)
 
-        # For single-agent runs: record baseline, return empty metrics.
-        if not is_multi_agent and self._baseline_store is not None:
-            from synthorg.budget.baseline_store import BaselineRecord  # noqa: PLC0415
-
-            baseline = BaselineRecord(
-                agent_id=agent_id,
-                task_id=task_id,
-                turns=max(float(turns), 1.0),
-                error_rate=error_rate,
-                total_tokens=float(total_tokens),
-                duration_seconds=0.0,  # Not available from ExecutionResult
+        # Single-agent runs: record baseline (if store available), return early.
+        if not is_multi_agent:
+            self._record_baseline(
+                agent_id,
+                task_id,
+                turns,
+                error_rate,
+                total_tokens,
+                execution_result,
             )
-            self._baseline_store.record(baseline)
+            return CoordinationMetrics()
+
+        # Multi-agent run: compute all enabled metrics.
+        return await self._collect_multi_agent(
+            turns=turns,
+            error_rate=error_rate,
+            total_tokens=total_tokens,
+            agent_id=agent_id,
+            task_id=task_id,
+            team_size=team_size,
+            agent_durations=agent_durations,
+            agent_outputs=agent_outputs,
+        )
+
+    def _record_baseline(  # noqa: PLR0913
+        self,
+        agent_id: str,
+        task_id: str,
+        turns: int,
+        error_rate: float,
+        total_tokens: int,
+        execution_result: ExecutionResult,
+    ) -> None:
+        """Record single-agent baseline data when store is available."""
+        if self._baseline_store is None:
             logger.debug(
                 COORD_METRICS_COLLECTION_COMPLETED,
                 agent_id=agent_id,
@@ -211,21 +248,59 @@ class CoordinationMetricsCollector:
                 is_multi_agent=False,
                 metrics_computed=0,
             )
-            return CoordinationMetrics()
+            return
 
-        # Multi-agent run: compute all enabled metrics.
-        efficiency = await self._try_collect_efficiency(turns)
+        from synthorg.budget.baseline_store import BaselineRecord  # noqa: PLC0415
+
+        duration_seconds = (
+            sum(t.latency_ms or 0.0 for t in execution_result.turns) / 1000.0
+        )
+        baseline = BaselineRecord(
+            agent_id=agent_id,
+            task_id=task_id,
+            turns=max(float(turns), 1.0),
+            error_rate=error_rate,
+            total_tokens=float(total_tokens),
+            duration_seconds=duration_seconds,
+        )
+        self._baseline_store.record(baseline)
+        logger.debug(
+            COORD_METRICS_COLLECTION_COMPLETED,
+            agent_id=agent_id,
+            task_id=task_id,
+            is_multi_agent=False,
+            metrics_computed=0,
+        )
+
+    async def _collect_multi_agent(  # noqa: PLR0913
+        self,
+        *,
+        turns: int,
+        error_rate: float,
+        total_tokens: int,
+        agent_id: str,
+        task_id: str,
+        team_size: int,
+        agent_durations: tuple[tuple[str, float], ...] | None,
+        agent_outputs: tuple[str, ...] | None,
+    ) -> CoordinationMetrics:
+        """Compute all enabled metrics for a multi-agent execution."""
+        efficiency = await self._try_collect_efficiency(turns, error_rate)
         overhead = await self._try_collect_overhead(turns)
-        error_amplification = await self._try_collect_error_amplification(error_rate)
+        error_amplification = await self._try_collect_error_amplification(
+            error_rate,
+        )
         message_density = await self._try_collect_message_density(turns)
         redundancy_rate = await self._try_collect_redundancy(agent_outputs)
         amdahl_ceiling = await self._try_collect_amdahl(team_size)
         straggler_gap = await self._try_collect_straggler_gap(agent_durations)
         token_speedup = await self._try_collect_token_speedup(
-            total_tokens, agent_durations
+            total_tokens,
+            agent_durations,
         )
         message_overhead = await self._try_collect_message_overhead(
-            team_size, message_density
+            team_size,
+            message_density,
         )
 
         metrics = CoordinationMetrics(
@@ -269,7 +344,7 @@ class CoordinationMetricsCollector:
     # -- Private collection helpers --
 
     async def _try_collect_efficiency(
-        self, turns_mas: int
+        self, turns_mas: int, error_rate: float
     ) -> CoordinationEfficiency | None:
         """Collect CoordinationEfficiency (Ec) if enabled and baseline available."""
         if not self._is_enabled(CoordinationMetricName.EFFICIENCY):
@@ -281,7 +356,7 @@ class CoordinationMetricsCollector:
             return None
         try:
             result = compute_efficiency(
-                success_rate=1.0,  # Approx: no per-task success rate in ExecutionResult
+                success_rate=1.0 - error_rate,
                 turns_mas=max(float(turns_mas), 1.0),
                 turns_sas=turns_sas,
             )
@@ -449,7 +524,9 @@ class CoordinationMetricsCollector:
             return result
 
     async def _try_collect_amdahl(self, team_size: int) -> AmdahlCeiling | None:
-        """Collect AmdahlCeiling if team_size > 1."""
+        """Collect AmdahlCeiling if enabled and team_size > 1."""
+        if not self._is_enabled(CoordinationMetricName.AMDAHL_CEILING):
+            return None
         if team_size < _MIN_TEAM_SIZE:
             return None
         try:
@@ -469,7 +546,9 @@ class CoordinationMetricsCollector:
     async def _try_collect_straggler_gap(
         self, agent_durations: tuple[tuple[str, float], ...] | None
     ) -> StragglerGap | None:
-        """Collect StragglerGap if agent_durations provided."""
+        """Collect StragglerGap if enabled and agent_durations provided."""
+        if not self._is_enabled(CoordinationMetricName.STRAGGLER_GAP):
+            return None
         if not agent_durations or len(agent_durations) < _MIN_TEAM_SIZE:
             return None
         try:
@@ -484,12 +563,14 @@ class CoordinationMetricsCollector:
             )
             return None
 
-    async def _try_collect_token_speedup(
+    async def _try_collect_token_speedup(  # noqa: PLR0911
         self,
         total_tokens_mas: int,
         agent_durations: tuple[tuple[str, float], ...] | None,
     ) -> TokenSpeedupRatio | None:
-        """Collect TokenSpeedupRatio if baseline and duration data available."""
+        """Collect TokenSpeedupRatio if enabled and baseline/duration available."""
+        if not self._is_enabled(CoordinationMetricName.TOKEN_SPEEDUP_RATIO):
+            return None
         if self._baseline_store is None or not agent_durations:
             return None
         tokens_sas = self._baseline_store.get_baseline_tokens()
@@ -523,7 +604,9 @@ class CoordinationMetricsCollector:
         team_size: int,
         message_density: MessageDensity | None,
     ) -> MessageOverhead | None:
-        """Collect MessageOverhead if message_density was computed."""
+        """Collect MessageOverhead if enabled and message_density was computed."""
+        if not self._is_enabled(CoordinationMetricName.MESSAGE_OVERHEAD):
+            return None
         if message_density is None:
             return None
         try:
@@ -548,7 +631,10 @@ class CoordinationMetricsCollector:
         agent_id: str,
         task_id: str,
     ) -> None:
-        """Fire notifications for coordination overhead threshold crossings."""
+        """Fire notifications for coordination overhead threshold crossings.
+
+        When ``notification_dispatcher`` is ``None``, no alerts are fired.
+        """
         if self._notification_dispatcher is None:
             return
 

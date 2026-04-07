@@ -305,6 +305,7 @@ class TestTurnRecordAnalyticsFields:
             output_tokens=5,
             cost_usd=0.001,
             finish_reason=FinishReason.STOP,
+            retry_count=1,
             retry_reason="RateLimitError",
         )
         assert record.retry_reason == "RateLimitError"

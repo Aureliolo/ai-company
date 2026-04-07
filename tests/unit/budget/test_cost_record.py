@@ -408,6 +408,35 @@ class TestCostRecordAnalyticsFields:
         )
         assert record.retry_reason == "RateLimitError"
 
+    def test_retry_reason_without_retry_count_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="retry_reason set implies"):
+            CostRecord(
+                agent_id="agent-1",
+                task_id="task-1",
+                provider="test",
+                model="test-model",
+                input_tokens=100,
+                output_tokens=50,
+                cost_usd=0.01,
+                timestamp=datetime(2026, 2, 27, tzinfo=UTC),
+                retry_reason="RateLimitError",
+            )
+
+    def test_retry_reason_with_zero_retry_count_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="retry_reason set implies"):
+            CostRecord(
+                agent_id="agent-1",
+                task_id="task-1",
+                provider="test",
+                model="test-model",
+                input_tokens=100,
+                output_tokens=50,
+                cost_usd=0.01,
+                timestamp=datetime(2026, 2, 27, tzinfo=UTC),
+                retry_count=0,
+                retry_reason="RateLimitError",
+            )
+
     def test_finish_reason_default_none(self) -> None:
         assert self._base().finish_reason is None
 

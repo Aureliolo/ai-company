@@ -2,7 +2,8 @@
 
 import asyncio
 import random
-from typing import TYPE_CHECKING, TypeVar
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, Generic, TypeVar
 
 from synthorg.observability import get_logger
 from synthorg.observability.events.provider import (
@@ -25,6 +26,24 @@ logger = get_logger(__name__)
 T = TypeVar("T")
 
 
+@dataclass(frozen=True, slots=True)
+class RetryResult(Generic[T]):  # noqa: UP046
+    """Immutable result of a retry-wrapped execution.
+
+    Returned by :meth:`RetryHandler.execute` so callers get
+    per-invocation retry metadata without shared mutable state.
+
+    Attributes:
+        value: The return value of the wrapped callable.
+        attempt_count: Number of attempts made (1 = no retry).
+        retry_reason: Exception type name if a retry occurred.
+    """
+
+    value: T
+    attempt_count: int
+    retry_reason: str | None
+
+
 class RetryHandler:
     """Wraps async callables with retry logic.
 
@@ -38,38 +57,42 @@ class RetryHandler:
 
     def __init__(self, config: RetryConfig) -> None:
         self._config = config
-        self.last_attempt_count: int = 0
-        self.last_retry_reason: str | None = None
 
     async def execute(
         self,
         func: Callable[[], Coroutine[object, object, T]],
-    ) -> T:
+    ) -> RetryResult[T]:
         """Execute *func* with retry on transient errors.
 
         Args:
             func: Zero-argument async callable to execute.
 
         Returns:
-            The return value of *func*.
+            A :class:`RetryResult` containing the return value and
+            per-invocation retry metadata.
 
         Raises:
             RetryExhaustedError: If all retries are exhausted.
             ProviderError: If the error is non-retryable.
         """
-        self.last_attempt_count = 0
-        self.last_retry_reason = None
+        attempt_count = 0
+        retry_reason: str | None = None
         last_error: ProviderError | None = None
 
         for attempt in range(1 + self._config.max_retries):
-            self.last_attempt_count = attempt + 1
+            attempt_count = attempt + 1
             try:
-                return await func()
+                value = await func()
+                return RetryResult(
+                    value=value,
+                    attempt_count=attempt_count,
+                    retry_reason=retry_reason,
+                )
             except ProviderError as exc:
                 last_error = self._handle_retryable_error(exc)
                 if last_error is None:
                     raise
-                self.last_retry_reason = type(exc).__name__
+                retry_reason = type(exc).__name__
                 if attempt >= self._config.max_retries:
                     break
                 delay = self._compute_delay(attempt, exc)

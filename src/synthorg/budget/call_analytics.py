@@ -18,6 +18,7 @@ if TYPE_CHECKING:
     from synthorg.budget.category_analytics import OrchestrationRatio
     from synthorg.budget.cost_record import CostRecord
     from synthorg.budget.tracker import CostTracker
+    from synthorg.core.types import NotBlankStr
     from synthorg.notifications.dispatcher import NotificationDispatcher
 
 logger = get_logger(__name__)
@@ -54,7 +55,7 @@ class CallAnalyticsService:
         *,
         agent_id: str | None = None,
         task_id: str | None = None,
-        provider: str | None = None,
+        provider: NotBlankStr | None = None,
         start: datetime | None = None,
         end: datetime | None = None,
     ) -> AnalyticsAggregation:

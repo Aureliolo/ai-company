@@ -99,6 +99,16 @@ class TurnRecord(BaseModel):
         description="Exception type name of the last retried error",
     )
 
+    @model_validator(mode="after")
+    def _validate_retry_consistency(self) -> Self:
+        """Ensure retry_reason implies retry_count >= 1."""
+        if self.retry_reason is not None and (
+            self.retry_count is None or self.retry_count == 0
+        ):
+            msg = "retry_reason set implies retry_count must be >= 1"
+            raise ValueError(msg)
+        return self
+
     @computed_field(description="Total token count")  # type: ignore[prop-decorator]
     @property
     def total_tokens(self) -> int:

@@ -84,6 +84,37 @@ def _dummy_orchestration_ratio() -> Any:
 
 
 @pytest.mark.unit
+class TestP95:
+    """Dedicated tests for the _p95 percentile helper."""
+
+    def test_single_value(self) -> None:
+        from synthorg.budget.call_analytics import _p95
+
+        assert _p95([42.0]) == 42.0
+
+    def test_two_values(self) -> None:
+        from synthorg.budget.call_analytics import _p95
+
+        result = _p95([10.0, 20.0])
+        assert result == pytest.approx(19.5)
+
+    def test_many_values(self) -> None:
+        from synthorg.budget.call_analytics import _p95
+
+        values = list(range(1, 101))  # 1..100
+        result = _p95([float(v) for v in values])
+        assert result == pytest.approx(95.05, abs=0.1)
+
+    def test_unsorted_input(self) -> None:
+        from synthorg.budget.call_analytics import _p95
+
+        result = _p95([50.0, 10.0, 90.0, 30.0, 70.0])
+        # sorted: [10, 30, 50, 70, 90], p95 index = 0.95 * 4 = 3.8
+        # interpolate: 70 + 0.8 * (90 - 70) = 86.0
+        assert result == pytest.approx(86.0)
+
+
+@pytest.mark.unit
 class TestGetAggregationEmpty:
     """get_aggregation on empty record set."""
 

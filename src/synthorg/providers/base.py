@@ -111,9 +111,16 @@ class BaseCompletionProvider(ABC):
                 config=config,
             )
 
+        from .resilience.retry import RetryResult  # noqa: PLC0415, TC001
+
         t_start = time.monotonic()
+        retry_info: RetryResult[CompletionResponse] | None = None
         try:
-            result = await self._resilient_execute(_attempt)
+            if self._retry_handler is not None:
+                retry_info = await self._retry_handler.execute(_attempt)
+                result = retry_info.value
+            else:
+                result = await _attempt()
         except Exception:
             logger.error(
                 PROVIDER_CALL_ERROR,
@@ -125,16 +132,17 @@ class BaseCompletionProvider(ABC):
         latency_ms = (time.monotonic() - t_start) * 1000.0
 
         metadata: dict[str, object] = {"_synthorg_latency_ms": latency_ms}
-        if self._retry_handler is not None:
+        if retry_info is not None:
             metadata["_synthorg_retry_count"] = max(
-                0, self._retry_handler.last_attempt_count - 1
+                0,
+                retry_info.attempt_count - 1,
             )
-            if self._retry_handler.last_retry_reason is not None:
-                metadata["_synthorg_retry_reason"] = (
-                    self._retry_handler.last_retry_reason
-                )
+            if retry_info.retry_reason is not None:
+                metadata["_synthorg_retry_reason"] = retry_info.retry_reason
 
-        result = result.model_copy(update={"provider_metadata": metadata})
+        merged_metadata = dict(result.provider_metadata or {})
+        merged_metadata.update(metadata)
+        result = result.model_copy(update={"provider_metadata": merged_metadata})
         logger.debug(
             PROVIDER_CALL_SUCCESS,
             model=model,
@@ -293,7 +301,8 @@ class BaseCompletionProvider(ABC):
             The return value of *attempt_fn*.
         """
         if self._retry_handler is not None:
-            return await self._retry_handler.execute(attempt_fn)
+            retry_result = await self._retry_handler.execute(attempt_fn)
+            return retry_result.value
         return await attempt_fn()
 
     async def _rate_limited_call(

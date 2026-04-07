@@ -226,7 +226,9 @@ class TestCooldown:
 
             t0 = datetime(2026, 4, 1, 12, 0, 0, tzinfo=UTC)
             t1 = t0 + timedelta(seconds=301)
+            # mock_dt.now.side_effect controls datetime.now() returns
             mock_dt.now.side_effect = [t0, t0, t1, t1]
+            # mock_dt.side_effect = datetime preserves constructor
             mock_dt.side_effect = datetime
 
             poller, _ = _make_poller(

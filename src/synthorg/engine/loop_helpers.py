@@ -7,7 +7,7 @@ on their control-flow logic.
 
 import hashlib
 import json
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 from synthorg.observability import get_logger
 from synthorg.observability.events.approval_gate import (
@@ -484,6 +484,23 @@ def make_turn_record(
     cache_hit_raw = md.get("_synthorg_cache_hit")
     retry_count_raw = md.get("_synthorg_retry_count")
     retry_reason_raw = md.get("_synthorg_retry_reason")
+
+    latency_ms: float | None = None
+    if isinstance(latency_ms_raw, (int, float)):
+        latency_ms = float(latency_ms_raw)
+
+    cache_hit: bool | None = None
+    if isinstance(cache_hit_raw, bool):
+        cache_hit = cache_hit_raw
+
+    retry_count: int | None = None
+    if isinstance(retry_count_raw, int):
+        retry_count = retry_count_raw
+
+    retry_reason: str | None = None
+    if isinstance(retry_reason_raw, str):
+        retry_reason = retry_reason_raw
+
     return TurnRecord(
         turn_number=turn_number,
         input_tokens=response.usage.input_tokens,
@@ -493,14 +510,10 @@ def make_turn_record(
         tool_call_fingerprints=compute_fingerprints(response.tool_calls),
         finish_reason=response.finish_reason,
         call_category=call_category,
-        latency_ms=float(cast("float", latency_ms_raw))
-        if latency_ms_raw is not None
-        else None,
-        cache_hit=bool(cache_hit_raw) if cache_hit_raw is not None else None,
-        retry_count=int(cast("int", retry_count_raw))
-        if retry_count_raw is not None
-        else None,
-        retry_reason=str(retry_reason_raw) if retry_reason_raw is not None else None,
+        latency_ms=latency_ms,
+        cache_hit=cache_hit,
+        retry_count=retry_count,
+        retry_reason=retry_reason,
     )
 
 
@@ -532,6 +545,47 @@ def compute_fingerprints(
         ).hexdigest()[:16]
         fingerprints.append(f"{tc.name}:{args_hash}")
     return tuple(sorted(fingerprints))
+
+
+def classify_turn(
+    turn_number: int,
+    response: CompletionResponse,
+    ctx: AgentContext,
+    *,
+    is_planning_phase: bool = False,
+    is_system_prompt: bool = False,
+) -> LLMCallCategory:
+    """Classify an LLM turn using the rules-based classifier.
+
+    Args:
+        turn_number: 1-indexed turn number.
+        response: Provider completion response.
+        ctx: Agent execution context.
+        is_planning_phase: Whether this is a planning-phase turn.
+        is_system_prompt: Whether this is a system prompt turn.
+
+    Returns:
+        The call category for this turn.
+    """
+    from synthorg.budget.call_classifier import (  # noqa: PLC0415
+        ClassificationContext,
+        classify_call,
+    )
+
+    task_id = "unknown"
+    if ctx.task_execution is not None:
+        task_id = str(ctx.task_execution.task.id)
+
+    classification_ctx = ClassificationContext(
+        turn_number=turn_number,
+        agent_id=str(ctx.identity.id),
+        task_id=task_id,
+        is_planning_phase=is_planning_phase,
+        is_system_prompt=is_system_prompt,
+        tool_calls_made=tuple(tc.name for tc in response.tool_calls),
+        agent_role=ctx.identity.role,
+    )
+    return classify_call(classification_ctx)
 
 
 def build_result(

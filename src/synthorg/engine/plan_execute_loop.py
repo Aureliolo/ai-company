@@ -12,7 +12,6 @@ limit.  When re-planning is exhausted, the loop terminates with ERROR.
 import copy
 from typing import TYPE_CHECKING
 
-from synthorg.budget.call_category import LLMCallCategory
 from synthorg.observability import get_logger
 from synthorg.observability.events.execution import (
     EXECUTION_CHECKPOINT_CALLBACK_FAILED,
@@ -42,6 +41,7 @@ from .loop_helpers import (
     check_response_errors,
     check_shutdown,
     check_stagnation,
+    classify_turn,
     clear_last_turn_tool_calls,
     execute_tool_calls,
     get_tool_definitions,
@@ -600,7 +600,12 @@ class PlanExecuteLoop:
             make_turn_record(
                 turn_number,
                 response,
-                call_category=LLMCallCategory.SYSTEM,
+                call_category=classify_turn(
+                    turn_number,
+                    response,
+                    ctx,
+                    is_planning_phase=True,
+                ),
                 provider_metadata=response.provider_metadata,
             )
         )
@@ -775,7 +780,7 @@ class PlanExecuteLoop:
             make_turn_record(
                 turn_number,
                 response,
-                call_category=LLMCallCategory.PRODUCTIVE,
+                call_category=classify_turn(turn_number, response, ctx),
                 provider_metadata=response.provider_metadata,
             )
         )

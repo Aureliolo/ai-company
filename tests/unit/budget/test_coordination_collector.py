@@ -563,7 +563,10 @@ class TestMetricComputation:
         bus = _mock_bus({"#team": 8})
         collector = CoordinationMetricsCollector(
             config=_config(
-                collect=(CoordinationMetricName.MESSAGE_DENSITY,),
+                collect=(
+                    CoordinationMetricName.MESSAGE_DENSITY,
+                    CoordinationMetricName.MESSAGE_OVERHEAD,
+                ),
             ),
             cost_tracker=_cost_tracker(),
             message_bus=bus,

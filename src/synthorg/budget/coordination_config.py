@@ -18,6 +18,10 @@ class CoordinationMetricName(StrEnum):
     ERROR_AMPLIFICATION = "error_amplification"
     MESSAGE_DENSITY = "message_density"
     REDUNDANCY = "redundancy"
+    AMDAHL_CEILING = "amdahl_ceiling"
+    STRAGGLER_GAP = "straggler_gap"
+    TOKEN_SPEEDUP_RATIO = "token_speedup_ratio"  # noqa: S105
+    MESSAGE_OVERHEAD = "message_overhead"
 
 
 class ErrorCategory(StrEnum):

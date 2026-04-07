@@ -878,6 +878,7 @@ class AgentEngine:
                 execution_result=execution_result,
                 agent_id=agent_id,
                 task_id=task_id,
+                is_multi_agent=False,
             )
         except MemoryError, RecursionError:
             raise

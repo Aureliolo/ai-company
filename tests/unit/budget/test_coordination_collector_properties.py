@@ -119,23 +119,20 @@ class TestCoordinationCollectorProperties:
         assert len(store) == n_calls
 
     @given(
-        st.floats(min_value=0.1, max_value=100.0),
-        st.floats(min_value=0.1, max_value=100.0),
+        st.integers(min_value=1, max_value=100),
+        st.integers(min_value=1, max_value=100),
     )
     async def test_overhead_sign_consistent_with_turns(
-        self, turns_mas: float, turns_sas: float
+        self, turns_mas: int, turns_sas: int
     ) -> None:
         """overhead.value_percent >= 0 iff turns_mas >= turns_sas."""
-        # Build a store pre-populated with exactly turns_sas
-        store = _baseline_store_with_record(turns=turns_sas)
+        store = _baseline_store_with_record(turns=float(turns_sas))
         collector = CoordinationMetricsCollector(
             config=CoordinationMetricsConfig(enabled=True),
             cost_tracker=MagicMock(),
             baseline_store=store,
         )
-        # Build turns to approximate turns_mas (at least 1 turn)
-        n_turns = max(1, round(turns_mas))
-        turns = tuple(_turn() for _ in range(n_turns))
+        turns = tuple(_turn() for _ in range(turns_mas))
         result = await collector.collect(
             execution_result=_execution_result(*turns),
             agent_id="a",
@@ -143,7 +140,7 @@ class TestCoordinationCollectorProperties:
             is_multi_agent=True,
         )
         if result.overhead is not None:
-            if float(n_turns) >= turns_sas:
+            if turns_mas >= turns_sas:
                 assert result.overhead.value_percent >= 0
             else:
                 assert result.overhead.value_percent <= 0

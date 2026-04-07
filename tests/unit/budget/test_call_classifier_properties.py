@@ -86,3 +86,24 @@ class TestCallClassifierProperties:
     def test_productive_when_no_flags_set(self, ctx: ClassificationContext) -> None:
         """PRODUCTIVE when all boolean flags are False."""
         assert classify_call(ctx) == LLMCallCategory.PRODUCTIVE
+
+    @given(
+        st.builds(
+            ClassificationContext,
+            turn_number=st.integers(min_value=1, max_value=1000),
+            agent_id=st.from_regex(r"agent-[a-z0-9]{1,8}", fullmatch=True),
+            task_id=st.from_regex(r"task-[a-z0-9]{1,8}", fullmatch=True),
+            is_embedding_operation=st.just(False),
+            is_delegation=st.booleans(),
+            is_review=st.booleans(),
+            is_meeting=st.booleans(),
+            is_planning_phase=st.booleans(),
+            is_system_prompt=st.booleans(),
+            is_quality_judge=st.booleans(),
+            tool_calls_made=st.just(()),
+            agent_role=st.none(),
+        ).filter(lambda c: c.is_delegation or c.is_review or c.is_meeting)
+    )
+    def test_coordination_wins_over_system(self, ctx: ClassificationContext) -> None:
+        """COORDINATION wins over SYSTEM when any coordination flag is True."""
+        assert classify_call(ctx) == LLMCallCategory.COORDINATION

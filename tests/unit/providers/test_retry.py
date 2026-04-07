@@ -1,4 +1,4 @@
-"""Tests for RetryHandler metadata state (last_attempt_count, last_retry_reason)."""
+"""Tests for RetryHandler and RetryResult metadata."""
 
 import pytest
 
@@ -8,7 +8,7 @@ from synthorg.providers.errors import (
     RateLimitError,
 )
 from synthorg.providers.resilience.errors import RetryExhaustedError
-from synthorg.providers.resilience.retry import RetryHandler
+from synthorg.providers.resilience.retry import RetryHandler, RetryResult
 
 
 def _config(*, max_retries: int = 3, jitter: bool = False) -> RetryConfig:
@@ -23,13 +23,7 @@ def _config(*, max_retries: int = 3, jitter: bool = False) -> RetryConfig:
 
 @pytest.mark.unit
 class TestRetryHandlerMetadataState:
-    """last_attempt_count and last_retry_reason are exposed after execute()."""
-
-    def test_initial_state(self) -> None:
-        """Before any call, counters are at their zero values."""
-        handler = RetryHandler(_config())
-        assert handler.last_attempt_count == 0
-        assert handler.last_retry_reason is None
+    """RetryResult carries per-invocation retry metadata."""
 
     async def test_success_on_first_try(self) -> None:
         """One attempt, no retries -- count=1, reason=None."""
@@ -38,9 +32,11 @@ class TestRetryHandlerMetadataState:
         async def _func() -> str:
             return "ok"
 
-        await handler.execute(_func)
-        assert handler.last_attempt_count == 1
-        assert handler.last_retry_reason is None
+        result = await handler.execute(_func)
+        assert isinstance(result, RetryResult)
+        assert result.value == "ok"
+        assert result.attempt_count == 1
+        assert result.retry_reason is None
 
     async def test_success_after_retries(self) -> None:
         """Two transient failures then success -- count=3, reason set."""
@@ -54,9 +50,9 @@ class TestRetryHandlerMetadataState:
                 raise RateLimitError("rate limited")  # noqa: TRY003, EM101
             return "ok"
 
-        await handler.execute(_func)
-        assert handler.last_attempt_count == 3
-        assert handler.last_retry_reason == "RateLimitError"
+        result = await handler.execute(_func)
+        assert result.attempt_count == 3
+        assert result.retry_reason == "RateLimitError"
 
     async def test_reason_reflects_last_retried_error_type(self) -> None:
         """retry_reason uses the exception class name."""
@@ -70,11 +66,11 @@ class TestRetryHandlerMetadataState:
                 raise ProviderConnectionError("connection failed")  # noqa: TRY003, EM101
             return "ok"
 
-        await handler.execute(_func)
-        assert handler.last_retry_reason == "ProviderConnectionError"
+        result = await handler.execute(_func)
+        assert result.retry_reason == "ProviderConnectionError"
 
-    async def test_state_reset_between_executions(self) -> None:
-        """State is reset at the start of each execute() call."""
+    async def test_state_independent_between_executions(self) -> None:
+        """Each execute() returns its own independent RetryResult."""
         handler = RetryHandler(_config(max_retries=3))
         calls = 0
 
@@ -85,21 +81,22 @@ class TestRetryHandlerMetadataState:
                 raise RateLimitError("retry me")  # noqa: TRY003, EM101
             return "ok"
 
-        await handler.execute(_fail_once)
-        assert handler.last_attempt_count == 2
-        assert handler.last_retry_reason == "RateLimitError"
-
-        calls = 0
+        result1 = await handler.execute(_fail_once)
+        assert result1.attempt_count == 2
+        assert result1.retry_reason == "RateLimitError"
 
         async def _succeed() -> str:
             return "ok"
 
-        await handler.execute(_succeed)
-        assert handler.last_attempt_count == 1
-        assert handler.last_retry_reason is None
+        result2 = await handler.execute(_succeed)
+        assert result2.attempt_count == 1
+        assert result2.retry_reason is None
+        # result1 is immutable -- verify it wasn't affected
+        assert result1.attempt_count == 2
+        assert result1.retry_reason == "RateLimitError"
 
-    async def test_exhausted_retries_still_updates_count(self) -> None:
-        """Even when all retries fail, count reflects total attempts."""
+    async def test_exhausted_retries_raises(self) -> None:
+        """When all retries fail, RetryExhaustedError is raised."""
         handler = RetryHandler(_config(max_retries=2))
 
         async def _always_fail() -> str:
@@ -108,11 +105,8 @@ class TestRetryHandlerMetadataState:
         with pytest.raises(RetryExhaustedError):
             await handler.execute(_always_fail)
 
-        assert handler.last_attempt_count == 3  # initial + 2 retries
-        assert handler.last_retry_reason == "RateLimitError"
-
-    async def test_non_retryable_error_count_one(self) -> None:
-        """Non-retryable errors raise immediately with count=1."""
+    async def test_non_retryable_error_raises_immediately(self) -> None:
+        """Non-retryable errors raise immediately without retry."""
         from synthorg.providers.errors import InvalidRequestError
 
         handler = RetryHandler(_config(max_retries=3))
@@ -122,5 +116,3 @@ class TestRetryHandlerMetadataState:
 
         with pytest.raises(InvalidRequestError):
             await handler.execute(_bad_request)
-
-        assert handler.last_attempt_count == 1

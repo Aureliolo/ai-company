@@ -10,7 +10,6 @@ import re
 from collections.abc import Callable
 from typing import TYPE_CHECKING
 
-from synthorg.budget.call_category import LLMCallCategory
 from synthorg.observability import get_logger
 from synthorg.observability.events.execution import (
     EXECUTION_CHECKPOINT_CALLBACK_FAILED,
@@ -36,6 +35,7 @@ from .loop_helpers import (
     check_budget,
     check_response_errors,
     check_shutdown,
+    classify_turn,
     make_turn_record,
     response_to_message,
 )
@@ -268,7 +268,12 @@ async def call_planner(  # noqa: PLR0913
         make_turn_record(
             turn_number,
             response,
-            call_category=LLMCallCategory.SYSTEM,
+            call_category=classify_turn(
+                turn_number,
+                response,
+                ctx,
+                is_planning_phase=True,
+            ),
             provider_metadata=response.provider_metadata,
         )
     )
@@ -485,7 +490,12 @@ async def run_progress_summary(  # noqa: PLR0913
         make_turn_record(
             turn_number,
             response,
-            call_category=LLMCallCategory.SYSTEM,
+            call_category=classify_turn(
+                turn_number,
+                response,
+                ctx,
+                is_planning_phase=True,
+            ),
             provider_metadata=response.provider_metadata,
         )
     )
