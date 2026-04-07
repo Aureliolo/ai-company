@@ -74,7 +74,8 @@ class BaseTerminalTool(BaseTool, ABC):
             ``True`` if the command is blocked.
         """
         normalized = command.strip().lower()
-        executable = command.split(maxsplit=1)[0] if command.split() else ""
+        parts = normalized.split(maxsplit=1)
+        executable = parts[0] if parts else ""
         for pattern in self._config.command_blocklist:
             if pattern.lower() in normalized:
                 logger.warning(
@@ -88,7 +89,7 @@ class BaseTerminalTool(BaseTool, ABC):
 
     # Shell metacharacters that enable chaining or subshells.
     _SHELL_META_RE: Final[re.Pattern[str]] = re.compile(
-        r"[;&|`$(){}<>\n]",
+        r"[;&|`$(){}<>\n\r\\]",
     )
 
     def _is_command_allowed(self, command: str) -> bool:
@@ -108,8 +109,8 @@ class BaseTerminalTool(BaseTool, ABC):
         if not self._config.command_allowlist:
             return True
         normalized = command.strip().lower()
-
-        executable = command.split(maxsplit=1)[0] if command.split() else ""
+        parts = normalized.split(maxsplit=1)
+        executable = parts[0] if parts else ""
 
         # Reject shell metacharacters when allowlist is active --
         # prevents `ls; curl ...` or `ls && cat /etc/passwd`.

@@ -116,7 +116,7 @@ class ToolSubConstraints(BaseModel):
             mode is ``ALLOWLIST_ONLY``.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     file_system: FileSystemScope = Field(
         default=FileSystemScope.PROJECT_DIRECTORY,
@@ -202,9 +202,11 @@ def get_sub_constraints(
 
     Args:
         access_level: The agent's tool access level.
-        custom_constraints: Optional per-agent overrides. When
-            provided for a built-in level, replaces the defaults
-            entirely. Required for ``CUSTOM`` level.
+        custom_constraints: Optional per-agent overrides. For
+            ``CUSTOM`` level, used as-is (full specification required).
+            For built-in levels, explicitly set fields override the
+            level defaults while unset fields inherit the secure
+            baseline (overlay merge via ``model_dump(exclude_unset)``).
 
     Returns:
         The resolved ``ToolSubConstraints``.

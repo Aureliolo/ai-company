@@ -168,7 +168,13 @@ class WebSearchTool(BaseWebTool):
                     if isinstance(item, SearchResult)
                     else SearchResult.model_validate(item, from_attributes=True)
                 )
-            except Exception:  # noqa: S112  -- skip malformed items
+            except Exception:
+                logger.debug(
+                    WEB_SEARCH_FAILED,
+                    query=query,
+                    error="malformed_provider_result",
+                    exc_info=True,
+                )
                 continue
 
         if not validated:
