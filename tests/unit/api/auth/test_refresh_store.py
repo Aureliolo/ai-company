@@ -87,6 +87,37 @@ class TestRefreshConsume:
         result = await store.consume("hash-expired")
         assert result is None
 
+    async def test_consume_rejects_revoked_session(self, store: RefreshStore) -> None:
+        """Token belonging to a revoked session is rejected."""
+        await store.create(
+            token_hash="hash-revoked-sess",
+            session_id="revoked-sess",
+            user_id="user-1",
+            expires_at=_FUTURE,
+        )
+        result = await store.consume(
+            "hash-revoked-sess",
+            is_session_revoked=lambda sid: sid == "revoked-sess",
+        )
+        assert result is None
+
+    async def test_consume_allows_non_revoked_session(
+        self, store: RefreshStore
+    ) -> None:
+        """Token with a valid session passes the revocation check."""
+        await store.create(
+            token_hash="hash-valid-sess",
+            session_id="valid-sess",
+            user_id="user-1",
+            expires_at=_FUTURE,
+        )
+        result = await store.consume(
+            "hash-valid-sess",
+            is_session_revoked=lambda sid: False,
+        )
+        assert result is not None
+        assert result.session_id == "valid-sess"
+
 
 class TestRefreshRevoke:
     async def test_revoke_by_session(self, store: RefreshStore) -> None:

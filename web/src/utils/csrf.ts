@@ -6,6 +6,10 @@
  * `X-CSRF-Token` header whose value matches this cookie.
  */
 
+import { createLogger } from '@/lib/logger'
+
+const log = createLogger('csrf')
+
 /**
  * Read the CSRF token from the non-HttpOnly csrf_token cookie.
  *
@@ -22,7 +26,10 @@ export function getCsrfToken(): string | null {
   if (eqIdx === -1) return null
   try {
     return decodeURIComponent(match.slice(eqIdx + 1))
-  } catch {
+  } catch (err) {
+    // Malformed cookie encoding -- log for diagnosis, return null
+    // so the CSRF interceptor omits the header (server returns 403).
+    log.warn('Failed to decode csrf_token cookie:', err)
     return null
   }
 }
