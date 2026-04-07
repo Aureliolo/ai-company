@@ -13,6 +13,7 @@ from synthorg.core.types import NotBlankStr
 from synthorg.persistence.errors import DuplicateRecordError
 from synthorg.security.rules.risk_override import RiskTierOverride
 from synthorg.security.ssrf_violation import SsrfViolation, SsrfViolationStatus
+from synthorg.versioning.models import VersionSnapshot
 from tests.unit.api.fakes import (
     FakeAgentStateRepository,
     FakeApiKeyRepository,
@@ -142,6 +143,58 @@ class FakeSsrfViolationRepository:
         return True
 
 
+class FakeVersionRepository:
+    """In-memory VersionRepository for tests (any snapshot type)."""
+
+    def __init__(self) -> None:
+        self._store: dict[tuple[str, int], VersionSnapshot[Any]] = {}
+
+    async def save_version(self, version: VersionSnapshot[Any]) -> None:
+        self._store.setdefault((version.entity_id, version.version), version)
+
+    async def get_version(
+        self, entity_id: NotBlankStr, version: int
+    ) -> VersionSnapshot[Any] | None:
+        return self._store.get((entity_id, version))
+
+    async def get_latest_version(
+        self, entity_id: NotBlankStr
+    ) -> VersionSnapshot[Any] | None:
+        candidates = [v for (eid, _), v in self._store.items() if eid == entity_id]
+        return max(candidates, key=lambda v: v.version) if candidates else None
+
+    async def get_by_content_hash(
+        self, entity_id: NotBlankStr, content_hash: NotBlankStr
+    ) -> VersionSnapshot[Any] | None:
+        for (eid, _), v in self._store.items():
+            if eid == entity_id and v.content_hash == content_hash:
+                return v
+        return None
+
+    async def list_versions(
+        self,
+        entity_id: NotBlankStr,
+        *,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> tuple[VersionSnapshot[Any], ...]:
+        candidates = sorted(
+            (v for (eid, _), v in self._store.items() if eid == entity_id),
+            key=lambda v: v.version,
+            reverse=True,
+        )
+        return tuple(candidates[offset : offset + limit])
+
+    async def count_versions(self, entity_id: NotBlankStr) -> int:
+        return sum(1 for eid, _ in self._store if eid == entity_id)
+
+    async def delete_versions_for_entity(self, entity_id: NotBlankStr) -> int:
+        to_delete = [k for k in self._store if k[0] == entity_id]
+        for k in to_delete:
+            del self._store[k]
+        return len(to_delete)
+
+
 class FakePersistenceBackend:
     """In-memory persistence backend for tests."""
 
@@ -152,6 +205,7 @@ class FakePersistenceBackend:
         self._workflow_definitions = FakeWorkflowDefinitionRepository()
         self._workflow_executions = FakeWorkflowExecutionRepository()
         self._workflow_versions = FakeWorkflowVersionRepository()
+        self._identity_versions = FakeVersionRepository()
         self._risk_overrides = FakeRiskOverrideRepository()
         self._ssrf_violations = FakeSsrfViolationRepository()
         self._tasks = FakeTaskRepository()
@@ -281,6 +335,10 @@ class FakePersistenceBackend:
     @property
     def workflow_versions(self) -> FakeWorkflowVersionRepository:
         return self._workflow_versions
+
+    @property
+    def identity_versions(self) -> FakeVersionRepository:
+        return self._identity_versions
 
     @property
     def risk_overrides(self) -> FakeRiskOverrideRepository:

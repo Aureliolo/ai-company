@@ -19,12 +19,14 @@ from synthorg.observability.events.hr import (
     HR_REGISTRY_IDENTITY_UPDATED,
     HR_REGISTRY_STATUS_UPDATED,
 )
+from synthorg.observability.events.versioning import VERSION_SNAPSHOT_FAILED
 
 if TYPE_CHECKING:
     from typing import Any
 
     from synthorg.core.agent import AgentIdentity
     from synthorg.core.types import NotBlankStr
+    from synthorg.versioning.service import VersioningService
 
 logger = get_logger(__name__)
 
@@ -36,9 +38,13 @@ class AgentRegistryService:
     Stores agent identities keyed by agent ID (string form of UUID).
     """
 
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        versioning: VersioningService[AgentIdentity] | None = None,
+    ) -> None:
         self._agents: dict[str, AgentIdentity] = {}
         self._lock = asyncio.Lock()
+        self._versioning = versioning
 
     async def register(self, identity: AgentIdentity) -> None:
         """Register a new agent.
@@ -67,6 +73,7 @@ class AgentRegistryService:
             agent_name=str(identity.name),
             status=identity.status.value,
         )
+        await self._snapshot(identity, saved_by="system")
 
     async def unregister(self, agent_id: NotBlankStr) -> AgentIdentity:
         """Remove an agent from the registry.
@@ -254,9 +261,26 @@ class AgentRegistryService:
             agent_id=key,
             updated_fields=sorted(updates.keys()),
         )
+        await self._snapshot(updated, saved_by="system")
         return updated
 
     async def agent_count(self) -> int:
         """Number of agents currently in the registry."""
         async with self._lock:
             return len(self._agents)
+
+    async def _snapshot(self, identity: AgentIdentity, *, saved_by: str) -> None:
+        """Snapshot identity via versioning service (best-effort, no-op if absent)."""
+        if self._versioning is None:
+            return
+        try:
+            await self._versioning.snapshot_if_changed(
+                str(identity.id), identity, saved_by
+            )
+        except Exception as exc:
+            logger.warning(
+                VERSION_SNAPSHOT_FAILED,
+                agent_id=str(identity.id),
+                error=str(exc),
+                error_type=type(exc).__name__,
+            )

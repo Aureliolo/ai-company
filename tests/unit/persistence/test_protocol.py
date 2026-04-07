@@ -573,6 +573,10 @@ class _FakeBackend:
     def ssrf_violations(self) -> Any:
         return object()
 
+    @property
+    def identity_versions(self) -> Any:
+        return object()
+
     async def get_setting(self, key: str) -> str | None:
         return None
 

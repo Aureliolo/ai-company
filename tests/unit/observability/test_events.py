@@ -252,6 +252,7 @@ class TestEventConstants:
             "database",
             "sub_constraint",
             "terminal",
+            "versioning",
             "web",
         }
         discovered = {info.name for info in pkgutil.iter_modules(events.__path__)}

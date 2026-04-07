@@ -157,6 +157,87 @@ with `model_copy`:
 
 ---
 
+## Identity Versioning
+
+Every mutation to an `AgentIdentity` (registration, model swap, level change) is
+captured as an immutable `VersionSnapshot[AgentIdentity]` record. This provides a
+full audit trail of charter changes and enables `DecisionRecord` entries to cite the
+exact charter version that was active during execution.
+
+### Generic Infrastructure
+
+The versioning system lives in `src/synthorg/versioning/` and is intentionally
+entity-agnostic so it can be reused for other versioned entity types (tracked in
+#1113):
+
+- **`VersionSnapshot[T]`** (`versioning/models.py`): Generic frozen Pydantic model
+  with fields `entity_id`, `version`, `content_hash`, `snapshot: T`, `saved_by`,
+  `saved_at`. Version numbers are monotonically increasing per entity.
+- **`compute_content_hash(model)`** (`versioning/hashing.py`): SHA-256 of
+  `json.dumps(model.model_dump(mode="json"), sort_keys=True)` -- stable across
+  field-ordering variations in Pydantic serialization.
+- **`VersioningService[T]`** (`versioning/service.py`): Wraps a `VersionRepository`
+  to provide content-addressable snapshot creation. `snapshot_if_changed` skips the
+  write when the content hash matches the latest stored version.
+- **`VersionRepository[T]`** (`persistence/version_repo.py`): Generic protocol with
+  `save_version` (idempotent INSERT OR IGNORE), `get_version`, `get_latest_version`,
+  `get_by_content_hash`, `list_versions`, `count_versions`,
+  `delete_versions_for_entity`.
+- **`SQLiteVersionRepository[T]`** (`persistence/sqlite/version_repo.py`):
+  Parameterized by `table_name`, `serialize_snapshot`, and `deserialize_snapshot`
+  callables. Table name is validated at construction against
+  `^[a-z][a-z0-9_]*$` to prevent SQL injection.
+
+### Agent Identity Storage
+
+Identity versions are persisted in the `agent_identity_versions` table (see
+`schema.sql`). The `SQLitePersistenceBackend.identity_versions` property exposes a
+pre-configured `SQLiteVersionRepository[AgentIdentity]`.
+
+`AgentRegistryService` accepts an optional `VersioningService[AgentIdentity]`
+dependency (constructor injection). When wired:
+
+- `register()` snapshots the initial identity immediately after storing it.
+- `update_identity()` snapshots the updated identity after applying the change.
+- Both calls are best-effort: versioning failures are logged at WARNING and do not
+  interrupt the registry mutation.
+
+### Identity Diff
+
+`src/synthorg/engine/identity/diff.py` provides identity-specific diff logic:
+
+- **`IdentityFieldChange`**: A single field-level change with `field_path`
+  (dot-notation, e.g. `personality.risk_tolerance`), `change_type`
+  (`modified`/`added`/`removed`), and `old_value`/`new_value` (JSON strings).
+- **`AgentIdentityDiff`**: Full diff summary with `agent_id`, `from_version`,
+  `to_version`, `field_changes`, and a human-readable `summary`.
+- **`compute_diff(agent_id, old, new, from_version, to_version)`**: Recursively
+  compares `model_dump(mode="json")` output, descending into nested sub-models and
+  dicts. Produces changes sorted by `field_path`.
+
+### DecisionRecord Integration
+
+When `ReviewGateService._record_decision` runs, it looks up the executing agent's
+latest identity version from `persistence.identity_versions`. If found, it injects a
+`charter_version` entry into the `DecisionRecord.metadata` dict:
+
+```python
+metadata = {
+    "charter_version": {
+        "agent_id": "...",
+        "version": 3,
+        "content_hash": "abc123...",
+    }
+}
+```
+
+This lookup is best-effort. A failure is logged at WARNING and the decision record is
+written without the `charter_version` key. No schema migration is required: the
+`metadata` field on `DecisionRecord` was designed as a forward-compatible extension
+point.
+
+---
+
 ## Seniority & Authority Levels
 
 | Level | Authority | Typical Model | Cost Tier |

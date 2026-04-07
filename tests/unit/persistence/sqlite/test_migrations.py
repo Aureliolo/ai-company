@@ -41,6 +41,7 @@ _EXPECTED_TABLES = {
     "refresh_tokens",
     "risk_overrides",
     "ssrf_violations",
+    "agent_identity_versions",
 }
 
 _EXPECTED_INDEXES = {
@@ -112,6 +113,8 @@ _EXPECTED_INDEXES = {
     "idx_sv_status_timestamp",
     "idx_sv_timestamp",
     "idx_sv_hostname",
+    "idx_aiv_entity_saved",
+    "idx_aiv_content_hash",
 }
 
 

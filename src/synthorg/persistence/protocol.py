@@ -6,6 +6,7 @@ management.  Repository protocols provide entity-level access.
 
 from typing import Any, Protocol, runtime_checkable
 
+from synthorg.core.agent import AgentIdentity  # noqa: TC001
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.hr.persistence_protocol import (
     CollaborationMetricRepository,  # noqa: TC001
@@ -36,6 +37,9 @@ from synthorg.persistence.risk_override_repo import (
 )
 from synthorg.persistence.ssrf_violation_repo import (
     SsrfViolationRepository,  # noqa: TC001
+)
+from synthorg.persistence.version_repo import (
+    VersionRepository,  # noqa: TC001
 )
 from synthorg.persistence.workflow_definition_repo import (
     WorkflowDefinitionRepository,  # noqa: TC001
@@ -80,6 +84,8 @@ class PersistenceBackend(Protocol):
         workflow_executions: Repository for workflow execution persistence.
         workflow_versions: Repository for workflow definition version
             snapshot persistence.
+        identity_versions: Repository for AgentIdentity version snapshot
+            persistence.
         decision_records: Repository for DecisionRecord persistence
             (auditable approval-gate decisions drop-box).
         risk_overrides: Repository for RiskTierOverride persistence.
@@ -242,6 +248,11 @@ class PersistenceBackend(Protocol):
     @property
     def workflow_versions(self) -> WorkflowVersionRepository:
         """Repository for workflow definition version snapshot persistence."""
+        ...
+
+    @property
+    def identity_versions(self) -> VersionRepository[AgentIdentity]:
+        """Repository for AgentIdentity version snapshot persistence."""
         ...
 
     @property

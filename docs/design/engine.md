@@ -734,10 +734,14 @@ async run(
       full three-layer enforcement model (service preflight, Pydantic
       validator, SQL CHECK constraint).
 
-      **Future work (#1076):** versioning agent identities/charters
-      as first-class artifacts so a ``DecisionRecord`` can carry a
-      ``charter_version`` back-reference -- tracked as a separate
-      design discussion spun out from #700 action 4.
+      **Identity versioning (#1076, implemented):** Agent identities
+      are versioned as first-class artifacts via the generic
+      ``VersioningService[T]`` infrastructure. ``ReviewGateService``
+      looks up the executing agent's latest identity version and injects
+      ``charter_version: {agent_id, version, content_hash}`` into the
+      ``DecisionRecord.metadata`` field (best-effort; lookup failure
+      is logged at WARNING and the decision record is still written).
+      See ``docs/design/agents.md`` for the full design.
     - `SHUTDOWN` termination: current status -> INTERRUPTED
       (see [Graceful Shutdown](#graceful-shutdown-protocol)).
     - `ERROR` termination: recovery strategy is applied (default

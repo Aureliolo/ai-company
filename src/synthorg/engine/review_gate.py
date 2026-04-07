@@ -31,6 +31,7 @@ from synthorg.observability.events.approval_gate import (
     APPROVAL_GATE_TASK_NOT_FOUND,
     APPROVAL_GATE_TASK_UNASSIGNED,
 )
+from synthorg.observability.events.versioning import VERSION_FETCH_FAILED
 from synthorg.persistence.errors import DuplicateRecordError, QueryError
 
 if TYPE_CHECKING:
@@ -292,6 +293,27 @@ class ReviewGateService:
                 criteria_snapshot = (*criteria_snapshot, stripped)
         persistence = self._persistence
         assert persistence is not None  # noqa: S101  # narrowed above
+        metadata: dict[str, object] | None = None
+        try:
+            latest_charter = await persistence.identity_versions.get_latest_version(
+                task.assigned_to
+            )
+            if latest_charter is not None:
+                metadata = {
+                    "charter_version": {
+                        "agent_id": latest_charter.entity_id,
+                        "version": latest_charter.version,
+                        "content_hash": latest_charter.content_hash,
+                    }
+                }
+        except Exception as exc:
+            logger.warning(
+                VERSION_FETCH_FAILED,
+                entity_id=task.assigned_to,
+                context="charter_version_lookup",
+                error=str(exc),
+                error_type=type(exc).__name__,
+            )
         try:
             record = await persistence.decision_records.append_with_next_version(
                 record_id=str(uuid.uuid4()),
@@ -303,6 +325,7 @@ class ReviewGateService:
                 reason=reason,
                 criteria_snapshot=criteria_snapshot,
                 recorded_at=datetime.now(UTC),
+                metadata=metadata,
             )
             logger.info(
                 APPROVAL_GATE_DECISION_RECORDED,

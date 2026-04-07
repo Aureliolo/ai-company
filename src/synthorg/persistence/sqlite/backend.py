@@ -1,12 +1,14 @@
 """SQLite persistence backend implementation."""
 
 import asyncio
+import json
 import sqlite3
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 import aiosqlite
 
+from synthorg.core.agent import AgentIdentity
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
 from synthorg.observability.events.persistence import (
@@ -73,6 +75,7 @@ from synthorg.persistence.sqlite.user_repo import (
     SQLiteApiKeyRepository,
     SQLiteUserRepository,
 )
+from synthorg.persistence.sqlite.version_repo import SQLiteVersionRepository
 from synthorg.persistence.sqlite.workflow_definition_repo import (
     SQLiteWorkflowDefinitionRepository,
 )
@@ -133,6 +136,7 @@ class SQLitePersistenceBackend:
         self._workflow_definitions: SQLiteWorkflowDefinitionRepository | None = None
         self._workflow_executions: SQLiteWorkflowExecutionRepository | None = None
         self._workflow_versions: SQLiteWorkflowVersionRepository | None = None
+        self._identity_versions: SQLiteVersionRepository[AgentIdentity] | None = None
         self._decision_records: SQLiteDecisionRepository | None = None
         self._risk_overrides: SQLiteRiskOverrideRepository | None = None
         self._ssrf_violations: SQLiteSsrfViolationRepository | None = None
@@ -160,6 +164,7 @@ class SQLitePersistenceBackend:
         self._workflow_definitions = None
         self._workflow_executions = None
         self._workflow_versions = None
+        self._identity_versions = None
         self._decision_records = None
         self._risk_overrides = None
         self._ssrf_violations = None
@@ -248,6 +253,12 @@ class SQLitePersistenceBackend:
         self._workflow_definitions = SQLiteWorkflowDefinitionRepository(self._db)
         self._workflow_executions = SQLiteWorkflowExecutionRepository(self._db)
         self._workflow_versions = SQLiteWorkflowVersionRepository(self._db)
+        self._identity_versions = SQLiteVersionRepository(
+            self._db,
+            table_name="agent_identity_versions",
+            serialize_snapshot=lambda m: json.dumps(m.model_dump(mode="json")),
+            deserialize_snapshot=lambda s: AgentIdentity.model_validate(json.loads(s)),
+        )
         self._decision_records = SQLiteDecisionRepository(
             self._db, write_lock=self._shared_write_lock
         )
@@ -565,6 +576,18 @@ class SQLitePersistenceBackend:
         return self._require_connected(
             self._workflow_versions,
             "workflow_versions",
+        )
+
+    @property
+    def identity_versions(self) -> SQLiteVersionRepository[AgentIdentity]:
+        """Repository for AgentIdentity version snapshot persistence.
+
+        Raises:
+            PersistenceConnectionError: If not connected.
+        """
+        return self._require_connected(
+            self._identity_versions,
+            "identity_versions",
         )
 
     @property

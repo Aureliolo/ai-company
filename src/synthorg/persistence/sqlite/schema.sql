@@ -579,4 +579,20 @@ CREATE TABLE IF NOT EXISTS ssrf_violations (
 CREATE INDEX IF NOT EXISTS idx_sv_status_timestamp
     ON ssrf_violations(status, timestamp DESC);
 CREATE INDEX IF NOT EXISTS idx_sv_timestamp ON ssrf_violations(timestamp);
+
+-- ── Agent identity versions ────────────────────────────────────
+CREATE TABLE IF NOT EXISTS agent_identity_versions (
+    entity_id TEXT NOT NULL CHECK(length(entity_id) > 0),
+    version INTEGER NOT NULL CHECK(version >= 1),
+    content_hash TEXT NOT NULL CHECK(length(content_hash) > 0),
+    snapshot TEXT NOT NULL CHECK(length(snapshot) > 0),
+    saved_by TEXT NOT NULL CHECK(length(saved_by) > 0),
+    saved_at TEXT NOT NULL,
+    PRIMARY KEY (entity_id, version)
+);
+
+CREATE INDEX IF NOT EXISTS idx_aiv_entity_saved
+    ON agent_identity_versions(entity_id, saved_at DESC);
+CREATE INDEX IF NOT EXISTS idx_aiv_content_hash
+    ON agent_identity_versions(entity_id, content_hash);
 CREATE INDEX IF NOT EXISTS idx_sv_hostname ON ssrf_violations(hostname, port);
