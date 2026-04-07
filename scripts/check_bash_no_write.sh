@@ -45,15 +45,22 @@ if printf '%s\n' "$COMMAND" | grep -qE '<<-?\s*\\?'"'"'?"?[A-Za-z_]'; then
     deny "Do not use heredocs (<< EOF) to write files. Use the Write tool to create new files or the Edit tool to modify existing files. Never use Bash for file creation or modification."
 fi
 
+# Strip double-quoted string contents before redirect checks so that >
+# inside -m "..." commit messages, script excerpts, or other string
+# arguments does not trigger false positives.  Intentionally simple:
+# does not handle escaped quotes inside strings, which is fine for the
+# shell commands we need to guard against.
+COMMAND_FOR_REDIR=$(printf '%s\n' "$COMMAND" | sed 's/"[^"]*"/""/g')
+
 # Output redirection: > file, >> file, > /path, > "./path", > file.txt
 # Block ALL redirects to files (only allow fd redirects like >&2, 2>&1)
 # This catches: echo > file.txt, cat > foo, > output, etc. (anywhere in command)
-if printf '%s\n' "$COMMAND" | grep -qE '(^|[^|&;])\s*>>?\s*"?[^-]'; then
+if printf '%s\n' "$COMMAND_FOR_REDIR" | grep -qE '(^|[^|&;])\s*>>?\s*"?[^-]'; then
     # Extract redirect target to check if it's a file descriptor
     # Extract redirect target.  grep returns 1 when there is no match (e.g.
     # ">&1" where & is excluded from [^|&;<>]+); || true prevents set -e from
     # exiting the script when extraction yields no output.
-    REDIR=$(printf '%s\n' "$COMMAND" | grep -oE '>>?\s*"?[^|&;<>]+' | head -1 | sed 's/^>>\?["'"'"']*//' || true)
+    REDIR=$(printf '%s\n' "$COMMAND_FOR_REDIR" | grep -oE '>>?\s*"?[^|&;<>]+' | head -1 | sed 's/^>>\?["'"'"']*//' || true)
     # Only deny if a non-empty target was extracted and it is not a file
     # descriptor.  Empty REDIR means the target was &N (fd redirect such as
     # 2>&1) whose & could not be captured; those are always safe.
@@ -64,12 +71,12 @@ if printf '%s\n' "$COMMAND" | grep -qE '(^|[^|&;])\s*>>?\s*"?[^-]'; then
 fi
 
 # echo/printf > filename.ext (catches echo "text" > file.txt)
-if printf '%s\n' "$COMMAND" | grep -qE '\b(echo|printf)\b.*>\s*\S+\.\S+'; then
+if printf '%s\n' "$COMMAND_FOR_REDIR" | grep -qE '\b(echo|printf)\b.*>\s*\S+\.\S+'; then
     deny "Do not use echo/printf with redirects to write files. Use the Write tool to create new files or the Edit tool to modify existing files. Never use Bash for file creation or modification."
 fi
 
 # tee to files (not just piping through)
-if printf '%s\n' "$COMMAND" | grep -qE '\btee\s+[^|]'; then
+if printf '%s\n' "$COMMAND_FOR_REDIR" | grep -qE '\btee\s+[^|]'; then
     deny "Do not use tee to write files. Use the Write tool to create new files or the Edit tool to modify existing files. Never use Bash for file creation or modification."
 fi
 
