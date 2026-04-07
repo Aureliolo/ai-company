@@ -20,6 +20,7 @@ from synthorg.api.auth.cookies import (
     make_clear_refresh_cookie,
     make_clear_session_cookie,
     make_csrf_cookie,
+    make_refresh_cookie,
     make_session_cookie,
 )
 from synthorg.api.auth.models import AuthenticatedUser, AuthMethod, User
@@ -227,26 +228,33 @@ class SessionResponse(BaseModel):
     is_current: bool = False
 
 
-def _make_session_cookies(
+async def _make_session_cookies(  # noqa: PLR0913
     token: str,
     expires_in: int,
     config: AuthConfig,
+    *,
+    app_state: AppState | None = None,
+    session_id: str = "",
+    user_id: str = "",
 ) -> list[Any]:
     """Build the cookie list for a login/setup response.
 
     Returns session cookie + CSRF cookie, plus a refresh
-    cookie when ``jwt_refresh_enabled`` is ``True``.
+    cookie when ``jwt_refresh_enabled`` is ``True``.  When
+    refresh is enabled the token is also persisted to the
+    refresh store for single-use validation.
 
     Args:
         token: Encoded JWT string.
         expires_in: Cookie lifetime in seconds.
         config: Auth configuration.
+        app_state: App state (needed for refresh store persistence).
+        session_id: JWT session ID (``jti``) for refresh binding.
+        user_id: Token owner's user ID for refresh binding.
 
     Returns:
         List of ``Cookie`` objects to attach to the response.
     """
-    from synthorg.api.auth.cookies import make_refresh_cookie  # noqa: PLC0415
-
     cookies: list[Any] = [
         make_session_cookie(token, expires_in, config),
         make_csrf_cookie(generate_csrf_token(), expires_in, config),
@@ -257,6 +265,35 @@ def _make_session_cookies(
         cookies.append(
             make_refresh_cookie(refresh_token, refresh_max_age, config),
         )
+        # Persist hashed refresh token for single-use validation.
+        if app_state is not None and session_id and user_id:
+            try:
+                from synthorg.api.auth.refresh_store import (  # noqa: PLC0415, TC001
+                    RefreshStore,
+                )
+
+                auth_service: AuthService = app_state.auth_service
+                token_hash = auth_service.hash_api_key(refresh_token)
+                refresh_expiry = datetime.now(UTC) + timedelta(
+                    seconds=refresh_max_age,
+                )
+                # Access refresh store from app_state if available.
+                store: RefreshStore | None = getattr(app_state, "_refresh_store", None)
+                if store is not None:
+                    await store.create(
+                        token_hash=token_hash,
+                        session_id=session_id,
+                        user_id=user_id,
+                        expires_at=refresh_expiry,
+                    )
+            except MemoryError, RecursionError:
+                raise
+            except Exception:
+                logger.warning(
+                    API_AUTH_FAILED,
+                    reason="refresh_token_persist_failed",
+                    exc_info=True,
+                )
     return cookies
 
 
@@ -541,7 +578,14 @@ class AuthController(Controller):
                 ),
             ),
             status_code=201,
-            cookies=_make_session_cookies(token, expires_in, auth_config),
+            cookies=await _make_session_cookies(
+                token,
+                expires_in,
+                auth_config,
+                app_state=app_state,
+                session_id=session_id,
+                user_id=user.id,
+            ),
         )
 
     @post(
@@ -643,7 +687,14 @@ class AuthController(Controller):
                     must_change_password=user.must_change_password,
                 ),
             ),
-            cookies=_make_session_cookies(token, expires_in, auth_config),
+            cookies=await _make_session_cookies(
+                token,
+                expires_in,
+                auth_config,
+                app_state=app_state,
+                session_id=session_id,
+                user_id=user.id,
+            ),
         )
 
     @post(
@@ -747,10 +798,13 @@ class AuthController(Controller):
                     scoped_departments=updated_user.scoped_departments,
                 ),
             ),
-            cookies=_make_session_cookies(
+            cookies=await _make_session_cookies(
                 token,
                 expires_in,
                 auth_config,
+                app_state=app_state,
+                session_id=session_id,
+                user_id=updated_user.id,
             ),
         )
 
@@ -991,7 +1045,7 @@ class AuthController(Controller):
             )
 
         auth_config = _get_auth_config(
-            request.app.state["app_state"],
+            app_state,
         )
         return Response(
             content=None,
