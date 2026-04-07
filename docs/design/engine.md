@@ -1441,3 +1441,115 @@ appropriate dispatcher; `AUTO` must be resolved before dispatch.
 groups and routing decisions into `ParallelExecutionGroup` instances. Subtasks
 without routing decisions are skipped. Empty waves (all subtasks unroutable) are
 dropped.
+
+---
+
+## ACG Vocabulary Cross-Reference
+
+*Research findings from #848. See also: `docs/research/acg-formalism-evaluation.md`.*
+
+The Agentic Computation Graph (ACG) formalism (arXiv:2603.22386) provides a graph-level
+vocabulary for reasoning about agentic execution: nodes as atomic computation steps, edges
+as data/control flow, scheduling policies, resource constraints, and termination conditions.
+SynthOrg's engine maps closely to this vocabulary. The cross-reference below is maintained
+as a **bidirectional glossary** -- use ACG terms when discussing execution graphs with
+external audiences; use SynthOrg terms in implementation discussions.
+
+### Vocabulary Mapping
+
+| ACG Term | SynthOrg Equivalent | Fidelity | Notes |
+|----------|--------------------|---------:|-------|
+| ACG Template | `CompanyConfig` + company YAML | Partial | ACG is graph-level; SynthOrg operates at org-level |
+| Realized Graph | `AgentContext` + `TaskExecution` + `CoordinationResult` | Strong | Runtime execution state |
+| Execution Trace | `TurnRecord` tuple + observability events (82+ constants) | Strong | SynthOrg's trace is richer than ACG baseline |
+| Nodes | LLM calls (`call_provider`), tool invocations, validation checks | Partial | No formal node typing yet |
+| Edges | `SubtaskDefinition.dependencies`, `DecompositionPlan` DAG | Strong | Multi-agent; implicit in single-agent loops |
+| Scheduling Policies | `AutoLoopConfig` + `select_loop_type()` + `CoordinationConfig` | Strong | Loop selector + topology selection |
+| Conditional Branching | HybridLoop replan, PlanExecuteLoop step checks | Partial | Not expressed as graph-level conditionals |
+| Parallel Composition | `ParallelExecutor`, `CoordinationWave`, `asyncio.TaskGroup` | Strong | Fan-out/fan-in with DAG wave execution |
+| Resource Constraints | `BudgetEnforcer`, quota degradation, `ContextBudget` | Strong | Richer than ACG: 3-layer enforcement + in-flight |
+| Graph Mutation | Hybrid replanning, stagnation correction injection | Partial | Runtime; not exposed as first-class graph mutation |
+| Termination Conditions | `TerminationReason` enum (7 reasons) | Strong | Explicit enumeration covers all exit paths |
+| Node Cost | `TurnRecord.cost_usd`, `TokenUsage` | Strong | Per-turn cost attribution |
+
+**SynthOrg concepts not captured by ACG**: agent personality, episodic and procedural
+memory, trust levels, autonomy presets, hiring/firing lifecycle. These are organizational
+abstractions above the computation graph level.
+
+### Survey Findings Validation
+
+Key claims from the ACG survey validated against SynthOrg's architecture:
+
+- *"Structural improvements outperform prompt refinement when the scaffold is poorly
+  matched"*: confirmed by loop selector behavior -- `select_loop_type()` switches execution
+  structure based on task complexity, not just prompt content.
+- *"Selection/pruning from a super-graph outperforms unconstrained generation"*: confirmed
+  by template-based company creation -- `CompanyConfig` constrains the agent topology
+  before instantiation rather than generating it freely.
+- *"Quality-cost tradeoffs must be explicit with hard budget caps"*: confirmed by
+  `BudgetEnforcer`'s hard stop + model auto-downgrade at configurable utilization
+  thresholds.
+- *"Strong verifiers enable more aggressive graph mutation"*: partially confirmed --
+  `StepQualitySignal` and HybridLoop replanning allow conditional graph mutation, but
+  formal quality gates on replanning decisions are not yet implemented.
+
+---
+
+## Context Compaction
+
+*Research findings from #687. See also: `docs/research/agent-controlled-compaction.md`.*
+
+Context compaction is invoked at turn boundaries when context fill exceeds the configured
+threshold (`CompactionConfig.threshold_percent`, default 80%). The `invoke_compaction()`
+helper in `engine/loop_helpers.py` is shared across all three execution loops.
+
+### Current Implementation
+
+The current `_build_summary()` in `compaction/summarizer.py` performs simple text
+concatenation: assistant message snippets capped at 100 characters each, total summary
+capped at 500 characters. No LLM calls, no semantic awareness, no preservation of
+reasoning artifacts.
+
+**Known limitations**:
+
+- Fixed 80% threshold is not context-aware -- too aggressive for simple tasks, potentially
+  too late for complex multi-step tasks.
+- Epistemic markers ("wait", "hmm", "actually") are stripped or truncated. These carry
+  disproportionate value for reasoning chains: empirical data (arXiv:2603.24472) shows
+  their removal degrades accuracy by up to 63% on complex reasoning tasks (AIME24).
+- No memory offloading -- compacted context is discarded rather than written to
+  `MemoryBackend`. LangChain's Deep Agents offload at 20k tokens; SynthOrg has no
+  equivalent.
+- Summarization quality is significantly below LLM-based approaches (LangChain uses
+  LLM-based summarization; SynthOrg uses concatenation).
+
+### Roadmap
+
+**Phase 1 (MVP)**: Agent-controlled compaction tool + epistemic marker preservation.
+
+- Add `compress_context` tool following the `registry_with_memory_tools()` pattern.
+  Parameters: `{ strategy: "summarize"|"archive", preserve_markers: bool, reason: str }`.
+- **Architecture**: Tools cannot mutate `AgentContext` (frozen Pydantic). The tool returns
+  a `metadata["compaction_directive"]` flag; the loop detects it after the tool batch
+  and calls `invoke_compaction()` -- preserving the immutable context pattern.
+- Dual-threshold safety net: 80% soft (agent-guided, system prompt indicator already
+  exists) / 95% hard (system auto-compact fallback). New `CompactionConfig` fields:
+  `agent_controlled: bool`, `safety_threshold_percent: float = 95.0`.
+- Epistemic marker detection in `_build_summary()`: regex patterns for hesitation,
+  self-correction, and uncertainty markers; messages above a density threshold are
+  promoted from "archivable" to "preserved".
+
+**Phase 2**: LLM-based summarization + memory offloading.
+
+- Replace concatenation with a lightweight LLM summarization call
+  (counted as `LLMCallCategory.SYSTEM`).
+- Offload archived turns to `MemoryBackend` (episodic storage) instead of discarding.
+- Task-complexity-adaptive compaction policy using `task.estimated_complexity`:
+  SIMPLE = aggressive; COMPLEX/EPIC = conservative with high marker preservation.
+
+**Phase 3**: Evaluate surprisal-based token cost (arXiv:2603.08462) -- per-token cost
+weighted by surprisal under a frozen base model. Empirical results: 41% token reduction,
+<1.5% accuracy drop. **Not recommended for Phase 1/2**: inference cost (forward pass
+per token) is not justified until Phase 2 data validates the need. TF-IDF importance
+weighting is the recommended lighter proxy if semantic token cost is needed before
+Phase 3.
