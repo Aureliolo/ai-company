@@ -287,6 +287,10 @@ class SharedKnowledgeStore(Protocol):
         ...
 ```
 
+See [Multi-Agent Memory Consistency](memory-consistency.md) for the consistency model used
+when multiple agents share a `SharedKnowledgeStore` -- including MVCC snapshot reads,
+append-only write semantics, and conflict handling.
+
 ### Error Hierarchy
 
 All memory errors inherit from `MemoryError` so callers can catch the entire family with a

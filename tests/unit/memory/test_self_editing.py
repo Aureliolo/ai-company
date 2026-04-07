@@ -2,7 +2,7 @@
 
 from datetime import UTC, datetime
 from typing import Any
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from pydantic import ValidationError
@@ -12,6 +12,8 @@ from synthorg.memory.injection import InjectionStrategy
 from synthorg.memory.models import MemoryEntry, MemoryMetadata
 from synthorg.memory.protocol import MemoryBackend
 from synthorg.memory.self_editing import (
+    _MAX_CONTENT_LEN,
+    _MAX_MEMORY_ID_LEN,
     ARCHIVAL_MEMORY_SEARCH_TOOL,
     ARCHIVAL_MEMORY_WRITE_TOOL,
     CORE_MEMORY_READ_TOOL,
@@ -20,6 +22,7 @@ from synthorg.memory.self_editing import (
     RECALL_MEMORY_WRITE_TOOL,
     SelfEditingMemoryConfig,
     SelfEditingMemoryStrategy,
+    _extract_str,
 )
 from synthorg.memory.tool_retriever import ToolBasedInjectionStrategy
 from synthorg.memory.tools import (
@@ -174,6 +177,14 @@ class TestSelfEditingMemoryConfig:
 
         assert enabled.allow_core_writes is True
         assert disabled.allow_core_writes is False
+
+    def test_empty_archival_categories_rejected(self) -> None:
+        """Empty archival_categories must be rejected.
+
+        An empty set blocks all archival writes.
+        """
+        with pytest.raises(ValidationError):
+            SelfEditingMemoryConfig(archival_categories=frozenset())
 
 
 # ---------------------------------------------------------------------------
@@ -413,6 +424,18 @@ class TestCoreMemoryWriteTool:
 
         assert result.is_error
 
+    async def test_execute_oversized_content_returns_error(self) -> None:
+        backend = _make_backend()
+        strategy = _make_strategy(backend=backend)
+        tool = CoreMemoryWriteTool(strategy=strategy, agent_id="agent-1")
+
+        result = await tool.execute(
+            arguments={"content": "x" * (_MAX_CONTENT_LEN + 1)},
+        )
+
+        assert result.is_error
+        assert not backend.store.called
+
 
 # ---------------------------------------------------------------------------
 # TestArchivalMemorySearchTool
@@ -544,6 +567,21 @@ class TestArchivalMemoryWriteTool:
         assert not result.is_error
         assert "archival-id-123" in result.content
 
+    async def test_execute_oversized_content_returns_error(self) -> None:
+        backend = _make_backend()
+        strategy = _make_strategy(backend=backend)
+        tool = ArchivalMemoryWriteTool(strategy=strategy, agent_id="agent-1")
+
+        result = await tool.execute(
+            arguments={
+                "content": "y" * (_MAX_CONTENT_LEN + 1),
+                "category": "episodic",
+            },
+        )
+
+        assert result.is_error
+        assert not backend.store.called
+
 
 # ---------------------------------------------------------------------------
 # TestRecallMemoryReadTool
@@ -587,6 +625,18 @@ class TestRecallMemoryReadTool:
         result = await tool.execute(arguments={"memory_id": "  "})
 
         assert result.is_error
+
+    async def test_execute_oversized_memory_id_returns_error(self) -> None:
+        backend = _make_backend()
+        strategy = _make_strategy(backend=backend)
+        tool = RecallMemoryReadTool(strategy=strategy, agent_id="agent-1")
+
+        result = await tool.execute(
+            arguments={"memory_id": "z" * (_MAX_MEMORY_ID_LEN + 1)},
+        )
+
+        assert result.is_error
+        assert not backend.get.called
 
 
 # ---------------------------------------------------------------------------
@@ -638,6 +688,18 @@ class TestRecallMemoryWriteTool:
         result = await tool.execute(arguments={"content": ""})
 
         assert result.is_error
+
+    async def test_execute_oversized_content_returns_error(self) -> None:
+        backend = _make_backend()
+        strategy = _make_strategy(backend=backend)
+        tool = RecallMemoryWriteTool(strategy=strategy, agent_id="agent-1")
+
+        result = await tool.execute(
+            arguments={"content": "z" * (_MAX_CONTENT_LEN + 1)},
+        )
+
+        assert result.is_error
+        assert not backend.store.called
 
 
 # ---------------------------------------------------------------------------
@@ -703,6 +765,44 @@ class TestRegistryWithSelfEditingTools:
         assert "search_memory" in augmented
         assert "recall_memory" in augmented
 
+    def test_self_editing_generic_exception_falls_back_to_original(self) -> None:
+        """Generic exception in _build_self_editing_registry falls back."""
+        base_registry = ToolRegistry([_DummyTool()])
+        strategy = _make_strategy()
+
+        with patch(
+            "synthorg.memory.tools._build_self_editing_registry",
+            side_effect=RuntimeError("build failed"),
+        ):
+            result = registry_with_memory_tools(
+                base_registry, strategy, agent_id="agent-1"
+            )
+
+        assert result is base_registry
+
+    def test_tool_based_generic_exception_falls_back_to_original(self) -> None:
+        """Generic exception in _build_augmented_registry returns original registry."""
+        from synthorg.memory.retrieval_config import MemoryRetrievalConfig
+
+        tool_strategy = ToolBasedInjectionStrategy(
+            backend=_make_backend(),
+            config=MemoryRetrievalConfig(
+                strategy=InjectionStrategy.TOOL_BASED,
+                min_relevance=0.0,
+            ),
+        )
+        base_registry = ToolRegistry([_DummyTool()])
+
+        with patch(
+            "synthorg.memory.tools._build_augmented_registry",
+            side_effect=RuntimeError("build failed"),
+        ):
+            result = registry_with_memory_tools(
+                base_registry, tool_strategy, agent_id="agent-1"
+            )
+
+        assert result is base_registry
+
 
 # ---------------------------------------------------------------------------
 # TestCreateSelfEditingTools
@@ -753,3 +853,94 @@ class TestCreateSelfEditingTools:
         await read_tool.execute(arguments={})
 
         assert backend.retrieve.call_args.args[0] == "agent-77"
+
+
+# ---------------------------------------------------------------------------
+# TestHandleToolCallDispatch
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+class TestHandleToolCallDispatch:
+    async def test_unknown_tool_name_returns_error_string(self) -> None:
+        """Unknown tool names must return an error string, not raise."""
+        strategy = _make_strategy()
+
+        result = await strategy.handle_tool_call("no_such_tool", {}, "agent-1")
+
+        assert result.startswith("Error:")
+
+    async def test_memory_error_is_reraised(self) -> None:
+        """MemoryError from a handler must propagate through handle_tool_call."""
+        backend = _make_backend()
+        backend.retrieve = AsyncMock(side_effect=MemoryError("out of memory"))
+        strategy = _make_strategy(backend=backend)
+
+        with pytest.raises(MemoryError):
+            await strategy.handle_tool_call(CORE_MEMORY_READ_TOOL, {}, "agent-1")
+
+    async def test_recursion_error_is_reraised(self) -> None:
+        """RecursionError from a handler must propagate through handle_tool_call."""
+        backend = _make_backend()
+        backend.retrieve = AsyncMock(side_effect=RecursionError("max recursion"))
+        strategy = _make_strategy(backend=backend)
+
+        with pytest.raises(RecursionError):
+            await strategy.handle_tool_call(CORE_MEMORY_READ_TOOL, {}, "agent-1")
+
+    async def test_generic_exception_returns_error_prefix(self) -> None:
+        """Generic exceptions from handlers must be caught and returned as errors."""
+        backend = _make_backend()
+        backend.retrieve = AsyncMock(side_effect=RuntimeError("backend exploded"))
+        strategy = _make_strategy(backend=backend)
+
+        result = await strategy.handle_tool_call(CORE_MEMORY_READ_TOOL, {}, "agent-1")
+
+        assert result.startswith("Error:")
+        assert "Memory operation failed." in result
+
+    async def test_generic_exception_does_not_expose_backend_details(self) -> None:
+        """Error message must not leak the original exception text to the LLM."""
+        backend = _make_backend()
+        backend.retrieve = AsyncMock(
+            side_effect=RuntimeError("SQLite UNIQUE constraint failed: entries.id")
+        )
+        strategy = _make_strategy(backend=backend)
+
+        result = await strategy.handle_tool_call(CORE_MEMORY_READ_TOOL, {}, "agent-1")
+
+        assert "SQLite" not in result
+        assert "UNIQUE constraint" not in result
+
+
+# ---------------------------------------------------------------------------
+# TestExtractStr
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+class TestExtractStr:
+    @pytest.mark.parametrize(
+        "value",
+        [42, None, {}, [], 3.14, True],
+    )
+    def test_non_string_value_returns_none(self, value: object) -> None:
+        """_extract_str must return None for any non-string value."""
+        result = _extract_str({"key": value}, "key")
+        assert result is None
+
+    def test_blank_string_returns_none(self) -> None:
+        result = _extract_str({"key": "   "}, "key")
+        assert result is None
+
+    def test_missing_key_returns_none(self) -> None:
+        result = _extract_str({}, "key")
+        assert result is None
+
+    def test_valid_string_is_stripped(self) -> None:
+        result = _extract_str({"key": "  hello world  "}, "key")
+        assert result == "hello world"
+
+    def test_non_blank_string_returned_as_is_after_strip(self) -> None:
+        result = _extract_str({"key": "no whitespace"}, "key")
+        assert result == "no whitespace"

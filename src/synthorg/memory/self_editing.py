@@ -70,6 +70,10 @@ RECALL_MEMORY_WRITE_TOOL: Final[str] = "recall_memory_write"
 # Auto-tag added to archival/recall writes when write_auto_tag=True.
 _AUTO_TAG: Final[str] = "self_edited"
 
+# Input size limits for LLM-supplied values (prevent unbounded writes/lookups).
+_MAX_CONTENT_LEN: Final[int] = 50_000
+_MAX_MEMORY_ID_LEN: Final[int] = 256
+
 # ---------------------------------------------------------------------------
 # JSON Schema constants (MappingProxyType -- read-only at module level)
 # ---------------------------------------------------------------------------
@@ -204,6 +208,19 @@ def _format_entries(entries: tuple[MemoryEntry, ...]) -> str:
     return "\n".join(f"[{e.category.value}] (id={e.id}) {e.content}" for e in entries)
 
 
+def _format_error_oversized(field: str, max_len: int) -> str:
+    """Format error message for oversized field content.
+
+    Args:
+        field: Field name (e.g., ``"content"``, ``"memory_id"``).
+        max_len: Maximum allowed length.
+
+    Returns:
+        Error message string.
+    """
+    return f"{ERROR_PREFIX} {field} exceeds maximum length ({max_len} characters)."
+
+
 # ---------------------------------------------------------------------------
 # SelfEditingMemoryConfig
 # ---------------------------------------------------------------------------
@@ -223,7 +240,8 @@ class SelfEditingMemoryConfig(BaseModel):
         archival_search_limit: Maximum results returned by
             ``archival_memory_search`` (1-50).
         archival_categories: Categories allowed in archival memory.
-            ``WORKING`` is always excluded (validator enforces this).
+            ``WORKING`` is always excluded and the set must not be
+            empty (both enforced by validators).
         write_auto_tag: When ``True``, automatically adds the
             ``"self_edited"`` tag to archival and recall writes.
     """
@@ -291,6 +309,20 @@ class SelfEditingMemoryConfig(BaseModel):
             raise ValueError(msg)
         return self
 
+    @model_validator(mode="after")
+    def _archival_categories_not_empty(self) -> Self:
+        """archival_categories must not be empty.
+
+        An empty set prevents all archival memory writes.
+        """
+        if not self.archival_categories:
+            msg = (
+                "archival_categories must not be empty -- "
+                "an empty set prevents all archival memory writes."
+            )
+            raise ValueError(msg)
+        return self
+
 
 # ---------------------------------------------------------------------------
 # SelfEditingMemoryStrategy
@@ -346,6 +378,15 @@ class SelfEditingMemoryStrategy:
         """Strategy identifier -- ``"self_editing"``."""
         return InjectionStrategy.SELF_EDITING.value
 
+    def _core_query(self) -> MemoryQuery:
+        """Return the MemoryQuery for core memory (SEMANTIC + core tag, no text)."""
+        return MemoryQuery(
+            text=None,
+            categories=frozenset({MemoryCategory.SEMANTIC}),
+            tags=(self._config.core_memory_tag,),
+            limit=self._config.core_max_entries,
+        )
+
     async def prepare_messages(
         self,
         agent_id: NotBlankStr,
@@ -371,15 +412,7 @@ class SelfEditingMemoryStrategy:
             unavailable.
         """
         try:
-            entries = await self._backend.retrieve(
-                agent_id,
-                MemoryQuery(
-                    text=None,
-                    categories=frozenset({MemoryCategory.SEMANTIC}),
-                    tags=(self._config.core_memory_tag,),
-                    limit=self._config.core_max_entries,
-                ),
-            )
+            entries = await self._backend.retrieve(agent_id, self._core_query())
             if not entries:
                 return ()
             scored = tuple(
@@ -427,7 +460,7 @@ class SelfEditingMemoryStrategy:
             ToolDefinition(
                 name=CORE_MEMORY_WRITE_TOOL,
                 description=(
-                    "Append an entry to core memory.  Core memory persists "
+                    "Append an entry to core memory. Core memory persists "
                     "across sessions and is always injected into context."
                 ),
                 parameters_schema=copy.deepcopy(dict(_CORE_MEMORY_WRITE_SCHEMA)),
@@ -435,7 +468,7 @@ class SelfEditingMemoryStrategy:
             ToolDefinition(
                 name=ARCHIVAL_MEMORY_SEARCH_TOOL,
                 description=(
-                    "Search archival memory by natural language query.  "
+                    "Search archival memory by natural language query. "
                     "Archival memory is never auto-injected; use this tool "
                     "to retrieve relevant past context on demand."
                 ),
@@ -444,7 +477,7 @@ class SelfEditingMemoryStrategy:
             ToolDefinition(
                 name=ARCHIVAL_MEMORY_WRITE_TOOL,
                 description=(
-                    "Store a new entry in archival memory.  Use for facts, "
+                    "Store a new entry in archival memory. Use for facts, "
                     "decisions, or events to retain for future retrieval."
                 ),
                 parameters_schema=copy.deepcopy(dict(_ARCHIVAL_MEMORY_WRITE_SCHEMA)),
@@ -452,7 +485,7 @@ class SelfEditingMemoryStrategy:
             ToolDefinition(
                 name=RECALL_MEMORY_READ_TOOL,
                 description=(
-                    "Retrieve a specific episodic memory by its ID.  "
+                    "Retrieve a specific episodic memory by its ID. "
                     "Use the ID returned by recall_memory_write."
                 ),
                 parameters_schema=copy.deepcopy(dict(_RECALL_MEMORY_READ_SCHEMA)),
@@ -460,7 +493,7 @@ class SelfEditingMemoryStrategy:
             ToolDefinition(
                 name=RECALL_MEMORY_WRITE_TOOL,
                 description=(
-                    "Record an episodic event or experience.  Returns the "
+                    "Record an episodic event or experience. Returns the "
                     "memory ID for future retrieval via recall_memory_read."
                 ),
                 parameters_schema=copy.deepcopy(dict(_RECALL_MEMORY_WRITE_SCHEMA)),
@@ -471,7 +504,7 @@ class SelfEditingMemoryStrategy:
         self,
         tool_name: str,
         arguments: dict[str, Any],
-        agent_id: str,
+        agent_id: NotBlankStr,
     ) -> str:
         """Dispatch a tool call to the appropriate handler.
 
@@ -490,7 +523,7 @@ class SelfEditingMemoryStrategy:
             agent_id=agent_id,
         )
         try:
-            result = await self._dispatch_tool_call(tool_name, arguments, agent_id)
+            return await self._dispatch_tool_call(tool_name, arguments, agent_id)
         except builtins.MemoryError, RecursionError:
             raise
         except Exception as exc:
@@ -501,15 +534,13 @@ class SelfEditingMemoryStrategy:
                 error=str(exc),
                 exc_info=True,
             )
-            return f"{ERROR_PREFIX} {exc}"
-        else:
-            return result
+            return f"{ERROR_PREFIX} Memory operation failed."
 
     async def _dispatch_tool_call(
         self,
         tool_name: str,
         arguments: dict[str, Any],
-        agent_id: str,
+        agent_id: NotBlankStr,
     ) -> str:
         """Route a tool name to the corresponding private handler.
 
@@ -541,17 +572,9 @@ class SelfEditingMemoryStrategy:
     # Private handlers
     # ------------------------------------------------------------------
 
-    async def _handle_core_memory_read(self, agent_id: str) -> str:
+    async def _handle_core_memory_read(self, agent_id: NotBlankStr) -> str:
         """Read all core memory entries."""
-        entries = await self._backend.retrieve(
-            agent_id,
-            MemoryQuery(
-                text=None,
-                categories=frozenset({MemoryCategory.SEMANTIC}),
-                tags=(self._config.core_memory_tag,),
-                limit=self._config.core_max_entries,
-            ),
-        )
+        entries = await self._backend.retrieve(agent_id, self._core_query())
         logger.info(
             MEMORY_SELF_EDIT_CORE_READ,
             agent_id=agent_id,
@@ -561,10 +584,17 @@ class SelfEditingMemoryStrategy:
 
     async def _handle_core_memory_write(
         self,
-        agent_id: str,
+        agent_id: NotBlankStr,
         arguments: dict[str, Any],
     ) -> str:
-        """Append an entry to core memory."""
+        """Append an entry to core memory.
+
+        Note: The capacity check (retrieve then store) is advisory -- it is
+        not atomic. Concurrent writes from the same agent may both pass the
+        count check and both succeed, temporarily exceeding ``core_max_entries``
+        until the next write is rejected. This is acceptable for a
+        best-effort memory cap.
+        """
         if not self._config.allow_core_writes:
             logger.info(
                 MEMORY_SELF_EDIT_CORE_WRITE_REJECTED,
@@ -576,16 +606,10 @@ class SelfEditingMemoryStrategy:
         content = _extract_str(arguments, "content")
         if content is None:
             return f"{ERROR_PREFIX} content is required and must be non-blank."
+        if len(content) > _MAX_CONTENT_LEN:
+            return _format_error_oversized("content", _MAX_CONTENT_LEN)
 
-        existing = await self._backend.retrieve(
-            agent_id,
-            MemoryQuery(
-                text=None,
-                categories=frozenset({MemoryCategory.SEMANTIC}),
-                tags=(self._config.core_memory_tag,),
-                limit=self._config.core_max_entries,
-            ),
-        )
+        existing = await self._backend.retrieve(agent_id, self._core_query())
         if len(existing) >= self._config.core_max_entries:
             logger.info(
                 MEMORY_SELF_EDIT_CORE_WRITE_REJECTED,
@@ -615,7 +639,7 @@ class SelfEditingMemoryStrategy:
 
     async def _handle_archival_memory_search(
         self,
-        agent_id: str,
+        agent_id: NotBlankStr,
         arguments: dict[str, Any],
     ) -> str:
         """Search archival memory by natural language query."""
@@ -630,7 +654,7 @@ class SelfEditingMemoryStrategy:
                 categories = frozenset({MemoryCategory(str(cat_raw))})
             except ValueError:
                 return (
-                    f"{ERROR_PREFIX} Unknown category {cat_raw!r}. "
+                    f"{ERROR_PREFIX} Unknown memory category. "
                     "Valid values: episodic, semantic, procedural, social."
                 )
 
@@ -659,24 +683,28 @@ class SelfEditingMemoryStrategy:
 
     async def _handle_archival_memory_write(
         self,
-        agent_id: str,
+        agent_id: NotBlankStr,
         arguments: dict[str, Any],
     ) -> str:
         """Store an entry in archival memory."""
         content = _extract_str(arguments, "content")
         if content is None:
             return f"{ERROR_PREFIX} content is required and must be non-blank."
+        if len(content) > _MAX_CONTENT_LEN:
+            return _format_error_oversized("content", _MAX_CONTENT_LEN)
 
         cat_raw = arguments.get("category")
         if cat_raw is None:
             return f"{ERROR_PREFIX} category is required."
+
         try:
             category = MemoryCategory(str(cat_raw))
         except ValueError:
             return (
-                f"{ERROR_PREFIX} Unknown category {cat_raw!r}. "
+                f"{ERROR_PREFIX} Unknown memory category. "
                 "Valid values: episodic, semantic, procedural, social."
             )
+
         if category not in self._config.archival_categories:
             return (
                 f"{ERROR_PREFIX} Category {category.value!r} cannot be "
@@ -701,13 +729,15 @@ class SelfEditingMemoryStrategy:
 
     async def _handle_recall_memory_read(
         self,
-        agent_id: str,
+        agent_id: NotBlankStr,
         arguments: dict[str, Any],
     ) -> str:
         """Retrieve a specific episodic memory by ID."""
         memory_id = _extract_str(arguments, "memory_id")
         if memory_id is None:
             return f"{ERROR_PREFIX} memory_id is required and must be non-blank."
+        if len(memory_id) > _MAX_MEMORY_ID_LEN:
+            return _format_error_oversized("memory_id", _MAX_MEMORY_ID_LEN)
 
         entry = await self._backend.get(agent_id, memory_id)
         logger.info(
@@ -722,13 +752,15 @@ class SelfEditingMemoryStrategy:
 
     async def _handle_recall_memory_write(
         self,
-        agent_id: str,
+        agent_id: NotBlankStr,
         arguments: dict[str, Any],
     ) -> str:
         """Record an episodic event or experience."""
         content = _extract_str(arguments, "content")
         if content is None:
             return f"{ERROR_PREFIX} content is required and must be non-blank."
+        if len(content) > _MAX_CONTENT_LEN:
+            return _format_error_oversized("content", _MAX_CONTENT_LEN)
 
         tags: tuple[str, ...] = (_AUTO_TAG,) if self._config.write_auto_tag else ()
         request = MemoryStoreRequest(
