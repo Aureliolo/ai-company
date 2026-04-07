@@ -128,9 +128,9 @@ class TestMemoryRetrievalConfigStrategy:
         c = MemoryRetrievalConfig(strategy=InjectionStrategy.TOOL_BASED)
         assert c.strategy is InjectionStrategy.TOOL_BASED
 
-    def test_self_editing_strategy_rejected(self) -> None:
-        with pytest.raises(ValueError, match="not yet implemented"):
-            MemoryRetrievalConfig(strategy=InjectionStrategy.SELF_EDITING)
+    def test_self_editing_strategy_accepted(self) -> None:
+        c = MemoryRetrievalConfig(strategy=InjectionStrategy.SELF_EDITING)
+        assert c.strategy is InjectionStrategy.SELF_EDITING
 
     def test_injection_point_user(self) -> None:
         c = MemoryRetrievalConfig(injection_point=InjectionPoint.USER)

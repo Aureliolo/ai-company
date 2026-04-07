@@ -93,6 +93,10 @@ from synthorg.memory.reformulation import (
 )
 from synthorg.memory.retrieval_config import MemoryRetrievalConfig
 from synthorg.memory.retriever import ContextInjectionStrategy
+from synthorg.memory.self_editing import (
+    SelfEditingMemoryConfig,
+    SelfEditingMemoryStrategy,
+)
 from synthorg.memory.shared import SharedKnowledgeStore
 from synthorg.memory.sparse import BM25Tokenizer, SparseVector
 from synthorg.memory.tool_retriever import ToolBasedInjectionStrategy
@@ -154,6 +158,9 @@ __all__ = [
     "RetentionEnforcer",
     "SQLiteOrgFactStore",
     "ScoredMemory",
+    # Self-editing strategy
+    "SelfEditingMemoryConfig",
+    "SelfEditingMemoryStrategy",
     "SharedKnowledgeStore",
     "SimpleConsolidationStrategy",
     "SparseVector",

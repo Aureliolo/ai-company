@@ -156,6 +156,21 @@ approach.
 
     **Limitations:** Most complex. Potentially overkill for small organizations or local-first use.
 
+!!! tip "Migration Path to GraphRAG (Phase 2)"
+
+    If multi-hop organizational reasoning becomes a requirement (e.g., tracing which policies
+    affect hiring across salary, budget, and compliance domains), the upgrade path is
+    non-breaking:
+
+    1. Add post-consolidation entity extraction as a new `EntityExtractionStrategy` in the
+       consolidation pipeline (entities stored in a separate `EntityStore` protocol).
+    2. Create `GraphRAGMemoryBackend` implementing the existing `MemoryBackend` protocol with
+       graph-traversal queries alongside standard vector retrieval.
+    3. Enable via config -- existing application code is unchanged.
+
+    See [Decision Log](../architecture/decisions.md) D25 for the full trade-off analysis and
+    deferral rationale.
+
 ### OrgMemoryBackend Protocol
 
 All backends implement the `OrgMemoryBackend` protocol:
@@ -878,12 +893,20 @@ the agent during execution.
     `MemoryBackend` references and run in-process. The memory hot path already bypasses MCP
     by design -- no additional optimization needed.
 
-=== "Self-Editing Memory (Future)"
+=== "Self-Editing Memory"
 
-    The agent has structured memory blocks (core, archival, recall) it reads AND writes during
-    execution via dedicated tools. Core memory is always in context; archival and recall are
-    searched via tools. Most sophisticated (self-editing memory architecture) but highest complexity and
-    LLM overhead.
+    The agent has three structured memory blocks -- core, archival, and recall -- it reads AND
+    writes during execution via dedicated tools. Core memory (SEMANTIC category, tagged ``"core"``)
+    is always injected into the system prompt. Archival and recall memories are tool-searched on
+    demand. Six tools are provided: ``core_memory_read``, ``core_memory_write``,
+    ``archival_memory_search``, ``archival_memory_write``, ``recall_memory_read``,
+    ``recall_memory_write``.
+
+    Implemented via ``SelfEditingMemoryStrategy``. Token overhead is ~250--650 tokens per session
+    (2--10 writes + 5--15 searches). Best suited for long-running, high-autonomy agents (>20 turns)
+    where explicit memory management reduces "forgotten context" errors. ``SelfEditingMemoryConfig``
+    controls core token budget, archival search limit, per-category write access, and a safety
+    valve (``allow_core_writes: bool``) for restricting core memory edits on locked-down agents.
 
 ### MemoryInjectionStrategy Protocol
 
@@ -902,4 +925,4 @@ class MemoryInjectionStrategy(Protocol):
     def strategy_name(self) -> str: ...
 ```
 
-Strategy selection via config: `memory.retrieval.strategy: context | tool_based | self_editing`
+Strategy selection via config: ``memory.retrieval.strategy: context | tool_based | self_editing``

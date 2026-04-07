@@ -330,7 +330,11 @@ class MemoryRetrievalConfig(BaseModel):
     @model_validator(mode="after")
     def _validate_supported_strategy(self) -> Self:
         """Reject strategies that are not yet implemented."""
-        _supported = {InjectionStrategy.CONTEXT, InjectionStrategy.TOOL_BASED}
+        _supported = {
+            InjectionStrategy.CONTEXT,
+            InjectionStrategy.TOOL_BASED,
+            InjectionStrategy.SELF_EDITING,
+        }
         if self.strategy not in _supported:
             msg = (
                 f"Strategy {self.strategy.value!r} is not yet implemented; "

@@ -142,3 +142,17 @@ MEMORY_REFORMULATION_FINAL_CHECK: Final[str] = "memory.reformulation.final_check
 
 MEMORY_DIVERSITY_RERANKED: Final[str] = "memory.ranking.diversity_reranked"
 MEMORY_DIVERSITY_RERANK_FAILED: Final[str] = "memory.ranking.diversity_rerank_failed"
+
+# ── Self-editing memory ───────────────────────────────────────────
+
+MEMORY_SELF_EDIT_TOOL_EXECUTE: Final[str] = "memory.self_edit.tool.execute"
+MEMORY_SELF_EDIT_CORE_READ: Final[str] = "memory.self_edit.core.read"
+MEMORY_SELF_EDIT_CORE_WRITE: Final[str] = "memory.self_edit.core.write"
+MEMORY_SELF_EDIT_CORE_WRITE_REJECTED: Final[str] = (
+    "memory.self_edit.core.write_rejected"
+)
+MEMORY_SELF_EDIT_ARCHIVAL_SEARCH: Final[str] = "memory.self_edit.archival.search"
+MEMORY_SELF_EDIT_ARCHIVAL_WRITE: Final[str] = "memory.self_edit.archival.write"
+MEMORY_SELF_EDIT_RECALL_READ: Final[str] = "memory.self_edit.recall.read"
+MEMORY_SELF_EDIT_RECALL_WRITE: Final[str] = "memory.self_edit.recall.write"
+MEMORY_SELF_EDIT_WRITE_FAILED: Final[str] = "memory.self_edit.write.failed"

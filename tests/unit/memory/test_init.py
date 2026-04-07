@@ -66,6 +66,8 @@ class TestMemoryExports:
             "fuse_ranked_lists",
             "BM25Tokenizer",
             "SparseVector",
+            "SelfEditingMemoryConfig",
+            "SelfEditingMemoryStrategy",
             "ToolBasedInjectionStrategy",
             "LLMQueryReformulator",
             "LLMSufficiencyChecker",
