@@ -16,6 +16,7 @@ CONFLICT_AUTHORITY_DECIDED: Final[str] = "conflict.authority.decided"
 # Debate strategy
 CONFLICT_DEBATE_STARTED: Final[str] = "conflict.debate.started"
 CONFLICT_DEBATE_JUDGE_DECIDED: Final[str] = "conflict.debate.judge_decided"
+CONFLICT_DEBATE_EVALUATOR_FAILED: Final[str] = "conflict.debate.evaluator_failed"
 
 # Hybrid strategy
 CONFLICT_HYBRID_REVIEW: Final[str] = "conflict.hybrid.review"

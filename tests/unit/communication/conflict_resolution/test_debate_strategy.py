@@ -41,6 +41,22 @@ class FakeJudgeEvaluator:
         return JudgeDecision(self._winner_id, self._reasoning)
 
 
+class RaisingJudgeEvaluator:
+    """Fake judge evaluator that always raises."""
+
+    def __init__(self, error: Exception | None = None) -> None:
+        self._error = error or RuntimeError("provider timeout")
+        self.calls: list[tuple[Conflict, str]] = []
+
+    async def evaluate(
+        self,
+        conflict: Conflict,
+        judge_agent_id: str,
+    ) -> JudgeDecision:
+        self.calls.append((conflict, judge_agent_id))
+        raise self._error
+
+
 @pytest.mark.unit
 class TestDebateResolverWithJudge:
     async def test_judge_evaluator_picks_winner(
@@ -358,3 +374,61 @@ class TestDebateResolverCEORootAgent:
         await resolver.resolve(conflict)
         _, judge_id = judge.calls[0]
         assert judge_id == "cto"
+
+
+@pytest.mark.unit
+class TestDebateResolverEvaluatorFailure:
+    async def test_evaluator_exception_falls_back_to_authority(
+        self,
+        hierarchy: HierarchyResolver,
+    ) -> None:
+        """When judge evaluator raises, fall back to authority resolution."""
+        judge = RaisingJudgeEvaluator()
+        resolver = DebateResolver(
+            hierarchy=hierarchy,
+            config=DebateConfig(judge="shared_manager"),
+            judge_evaluator=judge,
+        )
+        conflict = make_conflict(
+            positions=(
+                make_position(agent_id="sr_dev", level=SeniorityLevel.SENIOR),
+                make_position(
+                    agent_id="jr_dev",
+                    level=SeniorityLevel.JUNIOR,
+                    position="Other approach",
+                ),
+            ),
+        )
+        resolution = await resolver.resolve(conflict)
+        # Authority picks sr_dev (higher seniority)
+        assert resolution.winning_agent_id == "sr_dev"
+        assert resolution.outcome == ConflictResolutionOutcome.RESOLVED_BY_DEBATE
+        assert "fallback" in resolution.reasoning.lower()
+        # Evaluator was called once before failing
+        assert len(judge.calls) == 1
+
+    async def test_evaluator_exception_logs_event(
+        self,
+        hierarchy: HierarchyResolver,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """Evaluator failure is logged with the dedicated event."""
+        judge = RaisingJudgeEvaluator()
+        resolver = DebateResolver(
+            hierarchy=hierarchy,
+            config=DebateConfig(judge="shared_manager"),
+            judge_evaluator=judge,
+        )
+        conflict = make_conflict(
+            positions=(
+                make_position(agent_id="sr_dev", level=SeniorityLevel.SENIOR),
+                make_position(
+                    agent_id="jr_dev",
+                    level=SeniorityLevel.JUNIOR,
+                    position="Other",
+                ),
+            ),
+        )
+        await resolver.resolve(conflict)
+        captured = capsys.readouterr()
+        assert "conflict.debate.evaluator_failed" in captured.out

@@ -37,11 +37,11 @@ from synthorg.communication.errors import ConflictHierarchyError
 from synthorg.observability import get_logger
 from synthorg.observability.events.conflict import (
     CONFLICT_AUTHORITY_FALLBACK,
+    CONFLICT_DEBATE_EVALUATOR_FAILED,
     CONFLICT_DEBATE_JUDGE_DECIDED,
     CONFLICT_DEBATE_STARTED,
     CONFLICT_HIERARCHY_ERROR,
     CONFLICT_LCM_LOOKUP,
-    CONFLICT_STRATEGY_ERROR,
 )
 
 logger = get_logger(__name__)
@@ -103,13 +103,13 @@ class DebateResolver:
                 )
             except Exception:
                 logger.exception(
-                    CONFLICT_STRATEGY_ERROR,
+                    CONFLICT_DEBATE_EVALUATOR_FAILED,
                     conflict_id=conflict.id,
-                    strategy="debate",
-                    operation="judge_evaluate",
                     judge=judge_id,
                 )
-                raise
+                winning_agent_id, reasoning = self._authority_fallback(
+                    conflict,
+                )
         else:
             logger.warning(
                 CONFLICT_AUTHORITY_FALLBACK,
