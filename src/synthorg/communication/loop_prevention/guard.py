@@ -1,5 +1,7 @@
 """Delegation guard orchestrating all loop prevention mechanisms."""
 
+from typing import TYPE_CHECKING
+
 from synthorg.communication.config import LoopPreventionConfig  # noqa: TC001
 from synthorg.communication.loop_prevention.ancestry import check_ancestry
 from synthorg.communication.loop_prevention.circuit_breaker import (
@@ -20,6 +22,11 @@ from synthorg.observability.events.delegation import (
     DELEGATION_LOOP_BLOCKED,
 )
 
+if TYPE_CHECKING:
+    from synthorg.persistence.circuit_breaker_repo import (
+        CircuitBreakerStateRepository,
+    )
+
 logger = get_logger(__name__)
 
 _SUCCESS_MECHANISM = "all_passed"
@@ -33,6 +40,8 @@ class DelegationGuard:
 
     Args:
         config: Loop prevention configuration.
+        circuit_breaker_repo: Optional persistence repository for
+            circuit breaker state (survives restarts).
     """
 
     __slots__ = (
@@ -42,7 +51,12 @@ class DelegationGuard:
         "_rate_limiter",
     )
 
-    def __init__(self, config: LoopPreventionConfig) -> None:
+    def __init__(
+        self,
+        config: LoopPreventionConfig,
+        *,
+        circuit_breaker_repo: CircuitBreakerStateRepository | None = None,
+    ) -> None:
         self._config = config
         self._deduplicator = DelegationDeduplicator(
             window_seconds=config.dedup_window_seconds,
@@ -50,6 +64,7 @@ class DelegationGuard:
         self._rate_limiter = DelegationRateLimiter(config.rate_limit)
         self._circuit_breaker = DelegationCircuitBreaker(
             config.circuit_breaker,
+            state_repo=circuit_breaker_repo,
         )
 
     def check(
@@ -131,7 +146,7 @@ class DelegationGuard:
         """Record a successful delegation in all stateful mechanisms.
 
         Each delegation between a pair contributes to the circuit breaker
-        bounce count.  Back-and-forth patterns (A→B then B→A) both
+        bounce count.  Back-and-forth patterns (A->B then B->A) both
         increment the same counter because the pair key is direction-
         agnostic, so repeated ping-pong will trip the breaker fastest.
 
@@ -143,3 +158,17 @@ class DelegationGuard:
         self._deduplicator.record(delegator_id, delegatee_id, task_id)
         self._rate_limiter.record(delegator_id, delegatee_id)
         self._circuit_breaker.record_delegation(delegator_id, delegatee_id)
+
+    async def load_state(self) -> None:
+        """Load persisted circuit breaker state from the repository.
+
+        Called once at startup. No-op if no repository is configured.
+        """
+        await self._circuit_breaker.load_state()
+
+    async def persist(self) -> None:
+        """Flush dirty circuit breaker state to the repository.
+
+        Best-effort. No-op if no repository is configured.
+        """
+        await self._circuit_breaker.persist_dirty()

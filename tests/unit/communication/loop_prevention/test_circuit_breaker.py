@@ -1,5 +1,7 @@
 """Tests for delegation circuit breaker."""
 
+from unittest.mock import AsyncMock, MagicMock
+
 import pytest
 
 from synthorg.communication.config import CircuitBreakerConfig
@@ -110,3 +112,215 @@ class TestDelegationCircuitBreaker:
         cb.record_delegation("a", "b")
         # Should still be open, cooldown hasn't changed
         assert cb.get_state("a", "b") is CircuitBreakerState.OPEN
+
+
+@pytest.mark.unit
+class TestCircuitBreakerExponentialBackoff:
+    def test_first_trip_uses_base_cooldown(self) -> None:
+        """First trip cooldown = base (300s)."""
+        config = CircuitBreakerConfig(bounce_threshold=3, cooldown_seconds=300)
+        clock_time = 100.0
+
+        def clock() -> float:
+            return clock_time
+
+        cb = DelegationCircuitBreaker(config, clock=clock)
+        for _ in range(3):
+            cb.record_delegation("a", "b")
+        assert cb.get_state("a", "b") is CircuitBreakerState.OPEN
+
+        # At 399s (299s elapsed), still open
+        clock_time = 399.0
+        assert cb.get_state("a", "b") is CircuitBreakerState.OPEN
+
+        # At 401s (301s elapsed), closed
+        clock_time = 401.0
+        assert cb.get_state("a", "b") is CircuitBreakerState.CLOSED
+
+    def test_second_trip_doubles_cooldown(self) -> None:
+        """Second trip cooldown = 600s (base * 2)."""
+        config = CircuitBreakerConfig(bounce_threshold=3, cooldown_seconds=300)
+        clock_time = 100.0
+
+        def clock() -> float:
+            return clock_time
+
+        cb = DelegationCircuitBreaker(config, clock=clock)
+
+        # Trip 1
+        for _ in range(3):
+            cb.record_delegation("a", "b")
+        assert cb.get_state("a", "b") is CircuitBreakerState.OPEN
+
+        # Cooldown expires (300s for trip 1)
+        clock_time = 401.0
+        assert cb.get_state("a", "b") is CircuitBreakerState.CLOSED
+
+        # Trip 2
+        for _ in range(3):
+            cb.record_delegation("a", "b")
+        assert cb.get_state("a", "b") is CircuitBreakerState.OPEN
+
+        # At 401 + 599 = 1000 (599s into 600s cooldown), still open
+        clock_time = 1000.0
+        assert cb.get_state("a", "b") is CircuitBreakerState.OPEN
+
+        # At 401 + 601 = 1002 (601s elapsed), closed
+        clock_time = 1002.0
+        assert cb.get_state("a", "b") is CircuitBreakerState.CLOSED
+
+    def test_backoff_capped_at_max(self) -> None:
+        """Cooldown is capped at max_cooldown_seconds."""
+        config = CircuitBreakerConfig(
+            bounce_threshold=1,
+            cooldown_seconds=300,
+            max_cooldown_seconds=1000,
+        )
+        clock_time = 0.0
+
+        def clock() -> float:
+            return clock_time
+
+        cb = DelegationCircuitBreaker(config, clock=clock)
+
+        # Trip 5 times: cooldown would be 300*2^4 = 4800 but capped at 1000
+        for trip in range(5):
+            cb.record_delegation("a", "b")
+            # Advance past the current cooldown to reset
+            cooldown = min(300 * 2**trip, 1000)
+            clock_time += cooldown + 1
+            cb.get_state("a", "b")  # triggers reset
+
+        # 6th trip: cooldown should be 1000 (capped)
+        cb.record_delegation("a", "b")
+        open_time = clock_time
+
+        # Still open at open_time + 999
+        clock_time = open_time + 999
+        assert cb.get_state("a", "b") is CircuitBreakerState.OPEN
+
+        # Closed at open_time + 1001
+        clock_time = open_time + 1001
+        assert cb.get_state("a", "b") is CircuitBreakerState.CLOSED
+
+    def test_trip_count_persists_after_reset(self) -> None:
+        """Trip count survives cooldown resets, causing longer cooldowns."""
+        config = CircuitBreakerConfig(bounce_threshold=2, cooldown_seconds=100)
+        clock_time = 0.0
+
+        def clock() -> float:
+            return clock_time
+
+        cb = DelegationCircuitBreaker(config, clock=clock)
+
+        # Trip 1: cooldown = 100
+        cb.record_delegation("a", "b")
+        cb.record_delegation("a", "b")
+        clock_time = 101.0
+        assert cb.get_state("a", "b") is CircuitBreakerState.CLOSED
+
+        # Trip 2: cooldown = 200
+        cb.record_delegation("a", "b")
+        cb.record_delegation("a", "b")
+        clock_time = 101.0 + 199.0  # not enough
+        assert cb.get_state("a", "b") is CircuitBreakerState.OPEN
+        clock_time = 101.0 + 201.0  # enough
+        assert cb.get_state("a", "b") is CircuitBreakerState.CLOSED
+
+        # Trip 3: cooldown = 400
+        cb.record_delegation("a", "b")
+        cb.record_delegation("a", "b")
+        clock_time = 302.0 + 399.0
+        assert cb.get_state("a", "b") is CircuitBreakerState.OPEN
+        clock_time = 302.0 + 401.0
+        assert cb.get_state("a", "b") is CircuitBreakerState.CLOSED
+
+    def test_independent_trip_counts_per_pair(self) -> None:
+        """Different pairs have independent trip counts."""
+        config = CircuitBreakerConfig(bounce_threshold=1, cooldown_seconds=100)
+        clock_time = 0.0
+
+        def clock() -> float:
+            return clock_time
+
+        cb = DelegationCircuitBreaker(config, clock=clock)
+
+        # Trip (a,b) twice
+        cb.record_delegation("a", "b")
+        clock_time = 101.0
+        cb.get_state("a", "b")  # reset
+        cb.record_delegation("a", "b")
+
+        # Trip (a,c) once
+        cb.record_delegation("a", "c")
+
+        # (a,b) trip_count=2 -> cooldown=200
+        clock_time = 101.0 + 199.0
+        assert cb.get_state("a", "b") is CircuitBreakerState.OPEN
+
+        # (a,c) trip_count=1 -> cooldown=100
+        clock_time = 101.0 + 101.0
+        assert cb.get_state("a", "c") is CircuitBreakerState.CLOSED
+
+
+@pytest.mark.unit
+class TestCircuitBreakerDirtyTracking:
+    def test_record_delegation_marks_dirty_on_trip(self) -> None:
+        config = CircuitBreakerConfig(bounce_threshold=2, cooldown_seconds=300)
+        cb = DelegationCircuitBreaker(config)
+        cb.record_delegation("a", "b")
+        assert ("a", "b") not in cb._dirty
+        cb.record_delegation("a", "b")
+        assert ("a", "b") in cb._dirty
+
+    def test_get_state_marks_dirty_on_reset(self) -> None:
+        config = CircuitBreakerConfig(bounce_threshold=1, cooldown_seconds=10)
+        clock_time = 0.0
+
+        def clock() -> float:
+            return clock_time
+
+        cb = DelegationCircuitBreaker(config, clock=clock)
+        cb.record_delegation("a", "b")
+        cb._dirty.clear()
+
+        clock_time = 11.0
+        cb.get_state("a", "b")  # triggers reset
+        assert ("a", "b") in cb._dirty
+
+    async def test_persist_dirty_clears_set(self) -> None:
+        config = CircuitBreakerConfig(bounce_threshold=1, cooldown_seconds=10)
+        repo = MagicMock()
+        repo.save = AsyncMock()
+        cb = DelegationCircuitBreaker(config, state_repo=repo)
+        cb.record_delegation("a", "b")
+        assert cb._dirty
+
+        await cb.persist_dirty()
+        assert not cb._dirty
+        repo.save.assert_awaited_once()
+
+    async def test_load_state_restores_pairs(self) -> None:
+        from synthorg.persistence.circuit_breaker_repo import (
+            CircuitBreakerStateRecord,
+        )
+
+        config = CircuitBreakerConfig(bounce_threshold=3, cooldown_seconds=300)
+        record = CircuitBreakerStateRecord(
+            pair_key_a="a",
+            pair_key_b="b",
+            bounce_count=1,
+            trip_count=2,
+            opened_at=50.0,
+        )
+        repo = MagicMock()
+        repo.load_all = AsyncMock(return_value=(record,))
+
+        cb = DelegationCircuitBreaker(config, state_repo=repo)
+        await cb.load_state()
+
+        pair = cb._pairs.get(("a", "b"))
+        assert pair is not None
+        assert pair.bounce_count == 1
+        assert pair.trip_count == 2
+        assert pair.opened_at == 50.0

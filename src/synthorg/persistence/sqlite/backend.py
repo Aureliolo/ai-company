@@ -36,6 +36,9 @@ from synthorg.persistence.sqlite.audit_repository import (
 from synthorg.persistence.sqlite.checkpoint_repo import (
     SQLiteCheckpointRepository,
 )
+from synthorg.persistence.sqlite.circuit_breaker_repo import (
+    SQLiteCircuitBreakerStateRepository,
+)
 from synthorg.persistence.sqlite.decision_repo import (
     SQLiteDecisionRepository,
 )
@@ -140,6 +143,7 @@ class SQLitePersistenceBackend:
         self._decision_records: SQLiteDecisionRepository | None = None
         self._risk_overrides: SQLiteRiskOverrideRepository | None = None
         self._ssrf_violations: SQLiteSsrfViolationRepository | None = None
+        self._circuit_breaker_state: SQLiteCircuitBreakerStateRepository | None = None
 
     def _clear_state(self) -> None:
         """Reset connection and repository references to ``None``."""
@@ -168,6 +172,7 @@ class SQLitePersistenceBackend:
         self._decision_records = None
         self._risk_overrides = None
         self._ssrf_violations = None
+        self._circuit_breaker_state = None
 
     async def connect(self) -> None:
         """Open the SQLite database and configure WAL mode."""
@@ -269,6 +274,9 @@ class SQLitePersistenceBackend:
         self._ssrf_violations = SQLiteSsrfViolationRepository(
             self._db,
             write_lock=self._shared_write_lock,
+        )
+        self._circuit_breaker_state = SQLiteCircuitBreakerStateRepository(
+            self._db,
         )
 
     async def _cleanup_failed_connect(self, exc: sqlite3.Error | OSError) -> None:
@@ -612,6 +620,18 @@ class SQLitePersistenceBackend:
         return self._require_connected(
             self._ssrf_violations,
             "ssrf_violations",
+        )
+
+    @property
+    def circuit_breaker_state(self) -> SQLiteCircuitBreakerStateRepository:
+        """Repository for circuit breaker state persistence.
+
+        Raises:
+            PersistenceConnectionError: If not connected.
+        """
+        return self._require_connected(
+            self._circuit_breaker_state,
+            "circuit_breaker_state",
         )
 
     async def get_setting(self, key: NotBlankStr) -> str | None:

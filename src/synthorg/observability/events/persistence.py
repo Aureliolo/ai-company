@@ -332,3 +332,17 @@ PERSISTENCE_SSRF_VIOLATION_QUERIED: Final[str] = "persistence.ssrf_violation.que
 PERSISTENCE_SSRF_VIOLATION_QUERY_FAILED: Final[str] = (
     "persistence.ssrf_violation.query_failed"
 )
+
+# Circuit breaker state events
+PERSISTENCE_CIRCUIT_BREAKER_SAVED: Final[str] = "persistence.circuit_breaker.saved"
+PERSISTENCE_CIRCUIT_BREAKER_SAVE_FAILED: Final[str] = (
+    "persistence.circuit_breaker.save_failed"
+)
+PERSISTENCE_CIRCUIT_BREAKER_LOADED: Final[str] = "persistence.circuit_breaker.loaded"
+PERSISTENCE_CIRCUIT_BREAKER_LOAD_FAILED: Final[str] = (
+    "persistence.circuit_breaker.load_failed"
+)
+PERSISTENCE_CIRCUIT_BREAKER_DELETED: Final[str] = "persistence.circuit_breaker.deleted"
+PERSISTENCE_CIRCUIT_BREAKER_DELETE_FAILED: Final[str] = (
+    "persistence.circuit_breaker.delete_failed"
+)

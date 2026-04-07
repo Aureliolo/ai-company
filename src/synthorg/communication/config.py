@@ -240,6 +240,11 @@ class CircuitBreakerConfig(BaseModel):
         gt=0,
         description="Cooldown period in seconds",
     )
+    max_cooldown_seconds: int = Field(
+        default=3600,
+        gt=0,
+        description="Maximum cooldown period in seconds (caps exponential backoff)",
+    )
 
 
 class LoopPreventionConfig(BaseModel):

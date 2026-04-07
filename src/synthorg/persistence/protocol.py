@@ -13,6 +13,9 @@ from synthorg.hr.persistence_protocol import (
     LifecycleEventRepository,  # noqa: TC001
     TaskMetricRepository,  # noqa: TC001
 )
+from synthorg.persistence.circuit_breaker_repo import (
+    CircuitBreakerStateRepository,  # noqa: TC001
+)
 from synthorg.persistence.preset_repository import (
     PersonalityPresetRepository,  # noqa: TC001
 )
@@ -263,6 +266,11 @@ class PersistenceBackend(Protocol):
     @property
     def ssrf_violations(self) -> SsrfViolationRepository:
         """Repository for SSRF violation record persistence."""
+        ...
+
+    @property
+    def circuit_breaker_state(self) -> CircuitBreakerStateRepository:
+        """Repository for circuit breaker state persistence."""
         ...
 
     async def get_setting(self, key: NotBlankStr) -> str | None:

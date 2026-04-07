@@ -577,6 +577,10 @@ class _FakeBackend:
     def identity_versions(self) -> Any:
         return object()
 
+    @property
+    def circuit_breaker_state(self) -> Any:
+        return object()
+
     async def get_setting(self, key: str) -> str | None:
         return None
 

@@ -42,6 +42,7 @@ _EXPECTED_TABLES = {
     "risk_overrides",
     "ssrf_violations",
     "agent_identity_versions",
+    "circuit_breaker_state",
 }
 
 _EXPECTED_INDEXES = {
