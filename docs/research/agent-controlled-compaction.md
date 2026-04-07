@@ -311,7 +311,9 @@ compaction directive in the results and applies compaction via `invoke_compactio
 ```python
 # In loop_helpers.py execute_tool_calls() or in the loop's per-turn handler:
 if any(r.metadata.get("compaction_directive") for r in tool_results):
-    ctx = await invoke_compaction(compaction_callback, ctx)
+    compacted = await invoke_compaction(ctx, compaction_callback, turn_number)
+    if compacted is not None:
+        ctx = compacted
 ```
 
 This preserves the immutable context pattern: the tool signals intent, the loop applies the

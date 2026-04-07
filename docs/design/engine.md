@@ -1500,7 +1500,7 @@ Key claims from the ACG survey validated against SynthOrg's architecture:
 *Research findings from #687. See also: `docs/research/agent-controlled-compaction.md`.*
 
 Context compaction is invoked at turn boundaries when context fill exceeds the configured
-threshold (`CompactionConfig.threshold_percent`, default 80%). The `invoke_compaction()`
+threshold (`CompactionConfig.fill_threshold_percent`, default 80%). The `invoke_compaction()`
 helper in `engine/loop_helpers.py` is shared across all three execution loops.
 
 ### Current Implementation
@@ -1550,6 +1550,11 @@ reasoning artifacts.
 **Phase 3**: Evaluate surprisal-based token cost (arXiv:2603.08462) -- per-token cost
 weighted by surprisal under a frozen base model. Empirical results: 41% token reduction,
 <1.5% accuracy drop. **Not recommended for Phase 1/2**: inference cost (forward pass
-per token) is not justified until Phase 2 data validates the need. TF-IDF importance
-weighting is the recommended lighter proxy if semantic token cost is needed before
-Phase 3.
+per token) is not justified until Phase 2 data validates the need.
+
+If semantic token cost is needed before Phase 3, the recommended lighter proxy is
+**TF-IDF importance weighting**: build a TF-IDF corpus from the current context turns,
+score each token, and treat low-scoring tokens (below a tunable percentile threshold)
+as compressible filler. The resulting importance map can drive selective truncation in
+`_build_summary()` without any additional model inference -- a significantly cheaper
+approximation of the surprisal signal.

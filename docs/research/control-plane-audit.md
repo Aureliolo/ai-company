@@ -99,7 +99,8 @@ agents at runtime, without per-agent configuration.
 | Get autonomy config | `GET /agents/{id}/autonomy` | Per-agent override |
 | Set autonomy config | `PUT /agents/{id}/autonomy` | Write access |
 | List pending approvals | `GET /approvals` | Approval queue for escalated actions |
-| Decide approval | `POST /approvals/{id}/decide` | CEO/manager/board |
+| Approve pending approval | `POST /approvals/{approval_id}/approve` | CEO/manager/board approval action |
+| Reject pending approval | `POST /approvals/{approval_id}/reject` | CEO/manager/board rejection action |
 
 **"Write Once, Enforce Everywhere" Validation**:
 
@@ -159,19 +160,20 @@ queryable history and enforcement at multiple boundaries.
 
 | Operation | Endpoint | Notes |
 |---|---|---|
-| Current budget status | `GET /budget` | Total spent, remaining, utilization % |
-| Spending history | `GET /budget/history` | Historical records |
-| Set/update budget | `POST /budget` | Write access |
+| Budget configuration | `GET /budget/config` | Budget settings, thresholds, and enforcement config |
+| Spending records | `GET /budget/records` | Paginated cost records with optional `agent_id`/`task_id` filters + daily/period summaries |
+| Agent budget records | `GET /budget/agents/{agent_id}` | Per-agent total spending |
 | Generate report | `POST /reports/generate` | Spending, performance, risk trends |
 
-**Coverage**: Basic budget queries are covered. `GET /budget` returns utilization percentage
-and alert status. `GET /budget/history` returns spending records.
+**Coverage**: Basic budget queries are covered. `GET /budget/config` exposes budget
+configuration. `GET /budget/records` returns paginated spending records with daily and period
+summaries. `GET /budget/agents/{agent_id}` provides per-agent cost totals.
 
 **Gap -- G6**: `CostTracker` is in-memory with TTL eviction; it is not a durable time-series
 store. Budget history granularity is limited -- the tracker supports `get_agent_cost(agent_id,
-start=)` and `get_total_cost(start=)` but the API endpoint does not expose multi-dimensional
+start=)` and `get_total_cost(start=)` but the API does not expose multi-dimensional
 queries (e.g., spending by provider X for agent Y during period Z). External cost dashboards
-need this level of attribution. The persistence layer backing `GET /budget/history` needs
+need this level of attribution. The persistence layer backing `GET /budget/records` needs
 inspection to confirm whether it provides richer query semantics than the in-memory tracker.
 
 **Gap -- G4**: The 9 coordination metrics (`budget/coordination_metrics.py`) are computed
@@ -205,7 +207,9 @@ formats.
 
 | Operation | Endpoint | Notes |
 |---|---|---|
-| Analytics dashboard | `GET /analytics` | Summary metrics |
+| Analytics overview | `GET /analytics/overview` | Summary metrics (task counts, cost totals, budget status) |
+| Analytics trends | `GET /analytics/trends` | Time-series cost and task-completion trends |
+| Analytics forecast | `GET /analytics/forecast` | Forward-looking spend projections |
 | Generate report | `POST /reports/generate` | Spending, performance, task completion |
 | List log sinks | `GET /settings/observability/sinks` | Current sink configuration |
 | Test sink connectivity | `POST /settings/observability/sinks/_test` | CEO/manager |

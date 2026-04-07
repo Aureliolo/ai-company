@@ -492,8 +492,20 @@ Five mechanisms protect against swarm drift (`communication/loop_prevention/guar
 
 **Known risk -- circuit breaker bounce count reset**: After cooldown, the state entry is
 evicted entirely, resetting the bounce count to 0. Slow-burn delegation patterns (>60s
-between delegations) can bypass all five guards after each cooldown expiry. Mitigation:
-use exponential backoff on cooldown resets or a non-resetting global bounce counter.
+between delegations) can bypass all five guards after each cooldown expiry.
+
+Recommended mitigation -- two options:
+
+1. **Exponential backoff on cooldown**: instead of evicting the entry, retain it and
+   apply `cooldown_seconds = base_cooldown * 2^bounce_count`. Each bounce extends the
+   cooldown duration exponentially, making slow-burn bypass progressively harder.
+2. **Non-resetting global bounce counter**: store a per-pair lifetime bounce count
+   separate from the per-window circuit breaker. Once the lifetime count exceeds a
+   threshold (e.g., 10), escalate to a permanent circuit-open state requiring manual
+   reset.
+
+Option 1 is simpler to implement within `circuit_breaker.py` without breaking the
+existing eviction model. Option 2 is more robust against very long-horizon patterns.
 
 **Known risk -- in-memory state**: All guard state (circuit breaker, dedup window, rate
 limiter) is in-memory. Service restart resets all guardrails. Consider persisting circuit

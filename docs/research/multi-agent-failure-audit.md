@@ -171,7 +171,7 @@ Single LLM review call. If the winner matches a participant, auto-resolves. On a
 
 ### Complete Fallback Chain
 
-```
+```text
 HybridResolver
   └─ clear winner found  ─────────────────────────────→ RESOLVED_BY_HYBRID
   └─ ambiguous + escalate_on_ambiguity=True  ──────────→ ESCALATED_TO_HUMAN (stub)

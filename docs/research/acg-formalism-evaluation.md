@@ -131,7 +131,10 @@ quality-cost tradeoff. The `DegradationConfig` and quota degradation strategies
 (Amdahl ceiling, straggler gap) provide efficiency bounds.
 
 **Implication**: The existing budget architecture is sound. The missing piece is exposing
-the quality-cost tradeoffs in the API (see #688 coordination metrics gap).
+the quality-cost tradeoffs via the REST API: specifically, `GET /tasks/{id}` response
+and the `CoordinationResult` Python type should surface cost, quality, and efficiency
+metadata (estimated cost, actual cost, quality score, Amdahl ceiling, straggler gap).
+See #688 coordination metrics gap (Gap G4) for the full scoping.
 
 ---
 
@@ -159,7 +162,14 @@ SynthOrg currently attributes all failure information to the executing agent's
 
 ### Proposed Design
 
-**AgentContribution model** -- extend `CoordinationResult`:
+**AgentContribution model** -- integrate with `CoordinationResult`:
+
+Note: `CoordinationResult` has `model_config = ConfigDict(frozen=True)`. Adding
+`agent_contributions` directly is a breaking change. The recommended approach is a
+separate wrapper: `CoordinationResultWithAttribution(result: CoordinationResult,
+agent_contributions: tuple[AgentContribution, ...])`, stored and returned in place of
+the bare result by `_post_execution_pipeline`. This preserves immutability and avoids
+migrating existing persisted `CoordinationResult` records.
 
 ```python
 class AgentContribution(BaseModel):
@@ -231,7 +241,7 @@ Four signal categories that should drive pruning recommendations:
 
 ### Proposed Protocol
 
-```
+```python
 PruningEvaluation (new model)
   agent_id: str
   pruning_score: float   # 0.0 = retain, 1.0 = prune
@@ -253,9 +263,19 @@ PruningService (new service)
 ```
 
 **Human approval gate**: Any `PruningEvaluation` with `recommendation="PRUNE"` creates an
-`ApprovalItem` with `action_type="org:prune"` and `ApprovalRiskLevel.MEDIUM`. This follows
-the same approval pattern used by the hiring and promotion pipelines. Pruning is never
-fully automated -- it is recommendation + human approval.
+`ApprovalItem` following the same approval pattern used by the hiring and promotion
+pipelines. Required fields:
+
+- `id`: unique UUID per `PruningEvaluation`
+- `title`: short summary, e.g. `"Prune agent {agent_id} ({reason})"`
+- `description`: rationale from `PruningEvaluation.signals` (quality decline slope,
+  utilization, Jaccard overlap), affected team, and safety constraint check results
+- `requested_by`: the `PruningService` identifier or calling system
+- `action_type`: `"org:prune"`
+- `risk_level`: `ApprovalRiskLevel.MEDIUM`
+- `created_at`: ISO 8601 timestamp
+
+Pruning is never fully automated -- it is recommendation + human approval.
 
 ### Safety Constraints
 
@@ -321,6 +341,13 @@ adoption. Introducing a `NodeType` enum with values `LLM_CALL`, `TOOL_INVOCATION
 node types executed in that turn would improve execution trace analysis without
 significant refactoring. This is optional but would directly enable structural credit
 assignment (knowing which node type failed).
+
+**Backward compatibility**: `TurnRecord` is part of execution traces and may be
+persisted. The `node_types` field must be added as **optional with a default** (e.g.,
+`node_types: tuple[NodeType, ...] = ()`) so existing records remain valid without
+migration. Serialization/deserialization must tolerate the absent field. Consumers
+(trace analyzers, evaluation pipelines) should treat an empty tuple as "unknown
+composition" rather than erroring.
 
 ---
 
