@@ -32,5 +32,6 @@ The design specification has been split into focused documentation pages for bet
 | [Decision Log](architecture/decisions.md) | All design decisions, organized by domain |
 | [Research & Prior Art](reference/research.md) | Framework comparison and scaling research |
 | [Industry Standards](reference/standards.md) | MCP, A2A, and other standards |
+| [ACG Glossary](architecture/acg-glossary.md) | Bidirectional ACG-to-SynthOrg concept mapping |
 | [Open Questions & Risks](roadmap/open-questions.md) | Unresolved questions and risk mitigations |
 | [Future Vision](roadmap/future-vision.md) | Backlog features and scaling path |
