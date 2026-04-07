@@ -4,11 +4,18 @@ All models are frozen Pydantic models following the project's
 immutability convention.
 """
 
-from pydantic import BaseModel, ConfigDict, Field
+from typing import Self
+
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class CompactionConfig(BaseModel):
     """Configuration for context compaction behavior.
+
+    When ``agent_controlled`` is ``True``, automatic compaction uses
+    ``safety_threshold_percent`` instead of ``fill_threshold_percent``,
+    allowing agents to manage compaction via the ``compact_context``
+    tool while retaining a safety net.
 
     Attributes:
         fill_threshold_percent: Context fill percentage that triggers
@@ -17,6 +24,12 @@ class CompactionConfig(BaseModel):
             messages required before compaction is allowed.
         preserve_recent_turns: Number of recent turn pairs to keep
             uncompressed after compaction.
+        agent_controlled: Enable agent-initiated compaction via the
+            ``compact_context`` tool.
+        safety_threshold_percent: Auto-compaction threshold when
+            ``agent_controlled`` is ``True`` (safety net).
+        preserve_epistemic_markers: Detect and preserve epistemic
+            markers (hedging, reconsideration, etc.) in summaries.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
@@ -37,6 +50,40 @@ class CompactionConfig(BaseModel):
         ge=1,
         description="Recent turn pairs to keep uncompressed",
     )
+    agent_controlled: bool = Field(
+        default=False,
+        description=(
+            "Enable agent-initiated compaction via compact_context tool. "
+            "When True, auto-compaction uses safety_threshold_percent."
+        ),
+    )
+    safety_threshold_percent: float = Field(
+        default=95.0,
+        gt=0.0,
+        le=100.0,
+        description=(
+            "Auto-compaction threshold when agent_controlled=True (safety net)."
+        ),
+    )
+    preserve_epistemic_markers: bool = Field(
+        default=True,
+        description=("Detect and preserve epistemic markers in compaction summaries."),
+    )
+
+    @model_validator(mode="after")
+    def _validate_safety_above_fill(self) -> Self:
+        """Safety threshold must exceed fill threshold when agent-controlled."""
+        if (
+            self.agent_controlled
+            and self.safety_threshold_percent <= self.fill_threshold_percent
+        ):
+            msg = (
+                f"safety_threshold_percent ({self.safety_threshold_percent}) "
+                f"must be greater than fill_threshold_percent "
+                f"({self.fill_threshold_percent}) when agent_controlled=True"
+            )
+            raise ValueError(msg)
+        return self
 
 
 class CompressionMetadata(BaseModel):

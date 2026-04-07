@@ -191,6 +191,10 @@ def build_default_tools(  # noqa: PLR0913
         logger.warning(TOOL_FACTORY_ERROR, error=msg)
         raise ValueError(msg)
 
+    from synthorg.tools.context.compact_context import (  # noqa: PLC0415
+        CompactContextTool,
+    )
+
     all_tools: list[BaseTool] = [
         *_build_file_system_tools(workspace=workspace),
         *_build_git_tools(
@@ -202,6 +206,7 @@ def build_default_tools(  # noqa: PLR0913
             network_policy=web_network_policy,
             search_provider=web_search_provider,
         ),
+        CompactContextTool(),
     ]
 
     all_tools.extend(

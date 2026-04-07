@@ -7,6 +7,11 @@ configurable threshold.
 
 from typing import TYPE_CHECKING
 
+from synthorg.core.enums import Complexity
+from synthorg.engine.compaction.epistemic import (
+    extract_marker_sentences,
+    should_preserve_message,
+)
 from synthorg.engine.compaction.models import (
     CompactionConfig,
     CompressionMetadata,
@@ -79,7 +84,12 @@ def _do_compaction(
         New compacted ``AgentContext`` or ``None`` if no compaction needed.
     """
     fill_pct = ctx.context_fill_percent
-    if fill_pct is None or fill_pct < config.fill_threshold_percent:
+    effective_threshold = (
+        config.safety_threshold_percent
+        if config.agent_controlled
+        else config.fill_threshold_percent
+    )
+    if fill_pct is None or fill_pct < effective_threshold:
         return None
 
     conversation = ctx.conversation
@@ -105,12 +115,15 @@ def _do_compaction(
         return None
     head, archivable, recent = split
 
+    task_complexity = _extract_task_complexity(ctx)
     compressed, metadata, summary_tokens = _compress(
         ctx,
         head,
         archivable,
         recent,
         estimator,
+        preserve_markers=config.preserve_epistemic_markers,
+        task_complexity=task_complexity,
     )
 
     # Re-estimate fill with compressed conversation.  Counts
@@ -173,18 +186,26 @@ def _split_conversation(
     return head, archivable, recent
 
 
-def _compress(
+def _compress(  # noqa: PLR0913
     ctx: AgentContext,
     head: tuple[ChatMessage, ...],
     archivable: tuple[ChatMessage, ...],
     recent: tuple[ChatMessage, ...],
     estimator: PromptTokenEstimator,
+    *,
+    preserve_markers: bool,
+    task_complexity: Complexity,
 ) -> tuple[tuple[ChatMessage, ...], CompressionMetadata, int]:
     """Build compressed conversation and metadata.
 
     Returns ``(compressed_conversation, metadata, summary_tokens)``.
     """
-    summary_text = _build_summary(archivable, ctx.execution_id)
+    summary_text = _build_summary(
+        archivable,
+        ctx.execution_id,
+        preserve_markers=preserve_markers,
+        task_complexity=task_complexity,
+    )
     summary_msg = ChatMessage(
         role=MessageRole.SYSTEM,
         content=summary_text,
@@ -206,33 +227,67 @@ def _compress(
     return compressed, metadata, summary_tokens
 
 
+def _extract_task_complexity(ctx: AgentContext) -> Complexity:
+    """Extract task complexity from context, defaulting to COMPLEX."""
+    task_exec = getattr(ctx, "task_execution", None)
+    if task_exec is not None:
+        task = getattr(task_exec, "task", None)
+        if task is not None:
+            complexity = getattr(task, "estimated_complexity", None)
+            if isinstance(complexity, Complexity):
+                return complexity
+    return Complexity.COMPLEX
+
+
 def _build_summary(
     messages: tuple[ChatMessage, ...],
     execution_id: str,
+    *,
+    preserve_markers: bool,
+    task_complexity: Complexity,
 ) -> str:
-    """Build a simple text summary from archived messages.
+    """Build a text summary from archived messages.
 
-    Concatenates sanitized assistant message content snippets into a
-    summary paragraph, capped at ``_MAX_SUMMARY_CHARS``. Each snippet
-    is redacted for file paths and URLs via ``sanitize_message``.
+    When ``preserve_markers`` is True, assistant messages with
+    epistemic markers (hedging, reconsideration, etc.) are preserved
+    as marker-containing sentences instead of being sanitized down
+    to 100-char snippets.
 
     Args:
         messages: The archived messages to summarize.
         execution_id: Execution identifier for log correlation.
+        preserve_markers: Whether to preserve epistemic markers.
+        task_complexity: Task complexity for marker thresholds.
 
     Returns:
         Summary text describing the archived conversation.
     """
     snippets: list[str] = []
-    for msg in messages:
-        if msg.role == MessageRole.ASSISTANT and msg.content:
-            cleaned = msg.content.replace("\n", " ").strip()
-            if cleaned:
-                snippet = sanitize_message(cleaned, max_length=100)
-                snippets.append(snippet)
+    preserved_count = 0
 
-    # Drop useless "details redacted" placeholders so the summary
-    # retains only meaningful content.
+    for msg in messages:
+        if msg.role != MessageRole.ASSISTANT or not msg.content:
+            continue
+        cleaned = msg.content.replace("\n", " ").strip()
+        if not cleaned:
+            continue
+
+        # Check for epistemic markers worth preserving.
+        if preserve_markers and should_preserve_message(
+            cleaned,
+            task_complexity,
+        ):
+            marker_text = extract_marker_sentences(cleaned)
+            if marker_text:
+                snippets.append(marker_text)
+                preserved_count += 1
+                continue
+
+        # Standard sanitized snippet.
+        snippet = sanitize_message(cleaned, max_length=100)
+        snippets.append(snippet)
+
+    # Drop useless "details redacted" placeholders.
     useful = [s for s in snippets if s != "details redacted"]
     if not useful:
         logger.debug(
@@ -247,4 +302,79 @@ def _build_summary(
     if len(joined) > _MAX_SUMMARY_CHARS:
         joined = joined[:_MAX_SUMMARY_CHARS] + "..."
 
+    if preserved_count > 0:
+        return (
+            f"[Archived {len(messages)} messages. "
+            f"Epistemic markers preserved from "
+            f"{preserved_count} messages. "
+            f"Summary: {joined}]"
+        )
     return f"[Archived {len(messages)} messages. Summary of prior work: {joined}]"
+
+
+def force_compaction(
+    ctx: AgentContext,
+    config: CompactionConfig,
+    estimator: PromptTokenEstimator,
+) -> AgentContext | None:
+    """Compact context without checking the fill threshold.
+
+    Used when an agent explicitly requests compaction via the
+    ``compact_context`` tool.  Skips the threshold check but
+    still enforces minimum message count and recent turn
+    preservation.
+
+    Args:
+        ctx: Current agent context.
+        config: Compaction configuration.
+        estimator: Token estimator.
+
+    Returns:
+        Compacted context, or ``None`` if too few messages.
+    """
+    conversation = ctx.conversation
+    if len(conversation) < config.min_messages_to_compact:
+        logger.debug(
+            CONTEXT_BUDGET_COMPACTION_SKIPPED,
+            execution_id=ctx.execution_id,
+            reason="too_few_messages_for_forced_compaction",
+            message_count=len(conversation),
+        )
+        return None
+
+    logger.info(
+        CONTEXT_BUDGET_COMPACTION_STARTED,
+        execution_id=ctx.execution_id,
+        fill_percent=ctx.context_fill_percent,
+        message_count=len(conversation),
+        forced=True,
+    )
+
+    split = _split_conversation(ctx, config)
+    if split is None:
+        return None
+    head, archivable, recent = split
+
+    task_complexity = _extract_task_complexity(ctx)
+    compressed, metadata, summary_tokens = _compress(
+        ctx,
+        head,
+        archivable,
+        recent,
+        estimator,
+        preserve_markers=config.preserve_epistemic_markers,
+        task_complexity=task_complexity,
+    )
+
+    new_fill = estimator.estimate_conversation_tokens(compressed)
+    logger.info(
+        CONTEXT_BUDGET_COMPACTION_COMPLETED,
+        execution_id=ctx.execution_id,
+        original_messages=len(conversation),
+        compacted_messages=len(compressed),
+        archived_turns=metadata.archived_turns,
+        summary_tokens=summary_tokens,
+        compactions_total=metadata.compactions_performed,
+        forced=True,
+    )
+    return ctx.with_compression(metadata, compressed, new_fill)

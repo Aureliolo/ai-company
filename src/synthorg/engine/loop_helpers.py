@@ -40,6 +40,7 @@ from synthorg.providers.models import (
 from .loop_protocol import (
     BudgetChecker,
     ExecutionResult,
+    NodeType,
     ShutdownChecker,
     TerminationReason,
     TurnRecord,
@@ -466,8 +467,14 @@ def make_turn_record(
     *,
     call_category: LLMCallCategory | None = None,
     provider_metadata: dict[str, object] | None = None,
+    extra_node_types: tuple[NodeType, ...] = (),
 ) -> TurnRecord:
     """Create a ``TurnRecord`` from a provider response.
+
+    Automatically derives ``LLM_CALL`` (always) and ``TOOL_INVOCATION``
+    (when tool calls are present). Callers pass additional node types
+    via *extra_node_types* for checks that ran this turn (quality,
+    budget, stagnation).
 
     Args:
         turn_number: 1-indexed turn number.
@@ -478,6 +485,8 @@ def make_turn_record(
             ``_synthorg_latency_ms``, ``_synthorg_cache_hit``,
             ``_synthorg_retry_count``, and ``_synthorg_retry_reason``
             are extracted when present.
+        extra_node_types: Additional node types beyond the
+            auto-derived LLM_CALL and TOOL_INVOCATION.
     """
     md = provider_metadata or {}
     latency_ms_raw = md.get("_synthorg_latency_ms")
@@ -501,6 +510,12 @@ def make_turn_record(
     if isinstance(retry_reason_raw, str):
         retry_reason = retry_reason_raw
 
+    # Auto-derive base node types from response content.
+    derived: list[NodeType] = [NodeType.LLM_CALL]
+    if response.tool_calls:
+        derived.append(NodeType.TOOL_INVOCATION)
+    node_types = tuple(derived) + extra_node_types
+
     return TurnRecord(
         turn_number=turn_number,
         input_tokens=response.usage.input_tokens,
@@ -514,6 +529,7 @@ def make_turn_record(
         cache_hit=cache_hit,
         retry_count=retry_count,
         retry_reason=retry_reason,
+        node_types=node_types,
     )
 
 

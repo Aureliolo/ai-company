@@ -32,6 +32,7 @@ if TYPE_CHECKING:
     from pydantic import AwareDatetime
 
     from synthorg.core.task import AcceptanceCriterion
+    from synthorg.engine.coordination.attribution import AgentContribution
     from synthorg.hr.performance.collaboration_override_store import (
         CollaborationOverrideStore,
     )
@@ -96,6 +97,7 @@ class PerformanceTracker:
         self._quality_override_store = quality_override_store
         self._task_metrics: dict[str, list[TaskMetricRecord]] = {}
         self._collab_metrics: dict[str, list[CollaborationMetricRecord]] = {}
+        self._contributions: dict[str, list[AgentContribution]] = {}
         self._background_tasks: set[asyncio.Task[None]] = set()
 
     @staticmethod
@@ -176,6 +178,32 @@ class PerformanceTracker:
             is_success=record.is_success,
         )
         return record
+
+    def record_coordination_contributions(
+        self,
+        contributions: tuple[AgentContribution, ...],
+    ) -> None:
+        """Store per-agent contributions from coordination.
+
+        Args:
+            contributions: Attribution records from a coordinated run.
+        """
+        for contrib in contributions:
+            agent_key = str(contrib.agent_id)
+            if agent_key not in self._contributions:
+                self._contributions[agent_key] = []
+            self._contributions[agent_key].append(contrib)
+
+        if contributions:
+            logger.info(
+                PERF_METRIC_RECORDED,
+                contribution_count=len(contributions),
+                avg_score=round(
+                    sum(c.contribution_score for c in contributions)
+                    / len(contributions),
+                    3,
+                ),
+            )
 
     async def score_task_quality(
         self,

@@ -132,9 +132,10 @@ class TestMultiAgentCoordinator:
             ),
         )
 
-        result = await coordinator.coordinate(ctx)
+        attributed = await coordinator.coordinate(ctx)
+        result = attributed.result
 
-        assert result.is_success
+        assert attributed.is_success
         assert result.topology == CoordinationTopology.CENTRALIZED
         assert result.decomposition_result is not None
         assert result.routing_result is not None
@@ -142,6 +143,7 @@ class TestMultiAgentCoordinator:
         assert result.status_rollup is not None
         assert result.status_rollup.completed == 2
         assert result.total_duration_seconds > 0
+        assert isinstance(attributed.agent_contributions, tuple)
 
     @pytest.mark.unit
     async def test_sas_topology_single_agent(self) -> None:
@@ -174,9 +176,10 @@ class TestMultiAgentCoordinator:
             available_agents=(make_assignment_agent("alice"),),
         )
 
-        result = await coordinator.coordinate(ctx)
+        attributed = await coordinator.coordinate(ctx)
+        result = attributed.result
 
-        assert result.is_success
+        assert attributed.is_success
         assert result.topology == CoordinationTopology.SAS
         assert len(result.waves) == 2
 
@@ -285,10 +288,11 @@ class TestMultiAgentCoordinator:
             config=CoordinationConfig(fail_fast=False),
         )
 
-        result = await coordinator.coordinate(ctx)
+        attributed = await coordinator.coordinate(ctx)
+        result = attributed.result
 
         # Not fully successful (wave 0 failed)
-        assert not result.is_success
+        assert not attributed.is_success
         # Both waves still executed
         assert len(result.waves) == 2
         assert result.status_rollup is not None
@@ -329,9 +333,9 @@ class TestMultiAgentCoordinator:
             available_agents=(make_assignment_agent("alice"),),
         )
 
-        result = await coordinator.coordinate(ctx)
+        attributed = await coordinator.coordinate(ctx)
 
-        assert result.is_success
+        assert attributed.is_success
         task_engine.submit.assert_called_once()
 
     @pytest.mark.unit
@@ -355,9 +359,10 @@ class TestMultiAgentCoordinator:
             available_agents=(make_assignment_agent("alice"),),
         )
 
-        result = await coordinator.coordinate(ctx)
+        attributed = await coordinator.coordinate(ctx)
+        result = attributed.result
 
-        assert result.is_success
+        assert attributed.is_success
         # No update_parent phase in results
         update_phases = [p for p in result.phases if p.phase == "update_parent"]
         assert len(update_phases) == 0
@@ -411,7 +416,8 @@ class TestMultiAgentCoordinator:
             ),
         )
 
-        result = await coordinator.coordinate(ctx)
+        attributed = await coordinator.coordinate(ctx)
+        result = attributed.result
 
         assert result.status_rollup is not None
         assert result.status_rollup.completed == 1
@@ -501,9 +507,10 @@ class TestMultiAgentCoordinator:
             ),
         )
 
-        result = await coordinator.coordinate(ctx)
+        attributed = await coordinator.coordinate(ctx)
+        result = attributed.result
 
-        assert result.is_success
+        assert attributed.is_success
         ws_service.setup_group.assert_called_once()
         ws_service.merge_group.assert_called_once()
         ws_service.teardown_group.assert_called_once()
@@ -549,7 +556,8 @@ class TestMultiAgentCoordinator:
             available_agents=(make_assignment_agent("alice"),),
         )
 
-        result = await coordinator.coordinate(ctx)
+        attributed = await coordinator.coordinate(ctx)
+        result = attributed.result
         assert result.topology == CoordinationTopology.CENTRALIZED
 
     @pytest.mark.unit
@@ -583,7 +591,8 @@ class TestMultiAgentCoordinator:
             available_agents=(make_assignment_agent("alice"),),
         )
 
-        result = await coordinator.coordinate(ctx)
+        attributed = await coordinator.coordinate(ctx)
+        result = attributed.result
         update_phases = [p for p in result.phases if p.phase == "update_parent"]
         assert len(update_phases) == 1
         assert not update_phases[0].success
@@ -613,7 +622,8 @@ class TestMultiAgentCoordinator:
             available_agents=(make_assignment_agent("alice"),),
         )
 
-        result = await coordinator.coordinate(ctx)
+        attributed = await coordinator.coordinate(ctx)
+        result = attributed.result
         update_phases = [p for p in result.phases if p.phase == "update_parent"]
         assert len(update_phases) == 1
         assert not update_phases[0].success
@@ -653,7 +663,8 @@ class TestMultiAgentCoordinator:
             available_agents=(make_assignment_agent("alice"),),
         )
 
-        result = await coordinator.coordinate(ctx)
+        attributed = await coordinator.coordinate(ctx)
+        result = attributed.result
         rollup_phases = [p for p in result.phases if p.phase == "rollup"]
         assert len(rollup_phases) == 1
         assert not rollup_phases[0].success
@@ -750,7 +761,8 @@ class TestMultiAgentCoordinator:
             available_agents=(make_assignment_agent("alice"),),
         )
 
-        result = await coordinator.coordinate(ctx)
+        attributed = await coordinator.coordinate(ctx)
+        result = attributed.result
         assert result.total_cost_usd == pytest.approx(0.08)
 
     @pytest.mark.unit
@@ -782,7 +794,8 @@ class TestMultiAgentCoordinator:
             config=CoordinationConfig(fail_fast=True),
         )
 
-        result = await coordinator.coordinate(ctx)
+        attributed = await coordinator.coordinate(ctx)
+        result = attributed.result
 
         # Only one wave executed (fail_fast stopped before wave 1)
         assert len(result.waves) == 1
@@ -817,7 +830,8 @@ class TestMultiAgentCoordinator:
             available_agents=(make_assignment_agent("alice"),),
         )
 
-        result = await coordinator.coordinate(ctx)
+        attributed = await coordinator.coordinate(ctx)
+        result = attributed.result
 
         assert result.status_rollup is not None
         # 1 completed + 1 blocked = 2 total

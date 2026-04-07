@@ -25,6 +25,21 @@ if TYPE_CHECKING:
     from synthorg.tools.invoker import ToolInvoker
 
 
+class NodeType(StrEnum):
+    """Type of computation node executed within a turn.
+
+    Used for structural credit assignment and post-hoc trace analysis.
+    Each turn records which node types executed, enabling fine-grained
+    attribution of costs and failures.
+    """
+
+    LLM_CALL = "llm_call"
+    TOOL_INVOCATION = "tool_invocation"
+    QUALITY_CHECK = "quality_check"
+    BUDGET_CHECK = "budget_check"
+    STAGNATION_CHECK = "stagnation_check"
+
+
 class TerminationReason(StrEnum):
     """Why the execution loop terminated."""
 
@@ -56,6 +71,9 @@ class TurnRecord(BaseModel):
         cache_hit: Whether the provider served this turn from cache.
         retry_count: Number of retry attempts before success.
         retry_reason: Exception type name of the last retried error.
+        node_types: Node types that executed in this turn (e.g.
+            LLM_CALL, TOOL_INVOCATION). Defaults to empty for
+            deserialization of legacy data.
         success: Whether this turn completed without error or content filter (computed).
     """
 
@@ -97,6 +115,10 @@ class TurnRecord(BaseModel):
     retry_reason: NotBlankStr | None = Field(
         default=None,
         description="Exception type name of the last retried error",
+    )
+    node_types: tuple[NodeType, ...] = Field(
+        default=(),
+        description="Node types that executed in this turn",
     )
 
     @model_validator(mode="after")

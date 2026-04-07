@@ -10,6 +10,10 @@ from typing import TYPE_CHECKING
 from uuid import uuid4
 
 from synthorg.core.enums import CoordinationTopology, TaskStatus
+from synthorg.engine.coordination.attribution import (
+    CoordinationResultWithAttribution,
+    build_agent_contributions,
+)
 from synthorg.engine.coordination.dispatchers import (
     DispatchResult,
     select_dispatcher,
@@ -94,7 +98,7 @@ class MultiAgentCoordinator:
     async def coordinate(
         self,
         context: CoordinationContext,
-    ) -> CoordinationResult:
+    ) -> CoordinationResultWithAttribution:
         """Run the full multi-agent coordination pipeline.
 
         Pipeline:
@@ -105,12 +109,14 @@ class MultiAgentCoordinator:
             5. Select dispatcher and execute waves.
             6. Rollup subtask statuses.
             7. Update parent task via TaskEngine (if provided).
+            8. Build per-agent attribution from routing + outcomes.
 
         Args:
             context: Coordination context with task, agents, and config.
 
         Returns:
-            CoordinationResult with all phase outcomes.
+            CoordinationResultWithAttribution wrapping the result
+            with per-agent contribution data.
 
         Raises:
             CoordinationPhaseError: When a critical phase fails.
@@ -195,7 +201,16 @@ class MultiAgentCoordinator:
             total_cost_usd=total_cost,
         )
 
-        return result
+        # Phase 8: Build per-agent attribution.
+        contributions = build_agent_contributions(
+            routing_result,
+            dispatch_result.waves,
+        )
+
+        return CoordinationResultWithAttribution(
+            result=result,
+            agent_contributions=contributions,
+        )
 
     async def _phase_decompose(
         self,

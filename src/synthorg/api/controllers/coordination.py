@@ -42,6 +42,9 @@ if TYPE_CHECKING:
     from synthorg.api.state import AppState
     from synthorg.core.agent import AgentIdentity
     from synthorg.core.task import Task
+    from synthorg.engine.coordination.attribution import (
+        CoordinationResultWithAttribution,
+    )
 
 logger = get_logger(__name__)
 
@@ -171,7 +174,7 @@ class CoordinationController(Controller):
             agent_count=len(agents),
         )
 
-        result = await self._execute(
+        attributed = await self._execute(
             app_state,
             request,
             context,
@@ -188,7 +191,10 @@ class CoordinationController(Controller):
             )
             currency = DEFAULT_CURRENCY
         return ApiResponse(
-            data=_map_result_to_response(result, currency=currency),
+            data=_map_result_to_response(
+                attributed.result,
+                currency=currency,
+            ),
         )
 
     async def _get_task(
@@ -239,10 +245,10 @@ class CoordinationController(Controller):
         request: Request[Any, Any, Any],
         context: CoordinationContext,
         task_id: str,
-    ) -> CoordinationResult:
+    ) -> CoordinationResultWithAttribution:
         """Run coordination and publish WS events."""
         try:
-            result = await app_state.coordinator.coordinate(context)
+            attributed = await app_state.coordinator.coordinate(context)
         except CoordinationPhaseError as exc:
             logger.warning(
                 API_COORDINATION_FAILED,
@@ -278,7 +284,7 @@ class CoordinationController(Controller):
 
         ws_event_type = (
             WsEventType.COORDINATION_COMPLETED
-            if result.is_success
+            if attributed.is_success
             else WsEventType.COORDINATION_FAILED
         )
         _publish_ws_event(
@@ -286,23 +292,25 @@ class CoordinationController(Controller):
             ws_event_type,
             {
                 "task_id": task_id,
-                "topology": result.topology.value,
-                "is_success": result.is_success,
-                "total_duration_seconds": result.total_duration_seconds,
+                "topology": attributed.result.topology.value,
+                "is_success": attributed.is_success,
+                "total_duration_seconds": attributed.result.total_duration_seconds,
             },
         )
         log_event = (
-            API_COORDINATION_COMPLETED if result.is_success else API_COORDINATION_FAILED
+            API_COORDINATION_COMPLETED
+            if attributed.is_success
+            else API_COORDINATION_FAILED
         )
-        log_fn = logger.info if result.is_success else logger.warning
+        log_fn = logger.info if attributed.is_success else logger.warning
         log_fn(
             log_event,
             task_id=task_id,
-            topology=result.topology.value,
-            is_success=result.is_success,
-            total_duration_seconds=result.total_duration_seconds,
+            topology=attributed.result.topology.value,
+            is_success=attributed.is_success,
+            total_duration_seconds=attributed.result.total_duration_seconds,
         )
-        return result
+        return attributed
 
     async def _resolve_agents(
         self,
