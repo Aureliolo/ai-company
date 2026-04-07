@@ -16,7 +16,9 @@ from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
 from synthorg.observability.events.security import (
     SECURITY_RISK_OVERRIDE_APPLIED,
+    SECURITY_RISK_OVERRIDE_CREATED,
     SECURITY_RISK_OVERRIDE_EXPIRED,
+    SECURITY_RISK_OVERRIDE_REVOKED,
 )
 
 if TYPE_CHECKING:
@@ -115,7 +117,10 @@ class SecOpsRiskClassifier:
         overrides: tuple[RiskTierOverride, ...] = (),
     ) -> None:
         self._base = base
-        self._overrides: list[RiskTierOverride] = list(overrides)
+        self._overrides: list[RiskTierOverride] = sorted(
+            overrides,
+            key=lambda o: o.created_at,
+        )
 
     def classify(self, action_type: str) -> ApprovalRiskLevel:
         """Return the risk level, checking overrides first.
@@ -136,8 +141,13 @@ class SecOpsRiskClassifier:
             if override.action_type != action_type:
                 continue
             if not override.is_active:
+                event = (
+                    SECURITY_RISK_OVERRIDE_REVOKED
+                    if override.revoked_at is not None
+                    else SECURITY_RISK_OVERRIDE_EXPIRED
+                )
                 logger.debug(
-                    SECURITY_RISK_OVERRIDE_EXPIRED,
+                    event,
                     override_id=override.id,
                     action_type=action_type,
                 )
@@ -160,6 +170,13 @@ class SecOpsRiskClassifier:
             override: The override to add.
         """
         self._overrides = [*self._overrides, override]
+        logger.info(
+            SECURITY_RISK_OVERRIDE_CREATED,
+            override_id=override.id,
+            action_type=override.action_type,
+            original_tier=override.original_tier,
+            override_tier=override.override_tier,
+        )
 
     def revoke_override(
         self,
@@ -190,6 +207,14 @@ class SecOpsRiskClassifier:
                 new_list = list(self._overrides)
                 new_list[i] = revoked
                 self._overrides = new_list
+                logger.info(
+                    SECURITY_RISK_OVERRIDE_REVOKED,
+                    override_id=override_id,
+                    revoked_by=revoked_by,
+                    action_type=ovr.action_type,
+                    original_tier=ovr.original_tier,
+                    override_tier=ovr.override_tier,
+                )
                 return revoked
         return None
 

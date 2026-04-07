@@ -166,6 +166,10 @@ class SQLiteSsrfViolationRepository:
         limit: int = 100,
     ) -> tuple[SsrfViolation, ...]:
         """List violations, optionally filtered by status."""
+        if limit <= 0:
+            msg = "limit must be positive"
+            raise ValueError(msg)
+
         if status is not None:
             query = (
                 f"SELECT {_COLS} FROM ssrf_violations "  # noqa: S608

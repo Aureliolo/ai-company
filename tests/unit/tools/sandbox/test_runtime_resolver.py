@@ -31,6 +31,18 @@ class TestSandboxRuntimeResolverResolve:
         )
         assert resolver.resolve_runtime("code_execution") is None
 
+    def test_falls_through_to_global_when_override_unavailable(self) -> None:
+        """When per-category override is unavailable, fall through to global."""
+        config = DockerSandboxConfig(
+            runtime="runc",
+            runtime_overrides={"code_execution": "runsc"},
+        )
+        resolver = SandboxRuntimeResolver(
+            config=config,
+            available_runtimes=frozenset({"runc"}),
+        )
+        assert resolver.resolve_runtime("code_execution") == "runc"
+
     def test_returns_global_runtime_when_no_override(self) -> None:
         config = DockerSandboxConfig(runtime="runsc")
         resolver = SandboxRuntimeResolver(
@@ -115,13 +127,36 @@ class TestSandboxRuntimeResolverWithDefaults:
 class TestSandboxRuntimeResolverProbe:
     """Tests for probe_available_runtimes()."""
 
-    async def test_probe_returns_frozenset(self) -> None:
-        result = await SandboxRuntimeResolver.probe_available_runtimes()
-        assert isinstance(result, frozenset)
+    async def test_probe_returns_discovered_runtimes_when_docker_available(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """When Docker is available, return discovered runtimes."""
 
-    async def test_probe_returns_runc_fallback_on_failure(self) -> None:
-        """When Docker is unavailable, return runc as minimum fallback."""
+        async def _mock_probe() -> frozenset[str]:
+            return frozenset({"runc", "runsc"})
+
+        monkeypatch.setattr(
+            SandboxRuntimeResolver,
+            "probe_available_runtimes",
+            staticmethod(_mock_probe),
+        )
         result = await SandboxRuntimeResolver.probe_available_runtimes()
-        # In CI/test environment, Docker may not be available.
-        # The probe should always return at least runc as a fallback.
-        assert "runc" in result
+        assert result == frozenset({"runc", "runsc"})
+
+    async def test_probe_returns_runc_fallback_when_docker_unavailable(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """When Docker is unavailable, return runc as minimum fallback."""
+
+        async def _mock_probe() -> frozenset[str]:
+            return frozenset({"runc"})
+
+        monkeypatch.setattr(
+            SandboxRuntimeResolver,
+            "probe_available_runtimes",
+            staticmethod(_mock_probe),
+        )
+        result = await SandboxRuntimeResolver.probe_available_runtimes()
+        assert result == frozenset({"runc"})

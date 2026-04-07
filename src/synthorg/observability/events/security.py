@@ -87,3 +87,4 @@ SECURITY_SSRF_VIOLATION_RECORDED: Final[str] = "security.ssrf_violation.recorded
 SECURITY_SSRF_VIOLATION_ALLOWED: Final[str] = "security.ssrf_violation.allowed"
 SECURITY_SSRF_VIOLATION_DENIED: Final[str] = "security.ssrf_violation.denied"
 SECURITY_ALLOWLIST_UPDATED: Final[str] = "security.allowlist.updated"
+SECURITY_ALLOWLIST_UPDATE_FAILED: Final[str] = "security.allowlist.update_failed"

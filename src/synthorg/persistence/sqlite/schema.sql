@@ -553,7 +553,7 @@ CREATE TABLE IF NOT EXISTS ssrf_violations (
     timestamp TEXT NOT NULL,
     url TEXT NOT NULL,
     hostname TEXT NOT NULL,
-    port INTEGER NOT NULL,
+    port INTEGER NOT NULL CHECK (port BETWEEN 1 AND 65535),
     resolved_ip TEXT,
     blocked_range TEXT,
     provider_name TEXT,

@@ -58,6 +58,10 @@ class SandboxAuthProxy:
             "This will be available when the auth proxy server "
             "is built on top of aiohttp."
         )
+        logger.warning(
+            "sandbox.auth_proxy.not_implemented",
+            port=port,
+        )
         raise NotImplementedError(msg)
 
     async def stop(self) -> None:

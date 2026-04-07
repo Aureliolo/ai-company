@@ -30,9 +30,15 @@ from synthorg.observability.events.docker import (
     DOCKER_HEALTH_CHECK,
 )
 from synthorg.observability.events.sandbox import SANDBOX_NETWORK_ENFORCEMENT
+from synthorg.tools.sandbox.credential_manager import SandboxCredentialManager
 from synthorg.tools.sandbox.docker_config import DockerSandboxConfig
 from synthorg.tools.sandbox.errors import SandboxError, SandboxStartError
 from synthorg.tools.sandbox.result import SandboxResult
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping
+
+    from synthorg.tools.sandbox.runtime_resolver import SandboxRuntimeResolver
 
 _RESERVED_ENV_KEYS: Final[frozenset[str]] = frozenset(
     {
@@ -41,9 +47,6 @@ _RESERVED_ENV_KEYS: Final[frozenset[str]] = frozenset(
         "SANDBOX_LOOPBACK_ALLOWED",
     }
 )
-
-if TYPE_CHECKING:
-    from collections.abc import Mapping
 
 logger = get_logger(__name__)
 
@@ -117,6 +120,8 @@ class DockerSandbox:
         self._docker: aiodocker.Docker | None = None
         self._tracked_containers: list[str] = []
         self._lock = asyncio.Lock()
+        self._credential_manager = SandboxCredentialManager()
+        self._runtime_resolver: SandboxRuntimeResolver | None = None
 
     @property
     def config(self) -> DockerSandboxConfig:
@@ -127,6 +132,17 @@ class DockerSandbox:
     def workspace(self) -> Path:
         """Workspace root directory."""
         return self._workspace
+
+    def set_runtime_resolver(
+        self,
+        resolver: SandboxRuntimeResolver,
+    ) -> None:
+        """Attach a runtime resolver for per-category runtime selection.
+
+        Args:
+            resolver: The resolver with probed runtime availability.
+        """
+        self._runtime_resolver = resolver
 
     async def _ensure_docker(self) -> aiodocker.Docker:
         """Lazily connect to the Docker daemon.
@@ -199,6 +215,7 @@ class DockerSandbox:
         args: tuple[str, ...],
         container_cwd: str,
         env_overrides: Mapping[str, str] | None,
+        category: str = "",
     ) -> dict[str, Any]:
         """Build the Docker container creation config.
 
@@ -207,12 +224,18 @@ class DockerSandbox:
             args: Command arguments.
             container_cwd: Working directory inside the container.
             env_overrides: Environment variables for the container.
+            category: Tool category for runtime resolution.
 
         Returns:
             A dict suitable for ``aiodocker`` container creation.
         """
-        env_list = self._validate_env(env_overrides)
-        host_config = self._build_host_config()
+        sanitized = (
+            self._credential_manager.sanitize_env(env_overrides)
+            if env_overrides
+            else None
+        )
+        env_list = self._validate_env(sanitized)
+        host_config = self._build_host_config(category=category)
         container_config: dict[str, Any] = {
             "Image": self._config.image,
             "Cmd": [command, *args],
@@ -251,7 +274,11 @@ class DockerSandbox:
                 raise SandboxError(msg)
         return [f"{k}={v}" for k, v in (env_overrides or {}).items()]
 
-    def _build_host_config(self) -> dict[str, Any]:
+    def _build_host_config(
+        self,
+        *,
+        category: str = "",
+    ) -> dict[str, Any]:
         """Build the Docker host config dict."""
         bind_path = _to_posix_bind_path(self._workspace)
         mount_mode = self._config.mount_mode
@@ -271,9 +298,20 @@ class DockerSandbox:
             "ReadonlyRootfs": True,
             "CapDrop": ["ALL"],
         }
-        if self._config.runtime is not None:
-            host_config["Runtime"] = self._config.runtime
+        runtime = self._resolve_runtime(category)
+        if runtime is not None:
+            host_config["Runtime"] = runtime
         return host_config
+
+    def _resolve_runtime(self, category: str) -> str | None:
+        """Resolve the effective container runtime for a category.
+
+        Delegates to the ``SandboxRuntimeResolver`` when available,
+        otherwise falls back to ``config.runtime``.
+        """
+        if self._runtime_resolver is not None and category:
+            return self._runtime_resolver.resolve_runtime(category)
+        return self._config.runtime
 
     def _apply_network_enforcement(
         self,

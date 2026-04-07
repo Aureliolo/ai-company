@@ -114,7 +114,7 @@ class SandboxRuntimeResolver:
                 requested=override,
                 available=sorted(self._available),
             )
-            return None
+            # Fall through to the global runtime/default.
 
         # 2. Global runtime default.
         if self._config.runtime is not None:

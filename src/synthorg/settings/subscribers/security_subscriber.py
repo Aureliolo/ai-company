@@ -8,7 +8,10 @@ import json
 from typing import TYPE_CHECKING
 
 from synthorg.observability import get_logger
-from synthorg.observability.events.security import SECURITY_ALLOWLIST_UPDATED
+from synthorg.observability.events.security import (
+    SECURITY_ALLOWLIST_UPDATE_FAILED,
+    SECURITY_ALLOWLIST_UPDATED,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
@@ -78,7 +81,7 @@ class SecuritySubscriber:
             entries = json.loads(raw)
             if not isinstance(entries, list):
                 logger.warning(
-                    SECURITY_ALLOWLIST_UPDATED,
+                    SECURITY_ALLOWLIST_UPDATE_FAILED,
                     namespace=namespace,
                     key=key,
                     error="expected JSON array",
@@ -87,7 +90,7 @@ class SecuritySubscriber:
             allowlist = tuple(str(e) for e in entries)
         except (json.JSONDecodeError, TypeError) as exc:
             logger.warning(
-                SECURITY_ALLOWLIST_UPDATED,
+                SECURITY_ALLOWLIST_UPDATE_FAILED,
                 namespace=namespace,
                 key=key,
                 error=f"failed to parse allowlist: {exc}",

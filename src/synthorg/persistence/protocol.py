@@ -82,6 +82,8 @@ class PersistenceBackend(Protocol):
             snapshot persistence.
         decision_records: Repository for DecisionRecord persistence
             (auditable approval-gate decisions drop-box).
+        risk_overrides: Repository for RiskTierOverride persistence.
+        ssrf_violations: Repository for SsrfViolation persistence.
     """
 
     async def connect(self) -> None:

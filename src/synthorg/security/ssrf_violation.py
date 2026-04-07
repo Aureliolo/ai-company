@@ -6,8 +6,16 @@ operators to review and allow/deny blocked hosts via the dashboard.
 
 from enum import StrEnum
 from typing import Self
+from urllib.parse import urlparse
 
-from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
+from pydantic import (
+    AwareDatetime,
+    BaseModel,
+    ConfigDict,
+    Field,
+    field_validator,
+    model_validator,
+)
 
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 
@@ -42,6 +50,17 @@ class SsrfViolation(BaseModel):
     id: NotBlankStr
     timestamp: AwareDatetime
     url: NotBlankStr
+
+    @field_validator("url")
+    @classmethod
+    def _reject_unredacted_url(cls, v: str) -> str:
+        """Reject URLs that contain credentials in userinfo."""
+        parsed = urlparse(v)
+        if parsed.username or parsed.password:
+            msg = "url must be redacted -- credentials detected in userinfo"
+            raise ValueError(msg)
+        return v
+
     hostname: NotBlankStr
     port: int = Field(ge=1, le=65535)
     resolved_ip: NotBlankStr | None = None
