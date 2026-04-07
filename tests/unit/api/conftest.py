@@ -1,6 +1,5 @@
 """Shared fixtures for API unit tests."""
 
-import gc
 import uuid
 from collections.abc import Generator
 from datetime import UTC, datetime, timedelta
@@ -311,13 +310,6 @@ def test_client(  # noqa: PLR0913
         # Default: CEO token (most tests need write access)
         client.headers.update(make_auth_headers("ceo"))
         yield client
-    # Force GC after each heavyweight fixture teardown.  create_app()
-    # builds a full Litestar application; under the full test suite
-    # (15k+ tests, 8 xdist workers) these objects can accumulate faster
-    # than the cyclic GC collects them, causing OOM-driven worker crashes
-    # in later tests.  Explicit collection releases the app, its
-    # services, and any remaining asyncio tasks promptly.
-    gc.collect()
 
 
 def _seed_test_users(

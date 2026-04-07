@@ -136,7 +136,7 @@ class TestCoreMemoryReadTool:
         assert isinstance(result, ToolExecutionResult)
         assert not result.is_error
 
-    def test_is_not_error_on_success(self) -> None:
+    def test_tool_uses_memory_category(self) -> None:
         """Tool must use ToolCategory.MEMORY."""
         strategy = _make_strategy()
         tool = CoreMemoryReadTool(strategy=strategy, agent_id="agent-1")
