@@ -229,6 +229,17 @@ class OperationLogEntry(BaseModel):
     timestamp: AwareDatetime = Field(description="UTC timestamp")
     version: int = Field(ge=1, description="Per-fact version counter")
 
+    @model_validator(mode="after")
+    def _validate_content_alignment(self) -> Self:
+        """Ensure PUBLISH has content and RETRACT does not."""
+        if self.operation_type == "PUBLISH" and self.content is None:
+            msg = "PUBLISH operations must have non-None content"
+            raise ValueError(msg)
+        if self.operation_type == "RETRACT" and self.content is not None:
+            msg = "RETRACT operations must have content=None"
+            raise ValueError(msg)
+        return self
+
 
 class OperationLogSnapshot(BaseModel):
     """Materialized snapshot row for current committed state.
@@ -261,3 +272,11 @@ class OperationLogSnapshot(BaseModel):
         description="Retraction timestamp (None = active)",
     )
     version: int = Field(ge=1, description="Most recent operation version")
+
+    @model_validator(mode="after")
+    def _validate_created_before_retracted(self) -> Self:
+        """Ensure created_at is not after retracted_at."""
+        if self.retracted_at is not None and self.created_at > self.retracted_at:
+            msg = "created_at must be <= retracted_at"
+            raise ValueError(msg)
+        return self

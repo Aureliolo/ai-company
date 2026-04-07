@@ -105,29 +105,28 @@ snapshot = await store.snapshot_at(timestamp=datetime(2026, 3, 1, tzinfo=UTC))
 log = await store.get_operation_log(fact_id="policy-jwt-auth")
 ```
 
-These methods are a planned extension to `SharedKnowledgeStore` (future PR, blocked on
-D26 being finalized). They are not required for the current `SharedKnowledgeStore` implementation
-but the storage schema supports them today.
+These methods are on the `OrgFactStore` protocol (the org memory store layer), not on
+`SharedKnowledgeStore` (the cross-agent Mem0 protocol).  The MVCC implementation lives
+in `SQLiteOrgFactStore`; the Mem0 backend is a separate system.
 
 ---
 
 ## Deployment Rollout
 
-### Phase 1 (current): Sequential writes, no concurrency model
+### Phase 1 (historical): Sequential writes, no concurrency model
 
-Acceptable for small deployments (1--10 concurrent agents, low write frequency). The
-`SharedKnowledgeStore` protocol is in place; the Mem0 backend provides basic durability.
+The initial implementation with simple INSERT/DELETE and no concurrency semantics.
 
-### Phase 1.5 (planned): Append-only + MVCC for shared memory
+### Phase 1.5 (current): Append-only + MVCC for shared memory
 
-Triggered when shared memory write frequency exceeds ~10 writes/second or when concurrent
-retract/publish conflicts are observed in production logs. Implementation steps:
+Implementation:
 
-1. Add `operation_log` table to the SQLite schema (or Qdrant payload field for vector-native
-   stores).
-2. Update `OrgMemoryBackend` implementations to append rather than overwrite.
-3. Add `snapshot_at(timestamp)` and `get_operation_log(fact_id)` to `SharedKnowledgeStore`.
-4. Deploy behind a feature flag; monitor for consistency issues before full rollout.
+1. `org_facts_operation_log` table added to the org facts SQLite database.
+2. `SQLiteOrgFactStore` appends to the operation log on every write; a materialized
+   `org_facts_snapshot` table maintains the current committed state.
+3. `snapshot_at(timestamp)` and `get_operation_log(fact_id)` added to `OrgFactStore`.
+4. MVCC is the only implementation (no feature flag -- pre-alpha, no backward
+   compatibility needed).
 
 ### Phase 2 (future): Distributed consistency
 

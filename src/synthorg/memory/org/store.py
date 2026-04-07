@@ -284,10 +284,21 @@ def _tags_to_json(tags: tuple[NotBlankStr, ...]) -> str:
 
 
 def _tags_from_json(raw: str) -> tuple[NotBlankStr, ...]:
-    """Deserialize JSON array to tags tuple."""
+    """Deserialize JSON array to tags tuple.
+
+    Args:
+        raw: JSON string expected to be an array of strings.
+
+    Returns:
+        Tuple of non-blank tag strings.
+
+    Raises:
+        OrgMemoryQueryError: If the JSON is not a list.
+    """
     parsed = json.loads(raw)
     if not isinstance(parsed, list):
-        return ()
+        msg = f"Tags must be a JSON array, got {type(parsed).__name__}"
+        raise OrgMemoryQueryError(msg)
     return tuple(NotBlankStr(t) for t in parsed if isinstance(t, str) and t.strip())
 
 
@@ -599,6 +610,7 @@ class SQLiteOrgFactStore:
         """
         db = self._require_connected()
         try:
+            await db.execute("BEGIN IMMEDIATE")
             version, _ = await self._append_to_operation_log(
                 db,
                 fact_id=fact.id,
@@ -664,6 +676,7 @@ class SQLiteOrgFactStore:
         """
         db = self._require_connected()
         try:
+            await db.execute("BEGIN IMMEDIATE")
             cursor = await db.execute(
                 "SELECT fact_id, author_agent_id, author_autonomy_level "
                 "FROM org_facts_snapshot "
@@ -672,6 +685,7 @@ class SQLiteOrgFactStore:
             )
             row = await cursor.fetchone()
             if row is None:
+                await db.execute("ROLLBACK")
                 return False
             version, now = await self._append_to_operation_log(
                 db,

@@ -233,6 +233,34 @@ class TestOperationLogEntry:
                 version=0,
             )
 
+    def test_publish_without_content_rejected(self) -> None:
+        with pytest.raises(
+            ValidationError,
+            match="PUBLISH operations must have",
+        ):
+            OperationLogEntry(
+                operation_id="op-1",
+                fact_id="fact-1",
+                operation_type="PUBLISH",
+                content=None,
+                timestamp=_NOW,
+                version=1,
+            )
+
+    def test_retract_with_content_rejected(self) -> None:
+        with pytest.raises(
+            ValidationError,
+            match="RETRACT operations must have",
+        ):
+            OperationLogEntry(
+                operation_id="op-1",
+                fact_id="fact-1",
+                operation_type="RETRACT",
+                content="should be None",
+                timestamp=_NOW,
+                version=1,
+            )
+
     def test_frozen(self) -> None:
         entry = OperationLogEntry(
             operation_id="op-1",
@@ -279,4 +307,19 @@ class TestOperationLogSnapshot:
                 content="test",
                 created_at=_NOW,
                 version=0,
+            )
+
+    def test_created_after_retracted_rejected(self) -> None:
+        later = datetime(2026, 6, 1, tzinfo=UTC)
+        earlier = datetime(2026, 1, 1, tzinfo=UTC)
+        with pytest.raises(
+            ValidationError,
+            match="created_at must be <= retracted_at",
+        ):
+            OperationLogSnapshot(
+                fact_id="fact-1",
+                content="test",
+                created_at=later,
+                retracted_at=earlier,
+                version=1,
             )
