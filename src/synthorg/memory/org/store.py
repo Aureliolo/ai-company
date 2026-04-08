@@ -4,6 +4,7 @@ Self-contained storage for organizational facts with append-only
 operation log and materialized snapshot (Phase 1.5 -- D26).
 """
 
+import contextlib
 import json
 import sqlite3
 import uuid
@@ -57,7 +58,10 @@ CREATE TABLE IF NOT EXISTS org_facts_operation_log (
     content TEXT,
     tags TEXT NOT NULL DEFAULT '[]',
     author_agent_id TEXT,
+    author_seniority TEXT,
+    author_is_human INTEGER NOT NULL DEFAULT 0,
     author_autonomy_level TEXT,
+    category TEXT,
     timestamp TEXT NOT NULL,
     version INTEGER NOT NULL,
     UNIQUE(fact_id, version)
@@ -72,6 +76,11 @@ ON org_facts_operation_log (fact_id)
 _CREATE_OPLOG_TIMESTAMP_INDEX_SQL = """\
 CREATE INDEX IF NOT EXISTS idx_oplog_timestamp
 ON org_facts_operation_log (timestamp)
+"""
+
+_CREATE_OPLOG_COMPOSITE_INDEX_SQL = """\
+CREATE INDEX IF NOT EXISTS idx_oplog_ts_fact
+ON org_facts_operation_log (timestamp, fact_id)
 """
 
 _CREATE_SNAPSHOT_SQL = """\
@@ -193,14 +202,21 @@ class OrgFactStore(Protocol):
         """
         ...
 
-    async def delete(self, fact_id: NotBlankStr) -> bool:
+    async def delete(
+        self,
+        fact_id: NotBlankStr,
+        *,
+        author: OrgFactAuthor,
+    ) -> bool:
         """Retract a fact by ID.
 
         Appends a RETRACT entry to the operation log and marks the
-        snapshot as retracted.
+        snapshot as retracted.  The provided ``author`` is recorded
+        as the actor who performed the retraction.
 
         Args:
             fact_id: Fact identifier.
+            author: The author performing the retraction.
 
         Returns:
             ``True`` if retracted, ``False`` if not found or
@@ -298,8 +314,13 @@ def _tags_from_json(raw: str) -> tuple[NotBlankStr, ...]:
     parsed = json.loads(raw)
     if not isinstance(parsed, list):
         msg = f"Tags must be a JSON array, got {type(parsed).__name__}"
+        logger.warning(ORG_MEMORY_ROW_PARSE_FAILED, error=msg)
         raise OrgMemoryQueryError(msg)
-    return tuple(NotBlankStr(t) for t in parsed if isinstance(t, str) and t.strip())
+    if any(not isinstance(t, str) or not t.strip() for t in parsed):
+        msg = "Tags must be a JSON array of non-blank strings"
+        logger.warning(ORG_MEMORY_ROW_PARSE_FAILED, error=msg)
+        raise OrgMemoryQueryError(msg)
+    return tuple(NotBlankStr(t) for t in parsed)
 
 
 def _parse_timestamp(raw: str) -> datetime:
@@ -346,7 +367,7 @@ def _snapshot_row_to_org_fact(row: aiosqlite.Row) -> OrgFact:
             author=author,
             created_at=created_at,
         )
-    except (KeyError, ValueError, ValidationError) as exc:
+    except (KeyError, ValueError, ValidationError, OrgMemoryQueryError) as exc:
         logger.warning(
             ORG_MEMORY_ROW_PARSE_FAILED,
             error=str(exc),
@@ -376,8 +397,15 @@ def _row_to_operation_log_entry(
             fact_id=row["fact_id"],
             operation_type=row["operation_type"],
             content=row["content"],
+            category=(OrgFactCategory(row["category"]) if row["category"] else None),
             tags=_tags_from_json(row["tags"]),
             author_agent_id=row["author_agent_id"],
+            author_seniority=(
+                SeniorityLevel(row["author_seniority"])
+                if row["author_seniority"]
+                else None
+            ),
+            author_is_human=bool(row["author_is_human"]),
             author_autonomy_level=(
                 AutonomyLevel(row["author_autonomy_level"])
                 if row["author_autonomy_level"]
@@ -386,7 +414,7 @@ def _row_to_operation_log_entry(
             timestamp=_parse_timestamp(row["timestamp"]),
             version=row["version"],
         )
-    except (KeyError, ValueError, ValidationError) as exc:
+    except (KeyError, ValueError, ValidationError, OrgMemoryQueryError) as exc:
         logger.warning(
             ORG_MEMORY_ROW_PARSE_FAILED,
             error=str(exc),
@@ -426,7 +454,7 @@ def _row_to_snapshot(row: aiosqlite.Row) -> OperationLogSnapshot:
             retracted_at=retracted_at,
             version=row["version"],
         )
-    except (KeyError, ValueError, ValidationError) as exc:
+    except (KeyError, ValueError, ValidationError, OrgMemoryQueryError) as exc:
         logger.warning(
             ORG_MEMORY_ROW_PARSE_FAILED,
             error=str(exc),
@@ -502,6 +530,7 @@ class SQLiteOrgFactStore:
         await db.execute(_CREATE_OPERATION_LOG_SQL)
         await db.execute(_CREATE_OPLOG_FACT_INDEX_SQL)
         await db.execute(_CREATE_OPLOG_TIMESTAMP_INDEX_SQL)
+        await db.execute(_CREATE_OPLOG_COMPOSITE_INDEX_SQL)
         await db.execute(_CREATE_SNAPSHOT_SQL)
         await db.execute(_CREATE_SNAPSHOT_CATEGORY_INDEX_SQL)
         await db.execute(_CREATE_SNAPSHOT_ACTIVE_INDEX_SQL)
@@ -547,19 +576,28 @@ class SQLiteOrgFactStore:
         fact_id: str,
         operation_type: Literal["PUBLISH", "RETRACT"],
         content: str | None,
+        category: OrgFactCategory | None,
         tags: tuple[NotBlankStr, ...],
         author_agent_id: str | None,
+        author_seniority: SeniorityLevel | None,
+        author_is_human: bool,
         author_autonomy_level: AutonomyLevel | None,
     ) -> tuple[int, datetime]:
         """Append an operation to the log within the caller's transaction.
 
+        Must be called inside a ``BEGIN IMMEDIATE`` transaction
+        managed by the caller.
+
         Args:
-            db: Active database connection.
+            db: Active database connection (caller-managed txn).
             fact_id: Logical fact identifier.
             operation_type: ``PUBLISH`` or ``RETRACT``.
             content: Fact body (``None`` for RETRACT).
+            category: Fact category at time of operation.
             tags: Metadata tags.
             author_agent_id: Agent ID (``None`` for human).
+            author_seniority: Agent seniority level.
+            author_is_human: Whether the author is human.
             author_autonomy_level: Autonomy level at write time.
 
         Returns:
@@ -578,9 +616,11 @@ class SQLiteOrgFactStore:
         next_version = current + 1
         await db.execute(
             "INSERT INTO org_facts_operation_log "
-            "(operation_id, fact_id, operation_type, content, tags, "
-            "author_agent_id, author_autonomy_level, timestamp, version) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "(operation_id, fact_id, operation_type, content, "
+            "tags, author_agent_id, author_seniority, "
+            "author_is_human, author_autonomy_level, category, "
+            "timestamp, version) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 operation_id,
                 fact_id,
@@ -588,7 +628,10 @@ class SQLiteOrgFactStore:
                 content,
                 _tags_to_json(tags),
                 author_agent_id,
+                (author_seniority.value if author_seniority else None),
+                int(author_is_human),
                 (author_autonomy_level.value if author_autonomy_level else None),
+                (category.value if category else None),
                 now.isoformat(),
                 next_version,
             ),
@@ -616,17 +659,30 @@ class SQLiteOrgFactStore:
                 fact_id=fact.id,
                 operation_type="PUBLISH",
                 content=fact.content,
+                category=fact.category,
                 tags=fact.tags,
                 author_agent_id=fact.author.agent_id,
+                author_seniority=fact.author.seniority,
+                author_is_human=fact.author.is_human,
                 author_autonomy_level=fact.author.autonomy_level,
             )
             await db.execute(
-                "INSERT OR REPLACE INTO org_facts_snapshot "
+                "INSERT INTO org_facts_snapshot "
                 "(fact_id, content, category, tags, "
                 "author_agent_id, author_seniority, author_is_human, "
                 "author_autonomy_level, created_at, retracted_at, "
                 "version) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?)",
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?) "
+                "ON CONFLICT(fact_id) DO UPDATE SET "
+                "content=excluded.content, "
+                "category=excluded.category, "
+                "tags=excluded.tags, "
+                "author_agent_id=excluded.author_agent_id, "
+                "author_seniority=excluded.author_seniority, "
+                "author_is_human=excluded.author_is_human, "
+                "author_autonomy_level=excluded.author_autonomy_level, "
+                "retracted_at=NULL, "
+                "version=excluded.version",
                 (
                     fact.id,
                     fact.content,
@@ -646,6 +702,8 @@ class SQLiteOrgFactStore:
             )
             await db.commit()
         except sqlite3.Error as exc:
+            with contextlib.suppress(sqlite3.Error):
+                await db.execute("ROLLBACK")
             logger.exception(
                 ORG_MEMORY_WRITE_FAILED,
                 fact_id=fact.id,
@@ -660,11 +718,20 @@ class SQLiteOrgFactStore:
                 version=version,
             )
 
-    async def delete(self, fact_id: NotBlankStr) -> bool:
+    async def delete(
+        self,
+        fact_id: NotBlankStr,
+        *,
+        author: OrgFactAuthor,
+    ) -> bool:
         """Retract a fact: append RETRACT to log, mark snapshot.
+
+        The provided ``author`` is recorded as the actor who
+        performed the retraction (not the original publisher).
 
         Args:
             fact_id: Fact identifier.
+            author: The author performing the retraction.
 
         Returns:
             ``True`` if retracted, ``False`` if not found or
@@ -678,7 +745,7 @@ class SQLiteOrgFactStore:
         try:
             await db.execute("BEGIN IMMEDIATE")
             cursor = await db.execute(
-                "SELECT fact_id, author_agent_id, author_autonomy_level "
+                "SELECT fact_id, category "
                 "FROM org_facts_snapshot "
                 "WHERE fact_id = ? AND retracted_at IS NULL",
                 (fact_id,),
@@ -692,13 +759,14 @@ class SQLiteOrgFactStore:
                 fact_id=fact_id,
                 operation_type="RETRACT",
                 content=None,
-                tags=(),
-                author_agent_id=row["author_agent_id"],
-                author_autonomy_level=(
-                    AutonomyLevel(row["author_autonomy_level"])
-                    if row["author_autonomy_level"]
-                    else None
+                category=(
+                    OrgFactCategory(row["category"]) if row["category"] else None
                 ),
+                tags=(),
+                author_agent_id=author.agent_id,
+                author_seniority=author.seniority,
+                author_is_human=author.is_human,
+                author_autonomy_level=author.autonomy_level,
             )
             await db.execute(
                 "UPDATE org_facts_snapshot "
@@ -708,6 +776,8 @@ class SQLiteOrgFactStore:
             )
             await db.commit()
         except sqlite3.Error as exc:
+            with contextlib.suppress(sqlite3.Error):
+                await db.execute("ROLLBACK")
             logger.exception(
                 ORG_MEMORY_WRITE_FAILED,
                 fact_id=fact_id,
@@ -879,6 +949,12 @@ class SQLiteOrgFactStore:
         """
         db = self._require_connected()
         query_ts = timestamp.isoformat()
+        # Time-travel CTE: reconstruct fact state at a timestamp.
+        # 1. latest_ops: find the most recent operation per fact_id
+        #    before the query timestamp via ROW_NUMBER window.
+        # 2. Main query: for RETRACT ops (NULL content), fall back
+        #    to the most recent PUBLISH content/tags.  Derive
+        #    created_at from the earliest PUBLISH timestamp.
         sql = """\
 WITH latest_ops AS (
     SELECT fact_id, operation_type, content, tags,

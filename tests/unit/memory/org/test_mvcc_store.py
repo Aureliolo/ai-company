@@ -137,7 +137,7 @@ class TestMvccPublish:
                 _make_fact("f1", tags=("security", "core-policy")),
             )
             log = await store.get_operation_log("f1")
-            assert set(log[0].tags) == {"security", "core-policy"}
+            assert log[0].tags == ("core-policy", "security")
         finally:
             await store.disconnect()
 
@@ -151,7 +151,7 @@ class TestMvccRetract:
         await store.connect()
         try:
             await store.save(_make_fact("f1"))
-            assert await store.delete("f1") is True
+            assert await store.delete("f1", author=_HUMAN_AUTHOR) is True
             log = await store.get_operation_log("f1")
             assert len(log) == 2
             assert log[0].operation_type == "PUBLISH"
@@ -166,7 +166,7 @@ class TestMvccRetract:
         await store.connect()
         try:
             await store.save(_make_fact("f1"))
-            await store.delete("f1")
+            await store.delete("f1", author=_HUMAN_AUTHOR)
             assert await store.get("f1") is None
         finally:
             await store.disconnect()
@@ -176,8 +176,8 @@ class TestMvccRetract:
         await store.connect()
         try:
             await store.save(_make_fact("f1"))
-            assert await store.delete("f1") is True
-            assert await store.delete("f1") is False
+            assert await store.delete("f1", author=_HUMAN_AUTHOR) is True
+            assert await store.delete("f1", author=_HUMAN_AUTHOR) is False
         finally:
             await store.disconnect()
 
@@ -185,7 +185,7 @@ class TestMvccRetract:
         store = SQLiteOrgFactStore(":memory:")
         await store.connect()
         try:
-            assert await store.delete("nonexistent") is False
+            assert await store.delete("nonexistent", author=_HUMAN_AUTHOR) is False
         finally:
             await store.disconnect()
 
@@ -199,7 +199,7 @@ class TestMvccReadFiltering:
         await store.connect()
         try:
             await store.save(_make_fact("f1"))
-            await store.delete("f1")
+            await store.delete("f1", author=_HUMAN_AUTHOR)
             assert await store.get("f1") is None
         finally:
             await store.disconnect()
@@ -210,7 +210,7 @@ class TestMvccReadFiltering:
         try:
             await store.save(_make_fact("f1", "Active fact"))
             await store.save(_make_fact("f2", "Retracted fact"))
-            await store.delete("f2")
+            await store.delete("f2", author=_HUMAN_AUTHOR)
             results = await store.query(limit=10)
             ids = [f.id for f in results]
             assert "f1" in ids
@@ -228,7 +228,7 @@ class TestMvccReadFiltering:
             await store.save(
                 _make_fact("f2", category=OrgFactCategory.ADR),
             )
-            await store.delete("f1")
+            await store.delete("f1", author=_HUMAN_AUTHOR)
             results = await store.list_by_category(OrgFactCategory.ADR)
             assert len(results) == 1
             assert results[0].id == "f2"
@@ -259,7 +259,7 @@ class TestMvccVersionCounter:
         try:
             await store.save(_make_fact("f1", "v1"))
             await store.save(_make_fact("f1", "v2"))
-            await store.delete("f1")
+            await store.delete("f1", author=_HUMAN_AUTHOR)
             log = await store.get_operation_log("f1")
             assert [e.version for e in log] == [1, 2, 3]
         finally:
@@ -300,7 +300,7 @@ class TestMvccSnapshotAt:
         await store.connect()
         try:
             await store.save(_make_fact("f1"))
-            await store.delete("f1")
+            await store.delete("f1", author=_HUMAN_AUTHOR)
             future = datetime.now(UTC) + timedelta(hours=1)
             snapshot = await store.snapshot_at(future)
             assert len(snapshot) == 1
@@ -319,7 +319,7 @@ class TestMvccSnapshotAt:
             await asyncio.sleep(0.01)
             mid_ts = datetime.now(UTC)
             await asyncio.sleep(0.01)
-            await store.delete("f1")
+            await store.delete("f1", author=_HUMAN_AUTHOR)
             snapshot = await store.snapshot_at(mid_ts)
             assert len(snapshot) == 1
             assert snapshot[0].retracted_at is None
@@ -342,7 +342,7 @@ class TestMvccGetOperationLog:
         try:
             await store.save(_make_fact("f1", "Original"))
             await store.save(_make_fact("f1", "Updated"))
-            await store.delete("f1")
+            await store.delete("f1", author=_HUMAN_AUTHOR)
             log = await store.get_operation_log("f1")
             assert len(log) == 3
             assert log[0].operation_type == "PUBLISH"
@@ -380,7 +380,7 @@ class TestMvccGetOperationLog:
             await store.save(
                 _make_fact("f1", "v2", tags=("tag-b",)),
             )
-            await store.delete("f1")
+            await store.delete("f1", author=_HUMAN_AUTHOR)
             log = await store.get_operation_log("f1")
             assert log[0].tags == ("tag-a",)
             assert log[1].tags == ("tag-b",)

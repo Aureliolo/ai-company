@@ -28,7 +28,8 @@ class OrgFactAuthor(BaseModel):
 
     If ``is_human`` is ``True``, ``agent_id`` must be ``None``.
     If ``is_human`` is ``False``, ``agent_id`` and ``seniority``
-    are required.
+    are required; ``autonomy_level`` is optional (captures the
+    instance-specific value at write time).
 
     Attributes:
         agent_id: Agent identifier (``None`` for human authors).
@@ -193,9 +194,12 @@ class OperationLogEntry(BaseModel):
         fact_id: Logical fact identifier.
         operation_type: ``PUBLISH`` or ``RETRACT``.
         content: Fact body (``None`` for RETRACT operations).
+        category: Fact category at time of operation.
         tags: Metadata tags at time of operation.
         author_agent_id: Agent that performed the operation
             (``None`` for human authors).
+        author_seniority: Agent seniority level at write time.
+        author_is_human: Whether the author is a human operator.
         author_autonomy_level: Agent autonomy level at write time.
         timestamp: UTC timestamp of the operation.
         version: Per-fact version counter (starts at 1).
@@ -214,6 +218,10 @@ class OperationLogEntry(BaseModel):
         default=None,
         description="Fact body (None for RETRACT)",
     )
+    category: OrgFactCategory | None = Field(
+        default=None,
+        description="Fact category at time of operation",
+    )
     tags: tuple[NotBlankStr, ...] = Field(
         default=(),
         description="Metadata tags at time of operation",
@@ -221,6 +229,14 @@ class OperationLogEntry(BaseModel):
     author_agent_id: NotBlankStr | None = Field(
         default=None,
         description="Agent that performed the operation",
+    )
+    author_seniority: SeniorityLevel | None = Field(
+        default=None,
+        description="Agent seniority level at write time",
+    )
+    author_is_human: bool = Field(
+        default=False,
+        description="Whether the author is a human operator",
     )
     author_autonomy_level: AutonomyLevel | None = Field(
         default=None,
@@ -234,9 +250,21 @@ class OperationLogEntry(BaseModel):
         """Ensure PUBLISH has content and RETRACT does not."""
         if self.operation_type == "PUBLISH" and self.content is None:
             msg = "PUBLISH operations must have non-None content"
+            logger.warning(
+                ORG_MEMORY_MODEL_INVALID,
+                model="OperationLogEntry",
+                field="content",
+                reason=msg,
+            )
             raise ValueError(msg)
         if self.operation_type == "RETRACT" and self.content is not None:
             msg = "RETRACT operations must have content=None"
+            logger.warning(
+                ORG_MEMORY_MODEL_INVALID,
+                model="OperationLogEntry",
+                field="content",
+                reason=msg,
+            )
             raise ValueError(msg)
         return self
 
@@ -278,5 +306,11 @@ class OperationLogSnapshot(BaseModel):
         """Ensure created_at is not after retracted_at."""
         if self.retracted_at is not None and self.created_at > self.retracted_at:
             msg = "created_at must be <= retracted_at"
+            logger.warning(
+                ORG_MEMORY_MODEL_INVALID,
+                model="OperationLogSnapshot",
+                field="created_at",
+                reason=msg,
+            )
             raise ValueError(msg)
         return self

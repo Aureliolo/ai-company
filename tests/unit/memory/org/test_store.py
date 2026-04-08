@@ -158,7 +158,7 @@ class TestSQLiteOrgFactStoreOperations:
         await store.connect()
         try:
             await store.save(_make_fact("f1"))
-            assert await store.delete("f1") is True
+            assert await store.delete("f1", author=_HUMAN_AUTHOR) is True
             assert await store.get("f1") is None
         finally:
             await store.disconnect()
@@ -167,7 +167,7 @@ class TestSQLiteOrgFactStoreOperations:
         store = SQLiteOrgFactStore(":memory:")
         await store.connect()
         try:
-            assert await store.delete("nonexistent") is False
+            assert await store.delete("nonexistent", author=_HUMAN_AUTHOR) is False
         finally:
             await store.disconnect()
 
@@ -200,7 +200,7 @@ class TestSQLiteOrgFactStoreOperations:
         with pytest.raises(OrgMemoryConnectionError):
             await store.query()
         with pytest.raises(OrgMemoryConnectionError):
-            await store.delete("f1")
+            await store.delete("f1", author=_HUMAN_AUTHOR)
 
     async def test_list_by_category_when_not_connected(self) -> None:
         store = SQLiteOrgFactStore(":memory:")
@@ -298,7 +298,7 @@ class TestSQLiteOrgFactStoreOperations:
             side_effect=sqlite3.Error("disk I/O error"),
         )
         with pytest.raises(OrgMemoryWriteError, match="disk I/O error"):
-            await store.delete("f1")
+            await store.delete("f1", author=_HUMAN_AUTHOR)
         store._db = None
 
     def test_path_traversal_rejected(self) -> None:
@@ -375,6 +375,6 @@ class TestSQLiteOrgFactStoreOperations:
             await store.save(fact)
             retrieved = await store.get("f1")
             assert retrieved is not None
-            assert set(retrieved.tags) == {"core-policy", "security"}
+            assert retrieved.tags == ("core-policy", "security")
         finally:
             await store.disconnect()

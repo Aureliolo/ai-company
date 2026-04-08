@@ -164,7 +164,8 @@ class TestHybridBackendWrite:
             ),
             author=_SENIOR,
         )
-        assert fact_id
+        assert isinstance(fact_id, str)
+        assert len(fact_id) > 0
         await backend.disconnect()
 
     async def test_write_core_policy_as_agent_denied(self) -> None:
@@ -200,7 +201,8 @@ class TestHybridBackendWrite:
             ),
             author=_HUMAN,
         )
-        assert fact_id
+        assert isinstance(fact_id, str)
+        assert len(fact_id) > 0
         await backend.disconnect()
 
     async def test_write_with_tags_persists(self) -> None:
@@ -217,7 +219,7 @@ class TestHybridBackendWrite:
             OrgMemoryQuery(context="Tagged"),
         )
         assert len(results) == 1
-        assert set(results[0].tags) == {"important", "security"}
+        assert results[0].tags == ("important", "security")
         await backend.disconnect()
 
     async def test_write_when_not_connected(self) -> None:
@@ -232,7 +234,7 @@ class TestHybridBackendWrite:
                 author=_SENIOR,
             )
 
-    async def test_write_non_org_memory_write_error_wraps(self) -> None:
+    async def test_write_non_org_memory_write_error_propagates(self) -> None:
         mock_store = AsyncMock()
         mock_store.connect = AsyncMock()
         mock_store.is_connected = True
@@ -247,7 +249,7 @@ class TestHybridBackendWrite:
         )
         await backend.connect()
 
-        with pytest.raises(OrgMemoryWriteError, match="unexpected failure"):
+        with pytest.raises(RuntimeError, match="unexpected failure"):
             await backend.write(
                 OrgFactWriteRequest(
                     content="test fact",
