@@ -91,27 +91,23 @@ async def _check_legacy_workflow_versions(
     This check detects the legacy layout and logs a clear warning with
     migration instructions so operators can act before data access fails.
     """
-    try:
-        cursor = await db.execute(
-            "PRAGMA table_info(workflow_definition_versions)",
-        )
-        columns = {row[1] for row in await cursor.fetchall()}
-    except sqlite3.Error, aiosqlite.Error:
-        return  # Table doesn't exist yet -- fresh install.
+    cursor = await db.execute(
+        "PRAGMA table_info(workflow_definition_versions)",
+    )
+    columns = {row[1] for row in await cursor.fetchall()}
 
     if not columns:
-        return  # Table not created yet.
+        return  # Table not created yet -- fresh install.
 
     if "definition_id" in columns and "entity_id" not in columns:
-        logger.warning(
-            PERSISTENCE_MIGRATION_FAILED,
-            detail=(
-                "Legacy workflow_definition_versions schema detected "
-                "(has 'definition_id', missing 'entity_id'). "
-                "Manual migration required: see the migration steps "
-                "in src/synthorg/persistence/sqlite/schema.sql."
-            ),
+        msg = (
+            "Legacy workflow_definition_versions schema detected "
+            "(has 'definition_id', missing 'entity_id'). "
+            "Manual migration required: see the migration steps "
+            "in src/synthorg/persistence/sqlite/schema.sql."
         )
+        logger.error(PERSISTENCE_MIGRATION_FAILED, detail=msg)
+        raise MigrationError(msg)
 
 
 _ALLOWED_TABLES = frozenset(

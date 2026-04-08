@@ -1777,24 +1777,29 @@ export interface CreateFromBlueprintRequest {
   readonly description?: string
 }
 
-// ── Workflow Versioning ──────────────────────────────────────
+// ── Versioning ──────────────────────────────────────────────
 
-export interface WorkflowDefinitionVersionSummary {
+/** Generic version snapshot envelope matching backend VersionSnapshot[T]. */
+export interface VersionSummary<TSnapshot> {
   readonly entity_id: string
   readonly version: number
   readonly content_hash: string
-  readonly snapshot: {
-    readonly id: string
-    readonly name: string
-    readonly description: string
-    readonly workflow_type: string
-    readonly nodes: readonly WorkflowNodeData[]
-    readonly edges: readonly WorkflowEdgeData[]
-    readonly created_by: string
-  }
+  readonly snapshot: TSnapshot
   readonly saved_by: string
   readonly saved_at: string
 }
+
+export interface WorkflowDefinitionSnapshot {
+  readonly id: string
+  readonly name: string
+  readonly description: string
+  readonly workflow_type: string
+  readonly nodes: readonly WorkflowNodeData[]
+  readonly edges: readonly WorkflowEdgeData[]
+  readonly created_by: string
+}
+
+export type WorkflowDefinitionVersionSummary = VersionSummary<WorkflowDefinitionSnapshot>
 
 export interface NodeChange {
   readonly node_id: string

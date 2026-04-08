@@ -155,10 +155,15 @@ class FakeWorkflowVersionRepository:
         entity_id: NotBlankStr,
         content_hash: NotBlankStr,
     ) -> VersionSnapshot[WorkflowDefinition] | None:
-        for v in self._versions.values():
-            if v.entity_id == entity_id and v.content_hash == content_hash:
-                return copy.deepcopy(v)
-        return None
+        matches = [
+            v
+            for v in self._versions.values()
+            if v.entity_id == entity_id and v.content_hash == content_hash
+        ]
+        if not matches:
+            return None
+        latest = max(matches, key=lambda v: v.version)
+        return copy.deepcopy(latest)
 
     async def list_versions(
         self,
@@ -167,6 +172,12 @@ class FakeWorkflowVersionRepository:
         limit: int = 50,
         offset: int = 0,
     ) -> tuple[VersionSnapshot[WorkflowDefinition], ...]:
+        if limit < 0 or offset < 0:
+            msg = (
+                f"limit and offset must be non-negative "
+                f"(got limit={limit}, offset={offset})"
+            )
+            raise ValueError(msg)
         matching = sorted(
             (v for v in self._versions.values() if v.entity_id == entity_id),
             key=lambda v: v.version,

@@ -73,6 +73,24 @@ from synthorg.persistence.workflow_definition_repo import (
 )
 from synthorg.versioning import VersioningService
 
+_WF_VERSIONING_CACHE: dict[int, VersioningService[WorkflowDefinition]] = {}
+
+
+def _wf_versioning(state: State) -> VersioningService[WorkflowDefinition]:
+    """Return a VersioningService for workflow definitions.
+
+    Uses the persistence backend's identity to avoid repeated
+    allocations across controller methods.
+    """
+    repo = state.app_state.persistence.workflow_versions
+    key = id(repo)
+    svc = _WF_VERSIONING_CACHE.get(key)
+    if svc is None:
+        svc = VersioningService(repo)
+        _WF_VERSIONING_CACHE[key] = svc
+    return svc
+
+
 logger = get_logger(__name__)
 
 
@@ -418,9 +436,7 @@ class WorkflowController(Controller):
         repo = state.app_state.persistence.workflow_definitions
         await repo.save(definition)
 
-        svc = VersioningService(
-            state.app_state.persistence.workflow_versions,
-        )
+        svc = _wf_versioning(state)
         try:
             await svc.snapshot_if_changed(
                 entity_id=definition.id,
@@ -507,9 +523,7 @@ class WorkflowController(Controller):
         repo = state.app_state.persistence.workflow_definitions
         await repo.save(definition)
 
-        svc = VersioningService(
-            state.app_state.persistence.workflow_versions,
-        )
+        svc = _wf_versioning(state)
         try:
             await svc.snapshot_if_changed(
                 entity_id=definition.id,
@@ -570,9 +584,7 @@ class WorkflowController(Controller):
             )
 
         updater = get_auth_user_id(request)
-        svc = VersioningService(
-            state.app_state.persistence.workflow_versions,
-        )
+        svc = _wf_versioning(state)
         try:
             await svc.snapshot_if_changed(
                 entity_id=updated.id,
