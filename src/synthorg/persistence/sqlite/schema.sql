@@ -319,11 +319,11 @@ CREATE INDEX IF NOT EXISTS idx_projects_lead ON projects(lead);
 
 -- ── Project-lifetime cost aggregates ─────────────────────────
 CREATE TABLE IF NOT EXISTS project_cost_aggregates (
-    project_id TEXT PRIMARY KEY,
-    total_cost REAL NOT NULL DEFAULT 0.0,
-    total_input_tokens INTEGER NOT NULL DEFAULT 0,
-    total_output_tokens INTEGER NOT NULL DEFAULT 0,
-    record_count INTEGER NOT NULL DEFAULT 0,
+    project_id TEXT PRIMARY KEY CHECK(length(project_id) > 0),
+    total_cost REAL NOT NULL DEFAULT 0.0 CHECK(total_cost >= 0.0),
+    total_input_tokens INTEGER NOT NULL DEFAULT 0 CHECK(total_input_tokens >= 0),
+    total_output_tokens INTEGER NOT NULL DEFAULT 0 CHECK(total_output_tokens >= 0),
+    record_count INTEGER NOT NULL DEFAULT 0 CHECK(record_count >= 0),
     last_updated TEXT NOT NULL
 );
 

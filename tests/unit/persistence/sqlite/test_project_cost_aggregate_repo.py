@@ -1,9 +1,12 @@
 """Unit tests for SQLiteProjectCostAggregateRepository."""
 
+import sqlite3
 from typing import TYPE_CHECKING
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
+from synthorg.persistence.errors import QueryError
 from synthorg.persistence.sqlite.project_cost_aggregate_repo import (
     SQLiteProjectCostAggregateRepository,
 )
@@ -104,3 +107,56 @@ class TestSQLiteProjectCostAggregateRepository:
         agg2 = await repo.increment("proj-1", 1.0, 10, 5)
 
         assert agg2.last_updated >= agg1.last_updated
+
+    async def test_zero_cost_increment(
+        self,
+        migrated_db: aiosqlite.Connection,
+    ) -> None:
+        repo = SQLiteProjectCostAggregateRepository(migrated_db)
+        agg = await repo.increment("proj-1", 0.0, 0, 0)
+
+        assert agg.total_cost == 0.0
+        assert agg.record_count == 1
+
+        agg2 = await repo.increment("proj-1", 0.0, 0, 0)
+        assert agg2.record_count == 2
+
+    async def test_get_raises_query_error_on_db_failure(
+        self,
+        migrated_db: aiosqlite.Connection,
+    ) -> None:
+        repo = SQLiteProjectCostAggregateRepository(migrated_db)
+        with (
+            patch.object(
+                migrated_db,
+                "execute",
+                new_callable=AsyncMock,
+                side_effect=sqlite3.OperationalError("disk I/O error"),
+            ),
+            pytest.raises(QueryError),
+        ):
+            await repo.get("proj-1")
+
+    async def test_increment_raises_query_error_on_db_failure(
+        self,
+        migrated_db: aiosqlite.Connection,
+    ) -> None:
+        repo = SQLiteProjectCostAggregateRepository(migrated_db)
+        with (
+            patch.object(
+                migrated_db,
+                "execute",
+                new_callable=AsyncMock,
+                side_effect=sqlite3.OperationalError("disk I/O error"),
+            ),
+            pytest.raises(QueryError),
+        ):
+            await repo.increment("proj-1", 1.0, 100, 50)
+
+    async def test_increment_rejects_negative_deltas(
+        self,
+        migrated_db: aiosqlite.Connection,
+    ) -> None:
+        repo = SQLiteProjectCostAggregateRepository(migrated_db)
+        with pytest.raises(ValueError, match="non-negative"):
+            await repo.increment("proj-1", -1.0, 100, 50)

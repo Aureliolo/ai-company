@@ -1,5 +1,6 @@
 """SQLite repository for durable project cost aggregates."""
 
+import asyncio
 import sqlite3
 from datetime import UTC, datetime
 
@@ -67,10 +68,18 @@ class SQLiteProjectCostAggregateRepository:
     Args:
         db: An open aiosqlite connection with ``row_factory``
             set to ``aiosqlite.Row``.
+        write_lock: Optional shared write lock for serialising
+            multi-statement write operations.
     """
 
-    def __init__(self, db: aiosqlite.Connection) -> None:
+    def __init__(
+        self,
+        db: aiosqlite.Connection,
+        *,
+        write_lock: asyncio.Lock | None = None,
+    ) -> None:
         self._db = db
+        self._write_lock = write_lock or asyncio.Lock()
 
     async def get(
         self,
@@ -138,23 +147,33 @@ class SQLiteProjectCostAggregateRepository:
 
         Args:
             project_id: Project identifier.
-            cost: Cost delta to add.
-            input_tokens: Input token delta.
-            output_tokens: Output token delta.
+            cost: Cost delta to add (must be >= 0).
+            input_tokens: Input token delta (must be >= 0).
+            output_tokens: Output token delta (must be >= 0).
 
         Returns:
             The updated aggregate after the increment.
 
         Raises:
             QueryError: If the database operation fails.
+            ValueError: If any delta is negative.
         """
+        if cost < 0 or input_tokens < 0 or output_tokens < 0:
+            msg = (
+                f"Deltas must be non-negative: "
+                f"cost={cost}, input_tokens={input_tokens}, "
+                f"output_tokens={output_tokens}"
+            )
+            raise ValueError(msg)
+
         now = datetime.now(UTC).isoformat()
         try:
-            await self._db.execute(
-                _UPSERT_SQL,
-                (project_id, cost, input_tokens, output_tokens, now),
-            )
-            await self._db.commit()
+            async with self._write_lock:
+                await self._db.execute(
+                    _UPSERT_SQL,
+                    (project_id, cost, input_tokens, output_tokens, now),
+                )
+                await self._db.commit()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             logger.exception(
                 PERSISTENCE_PROJECT_COST_AGG_INCREMENT_FAILED,

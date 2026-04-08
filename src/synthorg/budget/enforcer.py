@@ -104,6 +104,9 @@ class BudgetEnforcer:
         degradation_configs: Per-provider degradation strategies.
         risk_tracker: Optional risk tracking service.
         risk_scorer: Optional risk scoring implementation.
+        notification_dispatcher: Optional notification dispatcher.
+        project_cost_repo: Optional durable project cost aggregate
+            repository for lifetime budget enforcement.
     """
 
     def __init__(  # noqa: PLR0913
@@ -259,11 +262,12 @@ class BudgetEnforcer:
     ) -> None:
         """Check project-level budget and raise if exceeded.
 
-        Uses the durable project cost aggregate when available,
-        providing accurate lifetime totals that survive the
-        in-memory tracker's 168-hour retention window.  Falls
-        back to in-memory tracking when no aggregate repository
-        is configured or when the aggregate query fails.
+        Returns immediately when ``project_budget <= 0`` (enforcement
+        disabled).  Otherwise uses the durable project cost aggregate
+        when available, providing accurate lifetime totals that survive
+        the in-memory tracker's 168-hour retention window.  Falls back
+        to in-memory tracking when no aggregate repository is configured
+        or when the aggregate query fails.
 
         Args:
             project_id: Project identifier for cost lookup.

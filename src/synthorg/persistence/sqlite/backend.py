@@ -288,6 +288,7 @@ class SQLitePersistenceBackend:
         )
         self._project_cost_aggregates = SQLiteProjectCostAggregateRepository(
             self._db,
+            write_lock=self._shared_write_lock,
         )
 
     async def _cleanup_failed_connect(self, exc: sqlite3.Error | OSError) -> None:

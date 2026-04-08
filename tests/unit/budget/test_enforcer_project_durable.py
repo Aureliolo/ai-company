@@ -113,6 +113,13 @@ class TestCheckProjectBudgetDurable:
         # No aggregate record -> 0.0 cost, passes any budget
         await enforcer.check_project_budget("proj-1", project_budget=10.0)
 
+    async def test_raises_at_exact_boundary(self) -> None:
+        repo = _make_repo(_make_aggregate(total_cost=10.0))
+        enforcer = _make_enforcer(project_cost_repo=repo)
+
+        with pytest.raises(ProjectBudgetExhaustedError):
+            await enforcer.check_project_budget("proj-1", project_budget=10.0)
+
     async def test_zero_budget_skips_regardless_of_repo(self) -> None:
         repo = _make_repo(_make_aggregate(total_cost=999.0))
         enforcer = _make_enforcer(project_cost_repo=repo)
@@ -153,6 +160,26 @@ class TestMakeBudgetCheckerDurable:
         task = _make_task()
 
         # Should not raise -- falls back to in-memory baseline
+        checker = await enforcer.make_budget_checker(
+            task,
+            "alice",
+            project_id="proj-1",
+            project_budget=10.0,
+        )
+        assert checker is not None
+
+    async def test_both_sources_fail_uses_zero_baseline(self) -> None:
+        repo = _make_repo()
+        repo.get.side_effect = RuntimeError("DB error")
+
+        tracker = CostTracker()
+        enforcer = _make_enforcer(tracker=tracker, project_cost_repo=repo)
+
+        task = _make_task()
+
+        # Both repo and in-memory fail for a fresh tracker with
+        # no records -- _get_project_cost returns None, baseline
+        # defaults to 0.0, checker is still created.
         checker = await enforcer.make_budget_checker(
             task,
             "alice",
