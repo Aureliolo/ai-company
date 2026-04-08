@@ -99,6 +99,7 @@ class PerformanceTracker:
         self._collab_metrics: dict[str, list[CollaborationMetricRecord]] = {}
         self._contributions: dict[str, list[AgentContribution]] = {}
         self._background_tasks: set[asyncio.Task[None]] = set()
+        self._metrics_lock = asyncio.Lock()
 
     @staticmethod
     def _default_quality() -> QualityScoringStrategy:
@@ -166,10 +167,11 @@ class PerformanceTracker:
         Returns:
             The stored record.
         """
-        agent_key = str(record.agent_id)
-        if agent_key not in self._task_metrics:
-            self._task_metrics[agent_key] = []
-        self._task_metrics[agent_key].append(record)
+        async with self._metrics_lock:
+            agent_key = str(record.agent_id)
+            if agent_key not in self._task_metrics:
+                self._task_metrics[agent_key] = []
+            self._task_metrics[agent_key].append(record)
 
         logger.info(
             PERF_METRIC_RECORDED,
@@ -190,9 +192,7 @@ class PerformanceTracker:
         """
         for contrib in contributions:
             agent_key = str(contrib.agent_id)
-            if agent_key not in self._contributions:
-                self._contributions[agent_key] = []
-            self._contributions[agent_key].append(contrib)
+            self._contributions.setdefault(agent_key, []).append(contrib)
 
         if contributions:
             logger.info(

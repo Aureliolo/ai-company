@@ -119,15 +119,17 @@ def extract_marker_sentences(
         if not stripped:
             continue
         if any(p.search(stripped) for p in EPISTEMIC_PATTERNS):
-            if total_len + len(stripped) + 2 > max_chars:
+            sep_len = 2 if marker_sentences else 0
+            if total_len + sep_len + len(stripped) > max_chars:
+                # If this is the first sentence and it exceeds max_chars,
+                # include a truncated version rather than returning empty.
+                if not marker_sentences:
+                    marker_sentences.append(stripped[:max_chars])
                 break
             marker_sentences.append(stripped)
-            total_len += len(stripped) + 2  # +2 for "; " separator
+            total_len += sep_len + len(stripped)
 
     if not marker_sentences:
         return ""
 
-    joined = "; ".join(marker_sentences)
-    if len(joined) > max_chars:
-        return joined[:max_chars] + "..."
-    return joined
+    return "; ".join(marker_sentences)

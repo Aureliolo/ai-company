@@ -282,9 +282,12 @@ class CoordinationController(Controller):
             )
             raise
 
+        result = attributed.result
+        is_success = attributed.is_success
+
         ws_event_type = (
             WsEventType.COORDINATION_COMPLETED
-            if attributed.is_success
+            if is_success
             else WsEventType.COORDINATION_FAILED
         )
         _publish_ws_event(
@@ -292,23 +295,21 @@ class CoordinationController(Controller):
             ws_event_type,
             {
                 "task_id": task_id,
-                "topology": attributed.result.topology.value,
-                "is_success": attributed.is_success,
-                "total_duration_seconds": attributed.result.total_duration_seconds,
+                "topology": result.topology.value,
+                "is_success": is_success,
+                "total_duration_seconds": result.total_duration_seconds,
             },
         )
         log_event = (
-            API_COORDINATION_COMPLETED
-            if attributed.is_success
-            else API_COORDINATION_FAILED
+            API_COORDINATION_COMPLETED if is_success else API_COORDINATION_FAILED
         )
-        log_fn = logger.info if attributed.is_success else logger.warning
+        log_fn = logger.info if is_success else logger.warning
         log_fn(
             log_event,
             task_id=task_id,
-            topology=attributed.result.topology.value,
-            is_success=attributed.is_success,
-            total_duration_seconds=attributed.result.total_duration_seconds,
+            topology=result.topology.value,
+            is_success=is_success,
+            total_duration_seconds=result.total_duration_seconds,
         )
         return attributed
 
@@ -334,11 +335,20 @@ class CoordinationController(Controller):
         registry = app_state.agent_registry
 
         if data.agent_names is not None:
-            results = await asyncio.gather(
-                *(registry.get_by_name(name) for name in data.agent_names)
-            )
+            names = data.agent_names
+            results: list[AgentIdentity | None] = [None] * len(names)
+            async with asyncio.TaskGroup() as tg:
+                for idx, name in enumerate(names):
+
+                    async def _resolve(
+                        i: int = idx,
+                        n: str = name,
+                    ) -> None:
+                        results[i] = await registry.get_by_name(n)
+
+                    tg.create_task(_resolve())
             agents: list[AgentIdentity] = []
-            for name, agent in zip(data.agent_names, results, strict=True):
+            for name, agent in zip(names, results, strict=True):
                 if agent is None:
                     logger.warning(
                         API_COORDINATION_AGENT_RESOLVE_FAILED,

@@ -6,7 +6,7 @@ without modifying the frozen ``CoordinationResult``. The wrapper
 with attribution data built from routing decisions and wave outcomes.
 """
 
-from typing import Literal, Self
+from typing import TYPE_CHECKING, Literal, Protocol, Self
 
 from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
 
@@ -25,6 +25,18 @@ from synthorg.observability.events.coordination import (
 )
 
 logger = get_logger(__name__)
+
+
+if TYPE_CHECKING:
+
+    class _ExecutionResultLike(Protocol):
+        error_message: str | None
+
+    class _AgentRunResultLike(Protocol):
+        is_success: bool
+        termination_reason: TerminationReason | None
+        execution_result: _ExecutionResultLike | None
+
 
 FailureAttribution = Literal[
     "direct",
@@ -53,6 +65,7 @@ _TERMINATION_TO_ATTRIBUTION: dict[TerminationReason, FailureAttribution] = {
     TerminationReason.MAX_TURNS: "coordination_overhead",
     TerminationReason.ERROR: "direct",
     TerminationReason.SHUTDOWN: "coordination_overhead",
+    TerminationReason.PARKED: "coordination_overhead",
 }
 
 
@@ -134,10 +147,10 @@ class CoordinationResultWithAttribution(BaseModel):
         return self.result.is_success
 
     @computed_field(  # type: ignore[prop-decorator]
-        description="Average contribution score",
+        description="Average contribution score across agents",
     )
     @property
-    def total_contribution_score(self) -> float:
+    def avg_contribution_score(self) -> float:
         """Average of contribution scores, 0.0 when empty."""
         if not self.agent_contributions:
             return 0.0
@@ -162,11 +175,17 @@ def build_agent_contributions(
     Returns:
         Tuple of ``AgentContribution`` records, one per agent outcome.
     """
-    # Build agent->subtask lookup from routing decisions.
-    agent_to_subtask: dict[str, str] = {}
+    # Build agent->subtask lookups from routing decisions.
+    # Use a list per agent_id to handle agents with multiple subtasks.
+    agent_to_subtasks: dict[str, list[str]] = {}
     for decision in routing_result.decisions:
         agent_id = str(decision.selected_candidate.agent_identity.id)
-        agent_to_subtask[agent_id] = str(decision.subtask_id)
+        agent_to_subtasks.setdefault(agent_id, []).append(
+            str(decision.subtask_id),
+        )
+
+    # Track consumption index per agent for round-robin matching.
+    agent_subtask_idx: dict[str, int] = {}
 
     contributions: list[AgentContribution] = []
 
@@ -174,10 +193,14 @@ def build_agent_contributions(
         if wave.execution_result is None:
             continue
         for outcome in wave.execution_result.outcomes:
-            subtask_id = agent_to_subtask.get(
-                str(outcome.agent_id),
-                str(outcome.task_id),
-            )
+            aid = str(outcome.agent_id)
+            subtask_list = agent_to_subtasks.get(aid, [])
+            idx = agent_subtask_idx.get(aid, 0)
+            if idx < len(subtask_list):
+                subtask_id = subtask_list[idx]
+                agent_subtask_idx[aid] = idx + 1
+            else:
+                subtask_id = str(outcome.task_id)
             contrib = _score_outcome(
                 agent_id=str(outcome.agent_id),
                 subtask_id=subtask_id,
@@ -232,8 +255,8 @@ def _score_outcome(
         )
 
     # Case 2: Execution completed -- check if successful.
-    # outcome_result is AgentRunResult but typed as object to avoid
-    # circular import; access attributes dynamically.
+    # outcome_result conforms to _AgentRunResultLike; typed as object
+    # at runtime to avoid circular import.
     if outcome_result is not None:
         is_success = getattr(outcome_result, "is_success", False)
         if is_success:

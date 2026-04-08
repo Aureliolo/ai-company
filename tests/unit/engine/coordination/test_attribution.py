@@ -5,6 +5,7 @@ FailureAttribution validation.
 """
 
 import pytest
+from pydantic import ValidationError
 
 from synthorg.core.enums import CoordinationTopology
 from synthorg.core.types import NotBlankStr
@@ -144,7 +145,7 @@ class TestAgentContribution:
             subtask_id=NotBlankStr("subtask-1"),
             contribution_score=1.0,
         )
-        with pytest.raises(Exception, match="frozen"):
+        with pytest.raises(ValidationError, match="frozen"):
             contrib.contribution_score = 0.5  # type: ignore[misc]
 
     @pytest.mark.unit
@@ -201,16 +202,16 @@ class TestCoordinationResultWithAttribution:
         assert failure_wrapper.is_success is False
 
     @pytest.mark.unit
-    def test_total_contribution_score_empty(self) -> None:
+    def test_avg_contribution_score_empty(self) -> None:
         """Empty contributions yield 0.0 average."""
         wrapper = CoordinationResultWithAttribution(
             result=_make_coord_result(),
             agent_contributions=(),
         )
-        assert wrapper.total_contribution_score == 0.0
+        assert wrapper.avg_contribution_score == 0.0
 
     @pytest.mark.unit
-    def test_total_contribution_score_computed(self) -> None:
+    def test_avg_contribution_score_computed(self) -> None:
         """Average of contribution scores is computed correctly."""
         wrapper = CoordinationResultWithAttribution(
             result=_make_coord_result(),
@@ -228,7 +229,7 @@ class TestCoordinationResultWithAttribution:
                 ),
             ),
         )
-        assert wrapper.total_contribution_score == pytest.approx(0.5)
+        assert wrapper.avg_contribution_score == pytest.approx(0.5)
 
     @pytest.mark.unit
     def test_frozen(self) -> None:
@@ -237,5 +238,5 @@ class TestCoordinationResultWithAttribution:
             result=_make_coord_result(),
             agent_contributions=(),
         )
-        with pytest.raises(Exception, match="frozen"):
+        with pytest.raises(ValidationError, match="frozen"):
             wrapper.agent_contributions = ()  # type: ignore[misc]

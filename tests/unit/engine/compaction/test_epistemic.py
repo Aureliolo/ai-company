@@ -186,4 +186,6 @@ class TestExtractMarkerSentences:
         result = extract_marker_sentences(text)
         # Should not have extra whitespace
         assert "Wait, important" in result
-        assert "   " not in result or result.count(" ") <= result.count("  ")
+        assert not result.startswith(" ")
+        assert not result.endswith(" ")
+        assert "  " not in result

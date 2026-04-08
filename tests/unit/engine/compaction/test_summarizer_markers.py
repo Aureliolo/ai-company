@@ -255,7 +255,7 @@ class TestBuildSummaryMarkers:
         )
 
         # First message is empty and skipped, second has marker
-        assert "Epistemic markers preserved from 1 messages" in summary
+        assert "Epistemic markers preserved from 1 message." in summary
 
     def test_summary_respects_max_length(self) -> None:
         """Summary is truncated at MAX_SUMMARY_CHARS."""
@@ -339,5 +339,7 @@ class TestForceCompaction:
         # Should succeed despite low fill percentage
         result = force_compaction(ctx, config, estimator)
 
-        # Result should be an AgentContext (not None)
-        assert result is None or isinstance(result, AgentContext)
+        # Forced compaction should produce a compacted context
+        assert result is not None
+        assert isinstance(result, AgentContext)
+        assert len(result.conversation) < len(ctx.conversation)

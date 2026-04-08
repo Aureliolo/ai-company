@@ -72,6 +72,8 @@ def _do_compaction(
     ctx: AgentContext,
     config: CompactionConfig,
     estimator: PromptTokenEstimator,
+    *,
+    force: bool = False,
 ) -> AgentContext | None:
     """Core compaction logic.
 
@@ -79,18 +81,20 @@ def _do_compaction(
         ctx: Current agent context.
         config: Compaction configuration.
         estimator: Token estimator.
+        force: Skip fill threshold check (for agent-initiated compaction).
 
     Returns:
         New compacted ``AgentContext`` or ``None`` if no compaction needed.
     """
     fill_pct = ctx.context_fill_percent
-    effective_threshold = (
-        config.safety_threshold_percent
-        if config.agent_controlled
-        else config.fill_threshold_percent
-    )
-    if fill_pct is None or fill_pct < effective_threshold:
-        return None
+    if not force:
+        effective_threshold = (
+            config.safety_threshold_percent
+            if config.agent_controlled
+            else config.fill_threshold_percent
+        )
+        if fill_pct is None or fill_pct < effective_threshold:
+            return None
 
     conversation = ctx.conversation
     if len(conversation) < config.min_messages_to_compact:
@@ -279,7 +283,11 @@ def _build_summary(
         ):
             marker_text = extract_marker_sentences(cleaned)
             if marker_text:
-                snippets.append(marker_text)
+                sanitized_markers = sanitize_message(
+                    marker_text,
+                    max_length=max(len(marker_text), 1),
+                )
+                snippets.append(sanitized_markers)
                 preserved_count += 1
                 continue
 
@@ -303,10 +311,11 @@ def _build_summary(
         joined = joined[:_MAX_SUMMARY_CHARS] + "..."
 
     if preserved_count > 0:
+        msg_word = "message" if preserved_count == 1 else "messages"
         return (
             f"[Archived {len(messages)} messages. "
             f"Epistemic markers preserved from "
-            f"{preserved_count} messages. "
+            f"{preserved_count} {msg_word}. "
             f"Summary: {joined}]"
         )
     return f"[Archived {len(messages)} messages. Summary of prior work: {joined}]"
@@ -320,9 +329,9 @@ def force_compaction(
     """Compact context without checking the fill threshold.
 
     Used when an agent explicitly requests compaction via the
-    ``compact_context`` tool.  Skips the threshold check but
-    still enforces minimum message count and recent turn
-    preservation.
+    ``compact_context`` tool.  Delegates to ``_do_compaction``
+    core logic but bypasses the fill threshold check by
+    temporarily using a zero-percent threshold.
 
     Args:
         ctx: Current agent context.
@@ -332,49 +341,11 @@ def force_compaction(
     Returns:
         Compacted context, or ``None`` if too few messages.
     """
-    conversation = ctx.conversation
-    if len(conversation) < config.min_messages_to_compact:
-        logger.debug(
-            CONTEXT_BUDGET_COMPACTION_SKIPPED,
-            execution_id=ctx.execution_id,
-            reason="too_few_messages_for_forced_compaction",
-            message_count=len(conversation),
-        )
-        return None
-
-    logger.info(
+    logger.debug(
         CONTEXT_BUDGET_COMPACTION_STARTED,
         execution_id=ctx.execution_id,
         fill_percent=ctx.context_fill_percent,
-        message_count=len(conversation),
+        message_count=len(ctx.conversation),
         forced=True,
     )
-
-    split = _split_conversation(ctx, config)
-    if split is None:
-        return None
-    head, archivable, recent = split
-
-    task_complexity = _extract_task_complexity(ctx)
-    compressed, metadata, summary_tokens = _compress(
-        ctx,
-        head,
-        archivable,
-        recent,
-        estimator,
-        preserve_markers=config.preserve_epistemic_markers,
-        task_complexity=task_complexity,
-    )
-
-    new_fill = estimator.estimate_conversation_tokens(compressed)
-    logger.info(
-        CONTEXT_BUDGET_COMPACTION_COMPLETED,
-        execution_id=ctx.execution_id,
-        original_messages=len(conversation),
-        compacted_messages=len(compressed),
-        archived_turns=metadata.archived_turns,
-        summary_tokens=summary_tokens,
-        compactions_total=metadata.compactions_performed,
-        forced=True,
-    )
-    return ctx.with_compression(metadata, compressed, new_fill)
+    return _do_compaction(ctx, config, estimator, force=True)

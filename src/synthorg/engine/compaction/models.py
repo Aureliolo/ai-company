@@ -12,14 +12,23 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 class CompactionConfig(BaseModel):
     """Configuration for context compaction behavior.
 
-    When ``agent_controlled`` is ``True``, automatic compaction uses
-    ``safety_threshold_percent`` instead of ``fill_threshold_percent``,
-    allowing agents to manage compaction via the ``compact_context``
-    tool while retaining a safety net.
+    Two operating modes:
+
+    **Standard** (``agent_controlled=False``): automatic compaction
+    triggers when context fill reaches ``fill_threshold_percent``.
+
+    **Agent-controlled** (``agent_controlled=True``): agents manage
+    compaction via the ``compact_context`` tool.  Automatic compaction
+    is deferred to ``safety_threshold_percent`` (which must be higher
+    than ``fill_threshold_percent``), giving agents headroom to decide
+    when and how to compact while retaining a safety net.
 
     Attributes:
         fill_threshold_percent: Context fill percentage that triggers
-            compaction (e.g. 80.0 means compact when 80% full).
+            compaction in standard mode (e.g. 80.0 means compact when
+            80% full).  In agent-controlled mode this threshold is
+            NOT used for automatic compaction -- agents decide when to
+            compact below ``safety_threshold_percent``.
         min_messages_to_compact: Minimum number of conversation
             messages required before compaction is allowed.
         preserve_recent_turns: Number of recent turn pairs to keep
@@ -27,7 +36,8 @@ class CompactionConfig(BaseModel):
         agent_controlled: Enable agent-initiated compaction via the
             ``compact_context`` tool.
         safety_threshold_percent: Auto-compaction threshold when
-            ``agent_controlled`` is ``True`` (safety net).
+            ``agent_controlled`` is ``True`` (safety net).  Must be
+            greater than ``fill_threshold_percent``.
         preserve_epistemic_markers: Detect and preserve epistemic
             markers (hedging, reconsideration, etc.) in summaries.
     """

@@ -26,6 +26,7 @@ from synthorg.engine.errors import CoordinationPhaseError
 from synthorg.engine.task_engine_models import TransitionTaskMutation
 from synthorg.observability import get_logger
 from synthorg.observability.events.coordination import (
+    COORDINATION_CLEANUP_FAILED,
     COORDINATION_COMPLETED,
     COORDINATION_FAILED,
     COORDINATION_PHASE_COMPLETED,
@@ -214,10 +215,21 @@ class MultiAgentCoordinator:
         )
 
         # Feed contributions into performance tracker if available.
+        # Guard so tracker failures don't fail an already-completed run.
         if self._performance_tracker is not None and contributions:
-            self._performance_tracker.record_coordination_contributions(
-                contributions,
-            )
+            try:
+                self._performance_tracker.record_coordination_contributions(
+                    contributions,
+                )
+            except MemoryError, RecursionError:
+                raise
+            except Exception as tracker_exc:
+                logger.warning(
+                    COORDINATION_CLEANUP_FAILED,
+                    parent_task_id=task.id,
+                    error=str(tracker_exc),
+                    context="post_completion_tracker_write",
+                )
 
         return CoordinationResultWithAttribution(
             result=result,

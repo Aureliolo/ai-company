@@ -7,9 +7,11 @@ directly.  The execution loop detects the directive and invokes
 compaction at the turn boundary.
 """
 
+from copy import deepcopy
 from typing import Any
 
 from synthorg.core.enums import ToolCategory
+from synthorg.engine.sanitization import sanitize_message
 from synthorg.observability import get_logger
 from synthorg.observability.events.context_budget import (
     CONTEXT_BUDGET_AGENT_COMPACTION_REQUESTED,
@@ -74,7 +76,7 @@ class CompactContextTool(BaseTool):
                 "is high and accuracy on complex reasoning is "
                 "critical."
             ),
-            parameters_schema=_COMPACT_CONTEXT_SCHEMA,
+            parameters_schema=deepcopy(_COMPACT_CONTEXT_SCHEMA),
             category=ToolCategory.MEMORY,
         )
 
@@ -95,12 +97,13 @@ class CompactContextTool(BaseTool):
         strategy = arguments.get("strategy", "summarize")
         reason = arguments.get("reason", "")
         preserve_markers = arguments.get("preserve_markers", True)
+        sanitized_reason = sanitize_message(reason, max_length=256)
 
         logger.info(
             CONTEXT_BUDGET_AGENT_COMPACTION_REQUESTED,
             strategy=strategy,
             preserve_markers=preserve_markers,
-            reason=reason,
+            reason=sanitized_reason,
         )
 
         return ToolExecutionResult(
@@ -109,6 +112,6 @@ class CompactContextTool(BaseTool):
                 "compaction_directive": True,
                 "strategy": strategy,
                 "preserve_markers": preserve_markers,
-                "reason": reason,
+                "reason": sanitized_reason,
             },
         )
