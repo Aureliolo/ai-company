@@ -79,6 +79,7 @@ class TestDataAggregatorTool:
             }
         )
         call = mock_provider.calls[0]
+        assert call["metrics"] == ["total_cost"]
         assert call["period"] == "custom"
         assert call["group_by"] == "day"
         assert call["start_date"] == "2026-01-01"

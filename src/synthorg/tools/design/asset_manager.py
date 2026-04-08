@@ -15,6 +15,7 @@ from synthorg.observability.events.design import (
     DESIGN_ASSET_LISTED,
     DESIGN_ASSET_RETRIEVED,
     DESIGN_ASSET_SEARCHED,
+    DESIGN_ASSET_STORED,
     DESIGN_ASSET_VALIDATION_FAILED,
 )
 from synthorg.tools.base import ToolExecutionResult
@@ -118,6 +119,11 @@ class AssetManagerTool(BaseDesignTool):
             metadata: Asset metadata (type, dimensions, tags, etc.).
         """
         self._assets[asset_id] = copy.deepcopy(metadata)
+        logger.info(
+            DESIGN_ASSET_STORED,
+            asset_id=asset_id,
+            asset_type=metadata.get("type", "unknown"),
+        )
 
     async def execute(
         self,
@@ -222,6 +228,12 @@ class AssetManagerTool(BaseDesignTool):
 
         meta = self._assets.get(asset_id)
         if meta is None:
+            logger.warning(
+                DESIGN_ASSET_VALIDATION_FAILED,
+                action="get",
+                reason="not_found",
+                asset_id=asset_id,
+            )
             return ToolExecutionResult(
                 content=f"Asset not found: {asset_id!r}",
                 is_error=True,
@@ -258,6 +270,12 @@ class AssetManagerTool(BaseDesignTool):
             )
 
         if asset_id not in self._assets:
+            logger.warning(
+                DESIGN_ASSET_VALIDATION_FAILED,
+                action="delete",
+                reason="not_found",
+                asset_id=asset_id,
+            )
             return ToolExecutionResult(
                 content=f"Asset not found: {asset_id!r}",
                 is_error=True,
@@ -308,6 +326,7 @@ class AssetManagerTool(BaseDesignTool):
             total=len(self._assets),
             matched=len(matching),
             search_query=query,
+            filter_tags=tags,
         )
 
         if not matching:

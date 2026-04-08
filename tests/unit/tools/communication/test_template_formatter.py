@@ -12,17 +12,18 @@ from synthorg.tools.communication.template_formatter import (
 class TestTemplateFormatterTool:
     """Tests for TemplateFormatterTool."""
 
-    def test_category_is_communication(self) -> None:
+    @pytest.mark.parametrize(
+        ("attr", "expected"),
+        [
+            ("category", ToolCategory.COMMUNICATION),
+            ("action_type", ActionType.CODE_READ),
+            ("name", "template_formatter"),
+        ],
+        ids=["category", "action_type", "name"],
+    )
+    def test_tool_attributes(self, attr: str, expected: object) -> None:
         tool = TemplateFormatterTool()
-        assert tool.category == ToolCategory.COMMUNICATION
-
-    def test_action_type_is_code_read(self) -> None:
-        tool = TemplateFormatterTool()
-        assert tool.action_type == ActionType.CODE_READ
-
-    def test_name(self) -> None:
-        tool = TemplateFormatterTool()
-        assert tool.name == "template_formatter"
+        assert getattr(tool, attr) == expected
 
     async def test_execute_simple_template(self) -> None:
         tool = TemplateFormatterTool()
