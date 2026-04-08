@@ -150,9 +150,11 @@ def _affected_test_dirs(changed: list[str]) -> tuple[list[str], bool]:
 def _run_pytest(paths: list[str]) -> int:
     """Run pytest with the given paths.
 
-    Uses ``--dist loadscope`` to group tests by module, preventing
-    xdist worker crashes from repeated heavy fixture teardown/setup
-    when individual tests are scattered across workers.
+    Uses ``--dist loadscope`` instead of pyproject.toml's default
+    ``worksteal`` to group tests by module, preventing xdist worker
+    crashes from repeated heavy fixture teardown/setup (Litestar
+    TestClient, SQLite connections) when individual tests are
+    scattered across workers during full-suite runs.
 
     ``--max-worker-restart=0`` disables worker restarts to avoid a
     known xdist scheduler KeyError when the loadscope scheduler
