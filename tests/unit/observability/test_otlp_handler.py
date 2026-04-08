@@ -4,7 +4,7 @@ import json
 import logging
 import queue
 from typing import Any
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -120,7 +120,9 @@ class TestOtlpHandler:
             )
             handler.setFormatter(_JsonFormatter())
             result = handler._format_as_otlp_dict(record)
-            assert result["body"] == record.getMessage()
+            # Body should come from self.format(record), not getMessage()
+            body = json.loads(result["body"])
+            assert body["event"] == "test event"
             assert result["attributes"]["request_id"] == "req-123"
             assert result["attributes"]["task_id"] == "task-456"
             assert result["attributes"]["agent_id"] == "agent-789"
@@ -133,7 +135,8 @@ class TestOtlpHandler:
         try:
             record = _make_record("plain event")
             result = handler._format_as_otlp_dict(record)
-            assert result["body"] == "plain event"
+            body = json.loads(result["body"])
+            assert body["event"] == "plain event"
             assert "request_id" not in result["attributes"]
         finally:
             handler.close()
@@ -152,15 +155,15 @@ class TestOtlpHandlerProtocol:
         finally:
             handler.close()
 
-    def test_grpc_protocol(self) -> None:
-        handler = OtlpHandler(
-            endpoint="http://localhost:4317",
-            protocol=OtlpProtocol.GRPC,
-        )
-        try:
-            assert handler._protocol == OtlpProtocol.GRPC
-        finally:
-            handler.close()
+    def test_grpc_protocol_rejects_with_not_implemented(self) -> None:
+        with pytest.raises(
+            NotImplementedError,
+            match="gRPC transport is not implemented",
+        ):
+            OtlpHandler(
+                endpoint="http://localhost:4317",
+                protocol=OtlpProtocol.GRPC,
+            )
 
 
 @pytest.mark.unit
@@ -179,17 +182,17 @@ class TestBuildOtlpHandler:
         finally:
             handler.close()
 
-    def test_builds_with_custom_protocol(self) -> None:
+    def test_build_with_grpc_protocol_rejects(self) -> None:
         sink = SinkConfig(
             sink_type=SinkType.OTLP,
             otlp_endpoint="http://localhost:4317",
             otlp_protocol=OtlpProtocol.GRPC,
         )
-        handler = build_otlp_handler(sink, [])
-        try:
-            assert handler._protocol == OtlpProtocol.GRPC
-        finally:
-            handler.close()
+        with pytest.raises(
+            NotImplementedError,
+            match="gRPC transport is not implemented",
+        ):
+            build_otlp_handler(sink, [])
 
     def test_uses_config_batch_size_and_timeout(self) -> None:
         sink = SinkConfig(
@@ -220,15 +223,19 @@ class TestOtlpHandlerExportFailure:
         handler = _make_handler(batch_size=1)
         try:
             handler.emit(_make_record("will fail"))
-            # Manually drain and try to export (will fail because no server)
+            # Manually drain and try to export with a stubbed urlopen
             records: list[logging.LogRecord] = []
             while True:
                 try:
                     records.append(handler._queue.get_nowait())
                 except queue.Empty:
                     break
-            if records:
-                handler._export_batch(records)
+            with patch(
+                "synthorg.observability.otlp_handler.urllib.request.urlopen",
+                side_effect=ConnectionError("stubbed network failure"),
+            ):
+                if records:
+                    handler._export_batch(records)
             with handler._pending_lock:
                 assert handler._dropped_count > 0
         finally:

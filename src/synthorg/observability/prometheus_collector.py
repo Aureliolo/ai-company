@@ -34,8 +34,11 @@ class PrometheusCollector:
     """Collects business metrics from SynthOrg services for Prometheus.
 
     Uses a dedicated ``CollectorRegistry`` to avoid polluting the global
-    default registry.  Metric values are refreshed on each scrape via
-    :meth:`refresh`.
+    default registry.  Most metric values are refreshed on each scrape
+    via :meth:`refresh` (pull model).  Coordination metrics are
+    push-updated by :meth:`record_coordination_metrics` after each
+    multi-agent execution; security verdicts are push-updated by
+    :meth:`record_security_verdict`.
 
     Args:
         prefix: Metric name prefix (default ``"synthorg"``).
@@ -64,8 +67,8 @@ class PrometheusCollector:
         # -- Task gauges -------------------------------------------------
         self._tasks_total = Gauge(
             f"{prefix}_tasks_total",
-            "Number of tasks by status",
-            ["status"],
+            "Number of tasks by status and agent",
+            ["status", "agent"],
             registry=self.registry,
         )
 
@@ -79,7 +82,7 @@ class PrometheusCollector:
         # -- Budget gauges -----------------------------------------------
         self._budget_used_percent = Gauge(
             f"{prefix}_budget_used_percent",
-            "Percentage of monthly budget consumed",
+            "Accumulated cost as percentage of monthly budget limit",
             registry=self.registry,
         )
         self._budget_monthly_usd = Gauge(
@@ -110,14 +113,27 @@ class PrometheusCollector:
 
         logger.debug(METRICS_COLLECTOR_INITIALIZED, prefix=prefix)
 
+    # Bounded set of valid verdicts to prevent label cardinality explosion.
+    _VALID_VERDICTS = frozenset({"allow", "deny", "escalate"})
+
     def record_security_verdict(self, verdict: str) -> None:
         """Increment the security verdict counter.
 
         Called by a thin hook around ``SecOpsService.evaluate_pre_tool()``.
 
         Args:
-            verdict: The verdict string (e.g. ``"allow"``, ``"deny"``).
+            verdict: The verdict string (``"allow"``, ``"deny"``, or
+                ``"escalate"``).
+
+        Raises:
+            ValueError: If *verdict* is not in the allowed set.
         """
+        if verdict not in self._VALID_VERDICTS:
+            msg = (
+                f"Unknown security verdict {verdict!r}; "
+                f"expected one of {sorted(self._VALID_VERDICTS)}"
+            )
+            raise ValueError(msg)
         self._security_evaluations.labels(verdict=verdict).inc()
 
     def record_coordination_metrics(
@@ -204,8 +220,9 @@ class PrometheusCollector:
                 status = str(agent.status)
                 trust = str(agent.tools.access_level)
                 counts[(status, trust)] += 1
-            # Only set gauges for observed (status, trust_level) pairs;
-            # unobserved pairs remain at their previous value.
+            # Clear stale label series so disappeared combinations
+            # drop to zero instead of retaining previous values.
+            self._agents_total.clear()
             for (status, trust), count in counts.items():
                 self._agents_total.labels(
                     status=status,
@@ -224,11 +241,17 @@ class PrometheusCollector:
             return
         try:
             tasks, _ = await app_state.task_engine.list_tasks()
-            status_counts: Counter[str] = Counter()
+            counts: Counter[tuple[str, str]] = Counter()
             for task in tasks:
-                status_counts[str(task.status)] += 1
-            for status, count in status_counts.items():
-                self._tasks_total.labels(status=status).set(count)
+                status = str(task.status)
+                agent = str(task.assigned_to) if task.assigned_to else ""
+                counts[(status, agent)] += 1
+            self._tasks_total.clear()
+            for (status, agent), count in counts.items():
+                self._tasks_total.labels(
+                    status=status,
+                    agent=agent,
+                ).set(count)
         except Exception:
             logger.warning(
                 METRICS_SCRAPE_FAILED,

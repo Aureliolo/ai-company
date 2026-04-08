@@ -1234,12 +1234,13 @@ def _build_auth_exclude_paths(
 ) -> tuple[str, ...]:
     """Compute auth middleware exclude paths with fail-safe defaults."""
     setup_status_path = f"^{prefix}/setup/status$"
+    metrics_path = f"^{prefix}/metrics$"
     exclude_paths = (
         auth.exclude_paths
         if auth.exclude_paths is not None
         else (
             f"^{prefix}/health$",
-            f"^{prefix}/metrics$",
+            metrics_path,
             "^/docs",
             "^/api$",
             f"^{prefix}/auth/setup$",
@@ -1247,6 +1248,8 @@ def _build_auth_exclude_paths(
             setup_status_path,
         )
     )
+    if metrics_path not in exclude_paths:
+        exclude_paths = (*exclude_paths, metrics_path)
     if setup_status_path not in exclude_paths:
         exclude_paths = (*exclude_paths, setup_status_path)
     if ws_path not in exclude_paths:

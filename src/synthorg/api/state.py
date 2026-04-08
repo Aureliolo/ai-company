@@ -269,6 +269,7 @@ class AppState:
             logger.error(API_APP_STARTUP, error=msg)
             raise RuntimeError(msg)
         self._prometheus_collector = collector
+        logger.debug(API_APP_STARTUP, note="Prometheus collector configured")
 
     @property
     def has_artifact_storage(self) -> bool:
@@ -332,6 +333,7 @@ class AppState:
             logger.error(API_APP_STARTUP, error=msg)
             raise RuntimeError(msg)
         self._task_engine = engine
+        logger.debug(API_APP_STARTUP, note="Task engine configured")
 
     @property
     def meeting_orchestrator(self) -> MeetingOrchestrator:
@@ -683,6 +685,7 @@ class AppState:
             logger.error(API_APP_STARTUP, error=msg)
             raise RuntimeError(msg)
         self._auth_service = service
+        logger.debug(API_APP_STARTUP, note="Auth service configured")
 
     # ── Swappable provider services (hot-reload) ─────────────────
 
@@ -798,6 +801,7 @@ class AppState:
             logger.error(API_APP_STARTUP, error=msg)
             raise RuntimeError(msg)
         self._backup_service = service
+        logger.debug(API_APP_STARTUP, note="Backup service configured")
 
     def set_settings_service(self, settings_service: SettingsService) -> None:
         """Set settings service and create ConfigResolver + ProviderManagement.

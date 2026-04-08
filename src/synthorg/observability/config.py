@@ -32,6 +32,8 @@ _DEFAULT_HTTP_FLUSH_INTERVAL: Final[float] = 5.0
 _DEFAULT_HTTP_TIMEOUT: Final[float] = 10.0
 _DEFAULT_HTTP_MAX_RETRIES: Final[int] = 3
 _DEFAULT_OTLP_EXPORT_INTERVAL: Final[float] = 5.0
+_DEFAULT_OTLP_BATCH_SIZE: Final[int] = 100
+_DEFAULT_OTLP_TIMEOUT: Final[float] = 10.0
 
 
 class RotationConfig(BaseModel):
@@ -75,6 +77,41 @@ class RotationConfig(BaseModel):
         default=False,
         description="Gzip-compress rotated backup files",
     )
+
+
+def _validate_otlp_endpoint_safety(
+    endpoint: str,
+    hostname: str,
+    *,
+    has_headers: bool,
+) -> None:
+    """Reject private IPs (SSRF) and warn on unencrypted HTTP."""
+    import ipaddress  # noqa: PLC0415
+
+    try:
+        addr = ipaddress.ip_address(hostname)
+    except ValueError:
+        pass  # hostname is not an IP literal -- skip IP check
+    else:
+        if addr.is_private or addr.is_loopback or addr.is_link_local:
+            msg = (
+                "otlp_endpoint must not target private/loopback "
+                f"IP addresses ({hostname})"
+            )
+            raise ValueError(msg)
+    if (
+        endpoint.startswith("http://")
+        and hostname not in ("localhost", "127.0.0.1", "::1")
+        and has_headers
+    ):
+        import warnings  # noqa: PLC0415
+
+        warnings.warn(
+            "OTLP endpoint uses unencrypted HTTP with headers "
+            "that may contain secrets; prefer https://",
+            UserWarning,
+            stacklevel=4,
+        )
 
 
 class SinkConfig(BaseModel):
@@ -192,12 +229,12 @@ class SinkConfig(BaseModel):
         description="Seconds between OTLP export batches",
     )
     otlp_batch_size: int = Field(
-        default=100,
+        default=_DEFAULT_OTLP_BATCH_SIZE,
         gt=0,
         description="Records per OTLP export batch",
     )
     otlp_timeout_seconds: float = Field(
-        default=10.0,
+        default=_DEFAULT_OTLP_TIMEOUT,
         gt=0,
         description="HTTP request timeout in seconds for OTLP export",
     )
@@ -378,9 +415,20 @@ class SinkConfig(BaseModel):
         if not parsed.hostname:
             msg = "otlp_endpoint must include a host"
             raise ValueError(msg)
-        for i, (name, _value) in enumerate(self.otlp_headers):
+        _validate_otlp_endpoint_safety(
+            self.otlp_endpoint,
+            parsed.hostname,
+            has_headers=bool(self.otlp_headers),
+        )
+        for i, (name, value) in enumerate(self.otlp_headers):
             if not name or not name.strip():
                 msg = f"otlp_headers[{i}] has an empty header name"
+                raise ValueError(msg)
+            if "\r" in name or "\n" in name:
+                msg = f"otlp_headers[{i}] name contains CRLF"
+                raise ValueError(msg)
+            if "\r" in value or "\n" in value:
+                msg = f"otlp_headers[{i}] value contains CRLF"
                 raise ValueError(msg)
 
     def _reject_otlp_fields(self, sink_label: str) -> None:
@@ -401,11 +449,17 @@ class SinkConfig(BaseModel):
                 f"otlp_protocol must be default (http/protobuf) for {sink_label} sinks"
             )
             raise ValueError(msg)
-        if self.otlp_batch_size != 100:  # noqa: PLR2004
-            msg = f"otlp_batch_size must be default (100) for {sink_label} sinks"
+        if self.otlp_batch_size != _DEFAULT_OTLP_BATCH_SIZE:
+            msg = (
+                f"otlp_batch_size must be default "
+                f"({_DEFAULT_OTLP_BATCH_SIZE}) for {sink_label} sinks"
+            )
             raise ValueError(msg)
-        if self.otlp_timeout_seconds != 10.0:  # noqa: PLR2004
-            msg = f"otlp_timeout_seconds must be default (10.0) for {sink_label} sinks"
+        if self.otlp_timeout_seconds != _DEFAULT_OTLP_TIMEOUT:
+            msg = (
+                f"otlp_timeout_seconds must be default "
+                f"({_DEFAULT_OTLP_TIMEOUT}) for {sink_label} sinks"
+            )
             raise ValueError(msg)
 
 

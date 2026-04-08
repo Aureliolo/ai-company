@@ -72,3 +72,4 @@ class TestMetricsEndpoint:
         with TestClient(app=_make_app(collector=None)) as client:
             resp = client.get("/metrics")
             assert resp.status_code == 503
+            assert "No metrics collector configured" in resp.text

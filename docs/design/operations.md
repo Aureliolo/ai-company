@@ -1301,7 +1301,7 @@ future CLI tool are thin clients that call the API -- they contain no business l
 | Endpoint | Purpose |
 |----------|---------|
 | `/api/v1/health` | Health check, readiness |
-| `/api/v1/metrics` | Prometheus metrics scrape endpoint (unauthenticated). Exposes: agent counts by status, cost totals, budget utilization, coordination efficiency/overhead, security verdict counts. Refreshed per-scrape from in-memory services. |
+| `/api/v1/metrics` | Prometheus metrics scrape endpoint (unauthenticated). 9 metric families: `synthorg_app` (Info -- version), `synthorg_agents_total` (Gauge -- status, trust_level labels), `synthorg_tasks_total` (Gauge -- status label), `synthorg_cost_total` (Gauge), `synthorg_budget_used_percent` (Gauge), `synthorg_budget_monthly_usd` (Gauge), `synthorg_coordination_efficiency` (Gauge -- push-updated), `synthorg_coordination_overhead_percent` (Gauge -- push-updated), `synthorg_security_evaluations_total` (Counter -- verdict label). Most refreshed per-scrape; coordination and security metrics are push-updated. |
 | `/api/v1/auth` | Authentication: setup, login (HttpOnly cookie sessions, CSRF double-submit), password change (rotates session cookie), ws-ticket, session management (list/revoke, concurrent session limits), logout, account lockout (429 with Retry-After), refresh token rotation (tiered rate limiting: 20 req/min unauth by IP, 6,000 req/min auth by user ID -- see `docs/security.md`) |
 | `/api/v1/company` | CRUD company config |
 | `/api/v1/agents` | List, hire, fire, modify agents |

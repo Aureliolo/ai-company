@@ -65,6 +65,9 @@ class OtlpHandler(logging.Handler):
         timeout: float = 10.0,
     ) -> None:
         super().__init__()
+        if protocol == OtlpProtocol.GRPC:
+            msg = "gRPC transport is not implemented; use HTTP_PROTOBUF"
+            raise NotImplementedError(msg)
         self._endpoint = endpoint
         self._protocol = protocol
         self._extra_headers = dict(headers)
@@ -96,7 +99,10 @@ class OtlpHandler(logging.Handler):
             self.handleError(record)
 
     def _increment_dropped(self, count: int) -> None:
-        """Atomically increment the dropped record counter."""
+        """Atomically increment the dropped record counter.
+
+        Acquires ``_pending_lock`` to ensure thread-safe updates.
+        """
         with self._pending_lock:
             self._dropped_count += count
 
@@ -120,8 +126,12 @@ class OtlpHandler(logging.Handler):
             if value is not None:
                 attributes[field] = str(value)
 
+        # Use self.format(record) so the ProcessorFormatter and
+        # foreign_pre_chain run, producing structured JSON output.
+        body = self.format(record) if self.formatter else record.getMessage()
+
         return {
-            "body": record.getMessage(),
+            "body": body,
             "severity_number": _SEVERITY_MAP.get(record.levelno, 0),
             "severity_text": record.levelname,
             "time_unix_nano": int(record.created * 1_000_000_000),
