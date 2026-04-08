@@ -18,7 +18,7 @@ from synthorg.memory.org.models import (
     OrgFactWriteRequest,
     OrgMemoryQuery,
 )
-from synthorg.memory.org.store import SQLiteOrgFactStore
+from synthorg.memory.org.sqlite_store import SQLiteOrgFactStore
 
 if TYPE_CHECKING:
     from synthorg.core.types import NotBlankStr

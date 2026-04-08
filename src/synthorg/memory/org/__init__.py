@@ -30,7 +30,8 @@ from synthorg.memory.org.models import (
     OrgMemoryQuery,
 )
 from synthorg.memory.org.protocol import OrgMemoryBackend
-from synthorg.memory.org.store import OrgFactStore, SQLiteOrgFactStore
+from synthorg.memory.org.sqlite_store import SQLiteOrgFactStore
+from synthorg.memory.org.store import OrgFactStore
 
 __all__ = [
     "CategoryWriteRule",

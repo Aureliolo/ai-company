@@ -1,7 +1,6 @@
 """Tests for SQLiteOrgFactStore (MVCC implementation)."""
 
 import sqlite3
-from datetime import UTC, datetime
 from unittest.mock import AsyncMock
 
 import pytest
@@ -12,30 +11,19 @@ from synthorg.memory.org.errors import (
     OrgMemoryQueryError,
     OrgMemoryWriteError,
 )
-from synthorg.memory.org.models import OrgFact, OrgFactAuthor
-from synthorg.memory.org.store import SQLiteOrgFactStore, _snapshot_row_to_org_fact
-
-_NOW = datetime.now(UTC)
-_HUMAN_AUTHOR = OrgFactAuthor(is_human=True)
-_AGENT_AUTHOR = OrgFactAuthor(
-    agent_id="agent-1",
-    seniority=SeniorityLevel.SENIOR,
-    is_human=False,
+from synthorg.memory.org.models import OrgFact
+from synthorg.memory.org.sqlite_store import (
+    SQLiteOrgFactStore,
+    _snapshot_row_to_org_fact,
 )
 
-
-def _make_fact(
-    fact_id: str = "fact-1",
-    content: str = "Test fact",
-    category: OrgFactCategory = OrgFactCategory.ADR,
-) -> OrgFact:
-    return OrgFact(
-        id=fact_id,
-        content=content,
-        category=category,
-        author=_HUMAN_AUTHOR,
-        created_at=_NOW,
-    )
+# Import conftest fixtures and helpers
+from .conftest import (
+    _NOW,
+    AGENT_AUTHOR,
+    HUMAN_AUTHOR,
+    _make_fact,
+)
 
 
 @pytest.mark.unit
@@ -69,127 +57,82 @@ class TestSQLiteOrgFactStoreLifecycle:
 class TestSQLiteOrgFactStoreOperations:
     """CRUD operation tests."""
 
-    async def test_save_and_get(self) -> None:
-        store = SQLiteOrgFactStore(":memory:")
-        await store.connect()
-        try:
-            fact = _make_fact()
-            await store.save(fact)
-            retrieved = await store.get("fact-1")
-            assert retrieved is not None
-            assert retrieved.id == "fact-1"
-            assert retrieved.content == "Test fact"
-            assert retrieved.category == OrgFactCategory.ADR
-        finally:
-            await store.disconnect()
+    async def test_save_and_get(self, connected_store) -> None:
+        fact = _make_fact()
+        await connected_store.save(fact)
+        retrieved = await connected_store.get("fact-1")
+        assert retrieved is not None
+        assert retrieved.id == "fact-1"
+        assert retrieved.content == "Test fact"
+        assert retrieved.category == OrgFactCategory.ADR
 
-    async def test_get_nonexistent(self) -> None:
-        store = SQLiteOrgFactStore(":memory:")
-        await store.connect()
-        try:
-            result = await store.get("nonexistent")
-            assert result is None
-        finally:
-            await store.disconnect()
+    async def test_get_nonexistent(self, connected_store) -> None:
+        result = await connected_store.get("nonexistent")
+        assert result is None
 
-    async def test_query_by_category(self) -> None:
-        store = SQLiteOrgFactStore(":memory:")
-        await store.connect()
-        try:
-            await store.save(_make_fact("f1", "Fact A", OrgFactCategory.ADR))
-            await store.save(
-                _make_fact("f2", "Fact B", OrgFactCategory.PROCEDURE),
-            )
-            await store.save(_make_fact("f3", "Fact C", OrgFactCategory.ADR))
+    async def test_query_by_category(self, connected_store) -> None:
+        await connected_store.save(_make_fact("f1", "Fact A", OrgFactCategory.ADR))
+        await connected_store.save(
+            _make_fact("f2", "Fact B", OrgFactCategory.PROCEDURE),
+        )
+        await connected_store.save(_make_fact("f3", "Fact C", OrgFactCategory.ADR))
 
-            results = await store.query(
-                categories=frozenset({OrgFactCategory.ADR}),
-            )
-            assert len(results) == 2
-            assert all(r.category == OrgFactCategory.ADR for r in results)
-        finally:
-            await store.disconnect()
+        results = await connected_store.query(
+            categories=frozenset({OrgFactCategory.ADR}),
+        )
+        assert len(results) == 2
+        assert all(r.category == OrgFactCategory.ADR for r in results)
 
-    async def test_query_by_text(self) -> None:
-        store = SQLiteOrgFactStore(":memory:")
-        await store.connect()
-        try:
-            await store.save(_make_fact("f1", "Code review required"))
-            await store.save(_make_fact("f2", "Deploy always on Friday"))
+    async def test_query_by_text(self, connected_store) -> None:
+        await connected_store.save(_make_fact("f1", "Code review required"))
+        await connected_store.save(_make_fact("f2", "Deploy always on Friday"))
 
-            results = await store.query(text="review")
-            assert len(results) == 1
-            assert results[0].id == "f1"
-        finally:
-            await store.disconnect()
+        results = await connected_store.query(text="review")
+        assert len(results) == 1
+        assert results[0].id == "f1"
 
-    async def test_query_with_limit(self) -> None:
-        store = SQLiteOrgFactStore(":memory:")
-        await store.connect()
-        try:
-            for i in range(10):
-                await store.save(_make_fact(f"f{i}", f"Fact {i}"))
-            results = await store.query(limit=3)
-            assert len(results) == 3
-        finally:
-            await store.disconnect()
+    async def test_query_with_limit(self, connected_store) -> None:
+        for i in range(10):
+            await connected_store.save(_make_fact(f"f{i}", f"Fact {i}"))
+        results = await connected_store.query(limit=3)
+        assert len(results) == 3
 
-    async def test_list_by_category(self) -> None:
-        store = SQLiteOrgFactStore(":memory:")
-        await store.connect()
-        try:
-            await store.save(
-                _make_fact("f1", category=OrgFactCategory.CONVENTION),
-            )
-            await store.save(
-                _make_fact("f2", category=OrgFactCategory.CONVENTION),
-            )
-            await store.save(_make_fact("f3", category=OrgFactCategory.ADR))
+    async def test_list_by_category(self, connected_store) -> None:
+        await connected_store.save(
+            _make_fact("f1", category=OrgFactCategory.CONVENTION),
+        )
+        await connected_store.save(
+            _make_fact("f2", category=OrgFactCategory.CONVENTION),
+        )
+        await connected_store.save(_make_fact("f3", category=OrgFactCategory.ADR))
 
-            results = await store.list_by_category(
-                OrgFactCategory.CONVENTION,
-            )
-            assert len(results) == 2
-        finally:
-            await store.disconnect()
+        results = await connected_store.list_by_category(
+            OrgFactCategory.CONVENTION,
+        )
+        assert len(results) == 2
 
-    async def test_delete(self) -> None:
-        store = SQLiteOrgFactStore(":memory:")
-        await store.connect()
-        try:
-            await store.save(_make_fact("f1"))
-            assert await store.delete("f1", author=_HUMAN_AUTHOR) is True
-            assert await store.get("f1") is None
-        finally:
-            await store.disconnect()
+    async def test_delete(self, connected_store) -> None:
+        await connected_store.save(_make_fact("f1"))
+        assert await connected_store.delete("f1", author=HUMAN_AUTHOR) is True
+        assert await connected_store.get("f1") is None
 
-    async def test_delete_nonexistent(self) -> None:
-        store = SQLiteOrgFactStore(":memory:")
-        await store.connect()
-        try:
-            assert await store.delete("nonexistent", author=_HUMAN_AUTHOR) is False
-        finally:
-            await store.disconnect()
+    async def test_delete_nonexistent(self, connected_store) -> None:
+        assert await connected_store.delete("nonexistent", author=HUMAN_AUTHOR) is False
 
-    async def test_save_with_agent_author(self) -> None:
-        store = SQLiteOrgFactStore(":memory:")
-        await store.connect()
-        try:
-            fact = OrgFact(
-                id="f1",
-                content="Agent fact",
-                category=OrgFactCategory.ADR,
-                author=_AGENT_AUTHOR,
-                created_at=_NOW,
-            )
-            await store.save(fact)
-            retrieved = await store.get("f1")
-            assert retrieved is not None
-            assert retrieved.author.agent_id == "agent-1"
-            assert retrieved.author.seniority == SeniorityLevel.SENIOR
-            assert retrieved.author.is_human is False
-        finally:
-            await store.disconnect()
+    async def test_save_with_agent_author(self, connected_store) -> None:
+        fact = OrgFact(
+            id="f1",
+            content="Agent fact",
+            category=OrgFactCategory.ADR,
+            author=AGENT_AUTHOR,
+            created_at=_NOW,
+        )
+        await connected_store.save(fact)
+        retrieved = await connected_store.get("f1")
+        assert retrieved is not None
+        assert retrieved.author.agent_id == "agent-1"
+        assert retrieved.author.seniority == SeniorityLevel.SENIOR
+        assert retrieved.author.is_human is False
 
     async def test_operations_when_not_connected_raise(self) -> None:
         store = SQLiteOrgFactStore(":memory:")
@@ -200,60 +143,50 @@ class TestSQLiteOrgFactStoreOperations:
         with pytest.raises(OrgMemoryConnectionError):
             await store.query()
         with pytest.raises(OrgMemoryConnectionError):
-            await store.delete("f1", author=_HUMAN_AUTHOR)
+            await store.delete("f1", author=HUMAN_AUTHOR)
 
     async def test_list_by_category_when_not_connected(self) -> None:
         store = SQLiteOrgFactStore(":memory:")
         with pytest.raises(OrgMemoryConnectionError):
             await store.list_by_category(OrgFactCategory.ADR)
 
-    async def test_save_duplicate_id_republishes(self) -> None:
+    async def test_save_duplicate_id_republishes(self, connected_store) -> None:
         """Re-publishing a fact creates a new version in the log."""
-        store = SQLiteOrgFactStore(":memory:")
-        await store.connect()
-        try:
-            await store.save(_make_fact("f1", "Original content"))
-            await store.save(_make_fact("f1", "Updated content"))
-            retrieved = await store.get("f1")
-            assert retrieved is not None
-            assert retrieved.content == "Updated content"
-        finally:
-            await store.disconnect()
+        await connected_store.save(_make_fact("f1", "Original content"))
+        await connected_store.save(_make_fact("f1", "Updated content"))
+        retrieved = await connected_store.get("f1")
+        assert retrieved is not None
+        assert retrieved.content == "Updated content"
 
-    async def test_query_combined_category_and_text(self) -> None:
-        store = SQLiteOrgFactStore(":memory:")
-        await store.connect()
-        try:
-            await store.save(
-                _make_fact(
-                    "f1",
-                    "Code review required",
-                    OrgFactCategory.ADR,
-                ),
-            )
-            await store.save(
-                _make_fact(
-                    "f2",
-                    "Code review optional",
-                    OrgFactCategory.PROCEDURE,
-                ),
-            )
-            await store.save(
-                _make_fact(
-                    "f3",
-                    "Deploy on Friday",
-                    OrgFactCategory.ADR,
-                ),
-            )
+    async def test_query_combined_category_and_text(self, connected_store) -> None:
+        await connected_store.save(
+            _make_fact(
+                "f1",
+                "Code review required",
+                OrgFactCategory.ADR,
+            ),
+        )
+        await connected_store.save(
+            _make_fact(
+                "f2",
+                "Code review optional",
+                OrgFactCategory.PROCEDURE,
+            ),
+        )
+        await connected_store.save(
+            _make_fact(
+                "f3",
+                "Deploy on Friday",
+                OrgFactCategory.ADR,
+            ),
+        )
 
-            results = await store.query(
-                categories=frozenset({OrgFactCategory.ADR}),
-                text="review",
-            )
-            assert len(results) == 1
-            assert results[0].id == "f1"
-        finally:
-            await store.disconnect()
+        results = await connected_store.query(
+            categories=frozenset({OrgFactCategory.ADR}),
+            text="review",
+        )
+        assert len(results) == 1
+        assert results[0].id == "f1"
 
     async def test_connect_with_invalid_path(self) -> None:
         store = SQLiteOrgFactStore("/nonexistent/dir/db.sqlite")
@@ -298,7 +231,7 @@ class TestSQLiteOrgFactStoreOperations:
             side_effect=sqlite3.Error("disk I/O error"),
         )
         with pytest.raises(OrgMemoryWriteError, match="disk I/O error"):
-            await store.delete("f1", author=_HUMAN_AUTHOR)
+            await store.delete("f1", author=HUMAN_AUTHOR)
         store._db = None
 
     def test_path_traversal_rejected(self) -> None:
@@ -308,23 +241,18 @@ class TestSQLiteOrgFactStoreOperations:
         ):
             SQLiteOrgFactStore("../../../etc/db")
 
-    async def test_like_special_chars_escaped(self) -> None:
-        store = SQLiteOrgFactStore(":memory:")
-        await store.connect()
-        try:
-            await store.save(_make_fact("f1", "100% complete"))
-            await store.save(_make_fact("f2", "field_name here"))
-            await store.save(_make_fact("f3", "normal text"))
+    async def test_like_special_chars_escaped(self, connected_store) -> None:
+        await connected_store.save(_make_fact("f1", "100% complete"))
+        await connected_store.save(_make_fact("f2", "field_name here"))
+        await connected_store.save(_make_fact("f3", "normal text"))
 
-            results_percent = await store.query(text="%")
-            assert len(results_percent) == 1
-            assert results_percent[0].id == "f1"
+        results_percent = await connected_store.query(text="%")
+        assert len(results_percent) == 1
+        assert results_percent[0].id == "f1"
 
-            results_underscore = await store.query(text="_")
-            assert len(results_underscore) == 1
-            assert results_underscore[0].id == "f2"
-        finally:
-            await store.disconnect()
+        results_underscore = await connected_store.query(text="_")
+        assert len(results_underscore) == 1
+        assert results_underscore[0].id == "f2"
 
     async def test_list_by_category_sqlite_error_wraps(self) -> None:
         """list_by_category wraps sqlite3.Error."""
@@ -359,22 +287,17 @@ class TestSQLiteOrgFactStoreOperations:
         ):
             _snapshot_row_to_org_fact(mock_row)
 
-    async def test_save_with_tags(self) -> None:
+    async def test_save_with_tags(self, connected_store) -> None:
         """Tags are persisted and retrievable."""
-        store = SQLiteOrgFactStore(":memory:")
-        await store.connect()
-        try:
-            fact = OrgFact(
-                id="f1",
-                content="Tagged fact",
-                category=OrgFactCategory.ADR,
-                tags=("core-policy", "security"),
-                author=_HUMAN_AUTHOR,
-                created_at=_NOW,
-            )
-            await store.save(fact)
-            retrieved = await store.get("f1")
-            assert retrieved is not None
-            assert retrieved.tags == ("core-policy", "security")
-        finally:
-            await store.disconnect()
+        fact = OrgFact(
+            id="f1",
+            content="Tagged fact",
+            category=OrgFactCategory.ADR,
+            tags=("core-policy", "security"),
+            author=HUMAN_AUTHOR,
+            created_at=_NOW,
+        )
+        await connected_store.save(fact)
+        retrieved = await connected_store.get("f1")
+        assert retrieved is not None
+        assert retrieved.tags == ("core-policy", "security")
