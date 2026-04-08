@@ -121,7 +121,7 @@ class MetricCollectorTool(BaseAnalyticsTool):
         )
         self._sink = sink
 
-    async def execute(
+    async def execute(  # noqa: PLR0911
         self,
         *,
         arguments: dict[str, Any],
@@ -149,9 +149,29 @@ class MetricCollectorTool(BaseAnalyticsTool):
                 is_error=True,
             )
 
-        metric_name: str = arguments["metric_name"]
-        value: float = arguments["value"]
-        tags: dict[str, str] = arguments.get("tags") or {}
+        metric_name = arguments.get("metric_name")
+        value = arguments.get("value")
+        if not isinstance(metric_name, str) or not metric_name:
+            logger.warning(
+                ANALYTICS_TOOL_METRIC_RECORD_FAILED,
+                error="missing_or_invalid_metric_name",
+            )
+            return ToolExecutionResult(
+                content="'metric_name' must be a non-empty string.",
+                is_error=True,
+            )
+        if not isinstance(value, int | float):
+            logger.warning(
+                ANALYTICS_TOOL_METRIC_RECORD_FAILED,
+                error="invalid_value_type",
+            )
+            return ToolExecutionResult(
+                content="'value' must be a number.",
+                is_error=True,
+            )
+        value = float(value)
+        raw_tags = arguments.get("tags")
+        tags: dict[str, str] = raw_tags if isinstance(raw_tags, dict) else {}
         unit: str | None = arguments.get("unit")
 
         if not self._is_metric_allowed(metric_name):

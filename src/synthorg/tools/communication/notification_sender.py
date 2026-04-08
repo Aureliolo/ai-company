@@ -124,7 +124,7 @@ class NotificationSenderTool(BaseCommunicationTool):
         )
         self._dispatcher = dispatcher
 
-    async def execute(
+    async def execute(  # noqa: PLR0911
         self,
         *,
         arguments: dict[str, Any],
@@ -151,11 +151,31 @@ class NotificationSenderTool(BaseCommunicationTool):
                 is_error=True,
             )
 
-        category_str: str = arguments["category"]
-        severity_str: str = arguments["severity"]
-        title: str = arguments["title"]
         body: str = arguments.get("body", "")
-        source: str = arguments["source"]
+        required_fields = {
+            "category": arguments.get("category"),
+            "severity": arguments.get("severity"),
+            "title": arguments.get("title"),
+            "source": arguments.get("source"),
+        }
+        for field_name, field_val in required_fields.items():
+            if not isinstance(field_val, str) or not field_val:
+                logger.warning(
+                    COMM_TOOL_NOTIFICATION_SEND_FAILED,
+                    error="missing_field",
+                    field=field_name,
+                )
+                return ToolExecutionResult(
+                    content=(
+                        f"'{field_name}' is required and must be a non-empty string."
+                    ),
+                    is_error=True,
+                )
+
+        category_str: str = required_fields["category"]  # type: ignore[assignment]
+        severity_str: str = required_fields["severity"]  # type: ignore[assignment]
+        title: str = required_fields["title"]  # type: ignore[assignment]
+        source: str = required_fields["source"]  # type: ignore[assignment]
 
         if category_str not in _VALID_CATEGORIES:
             logger.warning(

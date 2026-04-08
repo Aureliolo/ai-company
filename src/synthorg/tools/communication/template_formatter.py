@@ -95,7 +95,7 @@ class TemplateFormatterTool(BaseCommunicationTool):
         self._env = SandboxedEnvironment()
         self._env_autoesc = SandboxedEnvironment(autoescape=True)
 
-    async def execute(
+    async def execute(  # noqa: PLR0911
         self,
         *,
         arguments: dict[str, Any],
@@ -129,7 +129,16 @@ class TemplateFormatterTool(BaseCommunicationTool):
                 content="'variables' must be a dict.",
                 is_error=True,
             )
-        output_format: str = arguments.get("format", "text")
+        output_format = arguments.get("format", "text")
+        if not isinstance(output_format, str):
+            logger.warning(
+                COMM_TOOL_TEMPLATE_RENDER_FAILED,
+                error="invalid_format_type",
+            )
+            return ToolExecutionResult(
+                content="'format' must be a string.",
+                is_error=True,
+            )
 
         if output_format not in _OUTPUT_FORMATS:
             logger.warning(

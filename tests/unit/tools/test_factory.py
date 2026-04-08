@@ -422,6 +422,69 @@ class TestBuildDefaultToolsFromConfig:
         assert isinstance(clone, GitCloneTool)
         assert clone._network_policy.hostname_allowlist == ("git.corp.example.com",)
 
+    def test_from_config_wires_design_tools(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        from synthorg.tools.design.config import DesignToolsConfig
+
+        config = RootConfig(
+            company_name="test-corp",
+            design_tools=DesignToolsConfig(),
+        )
+        tools = build_default_tools_from_config(
+            workspace=tmp_path,
+            config=config,
+        )
+        names = {t.name for t in tools}
+        assert "diagram_generator" in names
+        assert "asset_manager" in names
+
+    def test_from_config_wires_communication_tools(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        from synthorg.tools.communication.config import (
+            CommunicationToolsConfig,
+            EmailConfig,
+        )
+
+        email = EmailConfig(
+            host="smtp.example.com",
+            from_address="noreply@example.com",
+            use_tls=False,
+        )
+        config = RootConfig(
+            company_name="test-corp",
+            communication_tools=CommunicationToolsConfig(email=email),
+        )
+        tools = build_default_tools_from_config(
+            workspace=tmp_path,
+            config=config,
+        )
+        names = {t.name for t in tools}
+        assert "email_sender" in names
+        assert "template_formatter" in names
+
+    def test_from_config_wires_analytics_tools(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        from synthorg.tools.analytics.config import AnalyticsToolsConfig
+
+        config = RootConfig(
+            company_name="test-corp",
+            analytics_tools=AnalyticsToolsConfig(),
+        )
+        tools = build_default_tools_from_config(
+            workspace=tmp_path,
+            config=config,
+        )
+        names = {t.name for t in tools}
+        # Without backends, no analytics tools are created
+        assert "data_aggregator" not in names
+        assert "metric_collector" not in names
+
     def test_default_config_uses_default_policy(
         self,
         tmp_path: Path,

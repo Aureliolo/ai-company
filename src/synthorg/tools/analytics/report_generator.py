@@ -123,7 +123,7 @@ class ReportGeneratorTool(BaseAnalyticsTool):
         )
         self._provider = provider
 
-    async def execute(  # noqa: PLR0911
+    async def execute(  # noqa: PLR0911, PLR0912, C901
         self,
         *,
         arguments: dict[str, Any],
@@ -150,8 +150,26 @@ class ReportGeneratorTool(BaseAnalyticsTool):
                 is_error=True,
             )
 
-        report_type: str = arguments["report_type"]
-        period: str = arguments["period"]
+        report_type = arguments.get("report_type")
+        period = arguments.get("period")
+        if not isinstance(report_type, str):
+            logger.warning(
+                ANALYTICS_TOOL_REPORT_FAILED,
+                error="missing_or_invalid_report_type",
+            )
+            return ToolExecutionResult(
+                content="'report_type' must be a string.",
+                is_error=True,
+            )
+        if not isinstance(period, str):
+            logger.warning(
+                ANALYTICS_TOOL_REPORT_FAILED,
+                error="missing_or_invalid_period",
+            )
+            return ToolExecutionResult(
+                content="'period' must be a string.",
+                is_error=True,
+            )
         output_format: str = arguments.get("format", "markdown")
 
         if report_type not in _REPORT_TYPES:
@@ -196,7 +214,7 @@ class ReportGeneratorTool(BaseAnalyticsTool):
                 is_error=True,
             )
 
-        metrics = _REPORT_METRICS.get(report_type, [])
+        metrics = list(_REPORT_METRICS.get(report_type, []))
 
         if self._config.allowed_metrics is not None:
             blocked = [m for m in metrics if m not in self._config.allowed_metrics]
@@ -254,7 +272,20 @@ class ReportGeneratorTool(BaseAnalyticsTool):
                 is_error=True,
             )
 
-        report = self._format_report(report_type, period, data, output_format)
+        try:
+            report = self._format_report(report_type, period, data, output_format)
+        except MemoryError, RecursionError:
+            raise
+        except Exception as exc:
+            logger.warning(
+                ANALYTICS_TOOL_REPORT_FAILED,
+                error=str(exc),
+                report_type=report_type,
+            )
+            return ToolExecutionResult(
+                content=f"Report formatting failed: {exc}",
+                is_error=True,
+            )
 
         logger.info(
             ANALYTICS_TOOL_REPORT_SUCCESS,

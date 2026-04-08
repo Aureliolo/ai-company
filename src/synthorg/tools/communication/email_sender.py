@@ -118,7 +118,7 @@ class EmailSenderTool(BaseCommunicationTool):
             config=config,
         )
 
-    async def execute(
+    async def execute(  # noqa: PLR0911
         self,
         *,
         arguments: dict[str, Any],
@@ -147,10 +147,28 @@ class EmailSenderTool(BaseCommunicationTool):
                 is_error=True,
             )
 
-        to_addrs: list[str] = arguments["to"]
+        to_addrs = arguments.get("to")
+        if not isinstance(to_addrs, list):
+            logger.warning(
+                COMM_TOOL_EMAIL_VALIDATION_FAILED,
+                reason="invalid_to",
+            )
+            return ToolExecutionResult(
+                content="'to' must be a list of email addresses.",
+                is_error=True,
+            )
         cc_addrs: list[str] = arguments.get("cc") or []
         bcc_addrs: list[str] = arguments.get("bcc") or []
-        subject: str = arguments["subject"]
+        subject = arguments.get("subject")
+        if not isinstance(subject, str):
+            logger.warning(
+                COMM_TOOL_EMAIL_VALIDATION_FAILED,
+                reason="invalid_subject",
+            )
+            return ToolExecutionResult(
+                content="'subject' must be a string.",
+                is_error=True,
+            )
         body: str = arguments.get("body", "")
         body_is_html: bool = arguments.get("body_is_html", False)
 
