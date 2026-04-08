@@ -330,7 +330,14 @@ jobs:
         run: npm run storybook:build -- --disable-telemetry
         working-directory: web
         env:
-          NODE_OPTIONS: "--max-old-space-size=4096"
+          NODE_OPTIONS: "--max-old-space-size=4096 --report-on-fatalerror"
+      - name: Upload crash report
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6db9b8a1f7571828bde41740cd210 # v4.6.2
+        with:
+          name: storybook-crash-report
+          path: web/report.*.json
+          if-no-files-found: ignore
 
   # ── Gate: all required checks passed ──
   ci-pass:
