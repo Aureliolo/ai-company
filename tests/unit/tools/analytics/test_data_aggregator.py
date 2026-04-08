@@ -16,26 +16,23 @@ from .conftest import MockAnalyticsProvider
 class TestDataAggregatorTool:
     """Tests for DataAggregatorTool."""
 
-    def test_category_is_analytics(
+    @pytest.mark.parametrize(
+        ("attr", "expected"),
+        [
+            ("category", ToolCategory.ANALYTICS),
+            ("action_type", ActionType.CODE_READ),
+            ("name", "data_aggregator"),
+        ],
+        ids=["category", "action_type", "name"],
+    )
+    def test_tool_attributes(
         self,
         mock_provider: MockAnalyticsProvider,
+        attr: str,
+        expected: object,
     ) -> None:
         tool = DataAggregatorTool(provider=mock_provider)
-        assert tool.category == ToolCategory.ANALYTICS
-
-    def test_action_type_is_code_read(
-        self,
-        mock_provider: MockAnalyticsProvider,
-    ) -> None:
-        tool = DataAggregatorTool(provider=mock_provider)
-        assert tool.action_type == ActionType.CODE_READ
-
-    def test_name(
-        self,
-        mock_provider: MockAnalyticsProvider,
-    ) -> None:
-        tool = DataAggregatorTool(provider=mock_provider)
-        assert tool.name == "data_aggregator"
+        assert getattr(tool, attr) == expected
 
     async def test_execute_no_provider_returns_error(self) -> None:
         tool = DataAggregatorTool(provider=None)
@@ -126,7 +123,7 @@ class TestDataAggregatorTool:
             }
         )
         assert result.is_error
-        assert "query failed" in result.content
+        assert "Analytics query failed" in result.content
 
     async def test_execute_metric_whitelist(
         self,

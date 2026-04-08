@@ -95,6 +95,15 @@ class TestEmailConfig:
         assert config.username is None
         assert config.password is None
 
+    def test_tls_mutual_exclusivity(self) -> None:
+        with pytest.raises(ValidationError, match="mutually exclusive"):
+            EmailConfig(
+                host="smtp.example.com",
+                from_address="test@example.com",
+                use_tls=True,
+                use_implicit_tls=True,
+            )
+
 
 @pytest.mark.unit
 class TestCommunicationToolsConfig:

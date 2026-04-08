@@ -157,6 +157,11 @@ class DataAggregatorTool(BaseAnalyticsTool):
         """
         blocked = [m for m in metrics if not self._is_metric_allowed(m)]
         if blocked:
+            logger.warning(
+                ANALYTICS_TOOL_QUERY_FAILED,
+                error="metrics_not_allowed",
+                blocked=blocked,
+            )
             return ToolExecutionResult(
                 content=(
                     f"Metrics not allowed: {blocked}. "
@@ -166,6 +171,11 @@ class DataAggregatorTool(BaseAnalyticsTool):
             )
 
         if period not in _VALID_PERIODS:
+            logger.warning(
+                ANALYTICS_TOOL_QUERY_FAILED,
+                error="invalid_period",
+                period=period,
+            )
             return ToolExecutionResult(
                 content=(
                     f"Invalid period: {period!r}. "
@@ -175,8 +185,12 @@ class DataAggregatorTool(BaseAnalyticsTool):
             )
 
         if period == "custom" and (not start_date or not end_date):
+            logger.warning(
+                ANALYTICS_TOOL_QUERY_FAILED,
+                error="missing_custom_dates",
+            )
             return ToolExecutionResult(
-                content=("Custom period requires both start_date and end_date."),
+                content="Custom period requires both start_date and end_date.",
                 is_error=True,
             )
 
@@ -188,6 +202,12 @@ class DataAggregatorTool(BaseAnalyticsTool):
                 try:
                     datetime.fromisoformat(date_val)
                 except ValueError:
+                    logger.warning(
+                        ANALYTICS_TOOL_QUERY_FAILED,
+                        error="invalid_date",
+                        field=date_label,
+                        value=date_val,
+                    )
                     return ToolExecutionResult(
                         content=(
                             f"Invalid {date_label}: {date_val!r}. "
@@ -197,6 +217,11 @@ class DataAggregatorTool(BaseAnalyticsTool):
                     )
 
         if group_by is not None and group_by not in _VALID_GROUP_BY:
+            logger.warning(
+                ANALYTICS_TOOL_QUERY_FAILED,
+                error="invalid_group_by",
+                group_by=group_by,
+            )
             return ToolExecutionResult(
                 content=(
                     f"Invalid group_by: {group_by!r}. "
@@ -301,15 +326,16 @@ class DataAggregatorTool(BaseAnalyticsTool):
             )
         except MemoryError, RecursionError:
             raise
-        except Exception as exc:
+        except Exception:
             logger.warning(
                 ANALYTICS_TOOL_QUERY_FAILED,
-                error=str(exc),
+                error="provider_error",
                 metrics=metrics,
                 period=period,
+                exc_info=True,
             )
             return ToolExecutionResult(
-                content=f"Analytics query failed: {exc}",
+                content="Analytics query failed.",
                 is_error=True,
             )
 

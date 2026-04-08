@@ -177,7 +177,8 @@ class AssetManagerTool(BaseDesignTool):
         arguments: dict[str, Any],
     ) -> ToolExecutionResult:
         """List assets, optionally filtered by tags."""
-        tags: list[str] = arguments.get("tags") or []
+        raw_tags = arguments.get("tags")
+        tags: list[str] = raw_tags if isinstance(raw_tags, list) else []
         tag_set = set(tags)
 
         if tag_set:
@@ -297,8 +298,8 @@ class AssetManagerTool(BaseDesignTool):
         arguments: dict[str, Any],
     ) -> ToolExecutionResult:
         """Search assets by query string in metadata values."""
-        query: str = (arguments.get("query") or "").lower()
-        if not query:
+        raw_query = arguments.get("query")
+        if not isinstance(raw_query, str) or not raw_query.strip():
             logger.warning(
                 DESIGN_ASSET_VALIDATION_FAILED,
                 action="search",
@@ -309,7 +310,9 @@ class AssetManagerTool(BaseDesignTool):
                 is_error=True,
             )
 
-        tags: list[str] = arguments.get("tags") or []
+        query = raw_query.lower()
+        raw_tags = arguments.get("tags")
+        tags: list[str] = raw_tags if isinstance(raw_tags, list) else []
         tag_set = set(tags)
 
         matching: dict[str, dict[str, Any]] = {}

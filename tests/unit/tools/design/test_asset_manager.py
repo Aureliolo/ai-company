@@ -10,17 +10,18 @@ from synthorg.tools.design.asset_manager import AssetManagerTool
 class TestAssetManagerTool:
     """Tests for AssetManagerTool."""
 
-    def test_category_is_design(self) -> None:
+    @pytest.mark.parametrize(
+        ("attr", "expected"),
+        [
+            ("category", ToolCategory.DESIGN),
+            ("action_type", ActionType.DOCS_WRITE),
+            ("name", "asset_manager"),
+        ],
+        ids=["category", "action_type", "name"],
+    )
+    def test_tool_attributes(self, attr: str, expected: object) -> None:
         tool = AssetManagerTool()
-        assert tool.category == ToolCategory.DESIGN
-
-    def test_action_type_is_docs_write(self) -> None:
-        tool = AssetManagerTool()
-        assert tool.action_type == ActionType.DOCS_WRITE
-
-    def test_name(self) -> None:
-        tool = AssetManagerTool()
-        assert tool.name == "asset_manager"
+        assert getattr(tool, attr) == expected
 
     async def test_list_empty(self) -> None:
         tool = AssetManagerTool()

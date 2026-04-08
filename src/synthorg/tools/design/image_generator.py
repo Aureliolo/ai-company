@@ -123,6 +123,9 @@ _VALID_STYLES: Final[frozenset[str]] = frozenset(
 )
 _VALID_QUALITIES: Final[frozenset[str]] = frozenset({"draft", "standard", "high"})
 
+_MIN_DIMENSION: Final[int] = 256
+_MAX_DIMENSION: Final[int] = 2048
+
 
 class ImageGeneratorTool(BaseDesignTool):
     """Generate images from text prompts via an abstracted provider.
@@ -195,6 +198,24 @@ class ImageGeneratorTool(BaseDesignTool):
         height: int = arguments.get("height", 1024)
         quality: str = arguments.get("quality", "standard")
 
+        if not (_MIN_DIMENSION <= width <= _MAX_DIMENSION) or not (
+            _MIN_DIMENSION <= height <= _MAX_DIMENSION
+        ):
+            logger.warning(
+                DESIGN_IMAGE_GENERATION_FAILED,
+                error="invalid_dimensions",
+                width=width,
+                height=height,
+            )
+            return ToolExecutionResult(
+                content=(
+                    f"Width and height must be between "
+                    f"{_MIN_DIMENSION} and {_MAX_DIMENSION}. "
+                    f"Got width={width}, height={height}."
+                ),
+                is_error=True,
+            )
+
         if style not in _VALID_STYLES:
             logger.warning(
                 DESIGN_IMAGE_GENERATION_FAILED,
@@ -256,15 +277,16 @@ class ImageGeneratorTool(BaseDesignTool):
             )
         except MemoryError, RecursionError:
             raise
-        except Exception as exc:
+        except Exception:
             logger.warning(
                 DESIGN_IMAGE_GENERATION_FAILED,
-                error=str(exc),
+                error="provider_error",
                 prompt_length=len(prompt),
                 style=style,
+                exc_info=True,
             )
             return ToolExecutionResult(
-                content=f"Image generation failed: {exc}",
+                content="Image generation failed.",
                 is_error=True,
             )
 

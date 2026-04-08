@@ -102,6 +102,7 @@ class TestDiagramGeneratorTool:
         assert r"My \"Quoted\" Title" in result.content
         # No unescaped double quotes that would break DOT syntax
         assert 'label="My \\"Quoted\\" Title"' in result.content
+        assert 'label="My "Quoted" Title"' not in result.content
 
     async def test_execute_invalid_diagram_type(self) -> None:
         tool = DiagramGeneratorTool()

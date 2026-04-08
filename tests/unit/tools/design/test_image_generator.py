@@ -88,7 +88,7 @@ class TestImageGeneratorTool:
         tool = ImageGeneratorTool(provider=failing_provider)
         result = await tool.execute(arguments={"prompt": "test"})
         assert result.is_error
-        assert "provider unavailable" in result.content
+        assert "Image generation failed" in result.content
 
     async def test_execute_default_style_and_quality(
         self,

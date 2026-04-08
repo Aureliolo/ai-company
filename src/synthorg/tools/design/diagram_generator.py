@@ -171,14 +171,15 @@ class DiagramGeneratorTool(BaseDesignTool):
                 markup = self._generate_graphviz(diagram_type, description, title)
         except MemoryError, RecursionError:
             raise
-        except Exception as exc:
+        except Exception:
             logger.warning(
                 DESIGN_DIAGRAM_GENERATION_FAILED,
-                error=str(exc),
+                error="internal_error",
                 diagram_type=diagram_type,
+                exc_info=True,
             )
             return ToolExecutionResult(
-                content=f"Diagram generation failed: {exc}",
+                content="Diagram generation failed.",
                 is_error=True,
             )
 
