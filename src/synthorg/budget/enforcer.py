@@ -82,6 +82,7 @@ if TYPE_CHECKING:
     from synthorg.budget.tracker import CostTracker
     from synthorg.core.agent import AgentIdentity
     from synthorg.core.task import Task
+    from synthorg.core.types import NotBlankStr
     from synthorg.engine.loop_protocol import BudgetChecker
     from synthorg.providers.routing.resolver import ModelResolver
     from synthorg.security.risk_scorer import RiskScorer
@@ -257,7 +258,7 @@ class BudgetEnforcer:
 
     async def check_project_budget(
         self,
-        project_id: str,
+        project_id: NotBlankStr,
         project_budget: float,
     ) -> None:
         """Check project-level budget and raise if exceeded.
@@ -275,6 +276,8 @@ class BudgetEnforcer:
 
         Raises:
             ProjectBudgetExhaustedError: When project spend >= budget.
+            MemoryError: Re-raised unconditionally.
+            RecursionError: Re-raised unconditionally.
         """
         if project_budget <= 0:
             return
@@ -593,7 +596,7 @@ class BudgetEnforcer:
         task: Task,
         agent_id: str,
         *,
-        project_id: str | None = None,
+        project_id: NotBlankStr | None = None,
         project_budget: float = 0.0,
     ) -> BudgetChecker | None:
         """Create a sync BudgetChecker with pre-computed baselines.
@@ -632,7 +635,10 @@ class BudgetEnforcer:
 
         project_baseline = 0.0
         if project_id is not None and project_budget > 0:
-            baseline = await self._get_project_cost(project_id)
+            baseline = await self._get_project_cost(
+                project_id,
+                error_event=BUDGET_BASELINE_ERROR,
+            )
             if baseline is not None:
                 project_baseline = baseline
 
@@ -873,12 +879,25 @@ class BudgetEnforcer:
 
     async def _get_project_cost(
         self,
-        project_id: str,
+        project_id: NotBlankStr,
+        *,
+        error_event: str = BUDGET_PREFLIGHT_ERROR,
     ) -> float | None:
         """Query project cost from durable aggregate or in-memory tracker.
 
-        Returns the total cost, or ``None`` when both sources fail
-        (caller should skip enforcement on ``None``).
+        Returns the total cost (rounded to
+        ``BUDGET_ROUNDING_PRECISION``), or ``None`` when both
+        sources fail (caller should skip enforcement on ``None``).
+
+        Args:
+            project_id: Project identifier.
+            error_event: Event constant to log on failure.  Allows
+                callers to preserve distinct monitoring semantics
+                (e.g. preflight vs baseline).
+
+        Raises:
+            MemoryError: Re-raised unconditionally.
+            RecursionError: Re-raised unconditionally.
         """
         # Try durable aggregate first.
         if self._project_cost_repo is not None:
@@ -890,13 +909,14 @@ class BudgetEnforcer:
                 raise
             except Exception:
                 logger.exception(
-                    BUDGET_PREFLIGHT_ERROR,
+                    error_event,
                     project_id=project_id,
                     reason="project_cost_aggregate_query_failed",
                 )
                 # Fall through to in-memory.
             else:
-                cost = aggregate.total_cost if aggregate else 0.0
+                raw = aggregate.total_cost if aggregate else 0.0
+                cost = round(raw, BUDGET_ROUNDING_PRECISION)
                 logger.debug(
                     BUDGET_PROJECT_BASELINE_SOURCE,
                     project_id=project_id,
@@ -914,7 +934,7 @@ class BudgetEnforcer:
             raise
         except Exception:
             logger.exception(
-                BUDGET_PREFLIGHT_ERROR,
+                error_event,
                 project_id=project_id,
                 reason="project_cost_query_failed",
             )

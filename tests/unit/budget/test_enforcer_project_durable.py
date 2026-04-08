@@ -103,8 +103,12 @@ class TestCheckProjectBudgetDurable:
         enforcer = _make_enforcer(tracker=tracker)
 
         # No repo -- uses in-memory tracker
-        with pytest.raises(ProjectBudgetExhaustedError):
+        with pytest.raises(ProjectBudgetExhaustedError) as exc_info:
             await enforcer.check_project_budget("proj-1", project_budget=5.0)
+
+        assert exc_info.value.project_id == "proj-1"
+        assert exc_info.value.project_spent >= 5.0
+        assert exc_info.value.project_budget == 5.0
 
     async def test_aggregate_none_treated_as_zero(self) -> None:
         repo = _make_repo(get_return=None)

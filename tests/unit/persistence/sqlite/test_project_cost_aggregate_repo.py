@@ -153,10 +153,30 @@ class TestSQLiteProjectCostAggregateRepository:
         ):
             await repo.increment("proj-1", 1.0, 100, 50)
 
-    async def test_increment_rejects_negative_deltas(
+    @pytest.mark.parametrize(
+        ("cost", "input_tokens", "output_tokens"),
+        [
+            (-1.0, 100, 50),
+            (1.0, -1, 50),
+            (1.0, 100, -1),
+            (float("nan"), 100, 50),
+            (float("inf"), 100, 50),
+        ],
+        ids=[
+            "negative_cost",
+            "negative_input_tokens",
+            "negative_output_tokens",
+            "nan_cost",
+            "inf_cost",
+        ],
+    )
+    async def test_increment_rejects_invalid_deltas(
         self,
         migrated_db: aiosqlite.Connection,
+        cost: float,
+        input_tokens: int,
+        output_tokens: int,
     ) -> None:
         repo = SQLiteProjectCostAggregateRepository(migrated_db)
         with pytest.raises(ValueError, match="non-negative"):
-            await repo.increment("proj-1", -1.0, 100, 50)
+            await repo.increment("proj-1", cost, input_tokens, output_tokens)

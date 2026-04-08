@@ -1,6 +1,7 @@
 """SQLite repository for durable project cost aggregates."""
 
 import asyncio
+import math
 import sqlite3
 from datetime import UTC, datetime
 
@@ -32,6 +33,8 @@ ON CONFLICT(project_id) DO UPDATE SET
     total_output_tokens = total_output_tokens + excluded.total_output_tokens,
     record_count = record_count + 1,
     last_updated = excluded.last_updated
+RETURNING project_id, total_cost, total_input_tokens,
+          total_output_tokens, record_count, last_updated
 """
 
 _SELECT_SQL = """\
@@ -79,7 +82,7 @@ class SQLiteProjectCostAggregateRepository:
         write_lock: asyncio.Lock | None = None,
     ) -> None:
         self._db = db
-        self._write_lock = write_lock or asyncio.Lock()
+        self._write_lock = write_lock if write_lock is not None else asyncio.Lock()
 
     async def get(
         self,
@@ -105,7 +108,8 @@ class SQLiteProjectCostAggregateRepository:
                 project_id=project_id,
                 error=str(exc),
             )
-            raise QueryError(str(exc)) from exc
+            msg = f"Failed to fetch project cost aggregate for {project_id!r}: {exc}"
+            raise QueryError(msg) from exc
 
         if row is None:
             logger.debug(
@@ -123,7 +127,11 @@ class SQLiteProjectCostAggregateRepository:
                 project_id=project_id,
                 error=str(exc),
             )
-            raise QueryError(str(exc)) from exc
+            msg = (
+                f"Failed to deserialize project cost aggregate"
+                f" for {project_id!r}: {exc}"
+            )
+            raise QueryError(msg) from exc
 
         logger.debug(
             PERSISTENCE_PROJECT_COST_AGG_FETCHED,
@@ -144,10 +152,13 @@ class SQLiteProjectCostAggregateRepository:
         """Atomically increment the project's cost aggregate.
 
         Creates a new row on first call; increments on subsequent.
+        Uses ``RETURNING`` to read back the updated row inside the
+        same locked section, avoiding race conditions with concurrent
+        increments.
 
         Args:
             project_id: Project identifier.
-            cost: Cost delta to add (must be >= 0).
+            cost: Cost delta to add (must be finite and >= 0).
             input_tokens: Input token delta (must be >= 0).
             output_tokens: Output token delta (must be >= 0).
 
@@ -156,23 +167,31 @@ class SQLiteProjectCostAggregateRepository:
 
         Raises:
             QueryError: If the database operation fails.
-            ValueError: If any delta is negative.
+            ValueError: If any delta is negative or cost is
+                non-finite (NaN/Inf).
         """
-        if cost < 0 or input_tokens < 0 or output_tokens < 0:
+        if not math.isfinite(cost) or cost < 0 or input_tokens < 0 or output_tokens < 0:
             msg = (
-                f"Deltas must be non-negative: "
+                "Deltas must be finite and non-negative: "
                 f"cost={cost}, input_tokens={input_tokens}, "
                 f"output_tokens={output_tokens}"
+            )
+            logger.warning(
+                PERSISTENCE_PROJECT_COST_AGG_INCREMENT_FAILED,
+                project_id=project_id,
+                cost=cost,
+                error=msg,
             )
             raise ValueError(msg)
 
         now = datetime.now(UTC).isoformat()
         try:
             async with self._write_lock:
-                await self._db.execute(
+                cursor = await self._db.execute(
                     _UPSERT_SQL,
                     (project_id, cost, input_tokens, output_tokens, now),
                 )
+                row = await cursor.fetchone()
                 await self._db.commit()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             logger.exception(
@@ -181,13 +200,28 @@ class SQLiteProjectCostAggregateRepository:
                 cost=cost,
                 error=str(exc),
             )
-            raise QueryError(str(exc)) from exc
+            msg = (
+                f"Failed to increment project cost aggregate for {project_id!r}: {exc}"
+            )
+            raise QueryError(msg) from exc
 
-        # Read back the updated aggregate.
-        aggregate = await self.get(project_id)
-        if aggregate is None:  # pragma: no cover -- defensive
+        if row is None:  # pragma: no cover -- defensive
             msg = f"Aggregate for {project_id!r} missing after upsert"
             raise QueryError(msg)
+
+        try:
+            aggregate = _row_to_aggregate(row)
+        except ValidationError as exc:
+            logger.exception(
+                PERSISTENCE_PROJECT_COST_AGG_DESERIALIZE_FAILED,
+                project_id=project_id,
+                error=str(exc),
+            )
+            msg = (
+                f"Failed to deserialize project cost aggregate"
+                f" for {project_id!r} after increment: {exc}"
+            )
+            raise QueryError(msg) from exc
 
         logger.debug(
             PERSISTENCE_PROJECT_COST_AGG_INCREMENTED,

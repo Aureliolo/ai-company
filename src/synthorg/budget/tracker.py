@@ -148,11 +148,12 @@ class CostTracker:
     async def record(self, cost_record: CostRecord) -> None:
         """Append a cost record.
 
-        After the in-memory write, updates the durable project cost
-        aggregate when the record has a ``project_id`` and a repository
-        is configured.  Aggregate updates are best-effort: failures are
-        logged at WARNING by ``_update_project_aggregate`` but do not
-        affect the in-memory recording.
+        The in-memory append runs under ``_lock``.  After the lock
+        is released, ``_update_project_aggregate`` is awaited to
+        update the durable project cost aggregate when the record
+        has a ``project_id`` and a repository is configured.
+        Aggregate updates are best-effort: failures are logged at
+        WARNING but do not affect the in-memory recording.
 
         Args:
             cost_record: Immutable cost record to store.

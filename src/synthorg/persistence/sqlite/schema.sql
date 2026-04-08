@@ -324,7 +324,9 @@ CREATE TABLE IF NOT EXISTS project_cost_aggregates (
     total_input_tokens INTEGER NOT NULL DEFAULT 0 CHECK(total_input_tokens >= 0),
     total_output_tokens INTEGER NOT NULL DEFAULT 0 CHECK(total_output_tokens >= 0),
     record_count INTEGER NOT NULL DEFAULT 0 CHECK(record_count >= 0),
-    last_updated TEXT NOT NULL
+    last_updated TEXT NOT NULL CHECK(
+        last_updated LIKE '%+00:00' OR last_updated LIKE '%Z'
+    )
 );
 
 -- ── Custom personality presets (user-defined) ────────────────

@@ -98,4 +98,20 @@ class TestProjectCostAggregate:
             )
 
     def test_protocol_is_runtime_checkable(self) -> None:
-        assert hasattr(ProjectCostAggregateRepository, "__protocol_attrs__")
+        class _RepoStub:
+            async def get(
+                self,
+                project_id: str,
+            ) -> None:
+                return None
+
+            async def increment(
+                self,
+                project_id: str,
+                cost: float,
+                input_tokens: int,
+                output_tokens: int,
+            ) -> None:
+                return None
+
+        assert isinstance(_RepoStub(), ProjectCostAggregateRepository)
