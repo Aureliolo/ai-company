@@ -1,6 +1,7 @@
 """Tests for the structured debate + judge resolution strategy."""
 
 import pytest
+import structlog
 
 from synthorg.communication.conflict_resolution.config import DebateConfig
 from synthorg.communication.conflict_resolution.debate_strategy import (
@@ -410,7 +411,6 @@ class TestDebateResolverEvaluatorFailure:
     async def test_evaluator_exception_logs_event(
         self,
         hierarchy: HierarchyResolver,
-        capsys: pytest.CaptureFixture[str],
     ) -> None:
         """Evaluator failure is logged with the dedicated event."""
         judge = RaisingJudgeEvaluator()
@@ -429,9 +429,10 @@ class TestDebateResolverEvaluatorFailure:
                 ),
             ),
         )
-        await resolver.resolve(conflict)
-        captured = capsys.readouterr()
-        assert "conflict.debate.evaluator_failed" in captured.out
+        with structlog.testing.capture_logs() as logs:
+            await resolver.resolve(conflict)
+        events = [e["event"] for e in logs]
+        assert "conflict.debate.evaluator_failed" in events
 
     @pytest.mark.parametrize(
         "error_cls",
