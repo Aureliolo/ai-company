@@ -257,6 +257,7 @@ addopts = ["--strict-markers", "--strict-config", "-ra", "--tb=short", "--dist=w
 filterwarnings = [
     "error",
     "ignore:Core Pydantic V1 functionality:UserWarning",
+    "ignore:Exception in thread.*_connection_worker_thread:pytest.PytestUnhandledThreadExceptionWarning",
 ]
 
 # ---------------------------------------------------------------------------

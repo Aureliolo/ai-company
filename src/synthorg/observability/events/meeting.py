@@ -53,6 +53,10 @@ MEETING_EVENT_TRIGGERED: Final[str] = "meeting.scheduler.event_triggered"
 MEETING_PARTICIPANTS_RESOLVED: Final[str] = "meeting.scheduler.participants_resolved"
 MEETING_NO_PARTICIPANTS: Final[str] = "meeting.scheduler.no_participants"
 MEETING_SCHEDULER_ERROR: Final[str] = "meeting.scheduler.error"
+MEETING_EVENT_COOLDOWN_SKIPPED: Final[str] = "meeting.scheduler.event_cooldown_skipped"
+
+# Task capping
+MEETING_TASKS_CAPPED: Final[str] = "meeting.task.capped"
 
 # Auto-wiring
 MEETING_STUB_AGENT_CALLER: Final[str] = "meeting.auto_wire.stub_agent_caller"

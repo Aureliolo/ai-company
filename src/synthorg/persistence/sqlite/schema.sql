@@ -598,3 +598,14 @@ CREATE INDEX IF NOT EXISTS idx_aiv_entity_saved
     ON agent_identity_versions(entity_id, saved_at DESC);
 CREATE INDEX IF NOT EXISTS idx_aiv_content_hash
     ON agent_identity_versions(entity_id, content_hash);
+
+-- ── Circuit breaker state ─────────────────────────────────────────
+
+CREATE TABLE IF NOT EXISTS circuit_breaker_state (
+    pair_key_a TEXT NOT NULL CHECK (length(pair_key_a) > 0),
+    pair_key_b TEXT NOT NULL CHECK (length(pair_key_b) > 0),
+    bounce_count INTEGER NOT NULL DEFAULT 0 CHECK (bounce_count >= 0),
+    trip_count INTEGER NOT NULL DEFAULT 0 CHECK (trip_count >= 0),
+    opened_at REAL,
+    PRIMARY KEY (pair_key_a, pair_key_b)
+);

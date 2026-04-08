@@ -41,6 +41,22 @@ class FakeJudgeEvaluator:
         return JudgeDecision(self._winner_id, self._reasoning)
 
 
+class RaisingJudgeEvaluator:
+    """Fake judge evaluator that always raises."""
+
+    def __init__(self, error: BaseException | None = None) -> None:
+        self._error = error or RuntimeError("provider timeout")
+        self.calls: list[tuple[Conflict, str]] = []
+
+    async def evaluate(
+        self,
+        conflict: Conflict,
+        judge_agent_id: str,
+    ) -> JudgeDecision:
+        self.calls.append((conflict, judge_agent_id))
+        raise self._error
+
+
 @pytest.mark.unit
 class TestDebateResolverWithJudge:
     async def test_judge_evaluator_picks_winner(
@@ -358,3 +374,128 @@ class TestDebateResolverCEORootAgent:
         await resolver.resolve(conflict)
         _, judge_id = judge.calls[0]
         assert judge_id == "cto"
+
+
+@pytest.mark.unit
+class TestDebateResolverEvaluatorFailure:
+    async def test_evaluator_exception_falls_back_to_authority(
+        self,
+        hierarchy: HierarchyResolver,
+    ) -> None:
+        """When judge evaluator raises, fall back to authority resolution."""
+        judge = RaisingJudgeEvaluator()
+        resolver = DebateResolver(
+            hierarchy=hierarchy,
+            config=DebateConfig(judge="shared_manager"),
+            judge_evaluator=judge,
+        )
+        conflict = make_conflict(
+            positions=(
+                make_position(agent_id="sr_dev", level=SeniorityLevel.SENIOR),
+                make_position(
+                    agent_id="jr_dev",
+                    level=SeniorityLevel.JUNIOR,
+                    position="Other approach",
+                ),
+            ),
+        )
+        resolution = await resolver.resolve(conflict)
+        # Authority picks sr_dev (higher seniority)
+        assert resolution.winning_agent_id == "sr_dev"
+        assert resolution.outcome == ConflictResolutionOutcome.RESOLVED_BY_DEBATE
+        assert "fallback" in resolution.reasoning.lower()
+        # Evaluator was called once before failing
+        assert len(judge.calls) == 1
+
+    async def test_evaluator_exception_logs_event(
+        self,
+        hierarchy: HierarchyResolver,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """Evaluator failure is logged with the dedicated event."""
+        judge = RaisingJudgeEvaluator()
+        resolver = DebateResolver(
+            hierarchy=hierarchy,
+            config=DebateConfig(judge="shared_manager"),
+            judge_evaluator=judge,
+        )
+        conflict = make_conflict(
+            positions=(
+                make_position(agent_id="sr_dev", level=SeniorityLevel.SENIOR),
+                make_position(
+                    agent_id="jr_dev",
+                    level=SeniorityLevel.JUNIOR,
+                    position="Other",
+                ),
+            ),
+        )
+        await resolver.resolve(conflict)
+        captured = capsys.readouterr()
+        assert "conflict.debate.evaluator_failed" in captured.out
+
+    @pytest.mark.parametrize(
+        "error_cls",
+        [MemoryError, RecursionError],
+        ids=["memory_error", "recursion_error"],
+    )
+    async def test_system_exceptions_propagate(
+        self,
+        hierarchy: HierarchyResolver,
+        error_cls: type[BaseException],
+    ) -> None:
+        """MemoryError and RecursionError must not be caught."""
+        judge = RaisingJudgeEvaluator(error=error_cls())
+        resolver = DebateResolver(
+            hierarchy=hierarchy,
+            config=DebateConfig(judge="shared_manager"),
+            judge_evaluator=judge,
+        )
+        conflict = make_conflict(
+            positions=(
+                make_position(agent_id="sr_dev", level=SeniorityLevel.SENIOR),
+                make_position(
+                    agent_id="jr_dev",
+                    level=SeniorityLevel.JUNIOR,
+                    position="Other",
+                ),
+            ),
+        )
+        with pytest.raises(error_cls):
+            await resolver.resolve(conflict)
+
+    async def test_hierarchy_error_in_fallback_uses_no_hierarchy(
+        self,
+    ) -> None:
+        """When authority fallback hits ConflictHierarchyError, resolve
+        without hierarchy instead of propagating."""
+        from unittest.mock import MagicMock
+
+        # Create a hierarchy mock that raises on get_ancestors
+        # (triggers ConflictHierarchyError in _hierarchy_tiebreak)
+        broken_hierarchy = MagicMock(spec=HierarchyResolver)
+        broken_hierarchy.get_ancestors.side_effect = ConflictHierarchyError(
+            "test",
+        )
+        broken_hierarchy.get_lowest_common_manager.return_value = "judge"
+
+        judge = RaisingJudgeEvaluator()
+        resolver = DebateResolver(
+            hierarchy=broken_hierarchy,
+            config=DebateConfig(judge="judge"),
+            judge_evaluator=judge,
+        )
+        # Same seniority triggers tiebreak path in pick_highest_seniority
+        conflict = make_conflict(
+            positions=(
+                make_position(agent_id="sr_dev", level=SeniorityLevel.SENIOR),
+                make_position(
+                    agent_id="sr_dev_2",
+                    level=SeniorityLevel.SENIOR,
+                    position="Other approach",
+                ),
+            ),
+        )
+        resolution = await resolver.resolve(conflict)
+        # Should resolve via no-hierarchy seniority (incumbent wins)
+        assert resolution.outcome == ConflictResolutionOutcome.RESOLVED_BY_DEBATE
+        assert "no hierarchy" in resolution.reasoning.lower()

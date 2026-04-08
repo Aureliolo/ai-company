@@ -40,6 +40,7 @@ from synthorg.observability.events.meeting import (
     MEETING_STARTED,
     MEETING_TASK_CREATED,
     MEETING_TASK_CREATION_FAILED,
+    MEETING_TASKS_CAPPED,
     MEETING_VALIDATION_FAILED,
 )
 
@@ -324,14 +325,25 @@ class MeetingOrchestrator:
         ):
             return
 
-        total = len(minutes.action_items)
+        items = minutes.action_items
+        cap = protocol_config.max_tasks_per_meeting
+        if cap is not None and len(items) > cap:
+            logger.info(
+                MEETING_TASKS_CAPPED,
+                meeting_id=meeting_id,
+                total_action_items=len(items),
+                max_tasks_per_meeting=cap,
+            )
+            items = items[:cap]
+
+        total = len(items)
         logger.info(
             MEETING_ACTION_ITEM_EXTRACTED,
             meeting_id=meeting_id,
             action_item_count=total,
         )
         failures = 0
-        for action_item in minutes.action_items:
+        for action_item in items:
             try:
                 self._task_creator(
                     action_item.description,

@@ -74,6 +74,8 @@ class MeetingTypeConfigFactory(ModelFactory[MeetingTypeConfig]):
     __model__ = MeetingTypeConfig
     frequency = "daily"
     trigger = None
+    # min_interval_seconds requires trigger-based meetings (validator).
+    min_interval_seconds = None
 
 
 class MeetingsConfigFactory(ModelFactory[MeetingsConfig]):
@@ -91,11 +93,15 @@ class RateLimitConfigFactory(ModelFactory[RateLimitConfig]):
 
 class CircuitBreakerConfigFactory(ModelFactory[CircuitBreakerConfig]):
     __model__ = CircuitBreakerConfig
+    # Ensure max_cooldown_seconds >= cooldown_seconds (validator constraint).
+    cooldown_seconds = 300
+    max_cooldown_seconds = 3600
 
 
 class LoopPreventionConfigFactory(ModelFactory[LoopPreventionConfig]):
     __model__ = LoopPreventionConfig
     ancestry_tracking = True
+    circuit_breaker = CircuitBreakerConfigFactory
 
 
 class SubscriptionFactory(ModelFactory[Subscription]):

@@ -119,6 +119,11 @@ class MeetingTypeConfig(BaseModel):
         default_factory=MeetingProtocolConfig,
         description="Meeting protocol configuration",
     )
+    min_interval_seconds: int | None = Field(
+        default=None,
+        ge=1,
+        description="Minimum seconds between event-triggered meetings of this type",
+    )
 
     @model_validator(mode="after")
     def _validate_frequency_or_trigger(self) -> Self:
@@ -128,6 +133,9 @@ class MeetingTypeConfig(BaseModel):
             raise ValueError(msg)
         if self.frequency is None and self.trigger is None:
             msg = "Exactly one of frequency or trigger must be set"
+            raise ValueError(msg)
+        if self.min_interval_seconds is not None and self.trigger is None:
+            msg = "min_interval_seconds requires trigger-based meetings"
             raise ValueError(msg)
         return self
 
@@ -235,6 +243,19 @@ class CircuitBreakerConfig(BaseModel):
         gt=0,
         description="Cooldown period in seconds",
     )
+    max_cooldown_seconds: int = Field(
+        default=3600,
+        gt=0,
+        description="Maximum cooldown period in seconds (caps exponential backoff)",
+    )
+
+    @model_validator(mode="after")
+    def _validate_cooldown_bounds(self) -> Self:
+        """Ensure the exponential backoff cap is not below the base cooldown."""
+        if self.max_cooldown_seconds < self.cooldown_seconds:
+            msg = "max_cooldown_seconds must be >= cooldown_seconds"
+            raise ValueError(msg)
+        return self
 
 
 class LoopPreventionConfig(BaseModel):
