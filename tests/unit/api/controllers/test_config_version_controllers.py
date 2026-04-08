@@ -261,6 +261,26 @@ class TestEvaluationConfigVersions:
         assert data[1]["version"] == 1
 
     @pytest.mark.unit
+    async def test_list_versions_paginated(
+        self,
+        test_client: TestClient[Any],
+        fake_persistence: Any,
+    ) -> None:
+        repo = fake_persistence.evaluation_config_versions
+        for v in range(1, 4):
+            c = EvaluationConfig(calibration_drift_threshold=0.1 * v)
+            await repo.save_version(_snap("default", c, version=v))
+
+        resp = test_client.get(
+            "/api/v1/evaluation/config/versions?limit=2&offset=0",
+            headers=make_auth_headers("ceo"),
+        )
+        assert resp.status_code == 200
+        body = resp.json()
+        assert len(body["data"]) == 2
+        assert body["pagination"]["total"] == 3
+
+    @pytest.mark.unit
     async def test_get_version(
         self,
         test_client: TestClient[Any],

@@ -8,6 +8,7 @@ from synthorg.persistence.errors import DuplicateRecordError, VersionConflictErr
 
 if TYPE_CHECKING:
     from synthorg.core.enums import WorkflowType
+    from synthorg.core.types import NotBlankStr
     from synthorg.engine.workflow.definition import WorkflowDefinition
     from synthorg.engine.workflow.execution_models import WorkflowExecution
     from synthorg.versioning import VersionSnapshot
@@ -133,7 +134,7 @@ class FakeWorkflowVersionRepository:
 
     async def get_version(
         self,
-        entity_id: str,
+        entity_id: NotBlankStr,
         version: int,
     ) -> VersionSnapshot[WorkflowDefinition] | None:
         stored = self._versions.get((entity_id, version))
@@ -141,7 +142,7 @@ class FakeWorkflowVersionRepository:
 
     async def get_latest_version(
         self,
-        entity_id: str,
+        entity_id: NotBlankStr,
     ) -> VersionSnapshot[WorkflowDefinition] | None:
         matching = [v for v in self._versions.values() if v.entity_id == entity_id]
         if not matching:
@@ -151,8 +152,8 @@ class FakeWorkflowVersionRepository:
 
     async def get_by_content_hash(
         self,
-        entity_id: str,
-        content_hash: str,
+        entity_id: NotBlankStr,
+        content_hash: NotBlankStr,
     ) -> VersionSnapshot[WorkflowDefinition] | None:
         for v in self._versions.values():
             if v.entity_id == entity_id and v.content_hash == content_hash:
@@ -161,7 +162,7 @@ class FakeWorkflowVersionRepository:
 
     async def list_versions(
         self,
-        entity_id: str,
+        entity_id: NotBlankStr,
         *,
         limit: int = 50,
         offset: int = 0,
@@ -173,12 +174,12 @@ class FakeWorkflowVersionRepository:
         )
         return tuple(copy.deepcopy(v) for v in matching[offset : offset + limit])
 
-    async def count_versions(self, entity_id: str) -> int:
+    async def count_versions(self, entity_id: NotBlankStr) -> int:
         return sum(1 for v in self._versions.values() if v.entity_id == entity_id)
 
     async def delete_versions_for_entity(
         self,
-        entity_id: str,
+        entity_id: NotBlankStr,
     ) -> int:
         to_delete = [k for k in self._versions if k[0] == entity_id]
         for k in to_delete:

@@ -257,4 +257,4 @@ async def test_role_roundtrip() -> None:
         loaded = await repo.get_version("backend-developer", 1)
         assert loaded is not None
         assert loaded.snapshot.name == "backend-developer"
-        assert loaded.snapshot.department == "engineering"
+        assert loaded.snapshot.department == DepartmentName.ENGINEERING

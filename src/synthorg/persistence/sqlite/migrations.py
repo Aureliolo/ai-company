@@ -71,7 +71,47 @@ async def apply_schema(db: aiosqlite.Connection) -> None:
         "TEXT NOT NULL DEFAULT '[]'",
     )
 
+    # Detect legacy workflow_definition_versions schema (pre-v0.7).
+    await _check_legacy_workflow_versions(db)
+
     logger.info(PERSISTENCE_MIGRATION_COMPLETED)
+
+
+async def _check_legacy_workflow_versions(
+    db: aiosqlite.Connection,
+) -> None:
+    """Warn if workflow_definition_versions has the legacy schema.
+
+    The pre-v0.7 table used flattened columns (definition_id, name,
+    workflow_type, etc.) instead of the generic VersionSnapshot format
+    (entity_id, content_hash, snapshot).  ``CREATE TABLE IF NOT EXISTS``
+    silently skips the new definition when the old table exists, leaving
+    queries for ``entity_id`` to fail at runtime.
+
+    This check detects the legacy layout and logs a clear warning with
+    migration instructions so operators can act before data access fails.
+    """
+    try:
+        cursor = await db.execute(
+            "PRAGMA table_info(workflow_definition_versions)",
+        )
+        columns = {row[1] for row in await cursor.fetchall()}
+    except sqlite3.Error, aiosqlite.Error:
+        return  # Table doesn't exist yet -- fresh install.
+
+    if not columns:
+        return  # Table not created yet.
+
+    if "definition_id" in columns and "entity_id" not in columns:
+        logger.warning(
+            PERSISTENCE_MIGRATION_FAILED,
+            detail=(
+                "Legacy workflow_definition_versions schema detected "
+                "(has 'definition_id', missing 'entity_id'). "
+                "Manual migration required: see the migration steps "
+                "in src/synthorg/persistence/sqlite/schema.sql."
+            ),
+        )
 
 
 _ALLOWED_TABLES = frozenset(
