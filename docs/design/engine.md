@@ -1446,7 +1446,7 @@ groups and routing decisions into `ParallelExecutionGroup` instances. Subtasks
 without routing decisions are skipped. Empty waves (all subtasks unroutable) are
 dropped.
 
-#### Per-Agent Attribution (Phase 8)
+#### Per-Agent Attribution
 
 After the pipeline completes, `build_agent_contributions()` in
 `coordination/attribution.py` produces a `tuple[AgentContribution, ...]` from

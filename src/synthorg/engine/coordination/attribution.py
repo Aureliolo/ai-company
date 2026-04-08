@@ -175,17 +175,16 @@ def build_agent_contributions(
     Returns:
         Tuple of ``AgentContribution`` records, one per agent outcome.
     """
-    # Build agent->subtask lookups from routing decisions.
-    # Use a list per agent_id to handle agents with multiple subtasks.
-    agent_to_subtasks: dict[str, list[str]] = {}
+    # Build lookups from routing decisions.
+    # Primary: task_id -> subtask_id (direct match from execution outcome).
+    # Fallback: agent_id -> subtask_id (single-subtask agents only).
+    routed_subtask_ids: set[str] = set()
+    agent_to_subtask: dict[str, str] = {}
     for decision in routing_result.decisions:
-        agent_id = str(decision.selected_candidate.agent_identity.id)
-        agent_to_subtasks.setdefault(agent_id, []).append(
-            str(decision.subtask_id),
-        )
-
-    # Track consumption index per agent for round-robin matching.
-    agent_subtask_idx: dict[str, int] = {}
+        sid = str(decision.subtask_id)
+        aid = str(decision.selected_candidate.agent_identity.id)
+        routed_subtask_ids.add(sid)
+        agent_to_subtask[aid] = sid  # last-write for multi-subtask agents
 
     contributions: list[AgentContribution] = []
 
@@ -193,14 +192,14 @@ def build_agent_contributions(
         if wave.execution_result is None:
             continue
         for outcome in wave.execution_result.outcomes:
+            tid = str(outcome.task_id)
             aid = str(outcome.agent_id)
-            subtask_list = agent_to_subtasks.get(aid, [])
-            idx = agent_subtask_idx.get(aid, 0)
-            if idx < len(subtask_list):
-                subtask_id = subtask_list[idx]
-                agent_subtask_idx[aid] = idx + 1
+            # Prefer task_id when it matches a routed subtask (handles
+            # multi-subtask agents correctly). Fall back to agent lookup.
+            if tid in routed_subtask_ids:
+                subtask_id = tid
             else:
-                subtask_id = str(outcome.task_id)
+                subtask_id = agent_to_subtask.get(aid, tid)
             contrib = _score_outcome(
                 agent_id=str(outcome.agent_id),
                 subtask_id=subtask_id,

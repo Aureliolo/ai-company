@@ -142,23 +142,31 @@ class TestExtractMarkerSentences:
         assert "; " in result
 
     def test_truncates_at_max_chars(self) -> None:
-        """Result is truncated at max_chars with ellipsis."""
-        # Create text with many marker sentences
+        """First marker sentence exceeding max_chars is truncated."""
+        # Single long marker sentence that exceeds max_chars
+        long_marker = "Wait, " + "x" * 100 + " important"
+        text = long_marker
+        max_chars = 30
+        result = extract_marker_sentences(text, max_chars=max_chars)
+
+        # Should be truncated to exactly max_chars (first-sentence path)
+        assert len(result) == max_chars
+        assert result == long_marker[:max_chars]
+
+    def test_truncates_multi_sentence_at_max_chars(self) -> None:
+        """Multiple short marker sentences stop accumulating at max_chars."""
         sentences = [
             "Wait, I need to think about something.",
             "Actually, let me reconsider this completely.",
             "Hmm, this is more complex than I thought.",
             "Perhaps we should verify each step carefully.",
-            "But hold on, there's a critical issue here.",
         ]
         text = " ".join(sentences)
         max_chars = 50
         result = extract_marker_sentences(text, max_chars=max_chars)
 
-        # Should be truncated and have ellipsis
-        assert len(result) <= max_chars + 3  # max_chars + "..."
-        if len(result) > max_chars:
-            assert result.endswith("...")
+        # Should contain at most max_chars worth of content
+        assert len(result) <= max_chars
 
     def test_respects_max_chars_default(self) -> None:
         """Default max_chars is 200."""

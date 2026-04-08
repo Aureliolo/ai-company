@@ -8,6 +8,7 @@ compaction at the turn boundary.
 """
 
 from copy import deepcopy
+from types import MappingProxyType
 from typing import Any
 
 from synthorg.core.enums import ToolCategory
@@ -20,7 +21,9 @@ from synthorg.tools.base import BaseTool, ToolExecutionResult
 
 logger = get_logger(__name__)
 
-_COMPACT_CONTEXT_SCHEMA: dict[str, Any] = {
+# Raw dict kept private for deepcopy at construction (MappingProxyType
+# is not picklable).  Public read-only view below.
+_RAW_SCHEMA: dict[str, Any] = {
     "type": "object",
     "properties": {
         "strategy": {
@@ -52,6 +55,7 @@ _COMPACT_CONTEXT_SCHEMA: dict[str, Any] = {
     "required": ["strategy", "reason"],
     "additionalProperties": False,
 }
+_COMPACT_CONTEXT_SCHEMA: MappingProxyType[str, Any] = MappingProxyType(_RAW_SCHEMA)
 
 
 class CompactContextTool(BaseTool):
@@ -76,7 +80,7 @@ class CompactContextTool(BaseTool):
                 "is high and accuracy on complex reasoning is "
                 "critical."
             ),
-            parameters_schema=deepcopy(_COMPACT_CONTEXT_SCHEMA),
+            parameters_schema=deepcopy(_RAW_SCHEMA),
             category=ToolCategory.MEMORY,
         )
 

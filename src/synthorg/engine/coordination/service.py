@@ -11,6 +11,7 @@ from uuid import uuid4
 
 from synthorg.core.enums import CoordinationTopology, TaskStatus
 from synthorg.engine.coordination.attribution import (
+    AgentContribution,
     CoordinationResultWithAttribution,
     build_agent_contributions,
 )
@@ -208,14 +209,24 @@ class MultiAgentCoordinator:
             total_cost_usd=total_cost,
         )
 
-        # Phase 8: Build per-agent attribution.
-        contributions = build_agent_contributions(
-            routing_result,
-            dispatch_result.waves,
-        )
+        # Post-pipeline: build per-agent attribution.
+        # Guard so attribution/tracker failures don't fail a completed run.
+        contributions: tuple[AgentContribution, ...] = ()
+        try:
+            contributions = build_agent_contributions(
+                routing_result,
+                dispatch_result.waves,
+            )
+        except MemoryError, RecursionError:
+            raise
+        except Exception as attr_exc:
+            logger.warning(
+                COORDINATION_CLEANUP_FAILED,
+                parent_task_id=task.id,
+                error=str(attr_exc),
+                context="post_completion_attribution_build",
+            )
 
-        # Feed contributions into performance tracker if available.
-        # Guard so tracker failures don't fail an already-completed run.
         if self._performance_tracker is not None and contributions:
             try:
                 self._performance_tracker.record_coordination_contributions(

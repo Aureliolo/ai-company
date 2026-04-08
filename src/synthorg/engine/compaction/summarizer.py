@@ -112,6 +112,7 @@ def _do_compaction(
         execution_id=ctx.execution_id,
         fill_percent=fill_pct,
         message_count=len(conversation),
+        forced=force,
     )
 
     split = _split_conversation(ctx, config)
@@ -341,11 +342,4 @@ def force_compaction(
     Returns:
         Compacted context, or ``None`` if too few messages.
     """
-    logger.debug(
-        CONTEXT_BUDGET_COMPACTION_STARTED,
-        execution_id=ctx.execution_id,
-        fill_percent=ctx.context_fill_percent,
-        message_count=len(ctx.conversation),
-        forced=True,
-    )
     return _do_compaction(ctx, config, estimator, force=True)

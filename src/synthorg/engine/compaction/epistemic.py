@@ -12,6 +12,9 @@ accuracy by up to 63% on complex reasoning tasks.
 import re
 
 from synthorg.core.enums import Complexity
+from synthorg.observability import get_logger
+
+logger = get_logger(__name__)
 
 # Precompiled case-insensitive word-boundary patterns grouped by type.
 _HEDGING = re.compile(r"\b(wait|hmm|hm|ah)\b", re.IGNORECASE)

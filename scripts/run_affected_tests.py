@@ -153,6 +153,10 @@ def _run_pytest(paths: list[str]) -> int:
     Uses ``--dist loadscope`` to group tests by module, preventing
     xdist worker crashes from repeated heavy fixture teardown/setup
     when individual tests are scattered across workers.
+
+    ``--max-worker-restart=0`` disables worker restarts to avoid a
+    known xdist scheduler KeyError when the loadscope scheduler
+    tries to reassign work to a restarted worker with a new id.
     """
     cmd = [
         sys.executable,
@@ -165,6 +169,7 @@ def _run_pytest(paths: list[str]) -> int:
         "8",
         "--dist",
         "loadscope",
+        "--max-worker-restart=0",
         "-q",
     ]
     result = subprocess.run(cmd, cwd=_REPO_ROOT, check=False)
