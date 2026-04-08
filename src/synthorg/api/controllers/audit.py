@@ -21,7 +21,10 @@ from synthorg.api.pagination import (
 )
 from synthorg.api.path_params import QUERY_MAX_LENGTH
 from synthorg.observability import get_logger
-from synthorg.observability.events.api import API_AUDIT_QUERIED
+from synthorg.observability.events.api import (
+    API_AUDIT_QUERIED,
+    API_VALIDATION_FAILED,
+)
 from synthorg.security.models import AuditEntry
 
 logger = get_logger(__name__)
@@ -77,10 +80,22 @@ class AuditController(Controller):
         if (since is not None and since.tzinfo is None) or (
             until is not None and until.tzinfo is None
         ):
+            logger.warning(
+                API_VALIDATION_FAILED,
+                reason="naive datetime",
+                since=str(since),
+                until=str(until),
+            )
             raise ClientException(
                 detail="'since' and 'until' must be timezone-aware",
             )
         if since is not None and until is not None and since > until:
+            logger.warning(
+                API_VALIDATION_FAILED,
+                reason="inverted time window",
+                since=str(since),
+                until=str(until),
+            )
             raise ClientException(
                 detail="'since' must not be after 'until'",
             )
