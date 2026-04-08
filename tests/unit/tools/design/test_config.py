@@ -1,5 +1,7 @@
 """Tests for design tool configuration models."""
 
+from typing import Any
+
 import pytest
 from pydantic import ValidationError
 
@@ -48,7 +50,7 @@ class TestDesignToolsConfig:
             "timeout_inf",
         ],
     )
-    def test_rejects_invalid_params(self, kwargs: dict) -> None:
+    def test_rejects_invalid_params(self, kwargs: dict[str, Any]) -> None:
         with pytest.raises(ValidationError):
             DesignToolsConfig(**kwargs)
 
