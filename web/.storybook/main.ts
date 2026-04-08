@@ -10,14 +10,6 @@ export default defineMain({
   async viteFinal(config) {
     const { default: tailwindcss } = await import('@tailwindcss/vite')
     config.plugins = [...(config.plugins ?? []), tailwindcss()]
-    // Disable sourcemaps and minification for Storybook builds to avoid
-    // rolldown segfault on Linux CI (rolldown 1.0.0-rc.13+, 4200+ modules).
-    // Storybook builds are for verification only, not production serving.
-    config.build = {
-      ...config.build,
-      sourcemap: false,
-      minify: false,
-    }
     return config
   },
 })
