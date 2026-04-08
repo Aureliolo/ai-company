@@ -713,7 +713,7 @@ class SQLiteOrgFactStore:
                 "ORDER BY INSTR(LOWER(content), LOWER(?)) ASC, "
                 "LENGTH(content) ASC, created_at DESC"
             )
-            params.append(escaped)
+            params.append(text)
         else:
             order = "ORDER BY created_at DESC"
         sql = f"SELECT * FROM org_facts_snapshot{where} {order} LIMIT ?"  # noqa: S608

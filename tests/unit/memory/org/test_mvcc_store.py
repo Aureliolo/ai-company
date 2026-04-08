@@ -375,6 +375,8 @@ class TestMvccConcurrentPublishes:
             assert fact is not None
             winner = max(log, key=lambda e: e.version)
             assert fact.content == winner.content
+            assert fact.author.agent_id == winner.author_agent_id
+            assert fact.author.seniority == winner.author_seniority
         finally:
             await store_a.disconnect()
             await store_b.disconnect()
