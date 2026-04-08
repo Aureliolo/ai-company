@@ -317,6 +317,16 @@ CREATE TABLE IF NOT EXISTS projects (
 CREATE INDEX IF NOT EXISTS idx_projects_status ON projects(status);
 CREATE INDEX IF NOT EXISTS idx_projects_lead ON projects(lead);
 
+-- ── Project-lifetime cost aggregates ─────────────────────────
+CREATE TABLE IF NOT EXISTS project_cost_aggregates (
+    project_id TEXT PRIMARY KEY,
+    total_cost REAL NOT NULL DEFAULT 0.0,
+    total_input_tokens INTEGER NOT NULL DEFAULT 0,
+    total_output_tokens INTEGER NOT NULL DEFAULT 0,
+    record_count INTEGER NOT NULL DEFAULT 0,
+    last_updated TEXT NOT NULL
+);
+
 -- ── Custom personality presets (user-defined) ────────────────
 CREATE TABLE IF NOT EXISTS custom_presets (
     name TEXT PRIMARY KEY CHECK(length(name) > 0),

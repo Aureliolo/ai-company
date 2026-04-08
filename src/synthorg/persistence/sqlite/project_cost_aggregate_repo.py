@@ -1,0 +1,180 @@
+"""SQLite repository for durable project cost aggregates."""
+
+import sqlite3
+from datetime import UTC, datetime
+
+import aiosqlite
+from pydantic import ValidationError
+
+from synthorg.budget.project_cost_aggregate import ProjectCostAggregate
+from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.observability import get_logger
+from synthorg.observability.events.persistence import (
+    PERSISTENCE_PROJECT_COST_AGG_DESERIALIZE_FAILED,
+    PERSISTENCE_PROJECT_COST_AGG_FETCH_FAILED,
+    PERSISTENCE_PROJECT_COST_AGG_FETCHED,
+    PERSISTENCE_PROJECT_COST_AGG_INCREMENT_FAILED,
+    PERSISTENCE_PROJECT_COST_AGG_INCREMENTED,
+)
+from synthorg.persistence.errors import QueryError
+
+logger = get_logger(__name__)
+
+_UPSERT_SQL = """\
+INSERT INTO project_cost_aggregates
+    (project_id, total_cost, total_input_tokens,
+     total_output_tokens, record_count, last_updated)
+VALUES (?, ?, ?, ?, 1, ?)
+ON CONFLICT(project_id) DO UPDATE SET
+    total_cost = total_cost + excluded.total_cost,
+    total_input_tokens = total_input_tokens + excluded.total_input_tokens,
+    total_output_tokens = total_output_tokens + excluded.total_output_tokens,
+    record_count = record_count + 1,
+    last_updated = excluded.last_updated
+"""
+
+_SELECT_SQL = """\
+SELECT project_id, total_cost, total_input_tokens,
+       total_output_tokens, record_count, last_updated
+FROM project_cost_aggregates
+WHERE project_id = ?
+"""
+
+
+def _row_to_aggregate(row: aiosqlite.Row) -> ProjectCostAggregate:
+    """Reconstruct a ``ProjectCostAggregate`` from a database row.
+
+    Args:
+        row: A single database row.
+
+    Returns:
+        Validated model instance.
+
+    Raises:
+        ValidationError: If the row data fails Pydantic validation.
+    """
+    data = dict(row)
+    return ProjectCostAggregate.model_validate(data)
+
+
+class SQLiteProjectCostAggregateRepository:
+    """SQLite-backed project cost aggregate repository.
+
+    Provides atomic increment and lookup for per-project lifetime
+    cost totals.  Uses ``INSERT ... ON CONFLICT DO UPDATE`` for
+    atomic upsert semantics.
+
+    Args:
+        db: An open aiosqlite connection with ``row_factory``
+            set to ``aiosqlite.Row``.
+    """
+
+    def __init__(self, db: aiosqlite.Connection) -> None:
+        self._db = db
+
+    async def get(
+        self,
+        project_id: NotBlankStr,
+    ) -> ProjectCostAggregate | None:
+        """Retrieve the aggregate for a project.
+
+        Args:
+            project_id: Project identifier.
+
+        Returns:
+            The aggregate, or ``None`` if no costs recorded.
+
+        Raises:
+            QueryError: If the database operation fails.
+        """
+        try:
+            cursor = await self._db.execute(_SELECT_SQL, (project_id,))
+            row = await cursor.fetchone()
+        except (sqlite3.Error, aiosqlite.Error) as exc:
+            logger.exception(
+                PERSISTENCE_PROJECT_COST_AGG_FETCH_FAILED,
+                project_id=project_id,
+                error=str(exc),
+            )
+            raise QueryError(str(exc)) from exc
+
+        if row is None:
+            logger.debug(
+                PERSISTENCE_PROJECT_COST_AGG_FETCHED,
+                project_id=project_id,
+                found=False,
+            )
+            return None
+
+        try:
+            aggregate = _row_to_aggregate(row)
+        except ValidationError as exc:
+            logger.exception(
+                PERSISTENCE_PROJECT_COST_AGG_DESERIALIZE_FAILED,
+                project_id=project_id,
+                error=str(exc),
+            )
+            raise QueryError(str(exc)) from exc
+
+        logger.debug(
+            PERSISTENCE_PROJECT_COST_AGG_FETCHED,
+            project_id=project_id,
+            found=True,
+            total_cost=aggregate.total_cost,
+            record_count=aggregate.record_count,
+        )
+        return aggregate
+
+    async def increment(
+        self,
+        project_id: NotBlankStr,
+        cost: float,
+        input_tokens: int,
+        output_tokens: int,
+    ) -> ProjectCostAggregate:
+        """Atomically increment the project's cost aggregate.
+
+        Creates a new row on first call; increments on subsequent.
+
+        Args:
+            project_id: Project identifier.
+            cost: Cost delta to add.
+            input_tokens: Input token delta.
+            output_tokens: Output token delta.
+
+        Returns:
+            The updated aggregate after the increment.
+
+        Raises:
+            QueryError: If the database operation fails.
+        """
+        now = datetime.now(UTC).isoformat()
+        try:
+            await self._db.execute(
+                _UPSERT_SQL,
+                (project_id, cost, input_tokens, output_tokens, now),
+            )
+            await self._db.commit()
+        except (sqlite3.Error, aiosqlite.Error) as exc:
+            logger.exception(
+                PERSISTENCE_PROJECT_COST_AGG_INCREMENT_FAILED,
+                project_id=project_id,
+                cost=cost,
+                error=str(exc),
+            )
+            raise QueryError(str(exc)) from exc
+
+        # Read back the updated aggregate.
+        aggregate = await self.get(project_id)
+        if aggregate is None:  # pragma: no cover -- defensive
+            msg = f"Aggregate for {project_id!r} missing after upsert"
+            raise QueryError(msg)
+
+        logger.debug(
+            PERSISTENCE_PROJECT_COST_AGG_INCREMENTED,
+            project_id=project_id,
+            cost_delta=cost,
+            total_cost=aggregate.total_cost,
+            record_count=aggregate.record_count,
+        )
+        return aggregate

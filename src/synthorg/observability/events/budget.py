@@ -54,3 +54,10 @@ BUDGET_PROJECT_COST_QUERIED: Final[str] = "budget.project_cost.queried"
 BUDGET_PROJECT_RECORDS_QUERIED: Final[str] = "budget.project_records.queried"
 BUDGET_PROJECT_BUDGET_EXCEEDED: Final[str] = "budget.project_budget.exceeded"
 BUDGET_PROJECT_ENFORCEMENT_CHECK: Final[str] = "budget.project.enforcement_check"
+
+# -- Durable project cost aggregate events --
+BUDGET_PROJECT_COST_AGGREGATED: Final[str] = "budget.project_cost.aggregated"
+BUDGET_PROJECT_COST_AGGREGATION_FAILED: Final[str] = (
+    "budget.project_cost.aggregation_failed"
+)
+BUDGET_PROJECT_BASELINE_SOURCE: Final[str] = "budget.project_baseline.source"

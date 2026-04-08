@@ -57,6 +57,9 @@ from synthorg.persistence.sqlite.parked_context_repo import (
 from synthorg.persistence.sqlite.preset_repo import (
     SQLitePersonalityPresetRepository,
 )
+from synthorg.persistence.sqlite.project_cost_aggregate_repo import (
+    SQLiteProjectCostAggregateRepository,
+)
 from synthorg.persistence.sqlite.project_repo import (
     SQLiteProjectRepository,
 )
@@ -144,6 +147,9 @@ class SQLitePersistenceBackend:
         self._risk_overrides: SQLiteRiskOverrideRepository | None = None
         self._ssrf_violations: SQLiteSsrfViolationRepository | None = None
         self._circuit_breaker_state: SQLiteCircuitBreakerStateRepository | None = None
+        self._project_cost_aggregates: SQLiteProjectCostAggregateRepository | None = (
+            None
+        )
 
     def _clear_state(self) -> None:
         """Reset connection and repository references to ``None``."""
@@ -173,6 +179,7 @@ class SQLitePersistenceBackend:
         self._risk_overrides = None
         self._ssrf_violations = None
         self._circuit_breaker_state = None
+        self._project_cost_aggregates = None
 
     async def connect(self) -> None:
         """Open the SQLite database and configure WAL mode."""
@@ -278,6 +285,9 @@ class SQLitePersistenceBackend:
         self._circuit_breaker_state = SQLiteCircuitBreakerStateRepository(
             self._db,
             write_lock=self._shared_write_lock,
+        )
+        self._project_cost_aggregates = SQLiteProjectCostAggregateRepository(
+            self._db,
         )
 
     async def _cleanup_failed_connect(self, exc: sqlite3.Error | OSError) -> None:
@@ -541,6 +551,20 @@ class SQLitePersistenceBackend:
             PersistenceConnectionError: If not connected.
         """
         return self._require_connected(self._projects, "projects")
+
+    @property
+    def project_cost_aggregates(
+        self,
+    ) -> SQLiteProjectCostAggregateRepository:
+        """Repository for durable project cost aggregates.
+
+        Raises:
+            PersistenceConnectionError: If not connected.
+        """
+        return self._require_connected(
+            self._project_cost_aggregates,
+            "project_cost_aggregates",
+        )
 
     @property
     def custom_presets(self) -> SQLitePersonalityPresetRepository:

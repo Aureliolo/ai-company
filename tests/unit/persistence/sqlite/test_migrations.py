@@ -43,6 +43,7 @@ _EXPECTED_TABLES = {
     "ssrf_violations",
     "agent_identity_versions",
     "circuit_breaker_state",
+    "project_cost_aggregates",
 }
 
 _EXPECTED_INDEXES = {

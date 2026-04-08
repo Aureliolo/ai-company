@@ -1854,9 +1854,9 @@ them is required to support the full control-plane positioning claim.
 | G3 | ~~No policy-as-code export/import~~ | ~~Medium~~ | **Implemented** -- `GET /settings/security/export` and `POST /settings/security/import` (persists registered settings; code-defined policies require matching Python code). |
 | G4 | ~~No coordination metrics API~~ | ~~Medium~~ | **Implemented** -- `GET /coordination/metrics` exposes the 9 Kim et al. metrics with filtering. |
 | G5 | ~~No audit log query API~~ | ~~Medium~~ | **Implemented** -- `GET /security/audit` with agent_id, tool_name, verdict, action_type, and time-range filters. |
-| G6 | Budget history granularity | Low | `CostTracker` is in-memory with TTL eviction. Multi-dimensional queries (provider X, agent Y, period Z) require persistence layer investigation. |
+| G6 | Budget history granularity | Low | `CostTracker` is in-memory with TTL eviction. Project-level lifetime budgets are now backed by a durable `project_cost_aggregates` table (#1156). Multi-dimensional queries (provider X, agent Y, period Z) still require full persistence layer investigation. |
 
-All gaps G1-G5 are now closed. G6 (budget history granularity) remains low-priority.
+All gaps G1-G5 are now closed. G6 (budget history granularity) is partially addressed: project-level budgets are durable; broader multi-dimensional queries remain low-priority.
 
 ### Recommended Framing
 

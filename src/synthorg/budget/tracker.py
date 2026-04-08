@@ -37,6 +37,8 @@ from synthorg.observability.events.budget import (
     BUDGET_DEPARTMENT_RESOLVE_FAILED,
     BUDGET_ORCHESTRATION_RATIO_ALERT,
     BUDGET_ORCHESTRATION_RATIO_QUERIED,
+    BUDGET_PROJECT_COST_AGGREGATED,
+    BUDGET_PROJECT_COST_AGGREGATION_FAILED,
     BUDGET_PROJECT_COST_QUERIED,
     BUDGET_PROJECT_RECORDS_QUERIED,
     BUDGET_PROVIDER_USAGE_QUERIED,
@@ -59,6 +61,9 @@ if TYPE_CHECKING:
         OrchestrationAlertThresholds,
     )
     from synthorg.budget.cost_record import CostRecord
+    from synthorg.budget.project_cost_aggregate import (
+        ProjectCostAggregateRepository,
+    )
 
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 
@@ -113,6 +118,7 @@ class CostTracker:
         budget_config: BudgetConfig | None = None,
         department_resolver: Callable[[str], str | None] | None = None,
         auto_prune_threshold: int = _AUTO_PRUNE_THRESHOLD,
+        project_cost_repo: ProjectCostAggregateRepository | None = None,
     ) -> None:
         if auto_prune_threshold < 1:
             msg = f"auto_prune_threshold must be >= 1, got {auto_prune_threshold}"
@@ -122,10 +128,12 @@ class CostTracker:
         self._budget_config = budget_config
         self._department_resolver = department_resolver
         self._auto_prune_threshold = auto_prune_threshold
+        self._project_cost_repo = project_cost_repo
         logger.debug(
             BUDGET_TRACKER_CREATED,
             has_budget_config=budget_config is not None,
             has_department_resolver=department_resolver is not None,
+            has_project_cost_repo=project_cost_repo is not None,
         )
 
     @property
@@ -140,6 +148,11 @@ class CostTracker:
     async def record(self, cost_record: CostRecord) -> None:
         """Append a cost record.
 
+        Also updates the durable project cost aggregate when the
+        record has a ``project_id`` and a repository is configured.
+        Aggregate writes are best-effort: failures are logged but
+        do not affect the in-memory recording.
+
         Args:
             cost_record: Immutable cost record to store.
         """
@@ -151,6 +164,8 @@ class CostTracker:
                 model=cost_record.model,
                 cost_usd=cost_record.cost_usd,
             )
+
+        await self._update_project_aggregate(cost_record)
 
     async def prune_expired(self, *, now: datetime | None = None) -> int:
         """Remove records older than the 168-hour (7-day) cost window.
@@ -567,6 +582,40 @@ class CostTracker:
         return result
 
     # ── Private helpers ──────────────────────────────────────────────
+
+    async def _update_project_aggregate(
+        self,
+        cost_record: CostRecord,
+    ) -> None:
+        """Best-effort update of the durable project cost aggregate.
+
+        No-op when the record has no ``project_id`` or no repository
+        is configured.  Failures are logged at WARNING and swallowed.
+        """
+        if self._project_cost_repo is None or cost_record.project_id is None:
+            return
+
+        try:
+            await self._project_cost_repo.increment(
+                cost_record.project_id,
+                cost_record.cost_usd,
+                cost_record.input_tokens,
+                cost_record.output_tokens,
+            )
+            logger.debug(
+                BUDGET_PROJECT_COST_AGGREGATED,
+                project_id=cost_record.project_id,
+                cost_usd=cost_record.cost_usd,
+            )
+        except MemoryError, RecursionError:
+            raise
+        except Exception:
+            logger.warning(
+                BUDGET_PROJECT_COST_AGGREGATION_FAILED,
+                project_id=cost_record.project_id,
+                cost_usd=cost_record.cost_usd,
+                exc_info=True,
+            )
 
     async def _snapshot(
         self,

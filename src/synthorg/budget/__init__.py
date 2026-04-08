@@ -69,6 +69,7 @@ from synthorg.budget.enums import BudgetAlertLevel
 from synthorg.budget.errors import (
     BudgetExhaustedError,
     DailyLimitExceededError,
+    ProjectBudgetExhaustedError,
     QuotaExhaustedError,
     RiskBudgetExhaustedError,
 )
@@ -92,6 +93,10 @@ from synthorg.budget.optimizer_models import (
     RoutingOptimizationAnalysis,
     RoutingSuggestion,
     SpendingAnomaly,
+)
+from synthorg.budget.project_cost_aggregate import (
+    ProjectCostAggregate,
+    ProjectCostAggregateRepository,
 )
 from synthorg.budget.quota import (
     DegradationAction,
@@ -212,6 +217,9 @@ __all__ = [
     "PeriodComparison",
     "PeriodSpending",
     "PreFlightResult",
+    "ProjectBudgetExhaustedError",
+    "ProjectCostAggregate",
+    "ProjectCostAggregateRepository",
     "ProviderCostModel",
     "ProviderDistribution",
     "QuotaAlertThresholds",
