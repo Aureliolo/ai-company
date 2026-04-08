@@ -9,6 +9,7 @@ coordination collector after each multi-agent execution -- they are
 not refreshed on scrape.
 """
 
+import asyncio
 from calendar import monthrange
 from collections import Counter
 from datetime import UTC, datetime
@@ -270,7 +271,14 @@ class PrometheusCollector:
         """Update daily budget utilization gauge.
 
         Computes ``daily_cost / (total_monthly / days_in_month) * 100``,
-        capped at 100%.
+        capped at 100%.  Returns early without updating if cost tracker
+        is unavailable, *daily_cost* is ``None``, budget config is
+        missing, or the monthly budget is zero or negative.
+
+        Args:
+            app_state: The application state containing cost tracker.
+            daily_cost: Cost accumulated since UTC midnight, or ``None``
+                if unavailable.
         """
         if not app_state.has_cost_tracker or daily_cost is None:
             return
@@ -302,8 +310,17 @@ class PrometheusCollector:
     ) -> tuple[Any, ...]:
         """Update agent gauges from AgentRegistryService.
 
+        Queries active agents and aggregates counts by
+        ``(status, trust_level)``.  Clears all existing label series
+        before setting new ones so that disappeared combinations drop
+        to zero instead of retaining stale values.
+
+        Args:
+            app_state: The application state containing agent registry.
+
         Returns:
-            The agents tuple (empty on skip or error).
+            Tuple of active agent objects (empty tuple if the agent
+            registry is unavailable or a service error occurs).
         """
         if not app_state.has_agent_registry:
             return ()
@@ -341,12 +358,17 @@ class PrometheusCollector:
     ) -> None:
         """Update per-agent cost and budget utilization gauges.
 
-        Requires both agent registry (for agent IDs) and cost tracker.
+        Iterates over pre-fetched active agents, querying cumulative
+        and daily costs from the cost tracker.  Clears gauge label
+        series before setting so that disappeared agents are dropped.
+        Returns early without updating if *agents* is empty or the
+        cost tracker is unavailable.
 
         Args:
-            app_state: The application state.
-            agents: Active agents from the agent registry.
-            utc_midnight: Start of the current UTC day.
+            app_state: The application state containing cost tracker.
+            agents: Pre-fetched active agents from the agent registry.
+            utc_midnight: Start of the current UTC day for daily cost
+                queries.
         """
         if not agents or not app_state.has_cost_tracker:
             return
@@ -358,15 +380,28 @@ class PrometheusCollector:
             per_agent_limit = (
                 budget_cfg.per_agent_daily_limit if budget_cfg is not None else 0.0
             )
-            for agent in agents:
-                aid = str(agent.id)
-                total = await tracker.get_agent_cost(aid)
-                self._agent_cost_total.labels(agent_id=aid).set(total)
-                if per_agent_limit > 0:
-                    daily = await tracker.get_agent_cost(
-                        aid,
-                        start=utc_midnight,
+            agent_ids = [str(a.id) for a in agents]
+            # Fan-out cost queries in parallel.
+            total_tasks: dict[str, asyncio.Task[float]] = {}
+            daily_tasks: dict[str, asyncio.Task[float]] = {}
+            async with asyncio.TaskGroup() as tg:
+                for aid in agent_ids:
+                    total_tasks[aid] = tg.create_task(
+                        tracker.get_agent_cost(aid),
                     )
+                    if per_agent_limit > 0:
+                        daily_tasks[aid] = tg.create_task(
+                            tracker.get_agent_cost(
+                                aid,
+                                start=utc_midnight,
+                            ),
+                        )
+            for aid in agent_ids:
+                self._agent_cost_total.labels(agent_id=aid).set(
+                    total_tasks[aid].result(),
+                )
+                if per_agent_limit > 0:
+                    daily = daily_tasks[aid].result()
                     pct = min(
                         100.0,
                         (daily / per_agent_limit) * 100.0,

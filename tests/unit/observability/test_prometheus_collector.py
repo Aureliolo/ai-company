@@ -266,6 +266,11 @@ class TestPrometheusCollectorSecurityVerdicts:
         assert 'verdict="allow"' in output
         assert 'verdict="deny"' in output
 
+    def test_record_verdict_rejects_invalid(self) -> None:
+        collector = PrometheusCollector()
+        with pytest.raises(ValueError, match="Unknown security verdict"):
+            collector.record_security_verdict("invalid")
+
 
 @pytest.mark.unit
 class TestPrometheusCollectorCoordination:
@@ -352,6 +357,44 @@ class TestPrometheusCollectorDailyBudget:
         assert len(lines) == 1
         value = float(lines[0].split()[-1])
         assert 0.0 < value < 100.0
+
+    async def test_daily_budget_zero_cost(self) -> None:
+        """Zero daily cost yields 0% utilization."""
+        collector = PrometheusCollector()
+        state = _mock_app_state(
+            has_cost_tracker=True,
+            total_cost=10.0,
+            daily_cost=0.0,
+            budget_total_monthly=300.0,
+        )
+        await collector.refresh(state)
+        output = generate_latest(collector.registry).decode()
+        lines = [
+            ln
+            for ln in output.splitlines()
+            if ln.startswith("synthorg_budget_daily_used_percent ")
+        ]
+        assert len(lines) == 1
+        assert float(lines[0].split()[-1]) == 0.0
+
+    async def test_daily_budget_skipped_when_zero_monthly(self) -> None:
+        """Zero monthly budget causes early return (no gauge update)."""
+        collector = PrometheusCollector()
+        state = _mock_app_state(
+            has_cost_tracker=True,
+            total_cost=10.0,
+            daily_cost=5.0,
+            budget_total_monthly=0.0,
+        )
+        await collector.refresh(state)
+        output = generate_latest(collector.registry).decode()
+        lines = [
+            ln
+            for ln in output.splitlines()
+            if ln.startswith("synthorg_budget_daily_used_percent ")
+        ]
+        assert len(lines) == 1
+        assert float(lines[0].split()[-1]) == 0.0
 
     async def test_daily_budget_skipped_when_no_config(self) -> None:
         collector = PrometheusCollector()
@@ -507,3 +550,46 @@ class TestPrometheusCollectorAgentCost:
             if ln.startswith("synthorg_agent_budget_used_percent{")
         ]
         assert len(budget_lines) == 0
+
+    async def test_agent_cost_skipped_when_agents_empty(self) -> None:
+        """Empty agents tuple with both services available still skips."""
+        collector = PrometheusCollector()
+        state = _mock_app_state(
+            has_cost_tracker=True,
+            has_agent_registry=True,
+            agents=(),
+            budget_total_monthly=100.0,
+        )
+        await collector.refresh(state)
+        output = generate_latest(collector.registry).decode()
+        assert "synthorg_agent_cost_total{" not in output
+
+    async def test_agent_cost_error_clears_gauges(self) -> None:
+        """Exception during agent cost fetch clears both gauges."""
+        collector = PrometheusCollector()
+        agents = (_make_agent(name="alice"),)
+        state = _mock_app_state(
+            has_cost_tracker=True,
+            has_agent_registry=True,
+            agents=agents,
+            agent_costs={"alice": 5.0},
+            budget_total_monthly=100.0,
+        )
+        # Successful first scrape.
+        await collector.refresh(state)
+        output_v1 = generate_latest(collector.registry).decode()
+        assert 'synthorg_agent_cost_total{agent_id="alice"}' in output_v1
+
+        # Second scrape: agent cost query fails.
+        state.cost_tracker.get_agent_cost = AsyncMock(
+            side_effect=RuntimeError("db error"),
+        )
+        await collector.refresh(state)
+        output_v2 = generate_latest(collector.registry).decode()
+        cost_lines = [
+            ln
+            for ln in output_v2.splitlines()
+            if ln.startswith("synthorg_agent_cost_total{")
+        ]
+        # Gauges were cleared before the error; no labels remain.
+        assert len(cost_lines) == 0
