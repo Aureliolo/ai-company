@@ -141,12 +141,12 @@ class TestOtlpProtocol:
     def test_all_members_exist(self) -> None:
         members = set(OtlpProtocol)
         assert len(members) == 2
-        assert OtlpProtocol.HTTP_PROTOBUF in members
+        assert OtlpProtocol.HTTP_JSON in members
         assert OtlpProtocol.GRPC in members
 
     def test_values_are_strings(self) -> None:
-        assert OtlpProtocol.HTTP_PROTOBUF.value == "http/protobuf"
+        assert OtlpProtocol.HTTP_JSON.value == "http/json"
         assert OtlpProtocol.GRPC.value == "grpc"
 
     def test_is_str_subclass(self) -> None:
-        assert isinstance(OtlpProtocol.HTTP_PROTOBUF, str)
+        assert isinstance(OtlpProtocol.HTTP_JSON, str)

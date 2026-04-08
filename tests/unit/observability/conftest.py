@@ -48,9 +48,8 @@ class SinkConfigFactory(ModelFactory[SinkConfig]):
     http_flush_interval_seconds = 5.0
     http_timeout_seconds = 10.0
     http_max_retries = 3
-    prometheus_port = None
     otlp_endpoint = None
-    otlp_protocol = OtlpProtocol.HTTP_PROTOBUF
+    otlp_protocol = OtlpProtocol.HTTP_JSON
     otlp_headers = ()
     otlp_export_interval_seconds = 5.0
     otlp_batch_size = 100

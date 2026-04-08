@@ -58,8 +58,8 @@ class PrometheusCollector:
 
         # -- Agent gauges ------------------------------------------------
         self._agents_total = Gauge(
-            f"{prefix}_agents_total",
-            "Number of registered agents",
+            f"{prefix}_active_agents_total",
+            "Number of active agents",
             ["status", "trust_level"],
             registry=self.registry,
         )
@@ -133,6 +133,12 @@ class PrometheusCollector:
                 f"Unknown security verdict {verdict!r}; "
                 f"expected one of {sorted(self._VALID_VERDICTS)}"
             )
+            logger.warning(
+                METRICS_SCRAPE_FAILED,
+                component="security_verdict",
+                verdict=verdict,
+                expected=sorted(self._VALID_VERDICTS),
+            )
             raise ValueError(msg)
         self._security_evaluations.labels(verdict=verdict).inc()
 
@@ -167,28 +173,36 @@ class PrometheusCollector:
         Args:
             app_state: The application state containing service references.
         """
-        await self._refresh_cost_metrics(app_state)
-        await self._refresh_budget_metrics(app_state)
+        # Fetch total cost once and share snapshot across metrics.
+        total_cost: float | None = None
+        if app_state.has_cost_tracker:
+            try:
+                total_cost = await app_state.cost_tracker.get_total_cost()
+            except MemoryError, RecursionError:
+                raise
+            except Exception:
+                logger.warning(
+                    METRICS_SCRAPE_FAILED,
+                    component="cost_tracker",
+                    exc_info=True,
+                )
+        self._refresh_cost_gauge(total_cost)
+        self._refresh_budget_metrics(app_state, total_cost)
         await self._refresh_agent_metrics(app_state)
         await self._refresh_task_metrics(app_state)
         logger.debug(METRICS_SCRAPE_COMPLETED)
 
-    async def _refresh_cost_metrics(self, app_state: AppState) -> None:
-        """Update cost gauges from CostTracker."""
-        if not app_state.has_cost_tracker:
-            return
-        try:
-            total = await app_state.cost_tracker.get_total_cost()
-            self._cost_total.set(total)
-        except Exception:
-            logger.warning(
-                METRICS_SCRAPE_FAILED,
-                component="cost_tracker",
-                exc_info=True,
-            )
+    def _refresh_cost_gauge(self, total_cost: float | None) -> None:
+        """Update cost gauge from a pre-fetched total."""
+        if total_cost is not None:
+            self._cost_total.set(total_cost)
 
-    async def _refresh_budget_metrics(self, app_state: AppState) -> None:
-        """Update budget utilization gauges from CostTracker."""
+    def _refresh_budget_metrics(
+        self,
+        app_state: AppState,
+        total_cost: float | None,
+    ) -> None:
+        """Update budget utilization gauges from CostTracker config."""
         if not app_state.has_cost_tracker:
             return
         try:
@@ -197,11 +211,12 @@ class PrometheusCollector:
                 return
             monthly = tracker.budget_config.total_monthly
             self._budget_monthly_usd.set(monthly)
-            if monthly > 0:
-                total = await tracker.get_total_cost()
+            if monthly > 0 and total_cost is not None:
                 self._budget_used_percent.set(
-                    min(100.0, (total / monthly) * 100.0),
+                    min(100.0, (total_cost / monthly) * 100.0),
                 )
+        except MemoryError, RecursionError:
+            raise
         except Exception:
             logger.warning(
                 METRICS_SCRAPE_FAILED,
@@ -228,6 +243,8 @@ class PrometheusCollector:
                     status=status,
                     trust_level=trust,
                 ).set(count)
+        except MemoryError, RecursionError:
+            raise
         except Exception:
             logger.warning(
                 METRICS_SCRAPE_FAILED,
@@ -252,6 +269,8 @@ class PrometheusCollector:
                     status=status,
                     agent=agent,
                 ).set(count)
+        except MemoryError, RecursionError:
+            raise
         except Exception:
             logger.warning(
                 METRICS_SCRAPE_FAILED,

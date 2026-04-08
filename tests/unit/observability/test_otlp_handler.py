@@ -53,12 +53,14 @@ def _make_handler(
     *,
     batch_size: int = 5,
     flush_interval: float = 60.0,
+    start_flusher: bool = False,
 ) -> OtlpHandler:
-    """Create a handler with a long flush interval (manual flush only)."""
+    """Create a handler with no background flusher (deterministic tests)."""
     handler = OtlpHandler(
         endpoint="http://localhost:4318",
         batch_size=batch_size,
         flush_interval=flush_interval,
+        _start_flusher=start_flusher,
     )
     handler.setFormatter(_JsonFormatter())
     return handler
@@ -88,7 +90,7 @@ class TestOtlpHandler:
             handler.close()
 
     def test_close_signals_shutdown(self) -> None:
-        handler = _make_handler()
+        handler = _make_handler(start_flusher=True)
         handler.close()
         assert handler._shutdown.is_set()
         assert not handler._flusher.is_alive()
@@ -151,7 +153,7 @@ class TestOtlpHandlerProtocol:
             endpoint="http://localhost:4318",
         )
         try:
-            assert handler._protocol == OtlpProtocol.HTTP_PROTOBUF
+            assert handler._protocol == OtlpProtocol.HTTP_JSON
         finally:
             handler.close()
 
@@ -242,7 +244,7 @@ class TestOtlpHandlerExportFailure:
             handler.close()
 
     def test_close_always_drains_remaining_records(self) -> None:
-        handler = _make_handler(batch_size=100)
+        handler = _make_handler(batch_size=100, start_flusher=True)
         try:
             handler.emit(_make_record("one"))
             handler.emit(_make_record("two"))

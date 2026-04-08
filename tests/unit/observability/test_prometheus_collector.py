@@ -123,7 +123,7 @@ class TestPrometheusCollectorRefresh:
         state = _mock_app_state(has_agent_registry=True, agents=agents)
         await collector.refresh(state)
         output = generate_latest(collector.registry).decode()
-        assert "synthorg_agents_total" in output
+        assert "synthorg_active_agents_total" in output
         assert 'trust_level="standard"' in output
         assert 'trust_level="elevated"' in output
 
@@ -187,7 +187,7 @@ class TestPrometheusCollectorRefresh:
         )
         await collector.refresh(state)
         output = generate_latest(collector.registry).decode()
-        assert "synthorg_agents_total" in output
+        assert "synthorg_active_agents_total" in output
 
     async def test_agent_registry_error_does_not_block_tasks(self) -> None:
         """Partial failure: agent registry fails, task engine succeeds."""

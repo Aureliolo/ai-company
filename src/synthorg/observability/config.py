@@ -79,26 +79,55 @@ class RotationConfig(BaseModel):
     )
 
 
+def _is_private_ip(addr_str: str) -> bool:
+    """Check whether an IP address string is private/loopback/link-local."""
+    import ipaddress  # noqa: PLC0415
+
+    try:
+        addr = ipaddress.ip_address(addr_str)
+    except ValueError:
+        return False
+    return bool(addr.is_private or addr.is_loopback or addr.is_link_local)
+
+
 def _validate_otlp_endpoint_safety(
     endpoint: str,
     hostname: str,
     *,
     has_headers: bool,
 ) -> None:
-    """Reject private IPs (SSRF) and warn on unencrypted HTTP."""
-    import ipaddress  # noqa: PLC0415
+    """Reject private IPs (SSRF) and warn on unencrypted HTTP.
 
-    try:
-        addr = ipaddress.ip_address(hostname)
-    except ValueError:
-        pass  # hostname is not an IP literal -- skip IP check
-    else:
-        if addr.is_private or addr.is_loopback or addr.is_link_local:
-            msg = (
-                "otlp_endpoint must not target private/loopback "
-                f"IP addresses ({hostname})"
-            )
-            raise ValueError(msg)
+    Checks both IP literals and DNS-resolved addresses (best-effort).
+    """
+    # Direct IP literal check.
+    if _is_private_ip(hostname):
+        msg = (
+            f"otlp_endpoint must not target private/loopback IP addresses ({hostname})"
+        )
+        raise ValueError(msg)
+
+    # DNS resolution check for hostnames (fail-closed on resolution error).
+    # Allow localhost explicitly -- standard for local OTLP collectors.
+    localhost_names = {"localhost", "127.0.0.1", "::1"}
+    if hostname not in localhost_names and not _is_private_ip(hostname):
+        import socket  # noqa: PLC0415
+
+        try:
+            addrs = socket.getaddrinfo(hostname, None, proto=socket.IPPROTO_TCP)
+        except socket.gaierror:
+            # DNS resolution failed -- skip check (hostname may be valid
+            # at runtime even if not resolvable at config-load time).
+            return
+        for _family, _type, _proto, _canonname, sockaddr in addrs:
+            resolved_ip = str(sockaddr[0])
+            if _is_private_ip(resolved_ip):
+                msg = (
+                    f"otlp_endpoint hostname {hostname!r} resolves to "
+                    f"private/loopback address {resolved_ip}"
+                )
+                raise ValueError(msg)
+
     if (
         endpoint.startswith("http://")
         and hostname not in ("localhost", "127.0.0.1", "::1")
@@ -205,18 +234,13 @@ class SinkConfig(BaseModel):
         ge=0,
         description="Retry count on HTTP failure",
     )
-    # PROMETHEUS fields
-    prometheus_port: int | None = Field(
-        default=None,
-        description="Dedicated port for /metrics (None = main API port)",
-    )
     # OTLP fields
     otlp_endpoint: str | None = Field(
         default=None,
         description="OTLP collector endpoint URL",
     )
     otlp_protocol: OtlpProtocol = Field(
-        default=OtlpProtocol.HTTP_PROTOBUF,
+        default=OtlpProtocol.HTTP_JSON,
         description="OTLP transport protocol",
     )
     otlp_headers: tuple[tuple[str, str], ...] = Field(
@@ -245,39 +269,33 @@ class SinkConfig(BaseModel):
         match self.sink_type:
             case SinkType.FILE:
                 self._validate_file_fields()
-                self._reject_prometheus_fields("FILE")
                 self._reject_otlp_fields("FILE")
             case SinkType.CONSOLE:
                 self._reject_file_fields("CONSOLE")
                 self._reject_syslog_fields("CONSOLE")
                 self._reject_http_fields("CONSOLE")
-                self._reject_prometheus_fields("CONSOLE")
                 self._reject_otlp_fields("CONSOLE")
             case SinkType.SYSLOG:
                 self._reject_file_fields("SYSLOG")
                 self._validate_syslog_fields()
                 self._reject_http_fields("SYSLOG")
                 self._require_json_format("SYSLOG")
-                self._reject_prometheus_fields("SYSLOG")
                 self._reject_otlp_fields("SYSLOG")
             case SinkType.HTTP:
                 self._reject_file_fields("HTTP")
                 self._reject_syslog_fields("HTTP")
                 self._validate_http_fields()
                 self._require_json_format("HTTP")
-                self._reject_prometheus_fields("HTTP")
                 self._reject_otlp_fields("HTTP")
             case SinkType.PROMETHEUS:
                 self._reject_file_fields("PROMETHEUS")
                 self._reject_syslog_fields("PROMETHEUS")
                 self._reject_http_fields("PROMETHEUS")
                 self._reject_otlp_fields("PROMETHEUS")
-                self._validate_prometheus_fields()
             case SinkType.OTLP:
                 self._reject_file_fields("OTLP")
                 self._reject_syslog_fields("OTLP")
                 self._reject_http_fields("OTLP")
-                self._reject_prometheus_fields("OTLP")
                 self._validate_otlp_fields()
                 self._require_json_format("OTLP")
         return self
@@ -384,18 +402,6 @@ class SinkConfig(BaseModel):
             msg = f"json_format must be True for {sink_label} sinks (always JSON)"
             raise ValueError(msg)
 
-    def _validate_prometheus_fields(self) -> None:
-        if self.prometheus_port is not None and (
-            self.prometheus_port < 1 or self.prometheus_port > 65535  # noqa: PLR2004
-        ):
-            msg = "prometheus_port must be between 1 and 65535"
-            raise ValueError(msg)
-
-    def _reject_prometheus_fields(self, sink_label: str) -> None:
-        if self.prometheus_port is not None:
-            msg = f"prometheus_port must be None for {sink_label} sinks"
-            raise ValueError(msg)
-
     def _validate_otlp_fields(self) -> None:
         if self.otlp_endpoint is None:
             msg = "otlp_endpoint is required for OTLP sinks"
@@ -444,10 +450,8 @@ class SinkConfig(BaseModel):
                 f"for {sink_label} sinks"
             )
             raise ValueError(msg)
-        if self.otlp_protocol != OtlpProtocol.HTTP_PROTOBUF:
-            msg = (
-                f"otlp_protocol must be default (http/protobuf) for {sink_label} sinks"
-            )
+        if self.otlp_protocol != OtlpProtocol.HTTP_JSON:
+            msg = f"otlp_protocol must be default (http/json) for {sink_label} sinks"
             raise ValueError(msg)
         if self.otlp_batch_size != _DEFAULT_OTLP_BATCH_SIZE:
             msg = (

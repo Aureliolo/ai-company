@@ -58,15 +58,16 @@ class OtlpHandler(logging.Handler):
         self,
         endpoint: str,
         *,
-        protocol: OtlpProtocol = OtlpProtocol.HTTP_PROTOBUF,
+        protocol: OtlpProtocol = OtlpProtocol.HTTP_JSON,
         headers: tuple[tuple[str, str], ...] = (),
         batch_size: int = 100,
         flush_interval: float = 5.0,
         timeout: float = 10.0,
+        _start_flusher: bool = True,
     ) -> None:
         super().__init__()
         if protocol == OtlpProtocol.GRPC:
-            msg = "gRPC transport is not implemented; use HTTP_PROTOBUF"
+            msg = "gRPC transport is not implemented; use HTTP_JSON"
             raise NotImplementedError(msg)
         self._endpoint = endpoint
         self._protocol = protocol
@@ -85,7 +86,8 @@ class OtlpHandler(logging.Handler):
             daemon=True,
             name="log-otlp-flusher",
         )
-        self._flusher.start()
+        if _start_flusher:
+            self._flusher.start()
 
     def emit(self, record: logging.LogRecord) -> None:
         """Queue a record for batched OTLP export."""
@@ -234,14 +236,15 @@ class OtlpHandler(logging.Handler):
         self._shutdown.set()
         self._batch_ready.set()
         join_timeout = self._timeout * 2
-        self._flusher.join(timeout=join_timeout)
         if self._flusher.is_alive():
-            print(  # noqa: T201
-                "WARNING: log-otlp-flusher thread did not stop within "
-                f"{join_timeout:.1f}s timeout",
-                file=sys.stderr,
-                flush=True,
-            )
+            self._flusher.join(timeout=join_timeout)
+            if self._flusher.is_alive():
+                print(  # noqa: T201
+                    "WARNING: log-otlp-flusher thread did not stop "
+                    f"within {join_timeout:.1f}s timeout",
+                    file=sys.stderr,
+                    flush=True,
+                )
         # Always drain remaining records regardless of thread state.
         self._drain_and_flush()
         super().close()

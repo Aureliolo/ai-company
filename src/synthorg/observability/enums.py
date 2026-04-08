@@ -53,11 +53,11 @@ class OtlpProtocol(StrEnum):
     """OpenTelemetry Protocol transport.
 
     Attributes:
-        HTTP_PROTOBUF: HTTP with protobuf encoding (default, lighter).
-        GRPC: gRPC transport (requires grpcio).
+        HTTP_JSON: HTTP with JSON encoding (the only implemented transport).
+        GRPC: gRPC transport (not implemented; rejected at handler init).
     """
 
-    HTTP_PROTOBUF = "http/protobuf"
+    HTTP_JSON = "http/json"
     GRPC = "grpc"
 
 

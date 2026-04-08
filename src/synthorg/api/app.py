@@ -470,7 +470,7 @@ async def _maybe_bootstrap_agents(app_state: AppState) -> None:
         )
 
 
-def _build_lifecycle(  # noqa: PLR0913, C901
+def _build_lifecycle(  # noqa: PLR0913, PLR0915, C901
     persistence: PersistenceBackend | None,
     message_bus: MessageBus | None,
     bridge: MessageBusBridge | None,
@@ -537,6 +537,14 @@ def _build_lifecycle(  # noqa: PLR0913, C901
             approval_timeout_scheduler,
             app_state,
         )
+        # Wire Prometheus collector (no dependencies, runs in-process).
+        if not app_state.has_prometheus_collector:
+            from synthorg.observability.prometheus_collector import (  # noqa: PLC0415
+                PrometheusCollector,
+            )
+
+            app_state.set_prometheus_collector(PrometheusCollector())
+
         # Wire workflow execution observer (needs connected persistence)
         if (
             task_engine is not None
