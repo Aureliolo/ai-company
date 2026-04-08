@@ -10,10 +10,15 @@ from pydantic import ValidationError
 
 from synthorg.config.schema import GracefulShutdownConfig
 from synthorg.engine.shutdown import (
+    CheckpointAndStopStrategy,
+    CheckpointSaver,
     CooperativeTimeoutStrategy,
+    FinishCurrentToolStrategy,
+    ImmediateCancelStrategy,
     ShutdownManager,
     ShutdownResult,
     ShutdownStrategy,
+    build_shutdown_strategy,
 )
 
 # ── Protocol compliance ──────────────────────────────────────────
@@ -499,3 +504,463 @@ class TestSignalHandlerRecovery:
             mock_stderr.write.side_effect = OSError("stderr closed")
             # Should not raise even when stderr fails
             manager._handle_signal_threadsafe(signal.SIGINT.value, None)
+
+
+# ── ShutdownResult.tasks_suspended ──────────────────────────────
+
+
+@pytest.mark.unit
+class TestShutdownResultSuspendedField:
+    """tasks_suspended field backward compatibility and validation."""
+
+    def test_default_tasks_suspended_is_zero(self) -> None:
+        result = ShutdownResult(
+            strategy_type="cooperative_timeout",
+            tasks_interrupted=0,
+            tasks_completed=1,
+            cleanup_completed=True,
+            duration_seconds=0.5,
+        )
+        assert result.tasks_suspended == 0
+
+    def test_tasks_suspended_set(self) -> None:
+        result = ShutdownResult(
+            strategy_type="checkpoint",
+            tasks_interrupted=0,
+            tasks_completed=0,
+            tasks_suspended=3,
+            cleanup_completed=True,
+            duration_seconds=1.0,
+        )
+        assert result.tasks_suspended == 3
+
+    def test_tasks_suspended_frozen(self) -> None:
+        result = ShutdownResult(
+            strategy_type="checkpoint",
+            tasks_interrupted=0,
+            tasks_completed=0,
+            tasks_suspended=1,
+            cleanup_completed=True,
+            duration_seconds=0.1,
+        )
+        with pytest.raises(ValidationError, match="frozen"):
+            result.tasks_suspended = 5  # type: ignore[misc]
+
+
+# ── ImmediateCancelStrategy ─────────────────────────────────────
+
+
+@pytest.mark.unit
+class TestImmediateCancelProtocol:
+    """ImmediateCancelStrategy satisfies ShutdownStrategy protocol."""
+
+    def test_is_runtime_checkable(self) -> None:
+        strategy = ImmediateCancelStrategy()
+        assert isinstance(strategy, ShutdownStrategy)
+
+    def test_not_shutting_down_initially(self) -> None:
+        strategy = ImmediateCancelStrategy()
+        assert strategy.is_shutting_down() is False
+
+    def test_request_sets_shutting_down(self) -> None:
+        strategy = ImmediateCancelStrategy()
+        strategy.request_shutdown()
+        assert strategy.is_shutting_down() is True
+
+    def test_get_strategy_type(self) -> None:
+        strategy = ImmediateCancelStrategy()
+        assert strategy.get_strategy_type() == "immediate"
+
+
+@pytest.mark.unit
+class TestImmediateCancelExecute:
+    """All tasks force-cancelled immediately, no grace period."""
+
+    async def test_all_tasks_force_cancelled(self) -> None:
+        strategy = ImmediateCancelStrategy()
+
+        async def task_a() -> None:
+            await asyncio.Event().wait()
+
+        async def task_b() -> None:
+            await asyncio.Event().wait()
+
+        t1 = asyncio.create_task(task_a())
+        t2 = asyncio.create_task(task_b())
+        result = await strategy.execute_shutdown(
+            running_tasks={"t1": t1, "t2": t2},
+            cleanup_callbacks=[],
+        )
+
+        assert result.tasks_completed == 0
+        assert result.tasks_interrupted == 2
+        assert result.strategy_type == "immediate"
+
+    async def test_no_tasks(self) -> None:
+        strategy = ImmediateCancelStrategy()
+        result = await strategy.execute_shutdown(
+            running_tasks={},
+            cleanup_callbacks=[],
+        )
+        assert result.tasks_completed == 0
+        assert result.tasks_interrupted == 0
+
+    async def test_cleanup_runs(self) -> None:
+        strategy = ImmediateCancelStrategy(cleanup_seconds=5.0)
+        ran = []
+
+        async def cb() -> None:
+            ran.append("done")
+
+        result = await strategy.execute_shutdown(
+            running_tasks={},
+            cleanup_callbacks=[cb],
+        )
+        assert ran == ["done"]
+        assert result.cleanup_completed is True
+
+
+@pytest.mark.unit
+class TestImmediateCancelValidation:
+    """Constructor rejects non-positive values."""
+
+    def test_invalid_cleanup_seconds(self) -> None:
+        with pytest.raises(ValueError, match="cleanup_seconds must be positive"):
+            ImmediateCancelStrategy(cleanup_seconds=0)
+
+    def test_negative_cleanup_seconds(self) -> None:
+        with pytest.raises(ValueError, match="cleanup_seconds must be positive"):
+            ImmediateCancelStrategy(cleanup_seconds=-1.0)
+
+
+# ── FinishCurrentToolStrategy ───────────────────────────────────
+
+
+@pytest.mark.unit
+class TestFinishCurrentToolProtocol:
+    """FinishCurrentToolStrategy satisfies ShutdownStrategy protocol."""
+
+    def test_is_runtime_checkable(self) -> None:
+        strategy = FinishCurrentToolStrategy()
+        assert isinstance(strategy, ShutdownStrategy)
+
+    def test_not_shutting_down_initially(self) -> None:
+        strategy = FinishCurrentToolStrategy()
+        assert strategy.is_shutting_down() is False
+
+    def test_request_sets_shutting_down(self) -> None:
+        strategy = FinishCurrentToolStrategy()
+        strategy.request_shutdown()
+        assert strategy.is_shutting_down() is True
+
+    def test_get_strategy_type(self) -> None:
+        strategy = FinishCurrentToolStrategy()
+        assert strategy.get_strategy_type() == "finish_tool"
+
+
+@pytest.mark.unit
+class TestFinishCurrentToolExecute:
+    """Tasks wait for tool completion with per-tool timeout."""
+
+    async def test_cooperative_tasks_within_timeout(self) -> None:
+        strategy = FinishCurrentToolStrategy(tool_timeout_seconds=5.0)
+        shutdown_event = strategy._shutdown_event
+
+        async def tool_task() -> None:
+            await shutdown_event.wait()
+
+        task = asyncio.create_task(tool_task())
+        result = await strategy.execute_shutdown(
+            running_tasks={"t1": task},
+            cleanup_callbacks=[],
+        )
+
+        assert result.tasks_completed == 1
+        assert result.tasks_interrupted == 0
+
+    async def test_stragglers_cancelled_after_timeout(self) -> None:
+        strategy = FinishCurrentToolStrategy(tool_timeout_seconds=0.1)
+
+        async def long_tool() -> None:
+            await asyncio.Event().wait()
+
+        task = asyncio.create_task(long_tool())
+        result = await strategy.execute_shutdown(
+            running_tasks={"t1": task},
+            cleanup_callbacks=[],
+        )
+
+        assert result.tasks_completed == 0
+        assert result.tasks_interrupted == 1
+
+    async def test_cleanup_runs(self) -> None:
+        strategy = FinishCurrentToolStrategy(cleanup_seconds=5.0)
+        ran = []
+
+        async def cb() -> None:
+            ran.append("done")
+
+        result = await strategy.execute_shutdown(
+            running_tasks={},
+            cleanup_callbacks=[cb],
+        )
+        assert ran == ["done"]
+        assert result.cleanup_completed is True
+
+    async def test_empty_tasks(self) -> None:
+        strategy = FinishCurrentToolStrategy()
+        result = await strategy.execute_shutdown(
+            running_tasks={},
+            cleanup_callbacks=[],
+        )
+        assert result.tasks_completed == 0
+        assert result.tasks_interrupted == 0
+
+
+@pytest.mark.unit
+class TestFinishCurrentToolValidation:
+    """Constructor rejects non-positive values."""
+
+    def test_invalid_tool_timeout(self) -> None:
+        with pytest.raises(ValueError, match="tool_timeout_seconds must be positive"):
+            FinishCurrentToolStrategy(tool_timeout_seconds=0)
+
+    def test_invalid_cleanup_seconds(self) -> None:
+        with pytest.raises(ValueError, match="cleanup_seconds must be positive"):
+            FinishCurrentToolStrategy(cleanup_seconds=-1.0)
+
+
+# ── CheckpointAndStopStrategy ──────────────────────────────────
+
+
+@pytest.mark.unit
+class TestCheckpointAndStopProtocol:
+    """CheckpointAndStopStrategy satisfies ShutdownStrategy protocol."""
+
+    def test_is_runtime_checkable(self) -> None:
+        strategy = CheckpointAndStopStrategy()
+        assert isinstance(strategy, ShutdownStrategy)
+
+    def test_not_shutting_down_initially(self) -> None:
+        strategy = CheckpointAndStopStrategy()
+        assert strategy.is_shutting_down() is False
+
+    def test_request_sets_shutting_down(self) -> None:
+        strategy = CheckpointAndStopStrategy()
+        strategy.request_shutdown()
+        assert strategy.is_shutting_down() is True
+
+    def test_get_strategy_type(self) -> None:
+        strategy = CheckpointAndStopStrategy()
+        assert strategy.get_strategy_type() == "checkpoint"
+
+
+@pytest.mark.unit
+class TestCheckpointAndStopExecute:
+    """Checkpoint-based shutdown with tasks_suspended tracking."""
+
+    async def test_cooperative_exit_counted_as_suspended(self) -> None:
+        strategy = CheckpointAndStopStrategy(grace_seconds=5.0)
+        shutdown_event = strategy._shutdown_event
+
+        async def cooperative_task() -> None:
+            await shutdown_event.wait()
+
+        task = asyncio.create_task(cooperative_task())
+        result = await strategy.execute_shutdown(
+            running_tasks={"t1": task},
+            cleanup_callbacks=[],
+        )
+
+        assert result.tasks_suspended == 1
+        assert result.tasks_completed == 0
+        assert result.tasks_interrupted == 0
+
+    async def test_straggler_checkpointed_then_cancelled(self) -> None:
+        strategy = CheckpointAndStopStrategy(
+            grace_seconds=0.1,
+            checkpoint_saver=_make_saver(success=True),
+        )
+
+        async def stubborn() -> None:
+            await asyncio.Event().wait()
+
+        task = asyncio.create_task(stubborn())
+        result = await strategy.execute_shutdown(
+            running_tasks={"t1": task},
+            cleanup_callbacks=[],
+        )
+
+        assert result.tasks_suspended == 1
+        assert result.tasks_interrupted == 0
+
+    async def test_straggler_checkpoint_fails_counted_as_interrupted(self) -> None:
+        strategy = CheckpointAndStopStrategy(
+            grace_seconds=0.1,
+            checkpoint_saver=_make_saver(success=False),
+        )
+
+        async def stubborn() -> None:
+            await asyncio.Event().wait()
+
+        task = asyncio.create_task(stubborn())
+        result = await strategy.execute_shutdown(
+            running_tasks={"t1": task},
+            cleanup_callbacks=[],
+        )
+
+        assert result.tasks_suspended == 0
+        assert result.tasks_interrupted == 1
+
+    async def test_no_checkpoint_saver_stragglers_interrupted(self) -> None:
+        strategy = CheckpointAndStopStrategy(grace_seconds=0.1)
+
+        async def stubborn() -> None:
+            await asyncio.Event().wait()
+
+        task = asyncio.create_task(stubborn())
+        result = await strategy.execute_shutdown(
+            running_tasks={"t1": task},
+            cleanup_callbacks=[],
+        )
+
+        assert result.tasks_suspended == 0
+        assert result.tasks_interrupted == 1
+
+    async def test_mixed_cooperative_and_straggler(self) -> None:
+        saver_calls: list[str] = []
+
+        async def saver(task_id: str) -> bool:
+            saver_calls.append(task_id)
+            return True
+
+        strategy = CheckpointAndStopStrategy(
+            grace_seconds=0.1,
+            checkpoint_saver=saver,
+        )
+        shutdown_event = strategy._shutdown_event
+
+        async def cooperative() -> None:
+            await shutdown_event.wait()
+
+        async def stubborn() -> None:
+            await asyncio.Event().wait()
+
+        t1 = asyncio.create_task(cooperative())
+        t2 = asyncio.create_task(stubborn())
+        result = await strategy.execute_shutdown(
+            running_tasks={"coop": t1, "stub": t2},
+            cleanup_callbacks=[],
+        )
+
+        assert result.tasks_suspended == 2
+        assert result.tasks_interrupted == 0
+        assert "stub" in saver_calls
+
+    async def test_cleanup_runs(self) -> None:
+        strategy = CheckpointAndStopStrategy(cleanup_seconds=5.0)
+        ran = []
+
+        async def cb() -> None:
+            ran.append("done")
+
+        result = await strategy.execute_shutdown(
+            running_tasks={},
+            cleanup_callbacks=[cb],
+        )
+        assert ran == ["done"]
+        assert result.cleanup_completed is True
+
+    async def test_empty_tasks(self) -> None:
+        strategy = CheckpointAndStopStrategy()
+        result = await strategy.execute_shutdown(
+            running_tasks={},
+            cleanup_callbacks=[],
+        )
+        assert result.tasks_suspended == 0
+        assert result.tasks_interrupted == 0
+
+
+@pytest.mark.unit
+class TestCheckpointAndStopValidation:
+    """Constructor rejects non-positive values."""
+
+    def test_invalid_grace_seconds(self) -> None:
+        with pytest.raises(ValueError, match="grace_seconds must be positive"):
+            CheckpointAndStopStrategy(grace_seconds=0)
+
+    def test_invalid_cleanup_seconds(self) -> None:
+        with pytest.raises(ValueError, match="cleanup_seconds must be positive"):
+            CheckpointAndStopStrategy(cleanup_seconds=-1.0)
+
+
+# ── build_shutdown_strategy factory ─────────────────────────────
+
+
+@pytest.mark.unit
+class TestBuildShutdownStrategy:
+    """Factory maps config.strategy to the correct class."""
+
+    def test_cooperative_timeout(self) -> None:
+        config = GracefulShutdownConfig(strategy="cooperative_timeout")
+        strategy = build_shutdown_strategy(config)
+        assert isinstance(strategy, CooperativeTimeoutStrategy)
+
+    def test_immediate(self) -> None:
+        config = GracefulShutdownConfig(strategy="immediate")
+        strategy = build_shutdown_strategy(config)
+        assert isinstance(strategy, ImmediateCancelStrategy)
+
+    def test_finish_tool(self) -> None:
+        config = GracefulShutdownConfig(strategy="finish_tool")
+        strategy = build_shutdown_strategy(config)
+        assert isinstance(strategy, FinishCurrentToolStrategy)
+
+    def test_checkpoint(self) -> None:
+        config = GracefulShutdownConfig(strategy="checkpoint")
+        strategy = build_shutdown_strategy(config)
+        assert isinstance(strategy, CheckpointAndStopStrategy)
+
+    def test_unknown_strategy_raises(self) -> None:
+        config = GracefulShutdownConfig(strategy="nonexistent")
+        with pytest.raises(ValueError, match="Unknown shutdown strategy"):
+            build_shutdown_strategy(config)
+
+    def test_config_params_propagate(self) -> None:
+        config = GracefulShutdownConfig(
+            strategy="cooperative_timeout",
+            grace_seconds=10.0,
+            cleanup_seconds=2.0,
+        )
+        strategy = build_shutdown_strategy(config)
+        assert isinstance(strategy, CooperativeTimeoutStrategy)
+        assert strategy._grace_seconds == 10.0
+        assert strategy._cleanup_seconds == 2.0
+
+    def test_tool_timeout_propagates(self) -> None:
+        config = GracefulShutdownConfig(
+            strategy="finish_tool",
+            tool_timeout_seconds=120.0,
+        )
+        strategy = build_shutdown_strategy(config)
+        assert isinstance(strategy, FinishCurrentToolStrategy)
+        assert strategy._tool_timeout_seconds == 120.0
+
+    def test_checkpoint_saver_injected(self) -> None:
+        config = GracefulShutdownConfig(strategy="checkpoint")
+        saver = _make_saver(success=True)
+        strategy = build_shutdown_strategy(config, checkpoint_saver=saver)
+        assert isinstance(strategy, CheckpointAndStopStrategy)
+        assert strategy._checkpoint_saver is saver
+
+
+# ── Test helpers ────────────────────────────────────────────────
+
+
+def _make_saver(*, success: bool) -> CheckpointSaver:
+    """Build a mock checkpoint saver that returns *success*."""
+
+    async def _saver(task_id: str) -> bool:
+        return success
+
+    return _saver

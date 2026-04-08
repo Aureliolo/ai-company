@@ -17,29 +17,39 @@ import sys
 import time
 import types  # noqa: TC003 -- used in runtime-visible annotation
 from collections.abc import Callable, Coroutine, Mapping, Sequence
-from typing import Any, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
+
+if TYPE_CHECKING:
+    from synthorg.config.schema import GracefulShutdownConfig
 
 from pydantic import BaseModel, ConfigDict, Field
 
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.observability import get_logger
 from synthorg.observability.events.execution import (
+    EXECUTION_SHUTDOWN_CHECKPOINT_FAILED,
+    EXECUTION_SHUTDOWN_CHECKPOINT_SAVE,
     EXECUTION_SHUTDOWN_CLEANUP,
     EXECUTION_SHUTDOWN_CLEANUP_FAILED,
     EXECUTION_SHUTDOWN_CLEANUP_TIMEOUT,
     EXECUTION_SHUTDOWN_COMPLETE,
     EXECUTION_SHUTDOWN_FORCE_CANCEL,
     EXECUTION_SHUTDOWN_GRACE_START,
+    EXECUTION_SHUTDOWN_IMMEDIATE_CANCEL,
     EXECUTION_SHUTDOWN_MANAGER_CREATED,
     EXECUTION_SHUTDOWN_SIGNAL,
     EXECUTION_SHUTDOWN_TASK_ERROR,
     EXECUTION_SHUTDOWN_TASK_TRACKED,
+    EXECUTION_SHUTDOWN_TOOL_WAIT,
 )
 
 logger = get_logger(__name__)
 
 CleanupCallback = Callable[[], Coroutine[Any, Any, None]]
 """Async callback invoked during shutdown cleanup phase."""
+
+CheckpointSaver = Callable[[str], Coroutine[Any, Any, bool]]
+"""Async callback: given task_id, save checkpoint. Returns True on success."""
 
 
 class ShutdownResult(BaseModel):
@@ -69,6 +79,13 @@ class ShutdownResult(BaseModel):
     tasks_completed: int = Field(
         ge=0,
         description="Number of tasks that exited cooperatively",
+    )
+    tasks_suspended: int = Field(
+        ge=0,
+        default=0,
+        description=(
+            "Number of tasks checkpointed before stop (checkpoint strategy only)"
+        ),
     )
     cleanup_completed: bool = Field(
         description="Whether all cleanup callbacks finished in time",
@@ -172,7 +189,7 @@ class CooperativeTimeoutStrategy:
             running_tasks,
         )
 
-        cleanup_completed = await self._run_cleanup(cleanup_callbacks)
+        cleanup_completed = await _run_cleanup(cleanup_callbacks, self._cleanup_seconds)
 
         duration = time.monotonic() - start
         result = ShutdownResult(
@@ -278,52 +295,408 @@ class CooperativeTimeoutStrategy:
                         task_name=task.get_name(),
                     )
 
-    async def _run_cleanup(
+
+class ImmediateCancelStrategy:
+    """Immediate cancel shutdown strategy.
+
+    Force-cancel all agent tasks immediately with no grace period.
+    Fastest shutdown but highest data loss -- partial tool side effects,
+    billed-but-lost LLM responses.
+    """
+
+    def __init__(self, *, cleanup_seconds: float = 5.0) -> None:
+        if cleanup_seconds <= 0:
+            msg = f"cleanup_seconds must be positive, got {cleanup_seconds}"
+            raise ValueError(msg)
+        self._cleanup_seconds = cleanup_seconds
+        self._shutdown_event = asyncio.Event()
+
+    def request_shutdown(self) -> None:
+        """Signal that a graceful shutdown has been requested."""
+        self._shutdown_event.set()
+
+    def is_shutting_down(self) -> bool:
+        """Return ``True`` when shutdown has been requested."""
+        return self._shutdown_event.is_set()
+
+    def get_strategy_type(self) -> str:
+        """Return the strategy identifier."""
+        return "immediate"
+
+    _CANCEL_PROPAGATION_TIMEOUT: float = 5.0
+
+    async def execute_shutdown(
         self,
-        callbacks: Sequence[CleanupCallback],
-    ) -> bool:
-        """Run cleanup callbacks sequentially within the time budget.
+        *,
+        running_tasks: Mapping[str, asyncio.Task[Any]],
+        cleanup_callbacks: Sequence[CleanupCallback],
+    ) -> ShutdownResult:
+        """Cancel all tasks immediately, then run cleanup."""
+        start = time.monotonic()
+        self._shutdown_event.set()
 
-        Returns:
-            ``True`` if all callbacks completed successfully within the
-            time budget, ``False`` otherwise.
-        """
-        if not callbacks:
-            return True
+        task_set = set(running_tasks.values())
+        tasks_interrupted = len(task_set)
 
-        logger.info(
-            EXECUTION_SHUTDOWN_CLEANUP,
-            callback_count=len(callbacks),
-            cleanup_seconds=self._cleanup_seconds,
+        if task_set:
+            logger.info(
+                EXECUTION_SHUTDOWN_IMMEDIATE_CANCEL,
+                running_tasks=tasks_interrupted,
+            )
+            for task in task_set:
+                task.cancel()
+            cancel_done, _ = await asyncio.wait(
+                task_set,
+                timeout=self._CANCEL_PROPAGATION_TIMEOUT,
+            )
+            # Retrieve exceptions to suppress "never retrieved" warnings.
+            for task in cancel_done:
+                if not task.cancelled():
+                    with contextlib.suppress(Exception):
+                        task.exception()
+
+        cleanup_completed = await _run_cleanup(cleanup_callbacks, self._cleanup_seconds)
+
+        return ShutdownResult(
+            strategy_type=self.get_strategy_type(),
+            tasks_interrupted=tasks_interrupted,
+            tasks_completed=0,
+            cleanup_completed=cleanup_completed,
+            duration_seconds=time.monotonic() - start,
         )
 
-        all_succeeded = True
 
-        async def _run_all() -> None:
-            nonlocal all_succeeded
-            for i, callback in enumerate(callbacks):
-                try:
-                    await callback()
-                except Exception:
-                    all_succeeded = False
-                    logger.exception(
-                        EXECUTION_SHUTDOWN_CLEANUP_FAILED,
-                        callback_index=i,
-                        callback_count=len(callbacks),
-                    )
+class FinishCurrentToolStrategy:
+    """Finish current tool shutdown strategy.
 
-        try:
-            await asyncio.wait_for(
-                _run_all(),
-                timeout=self._cleanup_seconds,
+    Like cooperative timeout, but uses a per-tool timeout (default 60s)
+    to allow the current tool invocation to complete.  The execution
+    loop already finishes the current tool before checking shutdown at
+    turn boundaries; this strategy gives a longer window for that.
+    """
+
+    def __init__(
+        self,
+        *,
+        tool_timeout_seconds: float = 60.0,
+        cleanup_seconds: float = 5.0,
+    ) -> None:
+        if tool_timeout_seconds <= 0:
+            msg = f"tool_timeout_seconds must be positive, got {tool_timeout_seconds}"
+            raise ValueError(msg)
+        if cleanup_seconds <= 0:
+            msg = f"cleanup_seconds must be positive, got {cleanup_seconds}"
+            raise ValueError(msg)
+        self._tool_timeout_seconds = tool_timeout_seconds
+        self._cleanup_seconds = cleanup_seconds
+        self._shutdown_event = asyncio.Event()
+
+    def request_shutdown(self) -> None:
+        """Signal that a graceful shutdown has been requested."""
+        self._shutdown_event.set()
+
+    def is_shutting_down(self) -> bool:
+        """Return ``True`` when shutdown has been requested."""
+        return self._shutdown_event.is_set()
+
+    def get_strategy_type(self) -> str:
+        """Return the strategy identifier."""
+        return "finish_tool"
+
+    _CANCEL_PROPAGATION_TIMEOUT: float = 5.0
+
+    async def execute_shutdown(
+        self,
+        *,
+        running_tasks: Mapping[str, asyncio.Task[Any]],
+        cleanup_callbacks: Sequence[CleanupCallback],
+    ) -> ShutdownResult:
+        """Wait for current tool, then cancel stragglers."""
+        start = time.monotonic()
+        self._shutdown_event.set()
+
+        logger.info(
+            EXECUTION_SHUTDOWN_TOOL_WAIT,
+            tool_timeout_seconds=self._tool_timeout_seconds,
+            running_tasks=len(running_tasks),
+        )
+
+        if not running_tasks:
+            cleanup_completed = await _run_cleanup(
+                cleanup_callbacks, self._cleanup_seconds
             )
-        except TimeoutError:
+            return ShutdownResult(
+                strategy_type=self.get_strategy_type(),
+                tasks_interrupted=0,
+                tasks_completed=0,
+                cleanup_completed=cleanup_completed,
+                duration_seconds=time.monotonic() - start,
+            )
+
+        task_set = set(running_tasks.values())
+        done, pending = await asyncio.wait(
+            task_set,
+            timeout=self._tool_timeout_seconds,
+        )
+
+        # Count cooperative exits (exclude errored tasks).
+        tasks_completed = 0
+        for task in done:
+            if task.cancelled():
+                continue
+            exc = task.exception()
+            if exc is not None:
+                logger.warning(
+                    EXECUTION_SHUTDOWN_TASK_ERROR,
+                    error=f"Task raised during shutdown: {type(exc).__name__}",
+                )
+            else:
+                tasks_completed += 1
+
+        # Force-cancel stragglers.
+        if pending:
             logger.warning(
-                EXECUTION_SHUTDOWN_CLEANUP_TIMEOUT,
-                cleanup_seconds=self._cleanup_seconds,
+                EXECUTION_SHUTDOWN_FORCE_CANCEL,
+                pending_tasks=len(pending),
+            )
+            for task in pending:
+                task.cancel()
+            cancel_done, _ = await asyncio.wait(
+                pending,
+                timeout=self._CANCEL_PROPAGATION_TIMEOUT,
+            )
+            for task in cancel_done:
+                if not task.cancelled():
+                    with contextlib.suppress(Exception):
+                        task.exception()
+
+        cleanup_completed = await _run_cleanup(cleanup_callbacks, self._cleanup_seconds)
+
+        return ShutdownResult(
+            strategy_type=self.get_strategy_type(),
+            tasks_interrupted=len(pending),
+            tasks_completed=tasks_completed,
+            cleanup_completed=cleanup_completed,
+            duration_seconds=time.monotonic() - start,
+        )
+
+
+class CheckpointAndStopStrategy:
+    """Checkpoint and stop shutdown strategy.
+
+    On shutdown signal, agents checkpoint cooperatively during the grace
+    period.  Stragglers are checkpointed via the ``checkpoint_saver``
+    callback (if provided), then cancelled.  Tasks that are successfully
+    checkpointed are reported as ``tasks_suspended``; those that fail
+    checkpoint or have no saver are reported as ``tasks_interrupted``.
+    """
+
+    def __init__(
+        self,
+        *,
+        grace_seconds: float = 30.0,
+        cleanup_seconds: float = 5.0,
+        checkpoint_saver: CheckpointSaver | None = None,
+    ) -> None:
+        if grace_seconds <= 0:
+            msg = f"grace_seconds must be positive, got {grace_seconds}"
+            raise ValueError(msg)
+        if cleanup_seconds <= 0:
+            msg = f"cleanup_seconds must be positive, got {cleanup_seconds}"
+            raise ValueError(msg)
+        self._grace_seconds = grace_seconds
+        self._cleanup_seconds = cleanup_seconds
+        self._checkpoint_saver = checkpoint_saver
+        self._shutdown_event = asyncio.Event()
+
+    def request_shutdown(self) -> None:
+        """Signal that a graceful shutdown has been requested."""
+        self._shutdown_event.set()
+
+    def is_shutting_down(self) -> bool:
+        """Return ``True`` when shutdown has been requested."""
+        return self._shutdown_event.is_set()
+
+    def get_strategy_type(self) -> str:
+        """Return the strategy identifier."""
+        return "checkpoint"
+
+    _CANCEL_PROPAGATION_TIMEOUT: float = 5.0
+
+    async def execute_shutdown(
+        self,
+        *,
+        running_tasks: Mapping[str, asyncio.Task[Any]],
+        cleanup_callbacks: Sequence[CleanupCallback],
+    ) -> ShutdownResult:
+        """Checkpoint tasks, then stop."""
+        start = time.monotonic()
+        self._shutdown_event.set()
+
+        logger.info(
+            EXECUTION_SHUTDOWN_GRACE_START,
+            grace_seconds=self._grace_seconds,
+            running_tasks=len(running_tasks),
+        )
+
+        if not running_tasks:
+            cleanup_completed = await _run_cleanup(
+                cleanup_callbacks, self._cleanup_seconds
+            )
+            return ShutdownResult(
+                strategy_type=self.get_strategy_type(),
+                tasks_interrupted=0,
+                tasks_completed=0,
+                tasks_suspended=0,
+                cleanup_completed=cleanup_completed,
+                duration_seconds=time.monotonic() - start,
+            )
+
+        task_set = set(running_tasks.values())
+        done, pending = await asyncio.wait(
+            task_set,
+            timeout=self._grace_seconds,
+        )
+
+        # Cooperative exits are counted as suspended (engine ensures
+        # they checkpoint during cooperative exit).
+        tasks_suspended = 0
+        for task in done:
+            if task.cancelled():
+                continue
+            exc = task.exception()
+            if exc is not None:
+                logger.warning(
+                    EXECUTION_SHUTDOWN_TASK_ERROR,
+                    error=f"Task raised during shutdown: {type(exc).__name__}",
+                )
+            else:
+                tasks_suspended += 1
+
+        # Build task_id -> asyncio.Task reverse map for stragglers.
+        task_to_id = {t: tid for tid, t in running_tasks.items()}
+
+        # Checkpoint stragglers before cancelling.
+        tasks_interrupted = 0
+        for task in pending:
+            task_id = task_to_id.get(task, "unknown")
+            saved = await self._try_checkpoint(task_id)
+            if saved:
+                tasks_suspended += 1
+            else:
+                tasks_interrupted += 1
+            task.cancel()
+
+        # Wait for cancellation to propagate.
+        if pending:
+            cancel_done, _ = await asyncio.wait(
+                pending,
+                timeout=self._CANCEL_PROPAGATION_TIMEOUT,
+            )
+            for task in cancel_done:
+                if not task.cancelled():
+                    with contextlib.suppress(Exception):
+                        task.exception()
+
+        cleanup_completed = await _run_cleanup(cleanup_callbacks, self._cleanup_seconds)
+
+        result = ShutdownResult(
+            strategy_type=self.get_strategy_type(),
+            tasks_interrupted=tasks_interrupted,
+            tasks_completed=0,
+            tasks_suspended=tasks_suspended,
+            cleanup_completed=cleanup_completed,
+            duration_seconds=time.monotonic() - start,
+        )
+        logger.info(
+            EXECUTION_SHUTDOWN_COMPLETE,
+            strategy=result.strategy_type,
+            tasks_suspended=result.tasks_suspended,
+            tasks_interrupted=result.tasks_interrupted,
+            cleanup_completed=result.cleanup_completed,
+            duration_seconds=result.duration_seconds,
+        )
+        return result
+
+    async def _try_checkpoint(self, task_id: str) -> bool:
+        """Attempt to save a checkpoint for the given task.
+
+        Returns:
+            ``True`` if checkpoint was saved, ``False`` otherwise.
+        """
+        if self._checkpoint_saver is None:
+            return False
+        try:
+            saved = await self._checkpoint_saver(task_id)
+        except Exception:
+            logger.exception(
+                EXECUTION_SHUTDOWN_CHECKPOINT_FAILED,
+                task_id=task_id,
             )
             return False
-        return all_succeeded
+        if saved:
+            logger.info(
+                EXECUTION_SHUTDOWN_CHECKPOINT_SAVE,
+                task_id=task_id,
+            )
+        else:
+            logger.warning(
+                EXECUTION_SHUTDOWN_CHECKPOINT_FAILED,
+                task_id=task_id,
+                reason="saver returned False",
+            )
+        return saved
+
+
+# ── Shared cleanup helper ────────────────────────────────────────
+
+
+async def _run_cleanup(
+    callbacks: Sequence[CleanupCallback],
+    cleanup_seconds: float,
+) -> bool:
+    """Run cleanup callbacks sequentially within the time budget.
+
+    Returns:
+        ``True`` if all callbacks completed successfully, ``False``
+        otherwise.
+    """
+    if not callbacks:
+        return True
+
+    logger.info(
+        EXECUTION_SHUTDOWN_CLEANUP,
+        callback_count=len(callbacks),
+        cleanup_seconds=cleanup_seconds,
+    )
+
+    all_succeeded = True
+
+    async def _run_all() -> None:
+        nonlocal all_succeeded
+        for i, callback in enumerate(callbacks):
+            try:
+                await callback()
+            except Exception:
+                all_succeeded = False
+                logger.exception(
+                    EXECUTION_SHUTDOWN_CLEANUP_FAILED,
+                    callback_index=i,
+                    callback_count=len(callbacks),
+                )
+
+    try:
+        await asyncio.wait_for(
+            _run_all(),
+            timeout=cleanup_seconds,
+        )
+    except TimeoutError:
+        logger.warning(
+            EXECUTION_SHUTDOWN_CLEANUP_TIMEOUT,
+            cleanup_seconds=cleanup_seconds,
+        )
+        return False
+    return all_succeeded
 
 
 class ShutdownManager:
@@ -499,3 +872,50 @@ class ShutdownManager:
             running_tasks=dict(self._running_tasks),
             cleanup_callbacks=list(self._cleanup_callbacks),
         )
+
+
+def build_shutdown_strategy(
+    config: GracefulShutdownConfig,
+    *,
+    checkpoint_saver: CheckpointSaver | None = None,
+) -> ShutdownStrategy:
+    """Build a shutdown strategy from configuration.
+
+    Args:
+        config: Shutdown configuration with strategy name and params.
+        checkpoint_saver: Optional checkpoint callback for the
+            ``"checkpoint"`` strategy.
+
+    Returns:
+        Configured shutdown strategy instance.
+
+    Raises:
+        ValueError: If ``config.strategy`` is not a known strategy name.
+    """
+    strategies: dict[str, Callable[[], ShutdownStrategy]] = {
+        "cooperative_timeout": lambda: CooperativeTimeoutStrategy(
+            grace_seconds=config.grace_seconds,
+            cleanup_seconds=config.cleanup_seconds,
+        ),
+        "immediate": lambda: ImmediateCancelStrategy(
+            cleanup_seconds=config.cleanup_seconds,
+        ),
+        "finish_tool": lambda: FinishCurrentToolStrategy(
+            tool_timeout_seconds=config.tool_timeout_seconds,
+            cleanup_seconds=config.cleanup_seconds,
+        ),
+        "checkpoint": lambda: CheckpointAndStopStrategy(
+            grace_seconds=config.grace_seconds,
+            cleanup_seconds=config.cleanup_seconds,
+            checkpoint_saver=checkpoint_saver,
+        ),
+    }
+
+    builder = strategies.get(config.strategy)
+    if builder is None:
+        msg = (
+            f"Unknown shutdown strategy: {config.strategy!r}. "
+            f"Known strategies: {sorted(strategies)}"
+        )
+        raise ValueError(msg)
+    return builder()

@@ -25,11 +25,13 @@ stateDiagram-v2
     ASSIGNED --> BLOCKED : blocked
     ASSIGNED --> CANCELLED : cancelled
     ASSIGNED --> INTERRUPTED : shutdown signal
+    ASSIGNED --> SUSPENDED : checkpoint shutdown
 
     IN_PROGRESS --> IN_REVIEW : agent done
     IN_PROGRESS --> FAILED : runtime crash
     IN_PROGRESS --> CANCELLED : cancelled
     IN_PROGRESS --> INTERRUPTED : shutdown signal
+    IN_PROGRESS --> SUSPENDED : checkpoint shutdown
 
     IN_REVIEW --> COMPLETED : approved
     IN_REVIEW --> IN_PROGRESS : rework
@@ -40,18 +42,22 @@ stateDiagram-v2
 
     INTERRUPTED --> ASSIGNED : reassign on restart
 
+    SUSPENDED --> ASSIGNED : resume from checkpoint
+
     COMPLETED --> [*]
     CANCELLED --> [*]
 ```
 
 !!! info "Non-terminal states"
-    `BLOCKED`, `FAILED`, and `INTERRUPTED` are non-terminal:
+    `BLOCKED`, `FAILED`, `INTERRUPTED`, and `SUSPENDED` are non-terminal:
 
     - **BLOCKED** returns to `ASSIGNED` when unblocked.
     - **FAILED** returns to `ASSIGNED` for retry when `retry_count < max_retries`
       (see [Crash Recovery](#agent-crash-recovery)).
     - **INTERRUPTED** returns to `ASSIGNED` on restart
       (see [Graceful Shutdown](#graceful-shutdown-protocol)).
+    - **SUSPENDED** returns to `ASSIGNED` for resume from checkpoint
+      (see [Graceful Shutdown](#graceful-shutdown-protocol), Strategy 4).
     - **COMPLETED** and **CANCELLED** are the only terminal states with no
       outgoing transitions.
 
@@ -140,7 +146,7 @@ Backlog | Ready | In Progress | Review | Done
 The `KanbanColumn` enum defines five columns that map bidirectionally to
 `TaskStatus` (Backlog=CREATED, Ready=ASSIGNED, In Progress=IN_PROGRESS,
 Review=IN_REVIEW, Done=COMPLETED).  Off-board statuses (BLOCKED, FAILED,
-INTERRUPTED, CANCELLED) map to `None`.  `KanbanConfig` provides per-column
+INTERRUPTED, SUSPENDED, CANCELLED) map to `None`.  `KanbanConfig` provides per-column
 WIP limits with strict (hard-reject) or advisory (log-warning) enforcement.
 Column transitions are validated independently and resolved to the underlying
 task status transition path.
@@ -1188,25 +1194,56 @@ On shutdown signal:
     minimum an input-cost audit record. Streaming calls are charged only for
     tokens sent before disconnect.
 
-### Future Strategies
+### Strategy 2: Immediate Cancel
 
-Strategy 2: Immediate Cancel
-:   All agent tasks are cancelled immediately via `task.cancel()`. Fastest
-    shutdown but highest data loss -- partial tool side effects, billed-but-lost
-    LLM responses.
+All agent tasks are cancelled immediately via `task.cancel()` with no grace
+period. Fastest shutdown but highest data loss -- partial tool side effects,
+billed-but-lost LLM responses. Tasks are marked `INTERRUPTED`.
 
-Strategy 3: Finish Current Tool
-:   Like cooperative timeout, but waits for the current tool invocation to
-    complete even if it exceeds the grace period. Needs per-tool timeout as a
-    backstop for long-running sandboxed execution.
+```yaml
+graceful_shutdown:
+  strategy: "immediate"
+  cleanup_seconds: 5
+```
 
-Strategy 4: Checkpoint and Stop
-:   On shutdown signal, each agent persists its full `AgentContext` snapshot and
-    transitions to `INTERRUPTED`. On restart, the engine loads checkpoints and
-    resumes execution. This naturally extends
-    [Checkpoint Recovery](#agent-crash-recovery) -- the only difference is
-    whether the checkpoint was written proactively (graceful shutdown) or loaded
-    from the last turn (crash recovery).
+### Strategy 3: Finish Current Tool
+
+Like cooperative timeout, but uses a per-tool timeout (default 60s) to allow
+the current tool invocation to complete. The execution loop finishes the
+current tool before checking shutdown at turn boundaries; this strategy
+gives a longer window for that. Tasks that exceed the tool timeout are
+force-cancelled and marked `INTERRUPTED`.
+
+```yaml
+graceful_shutdown:
+  strategy: "finish_tool"
+  tool_timeout_seconds: 60
+  cleanup_seconds: 5
+```
+
+### Strategy 4: Checkpoint and Stop
+
+On shutdown signal, agents checkpoint cooperatively during the grace period.
+Stragglers are checkpointed via a `checkpoint_saver` callback, then cancelled.
+Successfully checkpointed tasks transition to `SUSPENDED` (not `INTERRUPTED`);
+failed checkpoints fall back to `INTERRUPTED`. On restart, the engine loads
+checkpoints and resumes execution from the exact point of interruption. This
+naturally extends [Checkpoint Recovery](#agent-crash-recovery) -- the only
+difference is whether the checkpoint was written proactively (graceful
+shutdown) or loaded from the last turn (crash recovery).
+
+!!! info "SUSPENDED vs INTERRUPTED"
+    `SUSPENDED` indicates the task was checkpointed before stop and can resume
+    from the exact point of interruption.  `INTERRUPTED` indicates the task was
+    stopped without a checkpoint and requires full reassignment.  Both are
+    non-terminal: `SUSPENDED -> ASSIGNED`, `INTERRUPTED -> ASSIGNED`.
+
+```yaml
+graceful_shutdown:
+  strategy: "checkpoint"
+  grace_seconds: 30
+  cleanup_seconds: 5
+```
 
 ---
 

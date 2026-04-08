@@ -48,6 +48,12 @@ EXECUTION_SHUTDOWN_CLEANUP: Final[str] = "execution.shutdown.cleanup"
 EXECUTION_SHUTDOWN_CLEANUP_FAILED: Final[str] = "execution.shutdown.cleanup.failed"
 EXECUTION_SHUTDOWN_CLEANUP_TIMEOUT: Final[str] = "execution.shutdown.cleanup.timeout"
 EXECUTION_SHUTDOWN_COMPLETE: Final[str] = "execution.shutdown.complete"
+EXECUTION_SHUTDOWN_IMMEDIATE_CANCEL: Final[str] = "execution.shutdown.immediate_cancel"
+EXECUTION_SHUTDOWN_TOOL_WAIT: Final[str] = "execution.shutdown.tool_wait"
+EXECUTION_SHUTDOWN_CHECKPOINT_SAVE: Final[str] = "execution.shutdown.checkpoint_save"
+EXECUTION_SHUTDOWN_CHECKPOINT_FAILED: Final[str] = (
+    "execution.shutdown.checkpoint_failed"
+)
 EXECUTION_LOOP_SHUTDOWN: Final[str] = "execution.loop.shutdown"
 
 EXECUTION_PLAN_CREATED: Final[str] = "execution.plan.created"

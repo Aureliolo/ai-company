@@ -466,6 +466,12 @@ class GracefulShutdownConfig(BaseModel):
         le=60,
         description="Seconds allowed for cleanup callbacks",
     )
+    tool_timeout_seconds: float = Field(
+        default=60.0,
+        gt=0,
+        le=300,
+        description="Per-tool timeout for finish_tool strategy",
+    )
 
 
 class TaskAssignmentConfig(BaseModel):
