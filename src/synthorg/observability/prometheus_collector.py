@@ -122,8 +122,9 @@ class PrometheusCollector:
         Called by a thin hook around ``SecOpsService.evaluate_pre_tool()``.
 
         Args:
-            verdict: The verdict string (``"allow"``, ``"deny"``, or
-                ``"escalate"``).
+            verdict: The verdict string -- one of ``"allow"``,
+                ``"deny"``, ``"escalate"``, or ``"output_scan"``
+                (see ``_VALID_VERDICTS``).
 
         Raises:
             ValueError: If *verdict* is not in the allowed set.
