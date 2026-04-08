@@ -76,14 +76,19 @@ class CoordinationMetricsController(Controller):
                 detail="'since' must not be after 'until'",
             )
         app_state = state.app_state
-        entries = app_state.coordination_metrics_store.query(
+        entries, total_matches = app_state.coordination_metrics_store.query(
             task_id=task_id,
             agent_id=agent_id,
             since=since,
             until=until,
             limit=_MAX_METRICS_QUERY,
         )
-        page, meta = paginate(entries, offset=offset, limit=limit)
+        page, meta = paginate(
+            entries,
+            offset=offset,
+            limit=limit,
+            total=total_matches,
+        )
         logger.info(
             API_COORDINATION_METRICS_QUERIED,
             total=meta.total,

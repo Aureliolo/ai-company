@@ -32,15 +32,18 @@ class TestCoordinationMetricsStore:
     def test_empty_store(self) -> None:
         store = CoordinationMetricsStore()
         assert store.count() == 0
-        assert store.query() == ()
+        results, total = store.query()
+        assert results == ()
+        assert total == 0
 
     def test_record_and_query(self) -> None:
         store = CoordinationMetricsStore()
         rec = _make_record()
         store.record(rec)
         assert store.count() == 1
-        results = store.query()
+        results, total = store.query()
         assert len(results) == 1
+        assert total == 1
         assert results[0].task_id == "task-1"
 
     def test_query_newest_first(self) -> None:
@@ -49,7 +52,7 @@ class TestCoordinationMetricsStore:
         t2 = t1 + timedelta(hours=1)
         store.record(_make_record(timestamp=t1, task_id="old"))
         store.record(_make_record(timestamp=t2, task_id="new"))
-        results = store.query()
+        results, _ = store.query()
         assert results[0].task_id == "new"
         assert results[1].task_id == "old"
 
@@ -57,16 +60,18 @@ class TestCoordinationMetricsStore:
         store = CoordinationMetricsStore()
         store.record(_make_record(task_id="a"))
         store.record(_make_record(task_id="b"))
-        results = store.query(task_id="a")
+        results, total = store.query(task_id="a")
         assert len(results) == 1
+        assert total == 1
         assert results[0].task_id == "a"
 
     def test_filter_by_agent_id(self) -> None:
         store = CoordinationMetricsStore()
         store.record(_make_record(agent_id="alice"))
         store.record(_make_record(agent_id="bob"))
-        results = store.query(agent_id="alice")
+        results, total = store.query(agent_id="alice")
         assert len(results) == 1
+        assert total == 1
 
     def test_filter_by_time_range(self) -> None:
         store = CoordinationMetricsStore()
@@ -76,18 +81,27 @@ class TestCoordinationMetricsStore:
         store.record(_make_record(timestamp=t1, task_id="a"))
         store.record(_make_record(timestamp=t2, task_id="b"))
         store.record(_make_record(timestamp=t3, task_id="c"))
-        results = store.query(since=t1, until=t2)
+        results, total = store.query(since=t1, until=t2)
         assert len(results) == 2
+        assert total == 2
 
     def test_eviction(self) -> None:
         store = CoordinationMetricsStore(max_entries=3)
         for i in range(5):
             store.record(_make_record(task_id=f"task-{i}"))
         assert store.count() == 3
-        results = store.query()
+        results, _ = store.query()
         task_ids = [r.task_id for r in results]
         assert "task-0" not in task_ids
         assert "task-4" in task_ids
+
+    def test_total_matches_exceeds_limit(self) -> None:
+        store = CoordinationMetricsStore()
+        for i in range(5):
+            store.record(_make_record(task_id=f"task-{i}"))
+        results, total = store.query(limit=2)
+        assert len(results) == 2
+        assert total == 5
 
     def test_max_entries_validation(self) -> None:
         with pytest.raises(ValueError, match="max_entries must be >= 1"):

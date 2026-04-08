@@ -68,7 +68,7 @@ class CoordinationMetricsStore:
     def record(self, entry: CoordinationMetricsRecord) -> None:
         """Append a metrics record (oldest evicted when full)."""
         self._records.append(entry)
-        logger.debug(
+        logger.info(
             COORD_METRICS_COLLECTION_COMPLETED,
             task_id=entry.task_id,
             agent_id=entry.agent_id,
@@ -83,7 +83,7 @@ class CoordinationMetricsStore:
         since: AwareDatetime | None = None,
         until: AwareDatetime | None = None,
         limit: int = 10_000,
-    ) -> tuple[CoordinationMetricsRecord, ...]:
+    ) -> tuple[tuple[CoordinationMetricsRecord, ...], int]:
         """Query records with optional AND-combined filters.
 
         Args:
@@ -94,7 +94,10 @@ class CoordinationMetricsStore:
             limit: Maximum results to return (must be >= 1).
 
         Returns:
-            Matching records, newest first.
+            A ``(records, total_matches)`` pair.  *records* contains
+            up to *limit* newest-first entries; *total_matches* is
+            the true count of all matching records (may exceed
+            ``len(records)`` when capped by *limit*).
 
         Raises:
             ValueError: If *limit* < 1 or *since* > *until*.
@@ -114,6 +117,7 @@ class CoordinationMetricsStore:
             )
             raise ValueError(msg)
         results: list[CoordinationMetricsRecord] = []
+        total_matches = 0
         for rec in reversed(self._records):
             if task_id is not None and rec.task_id != task_id:
                 continue
@@ -123,10 +127,10 @@ class CoordinationMetricsStore:
                 continue
             if until is not None and rec.computed_at > until:
                 continue
-            results.append(rec)
-            if len(results) >= limit:
-                break
-        return tuple(results)
+            total_matches += 1
+            if len(results) < limit:
+                results.append(rec)
+        return tuple(results), total_matches
 
     def count(self) -> int:
         """Return the number of stored records."""

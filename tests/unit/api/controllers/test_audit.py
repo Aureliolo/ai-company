@@ -71,76 +71,38 @@ class TestAuditController:
         assert body["pagination"]["total"] == 3
         assert len(body["data"]) == 3
 
-    def test_filter_by_agent_id(
+    @pytest.mark.parametrize(
+        ("field", "match_val", "other_val"),
+        [
+            ("agent_id", "alice", "bob"),
+            ("verdict", "deny", "allow"),
+            ("action_type", "deploy:production", "code:write"),
+            ("tool_name", "file_read", "code_write"),
+        ],
+    )
+    def test_filter_by_field(
         self,
         test_client: TestClient[Any],
         audit_log: AuditLog,
-    ) -> None:
-        audit_log.record(_make_entry(entry_id="e-1", agent_id="alice"))
-        audit_log.record(_make_entry(entry_id="e-2", agent_id="bob"))
-        resp = test_client.get(
-            "/api/v1/security/audit",
-            params={"agent_id": "alice"},
-            headers=_HEADERS,
-        )
-        body = resp.json()
-        assert body["pagination"]["total"] == 1
-        assert body["data"][0]["agent_id"] == "alice"
-
-    def test_filter_by_verdict(
-        self,
-        test_client: TestClient[Any],
-        audit_log: AuditLog,
-    ) -> None:
-        audit_log.record(_make_entry(entry_id="e-1", verdict="allow"))
-        audit_log.record(_make_entry(entry_id="e-2", verdict="deny"))
-        resp = test_client.get(
-            "/api/v1/security/audit",
-            params={"verdict": "deny"},
-            headers=_HEADERS,
-        )
-        body = resp.json()
-        assert body["pagination"]["total"] == 1
-        assert body["data"][0]["verdict"] == "deny"
-
-    def test_filter_by_action_type(
-        self,
-        test_client: TestClient[Any],
-        audit_log: AuditLog,
+        field: str,
+        match_val: str,
+        other_val: str,
     ) -> None:
         audit_log.record(
-            _make_entry(entry_id="e-1", action_type="code:write"),
+            _make_entry(entry_id="e-1", **{field: match_val}),
         )
         audit_log.record(
-            _make_entry(entry_id="e-2", action_type="deploy:production"),
+            _make_entry(entry_id="e-2", **{field: other_val}),
         )
         resp = test_client.get(
             "/api/v1/security/audit",
-            params={"action_type": "deploy:production"},
+            params={field: match_val},
             headers=_HEADERS,
         )
+        assert resp.status_code == 200
         body = resp.json()
         assert body["pagination"]["total"] == 1
-        assert body["data"][0]["action_type"] == "deploy:production"
-
-    def test_filter_by_tool_name(
-        self,
-        test_client: TestClient[Any],
-        audit_log: AuditLog,
-    ) -> None:
-        audit_log.record(
-            _make_entry(entry_id="e-1", tool_name="code_write"),
-        )
-        audit_log.record(
-            _make_entry(entry_id="e-2", tool_name="file_read"),
-        )
-        resp = test_client.get(
-            "/api/v1/security/audit",
-            params={"tool_name": "file_read"},
-            headers=_HEADERS,
-        )
-        body = resp.json()
-        assert body["pagination"]["total"] == 1
+        assert body["data"][0][field] == match_val
 
     def test_filter_by_since_until(
         self,
@@ -161,6 +123,7 @@ class TestAuditController:
             },
             headers=_HEADERS,
         )
+        assert resp.status_code == 200
         body = resp.json()
         assert body["pagination"]["total"] == 2
 
@@ -176,6 +139,7 @@ class TestAuditController:
             params={"offset": 2, "limit": 2},
             headers=_HEADERS,
         )
+        assert resp.status_code == 200
         body = resp.json()
         assert body["pagination"]["total"] == 5
         assert body["pagination"]["offset"] == 2

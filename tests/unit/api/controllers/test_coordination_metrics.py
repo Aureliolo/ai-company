@@ -68,6 +68,7 @@ class TestCoordinationMetricsController:
             "/api/v1/coordination/metrics",
             headers=_HEADERS,
         )
+        assert resp.status_code == 200
         body = resp.json()
         assert body["pagination"]["total"] == 2
 
@@ -87,6 +88,7 @@ class TestCoordinationMetricsController:
             params={"task_id": "task-1"},
             headers=_HEADERS,
         )
+        assert resp.status_code == 200
         body = resp.json()
         assert body["pagination"]["total"] == 1
         assert body["data"][0]["task_id"] == "task-1"
@@ -107,6 +109,7 @@ class TestCoordinationMetricsController:
             params={"agent_id": "alice"},
             headers=_HEADERS,
         )
+        assert resp.status_code == 200
         body = resp.json()
         assert body["pagination"]["total"] == 1
 
@@ -135,6 +138,7 @@ class TestCoordinationMetricsController:
             },
             headers=_HEADERS,
         )
+        assert resp.status_code == 200
         body = resp.json()
         assert body["pagination"]["total"] == 2
 
@@ -152,6 +156,7 @@ class TestCoordinationMetricsController:
             params={"offset": 1, "limit": 2},
             headers=_HEADERS,
         )
+        assert resp.status_code == 200
         body = resp.json()
         assert body["pagination"]["total"] == 5
         assert body["pagination"]["offset"] == 1
@@ -175,6 +180,7 @@ class TestCoordinationMetricsController:
             "/api/v1/coordination/metrics",
             headers=_HEADERS,
         )
+        assert resp.status_code == 200
         body = resp.json()
         msg_oh = body["data"][0]["metrics"]["message_overhead"]
         assert msg_oh["is_quadratic"] is True
@@ -201,6 +207,7 @@ class TestCoordinationMetricsController:
             params={"agent_id": "alice", "since": t1.isoformat()},
             headers=_HEADERS,
         )
+        assert resp.status_code == 200
         body = resp.json()
         assert body["pagination"]["total"] == 2
 
