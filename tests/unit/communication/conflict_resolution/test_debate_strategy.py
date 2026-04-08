@@ -462,3 +462,40 @@ class TestDebateResolverEvaluatorFailure:
         )
         with pytest.raises(error_cls):
             await resolver.resolve(conflict)
+
+    async def test_hierarchy_error_in_fallback_uses_no_hierarchy(
+        self,
+    ) -> None:
+        """When authority fallback hits ConflictHierarchyError, resolve
+        without hierarchy instead of propagating."""
+        from unittest.mock import MagicMock
+
+        # Create a hierarchy mock that raises on get_ancestors
+        # (triggers ConflictHierarchyError in _hierarchy_tiebreak)
+        broken_hierarchy = MagicMock(spec=HierarchyResolver)
+        broken_hierarchy.get_ancestors.side_effect = ConflictHierarchyError(
+            "test",
+        )
+        broken_hierarchy.get_lowest_common_manager.return_value = "judge"
+
+        judge = RaisingJudgeEvaluator()
+        resolver = DebateResolver(
+            hierarchy=broken_hierarchy,
+            config=DebateConfig(judge="judge"),
+            judge_evaluator=judge,
+        )
+        # Same seniority triggers tiebreak path in pick_highest_seniority
+        conflict = make_conflict(
+            positions=(
+                make_position(agent_id="sr_dev", level=SeniorityLevel.SENIOR),
+                make_position(
+                    agent_id="sr_dev_2",
+                    level=SeniorityLevel.SENIOR,
+                    position="Other approach",
+                ),
+            ),
+        )
+        resolution = await resolver.resolve(conflict)
+        # Should resolve via no-hierarchy seniority (incumbent wins)
+        assert resolution.outcome == ConflictResolutionOutcome.RESOLVED_BY_DEBATE
+        assert "no hierarchy" in resolution.reasoning.lower()

@@ -41,13 +41,15 @@ class SQLiteCircuitBreakerStateRepository:
         self._db = db
         self._write_lock = write_lock if write_lock is not None else asyncio.Lock()
 
-    async def _rollback_quietly(self) -> None:
+    async def _rollback_quietly(self, event: str) -> None:
         """Roll back the current transaction, swallowing errors."""
         try:
             await self._db.rollback()
+        except MemoryError, RecursionError:
+            raise
         except Exception:
             logger.warning(
-                PERSISTENCE_CIRCUIT_BREAKER_SAVE_FAILED,
+                event,
                 error="rollback failed",
                 exc_info=True,
             )
@@ -67,7 +69,9 @@ INSERT OR REPLACE INTO circuit_breaker_state (
                 )
                 await self._db.commit()
             except (sqlite3.Error, aiosqlite.Error) as exc:
-                await self._rollback_quietly()
+                await self._rollback_quietly(
+                    PERSISTENCE_CIRCUIT_BREAKER_SAVE_FAILED,
+                )
                 msg = (
                     f"Failed to save circuit breaker state for pair "
                     f"({record.pair_key_a!r}, {record.pair_key_b!r})"
@@ -136,7 +140,9 @@ INSERT OR REPLACE INTO circuit_breaker_state (
                 deleted = cursor.rowcount > 0
                 await self._db.commit()
             except (sqlite3.Error, aiosqlite.Error) as exc:
-                await self._rollback_quietly()
+                await self._rollback_quietly(
+                    PERSISTENCE_CIRCUIT_BREAKER_DELETE_FAILED,
+                )
                 msg = (
                     f"Failed to delete circuit breaker state for pair "
                     f"({pair_key_a!r}, {pair_key_b!r})"
