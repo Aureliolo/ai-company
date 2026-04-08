@@ -7,7 +7,7 @@ sinks (console, email, Slack, ntfy, etc.).
 
 import copy
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Any, Final
+from typing import Any, Final, Protocol, runtime_checkable
 
 from synthorg.core.enums import ActionType
 from synthorg.notifications.models import (
@@ -29,8 +29,15 @@ from synthorg.tools.communication.config import (
     CommunicationToolsConfig,  # noqa: TC001
 )
 
-if TYPE_CHECKING:
-    from synthorg.notifications.dispatcher import NotificationDispatcher
+
+@runtime_checkable
+class NotificationDispatcherProtocol(Protocol):
+    """Protocol for notification dispatch -- matches ``NotificationDispatcher``."""
+
+    async def dispatch(self, notification: Notification) -> None:
+        """Dispatch a notification to all registered sinks."""
+        ...
+
 
 logger = get_logger(__name__)
 
@@ -96,7 +103,7 @@ class NotificationSenderTool(BaseCommunicationTool):
     def __init__(
         self,
         *,
-        dispatcher: NotificationDispatcher | None = None,
+        dispatcher: NotificationDispatcherProtocol | None = None,
         config: CommunicationToolsConfig | None = None,
     ) -> None:
         """Initialize the notification sender tool.

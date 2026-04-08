@@ -1,5 +1,7 @@
 """Shared fixtures for design tool tests."""
 
+from typing import Any
+
 import pytest
 
 from synthorg.tools.design.config import DesignToolsConfig
@@ -22,7 +24,7 @@ class MockImageProvider:
             height=1024,
         )
         self._error = error
-        self.calls: list[dict] = []
+        self.calls: list[dict[str, Any]] = []
 
     async def generate(
         self,

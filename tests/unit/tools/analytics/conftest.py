@@ -22,7 +22,7 @@ class MockAnalyticsProvider:
             "active_agents": 5,
         }
         self._error = error
-        self.calls: list[dict] = []
+        self.calls: list[dict[str, Any]] = []
 
     async def query(
         self,
@@ -56,7 +56,7 @@ class MockMetricSink:
         error: Exception | None = None,
     ) -> None:
         self._error = error
-        self.recorded: list[dict] = []
+        self.recorded: list[dict[str, Any]] = []
 
     async def record(
         self,

@@ -43,12 +43,14 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     from synthorg.config.schema import RootConfig
-    from synthorg.notifications.dispatcher import NotificationDispatcher
     from synthorg.tools.analytics.config import AnalyticsToolsConfig
     from synthorg.tools.analytics.data_aggregator import AnalyticsProvider
     from synthorg.tools.analytics.metric_collector import MetricSink
     from synthorg.tools.base import BaseTool
     from synthorg.tools.communication.config import CommunicationToolsConfig
+    from synthorg.tools.communication.notification_sender import (
+        NotificationDispatcherProtocol,
+    )
     from synthorg.tools.database.config import DatabaseConfig, DatabaseConnectionConfig
     from synthorg.tools.design.config import DesignToolsConfig
     from synthorg.tools.design.image_generator import ImageProvider
@@ -187,7 +189,7 @@ def _build_design_tools(
 def _build_communication_tools(
     *,
     config: CommunicationToolsConfig | None = None,
-    dispatcher: NotificationDispatcher | None = None,
+    dispatcher: NotificationDispatcherProtocol | None = None,
 ) -> tuple[BaseTool, ...]:
     """Instantiate the built-in communication tools.
 
@@ -246,7 +248,7 @@ def build_default_tools(  # noqa: PLR0913
     design_config: DesignToolsConfig | None = None,
     image_provider: ImageProvider | None = None,
     communication_config: CommunicationToolsConfig | None = None,
-    communication_dispatcher: NotificationDispatcher | None = None,
+    communication_dispatcher: NotificationDispatcherProtocol | None = None,
     analytics_config: AnalyticsToolsConfig | None = None,
     analytics_provider: AnalyticsProvider | None = None,
     metric_sink: MetricSink | None = None,
@@ -361,7 +363,7 @@ def build_default_tools_from_config(  # noqa: PLR0913
     sandbox_backends: Mapping[str, SandboxBackend] | None = None,
     web_search_provider: WebSearchProvider | None = None,
     image_provider: ImageProvider | None = None,
-    communication_dispatcher: NotificationDispatcher | None = None,
+    communication_dispatcher: NotificationDispatcherProtocol | None = None,
     analytics_provider: AnalyticsProvider | None = None,
     metric_sink: MetricSink | None = None,
 ) -> tuple[BaseTool, ...]:

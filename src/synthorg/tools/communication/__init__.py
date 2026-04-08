@@ -9,6 +9,7 @@ from synthorg.tools.communication.config import (
 )
 from synthorg.tools.communication.email_sender import EmailSenderTool
 from synthorg.tools.communication.notification_sender import (
+    NotificationDispatcherProtocol,
     NotificationSenderTool,
 )
 from synthorg.tools.communication.template_formatter import (
@@ -20,6 +21,7 @@ __all__ = [
     "CommunicationToolsConfig",
     "EmailConfig",
     "EmailSenderTool",
+    "NotificationDispatcherProtocol",
     "NotificationSenderTool",
     "TemplateFormatterTool",
 ]
