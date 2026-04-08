@@ -57,7 +57,10 @@ class TestSQLiteOrgFactStoreLifecycle:
 class TestSQLiteOrgFactStoreOperations:
     """CRUD operation tests."""
 
-    async def test_save_and_get(self, connected_store) -> None:
+    async def test_save_and_get(
+        self,
+        connected_store: SQLiteOrgFactStore,
+    ) -> None:
         fact = _make_fact()
         await connected_store.save(fact)
         retrieved = await connected_store.get("fact-1")
@@ -66,11 +69,17 @@ class TestSQLiteOrgFactStoreOperations:
         assert retrieved.content == "Test fact"
         assert retrieved.category == OrgFactCategory.ADR
 
-    async def test_get_nonexistent(self, connected_store) -> None:
+    async def test_get_nonexistent(
+        self,
+        connected_store: SQLiteOrgFactStore,
+    ) -> None:
         result = await connected_store.get("nonexistent")
         assert result is None
 
-    async def test_query_by_category(self, connected_store) -> None:
+    async def test_query_by_category(
+        self,
+        connected_store: SQLiteOrgFactStore,
+    ) -> None:
         await connected_store.save(_make_fact("f1", "Fact A", OrgFactCategory.ADR))
         await connected_store.save(
             _make_fact("f2", "Fact B", OrgFactCategory.PROCEDURE),
@@ -83,7 +92,10 @@ class TestSQLiteOrgFactStoreOperations:
         assert len(results) == 2
         assert all(r.category == OrgFactCategory.ADR for r in results)
 
-    async def test_query_by_text(self, connected_store) -> None:
+    async def test_query_by_text(
+        self,
+        connected_store: SQLiteOrgFactStore,
+    ) -> None:
         await connected_store.save(_make_fact("f1", "Code review required"))
         await connected_store.save(_make_fact("f2", "Deploy always on Friday"))
 
@@ -91,13 +103,19 @@ class TestSQLiteOrgFactStoreOperations:
         assert len(results) == 1
         assert results[0].id == "f1"
 
-    async def test_query_with_limit(self, connected_store) -> None:
+    async def test_query_with_limit(
+        self,
+        connected_store: SQLiteOrgFactStore,
+    ) -> None:
         for i in range(10):
             await connected_store.save(_make_fact(f"f{i}", f"Fact {i}"))
         results = await connected_store.query(limit=3)
         assert len(results) == 3
 
-    async def test_list_by_category(self, connected_store) -> None:
+    async def test_list_by_category(
+        self,
+        connected_store: SQLiteOrgFactStore,
+    ) -> None:
         await connected_store.save(
             _make_fact("f1", category=OrgFactCategory.CONVENTION),
         )
@@ -111,15 +129,24 @@ class TestSQLiteOrgFactStoreOperations:
         )
         assert len(results) == 2
 
-    async def test_delete(self, connected_store) -> None:
+    async def test_delete(
+        self,
+        connected_store: SQLiteOrgFactStore,
+    ) -> None:
         await connected_store.save(_make_fact("f1"))
         assert await connected_store.delete("f1", author=HUMAN_AUTHOR) is True
         assert await connected_store.get("f1") is None
 
-    async def test_delete_nonexistent(self, connected_store) -> None:
+    async def test_delete_nonexistent(
+        self,
+        connected_store: SQLiteOrgFactStore,
+    ) -> None:
         assert await connected_store.delete("nonexistent", author=HUMAN_AUTHOR) is False
 
-    async def test_save_with_agent_author(self, connected_store) -> None:
+    async def test_save_with_agent_author(
+        self,
+        connected_store: SQLiteOrgFactStore,
+    ) -> None:
         fact = OrgFact(
             id="f1",
             content="Agent fact",
@@ -150,7 +177,10 @@ class TestSQLiteOrgFactStoreOperations:
         with pytest.raises(OrgMemoryConnectionError):
             await store.list_by_category(OrgFactCategory.ADR)
 
-    async def test_save_duplicate_id_republishes(self, connected_store) -> None:
+    async def test_save_duplicate_id_republishes(
+        self,
+        connected_store: SQLiteOrgFactStore,
+    ) -> None:
         """Re-publishing a fact creates a new version in the log."""
         await connected_store.save(_make_fact("f1", "Original content"))
         await connected_store.save(_make_fact("f1", "Updated content"))
@@ -158,7 +188,10 @@ class TestSQLiteOrgFactStoreOperations:
         assert retrieved is not None
         assert retrieved.content == "Updated content"
 
-    async def test_query_combined_category_and_text(self, connected_store) -> None:
+    async def test_query_combined_category_and_text(
+        self,
+        connected_store: SQLiteOrgFactStore,
+    ) -> None:
         await connected_store.save(
             _make_fact(
                 "f1",
@@ -241,7 +274,10 @@ class TestSQLiteOrgFactStoreOperations:
         ):
             SQLiteOrgFactStore("../../../etc/db")
 
-    async def test_like_special_chars_escaped(self, connected_store) -> None:
+    async def test_like_special_chars_escaped(
+        self,
+        connected_store: SQLiteOrgFactStore,
+    ) -> None:
         await connected_store.save(_make_fact("f1", "100% complete"))
         await connected_store.save(_make_fact("f2", "field_name here"))
         await connected_store.save(_make_fact("f3", "normal text"))
@@ -287,7 +323,10 @@ class TestSQLiteOrgFactStoreOperations:
         ):
             _snapshot_row_to_org_fact(mock_row)
 
-    async def test_save_with_tags(self, connected_store) -> None:
+    async def test_save_with_tags(
+        self,
+        connected_store: SQLiteOrgFactStore,
+    ) -> None:
         """Tags are persisted and retrievable."""
         fact = OrgFact(
             id="f1",

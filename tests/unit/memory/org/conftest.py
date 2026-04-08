@@ -1,5 +1,6 @@
 """Shared pytest fixtures and helpers for org memory tests."""
 
+from collections.abc import AsyncGenerator
 from datetime import UTC, datetime
 
 import pytest
@@ -38,7 +39,7 @@ def _make_fact(
 
 
 @pytest.fixture
-async def connected_store():
+async def connected_store() -> AsyncGenerator[SQLiteOrgFactStore]:
     """Fixture providing a connected SQLiteOrgFactStore with automatic cleanup."""
     store = SQLiteOrgFactStore(":memory:")
     await store.connect()

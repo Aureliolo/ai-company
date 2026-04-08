@@ -7,6 +7,7 @@ snapshot, time-travel queries, and audit trail.
 import asyncio
 import unittest.mock
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 
 import pytest
 
@@ -27,7 +28,10 @@ from .conftest import (
 class TestMvccSchema:
     """MVCC tables are created on connect."""
 
-    async def test_tables_created(self, connected_store) -> None:
+    async def test_tables_created(
+        self,
+        connected_store: SQLiteOrgFactStore,
+    ) -> None:
         assert connected_store._db is not None
         cursor = await connected_store._db.execute(
             "SELECT name FROM sqlite_master WHERE type='table' "
@@ -46,7 +50,10 @@ class TestMvccSchema:
 class TestMvccPublish:
     """Append-only publish (save) semantics."""
 
-    async def test_save_creates_log_entry(self, connected_store) -> None:
+    async def test_save_creates_log_entry(
+        self,
+        connected_store: SQLiteOrgFactStore,
+    ) -> None:
         await connected_store.save(_make_fact("f1"))
         log = await connected_store.get_operation_log("f1")
         assert len(log) == 1
@@ -55,14 +62,20 @@ class TestMvccPublish:
         assert log[0].version == 1
         assert log[0].content == "Test fact"
 
-    async def test_save_creates_snapshot(self, connected_store) -> None:
+    async def test_save_creates_snapshot(
+        self,
+        connected_store: SQLiteOrgFactStore,
+    ) -> None:
         await connected_store.save(_make_fact("f1"))
         fact = await connected_store.get("f1")
         assert fact is not None
         assert fact.id == "f1"
         assert fact.content == "Test fact"
 
-    async def test_republish_increments_version(self, connected_store) -> None:
+    async def test_republish_increments_version(
+        self,
+        connected_store: SQLiteOrgFactStore,
+    ) -> None:
         await connected_store.save(_make_fact("f1", "v1 content"))
         await connected_store.save(_make_fact("f1", "v2 content"))
         log = await connected_store.get_operation_log("f1")
@@ -76,7 +89,7 @@ class TestMvccPublish:
         assert fact.content == "v2 content"
 
     async def test_save_with_agent_author_records_autonomy(
-        self, connected_store
+        self, connected_store: SQLiteOrgFactStore
     ) -> None:
         from synthorg.core.enums import AutonomyLevel
 
@@ -85,7 +98,10 @@ class TestMvccPublish:
         assert log[0].author_agent_id == "agent-1"
         assert log[0].author_autonomy_level == AutonomyLevel.SEMI
 
-    async def test_save_with_tags_records_in_log(self, connected_store) -> None:
+    async def test_save_with_tags_records_in_log(
+        self,
+        connected_store: SQLiteOrgFactStore,
+    ) -> None:
         await connected_store.save(
             _make_fact("f1", tags=("security", "core-policy")),
         )
@@ -97,7 +113,10 @@ class TestMvccPublish:
 class TestMvccRetract:
     """Append-only retract (delete) semantics."""
 
-    async def test_retract_creates_log_entry(self, connected_store) -> None:
+    async def test_retract_creates_log_entry(
+        self,
+        connected_store: SQLiteOrgFactStore,
+    ) -> None:
         await connected_store.save(_make_fact("f1"))
         assert await connected_store.delete("f1", author=HUMAN_AUTHOR) is True
         log = await connected_store.get_operation_log("f1")
@@ -107,19 +126,25 @@ class TestMvccRetract:
         assert log[1].version == 2
         assert log[1].content is None
 
-    async def test_retract_marks_snapshot(self, connected_store) -> None:
+    async def test_retract_marks_snapshot(
+        self,
+        connected_store: SQLiteOrgFactStore,
+    ) -> None:
         await connected_store.save(_make_fact("f1"))
         await connected_store.delete("f1", author=HUMAN_AUTHOR)
         assert await connected_store.get("f1") is None
 
     async def test_retract_already_retracted_returns_false(
-        self, connected_store
+        self, connected_store: SQLiteOrgFactStore
     ) -> None:
         await connected_store.save(_make_fact("f1"))
         assert await connected_store.delete("f1", author=HUMAN_AUTHOR) is True
         assert await connected_store.delete("f1", author=HUMAN_AUTHOR) is False
 
-    async def test_retract_nonexistent_returns_false(self, connected_store) -> None:
+    async def test_retract_nonexistent_returns_false(
+        self,
+        connected_store: SQLiteOrgFactStore,
+    ) -> None:
         assert await connected_store.delete("nonexistent", author=HUMAN_AUTHOR) is False
 
 
@@ -127,12 +152,18 @@ class TestMvccRetract:
 class TestMvccReadFiltering:
     """Reads exclude retracted facts."""
 
-    async def test_get_excludes_retracted(self, connected_store) -> None:
+    async def test_get_excludes_retracted(
+        self,
+        connected_store: SQLiteOrgFactStore,
+    ) -> None:
         await connected_store.save(_make_fact("f1"))
         await connected_store.delete("f1", author=HUMAN_AUTHOR)
         assert await connected_store.get("f1") is None
 
-    async def test_query_excludes_retracted(self, connected_store) -> None:
+    async def test_query_excludes_retracted(
+        self,
+        connected_store: SQLiteOrgFactStore,
+    ) -> None:
         await connected_store.save(_make_fact("f1", "Active fact"))
         await connected_store.save(_make_fact("f2", "Retracted fact"))
         await connected_store.delete("f2", author=HUMAN_AUTHOR)
@@ -141,7 +172,10 @@ class TestMvccReadFiltering:
         assert "f1" in ids
         assert "f2" not in ids
 
-    async def test_list_by_category_excludes_retracted(self, connected_store) -> None:
+    async def test_list_by_category_excludes_retracted(
+        self,
+        connected_store: SQLiteOrgFactStore,
+    ) -> None:
         await connected_store.save(
             _make_fact("f1", category=OrgFactCategory.ADR),
         )
@@ -158,7 +192,10 @@ class TestMvccReadFiltering:
 class TestMvccVersionCounter:
     """Version counter is per-fact and monotonic."""
 
-    async def test_independent_fact_versions(self, connected_store) -> None:
+    async def test_independent_fact_versions(
+        self,
+        connected_store: SQLiteOrgFactStore,
+    ) -> None:
         await connected_store.save(_make_fact("f1", "First fact"))
         await connected_store.save(_make_fact("f2", "Second fact"))
         log_f1 = await connected_store.get_operation_log("f1")
@@ -166,7 +203,10 @@ class TestMvccVersionCounter:
         assert log_f1[0].version == 1
         assert log_f2[0].version == 1
 
-    async def test_version_increments_across_operations(self, connected_store) -> None:
+    async def test_version_increments_across_operations(
+        self,
+        connected_store: SQLiteOrgFactStore,
+    ) -> None:
         await connected_store.save(_make_fact("f1", "v1"))
         await connected_store.save(_make_fact("f1", "v2"))
         await connected_store.delete("f1", author=HUMAN_AUTHOR)
@@ -178,13 +218,19 @@ class TestMvccVersionCounter:
 class TestMvccSnapshotAt:
     """Time-travel queries via snapshot_at()."""
 
-    async def test_snapshot_before_any_operations(self, connected_store) -> None:
+    async def test_snapshot_before_any_operations(
+        self,
+        connected_store: SQLiteOrgFactStore,
+    ) -> None:
         past = datetime.now(UTC) - timedelta(hours=1)
         await connected_store.save(_make_fact("f1"))
         snapshot = await connected_store.snapshot_at(past)
         assert len(snapshot) == 0
 
-    async def test_snapshot_after_publish(self, connected_store) -> None:
+    async def test_snapshot_after_publish(
+        self,
+        connected_store: SQLiteOrgFactStore,
+    ) -> None:
         await connected_store.save(_make_fact("f1", "Published fact"))
         future = datetime.now(UTC) + timedelta(hours=1)
         snapshot = await connected_store.snapshot_at(future)
@@ -193,7 +239,10 @@ class TestMvccSnapshotAt:
         assert snapshot[0].content == "Published fact"
         assert snapshot[0].retracted_at is None
 
-    async def test_snapshot_after_retract(self, connected_store) -> None:
+    async def test_snapshot_after_retract(
+        self,
+        connected_store: SQLiteOrgFactStore,
+    ) -> None:
         await connected_store.save(_make_fact("f1"))
         await connected_store.delete("f1", author=HUMAN_AUTHOR)
         future = datetime.now(UTC) + timedelta(hours=1)
@@ -202,7 +251,10 @@ class TestMvccSnapshotAt:
         assert snapshot[0].fact_id == "f1"
         assert snapshot[0].retracted_at is not None
 
-    async def test_snapshot_between_publish_and_retract(self, connected_store) -> None:
+    async def test_snapshot_between_publish_and_retract(
+        self,
+        connected_store: SQLiteOrgFactStore,
+    ) -> None:
         """Snapshot at a time between publish and retract shows active fact."""
         t_publish = datetime(2026, 1, 1, 0, 0, 0, tzinfo=UTC)
         t_retract = datetime(2026, 1, 1, 0, 0, 2, tzinfo=UTC)
@@ -210,7 +262,7 @@ class TestMvccSnapshotAt:
         call_count = 0
         timestamps = [t_publish, t_retract]
 
-        def _fake_now(_tz=None):
+        def _fake_now(_tz: object = None) -> datetime:
             nonlocal call_count
             ts = timestamps[min(call_count, len(timestamps) - 1)]
             call_count += 1
@@ -238,7 +290,10 @@ class TestMvccSnapshotAt:
 class TestMvccGetOperationLog:
     """Audit trail via get_operation_log()."""
 
-    async def test_full_audit_trail(self, connected_store) -> None:
+    async def test_full_audit_trail(
+        self,
+        connected_store: SQLiteOrgFactStore,
+    ) -> None:
         await connected_store.save(_make_fact("f1", "Original"))
         await connected_store.save(_make_fact("f1", "Updated"))
         await connected_store.delete("f1", author=HUMAN_AUTHOR)
@@ -252,7 +307,10 @@ class TestMvccGetOperationLog:
         assert log[2].content is None
         assert [e.version for e in log] == [1, 2, 3]
 
-    async def test_empty_log_for_unknown_fact(self, connected_store) -> None:
+    async def test_empty_log_for_unknown_fact(
+        self,
+        connected_store: SQLiteOrgFactStore,
+    ) -> None:
         log = await connected_store.get_operation_log("nonexistent")
         assert log == ()
 
@@ -261,7 +319,10 @@ class TestMvccGetOperationLog:
         with pytest.raises(OrgMemoryConnectionError):
             await store.get_operation_log("f1")
 
-    async def test_log_preserves_all_operations(self, connected_store) -> None:
+    async def test_log_preserves_all_operations(
+        self,
+        connected_store: SQLiteOrgFactStore,
+    ) -> None:
         """Even after retraction, all operations are preserved."""
         await connected_store.save(
             _make_fact("f1", "v1", tags=("tag-a",)),
@@ -280,7 +341,7 @@ class TestMvccGetOperationLog:
 class TestMvccConcurrentPublishes:
     """Two agents publishing the same fact_id concurrently."""
 
-    async def test_both_operations_in_log(self, tmp_path) -> None:
+    async def test_both_operations_in_log(self, tmp_path: Path) -> None:
         db_path = str(tmp_path / "concurrent.db")
         store_a = SQLiteOrgFactStore(db_path)
         store_b = SQLiteOrgFactStore(db_path)
