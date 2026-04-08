@@ -133,6 +133,22 @@ class TestEmailSenderTool:
         assert not result.is_error
         assert "3 recipient(s)" in result.content
 
+    @patch.object(EmailSenderTool, "_send_sync")
+    async def test_execute_rejects_newline_in_address(
+        self,
+        mock_send: object,
+        comm_config: CommunicationToolsConfig,
+    ) -> None:
+        tool = EmailSenderTool(config=comm_config)
+        result = await tool.execute(
+            arguments={
+                "to": ["attacker@ex.com\nBcc: victim@ex.com"],
+                "subject": "Test",
+            }
+        )
+        assert result.is_error
+        assert "invalid characters" in result.content
+
     def test_parameters_schema_requires_to_and_subject(
         self,
         comm_config: CommunicationToolsConfig,

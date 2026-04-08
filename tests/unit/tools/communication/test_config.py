@@ -55,9 +55,45 @@ class TestEmailConfig:
         config = EmailConfig(
             host="smtp.example.com",
             from_address="test@example.com",
+            username="user",
             password="secret",
         )
         assert "secret" not in repr(config)
+
+    def test_partial_credentials_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="username and password"):
+            EmailConfig(
+                host="smtp.example.com",
+                from_address="test@example.com",
+                username="user",
+                # password missing
+            )
+
+    def test_partial_credentials_password_only_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="username and password"):
+            EmailConfig(
+                host="smtp.example.com",
+                from_address="test@example.com",
+                password="secret",
+                # username missing
+            )
+
+    def test_both_credentials_accepted(self) -> None:
+        config = EmailConfig(
+            host="smtp.example.com",
+            from_address="test@example.com",
+            username="user",
+            password="secret",
+        )
+        assert config.username == "user"
+
+    def test_no_credentials_accepted(self) -> None:
+        config = EmailConfig(
+            host="smtp.example.com",
+            from_address="test@example.com",
+        )
+        assert config.username is None
+        assert config.password is None
 
 
 @pytest.mark.unit

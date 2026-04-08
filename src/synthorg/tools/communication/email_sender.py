@@ -11,7 +11,7 @@ import re
 import smtplib
 import ssl
 from email.message import EmailMessage
-from typing import Any, Final
+from typing import TYPE_CHECKING, Any, Final
 
 from synthorg.core.enums import ActionType
 from synthorg.observability import get_logger
@@ -29,9 +29,15 @@ from synthorg.tools.communication.config import (
     CommunicationToolsConfig,  # noqa: TC001
 )
 
+if TYPE_CHECKING:
+    from synthorg.tools.communication.config import EmailConfig
+
 logger = get_logger(__name__)
 
 _CONTROL_CHAR_RE: Final[re.Pattern[str]] = re.compile(r"[\x00-\x1f\x7f]")
+
+# Reject addresses with newlines/carriage returns (header injection).
+_UNSAFE_ADDR_RE: Final[re.Pattern[str]] = re.compile(r"[\r\n]")
 
 _PARAMETERS_SCHEMA: Final[dict[str, Any]] = {
     "type": "object",
@@ -170,6 +176,18 @@ class EmailSenderTool(BaseCommunicationTool):
                 is_error=True,
             )
 
+        # Reject addresses with newlines (header injection prevention).
+        for addr in all_recipients:
+            if _UNSAFE_ADDR_RE.search(addr):
+                logger.warning(
+                    COMM_TOOL_EMAIL_VALIDATION_FAILED,
+                    reason="unsafe_address",
+                )
+                return ToolExecutionResult(
+                    content="Email address contains invalid characters.",
+                    is_error=True,
+                )
+
         logger.info(
             COMM_TOOL_EMAIL_SEND_START,
             to_count=len(to_addrs),
@@ -195,6 +213,7 @@ class EmailSenderTool(BaseCommunicationTool):
             logger.warning(
                 COMM_TOOL_EMAIL_SEND_FAILED,
                 error=str(exc),
+                recipient_count=len(all_recipients),
             )
             return ToolExecutionResult(
                 content=f"Email sending failed: {exc}",
@@ -219,7 +238,7 @@ class EmailSenderTool(BaseCommunicationTool):
     @staticmethod
     def _send_sync(  # noqa: PLR0913
         *,
-        email_config: Any,
+        email_config: EmailConfig,
         to_addrs: list[str],
         cc_addrs: list[str],
         all_recipients: list[str],

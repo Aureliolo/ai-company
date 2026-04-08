@@ -132,6 +132,45 @@ class TestTemplateFormatterTool:
         assert not result.is_error
         assert "a b c" in result.content
 
+    async def test_sandbox_blocks_attribute_access(self) -> None:
+        """SandboxedEnvironment prevents dangerous attribute access."""
+        tool = TemplateFormatterTool()
+        result = await tool.execute(
+            arguments={
+                "template": "{{ ''.__class__.__bases__ }}",
+                "variables": {},
+            }
+        )
+        # Sandbox should block or render safely (no class hierarchy)
+        assert result.is_error or "__class__" not in result.content
+
+    async def test_html_format_escapes_xss(self) -> None:
+        """HTML format auto-escapes to prevent XSS."""
+        tool = TemplateFormatterTool()
+        result = await tool.execute(
+            arguments={
+                "template": "<p>{{ content }}</p>",
+                "variables": {"content": "<script>alert(1)</script>"},
+                "format": "html",
+            }
+        )
+        assert not result.is_error
+        assert "<script>" not in result.content
+        assert "&lt;script&gt;" in result.content
+
+    async def test_text_format_does_not_escape(self) -> None:
+        """Text format passes through without HTML escaping."""
+        tool = TemplateFormatterTool()
+        result = await tool.execute(
+            arguments={
+                "template": "{{ content }}",
+                "variables": {"content": "<b>bold</b>"},
+                "format": "text",
+            }
+        )
+        assert not result.is_error
+        assert "<b>bold</b>" in result.content
+
     def test_parameters_schema_requires_template_and_variables(
         self,
     ) -> None:

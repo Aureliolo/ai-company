@@ -243,5 +243,9 @@ class DiagramGeneratorTool(BaseDesignTool):
             Graphviz DOT string.
         """
         graph_type = "graph" if diagram_type == "architecture" else "digraph"
-        label = f'    label="{title}";\n' if title else ""
+        if title:
+            escaped = title.replace("\\", "\\\\").replace('"', '\\"')
+            label = f'    label="{escaped}";\n'
+        else:
+            label = ""
         return f"{graph_type} {diagram_type} {{\n{label}    {description}\n}}"

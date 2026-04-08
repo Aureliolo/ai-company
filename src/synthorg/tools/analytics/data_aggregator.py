@@ -6,6 +6,7 @@ shipped -- users inject a provider at construction time.
 """
 
 import copy
+from datetime import datetime
 from typing import Any, Final, Protocol, runtime_checkable
 
 from synthorg.core.enums import ActionType
@@ -140,6 +141,71 @@ class DataAggregatorTool(BaseAnalyticsTool):
         )
         self._provider = provider
 
+    def _validate_query_params(
+        self,
+        metrics: list[str],
+        period: str,
+        group_by: str | None,
+        start_date: str | None,
+        end_date: str | None,
+    ) -> ToolExecutionResult | None:
+        """Validate query parameters.
+
+        Returns a ``ToolExecutionResult`` error if validation fails,
+        or ``None`` if all parameters are valid.
+        """
+        blocked = [m for m in metrics if not self._is_metric_allowed(m)]
+        if blocked:
+            return ToolExecutionResult(
+                content=(
+                    f"Metrics not allowed: {blocked}. "
+                    f"Allowed: {sorted(self._config.allowed_metrics or set())}"
+                ),
+                is_error=True,
+            )
+
+        if period not in _VALID_PERIODS:
+            return ToolExecutionResult(
+                content=(
+                    f"Invalid period: {period!r}. "
+                    f"Must be one of: {sorted(_VALID_PERIODS)}"
+                ),
+                is_error=True,
+            )
+
+        if period == "custom" and (not start_date or not end_date):
+            return ToolExecutionResult(
+                content=("Custom period requires both start_date and end_date."),
+                is_error=True,
+            )
+
+        for date_label, date_val in (
+            ("start_date", start_date),
+            ("end_date", end_date),
+        ):
+            if date_val is not None:
+                try:
+                    datetime.fromisoformat(date_val)
+                except ValueError:
+                    return ToolExecutionResult(
+                        content=(
+                            f"Invalid {date_label}: {date_val!r}. "
+                            f"Must be ISO 8601 format."
+                        ),
+                        is_error=True,
+                    )
+
+        if group_by is not None and group_by not in _VALID_GROUP_BY:
+            return ToolExecutionResult(
+                content=(
+                    f"Invalid group_by: {group_by!r}. "
+                    f"Must be one of: {sorted(_VALID_GROUP_BY)}"
+                ),
+                is_error=True,
+            )
+
+        return None
+
     async def execute(
         self,
         *,
@@ -173,34 +239,15 @@ class DataAggregatorTool(BaseAnalyticsTool):
         start_date: str | None = arguments.get("start_date")
         end_date: str | None = arguments.get("end_date")
 
-        # Validate metric names against whitelist
-        blocked = [m for m in metrics if not self._is_metric_allowed(m)]
-        if blocked:
-            return ToolExecutionResult(
-                content=(
-                    f"Metrics not allowed: {blocked}. "
-                    f"Allowed: {sorted(self._config.allowed_metrics or set())}"
-                ),
-                is_error=True,
-            )
-
-        if period not in _VALID_PERIODS:
-            return ToolExecutionResult(
-                content=(
-                    f"Invalid period: {period!r}. "
-                    f"Must be one of: {sorted(_VALID_PERIODS)}"
-                ),
-                is_error=True,
-            )
-
-        if group_by is not None and group_by not in _VALID_GROUP_BY:
-            return ToolExecutionResult(
-                content=(
-                    f"Invalid group_by: {group_by!r}. "
-                    f"Must be one of: {sorted(_VALID_GROUP_BY)}"
-                ),
-                is_error=True,
-            )
+        error = self._validate_query_params(
+            metrics,
+            period,
+            group_by,
+            start_date,
+            end_date,
+        )
+        if error is not None:
+            return error
 
         logger.info(
             ANALYTICS_TOOL_QUERY_START,
@@ -223,6 +270,8 @@ class DataAggregatorTool(BaseAnalyticsTool):
             logger.warning(
                 ANALYTICS_TOOL_QUERY_FAILED,
                 error=str(exc),
+                metrics=metrics,
+                period=period,
             )
             return ToolExecutionResult(
                 content=f"Analytics query failed: {exc}",

@@ -161,6 +161,36 @@ class TestDataAggregatorTool:
         )
         assert not result.is_error
 
+    async def test_execute_custom_period_requires_dates(
+        self,
+        mock_provider: MockAnalyticsProvider,
+    ) -> None:
+        tool = DataAggregatorTool(provider=mock_provider)
+        result = await tool.execute(
+            arguments={
+                "metrics": ["total_cost"],
+                "period": "custom",
+            }
+        )
+        assert result.is_error
+        assert "start_date" in result.content
+
+    async def test_execute_invalid_date_format(
+        self,
+        mock_provider: MockAnalyticsProvider,
+    ) -> None:
+        tool = DataAggregatorTool(provider=mock_provider)
+        result = await tool.execute(
+            arguments={
+                "metrics": ["total_cost"],
+                "period": "custom",
+                "start_date": "not-a-date",
+                "end_date": "2026-01-31",
+            }
+        )
+        assert result.is_error
+        assert "Invalid start_date" in result.content
+
     def test_mock_provider_satisfies_protocol(
         self,
         mock_provider: MockAnalyticsProvider,

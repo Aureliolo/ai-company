@@ -1,8 +1,16 @@
 """Configuration models for communication tools."""
 
-from pydantic import BaseModel, ConfigDict, Field
+from typing import Self
+
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.observability import get_logger
+from synthorg.observability.events.communication import (
+    COMM_TOOL_EMAIL_VALIDATION_FAILED,
+)
+
+logger = get_logger(__name__)
 
 
 class EmailConfig(BaseModel):
@@ -42,6 +50,22 @@ class EmailConfig(BaseModel):
         default=True,
         description="Whether to use STARTTLS",
     )
+
+    @model_validator(mode="after")
+    def _validate_auth_pair(self) -> Self:
+        """Ensure username and password are both present or both absent."""
+        has_user = self.username is not None
+        has_pass = self.password is not None
+        if has_user != has_pass:
+            logger.warning(
+                COMM_TOOL_EMAIL_VALIDATION_FAILED,
+                reason="partial_credentials",
+                has_username=has_user,
+                has_password=has_pass,
+            )
+            msg = "SMTP username and password must both be provided or both be None"
+            raise ValueError(msg)
+        return self
 
 
 class CommunicationToolsConfig(BaseModel):

@@ -22,52 +22,33 @@ class TestDiagramGeneratorTool:
         tool = DiagramGeneratorTool()
         assert tool.name == "diagram_generator"
 
-    async def test_execute_mermaid_flowchart(self) -> None:
+    @pytest.mark.parametrize(
+        ("diagram_type", "description", "expected_keyword"),
+        [
+            ("flowchart", "A --> B\nB --> C", "flowchart TD"),
+            ("sequence", "Alice->>Bob: Hello", "sequenceDiagram"),
+            ("class", "Animal <|-- Duck", "classDiagram"),
+            ("state", "[*] --> Active", "stateDiagram-v2"),
+            ("architecture", "A --> B", "flowchart TD"),
+        ],
+    )
+    async def test_execute_mermaid_diagram_types(
+        self,
+        diagram_type: str,
+        description: str,
+        expected_keyword: str,
+    ) -> None:
         tool = DiagramGeneratorTool()
         result = await tool.execute(
             arguments={
-                "diagram_type": "flowchart",
-                "description": "A --> B\nB --> C",
+                "diagram_type": diagram_type,
+                "description": description,
             }
         )
         assert not result.is_error
-        assert "flowchart TD" in result.content
-        assert "A --> B" in result.content
-        assert result.metadata["diagram_type"] == "flowchart"
+        assert expected_keyword in result.content
+        assert result.metadata["diagram_type"] == diagram_type
         assert result.metadata["output_format"] == "mermaid"
-
-    async def test_execute_mermaid_sequence(self) -> None:
-        tool = DiagramGeneratorTool()
-        result = await tool.execute(
-            arguments={
-                "diagram_type": "sequence",
-                "description": "Alice->>Bob: Hello",
-            }
-        )
-        assert not result.is_error
-        assert "sequenceDiagram" in result.content
-
-    async def test_execute_mermaid_class(self) -> None:
-        tool = DiagramGeneratorTool()
-        result = await tool.execute(
-            arguments={
-                "diagram_type": "class",
-                "description": "Animal <|-- Duck",
-            }
-        )
-        assert not result.is_error
-        assert "classDiagram" in result.content
-
-    async def test_execute_mermaid_state(self) -> None:
-        tool = DiagramGeneratorTool()
-        result = await tool.execute(
-            arguments={
-                "diagram_type": "state",
-                "description": "[*] --> Active",
-            }
-        )
-        assert not result.is_error
-        assert "stateDiagram-v2" in result.content
 
     async def test_execute_with_title(self) -> None:
         tool = DiagramGeneratorTool()
@@ -106,6 +87,21 @@ class TestDiagramGeneratorTool:
         )
         assert not result.is_error
         assert 'label="Test"' in result.content
+
+    async def test_graphviz_title_escapes_quotes(self) -> None:
+        tool = DiagramGeneratorTool()
+        result = await tool.execute(
+            arguments={
+                "diagram_type": "flowchart",
+                "description": "A -> B",
+                "output_format": "graphviz",
+                "title": 'My "Quoted" Title',
+            }
+        )
+        assert not result.is_error
+        assert r"My \"Quoted\" Title" in result.content
+        # No unescaped double quotes that would break DOT syntax
+        assert 'label="My \\"Quoted\\" Title"' in result.content
 
     async def test_execute_invalid_diagram_type(self) -> None:
         tool = DiagramGeneratorTool()

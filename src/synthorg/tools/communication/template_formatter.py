@@ -93,6 +93,7 @@ class TemplateFormatterTool(BaseCommunicationTool):
             config=config,
         )
         self._env = SandboxedEnvironment()
+        self._env_autoesc = SandboxedEnvironment(autoescape=True)
 
     async def execute(
         self,
@@ -128,8 +129,9 @@ class TemplateFormatterTool(BaseCommunicationTool):
             output_format=output_format,
         )
 
+        env = self._env_autoesc if output_format == "html" else self._env
         try:
-            tmpl = self._env.from_string(template_str)
+            tmpl = env.from_string(template_str)
         except TemplateSyntaxError as exc:
             logger.warning(
                 COMM_TOOL_TEMPLATE_RENDER_INVALID,

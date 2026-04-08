@@ -171,6 +171,107 @@ class TestBuildDefaultTools:
 
 
 @pytest.mark.unit
+class TestBuildDesignTools:
+    """Tests for _build_design_tools via build_default_tools."""
+
+    def test_design_tools_skipped_when_config_none(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        tools = build_default_tools(workspace=tmp_path, design_config=None)
+        names = {t.name for t in tools}
+        assert "image_generator" not in names
+        assert "diagram_generator" not in names
+        assert "asset_manager" not in names
+
+    def test_design_tools_included_with_config(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        from synthorg.tools.design.config import DesignToolsConfig
+
+        config = DesignToolsConfig()
+        tools = build_default_tools(
+            workspace=tmp_path,
+            design_config=config,
+        )
+        names = {t.name for t in tools}
+        assert "image_generator" in names
+        assert "diagram_generator" in names
+        assert "asset_manager" in names
+
+
+@pytest.mark.unit
+class TestBuildCommunicationTools:
+    """Tests for _build_communication_tools via build_default_tools."""
+
+    def test_communication_tools_skipped_when_config_none(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        tools = build_default_tools(
+            workspace=tmp_path,
+            communication_config=None,
+        )
+        names = {t.name for t in tools}
+        assert "email_sender" not in names
+        assert "notification_sender" not in names
+        assert "template_formatter" not in names
+
+    def test_communication_tools_included_with_config(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        from synthorg.tools.communication.config import (
+            CommunicationToolsConfig,
+        )
+
+        config = CommunicationToolsConfig()
+        tools = build_default_tools(
+            workspace=tmp_path,
+            communication_config=config,
+        )
+        names = {t.name for t in tools}
+        assert "email_sender" in names
+        assert "notification_sender" in names
+        assert "template_formatter" in names
+
+
+@pytest.mark.unit
+class TestBuildAnalyticsTools:
+    """Tests for _build_analytics_tools via build_default_tools."""
+
+    def test_analytics_tools_skipped_when_config_none(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        tools = build_default_tools(
+            workspace=tmp_path,
+            analytics_config=None,
+        )
+        names = {t.name for t in tools}
+        assert "data_aggregator" not in names
+        assert "report_generator" not in names
+        assert "metric_collector" not in names
+
+    def test_analytics_tools_included_with_config(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        from synthorg.tools.analytics.config import AnalyticsToolsConfig
+
+        config = AnalyticsToolsConfig()
+        tools = build_default_tools(
+            workspace=tmp_path,
+            analytics_config=config,
+        )
+        names = {t.name for t in tools}
+        assert "data_aggregator" in names
+        assert "report_generator" in names
+        assert "metric_collector" in names
+
+
+@pytest.mark.unit
 class TestBuildDefaultToolsFromConfig:
     """Tests for build_default_tools_from_config()."""
 

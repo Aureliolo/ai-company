@@ -8,7 +8,7 @@ inject a provider at construction time.
 import copy
 from typing import Any, Final, Protocol, runtime_checkable
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from synthorg.core.enums import ActionType
 from synthorg.observability import get_logger
@@ -37,10 +37,13 @@ class ImageResult(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
-    data: str
-    content_type: str = "image/png"
-    width: int
-    height: int
+    data: str = Field(min_length=1, description="Base64-encoded image data")
+    content_type: str = Field(
+        default="image/png",
+        description="MIME type of the generated image",
+    )
+    width: int = Field(gt=0, description="Image width in pixels")
+    height: int = Field(gt=0, description="Image height in pixels")
 
 
 @runtime_checkable
@@ -207,6 +210,8 @@ class ImageGeneratorTool(BaseDesignTool):
             logger.warning(
                 DESIGN_IMAGE_GENERATION_FAILED,
                 error=str(exc),
+                prompt_length=len(prompt),
+                style=style,
             )
             return ToolExecutionResult(
                 content=f"Image generation failed: {exc}",
