@@ -414,9 +414,9 @@ etc.).
     | **Message overhead** | `Mo` | Pairwise message count relative to team size | Quadratic communication detection. `is_quadratic` flag when `O(n^2)` |
 
     All 9 metrics are opt-in via `coordination_metrics.enabled` in analytics config. `Ec` and
-    `O%` are cheap (turn counting). `Ae` requires baseline comparison data. `c` and `R` require
-    semantic analysis of agent outputs. `Sc`, `Gs`, `Rt`, and `Mo` are computed from execution
-    telemetry (turn counts, token usage, message logs).
+    `O%` are cheap (turn counting). `Ae` requires baseline comparison data. `R` requires
+    semantic analysis of agent outputs (embedding cosine similarity). `c`, `Sc`, `Gs`, `Rt`,
+    and `Mo` are computed from execution telemetry (turn counts, token usage, message logs).
 
     ```yaml
     coordination_metrics:
