@@ -192,18 +192,19 @@ def compute_diff(
             reason=msg,
         )
         raise ValueError(msg)
-    if old.snapshot.id != new.snapshot.id:
-        msg = (
-            "Snapshot definition IDs do not match entity_id "
-            f"(old={old.snapshot.id!r}, new={new.snapshot.id!r})"
-        )
-        logger.warning(
-            WORKFLOW_DEF_INVALID_REQUEST,
-            old_snapshot_id=old.snapshot.id,
-            new_snapshot_id=new.snapshot.id,
-            reason=msg,
-        )
-        raise ValueError(msg)
+    for label, snap in (("old", old), ("new", new)):
+        if snap.snapshot.id != snap.entity_id:
+            msg = (
+                f"Corrupted {label} snapshot: snapshot.id "
+                f"{snap.snapshot.id!r} != entity_id {snap.entity_id!r}"
+            )
+            logger.warning(
+                WORKFLOW_DEF_INVALID_REQUEST,
+                snapshot_id=snap.snapshot.id,
+                entity_id=snap.entity_id,
+                reason=msg,
+            )
+            raise ValueError(msg)
 
     node_changes = _diff_nodes(old.snapshot, new.snapshot)
     edge_changes = _diff_edges(old.snapshot, new.snapshot)
