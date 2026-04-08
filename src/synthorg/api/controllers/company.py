@@ -136,6 +136,7 @@ class CompanyController(Controller):
         app_state: AppState = state.app_state
         reordered = await app_state.org_mutation_service.reorder_departments(
             data,
+            saved_by=get_auth_user_id(request),
         )
         publish_ws_event(
             request,

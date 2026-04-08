@@ -73,22 +73,14 @@ from synthorg.persistence.workflow_definition_repo import (
 )
 from synthorg.versioning import VersioningService
 
-_WF_VERSIONING_CACHE: dict[int, VersioningService[WorkflowDefinition]] = {}
-
 
 def _wf_versioning(state: State) -> VersioningService[WorkflowDefinition]:
-    """Return a VersioningService for workflow definitions.
+    """Build a VersioningService for workflow definitions.
 
-    Uses the persistence backend's identity to avoid repeated
-    allocations across controller methods.
+    ``VersioningService.__init__`` only stores a repo reference, so
+    constructing per-request is trivially cheap.
     """
-    repo = state.app_state.persistence.workflow_versions
-    key = id(repo)
-    svc = _WF_VERSIONING_CACHE.get(key)
-    if svc is None:
-        svc = VersioningService(repo)
-        _WF_VERSIONING_CACHE[key] = svc
-    return svc
+    return VersioningService(state.app_state.persistence.workflow_versions)
 
 
 logger = get_logger(__name__)
@@ -624,9 +616,17 @@ class WorkflowController(Controller):
             msg = "Workflow definition not found"
             raise NotFoundError(msg)
         # Defense-in-depth: explicit delete ensures cleanup even if
-        # foreign keys are disabled.
-        version_repo = state.app_state.persistence.workflow_versions
-        await version_repo.delete_versions_for_entity(workflow_id)
+        # foreign keys are disabled.  Best-effort -- version cleanup
+        # failure must not mask the successful primary delete.
+        try:
+            version_repo = state.app_state.persistence.workflow_versions
+            await version_repo.delete_versions_for_entity(workflow_id)
+        except PersistenceError:
+            logger.warning(
+                WORKFLOW_VERSION_SNAPSHOT_FAILED,
+                definition_id=workflow_id,
+                reason="version_cleanup_failed",
+            )
         logger.info(
             WORKFLOW_DEF_DELETED,
             definition_id=workflow_id,

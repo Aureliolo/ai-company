@@ -14,6 +14,7 @@ from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validat
 
 from synthorg.api.channels import CHANNEL_DEPARTMENTS, publish_ws_event
 from synthorg.api.concurrency import compute_etag
+from synthorg.api.controllers._workflow_helpers import get_auth_user_id
 from synthorg.api.dto import ApiResponse, PaginatedResponse
 from synthorg.api.dto_org import (  # noqa: TC001
     CreateDepartmentRequest,
@@ -750,7 +751,10 @@ class DepartmentController(Controller):
             Created department envelope (HTTP 201).
         """
         app_state: AppState = state.app_state
-        dept = await app_state.org_mutation_service.create_department(data)
+        dept = await app_state.org_mutation_service.create_department(
+            data,
+            saved_by=get_auth_user_id(request),
+        )
         publish_ws_event(
             request,
             WsEventType.DEPARTMENT_CREATED,
@@ -788,6 +792,7 @@ class DepartmentController(Controller):
         updated = await app_state.org_mutation_service.update_department(
             name,
             data,
+            saved_by=get_auth_user_id(request),
             if_match=if_match,
         )
         publish_ws_event(
@@ -829,7 +834,10 @@ class DepartmentController(Controller):
             name: Department name.
         """
         app_state: AppState = state.app_state
-        await app_state.org_mutation_service.delete_department(name)
+        await app_state.org_mutation_service.delete_department(
+            name,
+            saved_by=get_auth_user_id(request),
+        )
         publish_ws_event(
             request,
             WsEventType.DEPARTMENT_DELETED,

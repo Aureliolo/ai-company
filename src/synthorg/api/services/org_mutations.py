@@ -115,7 +115,7 @@ class OrgMutationService:
                 snapshot=budget,
                 saved_by=saved_by,
             )
-        except PersistenceError, SettingNotFoundError:
+        except PersistenceError, SettingNotFoundError, ValueError:
             logger.exception(
                 VERSION_SNAPSHOT_FAILED,
                 entity_type="BudgetConfig",
@@ -334,11 +334,14 @@ class OrgMutationService:
     async def create_department(
         self,
         data: CreateDepartmentRequest,
+        *,
+        saved_by: str = "api",
     ) -> Department:
         """Create a new department.
 
         Args:
             data: Department creation request.
+            saved_by: Actor identity for version snapshot attribution.
 
         Returns:
             The created Department model.
@@ -362,7 +365,7 @@ class OrgMutationService:
             new_departments = (*departments, dept)
             self._check_budget_sum(new_departments)
             await self._write_departments(new_departments)
-            await self._snapshot_company(saved_by="api")
+            await self._snapshot_company(saved_by=saved_by)
 
         logger.info(
             API_DEPARTMENT_CREATED,
@@ -377,6 +380,7 @@ class OrgMutationService:
         data: UpdateDepartmentRequest,
         *,
         if_match: str | None = None,
+        saved_by: str = "api",
     ) -> Department:
         """Update an existing department.
 
@@ -384,6 +388,7 @@ class OrgMutationService:
             name: Current department name.
             data: Partial update request.
             if_match: If-Match header value for optimistic concurrency.
+            saved_by: Actor identity for version snapshot attribution.
 
         Returns:
             The updated Department model.
@@ -421,7 +426,7 @@ class OrgMutationService:
             )
             self._check_budget_sum(new_departments)
             await self._write_departments(new_departments)
-            await self._snapshot_company(saved_by="api")
+            await self._snapshot_company(saved_by=saved_by)
 
         logger.info(
             API_DEPARTMENT_UPDATED,
@@ -430,11 +435,17 @@ class OrgMutationService:
         )
         return updated
 
-    async def delete_department(self, name: str) -> None:
+    async def delete_department(
+        self,
+        name: str,
+        *,
+        saved_by: str = "api",
+    ) -> None:
         """Delete a department.
 
         Args:
             name: Department name to delete.
+            saved_by: Actor identity for version snapshot attribution.
 
         Raises:
             NotFoundError: If the department does not exist.
@@ -468,18 +479,21 @@ class OrgMutationService:
                 d for d in departments if d.name.lower() != name.lower()
             )
             await self._write_departments(new_departments)
-            await self._snapshot_company(saved_by="api")
+            await self._snapshot_company(saved_by=saved_by)
 
         logger.info(API_DEPARTMENT_DELETED, department=name)
 
     async def reorder_departments(
         self,
         data: ReorderDepartmentsRequest,
+        *,
+        saved_by: str = "api",
     ) -> tuple[Department, ...]:
         """Reorder departments.
 
         Args:
             data: Ordered list of department names.
+            saved_by: Actor identity for version snapshot attribution.
 
         Returns:
             The reordered departments tuple.
@@ -499,7 +513,7 @@ class OrgMutationService:
             dept_by_lower = {d.name.lower(): d for d in departments}
             reordered = tuple(dept_by_lower[n.lower()] for n in data.department_names)
             await self._write_departments(reordered)
-            await self._snapshot_company(saved_by="api")
+            await self._snapshot_company(saved_by=saved_by)
 
         logger.info(
             API_DEPARTMENTS_REORDERED,

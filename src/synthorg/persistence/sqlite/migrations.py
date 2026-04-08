@@ -80,7 +80,7 @@ async def apply_schema(db: aiosqlite.Connection) -> None:
 async def _check_legacy_workflow_versions(
     db: aiosqlite.Connection,
 ) -> None:
-    """Warn if workflow_definition_versions has the legacy schema.
+    """Fail fast if workflow_definition_versions has the legacy schema.
 
     The pre-v0.7 table used flattened columns (definition_id, name,
     workflow_type, etc.) instead of the generic VersionSnapshot format
@@ -88,13 +88,20 @@ async def _check_legacy_workflow_versions(
     silently skips the new definition when the old table exists, leaving
     queries for ``entity_id`` to fail at runtime.
 
-    This check detects the legacy layout and logs a clear warning with
-    migration instructions so operators can act before data access fails.
+    Raises:
+        MigrationError: If the legacy schema is detected.  Operators
+            must migrate data manually (see migration steps in
+            ``schema.sql``) before the application can start.
     """
-    cursor = await db.execute(
-        "PRAGMA table_info(workflow_definition_versions)",
-    )
-    columns = {row[1] for row in await cursor.fetchall()}
+    try:
+        cursor = await db.execute(
+            "PRAGMA table_info(workflow_definition_versions)",
+        )
+        columns = {row[1] for row in await cursor.fetchall()}
+    except (sqlite3.Error, aiosqlite.Error) as exc:
+        msg = "Failed to inspect workflow_definition_versions schema"
+        logger.exception(PERSISTENCE_MIGRATION_FAILED, detail=msg, error=str(exc))
+        raise MigrationError(msg) from exc
 
     if not columns:
         return  # Table not created yet -- fresh install.
