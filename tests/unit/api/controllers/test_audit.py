@@ -89,10 +89,10 @@ class TestAuditController:
         other_val: str,
     ) -> None:
         audit_log.record(
-            _make_entry(entry_id="e-1", **{field: match_val}),
+            _make_entry(entry_id="e-1", **{field: match_val}),  # type: ignore[arg-type]
         )
         audit_log.record(
-            _make_entry(entry_id="e-2", **{field: other_val}),
+            _make_entry(entry_id="e-2", **{field: other_val}),  # type: ignore[arg-type]
         )
         resp = test_client.get(
             "/api/v1/security/audit",
