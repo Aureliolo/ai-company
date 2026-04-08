@@ -73,7 +73,7 @@ class AuditLog:
         """Total entries ever recorded (including evicted)."""
         return self._total_recorded
 
-    def query(  # noqa: C901, PLR0913
+    def query(  # noqa: PLR0913, C901
         self,
         *,
         agent_id: str | None = None,
@@ -104,10 +104,17 @@ class AuditLog:
             Tuple of matching entries, newest first.
 
         Raises:
-            ValueError: If *limit* < 1.
+            ValueError: If *limit* < 1 or *since* > *until*.
         """
         if limit < 1:
             msg = f"limit must be >= 1, got {limit}"
+            logger.warning(
+                SECURITY_AUDIT_CONFIG_ERROR,
+                error=msg,
+            )
+            raise ValueError(msg)
+        if since is not None and until is not None and since > until:
+            msg = "since must not be after until"
             logger.warning(
                 SECURITY_AUDIT_CONFIG_ERROR,
                 error=msg,

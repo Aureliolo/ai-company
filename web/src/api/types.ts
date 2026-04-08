@@ -1886,16 +1886,19 @@ export type ActiveCeremonyStrategy =
 // ── Control-plane query types ─────────────────────────────────
 
 export type ToolCategory =
-  | 'embedding'
-  | 'file_operations'
-  | 'external_api'
-  | 'git_operations'
+  | 'file_system'
   | 'code_execution'
-  | 'data_analysis'
+  | 'version_control'
+  | 'web'
+  | 'database'
+  | 'terminal'
+  | 'design'
   | 'communication'
-  | 'research'
-  | 'admin'
-  | 'unknown'
+  | 'analytics'
+  | 'deployment'
+  | 'memory'
+  | 'mcp'
+  | 'other'
 
 export type AuditVerdictStr = 'allow' | 'deny' | 'escalate' | 'output_scan'
 
@@ -1915,6 +1918,7 @@ export interface AgentHealthResponse {
   readonly agent_id: string
   readonly agent_name: string
   readonly lifecycle_status: AgentStatus
+  readonly last_active_at: string | null
   readonly trust: TrustSummary | null
   readonly performance: PerformanceSummary | null
 }
@@ -1937,12 +1941,30 @@ export interface AuditEntry {
   readonly approval_id: string | null
 }
 
+export interface MessageOverheadPayload {
+  readonly team_size: number
+  readonly message_count: number
+  readonly is_quadratic: boolean
+}
+
+export interface CoordinationMetricsPayload {
+  readonly coordination_efficiency: Record<string, unknown>
+  readonly coordination_overhead: Record<string, unknown>
+  readonly error_amplification: Record<string, unknown>
+  readonly message_density: Record<string, unknown>
+  readonly redundancy_rate: Record<string, unknown>
+  readonly amdahl_ceiling: Record<string, unknown>
+  readonly straggler_gap: Record<string, unknown>
+  readonly token_speedup_ratio: Record<string, unknown>
+  readonly message_overhead: MessageOverheadPayload
+}
+
 export interface CoordinationMetricsRecord {
   readonly task_id: string
   readonly agent_id: string | null
   readonly computed_at: string
   readonly team_size: number
-  readonly metrics: Record<string, unknown>
+  readonly metrics: CoordinationMetricsPayload
 }
 
 export interface SecurityConfigExportResponse {

@@ -9,6 +9,7 @@ from typing import Annotated
 
 from litestar import Controller, get
 from litestar.datastructures import State  # noqa: TC002
+from litestar.exceptions import ClientException
 from litestar.params import Parameter
 
 from synthorg.api.dto import PaginatedResponse
@@ -62,14 +63,21 @@ class AuditController(Controller):
             tool_name: Filter by tool name.
             action_type: Filter by action type string.
             verdict: Filter by verdict string.
-            since: Exclude entries before this datetime.
-            until: Exclude entries after this datetime.
+            since: Exclude entries before this datetime (timezone-aware).
+            until: Exclude entries after this datetime (timezone-aware).
             offset: Pagination offset.
             limit: Page size.
 
         Returns:
             Paginated audit entries.
+
+        Raises:
+            ClientException: If *since* > *until*.
         """
+        if since is not None and until is not None and since > until:
+            raise ClientException(
+                detail="'since' must not be after 'until'",
+            )
         app_state = state.app_state
         entries = app_state.audit_log.query(
             agent_id=agent_id,

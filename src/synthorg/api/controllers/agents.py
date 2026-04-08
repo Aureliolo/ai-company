@@ -142,6 +142,17 @@ class PerformanceSummary(BaseModel):
     )
     trend: TrendDirection | None = None
 
+    @model_validator(mode="after")
+    def _trend_requires_at_least_one_score(self) -> Self:
+        if (
+            self.trend is not None
+            and self.quality_score is None
+            and self.collaboration_score is None
+        ):
+            msg = "trend requires at least one score to be set"
+            raise ValueError(msg)
+        return self
+
 
 class AgentHealthResponse(BaseModel):
     """Composite health snapshot for a single agent."""
@@ -151,6 +162,7 @@ class AgentHealthResponse(BaseModel):
     agent_id: NotBlankStr
     agent_name: NotBlankStr
     lifecycle_status: AgentStatus
+    last_active_at: AwareDatetime | None = None
     trust: TrustSummary | None = None
     performance: PerformanceSummary | None = None
 
@@ -481,23 +493,32 @@ class AgentController(Controller):
             trend=trend,
         )
 
-        trust_state = app_state.trust_service.get_trust_state(
-            agent_id,
-        )
-        trust = (
-            TrustSummary(
-                level=trust_state.global_level,
-                score=trust_state.trust_score,
-                last_evaluated_at=trust_state.last_evaluated_at,
+        trust: TrustSummary | None = None
+        if app_state.has_trust_service:
+            trust_state = app_state.trust_service.get_trust_state(
+                agent_id,
             )
-            if trust_state is not None
-            else None
+            if trust_state is not None:
+                trust = TrustSummary(
+                    level=trust_state.global_level,
+                    score=trust_state.trust_score,
+                    last_evaluated_at=trust_state.last_evaluated_at,
+                )
+
+        # Derive last_active_at from most recent lifecycle event.
+        last_active_at: AwareDatetime | None = None
+        events = await app_state.persistence.lifecycle_events.list_events(
+            agent_id=agent_id,
+            limit=1,
         )
+        if events:
+            last_active_at = events[0].timestamp
 
         health = AgentHealthResponse(
             agent_id=agent_id,
             agent_name=str(identity.name),
             lifecycle_status=identity.status,
+            last_active_at=last_active_at,
             trust=trust,
             performance=perf,
         )

@@ -123,7 +123,9 @@ from synthorg.providers.health_prober import ProviderHealthProber  # noqa: TC001
 from synthorg.providers.registry import ProviderRegistry  # noqa: TC001
 from synthorg.security.audit import AuditLog
 from synthorg.security.timeout.scheduler import ApprovalTimeoutScheduler  # noqa: TC001
-from synthorg.security.trust.service import TrustService  # noqa: TC001
+from synthorg.security.trust.config import TrustConfig
+from synthorg.security.trust.disabled_strategy import DisabledTrustStrategy
+from synthorg.security.trust.service import TrustService
 from synthorg.settings.dispatcher import SettingsChangeDispatcher
 from synthorg.settings.subscribers import (
     BackupSettingsSubscriber,
@@ -756,6 +758,14 @@ def _resolve_llm_judge_strategy(
     )
 
 
+def _build_default_trust_service() -> TrustService:
+    """Build a default no-op TrustService for agent health queries."""
+    return TrustService(
+        strategy=DisabledTrustStrategy(),
+        config=TrustConfig(),
+    )
+
+
 def _build_performance_tracker(
     *,
     cost_tracker: CostTracker | None = None,
@@ -986,6 +996,8 @@ def create_app(  # noqa: C901, PLR0913, PLR0915
         audit_log = AuditLog()
     if coordination_metrics_store is None:
         coordination_metrics_store = CoordinationMetricsStore()
+    if trust_service is None:
+        trust_service = _build_default_trust_service()
 
     app_state = AppState(
         config=effective_config,

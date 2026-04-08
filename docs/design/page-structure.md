@@ -493,6 +493,8 @@ Every backend controller has a home in the page structure. No orphans.
 | AutonomyController | Agent Detail page (deferred -- not in v0.5.0 initial) |
 | CollaborationController | Agent Detail page (deferred -- not in v0.5.0 initial) |
 | CoordinationController | Task Board (task detail action) |
+| CoordinationMetricsController | Settings (coordination namespace) |
+| AuditController | Settings (security namespace) |
 | ProjectController | Projects page (list, detail, create), Task Board (project filter) |
 | ArtifactController | Artifacts page (list, detail, content preview, download) |
 | WorkflowController | Workflows, Workflow Editor |

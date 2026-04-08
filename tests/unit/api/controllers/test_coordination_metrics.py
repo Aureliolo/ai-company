@@ -177,7 +177,7 @@ class TestCoordinationMetricsController:
         )
         body = resp.json()
         msg_oh = body["data"][0]["metrics"]["message_overhead"]
-        assert "is_quadratic" in msg_oh
+        assert msg_oh["is_quadratic"] is True
 
     def test_combined_filters_and(
         self,

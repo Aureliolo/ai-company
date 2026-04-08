@@ -559,23 +559,23 @@ class SettingsController(Controller):
         state: State,
         data: SecurityConfigImportRequest,
     ) -> ApiResponse[SecurityConfigExportResponse]:
-        """Import and validate a security configuration.
+        """Import, validate, and persist a security configuration.
 
-        Validates the payload as a ``SecurityConfig``.  The
-        validated config is returned for operator confirmation.
+        Validates the payload as a ``SecurityConfig``, then persists
+        each field that has a registered setting through the
+        :class:`SettingsService`.
 
         Args:
             state: Application state.
             data: Import request with config dict.
 
         Returns:
-            The validated config.
+            The validated and persisted config.
 
         Raises:
             ClientException: If the config fails validation.
         """
         app_state: AppState = state.app_state
-        _ = app_state  # persistence planned; validate-only for now
         try:
             validated = SecurityConfig.model_validate(data.config)
         except ValidationError as exc:
@@ -585,6 +585,11 @@ class SettingsController(Controller):
             )
             msg = f"Invalid security config: {exc}"
             raise ClientException(msg) from exc
+
+        await _persist_security_settings(
+            app_state.settings_service,
+            validated,
+        )
 
         warning = (
             "custom_policies are code-defined Pydantic models; "
@@ -601,6 +606,45 @@ class SettingsController(Controller):
                 custom_policies_warning=warning,
             ),
         )
+
+
+# ── Security import helpers ────────────────────────────────────
+
+_SECURITY_SETTING_FIELDS: dict[str, str] = {
+    "enabled": "enabled",
+    "audit_enabled": "audit_enabled",
+    "post_tool_scanning_enabled": "post_tool_scanning_enabled",
+    "output_scan_policy_type": "output_scan_policy_type",
+}
+"""Maps ``SecurityConfig`` field names to setting keys."""
+
+
+async def _persist_security_settings(
+    svc: SettingsService,
+    config: SecurityConfig,
+) -> None:
+    """Persist registered security settings from a validated config.
+
+    Only fields with a registered setting definition are persisted.
+    Code-defined fields (custom_policies, rule_engine, etc.) are
+    not persistable through the settings service.
+
+    Args:
+        svc: Settings service for persistence.
+        config: Validated security configuration.
+    """
+    ns = SettingNamespace.SECURITY
+    for field_name, key in _SECURITY_SETTING_FIELDS.items():
+        value = getattr(config, field_name)
+        str_value = str(value).lower() if isinstance(value, bool) else str(value)
+        try:
+            await svc.set(ns, key, str_value)
+        except SettingNotFoundError:
+            logger.debug(
+                SETTINGS_NOT_FOUND,
+                namespace=ns,
+                key=key,
+            )
 
 
 # ── Sink helpers (extracted for <50 line methods) ────────────────

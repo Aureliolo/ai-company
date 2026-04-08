@@ -9,6 +9,7 @@ from typing import Annotated
 
 from litestar import Controller, get
 from litestar.datastructures import State  # noqa: TC002
+from litestar.exceptions import ClientException
 from litestar.params import Parameter
 
 from synthorg.api.dto import PaginatedResponse
@@ -59,14 +60,21 @@ class CoordinationMetricsController(Controller):
             state: Application state with coordination_metrics_store.
             task_id: Filter by task identifier.
             agent_id: Filter by lead agent identifier.
-            since: Exclude records before this datetime.
-            until: Exclude records after this datetime.
+            since: Exclude records before this datetime (timezone-aware).
+            until: Exclude records after this datetime (timezone-aware).
             offset: Pagination offset.
             limit: Page size.
 
         Returns:
             Paginated coordination metrics.
+
+        Raises:
+            ClientException: If *since* > *until*.
         """
+        if since is not None and until is not None and since > until:
+            raise ClientException(
+                detail="'since' must not be after 'until'",
+            )
         app_state = state.app_state
         entries = app_state.coordination_metrics_store.query(
             task_id=task_id,

@@ -34,7 +34,7 @@ class CoordinationMetricsRecord(BaseModel):
     )
     team_size: int = Field(gt=0, description="Coordinating agents")
     metrics: CoordinationMetrics = Field(
-        description="All nine Kim et al. metrics (None when skipped)",
+        description="All nine Kim et al. coordination metrics",
     )
 
 
@@ -54,6 +54,10 @@ class CoordinationMetricsStore:
     def __init__(self, *, max_entries: int = 10_000) -> None:
         if max_entries < 1:
             msg = f"max_entries must be >= 1, got {max_entries}"
+            logger.warning(
+                COORD_METRICS_COLLECTION_COMPLETED,
+                error=msg,
+            )
             raise ValueError(msg)
         self._max_entries = max_entries
         self._records: deque[CoordinationMetricsRecord] = deque(
@@ -96,6 +100,10 @@ class CoordinationMetricsStore:
         """
         if limit < 1:
             msg = f"limit must be >= 1, got {limit}"
+            logger.warning(
+                COORD_METRICS_COLLECTION_COMPLETED,
+                error=msg,
+            )
             raise ValueError(msg)
         results: list[CoordinationMetricsRecord] = []
         for rec in reversed(self._records):

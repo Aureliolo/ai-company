@@ -586,6 +586,7 @@ class TestAgentHealth:
         resp = test_client.get(
             f"/api/v1/agents/{_AGENT_NAME}/health",
         )
+        assert resp.status_code == 200
         body = resp.json()
         assert body["data"]["trust"] is None
 
@@ -606,6 +607,7 @@ class TestAgentHealth:
         resp = test_client.get(
             f"/api/v1/agents/{_AGENT_NAME}/health",
         )
+        assert resp.status_code == 200
         perf = resp.json()["data"]["performance"]
         assert perf["quality_score"] is None or isinstance(
             perf["quality_score"],
@@ -616,12 +618,8 @@ class TestAgentHealth:
             (int, float),
         )
         # trend is a TrendDirection string or None
-        assert perf["trend"] is None or perf["trend"] in {
-            "improving",
-            "stable",
-            "declining",
-            "insufficient_data",
-        }
+        valid_trends = {t.value for t in TrendDirection}
+        assert perf["trend"] is None or perf["trend"] in valid_trends
 
 
 # -- _extract_quality_trend unit tests ------------------------------------
