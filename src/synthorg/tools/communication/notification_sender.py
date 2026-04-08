@@ -139,6 +139,10 @@ class NotificationSenderTool(BaseCommunicationTool):
             A ``ToolExecutionResult`` with dispatch status.
         """
         if self._dispatcher is None:
+            logger.warning(
+                COMM_TOOL_NOTIFICATION_SEND_FAILED,
+                error="dispatcher_not_configured",
+            )
             return ToolExecutionResult(
                 content=(
                     "Notification sending requires a configured "

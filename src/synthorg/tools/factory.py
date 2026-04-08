@@ -179,11 +179,13 @@ def _build_design_tools(
         ImageGeneratorTool,
     )
 
-    return (
-        ImageGeneratorTool(provider=image_provider, config=config),
+    tools: list[BaseTool] = [
         DiagramGeneratorTool(config=config),
         AssetManagerTool(config=config),
-    )
+    ]
+    if image_provider is not None:
+        tools.append(ImageGeneratorTool(provider=image_provider, config=config))
+    return tuple(tools)
 
 
 def _build_communication_tools(
@@ -203,11 +205,13 @@ def _build_communication_tools(
         TemplateFormatterTool,
     )
 
-    return (
+    tools: list[BaseTool] = [
         EmailSenderTool(config=config),
-        NotificationSenderTool(dispatcher=dispatcher, config=config),
         TemplateFormatterTool(config=config),
-    )
+    ]
+    if dispatcher is not None:
+        tools.append(NotificationSenderTool(dispatcher=dispatcher, config=config))
+    return tuple(tools)
 
 
 def _build_analytics_tools(
@@ -228,11 +232,13 @@ def _build_analytics_tools(
         ReportGeneratorTool,
     )
 
-    return (
-        DataAggregatorTool(provider=provider, config=config),
-        ReportGeneratorTool(provider=provider, config=config),
-        MetricCollectorTool(sink=metric_sink, config=config),
-    )
+    tools: list[BaseTool] = []
+    if provider is not None:
+        tools.append(DataAggregatorTool(provider=provider, config=config))
+        tools.append(ReportGeneratorTool(provider=provider, config=config))
+    if metric_sink is not None:
+        tools.append(MetricCollectorTool(sink=metric_sink, config=config))
+    return tuple(tools)
 
 
 def build_default_tools(  # noqa: PLR0913

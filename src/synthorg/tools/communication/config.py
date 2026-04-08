@@ -23,6 +23,9 @@ class EmailConfig(BaseModel):
         password: SMTP authentication password.
         from_address: Sender email address.
         use_tls: Whether to use STARTTLS.
+        use_implicit_tls: Whether to use implicit TLS (SMTP_SSL,
+            typically port 465).  Mutually exclusive with ``use_tls``.
+        smtp_timeout: SMTP connection timeout in seconds.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
@@ -49,6 +52,16 @@ class EmailConfig(BaseModel):
     use_tls: bool = Field(
         default=True,
         description="Whether to use STARTTLS",
+    )
+    use_implicit_tls: bool = Field(
+        default=False,
+        description="Use implicit TLS (SMTP_SSL, port 465)",
+    )
+    smtp_timeout: float = Field(
+        default=10.0,
+        gt=0,
+        le=120.0,
+        description="SMTP connection timeout (seconds)",
     )
 
     @model_validator(mode="after")

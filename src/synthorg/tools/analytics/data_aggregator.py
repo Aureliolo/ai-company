@@ -5,6 +5,7 @@ for querying analytics backends.  No concrete implementation is
 shipped -- users inject a provider at construction time.
 """
 
+import asyncio
 import copy
 from datetime import datetime
 from typing import Any, Final, Protocol, runtime_checkable
@@ -257,12 +258,28 @@ class DataAggregatorTool(BaseAnalyticsTool):
         )
 
         try:
-            data = await self._provider.query(
+            data = await asyncio.wait_for(
+                self._provider.query(
+                    metrics=metrics,
+                    period=period,
+                    group_by=group_by,
+                    start_date=start_date,
+                    end_date=end_date,
+                ),
+                timeout=self._config.query_timeout,
+            )
+        except TimeoutError:
+            logger.warning(
+                ANALYTICS_TOOL_QUERY_FAILED,
+                error="query_timeout",
+                timeout=self._config.query_timeout,
                 metrics=metrics,
-                period=period,
-                group_by=group_by,
-                start_date=start_date,
-                end_date=end_date,
+            )
+            return ToolExecutionResult(
+                content=(
+                    f"Analytics query timed out after {self._config.query_timeout}s"
+                ),
+                is_error=True,
             )
         except MemoryError, RecursionError:
             raise
@@ -277,6 +294,11 @@ class DataAggregatorTool(BaseAnalyticsTool):
                 content=f"Analytics query failed: {exc}",
                 is_error=True,
             )
+
+        # Enforce max_rows if the result contains list values.
+        for key, val in data.items():
+            if isinstance(val, list) and len(val) > self._config.max_rows:
+                data[key] = val[: self._config.max_rows]
 
         logger.info(
             ANALYTICS_TOOL_QUERY_SUCCESS,

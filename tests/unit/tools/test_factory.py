@@ -196,6 +196,29 @@ class TestBuildDesignTools:
             design_config=config,
         )
         names = {t.name for t in tools}
+        # diagram_generator and asset_manager need no backend
+        assert "diagram_generator" in names
+        assert "asset_manager" in names
+        # image_generator requires a provider
+        assert "image_generator" not in names
+
+    def test_design_tools_with_provider(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        from unittest.mock import AsyncMock
+
+        from synthorg.tools.design.config import DesignToolsConfig
+        from synthorg.tools.design.image_generator import ImageProvider
+
+        provider = AsyncMock(spec=ImageProvider)
+        config = DesignToolsConfig()
+        tools = build_default_tools(
+            workspace=tmp_path,
+            design_config=config,
+            image_provider=provider,
+        )
+        names = {t.name for t in tools}
         assert "image_generator" in names
         assert "diagram_generator" in names
         assert "asset_manager" in names
@@ -232,6 +255,33 @@ class TestBuildCommunicationTools:
             communication_config=config,
         )
         names = {t.name for t in tools}
+        # email_sender and template_formatter need no backend
+        assert "email_sender" in names
+        assert "template_formatter" in names
+        # notification_sender requires a dispatcher
+        assert "notification_sender" not in names
+
+    def test_communication_tools_with_dispatcher(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        from unittest.mock import AsyncMock
+
+        from synthorg.tools.communication.config import (
+            CommunicationToolsConfig,
+        )
+        from synthorg.tools.communication.notification_sender import (
+            NotificationDispatcherProtocol,
+        )
+
+        dispatcher = AsyncMock(spec=NotificationDispatcherProtocol)
+        config = CommunicationToolsConfig()
+        tools = build_default_tools(
+            workspace=tmp_path,
+            communication_config=config,
+            communication_dispatcher=dispatcher,
+        )
+        names = {t.name for t in tools}
         assert "email_sender" in names
         assert "notification_sender" in names
         assert "template_formatter" in names
@@ -264,6 +314,33 @@ class TestBuildAnalyticsTools:
         tools = build_default_tools(
             workspace=tmp_path,
             analytics_config=config,
+        )
+        names = {t.name for t in tools}
+        # Without provider/sink, no analytics tools are registered
+        assert "data_aggregator" not in names
+        assert "report_generator" not in names
+        assert "metric_collector" not in names
+
+    def test_analytics_tools_with_backends(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        from unittest.mock import AsyncMock
+
+        from synthorg.tools.analytics.config import AnalyticsToolsConfig
+        from synthorg.tools.analytics.data_aggregator import (
+            AnalyticsProvider,
+        )
+        from synthorg.tools.analytics.metric_collector import MetricSink
+
+        provider = AsyncMock(spec=AnalyticsProvider)
+        sink = AsyncMock(spec=MetricSink)
+        config = AnalyticsToolsConfig()
+        tools = build_default_tools(
+            workspace=tmp_path,
+            analytics_config=config,
+            analytics_provider=provider,
+            metric_sink=sink,
         )
         names = {t.name for t in tools}
         assert "data_aggregator" in names

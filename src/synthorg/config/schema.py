@@ -595,6 +595,11 @@ class RootConfig(BaseModel):
             tools).
         terminal: Terminal tool configuration (``None`` = default
             terminal config).
+        design_tools: Design tool configuration (``None`` = disabled).
+        communication_tools: Communication tool configuration
+            (``None`` = disabled).
+        analytics_tools: Analytics tool configuration
+            (``None`` = disabled).
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)

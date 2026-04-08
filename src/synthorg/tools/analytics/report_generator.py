@@ -4,6 +4,7 @@ Delegates data fetching to an ``AnalyticsProvider`` and formats
 the results into human-readable reports in text, markdown, or JSON.
 """
 
+import asyncio
 import copy
 import json
 from typing import Any, Final
@@ -122,7 +123,7 @@ class ReportGeneratorTool(BaseAnalyticsTool):
         )
         self._provider = provider
 
-    async def execute(
+    async def execute(  # noqa: PLR0911
         self,
         *,
         arguments: dict[str, Any],
@@ -162,6 +163,20 @@ class ReportGeneratorTool(BaseAnalyticsTool):
                 is_error=True,
             )
 
+        if period not in _VALID_PERIODS:
+            logger.warning(
+                ANALYTICS_TOOL_REPORT_FAILED,
+                error="invalid_period",
+                period=period,
+            )
+            return ToolExecutionResult(
+                content=(
+                    f"Invalid period: {period!r}. "
+                    f"Must be one of: {sorted(_VALID_PERIODS)}"
+                ),
+                is_error=True,
+            )
+
         if output_format not in _OUTPUT_FORMATS:
             return ToolExecutionResult(
                 content=(
@@ -181,9 +196,23 @@ class ReportGeneratorTool(BaseAnalyticsTool):
         )
 
         try:
-            data = await self._provider.query(
-                metrics=metrics,
-                period=period,
+            data = await asyncio.wait_for(
+                self._provider.query(
+                    metrics=metrics,
+                    period=period,
+                ),
+                timeout=self._config.query_timeout,
+            )
+        except TimeoutError:
+            logger.warning(
+                ANALYTICS_TOOL_REPORT_FAILED,
+                error="query_timeout",
+                timeout=self._config.query_timeout,
+                report_type=report_type,
+            )
+            return ToolExecutionResult(
+                content=(f"Report query timed out after {self._config.query_timeout}s"),
+                is_error=True,
             )
         except MemoryError, RecursionError:
             raise

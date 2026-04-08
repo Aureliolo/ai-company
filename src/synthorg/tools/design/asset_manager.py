@@ -14,6 +14,7 @@ from synthorg.observability.events.design import (
     DESIGN_ASSET_DELETED,
     DESIGN_ASSET_LISTED,
     DESIGN_ASSET_RETRIEVED,
+    DESIGN_ASSET_SEARCHED,
     DESIGN_ASSET_VALIDATION_FAILED,
 )
 from synthorg.tools.base import ToolExecutionResult
@@ -95,7 +96,7 @@ class AssetManagerTool(BaseDesignTool):
             name="asset_manager",
             description=("List, retrieve, delete, and search generated design assets."),
             parameters_schema=copy.deepcopy(_PARAMETERS_SCHEMA),
-            action_type=ActionType.CODE_READ,
+            action_type=ActionType.DOCS_WRITE,
             config=config,
         )
         self._assets: dict[str, dict[str, Any]] = (
@@ -273,7 +274,7 @@ class AssetManagerTool(BaseDesignTool):
                 matching[aid] = meta
 
         logger.info(
-            DESIGN_ASSET_LISTED,
+            DESIGN_ASSET_SEARCHED,
             total=len(self._assets),
             matched=len(matching),
             search_query=query,

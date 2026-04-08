@@ -177,7 +177,7 @@ class EmailSenderTool(BaseCommunicationTool):
             )
 
         # Reject addresses with newlines (header injection prevention).
-        for addr in all_recipients:
+        for addr in [*all_recipients, email_config.from_address]:
             if _UNSAFE_ADDR_RE.search(addr):
                 logger.warning(
                     COMM_TOOL_EMAIL_VALIDATION_FAILED,
@@ -261,18 +261,30 @@ class EmailSenderTool(BaseCommunicationTool):
         msg = EmailMessage()
         msg["Subject"] = safe_subject
         msg["From"] = email_config.from_address
-        msg["To"] = ", ".join(to_addrs)
+        msg["To"] = to_addrs
         if cc_addrs:
-            msg["Cc"] = ", ".join(cc_addrs)
+            msg["Cc"] = cc_addrs
 
         if body_is_html:
             msg.set_content(body, subtype="html")
         else:
             msg.set_content(body)
 
-        with smtplib.SMTP(email_config.host, email_config.port, timeout=10) as smtp:
-            if email_config.use_tls:
-                context = ssl.create_default_context()
+        timeout = int(email_config.smtp_timeout)
+        context = ssl.create_default_context()
+        if email_config.use_implicit_tls:
+            smtp_conn = smtplib.SMTP_SSL(
+                email_config.host,
+                email_config.port,
+                timeout=timeout,
+                context=context,
+            )
+        else:
+            smtp_conn = smtplib.SMTP(
+                email_config.host, email_config.port, timeout=timeout
+            )
+        with smtp_conn as smtp:
+            if not email_config.use_implicit_tls and email_config.use_tls:
                 smtp.starttls(context=context)
             if email_config.username and email_config.password:
                 smtp.login(email_config.username, email_config.password)

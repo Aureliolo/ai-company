@@ -60,7 +60,7 @@ class TestDiagramGeneratorTool:
             }
         )
         assert not result.is_error
-        assert "title: My Diagram" in result.content
+        assert 'title: "My Diagram"' in result.content
 
     async def test_execute_graphviz(self) -> None:
         tool = DiagramGeneratorTool()

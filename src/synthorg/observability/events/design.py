@@ -18,6 +18,7 @@ DESIGN_ASSET_STORED: Final[str] = "design.asset.stored"
 DESIGN_ASSET_RETRIEVED: Final[str] = "design.asset.retrieved"
 DESIGN_ASSET_DELETED: Final[str] = "design.asset.deleted"
 DESIGN_ASSET_LISTED: Final[str] = "design.asset.listed"
+DESIGN_ASSET_SEARCHED: Final[str] = "design.asset.searched"
 DESIGN_ASSET_VALIDATION_FAILED: Final[str] = "design.asset.validation_failed"
 
 # Provider

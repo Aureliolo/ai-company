@@ -106,6 +106,9 @@ class RootConfigFactory(ModelFactory[RootConfig]):
     coordination = CoordinationSectionConfig()
     backup = BackupConfig()
     workflow = WorkflowConfig()
+    design_tools = None
+    communication_tools = None
+    analytics_tools = None
 
 
 # ── Sample YAML strings ──────────────────────────────────────────

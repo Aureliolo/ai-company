@@ -135,6 +135,11 @@ class MetricCollectorTool(BaseAnalyticsTool):
             A ``ToolExecutionResult`` confirming the recording.
         """
         if self._sink is None:
+            logger.warning(
+                ANALYTICS_TOOL_METRIC_RECORD_FAILED,
+                metric_name=arguments.get("metric_name", "unknown"),
+                error="sink_not_configured",
+            )
             return ToolExecutionResult(
                 content=(
                     "Metric recording requires a configured sink. "

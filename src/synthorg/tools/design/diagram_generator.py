@@ -130,6 +130,11 @@ class DiagramGeneratorTool(BaseDesignTool):
         output_format: str = arguments.get("output_format", "mermaid")
 
         if diagram_type not in _DIAGRAM_TYPES:
+            logger.warning(
+                DESIGN_DIAGRAM_GENERATION_FAILED,
+                error="invalid_diagram_type",
+                diagram_type=diagram_type,
+            )
             return ToolExecutionResult(
                 content=(
                     f"Invalid diagram_type: {diagram_type!r}. "
@@ -139,6 +144,11 @@ class DiagramGeneratorTool(BaseDesignTool):
             )
 
         if output_format not in _OUTPUT_FORMATS:
+            logger.warning(
+                DESIGN_DIAGRAM_GENERATION_FAILED,
+                error="invalid_output_format",
+                output_format=output_format,
+            )
             return ToolExecutionResult(
                 content=(
                     f"Invalid output_format: {output_format!r}. "
@@ -217,8 +227,14 @@ class DiagramGeneratorTool(BaseDesignTool):
         directive = type_map.get(diagram_type, "flowchart TD")
         lines: list[str] = []
         if title:
+            safe_title = (
+                title.replace("\\", "\\\\")
+                .replace('"', '\\"')
+                .replace("\r", " ")
+                .replace("\n", " ")
+            )
             lines.append("---")
-            lines.append(f"title: {title}")
+            lines.append(f'title: "{safe_title}"')
             lines.append("---")
         lines.append(directive)
         lines.extend(f"    {line}" for line in description.strip().splitlines())
@@ -244,7 +260,12 @@ class DiagramGeneratorTool(BaseDesignTool):
         """
         graph_type = "graph" if diagram_type == "architecture" else "digraph"
         if title:
-            escaped = title.replace("\\", "\\\\").replace('"', '\\"')
+            escaped = (
+                title.replace("\\", "\\\\")
+                .replace('"', '\\"')
+                .replace("\r", "")
+                .replace("\n", "\\n")
+            )
             label = f'    label="{escaped}";\n'
         else:
             label = ""

@@ -5,6 +5,7 @@ for image generation.  No concrete implementation is shipped -- users
 inject a provider at construction time.
 """
 
+import asyncio
 import copy
 from typing import Any, Final, Protocol, runtime_checkable
 
@@ -16,6 +17,7 @@ from synthorg.observability.events.design import (
     DESIGN_IMAGE_GENERATION_FAILED,
     DESIGN_IMAGE_GENERATION_START,
     DESIGN_IMAGE_GENERATION_SUCCESS,
+    DESIGN_IMAGE_GENERATION_TIMEOUT,
     DESIGN_PROVIDER_NOT_CONFIGURED,
 )
 from synthorg.tools.base import ToolExecutionResult
@@ -115,6 +117,11 @@ _PARAMETERS_SCHEMA: Final[dict[str, Any]] = {
     "additionalProperties": False,
 }
 
+_VALID_STYLES: Final[frozenset[str]] = frozenset(
+    {"realistic", "sketch", "diagram", "icon"}
+)
+_VALID_QUALITIES: Final[frozenset[str]] = frozenset({"draft", "standard", "high"})
+
 
 class ImageGeneratorTool(BaseDesignTool):
     """Generate images from text prompts via an abstracted provider.
@@ -154,7 +161,7 @@ class ImageGeneratorTool(BaseDesignTool):
         )
         self._provider = provider
 
-    async def execute(
+    async def execute(  # noqa: PLR0911
         self,
         *,
         arguments: dict[str, Any],
@@ -187,6 +194,33 @@ class ImageGeneratorTool(BaseDesignTool):
         height: int = arguments.get("height", 1024)
         quality: str = arguments.get("quality", "standard")
 
+        if style not in _VALID_STYLES:
+            logger.warning(
+                DESIGN_IMAGE_GENERATION_FAILED,
+                error="invalid_style",
+                style=style,
+            )
+            return ToolExecutionResult(
+                content=(
+                    f"Invalid style: {style!r}. Must be one of: {sorted(_VALID_STYLES)}"
+                ),
+                is_error=True,
+            )
+
+        if quality not in _VALID_QUALITIES:
+            logger.warning(
+                DESIGN_IMAGE_GENERATION_FAILED,
+                error="invalid_quality",
+                quality=quality,
+            )
+            return ToolExecutionResult(
+                content=(
+                    f"Invalid quality: {quality!r}. "
+                    f"Must be one of: {sorted(_VALID_QUALITIES)}"
+                ),
+                is_error=True,
+            )
+
         logger.info(
             DESIGN_IMAGE_GENERATION_START,
             prompt_length=len(prompt),
@@ -197,12 +231,27 @@ class ImageGeneratorTool(BaseDesignTool):
         )
 
         try:
-            result = await self._provider.generate(
-                prompt=prompt,
-                width=width,
-                height=height,
-                style=style,
-                quality=quality,
+            result = await asyncio.wait_for(
+                self._provider.generate(
+                    prompt=prompt,
+                    width=width,
+                    height=height,
+                    style=style,
+                    quality=quality,
+                ),
+                timeout=self._config.image_timeout,
+            )
+        except TimeoutError:
+            logger.warning(
+                DESIGN_IMAGE_GENERATION_TIMEOUT,
+                timeout=self._config.image_timeout,
+                prompt_length=len(prompt),
+            )
+            return ToolExecutionResult(
+                content=(
+                    f"Image generation timed out after {self._config.image_timeout}s"
+                ),
+                is_error=True,
             )
         except MemoryError, RecursionError:
             raise
@@ -215,6 +264,23 @@ class ImageGeneratorTool(BaseDesignTool):
             )
             return ToolExecutionResult(
                 content=f"Image generation failed: {exc}",
+                is_error=True,
+            )
+
+        data_size = len(result.data)
+        if data_size > self._config.max_image_size_bytes:
+            logger.warning(
+                DESIGN_IMAGE_GENERATION_FAILED,
+                error="image_too_large",
+                data_size=data_size,
+                max_size=self._config.max_image_size_bytes,
+            )
+            return ToolExecutionResult(
+                content=(
+                    f"Generated image exceeds size limit: "
+                    f"{data_size} bytes "
+                    f"(max {self._config.max_image_size_bytes})"
+                ),
                 is_error=True,
             )
 

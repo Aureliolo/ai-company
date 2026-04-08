@@ -5,7 +5,7 @@ from unittest.mock import patch
 import pytest
 
 from synthorg.core.enums import ActionType, ToolCategory
-from synthorg.tools.communication.config import CommunicationToolsConfig
+from synthorg.tools.communication.config import CommunicationToolsConfig, EmailConfig
 from synthorg.tools.communication.email_sender import EmailSenderTool
 
 
@@ -59,9 +59,7 @@ class TestEmailSenderTool:
 
     async def test_execute_too_many_recipients(self) -> None:
         config = CommunicationToolsConfig(
-            email=pytest.importorskip(
-                "synthorg.tools.communication.config"
-            ).EmailConfig(
+            email=EmailConfig(
                 host="smtp.example.com",
                 from_address="test@example.com",
             ),

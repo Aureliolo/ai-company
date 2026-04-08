@@ -14,9 +14,9 @@ class TestAssetManagerTool:
         tool = AssetManagerTool()
         assert tool.category == ToolCategory.DESIGN
 
-    def test_action_type_is_code_read(self) -> None:
+    def test_action_type_is_docs_write(self) -> None:
         tool = AssetManagerTool()
-        assert tool.action_type == ActionType.CODE_READ
+        assert tool.action_type == ActionType.DOCS_WRITE
 
     def test_name(self) -> None:
         tool = AssetManagerTool()
