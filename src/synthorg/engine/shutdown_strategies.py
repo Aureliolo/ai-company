@@ -44,8 +44,8 @@ logger = get_logger(__name__)
 
 def _count_cooperative_exits(
     done: set[asyncio.Task[Any]],
-) -> int:
-    """Count tasks that exited cooperatively (not cancelled, no error).
+) -> tuple[int, int]:
+    """Count tasks that exited cooperatively and those that errored.
 
     Tasks that raised exceptions are logged at WARNING.
 
@@ -53,21 +53,23 @@ def _count_cooperative_exits(
         done: Set of completed asyncio tasks.
 
     Returns:
-        Number of tasks that completed without error.
+        Tuple of (completed_count, errored_count).
     """
-    count = 0
+    completed = 0
+    errored = 0
     for task in done:
         if task.cancelled():
             continue
         exc = task.exception()
         if exc is not None:
+            errored += 1
             logger.warning(
                 EXECUTION_SHUTDOWN_TASK_ERROR,
                 error=(f"Task raised during shutdown: {type(exc).__name__}: {exc}"),
             )
         else:
-            count += 1
-    return count
+            completed += 1
+    return completed, errored
 
 
 # ── Strategy implementations ────────────────────────────────────
@@ -211,13 +213,22 @@ class FinishCurrentToolStrategy:
                 cleanup_callbacks,
                 self._cleanup_seconds,
             )
-            return ShutdownResult(
+            result = ShutdownResult(
                 strategy_type=self.get_strategy_type(),
                 tasks_interrupted=0,
                 tasks_completed=0,
                 cleanup_completed=cleanup_completed,
                 duration_seconds=time.monotonic() - start,
             )
+            logger.info(
+                EXECUTION_SHUTDOWN_COMPLETE,
+                strategy=result.strategy_type,
+                tasks_interrupted=0,
+                tasks_completed=0,
+                cleanup_completed=result.cleanup_completed,
+                duration_seconds=result.duration_seconds,
+            )
+            return result
 
         task_set = set(running_tasks.values())
         done, pending = await asyncio.wait(
@@ -225,7 +236,7 @@ class FinishCurrentToolStrategy:
             timeout=self._tool_timeout_seconds,
         )
 
-        tasks_completed = _count_cooperative_exits(done)
+        tasks_completed, tasks_errored = _count_cooperative_exits(done)
 
         # Force-cancel stragglers.
         if pending:
@@ -248,7 +259,7 @@ class FinishCurrentToolStrategy:
 
         result = ShutdownResult(
             strategy_type=self.get_strategy_type(),
-            tasks_interrupted=len(pending),
+            tasks_interrupted=len(pending) + tasks_errored,
             tasks_completed=tasks_completed,
             cleanup_completed=cleanup_completed,
             duration_seconds=time.monotonic() - start,
@@ -329,7 +340,7 @@ class CheckpointAndStopStrategy:
                 cleanup_callbacks,
                 self._cleanup_seconds,
             )
-            return ShutdownResult(
+            result = ShutdownResult(
                 strategy_type=self.get_strategy_type(),
                 tasks_interrupted=0,
                 tasks_completed=0,
@@ -337,6 +348,15 @@ class CheckpointAndStopStrategy:
                 cleanup_completed=cleanup_completed,
                 duration_seconds=time.monotonic() - start,
             )
+            logger.info(
+                EXECUTION_SHUTDOWN_COMPLETE,
+                strategy=result.strategy_type,
+                tasks_suspended=0,
+                tasks_interrupted=0,
+                cleanup_completed=result.cleanup_completed,
+                duration_seconds=result.duration_seconds,
+            )
+            return result
 
         task_set = set(running_tasks.values())
         done, pending = await asyncio.wait(
@@ -344,8 +364,9 @@ class CheckpointAndStopStrategy:
             timeout=self._grace_seconds,
         )
 
-        # Cooperative exits counted as suspended.
-        tasks_suspended = _count_cooperative_exits(done)
+        # Cooperative exits counted as suspended; errored tasks
+        # are counted as interrupted (they need attention on restart).
+        tasks_suspended, tasks_errored = _count_cooperative_exits(done)
 
         # Checkpoint and cancel stragglers.
         (
@@ -356,6 +377,7 @@ class CheckpointAndStopStrategy:
             running_tasks,
         )
         tasks_suspended += straggler_suspended
+        tasks_interrupted += tasks_errored
 
         cleanup_completed = await _run_cleanup(
             cleanup_callbacks,
@@ -539,11 +561,4 @@ def build_shutdown_strategy(
         )
         raise ValueError(msg)
 
-    strategy = builder()
-    logger.debug(
-        EXECUTION_SHUTDOWN_COMPLETE,
-        strategy=strategy.get_strategy_type(),
-        grace_seconds=config.grace_seconds,
-        cleanup_seconds=config.cleanup_seconds,
-    )
-    return strategy
+    return builder()

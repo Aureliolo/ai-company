@@ -38,6 +38,7 @@ describe('getTaskStatusColor', () => {
     ['blocked', 'danger'],
     ['failed', 'danger'],
     ['interrupted', 'warning'],
+    ['suspended', 'warning'],
     ['cancelled', 'text-secondary'],
   ])('maps %s to %s', (status, expected) => {
     expect(getTaskStatusColor(status)).toBe(expected)
@@ -56,6 +57,7 @@ describe('getTaskStatusLabel', () => {
     ['blocked', 'Blocked'],
     ['failed', 'Failed'],
     ['interrupted', 'Interrupted'],
+    ['suspended', 'Suspended'],
     ['cancelled', 'Cancelled'],
   ])('maps %s to %s', (status, expected) => {
     expect(getTaskStatusLabel(status)).toBe(expected)
