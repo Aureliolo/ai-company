@@ -709,6 +709,7 @@ class SQLiteOrgFactStore:
             OrgMemoryQueryError: If the query fails.
         """
         db = self._require_connected()
+        limit = max(1, min(limit, 100))
         clauses: list[str] = ["retracted_at IS NULL"]
         params: list[str | int] = []
 
