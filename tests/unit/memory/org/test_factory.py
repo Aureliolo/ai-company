@@ -6,7 +6,7 @@ from synthorg.memory.org.config import OrgMemoryConfig
 from synthorg.memory.org.errors import OrgMemoryConfigError
 from synthorg.memory.org.factory import create_org_memory_backend
 from synthorg.memory.org.hybrid_backend import HybridPromptRetrievalBackend
-from synthorg.memory.org.store import SQLiteOrgFactStore
+from synthorg.memory.org.sqlite_store import SQLiteOrgFactStore
 
 
 @pytest.mark.unit

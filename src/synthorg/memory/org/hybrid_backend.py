@@ -173,14 +173,6 @@ class HybridPromptRetrievalBackend:
         except OrgMemoryQueryError:
             logger.exception(ORG_MEMORY_QUERY_FAILED)
             raise
-        except Exception as exc:
-            logger.exception(
-                ORG_MEMORY_QUERY_FAILED,
-                error=str(exc),
-                error_type=type(exc).__name__,
-            )
-            msg = f"Failed to query org facts: {exc}"
-            raise OrgMemoryQueryError(msg) from exc
         else:
             logger.info(ORG_MEMORY_QUERY_COMPLETE, count=len(results))
             return results
@@ -225,6 +217,7 @@ class HybridPromptRetrievalBackend:
             id=fact_id,
             content=request.content,
             category=request.category,
+            tags=request.tags,
             author=author,
             created_at=now,
         )
@@ -237,14 +230,6 @@ class HybridPromptRetrievalBackend:
                 fact_id=fact_id,
             )
             raise
-        except Exception as exc:
-            logger.exception(
-                ORG_MEMORY_WRITE_FAILED,
-                fact_id=fact_id,
-                error=str(exc),
-            )
-            msg = f"Failed to write org fact: {exc}"
-            raise OrgMemoryWriteError(msg) from exc
         else:
             logger.info(
                 ORG_MEMORY_WRITE_COMPLETE,

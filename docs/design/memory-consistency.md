@@ -5,7 +5,7 @@ description: Consistency model for shared organizational memory -- append-only w
 
 # Multi-Agent Memory Consistency
 
-This page documents the consistency model chosen for `SharedKnowledgeStore` in SynthOrg.
+This page documents the consistency model chosen for organizational fact persistence in SynthOrg.
 See [Decision Log](../architecture/decisions.md) D26 for the decision rationale and alternatives
 evaluated.
 
@@ -13,14 +13,13 @@ evaluated.
 
 ## Problem Statement
 
-Multiple agents may concurrently publish, search, and retract facts in shared organizational
-memory. Without an explicit consistency model, concurrent writes on the same fact produce
-undefined ordering, deleted facts may reappear, and there is no audit trail for "who changed
-this and when."
+Multiple agents may concurrently write to shared organizational memory. Without an explicit
+consistency model, concurrent writes on the same fact produce undefined ordering, deleted facts
+may reappear, and there is no audit trail for "who changed this and when."
 
-The current `SharedKnowledgeStore` protocol has `publish`, `retract`, and `search_shared`
-operations but no concurrency semantics. This is acceptable at launch (1--10 concurrent agents,
-low write frequency) but requires a defined model before scaling.
+The `OrgFactStore` protocol provides `save`, `delete`, and `query` operations but requires
+explicit concurrency semantics. This is essential even at launch (1--10 concurrent agents,
+low write frequency) to ensure correctness and auditability.
 
 ---
 
@@ -43,8 +42,8 @@ operation_log row:
   version        -- per-fact integer, incremented on each operation
 ```
 
-`publish()` appends a PUBLISH row and updates the snapshot (below).
-`retract()` appends a RETRACT row and marks the snapshot entry as retracted.
+`save()` appends a PUBLISH row and updates the snapshot (below).
+`delete(..., author=...)` appends a RETRACT row and marks the snapshot entry as retracted.
 
 Both operations are O(1) append + O(log n) index update.
 
@@ -56,14 +55,16 @@ A **materialized snapshot** maintains the current committed state:
 snapshot row:
   fact_id        -- primary key
   content
+  category
   tags
   created_at
   retracted_at   -- null = active
   version        -- matches most recent operation_log.version
+  author info    -- agent_id, seniority, is_human, autonomy_level
 ```
 
-`search_shared()` queries the snapshot: `WHERE retracted_at IS NULL`. No log replay needed
-at read time -- reads are fast and consistent.
+Queries against the snapshot fetch active facts: `WHERE retracted_at IS NULL`. No log replay
+needed at read time -- reads are fast and consistent.
 
 ### Consistency Guarantees
 
@@ -98,36 +99,45 @@ application's responsibility:
 The append-only log enables point-in-time queries:
 
 ```python
-# What did shared memory look like before a given timestamp?
+# What did organizational memory look like before a given timestamp?
 snapshot = await store.snapshot_at(timestamp=datetime(2026, 3, 1, tzinfo=UTC))
 
 # Full audit trail for a specific fact
 log = await store.get_operation_log(fact_id="policy-jwt-auth")
 ```
 
-These methods are a planned extension to `SharedKnowledgeStore` (future PR, blocked on
-D26 being finalized). They are not required for the current `SharedKnowledgeStore` implementation
-but the storage schema supports them today.
+These methods are defined on the `OrgFactStore` protocol (the organizational fact persistence
+layer). The MVCC implementation lives in `SQLiteOrgFactStore`. Both read and write operations
+go through the `OrgFactStore` interface.
 
 ---
 
 ## Deployment Rollout
 
-### Phase 1 (current): Sequential writes, no concurrency model
+### Phase 1 (historical): Sequential writes, no concurrency model
 
-Acceptable for small deployments (1--10 concurrent agents, low write frequency). The
-`SharedKnowledgeStore` protocol is in place; the Mem0 backend provides basic durability.
+The initial implementation with simple INSERT/DELETE and no concurrency semantics.
 
-### Phase 1.5 (planned): Append-only + MVCC for shared memory
+### Phase 1.5 (current): Append-only + MVCC for organizational facts
 
-Triggered when shared memory write frequency exceeds ~10 writes/second or when concurrent
-retract/publish conflicts are observed in production logs. Implementation steps:
+Implementation:
 
-1. Add `operation_log` table to the SQLite schema (or Qdrant payload field for vector-native
-   stores).
-2. Update `OrgMemoryBackend` implementations to append rather than overwrite.
-3. Add `snapshot_at(timestamp)` and `get_operation_log(fact_id)` to `SharedKnowledgeStore`.
-4. Deploy behind a feature flag; monitor for consistency issues before full rollout.
+1. `org_facts_operation_log` table in the org facts SQLite database holds all write operations
+   (PUBLISH and RETRACT), indexed by fact_id, timestamp, and a composite (timestamp, fact_id).
+2. `org_facts_snapshot` table maintains the current committed state of all facts, indexed by
+   category and an active-facts index (`WHERE retracted_at IS NULL`).
+3. `SQLiteOrgFactStore` implements the `OrgFactStore` protocol: `save()` appends a PUBLISH
+   row and upserts the snapshot; `delete()` appends a RETRACT row and marks the snapshot as
+   retracted.
+4. `snapshot_at(timestamp)` and `get_operation_log(fact_id)` enable time-travel queries on
+   the `OrgFactStore` protocol.
+5. MVCC is the only implementation -- no feature flag, no backward-compatibility shims
+   (pre-alpha, all data is ephemeral).
+
+Deviation note: MVCC methods live on `OrgFactStore` rather than `SharedKnowledgeStore`
+because organizational facts are a separate storage layer from cross-agent memory. The
+operation log and snapshot are implementation details of the org fact store, not of the
+Mem0-based shared knowledge system.
 
 ### Phase 2 (future): Distributed consistency
 
@@ -143,3 +153,16 @@ Personal agent memories (per-`agent_id` operations on `MemoryBackend`) are **not
 to cross-agent consistency constraints. Each agent owns its memory exclusively -- no concurrent
 writes from other agents, no MVCC overhead needed. Sequential writes with the existing
 `MemoryBackend.store()` semantics are sufficient.
+
+---
+
+## Implementation Reference
+
+The MVCC model is implemented in `src/synthorg/memory/org/`:
+
+- **`store.py`**: `OrgFactStore` protocol defining the contract (connect, save, delete, get,
+  query, list_by_category, snapshot_at, get_operation_log).
+- **`sqlite_store.py`**: `SQLiteOrgFactStore` provides the SQLite implementation with WAL mode,
+  immediate transactions, and time-travel queries via CTE.
+- **`models.py`**: `OrgFact`, `OperationLogEntry`, `OperationLogSnapshot` domain models.
+- **`errors.py`**: Exception hierarchy (OrgMemoryConnectionError, OrgMemoryWriteError, etc.).
