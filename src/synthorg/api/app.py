@@ -61,6 +61,9 @@ from synthorg.api.state import AppState
 from synthorg.api.ws_models import WsEvent, WsEventType
 from synthorg.backup.factory import build_backup_service
 from synthorg.backup.service import BackupService  # noqa: TC001
+from synthorg.budget.coordination_store import (
+    CoordinationMetricsStore,
+)
 from synthorg.budget.tracker import CostTracker  # noqa: TC001
 from synthorg.communication.bus_protocol import MessageBus  # noqa: TC001
 from synthorg.communication.delegation.record_store import (
@@ -118,7 +121,11 @@ from synthorg.providers.errors import DriverNotRegisteredError
 from synthorg.providers.health import ProviderHealthTracker  # noqa: TC001
 from synthorg.providers.health_prober import ProviderHealthProber  # noqa: TC001
 from synthorg.providers.registry import ProviderRegistry  # noqa: TC001
+from synthorg.security.audit import AuditLog
 from synthorg.security.timeout.scheduler import ApprovalTimeoutScheduler  # noqa: TC001
+from synthorg.security.trust.config import TrustConfig
+from synthorg.security.trust.disabled_strategy import DisabledTrustStrategy
+from synthorg.security.trust.service import TrustService
 from synthorg.settings.dispatcher import SettingsChangeDispatcher
 from synthorg.settings.subscribers import (
     BackupSettingsSubscriber,
@@ -751,6 +758,14 @@ def _resolve_llm_judge_strategy(
     )
 
 
+def _build_default_trust_service() -> TrustService:
+    """Build a default no-op TrustService for agent health queries."""
+    return TrustService(
+        strategy=DisabledTrustStrategy(),
+        config=TrustConfig(),
+    )
+
+
 def _build_performance_tracker(
     *,
     cost_tracker: CostTracker | None = None,
@@ -808,7 +823,7 @@ def _build_performance_tracker(
     )
 
 
-def create_app(  # noqa: PLR0913, PLR0915
+def create_app(  # noqa: C901, PLR0913, PLR0915
     *,
     config: RootConfig | None = None,
     persistence: PersistenceBackend | None = None,
@@ -828,6 +843,9 @@ def create_app(  # noqa: PLR0913, PLR0915
     tool_invocation_tracker: ToolInvocationTracker | None = None,
     delegation_record_store: DelegationRecordStore | None = None,
     artifact_storage: ArtifactStorageBackend | None = None,
+    audit_log: AuditLog | None = None,
+    trust_service: TrustService | None = None,
+    coordination_metrics_store: CoordinationMetricsStore | None = None,
 ) -> Litestar:
     """Create and configure the Litestar application.
 
@@ -854,6 +872,10 @@ def create_app(  # noqa: PLR0913, PLR0915
         tool_invocation_tracker: Tool invocation tracking service.
         delegation_record_store: Delegation record store.
         artifact_storage: Artifact storage backend.
+        audit_log: Pre-built audit log (auto-wired if None).
+        trust_service: Pre-built trust service.
+        coordination_metrics_store: Pre-built metrics store
+            (auto-wired if None).
 
     Returns:
         Configured Litestar application.
@@ -969,6 +991,14 @@ def create_app(  # noqa: PLR0913, PLR0915
         effective_config.notifications,
     )
 
+    # Auto-wire control-plane services when not injected.
+    if audit_log is None:
+        audit_log = AuditLog()
+    if coordination_metrics_store is None:
+        coordination_metrics_store = CoordinationMetricsStore()
+    if trust_service is None:
+        trust_service = _build_default_trust_service()
+
     app_state = AppState(
         config=effective_config,
         persistence=persistence,
@@ -990,6 +1020,9 @@ def create_app(  # noqa: PLR0913, PLR0915
         delegation_record_store=delegation_record_store,
         artifact_storage=artifact_storage,
         notification_dispatcher=notification_dispatcher,
+        audit_log=audit_log,
+        trust_service=trust_service,
+        coordination_metrics_store=coordination_metrics_store,
         startup_time=time.monotonic(),
     )
 

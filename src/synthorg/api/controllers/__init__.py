@@ -8,6 +8,7 @@ from synthorg.api.controllers.agents import AgentController
 from synthorg.api.controllers.analytics import AnalyticsController
 from synthorg.api.controllers.approvals import ApprovalsController
 from synthorg.api.controllers.artifacts import ArtifactController
+from synthorg.api.controllers.audit import AuditController
 from synthorg.api.controllers.autonomy import AutonomyController
 from synthorg.api.controllers.backup import BackupController
 from synthorg.api.controllers.budget import BudgetController
@@ -17,6 +18,9 @@ from synthorg.api.controllers.ceremony_policy import (
 from synthorg.api.controllers.collaboration import CollaborationController
 from synthorg.api.controllers.company import CompanyController
 from synthorg.api.controllers.coordination import CoordinationController
+from synthorg.api.controllers.coordination_metrics import (
+    CoordinationMetricsController,
+)
 from synthorg.api.controllers.departments import DepartmentController
 from synthorg.api.controllers.health import HealthController
 from synthorg.api.controllers.meetings import MeetingController
@@ -67,6 +71,8 @@ ALL_CONTROLLERS: tuple[type[Controller], ...] = (
     CollaborationController,
     CeremonyPolicyController,
     CoordinationController,
+    AuditController,
+    CoordinationMetricsController,
     SettingsController,
     SetupController,
     SetupPersonalityController,
@@ -90,6 +96,7 @@ __all__ = [
     "AnalyticsController",
     "ApprovalsController",
     "ArtifactController",
+    "AuditController",
     "AuthController",
     "AutonomyController",
     "BackupController",
@@ -99,6 +106,7 @@ __all__ = [
     "CompanyController",
     "Controller",
     "CoordinationController",
+    "CoordinationMetricsController",
     "DepartmentController",
     "HealthController",
     "MeetingController",

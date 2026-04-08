@@ -302,6 +302,9 @@ class AgentEngine:
             payload contract and recommended wiring.  When ``None``
             (or when the ``engine.personality_trimming_notify`` setting
             is ``False``), no callback fires.
+        audit_log: Optional audit log for recording security
+            evaluations and tool invocation verdicts.  When ``None``,
+            a fresh :class:`AuditLog` is created internally.
     """
 
     def __init__(  # noqa: PLR0913, PLR0915
@@ -339,6 +342,7 @@ class AgentEngine:
         config_resolver: ConfigResolver | None = None,
         personality_trim_notifier: PersonalityTrimNotifier | None = None,
         coordination_metrics_collector: CoordinationMetricsCollector | None = None,
+        audit_log: AuditLog | None = None,
     ) -> None:
         if execution_loop is not None and auto_loop_config is not None:
             msg = "execution_loop and auto_loop_config are mutually exclusive"
@@ -428,7 +432,7 @@ class AgentEngine:
                 provider=provider,
                 config=procedural_memory_config,
             )
-        self._audit_log = AuditLog()
+        self._audit_log = audit_log if audit_log is not None else AuditLog()
         logger.debug(
             EXECUTION_ENGINE_CREATED,
             loop_type=(

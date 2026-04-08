@@ -73,14 +73,16 @@ class AuditLog:
         """Total entries ever recorded (including evicted)."""
         return self._total_recorded
 
-    def query(  # noqa: PLR0913
+    def query(  # noqa: PLR0913, C901
         self,
         *,
         agent_id: str | None = None,
         tool_name: str | None = None,
         verdict: str | None = None,
         risk_level: ApprovalRiskLevel | None = None,
+        action_type: str | None = None,
         since: AwareDatetime | None = None,
+        until: AwareDatetime | None = None,
         limit: int = 100,
     ) -> tuple[AuditEntry, ...]:
         """Query audit entries with optional filters.
@@ -93,17 +95,26 @@ class AuditLog:
             tool_name: Filter by tool name.
             verdict: Filter by verdict string.
             risk_level: Filter by risk level.
+            action_type: Filter by action type string.
             since: Entries before this datetime are excluded.
+            until: Entries after this datetime are excluded.
             limit: Maximum results to return (must be >= 1).
 
         Returns:
             Tuple of matching entries, newest first.
 
         Raises:
-            ValueError: If *limit* < 1.
+            ValueError: If *limit* < 1 or *since* > *until*.
         """
         if limit < 1:
             msg = f"limit must be >= 1, got {limit}"
+            logger.warning(
+                SECURITY_AUDIT_CONFIG_ERROR,
+                error=msg,
+            )
+            raise ValueError(msg)
+        if since is not None and until is not None and since > until:
+            msg = "since must not be after until"
             logger.warning(
                 SECURITY_AUDIT_CONFIG_ERROR,
                 error=msg,
@@ -119,7 +130,11 @@ class AuditLog:
                 continue
             if risk_level is not None and entry.risk_level != risk_level:
                 continue
+            if action_type is not None and entry.action_type != action_type:
+                continue
             if since is not None and entry.timestamp < since:
+                continue
+            if until is not None and entry.timestamp > until:
                 continue
             results.append(entry)
             if len(results) >= limit:

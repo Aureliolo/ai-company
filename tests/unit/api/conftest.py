@@ -18,6 +18,7 @@ from synthorg.api.auth.service import AuthService
 from synthorg.api.config import ApiConfig, RateLimitConfig
 from synthorg.api.exception_handlers import EXCEPTION_HANDLERS
 from synthorg.api.guards import HumanRole
+from synthorg.budget.coordination_store import CoordinationMetricsStore
 from synthorg.budget.tracker import CostTracker
 from synthorg.communication.delegation.record_store import (
     DelegationRecordStore,
@@ -34,6 +35,10 @@ from synthorg.engine.task_engine import TaskEngine
 from synthorg.hr.performance.tracker import PerformanceTracker
 from synthorg.hr.registry import AgentRegistryService
 from synthorg.providers.health import ProviderHealthTracker
+from synthorg.security.audit import AuditLog
+from synthorg.security.trust.config import TrustConfig
+from synthorg.security.trust.disabled_strategy import DisabledTrustStrategy
+from synthorg.security.trust.service import TrustService
 from synthorg.settings.registry import get_registry
 from synthorg.settings.service import SettingsService
 from synthorg.tools.invocation_tracker import ToolInvocationTracker
@@ -267,6 +272,27 @@ def fake_task_engine(
 
 
 @pytest.fixture
+def audit_log() -> AuditLog:
+    """Fresh in-memory audit log."""
+    return AuditLog()
+
+
+@pytest.fixture
+def trust_service() -> TrustService:
+    """Trust service with disabled strategy (no-op evaluation)."""
+    return TrustService(
+        strategy=DisabledTrustStrategy(),
+        config=TrustConfig(),
+    )
+
+
+@pytest.fixture
+def coordination_metrics_store() -> CoordinationMetricsStore:
+    """Fresh in-memory coordination metrics store."""
+    return CoordinationMetricsStore()
+
+
+@pytest.fixture
 def test_client(  # noqa: PLR0913
     fake_persistence: FakePersistenceBackend,
     fake_message_bus: FakeMessageBus,
@@ -280,6 +306,9 @@ def test_client(  # noqa: PLR0913
     provider_health_tracker: ProviderHealthTracker,
     tool_invocation_tracker: ToolInvocationTracker,
     delegation_record_store: DelegationRecordStore,
+    audit_log: AuditLog,
+    trust_service: TrustService,
+    coordination_metrics_store: CoordinationMetricsStore,
 ) -> Generator[TestClient[Any]]:
     # Pre-seed users for each role so JWT sub claims resolve
     _seed_test_users(fake_persistence, auth_service)
@@ -305,6 +334,9 @@ def test_client(  # noqa: PLR0913
         tool_invocation_tracker=tool_invocation_tracker,
         delegation_record_store=delegation_record_store,
         artifact_storage=FakeArtifactStorage(),
+        audit_log=audit_log,
+        trust_service=trust_service,
+        coordination_metrics_store=coordination_metrics_store,
     )
     with TestClient(app) as client:
         # Default: CEO token (most tests need write access)

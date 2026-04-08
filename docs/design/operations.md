@@ -408,10 +408,15 @@ etc.).
     | **Error amplification** | `Ae` | `error_rate_mas / error_rate_sas` -- relative failure probability | Whether MAS corrects or propagates errors. Centralized ~4.4x, Independent ~17.2x |
     | **Message density** | `c` | Inter-agent messages per reasoning turn | Communication intensity. Performance saturates at ~0.39 messages/turn |
     | **Redundancy rate** | `R` | Mean cosine similarity of agent output embeddings | Agent agreement. Optimal at ~0.41 (balances fusion with independence) |
+    | **Amdahl ceiling** | `Sc` | Theoretical max speedup from Amdahl's Law given parallelizable fraction | Diminishing returns threshold. Recommends ideal team size |
+    | **Straggler gap** | `Gs` | `(slowest_turn - median_turn) / median_turn` | Bottleneck severity. High gap = one agent blocks the group |
+    | **Token-speedup ratio** | `Rt` | `total_tokens / speedup_factor` | Cost efficiency of parallelism. Rising ratio = diminishing token ROI |
+    | **Message overhead** | `Mo` | Pairwise message count relative to team size | Quadratic communication detection. `is_quadratic` flag when `O(n^2)` |
 
-    All 5 metrics are opt-in via `coordination_metrics.enabled` in analytics config. `Ec` and
-    `O%` are cheap (turn counting). `Ae` requires baseline comparison data. `c` and `R` require
-    semantic analysis of agent outputs.
+    All 9 metrics are opt-in via `coordination_metrics.enabled` in analytics config. `Ec` and
+    `O%` are cheap (turn counting). `Ae` requires baseline comparison data. `R` requires
+    semantic analysis of agent outputs (embedding cosine similarity). `c`, `Sc`, `Gs`, `Rt`,
+    and `Mo` are computed from execution telemetry (turn counts, token usage, message logs).
 
     ```yaml
     coordination_metrics:
@@ -422,6 +427,10 @@ etc.).
         - error_amplification              # requires SAS baseline data
         - message_density                  # requires message counting infrastructure
         - redundancy                       # requires embedding computation on outputs
+        - amdahl_ceiling                   # computed from parallelizable fraction
+        - straggler_gap                    # computed from per-agent turn times
+        - token_speedup_ratio              # computed from token usage + speedup
+        - message_overhead                 # computed from pairwise message counts
       baseline_window: 50                  # number of SAS runs to establish baseline for Ae
       error_taxonomy:
         enabled: false                     # opt-in -- enable for targeted diagnosis
@@ -1295,6 +1304,7 @@ future CLI tool are thin clients that call the API -- they contain no business l
 | `/api/v1/auth` | Authentication: setup, login (HttpOnly cookie sessions, CSRF double-submit), password change (rotates session cookie), ws-ticket, session management (list/revoke, concurrent session limits), logout, account lockout (429 with Retry-After), refresh token rotation (tiered rate limiting: 20 req/min unauth by IP, 6,000 req/min auth by user ID -- see `docs/security.md`) |
 | `/api/v1/company` | CRUD company config |
 | `/api/v1/agents` | List, hire, fire, modify agents |
+| `GET /api/v1/agents/{name}/health` | Per-agent composite health (performance, trust, lifecycle status) |
 | `GET /api/v1/agents/{name}/performance` | Agent performance metrics summary |
 | `GET /api/v1/agents/{name}/activity` | Paginated agent activity timeline (lifecycle, task, cost, tool, delegation events); `degraded_sources` included in `PaginatedResponse` contract |
 | `GET /api/v1/agents/{name}/history` | Agent career history events |
@@ -1311,6 +1321,9 @@ future CLI tool are thin clients that call the API -- they contain no business l
 | `/api/v1/analytics` | `GET /overview` (metrics summary with budget status, 7d spend sparkline, agent counts), `GET /trends?period=7d\|30d\|90d&metric=spend\|tasks_completed\|active_agents\|success_rate` (time-series bucketed metrics; hourly buckets for 7d, daily for 30d/90d; defaults: `period=7d`, `metric=spend`), `GET /forecast?horizon_days=1..90` (budget spend projection with daily projections and exhaustion estimate; default 14; 400 on out-of-range) |
 | `POST /api/v1/reports/generate`, `GET /api/v1/reports/periods` | On-demand report generation (comprehensive periodic reports: spending, performance, task completion, risk trends), available report period listing |
 | `/api/v1/settings` | Runtime-editable configuration (9 namespaces), schema discovery |
+| `GET /api/v1/settings/security/export`, `POST /api/v1/settings/security/import` | Security policy export/import (persists registered settings; code-defined policies require matching Python code) |
+| `GET /api/v1/security/audit` | Audit log query with agent_id, tool_name, verdict, action_type, and time-range filters |
+| `GET /api/v1/coordination/metrics` | Coordination metrics query (9 Kim et al. metrics with task/agent/time filtering) |
 | `GET /api/v1/providers`, `GET /api/v1/providers/{name}`, `GET /api/v1/providers/{name}/models`, `GET /api/v1/providers/{name}/health`, `POST /api/v1/providers`, `PUT /api/v1/providers/{name}`, `DELETE /api/v1/providers/{name}`, `POST /api/v1/providers/{name}/test`, `GET /api/v1/providers/presets`, `POST /api/v1/providers/from-preset`, `POST /api/v1/providers/{name}/discover-models`, `POST /api/v1/providers/probe-preset`, `GET /api/v1/providers/discovery-policy`, `POST /api/v1/providers/discovery-policy/entries`, `POST /api/v1/providers/discovery-policy/remove-entry`, `POST /api/v1/providers/{name}/models/pull`, `DELETE /api/v1/providers/{name}/models/{model_id}`, `PUT /api/v1/providers/{name}/models/{model_id}/config` | Provider CRUD, single provider detail, model listing, health status, connection testing, presets, preset auto-probe, model discovery, discovery SSRF allowlist management, local model management (pull with SSE progress, delete, per-model config), 5 auth types (api_key, subscription, oauth, custom_header, none) |
 | `GET /api/v1/setup/status`, `GET /api/v1/setup/templates`, `POST /api/v1/setup/company`, `POST /api/v1/setup/agent`, `GET /api/v1/setup/agents`, `PUT /api/v1/setup/agents/{agent_index}/model` (`{agent_index}` = zero-based position in the list returned by `GET /api/v1/setup/agents`; not a stable ID -- re-fetch to resolve; out-of-range returns 404), `PUT /api/v1/setup/agents/{agent_index}/name`, `POST /api/v1/setup/agents/{agent_index}/randomize-name`, `PUT /api/v1/setup/agents/{agent_index}/personality`, `GET /api/v1/setup/personality-presets`, `GET /api/v1/setup/name-locales/available`, `GET /api/v1/setup/name-locales`, `PUT /api/v1/setup/name-locales`, `POST /api/v1/setup/complete` | First-run setup wizard: status check (public, reports `has_company`/`has_agents`/`has_providers`/`has_name_locales` for step resume), template listing, company creation (auto-creates template agents with model matching), agent listing + model/name/personality reassignment, manual agent creation (blank path), personality preset listing, name locale management (list available Faker locales, get/set selected locales for agent name generation), completion gate (requires company + providers; agents are optional for Quick Setup mode) |
 | `GET /api/v1/personalities/presets`, `GET /api/v1/personalities/presets/{name}`, `GET /api/v1/personalities/schema`, `POST /api/v1/personalities/presets`, `PUT /api/v1/personalities/presets/{name}`, `DELETE /api/v1/personalities/presets/{name}` | Personality preset discovery (builtin + custom list, detail with full config, JSON schema), custom preset CRUD (create with name collision prevention, update, delete with builtin protection) |
@@ -1835,15 +1848,15 @@ them is required to support the full control-plane positioning claim.
 | # | Gap | Severity | Recommendation |
 |---|-----|----------|----------------|
 | G1 | No telemetry export (Prometheus `/metrics` or OTLP) | High | Add `/metrics` route + metrics aggregator. The 82+ structured events provide all raw data. |
-| G2 | No per-agent health endpoint | Medium | Add `GET /agents/{id}/health` compositing `PerformanceTracker.get_snapshot()`, `TrustService.get_trust_state()`, and last-active timestamp. |
-| G3 | No policy-as-code export/import | Medium | Add `GET /settings/security/export` and `POST /settings/security/import` to enable GitOps-style policy management. |
-| G4 | No coordination metrics API | Medium | Add `GET /coordination/metrics` endpoint. The 9 Kim et al. metrics are already computed in `budget/coordination_metrics.py` but not queryable. |
-| G5 | No audit log query API | Medium | Add `GET /security/audit` with filters. The `AuditLog` is write-only from an API perspective -- log sinks are the only read path. |
+| G2 | ~~No per-agent health endpoint~~ | ~~Medium~~ | **Implemented** -- `GET /agents/{name}/health` composites performance, trust, and lifecycle status. (Issue #1118 scoped as `{id}` but implemented as `{name}` for consistency with existing agent routes.) |
+| G3 | ~~No policy-as-code export/import~~ | ~~Medium~~ | **Implemented** -- `GET /settings/security/export` and `POST /settings/security/import` (persists registered settings; code-defined policies require matching Python code). |
+| G4 | ~~No coordination metrics API~~ | ~~Medium~~ | **Implemented** -- `GET /coordination/metrics` exposes the 9 Kim et al. metrics with filtering. |
+| G5 | ~~No audit log query API~~ | ~~Medium~~ | **Implemented** -- `GET /security/audit` with agent_id, tool_name, verdict, action_type, and time-range filters. |
 | G6 | Budget history granularity | Low | `CostTracker` is in-memory with TTL eviction. Multi-dimensional queries (provider X, agent Y, period Z) require persistence layer investigation. |
 
-Priority for closing gaps: G1 (telemetry export) is the most significant for enterprise
-positioning. G3 (policy-as-code) and G4 (coordination metrics API) are the highest
-differentiation opportunities. G2 is the smallest implementation scope.
+Priority for closing gaps: G1 (telemetry export) is the most significant remaining gap
+for enterprise positioning. G2-G5 were closed in v0.6.4 (control-plane API endpoints
+batch). G6 remains low-priority.
 
 ### Recommended Framing
 

@@ -14,6 +14,9 @@ from synthorg.api.auth.ticket_store import WsTicketStore
 from synthorg.api.errors import ServiceUnavailableError
 from synthorg.api.services.org_mutations import OrgMutationService
 from synthorg.backup.service import BackupService  # noqa: TC001
+from synthorg.budget.coordination_store import (
+    CoordinationMetricsStore,  # noqa: TC001
+)
 from synthorg.budget.tracker import CostTracker  # noqa: TC001
 from synthorg.communication.bus_protocol import MessageBus  # noqa: TC001
 from synthorg.communication.delegation.record_store import (
@@ -50,7 +53,9 @@ from synthorg.providers.management.service import (
 )
 from synthorg.providers.registry import ProviderRegistry  # noqa: TC001
 from synthorg.providers.routing.router import ModelRouter  # noqa: TC001
+from synthorg.security.audit import AuditLog  # noqa: TC001
 from synthorg.security.timeout.scheduler import ApprovalTimeoutScheduler  # noqa: TC001
+from synthorg.security.trust.service import TrustService  # noqa: TC001
 from synthorg.settings.resolver import ConfigResolver
 from synthorg.settings.service import SettingsService  # noqa: TC001
 from synthorg.tools.invocation_tracker import ToolInvocationTracker  # noqa: TC001
@@ -80,10 +85,12 @@ class AppState:
         "_approval_gate",
         "_approval_timeout_scheduler",
         "_artifact_storage",
+        "_audit_log",
         "_auth_service",
         "_backup_service",
         "_ceremony_scheduler",
         "_config_resolver",
+        "_coordination_metrics_store",
         "_coordinator",
         "_cost_tracker",
         "_delegation_record_store",
@@ -106,6 +113,7 @@ class AppState:
         "_task_engine",
         "_ticket_store",
         "_tool_invocation_tracker",
+        "_trust_service",
         "_user_presence",
         "approval_store",
         "config",
@@ -137,13 +145,18 @@ class AppState:
         delegation_record_store: DelegationRecordStore | None = None,
         artifact_storage: ArtifactStorageBackend | None = None,
         notification_dispatcher: NotificationDispatcher | None = None,
+        audit_log: AuditLog | None = None,
+        trust_service: TrustService | None = None,
+        coordination_metrics_store: CoordinationMetricsStore | None = None,
         startup_time: float = 0.0,
     ) -> None:
         self.config = config
         self.approval_store = approval_store
         self._approval_gate = approval_gate
         self._artifact_storage = artifact_storage
+        self._audit_log = audit_log
         self._backup_service: BackupService | None = None
+        self._coordination_metrics_store = coordination_metrics_store
         self._notification_dispatcher = notification_dispatcher
         self._persistence = persistence
         self._message_bus = message_bus
@@ -153,6 +166,7 @@ class AppState:
         self._coordinator = coordinator
         self._agent_registry = agent_registry
         self._performance_tracker = performance_tracker
+        self._trust_service = trust_service
         self._meeting_orchestrator = meeting_orchestrator
         self._meeting_scheduler = meeting_scheduler
         self._ceremony_scheduler = ceremony_scheduler
@@ -381,6 +395,42 @@ class AppState:
     def has_agent_registry(self) -> bool:
         """Check whether the agent registry is configured."""
         return self._agent_registry is not None
+
+    @property
+    def audit_log(self) -> AuditLog:
+        """Return audit log or raise 503."""
+        return self._require_service(self._audit_log, "audit_log")
+
+    @property
+    def has_audit_log(self) -> bool:
+        """Check whether the audit log is configured."""
+        return self._audit_log is not None
+
+    @property
+    def trust_service(self) -> TrustService:
+        """Return trust service or raise 503."""
+        return self._require_service(
+            self._trust_service,
+            "trust_service",
+        )
+
+    @property
+    def has_trust_service(self) -> bool:
+        """Check whether the trust service is configured."""
+        return self._trust_service is not None
+
+    @property
+    def coordination_metrics_store(self) -> CoordinationMetricsStore:
+        """Return coordination metrics store or raise 503."""
+        return self._require_service(
+            self._coordination_metrics_store,
+            "coordination_metrics_store",
+        )
+
+    @property
+    def has_coordination_metrics_store(self) -> bool:
+        """Check whether the coordination metrics store is configured."""
+        return self._coordination_metrics_store is not None
 
     @property
     def settings_service(self) -> SettingsService:

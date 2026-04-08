@@ -1,11 +1,12 @@
 """Agent configuration, performance, activity, history, and CRUD mutations."""
 
 import json
-from typing import Any
+from typing import Any, Self
 
 from litestar import Controller, Request, Response, delete, get, patch, post
 from litestar.datastructures import State  # noqa: TC002
 from litestar.status_codes import HTTP_204_NO_CONTENT
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.api.channels import CHANNEL_AGENTS, publish_ws_event
 from synthorg.api.concurrency import compute_etag
@@ -25,12 +26,16 @@ from synthorg.api.state import AppState  # noqa: TC001
 from synthorg.api.ws_models import WsEventType
 from synthorg.budget.currency import DEFAULT_CURRENCY
 from synthorg.config.schema import AgentConfig  # noqa: TC001
+from synthorg.core.agent import AgentIdentity  # noqa: TC001
+from synthorg.core.enums import AgentStatus, ToolAccessLevel  # noqa: TC001
+from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.hr.activity import (
     ActivityEvent,
     CareerEvent,
     filter_career_events,
     merge_activity_timeline,
 )
+from synthorg.hr.enums import TrendDirection  # noqa: TC001
 from synthorg.hr.performance.summary import (
     AgentPerformanceSummary,
     extract_performance_summary,
@@ -38,6 +43,8 @@ from synthorg.hr.performance.summary import (
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import (
     API_AGENT_ACTIVITY_QUERIED,
+    API_AGENT_HEALTH_QUERIED,
+    API_AGENT_HEALTH_TREND_MISSING,
     API_AGENT_HISTORY_QUERIED,
     API_AGENT_PERFORMANCE_QUERIED,
     API_REQUEST_ERROR,
@@ -74,6 +81,90 @@ async def _resolve_agent_id(
         logger.warning(API_RESOURCE_NOT_FOUND, resource="agent", name=agent_name)
         raise NotFoundError(msg)
     return str(identity.id)
+
+
+async def _resolve_agent_identity(
+    app_state: AppState,
+    agent_name: str,
+) -> AgentIdentity:
+    """Resolve an agent name to its full identity.
+
+    Raises:
+        NotFoundError: If the agent is not found in the registry.
+    """
+    identity = await app_state.agent_registry.get_by_name(agent_name)
+    if identity is None:
+        msg = "Agent not found"
+        logger.warning(
+            API_RESOURCE_NOT_FOUND,
+            resource="agent",
+            name=agent_name,
+        )
+        raise NotFoundError(msg)
+    return identity
+
+
+class TrustSummary(BaseModel):
+    """Trust state summary for the health endpoint."""
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+
+    level: ToolAccessLevel
+    score: float | None = Field(
+        default=None,
+        ge=0.0,
+        le=1.0,
+    )
+    last_evaluated_at: AwareDatetime | None = None
+
+    @model_validator(mode="after")
+    def _score_requires_evaluation_time(self) -> Self:
+        if self.score is not None and self.last_evaluated_at is None:
+            msg = "score requires last_evaluated_at to be set"
+            raise ValueError(msg)
+        return self
+
+
+class PerformanceSummary(BaseModel):
+    """Performance snapshot summary for the health endpoint."""
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+
+    quality_score: float | None = Field(
+        default=None,
+        ge=0.0,
+        le=10.0,
+    )
+    collaboration_score: float | None = Field(
+        default=None,
+        ge=0.0,
+        le=10.0,
+    )
+    trend: TrendDirection | None = None
+
+    @model_validator(mode="after")
+    def _trend_requires_at_least_one_score(self) -> Self:
+        if (
+            self.trend is not None
+            and self.quality_score is None
+            and self.collaboration_score is None
+        ):
+            msg = "trend requires at least one score to be set"
+            raise ValueError(msg)
+        return self
+
+
+class AgentHealthResponse(BaseModel):
+    """Composite health snapshot for a single agent."""
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+
+    agent_id: NotBlankStr
+    agent_name: NotBlankStr
+    lifecycle_status: AgentStatus
+    last_active_at: AwareDatetime | None = None
+    trust: TrustSummary | None = None
+    performance: PerformanceSummary | None = None
 
 
 class AgentController(Controller):
@@ -363,3 +454,100 @@ class AgentController(Controller):
             career_events=len(career),
         )
         return ApiResponse(data=career)
+
+    @get("/{agent_name:str}/health")
+    async def get_agent_health(
+        self,
+        state: State,
+        agent_name: PathName,
+    ) -> ApiResponse[AgentHealthResponse]:
+        """Get composite health for an agent.
+
+        Combines performance snapshot, trust state, and lifecycle
+        status into a single response.
+
+        Args:
+            state: Application state.
+            agent_name: Agent name to look up.
+
+        Returns:
+            Agent health envelope.
+
+        Raises:
+            NotFoundError: If the agent is not found.
+        """
+        app_state: AppState = state.app_state
+        identity = await _resolve_agent_identity(
+            app_state,
+            agent_name,
+        )
+        agent_id = str(identity.id)
+
+        snapshot = await app_state.performance_tracker.get_snapshot(
+            agent_id,
+        )
+        trend = _extract_quality_trend(snapshot)
+        perf = PerformanceSummary(
+            quality_score=snapshot.overall_quality_score,
+            collaboration_score=snapshot.overall_collaboration_score,
+            trend=trend,
+        )
+
+        trust: TrustSummary | None = None
+        if app_state.has_trust_service:
+            trust_state = app_state.trust_service.get_trust_state(
+                agent_id,
+            )
+            if trust_state is not None:
+                trust = TrustSummary(
+                    level=trust_state.global_level,
+                    score=trust_state.trust_score,
+                    last_evaluated_at=trust_state.last_evaluated_at,
+                )
+
+        # Derive last_active_at from most recent lifecycle event.
+        last_active_at: AwareDatetime | None = None
+        events = await app_state.persistence.lifecycle_events.list_events(
+            agent_id=agent_id,
+            limit=1,
+        )
+        if events:
+            last_active_at = events[0].timestamp
+
+        health = AgentHealthResponse(
+            agent_id=agent_id,
+            agent_name=str(identity.name),
+            lifecycle_status=identity.status,
+            last_active_at=last_active_at,
+            trust=trust,
+            performance=perf,
+        )
+        logger.info(
+            API_AGENT_HEALTH_QUERIED,
+            agent_name=agent_name,
+        )
+        return ApiResponse(data=health)
+
+
+def _extract_quality_trend(
+    snapshot: Any,
+) -> TrendDirection | None:
+    """Extract the quality trend direction from a performance snapshot.
+
+    Args:
+        snapshot: Performance snapshot with a ``trends`` collection
+            (typically from ``PerformanceTracker.get_snapshot``).
+
+    Returns:
+        The ``TrendDirection`` for the "quality" metric, or ``None``
+        if no quality trend is recorded in the snapshot.
+    """
+    for t in snapshot.trends:
+        if t.metric_name == "quality":
+            direction: TrendDirection = t.direction
+            return direction
+    logger.debug(
+        API_AGENT_HEALTH_TREND_MISSING,
+        trend_count=len(snapshot.trends),
+    )
+    return None

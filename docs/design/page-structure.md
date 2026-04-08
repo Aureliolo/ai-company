@@ -83,7 +83,7 @@ Agent profiles as card grid. Each card shows name, role, department, status dot,
 
 **Deferred to future iteration**: Spending breakdown and tabbed layout (Access tab).
 
-**API endpoints**: `GET /agents`, `GET /agents/{name}`, `GET /agents/{name}/performance`, `GET /agents/{name}/activity`, `GET /agents/{name}/history`, `GET /agents/{name}/collaboration/score`, `GET /agents/{name}/collaboration/override`, `POST /agents/{name}/collaboration/override`, `DELETE /agents/{name}/collaboration/override`, `GET /agents/{name}/autonomy`, `POST /agents/{name}/autonomy`
+**API endpoints**: `GET /agents`, `GET /agents/{name}`, `GET /agents/{name}/performance`, `GET /agents/{name}/activity`, `GET /agents/{name}/history`, `GET /agents/{name}/health`, `GET /agents/{name}/collaboration/score`, `GET /agents/{name}/collaboration/override`, `POST /agents/{name}/collaboration/override`, `DELETE /agents/{name}/collaboration/override`, `GET /agents/{name}/autonomy`, `POST /agents/{name}/autonomy`
 **WS channels**: `agents`, `tasks` (detail page)
 
 #### Projects (`/projects`)
@@ -214,7 +214,7 @@ The **backup namespace** will include backup management CRUD (trigger, list, res
 
 System-managed settings (e.g. `api/setup_complete`) are hidden from the GUI. Environment-sourced settings display as read-only.
 
-**API endpoints**: `GET /settings/_schema`, `GET /settings/_schema/{ns}`, `GET /settings`, `GET /settings/{ns}`, `GET /settings/{ns}/{key}`, `PUT /settings/{ns}/{key}`, `DELETE /settings/{ns}/{key}`, `GET /settings/observability/sinks`, `POST /settings/observability/sinks/_test`, `GET /ceremony-policy`, `GET /ceremony-policy/resolved?department=`, `GET /ceremony-policy/active`, `GET /departments/{name}/ceremony-policy`, `PUT /departments/{name}/ceremony-policy`, `DELETE /departments/{name}/ceremony-policy`, `POST /admin/backups`, `GET /admin/backups`, `GET /admin/backups/{id}`, `DELETE /admin/backups/{id}`, `POST /admin/backups/restore`
+**API endpoints**: `GET /settings/_schema`, `GET /settings/_schema/{ns}`, `GET /settings`, `GET /settings/{ns}`, `GET /settings/{ns}/{key}`, `PUT /settings/{ns}/{key}`, `DELETE /settings/{ns}/{key}`, `GET /settings/observability/sinks`, `POST /settings/observability/sinks/_test`, `GET /settings/security/export`, `POST /settings/security/import`, `GET /security/audit`, `GET /coordination/metrics`, `GET /ceremony-policy`, `GET /ceremony-policy/resolved?department=`, `GET /ceremony-policy/active`, `GET /departments/{name}/ceremony-policy`, `PUT /departments/{name}/ceremony-policy`, `DELETE /departments/{name}/ceremony-policy`, `POST /admin/backups`, `GET /admin/backups`, `GET /admin/backups/{id}`, `DELETE /admin/backups/{id}`, `POST /admin/backups/restore`
 **WS channels**: `system` (restart-required notifications)
 
 #### Documentation (`/docs/`)
@@ -493,6 +493,8 @@ Every backend controller has a home in the page structure. No orphans.
 | AutonomyController | Agent Detail page (deferred -- not in v0.5.0 initial) |
 | CollaborationController | Agent Detail page (deferred -- not in v0.5.0 initial) |
 | CoordinationController | Task Board (task detail action) |
+| CoordinationMetricsController | Settings (coordination namespace) |
+| AuditController | Settings (security namespace) |
 | ProjectController | Projects page (list, detail, create), Task Board (project filter) |
 | ArtifactController | Artifacts page (list, detail, content preview, download) |
 | WorkflowController | Workflows, Workflow Editor |
