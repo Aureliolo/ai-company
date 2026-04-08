@@ -2,18 +2,20 @@
 
 Defines the valid state transitions for the task lifecycle, based on
 the Engine design page, extended with BLOCKED, CANCELLED,
-FAILED, and INTERRUPTED transitions for completeness::
+FAILED, INTERRUPTED, and SUSPENDED transitions for completeness::
 
     CREATED -> ASSIGNED
-    ASSIGNED -> IN_PROGRESS | BLOCKED | CANCELLED | FAILED | INTERRUPTED
-    IN_PROGRESS -> IN_REVIEW | BLOCKED | CANCELLED | FAILED | INTERRUPTED
+    ASSIGNED -> IN_PROGRESS | BLOCKED | CANCELLED | FAILED | INTERRUPTED | SUSPENDED
+    IN_PROGRESS -> IN_REVIEW | BLOCKED | CANCELLED | FAILED | INTERRUPTED | SUSPENDED
     IN_REVIEW -> COMPLETED | IN_PROGRESS (rework) | BLOCKED | CANCELLED
     BLOCKED -> ASSIGNED (unblocked)
     FAILED -> ASSIGNED (reassignment for retry)
     INTERRUPTED -> ASSIGNED (reassignment on restart)
+    SUSPENDED -> ASSIGNED (resume from checkpoint)
 
 COMPLETED and CANCELLED are terminal states with no outgoing
-transitions.  FAILED and INTERRUPTED are non-terminal (can be reassigned).
+transitions.  FAILED, INTERRUPTED, and SUSPENDED are non-terminal
+(can be reassigned).
 """
 
 from synthorg.core.enums import TaskStatus
@@ -34,6 +36,7 @@ VALID_TRANSITIONS: dict[TaskStatus, frozenset[TaskStatus]] = {
             TaskStatus.CANCELLED,
             TaskStatus.FAILED,
             TaskStatus.INTERRUPTED,
+            TaskStatus.SUSPENDED,
         }
     ),
     TaskStatus.IN_PROGRESS: frozenset(
@@ -43,6 +46,7 @@ VALID_TRANSITIONS: dict[TaskStatus, frozenset[TaskStatus]] = {
             TaskStatus.CANCELLED,
             TaskStatus.FAILED,
             TaskStatus.INTERRUPTED,
+            TaskStatus.SUSPENDED,
         }
     ),
     TaskStatus.IN_REVIEW: frozenset(
@@ -56,6 +60,7 @@ VALID_TRANSITIONS: dict[TaskStatus, frozenset[TaskStatus]] = {
     TaskStatus.BLOCKED: frozenset({TaskStatus.ASSIGNED}),
     TaskStatus.FAILED: frozenset({TaskStatus.ASSIGNED}),  # reassignment
     TaskStatus.INTERRUPTED: frozenset({TaskStatus.ASSIGNED}),  # reassignment on restart
+    TaskStatus.SUSPENDED: frozenset({TaskStatus.ASSIGNED}),  # resume from checkpoint
     TaskStatus.COMPLETED: frozenset(),  # terminal
     TaskStatus.CANCELLED: frozenset(),  # terminal
 }

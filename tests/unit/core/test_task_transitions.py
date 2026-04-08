@@ -34,9 +34,12 @@ class TestValidTransitions:
             (TaskStatus.IN_REVIEW, TaskStatus.CANCELLED),
             (TaskStatus.ASSIGNED, TaskStatus.INTERRUPTED),
             (TaskStatus.IN_PROGRESS, TaskStatus.INTERRUPTED),
+            (TaskStatus.ASSIGNED, TaskStatus.SUSPENDED),
+            (TaskStatus.IN_PROGRESS, TaskStatus.SUSPENDED),
             (TaskStatus.BLOCKED, TaskStatus.ASSIGNED),
             (TaskStatus.FAILED, TaskStatus.ASSIGNED),
             (TaskStatus.INTERRUPTED, TaskStatus.ASSIGNED),
+            (TaskStatus.SUSPENDED, TaskStatus.ASSIGNED),
         ],
         ids=lambda p: p.value if isinstance(p, TaskStatus) else str(p),
     )
@@ -64,6 +67,10 @@ class TestInvalidTransitions:
             (TaskStatus.FAILED, TaskStatus.IN_PROGRESS),
             (TaskStatus.INTERRUPTED, TaskStatus.COMPLETED),
             (TaskStatus.INTERRUPTED, TaskStatus.IN_PROGRESS),
+            (TaskStatus.SUSPENDED, TaskStatus.COMPLETED),
+            (TaskStatus.SUSPENDED, TaskStatus.IN_PROGRESS),
+            (TaskStatus.CREATED, TaskStatus.SUSPENDED),
+            (TaskStatus.IN_REVIEW, TaskStatus.SUSPENDED),
         ],
         ids=lambda p: p.value if isinstance(p, TaskStatus) else str(p),
     )
@@ -118,6 +125,16 @@ class TestTransitionMapCompleteness:
     def test_interrupted_is_non_terminal(self) -> None:
         """INTERRUPTED has outgoing transitions (reassignment on restart)."""
         assert len(VALID_TRANSITIONS[TaskStatus.INTERRUPTED]) > 0
+
+    def test_suspended_is_non_terminal(self) -> None:
+        """SUSPENDED has outgoing transitions (resume from checkpoint)."""
+        assert len(VALID_TRANSITIONS[TaskStatus.SUSPENDED]) > 0
+
+    def test_suspended_has_single_outgoing(self) -> None:
+        """SUSPENDED can only transition to ASSIGNED (resume)."""
+        assert VALID_TRANSITIONS[TaskStatus.SUSPENDED] == frozenset(
+            {TaskStatus.ASSIGNED}
+        )
 
     def test_all_targets_are_valid_statuses(self) -> None:
         """Every target in the transition map must be a valid TaskStatus."""
