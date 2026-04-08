@@ -45,6 +45,7 @@ def _mock_app_state(  # noqa: PLR0913
         _total = total_cost
         _daily = daily_cost
         _billing = billing_cost if billing_cost is not None else _total
+        _reset_day = 1  # Matches BudgetConfig.reset_day default.
 
         async def _get_total_cost(
             *,
@@ -53,8 +54,7 @@ def _mock_app_state(  # noqa: PLR0913
         ) -> float:
             if start is None:
                 return _total
-            # Billing-period query: start.day matches reset_day (default 1).
-            if start.day == 1:
+            if start.day == _reset_day:
                 return _billing
             return _daily
 
@@ -81,7 +81,7 @@ def _mock_app_state(  # noqa: PLR0913
             budget_cfg.per_agent_daily_limit = (
                 per_agent_daily_limit if per_agent_daily_limit is not None else 0.0
             )
-            budget_cfg.reset_day = 1
+            budget_cfg.reset_day = _reset_day
             tracker.budget_config = budget_cfg
         else:
             tracker.budget_config = None
