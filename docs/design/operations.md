@@ -1863,5 +1863,5 @@ All gaps G1-G5 are now closed. G6 (budget history granularity) remains low-prior
 SynthOrg should be positioned as an **orchestrated agent control plane**: policy-as-code,
 metered coordination, and observable agent behavior -- all enforced from a single control
 surface. This framing is accurate today for inventory, policy enforcement, and token
-metering. With G1 closed (Prometheus `/metrics` + OTLP HTTP/JSON), the remaining gaps
-are G3 (policy-as-code) and G4 (coordination metrics API) for full control-plane coverage.
+metering. With G1--G5 closed, the control-plane positioning is fully supported.
+G6 (budget history granularity) is the sole remaining gap at low priority.

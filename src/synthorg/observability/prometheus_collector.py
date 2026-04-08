@@ -221,7 +221,7 @@ class PrometheusCollector:
                 )
         self._refresh_cost_gauge(total_cost)
         self._refresh_budget_metrics(app_state, total_cost)
-        self._refresh_daily_budget_metric(app_state, daily_cost)
+        self._refresh_daily_budget_metric(app_state, daily_cost, utc_midnight)
         agents = await self._refresh_agent_metrics(app_state)
         await self._refresh_agent_cost_metrics(
             app_state,
@@ -243,10 +243,14 @@ class PrometheusCollector:
     ) -> None:
         """Update budget utilization gauges from CostTracker config."""
         if not app_state.has_cost_tracker:
+            self._budget_used_percent.set(0.0)
+            self._budget_monthly_usd.set(0.0)
             return
         try:
             tracker = app_state.cost_tracker
             if tracker.budget_config is None:
+                self._budget_used_percent.set(0.0)
+                self._budget_monthly_usd.set(0.0)
                 return
             monthly = tracker.budget_config.total_monthly
             self._budget_monthly_usd.set(monthly)
@@ -267,18 +271,21 @@ class PrometheusCollector:
         self,
         app_state: AppState,
         daily_cost: float | None,
+        utc_midnight: datetime,
     ) -> None:
         """Update daily budget utilization gauge.
 
         Computes ``daily_cost / (total_monthly / days_in_month) * 100``,
-        capped at 100%.  Returns early without updating if cost tracker
-        is unavailable, *daily_cost* is ``None``, budget config is
+        capped at 100%.  Resets the gauge to 0.0 if cost tracker is
+        unavailable, *daily_cost* is ``None``, budget config is
         missing, or the monthly budget is zero or negative.
 
         Args:
             app_state: The application state containing cost tracker.
             daily_cost: Cost accumulated since UTC midnight, or ``None``
                 if unavailable.
+            utc_midnight: Start of the current UTC day, used to derive
+                the month and days-in-month for the prorated budget.
         """
         if not app_state.has_cost_tracker or daily_cost is None:
             self._budget_daily_used_percent.set(0.0)
@@ -292,8 +299,7 @@ class PrometheusCollector:
             if monthly <= 0:
                 self._budget_daily_used_percent.set(0.0)
                 return
-            now = datetime.now(UTC)
-            days = monthrange(now.year, now.month)[1]
+            days = monthrange(utc_midnight.year, utc_midnight.month)[1]
             daily_budget = monthly / days
             self._budget_daily_used_percent.set(
                 min(100.0, (daily_cost / daily_budget) * 100.0),
@@ -313,10 +319,10 @@ class PrometheusCollector:
     ) -> tuple[Any, ...]:
         """Update agent gauges from AgentRegistryService.
 
-        Queries active agents and aggregates counts by
-        ``(status, trust_level)``.  Clears all existing label series
-        before setting new ones so that disappeared combinations drop
-        to zero instead of retaining stale values.
+        Always clears label series first so disappeared combinations
+        drop to zero.  Then returns early if the agent registry is
+        unavailable; otherwise queries active agents and aggregates
+        counts by ``(status, trust_level)``.
 
         Args:
             app_state: The application state containing agent registry.
@@ -325,6 +331,7 @@ class PrometheusCollector:
             Tuple of active agent objects (empty tuple if the agent
             registry is unavailable or a service error occurs).
         """
+        self._agents_total.clear()
         if not app_state.has_agent_registry:
             return ()
         try:
@@ -334,9 +341,6 @@ class PrometheusCollector:
                 status = str(agent.status)
                 trust = str(agent.tools.access_level)
                 counts[(status, trust)] += 1
-            # Clear stale label series so disappeared combinations
-            # drop to zero instead of retaining previous values.
-            self._agents_total.clear()
             for (status, trust), count in counts.items():
                 self._agents_total.labels(
                     status=status,
@@ -424,6 +428,7 @@ class PrometheusCollector:
 
     async def _refresh_task_metrics(self, app_state: AppState) -> None:
         """Update task gauges from TaskEngine."""
+        self._tasks_total.clear()
         if not app_state.has_task_engine:
             return
         try:
@@ -433,7 +438,6 @@ class PrometheusCollector:
                 status = str(task.status)
                 agent = str(task.assigned_to) if task.assigned_to else ""
                 counts[(status, agent)] += 1
-            self._tasks_total.clear()
             for (status, agent), count in counts.items():
                 self._tasks_total.labels(
                     status=status,
