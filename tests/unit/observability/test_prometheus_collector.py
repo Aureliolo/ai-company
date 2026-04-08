@@ -28,8 +28,8 @@ def _mock_app_state(  # noqa: PLR0913
     """Build a mock AppState with configurable service availability.
 
     Args:
-        billing_cost: Month-to-date cost (start=month_start query).
-            Defaults to *total_cost* for backward compatibility.
+        billing_cost: Month-to-date cost (start=period_start query).
+            Defaults to *daily_cost* so day-1 queries are consistent.
         agent_costs: Accumulated cost per agent_id (no time filter).
         agent_daily_costs: Daily cost per agent_id (with start filter).
         reset_day: Budget reset day (1-28). Determines which
@@ -47,7 +47,7 @@ def _mock_app_state(  # noqa: PLR0913
 
         _total = total_cost
         _daily = daily_cost
-        _billing = billing_cost if billing_cost is not None else _total
+        _billing = billing_cost if billing_cost is not None else _daily
         _reset_day = reset_day
 
         async def _get_total_cost(
@@ -205,6 +205,7 @@ class TestPrometheusCollectorRefresh:
         state = _mock_app_state(
             has_cost_tracker=True,
             total_cost=50.0,
+            billing_cost=50.0,
             budget_total_monthly=200.0,
         )
         await collector.refresh(state)
