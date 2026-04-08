@@ -74,6 +74,12 @@ class AuditController(Controller):
         Raises:
             ClientException: If *since* > *until*.
         """
+        if (since is not None and since.tzinfo is None) or (
+            until is not None and until.tzinfo is None
+        ):
+            raise ClientException(
+                detail="'since' and 'until' must be timezone-aware",
+            )
         if since is not None and until is not None and since > until:
             raise ClientException(
                 detail="'since' must not be after 'until'",

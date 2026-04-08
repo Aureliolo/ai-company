@@ -286,6 +286,13 @@ class TestAuditLogQueryFilters:
         with pytest.raises(ValueError, match="limit must be >= 1"):
             log.query(limit=0)
 
+    def test_query_inverted_time_window_raises_value_error(self) -> None:
+        log = AuditLog()
+        t = datetime(2026, 4, 1, tzinfo=UTC)
+
+        with pytest.raises(ValueError, match="since must not be after until"):
+            log.query(since=t + timedelta(hours=2), until=t + timedelta(hours=1))
+
 
 @pytest.mark.unit
 class TestAuditLogTotalRecorded:
