@@ -348,6 +348,7 @@ def make_cost_record(  # noqa: PLR0913
     *,
     agent_id: str = "alice",
     task_id: str = "task-001",
+    project_id: str | None = None,
     provider: str = "test-provider",
     model: str = "test-model-001",
     input_tokens: int = 1000,
@@ -359,6 +360,7 @@ def make_cost_record(  # noqa: PLR0913
     return CostRecord(
         agent_id=agent_id,
         task_id=task_id,
+        project_id=project_id,
         provider=provider,
         model=model,
         input_tokens=input_tokens,

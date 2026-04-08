@@ -24,13 +24,14 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 
-async def record_execution_costs(
+async def record_execution_costs(  # noqa: PLR0913
     result: ExecutionResult,
     identity: AgentIdentity,
     agent_id: str,
     task_id: str,
     *,
     tracker: CostTracker | None,
+    project_id: str | None = None,
 ) -> None:
     """Record per-turn costs to the CostTracker if available.
 
@@ -68,6 +69,7 @@ async def record_execution_costs(
         record = CostRecord(
             agent_id=agent_id,
             task_id=task_id,
+            project_id=project_id,
             provider=identity.model.provider,
             model=identity.model.model_id,
             input_tokens=turn.input_tokens,

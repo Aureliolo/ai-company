@@ -69,6 +69,14 @@ class NoEligibleAgentError(TaskAssignmentError):
     """Raised when no eligible agent is found for assignment."""
 
 
+class ProjectNotFoundError(EngineError):
+    """Referenced project does not exist."""
+
+
+class ProjectAgentNotMemberError(EngineError):
+    """Agent is not a member of the task's project team."""
+
+
 class WorkspaceError(EngineError):
     """Base exception for workspace isolation failures."""
 

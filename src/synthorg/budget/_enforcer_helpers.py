@@ -18,6 +18,7 @@ from synthorg.observability.events.budget import (
     BUDGET_DOWNGRADE_APPLIED,
     BUDGET_DOWNGRADE_SKIPPED,
     BUDGET_HARD_STOP_TRIGGERED,
+    BUDGET_PROJECT_BUDGET_EXCEEDED,
     BUDGET_TASK_LIMIT_HIT,
     BUDGET_TIER_PRESERVED,
 )
@@ -256,6 +257,8 @@ def _build_checker_closure(  # noqa: PLR0913
     daily_baseline: float,
     thresholds: _AlertThresholds,
     agent_id: str,
+    project_budget: float = 0.0,
+    project_baseline: float = 0.0,
 ) -> BudgetChecker:
     """Build the sync budget checker closure.
 
@@ -267,6 +270,8 @@ def _build_checker_closure(  # noqa: PLR0913
         daily_baseline: Pre-computed daily spend at task start.
         thresholds: Pre-computed alert thresholds.
         agent_id: Agent identifier for logging.
+        project_budget: Total project budget (0 = disabled).
+        project_baseline: Pre-computed project spend at task start.
 
     Returns:
         Sync callable returning ``True`` when budget is exhausted.
@@ -277,6 +282,12 @@ def _build_checker_closure(  # noqa: PLR0913
         running_cost = ctx.accumulated_cost.cost_usd
         return (
             _check_task_limit(running_cost, task_limit, agent_id)
+            or _check_project_limit(
+                running_cost,
+                project_budget,
+                project_baseline,
+                agent_id,
+            )
             or _check_monthly_limit(
                 running_cost,
                 monthly_budget,
@@ -375,6 +386,30 @@ def _check_daily_limit(
             agent_id=agent_id,
             total_daily=total_daily,
             daily_limit=daily_limit,
+        )
+        return True
+    return False
+
+
+def _check_project_limit(
+    running_cost: float,
+    project_budget: float,
+    project_baseline: float,
+    agent_id: str,
+) -> bool:
+    """Return True if project budget is exhausted."""
+    if project_budget <= 0:
+        return False
+    total_project = round(
+        project_baseline + running_cost,
+        BUDGET_ROUNDING_PRECISION,
+    )
+    if total_project >= project_budget:
+        logger.warning(
+            BUDGET_PROJECT_BUDGET_EXCEEDED,
+            agent_id=agent_id,
+            total_project=total_project,
+            project_budget=project_budget,
         )
         return True
     return False

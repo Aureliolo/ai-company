@@ -48,3 +48,8 @@ BUDGET_NOTIFICATION_FAILED: Final[str] = "budget.notification.failed"
 BUDGET_EMBEDDING_COST_RECORDED: Final[str] = "budget.embedding_cost.recorded"
 BUDGET_EMBEDDING_COST_FAILED: Final[str] = "budget.embedding_cost.failed"
 BUDGET_EMBEDDING_MODEL_UNPRICED: Final[str] = "budget.embedding_cost.model_unpriced"
+
+# -- Project-level budget events --
+BUDGET_PROJECT_COST_QUERIED: Final[str] = "budget.project_cost.queried"
+BUDGET_PROJECT_BUDGET_EXCEEDED: Final[str] = "budget.project_budget.exceeded"
+BUDGET_PROJECT_ENFORCEMENT_CHECK: Final[str] = "budget.project.enforcement_check"

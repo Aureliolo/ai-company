@@ -27,6 +27,7 @@ from synthorg.budget.degradation import (
 from synthorg.budget.errors import (
     BudgetExhaustedError,
     DailyLimitExceededError,
+    ProjectBudgetExhaustedError,
     QuotaExhaustedError,
     RiskBudgetExhaustedError,
 )
@@ -46,6 +47,8 @@ from synthorg.observability.events.budget import (
     BUDGET_HARD_STOP_EXCEEDED,
     BUDGET_NOTIFICATION_FAILED,
     BUDGET_PREFLIGHT_ERROR,
+    BUDGET_PROJECT_BUDGET_EXCEEDED,
+    BUDGET_PROJECT_ENFORCEMENT_CHECK,
     BUDGET_RESOLVE_MODEL_ERROR,
     BUDGET_UTILIZATION_ERROR,
     BUDGET_UTILIZATION_QUERIED,
@@ -242,6 +245,55 @@ class BudgetEnforcer:
         if degradation_result is not None:
             return PreFlightResult(degradation=degradation_result)
         return PreFlightResult()
+
+    async def check_project_budget(
+        self,
+        project_id: str,
+        project_budget: float,
+    ) -> None:
+        """Check project-level budget and raise if exceeded.
+
+        Args:
+            project_id: Project identifier for cost lookup.
+            project_budget: Total project budget (from Project.budget).
+
+        Raises:
+            ProjectBudgetExhaustedError: When project spend >= budget.
+        """
+        if project_budget <= 0:
+            return
+
+        project_cost = await self._cost_tracker.get_project_cost(
+            project_id,
+        )
+
+        logger.debug(
+            BUDGET_PROJECT_ENFORCEMENT_CHECK,
+            project_id=project_id,
+            project_cost=project_cost,
+            project_budget=project_budget,
+        )
+
+        if project_cost >= project_budget:
+            logger.warning(
+                BUDGET_PROJECT_BUDGET_EXCEEDED,
+                project_id=project_id,
+                project_cost=project_cost,
+                project_budget=project_budget,
+            )
+            _fmt = format_cost
+            _cur = self._budget_config.currency
+            msg = (
+                f"Project {project_id!r} budget exhausted: "
+                f"{_fmt(project_cost, _cur)} >= "
+                f"{_fmt(project_budget, _cur)}"
+            )
+            raise ProjectBudgetExhaustedError(
+                msg,
+                project_id=project_id,
+                project_budget=project_budget,
+                project_spent=project_cost,
+            )
 
     async def check_quota(
         self,
@@ -524,20 +576,35 @@ class BudgetEnforcer:
         self,
         task: Task,
         agent_id: str,
+        *,
+        project_id: str | None = None,
+        project_budget: float = 0.0,
     ) -> BudgetChecker | None:
         """Create a sync BudgetChecker with pre-computed baselines.
 
-        Checks task limit, monthly total, and agent daily limit.
-        Baselines are snapshot-in-time (TOCTOU acceptable).
-        Returns ``None`` when all limits are disabled.
+        Checks task limit, monthly total, agent daily limit, and
+        optionally project budget.  Baselines are snapshot-in-time
+        (TOCTOU acceptable).  Returns ``None`` when all limits are
+        disabled.
+
+        Args:
+            task: The task being executed.
+            agent_id: Agent identifier.
+            project_id: Optional project ID for project budget checks.
+            project_budget: Total project budget (0 = disabled).
         """
         cfg = self._budget_config
         task_limit = task.budget_limit
         monthly_budget = cfg.total_monthly
         daily_limit = cfg.per_agent_daily_limit
 
-        # All enforcement disabled -- monthly, task, and daily all off.
-        if monthly_budget <= 0 and task_limit <= 0 and daily_limit <= 0:
+        # All enforcement disabled.
+        if (
+            monthly_budget <= 0
+            and task_limit <= 0
+            and daily_limit <= 0
+            and project_budget <= 0
+        ):
             return None
 
         monthly_baseline, daily_baseline = await self._compute_baselines_safe(
@@ -546,6 +613,21 @@ class BudgetEnforcer:
             daily_limit,
             agent_id,
         )
+
+        project_baseline = 0.0
+        if project_id is not None and project_budget > 0:
+            try:
+                project_baseline = await self._cost_tracker.get_project_cost(
+                    project_id,
+                )
+            except MemoryError, RecursionError:
+                raise
+            except Exception:
+                logger.exception(
+                    BUDGET_BASELINE_ERROR,
+                    agent_id=agent_id,
+                    reason="project_baseline_query_failed",
+                )
 
         thresholds = _compute_thresholds(cfg, monthly_budget)
 
@@ -557,6 +639,8 @@ class BudgetEnforcer:
             daily_baseline=daily_baseline,
             thresholds=thresholds,
             agent_id=agent_id,
+            project_budget=project_budget,
+            project_baseline=project_baseline,
         )
 
     # ── Risk budget enforcement ─────────────────────────────────

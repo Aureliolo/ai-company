@@ -116,6 +116,13 @@ class AssignmentRequest(BaseModel):
             "this limit are excluded from scoring. None = no limit."
         ),
     )
+    project_team: tuple[NotBlankStr, ...] = Field(
+        default=(),
+        description=(
+            "Project team agent IDs for filtering. When non-empty, "
+            "only agents whose ID is in this set are eligible."
+        ),
+    )
 
     @model_validator(mode="after")
     def _validate_collections(self) -> Self:

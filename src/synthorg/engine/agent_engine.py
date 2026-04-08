@@ -34,7 +34,11 @@ from synthorg.engine.checkpoint.resume import (
 from synthorg.engine.classification.pipeline import classify_execution_errors
 from synthorg.engine.context import DEFAULT_MAX_TURNS, AgentContext
 from synthorg.engine.cost_recording import record_execution_costs
-from synthorg.engine.errors import ExecutionStateError
+from synthorg.engine.errors import (
+    ExecutionStateError,
+    ProjectAgentNotMemberError,
+    ProjectNotFoundError,
+)
 from synthorg.engine.loop_protocol import (
     ExecutionResult,
     TerminationReason,
@@ -85,6 +89,7 @@ from synthorg.observability.events.execution import (
     EXECUTION_ENGINE_TIMEOUT,
     EXECUTION_LOOP_AUTO_SELECTED,
     EXECUTION_LOOP_BUDGET_UNAVAILABLE,
+    EXECUTION_PROJECT_VALIDATION_FAILED,
     EXECUTION_RECOVERY_DIAGNOSIS,
     EXECUTION_RECOVERY_FAILED,
     EXECUTION_RESUME_COMPLETE,
@@ -137,6 +142,9 @@ if TYPE_CHECKING:
     from synthorg.memory.procedural.models import ProceduralMemoryConfig
     from synthorg.memory.procedural.proposer import ProceduralMemoryProposer
     from synthorg.memory.protocol import MemoryBackend
+    from synthorg.persistence.artifact_project_repos import (
+        ProjectRepository,
+    )
     from synthorg.persistence.repositories import (
         CheckpointRepository,
         HeartbeatRepository,
@@ -343,6 +351,7 @@ class AgentEngine:
         personality_trim_notifier: PersonalityTrimNotifier | None = None,
         coordination_metrics_collector: CoordinationMetricsCollector | None = None,
         audit_log: AuditLog | None = None,
+        project_repo: ProjectRepository | None = None,
     ) -> None:
         if execution_loop is not None and auto_loop_config is not None:
             msg = "execution_loop and auto_loop_config are mutually exclusive"
@@ -433,6 +442,7 @@ class AgentEngine:
                 config=procedural_memory_config,
             )
         self._audit_log = audit_log if audit_log is not None else AuditLog()
+        self._project_repo = project_repo
         logger.debug(
             EXECUTION_ENGINE_CREATED,
             loop_type=(
@@ -516,6 +526,7 @@ class AgentEngine:
             ctx: AgentContext | None = None
             system_prompt: SystemPrompt | None = None
             provider: CompletionProvider = self._provider
+            _project_budget: float = 0.0
             try:
                 loop_mode = (
                     "auto"
@@ -543,6 +554,14 @@ class AgentEngine:
                     )
                     identity = await self._budget_enforcer.resolve_model(
                         identity,
+                    )
+
+                # Project validation and project-level budget check
+                if self._project_repo is not None:
+                    _project_budget = await self._validate_project(
+                        task=task,
+                        agent_id=agent_id,
+                        task_id=task_id,
                     )
 
                 tool_invoker = self._make_tool_invoker(
@@ -573,6 +592,7 @@ class AgentEngine:
                     tool_invoker=tool_invoker,
                     effective_autonomy=effective_autonomy,
                     provider=provider,
+                    project_budget=_project_budget,
                 )
             except MemoryError, RecursionError:
                 logger.exception(
@@ -581,6 +601,8 @@ class AgentEngine:
                     task_id=task_id,
                     error="non-recoverable error in run()",
                 )
+                raise
+            except ProjectNotFoundError, ProjectAgentNotMemberError:
                 raise
             except BudgetExhaustedError as exc:
                 return self._handle_budget_error(
@@ -623,6 +645,7 @@ class AgentEngine:
         tool_invoker: ToolInvoker | None = None,
         effective_autonomy: EffectiveAutonomy | None = None,
         provider: CompletionProvider | None = None,
+        project_budget: float = 0.0,
     ) -> AgentRunResult:
         """Run execution loop, record costs, apply transitions, and build result."""
         budget_checker: BudgetChecker | None
@@ -630,6 +653,8 @@ class AgentEngine:
             budget_checker = await self._budget_enforcer.make_budget_checker(
                 task,
                 agent_id,
+                project_id=task.project,
+                project_budget=project_budget,
             )
         else:
             budget_checker = make_budget_checker(task)
@@ -664,6 +689,7 @@ class AgentEngine:
             completion_config=completion_config,
             effective_autonomy=effective_autonomy,
             provider=provider or self._provider,
+            project_id=task.project,
         )
 
         return self._build_and_log_result(
@@ -684,6 +710,7 @@ class AgentEngine:
         completion_config: CompletionConfig | None = None,
         effective_autonomy: EffectiveAutonomy | None = None,
         provider: CompletionProvider | None = None,
+        project_id: str | None = None,
     ) -> ExecutionResult:
         """Post-execution: costs, transitions, recovery, classify.
 
@@ -701,6 +728,7 @@ class AgentEngine:
             agent_id,
             task_id,
             tracker=self._cost_tracker,
+            project_id=project_id,
         )
         execution_result = await apply_post_execution_transitions(
             execution_result,
@@ -727,6 +755,7 @@ class AgentEngine:
                 completion_config=completion_config,
                 effective_autonomy=effective_autonomy,
                 provider=provider,
+                project_id=project_id,
             )
             if recovery_result is not None:
                 logger.info(
@@ -1235,6 +1264,50 @@ class AgentEngine:
             )
             return True
 
+    async def _validate_project(
+        self,
+        *,
+        task: Task,
+        agent_id: str,
+        task_id: str,
+    ) -> float:
+        """Validate project existence and agent membership.
+
+        Returns the project budget (0.0 when no project-level budget).
+
+        Raises:
+            ProjectNotFoundError: When the project does not exist.
+            ProjectAgentNotMemberError: When the agent is not in the
+                project team (non-empty team only).
+        """
+        project = await self._project_repo.get(task.project)  # type: ignore[union-attr]
+        if project is None:
+            logger.warning(
+                EXECUTION_PROJECT_VALIDATION_FAILED,
+                agent_id=agent_id,
+                task_id=task_id,
+                project=task.project,
+                reason="project_not_found",
+            )
+            msg = f"Project {task.project!r} not found"
+            raise ProjectNotFoundError(msg)
+        if project.team and agent_id not in project.team:
+            logger.warning(
+                EXECUTION_PROJECT_VALIDATION_FAILED,
+                agent_id=agent_id,
+                task_id=task_id,
+                project=task.project,
+                reason="agent_not_in_team",
+            )
+            msg = f"Agent {agent_id!r} not in project {task.project!r} team"
+            raise ProjectAgentNotMemberError(msg)
+        if self._budget_enforcer is not None and project.budget > 0:
+            await self._budget_enforcer.check_project_budget(
+                project_id=project.id,
+                project_budget=project.budget,
+            )
+        return project.budget
+
     # ── Helpers ──────────────────────────────────────────────────
 
     async def _apply_recovery(  # noqa: PLR0913
@@ -1247,6 +1320,7 @@ class AgentEngine:
         completion_config: CompletionConfig | None = None,
         effective_autonomy: EffectiveAutonomy | None = None,
         provider: CompletionProvider | None = None,
+        project_id: str | None = None,
     ) -> tuple[ExecutionResult, RecoveryResult | None]:
         """Invoke the configured recovery strategy on error outcomes.
 
@@ -1282,6 +1356,7 @@ class AgentEngine:
                     completion_config=completion_config,
                     effective_autonomy=effective_autonomy,
                     provider=provider,
+                    project_id=project_id,
                 )
                 return resumed, recovery_result
 
@@ -1331,6 +1406,7 @@ class AgentEngine:
         completion_config: CompletionConfig | None = None,
         effective_autonomy: EffectiveAutonomy | None = None,
         provider: CompletionProvider | None = None,
+        project_id: str | None = None,
     ) -> ExecutionResult:
         """Resume execution from a checkpoint.
 
@@ -1379,6 +1455,7 @@ class AgentEngine:
                 execution_id,
                 agent_id,
                 task_id,
+                project_id=project_id,
             )
 
     async def _reconstruct_and_run_resume(  # noqa: PLR0913
@@ -1463,13 +1540,15 @@ class AgentEngine:
             completion_config=completion_config,
         )
 
-    async def _finalize_resume(
+    async def _finalize_resume(  # noqa: PLR0913
         self,
         result: ExecutionResult,
         identity: AgentIdentity,
         execution_id: str,
         agent_id: str,
         task_id: str,
+        *,
+        project_id: str | None = None,
     ) -> ExecutionResult:
         """Record costs, apply transitions, and clean up after resume.
 
@@ -1485,6 +1564,7 @@ class AgentEngine:
             agent_id,
             task_id,
             tracker=self._cost_tracker,
+            project_id=project_id,
         )
         # Deliberately omit approval_store: the pre-crash execution
         # already created review approval items if the task reached

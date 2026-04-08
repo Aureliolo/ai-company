@@ -37,6 +37,7 @@ from synthorg.observability.events.budget import (
     BUDGET_DEPARTMENT_RESOLVE_FAILED,
     BUDGET_ORCHESTRATION_RATIO_ALERT,
     BUDGET_ORCHESTRATION_RATIO_QUERIED,
+    BUDGET_PROJECT_COST_QUERIED,
     BUDGET_PROVIDER_USAGE_QUERIED,
     BUDGET_QUERY_EXCEEDS_RETENTION,
     BUDGET_RECORD_ADDED,
@@ -235,6 +236,79 @@ class CostTracker:
             end=end,
         )
         return _aggregate(filtered).cost
+
+    async def get_project_cost(
+        self,
+        project_id: str,
+        *,
+        start: datetime | None = None,
+        end: datetime | None = None,
+    ) -> float:
+        """Sum of ``cost_usd`` for a single project.
+
+        Args:
+            project_id: Project identifier to filter by.
+            start: Inclusive lower bound on ``timestamp``.
+            end: Exclusive upper bound on ``timestamp``.
+
+        Returns:
+            Rounded total cost in USD (base currency) for the project.
+
+        Raises:
+            ValueError: If both *start* and *end* are given and
+                ``start >= end``.
+        """
+        _validate_time_range(start, end)
+        logger.debug(
+            BUDGET_PROJECT_COST_QUERIED,
+            project_id=project_id,
+            start=start,
+            end=end,
+        )
+        snapshot = await self._snapshot()
+        filtered = _filter_records(
+            snapshot,
+            project_id=project_id,
+            start=start,
+            end=end,
+        )
+        return _aggregate(filtered).cost
+
+    async def get_project_records(
+        self,
+        project_id: str,
+        *,
+        start: datetime | None = None,
+        end: datetime | None = None,
+    ) -> tuple[CostRecord, ...]:
+        """Return cost records for a specific project.
+
+        Args:
+            project_id: Project identifier to filter by.
+            start: Inclusive lower bound on ``timestamp``.
+            end: Exclusive upper bound on ``timestamp``.
+
+        Returns:
+            Immutable tuple of matching cost records.
+
+        Raises:
+            ValueError: If both *start* and *end* are given and
+                ``start >= end``.
+        """
+        _validate_time_range(start, end)
+        logger.debug(
+            BUDGET_PROJECT_COST_QUERIED,
+            project_id=project_id,
+            start=start,
+            end=end,
+        )
+        snapshot = await self._snapshot()
+        return _filter_records(
+            snapshot,
+            project_id=project_id,
+            start=start,
+            end=end,
+        )
 
     async def get_record_count(self) -> int:
         """Total number of recorded cost entries.
@@ -628,11 +702,12 @@ def _filter_records(  # noqa: PLR0913
     *,
     agent_id: str | None = None,
     task_id: str | None = None,
+    project_id: str | None = None,
     provider: NotBlankStr | None = None,
     start: datetime | None = None,
     end: datetime | None = None,
 ) -> tuple[CostRecord, ...]:
-    """Filter records by agent, task, provider, and/or time range.
+    """Filter records by agent, task, project, provider, and/or time range.
 
     Time semantics: ``start <= timestamp < end``.
     """
@@ -641,6 +716,7 @@ def _filter_records(  # noqa: PLR0913
         for r in records
         if (agent_id is None or r.agent_id == agent_id)
         and (task_id is None or r.task_id == task_id)
+        and (project_id is None or r.project_id == project_id)
         and (provider is None or r.provider == provider)
         and (start is None or r.timestamp >= start)
         and (end is None or r.timestamp < end)

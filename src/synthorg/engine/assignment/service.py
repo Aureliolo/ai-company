@@ -14,6 +14,8 @@ from synthorg.observability.events.task_assignment import (
     TASK_ASSIGNMENT_COMPLETE,
     TASK_ASSIGNMENT_FAILED,
     TASK_ASSIGNMENT_NO_ELIGIBLE,
+    TASK_ASSIGNMENT_PROJECT_FILTERED,
+    TASK_ASSIGNMENT_PROJECT_NO_ELIGIBLE,
     TASK_ASSIGNMENT_STARTED,
 )
 
@@ -75,6 +77,37 @@ class TaskAssignmentService:
                 error=msg,
             )
             raise TaskAssignmentError(msg)
+
+        # Filter to project team members when specified.
+        if request.project_team:
+            from synthorg.engine.assignment.models import (  # noqa: PLC0415
+                AssignmentResult,
+            )
+
+            team_set = frozenset(request.project_team)
+            filtered = tuple(
+                a for a in request.available_agents if str(a.id) in team_set
+            )
+            if not filtered:
+                logger.warning(
+                    TASK_ASSIGNMENT_PROJECT_NO_ELIGIBLE,
+                    task_id=task.id,
+                    project_team_size=len(request.project_team),
+                )
+                return AssignmentResult(
+                    task_id=task.id,
+                    strategy_used=self._strategy.name,
+                    reason=("No available agents are members of the project team"),
+                )
+            logger.info(
+                TASK_ASSIGNMENT_PROJECT_FILTERED,
+                task_id=task.id,
+                total_agents=len(request.available_agents),
+                eligible_agents=len(filtered),
+            )
+            request = request.model_copy(
+                update={"available_agents": filtered},
+            )
 
         logger.info(
             TASK_ASSIGNMENT_STARTED,

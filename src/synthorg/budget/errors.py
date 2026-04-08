@@ -61,6 +61,29 @@ class RiskBudgetExhaustedError(BudgetExhaustedError):
         self.risk_limit = risk_limit
 
 
+class ProjectBudgetExhaustedError(BudgetExhaustedError):
+    """Project-level budget limit exceeded.
+
+    Attributes:
+        project_id: The project whose budget was exceeded.
+        project_budget: The project's total budget.
+        project_spent: Amount already spent on the project.
+    """
+
+    def __init__(
+        self,
+        msg: str,
+        *,
+        project_id: NotBlankStr,
+        project_budget: float = 0.0,
+        project_spent: float = 0.0,
+    ) -> None:
+        super().__init__(msg)
+        self.project_id = project_id
+        self.project_budget = project_budget
+        self.project_spent = project_spent
+
+
 class QuotaExhaustedError(BudgetExhaustedError):
     """Raised when provider quota is exhausted and unresolvable.
 

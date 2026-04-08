@@ -316,3 +316,49 @@ class TestAnalyticsFieldPropagation:
         assert tracker.records[0].cache_hit is None
         assert tracker.records[0].retry_count is None
         assert tracker.records[0].retry_reason is None
+
+
+@pytest.mark.unit
+class TestProjectIdPropagation:
+    """Tests for project_id propagation through cost recording."""
+
+    async def test_project_id_set_on_records(self) -> None:
+        tracker = _FakeTracker()
+        await record_execution_costs(
+            _result((_turn(),)),
+            _identity(),
+            "agent-1",
+            "task-1",
+            tracker=tracker,  # type: ignore[arg-type]
+            project_id="proj-100",
+        )
+        assert len(tracker.records) == 1
+        assert tracker.records[0].project_id == "proj-100"
+
+    async def test_project_id_none_by_default(self) -> None:
+        tracker = _FakeTracker()
+        await record_execution_costs(
+            _result((_turn(),)),
+            _identity(),
+            "agent-1",
+            "task-1",
+            tracker=tracker,  # type: ignore[arg-type]
+        )
+        assert tracker.records[0].project_id is None
+
+    async def test_project_id_applied_to_all_turns(self) -> None:
+        turns = (
+            _turn(turn_number=1, cost_usd=0.01),
+            _turn(turn_number=2, cost_usd=0.02),
+        )
+        tracker = _FakeTracker()
+        await record_execution_costs(
+            _result(turns),
+            _identity(),
+            "agent-1",
+            "task-1",
+            tracker=tracker,  # type: ignore[arg-type]
+            project_id="proj-200",
+        )
+        assert len(tracker.records) == 2
+        assert all(r.project_id == "proj-200" for r in tracker.records)

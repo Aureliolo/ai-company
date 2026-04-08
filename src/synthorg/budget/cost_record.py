@@ -47,6 +47,10 @@ class CostRecord(BaseModel):
 
     agent_id: NotBlankStr = Field(description="Agent identifier")
     task_id: NotBlankStr = Field(description="Task identifier")
+    project_id: NotBlankStr | None = Field(
+        default=None,
+        description="Project this cost belongs to",
+    )
     provider: NotBlankStr = Field(description="LLM provider name")
     model: NotBlankStr = Field(description="Model identifier")
     input_tokens: int = Field(ge=0, description="Input token count")
