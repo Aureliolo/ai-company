@@ -92,6 +92,7 @@ class TaskAssignmentService:
                 logger.warning(
                     TASK_ASSIGNMENT_PROJECT_NO_ELIGIBLE,
                     task_id=task.id,
+                    available_agents=len(request.available_agents),
                     project_team_size=len(request.project_team),
                 )
                 return AssignmentResult(

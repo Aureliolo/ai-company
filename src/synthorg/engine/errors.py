@@ -70,11 +70,41 @@ class NoEligibleAgentError(TaskAssignmentError):
 
 
 class ProjectNotFoundError(EngineError):
-    """Referenced project does not exist."""
+    """Referenced project does not exist.
+
+    The message is deliberately generic to avoid leaking internal
+    identifiers.  The ``project_id`` attribute is available for
+    structured logs but must NOT be included in user-facing responses.
+
+    Attributes:
+        project_id: The project identifier that was not found.
+    """
+
+    def __init__(self, *, project_id: NotBlankStr) -> None:
+        super().__init__("Project not found")
+        self.project_id: NotBlankStr = project_id
 
 
 class ProjectAgentNotMemberError(EngineError):
-    """Agent is not a member of the task's project team."""
+    """Agent is not a member of the task's project team.
+
+    The message is deliberately generic to avoid leaking internal
+    identifiers.  Attributes are available for structured logs only.
+
+    Attributes:
+        project_id: The project the agent attempted to access.
+        agent_id: The agent that is not in the project team.
+    """
+
+    def __init__(
+        self,
+        *,
+        project_id: NotBlankStr,
+        agent_id: NotBlankStr,
+    ) -> None:
+        super().__init__("Agent not authorized for this project")
+        self.project_id: NotBlankStr = project_id
+        self.agent_id: NotBlankStr = agent_id
 
 
 class WorkspaceError(EngineError):

@@ -603,6 +603,9 @@ class AgentEngine:
                 )
                 raise
             except ProjectNotFoundError, ProjectAgentNotMemberError:
+                # ProjectBudgetExhaustedError (from _validate_project)
+                # is a BudgetExhaustedError subclass -- intentionally
+                # caught by the handler below, not here.
                 raise
             except BudgetExhaustedError as exc:
                 return self._handle_budget_error(
@@ -1289,8 +1292,7 @@ class AgentEngine:
                 project=task.project,
                 reason="project_not_found",
             )
-            msg = f"Project {task.project!r} not found"
-            raise ProjectNotFoundError(msg)
+            raise ProjectNotFoundError(project_id=task.project)
         if project.team and agent_id not in project.team:
             logger.warning(
                 EXECUTION_PROJECT_VALIDATION_FAILED,
@@ -1299,8 +1301,10 @@ class AgentEngine:
                 project=task.project,
                 reason="agent_not_in_team",
             )
-            msg = f"Agent {agent_id!r} not in project {task.project!r} team"
-            raise ProjectAgentNotMemberError(msg)
+            raise ProjectAgentNotMemberError(
+                project_id=task.project,
+                agent_id=agent_id,
+            )
         if self._budget_enforcer is not None and project.budget > 0:
             await self._budget_enforcer.check_project_budget(
                 project_id=project.id,

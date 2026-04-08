@@ -263,9 +263,19 @@ class BudgetEnforcer:
         if project_budget <= 0:
             return
 
-        project_cost = await self._cost_tracker.get_project_cost(
-            project_id,
-        )
+        try:
+            project_cost = await self._cost_tracker.get_project_cost(
+                project_id,
+            )
+        except MemoryError, RecursionError:
+            raise
+        except Exception:
+            logger.exception(
+                BUDGET_PREFLIGHT_ERROR,
+                project_id=project_id,
+                reason="project_cost_query_failed",
+            )
+            return
 
         logger.debug(
             BUDGET_PROJECT_ENFORCEMENT_CHECK,
@@ -626,6 +636,7 @@ class BudgetEnforcer:
                 logger.exception(
                     BUDGET_BASELINE_ERROR,
                     agent_id=agent_id,
+                    project_id=project_id,
                     reason="project_baseline_query_failed",
                 )
 

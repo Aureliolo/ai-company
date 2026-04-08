@@ -650,7 +650,15 @@ async run(
    monthly hard stop and daily limit via `check_can_execute()`, then apply
    auto-downgrade via `resolve_model()`. Raises `BudgetExhaustedError` or
    `DailyLimitExceededError` on violation.
-3. **Build system prompt** -- calls `build_system_prompt()` with agent identity,
+3. **Project validation** -- if `ProjectRepository` is provided, validate that the
+   task's project exists (`ProjectNotFoundError` if not) and that the agent is a
+   member of the project team (`ProjectAgentNotMemberError` if not; empty teams
+   allow any agent). When the project has a non-zero budget and `BudgetEnforcer`
+   is available, check project-level budget via `check_project_budget()`. Raises
+   `ProjectBudgetExhaustedError` when the project's accumulated cost has reached
+   its budget. Pre-flight project budget checks are best-effort under concurrency
+   (TOCTOU); the in-flight `BudgetChecker` closure provides the true safety net.
+4. **Build system prompt** -- calls `build_system_prompt()` with agent identity,
    task, and resolved model tier. The tier determines a `PromptProfile` that
    controls prompt verbosity (see [Prompt Profiles](#prompt-profiles) below),
    including personality token trimming when the section exceeds the profile's
@@ -661,17 +669,17 @@ async run(
    Follows the **non-inferable-only principle**: system prompts include only
    information the agent cannot discover by reading the codebase or environment
    (role constraints, custom conventions, organizational policies).
-4. **Create context** -- `AgentContext.from_identity()` with the configured
+5. **Create context** -- `AgentContext.from_identity()` with the configured
    `max_turns`.
-5. **Seed conversation** -- injects system prompt, optional memory messages, and
+6. **Seed conversation** -- injects system prompt, optional memory messages, and
    formatted task instruction as initial messages.
-6. **Transition task** -- `ASSIGNED` -> `IN_PROGRESS` (pass-through if already
+7. **Transition task** -- `ASSIGNED` -> `IN_PROGRESS` (pass-through if already
    `IN_PROGRESS`).
-7. **Prepare tools and budget** -- creates `ToolInvoker` from registry and
-   `BudgetChecker` from `BudgetEnforcer` (task + monthly + daily limits with
-   pre-computed baselines and alert deduplication) or from task budget limit
+8. **Prepare tools and budget** -- creates `ToolInvoker` from registry and
+   `BudgetChecker` from `BudgetEnforcer` (task + monthly + daily + project limits
+   with pre-computed baselines and alert deduplication) or from task budget limit
    alone when no enforcer is configured.
-8. **Resolve execution loop** -- if `auto_loop_config` is set, calls
+9. **Resolve execution loop** -- if `auto_loop_config` is set, calls
    `select_loop_type()` with the task's `estimated_complexity` and current
    budget utilization (via `BudgetEnforcer.get_budget_utilization_pct()`).
    Budget-aware downgrade: hybrid is downgraded to plan_execute when
@@ -681,7 +689,7 @@ async run(
    engine's `compaction_callback`, `plan_execute_config` (for
    plan-execute), and `hybrid_loop_config` (for hybrid), along with the
    approval gate and stagnation detector.
-9. **Delegate to loop** -- calls `ExecutionLoop.execute()` with context,
+10. **Delegate to loop** -- calls `ExecutionLoop.execute()` with context,
    provider, tool invoker, budget checker, and completion config. If
    `timeout_seconds` is set, wraps the call in `asyncio.wait`; on expiry
    the run returns with `TerminationReason.ERROR` but cost recording and
@@ -691,9 +699,10 @@ async run(
    parking is needed. If so, the context is serialized via `ParkService`
    and persisted when a `ParkedContextRepository` is configured; the loop
    then returns a `PARKED` result.
-10. **Record costs** -- records accumulated `TokenUsage` to `CostTracker` (if
-    available). Cost recording failures are logged but do not affect the result.
-11. **Apply post-execution transitions:**
+11. **Record costs** -- records accumulated `TokenUsage` to `CostTracker` (if
+    available), tagged with `project_id` for project-level cost aggregation.
+    Cost recording failures are logged but do not affect the result.
+12. **Apply post-execution transitions:**
     - `COMPLETED` termination: IN_PROGRESS -> IN_REVIEW (review gate).
       The task parks at IN_REVIEW until resolved by one of two paths:
       (a) a human approves (-> COMPLETED) or rejects (-> IN_PROGRESS
@@ -757,13 +766,13 @@ async run(
       [AgentEngine ↔ TaskEngine Incremental Sync](#agentengine--taskengine-incremental-sync)).
     - Transition failures are logged but do not discard the successful execution
       result.
-12. **Procedural memory generation** (non-critical) -- when
+13. **Procedural memory generation** (non-critical) -- when
     `ProceduralMemoryConfig` is enabled and the execution failed
     (recovery_result exists), a separate proposer LLM call analyses the
     failure and stores a `PROCEDURAL` memory entry for future retrieval.
     Optionally materializes a SKILL.md file. Failures are logged but do
     not affect the result (see [Memory > Procedural Memory Auto-Generation](memory.md#procedural-memory-auto-generation)).
-13. **Return result** -- wraps `ExecutionResult` in `AgentRunResult` with
+14. **Return result** -- wraps `ExecutionResult` in `AgentRunResult` with
     engine-level metadata.
 
 **Error handling:** `MemoryError` and `RecursionError` propagate
