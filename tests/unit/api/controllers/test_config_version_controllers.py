@@ -9,6 +9,7 @@ from typing import Any
 
 import pytest
 from litestar.testing import TestClient
+from pydantic import BaseModel
 
 from synthorg.budget.config import BudgetConfig
 from synthorg.core.company import Company
@@ -19,7 +20,7 @@ from tests.unit.api.conftest import make_auth_headers
 _NOW = datetime(2026, 4, 8, 12, 0, tzinfo=UTC)
 
 
-def _snap[T](
+def _snap[T: BaseModel](
     entity_id: str,
     model: T,
     version: int = 1,
