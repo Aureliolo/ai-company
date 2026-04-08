@@ -33,18 +33,13 @@ class TestEmailConfig:
         with pytest.raises(ValidationError):
             config.host = "other"  # type: ignore[misc]
 
-    def test_port_range(self) -> None:
+    @pytest.mark.parametrize("port", [0, 70000], ids=["too_low", "too_high"])
+    def test_invalid_port(self, port: int) -> None:
         with pytest.raises(ValidationError):
             EmailConfig(
                 host="smtp.example.com",
                 from_address="test@example.com",
-                port=0,
-            )
-        with pytest.raises(ValidationError):
-            EmailConfig(
-                host="smtp.example.com",
-                from_address="test@example.com",
-                port=70000,
+                port=port,
             )
 
     def test_blank_host_rejected(self) -> None:
@@ -102,6 +97,27 @@ class TestEmailConfig:
                 from_address="test@example.com",
                 use_tls=True,
                 use_implicit_tls=True,
+            )
+
+    def test_smtp_timeout_valid(self) -> None:
+        config = EmailConfig(
+            host="smtp.example.com",
+            from_address="test@example.com",
+            smtp_timeout=30.0,
+        )
+        assert config.smtp_timeout == 30.0
+
+    @pytest.mark.parametrize(
+        "timeout",
+        [0, -1.0, 121.0, float("nan"), float("inf")],
+        ids=["zero", "negative", "above_max", "nan", "inf"],
+    )
+    def test_smtp_timeout_invalid(self, timeout: float) -> None:
+        with pytest.raises(ValidationError):
+            EmailConfig(
+                host="smtp.example.com",
+                from_address="test@example.com",
+                smtp_timeout=timeout,
             )
 
 

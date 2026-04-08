@@ -122,3 +122,39 @@ class TestImageGeneratorTool:
         assert result.metadata["content_type"] == "image/jpeg"
         assert result.metadata["width"] == 512
         assert result.metadata["height"] == 256
+
+    @pytest.mark.parametrize(
+        ("width", "height"),
+        [(100, 1024), (1024, 100), (4096, 1024), (1024, 4096)],
+        ids=["width_low", "height_low", "width_high", "height_high"],
+    )
+    async def test_execute_invalid_dimensions(
+        self,
+        mock_provider: MockImageProvider,
+        width: int,
+        height: int,
+    ) -> None:
+        tool = ImageGeneratorTool(provider=mock_provider)
+        result = await tool.execute(
+            arguments={"prompt": "test", "width": width, "height": height}
+        )
+        assert result.is_error
+        assert "must be between" in result.content
+
+    async def test_execute_invalid_style(
+        self,
+        mock_provider: MockImageProvider,
+    ) -> None:
+        tool = ImageGeneratorTool(provider=mock_provider)
+        result = await tool.execute(arguments={"prompt": "test", "style": "watercolor"})
+        assert result.is_error
+        assert "Invalid style" in result.content
+
+    async def test_execute_invalid_quality(
+        self,
+        mock_provider: MockImageProvider,
+    ) -> None:
+        tool = ImageGeneratorTool(provider=mock_provider)
+        result = await tool.execute(arguments={"prompt": "test", "quality": "ultra"})
+        assert result.is_error
+        assert "Invalid quality" in result.content

@@ -178,7 +178,14 @@ class AssetManagerTool(BaseDesignTool):
     ) -> ToolExecutionResult:
         """List assets, optionally filtered by tags."""
         raw_tags = arguments.get("tags")
-        tags: list[str] = raw_tags if isinstance(raw_tags, list) else []
+        if raw_tags is not None and not isinstance(raw_tags, list):
+            logger.debug(
+                DESIGN_ASSET_VALIDATION_FAILED,
+                action="list",
+                reason="invalid_tags_type",
+            )
+        raw_list = raw_tags if isinstance(raw_tags, list) else []
+        tags = [t for t in raw_list if isinstance(t, str)]
         tag_set = set(tags)
 
         if tag_set:
@@ -312,7 +319,8 @@ class AssetManagerTool(BaseDesignTool):
 
         query = raw_query.lower()
         raw_tags = arguments.get("tags")
-        tags: list[str] = raw_tags if isinstance(raw_tags, list) else []
+        raw_list = raw_tags if isinstance(raw_tags, list) else []
+        tags = [t for t in raw_list if isinstance(t, str)]
         tag_set = set(tags)
 
         matching: dict[str, dict[str, Any]] = {}
