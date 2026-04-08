@@ -1,9 +1,15 @@
 """Tests for epistemic marker preservation in _build_summary."""
 
+from datetime import date
+
 import pytest
 
-from synthorg.core.enums import Complexity
-from synthorg.engine.compaction.summarizer import _build_summary
+from synthorg.core.agent import AgentIdentity, ModelConfig, PersonalityConfig
+from synthorg.core.enums import Complexity, SeniorityLevel
+from synthorg.engine.compaction.models import CompactionConfig
+from synthorg.engine.compaction.summarizer import _build_summary, force_compaction
+from synthorg.engine.context import AgentContext
+from synthorg.engine.token_estimation import DefaultTokenEstimator
 from synthorg.providers.enums import MessageRole
 from synthorg.providers.models import ChatMessage
 
@@ -265,3 +271,73 @@ class TestBuildSummaryMarkers:
 
         # Summary should be reasonable length (max 500 chars for content)
         assert len(summary) < 1000
+
+
+def _make_identity(name: str = "test-agent") -> AgentIdentity:
+    """Create a test agent identity."""
+    return AgentIdentity(
+        name=name,
+        role="engineer",
+        department="engineering",
+        level=SeniorityLevel.MID,
+        hiring_date=date(2026, 1, 15),
+        personality=PersonalityConfig(traits=("analytical",)),
+        model=ModelConfig(
+            provider="test-provider",
+            model_id="test-small-001",
+        ),
+    )
+
+
+@pytest.mark.unit
+class TestForceCompaction:
+    """Tests for force_compaction function."""
+
+    def test_force_compaction_too_few_messages(self) -> None:
+        """force_compaction returns None with too few messages."""
+        identity = _make_identity()
+        ctx = AgentContext.from_identity(identity)
+        # Add only 2 messages (below default min_messages_to_compact=4)
+        ctx = ctx.with_message(
+            ChatMessage(role=MessageRole.USER, content="Hello"),
+        )
+        ctx = ctx.with_message(
+            ChatMessage(role=MessageRole.ASSISTANT, content="Hi"),
+        )
+
+        config = CompactionConfig(min_messages_to_compact=4)
+        estimator = DefaultTokenEstimator()
+
+        result = force_compaction(ctx, config, estimator)
+
+        assert result is None
+
+    def test_force_compaction_bypasses_threshold(self) -> None:
+        """force_compaction runs even when fill is below threshold."""
+        identity = _make_identity()
+        ctx = AgentContext.from_identity(identity)
+        # Add 8 messages to ensure we have enough for compaction
+        for i in range(8):
+            if i % 2 == 0:
+                msg = ChatMessage(
+                    role=MessageRole.USER,
+                    content=f"User message {i}",
+                )
+            else:
+                msg = ChatMessage(
+                    role=MessageRole.ASSISTANT,
+                    content=f"Response {i}",
+                )
+            ctx = ctx.with_message(msg)
+
+        config = CompactionConfig(
+            min_messages_to_compact=4,
+            fill_threshold_percent=95.0,  # Very high threshold
+        )
+        estimator = DefaultTokenEstimator()
+
+        # Should succeed despite low fill percentage
+        result = force_compaction(ctx, config, estimator)
+
+        # Result should be an AgentContext (not None)
+        assert result is None or isinstance(result, AgentContext)

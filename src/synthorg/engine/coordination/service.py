@@ -47,6 +47,7 @@ if TYPE_CHECKING:
     from synthorg.engine.routing.service import TaskRoutingService
     from synthorg.engine.task_engine import TaskEngine
     from synthorg.engine.workspace.service import WorkspaceIsolationService
+    from synthorg.hr.performance.tracker import PerformanceTracker
 
 logger = get_logger(__name__)
 
@@ -70,17 +71,20 @@ class MultiAgentCoordinator:
         parallel_executor: Executor for parallel agent runs.
         workspace_service: Optional workspace isolation service.
         task_engine: Optional task engine for parent status updates.
+        performance_tracker: Optional tracker for recording per-agent
+            coordination contributions.
     """
 
     __slots__ = (
         "_decomposition_service",
         "_parallel_executor",
+        "_performance_tracker",
         "_routing_service",
         "_task_engine",
         "_workspace_service",
     )
 
-    def __init__(
+    def __init__(  # noqa: PLR0913
         self,
         *,
         decomposition_service: DecompositionService,
@@ -88,12 +92,14 @@ class MultiAgentCoordinator:
         parallel_executor: ParallelExecutor,
         workspace_service: WorkspaceIsolationService | None = None,
         task_engine: TaskEngine | None = None,
+        performance_tracker: PerformanceTracker | None = None,
     ) -> None:
         self._decomposition_service = decomposition_service
         self._routing_service = routing_service
         self._parallel_executor = parallel_executor
         self._workspace_service = workspace_service
         self._task_engine = task_engine
+        self._performance_tracker = performance_tracker
 
     async def coordinate(
         self,
@@ -206,6 +212,12 @@ class MultiAgentCoordinator:
             routing_result,
             dispatch_result.waves,
         )
+
+        # Feed contributions into performance tracker if available.
+        if self._performance_tracker is not None and contributions:
+            self._performance_tracker.record_coordination_contributions(
+                contributions,
+            )
 
         return CoordinationResultWithAttribution(
             result=result,

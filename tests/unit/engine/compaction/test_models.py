@@ -42,6 +42,48 @@ class TestCompactionConfig:
         with pytest.raises(ValidationError):
             config.fill_threshold_percent = 90.0  # type: ignore[misc]
 
+    def test_agent_controlled_safety_below_fill_rejected(self) -> None:
+        """safety_threshold must exceed fill_threshold when agent_controlled."""
+        with pytest.raises(ValueError, match="safety_threshold_percent"):
+            CompactionConfig(
+                agent_controlled=True,
+                fill_threshold_percent=80.0,
+                safety_threshold_percent=70.0,
+            )
+
+    def test_agent_controlled_safety_equal_fill_rejected(self) -> None:
+        """Equal thresholds rejected when agent_controlled."""
+        with pytest.raises(ValueError, match="safety_threshold_percent"):
+            CompactionConfig(
+                agent_controlled=True,
+                fill_threshold_percent=80.0,
+                safety_threshold_percent=80.0,
+            )
+
+    def test_agent_controlled_valid_thresholds(self) -> None:
+        """Valid agent-controlled config accepted."""
+        config = CompactionConfig(
+            agent_controlled=True,
+            fill_threshold_percent=80.0,
+            safety_threshold_percent=95.0,
+        )
+        assert config.agent_controlled is True
+        assert config.safety_threshold_percent == 95.0
+
+    def test_not_agent_controlled_ignores_threshold_ordering(self) -> None:
+        """When not agent_controlled, threshold ordering is not checked."""
+        config = CompactionConfig(
+            agent_controlled=False,
+            fill_threshold_percent=80.0,
+            safety_threshold_percent=70.0,
+        )
+        assert config.agent_controlled is False
+
+    def test_preserve_epistemic_markers_default(self) -> None:
+        """preserve_epistemic_markers defaults to True."""
+        config = CompactionConfig()
+        assert config.preserve_epistemic_markers is True
+
 
 @pytest.mark.unit
 class TestCompressionMetadata:

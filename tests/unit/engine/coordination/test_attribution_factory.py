@@ -378,3 +378,20 @@ class TestBuildAgentContributions:
         by_agent = {c.agent_id: c for c in contribs}
         assert by_agent["agent-1"].contribution_score == 1.0
         assert by_agent["agent-2"].contribution_score == 0.0
+
+    @pytest.mark.unit
+    def test_unmapped_agent_uses_task_id_as_subtask(self) -> None:
+        """Agent not in routing decisions falls back to task_id."""
+        # Route only agent-1, but include agent-2 in outcomes
+        routing = _make_routing_result([("agent-1", "sub-1")])
+        waves = _make_waves(
+            [
+                _make_successful_outcome("agent-1", "sub-1"),
+                _make_successful_outcome("agent-2", "sub-2"),  # not in routing
+            ]
+        )
+        contribs = build_agent_contributions(routing, waves)
+        assert len(contribs) == 2
+        by_agent = {c.agent_id: c for c in contribs}
+        # Unmapped agent falls back to using task_id as subtask_id
+        assert by_agent["agent-2"].subtask_id == "sub-2"
