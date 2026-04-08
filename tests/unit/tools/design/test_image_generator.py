@@ -110,7 +110,7 @@ class TestImageGeneratorTool:
 
     async def test_execute_custom_result(self) -> None:
         custom_result = ImageResult(
-            data="abc123",
+            data="AQID",
             content_type="image/jpeg",
             width=512,
             height=256,

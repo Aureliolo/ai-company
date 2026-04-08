@@ -270,8 +270,16 @@ class ImageGeneratorTool(BaseDesignTool):
 
         try:
             decoded_bytes = base64.b64decode(result.data, validate=True)
-        except Exception:
-            decoded_bytes = result.data.encode()
+        except Exception as decode_exc:
+            logger.warning(
+                DESIGN_IMAGE_GENERATION_FAILED,
+                error="invalid_base64",
+                detail=str(decode_exc),
+            )
+            return ToolExecutionResult(
+                content=(f"Provider returned invalid base64 image data: {decode_exc}"),
+                is_error=True,
+            )
         byte_size = len(decoded_bytes)
         if byte_size > self._config.max_image_size_bytes:
             logger.warning(

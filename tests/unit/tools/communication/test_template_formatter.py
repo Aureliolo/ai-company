@@ -141,8 +141,8 @@ class TestTemplateFormatterTool:
                 "variables": {},
             }
         )
-        # Sandbox should block or render safely (no class hierarchy)
-        assert result.is_error or "__class__" not in result.content
+        # Sandbox must block dangerous attribute access
+        assert result.is_error
 
     async def test_html_format_escapes_xss(self) -> None:
         """HTML format auto-escapes to prevent XSS."""

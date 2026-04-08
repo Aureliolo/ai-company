@@ -4,7 +4,6 @@ from typing import Any
 
 import pytest
 
-from synthorg.tools.design.config import DesignToolsConfig
 from synthorg.tools.design.image_generator import ImageResult
 
 
@@ -47,11 +46,6 @@ class MockImageProvider:
         if self._error:
             raise self._error
         return self._result
-
-
-@pytest.fixture
-def default_config() -> DesignToolsConfig:
-    return DesignToolsConfig()
 
 
 @pytest.fixture

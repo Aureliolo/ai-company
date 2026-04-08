@@ -31,25 +31,26 @@ class TestDesignToolsConfig:
         assert config.max_image_size_bytes == 10_000_000
         assert config.asset_storage_path == "/var/data/assets"
 
-    def test_image_timeout_must_be_positive(self) -> None:
+    @pytest.mark.parametrize(
+        "kwargs",
+        [
+            {"image_timeout": 0},
+            {"image_timeout": 601.0},
+            {"max_image_size_bytes": 0},
+            {"image_timeout": float("nan")},
+            {"image_timeout": float("inf")},
+        ],
+        ids=[
+            "timeout_zero",
+            "timeout_above_max",
+            "size_zero",
+            "timeout_nan",
+            "timeout_inf",
+        ],
+    )
+    def test_rejects_invalid_params(self, kwargs: dict) -> None:
         with pytest.raises(ValidationError):
-            DesignToolsConfig(image_timeout=0)
-
-    def test_image_timeout_max(self) -> None:
-        with pytest.raises(ValidationError):
-            DesignToolsConfig(image_timeout=601.0)
-
-    def test_max_image_size_must_be_positive(self) -> None:
-        with pytest.raises(ValidationError):
-            DesignToolsConfig(max_image_size_bytes=0)
-
-    def test_rejects_nan(self) -> None:
-        with pytest.raises(ValidationError):
-            DesignToolsConfig(image_timeout=float("nan"))
-
-    def test_rejects_inf(self) -> None:
-        with pytest.raises(ValidationError):
-            DesignToolsConfig(image_timeout=float("inf"))
+            DesignToolsConfig(**kwargs)
 
     def test_blank_storage_path_rejected(self) -> None:
         with pytest.raises(ValidationError):

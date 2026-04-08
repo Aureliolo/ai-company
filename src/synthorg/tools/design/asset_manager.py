@@ -210,6 +210,11 @@ class AssetManagerTool(BaseDesignTool):
         """Retrieve a specific asset by ID."""
         asset_id: str | None = arguments.get("asset_id")
         if not asset_id:
+            logger.warning(
+                DESIGN_ASSET_VALIDATION_FAILED,
+                action="get",
+                reason="missing_asset_id",
+            )
             return ToolExecutionResult(
                 content="asset_id is required for 'get' action.",
                 is_error=True,
@@ -242,6 +247,11 @@ class AssetManagerTool(BaseDesignTool):
         """Delete an asset by ID."""
         asset_id: str | None = arguments.get("asset_id")
         if not asset_id:
+            logger.warning(
+                DESIGN_ASSET_VALIDATION_FAILED,
+                action="delete",
+                reason="missing_asset_id",
+            )
             return ToolExecutionResult(
                 content="asset_id is required for 'delete' action.",
                 is_error=True,
@@ -271,6 +281,11 @@ class AssetManagerTool(BaseDesignTool):
         """Search assets by query string in metadata values."""
         query: str = (arguments.get("query") or "").lower()
         if not query:
+            logger.warning(
+                DESIGN_ASSET_VALIDATION_FAILED,
+                action="search",
+                reason="missing_query",
+            )
             return ToolExecutionResult(
                 content="query is required for 'search' action.",
                 is_error=True,

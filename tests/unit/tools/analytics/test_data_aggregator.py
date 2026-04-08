@@ -82,6 +82,7 @@ class TestDataAggregatorTool:
         assert call["period"] == "custom"
         assert call["group_by"] == "day"
         assert call["start_date"] == "2026-01-01"
+        assert call["end_date"] == "2026-01-31"
 
     async def test_execute_invalid_period(
         self,
