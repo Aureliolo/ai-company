@@ -196,20 +196,25 @@ class PrometheusCollector:
         Args:
             app_state: The application state containing service references.
         """
-        # Fetch total + daily cost once and share across metrics.
+        # Fetch cost snapshots once and share across metrics.
         total_cost: float | None = None
         daily_cost: float | None = None
+        billing_cost: float | None = None
         utc_midnight = datetime.now(UTC).replace(
             hour=0,
             minute=0,
             second=0,
             microsecond=0,
         )
+        month_start = utc_midnight.replace(day=1)
         if app_state.has_cost_tracker:
             try:
                 total_cost = await app_state.cost_tracker.get_total_cost()
                 daily_cost = await app_state.cost_tracker.get_total_cost(
                     start=utc_midnight,
+                )
+                billing_cost = await app_state.cost_tracker.get_total_cost(
+                    start=month_start,
                 )
             except MemoryError, RecursionError:
                 raise
@@ -220,7 +225,7 @@ class PrometheusCollector:
                     exc_info=True,
                 )
         self._refresh_cost_gauge(total_cost)
-        self._refresh_budget_metrics(app_state, total_cost)
+        self._refresh_budget_metrics(app_state, billing_cost)
         self._refresh_daily_budget_metric(app_state, daily_cost, utc_midnight)
         agents = await self._refresh_agent_metrics(app_state)
         await self._refresh_agent_cost_metrics(
@@ -239,9 +244,16 @@ class PrometheusCollector:
     def _refresh_budget_metrics(
         self,
         app_state: AppState,
-        total_cost: float | None,
+        billing_cost: float | None,
     ) -> None:
-        """Update budget utilization gauges from CostTracker config."""
+        """Update budget utilization gauges from CostTracker config.
+
+        Args:
+            app_state: The application state containing cost tracker.
+            billing_cost: Cost accumulated since the start of the
+                current billing period (month start), or ``None``
+                if unavailable.
+        """
         if not app_state.has_cost_tracker:
             self._budget_used_percent.set(0.0)
             self._budget_monthly_usd.set(0.0)
@@ -254,10 +266,12 @@ class PrometheusCollector:
                 return
             monthly = tracker.budget_config.total_monthly
             self._budget_monthly_usd.set(monthly)
-            if monthly > 0 and total_cost is not None:
+            if monthly > 0 and billing_cost is not None:
                 self._budget_used_percent.set(
-                    min(100.0, (total_cost / monthly) * 100.0),
+                    min(100.0, (billing_cost / monthly) * 100.0),
                 )
+            else:
+                self._budget_used_percent.set(0.0)
         except MemoryError, RecursionError:
             raise
         except Exception:

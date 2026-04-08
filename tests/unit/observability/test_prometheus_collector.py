@@ -16,6 +16,7 @@ def _mock_app_state(  # noqa: PLR0913
     has_task_engine: bool = False,
     total_cost: float = 0.0,
     daily_cost: float = 0.0,
+    billing_cost: float | None = None,
     agents: tuple[object, ...] = (),
     tasks: tuple[object, ...] = (),
     budget_total_monthly: float | None = None,
@@ -26,6 +27,8 @@ def _mock_app_state(  # noqa: PLR0913
     """Build a mock AppState with configurable service availability.
 
     Args:
+        billing_cost: Month-to-date cost (start=month_start query).
+            Defaults to *total_cost* for backward compatibility.
         agent_costs: Accumulated cost per agent_id (no time filter).
         agent_daily_costs: Daily cost per agent_id (with start filter).
     """
@@ -41,13 +44,19 @@ def _mock_app_state(  # noqa: PLR0913
 
         _total = total_cost
         _daily = daily_cost
+        _billing = billing_cost if billing_cost is not None else _total
 
         async def _get_total_cost(
             *,
             start: datetime | None = None,
             end: datetime | None = None,
         ) -> float:
-            return _daily if start is not None else _total
+            if start is None:
+                return _total
+            # Billing-period query: start is first of month (day=1).
+            if start.day == 1:
+                return _billing
+            return _daily
 
         tracker.get_total_cost = AsyncMock(side_effect=_get_total_cost)
 
@@ -199,6 +208,55 @@ class TestPrometheusCollectorRefresh:
         assert "synthorg_budget_used_percent" in output
         assert "synthorg_budget_monthly_usd" in output
         assert "25.0" in output  # 50/200 * 100
+
+    async def test_budget_percent_uses_billing_period_cost(self) -> None:
+        """Budget utilization uses month-to-date, not lifetime cost."""
+        collector = PrometheusCollector()
+        state = _mock_app_state(
+            has_cost_tracker=True,
+            total_cost=500.0,
+            billing_cost=50.0,
+            budget_total_monthly=200.0,
+        )
+        await collector.refresh(state)
+        output = generate_latest(collector.registry).decode()
+        # 50/200 * 100 = 25%, not 500/200 * 100 = 250%
+        lines = [
+            ln
+            for ln in output.splitlines()
+            if ln.startswith("synthorg_budget_used_percent ")
+        ]
+        assert len(lines) == 1
+        assert float(lines[0].split()[-1]) == 25.0
+
+    async def test_budget_percent_reset_when_cost_unavailable(
+        self,
+    ) -> None:
+        """Budget percent resets to 0 when billing cost is unavailable."""
+        collector = PrometheusCollector()
+        state_v1 = _mock_app_state(
+            has_cost_tracker=True,
+            billing_cost=50.0,
+            budget_total_monthly=200.0,
+        )
+        await collector.refresh(state_v1)
+        # Second scrape: cost tracker error leaves billing_cost=None.
+        state_v2 = _mock_app_state(
+            has_cost_tracker=True,
+            budget_total_monthly=200.0,
+        )
+        state_v2.cost_tracker.get_total_cost = AsyncMock(
+            side_effect=RuntimeError("tracker down"),
+        )
+        await collector.refresh(state_v2)
+        output = generate_latest(collector.registry).decode()
+        lines = [
+            ln
+            for ln in output.splitlines()
+            if ln.startswith("synthorg_budget_used_percent ")
+        ]
+        assert len(lines) == 1
+        assert float(lines[0].split()[-1]) == 0.0
 
     async def test_refresh_skips_budget_when_no_config(self) -> None:
         collector = PrometheusCollector()
