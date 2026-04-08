@@ -9,6 +9,8 @@ import copy
 from datetime import UTC, datetime
 from typing import Any, Final, Protocol, runtime_checkable
 
+from pydantic import ValidationError
+
 from synthorg.core.enums import ActionType
 from synthorg.notifications.models import (
     Notification,
@@ -214,7 +216,7 @@ class NotificationSenderTool(BaseCommunicationTool):
                 source=source,
                 timestamp=datetime.now(UTC),
             )
-        except (ValueError, TypeError) as exc:
+        except (ValueError, TypeError, ValidationError) as exc:
             logger.warning(
                 COMM_TOOL_NOTIFICATION_SEND_FAILED,
                 error="invalid_notification_fields",

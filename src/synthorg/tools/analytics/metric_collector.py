@@ -9,7 +9,6 @@ import copy
 import math
 from typing import Any, Final, Protocol, runtime_checkable
 
-from synthorg.core.enums import ActionType
 from synthorg.observability import get_logger
 from synthorg.observability.events.analytics import (
     ANALYTICS_TOOL_METRIC_NOT_ALLOWED,
@@ -116,7 +115,7 @@ class MetricCollectorTool(BaseAnalyticsTool):
                 "to the configured metric backend."
             ),
             parameters_schema=copy.deepcopy(_PARAMETERS_SCHEMA),
-            action_type=ActionType.CODE_READ,
+            action_type="metrics:record",
             config=config,
         )
         self._sink = sink
@@ -151,7 +150,7 @@ class MetricCollectorTool(BaseAnalyticsTool):
 
         metric_name = arguments.get("metric_name")
         value = arguments.get("value")
-        if not isinstance(metric_name, str) or not metric_name:
+        if not isinstance(metric_name, str) or not metric_name.strip():
             logger.warning(
                 ANALYTICS_TOOL_METRIC_RECORD_FAILED,
                 error="missing_or_invalid_metric_name",
@@ -160,13 +159,13 @@ class MetricCollectorTool(BaseAnalyticsTool):
                 content="'metric_name' must be a non-empty string.",
                 is_error=True,
             )
-        if not isinstance(value, int | float):
+        if isinstance(value, bool) or not isinstance(value, int | float):
             logger.warning(
                 ANALYTICS_TOOL_METRIC_RECORD_FAILED,
                 error="invalid_value_type",
             )
             return ToolExecutionResult(
-                content="'value' must be a number.",
+                content="'value' must be a number (not bool).",
                 is_error=True,
             )
         value = float(value)
@@ -208,14 +207,15 @@ class MetricCollectorTool(BaseAnalyticsTool):
             )
         except MemoryError, RecursionError:
             raise
-        except Exception as exc:
+        except Exception:
             logger.warning(
                 ANALYTICS_TOOL_METRIC_RECORD_FAILED,
                 metric_name=metric_name,
-                error=str(exc),
+                error="sink_error",
+                exc_info=True,
             )
             return ToolExecutionResult(
-                content=f"Metric recording failed: {exc}",
+                content="Metric recording failed.",
                 is_error=True,
             )
 

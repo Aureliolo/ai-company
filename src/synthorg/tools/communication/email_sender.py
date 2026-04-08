@@ -252,7 +252,7 @@ class EmailSenderTool(BaseCommunicationTool):
             metadata={
                 "to": to_addrs,
                 "cc": cc_addrs,
-                "bcc": bcc_addrs,
+                "bcc_count": len(bcc_addrs),
                 "subject": subject,
             },
         )

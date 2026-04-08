@@ -2,7 +2,7 @@
 
 import pytest
 
-from synthorg.core.enums import ActionType, ToolCategory
+from synthorg.core.enums import ToolCategory
 from synthorg.tools.analytics.config import AnalyticsToolsConfig
 from synthorg.tools.analytics.metric_collector import (
     MetricCollectorTool,
@@ -28,7 +28,7 @@ class TestMetricCollectorTool:
         mock_sink: MockMetricSink,
     ) -> None:
         tool = MetricCollectorTool(sink=mock_sink)
-        assert tool.action_type == ActionType.CODE_READ
+        assert tool.action_type == "metrics:record"
 
     def test_name(self, mock_sink: MockMetricSink) -> None:
         tool = MetricCollectorTool(sink=mock_sink)
@@ -129,7 +129,7 @@ class TestMetricCollectorTool:
             }
         )
         assert result.is_error
-        assert "sink error" in result.content
+        assert "Metric recording failed" in result.content
 
     async def test_execute_returns_metadata(
         self,
