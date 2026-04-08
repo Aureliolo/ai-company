@@ -9,8 +9,10 @@ coordination collector after each multi-agent execution -- they are
 not refreshed on scrape.
 """
 
+from calendar import monthrange
 from collections import Counter
-from typing import TYPE_CHECKING
+from datetime import UTC, datetime
+from typing import TYPE_CHECKING, Any
 
 from prometheus_client import CollectorRegistry, Gauge, Info
 from prometheus_client import Counter as PromCounter
@@ -88,6 +90,25 @@ class PrometheusCollector:
         self._budget_monthly_usd = Gauge(
             f"{prefix}_budget_monthly_usd",
             "Monthly budget limit in USD",
+            registry=self.registry,
+        )
+        self._budget_daily_used_percent = Gauge(
+            f"{prefix}_budget_daily_used_percent",
+            "Daily cost as percentage of prorated daily budget",
+            registry=self.registry,
+        )
+
+        # -- Per-agent cost gauges ---------------------------------------
+        self._agent_cost_total = Gauge(
+            f"{prefix}_agent_cost_total",
+            "Per-agent accumulated cost in USD",
+            ["agent_id"],
+            registry=self.registry,
+        )
+        self._agent_budget_used_percent = Gauge(
+            f"{prefix}_agent_budget_used_percent",
+            "Per-agent daily cost as percentage of per-agent daily limit",
+            ["agent_id"],
             registry=self.registry,
         )
 
@@ -174,11 +195,21 @@ class PrometheusCollector:
         Args:
             app_state: The application state containing service references.
         """
-        # Fetch total cost once and share snapshot across metrics.
+        # Fetch total + daily cost once and share across metrics.
         total_cost: float | None = None
+        daily_cost: float | None = None
+        utc_midnight = datetime.now(UTC).replace(
+            hour=0,
+            minute=0,
+            second=0,
+            microsecond=0,
+        )
         if app_state.has_cost_tracker:
             try:
                 total_cost = await app_state.cost_tracker.get_total_cost()
+                daily_cost = await app_state.cost_tracker.get_total_cost(
+                    start=utc_midnight,
+                )
             except MemoryError, RecursionError:
                 raise
             except Exception:
@@ -189,7 +220,13 @@ class PrometheusCollector:
                 )
         self._refresh_cost_gauge(total_cost)
         self._refresh_budget_metrics(app_state, total_cost)
-        await self._refresh_agent_metrics(app_state)
+        self._refresh_daily_budget_metric(app_state, daily_cost)
+        agents = await self._refresh_agent_metrics(app_state)
+        await self._refresh_agent_cost_metrics(
+            app_state,
+            agents,
+            utc_midnight,
+        )
         await self._refresh_task_metrics(app_state)
         logger.debug(METRICS_SCRAPE_COMPLETED)
 
@@ -225,10 +262,51 @@ class PrometheusCollector:
                 exc_info=True,
             )
 
-    async def _refresh_agent_metrics(self, app_state: AppState) -> None:
-        """Update agent gauges from AgentRegistryService."""
-        if not app_state.has_agent_registry:
+    def _refresh_daily_budget_metric(
+        self,
+        app_state: AppState,
+        daily_cost: float | None,
+    ) -> None:
+        """Update daily budget utilization gauge.
+
+        Computes ``daily_cost / (total_monthly / days_in_month) * 100``,
+        capped at 100%.
+        """
+        if not app_state.has_cost_tracker or daily_cost is None:
             return
+        try:
+            tracker = app_state.cost_tracker
+            if tracker.budget_config is None:
+                return
+            monthly = tracker.budget_config.total_monthly
+            if monthly <= 0:
+                return
+            now = datetime.now(UTC)
+            days = monthrange(now.year, now.month)[1]
+            daily_budget = monthly / days
+            self._budget_daily_used_percent.set(
+                min(100.0, (daily_cost / daily_budget) * 100.0),
+            )
+        except MemoryError, RecursionError:
+            raise
+        except Exception:
+            logger.warning(
+                METRICS_SCRAPE_FAILED,
+                component="daily_budget",
+                exc_info=True,
+            )
+
+    async def _refresh_agent_metrics(
+        self,
+        app_state: AppState,
+    ) -> tuple[Any, ...]:
+        """Update agent gauges from AgentRegistryService.
+
+        Returns:
+            The agents tuple (empty on skip or error).
+        """
+        if not app_state.has_agent_registry:
+            return ()
         try:
             agents = await app_state.agent_registry.list_active()
             counts: Counter[tuple[str, str]] = Counter()
@@ -244,12 +322,64 @@ class PrometheusCollector:
                     status=status,
                     trust_level=trust,
                 ).set(count)
+            return tuple(agents)
         except MemoryError, RecursionError:
             raise
         except Exception:
             logger.warning(
                 METRICS_SCRAPE_FAILED,
                 component="agent_registry",
+                exc_info=True,
+            )
+            return ()
+
+    async def _refresh_agent_cost_metrics(
+        self,
+        app_state: AppState,
+        agents: tuple[Any, ...],
+        utc_midnight: datetime,
+    ) -> None:
+        """Update per-agent cost and budget utilization gauges.
+
+        Requires both agent registry (for agent IDs) and cost tracker.
+
+        Args:
+            app_state: The application state.
+            agents: Active agents from the agent registry.
+            utc_midnight: Start of the current UTC day.
+        """
+        if not agents or not app_state.has_cost_tracker:
+            return
+        try:
+            tracker = app_state.cost_tracker
+            self._agent_cost_total.clear()
+            self._agent_budget_used_percent.clear()
+            budget_cfg = tracker.budget_config
+            per_agent_limit = (
+                budget_cfg.per_agent_daily_limit if budget_cfg is not None else 0.0
+            )
+            for agent in agents:
+                aid = str(agent.id)
+                total = await tracker.get_agent_cost(aid)
+                self._agent_cost_total.labels(agent_id=aid).set(total)
+                if per_agent_limit > 0:
+                    daily = await tracker.get_agent_cost(
+                        aid,
+                        start=utc_midnight,
+                    )
+                    pct = min(
+                        100.0,
+                        (daily / per_agent_limit) * 100.0,
+                    )
+                    self._agent_budget_used_percent.labels(
+                        agent_id=aid,
+                    ).set(pct)
+        except MemoryError, RecursionError:
+            raise
+        except Exception:
+            logger.warning(
+                METRICS_SCRAPE_FAILED,
+                component="agent_cost",
                 exc_info=True,
             )
 

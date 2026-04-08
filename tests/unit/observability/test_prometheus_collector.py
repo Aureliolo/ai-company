@@ -14,11 +14,20 @@ def _mock_app_state(  # noqa: PLR0913
     has_agent_registry: bool = False,
     has_task_engine: bool = False,
     total_cost: float = 0.0,
+    daily_cost: float = 0.0,
     agents: tuple[object, ...] = (),
     tasks: tuple[object, ...] = (),
     budget_total_monthly: float | None = None,
+    per_agent_daily_limit: float | None = None,
+    agent_costs: dict[str, float] | None = None,
+    agent_daily_costs: dict[str, float] | None = None,
 ) -> MagicMock:
-    """Build a mock AppState with configurable service availability."""
+    """Build a mock AppState with configurable service availability.
+
+    Args:
+        agent_costs: Accumulated cost per agent_id (no time filter).
+        agent_daily_costs: Daily cost per agent_id (with start filter).
+    """
     state = MagicMock()
     type(state).has_cost_tracker = PropertyMock(return_value=has_cost_tracker)
     type(state).has_agent_registry = PropertyMock(
@@ -28,10 +37,36 @@ def _mock_app_state(  # noqa: PLR0913
 
     if has_cost_tracker:
         tracker = AsyncMock()
-        tracker.get_total_cost = AsyncMock(return_value=total_cost)
+
+        _total = total_cost
+        _daily = daily_cost
+
+        async def _get_total_cost(*, start=None, end=None):
+            return _daily if start is not None else _total
+
+        tracker.get_total_cost = AsyncMock(side_effect=_get_total_cost)
+
+        _agent_costs = agent_costs or {}
+        _agent_daily_costs = agent_daily_costs or {}
+
+        async def _get_agent_cost(
+            agent_id,
+            *,
+            start=None,
+            end=None,
+        ):
+            if start is not None:
+                return _agent_daily_costs.get(agent_id, 0.0)
+            return _agent_costs.get(agent_id, 0.0)
+
+        tracker.get_agent_cost = AsyncMock(side_effect=_get_agent_cost)
+
         if budget_total_monthly is not None:
             budget_cfg = MagicMock()
             budget_cfg.total_monthly = budget_total_monthly
+            budget_cfg.per_agent_daily_limit = (
+                per_agent_daily_limit if per_agent_daily_limit is not None else 0.0
+            )
             tracker.budget_config = budget_cfg
         else:
             tracker.budget_config = None
@@ -52,6 +87,7 @@ def _mock_app_state(  # noqa: PLR0913
 
 def _make_agent(
     *,
+    name: str | None = None,
     status: str = "active",
     access_level: str = "standard",
 ) -> MagicMock:
@@ -59,7 +95,7 @@ def _make_agent(
     agent = MagicMock()
     agent.status = status
     agent.tools.access_level = access_level
-    agent.id = f"agent-{status}-{access_level}"
+    agent.id = name if name is not None else f"agent-{status}-{access_level}"
     return agent
 
 
@@ -268,3 +304,201 @@ class TestPrometheusCollectorOutput:
         output = generate_latest(collector.registry).decode()
         assert "myorg_app_info" in output
         assert "synthorg_app_info" not in output
+
+
+@pytest.mark.unit
+class TestPrometheusCollectorDailyBudget:
+    """Tests for the daily budget utilization percentage metric."""
+
+    async def test_daily_budget_percent_computed(self) -> None:
+        """Daily cost exceeding prorated daily budget caps at 100%."""
+        collector = PrometheusCollector()
+        # 100 monthly / 30 days = 3.33 daily; 50 today >> 3.33
+        state = _mock_app_state(
+            has_cost_tracker=True,
+            total_cost=200.0,
+            daily_cost=50.0,
+            budget_total_monthly=100.0,
+        )
+        await collector.refresh(state)
+        output = generate_latest(collector.registry).decode()
+        assert "synthorg_budget_daily_used_percent" in output
+        assert "100.0" in output
+
+    async def test_daily_budget_percent_partial_day(self) -> None:
+        """Normal daily utilization produces correct percentage."""
+        collector = PrometheusCollector()
+        # 300 monthly / 30 days = 10.0 daily; 3.0 today = 30%
+        state = _mock_app_state(
+            has_cost_tracker=True,
+            total_cost=50.0,
+            daily_cost=3.0,
+            budget_total_monthly=300.0,
+        )
+        await collector.refresh(state)
+        output = generate_latest(collector.registry).decode()
+        assert "synthorg_budget_daily_used_percent" in output
+        # Exact value depends on days-in-month; verify non-zero present
+        lines = [
+            ln
+            for ln in output.splitlines()
+            if ln.startswith("synthorg_budget_daily_used_percent ")
+        ]
+        assert len(lines) == 1
+        value = float(lines[0].split()[-1])
+        assert 0.0 < value < 100.0
+
+    async def test_daily_budget_skipped_when_no_config(self) -> None:
+        collector = PrometheusCollector()
+        state = _mock_app_state(
+            has_cost_tracker=True,
+            daily_cost=5.0,
+            budget_total_monthly=None,
+        )
+        await collector.refresh(state)
+        output = generate_latest(collector.registry).decode()
+        lines = [
+            ln
+            for ln in output.splitlines()
+            if ln.startswith("synthorg_budget_daily_used_percent ")
+        ]
+        assert len(lines) == 1
+        assert float(lines[0].split()[-1]) == 0.0
+
+    async def test_daily_budget_skipped_when_no_cost_tracker(self) -> None:
+        collector = PrometheusCollector()
+        state = _mock_app_state(has_cost_tracker=False)
+        await collector.refresh(state)
+        output = generate_latest(collector.registry).decode()
+        lines = [
+            ln
+            for ln in output.splitlines()
+            if ln.startswith("synthorg_budget_daily_used_percent ")
+        ]
+        assert len(lines) == 1
+        assert float(lines[0].split()[-1]) == 0.0
+
+
+@pytest.mark.unit
+class TestPrometheusCollectorAgentCost:
+    """Tests for per-agent cost and budget utilization metrics."""
+
+    async def test_agent_cost_total_per_agent(self) -> None:
+        """Each active agent gets its own cost_total gauge."""
+        collector = PrometheusCollector()
+        agents = (
+            _make_agent(name="alice"),
+            _make_agent(name="bob"),
+        )
+        state = _mock_app_state(
+            has_cost_tracker=True,
+            has_agent_registry=True,
+            agents=agents,
+            agent_costs={"alice": 12.5, "bob": 3.0},
+            budget_total_monthly=100.0,
+        )
+        await collector.refresh(state)
+        output = generate_latest(collector.registry).decode()
+        assert 'synthorg_agent_cost_total{agent_id="alice"}' in output
+        assert 'synthorg_agent_cost_total{agent_id="bob"}' in output
+        assert "12.5" in output
+        assert "3.0" in output
+
+    async def test_agent_budget_percent_per_agent(self) -> None:
+        """Per-agent daily cost / per_agent_daily_limit * 100."""
+        collector = PrometheusCollector()
+        agents = (_make_agent(name="alice"),)
+        state = _mock_app_state(
+            has_cost_tracker=True,
+            has_agent_registry=True,
+            agents=agents,
+            agent_daily_costs={"alice": 4.0},
+            budget_total_monthly=100.0,
+            per_agent_daily_limit=10.0,
+        )
+        await collector.refresh(state)
+        output = generate_latest(collector.registry).decode()
+        assert 'synthorg_agent_budget_used_percent{agent_id="alice"} 40.0' in output
+
+    async def test_agent_cost_clears_stale_labels(self) -> None:
+        """Agents that disappear drop from the gauge."""
+        collector = PrometheusCollector()
+        # First scrape: two agents.
+        agents_v1 = (
+            _make_agent(name="alice"),
+            _make_agent(name="bob"),
+        )
+        state_v1 = _mock_app_state(
+            has_cost_tracker=True,
+            has_agent_registry=True,
+            agents=agents_v1,
+            agent_costs={"alice": 1.0, "bob": 2.0},
+            budget_total_monthly=100.0,
+        )
+        await collector.refresh(state_v1)
+        output_v1 = generate_latest(collector.registry).decode()
+        assert 'agent_id="bob"' in output_v1
+
+        # Second scrape: only alice.
+        agents_v2 = (_make_agent(name="alice"),)
+        state_v2 = _mock_app_state(
+            has_cost_tracker=True,
+            has_agent_registry=True,
+            agents=agents_v2,
+            agent_costs={"alice": 1.0},
+            budget_total_monthly=100.0,
+        )
+        await collector.refresh(state_v2)
+        output_v2 = generate_latest(collector.registry).decode()
+        cost_lines = [
+            ln
+            for ln in output_v2.splitlines()
+            if ln.startswith("synthorg_agent_cost_total{")
+        ]
+        assert all('agent_id="alice"' in ln for ln in cost_lines)
+
+    async def test_agent_cost_skipped_when_no_agents(self) -> None:
+        collector = PrometheusCollector()
+        state = _mock_app_state(
+            has_cost_tracker=True,
+            has_agent_registry=False,
+            budget_total_monthly=100.0,
+        )
+        await collector.refresh(state)
+        output = generate_latest(collector.registry).decode()
+        assert "synthorg_agent_cost_total{" not in output
+
+    async def test_agent_cost_skipped_when_no_cost_tracker(self) -> None:
+        collector = PrometheusCollector()
+        agents = (_make_agent(name="alice"),)
+        state = _mock_app_state(
+            has_cost_tracker=False,
+            has_agent_registry=True,
+            agents=agents,
+        )
+        await collector.refresh(state)
+        output = generate_latest(collector.registry).decode()
+        assert "synthorg_agent_cost_total{" not in output
+
+    async def test_agent_budget_percent_skipped_when_no_limit(self) -> None:
+        """No per_agent_daily_limit -> cost_total set, budget_percent not."""
+        collector = PrometheusCollector()
+        agents = (_make_agent(name="alice"),)
+        state = _mock_app_state(
+            has_cost_tracker=True,
+            has_agent_registry=True,
+            agents=agents,
+            agent_costs={"alice": 5.0},
+            agent_daily_costs={"alice": 2.0},
+            budget_total_monthly=100.0,
+            per_agent_daily_limit=0.0,
+        )
+        await collector.refresh(state)
+        output = generate_latest(collector.registry).decode()
+        assert 'synthorg_agent_cost_total{agent_id="alice"}' in output
+        budget_lines = [
+            ln
+            for ln in output.splitlines()
+            if ln.startswith("synthorg_agent_budget_used_percent{")
+        ]
+        assert len(budget_lines) == 0
