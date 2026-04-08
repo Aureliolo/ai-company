@@ -538,12 +538,22 @@ def _build_lifecycle(  # noqa: PLR0913, PLR0915, C901
             app_state,
         )
         # Wire Prometheus collector (no dependencies, runs in-process).
+        # Non-fatal: /metrics degrades to 503 if this fails.
         if not app_state.has_prometheus_collector:
-            from synthorg.observability.prometheus_collector import (  # noqa: PLC0415
-                PrometheusCollector,
-            )
+            try:
+                from synthorg.observability.prometheus_collector import (  # noqa: PLC0415
+                    PrometheusCollector,
+                )
 
-            app_state.set_prometheus_collector(PrometheusCollector())
+                app_state.set_prometheus_collector(PrometheusCollector())
+            except MemoryError, RecursionError:
+                raise
+            except Exception:
+                logger.warning(
+                    API_APP_STARTUP,
+                    error="Prometheus collector init failed (non-fatal)",
+                    exc_info=True,
+                )
 
         # Wire workflow execution observer (needs connected persistence)
         if (
