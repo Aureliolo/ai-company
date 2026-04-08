@@ -23,6 +23,7 @@ def _mock_app_state(  # noqa: PLR0913
     per_agent_daily_limit: float | None = None,
     agent_costs: dict[str, float] | None = None,
     agent_daily_costs: dict[str, float] | None = None,
+    reset_day: int = 1,
 ) -> MagicMock:
     """Build a mock AppState with configurable service availability.
 
@@ -31,6 +32,8 @@ def _mock_app_state(  # noqa: PLR0913
             Defaults to *total_cost* for backward compatibility.
         agent_costs: Accumulated cost per agent_id (no time filter).
         agent_daily_costs: Daily cost per agent_id (with start filter).
+        reset_day: Budget reset day (1-28). Determines which
+            ``get_total_cost(start=...)`` calls return billing cost.
     """
     state = MagicMock()
     type(state).has_cost_tracker = PropertyMock(return_value=has_cost_tracker)
@@ -45,7 +48,7 @@ def _mock_app_state(  # noqa: PLR0913
         _total = total_cost
         _daily = daily_cost
         _billing = billing_cost if billing_cost is not None else _total
-        _reset_day = 1  # Matches BudgetConfig.reset_day default.
+        _reset_day = reset_day
 
         async def _get_total_cost(
             *,
@@ -498,17 +501,40 @@ class TestPrometheusCollectorDailyBudget:
             daily_cost=5.0,
             budget_total_monthly=300.0,
         )
-        # Patch monthrange to raise inside the try block.
+        # Patch billing_period_start to raise inside the try block.
         from unittest.mock import patch
 
         with patch(
-            "synthorg.observability.prometheus_collector.monthrange",
+            "synthorg.observability.prometheus_collector.billing_period_start",
             side_effect=RuntimeError("broken"),
         ):
             await collector.refresh(state)
         # No crash; other metrics still updated.
         output = generate_latest(collector.registry).decode()
         assert "synthorg_app_info" in output
+
+    async def test_daily_budget_respects_reset_day(self) -> None:
+        """Non-default reset_day prorates using billing period length."""
+        collector = PrometheusCollector()
+        # reset_day=15: billing period spans two calendar months.
+        # daily_cost=50 exceeds prorated budget for any period length,
+        # so the metric should cap at 100%.
+        state = _mock_app_state(
+            has_cost_tracker=True,
+            total_cost=200.0,
+            daily_cost=50.0,
+            budget_total_monthly=100.0,
+            reset_day=15,
+        )
+        await collector.refresh(state)
+        output = generate_latest(collector.registry).decode()
+        lines = [
+            ln
+            for ln in output.splitlines()
+            if ln.startswith("synthorg_budget_daily_used_percent ")
+        ]
+        assert len(lines) == 1
+        assert float(lines[0].split()[-1]) == 100.0
 
 
 @pytest.mark.unit

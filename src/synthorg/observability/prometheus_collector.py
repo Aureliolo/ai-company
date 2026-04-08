@@ -10,7 +10,6 @@ not refreshed on scrape.
 """
 
 import asyncio
-from calendar import monthrange
 from collections import Counter
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
@@ -285,6 +284,8 @@ class PrometheusCollector:
         except MemoryError, RecursionError:
             raise
         except Exception:
+            self._budget_used_percent.set(0.0)
+            self._budget_monthly_usd.set(0.0)
             logger.warning(
                 METRICS_SCRAPE_FAILED,
                 component="budget",
@@ -299,17 +300,19 @@ class PrometheusCollector:
     ) -> None:
         """Update daily budget utilization gauge.
 
-        Computes ``daily_cost / (total_monthly / days_in_month) * 100``,
-        capped at 100%.  Resets the gauge to 0.0 if cost tracker is
-        unavailable, *daily_cost* is ``None``, budget config is
-        missing, or the monthly budget is zero or negative.
+        Computes ``daily_cost / (total_monthly / days_in_period) * 100``,
+        capped at 100%, where *days_in_period* is the length of the
+        current billing period (derived from ``BudgetConfig.reset_day``).
+        Resets the gauge to 0.0 if cost tracker is unavailable,
+        *daily_cost* is ``None``, budget config is missing, or the
+        monthly budget is zero or negative.
 
         Args:
             app_state: The application state containing cost tracker.
             daily_cost: Cost accumulated since UTC midnight, or ``None``
                 if unavailable.
             utc_midnight: Start of the current UTC day, used to derive
-                the month and days-in-month for the prorated budget.
+                the billing period boundaries for prorated budget.
         """
         if not app_state.has_cost_tracker or daily_cost is None:
             self._budget_daily_used_percent.set(0.0)
@@ -323,14 +326,29 @@ class PrometheusCollector:
             if monthly <= 0:
                 self._budget_daily_used_percent.set(0.0)
                 return
-            days = monthrange(utc_midnight.year, utc_midnight.month)[1]
-            daily_budget = monthly / days
+            reset_day = tracker.budget_config.reset_day
+            period_start = billing_period_start(
+                reset_day,
+                now=utc_midnight,
+            )
+            if period_start.month == 12:  # noqa: PLR2004
+                next_start = period_start.replace(
+                    year=period_start.year + 1,
+                    month=1,
+                )
+            else:
+                next_start = period_start.replace(
+                    month=period_start.month + 1,
+                )
+            days_in_period = (next_start - period_start).days
+            daily_budget = monthly / days_in_period
             self._budget_daily_used_percent.set(
                 min(100.0, (daily_cost / daily_budget) * 100.0),
             )
         except MemoryError, RecursionError:
             raise
         except Exception:
+            self._budget_daily_used_percent.set(0.0)
             logger.warning(
                 METRICS_SCRAPE_FAILED,
                 component="daily_budget",

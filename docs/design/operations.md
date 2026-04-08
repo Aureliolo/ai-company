@@ -1849,7 +1849,7 @@ them is required to support the full control-plane positioning claim.
 
 | # | Gap | Severity | Recommendation |
 |---|-----|----------|----------------|
-| G1 | ~~No telemetry export (Prometheus `/metrics` or OTLP)~~ | ~~High~~ | **Closed.** `PrometheusCollector` instantiated in `on_startup()`, `/metrics` returns 200 with 12 metric families, OTLP HTTP/JSON sink type implemented. Deviation: OTLP uses HTTP/JSON (not protobuf); gRPC rejected at config validation (approved). |
+| G1 | ~~No telemetry export (Prometheus `/metrics` or OTLP)~~ | ~~High~~ | **Closed.** `PrometheusCollector` instantiated in `on_startup()`, `/api/v1/metrics` returns 200 with 12 metric families, OTLP HTTP/JSON sink type implemented. Deviation: OTLP uses HTTP/JSON (not protobuf); gRPC rejected at config validation (approved). |
 | G2 | ~~No per-agent health endpoint~~ | ~~Medium~~ | **Implemented** -- `GET /agents/{name}/health` composites performance, trust, and lifecycle status. (Issue #1118 scoped as `{id}` but implemented as `{name}` for consistency with existing agent routes.) |
 | G3 | ~~No policy-as-code export/import~~ | ~~Medium~~ | **Implemented** -- `GET /settings/security/export` and `POST /settings/security/import` (persists registered settings; code-defined policies require matching Python code). |
 | G4 | ~~No coordination metrics API~~ | ~~Medium~~ | **Implemented** -- `GET /coordination/metrics` exposes the 9 Kim et al. metrics with filtering. |
