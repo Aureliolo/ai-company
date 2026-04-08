@@ -192,6 +192,18 @@ def compute_diff(
             reason=msg,
         )
         raise ValueError(msg)
+    if old.snapshot.id != new.snapshot.id:
+        msg = (
+            "Snapshot definition IDs do not match entity_id "
+            f"(old={old.snapshot.id!r}, new={new.snapshot.id!r})"
+        )
+        logger.warning(
+            WORKFLOW_DEF_INVALID_REQUEST,
+            old_snapshot_id=old.snapshot.id,
+            new_snapshot_id=new.snapshot.id,
+            reason=msg,
+        )
+        raise ValueError(msg)
 
     node_changes = _diff_nodes(old.snapshot, new.snapshot)
     edge_changes = _diff_edges(old.snapshot, new.snapshot)

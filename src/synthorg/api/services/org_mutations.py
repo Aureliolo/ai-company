@@ -106,7 +106,7 @@ class OrgMutationService:
                 snapshot=budget,
                 saved_by=saved_by,
             )
-        except PersistenceError:
+        except PersistenceError, SettingNotFoundError:
             logger.exception(
                 VERSION_SNAPSHOT_FAILED,
                 entity_type="BudgetConfig",

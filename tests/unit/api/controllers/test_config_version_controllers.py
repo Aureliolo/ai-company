@@ -1,7 +1,7 @@
 """Tests for config version history API endpoints.
 
 Covers BudgetConfigVersionController, CompanyVersionController,
-and EvaluationConfigVersionController.
+EvaluationConfigVersionController, and RoleVersionController.
 """
 
 from datetime import UTC, datetime

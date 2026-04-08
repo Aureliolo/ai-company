@@ -450,8 +450,16 @@ CREATE INDEX IF NOT EXISTS idx_ftc_created_at
 -- Breaking change from v0.6.x: migrated from bespoke flattened
 -- columns (definition_id, name, description, workflow_type, nodes,
 -- edges, created_by) to generic VersionSnapshot format (entity_id,
--- content_hash, snapshot JSON).  Existing databases require manual
--- migration: see docs/migrations/workflow-version-schema.md.
+-- content_hash, snapshot JSON, saved_by, saved_at).
+-- Manual migration for existing databases:
+--   1. ALTER TABLE workflow_definition_versions RENAME TO _wdv_old;
+--   2. Create the new table (below) and indexes.
+--   3. INSERT INTO workflow_definition_versions (entity_id, version,
+--      content_hash, snapshot, saved_by, saved_at)
+--      SELECT definition_id, version,
+--        '<compute-sha256-of-snapshot>', json_object(...old columns...),
+--        created_by, saved_at FROM _wdv_old;
+--   4. DROP TABLE _wdv_old;
 -- FK to workflow_definitions intentionally dropped for generic
 -- VersionSnapshot[T] pattern consistency across all entity types.
 
