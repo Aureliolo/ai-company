@@ -1,7 +1,7 @@
 """Root configuration schema and config-level Pydantic models."""
 
 from collections import Counter
-from typing import Any, ClassVar, Self
+from typing import Any, ClassVar, Literal, Self
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
 
@@ -453,7 +453,9 @@ class GracefulShutdownConfig(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
-    strategy: NotBlankStr = Field(
+    strategy: Literal[
+        "cooperative_timeout", "immediate", "finish_tool", "checkpoint"
+    ] = Field(
         default="cooperative_timeout",
         description="Shutdown strategy name",
     )

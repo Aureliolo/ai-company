@@ -416,7 +416,7 @@ class TestGracefulShutdownConfig:
 
     def test_blank_strategy_rejected(self) -> None:
         with pytest.raises(ValidationError):
-            GracefulShutdownConfig(strategy="   ")
+            GracefulShutdownConfig(strategy="   ")  # type: ignore[arg-type]
 
     def test_tool_timeout_default(self) -> None:
         config = GracefulShutdownConfig()
@@ -955,10 +955,9 @@ class TestBuildShutdownStrategy:
         strategy = build_shutdown_strategy(config)
         assert isinstance(strategy, CheckpointAndStopStrategy)
 
-    def test_unknown_strategy_raises(self) -> None:
-        config = GracefulShutdownConfig(strategy="nonexistent")
-        with pytest.raises(ValueError, match="Unknown shutdown strategy"):
-            build_shutdown_strategy(config)
+    def test_unknown_strategy_rejected(self) -> None:
+        with pytest.raises(ValidationError):
+            GracefulShutdownConfig(strategy="nonexistent")  # type: ignore[arg-type]
 
     def test_config_params_propagate(self) -> None:
         config = GracefulShutdownConfig(

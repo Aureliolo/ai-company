@@ -385,7 +385,10 @@ class CheckpointAndStopStrategy:
         pending: set[asyncio.Task[Any]],
         running_tasks: Mapping[str, asyncio.Task[Any]],
     ) -> tuple[int, int]:
-        """Checkpoint straggler tasks, then cancel them.
+        """Checkpoint straggler tasks concurrently, then cancel.
+
+        Uses ``asyncio.TaskGroup`` to fan out checkpoint attempts
+        for all stragglers in parallel.
 
         Returns:
             Tuple of (tasks_suspended, tasks_interrupted).
@@ -397,6 +400,8 @@ class CheckpointAndStopStrategy:
         tasks_suspended = 0
         tasks_interrupted = 0
 
+        # Identify tasks with valid IDs vs unknown.
+        checkpointable: list[tuple[asyncio.Task[Any], str]] = []
         for task in pending:
             task_id = task_to_id.get(task)
             if task_id is None:
@@ -406,14 +411,33 @@ class CheckpointAndStopStrategy:
                 )
                 tasks_interrupted += 1
                 task.cancel()
-                continue
-            saved = await self._try_checkpoint(task_id)
-            if saved:
-                tasks_suspended += 1
             else:
-                tasks_interrupted += 1
-            task.cancel()
+                checkpointable.append((task, task_id))
 
+        # Fan out checkpoint attempts concurrently.
+        if checkpointable:
+
+            async def _checkpoint_one(tid: str) -> bool:
+                return await self._try_checkpoint(tid)
+
+            async with asyncio.TaskGroup() as tg:
+                checkpoint_tasks = [
+                    tg.create_task(_checkpoint_one(tid)) for _, tid in checkpointable
+                ]
+
+            for (task, _), ct in zip(
+                checkpointable,
+                checkpoint_tasks,
+                strict=True,
+            ):
+                saved = ct.result()
+                if saved:
+                    tasks_suspended += 1
+                else:
+                    tasks_interrupted += 1
+                task.cancel()
+
+        # Wait for cancellation to propagate.
         cancel_done, _ = await asyncio.wait(
             pending,
             timeout=self._CANCEL_PROPAGATION_TIMEOUT,

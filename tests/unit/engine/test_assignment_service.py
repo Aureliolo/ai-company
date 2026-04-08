@@ -93,14 +93,15 @@ class TestTaskAssignmentService:
             TaskStatus.CREATED,
             TaskStatus.FAILED,
             TaskStatus.INTERRUPTED,
+            TaskStatus.SUSPENDED,
         ],
-        ids=["created", "failed", "interrupted"],
+        ids=["created", "failed", "interrupted", "suspended"],
     )
     def test_accepts_assignable_statuses(
         self,
         status: TaskStatus,
     ) -> None:
-        """Service accepts CREATED, FAILED, and INTERRUPTED tasks."""
+        """Service accepts CREATED, FAILED, INTERRUPTED, and SUSPENDED tasks."""
         scorer = AgentTaskScorer()
         strategy = RoleBasedAssignmentStrategy(scorer)
         service = TaskAssignmentService(strategy)
