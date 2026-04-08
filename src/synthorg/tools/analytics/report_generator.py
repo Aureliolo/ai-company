@@ -37,7 +37,7 @@ _REPORT_TYPES: Final[frozenset[str]] = frozenset(
 
 _OUTPUT_FORMATS: Final[frozenset[str]] = frozenset({"text", "markdown", "json"})
 
-_VALID_PERIODS: Final[frozenset[str]] = frozenset({"7d", "30d", "90d", "ytd", "custom"})
+_VALID_PERIODS: Final[frozenset[str]] = frozenset({"7d", "30d", "90d", "ytd"})
 
 _REPORT_METRICS: Final[dict[str, list[str]]] = {
     "budget_summary": ["total_cost", "budget_remaining", "burn_rate"],
@@ -197,6 +197,23 @@ class ReportGeneratorTool(BaseAnalyticsTool):
             )
 
         metrics = _REPORT_METRICS.get(report_type, [])
+
+        if self._config.allowed_metrics is not None:
+            blocked = [m for m in metrics if m not in self._config.allowed_metrics]
+            if blocked:
+                logger.warning(
+                    ANALYTICS_TOOL_REPORT_FAILED,
+                    error="metrics_not_allowed",
+                    report_type=report_type,
+                    blocked_metrics=blocked,
+                )
+                return ToolExecutionResult(
+                    content=(
+                        f"Report type {report_type!r} requires metrics "
+                        f"not in the allowed list: {blocked}"
+                    ),
+                    is_error=True,
+                )
 
         logger.info(
             ANALYTICS_TOOL_REPORT_START,

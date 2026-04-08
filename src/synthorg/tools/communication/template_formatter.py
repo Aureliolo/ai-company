@@ -109,11 +109,34 @@ class TemplateFormatterTool(BaseCommunicationTool):
         Returns:
             A ``ToolExecutionResult`` with rendered text.
         """
-        template_str: str = arguments["template"]
-        variables: dict[str, Any] = arguments["variables"]
+        template_str = arguments.get("template")
+        variables = arguments.get("variables")
+        if not isinstance(template_str, str):
+            logger.warning(
+                COMM_TOOL_TEMPLATE_RENDER_FAILED,
+                error="missing_or_invalid_template",
+            )
+            return ToolExecutionResult(
+                content="'template' must be a string.",
+                is_error=True,
+            )
+        if not isinstance(variables, dict):
+            logger.warning(
+                COMM_TOOL_TEMPLATE_RENDER_FAILED,
+                error="missing_or_invalid_variables",
+            )
+            return ToolExecutionResult(
+                content="'variables' must be a dict.",
+                is_error=True,
+            )
         output_format: str = arguments.get("format", "text")
 
         if output_format not in _OUTPUT_FORMATS:
+            logger.warning(
+                COMM_TOOL_TEMPLATE_RENDER_FAILED,
+                error="invalid_output_format",
+                output_format=output_format,
+            )
             return ToolExecutionResult(
                 content=(
                     f"Invalid format: {output_format!r}. "

@@ -269,4 +269,6 @@ class DiagramGeneratorTool(BaseDesignTool):
             label = f'    label="{escaped}";\n'
         else:
             label = ""
-        return f"{graph_type} {diagram_type} {{\n{label}    {description}\n}}"
+        # Sanitize description to prevent DOT injection (closing braces, etc.)
+        safe_desc = description.replace("\\", "\\\\").replace("}", "\\}")
+        return f"{graph_type} {diagram_type} {{\n{label}    {safe_desc}\n}}"

@@ -205,10 +205,9 @@ def _build_communication_tools(
         TemplateFormatterTool,
     )
 
-    tools: list[BaseTool] = [
-        EmailSenderTool(config=config),
-        TemplateFormatterTool(config=config),
-    ]
+    tools: list[BaseTool] = [TemplateFormatterTool(config=config)]
+    if config.email is not None:
+        tools.append(EmailSenderTool(config=config))
     if dispatcher is not None:
         tools.append(NotificationSenderTool(dispatcher=dispatcher, config=config))
     return tuple(tools)

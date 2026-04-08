@@ -16,11 +16,15 @@ class MockAnalyticsProvider:
         result: dict[str, Any] | None = None,
         error: Exception | None = None,
     ) -> None:
-        self._result = result or {
-            "total_cost": 1234.56,
-            "task_count": 42,
-            "active_agents": 5,
-        }
+        self._result = (
+            {
+                "total_cost": 1234.56,
+                "task_count": 42,
+                "active_agents": 5,
+            }
+            if result is None
+            else result
+        )
         self._error = error
         self.calls: list[dict[str, Any]] = []
 

@@ -185,14 +185,25 @@ class NotificationSenderTool(BaseCommunicationTool):
                 is_error=True,
             )
 
-        notification = Notification(
-            category=NotificationCategory(category_str),
-            severity=NotificationSeverity(severity_str),
-            title=title,
-            body=body,
-            source=source,
-            timestamp=datetime.now(UTC),
-        )
+        try:
+            notification = Notification(
+                category=NotificationCategory(category_str),
+                severity=NotificationSeverity(severity_str),
+                title=title,
+                body=body,
+                source=source,
+                timestamp=datetime.now(UTC),
+            )
+        except (ValueError, TypeError) as exc:
+            logger.warning(
+                COMM_TOOL_NOTIFICATION_SEND_FAILED,
+                error="invalid_notification_fields",
+                detail=str(exc),
+            )
+            return ToolExecutionResult(
+                content=f"Invalid notification fields: {exc}",
+                is_error=True,
+            )
 
         logger.info(
             COMM_TOOL_NOTIFICATION_SEND_START,

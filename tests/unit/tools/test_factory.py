@@ -255,10 +255,10 @@ class TestBuildCommunicationTools:
             communication_config=config,
         )
         names = {t.name for t in tools}
-        # email_sender and template_formatter need no backend
-        assert "email_sender" in names
+        # template_formatter needs no backend
         assert "template_formatter" in names
-        # notification_sender requires a dispatcher
+        # email_sender requires email config, notification_sender requires dispatcher
+        assert "email_sender" not in names
         assert "notification_sender" not in names
 
     def test_communication_tools_with_dispatcher(
@@ -269,13 +269,19 @@ class TestBuildCommunicationTools:
 
         from synthorg.tools.communication.config import (
             CommunicationToolsConfig,
+            EmailConfig,
         )
         from synthorg.tools.communication.notification_sender import (
             NotificationDispatcherProtocol,
         )
 
         dispatcher = AsyncMock(spec=NotificationDispatcherProtocol)
-        config = CommunicationToolsConfig()
+        email = EmailConfig(
+            host="smtp.example.com",
+            from_address="test@example.com",
+            use_tls=False,
+        )
+        config = CommunicationToolsConfig(email=email)
         tools = build_default_tools(
             workspace=tmp_path,
             communication_config=config,
@@ -346,6 +352,50 @@ class TestBuildAnalyticsTools:
         assert "data_aggregator" in names
         assert "report_generator" in names
         assert "metric_collector" in names
+
+    def test_analytics_provider_only(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        from unittest.mock import AsyncMock
+
+        from synthorg.tools.analytics.config import AnalyticsToolsConfig
+        from synthorg.tools.analytics.data_aggregator import (
+            AnalyticsProvider,
+        )
+
+        provider = AsyncMock(spec=AnalyticsProvider)
+        config = AnalyticsToolsConfig()
+        tools = build_default_tools(
+            workspace=tmp_path,
+            analytics_config=config,
+            analytics_provider=provider,
+        )
+        names = {t.name for t in tools}
+        assert "data_aggregator" in names
+        assert "report_generator" in names
+        assert "metric_collector" not in names
+
+    def test_analytics_sink_only(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        from unittest.mock import AsyncMock
+
+        from synthorg.tools.analytics.config import AnalyticsToolsConfig
+        from synthorg.tools.analytics.metric_collector import MetricSink
+
+        sink = AsyncMock(spec=MetricSink)
+        config = AnalyticsToolsConfig()
+        tools = build_default_tools(
+            workspace=tmp_path,
+            analytics_config=config,
+            metric_sink=sink,
+        )
+        names = {t.name for t in tools}
+        assert "metric_collector" in names
+        assert "data_aggregator" not in names
+        assert "report_generator" not in names
 
 
 @pytest.mark.unit

@@ -6,6 +6,7 @@ users inject a sink at construction time.
 """
 
 import copy
+import math
 from typing import Any, Final, Protocol, runtime_checkable
 
 from synthorg.core.enums import ActionType
@@ -163,6 +164,18 @@ class MetricCollectorTool(BaseAnalyticsTool):
                     f"Metric not allowed: {metric_name!r}. "
                     f"Allowed: {sorted(self._config.allowed_metrics or set())}"
                 ),
+                is_error=True,
+            )
+
+        if not math.isfinite(value):
+            logger.warning(
+                ANALYTICS_TOOL_METRIC_RECORD_FAILED,
+                metric_name=metric_name,
+                error="non_finite_value",
+                value=str(value),
+            )
+            return ToolExecutionResult(
+                content=(f"Metric value must be finite: {metric_name!r} got {value}"),
                 is_error=True,
             )
 

@@ -13,26 +13,23 @@ from synthorg.tools.communication.email_sender import EmailSenderTool
 class TestEmailSenderTool:
     """Tests for EmailSenderTool."""
 
-    def test_category_is_communication(
+    @pytest.mark.parametrize(
+        ("attr", "expected"),
+        [
+            ("category", ToolCategory.COMMUNICATION),
+            ("action_type", ActionType.COMMS_EXTERNAL),
+            ("name", "email_sender"),
+        ],
+        ids=["category", "action_type", "name"],
+    )
+    def test_tool_attributes(
         self,
         comm_config: CommunicationToolsConfig,
+        attr: str,
+        expected: object,
     ) -> None:
         tool = EmailSenderTool(config=comm_config)
-        assert tool.category == ToolCategory.COMMUNICATION
-
-    def test_action_type_is_comms_external(
-        self,
-        comm_config: CommunicationToolsConfig,
-    ) -> None:
-        tool = EmailSenderTool(config=comm_config)
-        assert tool.action_type == ActionType.COMMS_EXTERNAL
-
-    def test_name(
-        self,
-        comm_config: CommunicationToolsConfig,
-    ) -> None:
-        tool = EmailSenderTool(config=comm_config)
-        assert tool.name == "email_sender"
+        assert getattr(tool, attr) == expected
 
     async def test_execute_no_email_config_returns_error(
         self,

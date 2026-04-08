@@ -274,7 +274,7 @@ class EmailSenderTool(BaseCommunicationTool):
         else:
             msg.set_content(body)
 
-        timeout = int(email_config.smtp_timeout)
+        timeout = email_config.smtp_timeout
         context = ssl.create_default_context()
         smtp_conn: smtplib.SMTP
         if email_config.use_implicit_tls:
