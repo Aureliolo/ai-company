@@ -1,5 +1,6 @@
 """Tests for the Prometheus metrics collector."""
 
+from datetime import datetime
 from unittest.mock import AsyncMock, MagicMock, PropertyMock
 
 import pytest
@@ -41,7 +42,11 @@ def _mock_app_state(  # noqa: PLR0913
         _total = total_cost
         _daily = daily_cost
 
-        async def _get_total_cost(*, start=None, end=None):
+        async def _get_total_cost(
+            *,
+            start: datetime | None = None,
+            end: datetime | None = None,
+        ) -> float:
             return _daily if start is not None else _total
 
         tracker.get_total_cost = AsyncMock(side_effect=_get_total_cost)
@@ -50,11 +55,11 @@ def _mock_app_state(  # noqa: PLR0913
         _agent_daily_costs = agent_daily_costs or {}
 
         async def _get_agent_cost(
-            agent_id,
+            agent_id: str,
             *,
-            start=None,
-            end=None,
-        ):
+            start: datetime | None = None,
+            end: datetime | None = None,
+        ) -> float:
             if start is not None:
                 return _agent_daily_costs.get(agent_id, 0.0)
             return _agent_costs.get(agent_id, 0.0)
