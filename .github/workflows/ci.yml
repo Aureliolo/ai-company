@@ -326,8 +326,11 @@ jobs:
           cache-dependency-path: web/package-lock.json
       - run: npm ci
         working-directory: web
-      - run: npm run storybook:build -- --disable-telemetry
+      - name: Run npm run storybook:build -- --disable-telemetry
+        run: npm run storybook:build -- --disable-telemetry
         working-directory: web
+        env:
+          NODE_OPTIONS: "--max-old-space-size=4096"
 
   # ── Gate: all required checks passed ──
   ci-pass:
