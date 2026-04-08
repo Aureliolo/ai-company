@@ -1162,9 +1162,8 @@ see [Strategy 4](#strategy-4-checkpoint-and-stop).)
 ```yaml
 graceful_shutdown:
   strategy: "cooperative_timeout"    # cooperative_timeout, immediate, finish_tool, checkpoint
-  cooperative_timeout:
-    grace_seconds: 30                # time for agents to finish cooperatively
-    cleanup_seconds: 5               # time for final cleanup (persist cost records, close connections)
+  grace_seconds: 30                  # time for agents to finish cooperatively
+  cleanup_seconds: 5                 # time for final cleanup (persist cost records, close connections)
 ```
 
 On shutdown signal:

@@ -119,7 +119,7 @@ describe('STATUS_TO_COLUMN', () => {
   it('maps every on-board TaskStatus to a column', () => {
     for (const status of ALL_STATUSES) {
       if (OFF_BOARD_STATUSES.has(status)) {
-        expect(STATUS_TO_COLUMN[status]).toBeUndefined()
+        expect(STATUS_TO_COLUMN[status]).toBeNull()
       } else {
         expect(STATUS_TO_COLUMN[status]).toBeDefined()
       }

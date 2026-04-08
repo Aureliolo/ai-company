@@ -111,11 +111,14 @@ export const KANBAN_COLUMNS: readonly KanbanColumn[] = [
 /** Off-board statuses not displayed on the Kanban board (resumable). */
 export const OFF_BOARD_STATUSES: ReadonlySet<TaskStatus> = new Set(['suspended'])
 
-export const STATUS_TO_COLUMN: Partial<Record<TaskStatus, KanbanColumnId>> = Object.fromEntries(
-  KANBAN_COLUMNS.flatMap((col) =>
-    col.statuses.map((status) => [status, col.id]),
+export const STATUS_TO_COLUMN: Record<TaskStatus, KanbanColumnId | null> = {
+  ...Object.fromEntries(
+    KANBAN_COLUMNS.flatMap((col) =>
+      col.statuses.map((status) => [status, col.id]),
+    ),
   ),
-)
+  ...Object.fromEntries([...OFF_BOARD_STATUSES].map((s) => [s, null])),
+} as Record<TaskStatus, KanbanColumnId | null>
 
 // ── Group tasks by column ───────────────────────────────────
 

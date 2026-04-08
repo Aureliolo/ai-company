@@ -86,6 +86,12 @@ class ImmediateCancelStrategy:
     def __init__(self, *, cleanup_seconds: float = 5.0) -> None:
         if cleanup_seconds <= 0:
             msg = f"cleanup_seconds must be positive, got {cleanup_seconds}"
+            logger.warning(
+                EXECUTION_SHUTDOWN_TASK_ERROR,
+                error=msg,
+                param="cleanup_seconds",
+                value=cleanup_seconds,
+            )
             raise ValueError(msg)
         self._cleanup_seconds = cleanup_seconds
         self._shutdown_event = asyncio.Event()
@@ -170,9 +176,21 @@ class FinishCurrentToolStrategy:
     ) -> None:
         if tool_timeout_seconds <= 0:
             msg = f"tool_timeout_seconds must be positive, got {tool_timeout_seconds}"
+            logger.warning(
+                EXECUTION_SHUTDOWN_TASK_ERROR,
+                error=msg,
+                param="tool_timeout_seconds",
+                value=tool_timeout_seconds,
+            )
             raise ValueError(msg)
         if cleanup_seconds <= 0:
             msg = f"cleanup_seconds must be positive, got {cleanup_seconds}"
+            logger.warning(
+                EXECUTION_SHUTDOWN_TASK_ERROR,
+                error=msg,
+                param="cleanup_seconds",
+                value=cleanup_seconds,
+            )
             raise ValueError(msg)
         self._tool_timeout_seconds = tool_timeout_seconds
         self._cleanup_seconds = cleanup_seconds
@@ -298,9 +316,21 @@ class CheckpointAndStopStrategy:
     ) -> None:
         if grace_seconds <= 0:
             msg = f"grace_seconds must be positive, got {grace_seconds}"
+            logger.warning(
+                EXECUTION_SHUTDOWN_TASK_ERROR,
+                error=msg,
+                param="grace_seconds",
+                value=grace_seconds,
+            )
             raise ValueError(msg)
         if cleanup_seconds <= 0:
             msg = f"cleanup_seconds must be positive, got {cleanup_seconds}"
+            logger.warning(
+                EXECUTION_SHUTDOWN_TASK_ERROR,
+                error=msg,
+                param="cleanup_seconds",
+                value=cleanup_seconds,
+            )
             raise ValueError(msg)
         self._grace_seconds = grace_seconds
         self._cleanup_seconds = cleanup_seconds
