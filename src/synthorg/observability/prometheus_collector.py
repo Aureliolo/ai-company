@@ -19,6 +19,7 @@ from prometheus_client import CollectorRegistry, Gauge, Info
 from prometheus_client import Counter as PromCounter
 
 from synthorg import __version__
+from synthorg.budget.billing import billing_period_start
 from synthorg.observability import get_logger
 from synthorg.observability.events.metrics import (
     METRICS_COLLECTOR_INITIALIZED,
@@ -206,15 +207,24 @@ class PrometheusCollector:
             second=0,
             microsecond=0,
         )
-        month_start = utc_midnight.replace(day=1)
         if app_state.has_cost_tracker:
             try:
                 total_cost = await app_state.cost_tracker.get_total_cost()
                 daily_cost = await app_state.cost_tracker.get_total_cost(
                     start=utc_midnight,
                 )
-                billing_cost = await app_state.cost_tracker.get_total_cost(
-                    start=month_start,
+                tracker = app_state.cost_tracker
+                reset_day = (
+                    tracker.budget_config.reset_day
+                    if tracker.budget_config is not None
+                    else 1
+                )
+                period_start = billing_period_start(
+                    reset_day,
+                    now=utc_midnight,
+                )
+                billing_cost = await tracker.get_total_cost(
+                    start=period_start,
                 )
             except MemoryError, RecursionError:
                 raise

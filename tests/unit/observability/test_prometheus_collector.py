@@ -53,7 +53,7 @@ def _mock_app_state(  # noqa: PLR0913
         ) -> float:
             if start is None:
                 return _total
-            # Billing-period query: start is first of month (day=1).
+            # Billing-period query: start.day matches reset_day (default 1).
             if start.day == 1:
                 return _billing
             return _daily
@@ -81,6 +81,7 @@ def _mock_app_state(  # noqa: PLR0913
             budget_cfg.per_agent_daily_limit = (
                 per_agent_daily_limit if per_agent_daily_limit is not None else 0.0
             )
+            budget_cfg.reset_day = 1
             tracker.budget_config = budget_cfg
         else:
             tracker.budget_config = None
@@ -381,7 +382,7 @@ class TestPrometheusCollectorDailyBudget:
     async def test_daily_budget_percent_computed(self) -> None:
         """Daily cost exceeding prorated daily budget caps at 100%."""
         collector = PrometheusCollector()
-        # 100 monthly / 30 days = 3.33 daily; 50 today >> 3.33
+        # 50 daily >> 100/N prorated budget for any month length N.
         state = _mock_app_state(
             has_cost_tracker=True,
             total_cost=200.0,
