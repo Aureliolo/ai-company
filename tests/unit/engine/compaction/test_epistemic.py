@@ -169,11 +169,11 @@ class TestExtractMarkerSentences:
         assert len(result) <= max_chars
 
     def test_respects_max_chars_default(self) -> None:
-        """Default max_chars is 200."""
+        """Default max_chars is 200 -- single long sentence is truncated."""
         text = "Wait, " + "x" * 300
         result = extract_marker_sentences(text)
-        # Should be capped at 200 (or slightly more with "; " joining)
-        assert len(result) <= 210  # Allow some margin for separator
+        # Single sentence exceeds default 200 chars -> truncated to exactly 200
+        assert len(result) == 200
 
     def test_handles_newlines_as_sentence_boundaries(self) -> None:
         """Newlines are treated as sentence boundaries."""

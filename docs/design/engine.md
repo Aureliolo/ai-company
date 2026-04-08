@@ -1463,9 +1463,10 @@ routing decisions and wave outcomes:
   `"coordination_overhead"` (system-initiated: budget, shutdown, parking),
   `"quality_gate"` (failed quality check).
 - **Integration** -- contributions are fed into `PerformanceTracker
-  .record_coordination_contributions()` for trend analysis. The tracker
-  guards writes behind an `asyncio.Lock` to avoid race conditions from
-  concurrent coordination runs.
+  .record_coordination_contributions()` for trend analysis.  The async
+  method `record_task_metric()` guards writes behind an `asyncio.Lock`;
+  `record_coordination_contributions()` is synchronous (no await points)
+  so dict operations are atomic within the single-threaded event loop.
 
 ---
 

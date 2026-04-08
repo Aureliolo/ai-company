@@ -331,8 +331,9 @@ def force_compaction(
 
     Used when an agent explicitly requests compaction via the
     ``compact_context`` tool.  Delegates to ``_do_compaction``
-    core logic but bypasses the fill threshold check by
-    temporarily using a zero-percent threshold.
+    with ``force=True`` which skips the fill-threshold comparison
+    entirely while preserving all other checks (minimum message
+    count, recent turn preservation).
 
     Args:
         ctx: Current agent context.
