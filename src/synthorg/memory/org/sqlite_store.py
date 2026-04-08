@@ -1,5 +1,6 @@
 """SQLite-backed org fact store with MVCC -- append-only log + snapshot."""
 
+import asyncio
 import contextlib
 import json
 import sqlite3
@@ -326,6 +327,7 @@ class SQLiteOrgFactStore:
         _reject_traversal(db_path)
         self._db_path = db_path
         self._db: aiosqlite.Connection | None = None
+        self._write_lock = asyncio.Lock()
 
     async def connect(self) -> None:
         """Open the SQLite database with WAL mode and ensure schema.
@@ -490,75 +492,82 @@ class SQLiteOrgFactStore:
             OrgMemoryWriteError: If the save fails.
         """
         db = self._require_connected()
-        try:
-            await db.execute("BEGIN IMMEDIATE")
-            version, _ = await self._append_to_operation_log(
-                db,
-                fact_id=fact.id,
-                operation_type="PUBLISH",
-                content=fact.content,
-                category=fact.category,
-                tags=fact.tags,
-                author_agent_id=fact.author.agent_id,
-                author_seniority=fact.author.seniority,
-                author_is_human=fact.author.is_human,
-                author_autonomy_level=fact.author.autonomy_level,
-            )
-            await db.execute(
-                "INSERT INTO org_facts_snapshot "
-                "(fact_id, content, category, tags, "
-                "author_agent_id, author_seniority, author_is_human, "
-                "author_autonomy_level, created_at, retracted_at, "
-                "version) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?) "
-                "ON CONFLICT(fact_id) DO UPDATE SET "
-                "content=excluded.content, "
-                "category=excluded.category, "
-                "tags=excluded.tags, "
-                "author_agent_id=excluded.author_agent_id, "
-                "author_seniority=excluded.author_seniority, "
-                "author_is_human=excluded.author_is_human, "
-                "author_autonomy_level=excluded.author_autonomy_level, "
-                "retracted_at=NULL, "
-                "version=excluded.version",
-                (
-                    fact.id,
-                    fact.content,
-                    fact.category.value,
-                    _tags_to_json(fact.tags),
-                    fact.author.agent_id,
-                    (fact.author.seniority.value if fact.author.seniority else None),
-                    int(fact.author.is_human),
+        async with self._write_lock:
+            try:
+                await db.execute("BEGIN IMMEDIATE")
+                version, _ = await self._append_to_operation_log(
+                    db,
+                    fact_id=fact.id,
+                    operation_type="PUBLISH",
+                    content=fact.content,
+                    category=fact.category,
+                    tags=fact.tags,
+                    author_agent_id=fact.author.agent_id,
+                    author_seniority=fact.author.seniority,
+                    author_is_human=fact.author.is_human,
+                    author_autonomy_level=fact.author.autonomy_level,
+                )
+                await db.execute(
+                    "INSERT INTO org_facts_snapshot "
+                    "(fact_id, content, category, tags, "
+                    "author_agent_id, author_seniority, "
+                    "author_is_human, "
+                    "author_autonomy_level, created_at, "
+                    "retracted_at, version) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?) "
+                    "ON CONFLICT(fact_id) DO UPDATE SET "
+                    "content=excluded.content, "
+                    "category=excluded.category, "
+                    "tags=excluded.tags, "
+                    "author_agent_id=excluded.author_agent_id, "
+                    "author_seniority=excluded.author_seniority, "
+                    "author_is_human=excluded.author_is_human, "
+                    "author_autonomy_level="
+                    "excluded.author_autonomy_level, "
+                    "retracted_at=NULL, "
+                    "version=excluded.version",
                     (
-                        fact.author.autonomy_level.value
-                        if fact.author.autonomy_level
-                        else None
+                        fact.id,
+                        fact.content,
+                        fact.category.value,
+                        _tags_to_json(fact.tags),
+                        fact.author.agent_id,
+                        (
+                            fact.author.seniority.value
+                            if fact.author.seniority
+                            else None
+                        ),
+                        int(fact.author.is_human),
+                        (
+                            fact.author.autonomy_level.value
+                            if fact.author.autonomy_level
+                            else None
+                        ),
+                        (
+                            fact.created_at.astimezone(UTC).isoformat()
+                            if fact.created_at.tzinfo is not None
+                            else fact.created_at.replace(tzinfo=UTC).isoformat()
+                        ),
+                        version,
                     ),
-                    (
-                        fact.created_at.astimezone(UTC).isoformat()
-                        if fact.created_at.tzinfo is not None
-                        else fact.created_at.replace(tzinfo=UTC).isoformat()
-                    ),
-                    version,
-                ),
-            )
-            await db.commit()
-        except sqlite3.Error as exc:
-            with contextlib.suppress(sqlite3.Error):
-                await db.execute("ROLLBACK")
-            logger.exception(
-                ORG_MEMORY_WRITE_FAILED,
-                fact_id=fact.id,
-                error=str(exc),
-            )
-            msg = f"Failed to save org fact: {exc}"
-            raise OrgMemoryWriteError(msg) from exc
-        else:
-            logger.info(
-                ORG_MEMORY_MVCC_PUBLISH_APPENDED,
-                fact_id=fact.id,
-                version=version,
-            )
+                )
+                await db.commit()
+            except sqlite3.Error as exc:
+                with contextlib.suppress(sqlite3.Error):
+                    await db.execute("ROLLBACK")
+                logger.exception(
+                    ORG_MEMORY_WRITE_FAILED,
+                    fact_id=fact.id,
+                    error=str(exc),
+                )
+                msg = f"Failed to save org fact: {exc}"
+                raise OrgMemoryWriteError(msg) from exc
+            else:
+                logger.info(
+                    ORG_MEMORY_MVCC_PUBLISH_APPENDED,
+                    fact_id=fact.id,
+                    version=version,
+                )
 
     async def delete(
         self,
@@ -584,56 +593,62 @@ class SQLiteOrgFactStore:
             OrgMemoryWriteError: If the retraction fails.
         """
         db = self._require_connected()
-        try:
-            await db.execute("BEGIN IMMEDIATE")
-            cursor = await db.execute(
-                "SELECT fact_id, category, tags "
-                "FROM org_facts_snapshot "
-                "WHERE fact_id = ? AND retracted_at IS NULL",
-                (fact_id,),
-            )
-            row = await cursor.fetchone()
-            if row is None:
-                await db.execute("ROLLBACK")
-                return False
-            version, now = await self._append_to_operation_log(
-                db,
-                fact_id=fact_id,
-                operation_type="RETRACT",
-                content=None,
-                category=(
-                    OrgFactCategory(row["category"]) if row["category"] else None
-                ),
-                tags=_tags_from_json(row["tags"]),
-                author_agent_id=author.agent_id,
-                author_seniority=author.seniority,
-                author_is_human=author.is_human,
-                author_autonomy_level=author.autonomy_level,
-            )
-            await db.execute(
-                "UPDATE org_facts_snapshot "
-                "SET retracted_at = ?, version = ? "
-                "WHERE fact_id = ?",
-                (now.isoformat(), version, fact_id),
-            )
-            await db.commit()
-        except sqlite3.Error as exc:
-            with contextlib.suppress(sqlite3.Error):
-                await db.execute("ROLLBACK")
-            logger.exception(
-                ORG_MEMORY_WRITE_FAILED,
-                fact_id=fact_id,
-                error=str(exc),
-            )
-            msg = f"Failed to delete org fact: {exc}"
-            raise OrgMemoryWriteError(msg) from exc
-        else:
-            logger.info(
-                ORG_MEMORY_MVCC_RETRACT_APPENDED,
-                fact_id=fact_id,
-                version=version,
-            )
-            return True
+        async with self._write_lock:
+            try:
+                await db.execute("BEGIN IMMEDIATE")
+                cursor = await db.execute(
+                    "SELECT fact_id, category, tags "
+                    "FROM org_facts_snapshot "
+                    "WHERE fact_id = ? "
+                    "AND retracted_at IS NULL",
+                    (fact_id,),
+                )
+                row = await cursor.fetchone()
+                if row is None:
+                    await db.execute("ROLLBACK")
+                    return False
+                version, now = await self._append_to_operation_log(
+                    db,
+                    fact_id=fact_id,
+                    operation_type="RETRACT",
+                    content=None,
+                    category=(
+                        OrgFactCategory(row["category"]) if row["category"] else None
+                    ),
+                    tags=_tags_from_json(row["tags"]),
+                    author_agent_id=author.agent_id,
+                    author_seniority=author.seniority,
+                    author_is_human=author.is_human,
+                    author_autonomy_level=author.autonomy_level,
+                )
+                await db.execute(
+                    "UPDATE org_facts_snapshot "
+                    "SET retracted_at = ?, version = ? "
+                    "WHERE fact_id = ?",
+                    (now.isoformat(), version, fact_id),
+                )
+                await db.commit()
+            except (
+                sqlite3.Error,
+                ValueError,
+                OrgMemoryQueryError,
+            ) as exc:
+                with contextlib.suppress(sqlite3.Error):
+                    await db.execute("ROLLBACK")
+                logger.exception(
+                    ORG_MEMORY_WRITE_FAILED,
+                    fact_id=fact_id,
+                    error=str(exc),
+                )
+                msg = f"Failed to delete org fact: {exc}"
+                raise OrgMemoryWriteError(msg) from exc
+            else:
+                logger.info(
+                    ORG_MEMORY_MVCC_RETRACT_APPENDED,
+                    fact_id=fact_id,
+                    version=version,
+                )
+                return True
 
     # ── Read operations ─────────────────────────────────────────
 
