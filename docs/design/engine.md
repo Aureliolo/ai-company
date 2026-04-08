@@ -757,8 +757,9 @@ async run(
       ``DecisionRecord.metadata`` field (best-effort; lookup failure
       is logged at WARNING and the decision record is still written).
       See ``docs/design/agents.md`` for the full design.
-    - `SHUTDOWN` termination: current status -> INTERRUPTED
-      (see [Graceful Shutdown](#graceful-shutdown-protocol)).
+    - `SHUTDOWN` termination: current status -> INTERRUPTED (or SUSPENDED
+      if the checkpoint strategy successfully checkpointed the task;
+      see [Graceful Shutdown](#graceful-shutdown-protocol)).
     - `ERROR` termination: recovery strategy is applied (default
       `FailAndReassignStrategy` transitions to FAILED;
       see [Crash Recovery](#agent-crash-recovery)).
@@ -1153,8 +1154,10 @@ The engine sets a shutdown event, stops accepting new tasks, and gives in-flight
 agents a grace period to finish their current turn. Agents check the shutdown
 event at turn boundaries (between LLM calls, before tool invocations) and exit
 cooperatively. After the grace period, remaining agents are force-cancelled.
-**All tasks terminated by shutdown -- whether they exited cooperatively or were
-force-cancelled -- are marked `INTERRUPTED`** by the engine layer.
+**All tasks terminated by this strategy -- whether they exited cooperatively or
+were force-cancelled -- are marked `INTERRUPTED`** by the engine layer.
+(Strategy 4 uses `SUSPENDED` for successfully checkpointed tasks instead;
+see [Strategy 4](#strategy-4-checkpoint-and-stop).)
 
 ```yaml
 graceful_shutdown:

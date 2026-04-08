@@ -418,21 +418,33 @@ class TestGracefulShutdownConfig:
         with pytest.raises(ValidationError):
             GracefulShutdownConfig(strategy="   ")  # type: ignore[arg-type]
 
-    def test_tool_timeout_default(self) -> None:
-        config = GracefulShutdownConfig()
-        assert config.tool_timeout_seconds == 60.0
+    @pytest.mark.parametrize(
+        ("value", "expected"),
+        [
+            (None, 60.0),
+            (300, 300.0),
+        ],
+        ids=["default", "at-max"],
+    )
+    def test_tool_timeout_valid(
+        self,
+        value: float | None,
+        expected: float,
+    ) -> None:
+        if value is None:
+            config = GracefulShutdownConfig()
+        else:
+            config = GracefulShutdownConfig(tool_timeout_seconds=value)
+        assert config.tool_timeout_seconds == expected
 
-    def test_tool_timeout_zero_rejected(self) -> None:
+    @pytest.mark.parametrize(
+        "value",
+        [0, 301],
+        ids=["zero", "above-max"],
+    )
+    def test_tool_timeout_rejected(self, value: float) -> None:
         with pytest.raises(ValidationError):
-            GracefulShutdownConfig(tool_timeout_seconds=0)
-
-    def test_tool_timeout_upper_bound(self) -> None:
-        with pytest.raises(ValidationError):
-            GracefulShutdownConfig(tool_timeout_seconds=301)
-
-    def test_tool_timeout_at_max(self) -> None:
-        config = GracefulShutdownConfig(tool_timeout_seconds=300)
-        assert config.tool_timeout_seconds == 300.0
+            GracefulShutdownConfig(tool_timeout_seconds=value)
 
 
 # ── _log_post_cancel_exceptions ───────────────────────────────────

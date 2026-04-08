@@ -105,14 +105,17 @@ export const KANBAN_COLUMNS: readonly KanbanColumn[] = [
   { id: 'in_review', label: 'In Review', statuses: ['in_review'], color: 'warning' },
   { id: 'done', label: 'Done', statuses: ['completed'], color: 'success' },
   { id: 'blocked', label: 'Blocked', statuses: ['blocked'], color: 'danger' },
-  { id: 'terminal', label: 'Terminal', statuses: ['failed', 'interrupted', 'suspended', 'cancelled'], color: 'text-secondary' },
+  { id: 'terminal', label: 'Terminal', statuses: ['failed', 'interrupted', 'cancelled'], color: 'text-secondary' },
 ] as const
 
-export const STATUS_TO_COLUMN: Record<TaskStatus, KanbanColumnId> = Object.fromEntries(
+/** Off-board statuses not displayed on the Kanban board (resumable). */
+export const OFF_BOARD_STATUSES: ReadonlySet<TaskStatus> = new Set(['suspended'])
+
+export const STATUS_TO_COLUMN: Partial<Record<TaskStatus, KanbanColumnId>> = Object.fromEntries(
   KANBAN_COLUMNS.flatMap((col) =>
     col.statuses.map((status) => [status, col.id]),
   ),
-) as Record<TaskStatus, KanbanColumnId>
+)
 
 // ── Group tasks by column ───────────────────────────────────
 
@@ -129,7 +132,9 @@ export function groupTasksByColumn(tasks: readonly Task[]): Record<KanbanColumnI
 
   for (const task of tasks) {
     const columnId = STATUS_TO_COLUMN[task.status]
-    grouped[columnId].push(task)
+    if (columnId) {
+      grouped[columnId].push(task)
+    }
   }
 
   return grouped

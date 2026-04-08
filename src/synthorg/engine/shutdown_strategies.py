@@ -491,6 +491,8 @@ class CheckpointAndStopStrategy:
                 reason="checkpoint timed out",
             )
             return False
+        except MemoryError, RecursionError:
+            raise
         except Exception as exc:
             logger.exception(
                 EXECUTION_SHUTDOWN_CHECKPOINT_FAILED,
