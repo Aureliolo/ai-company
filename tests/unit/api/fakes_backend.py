@@ -143,6 +143,26 @@ class FakeSsrfViolationRepository:
         return True
 
 
+class FakeCircuitBreakerStateRepository:
+    """In-memory circuit breaker state repository for tests."""
+
+    def __init__(self) -> None:
+        self._store: dict[tuple[str, str], Any] = {}
+
+    async def save(self, record: Any) -> None:
+        self._store[(record.pair_key_a, record.pair_key_b)] = record
+
+    async def load_all(self) -> tuple[Any, ...]:
+        return tuple(self._store.values())
+
+    async def delete(self, pair_key_a: str, pair_key_b: str) -> bool:
+        key = (pair_key_a, pair_key_b)
+        if key in self._store:
+            del self._store[key]
+            return True
+        return False
+
+
 class FakeVersionRepository:
     """In-memory VersionRepository for tests (any snapshot type)."""
 
@@ -211,6 +231,7 @@ class FakePersistenceBackend:
         self._identity_versions = FakeVersionRepository()
         self._risk_overrides = FakeRiskOverrideRepository()
         self._ssrf_violations = FakeSsrfViolationRepository()
+        self._circuit_breaker_state = FakeCircuitBreakerStateRepository()
         self._tasks = FakeTaskRepository()
         self._cost_records = FakeCostRecordRepository()
         self._messages = FakeMessageRepository()
@@ -350,6 +371,10 @@ class FakePersistenceBackend:
     @property
     def ssrf_violations(self) -> FakeSsrfViolationRepository:
         return self._ssrf_violations
+
+    @property
+    def circuit_breaker_state(self) -> FakeCircuitBreakerStateRepository:
+        return self._circuit_breaker_state
 
     async def get_setting(self, key: str) -> str | None:
         return self._settings.get(key)
