@@ -192,7 +192,9 @@ class AssetManagerTool(BaseDesignTool):
             matching = {
                 aid: meta
                 for aid, meta in self._assets.items()
-                if tag_set.issubset(set(meta.get("tags", [])))
+                if tag_set.issubset(
+                    {t for t in (meta.get("tags") or []) if isinstance(t, str)}
+                )
             }
         else:
             matching = self._assets
@@ -222,8 +224,8 @@ class AssetManagerTool(BaseDesignTool):
         arguments: dict[str, Any],
     ) -> ToolExecutionResult:
         """Retrieve a specific asset by ID."""
-        asset_id: str | None = arguments.get("asset_id")
-        if not asset_id:
+        asset_id = arguments.get("asset_id")
+        if not isinstance(asset_id, str) or not asset_id:
             logger.warning(
                 DESIGN_ASSET_VALIDATION_FAILED,
                 action="get",
@@ -265,8 +267,8 @@ class AssetManagerTool(BaseDesignTool):
         arguments: dict[str, Any],
     ) -> ToolExecutionResult:
         """Delete an asset by ID."""
-        asset_id: str | None = arguments.get("asset_id")
-        if not asset_id:
+        asset_id = arguments.get("asset_id")
+        if not isinstance(asset_id, str) or not asset_id:
             logger.warning(
                 DESIGN_ASSET_VALIDATION_FAILED,
                 action="delete",
@@ -328,7 +330,9 @@ class AssetManagerTool(BaseDesignTool):
             searchable = " ".join(str(v).lower() for v in meta.values())
             if query not in searchable:
                 continue
-            if tag_set and not tag_set.issubset(set(meta.get("tags", []))):
+            if tag_set and not tag_set.issubset(
+                {t for t in (meta.get("tags") or []) if isinstance(t, str)}
+            ):
                 continue
             matching[aid] = meta
 

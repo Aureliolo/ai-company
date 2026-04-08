@@ -55,22 +55,20 @@ class TestEmailConfig:
         )
         assert "secret" not in repr(config)
 
-    def test_partial_credentials_rejected(self) -> None:
+    @pytest.mark.parametrize(
+        "kwargs",
+        [
+            {"username": "user"},
+            {"password": "secret"},
+        ],
+        ids=["username_only", "password_only"],
+    )
+    def test_partial_credentials_rejected(self, kwargs: dict[str, str]) -> None:
         with pytest.raises(ValidationError, match="username and password"):
             EmailConfig(
                 host="smtp.example.com",
                 from_address="test@example.com",
-                username="user",
-                # password missing
-            )
-
-    def test_partial_credentials_password_only_rejected(self) -> None:
-        with pytest.raises(ValidationError, match="username and password"):
-            EmailConfig(
-                host="smtp.example.com",
-                from_address="test@example.com",
-                password="secret",
-                # username missing
+                **kwargs,
             )
 
     def test_both_credentials_accepted(self) -> None:

@@ -140,6 +140,7 @@ class TestImageGeneratorTool:
         )
         assert result.is_error
         assert "must be between" in result.content
+        assert len(mock_provider.calls) == 0
 
     async def test_execute_invalid_style(
         self,
@@ -149,6 +150,7 @@ class TestImageGeneratorTool:
         result = await tool.execute(arguments={"prompt": "test", "style": "watercolor"})
         assert result.is_error
         assert "Invalid style" in result.content
+        assert len(mock_provider.calls) == 0
 
     async def test_execute_invalid_quality(
         self,
@@ -158,3 +160,4 @@ class TestImageGeneratorTool:
         result = await tool.execute(arguments={"prompt": "test", "quality": "ultra"})
         assert result.is_error
         assert "Invalid quality" in result.content
+        assert len(mock_provider.calls) == 0
