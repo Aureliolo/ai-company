@@ -12,7 +12,7 @@ from synthorg.tools.factory import (
 from synthorg.tools.git_tools import GitCloneTool
 from synthorg.tools.registry import ToolRegistry
 
-_EXPECTED_TOOL_COUNT: int = 14
+_EXPECTED_TOOL_COUNT: int = 15
 
 
 @pytest.mark.integration
