@@ -256,6 +256,10 @@ class TestOtlpHandlerExportFailure:
             handler.emit(_make_record("one"))
             handler.emit(_make_record("two"))
         finally:
-            handler.close()
+            with patch(
+                "synthorg.observability.otlp_handler.urllib.request.urlopen",
+                side_effect=ConnectionError("stubbed"),
+            ):
+                handler.close()
         # After close, queue should be empty
         assert handler._queue.empty()

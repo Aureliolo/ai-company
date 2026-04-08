@@ -45,9 +45,15 @@ class OtlpHandler(logging.Handler):
     are also flushed when the batch size is reached or when the handler
     is closed.
 
+    Only HTTP/JSON transport is implemented. gRPC is rejected at
+    both config validation (``SinkConfig``) and handler init.
+    This is an approved deviation from issue #1122 which originally
+    specified HTTP/protobuf -- the implementation uses JSON encoding
+    with ``Content-Type: application/json``.
+
     Args:
         endpoint: OTLP collector endpoint URL.
-        protocol: OTLP transport protocol (HTTP/protobuf or gRPC).
+        protocol: OTLP transport protocol (only ``HTTP_JSON`` supported).
         headers: Extra HTTP headers as ``(name, value)`` pairs.
         batch_size: Number of records per export batch.
         flush_interval: Seconds between automatic flushes.

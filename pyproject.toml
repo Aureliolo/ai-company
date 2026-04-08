@@ -23,7 +23,6 @@ dependencies = [
     "jsonschema==4.26.0",
     "litellm==1.83.0",
     "litestar[standard,structlog,pydantic,brotli,prometheus]==2.21.1",
-    "prometheus-client>=0.21.0",
     "mcp==1.27.0",
     "mem0ai==1.0.11",
     "mmh3==5.2.1",
