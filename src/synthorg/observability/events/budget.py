@@ -51,5 +51,6 @@ BUDGET_EMBEDDING_MODEL_UNPRICED: Final[str] = "budget.embedding_cost.model_unpri
 
 # -- Project-level budget events --
 BUDGET_PROJECT_COST_QUERIED: Final[str] = "budget.project_cost.queried"
+BUDGET_PROJECT_RECORDS_QUERIED: Final[str] = "budget.project_records.queried"
 BUDGET_PROJECT_BUDGET_EXCEEDED: Final[str] = "budget.project_budget.exceeded"
 BUDGET_PROJECT_ENFORCEMENT_CHECK: Final[str] = "budget.project.enforcement_check"

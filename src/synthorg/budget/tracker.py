@@ -38,6 +38,7 @@ from synthorg.observability.events.budget import (
     BUDGET_ORCHESTRATION_RATIO_ALERT,
     BUDGET_ORCHESTRATION_RATIO_QUERIED,
     BUDGET_PROJECT_COST_QUERIED,
+    BUDGET_PROJECT_RECORDS_QUERIED,
     BUDGET_PROVIDER_USAGE_QUERIED,
     BUDGET_QUERY_EXCEEDS_RETENTION,
     BUDGET_RECORD_ADDED,
@@ -239,7 +240,7 @@ class CostTracker:
 
     async def get_project_cost(
         self,
-        project_id: str,
+        project_id: NotBlankStr,
         *,
         start: datetime | None = None,
         end: datetime | None = None,
@@ -276,7 +277,7 @@ class CostTracker:
 
     async def get_project_records(
         self,
-        project_id: str,
+        project_id: NotBlankStr,
         *,
         start: datetime | None = None,
         end: datetime | None = None,
@@ -297,7 +298,7 @@ class CostTracker:
         """
         _validate_time_range(start, end)
         logger.debug(
-            BUDGET_PROJECT_COST_QUERIED,
+            BUDGET_PROJECT_RECORDS_QUERIED,
             project_id=project_id,
             start=start,
             end=end,

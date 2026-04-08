@@ -253,6 +253,16 @@ class BudgetEnforcer:
     ) -> None:
         """Check project-level budget and raise if exceeded.
 
+        .. warning::
+
+            The current in-memory tracker applies retention-based
+            pruning (168 h).  For projects whose lifetime exceeds
+            the retention window, older cost records are pruned and
+            the aggregate returned by ``get_project_cost`` under-
+            reports actual spend.  A persistent cost-tracking backend
+            (planned) will resolve this; until then, project budgets
+            are accurate only within the retention window.
+
         Args:
             project_id: Project identifier for cost lookup.
             project_budget: Total project budget (from Project.budget).
@@ -652,6 +662,7 @@ class BudgetEnforcer:
             agent_id=agent_id,
             project_budget=project_budget,
             project_baseline=project_baseline,
+            project_id=project_id or "",
         )
 
     # ── Risk budget enforcement ─────────────────────────────────

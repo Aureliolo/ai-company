@@ -9,6 +9,7 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 from synthorg.budget.cost_record import CostRecord
+from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.observability import get_logger
 from synthorg.observability.events.execution import (
     EXECUTION_ENGINE_COST_FAILED,
@@ -31,7 +32,7 @@ async def record_execution_costs(  # noqa: PLR0913
     task_id: str,
     *,
     tracker: CostTracker | None,
-    project_id: str | None = None,
+    project_id: NotBlankStr | None = None,
 ) -> None:
     """Record per-turn costs to the CostTracker if available.
 
@@ -130,4 +131,5 @@ async def _submit_cost_record(
         agent_id=agent_id,
         task_id=task_id,
         cost_usd=turn.cost_usd,
+        project_id=record.project_id,
     )

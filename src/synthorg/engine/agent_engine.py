@@ -1276,20 +1276,23 @@ class AgentEngine:
     ) -> float:
         """Validate project existence and agent membership.
 
-        Returns the project budget (0.0 when no project-level budget).
+        Returns the project budget (0.0 when no project-level budget
+        or when the task has no project assigned).
 
         Raises:
             ProjectNotFoundError: When the project does not exist.
             ProjectAgentNotMemberError: When the agent is not in the
                 project team (non-empty team only).
         """
+        if not task.project:
+            return 0.0
         project = await self._project_repo.get(task.project)  # type: ignore[union-attr]
         if project is None:
             logger.warning(
                 EXECUTION_PROJECT_VALIDATION_FAILED,
                 agent_id=agent_id,
                 task_id=task_id,
-                project=task.project,
+                project_id=task.project,
                 reason="project_not_found",
             )
             raise ProjectNotFoundError(project_id=task.project)
@@ -1298,7 +1301,7 @@ class AgentEngine:
                 EXECUTION_PROJECT_VALIDATION_FAILED,
                 agent_id=agent_id,
                 task_id=task_id,
-                project=task.project,
+                project_id=task.project,
                 reason="agent_not_in_team",
             )
             raise ProjectAgentNotMemberError(
@@ -1355,6 +1358,7 @@ class AgentEngine:
                 resumed = await self._resume_from_checkpoint(
                     recovery_result,
                     identity,
+                    ctx.task_execution.task,
                     agent_id,
                     task_id,
                     completion_config=completion_config,
@@ -1404,6 +1408,7 @@ class AgentEngine:
         self,
         recovery_result: RecoveryResult,
         identity: AgentIdentity,
+        task: Task,
         agent_id: str,
         task_id: str,
         *,
@@ -1417,7 +1422,20 @@ class AgentEngine:
         Policy: resumed executions run without a wall-clock timeout.
         The loop's per-turn budget and max_turns still constrain
         execution.
+
+        Re-validates project membership and budget before resuming
+        to prevent stale checkpoint runs after team/budget changes.
         """
+        # Re-validate project context (team may have changed since crash)
+        project_budget = 0.0
+        if self._project_repo is not None:
+            project_budget = await self._validate_project(
+                task=task,
+                agent_id=agent_id,
+                task_id=task_id,
+            )
+            project_id = task.project
+
         checkpoint_json = self._validate_checkpoint_json(
             recovery_result,
             agent_id,
@@ -1441,6 +1459,8 @@ class AgentEngine:
                 completion_config=completion_config,
                 effective_autonomy=effective_autonomy,
                 provider=provider,
+                project_id=project_id,
+                project_budget=project_budget,
             )
         except MemoryError, RecursionError:
             raise
@@ -1474,6 +1494,8 @@ class AgentEngine:
         completion_config: CompletionConfig | None = None,
         effective_autonomy: EffectiveAutonomy | None = None,
         provider: CompletionProvider | None = None,
+        project_id: str | None = None,
+        project_budget: float = 0.0,
     ) -> tuple[ExecutionResult, str]:
         """Deserialize checkpoint context and run the resumed loop.
 
@@ -1496,6 +1518,8 @@ class AgentEngine:
             completion_config=completion_config,
             effective_autonomy=effective_autonomy,
             provider=provider,
+            project_id=project_id,
+            project_budget=project_budget,
         )
         return result, checkpoint_ctx.execution_id
 
@@ -1508,6 +1532,8 @@ class AgentEngine:
         completion_config: CompletionConfig | None = None,
         effective_autonomy: EffectiveAutonomy | None = None,
         provider: CompletionProvider | None = None,
+        project_id: str | None = None,
+        project_budget: float = 0.0,
     ) -> ExecutionResult:
         """Run the execution loop on a reconstituted checkpoint context."""
         budget_checker: BudgetChecker | None
@@ -1517,6 +1543,8 @@ class AgentEngine:
             budget_checker = await self._budget_enforcer.make_budget_checker(
                 checkpoint_ctx.task_execution.task,
                 agent_id,
+                project_id=project_id,
+                project_budget=project_budget,
             )
         else:
             budget_checker = make_budget_checker(

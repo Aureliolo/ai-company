@@ -322,43 +322,54 @@ class TestAnalyticsFieldPropagation:
 class TestProjectIdPropagation:
     """Tests for project_id propagation through cost recording."""
 
-    async def test_project_id_set_on_records(self) -> None:
+    @pytest.mark.parametrize(
+        ("turns", "project_id", "expected_count", "expected_ids"),
+        [
+            pytest.param(
+                (_turn(),),
+                "proj-100",
+                1,
+                ("proj-100",),
+                id="single-turn-with-project",
+            ),
+            pytest.param(
+                (_turn(),),
+                None,
+                1,
+                (None,),
+                id="single-turn-none-by-default",
+            ),
+            pytest.param(
+                (
+                    _turn(turn_number=1, cost_usd=0.01),
+                    _turn(turn_number=2, cost_usd=0.02),
+                ),
+                "proj-200",
+                2,
+                ("proj-200", "proj-200"),
+                id="multi-turn-all-tagged",
+            ),
+        ],
+    )
+    async def test_project_id_propagation(
+        self,
+        turns: tuple[TurnRecord, ...],
+        project_id: str | None,
+        expected_count: int,
+        expected_ids: tuple[str | None, ...],
+    ) -> None:
         tracker = _FakeTracker()
-        await record_execution_costs(
-            _result((_turn(),)),
-            _identity(),
-            "agent-1",
-            "task-1",
-            tracker=tracker,  # type: ignore[arg-type]
-            project_id="proj-100",
-        )
-        assert len(tracker.records) == 1
-        assert tracker.records[0].project_id == "proj-100"
-
-    async def test_project_id_none_by_default(self) -> None:
-        tracker = _FakeTracker()
-        await record_execution_costs(
-            _result((_turn(),)),
-            _identity(),
-            "agent-1",
-            "task-1",
-            tracker=tracker,  # type: ignore[arg-type]
-        )
-        assert tracker.records[0].project_id is None
-
-    async def test_project_id_applied_to_all_turns(self) -> None:
-        turns = (
-            _turn(turn_number=1, cost_usd=0.01),
-            _turn(turn_number=2, cost_usd=0.02),
-        )
-        tracker = _FakeTracker()
+        kwargs: dict[str, object] = {
+            "tracker": tracker,
+        }
+        if project_id is not None:
+            kwargs["project_id"] = project_id
         await record_execution_costs(
             _result(turns),
             _identity(),
             "agent-1",
             "task-1",
-            tracker=tracker,  # type: ignore[arg-type]
-            project_id="proj-200",
+            **kwargs,  # type: ignore[arg-type]
         )
-        assert len(tracker.records) == 2
-        assert all(r.project_id == "proj-200" for r in tracker.records)
+        assert len(tracker.records) == expected_count
+        assert tuple(r.project_id for r in tracker.records) == expected_ids

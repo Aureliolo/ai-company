@@ -104,4 +104,3 @@ EXECUTION_METRICS_UNEXPECTED_TYPE: Final[str] = "execution.metrics.unexpected_ty
 
 # -- Project validation events --
 EXECUTION_PROJECT_VALIDATION_FAILED: Final[str] = "execution.project.validation_failed"
-EXECUTION_PROJECT_COST_RECORDED: Final[str] = "execution.project.cost_recorded"
