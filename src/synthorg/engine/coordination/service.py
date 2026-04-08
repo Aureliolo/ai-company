@@ -10,6 +10,11 @@ from typing import TYPE_CHECKING
 from uuid import uuid4
 
 from synthorg.core.enums import CoordinationTopology, TaskStatus
+from synthorg.engine.coordination.attribution import (
+    AgentContribution,
+    CoordinationResultWithAttribution,
+    build_agent_contributions,
+)
 from synthorg.engine.coordination.dispatchers import (
     DispatchResult,
     select_dispatcher,
@@ -22,6 +27,7 @@ from synthorg.engine.errors import CoordinationPhaseError
 from synthorg.engine.task_engine_models import TransitionTaskMutation
 from synthorg.observability import get_logger
 from synthorg.observability.events.coordination import (
+    COORDINATION_CLEANUP_FAILED,
     COORDINATION_COMPLETED,
     COORDINATION_FAILED,
     COORDINATION_PHASE_COMPLETED,
@@ -43,6 +49,7 @@ if TYPE_CHECKING:
     from synthorg.engine.routing.service import TaskRoutingService
     from synthorg.engine.task_engine import TaskEngine
     from synthorg.engine.workspace.service import WorkspaceIsolationService
+    from synthorg.hr.performance.tracker import PerformanceTracker
 
 logger = get_logger(__name__)
 
@@ -66,17 +73,20 @@ class MultiAgentCoordinator:
         parallel_executor: Executor for parallel agent runs.
         workspace_service: Optional workspace isolation service.
         task_engine: Optional task engine for parent status updates.
+        performance_tracker: Optional tracker for recording per-agent
+            coordination contributions.
     """
 
     __slots__ = (
         "_decomposition_service",
         "_parallel_executor",
+        "_performance_tracker",
         "_routing_service",
         "_task_engine",
         "_workspace_service",
     )
 
-    def __init__(
+    def __init__(  # noqa: PLR0913
         self,
         *,
         decomposition_service: DecompositionService,
@@ -84,17 +94,19 @@ class MultiAgentCoordinator:
         parallel_executor: ParallelExecutor,
         workspace_service: WorkspaceIsolationService | None = None,
         task_engine: TaskEngine | None = None,
+        performance_tracker: PerformanceTracker | None = None,
     ) -> None:
         self._decomposition_service = decomposition_service
         self._routing_service = routing_service
         self._parallel_executor = parallel_executor
         self._workspace_service = workspace_service
         self._task_engine = task_engine
+        self._performance_tracker = performance_tracker
 
     async def coordinate(
         self,
         context: CoordinationContext,
-    ) -> CoordinationResult:
+    ) -> CoordinationResultWithAttribution:
         """Run the full multi-agent coordination pipeline.
 
         Pipeline:
@@ -105,12 +117,14 @@ class MultiAgentCoordinator:
             5. Select dispatcher and execute waves.
             6. Rollup subtask statuses.
             7. Update parent task via TaskEngine (if provided).
+            8. Build per-agent attribution from routing + outcomes.
 
         Args:
             context: Coordination context with task, agents, and config.
 
         Returns:
-            CoordinationResult with all phase outcomes.
+            CoordinationResultWithAttribution wrapping the result
+            with per-agent contribution data.
 
         Raises:
             CoordinationPhaseError: When a critical phase fails.
@@ -195,7 +209,43 @@ class MultiAgentCoordinator:
             total_cost_usd=total_cost,
         )
 
-        return result
+        # Post-pipeline: build per-agent attribution.
+        # Guard so attribution/tracker failures don't fail a completed run.
+        contributions: tuple[AgentContribution, ...] = ()
+        try:
+            contributions = build_agent_contributions(
+                routing_result,
+                dispatch_result.waves,
+            )
+        except MemoryError, RecursionError:
+            raise
+        except Exception as attr_exc:
+            logger.warning(
+                COORDINATION_CLEANUP_FAILED,
+                parent_task_id=task.id,
+                error=str(attr_exc),
+                context="post_completion_attribution_build",
+            )
+
+        if self._performance_tracker is not None and contributions:
+            try:
+                self._performance_tracker.record_coordination_contributions(
+                    contributions,
+                )
+            except MemoryError, RecursionError:
+                raise
+            except Exception as tracker_exc:
+                logger.warning(
+                    COORDINATION_CLEANUP_FAILED,
+                    parent_task_id=task.id,
+                    error=str(tracker_exc),
+                    context="post_completion_tracker_write",
+                )
+
+        return CoordinationResultWithAttribution(
+            result=result,
+            agent_contributions=contributions,
+        )
 
     async def _phase_decompose(
         self,

@@ -1312,6 +1312,7 @@ export interface CoordinationResultResponse {
   topology: CoordinationTopology
   total_duration_seconds: number
   total_cost_usd: number
+  currency: string
   readonly phases: readonly CoordinationPhaseResponse[]
   wave_count: number
   is_success: boolean

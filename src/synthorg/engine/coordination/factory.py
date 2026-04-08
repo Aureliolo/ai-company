@@ -39,6 +39,7 @@ if TYPE_CHECKING:
     from synthorg.engine.workspace.config import WorkspaceIsolationConfig
     from synthorg.engine.workspace.protocol import WorkspaceIsolationStrategy
     from synthorg.engine.workspace.service import WorkspaceIsolationService
+    from synthorg.hr.performance.tracker import PerformanceTracker
     from synthorg.providers.protocol import CompletionProvider
 
 logger = get_logger(__name__)
@@ -165,6 +166,7 @@ def build_coordinator(  # noqa: PLR0913
     workspace_strategy: WorkspaceIsolationStrategy | None = None,
     workspace_config: WorkspaceIsolationConfig | None = None,
     shutdown_manager: ShutdownManager | None = None,
+    performance_tracker: PerformanceTracker | None = None,
 ) -> MultiAgentCoordinator:
     """Build a fully wired :class:`MultiAgentCoordinator`.
 
@@ -190,6 +192,8 @@ def build_coordinator(  # noqa: PLR0913
         workspace_strategy: Optional workspace isolation strategy.
         workspace_config: Optional workspace isolation config.
         shutdown_manager: Optional shutdown manager for the executor.
+        performance_tracker: Optional tracker for recording
+            per-agent coordination contributions.
 
     Returns:
         A fully constructed ``MultiAgentCoordinator``.
@@ -215,6 +219,7 @@ def build_coordinator(  # noqa: PLR0913
             workspace_strategy, workspace_config
         ),
         task_engine=task_engine,
+        performance_tracker=performance_tracker,
     )
 
     logger.debug(

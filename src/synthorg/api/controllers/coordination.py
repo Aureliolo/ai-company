@@ -42,6 +42,9 @@ if TYPE_CHECKING:
     from synthorg.api.state import AppState
     from synthorg.core.agent import AgentIdentity
     from synthorg.core.task import Task
+    from synthorg.engine.coordination.attribution import (
+        CoordinationResultWithAttribution,
+    )
 
 logger = get_logger(__name__)
 
@@ -171,7 +174,7 @@ class CoordinationController(Controller):
             agent_count=len(agents),
         )
 
-        result = await self._execute(
+        attributed = await self._execute(
             app_state,
             request,
             context,
@@ -188,7 +191,10 @@ class CoordinationController(Controller):
             )
             currency = DEFAULT_CURRENCY
         return ApiResponse(
-            data=_map_result_to_response(result, currency=currency),
+            data=_map_result_to_response(
+                attributed.result,
+                currency=currency,
+            ),
         )
 
     async def _get_task(
@@ -239,10 +245,10 @@ class CoordinationController(Controller):
         request: Request[Any, Any, Any],
         context: CoordinationContext,
         task_id: str,
-    ) -> CoordinationResult:
+    ) -> CoordinationResultWithAttribution:
         """Run coordination and publish WS events."""
         try:
-            result = await app_state.coordinator.coordinate(context)
+            attributed = await app_state.coordinator.coordinate(context)
         except CoordinationPhaseError as exc:
             logger.warning(
                 API_COORDINATION_FAILED,
@@ -276,9 +282,12 @@ class CoordinationController(Controller):
             )
             raise
 
+        result = attributed.result
+        is_success = attributed.is_success
+
         ws_event_type = (
             WsEventType.COORDINATION_COMPLETED
-            if result.is_success
+            if is_success
             else WsEventType.COORDINATION_FAILED
         )
         _publish_ws_event(
@@ -287,22 +296,22 @@ class CoordinationController(Controller):
             {
                 "task_id": task_id,
                 "topology": result.topology.value,
-                "is_success": result.is_success,
+                "is_success": is_success,
                 "total_duration_seconds": result.total_duration_seconds,
             },
         )
         log_event = (
-            API_COORDINATION_COMPLETED if result.is_success else API_COORDINATION_FAILED
+            API_COORDINATION_COMPLETED if is_success else API_COORDINATION_FAILED
         )
-        log_fn = logger.info if result.is_success else logger.warning
+        log_fn = logger.info if is_success else logger.warning
         log_fn(
             log_event,
             task_id=task_id,
             topology=result.topology.value,
-            is_success=result.is_success,
+            is_success=is_success,
             total_duration_seconds=result.total_duration_seconds,
         )
-        return result
+        return attributed
 
     async def _resolve_agents(
         self,
@@ -326,11 +335,20 @@ class CoordinationController(Controller):
         registry = app_state.agent_registry
 
         if data.agent_names is not None:
-            results = await asyncio.gather(
-                *(registry.get_by_name(name) for name in data.agent_names)
-            )
+            names = data.agent_names
+            results: list[AgentIdentity | None] = [None] * len(names)
+            async with asyncio.TaskGroup() as tg:
+                for idx, name in enumerate(names):
+
+                    async def _resolve(
+                        i: int = idx,
+                        n: str = name,
+                    ) -> None:
+                        results[i] = await registry.get_by_name(n)
+
+                    tg.create_task(_resolve())
             agents: list[AgentIdentity] = []
-            for name, agent in zip(data.agent_names, results, strict=True):
+            for name, agent in zip(names, results, strict=True):
                 if agent is None:
                     logger.warning(
                         API_COORDINATION_AGENT_RESOLVE_FAILED,

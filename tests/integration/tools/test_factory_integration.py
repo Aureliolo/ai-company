@@ -12,7 +12,7 @@ from synthorg.tools.factory import (
 from synthorg.tools.git_tools import GitCloneTool
 from synthorg.tools.registry import ToolRegistry
 
-_EXPECTED_TOOL_COUNT: int = 14
+_EXPECTED_TOOL_COUNT: int = 15
 
 
 @pytest.mark.integration
@@ -102,4 +102,9 @@ company_name: test-corp
         """Factory output can be wrapped in ToolRegistry without errors."""
         tools = build_default_tools(workspace=tmp_path)
         registry = ToolRegistry(tools)
-        assert len(list(registry.all_tools())) == _EXPECTED_TOOL_COUNT
+        all_tools = list(registry.all_tools())
+        assert len(all_tools) == _EXPECTED_TOOL_COUNT
+        tool_names = {t.name for t in all_tools}
+        assert "compact_context" in tool_names
+        assert "read_file" in tool_names
+        assert "write_file" in tool_names

@@ -16,3 +16,11 @@ CONTEXT_BUDGET_COMPACTION_FALLBACK: Final[str] = "context_budget.compaction.fall
 
 # Indicator injection
 CONTEXT_BUDGET_INDICATOR_INJECTED: Final[str] = "context_budget.indicator.injected"
+
+# Agent-controlled compaction
+CONTEXT_BUDGET_AGENT_COMPACTION_REQUESTED: Final[str] = (
+    "context_budget.agent_compaction.requested"
+)
+CONTEXT_BUDGET_EPISTEMIC_MARKERS_PRESERVED: Final[str] = (
+    "context_budget.epistemic_markers.preserved"
+)

@@ -117,9 +117,11 @@ if TYPE_CHECKING:
     from synthorg.core.agent import AgentIdentity
     from synthorg.core.task import Task
     from synthorg.engine.compaction import CompactionCallback
+    from synthorg.engine.coordination.attribution import (
+        CoordinationResultWithAttribution,
+    )
     from synthorg.engine.coordination.models import (
         CoordinationContext,
-        CoordinationResult,
     )
     from synthorg.engine.coordination.service import MultiAgentCoordinator
     from synthorg.engine.hybrid_models import HybridLoopConfig
@@ -452,14 +454,14 @@ class AgentEngine:
     async def coordinate(
         self,
         context: CoordinationContext,
-    ) -> CoordinationResult:
+    ) -> CoordinationResultWithAttribution:
         """Delegate to the multi-agent coordinator.
 
         Args:
             context: Coordination context with task, agents, and config.
 
         Returns:
-            Coordination result with all phase outcomes.
+            Coordination result with per-agent attribution data.
 
         Raises:
             ExecutionStateError: If no coordinator is configured.

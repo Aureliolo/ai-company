@@ -222,6 +222,9 @@ class TestCoordinationWiring:
         # a task-id-aware manual strategy so decomposition succeeds
         from unittest.mock import AsyncMock
 
+        from synthorg.engine.coordination.attribution import (
+            CoordinationResultWithAttribution,
+        )
         from synthorg.engine.coordination.models import (
             CoordinationPhaseResult,
             CoordinationResult,
@@ -229,7 +232,7 @@ class TestCoordinationWiring:
 
         async def _mock_coordinate(context):  # type: ignore[no-untyped-def]
             """Return a realistic result keyed to the actual task."""
-            return CoordinationResult(
+            result = CoordinationResult(
                 parent_task_id=context.task.id,
                 topology=CoordinationTopology.SAS,
                 phases=(
@@ -247,6 +250,7 @@ class TestCoordinationWiring:
                 total_duration_seconds=0.05,
                 total_cost_usd=0.001,
             )
+            return CoordinationResultWithAttribution(result=result)
 
         coordinator = AsyncMock()
         coordinator.coordinate.side_effect = _mock_coordinate

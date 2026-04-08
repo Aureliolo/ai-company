@@ -19,6 +19,9 @@ from synthorg.core.enums import (
     CoordinationTopology,
     SeniorityLevel,
 )
+from synthorg.engine.coordination.attribution import (
+    CoordinationResultWithAttribution,
+)
 from synthorg.engine.coordination.models import (
     CoordinationPhaseResult,
     CoordinationResult,
@@ -49,21 +52,22 @@ def _make_coordination_result(
     task_id: str = "task-001",
     *,
     is_success: bool = True,
-) -> CoordinationResult:
-    """Build a minimal CoordinationResult for tests."""
+) -> CoordinationResultWithAttribution:
+    """Build a minimal CoordinationResultWithAttribution for tests."""
     phase = CoordinationPhaseResult(
         phase="decompose",
         success=is_success,
         duration_seconds=0.1,
         error=None if is_success else "test error",
     )
-    return CoordinationResult(
+    result = CoordinationResult(
         parent_task_id=task_id,
         topology=CoordinationTopology.SAS,
         phases=(phase,),
         total_duration_seconds=0.5,
         total_cost_usd=0.01,
     )
+    return CoordinationResultWithAttribution(result=result)
 
 
 @pytest.fixture

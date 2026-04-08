@@ -5,6 +5,12 @@ execution into an end-to-end pipeline orchestrated by topology-driven
 dispatchers.
 """
 
+from synthorg.engine.coordination.attribution import (
+    AgentContribution,
+    CoordinationResultWithAttribution,
+    FailureAttribution,
+    build_agent_contributions,
+)
 from synthorg.engine.coordination.config import CoordinationConfig
 from synthorg.engine.coordination.dispatchers import (
     CentralizedDispatcher,
@@ -27,19 +33,23 @@ from synthorg.engine.coordination.section_config import CoordinationSectionConfi
 from synthorg.engine.coordination.service import MultiAgentCoordinator
 
 __all__ = [
+    "AgentContribution",
     "CentralizedDispatcher",
     "ContextDependentDispatcher",
     "CoordinationConfig",
     "CoordinationContext",
     "CoordinationPhaseResult",
     "CoordinationResult",
+    "CoordinationResultWithAttribution",
     "CoordinationSectionConfig",
     "CoordinationWave",
     "DecentralizedDispatcher",
     "DispatchResult",
+    "FailureAttribution",
     "MultiAgentCoordinator",
     "SasDispatcher",
     "TopologyDispatcher",
+    "build_agent_contributions",
     "build_coordinator",
     "build_execution_waves",
     "select_dispatcher",

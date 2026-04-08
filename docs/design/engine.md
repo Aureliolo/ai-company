@@ -1446,6 +1446,28 @@ groups and routing decisions into `ParallelExecutionGroup` instances. Subtasks
 without routing decisions are skipped. Empty waves (all subtasks unroutable) are
 dropped.
 
+#### Per-Agent Attribution
+
+After the pipeline completes, `build_agent_contributions()` in
+`coordination/attribution.py` produces a `tuple[AgentContribution, ...]` from
+routing decisions and wave outcomes:
+
+- **`AgentContribution`** -- frozen Pydantic model recording each agent's
+  `contribution_score` (0.0--1.0), `failure_attribution` classification, and
+  optional `evidence` excerpt.
+- **`CoordinationResultWithAttribution`** -- wrapper pairing the frozen
+  `CoordinationResult` with the contribution tuple. The `avg_contribution_score`
+  computed field provides a quick aggregate.
+- **Failure attribution categories** -- `"direct"` (agent's own failure),
+  `"upstream_contamination"` (bad input from another agent),
+  `"coordination_overhead"` (system-initiated: budget, shutdown, parking),
+  `"quality_gate"` (failed quality check).
+- **Integration** -- contributions are fed into `PerformanceTracker
+  .record_coordination_contributions()` for trend analysis.  The async
+  method `record_task_metric()` guards writes behind an `asyncio.Lock`;
+  `record_coordination_contributions()` is synchronous (no await points)
+  so dict operations are atomic within the single-threaded event loop.
+
 ---
 
 ## ACG Vocabulary Cross-Reference
@@ -1466,7 +1488,7 @@ external audiences; use SynthOrg terms in implementation discussions.
 | ACG Template | `CompanyConfig` + company YAML | Partial | ACG is graph-level; SynthOrg operates at org-level |
 | Realized Graph | `AgentContext` + `TaskExecution` + `CoordinationResult` | Strong | Runtime execution state |
 | Execution Trace | `TurnRecord` tuple + observability events (82+ constants) | Strong | SynthOrg's trace is richer than ACG baseline |
-| Nodes | LLM calls (`call_provider`), tool invocations, validation checks | Partial | No formal node typing yet |
+| Nodes | LLM calls (`call_provider`), tool invocations, validation checks | Strong | Typed via `NodeType` enum on `TurnRecord.node_types` |
 | Edges | `SubtaskDefinition.dependencies`, `DecompositionPlan` DAG | Strong | Multi-agent; implicit in single-agent loops |
 | Scheduling Policies | `AutoLoopConfig` + `select_loop_type()` + `CoordinationConfig` | Strong | Loop selector + topology selection |
 | Conditional Branching | HybridLoop replan, PlanExecuteLoop step checks | Partial | Not expressed as graph-level conditionals |
