@@ -242,7 +242,7 @@ class CooperativeTimeoutStrategy:
             if exc is not None:
                 logger.warning(
                     EXECUTION_SHUTDOWN_TASK_ERROR,
-                    error=(f"Task raised during shutdown: {type(exc).__name__}"),
+                    error=f"Task raised during shutdown: {type(exc).__name__}: {exc}",
                 )
             else:
                 tasks_completed += 1
@@ -260,40 +260,9 @@ class CooperativeTimeoutStrategy:
                 pending,
                 timeout=self._CANCEL_PROPAGATION_TIMEOUT,
             )
-            self._log_post_cancel_exceptions(cancel_done)
+            _log_post_cancel_exceptions(cancel_done)
 
         return tasks_completed, len(pending)
-
-    def _log_post_cancel_exceptions(
-        self,
-        tasks: set[asyncio.Task[Any]],
-    ) -> None:
-        """Retrieve and log exceptions from post-cancel tasks.
-
-        Retrieving the exception prevents asyncio's "Task exception was
-        never retrieved" warning.  Non-cancelled tasks with exceptions
-        are logged at DEBUG.
-        """
-        for task in tasks:
-            if task.cancelled():
-                continue
-            try:
-                exc = task.exception()
-            except asyncio.InvalidStateError:
-                logger.debug(
-                    EXECUTION_SHUTDOWN_TASK_ERROR,
-                    error="Failed to inspect post-cancel task: InvalidStateError",
-                    task_name=task.get_name(),
-                )
-            else:
-                if exc is not None:
-                    logger.debug(
-                        EXECUTION_SHUTDOWN_TASK_ERROR,
-                        error=(
-                            f"Post-cancel task exception: {type(exc).__name__}: {exc}"
-                        ),
-                        task_name=task.get_name(),
-                    )
 
 
 class ImmediateCancelStrategy:
@@ -349,11 +318,7 @@ class ImmediateCancelStrategy:
                 task_set,
                 timeout=self._CANCEL_PROPAGATION_TIMEOUT,
             )
-            # Retrieve exceptions to suppress "never retrieved" warnings.
-            for task in cancel_done:
-                if not task.cancelled():
-                    with contextlib.suppress(Exception):
-                        task.exception()
+            _log_post_cancel_exceptions(cancel_done)
 
         cleanup_completed = await _run_cleanup(cleanup_callbacks, self._cleanup_seconds)
 
@@ -448,7 +413,7 @@ class FinishCurrentToolStrategy:
             if exc is not None:
                 logger.warning(
                     EXECUTION_SHUTDOWN_TASK_ERROR,
-                    error=f"Task raised during shutdown: {type(exc).__name__}",
+                    error=f"Task raised during shutdown: {type(exc).__name__}: {exc}",
                 )
             else:
                 tasks_completed += 1
@@ -465,10 +430,7 @@ class FinishCurrentToolStrategy:
                 pending,
                 timeout=self._CANCEL_PROPAGATION_TIMEOUT,
             )
-            for task in cancel_done:
-                if not task.cancelled():
-                    with contextlib.suppress(Exception):
-                        task.exception()
+            _log_post_cancel_exceptions(cancel_done)
 
         cleanup_completed = await _run_cleanup(cleanup_callbacks, self._cleanup_seconds)
 
@@ -568,7 +530,7 @@ class CheckpointAndStopStrategy:
             if exc is not None:
                 logger.warning(
                     EXECUTION_SHUTDOWN_TASK_ERROR,
-                    error=f"Task raised during shutdown: {type(exc).__name__}",
+                    error=f"Task raised during shutdown: {type(exc).__name__}: {exc}",
                 )
             else:
                 tasks_suspended += 1
@@ -580,6 +542,11 @@ class CheckpointAndStopStrategy:
         tasks_interrupted = 0
         for task in pending:
             task_id = task_to_id.get(task, "unknown")
+            if task_id == "unknown":
+                logger.debug(
+                    EXECUTION_SHUTDOWN_TASK_ERROR,
+                    error="Task not found in reverse map during checkpoint",
+                )
             saved = await self._try_checkpoint(task_id)
             if saved:
                 tasks_suspended += 1
@@ -593,10 +560,7 @@ class CheckpointAndStopStrategy:
                 pending,
                 timeout=self._CANCEL_PROPAGATION_TIMEOUT,
             )
-            for task in cancel_done:
-                if not task.cancelled():
-                    with contextlib.suppress(Exception):
-                        task.exception()
+            _log_post_cancel_exceptions(cancel_done)
 
         cleanup_completed = await _run_cleanup(cleanup_callbacks, self._cleanup_seconds)
 
@@ -628,10 +592,11 @@ class CheckpointAndStopStrategy:
             return False
         try:
             saved = await self._checkpoint_saver(task_id)
-        except Exception:
+        except Exception as exc:
             logger.exception(
                 EXECUTION_SHUTDOWN_CHECKPOINT_FAILED,
                 task_id=task_id,
+                error_type=type(exc).__name__,
             )
             return False
         if saved:
@@ -648,7 +613,34 @@ class CheckpointAndStopStrategy:
         return saved
 
 
-# ── Shared cleanup helper ────────────────────────────────────────
+# ── Shared helpers ───────────────────────────────────────────────
+
+
+def _log_post_cancel_exceptions(tasks: set[asyncio.Task[Any]]) -> None:
+    """Retrieve and log exceptions from post-cancel tasks.
+
+    Retrieving the exception prevents asyncio's "Task exception was
+    never retrieved" warning.  Non-cancelled tasks with exceptions
+    are logged at DEBUG.
+    """
+    for task in tasks:
+        if task.cancelled():
+            continue
+        try:
+            exc = task.exception()
+        except asyncio.InvalidStateError:
+            logger.debug(
+                EXECUTION_SHUTDOWN_TASK_ERROR,
+                error="Failed to inspect post-cancel task: InvalidStateError",
+                task_name=task.get_name(),
+            )
+        else:
+            if exc is not None:
+                logger.debug(
+                    EXECUTION_SHUTDOWN_TASK_ERROR,
+                    error=(f"Post-cancel task exception: {type(exc).__name__}: {exc}"),
+                    task_name=task.get_name(),
+                )
 
 
 async def _run_cleanup(

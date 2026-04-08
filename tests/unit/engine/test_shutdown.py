@@ -18,6 +18,7 @@ from synthorg.engine.shutdown import (
     ShutdownManager,
     ShutdownResult,
     ShutdownStrategy,
+    _log_post_cancel_exceptions,
     build_shutdown_strategy,
 )
 
@@ -424,40 +425,33 @@ class TestLogPostCancelExceptions:
     """Extracted helper retrieves exceptions without swallowing them."""
 
     def test_skips_cancelled_tasks(self) -> None:
-        strategy = CooperativeTimeoutStrategy()
         task = MagicMock(spec=asyncio.Task)
         task.cancelled.return_value = True
-        # Should not call task.exception()
-        strategy._log_post_cancel_exceptions({task})
+        _log_post_cancel_exceptions({task})
         task.exception.assert_not_called()
 
     def test_logs_task_exception(self) -> None:
-        strategy = CooperativeTimeoutStrategy()
         task = MagicMock(spec=asyncio.Task)
         task.cancelled.return_value = False
         task.exception.return_value = RuntimeError("boom")
         task.get_name.return_value = "test-task"
-        # Should not raise
-        strategy._log_post_cancel_exceptions({task})
+        _log_post_cancel_exceptions({task})
         task.exception.assert_called_once()
 
     def test_handles_no_exception(self) -> None:
-        strategy = CooperativeTimeoutStrategy()
         task = MagicMock(spec=asyncio.Task)
         task.cancelled.return_value = False
         task.exception.return_value = None
         task.get_name.return_value = "test-task"
-        strategy._log_post_cancel_exceptions({task})
+        _log_post_cancel_exceptions({task})
         task.exception.assert_called_once()
 
     def test_handles_invalid_state_error(self) -> None:
-        strategy = CooperativeTimeoutStrategy()
         task = MagicMock(spec=asyncio.Task)
         task.cancelled.return_value = False
         task.exception.side_effect = asyncio.InvalidStateError
         task.get_name.return_value = "test-task"
-        # Should not raise -- logs at DEBUG instead of silent pass
-        strategy._log_post_cancel_exceptions({task})
+        _log_post_cancel_exceptions({task})
 
 
 # ── Signal handler recovery ──────────────────────────────────────
@@ -814,6 +808,28 @@ class TestCheckpointAndStopExecute:
 
     async def test_no_checkpoint_saver_stragglers_interrupted(self) -> None:
         strategy = CheckpointAndStopStrategy(grace_seconds=0.1)
+
+        async def stubborn() -> None:
+            await asyncio.Event().wait()
+
+        task = asyncio.create_task(stubborn())
+        result = await strategy.execute_shutdown(
+            running_tasks={"t1": task},
+            cleanup_callbacks=[],
+        )
+
+        assert result.tasks_suspended == 0
+        assert result.tasks_interrupted == 1
+
+    async def test_checkpoint_saver_raises_counted_as_interrupted(self) -> None:
+        async def failing_saver(task_id: str) -> bool:
+            msg = "Storage unavailable"
+            raise OSError(msg)
+
+        strategy = CheckpointAndStopStrategy(
+            grace_seconds=0.1,
+            checkpoint_saver=failing_saver,
+        )
 
         async def stubborn() -> None:
             await asyncio.Event().wait()
