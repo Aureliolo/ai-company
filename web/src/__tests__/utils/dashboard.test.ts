@@ -19,6 +19,7 @@ function makeOverview(overrides: Partial<OverviewMetrics> = {}): OverviewMetrics
       blocked: 1,
       failed: 1,
       interrupted: 1,
+      suspended: 0,
       cancelled: 1,
     },
     total_agents: 10,

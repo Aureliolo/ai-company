@@ -6,7 +6,7 @@ vi.mock('@/api/endpoints/analytics', () => ({
     total_tasks: 24,
     tasks_by_status: {
       created: 2, assigned: 3, in_progress: 8, in_review: 2, completed: 5,
-      blocked: 1, failed: 1, interrupted: 1, cancelled: 1,
+      blocked: 1, failed: 1, interrupted: 1, suspended: 0, cancelled: 1,
     },
     total_agents: 10,
     total_cost_usd: 42.17,

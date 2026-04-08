@@ -34,6 +34,7 @@ const arbOverview: fc.Arbitrary<OverviewMetrics> = fc.record({
     blocked: fc.nat({ max: 100 }),
     failed: fc.nat({ max: 100 }),
     interrupted: fc.nat({ max: 100 }),
+    suspended: fc.nat({ max: 100 }),
     cancelled: fc.nat({ max: 100 }),
   }),
   total_agents: fc.nat({ max: 100 }),

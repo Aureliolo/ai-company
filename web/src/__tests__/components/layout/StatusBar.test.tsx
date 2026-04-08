@@ -9,7 +9,7 @@ function makeOverview(overrides: Partial<OverviewMetrics> = {}): OverviewMetrics
     total_tasks: 0,
     tasks_by_status: {
       created: 0, assigned: 0, in_progress: 0, in_review: 0, completed: 0,
-      blocked: 0, failed: 0, interrupted: 0, cancelled: 0,
+      blocked: 0, failed: 0, interrupted: 0, suspended: 0, cancelled: 0,
     } as OverviewMetrics['tasks_by_status'],
     total_agents: 0,
     total_cost_usd: 0,
@@ -123,7 +123,7 @@ describe('StatusBar', () => {
         total_tasks: 10,
         tasks_by_status: {
           created: 0, assigned: 0, in_progress: 0, in_review: 3, completed: 0,
-          blocked: 0, failed: 0, interrupted: 0, cancelled: 0,
+          blocked: 0, failed: 0, interrupted: 0, suspended: 0, cancelled: 0,
         } as OverviewMetrics['tasks_by_status'],
         total_agents: 5,
         total_cost_usd: 50,
