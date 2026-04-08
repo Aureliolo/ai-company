@@ -591,6 +591,12 @@ def build_shutdown_strategy(
             f"Unknown shutdown strategy: {config.strategy!r}. "
             f"Known strategies: {sorted(strategies)}"
         )
+        logger.warning(
+            EXECUTION_SHUTDOWN_TASK_ERROR,
+            error=msg,
+            strategy=config.strategy,
+            known_strategies=sorted(strategies),
+        )
         raise ValueError(msg)
 
     return builder()
