@@ -42,8 +42,8 @@ operation_log row:
   version        -- per-fact integer, incremented on each operation
 ```
 
-`publish()` appends a PUBLISH row and updates the snapshot (below).
-`retract()` appends a RETRACT row and marks the snapshot entry as retracted.
+`save()` appends a PUBLISH row and updates the snapshot (below).
+`delete(..., author=...)` appends a RETRACT row and marks the snapshot entry as retracted.
 
 Both operations are O(1) append + O(log n) index update.
 

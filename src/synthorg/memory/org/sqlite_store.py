@@ -533,7 +533,11 @@ class SQLiteOrgFactStore:
                         if fact.author.autonomy_level
                         else None
                     ),
-                    fact.created_at.isoformat(),
+                    (
+                        fact.created_at.astimezone(UTC).isoformat()
+                        if fact.created_at.tzinfo is not None
+                        else fact.created_at.replace(tzinfo=UTC).isoformat()
+                    ),
                     version,
                 ),
             )
@@ -582,7 +586,7 @@ class SQLiteOrgFactStore:
         try:
             await db.execute("BEGIN IMMEDIATE")
             cursor = await db.execute(
-                "SELECT fact_id, category "
+                "SELECT fact_id, category, tags "
                 "FROM org_facts_snapshot "
                 "WHERE fact_id = ? AND retracted_at IS NULL",
                 (fact_id,),
@@ -599,7 +603,7 @@ class SQLiteOrgFactStore:
                 category=(
                     OrgFactCategory(row["category"]) if row["category"] else None
                 ),
-                tags=(),
+                tags=_tags_from_json(row["tags"]),
                 author_agent_id=author.agent_id,
                 author_seniority=author.seniority,
                 author_is_human=author.is_human,

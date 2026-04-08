@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from synthorg.core.enums import OrgFactCategory, SeniorityLevel
+from synthorg.core.enums import AutonomyLevel, OrgFactCategory, SeniorityLevel
 from synthorg.memory.org.errors import (
     OrgMemoryConnectionError,
     OrgMemoryQueryError,
@@ -160,6 +160,7 @@ class TestSQLiteOrgFactStoreOperations:
         assert retrieved.author.agent_id == "agent-1"
         assert retrieved.author.seniority == SeniorityLevel.SENIOR
         assert retrieved.author.is_human is False
+        assert retrieved.author.autonomy_level == AutonomyLevel.SEMI
 
     async def test_operations_when_not_connected_raise(self) -> None:
         store = SQLiteOrgFactStore(":memory:")

@@ -334,7 +334,7 @@ class TestMvccGetOperationLog:
         log = await connected_store.get_operation_log("f1")
         assert log[0].tags == ("tag-a",)
         assert log[1].tags == ("tag-b",)
-        assert log[2].tags == ()
+        assert log[2].tags == ("tag-b",)  # preserves snapshot tags
 
 
 @pytest.mark.unit
@@ -370,9 +370,11 @@ class TestMvccConcurrentPublishes:
             assert len(log) == 2
             agent_ids = {e.author_agent_id for e in log}
             assert agent_ids == {"agent-a", "agent-b"}
-            # Snapshot has last writer wins
+            # Snapshot reflects last-writer-wins (highest version)
             fact = await store_a.get("shared-fact")
             assert fact is not None
+            winner = max(log, key=lambda e: e.version)
+            assert fact.content == winner.content
         finally:
             await store_a.disconnect()
             await store_b.disconnect()

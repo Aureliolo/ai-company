@@ -118,6 +118,41 @@ class TestOrgFact:
         )
         assert fact.tags == ("core-policy", "security")
 
+    @pytest.mark.parametrize(
+        "bad_tags",
+        [("",), ("   ",), ("valid", "")],
+        ids=["empty", "whitespace", "mixed"],
+    )
+    def test_fact_rejects_blank_tags(
+        self,
+        bad_tags: tuple[str, ...],
+    ) -> None:
+        with pytest.raises(ValidationError):
+            OrgFact(
+                id="fact-1",
+                content="test",
+                category=OrgFactCategory.ADR,
+                tags=bad_tags,
+                author=OrgFactAuthor(is_human=True),
+                created_at=_NOW,
+            )
+
+    @pytest.mark.parametrize(
+        "bad_tags",
+        [("",), ("   ",)],
+        ids=["empty", "whitespace"],
+    )
+    def test_write_request_rejects_blank_tags(
+        self,
+        bad_tags: tuple[str, ...],
+    ) -> None:
+        with pytest.raises(ValidationError):
+            OrgFactWriteRequest(
+                content="test",
+                category=OrgFactCategory.ADR,
+                tags=bad_tags,
+            )
+
     def test_frozen(self) -> None:
         fact = OrgFact(
             id="fact-1",
