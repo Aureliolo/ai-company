@@ -231,6 +231,10 @@ A **WorkflowDefinition** is a design-time blueprint -- a visual directed graph t
 
 `WorkflowDefinitionRepository` provides CRUD via SQLite with JSON-serialized nodes/edges. The `/workflows` API controller exposes 14 endpoints: list, get, create, update (with optimistic concurrency), delete, validate, validate draft, export, list blueprints, create from blueprint, list version history, get version diff, rollback to previous version, and get single version.
 
+#### Version History
+
+Workflow definitions are versioned via the generic `VersionSnapshot[WorkflowDefinition]` infrastructure (see `src/synthorg/versioning/`). Each create, update, or rollback operation calls `VersioningService[WorkflowDefinition].snapshot_if_changed()` to persist a content-addressable snapshot. The `workflow_definition_versions` table uses the generic `(entity_id, version, content_hash, snapshot)` schema shared by all versioned entity types. Content-hash deduplication skips no-change saves; concurrent writes are resolved via `INSERT OR IGNORE` with conflict retry.
+
 ### Workflow Execution
 
 When a user **activates** a workflow definition, the `WorkflowExecutionService`

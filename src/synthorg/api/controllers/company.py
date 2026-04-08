@@ -11,6 +11,7 @@ from synthorg.api.channels import (
     CHANNEL_DEPARTMENTS,
     publish_ws_event,
 )
+from synthorg.api.controllers._workflow_helpers import get_auth_user_id
 from synthorg.api.dto import ApiResponse
 from synthorg.api.dto_org import (  # noqa: TC001
     ReorderDepartmentsRequest,
@@ -99,6 +100,7 @@ class CompanyController(Controller):
         updated, new_etag = await app_state.org_mutation_service.update_company(
             data,
             if_match=if_match,
+            saved_by=get_auth_user_id(request),
         )
         publish_ws_event(
             request,

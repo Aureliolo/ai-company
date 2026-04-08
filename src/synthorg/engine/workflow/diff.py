@@ -170,6 +170,9 @@ def compute_diff(
 ) -> WorkflowDiff:
     """Compute the structural diff between two version snapshots.
 
+    Both snapshots must reference the same workflow definition
+    (matching ``entity_id``).
+
     Args:
         old: The earlier version snapshot.
         new: The later version snapshot.

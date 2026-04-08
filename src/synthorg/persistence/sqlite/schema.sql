@@ -447,6 +447,13 @@ CREATE INDEX IF NOT EXISTS idx_ftc_created_at
     ON fine_tune_checkpoints(created_at DESC);
 
 -- ── Workflow Definition Versions ─────────────────────────────
+-- Breaking change from v0.6.x: migrated from bespoke flattened
+-- columns (definition_id, name, description, workflow_type, nodes,
+-- edges, created_by) to generic VersionSnapshot format (entity_id,
+-- content_hash, snapshot JSON).  Existing databases require manual
+-- migration: see docs/migrations/workflow-version-schema.md.
+-- FK to workflow_definitions intentionally dropped for generic
+-- VersionSnapshot[T] pattern consistency across all entity types.
 
 CREATE TABLE IF NOT EXISTS workflow_definition_versions (
     entity_id TEXT NOT NULL CHECK(length(entity_id) > 0),

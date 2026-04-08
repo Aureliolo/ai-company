@@ -181,12 +181,33 @@ async def test_evaluation_config_roundtrip() -> None:
         )
 
 
-# ── Content-hash dedup ──────────────────────────────────────────
+# ── Company round-trip ─────────────────────────────────────────
 
 
 @pytest.mark.unit
-async def test_content_hash_dedup() -> None:
-    """Saving the same content twice returns False on second insert."""
+async def test_company_roundtrip() -> None:
+    """Company survives serialization through generic repo."""
+    from synthorg.core.company import Company
+
+    company = Company(name="Test Corp")
+
+    async with aiosqlite.connect(":memory:") as db:
+        repo = await _make_repo(db, "company_versions", Company)
+        snap = _make_snapshot("default", company)
+        inserted = await repo.save_version(snap)
+        assert inserted is True
+
+        loaded = await repo.get_version("default", 1)
+        assert loaded is not None
+        assert loaded.snapshot.name == "Test Corp"
+
+
+# ── Duplicate PK idempotency ──────────────────────────────────
+
+
+@pytest.mark.unit
+async def test_duplicate_pk_idempotency() -> None:
+    """INSERT OR IGNORE rejects duplicate (entity_id, version) pairs."""
     from synthorg.budget.config import BudgetConfig
 
     config = BudgetConfig()
@@ -200,7 +221,7 @@ async def test_content_hash_dedup() -> None:
         snap1 = _make_snapshot("default", config, version=1)
         assert await repo.save_version(snap1) is True
 
-        # Same content, different version number.
+        # Same content, different version number -- succeeds.
         snap2 = _make_snapshot("default", config, version=2)
         assert await repo.save_version(snap2) is True
 

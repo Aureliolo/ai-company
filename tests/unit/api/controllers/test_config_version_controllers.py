@@ -13,6 +13,8 @@ from pydantic import BaseModel
 
 from synthorg.budget.config import BudgetConfig
 from synthorg.core.company import Company
+from synthorg.core.enums import DepartmentName
+from synthorg.core.role import Role
 from synthorg.hr.evaluation.config import EvaluationConfig
 from synthorg.versioning import VersionSnapshot, compute_content_hash
 from tests.unit.api.conftest import make_auth_headers
@@ -146,6 +148,48 @@ class TestCompanyVersions:
         assert resp.json()["data"] == []
 
     @pytest.mark.unit
+    async def test_list_versions_with_data(
+        self,
+        test_client: TestClient[Any],
+        fake_persistence: Any,
+    ) -> None:
+        repo = fake_persistence.company_versions
+        c1 = Company(name="Corp v1")
+        c2 = Company(name="Corp v2")
+        await repo.save_version(_snap("default", c1, version=1))
+        await repo.save_version(_snap("default", c2, version=2))
+
+        resp = test_client.get(
+            "/api/v1/company/versions",
+            headers=make_auth_headers("ceo"),
+        )
+        assert resp.status_code == 200
+        data = resp.json()["data"]
+        assert len(data) == 2
+        assert data[0]["version"] == 2
+        assert data[1]["version"] == 1
+
+    @pytest.mark.unit
+    async def test_list_versions_paginated(
+        self,
+        test_client: TestClient[Any],
+        fake_persistence: Any,
+    ) -> None:
+        repo = fake_persistence.company_versions
+        for v in range(1, 4):
+            c = Company(name=f"Corp v{v}")
+            await repo.save_version(_snap("default", c, version=v))
+
+        resp = test_client.get(
+            "/api/v1/company/versions?limit=2&offset=0",
+            headers=make_auth_headers("ceo"),
+        )
+        assert resp.status_code == 200
+        body = resp.json()
+        assert len(body["data"]) == 2
+        assert body["pagination"]["total"] == 3
+
+    @pytest.mark.unit
     async def test_get_version(
         self,
         test_client: TestClient[Any],
@@ -195,6 +239,28 @@ class TestEvaluationConfigVersions:
         assert resp.json()["data"] == []
 
     @pytest.mark.unit
+    async def test_list_versions_with_data(
+        self,
+        test_client: TestClient[Any],
+        fake_persistence: Any,
+    ) -> None:
+        repo = fake_persistence.evaluation_config_versions
+        c1 = EvaluationConfig()
+        c2 = EvaluationConfig(calibration_drift_threshold=0.5)
+        await repo.save_version(_snap("default", c1, version=1))
+        await repo.save_version(_snap("default", c2, version=2))
+
+        resp = test_client.get(
+            "/api/v1/evaluation/config/versions",
+            headers=make_auth_headers("ceo"),
+        )
+        assert resp.status_code == 200
+        data = resp.json()["data"]
+        assert len(data) == 2
+        assert data[0]["version"] == 2
+        assert data[1]["version"] == 1
+
+    @pytest.mark.unit
     async def test_get_version(
         self,
         test_client: TestClient[Any],
@@ -219,6 +285,93 @@ class TestEvaluationConfigVersions:
     ) -> None:
         resp = test_client.get(
             "/api/v1/evaluation/config/versions/99",
+            headers=make_auth_headers("ceo"),
+        )
+        assert resp.status_code == 404
+
+
+# ── RoleVersionController ────────────────────────────────────
+
+
+class TestRoleVersions:
+    """GET /roles/{role_name}/versions endpoints."""
+
+    @pytest.mark.unit
+    def test_list_versions_empty(
+        self,
+        test_client: TestClient[Any],
+    ) -> None:
+        resp = test_client.get(
+            "/api/v1/roles/backend-dev/versions",
+            headers=make_auth_headers("ceo"),
+        )
+        assert resp.status_code == 200
+        assert resp.json()["data"] == []
+        assert resp.json()["pagination"]["total"] == 0
+
+    @pytest.mark.unit
+    async def test_list_versions_with_data(
+        self,
+        test_client: TestClient[Any],
+        fake_persistence: Any,
+    ) -> None:
+        repo = fake_persistence.role_versions
+        r1 = Role(
+            name="backend-dev",
+            department=DepartmentName.ENGINEERING,
+            required_skills=(),
+            system_prompt_template="v1",
+        )
+        r2 = Role(
+            name="backend-dev",
+            department=DepartmentName.ENGINEERING,
+            required_skills=("python",),
+            system_prompt_template="v2",
+        )
+        await repo.save_version(_snap("backend-dev", r1, version=1))
+        await repo.save_version(_snap("backend-dev", r2, version=2))
+
+        resp = test_client.get(
+            "/api/v1/roles/backend-dev/versions",
+            headers=make_auth_headers("ceo"),
+        )
+        assert resp.status_code == 200
+        data = resp.json()["data"]
+        assert len(data) == 2
+        assert data[0]["version"] == 2
+        assert data[1]["version"] == 1
+
+    @pytest.mark.unit
+    async def test_get_version(
+        self,
+        test_client: TestClient[Any],
+        fake_persistence: Any,
+    ) -> None:
+        repo = fake_persistence.role_versions
+        role = Role(
+            name="backend-dev",
+            department=DepartmentName.ENGINEERING,
+            required_skills=(),
+            system_prompt_template="You are a developer.",
+        )
+        await repo.save_version(_snap("backend-dev", role))
+
+        resp = test_client.get(
+            "/api/v1/roles/backend-dev/versions/1",
+            headers=make_auth_headers("ceo"),
+        )
+        assert resp.status_code == 200
+        snap = resp.json()["data"]
+        assert snap["version"] == 1
+        assert snap["snapshot"]["name"] == "backend-dev"
+
+    @pytest.mark.unit
+    def test_get_version_not_found(
+        self,
+        test_client: TestClient[Any],
+    ) -> None:
+        resp = test_client.get(
+            "/api/v1/roles/backend-dev/versions/99",
             headers=make_auth_headers("ceo"),
         )
         assert resp.status_code == 404

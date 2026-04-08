@@ -7,6 +7,7 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 import aiosqlite
+from pydantic import BaseModel
 
 from synthorg.budget.config import BudgetConfig
 from synthorg.core.agent import AgentIdentity
@@ -280,61 +281,46 @@ class SQLitePersistenceBackend:
         self._custom_presets = SQLitePersonalityPresetRepository(self._db)
         self._workflow_definitions = SQLiteWorkflowDefinitionRepository(self._db)
         self._workflow_executions = SQLiteWorkflowExecutionRepository(self._db)
-        self._workflow_versions = SQLiteVersionRepository(
-            self._db,
-            table_name="workflow_definition_versions",
-            serialize_snapshot=lambda m: json.dumps(
-                m.model_dump(mode="json"),
-            ),
-            deserialize_snapshot=lambda s: WorkflowDefinition.model_validate(
-                json.loads(s),
-            ),
+
+        def _ver_repo[T: BaseModel](
+            table: str,
+            model_cls: type[T],
+        ) -> SQLiteVersionRepository[T]:
+            assert self._db is not None  # noqa: S101
+            return SQLiteVersionRepository(
+                self._db,
+                table_name=table,
+                serialize_snapshot=lambda m: json.dumps(
+                    m.model_dump(mode="json"),
+                ),
+                deserialize_snapshot=lambda s: model_cls.model_validate(
+                    json.loads(s),
+                ),
+            )
+
+        self._workflow_versions = _ver_repo(
+            "workflow_definition_versions",
+            WorkflowDefinition,
         )
-        self._identity_versions = SQLiteVersionRepository(
-            self._db,
-            table_name="agent_identity_versions",
-            serialize_snapshot=lambda m: json.dumps(m.model_dump(mode="json")),
-            deserialize_snapshot=lambda s: AgentIdentity.model_validate(json.loads(s)),
+        self._identity_versions = _ver_repo(
+            "agent_identity_versions",
+            AgentIdentity,
         )
-        self._evaluation_config_versions = SQLiteVersionRepository(
-            self._db,
-            table_name="evaluation_config_versions",
-            serialize_snapshot=lambda m: json.dumps(
-                m.model_dump(mode="json"),
-            ),
-            deserialize_snapshot=lambda s: EvaluationConfig.model_validate(
-                json.loads(s),
-            ),
+        self._evaluation_config_versions = _ver_repo(
+            "evaluation_config_versions",
+            EvaluationConfig,
         )
-        self._budget_config_versions = SQLiteVersionRepository(
-            self._db,
-            table_name="budget_config_versions",
-            serialize_snapshot=lambda m: json.dumps(
-                m.model_dump(mode="json"),
-            ),
-            deserialize_snapshot=lambda s: BudgetConfig.model_validate(
-                json.loads(s),
-            ),
+        self._budget_config_versions = _ver_repo(
+            "budget_config_versions",
+            BudgetConfig,
         )
-        self._company_versions = SQLiteVersionRepository(
-            self._db,
-            table_name="company_versions",
-            serialize_snapshot=lambda m: json.dumps(
-                m.model_dump(mode="json"),
-            ),
-            deserialize_snapshot=lambda s: Company.model_validate(
-                json.loads(s),
-            ),
+        self._company_versions = _ver_repo(
+            "company_versions",
+            Company,
         )
-        self._role_versions = SQLiteVersionRepository(
-            self._db,
-            table_name="role_versions",
-            serialize_snapshot=lambda m: json.dumps(
-                m.model_dump(mode="json"),
-            ),
-            deserialize_snapshot=lambda s: Role.model_validate(
-                json.loads(s),
-            ),
+        self._role_versions = _ver_repo(
+            "role_versions",
+            Role,
         )
         self._decision_records = SQLiteDecisionRepository(
             self._db, write_lock=self._shared_write_lock

@@ -1780,14 +1780,18 @@ export interface CreateFromBlueprintRequest {
 // ── Workflow Versioning ──────────────────────────────────────
 
 export interface WorkflowDefinitionVersionSummary {
-  readonly definition_id: string
+  readonly entity_id: string
   readonly version: number
-  readonly name: string
-  readonly description: string
-  readonly workflow_type: string
-  readonly nodes: readonly WorkflowNodeData[]
-  readonly edges: readonly WorkflowEdgeData[]
-  readonly created_by: string
+  readonly content_hash: string
+  readonly snapshot: {
+    readonly id: string
+    readonly name: string
+    readonly description: string
+    readonly workflow_type: string
+    readonly nodes: readonly WorkflowNodeData[]
+    readonly edges: readonly WorkflowEdgeData[]
+    readonly created_by: string
+  }
   readonly saved_by: string
   readonly saved_at: string
 }

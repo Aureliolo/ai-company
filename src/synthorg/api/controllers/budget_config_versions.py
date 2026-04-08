@@ -1,5 +1,6 @@
 """Budget config version history controller -- list, get."""
 
+import asyncio
 from typing import Annotated
 
 from litestar import Controller, Response, get
@@ -15,6 +16,10 @@ from synthorg.api.guards import require_read_access
 from synthorg.api.pagination import PaginationLimit, PaginationOffset  # noqa: TC001
 from synthorg.budget.config import BudgetConfig
 from synthorg.observability import get_logger
+from synthorg.observability.events.versioning import (
+    VERSION_LISTED,
+    VERSION_NOT_FOUND,
+)
 from synthorg.versioning import VersionSnapshot
 
 logger = get_logger(__name__)
@@ -40,12 +45,16 @@ class BudgetConfigVersionController(Controller):
     ) -> Response[PaginatedResponse[SnapshotT]]:
         """List version history for budget configuration."""
         repo = state.app_state.persistence.budget_config_versions
-        versions = await repo.list_versions(
-            _ENTITY_ID,
-            limit=limit,
-            offset=offset,
+        versions, total = await asyncio.gather(
+            repo.list_versions(_ENTITY_ID, limit=limit, offset=offset),
+            repo.count_versions(_ENTITY_ID),
         )
-        total = await repo.count_versions(_ENTITY_ID)
+        logger.debug(
+            VERSION_LISTED,
+            entity_type="BudgetConfig",
+            entity_id=_ENTITY_ID,
+            count=len(versions),
+        )
         meta = PaginationMeta(total=total, offset=offset, limit=limit)
         return Response(
             content=PaginatedResponse[SnapshotT](
@@ -67,6 +76,12 @@ class BudgetConfigVersionController(Controller):
         repo = state.app_state.persistence.budget_config_versions
         version = await repo.get_version(_ENTITY_ID, version_num)
         if version is None:
+            logger.warning(
+                VERSION_NOT_FOUND,
+                entity_type="BudgetConfig",
+                entity_id=_ENTITY_ID,
+                version=version_num,
+            )
             return Response(
                 content=ApiResponse[SnapshotT](
                     error=f"Version {version_num} not found",

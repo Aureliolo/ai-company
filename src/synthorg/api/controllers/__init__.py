@@ -43,6 +43,7 @@ from synthorg.api.controllers.projects import ProjectController
 from synthorg.api.controllers.providers import ProviderController
 from synthorg.api.controllers.quality import QualityController
 from synthorg.api.controllers.reports import ReportsController
+from synthorg.api.controllers.role_versions import RoleVersionController
 from synthorg.api.controllers.settings import SettingsController
 from synthorg.api.controllers.setup import SetupController
 from synthorg.api.controllers.setup_personality import (
@@ -98,6 +99,7 @@ ALL_CONTROLLERS: tuple[type[Controller], ...] = (
     BudgetConfigVersionController,
     CompanyVersionController,
     EvaluationConfigVersionController,
+    RoleVersionController,
     QualityController,
     ReportsController,
     WorkflowExecutionController,
@@ -135,6 +137,7 @@ __all__ = [
     "ProviderController",
     "QualityController",
     "ReportsController",
+    "RoleVersionController",
     "SettingsController",
     "SetupController",
     "SetupPersonalityController",

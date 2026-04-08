@@ -24,7 +24,7 @@ export function VersionCard({ v, definition, saving, onCompare, onRestore }: Ver
           <span className="rounded-md bg-accent/10 px-1.5 py-0.5 text-xs font-medium text-accent">
             v{v.version}
           </span>
-          <span className="text-sm text-foreground">{v.name}</span>
+          <span className="text-sm text-foreground">{v.snapshot.name}</span>
         </div>
         {v.version === definition?.version && (
           <span className="text-xs text-success">Current</span>

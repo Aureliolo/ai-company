@@ -183,6 +183,9 @@ class SQLiteVersionRepository[T: BaseModel]:
             ``True`` if the row was actually inserted; ``False`` if the
             ``(entity_id, version)`` pair already existed and the write
             was silently dropped by ``INSERT OR IGNORE``.
+
+        Raises:
+            QueryError: If serialization or database write fails.
         """
         try:
             serialized = self._serialize(version.snapshot)

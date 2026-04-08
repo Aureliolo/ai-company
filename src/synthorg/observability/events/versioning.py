@@ -31,3 +31,6 @@ VERSION_SNAPSHOT_SKIPPED: Final[str] = "persistence.version.snapshot_skipped"
 
 VERSION_SNAPSHOT_FAILED: Final[str] = "persistence.version.snapshot_failed"
 """Failed to create a version snapshot."""
+
+VERSION_NOT_FOUND: Final[str] = "persistence.version.not_found"
+"""Requested version does not exist."""
