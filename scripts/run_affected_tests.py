@@ -148,7 +148,12 @@ def _affected_test_dirs(changed: list[str]) -> tuple[list[str], bool]:
 
 
 def _run_pytest(paths: list[str]) -> int:
-    """Run pytest with the given paths."""
+    """Run pytest with the given paths.
+
+    Uses ``--dist loadscope`` to group tests by module, preventing
+    xdist worker crashes from repeated heavy fixture teardown/setup
+    when individual tests are scattered across workers.
+    """
     cmd = [
         sys.executable,
         "-m",
@@ -158,6 +163,8 @@ def _run_pytest(paths: list[str]) -> int:
         "unit",
         "-n",
         "8",
+        "--dist",
+        "loadscope",
         "-q",
     ]
     result = subprocess.run(cmd, cwd=_REPO_ROOT, check=False)
