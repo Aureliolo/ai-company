@@ -48,4 +48,7 @@ def default_config_dict() -> dict[str, object]:
         "web": None,
         "database": None,
         "terminal": None,
+        "design_tools": None,
+        "communication_tools": None,
+        "analytics_tools": None,
     }

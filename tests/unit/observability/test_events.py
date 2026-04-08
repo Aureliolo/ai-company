@@ -198,6 +198,7 @@ class TestEventConstants:
             "decomposition",
             "degradation",
             "delegation",
+            "design",
             "docker",
             "evaluation",
             "execution",
