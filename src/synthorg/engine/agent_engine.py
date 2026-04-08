@@ -1385,6 +1385,14 @@ class AgentEngine:
             return updated_result, recovery_result  # noqa: TRY300
         except MemoryError, RecursionError:
             raise
+        except ProjectNotFoundError, ProjectAgentNotMemberError:
+            # Re-validate raised from _resume_from_checkpoint;
+            # let run()'s dedicated project-error handler deal with it.
+            raise
+        except BudgetExhaustedError:
+            # Includes ProjectBudgetExhaustedError from re-validation;
+            # let run()'s budget-error handler deal with it.
+            raise
         except Exception as exc:
             logger.exception(
                 EXECUTION_RECOVERY_FAILED,
