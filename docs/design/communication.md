@@ -463,11 +463,11 @@ All three meeting protocols (StructuredPhases, RoundRobin, PositionPapers) guara
 bounded execution via `TokenTracker` phase-boundary checks, hard token budgets with 20%
 synthesis reserve, and turn/round limits. No protocol has unbounded execution paths.
 
-**Known risk -- meeting-task feedback loop**: `MeetingProtocolConfig.auto_create_tasks`
-defaults to `True`. The meeting orchestrator can spawn tasks from action items, and
-`MeetingScheduler.trigger_event()` has no deduplication or cooldown. Event-triggered
-meetings should use a `min_interval_seconds` guard to prevent runaway task/meeting cycles.
-This is a production risk for deployments using event-triggered meetings at scale.
+**Meeting-task feedback loop mitigation**: `MeetingProtocolConfig.auto_create_tasks`
+defaults to `True`. Two guardrails prevent runaway task/meeting cycles:
+`MeetingTypeConfig.min_interval_seconds` enforces per-type cooldown on event-triggered
+meetings, and `MeetingProtocolConfig.max_tasks_per_meeting` caps task creation from
+action items. See #1115.
 
 ### Conflict Resolution Termination
 
@@ -475,7 +475,7 @@ All four conflict resolution strategies terminate with bounded resource use:
 
 - **AuthorityResolver**: Deterministic seniority comparison. Always terminates; no LLM calls.
 - **DebateResolver**: Single LLM judge call (one-shot, no retry loop). Falls back to
-  Authority if no evaluator configured. Exception in evaluator propagates without automatic fallback.
+  Authority if no evaluator configured, or if the evaluator raises an exception (#1117).
 - **HumanEscalationResolver**: Returns `ESCALATED_TO_HUMAN` immediately. **Stub
   implementation** pending #37 -- no actual blocking for human input yet.
 - **HybridResolver**: Single LLM review call; deterministic fallback to Authority on ambiguity.
@@ -488,28 +488,14 @@ Five mechanisms protect against swarm drift (`communication/loop_prevention/guar
 2. Max delegation depth (default 5)
 3. Content deduplication (60s window)
 4. Per-pair rate limiting (10/min)
-5. Circuit breaker (3 bounces, 300s cooldown)
+5. Circuit breaker (3 bounces, exponential backoff cooldown capped at `max_cooldown_seconds`)
 
-**Known risk -- circuit breaker bounce count reset**: After cooldown, the state entry is
-evicted entirely, resetting the bounce count to 0. Slow-burn delegation patterns (>60s
-between delegations) can bypass all five guards after each cooldown expiry.
-
-Recommended mitigation -- two options:
-
-1. **Exponential backoff on cooldown**: instead of evicting the entry, retain it and
-   apply `cooldown_seconds = base_cooldown * 2^bounce_count`. Each bounce extends the
-   cooldown duration exponentially, making slow-burn bypass progressively harder.
-2. **Non-resetting global bounce counter**: store a per-pair lifetime bounce count
-   separate from the per-window circuit breaker. Once the lifetime count exceeds a
-   threshold (e.g., 10), escalate to a permanent circuit-open state requiring manual
-   reset.
-
-Option 1 is simpler to implement within `circuit_breaker.py` without breaking the
-existing eviction model. Option 2 is more robust against very long-horizon patterns.
-
-**Known risk -- in-memory state**: All guard state (circuit breaker, dedup window, rate
-limiter) is in-memory. Service restart resets all guardrails. Consider persisting circuit
-breaker state to SQLite for restart resilience.
+Circuit breaker uses exponential backoff: `cooldown = base * 2^(trip_count - 1)`,
+capped at `max_cooldown_seconds` (default 3600s). On cooldown expiry, the bounce count
+resets but the trip count is preserved, so successive trips produce progressively longer
+cooldowns (#1116). Circuit breaker state (trip count, bounce count) is persisted to SQLite
+via `CircuitBreakerStateRepository` so guardrails survive restarts. Dedup window and rate
+limiter remain in-memory (short-lived by design).
 
 ### Microservices Anti-Patterns: Assessment
 

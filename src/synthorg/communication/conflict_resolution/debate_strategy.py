@@ -109,9 +109,29 @@ class DebateResolver:
                     conflict_id=conflict.id,
                     judge=judge_id,
                 )
-                winning_agent_id, reasoning = self._authority_fallback(
-                    conflict,
-                )
+                try:
+                    winning_agent_id, reasoning = self._authority_fallback(
+                        conflict,
+                    )
+                except ConflictHierarchyError:
+                    # Hierarchy tiebreak failed too -- fall back without
+                    # hierarchy so we always produce a resolution.
+                    logger.warning(
+                        CONFLICT_HIERARCHY_ERROR,
+                        conflict_id=conflict.id,
+                        note="authority fallback hierarchy failed; "
+                        "using seniority without hierarchy",
+                    )
+                    best = pick_highest_seniority(
+                        conflict,
+                        hierarchy=None,
+                    )
+                    winning_agent_id = best.agent_id
+                    reasoning = (
+                        f"Debate fallback: authority-based judging "
+                        f"(no hierarchy) -- {best.agent_id} "
+                        f"({best.agent_level}) has highest seniority"
+                    )
         else:
             logger.warning(
                 CONFLICT_AUTHORITY_FALLBACK,

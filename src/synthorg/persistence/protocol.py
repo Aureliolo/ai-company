@@ -93,6 +93,8 @@ class PersistenceBackend(Protocol):
             (auditable approval-gate decisions drop-box).
         risk_overrides: Repository for RiskTierOverride persistence.
         ssrf_violations: Repository for SsrfViolation persistence.
+        circuit_breaker_state: Repository for circuit breaker state
+            persistence.
     """
 
     async def connect(self) -> None:

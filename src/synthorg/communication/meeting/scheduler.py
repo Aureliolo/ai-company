@@ -71,6 +71,7 @@ class MeetingScheduler:
     __slots__ = (
         "_clock",
         "_config",
+        "_cooldown_lock",
         "_event_publisher",
         "_last_triggered",
         "_orchestrator",
@@ -93,6 +94,7 @@ class MeetingScheduler:
         self._resolver = participant_resolver
         self._event_publisher = event_publisher
         self._clock = clock or time.monotonic
+        self._cooldown_lock = asyncio.Lock()
         self._tasks: list[asyncio.Task[None]] = []
         self._running = False
         self._last_triggered: dict[str, float] = {}
@@ -193,35 +195,36 @@ class MeetingScheduler:
         if not matching:
             return ()
 
-        # Filter by cooldown
-        now = self._clock()
-        eligible: list[MeetingTypeConfig] = []
-        for mt in matching:
-            if mt.min_interval_seconds is not None:
-                last = self._last_triggered.get(mt.name, 0.0)
-                if (now - last) < mt.min_interval_seconds:
-                    logger.info(
-                        MEETING_EVENT_COOLDOWN_SKIPPED,
-                        meeting_type=mt.name,
-                        event_name=event_name,
-                        elapsed_seconds=now - last,
-                        min_interval_seconds=mt.min_interval_seconds,
-                    )
-                    continue
-            eligible.append(mt)
+        # Serialize cooldown check + time recording to prevent
+        # concurrent trigger_event() calls from both bypassing cooldown.
+        async with self._cooldown_lock:
+            now = self._clock()
+            eligible: list[MeetingTypeConfig] = []
+            for mt in matching:
+                if mt.min_interval_seconds is not None:
+                    last = self._last_triggered.get(mt.name)
+                    if last is not None and (now - last) < mt.min_interval_seconds:
+                        logger.info(
+                            MEETING_EVENT_COOLDOWN_SKIPPED,
+                            meeting_type=mt.name,
+                            event_name=event_name,
+                            elapsed_seconds=now - last,
+                            min_interval_seconds=mt.min_interval_seconds,
+                        )
+                        continue
+                eligible.append(mt)
 
-        if not eligible:
-            return ()
+            if not eligible:
+                return ()
 
-        logger.info(
-            MEETING_EVENT_TRIGGERED,
-            event_name=event_name,
-            matching_count=len(eligible),
-        )
+            logger.info(
+                MEETING_EVENT_TRIGGERED,
+                event_name=event_name,
+                matching_count=len(eligible),
+            )
 
-        # Record trigger time BEFORE execution to prevent concurrent fires
-        for mt in eligible:
-            self._last_triggered[mt.name] = now
+            for mt in eligible:
+                self._last_triggered[mt.name] = now
 
         async with asyncio.TaskGroup() as tg:
             tasks = [

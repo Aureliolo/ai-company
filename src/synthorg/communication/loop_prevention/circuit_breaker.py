@@ -112,7 +112,10 @@ class DelegationCircuitBreaker:
         """
         if trip_count <= 0:
             return float(self._config.cooldown_seconds)
-        backoff = self._config.cooldown_seconds * (2 ** (trip_count - 1))
+        # Cap exponent at 63 so corrupted/huge trip_count values cannot
+        # trigger expensive big-int math.  min() caps the result anyway.
+        exponent = min(trip_count - 1, 63)
+        backoff = self._config.cooldown_seconds * (2**exponent)
         return min(float(backoff), float(self._config.max_cooldown_seconds))
 
     def get_state(
@@ -171,10 +174,17 @@ class DelegationCircuitBreaker:
         """
         state = self.get_state(delegator_id, delegatee_id)
         if state is CircuitBreakerState.OPEN:
+            pair = self._get_pair(delegator_id, delegatee_id)
+            cooldown = (
+                self._compute_cooldown(pair.trip_count)
+                if pair is not None
+                else float(self._config.cooldown_seconds)
+            )
             logger.info(
                 DELEGATION_LOOP_CIRCUIT_OPEN,
                 delegator=delegator_id,
                 delegatee=delegatee_id,
+                cooldown_seconds=cooldown,
             )
             return GuardCheckOutcome(
                 passed=False,
@@ -182,7 +192,7 @@ class DelegationCircuitBreaker:
                 message=(
                     f"Circuit breaker open for pair "
                     f"({delegator_id!r}, {delegatee_id!r}); "
-                    f"cooldown {self._config.cooldown_seconds}s"
+                    f"cooldown {cooldown}s"
                 ),
             )
         return GuardCheckOutcome(passed=True, mechanism=_MECHANISM)
@@ -269,11 +279,11 @@ class DelegationCircuitBreaker:
             self._dirty.clear()
             return
 
-        dirty = set(self._dirty)
-        self._dirty.clear()
+        dirty = tuple(self._dirty)
         for key in dirty:
             pair = self._pairs.get(key)
             if pair is None:
+                self._dirty.discard(key)
                 continue
             try:
                 record = CircuitBreakerStateRecord(
@@ -284,9 +294,11 @@ class DelegationCircuitBreaker:
                     opened_at=pair.opened_at,
                 )
                 await self._state_repo.save(record)
+                self._dirty.discard(key)
             except MemoryError, RecursionError:
                 raise
             except Exception:
+                # Key stays in _dirty for retry on next persist cycle
                 logger.exception(
                     DELEGATION_LOOP_CIRCUIT_PERSIST_FAILED,
                     delegator=key[0],

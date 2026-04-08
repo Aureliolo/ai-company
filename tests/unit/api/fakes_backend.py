@@ -147,7 +147,11 @@ class FakeCircuitBreakerStateRepository:
     """In-memory circuit breaker state repository for tests."""
 
     def __init__(self) -> None:
-        self._store: dict[tuple[str, str], Any] = {}
+        from synthorg.persistence.circuit_breaker_repo import (
+            CircuitBreakerStateRecord,
+        )
+
+        self._store: dict[tuple[str, str], CircuitBreakerStateRecord] = {}
 
     async def save(self, record: Any) -> None:
         self._store[(record.pair_key_a, record.pair_key_b)] = record

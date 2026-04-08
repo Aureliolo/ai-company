@@ -44,7 +44,7 @@ class FakeJudgeEvaluator:
 class RaisingJudgeEvaluator:
     """Fake judge evaluator that always raises."""
 
-    def __init__(self, error: Exception | None = None) -> None:
+    def __init__(self, error: BaseException | None = None) -> None:
         self._error = error or RuntimeError("provider timeout")
         self.calls: list[tuple[Conflict, str]] = []
 
@@ -432,3 +432,33 @@ class TestDebateResolverEvaluatorFailure:
         await resolver.resolve(conflict)
         captured = capsys.readouterr()
         assert "conflict.debate.evaluator_failed" in captured.out
+
+    @pytest.mark.parametrize(
+        "error_cls",
+        [MemoryError, RecursionError],
+        ids=["memory_error", "recursion_error"],
+    )
+    async def test_system_exceptions_propagate(
+        self,
+        hierarchy: HierarchyResolver,
+        error_cls: type[BaseException],
+    ) -> None:
+        """MemoryError and RecursionError must not be caught."""
+        judge = RaisingJudgeEvaluator(error=error_cls())
+        resolver = DebateResolver(
+            hierarchy=hierarchy,
+            config=DebateConfig(judge="shared_manager"),
+            judge_evaluator=judge,
+        )
+        conflict = make_conflict(
+            positions=(
+                make_position(agent_id="sr_dev", level=SeniorityLevel.SENIOR),
+                make_position(
+                    agent_id="jr_dev",
+                    level=SeniorityLevel.JUNIOR,
+                    position="Other",
+                ),
+            ),
+        )
+        with pytest.raises(error_cls):
+            await resolver.resolve(conflict)

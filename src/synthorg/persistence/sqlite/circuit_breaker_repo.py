@@ -1,5 +1,6 @@
 """SQLite repository for circuit breaker state persistence."""
 
+import asyncio
 import sqlite3
 
 import aiosqlite
@@ -27,36 +28,57 @@ class SQLiteCircuitBreakerStateRepository:
 
     Args:
         db: An open aiosqlite connection.
+        write_lock: Optional shared write lock to serialize writes
+            across repositories on the same connection.
     """
 
-    def __init__(self, db: aiosqlite.Connection) -> None:
+    def __init__(
+        self,
+        db: aiosqlite.Connection,
+        *,
+        write_lock: asyncio.Lock | None = None,
+    ) -> None:
         self._db = db
+        self._write_lock = write_lock if write_lock is not None else asyncio.Lock()
+
+    async def _rollback_quietly(self) -> None:
+        """Roll back the current transaction, swallowing errors."""
+        try:
+            await self._db.rollback()
+        except Exception:
+            logger.warning(
+                PERSISTENCE_CIRCUIT_BREAKER_SAVE_FAILED,
+                error="rollback failed",
+                exc_info=True,
+            )
 
     async def save(self, record: CircuitBreakerStateRecord) -> None:
         """Persist a circuit breaker state record (upsert by pair key)."""
-        try:
-            await self._db.execute(
-                """\
+        async with self._write_lock:
+            try:
+                await self._db.execute(
+                    """\
 INSERT OR REPLACE INTO circuit_breaker_state (
     pair_key_a, pair_key_b, bounce_count, trip_count, opened_at
 ) VALUES (
     :pair_key_a, :pair_key_b, :bounce_count, :trip_count, :opened_at
 )""",
-                record.model_dump(mode="json"),
-            )
-            await self._db.commit()
-        except (sqlite3.Error, aiosqlite.Error) as exc:
-            msg = (
-                f"Failed to save circuit breaker state for pair "
-                f"({record.pair_key_a!r}, {record.pair_key_b!r})"
-            )
-            logger.exception(
-                PERSISTENCE_CIRCUIT_BREAKER_SAVE_FAILED,
-                pair_key_a=record.pair_key_a,
-                pair_key_b=record.pair_key_b,
-                error=str(exc),
-            )
-            raise QueryError(msg) from exc
+                    record.model_dump(mode="json"),
+                )
+                await self._db.commit()
+            except (sqlite3.Error, aiosqlite.Error) as exc:
+                await self._rollback_quietly()
+                msg = (
+                    f"Failed to save circuit breaker state for pair "
+                    f"({record.pair_key_a!r}, {record.pair_key_b!r})"
+                )
+                logger.exception(
+                    PERSISTENCE_CIRCUIT_BREAKER_SAVE_FAILED,
+                    pair_key_a=record.pair_key_a,
+                    pair_key_b=record.pair_key_b,
+                    error=str(exc),
+                )
+                raise QueryError(msg) from exc
         logger.debug(
             PERSISTENCE_CIRCUIT_BREAKER_SAVED,
             pair_key_a=record.pair_key_a,
@@ -85,12 +107,17 @@ INSERT OR REPLACE INTO circuit_breaker_state (
                 results.append(
                     CircuitBreakerStateRecord.model_validate(dict(row)),
                 )
-            except ValidationError:
+            except ValidationError as exc:
+                msg = (
+                    f"Failed to deserialize circuit breaker state row "
+                    f"({row['pair_key_a'] if row else 'unknown'})"
+                )
                 logger.exception(
                     PERSISTENCE_CIRCUIT_BREAKER_LOAD_FAILED,
                     pair_key_a=row["pair_key_a"] if row else "unknown",
                     note="deserialization failed",
                 )
+                raise QueryError(msg) from exc
         logger.debug(
             PERSISTENCE_CIRCUIT_BREAKER_LOADED,
             count=len(results),
@@ -99,26 +126,28 @@ INSERT OR REPLACE INTO circuit_breaker_state (
 
     async def delete(self, pair_key_a: str, pair_key_b: str) -> bool:
         """Delete a circuit breaker state record."""
-        try:
-            cursor = await self._db.execute(
-                "DELETE FROM circuit_breaker_state "
-                "WHERE pair_key_a = ? AND pair_key_b = ?",
-                (pair_key_a, pair_key_b),
-            )
-            deleted = cursor.rowcount > 0
-            await self._db.commit()
-        except (sqlite3.Error, aiosqlite.Error) as exc:
-            msg = (
-                f"Failed to delete circuit breaker state for pair "
-                f"({pair_key_a!r}, {pair_key_b!r})"
-            )
-            logger.exception(
-                PERSISTENCE_CIRCUIT_BREAKER_DELETE_FAILED,
-                pair_key_a=pair_key_a,
-                pair_key_b=pair_key_b,
-                error=str(exc),
-            )
-            raise QueryError(msg) from exc
+        async with self._write_lock:
+            try:
+                cursor = await self._db.execute(
+                    "DELETE FROM circuit_breaker_state "
+                    "WHERE pair_key_a = ? AND pair_key_b = ?",
+                    (pair_key_a, pair_key_b),
+                )
+                deleted = cursor.rowcount > 0
+                await self._db.commit()
+            except (sqlite3.Error, aiosqlite.Error) as exc:
+                await self._rollback_quietly()
+                msg = (
+                    f"Failed to delete circuit breaker state for pair "
+                    f"({pair_key_a!r}, {pair_key_b!r})"
+                )
+                logger.exception(
+                    PERSISTENCE_CIRCUIT_BREAKER_DELETE_FAILED,
+                    pair_key_a=pair_key_a,
+                    pair_key_b=pair_key_b,
+                    error=str(exc),
+                )
+                raise QueryError(msg) from exc
         if deleted:
             logger.debug(
                 PERSISTENCE_CIRCUIT_BREAKER_DELETED,

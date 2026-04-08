@@ -89,6 +89,8 @@ class MeetingProtocolConfig(BaseModel):
         protocol: Which protocol strategy to use.
         auto_create_tasks: Whether to auto-create tasks from action items
             extracted during any protocol execution.
+        max_tasks_per_meeting: Optional cap on how many tasks to create
+            from a single meeting's action items.
         round_robin: Round-robin protocol settings.
         position_papers: Position-papers protocol settings.
         structured_phases: Structured-phases protocol settings.

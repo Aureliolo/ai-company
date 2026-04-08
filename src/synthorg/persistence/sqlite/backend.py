@@ -277,6 +277,7 @@ class SQLitePersistenceBackend:
         )
         self._circuit_breaker_state = SQLiteCircuitBreakerStateRepository(
             self._db,
+            write_lock=self._shared_write_lock,
         )
 
     async def _cleanup_failed_connect(self, exc: sqlite3.Error | OSError) -> None:
