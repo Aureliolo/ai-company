@@ -10,6 +10,7 @@ from synthorg.budget.enforcer import BudgetEnforcer
 from synthorg.budget.errors import ProjectBudgetExhaustedError
 from synthorg.budget.project_cost_aggregate import ProjectCostAggregate
 from synthorg.budget.tracker import CostTracker
+from synthorg.core.enums import Priority, TaskType
 from synthorg.core.task import Task
 
 from .conftest import make_cost_record
@@ -20,8 +21,8 @@ def _make_task() -> Task:
         id="t-1",
         title="Test task",
         description="A test task",
-        type="development",
-        priority="medium",
+        type=TaskType.DEVELOPMENT,
+        priority=Priority.MEDIUM,
         project="proj-1",
         created_by="alice",
     )
