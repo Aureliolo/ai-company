@@ -563,6 +563,14 @@ class AgentEngine:
                         agent_id=agent_id,
                         task_id=task_id,
                     )
+                elif task.project:
+                    logger.warning(
+                        EXECUTION_PROJECT_VALIDATION_FAILED,
+                        agent_id=agent_id,
+                        task_id=task_id,
+                        project_id=task.project,
+                        reason="project_repo_not_configured",
+                    )
 
                 tool_invoker = self._make_tool_invoker(
                     identity,

@@ -662,7 +662,7 @@ class BudgetEnforcer:
             agent_id=agent_id,
             project_budget=project_budget,
             project_baseline=project_baseline,
-            project_id=project_id or "",
+            project_id=project_id or None,
         )
 
     # ── Risk budget enforcement ─────────────────────────────────

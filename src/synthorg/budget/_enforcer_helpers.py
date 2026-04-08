@@ -259,7 +259,7 @@ def _build_checker_closure(  # noqa: PLR0913
     agent_id: str,
     project_budget: float = 0.0,
     project_baseline: float = 0.0,
-    project_id: str = "",
+    project_id: str | None = None,
 ) -> BudgetChecker:
     """Build the sync budget checker closure.
 
@@ -273,7 +273,8 @@ def _build_checker_closure(  # noqa: PLR0913
         agent_id: Agent identifier for logging.
         project_budget: Total project budget (0 = disabled).
         project_baseline: Pre-computed project spend at task start.
-        project_id: Project identifier for logging.
+        project_id: Project identifier for logging (None when
+            project budget is disabled).
 
     Returns:
         Sync callable returning ``True`` when budget is exhausted.
@@ -399,7 +400,7 @@ def _check_project_limit(
     project_budget: float,
     project_baseline: float,
     agent_id: str,
-    project_id: str = "",
+    project_id: str | None = None,
 ) -> bool:
     """Return True if project budget is exhausted."""
     if project_budget <= 0:

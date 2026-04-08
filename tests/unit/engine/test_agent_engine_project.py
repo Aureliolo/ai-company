@@ -155,7 +155,7 @@ class TestProjectValidation:
         sample_agent_with_personality: AgentIdentity,
         sample_task_with_criteria: Task,
     ) -> None:
-        """Without project_repo, all project checks are skipped."""
+        """Without project_repo, project checks are skipped with warning."""
         provider = MockCompletionProvider(
             [make_completion_response(content="Done.")],
         )
