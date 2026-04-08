@@ -380,7 +380,7 @@ class AppState:
             logger.error(API_APP_STARTUP, error=msg)
             raise RuntimeError(msg)
         self._review_gate_service = service
-        logger.debug(API_APP_STARTUP, note="Review gate service configured")
+        logger.info(API_APP_STARTUP, note="Review gate service configured")
 
     @property
     def approval_timeout_scheduler(self) -> ApprovalTimeoutScheduler | None:
@@ -404,7 +404,7 @@ class AppState:
             logger.error(API_APP_STARTUP, error=msg)
             raise RuntimeError(msg)
         self._approval_timeout_scheduler = scheduler
-        logger.debug(API_APP_STARTUP, note="Approval timeout scheduler configured")
+        logger.info(API_APP_STARTUP, note="Approval timeout scheduler configured")
 
     @property
     def coordinator(self) -> MultiAgentCoordinator:

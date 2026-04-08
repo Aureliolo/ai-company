@@ -122,13 +122,18 @@ class TestOtlpHandler:
             )
             handler.setFormatter(_JsonFormatter())
             result = handler._format_as_otlp_dict(record)
-            # Body should come from self.format(record), not getMessage()
-            body = json.loads(result["body"])
+            # Body is OTLP AnyValue with stringValue from self.format()
+            body = json.loads(result["body"]["stringValue"])
             assert body["event"] == "test event"
-            assert result["attributes"]["request_id"] == "req-123"
-            assert result["attributes"]["task_id"] == "task-456"
-            assert result["attributes"]["agent_id"] == "agent-789"
-            assert result["severity_text"] == "INFO"
+            # Attributes are OTLP KeyValue array
+            attr_map = {
+                a["key"]: a["value"]["stringValue"] for a in result["attributes"]
+            }
+            assert attr_map["request_id"] == "req-123"
+            assert attr_map["task_id"] == "task-456"
+            assert attr_map["agent_id"] == "agent-789"
+            assert result["severityText"] == "INFO"
+            assert isinstance(result["timeUnixNano"], str)
         finally:
             handler.close()
 
@@ -137,9 +142,10 @@ class TestOtlpHandler:
         try:
             record = _make_record("plain event")
             result = handler._format_as_otlp_dict(record)
-            body = json.loads(result["body"])
+            body = json.loads(result["body"]["stringValue"])
             assert body["event"] == "plain event"
-            assert "request_id" not in result["attributes"]
+            attr_keys = {a["key"] for a in result["attributes"]}
+            assert "request_id" not in attr_keys
         finally:
             handler.close()
 
@@ -184,17 +190,18 @@ class TestBuildOtlpHandler:
         finally:
             handler.close()
 
-    def test_build_with_grpc_protocol_rejects(self) -> None:
-        sink = SinkConfig(
-            sink_type=SinkType.OTLP,
-            otlp_endpoint="http://localhost:4317",
-            otlp_protocol=OtlpProtocol.GRPC,
-        )
+    def test_build_with_grpc_protocol_rejected_at_config(self) -> None:
+        from pydantic import ValidationError
+
         with pytest.raises(
-            NotImplementedError,
-            match="gRPC transport is not implemented",
+            ValidationError,
+            match="gRPC transport is not supported",
         ):
-            build_otlp_handler(sink, [])
+            SinkConfig(
+                sink_type=SinkType.OTLP,
+                otlp_endpoint="http://localhost:4317",
+                otlp_protocol=OtlpProtocol.GRPC,
+            )
 
     def test_uses_config_batch_size_and_timeout(self) -> None:
         sink = SinkConfig(

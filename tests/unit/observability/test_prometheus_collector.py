@@ -63,10 +63,15 @@ def _make_agent(
     return agent
 
 
-def _make_task(*, status: str = "created") -> MagicMock:
-    """Build a mock Task with a given status."""
+def _make_task(
+    *,
+    status: str = "created",
+    assigned_to: str | None = None,
+) -> MagicMock:
+    """Build a mock Task with a given status and optional agent."""
     task = MagicMock()
     task.status = status
+    task.assigned_to = assigned_to
     return task
 
 

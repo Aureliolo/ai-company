@@ -97,6 +97,8 @@ class OtlpHandler(logging.Handler):
                 self._pending_count += 1
                 if self._pending_count >= self._batch_size:
                     self._batch_ready.set()
+        except MemoryError, RecursionError:
+            raise
         except Exception:
             self.handleError(record)
 
@@ -120,23 +122,31 @@ class OtlpHandler(logging.Handler):
         Returns:
             Dictionary with OTLP log record fields.
         """
-        attributes: dict[str, str] = {
-            "logger.name": record.name,
-        }
+        attributes: list[dict[str, Any]] = [
+            {
+                "key": "logger.name",
+                "value": {"stringValue": record.name},
+            },
+        ]
         for field in _CORRELATION_FIELDS:
             value = getattr(record, field, None)
             if value is not None:
-                attributes[field] = str(value)
+                attributes.append(
+                    {
+                        "key": field,
+                        "value": {"stringValue": str(value)},
+                    }
+                )
 
         # Use self.format(record) so the ProcessorFormatter and
         # foreign_pre_chain run, producing structured JSON output.
         body = self.format(record) if self.formatter else record.getMessage()
 
         return {
-            "body": body,
-            "severity_number": _SEVERITY_MAP.get(record.levelno, 0),
-            "severity_text": record.levelname,
-            "time_unix_nano": int(record.created * 1_000_000_000),
+            "body": {"stringValue": body},
+            "severityNumber": _SEVERITY_MAP.get(record.levelno, 0),
+            "severityText": record.levelname,
+            "timeUnixNano": str(int(record.created * 1_000_000_000)),
             "attributes": attributes,
         }
 
@@ -149,6 +159,8 @@ class OtlpHandler(logging.Handler):
                 break
             try:
                 self._drain_and_flush()
+            except MemoryError, RecursionError:
+                raise
             except Exception as exc:
                 print(  # noqa: T201
                     f"ERROR: log-otlp-flusher encountered unexpected error: {exc}",
@@ -179,6 +191,8 @@ class OtlpHandler(logging.Handler):
         for record in records:
             try:
                 log_records.append(self._format_as_otlp_dict(record))
+            except MemoryError, RecursionError:
+                raise
             except Exception:
                 self.handleError(record)
                 self._increment_dropped(1)
@@ -215,6 +229,8 @@ class OtlpHandler(logging.Handler):
                 timeout=self._timeout,
             ):
                 pass
+        except MemoryError, RecursionError:
+            raise
         except Exception as exc:
             # urllib.error.HTTPError wraps a file pointer to the response
             # body.  Close it explicitly to avoid leaking file descriptors.

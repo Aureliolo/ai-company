@@ -733,13 +733,20 @@ class TestSinkConfigOtlp:
         cfg = SinkConfig(
             sink_type=SinkType.OTLP,
             otlp_endpoint="https://otel-collector.example.com:4318",
-            otlp_protocol=OtlpProtocol.GRPC,
             otlp_headers=(("Authorization", "Bearer test-token"),),
             otlp_export_interval_seconds=10.0,
         )
-        assert cfg.otlp_protocol == OtlpProtocol.GRPC
+        assert cfg.otlp_protocol == OtlpProtocol.HTTP_JSON
         assert len(cfg.otlp_headers) == 1
         assert cfg.otlp_export_interval_seconds == 10.0
+
+    def test_otlp_grpc_rejected_at_config_time(self) -> None:
+        with pytest.raises(ValidationError, match="gRPC transport is not supported"):
+            SinkConfig(
+                sink_type=SinkType.OTLP,
+                otlp_endpoint="http://localhost:4317",
+                otlp_protocol=OtlpProtocol.GRPC,
+            )
 
     def test_otlp_requires_endpoint(self) -> None:
         with pytest.raises(ValidationError, match="otlp_endpoint is required"):
@@ -834,7 +841,6 @@ class TestSinkConfigOtlp:
         cfg = SinkConfig(
             sink_type=SinkType.OTLP,
             otlp_endpoint="https://otel.example.com:4318",
-            otlp_protocol=OtlpProtocol.GRPC,
             otlp_headers=(("X-Source", "synthorg"),),
             otlp_export_interval_seconds=15.0,
             otlp_batch_size=200,

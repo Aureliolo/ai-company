@@ -99,18 +99,24 @@ def _validate_otlp_endpoint_safety(
     """Reject private IPs (SSRF) and warn on unencrypted HTTP.
 
     Checks both IP literals and DNS-resolved addresses (best-effort).
+    Localhost (127.0.0.1, ::1, ``localhost``) is always allowed as a
+    standard local OTLP collector endpoint.
     """
-    # Direct IP literal check.
+    localhost_names = {"localhost", "127.0.0.1", "::1"}
+
+    # Allow localhost/loopback -- standard for local collectors.
+    if hostname in localhost_names:
+        return
+
+    # Direct IP literal check (non-localhost private IPs).
     if _is_private_ip(hostname):
         msg = (
             f"otlp_endpoint must not target private/loopback IP addresses ({hostname})"
         )
         raise ValueError(msg)
 
-    # DNS resolution check for hostnames (fail-closed on resolution error).
-    # Allow localhost explicitly -- standard for local OTLP collectors.
-    localhost_names = {"localhost", "127.0.0.1", "::1"}
-    if hostname not in localhost_names and not _is_private_ip(hostname):
+    # DNS resolution check for hostnames (best-effort).
+    if not _is_private_ip(hostname):
         import socket  # noqa: PLC0415
 
         try:
@@ -403,6 +409,9 @@ class SinkConfig(BaseModel):
             raise ValueError(msg)
 
     def _validate_otlp_fields(self) -> None:
+        if self.otlp_protocol == OtlpProtocol.GRPC:
+            msg = "OTLP gRPC transport is not supported; use HTTP_JSON"
+            raise ValueError(msg)
         if self.otlp_endpoint is None:
             msg = "otlp_endpoint is required for OTLP sinks"
             raise ValueError(msg)
