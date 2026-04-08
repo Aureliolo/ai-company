@@ -23,7 +23,7 @@ function makeTask(overrides: Partial<Task> = {}): Task {
 
 const ALL_STATUSES: TaskStatus[] = [
   'created', 'assigned', 'in_progress', 'in_review', 'completed',
-  'blocked', 'failed', 'interrupted', 'cancelled',
+  'blocked', 'failed', 'interrupted', 'suspended', 'cancelled',
 ]
 
 // ── getTaskStatusColor ──────────────────────────────────────
@@ -95,7 +95,7 @@ describe('KANBAN_COLUMNS', () => {
     expect(KANBAN_COLUMNS).toHaveLength(7)
   })
 
-  it('covers all 9 task statuses exactly once', () => {
+  it('covers all 10 task statuses exactly once', () => {
     const allStatuses = KANBAN_COLUMNS.flatMap((col) => col.statuses)
     expect(allStatuses).toHaveLength(ALL_STATUSES.length)
     for (const status of ALL_STATUSES) {
