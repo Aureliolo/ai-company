@@ -83,7 +83,7 @@ INSERT OR REPLACE INTO circuit_breaker_state (
                     error=str(exc),
                 )
                 raise QueryError(msg) from exc
-        logger.debug(
+        logger.info(
             PERSISTENCE_CIRCUIT_BREAKER_SAVED,
             pair_key_a=record.pair_key_a,
             pair_key_b=record.pair_key_b,
@@ -155,7 +155,7 @@ INSERT OR REPLACE INTO circuit_breaker_state (
                 )
                 raise QueryError(msg) from exc
         if deleted:
-            logger.debug(
+            logger.info(
                 PERSISTENCE_CIRCUIT_BREAKER_DELETED,
                 pair_key_a=pair_key_a,
                 pair_key_b=pair_key_b,
