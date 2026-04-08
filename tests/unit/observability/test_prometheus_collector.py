@@ -404,8 +404,11 @@ class TestPrometheusCollectorDailyBudget:
 
     async def test_daily_budget_percent_partial_day(self) -> None:
         """Normal daily utilization produces correct percentage."""
+        from datetime import UTC
+
+        from synthorg.budget.billing import billing_period_start
+
         collector = PrometheusCollector()
-        # 300 monthly / 30 days = 10.0 daily; 3.0 today = 30%
         state = _mock_app_state(
             has_cost_tracker=True,
             total_cost=50.0,
@@ -414,8 +417,6 @@ class TestPrometheusCollectorDailyBudget:
         )
         await collector.refresh(state)
         output = generate_latest(collector.registry).decode()
-        assert "synthorg_budget_daily_used_percent" in output
-        # Exact value depends on days-in-month; verify non-zero present
         lines = [
             ln
             for ln in output.splitlines()
@@ -423,7 +424,20 @@ class TestPrometheusCollectorDailyBudget:
         ]
         assert len(lines) == 1
         value = float(lines[0].split()[-1])
-        assert 0.0 < value < 100.0
+        # Compute expected from current billing period length.
+        now = datetime.now(UTC)
+        ps = billing_period_start(1, now=now)
+        ns = (
+            ps.replace(
+                year=ps.year + 1,
+                month=1,
+            )
+            if ps.month == 12
+            else ps.replace(month=ps.month + 1)
+        )
+        days = (ns - ps).days
+        expected = (3.0 / (300.0 / days)) * 100.0
+        assert value == pytest.approx(expected, abs=0.01)
 
     async def test_daily_budget_zero_cost(self) -> None:
         """Zero daily cost yields 0% utilization."""
@@ -613,7 +627,9 @@ class TestPrometheusCollectorAgentCost:
             for ln in output_v2.splitlines()
             if ln.startswith("synthorg_agent_cost_total{")
         ]
+        assert len(cost_lines) > 0
         assert all('agent_id="alice"' in ln for ln in cost_lines)
+        assert not any('agent_id="bob"' in ln for ln in cost_lines)
 
     async def test_agent_cost_skipped_when_no_agents(self) -> None:
         collector = PrometheusCollector()
