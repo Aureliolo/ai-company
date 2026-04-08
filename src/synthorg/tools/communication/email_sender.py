@@ -231,14 +231,15 @@ class EmailSenderTool(BaseCommunicationTool):
             )
         except MemoryError, RecursionError:
             raise
-        except Exception as exc:
+        except Exception:
             logger.warning(
                 COMM_TOOL_EMAIL_SEND_FAILED,
-                error=str(exc),
+                error="smtp_error",
                 recipient_count=len(all_recipients),
+                exc_info=True,
             )
             return ToolExecutionResult(
-                content=f"Email sending failed: {exc}",
+                content="Email sending failed.",
                 is_error=True,
             )
 

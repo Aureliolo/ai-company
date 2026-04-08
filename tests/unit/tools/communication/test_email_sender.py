@@ -108,7 +108,7 @@ class TestEmailSenderTool:
             }
         )
         assert result.is_error
-        assert "SMTP error" in result.content
+        assert "Email sending failed" in result.content
 
     @patch.object(EmailSenderTool, "_send_sync")
     async def test_execute_with_cc_and_bcc(

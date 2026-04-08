@@ -23,7 +23,7 @@ class TestMetricCollectorTool:
         tool = MetricCollectorTool(sink=mock_sink)
         assert tool.category == ToolCategory.ANALYTICS
 
-    def test_action_type_is_code_read(
+    def test_action_type_is_metrics_record(
         self,
         mock_sink: MockMetricSink,
     ) -> None:

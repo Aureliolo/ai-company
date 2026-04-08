@@ -171,7 +171,16 @@ class MetricCollectorTool(BaseAnalyticsTool):
         value = float(value)
         raw_tags = arguments.get("tags")
         tags: dict[str, str] = raw_tags if isinstance(raw_tags, dict) else {}
-        unit: str | None = arguments.get("unit")
+        unit = arguments.get("unit")
+        if unit is not None and not isinstance(unit, str):
+            logger.warning(
+                ANALYTICS_TOOL_METRIC_RECORD_FAILED,
+                error="invalid_unit_type",
+            )
+            return ToolExecutionResult(
+                content="'unit' must be a string or null.",
+                is_error=True,
+            )
 
         if not self._is_metric_allowed(metric_name):
             logger.warning(

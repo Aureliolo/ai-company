@@ -65,6 +65,7 @@ _PARAMETERS_SCHEMA: Final[dict[str, Any]] = {
         },
         "title": {
             "type": "string",
+            "minLength": 1,
             "description": "Notification title",
         },
         "body": {
@@ -74,6 +75,7 @@ _PARAMETERS_SCHEMA: Final[dict[str, Any]] = {
         },
         "source": {
             "type": "string",
+            "minLength": 1,
             "description": "Source subsystem or agent name",
         },
     },
