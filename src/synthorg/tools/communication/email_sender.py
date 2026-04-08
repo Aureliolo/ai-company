@@ -135,6 +135,10 @@ class EmailSenderTool(BaseCommunicationTool):
         """
         email_config = self._config.email
         if email_config is None:
+            logger.warning(
+                COMM_TOOL_EMAIL_SEND_FAILED,
+                error="email_not_configured",
+            )
             return ToolExecutionResult(
                 content=(
                     "Email sending requires SMTP configuration. "

@@ -207,7 +207,7 @@ class DataAggregatorTool(BaseAnalyticsTool):
 
         return None
 
-    async def execute(
+    async def execute(  # noqa: PLR0911
         self,
         *,
         arguments: dict[str, Any],
@@ -234,8 +234,26 @@ class DataAggregatorTool(BaseAnalyticsTool):
                 is_error=True,
             )
 
-        metrics: list[str] = arguments["metrics"]
-        period: str = arguments["period"]
+        metrics = arguments.get("metrics")
+        period = arguments.get("period")
+        if not isinstance(metrics, list) or not metrics:
+            logger.warning(
+                ANALYTICS_TOOL_QUERY_FAILED,
+                error="missing_or_invalid_metrics",
+            )
+            return ToolExecutionResult(
+                content="'metrics' must be a non-empty list of strings.",
+                is_error=True,
+            )
+        if not isinstance(period, str) or not period:
+            logger.warning(
+                ANALYTICS_TOOL_QUERY_FAILED,
+                error="missing_or_invalid_period",
+            )
+            return ToolExecutionResult(
+                content="'period' must be a non-empty string.",
+                is_error=True,
+            )
         group_by: str | None = arguments.get("group_by")
         start_date: str | None = arguments.get("start_date")
         end_date: str | None = arguments.get("end_date")
@@ -295,23 +313,28 @@ class DataAggregatorTool(BaseAnalyticsTool):
                 is_error=True,
             )
 
-        # Enforce max_rows if the result contains list values.
-        for key, val in data.items():
-            if isinstance(val, list) and len(val) > self._config.max_rows:
-                data[key] = val[: self._config.max_rows]
+        # Enforce max_rows without mutating the provider's result.
+        sanitized = {
+            k: (
+                v[: self._config.max_rows]
+                if isinstance(v, list) and len(v) > self._config.max_rows
+                else v
+            )
+            for k, v in data.items()
+        }
 
         logger.info(
             ANALYTICS_TOOL_QUERY_SUCCESS,
             metrics=metrics,
-            result_keys=sorted(data.keys()),
+            result_keys=sorted(sanitized.keys()),
         )
 
         # Format results as readable text
         lines = [f"Analytics query results ({period}):"]
-        for key, value in sorted(data.items()):
+        for key, value in sorted(sanitized.items()):
             lines.append(f"  {key}: {value}")
 
         return ToolExecutionResult(
             content="\n".join(lines),
-            metadata=data,
+            metadata=sanitized,
         )

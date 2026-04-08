@@ -158,6 +158,11 @@ class NotificationSenderTool(BaseCommunicationTool):
         source: str = arguments["source"]
 
         if category_str not in _VALID_CATEGORIES:
+            logger.warning(
+                COMM_TOOL_NOTIFICATION_SEND_FAILED,
+                error="invalid_category",
+                category=category_str,
+            )
             return ToolExecutionResult(
                 content=(
                     f"Invalid category: {category_str!r}. "
@@ -167,6 +172,11 @@ class NotificationSenderTool(BaseCommunicationTool):
             )
 
         if severity_str not in _VALID_SEVERITIES:
+            logger.warning(
+                COMM_TOOL_NOTIFICATION_SEND_FAILED,
+                error="invalid_severity",
+                severity=severity_str,
+            )
             return ToolExecutionResult(
                 content=(
                     f"Invalid severity: {severity_str!r}. "

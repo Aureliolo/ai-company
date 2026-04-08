@@ -65,8 +65,8 @@ class EmailConfig(BaseModel):
     )
 
     @model_validator(mode="after")
-    def _validate_auth_pair(self) -> Self:
-        """Ensure username and password are both present or both absent."""
+    def _validate_auth_fields(self) -> Self:
+        """Validate credential pairing and TLS mutual exclusivity."""
         has_user = self.username is not None
         has_pass = self.password is not None
         if has_user != has_pass:
@@ -77,6 +77,13 @@ class EmailConfig(BaseModel):
                 has_password=has_pass,
             )
             msg = "SMTP username and password must both be provided or both be None"
+            raise ValueError(msg)
+        if self.use_tls and self.use_implicit_tls:
+            logger.warning(
+                COMM_TOOL_EMAIL_VALIDATION_FAILED,
+                reason="tls_mutual_exclusion",
+            )
+            msg = "use_tls and use_implicit_tls are mutually exclusive"
             raise ValueError(msg)
         return self
 

@@ -133,7 +133,16 @@ class AssetManagerTool(BaseDesignTool):
         Returns:
             A ``ToolExecutionResult`` with operation results.
         """
-        action: str = arguments["action"]
+        action = arguments.get("action")
+        if not isinstance(action, str):
+            logger.warning(
+                DESIGN_ASSET_VALIDATION_FAILED,
+                reason="missing_action",
+            )
+            return ToolExecutionResult(
+                content="'action' is required and must be a string.",
+                is_error=True,
+            )
 
         if action not in _VALID_ACTIONS:
             logger.warning(
@@ -267,11 +276,17 @@ class AssetManagerTool(BaseDesignTool):
                 is_error=True,
             )
 
+        tags: list[str] = arguments.get("tags") or []
+        tag_set = set(tags)
+
         matching: dict[str, dict[str, Any]] = {}
         for aid, meta in self._assets.items():
             searchable = " ".join(str(v).lower() for v in meta.values())
-            if query in searchable:
-                matching[aid] = meta
+            if query not in searchable:
+                continue
+            if tag_set and not tag_set.issubset(set(meta.get("tags", []))):
+                continue
+            matching[aid] = meta
 
         logger.info(
             DESIGN_ASSET_SEARCHED,

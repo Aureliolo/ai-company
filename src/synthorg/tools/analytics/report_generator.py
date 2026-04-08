@@ -155,6 +155,11 @@ class ReportGeneratorTool(BaseAnalyticsTool):
         output_format: str = arguments.get("format", "markdown")
 
         if report_type not in _REPORT_TYPES:
+            logger.warning(
+                ANALYTICS_TOOL_REPORT_FAILED,
+                error="invalid_report_type",
+                report_type=report_type,
+            )
             return ToolExecutionResult(
                 content=(
                     f"Invalid report_type: {report_type!r}. "
@@ -178,6 +183,11 @@ class ReportGeneratorTool(BaseAnalyticsTool):
             )
 
         if output_format not in _OUTPUT_FORMATS:
+            logger.warning(
+                ANALYTICS_TOOL_REPORT_FAILED,
+                error="invalid_output_format",
+                output_format=output_format,
+            )
             return ToolExecutionResult(
                 content=(
                     f"Invalid format: {output_format!r}. "

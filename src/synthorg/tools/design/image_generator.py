@@ -6,6 +6,7 @@ inject a provider at construction time.
 """
 
 import asyncio
+import base64
 import copy
 from typing import Any, Final, Protocol, runtime_checkable
 
@@ -267,18 +268,22 @@ class ImageGeneratorTool(BaseDesignTool):
                 is_error=True,
             )
 
-        data_size = len(result.data)
-        if data_size > self._config.max_image_size_bytes:
+        try:
+            decoded_bytes = base64.b64decode(result.data, validate=True)
+        except Exception:
+            decoded_bytes = result.data.encode()
+        byte_size = len(decoded_bytes)
+        if byte_size > self._config.max_image_size_bytes:
             logger.warning(
                 DESIGN_IMAGE_GENERATION_FAILED,
                 error="image_too_large",
-                data_size=data_size,
+                byte_size=byte_size,
                 max_size=self._config.max_image_size_bytes,
             )
             return ToolExecutionResult(
                 content=(
                     f"Generated image exceeds size limit: "
-                    f"{data_size} bytes "
+                    f"{byte_size} bytes "
                     f"(max {self._config.max_image_size_bytes})"
                 ),
                 is_error=True,
