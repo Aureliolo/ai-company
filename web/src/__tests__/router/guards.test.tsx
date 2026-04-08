@@ -5,6 +5,9 @@ import { useSetupStore } from '@/stores/setup'
 import { AuthGuard, GuestGuard, SetupCompleteGuard, SetupGuard } from '@/router/guards'
 import { renderRoutes } from '../test-utils'
 
+// Disable dev auth bypass so guards use real auth flow
+vi.mock('@/utils/dev', () => ({ IS_DEV_AUTH_BYPASS: false }))
+
 // Mock the setup API
 vi.mock('@/api/endpoints/setup', () => ({
   getSetupStatus: vi.fn(),

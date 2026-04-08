@@ -1,6 +1,9 @@
 import { useAuthStore } from '@/stores/auth'
 import type { AuthResponse, UserInfoResponse } from '@/api/types'
 
+// Disable dev auth bypass so store uses real auth flow
+vi.mock('@/utils/dev', () => ({ IS_DEV_AUTH_BYPASS: false }))
+
 // Mock the auth API endpoints
 vi.mock('@/api/endpoints/auth', () => ({
   login: vi.fn(),
