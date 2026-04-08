@@ -7,10 +7,11 @@ from uuid import UUID
 
 import pytest
 from litestar.testing import TestClient
+from pydantic import ValidationError
 
 from synthorg.config.schema import AgentConfig, RootConfig
 from synthorg.core.agent import AgentIdentity, ModelConfig
-from synthorg.core.enums import Complexity, TaskType
+from synthorg.core.enums import Complexity, TaskType, ToolAccessLevel
 from synthorg.hr.enums import LifecycleEventType, TrendDirection
 from synthorg.hr.models import AgentLifecycleEvent
 from synthorg.hr.performance.models import TaskMetricRecord
@@ -594,3 +595,132 @@ class TestAgentHealth:
     ) -> None:
         resp = test_client.get("/api/v1/agents/nonexistent/health")
         assert resp.status_code == 404
+
+    async def test_health_performance_fields(
+        self,
+        test_client: TestClient[Any],
+        agent_registry: AgentRegistryService,
+    ) -> None:
+        """Verify performance sub-object has correct field types."""
+        await agent_registry.register(_make_identity())
+        resp = test_client.get(
+            f"/api/v1/agents/{_AGENT_NAME}/health",
+        )
+        perf = resp.json()["data"]["performance"]
+        assert perf["quality_score"] is None or isinstance(
+            perf["quality_score"],
+            (int, float),
+        )
+        assert perf["collaboration_score"] is None or isinstance(
+            perf["collaboration_score"],
+            (int, float),
+        )
+        # trend is a TrendDirection string or None
+        assert perf["trend"] is None or perf["trend"] in {
+            "improving",
+            "stable",
+            "declining",
+            "insufficient_data",
+        }
+
+
+# -- _extract_quality_trend unit tests ------------------------------------
+
+
+@pytest.mark.unit
+class TestExtractQualityTrend:
+    def test_returns_direction_when_quality_present(self) -> None:
+        from synthorg.api.controllers.agents import _extract_quality_trend
+
+        class _Trend:
+            def __init__(self, name: str, direction: TrendDirection) -> None:
+                self.metric_name = name
+                self.direction = direction
+
+        class _Snap:
+            trends: list[_Trend] = [  # noqa: RUF012
+                _Trend("latency", TrendDirection.STABLE),
+                _Trend("quality", TrendDirection.IMPROVING),
+            ]
+
+        result = _extract_quality_trend(_Snap())
+        assert result is TrendDirection.IMPROVING
+
+    def test_returns_none_when_no_quality_trend(self) -> None:
+        from synthorg.api.controllers.agents import _extract_quality_trend
+
+        class _Snap:
+            trends: list[object] = []  # noqa: RUF012
+
+        assert _extract_quality_trend(_Snap()) is None
+
+    def test_returns_none_when_only_non_quality_trends(self) -> None:
+        from synthorg.api.controllers.agents import _extract_quality_trend
+
+        class _Trend:
+            def __init__(self, name: str) -> None:
+                self.metric_name = name
+                self.direction = TrendDirection.STABLE
+
+        class _Snap:
+            trends = [_Trend("latency"), _Trend("collaboration")]  # noqa: RUF012
+
+        assert _extract_quality_trend(_Snap()) is None
+
+
+# -- Model validation tests -----------------------------------------------
+
+
+@pytest.mark.unit
+class TestHealthModels:
+    def test_trust_summary_score_without_evaluated_at_rejected(
+        self,
+    ) -> None:
+        from synthorg.api.controllers.agents import TrustSummary
+
+        with pytest.raises(ValidationError, match="score requires"):
+            TrustSummary(
+                level=ToolAccessLevel.STANDARD,
+                score=0.8,
+                last_evaluated_at=None,
+            )
+
+    def test_trust_summary_score_with_evaluated_at_accepted(self) -> None:
+        from synthorg.api.controllers.agents import TrustSummary
+
+        ts = TrustSummary(
+            level=ToolAccessLevel.STANDARD,
+            score=0.8,
+            last_evaluated_at=datetime(2026, 4, 1, tzinfo=UTC),
+        )
+        assert ts.score == 0.8
+
+    def test_trust_summary_no_score_no_evaluated_at_accepted(self) -> None:
+        from synthorg.api.controllers.agents import TrustSummary
+
+        ts = TrustSummary(level=ToolAccessLevel.STANDARD)
+        assert ts.score is None
+        assert ts.last_evaluated_at is None
+
+    def test_performance_summary_rejects_nan(self) -> None:
+        from synthorg.api.controllers.agents import PerformanceSummary
+
+        with pytest.raises(ValidationError):
+            PerformanceSummary(quality_score=float("nan"))
+
+    def test_performance_summary_rejects_out_of_range(self) -> None:
+        from synthorg.api.controllers.agents import PerformanceSummary
+
+        with pytest.raises(ValidationError):
+            PerformanceSummary(quality_score=11.0)
+
+    def test_performance_summary_accepts_valid(self) -> None:
+        from synthorg.api.controllers.agents import PerformanceSummary
+
+        ps = PerformanceSummary(
+            quality_score=5.0,
+            collaboration_score=8.0,
+            trend=TrendDirection.IMPROVING,
+        )
+        assert ps.quality_score == 5.0
+        assert ps.trend == TrendDirection.IMPROVING

@@ -27,6 +27,9 @@ from synthorg.observability.events.api import (
 
 logger = get_logger(__name__)
 
+_MAX_METRICS_QUERY = 10_000
+"""Safety cap on metrics records fetched per request."""
+
 
 class CoordinationMetricsController(Controller):
     """Query coordination metrics from completed runs."""
@@ -49,6 +52,20 @@ class CoordinationMetricsController(Controller):
         """Query coordination metrics with optional filters.
 
         All filters are AND-combined.  Results are newest-first.
+        Up to :data:`_MAX_METRICS_QUERY` records are fetched from
+        the store; pagination is applied afterwards.
+
+        Args:
+            state: Application state with coordination_metrics_store.
+            task_id: Filter by task identifier.
+            agent_id: Filter by lead agent identifier.
+            since: Exclude records before this datetime.
+            until: Exclude records after this datetime.
+            offset: Pagination offset.
+            limit: Page size.
+
+        Returns:
+            Paginated coordination metrics.
         """
         app_state = state.app_state
         entries = app_state.coordination_metrics_store.query(
@@ -56,6 +73,7 @@ class CoordinationMetricsController(Controller):
             agent_id=agent_id,
             since=since,
             until=until,
+            limit=_MAX_METRICS_QUERY,
         )
         page, meta = paginate(entries, offset=offset, limit=limit)
         logger.info(

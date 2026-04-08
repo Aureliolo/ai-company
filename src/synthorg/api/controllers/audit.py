@@ -25,6 +25,9 @@ from synthorg.security.models import AuditEntry
 
 logger = get_logger(__name__)
 
+_MAX_AUDIT_QUERY = 10_000
+"""Safety cap on audit entries fetched per request."""
+
 
 class AuditController(Controller):
     """Query the security evaluation audit trail."""
@@ -50,6 +53,22 @@ class AuditController(Controller):
         """Query audit entries with optional filters.
 
         All filters are AND-combined.  Results are newest-first.
+        Up to :data:`_MAX_AUDIT_QUERY` entries are fetched from the
+        underlying store; pagination is applied afterwards.
+
+        Args:
+            state: Application state with audit_log service.
+            agent_id: Filter by agent identifier.
+            tool_name: Filter by tool name.
+            action_type: Filter by action type string.
+            verdict: Filter by verdict string.
+            since: Exclude entries before this datetime.
+            until: Exclude entries after this datetime.
+            offset: Pagination offset.
+            limit: Page size.
+
+        Returns:
+            Paginated audit entries.
         """
         app_state = state.app_state
         entries = app_state.audit_log.query(
@@ -59,7 +78,7 @@ class AuditController(Controller):
             verdict=verdict,
             since=since,
             until=until,
-            limit=100_000,
+            limit=_MAX_AUDIT_QUERY,
         )
         page, meta = paginate(entries, offset=offset, limit=limit)
         logger.info(

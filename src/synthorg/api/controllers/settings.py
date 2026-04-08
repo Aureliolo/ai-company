@@ -12,7 +12,14 @@ from litestar.exceptions import (
     NotFoundException,
 )
 from litestar.status_codes import HTTP_204_NO_CONTENT
-from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
+from pydantic import (
+    AwareDatetime,
+    BaseModel,
+    ConfigDict,
+    Field,
+    ValidationError,
+    model_validator,
+)
 
 from synthorg.api.concurrency import check_if_match, compute_etag
 from synthorg.api.dto import ApiResponse
@@ -567,10 +574,11 @@ class SettingsController(Controller):
         Raises:
             ClientException: If the config fails validation.
         """
-        _ = state  # ensures state is available for future use
+        app_state: AppState = state.app_state
+        _ = app_state  # persistence planned; validate-only for now
         try:
             validated = SecurityConfig.model_validate(data.config)
-        except Exception as exc:
+        except ValidationError as exc:
             logger.warning(
                 API_SECURITY_CONFIG_IMPORT_FAILED,
                 error=str(exc),

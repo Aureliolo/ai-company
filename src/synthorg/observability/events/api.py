@@ -133,6 +133,7 @@ API_SECURITY_CONFIG_EXPORTED: Final[str] = "api.security_config.exported"
 API_SECURITY_CONFIG_IMPORTED: Final[str] = "api.security_config.imported"
 API_SECURITY_CONFIG_IMPORT_FAILED: Final[str] = "api.security_config.import_failed"
 API_COORDINATION_METRICS_QUERIED: Final[str] = "api.coordination_metrics.queried"
+API_AGENT_HEALTH_TREND_MISSING: Final[str] = "api.agent.health.trend_missing"
 
 # Ceremony policy
 API_CEREMONY_POLICY_QUERIED: Final[str] = "api.ceremony_policy.queried"

@@ -178,3 +178,28 @@ class TestCoordinationMetricsController:
         body = resp.json()
         msg_oh = body["data"][0]["metrics"]["message_overhead"]
         assert "is_quadratic" in msg_oh
+
+    def test_combined_filters_and(
+        self,
+        test_client: TestClient[Any],
+        coordination_metrics_store: CoordinationMetricsStore,
+    ) -> None:
+        """Multiple filters are AND-combined."""
+        t1 = datetime(2026, 4, 1, tzinfo=UTC)
+        t2 = t1 + timedelta(hours=1)
+        coordination_metrics_store.record(
+            _make_record(task_id="t1", agent_id="alice", timestamp=t1),
+        )
+        coordination_metrics_store.record(
+            _make_record(task_id="t2", agent_id="alice", timestamp=t2),
+        )
+        coordination_metrics_store.record(
+            _make_record(task_id="t3", agent_id="bob", timestamp=t1),
+        )
+        resp = test_client.get(
+            "/api/v1/coordination/metrics",
+            params={"agent_id": "alice", "since": t1.isoformat()},
+            headers=_HEADERS,
+        )
+        body = resp.json()
+        assert body["pagination"]["total"] == 2

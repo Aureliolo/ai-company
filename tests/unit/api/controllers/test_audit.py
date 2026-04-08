@@ -181,3 +181,39 @@ class TestAuditController:
         assert body["pagination"]["offset"] == 2
         assert body["pagination"]["limit"] == 2
         assert len(body["data"]) == 2
+
+    def test_combined_filters_and(
+        self,
+        test_client: TestClient[Any],
+        audit_log: AuditLog,
+    ) -> None:
+        """Multiple filters are AND-combined."""
+        audit_log.record(
+            _make_entry(
+                entry_id="e-1",
+                agent_id="alice",
+                verdict="allow",
+            ),
+        )
+        audit_log.record(
+            _make_entry(
+                entry_id="e-2",
+                agent_id="alice",
+                verdict="deny",
+            ),
+        )
+        audit_log.record(
+            _make_entry(
+                entry_id="e-3",
+                agent_id="bob",
+                verdict="allow",
+            ),
+        )
+        resp = test_client.get(
+            "/api/v1/security/audit",
+            params={"agent_id": "alice", "verdict": "deny"},
+            headers=_HEADERS,
+        )
+        body = resp.json()
+        assert body["pagination"]["total"] == 1
+        assert body["data"][0]["id"] == "e-2"

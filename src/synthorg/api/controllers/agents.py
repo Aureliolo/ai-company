@@ -1,12 +1,12 @@
 """Agent configuration, performance, activity, history, and CRUD mutations."""
 
 import json
-from typing import Any
+from typing import Any, Self
 
 from litestar import Controller, Request, Response, delete, get, patch, post
 from litestar.datastructures import State  # noqa: TC002
 from litestar.status_codes import HTTP_204_NO_CONTENT
-from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.api.channels import CHANNEL_AGENTS, publish_ws_event
 from synthorg.api.concurrency import compute_etag
@@ -35,6 +35,7 @@ from synthorg.hr.activity import (
     filter_career_events,
     merge_activity_timeline,
 )
+from synthorg.hr.enums import TrendDirection  # noqa: TC001
 from synthorg.hr.performance.summary import (
     AgentPerformanceSummary,
     extract_performance_summary,
@@ -43,6 +44,7 @@ from synthorg.observability import get_logger
 from synthorg.observability.events.api import (
     API_AGENT_ACTIVITY_QUERIED,
     API_AGENT_HEALTH_QUERIED,
+    API_AGENT_HEALTH_TREND_MISSING,
     API_AGENT_HISTORY_QUERIED,
     API_AGENT_PERFORMANCE_QUERIED,
     API_REQUEST_ERROR,
@@ -115,6 +117,13 @@ class TrustSummary(BaseModel):
     )
     last_evaluated_at: AwareDatetime | None = None
 
+    @model_validator(mode="after")
+    def _score_requires_evaluation_time(self) -> Self:
+        if self.score is not None and self.last_evaluated_at is None:
+            msg = "score requires last_evaluated_at to be set"
+            raise ValueError(msg)
+        return self
+
 
 class PerformanceSummary(BaseModel):
     """Performance snapshot summary for the health endpoint."""
@@ -131,7 +140,7 @@ class PerformanceSummary(BaseModel):
         ge=0.0,
         le=10.0,
     )
-    trend: NotBlankStr | None = None
+    trend: TrendDirection | None = None
 
 
 class AgentHealthResponse(BaseModel):
@@ -501,9 +510,23 @@ class AgentController(Controller):
 
 def _extract_quality_trend(
     snapshot: Any,
-) -> str | None:
-    """Extract the quality trend direction from a snapshot."""
+) -> TrendDirection | None:
+    """Extract the quality trend direction from a performance snapshot.
+
+    Args:
+        snapshot: Performance snapshot with a ``trends`` collection
+            (typically from ``PerformanceTracker.get_snapshot``).
+
+    Returns:
+        The ``TrendDirection`` for the "quality" metric, or ``None``
+        if no quality trend is recorded in the snapshot.
+    """
     for t in snapshot.trends:
         if t.metric_name == "quality":
-            return str(t.direction)
+            direction: TrendDirection = t.direction
+            return direction
+    logger.debug(
+        API_AGENT_HEALTH_TREND_MISSING,
+        trend_count=len(snapshot.trends),
+    )
     return None

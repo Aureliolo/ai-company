@@ -302,6 +302,9 @@ class AgentEngine:
             payload contract and recommended wiring.  When ``None``
             (or when the ``engine.personality_trimming_notify`` setting
             is ``False``), no callback fires.
+        audit_log: Optional audit log for recording security
+            evaluations and tool invocation verdicts.  When ``None``,
+            a fresh :class:`AuditLog` is created internally.
     """
 
     def __init__(  # noqa: PLR0913, PLR0915

@@ -1835,15 +1835,15 @@ them is required to support the full control-plane positioning claim.
 | # | Gap | Severity | Recommendation |
 |---|-----|----------|----------------|
 | G1 | No telemetry export (Prometheus `/metrics` or OTLP) | High | Add `/metrics` route + metrics aggregator. The 82+ structured events provide all raw data. |
-| G2 | No per-agent health endpoint | Medium | Add `GET /agents/{id}/health` compositing `PerformanceTracker.get_snapshot()`, `TrustService.get_trust_state()`, and last-active timestamp. |
-| G3 | No policy-as-code export/import | Medium | Add `GET /settings/security/export` and `POST /settings/security/import` to enable GitOps-style policy management. |
-| G4 | No coordination metrics API | Medium | Add `GET /coordination/metrics` endpoint. The 9 Kim et al. metrics are already computed in `budget/coordination_metrics.py` but not queryable. |
-| G5 | No audit log query API | Medium | Add `GET /security/audit` with filters. The `AuditLog` is write-only from an API perspective -- log sinks are the only read path. |
+| G2 | ~~No per-agent health endpoint~~ | ~~Medium~~ | **Implemented** -- `GET /agents/{name}/health` composites performance, trust, and lifecycle status. |
+| G3 | ~~No policy-as-code export/import~~ | ~~Medium~~ | **Implemented** -- `GET /settings/security/export` and `POST /settings/security/import` (validate-only; persistence planned). |
+| G4 | ~~No coordination metrics API~~ | ~~Medium~~ | **Implemented** -- `GET /coordination/metrics` exposes the 9 Kim et al. metrics with filtering. |
+| G5 | ~~No audit log query API~~ | ~~Medium~~ | **Implemented** -- `GET /security/audit` with agent_id, verdict, action_type, and time-range filters. |
 | G6 | Budget history granularity | Low | `CostTracker` is in-memory with TTL eviction. Multi-dimensional queries (provider X, agent Y, period Z) require persistence layer investigation. |
 
-Priority for closing gaps: G1 (telemetry export) is the most significant for enterprise
-positioning. G3 (policy-as-code) and G4 (coordination metrics API) are the highest
-differentiation opportunities. G2 is the smallest implementation scope.
+Priority for closing gaps: G1 (telemetry export) is the most significant remaining gap
+for enterprise positioning. G2-G5 were closed in v0.6.4 (control-plane API endpoints
+batch). G6 remains low-priority.
 
 ### Recommended Framing
 

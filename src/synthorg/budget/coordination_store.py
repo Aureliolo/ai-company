@@ -77,6 +77,7 @@ class CoordinationMetricsStore:
         agent_id: str | None = None,
         since: AwareDatetime | None = None,
         until: AwareDatetime | None = None,
+        limit: int = 10_000,
     ) -> tuple[CoordinationMetricsRecord, ...]:
         """Query records with optional AND-combined filters.
 
@@ -85,10 +86,17 @@ class CoordinationMetricsStore:
             agent_id: Filter by lead agent identifier.
             since: Exclude records before this datetime.
             until: Exclude records after this datetime.
+            limit: Maximum results to return (must be >= 1).
 
         Returns:
             Matching records, newest first.
+
+        Raises:
+            ValueError: If *limit* < 1.
         """
+        if limit < 1:
+            msg = f"limit must be >= 1, got {limit}"
+            raise ValueError(msg)
         results: list[CoordinationMetricsRecord] = []
         for rec in reversed(self._records):
             if task_id is not None and rec.task_id != task_id:
@@ -100,6 +108,8 @@ class CoordinationMetricsStore:
             if until is not None and rec.computed_at > until:
                 continue
             results.append(rec)
+            if len(results) >= limit:
+                break
         return tuple(results)
 
     def count(self) -> int:
