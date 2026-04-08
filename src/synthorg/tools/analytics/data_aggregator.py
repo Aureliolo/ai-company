@@ -1,0 +1,246 @@
+"""Data aggregator tool -- query and aggregate analytics data via provider.
+
+The ``AnalyticsProvider`` protocol defines a vendor-agnostic interface
+for querying analytics backends.  No concrete implementation is
+shipped -- users inject a provider at construction time.
+"""
+
+import copy
+from typing import Any, Final, Protocol, runtime_checkable
+
+from synthorg.core.enums import ActionType
+from synthorg.observability import get_logger
+from synthorg.observability.events.analytics import (
+    ANALYTICS_TOOL_PROVIDER_NOT_CONFIGURED,
+    ANALYTICS_TOOL_QUERY_FAILED,
+    ANALYTICS_TOOL_QUERY_START,
+    ANALYTICS_TOOL_QUERY_SUCCESS,
+)
+from synthorg.tools.analytics.base_analytics_tool import BaseAnalyticsTool
+from synthorg.tools.analytics.config import AnalyticsToolsConfig  # noqa: TC001
+from synthorg.tools.base import ToolExecutionResult
+
+logger = get_logger(__name__)
+
+_VALID_PERIODS: Final[frozenset[str]] = frozenset({"7d", "30d", "90d", "custom"})
+
+_VALID_GROUP_BY: Final[frozenset[str]] = frozenset(
+    {"day", "week", "month", "agent", "department"}
+)
+
+
+@runtime_checkable
+class AnalyticsProvider(Protocol):
+    """Abstracted analytics data provider protocol.
+
+    Implementations must be async and return query results
+    as a dictionary.
+    """
+
+    async def query(
+        self,
+        *,
+        metrics: list[str],
+        period: str,
+        group_by: str | None = None,
+        start_date: str | None = None,
+        end_date: str | None = None,
+    ) -> dict[str, Any]:
+        """Query analytics data.
+
+        Args:
+            metrics: Metric names to aggregate.
+            period: Time period (7d, 30d, 90d, or custom).
+            group_by: Optional grouping dimension.
+            start_date: Start date for custom period (ISO 8601).
+            end_date: End date for custom period (ISO 8601).
+
+        Returns:
+            Query results as a dictionary.
+        """
+        ...
+
+
+_PARAMETERS_SCHEMA: Final[dict[str, Any]] = {
+    "type": "object",
+    "properties": {
+        "metrics": {
+            "type": "array",
+            "items": {"type": "string"},
+            "description": (
+                "Metric names to aggregate (e.g. 'total_cost', 'task_completion_rate')"
+            ),
+        },
+        "period": {
+            "type": "string",
+            "enum": sorted(_VALID_PERIODS),
+            "description": "Time period for aggregation",
+        },
+        "group_by": {
+            "type": "string",
+            "enum": sorted(_VALID_GROUP_BY),
+            "description": "Optional grouping dimension",
+        },
+        "start_date": {
+            "type": "string",
+            "description": "Start date for custom period (ISO 8601)",
+        },
+        "end_date": {
+            "type": "string",
+            "description": "End date for custom period (ISO 8601)",
+        },
+    },
+    "required": ["metrics", "period"],
+    "additionalProperties": False,
+}
+
+
+class DataAggregatorTool(BaseAnalyticsTool):
+    """Query and aggregate analytics data via a provider.
+
+    Requires an ``AnalyticsProvider`` to be injected at construction
+    time.  Validates metric names against the optional whitelist
+    in ``AnalyticsToolsConfig``.
+
+    Examples:
+        Query metrics::
+
+            tool = DataAggregatorTool(provider=my_provider)
+            result = await tool.execute(
+                arguments={
+                    "metrics": ["total_cost", "task_count"],
+                    "period": "7d",
+                    "group_by": "day",
+                }
+            )
+    """
+
+    def __init__(
+        self,
+        *,
+        provider: AnalyticsProvider | None = None,
+        config: AnalyticsToolsConfig | None = None,
+    ) -> None:
+        """Initialize the data aggregator tool.
+
+        Args:
+            provider: Analytics data provider.  ``None`` means
+                the tool will return an error on execution.
+            config: Analytics tool configuration.
+        """
+        super().__init__(
+            name="data_aggregator",
+            description=(
+                "Query and aggregate analytics data "
+                "(costs, tasks, performance metrics)."
+            ),
+            parameters_schema=copy.deepcopy(_PARAMETERS_SCHEMA),
+            action_type=ActionType.CODE_READ,
+            config=config,
+        )
+        self._provider = provider
+
+    async def execute(
+        self,
+        *,
+        arguments: dict[str, Any],
+    ) -> ToolExecutionResult:
+        """Query analytics data.
+
+        Args:
+            arguments: Must contain ``metrics`` and ``period``;
+                optionally ``group_by``, ``start_date``, ``end_date``.
+
+        Returns:
+            A ``ToolExecutionResult`` with aggregated data.
+        """
+        if self._provider is None:
+            logger.warning(
+                ANALYTICS_TOOL_PROVIDER_NOT_CONFIGURED,
+                tool="data_aggregator",
+            )
+            return ToolExecutionResult(
+                content=(
+                    "Analytics queries require a configured provider. "
+                    "No AnalyticsProvider has been injected."
+                ),
+                is_error=True,
+            )
+
+        metrics: list[str] = arguments["metrics"]
+        period: str = arguments["period"]
+        group_by: str | None = arguments.get("group_by")
+        start_date: str | None = arguments.get("start_date")
+        end_date: str | None = arguments.get("end_date")
+
+        # Validate metric names against whitelist
+        blocked = [m for m in metrics if not self._is_metric_allowed(m)]
+        if blocked:
+            return ToolExecutionResult(
+                content=(
+                    f"Metrics not allowed: {blocked}. "
+                    f"Allowed: {sorted(self._config.allowed_metrics or set())}"
+                ),
+                is_error=True,
+            )
+
+        if period not in _VALID_PERIODS:
+            return ToolExecutionResult(
+                content=(
+                    f"Invalid period: {period!r}. "
+                    f"Must be one of: {sorted(_VALID_PERIODS)}"
+                ),
+                is_error=True,
+            )
+
+        if group_by is not None and group_by not in _VALID_GROUP_BY:
+            return ToolExecutionResult(
+                content=(
+                    f"Invalid group_by: {group_by!r}. "
+                    f"Must be one of: {sorted(_VALID_GROUP_BY)}"
+                ),
+                is_error=True,
+            )
+
+        logger.info(
+            ANALYTICS_TOOL_QUERY_START,
+            metrics=metrics,
+            period=period,
+            group_by=group_by,
+        )
+
+        try:
+            data = await self._provider.query(
+                metrics=metrics,
+                period=period,
+                group_by=group_by,
+                start_date=start_date,
+                end_date=end_date,
+            )
+        except MemoryError, RecursionError:
+            raise
+        except Exception as exc:
+            logger.warning(
+                ANALYTICS_TOOL_QUERY_FAILED,
+                error=str(exc),
+            )
+            return ToolExecutionResult(
+                content=f"Analytics query failed: {exc}",
+                is_error=True,
+            )
+
+        logger.info(
+            ANALYTICS_TOOL_QUERY_SUCCESS,
+            metrics=metrics,
+            result_keys=sorted(data.keys()),
+        )
+
+        # Format results as readable text
+        lines = [f"Analytics query results ({period}):"]
+        for key, value in sorted(data.items()):
+            lines.append(f"  {key}: {value}")
+
+        return ToolExecutionResult(
+            content="\n".join(lines),
+            metadata=data,
+        )

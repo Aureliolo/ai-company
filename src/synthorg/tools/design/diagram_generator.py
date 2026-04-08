@@ -1,0 +1,247 @@
+"""Diagram generator tool -- generate Mermaid/Graphviz DSL from descriptions.
+
+Produces diagram markup (Mermaid or Graphviz DOT) that can be rendered
+by downstream tools or the web dashboard.  No external provider is
+required -- the tool outputs DSL text directly.
+"""
+
+import copy
+from typing import Any, Final
+
+from synthorg.core.enums import ActionType
+from synthorg.observability import get_logger
+from synthorg.observability.events.design import (
+    DESIGN_DIAGRAM_GENERATION_FAILED,
+    DESIGN_DIAGRAM_GENERATION_START,
+    DESIGN_DIAGRAM_GENERATION_SUCCESS,
+)
+from synthorg.tools.base import ToolExecutionResult
+from synthorg.tools.design.base_design_tool import BaseDesignTool
+from synthorg.tools.design.config import DesignToolsConfig  # noqa: TC001
+
+logger = get_logger(__name__)
+
+_DIAGRAM_TYPES: Final[frozenset[str]] = frozenset(
+    {
+        "flowchart",
+        "sequence",
+        "class",
+        "state",
+        "architecture",
+    }
+)
+
+_OUTPUT_FORMATS: Final[frozenset[str]] = frozenset(
+    {
+        "mermaid",
+        "graphviz",
+    }
+)
+
+_PARAMETERS_SCHEMA: Final[dict[str, Any]] = {
+    "type": "object",
+    "properties": {
+        "diagram_type": {
+            "type": "string",
+            "enum": sorted(_DIAGRAM_TYPES),
+            "description": "Type of diagram to generate",
+        },
+        "description": {
+            "type": "string",
+            "description": (
+                "Diagram specification -- structured description "
+                "of nodes, edges, and relationships"
+            ),
+        },
+        "title": {
+            "type": "string",
+            "description": "Optional diagram title",
+        },
+        "output_format": {
+            "type": "string",
+            "enum": sorted(_OUTPUT_FORMATS),
+            "description": "Output markup format (default: mermaid)",
+            "default": "mermaid",
+        },
+    },
+    "required": ["diagram_type", "description"],
+    "additionalProperties": False,
+}
+
+
+class DiagramGeneratorTool(BaseDesignTool):
+    """Generate diagram markup (Mermaid/Graphviz) from structured descriptions.
+
+    Produces DSL text that can be rendered by Mermaid.js, Graphviz,
+    or the web dashboard.  No external API is needed.
+
+    Examples:
+        Generate a flowchart::
+
+            tool = DiagramGeneratorTool()
+            result = await tool.execute(
+                arguments={
+                    "diagram_type": "flowchart",
+                    "description": "A -> B -> C",
+                    "title": "Simple Flow",
+                }
+            )
+    """
+
+    def __init__(
+        self,
+        *,
+        config: DesignToolsConfig | None = None,
+    ) -> None:
+        """Initialize the diagram generator tool.
+
+        Args:
+            config: Design tool configuration.
+        """
+        super().__init__(
+            name="diagram_generator",
+            description=(
+                "Generate diagram markup (Mermaid or Graphviz) "
+                "from structured descriptions."
+            ),
+            parameters_schema=copy.deepcopy(_PARAMETERS_SCHEMA),
+            action_type=ActionType.DOCS_WRITE,
+            config=config,
+        )
+
+    async def execute(
+        self,
+        *,
+        arguments: dict[str, Any],
+    ) -> ToolExecutionResult:
+        """Generate diagram markup from a description.
+
+        Args:
+            arguments: Must contain ``diagram_type`` and
+                ``description``; optionally ``title`` and
+                ``output_format``.
+
+        Returns:
+            A ``ToolExecutionResult`` with the diagram DSL.
+        """
+        diagram_type: str = arguments["diagram_type"]
+        description: str = arguments["description"]
+        title: str = arguments.get("title", "")
+        output_format: str = arguments.get("output_format", "mermaid")
+
+        if diagram_type not in _DIAGRAM_TYPES:
+            return ToolExecutionResult(
+                content=(
+                    f"Invalid diagram_type: {diagram_type!r}. "
+                    f"Must be one of: {sorted(_DIAGRAM_TYPES)}"
+                ),
+                is_error=True,
+            )
+
+        if output_format not in _OUTPUT_FORMATS:
+            return ToolExecutionResult(
+                content=(
+                    f"Invalid output_format: {output_format!r}. "
+                    f"Must be one of: {sorted(_OUTPUT_FORMATS)}"
+                ),
+                is_error=True,
+            )
+
+        logger.info(
+            DESIGN_DIAGRAM_GENERATION_START,
+            diagram_type=diagram_type,
+            output_format=output_format,
+            description_length=len(description),
+        )
+
+        try:
+            if output_format == "mermaid":
+                markup = self._generate_mermaid(diagram_type, description, title)
+            else:
+                markup = self._generate_graphviz(diagram_type, description, title)
+        except MemoryError, RecursionError:
+            raise
+        except Exception as exc:
+            logger.warning(
+                DESIGN_DIAGRAM_GENERATION_FAILED,
+                error=str(exc),
+                diagram_type=diagram_type,
+            )
+            return ToolExecutionResult(
+                content=f"Diagram generation failed: {exc}",
+                is_error=True,
+            )
+
+        logger.info(
+            DESIGN_DIAGRAM_GENERATION_SUCCESS,
+            diagram_type=diagram_type,
+            output_format=output_format,
+            markup_length=len(markup),
+        )
+
+        return ToolExecutionResult(
+            content=markup,
+            metadata={
+                "diagram_type": diagram_type,
+                "output_format": output_format,
+                "title": title,
+            },
+        )
+
+    @staticmethod
+    def _generate_mermaid(
+        diagram_type: str,
+        description: str,
+        title: str,
+    ) -> str:
+        """Generate Mermaid DSL from the description.
+
+        Wraps the user-provided description in the appropriate
+        Mermaid diagram directive.
+
+        Args:
+            diagram_type: Type of diagram.
+            description: User-provided diagram specification.
+            title: Optional title.
+
+        Returns:
+            Mermaid markup string.
+        """
+        type_map: dict[str, str] = {
+            "flowchart": "flowchart TD",
+            "sequence": "sequenceDiagram",
+            "class": "classDiagram",
+            "state": "stateDiagram-v2",
+            "architecture": "flowchart TD",
+        }
+        directive = type_map.get(diagram_type, "flowchart TD")
+        lines: list[str] = []
+        if title:
+            lines.append("---")
+            lines.append(f"title: {title}")
+            lines.append("---")
+        lines.append(directive)
+        lines.extend(f"    {line}" for line in description.strip().splitlines())
+        return "\n".join(lines)
+
+    @staticmethod
+    def _generate_graphviz(
+        diagram_type: str,
+        description: str,
+        title: str,
+    ) -> str:
+        """Generate Graphviz DOT from the description.
+
+        Wraps the user-provided description in a DOT digraph block.
+
+        Args:
+            diagram_type: Type of diagram (used for graph attributes).
+            description: User-provided diagram specification.
+            title: Optional title.
+
+        Returns:
+            Graphviz DOT string.
+        """
+        graph_type = "graph" if diagram_type == "architecture" else "digraph"
+        label = f'    label="{title}";\n' if title else ""
+        return f"{graph_type} {diagram_type} {{\n{label}    {description}\n}}"

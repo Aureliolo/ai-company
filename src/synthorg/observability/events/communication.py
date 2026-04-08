@@ -58,3 +58,34 @@ COMM_SEND_DIRECT_INVALID: Final[str] = "communication.message.send_direct_invali
 
 # Shutdown
 COMM_BUS_SHUTDOWN_SIGNAL: Final[str] = "communication.bus.shutdown_signal"
+
+# Tool: email sending
+COMM_TOOL_EMAIL_SEND_START: Final[str] = "communication.tool.email.send_start"
+COMM_TOOL_EMAIL_SEND_SUCCESS: Final[str] = "communication.tool.email.send_success"
+COMM_TOOL_EMAIL_SEND_FAILED: Final[str] = "communication.tool.email.send_failed"
+COMM_TOOL_EMAIL_VALIDATION_FAILED: Final[str] = (
+    "communication.tool.email.validation_failed"
+)
+
+# Tool: notification sending
+COMM_TOOL_NOTIFICATION_SEND_START: Final[str] = (
+    "communication.tool.notification.send_start"
+)
+COMM_TOOL_NOTIFICATION_SEND_SUCCESS: Final[str] = (
+    "communication.tool.notification.send_success"
+)
+COMM_TOOL_NOTIFICATION_SEND_FAILED: Final[str] = (
+    "communication.tool.notification.send_failed"
+)
+
+# Tool: template rendering
+COMM_TOOL_TEMPLATE_RENDER_START: Final[str] = "communication.tool.template.render_start"
+COMM_TOOL_TEMPLATE_RENDER_SUCCESS: Final[str] = (
+    "communication.tool.template.render_success"
+)
+COMM_TOOL_TEMPLATE_RENDER_FAILED: Final[str] = (
+    "communication.tool.template.render_failed"
+)
+COMM_TOOL_TEMPLATE_RENDER_INVALID: Final[str] = (
+    "communication.tool.template.render_invalid"
+)

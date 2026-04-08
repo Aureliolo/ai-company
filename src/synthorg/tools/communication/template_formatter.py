@@ -1,0 +1,169 @@
+"""Template formatter tool -- render message templates safely.
+
+Uses Jinja2 ``SandboxedEnvironment`` for safe variable substitution
+with no arbitrary code execution.
+"""
+
+import copy
+from typing import Any, Final
+
+from jinja2 import TemplateSyntaxError
+from jinja2.sandbox import SandboxedEnvironment
+
+from synthorg.core.enums import ActionType
+from synthorg.observability import get_logger
+from synthorg.observability.events.communication import (
+    COMM_TOOL_TEMPLATE_RENDER_FAILED,
+    COMM_TOOL_TEMPLATE_RENDER_INVALID,
+    COMM_TOOL_TEMPLATE_RENDER_START,
+    COMM_TOOL_TEMPLATE_RENDER_SUCCESS,
+)
+from synthorg.tools.base import ToolExecutionResult
+from synthorg.tools.communication.base_communication_tool import (
+    BaseCommunicationTool,
+)
+from synthorg.tools.communication.config import (
+    CommunicationToolsConfig,  # noqa: TC001
+)
+
+logger = get_logger(__name__)
+
+_OUTPUT_FORMATS: Final[frozenset[str]] = frozenset({"text", "html", "markdown"})
+
+_PARAMETERS_SCHEMA: Final[dict[str, Any]] = {
+    "type": "object",
+    "properties": {
+        "template": {
+            "type": "string",
+            "description": ("Inline Jinja2 template string (e.g. 'Hello {{ name }}')"),
+        },
+        "variables": {
+            "type": "object",
+            "description": "Variable bindings for template rendering",
+        },
+        "format": {
+            "type": "string",
+            "enum": sorted(_OUTPUT_FORMATS),
+            "description": "Output format (default: text)",
+            "default": "text",
+        },
+    },
+    "required": ["template", "variables"],
+    "additionalProperties": False,
+}
+
+
+class TemplateFormatterTool(BaseCommunicationTool):
+    """Format message templates with safe variable substitution.
+
+    Uses Jinja2 ``SandboxedEnvironment`` to prevent arbitrary
+    code execution.  Only inline templates are supported (no
+    file-based templates) to avoid path traversal risks.
+
+    Examples:
+        Render a template::
+
+            tool = TemplateFormatterTool()
+            result = await tool.execute(
+                arguments={
+                    "template": "Hello {{ name }}, your balance is {{ amount }}.",
+                    "variables": {"name": "Alice", "amount": "$100"},
+                }
+            )
+    """
+
+    def __init__(
+        self,
+        *,
+        config: CommunicationToolsConfig | None = None,
+    ) -> None:
+        """Initialize the template formatter tool.
+
+        Args:
+            config: Communication tool configuration.
+        """
+        super().__init__(
+            name="template_formatter",
+            description=(
+                "Render inline message templates with safe "
+                "Jinja2 variable substitution."
+            ),
+            parameters_schema=copy.deepcopy(_PARAMETERS_SCHEMA),
+            action_type=ActionType.CODE_READ,
+            config=config,
+        )
+        self._env = SandboxedEnvironment()
+
+    async def execute(
+        self,
+        *,
+        arguments: dict[str, Any],
+    ) -> ToolExecutionResult:
+        """Render a template with variables.
+
+        Args:
+            arguments: Must contain ``template`` and ``variables``;
+                optionally ``format``.
+
+        Returns:
+            A ``ToolExecutionResult`` with rendered text.
+        """
+        template_str: str = arguments["template"]
+        variables: dict[str, Any] = arguments["variables"]
+        output_format: str = arguments.get("format", "text")
+
+        if output_format not in _OUTPUT_FORMATS:
+            return ToolExecutionResult(
+                content=(
+                    f"Invalid format: {output_format!r}. "
+                    f"Must be one of: {sorted(_OUTPUT_FORMATS)}"
+                ),
+                is_error=True,
+            )
+
+        logger.info(
+            COMM_TOOL_TEMPLATE_RENDER_START,
+            template_length=len(template_str),
+            variable_count=len(variables),
+            output_format=output_format,
+        )
+
+        try:
+            tmpl = self._env.from_string(template_str)
+        except TemplateSyntaxError as exc:
+            logger.warning(
+                COMM_TOOL_TEMPLATE_RENDER_INVALID,
+                error=str(exc),
+            )
+            return ToolExecutionResult(
+                content=f"Invalid template syntax: {exc}",
+                is_error=True,
+            )
+
+        try:
+            rendered = tmpl.render(**variables)
+        except MemoryError, RecursionError:
+            raise
+        except Exception as exc:
+            logger.warning(
+                COMM_TOOL_TEMPLATE_RENDER_FAILED,
+                error=str(exc),
+            )
+            return ToolExecutionResult(
+                content=f"Template rendering failed: {exc}",
+                is_error=True,
+            )
+
+        logger.info(
+            COMM_TOOL_TEMPLATE_RENDER_SUCCESS,
+            output_length=len(rendered),
+            output_format=output_format,
+        )
+
+        return ToolExecutionResult(
+            content=rendered,
+            metadata={
+                "format": output_format,
+                "output_length": len(rendered),
+            },
+        )

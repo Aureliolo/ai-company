@@ -43,8 +43,15 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     from synthorg.config.schema import RootConfig
+    from synthorg.notifications.dispatcher import NotificationDispatcher
+    from synthorg.tools.analytics.config import AnalyticsToolsConfig
+    from synthorg.tools.analytics.data_aggregator import AnalyticsProvider
+    from synthorg.tools.analytics.metric_collector import MetricSink
     from synthorg.tools.base import BaseTool
+    from synthorg.tools.communication.config import CommunicationToolsConfig
     from synthorg.tools.database.config import DatabaseConfig, DatabaseConnectionConfig
+    from synthorg.tools.design.config import DesignToolsConfig
+    from synthorg.tools.design.image_generator import ImageProvider
     from synthorg.tools.git_url_validator import GitCloneNetworkPolicy
     from synthorg.tools.network_validator import NetworkPolicy
     from synthorg.tools.sandbox.protocol import SandboxBackend
@@ -153,6 +160,79 @@ def _build_terminal_tools(
     return (ShellCommandTool(sandbox=sandbox, config=config),)
 
 
+def _build_design_tools(
+    *,
+    config: DesignToolsConfig | None = None,
+    image_provider: ImageProvider | None = None,
+) -> tuple[BaseTool, ...]:
+    """Instantiate the built-in design tools.
+
+    Returns an empty tuple when *config* is ``None``.
+    """
+    if config is None:
+        return ()
+    from synthorg.tools.design import (  # noqa: PLC0415
+        AssetManagerTool,
+        DiagramGeneratorTool,
+        ImageGeneratorTool,
+    )
+
+    return (
+        ImageGeneratorTool(provider=image_provider, config=config),
+        DiagramGeneratorTool(config=config),
+        AssetManagerTool(config=config),
+    )
+
+
+def _build_communication_tools(
+    *,
+    config: CommunicationToolsConfig | None = None,
+    dispatcher: NotificationDispatcher | None = None,
+) -> tuple[BaseTool, ...]:
+    """Instantiate the built-in communication tools.
+
+    Returns an empty tuple when *config* is ``None``.
+    """
+    if config is None:
+        return ()
+    from synthorg.tools.communication import (  # noqa: PLC0415
+        EmailSenderTool,
+        NotificationSenderTool,
+        TemplateFormatterTool,
+    )
+
+    return (
+        EmailSenderTool(config=config),
+        NotificationSenderTool(dispatcher=dispatcher, config=config),
+        TemplateFormatterTool(config=config),
+    )
+
+
+def _build_analytics_tools(
+    *,
+    config: AnalyticsToolsConfig | None = None,
+    provider: AnalyticsProvider | None = None,
+    metric_sink: MetricSink | None = None,
+) -> tuple[BaseTool, ...]:
+    """Instantiate the built-in analytics tools.
+
+    Returns an empty tuple when *config* is ``None``.
+    """
+    if config is None:
+        return ()
+    from synthorg.tools.analytics import (  # noqa: PLC0415
+        DataAggregatorTool,
+        MetricCollectorTool,
+        ReportGeneratorTool,
+    )
+
+    return (
+        DataAggregatorTool(provider=provider, config=config),
+        ReportGeneratorTool(provider=provider, config=config),
+        MetricCollectorTool(sink=metric_sink, config=config),
+    )
+
+
 def build_default_tools(  # noqa: PLR0913
     *,
     workspace: Path,
@@ -163,6 +243,13 @@ def build_default_tools(  # noqa: PLR0913
     database_config: DatabaseConfig | None = None,
     terminal_config: TerminalConfig | None = None,
     terminal_sandbox: SandboxBackend | None = None,
+    design_config: DesignToolsConfig | None = None,
+    image_provider: ImageProvider | None = None,
+    communication_config: CommunicationToolsConfig | None = None,
+    communication_dispatcher: NotificationDispatcher | None = None,
+    analytics_config: AnalyticsToolsConfig | None = None,
+    analytics_provider: AnalyticsProvider | None = None,
+    metric_sink: MetricSink | None = None,
 ) -> tuple[BaseTool, ...]:
     """Instantiate all built-in workspace tools.
 
@@ -179,6 +266,17 @@ def build_default_tools(  # noqa: PLR0913
             database tool creation.
         terminal_config: Terminal tool configuration.
         terminal_sandbox: Sandbox backend for terminal tools.
+        design_config: Design tool configuration.  ``None`` skips
+            design tool creation.
+        image_provider: Image generation provider for design tools.
+        communication_config: Communication tool configuration.
+            ``None`` skips communication tool creation.
+        communication_dispatcher: Notification dispatcher for the
+            notification sender tool.
+        analytics_config: Analytics tool configuration.  ``None``
+            skips analytics tool creation.
+        analytics_provider: Analytics data provider.
+        metric_sink: Metric recording sink.
 
     Returns:
         Sorted tuple of ``BaseTool`` instances.
@@ -221,6 +319,26 @@ def build_default_tools(  # noqa: PLR0913
             _build_database_tools(config=database_config),
         )
 
+    all_tools.extend(
+        _build_design_tools(
+            config=design_config,
+            image_provider=image_provider,
+        ),
+    )
+    all_tools.extend(
+        _build_communication_tools(
+            config=communication_config,
+            dispatcher=communication_dispatcher,
+        ),
+    )
+    all_tools.extend(
+        _build_analytics_tools(
+            config=analytics_config,
+            provider=analytics_provider,
+            metric_sink=metric_sink,
+        ),
+    )
+
     result = tuple(sorted(all_tools, key=lambda t: t.name))
 
     policy = git_clone_policy
@@ -236,12 +354,16 @@ def build_default_tools(  # noqa: PLR0913
     return result
 
 
-def build_default_tools_from_config(
+def build_default_tools_from_config(  # noqa: PLR0913
     *,
     workspace: Path,
     config: RootConfig,
     sandbox_backends: Mapping[str, SandboxBackend] | None = None,
     web_search_provider: WebSearchProvider | None = None,
+    image_provider: ImageProvider | None = None,
+    communication_dispatcher: NotificationDispatcher | None = None,
+    analytics_provider: AnalyticsProvider | None = None,
+    metric_sink: MetricSink | None = None,
 ) -> tuple[BaseTool, ...]:
     """Build default tools using parameters from a ``RootConfig``.
 
@@ -261,6 +383,12 @@ def build_default_tools_from_config(
             instead of auto-building backends.
         web_search_provider: Optional web search provider to inject
             into the web search tool.
+        image_provider: Optional image generation provider for design
+            tools.
+        communication_dispatcher: Optional notification dispatcher for
+            the notification sender tool.
+        analytics_provider: Optional analytics data provider.
+        metric_sink: Optional metric recording sink.
 
     Returns:
         Sorted tuple of ``BaseTool`` instances.
@@ -323,4 +451,11 @@ def build_default_tools_from_config(
         database_config=config.database,
         terminal_config=config.terminal,
         terminal_sandbox=terminal_sandbox,
+        design_config=config.design_tools,
+        image_provider=image_provider,
+        communication_config=config.communication_tools,
+        communication_dispatcher=communication_dispatcher,
+        analytics_config=config.analytics_tools,
+        analytics_provider=analytics_provider,
+        metric_sink=metric_sink,
     )

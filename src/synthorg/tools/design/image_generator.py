@@ -1,0 +1,237 @@
+"""Image generator tool -- generate images via an abstracted provider.
+
+The ``ImageProvider`` protocol defines a vendor-agnostic interface
+for image generation.  No concrete implementation is shipped -- users
+inject a provider at construction time.
+"""
+
+import copy
+from typing import Any, Final, Protocol, runtime_checkable
+
+from pydantic import BaseModel, ConfigDict
+
+from synthorg.core.enums import ActionType
+from synthorg.observability import get_logger
+from synthorg.observability.events.design import (
+    DESIGN_IMAGE_GENERATION_FAILED,
+    DESIGN_IMAGE_GENERATION_START,
+    DESIGN_IMAGE_GENERATION_SUCCESS,
+    DESIGN_PROVIDER_NOT_CONFIGURED,
+)
+from synthorg.tools.base import ToolExecutionResult
+from synthorg.tools.design.base_design_tool import BaseDesignTool
+from synthorg.tools.design.config import DesignToolsConfig  # noqa: TC001
+
+logger = get_logger(__name__)
+
+
+class ImageResult(BaseModel):
+    """Result from an image generation provider.
+
+    Attributes:
+        data: Raw image bytes (base64-encoded string).
+        content_type: MIME type of the generated image.
+        width: Image width in pixels.
+        height: Image height in pixels.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+
+    data: str
+    content_type: str = "image/png"
+    width: int
+    height: int
+
+
+@runtime_checkable
+class ImageProvider(Protocol):
+    """Abstracted image generation provider protocol.
+
+    Implementations must be async and return an ``ImageResult``.
+    """
+
+    async def generate(
+        self,
+        *,
+        prompt: str,
+        width: int = 1024,
+        height: int = 1024,
+        style: str = "realistic",
+        quality: str = "standard",
+    ) -> ImageResult:
+        """Generate an image from a text prompt.
+
+        Args:
+            prompt: Image description.
+            width: Image width in pixels.
+            height: Image height in pixels.
+            style: Image style preset.
+            quality: Image quality preset.
+
+        Returns:
+            Generated image result.
+        """
+        ...
+
+
+_PARAMETERS_SCHEMA: Final[dict[str, Any]] = {
+    "type": "object",
+    "properties": {
+        "prompt": {
+            "type": "string",
+            "description": "Image description",
+        },
+        "style": {
+            "type": "string",
+            "enum": ["realistic", "sketch", "diagram", "icon"],
+            "description": "Image style (default: realistic)",
+            "default": "realistic",
+        },
+        "width": {
+            "type": "integer",
+            "description": "Image width in pixels",
+            "minimum": 256,
+            "maximum": 2048,
+            "default": 1024,
+        },
+        "height": {
+            "type": "integer",
+            "description": "Image height in pixels",
+            "minimum": 256,
+            "maximum": 2048,
+            "default": 1024,
+        },
+        "quality": {
+            "type": "string",
+            "enum": ["draft", "standard", "high"],
+            "description": "Image quality preset",
+            "default": "standard",
+        },
+    },
+    "required": ["prompt"],
+    "additionalProperties": False,
+}
+
+
+class ImageGeneratorTool(BaseDesignTool):
+    """Generate images from text prompts via an abstracted provider.
+
+    Requires an ``ImageProvider`` implementation to be injected at
+    construction time.  If no provider is configured, the tool
+    returns an error explaining the requirement.
+
+    Examples:
+        Generate an image::
+
+            tool = ImageGeneratorTool(provider=my_provider)
+            result = await tool.execute(arguments={"prompt": "A sunset over mountains"})
+    """
+
+    def __init__(
+        self,
+        *,
+        provider: ImageProvider | None = None,
+        config: DesignToolsConfig | None = None,
+    ) -> None:
+        """Initialize the image generator tool.
+
+        Args:
+            provider: Image generation provider.  ``None`` means
+                the tool will return an error on execution.
+            config: Design tool configuration.
+        """
+        super().__init__(
+            name="image_generator",
+            description=(
+                "Generate images from text prompts. Supports style and quality presets."
+            ),
+            parameters_schema=copy.deepcopy(_PARAMETERS_SCHEMA),
+            action_type=ActionType.DOCS_WRITE,
+            config=config,
+        )
+        self._provider = provider
+
+    async def execute(
+        self,
+        *,
+        arguments: dict[str, Any],
+    ) -> ToolExecutionResult:
+        """Generate an image from a text prompt.
+
+        Args:
+            arguments: Must contain ``prompt``; optionally ``style``,
+                ``width``, ``height``, ``quality``.
+
+        Returns:
+            A ``ToolExecutionResult`` with image data or error.
+        """
+        if self._provider is None:
+            logger.warning(
+                DESIGN_PROVIDER_NOT_CONFIGURED,
+                tool="image_generator",
+            )
+            return ToolExecutionResult(
+                content=(
+                    "Image generation requires a configured provider. "
+                    "No ImageProvider has been injected."
+                ),
+                is_error=True,
+            )
+
+        prompt: str = arguments["prompt"]
+        style: str = arguments.get("style", "realistic")
+        width: int = arguments.get("width", 1024)
+        height: int = arguments.get("height", 1024)
+        quality: str = arguments.get("quality", "standard")
+
+        logger.info(
+            DESIGN_IMAGE_GENERATION_START,
+            prompt_length=len(prompt),
+            style=style,
+            width=width,
+            height=height,
+            quality=quality,
+        )
+
+        try:
+            result = await self._provider.generate(
+                prompt=prompt,
+                width=width,
+                height=height,
+                style=style,
+                quality=quality,
+            )
+        except MemoryError, RecursionError:
+            raise
+        except Exception as exc:
+            logger.warning(
+                DESIGN_IMAGE_GENERATION_FAILED,
+                error=str(exc),
+            )
+            return ToolExecutionResult(
+                content=f"Image generation failed: {exc}",
+                is_error=True,
+            )
+
+        logger.info(
+            DESIGN_IMAGE_GENERATION_SUCCESS,
+            width=result.width,
+            height=result.height,
+            content_type=result.content_type,
+            data_length=len(result.data),
+        )
+
+        return ToolExecutionResult(
+            content=(
+                f"Image generated successfully.\n"
+                f"Dimensions: {result.width}x{result.height}\n"
+                f"Type: {result.content_type}\n"
+                f"Data length: {len(result.data)} chars (base64)"
+            ),
+            metadata={
+                "data": result.data,
+                "content_type": result.content_type,
+                "width": result.width,
+                "height": result.height,
+            },
+        )

@@ -1,0 +1,294 @@
+"""Asset manager tool -- manage generated design assets.
+
+Provides CRUD operations on an in-memory asset registry that
+tracks metadata for generated images, diagrams, and other
+design artifacts.
+"""
+
+import copy
+from typing import Any, Final
+
+from synthorg.core.enums import ActionType
+from synthorg.observability import get_logger
+from synthorg.observability.events.design import (
+    DESIGN_ASSET_DELETED,
+    DESIGN_ASSET_LISTED,
+    DESIGN_ASSET_RETRIEVED,
+    DESIGN_ASSET_VALIDATION_FAILED,
+)
+from synthorg.tools.base import ToolExecutionResult
+from synthorg.tools.design.base_design_tool import BaseDesignTool
+from synthorg.tools.design.config import DesignToolsConfig  # noqa: TC001
+
+logger = get_logger(__name__)
+
+_VALID_ACTIONS: Final[frozenset[str]] = frozenset(
+    {
+        "list",
+        "get",
+        "delete",
+        "search",
+    }
+)
+
+_PARAMETERS_SCHEMA: Final[dict[str, Any]] = {
+    "type": "object",
+    "properties": {
+        "action": {
+            "type": "string",
+            "enum": sorted(_VALID_ACTIONS),
+            "description": "Asset operation to perform",
+        },
+        "asset_id": {
+            "type": "string",
+            "description": "Asset identifier (required for get/delete)",
+        },
+        "tags": {
+            "type": "array",
+            "items": {"type": "string"},
+            "description": "Tags for filtering (used with list/search)",
+        },
+        "query": {
+            "type": "string",
+            "description": "Search query for asset metadata",
+        },
+    },
+    "required": ["action"],
+    "additionalProperties": False,
+}
+
+
+class AssetManagerTool(BaseDesignTool):
+    """Manage generated design assets (list, get, delete, search).
+
+    Maintains an in-memory registry of asset metadata.  Assets
+    are registered by other design tools (e.g. ``ImageGeneratorTool``)
+    and can be queried or removed through this tool.
+
+    Examples:
+        List all assets::
+
+            tool = AssetManagerTool()
+            result = await tool.execute(arguments={"action": "list"})
+
+        Get a specific asset::
+
+            result = await tool.execute(
+                arguments={"action": "get", "asset_id": "img-001"}
+            )
+    """
+
+    def __init__(
+        self,
+        *,
+        config: DesignToolsConfig | None = None,
+        assets: dict[str, dict[str, Any]] | None = None,
+    ) -> None:
+        """Initialize the asset manager tool.
+
+        Args:
+            config: Design tool configuration.
+            assets: Pre-populated asset registry.  ``None`` starts
+                with an empty registry.
+        """
+        super().__init__(
+            name="asset_manager",
+            description=("List, retrieve, delete, and search generated design assets."),
+            parameters_schema=copy.deepcopy(_PARAMETERS_SCHEMA),
+            action_type=ActionType.CODE_READ,
+            config=config,
+        )
+        self._assets: dict[str, dict[str, Any]] = (
+            copy.deepcopy(assets) if assets else {}
+        )
+
+    def register_asset(
+        self,
+        asset_id: str,
+        metadata: dict[str, Any],
+    ) -> None:
+        """Register an asset in the internal registry.
+
+        Called programmatically by other tools after generating
+        an asset.
+
+        Args:
+            asset_id: Unique asset identifier.
+            metadata: Asset metadata (type, dimensions, tags, etc.).
+        """
+        self._assets[asset_id] = copy.deepcopy(metadata)
+
+    async def execute(
+        self,
+        *,
+        arguments: dict[str, Any],
+    ) -> ToolExecutionResult:
+        """Execute an asset management operation.
+
+        Args:
+            arguments: Must contain ``action``; optionally
+                ``asset_id``, ``tags``, ``query``.
+
+        Returns:
+            A ``ToolExecutionResult`` with operation results.
+        """
+        action: str = arguments["action"]
+
+        if action not in _VALID_ACTIONS:
+            logger.warning(
+                DESIGN_ASSET_VALIDATION_FAILED,
+                action=action,
+                reason="invalid_action",
+            )
+            return ToolExecutionResult(
+                content=(
+                    f"Invalid action: {action!r}. "
+                    f"Must be one of: {sorted(_VALID_ACTIONS)}"
+                ),
+                is_error=True,
+            )
+
+        if action == "list":
+            return self._handle_list(arguments)
+        if action == "get":
+            return self._handle_get(arguments)
+        if action == "delete":
+            return self._handle_delete(arguments)
+        return self._handle_search(arguments)
+
+    def _handle_list(
+        self,
+        arguments: dict[str, Any],
+    ) -> ToolExecutionResult:
+        """List assets, optionally filtered by tags."""
+        tags: list[str] = arguments.get("tags") or []
+        tag_set = set(tags)
+
+        if tag_set:
+            matching = {
+                aid: meta
+                for aid, meta in self._assets.items()
+                if tag_set.issubset(set(meta.get("tags", [])))
+            }
+        else:
+            matching = self._assets
+
+        logger.info(
+            DESIGN_ASSET_LISTED,
+            total=len(self._assets),
+            matched=len(matching),
+            filter_tags=tags,
+        )
+
+        if not matching:
+            return ToolExecutionResult(content="No assets found.")
+
+        lines = [f"Found {len(matching)} asset(s):"]
+        for aid, meta in sorted(matching.items()):
+            asset_type = meta.get("type", "unknown")
+            asset_tags = meta.get("tags", [])
+            lines.append(f"  - {aid}: type={asset_type}, tags={asset_tags}")
+        return ToolExecutionResult(
+            content="\n".join(lines),
+            metadata={"count": len(matching)},
+        )
+
+    def _handle_get(
+        self,
+        arguments: dict[str, Any],
+    ) -> ToolExecutionResult:
+        """Retrieve a specific asset by ID."""
+        asset_id: str | None = arguments.get("asset_id")
+        if not asset_id:
+            return ToolExecutionResult(
+                content="asset_id is required for 'get' action.",
+                is_error=True,
+            )
+
+        meta = self._assets.get(asset_id)
+        if meta is None:
+            return ToolExecutionResult(
+                content=f"Asset not found: {asset_id!r}",
+                is_error=True,
+            )
+
+        logger.info(
+            DESIGN_ASSET_RETRIEVED,
+            asset_id=asset_id,
+        )
+
+        lines = [f"Asset: {asset_id}"]
+        for key, value in sorted(meta.items()):
+            lines.append(f"  {key}: {value}")
+        return ToolExecutionResult(
+            content="\n".join(lines),
+            metadata=copy.deepcopy(meta),
+        )
+
+    def _handle_delete(
+        self,
+        arguments: dict[str, Any],
+    ) -> ToolExecutionResult:
+        """Delete an asset by ID."""
+        asset_id: str | None = arguments.get("asset_id")
+        if not asset_id:
+            return ToolExecutionResult(
+                content="asset_id is required for 'delete' action.",
+                is_error=True,
+            )
+
+        if asset_id not in self._assets:
+            return ToolExecutionResult(
+                content=f"Asset not found: {asset_id!r}",
+                is_error=True,
+            )
+
+        del self._assets[asset_id]
+
+        logger.info(
+            DESIGN_ASSET_DELETED,
+            asset_id=asset_id,
+        )
+
+        return ToolExecutionResult(
+            content=f"Asset deleted: {asset_id}",
+        )
+
+    def _handle_search(
+        self,
+        arguments: dict[str, Any],
+    ) -> ToolExecutionResult:
+        """Search assets by query string in metadata values."""
+        query: str = (arguments.get("query") or "").lower()
+        if not query:
+            return ToolExecutionResult(
+                content="query is required for 'search' action.",
+                is_error=True,
+            )
+
+        matching: dict[str, dict[str, Any]] = {}
+        for aid, meta in self._assets.items():
+            searchable = " ".join(str(v).lower() for v in meta.values())
+            if query in searchable:
+                matching[aid] = meta
+
+        logger.info(
+            DESIGN_ASSET_LISTED,
+            total=len(self._assets),
+            matched=len(matching),
+            search_query=query,
+        )
+
+        if not matching:
+            return ToolExecutionResult(
+                content=f"No assets matching query: {query!r}",
+            )
+
+        lines = [f"Found {len(matching)} asset(s) matching {query!r}:"]
+        for aid, meta in sorted(matching.items()):
+            asset_type = meta.get("type", "unknown")
+            lines.append(f"  - {aid}: type={asset_type}")
+        return ToolExecutionResult(
+            content="\n".join(lines),
+            metadata={"count": len(matching)},
+        )

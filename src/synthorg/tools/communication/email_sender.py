@@ -1,0 +1,260 @@
+"""Email sender tool -- send emails via SMTP.
+
+Uses stdlib ``smtplib`` wrapped in ``asyncio.to_thread`` to avoid
+blocking the event loop, following the same pattern as
+``EmailNotificationSink``.
+"""
+
+import asyncio
+import copy
+import re
+import smtplib
+import ssl
+from email.message import EmailMessage
+from typing import Any, Final
+
+from synthorg.core.enums import ActionType
+from synthorg.observability import get_logger
+from synthorg.observability.events.communication import (
+    COMM_TOOL_EMAIL_SEND_FAILED,
+    COMM_TOOL_EMAIL_SEND_START,
+    COMM_TOOL_EMAIL_SEND_SUCCESS,
+    COMM_TOOL_EMAIL_VALIDATION_FAILED,
+)
+from synthorg.tools.base import ToolExecutionResult
+from synthorg.tools.communication.base_communication_tool import (
+    BaseCommunicationTool,
+)
+from synthorg.tools.communication.config import (
+    CommunicationToolsConfig,  # noqa: TC001
+)
+
+logger = get_logger(__name__)
+
+_CONTROL_CHAR_RE: Final[re.Pattern[str]] = re.compile(r"[\x00-\x1f\x7f]")
+
+_PARAMETERS_SCHEMA: Final[dict[str, Any]] = {
+    "type": "object",
+    "properties": {
+        "to": {
+            "type": "array",
+            "items": {"type": "string"},
+            "description": "Recipient email addresses",
+        },
+        "cc": {
+            "type": "array",
+            "items": {"type": "string"},
+            "description": "CC email addresses",
+        },
+        "bcc": {
+            "type": "array",
+            "items": {"type": "string"},
+            "description": "BCC email addresses",
+        },
+        "subject": {
+            "type": "string",
+            "description": "Email subject line",
+        },
+        "body": {
+            "type": "string",
+            "description": "Email body content",
+            "default": "",
+        },
+        "body_is_html": {
+            "type": "boolean",
+            "description": "Whether body is HTML (default: plain text)",
+            "default": False,
+        },
+    },
+    "required": ["to", "subject"],
+    "additionalProperties": False,
+}
+
+
+class EmailSenderTool(BaseCommunicationTool):
+    """Send emails via SMTP.
+
+    Requires ``EmailConfig`` in the communication tools config.
+    Uses stdlib ``smtplib`` with ``asyncio.to_thread`` for
+    non-blocking execution.
+
+    Examples:
+        Send a plain text email::
+
+            tool = EmailSenderTool(config=comm_config)
+            result = await tool.execute(
+                arguments={
+                    "to": ["user@example.com"],
+                    "subject": "Hello",
+                    "body": "World",
+                }
+            )
+    """
+
+    def __init__(
+        self,
+        *,
+        config: CommunicationToolsConfig | None = None,
+    ) -> None:
+        """Initialize the email sender tool.
+
+        Args:
+            config: Communication tool configuration with email
+                settings.
+        """
+        super().__init__(
+            name="email_sender",
+            description=(
+                "Send emails via SMTP. Supports plain text and HTML body content."
+            ),
+            parameters_schema=copy.deepcopy(_PARAMETERS_SCHEMA),
+            action_type=ActionType.COMMS_EXTERNAL,
+            config=config,
+        )
+
+    async def execute(
+        self,
+        *,
+        arguments: dict[str, Any],
+    ) -> ToolExecutionResult:
+        """Send an email.
+
+        Args:
+            arguments: Must contain ``to`` and ``subject``;
+                optionally ``cc``, ``bcc``, ``body``,
+                ``body_is_html``.
+
+        Returns:
+            A ``ToolExecutionResult`` with delivery status.
+        """
+        email_config = self._config.email
+        if email_config is None:
+            return ToolExecutionResult(
+                content=(
+                    "Email sending requires SMTP configuration. "
+                    "Set 'email' in CommunicationToolsConfig."
+                ),
+                is_error=True,
+            )
+
+        to_addrs: list[str] = arguments["to"]
+        cc_addrs: list[str] = arguments.get("cc") or []
+        bcc_addrs: list[str] = arguments.get("bcc") or []
+        subject: str = arguments["subject"]
+        body: str = arguments.get("body", "")
+        body_is_html: bool = arguments.get("body_is_html", False)
+
+        all_recipients = to_addrs + cc_addrs + bcc_addrs
+        if not all_recipients:
+            logger.warning(
+                COMM_TOOL_EMAIL_VALIDATION_FAILED,
+                reason="no_recipients",
+            )
+            return ToolExecutionResult(
+                content="At least one recipient is required.",
+                is_error=True,
+            )
+
+        if len(all_recipients) > self._config.max_recipients:
+            logger.warning(
+                COMM_TOOL_EMAIL_VALIDATION_FAILED,
+                reason="too_many_recipients",
+                count=len(all_recipients),
+                limit=self._config.max_recipients,
+            )
+            return ToolExecutionResult(
+                content=(
+                    f"Too many recipients: {len(all_recipients)} "
+                    f"(max {self._config.max_recipients})"
+                ),
+                is_error=True,
+            )
+
+        logger.info(
+            COMM_TOOL_EMAIL_SEND_START,
+            to_count=len(to_addrs),
+            cc_count=len(cc_addrs),
+            bcc_count=len(bcc_addrs),
+            subject_length=len(subject),
+        )
+
+        try:
+            await asyncio.to_thread(
+                self._send_sync,
+                email_config=email_config,
+                to_addrs=to_addrs,
+                cc_addrs=cc_addrs,
+                all_recipients=all_recipients,
+                subject=subject,
+                body=body,
+                body_is_html=body_is_html,
+            )
+        except MemoryError, RecursionError:
+            raise
+        except Exception as exc:
+            logger.warning(
+                COMM_TOOL_EMAIL_SEND_FAILED,
+                error=str(exc),
+            )
+            return ToolExecutionResult(
+                content=f"Email sending failed: {exc}",
+                is_error=True,
+            )
+
+        logger.info(
+            COMM_TOOL_EMAIL_SEND_SUCCESS,
+            recipient_count=len(all_recipients),
+        )
+
+        return ToolExecutionResult(
+            content=(f"Email sent successfully to {len(all_recipients)} recipient(s)."),
+            metadata={
+                "to": to_addrs,
+                "cc": cc_addrs,
+                "bcc": bcc_addrs,
+                "subject": subject,
+            },
+        )
+
+    @staticmethod
+    def _send_sync(  # noqa: PLR0913
+        *,
+        email_config: Any,
+        to_addrs: list[str],
+        cc_addrs: list[str],
+        all_recipients: list[str],
+        subject: str,
+        body: str,
+        body_is_html: bool,
+    ) -> None:
+        """Synchronous SMTP send (runs in a thread).
+
+        Args:
+            email_config: EmailConfig with SMTP settings.
+            to_addrs: Primary recipients.
+            cc_addrs: CC recipients.
+            all_recipients: Combined recipient list for envelope.
+            subject: Email subject.
+            body: Email body.
+            body_is_html: Whether body is HTML.
+        """
+        safe_subject = _CONTROL_CHAR_RE.sub("", subject)
+        msg = EmailMessage()
+        msg["Subject"] = safe_subject
+        msg["From"] = email_config.from_address
+        msg["To"] = ", ".join(to_addrs)
+        if cc_addrs:
+            msg["Cc"] = ", ".join(cc_addrs)
+
+        if body_is_html:
+            msg.set_content(body, subtype="html")
+        else:
+            msg.set_content(body)
+
+        with smtplib.SMTP(email_config.host, email_config.port, timeout=10) as smtp:
+            if email_config.use_tls:
+                context = ssl.create_default_context()
+                smtp.starttls(context=context)
+            if email_config.username and email_config.password:
+                smtp.login(email_config.username, email_config.password)
+            smtp.send_message(msg, to_addrs=all_recipients)

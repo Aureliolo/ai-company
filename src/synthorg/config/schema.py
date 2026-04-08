@@ -37,7 +37,10 @@ from synthorg.persistence.config import PersistenceConfig
 from synthorg.providers.enums import AuthType
 from synthorg.security.config import SecurityConfig
 from synthorg.security.trust.config import TrustConfig
+from synthorg.tools.analytics.config import AnalyticsToolsConfig  # noqa: TC001
+from synthorg.tools.communication.config import CommunicationToolsConfig  # noqa: TC001
 from synthorg.tools.database.config import DatabaseConfig  # noqa: TC001
+from synthorg.tools.design.config import DesignToolsConfig  # noqa: TC001
 from synthorg.tools.git_url_validator import GitCloneNetworkPolicy
 from synthorg.tools.mcp.config import MCPConfig
 from synthorg.tools.sandbox.sandboxing_config import SandboxingConfig
@@ -738,6 +741,18 @@ class RootConfig(BaseModel):
     terminal: TerminalConfig | None = Field(
         default=None,
         description="Terminal tool configuration (None = default terminal config)",
+    )
+    design_tools: DesignToolsConfig | None = Field(
+        default=None,
+        description="Design tool configuration (None = disabled)",
+    )
+    communication_tools: CommunicationToolsConfig | None = Field(
+        default=None,
+        description="Communication tool configuration (None = disabled)",
+    )
+    analytics_tools: AnalyticsToolsConfig | None = Field(
+        default=None,
+        description="Analytics tool configuration (None = disabled)",
     )
 
     @model_validator(mode="after")
