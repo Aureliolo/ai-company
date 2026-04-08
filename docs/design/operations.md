@@ -1542,8 +1542,8 @@ Eleven default sinks, activated at startup via `bootstrap_logging()`:
 | `configuration.log` | File | INFO | JSON | `synthorg.settings.*`, `synthorg.config.*` | Settings resolution, config loading |
 | `backup.log` | File | INFO | JSON | `synthorg.backup.*` | Backup/restore lifecycle |
 
-In addition to the 11 default sinks, two shipping sink types are available for centralized
-log aggregation:
+In addition to the 11 default sinks, three shipping sink types are available for centralized
+log aggregation and telemetry export:
 
 | Sink Type | Transport | Format | Description |
 |-----------|-----------|--------|-------------|
@@ -1863,5 +1863,5 @@ All gaps G1-G5 are now closed. G6 (budget history granularity) remains low-prior
 SynthOrg should be positioned as an **orchestrated agent control plane**: policy-as-code,
 metered coordination, and observable agent behavior -- all enforced from a single control
 surface. This framing is accurate today for inventory, policy enforcement, and token
-metering. Telemetry export (G1) is the primary gap between internal capability and the
-external claim.
+metering. With G1 closed (Prometheus `/metrics` + OTLP HTTP/JSON), the remaining gaps
+are G3 (policy-as-code) and G4 (coordination metrics API) for full control-plane coverage.
