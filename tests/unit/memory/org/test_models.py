@@ -317,6 +317,7 @@ class TestOperationLogSnapshot:
         snap = OperationLogSnapshot(
             fact_id="fact-1",
             content="Active fact",
+            category=OrgFactCategory.ADR,
             tags=("tag-a",),
             created_at=_NOW,
             retracted_at=None,
@@ -324,11 +325,13 @@ class TestOperationLogSnapshot:
         )
         assert snap.retracted_at is None
         assert snap.version == 1
+        assert snap.category == OrgFactCategory.ADR
 
     def test_retracted_snapshot(self) -> None:
         snap = OperationLogSnapshot(
             fact_id="fact-1",
             content="Retracted fact",
+            category=OrgFactCategory.CONVENTION,
             created_at=_NOW,
             retracted_at=_NOW,
             version=2,
@@ -340,6 +343,7 @@ class TestOperationLogSnapshot:
             OperationLogSnapshot(
                 fact_id="fact-1",
                 content="test",
+                category=OrgFactCategory.ADR,
                 created_at=_NOW,
                 version=0,
             )
@@ -354,6 +358,7 @@ class TestOperationLogSnapshot:
             OperationLogSnapshot(
                 fact_id="fact-1",
                 content="test",
+                category=OrgFactCategory.ADR,
                 created_at=later,
                 retracted_at=earlier,
                 version=1,

@@ -286,6 +286,7 @@ def _row_to_snapshot(row: aiosqlite.Row) -> OperationLogSnapshot:
         return OperationLogSnapshot(
             fact_id=row["fact_id"],
             content=row["content"],
+            category=OrgFactCategory(row["category"]),
             tags=_tags_from_json(row["tags"]),
             created_at=created_at,
             retracted_at=retracted_at,
@@ -802,7 +803,7 @@ class SQLiteOrgFactStore:
         #    created_at from the earliest PUBLISH timestamp.
         sql = """\
 WITH latest_ops AS (
-    SELECT fact_id, operation_type, content, tags,
+    SELECT fact_id, operation_type, content, tags, category,
            timestamp, version,
            ROW_NUMBER() OVER (
                PARTITION BY fact_id ORDER BY version DESC
@@ -818,6 +819,13 @@ SELECT lo.fact_id, lo.operation_type,
               AND p.timestamp <= ?
             ORDER BY p.version DESC LIMIT 1)
        ) AS content,
+       COALESCE(lo.category,
+           (SELECT p.category FROM org_facts_operation_log p
+            WHERE p.fact_id = lo.fact_id
+              AND p.operation_type = 'PUBLISH'
+              AND p.timestamp <= ?
+            ORDER BY p.version DESC LIMIT 1)
+       ) AS category,
        COALESCE(
            CASE WHEN lo.operation_type = 'PUBLISH' THEN lo.tags END,
            (SELECT p.tags FROM org_facts_operation_log p
@@ -839,7 +847,7 @@ ORDER BY lo.fact_id
         try:
             cursor = await db.execute(
                 sql,
-                (query_ts, query_ts, query_ts, query_ts),
+                (query_ts, query_ts, query_ts, query_ts, query_ts),
             )
             rows = await cursor.fetchall()
         except sqlite3.Error as exc:

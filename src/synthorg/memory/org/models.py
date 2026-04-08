@@ -278,6 +278,7 @@ class OperationLogSnapshot(BaseModel):
     Attributes:
         fact_id: Logical fact identifier (primary key).
         content: Current fact body.
+        category: Fact category.
         tags: Current metadata tags.
         created_at: Timestamp of first PUBLISH.
         retracted_at: Timestamp of retraction (``None`` = active).
@@ -288,6 +289,7 @@ class OperationLogSnapshot(BaseModel):
 
     fact_id: NotBlankStr = Field(description="Logical fact identifier")
     content: NotBlankStr = Field(description="Current fact body")
+    category: OrgFactCategory = Field(description="Fact category")
     tags: tuple[NotBlankStr, ...] = Field(
         default=(),
         description="Current metadata tags",
