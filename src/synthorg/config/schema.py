@@ -441,11 +441,14 @@ class GracefulShutdownConfig(BaseModel):
     """Configuration for graceful shutdown behaviour.
 
     Attributes:
-        strategy: Shutdown strategy name (e.g. ``"cooperative_timeout"``).
+        strategy: Shutdown strategy name (``"cooperative_timeout"``,
+            ``"immediate"``, ``"finish_tool"``, or ``"checkpoint"``).
         grace_seconds: Seconds to wait for cooperative agent exit
             before force-cancelling.
         cleanup_seconds: Seconds allowed for cleanup callbacks
             (persist costs, close connections, flush logs).
+        tool_timeout_seconds: Per-tool timeout for the
+            ``"finish_tool"`` strategy (seconds).
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)

@@ -15,7 +15,7 @@ type StatusStory = StoryObj<typeof statusMeta>
 
 const ALL_STATUSES: TaskStatus[] = [
   'created', 'assigned', 'in_progress', 'in_review', 'completed',
-  'blocked', 'failed', 'interrupted', 'cancelled',
+  'blocked', 'failed', 'interrupted', 'suspended', 'cancelled',
 ]
 
 export const Default: StatusStory = {

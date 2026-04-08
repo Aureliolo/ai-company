@@ -12,6 +12,7 @@ const TASK_STATUS_COLOR_MAP: Record<TaskStatus, SemanticColor | 'text-secondary'
   blocked: 'danger',
   failed: 'danger',
   interrupted: 'warning',
+  suspended: 'warning',
   cancelled: 'text-secondary',
 }
 
@@ -30,6 +31,7 @@ const TASK_STATUS_LABELS: Record<TaskStatus, string> = {
   blocked: 'Blocked',
   failed: 'Failed',
   interrupted: 'Interrupted',
+  suspended: 'Suspended',
   cancelled: 'Cancelled',
 }
 
@@ -103,7 +105,7 @@ export const KANBAN_COLUMNS: readonly KanbanColumn[] = [
   { id: 'in_review', label: 'In Review', statuses: ['in_review'], color: 'warning' },
   { id: 'done', label: 'Done', statuses: ['completed'], color: 'success' },
   { id: 'blocked', label: 'Blocked', statuses: ['blocked'], color: 'danger' },
-  { id: 'terminal', label: 'Terminal', statuses: ['failed', 'interrupted', 'cancelled'], color: 'text-secondary' },
+  { id: 'terminal', label: 'Terminal', statuses: ['failed', 'interrupted', 'suspended', 'cancelled'], color: 'text-secondary' },
 ] as const
 
 export const STATUS_TO_COLUMN: Record<TaskStatus, KanbanColumnId> = Object.fromEntries(
@@ -190,13 +192,14 @@ export function filterTasks(tasks: readonly Task[], filters: TaskBoardFilters): 
 
 export const VALID_TRANSITIONS: Record<TaskStatus, readonly TaskStatus[]> = {
   created: ['assigned'],
-  assigned: ['in_progress', 'failed', 'blocked', 'cancelled', 'interrupted'],
-  in_progress: ['in_review', 'failed', 'cancelled', 'interrupted'],
+  assigned: ['in_progress', 'failed', 'blocked', 'cancelled', 'interrupted', 'suspended'],
+  in_progress: ['in_review', 'failed', 'cancelled', 'interrupted', 'suspended'],
   in_review: ['completed', 'in_progress'],
   completed: [],
   blocked: ['assigned'],
   failed: ['assigned'],
   interrupted: ['assigned'],
+  suspended: ['assigned'],
   cancelled: [],
 }
 

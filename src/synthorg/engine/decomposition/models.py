@@ -179,11 +179,11 @@ class DecompositionResult(BaseModel):
 class SubtaskStatusRollup(BaseModel):
     """Aggregated status of subtasks for a parent task.
 
-    Tracks five explicit statuses: COMPLETED, FAILED, IN_PROGRESS,
-    BLOCKED, and CANCELLED. Other statuses (CREATED, ASSIGNED,
-    IN_REVIEW, INTERRUPTED) are not individually tracked; the gap
-    between the sum of tracked counts and ``total`` accounts for
-    these. The ``derived_parent_status`` treats any such remainder
+    Tracks six explicit statuses: COMPLETED, FAILED, IN_PROGRESS,
+    BLOCKED, CANCELLED, and SUSPENDED. Other statuses (CREATED,
+    ASSIGNED, IN_REVIEW, INTERRUPTED) are not individually tracked;
+    the gap between the sum of tracked counts and ``total`` accounts
+    for these. The ``derived_parent_status`` treats any such remainder
     as work still pending (IN_PROGRESS).
 
     When all subtasks are in terminal states but with a mix of
@@ -198,6 +198,7 @@ class SubtaskStatusRollup(BaseModel):
         in_progress: Count of IN_PROGRESS subtasks.
         blocked: Count of BLOCKED subtasks.
         cancelled: Count of CANCELLED subtasks.
+        suspended: Count of SUSPENDED subtasks.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
@@ -209,6 +210,7 @@ class SubtaskStatusRollup(BaseModel):
     in_progress: int = Field(ge=0, description="In-progress subtasks")
     blocked: int = Field(ge=0, description="Blocked subtasks")
     cancelled: int = Field(ge=0, description="Cancelled subtasks")
+    suspended: int = Field(ge=0, default=0, description="Suspended subtasks")
 
     @model_validator(mode="after")
     def _validate_counts(self) -> Self:
@@ -219,6 +221,7 @@ class SubtaskStatusRollup(BaseModel):
             + self.in_progress
             + self.blocked
             + self.cancelled
+            + self.suspended
         )
         if counted > self.total:
             msg = "Sum of status counts exceeds total"
@@ -248,6 +251,9 @@ class SubtaskStatusRollup(BaseModel):
 
         if self.blocked > 0:
             return TaskStatus.BLOCKED
+
+        if self.suspended > 0:
+            return TaskStatus.SUSPENDED
 
         # All subtasks in terminal states but mixed completed + cancelled
         # -- not fully completed (pure completed already handled above),

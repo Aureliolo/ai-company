@@ -28,11 +28,16 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
-# Tasks in CREATED, FAILED, or INTERRUPTED can be assigned directly.
-# BLOCKED tasks must first be unblocked (transition to ASSIGNED via
-# the task lifecycle), so they are not directly assignable.
+# Tasks in CREATED, FAILED, INTERRUPTED, or SUSPENDED can be assigned
+# directly.  BLOCKED tasks must first be unblocked (transition to
+# ASSIGNED via the task lifecycle), so they are not directly assignable.
 _ASSIGNABLE_STATUSES = frozenset(
-    {TaskStatus.CREATED, TaskStatus.FAILED, TaskStatus.INTERRUPTED},
+    {
+        TaskStatus.CREATED,
+        TaskStatus.FAILED,
+        TaskStatus.INTERRUPTED,
+        TaskStatus.SUSPENDED,
+    },
 )
 
 

@@ -79,6 +79,7 @@ class TestColumnStatusBridge:
             TaskStatus.BLOCKED,
             TaskStatus.FAILED,
             TaskStatus.INTERRUPTED,
+            TaskStatus.SUSPENDED,
             TaskStatus.CANCELLED,
         }
         for status in off_board:

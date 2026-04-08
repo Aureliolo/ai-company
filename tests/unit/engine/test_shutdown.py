@@ -10,15 +10,17 @@ from pydantic import ValidationError
 
 from synthorg.config.schema import GracefulShutdownConfig
 from synthorg.engine.shutdown import (
-    CheckpointAndStopStrategy,
     CheckpointSaver,
     CooperativeTimeoutStrategy,
-    FinishCurrentToolStrategy,
-    ImmediateCancelStrategy,
     ShutdownManager,
     ShutdownResult,
     ShutdownStrategy,
     _log_post_cancel_exceptions,
+)
+from synthorg.engine.shutdown_strategies import (
+    CheckpointAndStopStrategy,
+    FinishCurrentToolStrategy,
+    ImmediateCancelStrategy,
     build_shutdown_strategy,
 )
 
@@ -415,6 +417,22 @@ class TestGracefulShutdownConfig:
     def test_blank_strategy_rejected(self) -> None:
         with pytest.raises(ValidationError):
             GracefulShutdownConfig(strategy="   ")
+
+    def test_tool_timeout_default(self) -> None:
+        config = GracefulShutdownConfig()
+        assert config.tool_timeout_seconds == 60.0
+
+    def test_tool_timeout_zero_rejected(self) -> None:
+        with pytest.raises(ValidationError):
+            GracefulShutdownConfig(tool_timeout_seconds=0)
+
+    def test_tool_timeout_upper_bound(self) -> None:
+        with pytest.raises(ValidationError):
+            GracefulShutdownConfig(tool_timeout_seconds=301)
+
+    def test_tool_timeout_at_max(self) -> None:
+        config = GracefulShutdownConfig(tool_timeout_seconds=300)
+        assert config.tool_timeout_seconds == 300.0
 
 
 # ── _log_post_cancel_exceptions ───────────────────────────────────

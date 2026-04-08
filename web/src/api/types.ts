@@ -11,6 +11,7 @@ export type TaskStatus =
   | 'blocked'
   | 'failed'
   | 'interrupted'
+  | 'suspended'
   | 'cancelled'
 
 export type TaskType =

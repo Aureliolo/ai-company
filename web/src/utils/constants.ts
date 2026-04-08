@@ -30,6 +30,7 @@ export const TASK_STATUS_ORDER: readonly TaskStatus[] = [
   'completed',
   'failed',
   'interrupted',
+  'suspended',
   'cancelled',
 ] as const
 
@@ -39,12 +40,13 @@ export const TERMINAL_STATUSES: ReadonlySet<TaskStatus> = new Set<TaskStatus>(['
 /** Task status transitions map. */
 export const VALID_TRANSITIONS: Readonly<Record<TaskStatus, readonly TaskStatus[]>> = {
   created: ['assigned'],
-  assigned: ['in_progress', 'blocked', 'cancelled', 'failed', 'interrupted'],
-  in_progress: ['in_review', 'blocked', 'cancelled', 'failed', 'interrupted'],
+  assigned: ['in_progress', 'blocked', 'cancelled', 'failed', 'interrupted', 'suspended'],
+  in_progress: ['in_review', 'blocked', 'cancelled', 'failed', 'interrupted', 'suspended'],
   in_review: ['completed', 'in_progress', 'blocked', 'cancelled'],
   blocked: ['assigned'],
   failed: ['assigned'],
   interrupted: ['assigned'],
+  suspended: ['assigned'],
   completed: [],
   cancelled: [],
 }

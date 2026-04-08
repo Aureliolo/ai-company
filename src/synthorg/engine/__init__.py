@@ -167,15 +167,17 @@ from synthorg.engine.routing import (
 )
 from synthorg.engine.run_result import AgentRunResult
 from synthorg.engine.shutdown import (
-    CheckpointAndStopStrategy,
     CheckpointSaver,
     CleanupCallback,
     CooperativeTimeoutStrategy,
-    FinishCurrentToolStrategy,
-    ImmediateCancelStrategy,
     ShutdownManager,
     ShutdownResult,
     ShutdownStrategy,
+)
+from synthorg.engine.shutdown_strategies import (
+    CheckpointAndStopStrategy,
+    FinishCurrentToolStrategy,
+    ImmediateCancelStrategy,
     build_shutdown_strategy,
 )
 from synthorg.engine.stagnation import (

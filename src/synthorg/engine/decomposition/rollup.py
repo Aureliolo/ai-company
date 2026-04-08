@@ -63,6 +63,7 @@ class StatusRollup:
         in_progress = subtask_statuses.count(TaskStatus.IN_PROGRESS)
         blocked = subtask_statuses.count(TaskStatus.BLOCKED)
         cancelled = subtask_statuses.count(TaskStatus.CANCELLED)
+        suspended = subtask_statuses.count(TaskStatus.SUSPENDED)
 
         rollup = SubtaskStatusRollup(
             parent_task_id=parent_task_id,
@@ -72,6 +73,7 @@ class StatusRollup:
             in_progress=in_progress,
             blocked=blocked,
             cancelled=cancelled,
+            suspended=suspended,
         )
 
         logger.debug(
