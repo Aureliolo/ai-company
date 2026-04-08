@@ -14,6 +14,7 @@ from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.observability import get_logger
 from synthorg.observability.events.coordination_metrics import (
     COORD_METRICS_COLLECTION_COMPLETED,
+    COORD_METRICS_VALIDATION_ERROR,
 )
 
 logger = get_logger(__name__)
@@ -55,7 +56,7 @@ class CoordinationMetricsStore:
         if max_entries < 1:
             msg = f"max_entries must be >= 1, got {max_entries}"
             logger.warning(
-                COORD_METRICS_COLLECTION_COMPLETED,
+                COORD_METRICS_VALIDATION_ERROR,
                 error=msg,
             )
             raise ValueError(msg)
@@ -96,12 +97,19 @@ class CoordinationMetricsStore:
             Matching records, newest first.
 
         Raises:
-            ValueError: If *limit* < 1.
+            ValueError: If *limit* < 1 or *since* > *until*.
         """
+        if since is not None and until is not None and since > until:
+            msg = "since must not be after until"
+            logger.warning(
+                COORD_METRICS_VALIDATION_ERROR,
+                error=msg,
+            )
+            raise ValueError(msg)
         if limit < 1:
             msg = f"limit must be >= 1, got {limit}"
             logger.warning(
-                COORD_METRICS_COLLECTION_COMPLETED,
+                COORD_METRICS_VALIDATION_ERROR,
                 error=msg,
             )
             raise ValueError(msg)

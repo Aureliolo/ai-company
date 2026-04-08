@@ -203,3 +203,17 @@ class TestCoordinationMetricsController:
         )
         body = resp.json()
         assert body["pagination"]["total"] == 2
+
+    def test_rejects_inverted_time_window(
+        self,
+        test_client: TestClient[Any],
+    ) -> None:
+        """since > until returns 400."""
+        t1 = datetime(2026, 4, 1, tzinfo=UTC)
+        t2 = t1 - timedelta(hours=1)
+        resp = test_client.get(
+            "/api/v1/coordination/metrics",
+            params={"since": t1.isoformat(), "until": t2.isoformat()},
+            headers=_HEADERS,
+        )
+        assert resp.status_code == 400

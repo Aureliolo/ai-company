@@ -408,10 +408,15 @@ etc.).
     | **Error amplification** | `Ae` | `error_rate_mas / error_rate_sas` -- relative failure probability | Whether MAS corrects or propagates errors. Centralized ~4.4x, Independent ~17.2x |
     | **Message density** | `c` | Inter-agent messages per reasoning turn | Communication intensity. Performance saturates at ~0.39 messages/turn |
     | **Redundancy rate** | `R` | Mean cosine similarity of agent output embeddings | Agent agreement. Optimal at ~0.41 (balances fusion with independence) |
+    | **Amdahl ceiling** | `Sc` | Theoretical max speedup from Amdahl's Law given parallelizable fraction | Diminishing returns threshold. Recommends ideal team size |
+    | **Straggler gap** | `Gs` | `(slowest_turn - median_turn) / median_turn` | Bottleneck severity. High gap = one agent blocks the group |
+    | **Token-speedup ratio** | `Rt` | `total_tokens / speedup_factor` | Cost efficiency of parallelism. Rising ratio = diminishing token ROI |
+    | **Message overhead** | `Mo` | Pairwise message count relative to team size | Quadratic communication detection. `is_quadratic` flag when `O(n^2)` |
 
-    All 5 metrics are opt-in via `coordination_metrics.enabled` in analytics config. `Ec` and
+    All 9 metrics are opt-in via `coordination_metrics.enabled` in analytics config. `Ec` and
     `O%` are cheap (turn counting). `Ae` requires baseline comparison data. `c` and `R` require
-    semantic analysis of agent outputs.
+    semantic analysis of agent outputs. `Sc`, `Gs`, `Rt`, and `Mo` are computed from execution
+    telemetry (turn counts, token usage, message logs).
 
     ```yaml
     coordination_metrics:
@@ -422,6 +427,10 @@ etc.).
         - error_amplification              # requires SAS baseline data
         - message_density                  # requires message counting infrastructure
         - redundancy                       # requires embedding computation on outputs
+        - amdahl_ceiling                   # computed from parallelizable fraction
+        - straggler_gap                    # computed from per-agent turn times
+        - token_speedup_ratio              # computed from token usage + speedup
+        - message_overhead                 # computed from pairwise message counts
       baseline_window: 50                  # number of SAS runs to establish baseline for Ae
       error_taxonomy:
         enabled: false                     # opt-in -- enable for targeted diagnosis
@@ -1835,7 +1844,7 @@ them is required to support the full control-plane positioning claim.
 | # | Gap | Severity | Recommendation |
 |---|-----|----------|----------------|
 | G1 | No telemetry export (Prometheus `/metrics` or OTLP) | High | Add `/metrics` route + metrics aggregator. The 82+ structured events provide all raw data. |
-| G2 | ~~No per-agent health endpoint~~ | ~~Medium~~ | **Implemented** -- `GET /agents/{name}/health` composites performance, trust, and lifecycle status. |
+| G2 | ~~No per-agent health endpoint~~ | ~~Medium~~ | **Implemented** -- `GET /agents/{name}/health` composites performance, trust, and lifecycle status. (Issue #1118 scoped as `{id}` but implemented as `{name}` for consistency with existing agent routes.) |
 | G3 | ~~No policy-as-code export/import~~ | ~~Medium~~ | **Implemented** -- `GET /settings/security/export` and `POST /settings/security/import` (persists registered settings; code-defined policies require matching Python code). |
 | G4 | ~~No coordination metrics API~~ | ~~Medium~~ | **Implemented** -- `GET /coordination/metrics` exposes the 9 Kim et al. metrics with filtering. |
 | G5 | ~~No audit log query API~~ | ~~Medium~~ | **Implemented** -- `GET /security/audit` with agent_id, tool_name, verdict, action_type, and time-range filters. |
