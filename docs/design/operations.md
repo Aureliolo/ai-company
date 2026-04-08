@@ -1856,9 +1856,7 @@ them is required to support the full control-plane positioning claim.
 | G5 | ~~No audit log query API~~ | ~~Medium~~ | **Implemented** -- `GET /security/audit` with agent_id, tool_name, verdict, action_type, and time-range filters. |
 | G6 | Budget history granularity | Low | `CostTracker` is in-memory with TTL eviction. Multi-dimensional queries (provider X, agent Y, period Z) require persistence layer investigation. |
 
-Priority for closing gaps: G1 (telemetry export) is the most significant remaining gap
-for enterprise positioning. G2-G5 were closed in v0.6.4 (control-plane API endpoints
-batch). G6 remains low-priority.
+All gaps G1-G5 are now closed. G6 (budget history granularity) remains low-priority.
 
 ### Recommended Framing
 

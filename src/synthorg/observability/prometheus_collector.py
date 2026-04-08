@@ -114,7 +114,7 @@ class PrometheusCollector:
         logger.debug(METRICS_COLLECTOR_INITIALIZED, prefix=prefix)
 
     # Bounded set of valid verdicts to prevent label cardinality explosion.
-    _VALID_VERDICTS = frozenset({"allow", "deny", "escalate"})
+    _VALID_VERDICTS = frozenset({"allow", "deny", "escalate", "output_scan"})
 
     def record_security_verdict(self, verdict: str) -> None:
         """Increment the security verdict counter.

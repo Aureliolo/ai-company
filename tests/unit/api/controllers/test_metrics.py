@@ -66,7 +66,7 @@ class TestMetricsEndpoint:
         collector = _make_collector()
         with TestClient(app=_make_app(collector=collector)) as client:
             client.get("/metrics")
-            collector.refresh.assert_called_once()
+            collector.refresh.assert_awaited_once()
 
     def test_returns_503_when_collector_not_configured(self) -> None:
         with TestClient(app=_make_app(collector=None)) as client:

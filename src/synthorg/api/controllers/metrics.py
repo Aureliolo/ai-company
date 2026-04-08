@@ -47,9 +47,23 @@ class MetricsController(Controller):
             )
 
         collector = app_state.prometheus_collector
-        await collector.refresh(app_state)
+        try:
+            await collector.refresh(app_state)
+            body = generate_latest(collector.registry)
+        except MemoryError, RecursionError:
+            raise
+        except Exception:
+            logger.warning(
+                METRICS_SCRAPE_FAILED,
+                reason="refresh or generate_latest failed",
+                exc_info=True,
+            )
+            return Response(
+                content=b"# Metrics scrape failed\n",
+                media_type=_PROMETHEUS_CONTENT_TYPE,
+                status_code=500,
+            )
 
-        body = generate_latest(collector.registry)
         logger.debug(METRICS_SCRAPE_COMPLETED, size_bytes=len(body))
         return Response(
             content=body,
