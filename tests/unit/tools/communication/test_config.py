@@ -1,5 +1,7 @@
 """Tests for communication tool configuration models."""
 
+from typing import Any
+
 import pytest
 from pydantic import ValidationError
 
@@ -63,7 +65,7 @@ class TestEmailConfig:
         ],
         ids=["username_only", "password_only"],
     )
-    def test_partial_credentials_rejected(self, kwargs: dict[str, str]) -> None:
+    def test_partial_credentials_rejected(self, kwargs: dict[str, Any]) -> None:
         with pytest.raises(ValidationError, match="username and password"):
             EmailConfig(
                 host="smtp.example.com",
