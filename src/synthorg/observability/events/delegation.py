@@ -19,6 +19,9 @@ DELEGATION_LOOP_RATE_LIMITED: Final[str] = "delegation.loop.rate_limited"
 DELEGATION_LOOP_CIRCUIT_OPEN: Final[str] = "delegation.loop.circuit_open"
 DELEGATION_LOOP_CIRCUIT_RESET: Final[str] = "delegation.loop.circuit_reset"
 DELEGATION_LOOP_CIRCUIT_BACKOFF: Final[str] = "delegation.loop.circuit_backoff"
+DELEGATION_LOOP_CIRCUIT_PERSIST_FAILED: Final[str] = (
+    "delegation.loop.circuit_persist_failed"
+)
 DELEGATION_LOOP_ESCALATED: Final[str] = "delegation.loop.escalated"
 
 # Hierarchy

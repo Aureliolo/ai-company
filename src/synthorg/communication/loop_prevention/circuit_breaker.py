@@ -11,6 +11,7 @@ from synthorg.observability import get_logger
 from synthorg.observability.events.delegation import (
     DELEGATION_LOOP_CIRCUIT_BACKOFF,
     DELEGATION_LOOP_CIRCUIT_OPEN,
+    DELEGATION_LOOP_CIRCUIT_PERSIST_FAILED,
     DELEGATION_LOOP_CIRCUIT_RESET,
 )
 from synthorg.persistence.circuit_breaker_repo import (
@@ -231,11 +232,25 @@ class DelegationCircuitBreaker:
         """Load persisted circuit breaker state from the repository.
 
         Called once at startup to restore state across restarts.
-        No-op if no repository is configured.
+        No-op if no repository is configured.  On failure, logs the
+        error and re-raises so callers can decide whether to proceed
+        with empty state or abort.
+
+        Raises:
+            Exception: If the repository fails to load state.
         """
         if self._state_repo is None:
             return
-        records = await self._state_repo.load_all()
+        try:
+            records = await self._state_repo.load_all()
+        except MemoryError, RecursionError:
+            raise
+        except Exception:
+            logger.exception(
+                DELEGATION_LOOP_CIRCUIT_PERSIST_FAILED,
+                note="load_state failed; circuit breaker starting with empty state",
+            )
+            raise
         for rec in records:
             key = (rec.pair_key_a, rec.pair_key_b)
             ps = _PairState()
@@ -273,8 +288,7 @@ class DelegationCircuitBreaker:
                 raise
             except Exception:
                 logger.exception(
-                    DELEGATION_LOOP_CIRCUIT_RESET,
+                    DELEGATION_LOOP_CIRCUIT_PERSIST_FAILED,
                     delegator=key[0],
                     delegatee=key[1],
-                    note="persist_dirty failed",
                 )

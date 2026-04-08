@@ -101,6 +101,8 @@ class DebateResolver:
                     conflict,
                     judge_id,
                 )
+            except MemoryError, RecursionError:
+                raise
             except Exception:
                 logger.exception(
                     CONFLICT_DEBATE_EVALUATOR_FAILED,
