@@ -102,11 +102,12 @@ class CoordinationMetricsController(Controller):
             until=until,
             limit=_MAX_METRICS_QUERY,
         )
+        effective_total = min(total_matches, _MAX_METRICS_QUERY)
         page, meta = paginate(
             entries,
             offset=offset,
             limit=limit,
-            total=total_matches,
+            total=effective_total,
         )
         logger.info(
             API_COORDINATION_METRICS_QUERIED,
