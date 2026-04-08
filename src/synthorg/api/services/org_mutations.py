@@ -9,7 +9,7 @@ for the single-process, single-event-loop Litestar deployment model.
 import asyncio
 import json
 import math
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from synthorg.api.concurrency import check_if_match, compute_etag
 from synthorg.api.dto_org import (  # noqa: TC001
@@ -40,9 +40,16 @@ from synthorg.observability.events.api import (
     API_RESOURCE_NOT_FOUND,
     API_VALIDATION_FAILED,
 )
+from synthorg.observability.events.versioning import VERSION_SNAPSHOT_FAILED
+from synthorg.persistence.errors import PersistenceError
 from synthorg.settings.errors import SettingNotFoundError
 from synthorg.settings.resolver import ConfigResolver  # noqa: TC001
 from synthorg.settings.service import SettingsService  # noqa: TC001
+from synthorg.versioning import VersioningService
+
+if TYPE_CHECKING:
+    from synthorg.budget.config import BudgetConfig
+    from synthorg.persistence.version_repo import VersionRepository
 
 logger = get_logger(__name__)
 
@@ -59,15 +66,52 @@ class OrgMutationService:
     Args:
         settings_service: Settings persistence layer.
         config_resolver: Config resolution (DB > env > YAML > code).
+        budget_config_versions: Optional repo for BudgetConfig
+            version snapshots.  When provided, budget mutations
+            automatically create version snapshots.
     """
 
     def __init__(
         self,
         settings_service: SettingsService,
         config_resolver: ConfigResolver,
+        *,
+        budget_config_versions: VersionRepository[BudgetConfig] | None = None,
     ) -> None:
         self._settings = settings_service
         self._resolver = config_resolver
+        self._budget_versioning: VersioningService[BudgetConfig] | None = (
+            VersioningService(budget_config_versions)
+            if budget_config_versions is not None
+            else None
+        )
+
+    # ── Versioning helpers ────────────────────────────────────
+
+    async def _snapshot_budget_config(self, saved_by: str) -> None:
+        """Snapshot the current BudgetConfig if content changed.
+
+        Best-effort: versioning failures are logged but do not
+        block the mutation.
+
+        Args:
+            saved_by: Actor who triggered the mutation.
+        """
+        if self._budget_versioning is None:
+            return
+        try:
+            budget = await self._resolver.get_budget_config()
+            await self._budget_versioning.snapshot_if_changed(
+                entity_id="default",
+                snapshot=budget,
+                saved_by=saved_by,
+            )
+        except PersistenceError:
+            logger.exception(
+                VERSION_SNAPSHOT_FAILED,
+                entity_type="BudgetConfig",
+                entity_id="default",
+            )
 
     # ── Internal helpers ──────────────────────────────────────
 
@@ -239,6 +283,8 @@ class OrgMutationService:
             # Compute new ETag from full snapshot while still under lock.
             new_etag = await self._company_snapshot_etag()
         logger.info(API_COMPANY_UPDATED, fields=list(updated.keys()))
+        if "budget_monthly" in updated:
+            await self._snapshot_budget_config(saved_by="api")
         return updated, new_etag
 
     # ── Departments ───────────────────────────────────────────

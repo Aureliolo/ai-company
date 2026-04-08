@@ -10,7 +10,7 @@ if TYPE_CHECKING:
     from synthorg.core.enums import WorkflowType
     from synthorg.engine.workflow.definition import WorkflowDefinition
     from synthorg.engine.workflow.execution_models import WorkflowExecution
-    from synthorg.engine.workflow.version import WorkflowDefinitionVersion
+    from synthorg.versioning import VersionSnapshot
 
 
 class FakeWorkflowDefinitionRepository:
@@ -110,48 +110,77 @@ class FakeWorkflowExecutionRepository:
 
 
 class FakeWorkflowVersionRepository:
-    """In-memory workflow version repository for tests."""
+    """In-memory workflow version repository for tests.
+
+    Implements ``VersionRepository[WorkflowDefinition]`` protocol.
+    """
 
     def __init__(self) -> None:
-        self._versions: dict[tuple[str, int], WorkflowDefinitionVersion] = {}
+        self._versions: dict[
+            tuple[str, int],
+            VersionSnapshot[WorkflowDefinition],
+        ] = {}
 
     async def save_version(
         self,
-        version: WorkflowDefinitionVersion,
-    ) -> None:
-        key = (version.definition_id, version.version)
-        if key not in self._versions:
-            self._versions[key] = copy.deepcopy(version)
+        version: VersionSnapshot[WorkflowDefinition],
+    ) -> bool:
+        key = (version.entity_id, version.version)
+        if key in self._versions:
+            return False
+        self._versions[key] = copy.deepcopy(version)
+        return True
 
     async def get_version(
         self,
-        definition_id: str,
+        entity_id: str,
         version: int,
-    ) -> WorkflowDefinitionVersion | None:
-        stored = self._versions.get((definition_id, version))
+    ) -> VersionSnapshot[WorkflowDefinition] | None:
+        stored = self._versions.get((entity_id, version))
         return copy.deepcopy(stored) if stored is not None else None
+
+    async def get_latest_version(
+        self,
+        entity_id: str,
+    ) -> VersionSnapshot[WorkflowDefinition] | None:
+        matching = [v for v in self._versions.values() if v.entity_id == entity_id]
+        if not matching:
+            return None
+        latest = max(matching, key=lambda v: v.version)
+        return copy.deepcopy(latest)
+
+    async def get_by_content_hash(
+        self,
+        entity_id: str,
+        content_hash: str,
+    ) -> VersionSnapshot[WorkflowDefinition] | None:
+        for v in self._versions.values():
+            if v.entity_id == entity_id and v.content_hash == content_hash:
+                return copy.deepcopy(v)
+        return None
 
     async def list_versions(
         self,
-        definition_id: str,
+        entity_id: str,
         *,
         limit: int = 50,
         offset: int = 0,
-    ) -> tuple[WorkflowDefinitionVersion, ...]:
+    ) -> tuple[VersionSnapshot[WorkflowDefinition], ...]:
         matching = sorted(
-            (v for v in self._versions.values() if v.definition_id == definition_id),
+            (v for v in self._versions.values() if v.entity_id == entity_id),
             key=lambda v: v.version,
             reverse=True,
         )
         return tuple(copy.deepcopy(v) for v in matching[offset : offset + limit])
 
-    async def count_versions(self, definition_id: str) -> int:
-        return sum(
-            1 for v in self._versions.values() if v.definition_id == definition_id
-        )
+    async def count_versions(self, entity_id: str) -> int:
+        return sum(1 for v in self._versions.values() if v.entity_id == entity_id)
 
-    async def delete_versions_for_definition(self, definition_id: str) -> int:
-        to_delete = [k for k in self._versions if k[0] == definition_id]
+    async def delete_versions_for_entity(
+        self,
+        entity_id: str,
+    ) -> int:
+        to_delete = [k for k in self._versions if k[0] == entity_id]
         for k in to_delete:
             del self._versions[k]
         return len(to_delete)

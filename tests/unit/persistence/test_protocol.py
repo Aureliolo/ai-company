@@ -557,12 +557,9 @@ class _FakeBackend:
         # ``PersistenceBackend`` is ``@runtime_checkable``, which only
         # verifies that the ``workflow_versions`` attribute exists --
         # not that its value implements the full
-        # ``WorkflowVersionRepository`` interface.  Returning a bare
-        # ``object()`` is enough to satisfy the isinstance conformance
-        # test in this module; the real ``WorkflowVersionRepository``
-        # fake with ``save_version`` / ``get_version`` / etc. lives
-        # in ``tests/unit/api/fakes_workflow.py`` and is used by
-        # tests that actually exercise the workflow-version behavior.
+        # ``VersionRepository[WorkflowDefinition]`` interface.
+        # Returning a bare ``object()`` is enough to satisfy the
+        # isinstance conformance test in this module.
         return object()
 
     @property
@@ -575,6 +572,22 @@ class _FakeBackend:
 
     @property
     def identity_versions(self) -> Any:
+        return object()
+
+    @property
+    def evaluation_config_versions(self) -> Any:
+        return object()
+
+    @property
+    def budget_config_versions(self) -> Any:
+        return object()
+
+    @property
+    def company_versions(self) -> Any:
+        return object()
+
+    @property
+    def role_versions(self) -> Any:
         return object()
 
     @property

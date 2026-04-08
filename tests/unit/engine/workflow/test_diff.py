@@ -9,7 +9,11 @@ from synthorg.core.enums import (
     WorkflowNodeType,
     WorkflowType,
 )
-from synthorg.engine.workflow.definition import WorkflowEdge, WorkflowNode
+from synthorg.engine.workflow.definition import (
+    WorkflowDefinition,
+    WorkflowEdge,
+    WorkflowNode,
+)
 from synthorg.engine.workflow.diff import (
     POSITION_CHANGE_THRESHOLD,
     EdgeChange,
@@ -17,14 +21,23 @@ from synthorg.engine.workflow.diff import (
     WorkflowDiff,
     compute_diff,
 )
-from synthorg.engine.workflow.version import WorkflowDefinitionVersion
+from synthorg.versioning import VersionSnapshot, compute_content_hash
 
 # ── Helpers ──────────────────────────────────────────────────────
 
 _NOW = datetime(2026, 4, 1, tzinfo=UTC)
 
-_START = WorkflowNode(id="start", type=WorkflowNodeType.START, label="Start")
-_END = WorkflowNode(id="end", type=WorkflowNodeType.END, label="End", position_x=200.0)
+_START = WorkflowNode(
+    id="start",
+    type=WorkflowNodeType.START,
+    label="Start",
+)
+_END = WorkflowNode(
+    id="end",
+    type=WorkflowNodeType.END,
+    label="End",
+    position_x=200.0,
+)
 _TASK_A = WorkflowNode(
     id="task-a",
     type=WorkflowNodeType.TASK,
@@ -33,24 +46,47 @@ _TASK_A = WorkflowNode(
     position_y=100.0,
     config={"title": "Do A", "priority": "high"},
 )
-_EDGE_1 = WorkflowEdge(id="e1", source_node_id="start", target_node_id="end")
+_EDGE_1 = WorkflowEdge(
+    id="e1",
+    source_node_id="start",
+    target_node_id="end",
+)
 
 
-def _ver(version: int = 1, **overrides: object) -> WorkflowDefinitionVersion:
-    defaults: dict[str, object] = {
-        "definition_id": "wfdef-test",
-        "version": version,
+def _ver(
+    version: int = 1,
+    **overrides: object,
+) -> VersionSnapshot[WorkflowDefinition]:
+    def_defaults: dict[str, object] = {
+        "id": "wfdef-test",
         "name": "Test",
         "description": "",
         "workflow_type": WorkflowType.SEQUENTIAL_PIPELINE,
         "nodes": (_START, _END),
         "edges": (_EDGE_1,),
         "created_by": "user",
-        "saved_by": "user",
-        "saved_at": _NOW,
+        "created_at": _NOW,
+        "updated_at": _NOW,
     }
-    defaults.update(overrides)
-    return WorkflowDefinitionVersion.model_validate(defaults)
+    # Allow overriding definition fields via overrides; separate
+    # entity_id for VersionSnapshot wrapper if provided.
+    entity_id = str(overrides.pop("definition_id", "wfdef-test"))
+    saved_by = str(overrides.pop("saved_by", "user"))
+    # saved_at is always _NOW for tests -- pop to avoid passing
+    # to WorkflowDefinition.
+    overrides.pop("saved_at", None)
+    def_defaults.update(overrides)
+    # Override id to match entity_id
+    def_defaults["id"] = entity_id
+    definition = WorkflowDefinition.model_validate(def_defaults)
+    return VersionSnapshot(
+        entity_id=entity_id,
+        version=version,
+        content_hash=compute_content_hash(definition),
+        snapshot=definition,
+        saved_by=saved_by,
+        saved_at=_NOW,
+    )
 
 
 # ── Cross-definition error ──────────────────────────────────────

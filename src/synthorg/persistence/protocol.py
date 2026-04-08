@@ -6,8 +6,15 @@ management.  Repository protocols provide entity-level access.
 
 from typing import Any, Protocol, runtime_checkable
 
+from synthorg.budget.config import BudgetConfig  # noqa: TC001
 from synthorg.core.agent import AgentIdentity  # noqa: TC001
+from synthorg.core.company import Company  # noqa: TC001
+from synthorg.core.role import Role  # noqa: TC001
 from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.engine.workflow.definition import (
+    WorkflowDefinition,  # noqa: TC001
+)
+from synthorg.hr.evaluation.config import EvaluationConfig  # noqa: TC001
 from synthorg.hr.persistence_protocol import (
     CollaborationMetricRepository,  # noqa: TC001
     LifecycleEventRepository,  # noqa: TC001
@@ -50,9 +57,6 @@ from synthorg.persistence.workflow_definition_repo import (
 from synthorg.persistence.workflow_execution_repo import (
     WorkflowExecutionRepository,  # noqa: TC001
 )
-from synthorg.persistence.workflow_version_repo import (
-    WorkflowVersionRepository,  # noqa: TC001
-)
 
 
 @runtime_checkable
@@ -89,6 +93,12 @@ class PersistenceBackend(Protocol):
             snapshot persistence.
         identity_versions: Repository for AgentIdentity version snapshot
             persistence.
+        evaluation_config_versions: Repository for EvaluationConfig version
+            snapshot persistence.
+        budget_config_versions: Repository for BudgetConfig version snapshot
+            persistence.
+        company_versions: Repository for Company version snapshot persistence.
+        role_versions: Repository for Role version snapshot persistence.
         decision_records: Repository for DecisionRecord persistence
             (auditable approval-gate decisions drop-box).
         risk_overrides: Repository for RiskTierOverride persistence.
@@ -251,13 +261,37 @@ class PersistenceBackend(Protocol):
         ...
 
     @property
-    def workflow_versions(self) -> WorkflowVersionRepository:
+    def workflow_versions(self) -> VersionRepository[WorkflowDefinition]:
         """Repository for workflow definition version snapshot persistence."""
         ...
 
     @property
     def identity_versions(self) -> VersionRepository[AgentIdentity]:
         """Repository for AgentIdentity version snapshot persistence."""
+        ...
+
+    @property
+    def evaluation_config_versions(
+        self,
+    ) -> VersionRepository[EvaluationConfig]:
+        """Repository for EvaluationConfig version snapshot persistence."""
+        ...
+
+    @property
+    def budget_config_versions(
+        self,
+    ) -> VersionRepository[BudgetConfig]:
+        """Repository for BudgetConfig version snapshot persistence."""
+        ...
+
+    @property
+    def company_versions(self) -> VersionRepository[Company]:
+        """Repository for Company version snapshot persistence."""
+        ...
+
+    @property
+    def role_versions(self) -> VersionRepository[Role]:
+        """Repository for Role version snapshot persistence."""
         ...
 
     @property

@@ -12,14 +12,15 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.engine.workflow.definition import (
+    WorkflowDefinition,  # noqa: TC001
     WorkflowEdge,  # noqa: TC001
     WorkflowNode,  # noqa: TC001
 )
-from synthorg.engine.workflow.version import WorkflowDefinitionVersion  # noqa: TC001
 from synthorg.observability import get_logger
 from synthorg.observability.events.workflow_definition import (
     WORKFLOW_DEF_INVALID_REQUEST,
 )
+from synthorg.versioning.models import VersionSnapshot  # noqa: TC001
 
 logger = get_logger(__name__)
 
@@ -164,14 +165,14 @@ class WorkflowDiff(BaseModel):
 
 
 def compute_diff(
-    old: WorkflowDefinitionVersion,
-    new: WorkflowDefinitionVersion,
+    old: VersionSnapshot[WorkflowDefinition],
+    new: VersionSnapshot[WorkflowDefinition],
 ) -> WorkflowDiff:
     """Compute the structural diff between two version snapshots.
 
     Args:
-        old: The earlier version.
-        new: The later version.
+        old: The earlier version snapshot.
+        new: The later version snapshot.
 
     Returns:
         A :class:`WorkflowDiff` describing all changes.
@@ -179,23 +180,23 @@ def compute_diff(
     Raises:
         ValueError: If the two versions belong to different definitions.
     """
-    if old.definition_id != new.definition_id:
+    if old.entity_id != new.entity_id:
         msg = "Cannot diff versions from different definitions"
         logger.warning(
             WORKFLOW_DEF_INVALID_REQUEST,
-            old_definition_id=old.definition_id,
-            new_definition_id=new.definition_id,
+            old_definition_id=old.entity_id,
+            new_definition_id=new.entity_id,
             reason=msg,
         )
         raise ValueError(msg)
 
-    node_changes = _diff_nodes(old, new)
-    edge_changes = _diff_edges(old, new)
-    metadata_changes = _diff_metadata(old, new)
+    node_changes = _diff_nodes(old.snapshot, new.snapshot)
+    edge_changes = _diff_edges(old.snapshot, new.snapshot)
+    metadata_changes = _diff_metadata(old.snapshot, new.snapshot)
     summary = _build_summary(node_changes, edge_changes, metadata_changes)
 
     return WorkflowDiff(
-        definition_id=old.definition_id,
+        definition_id=old.entity_id,
         from_version=old.version,
         to_version=new.version,
         node_changes=tuple(node_changes),
@@ -276,8 +277,8 @@ def _compare_matched_node(
 
 
 def _diff_nodes(
-    old: WorkflowDefinitionVersion,
-    new: WorkflowDefinitionVersion,
+    old: WorkflowDefinition,
+    new: WorkflowDefinition,
 ) -> list[NodeChange]:
     """Compare nodes between two versions."""
     old_map = {n.id: n for n in old.nodes}
@@ -375,8 +376,8 @@ def _compare_matched_edge(
 
 
 def _diff_edges(
-    old: WorkflowDefinitionVersion,
-    new: WorkflowDefinitionVersion,
+    old: WorkflowDefinition,
+    new: WorkflowDefinition,
 ) -> list[EdgeChange]:
     """Compare edges between two versions."""
     old_map = {e.id: e for e in old.edges}
@@ -415,8 +416,8 @@ def _diff_edges(
 
 
 def _diff_metadata(
-    old: WorkflowDefinitionVersion,
-    new: WorkflowDefinitionVersion,
+    old: WorkflowDefinition,
+    new: WorkflowDefinition,
 ) -> list[MetadataChange]:
     """Compare metadata fields between two versions."""
     changes: list[MetadataChange] = []

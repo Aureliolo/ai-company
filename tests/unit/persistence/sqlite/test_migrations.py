@@ -42,6 +42,10 @@ _EXPECTED_TABLES = {
     "risk_overrides",
     "ssrf_violations",
     "agent_identity_versions",
+    "evaluation_config_versions",
+    "budget_config_versions",
+    "company_versions",
+    "role_versions",
     "circuit_breaker_state",
     "project_cost_aggregates",
 }
@@ -102,7 +106,8 @@ _EXPECTED_INDEXES = {
     "idx_ftc_active",
     "idx_ftc_single_active",
     "idx_ftc_created_at",
-    "idx_wdv_definition_saved",
+    "idx_wdv_entity_saved",
+    "idx_wdv_content_hash",
     "idx_dr_executing_agent_recorded",
     "idx_dr_reviewer_agent_recorded",
     "idx_la_username_attempted",
@@ -117,6 +122,14 @@ _EXPECTED_INDEXES = {
     "idx_sv_hostname",
     "idx_aiv_entity_saved",
     "idx_aiv_content_hash",
+    "idx_ecv_entity_saved",
+    "idx_ecv_content_hash",
+    "idx_bcv_entity_saved",
+    "idx_bcv_content_hash",
+    "idx_cv_entity_saved",
+    "idx_cv_content_hash",
+    "idx_rv_entity_saved",
+    "idx_rv_content_hash",
 }
 
 

@@ -7,10 +7,7 @@ from litestar import Controller, Request, Response, get, post
 from litestar.datastructures import State  # noqa: TC002
 from litestar.params import Parameter
 
-from synthorg.api.controllers._workflow_helpers import (
-    build_version_snapshot,
-    get_auth_user_id,
-)
+from synthorg.api.controllers._workflow_helpers import get_auth_user_id
 from synthorg.api.dto import (
     ApiResponse,
     PaginatedResponse,
@@ -24,7 +21,6 @@ from synthorg.engine.workflow.definition import (
     WorkflowDefinition,
 )
 from synthorg.engine.workflow.diff import WorkflowDiff, compute_diff
-from synthorg.engine.workflow.version import WorkflowDefinitionVersion
 from synthorg.observability import get_logger
 from synthorg.observability.events.workflow_definition import (
     WORKFLOW_DEF_DIFF_COMPUTED,
@@ -37,26 +33,24 @@ from synthorg.observability.events.workflow_definition import (
 from synthorg.observability.events.workflow_version import (
     WORKFLOW_VERSION_SNAPSHOT_FAILED,
 )
-from synthorg.persistence.errors import QueryError, VersionConflictError
+from synthorg.persistence.errors import PersistenceError, VersionConflictError
+from synthorg.persistence.version_repo import VersionRepository  # noqa: TC001
 from synthorg.persistence.workflow_definition_repo import (
     WorkflowDefinitionRepository,  # noqa: TC001
 )
-from synthorg.persistence.workflow_version_repo import (
-    WorkflowVersionRepository,  # noqa: TC001
-)
+from synthorg.versioning import VersioningService, VersionSnapshot
 
 logger = get_logger(__name__)
 
+SnapshotT = VersionSnapshot[WorkflowDefinition]
+
 
 async def _fetch_version_pair(
-    version_repo: WorkflowVersionRepository,
+    version_repo: VersionRepository[WorkflowDefinition],
     workflow_id: str,
     from_version: int,
     to_version: int,
-) -> (
-    tuple[WorkflowDefinitionVersion, WorkflowDefinitionVersion]
-    | Response[ApiResponse[WorkflowDiff]]
-):
+) -> tuple[SnapshotT, SnapshotT] | Response[ApiResponse[WorkflowDiff]]:
     """Fetch two version snapshots, returning an error response on failure.
 
     Args:
@@ -100,13 +94,10 @@ async def _fetch_version_pair(
 
 async def _fetch_rollback_target(
     repo: WorkflowDefinitionRepository,
-    version_repo: WorkflowVersionRepository,
+    version_repo: VersionRepository[WorkflowDefinition],
     workflow_id: str,
     data: RollbackWorkflowRequest,
-) -> (
-    tuple[WorkflowDefinition, WorkflowDefinitionVersion]
-    | Response[ApiResponse[WorkflowDefinition]]
-):
+) -> tuple[WorkflowDefinition, SnapshotT] | Response[ApiResponse[WorkflowDefinition]]:
     """Look up the definition and target version for a rollback.
 
     Validates that the definition exists, the expected version matches,
@@ -144,7 +135,9 @@ async def _fetch_rollback_target(
         )
         return Response(
             content=ApiResponse[WorkflowDefinition](
-                error="Version conflict: the workflow was modified. Reload and retry.",
+                error=(
+                    "Version conflict: the workflow was modified. Reload and retry."
+                ),
             ),
             status_code=409,
         )
@@ -171,7 +164,7 @@ async def _fetch_rollback_target(
 
 def _build_rolled_back_definition(
     existing: WorkflowDefinition,
-    target: WorkflowDefinitionVersion,
+    target: SnapshotT,
     now: datetime,
 ) -> WorkflowDefinition:
     """Build a new definition that restores a target version's content.
@@ -185,17 +178,14 @@ def _build_rolled_back_definition(
         A ``WorkflowDefinition`` with version bumped and content
         restored from *target*.
     """
-    return WorkflowDefinition(
-        id=existing.id,
-        name=target.name,
-        description=target.description,
-        workflow_type=target.workflow_type,
-        nodes=target.nodes,
-        edges=target.edges,
-        created_by=existing.created_by,
-        created_at=existing.created_at,
-        updated_at=now,
-        version=existing.version + 1,
+    return target.snapshot.model_copy(
+        update={
+            "id": existing.id,
+            "created_by": existing.created_by,
+            "created_at": existing.created_at,
+            "updated_at": now,
+            "version": existing.version + 1,
+        },
     )
 
 
@@ -212,7 +202,7 @@ class WorkflowVersionController(Controller):
         workflow_id: PathId,
         offset: PaginationOffset = 0,
         limit: PaginationLimit = 20,
-    ) -> Response[PaginatedResponse[WorkflowDefinitionVersion]]:
+    ) -> Response[PaginatedResponse[SnapshotT]]:
         """List version history for a workflow definition."""
         version_repo = state.app_state.persistence.workflow_versions
         versions = await version_repo.list_versions(
@@ -228,7 +218,7 @@ class WorkflowVersionController(Controller):
         )
         meta = PaginationMeta(total=total, offset=offset, limit=limit)
         return Response(
-            content=PaginatedResponse[WorkflowDefinitionVersion](
+            content=PaginatedResponse[SnapshotT](
                 data=versions,
                 pagination=meta,
             ),
@@ -243,10 +233,13 @@ class WorkflowVersionController(Controller):
         state: State,
         workflow_id: PathId,
         version_num: Annotated[int, Parameter(ge=1)],
-    ) -> Response[ApiResponse[WorkflowDefinitionVersion]]:
+    ) -> Response[ApiResponse[SnapshotT]]:
         """Get a specific version snapshot."""
         version_repo = state.app_state.persistence.workflow_versions
-        version = await version_repo.get_version(workflow_id, version_num)
+        version = await version_repo.get_version(
+            workflow_id,
+            version_num,
+        )
         if version is None:
             logger.warning(
                 WORKFLOW_DEF_NOT_FOUND,
@@ -254,13 +247,13 @@ class WorkflowVersionController(Controller):
                 version=version_num,
             )
             return Response(
-                content=ApiResponse[WorkflowDefinitionVersion](
+                content=ApiResponse[SnapshotT](
                     error=f"Version {version_num} not found",
                 ),
                 status_code=404,
             )
         return Response(
-            content=ApiResponse[WorkflowDefinitionVersion](data=version),
+            content=ApiResponse[SnapshotT](data=version),
         )
 
     @get("/{workflow_id:str}/diff", guards=[require_read_access])
@@ -270,11 +263,19 @@ class WorkflowVersionController(Controller):
         workflow_id: PathId,
         from_version: Annotated[
             int,
-            Parameter(required=True, ge=1, description="Source version"),
+            Parameter(
+                required=True,
+                ge=1,
+                description="Source version",
+            ),
         ],
         to_version: Annotated[
             int,
-            Parameter(required=True, ge=1, description="Target version"),
+            Parameter(
+                required=True,
+                ge=1,
+                description="Target version",
+            ),
         ],
     ) -> Response[ApiResponse[WorkflowDiff]]:
         """Compute diff between two versions of a workflow definition."""
@@ -355,15 +356,19 @@ class WorkflowVersionController(Controller):
             )
             return Response(
                 content=ApiResponse[WorkflowDefinition](
-                    error="Version conflict during rollback. Reload and retry.",
+                    error=("Version conflict during rollback. Reload and retry."),
                 ),
                 status_code=409,
             )
 
-        snapshot = build_version_snapshot(rolled_back, updater)
+        svc = VersioningService(version_repo)
         try:
-            await version_repo.save_version(snapshot)
-        except QueryError:
+            await svc.snapshot_if_changed(
+                entity_id=rolled_back.id,
+                snapshot=rolled_back,
+                saved_by=updater,
+            )
+        except PersistenceError:
             logger.exception(
                 WORKFLOW_VERSION_SNAPSHOT_FAILED,
                 definition_id=rolled_back.id,

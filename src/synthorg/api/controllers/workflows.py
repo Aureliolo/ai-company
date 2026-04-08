@@ -11,10 +11,7 @@ from litestar.params import Parameter
 from litestar.status_codes import HTTP_204_NO_CONTENT
 from pydantic import ValidationError
 
-from synthorg.api.controllers._workflow_helpers import (
-    build_version_snapshot,
-    get_auth_user_id,
-)
+from synthorg.api.controllers._workflow_helpers import get_auth_user_id
 from synthorg.api.dto import (
     ApiResponse,
     BlueprintInfoResponse,
@@ -67,10 +64,14 @@ from synthorg.observability.events.workflow_definition import (
 from synthorg.observability.events.workflow_version import (
     WORKFLOW_VERSION_SNAPSHOT_FAILED,
 )
-from synthorg.persistence.errors import QueryError, VersionConflictError
+from synthorg.persistence.errors import (
+    PersistenceError,
+    VersionConflictError,
+)
 from synthorg.persistence.workflow_definition_repo import (
     WorkflowDefinitionRepository,  # noqa: TC001
 )
+from synthorg.versioning import VersioningService
 
 logger = get_logger(__name__)
 
@@ -417,11 +418,16 @@ class WorkflowController(Controller):
         repo = state.app_state.persistence.workflow_definitions
         await repo.save(definition)
 
-        version_repo = state.app_state.persistence.workflow_versions
-        snapshot = build_version_snapshot(definition, creator)
+        svc = VersioningService(
+            state.app_state.persistence.workflow_versions,
+        )
         try:
-            await version_repo.save_version(snapshot)
-        except QueryError:
+            await svc.snapshot_if_changed(
+                entity_id=definition.id,
+                snapshot=definition,
+                saved_by=creator,
+            )
+        except PersistenceError:
             logger.exception(
                 WORKFLOW_VERSION_SNAPSHOT_FAILED,
                 definition_id=definition.id,
@@ -501,11 +507,16 @@ class WorkflowController(Controller):
         repo = state.app_state.persistence.workflow_definitions
         await repo.save(definition)
 
-        version_repo = state.app_state.persistence.workflow_versions
-        snapshot = build_version_snapshot(definition, creator)
+        svc = VersioningService(
+            state.app_state.persistence.workflow_versions,
+        )
         try:
-            await version_repo.save_version(snapshot)
-        except QueryError:
+            await svc.snapshot_if_changed(
+                entity_id=definition.id,
+                snapshot=definition,
+                saved_by=creator,
+            )
+        except PersistenceError:
             logger.exception(
                 WORKFLOW_VERSION_SNAPSHOT_FAILED,
                 definition_id=definition.id,
@@ -559,11 +570,16 @@ class WorkflowController(Controller):
             )
 
         updater = get_auth_user_id(request)
-        version_repo = state.app_state.persistence.workflow_versions
-        snapshot = build_version_snapshot(updated, updater)
+        svc = VersioningService(
+            state.app_state.persistence.workflow_versions,
+        )
         try:
-            await version_repo.save_version(snapshot)
-        except QueryError:
+            await svc.snapshot_if_changed(
+                entity_id=updated.id,
+                snapshot=updated,
+                saved_by=updater,
+            )
+        except PersistenceError:
             logger.exception(
                 WORKFLOW_VERSION_SNAPSHOT_FAILED,
                 definition_id=updated.id,
@@ -595,10 +611,10 @@ class WorkflowController(Controller):
             )
             msg = "Workflow definition not found"
             raise NotFoundError(msg)
-        # Defense-in-depth: cascade delete also removes versions via FK,
-        # but explicit delete ensures cleanup if foreign keys are disabled.
+        # Defense-in-depth: explicit delete ensures cleanup even if
+        # foreign keys are disabled.
         version_repo = state.app_state.persistence.workflow_versions
-        await version_repo.delete_versions_for_definition(workflow_id)
+        await version_repo.delete_versions_for_entity(workflow_id)
         logger.info(
             WORKFLOW_DEF_DELETED,
             definition_id=workflow_id,

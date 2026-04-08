@@ -449,26 +449,21 @@ CREATE INDEX IF NOT EXISTS idx_ftc_created_at
 -- ── Workflow Definition Versions ─────────────────────────────
 
 CREATE TABLE IF NOT EXISTS workflow_definition_versions (
-    definition_id TEXT NOT NULL CHECK(length(definition_id) > 0),
+    entity_id TEXT NOT NULL CHECK(length(entity_id) > 0),
     version INTEGER NOT NULL CHECK(version >= 1),
-    name TEXT NOT NULL CHECK(length(name) > 0),
-    description TEXT NOT NULL DEFAULT '',
-    workflow_type TEXT NOT NULL CHECK(workflow_type IN (
-        'sequential_pipeline', 'parallel_execution', 'kanban', 'agile_kanban'
-    )),
-    nodes TEXT NOT NULL,
-    edges TEXT NOT NULL,
-    created_by TEXT NOT NULL CHECK(length(created_by) > 0),
+    content_hash TEXT NOT NULL CHECK(length(content_hash) > 0),
+    snapshot TEXT NOT NULL CHECK(length(snapshot) > 0),
     saved_by TEXT NOT NULL CHECK(length(saved_by) > 0),
-    saved_at TEXT NOT NULL,
-    PRIMARY KEY (definition_id, version),
-    FOREIGN KEY (definition_id)
-        REFERENCES workflow_definitions(id)
-        ON DELETE CASCADE
+    saved_at TEXT NOT NULL CHECK(
+        saved_at LIKE '%+00:00' OR saved_at LIKE '%Z'
+    ),
+    PRIMARY KEY (entity_id, version)
 );
 
-CREATE INDEX IF NOT EXISTS idx_wdv_definition_saved
-    ON workflow_definition_versions(definition_id, saved_at DESC);
+CREATE INDEX IF NOT EXISTS idx_wdv_entity_saved
+    ON workflow_definition_versions(entity_id, saved_at DESC);
+CREATE INDEX IF NOT EXISTS idx_wdv_content_hash
+    ON workflow_definition_versions(entity_id, content_hash);
 
 -- ── Decision records (auditable decisions drop-box) ─────────────
 -- Append-only audit trail.  ON DELETE RESTRICT on the tasks FK is
@@ -610,6 +605,82 @@ CREATE INDEX IF NOT EXISTS idx_aiv_entity_saved
     ON agent_identity_versions(entity_id, saved_at DESC);
 CREATE INDEX IF NOT EXISTS idx_aiv_content_hash
     ON agent_identity_versions(entity_id, content_hash);
+
+-- ── Evaluation config versions ────────────────────────────────────
+
+CREATE TABLE IF NOT EXISTS evaluation_config_versions (
+    entity_id TEXT NOT NULL CHECK(length(entity_id) > 0),
+    version INTEGER NOT NULL CHECK(version >= 1),
+    content_hash TEXT NOT NULL CHECK(length(content_hash) > 0),
+    snapshot TEXT NOT NULL CHECK(length(snapshot) > 0),
+    saved_by TEXT NOT NULL CHECK(length(saved_by) > 0),
+    saved_at TEXT NOT NULL CHECK(
+        saved_at LIKE '%+00:00' OR saved_at LIKE '%Z'
+    ),
+    PRIMARY KEY (entity_id, version)
+);
+
+CREATE INDEX IF NOT EXISTS idx_ecv_entity_saved
+    ON evaluation_config_versions(entity_id, saved_at DESC);
+CREATE INDEX IF NOT EXISTS idx_ecv_content_hash
+    ON evaluation_config_versions(entity_id, content_hash);
+
+-- ── Budget config versions ───────────────────────────────────────
+
+CREATE TABLE IF NOT EXISTS budget_config_versions (
+    entity_id TEXT NOT NULL CHECK(length(entity_id) > 0),
+    version INTEGER NOT NULL CHECK(version >= 1),
+    content_hash TEXT NOT NULL CHECK(length(content_hash) > 0),
+    snapshot TEXT NOT NULL CHECK(length(snapshot) > 0),
+    saved_by TEXT NOT NULL CHECK(length(saved_by) > 0),
+    saved_at TEXT NOT NULL CHECK(
+        saved_at LIKE '%+00:00' OR saved_at LIKE '%Z'
+    ),
+    PRIMARY KEY (entity_id, version)
+);
+
+CREATE INDEX IF NOT EXISTS idx_bcv_entity_saved
+    ON budget_config_versions(entity_id, saved_at DESC);
+CREATE INDEX IF NOT EXISTS idx_bcv_content_hash
+    ON budget_config_versions(entity_id, content_hash);
+
+-- ── Company versions ─────────────────────────────────────────────
+
+CREATE TABLE IF NOT EXISTS company_versions (
+    entity_id TEXT NOT NULL CHECK(length(entity_id) > 0),
+    version INTEGER NOT NULL CHECK(version >= 1),
+    content_hash TEXT NOT NULL CHECK(length(content_hash) > 0),
+    snapshot TEXT NOT NULL CHECK(length(snapshot) > 0),
+    saved_by TEXT NOT NULL CHECK(length(saved_by) > 0),
+    saved_at TEXT NOT NULL CHECK(
+        saved_at LIKE '%+00:00' OR saved_at LIKE '%Z'
+    ),
+    PRIMARY KEY (entity_id, version)
+);
+
+CREATE INDEX IF NOT EXISTS idx_cv_entity_saved
+    ON company_versions(entity_id, saved_at DESC);
+CREATE INDEX IF NOT EXISTS idx_cv_content_hash
+    ON company_versions(entity_id, content_hash);
+
+-- ── Role versions ────────────────────────────────────────────────
+
+CREATE TABLE IF NOT EXISTS role_versions (
+    entity_id TEXT NOT NULL CHECK(length(entity_id) > 0),
+    version INTEGER NOT NULL CHECK(version >= 1),
+    content_hash TEXT NOT NULL CHECK(length(content_hash) > 0),
+    snapshot TEXT NOT NULL CHECK(length(snapshot) > 0),
+    saved_by TEXT NOT NULL CHECK(length(saved_by) > 0),
+    saved_at TEXT NOT NULL CHECK(
+        saved_at LIKE '%+00:00' OR saved_at LIKE '%Z'
+    ),
+    PRIMARY KEY (entity_id, version)
+);
+
+CREATE INDEX IF NOT EXISTS idx_rv_entity_saved
+    ON role_versions(entity_id, saved_at DESC);
+CREATE INDEX IF NOT EXISTS idx_rv_content_hash
+    ON role_versions(entity_id, content_hash);
 
 -- ── Circuit breaker state ─────────────────────────────────────────
 

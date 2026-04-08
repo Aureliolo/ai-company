@@ -233,6 +233,10 @@ class FakePersistenceBackend:
         self._workflow_executions = FakeWorkflowExecutionRepository()
         self._workflow_versions = FakeWorkflowVersionRepository()
         self._identity_versions = FakeVersionRepository()
+        self._evaluation_config_versions = FakeVersionRepository()
+        self._budget_config_versions = FakeVersionRepository()
+        self._company_versions = FakeVersionRepository()
+        self._role_versions = FakeVersionRepository()
         self._risk_overrides = FakeRiskOverrideRepository()
         self._ssrf_violations = FakeSsrfViolationRepository()
         self._circuit_breaker_state = FakeCircuitBreakerStateRepository()
@@ -367,6 +371,22 @@ class FakePersistenceBackend:
     @property
     def identity_versions(self) -> FakeVersionRepository:
         return self._identity_versions
+
+    @property
+    def evaluation_config_versions(self) -> FakeVersionRepository:
+        return self._evaluation_config_versions
+
+    @property
+    def budget_config_versions(self) -> FakeVersionRepository:
+        return self._budget_config_versions
+
+    @property
+    def company_versions(self) -> FakeVersionRepository:
+        return self._company_versions
+
+    @property
+    def role_versions(self) -> FakeVersionRepository:
+        return self._role_versions
 
     @property
     def risk_overrides(self) -> FakeRiskOverrideRepository:

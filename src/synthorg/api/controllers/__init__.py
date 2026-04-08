@@ -12,16 +12,25 @@ from synthorg.api.controllers.audit import AuditController
 from synthorg.api.controllers.autonomy import AutonomyController
 from synthorg.api.controllers.backup import BackupController
 from synthorg.api.controllers.budget import BudgetController
+from synthorg.api.controllers.budget_config_versions import (
+    BudgetConfigVersionController,
+)
 from synthorg.api.controllers.ceremony_policy import (
     CeremonyPolicyController,
 )
 from synthorg.api.controllers.collaboration import CollaborationController
 from synthorg.api.controllers.company import CompanyController
+from synthorg.api.controllers.company_versions import (
+    CompanyVersionController,
+)
 from synthorg.api.controllers.coordination import CoordinationController
 from synthorg.api.controllers.coordination_metrics import (
     CoordinationMetricsController,
 )
 from synthorg.api.controllers.departments import DepartmentController
+from synthorg.api.controllers.evaluation_config_versions import (
+    EvaluationConfigVersionController,
+)
 from synthorg.api.controllers.health import HealthController
 from synthorg.api.controllers.meetings import MeetingController
 from synthorg.api.controllers.memory import MemoryAdminController
@@ -86,6 +95,9 @@ ALL_CONTROLLERS: tuple[type[Controller], ...] = (
     UserController,
     WorkflowController,
     WorkflowVersionController,
+    BudgetConfigVersionController,
+    CompanyVersionController,
+    EvaluationConfigVersionController,
     QualityController,
     ReportsController,
     WorkflowExecutionController,
@@ -102,14 +114,17 @@ __all__ = [
     "AuthController",
     "AutonomyController",
     "BackupController",
+    "BudgetConfigVersionController",
     "BudgetController",
     "CeremonyPolicyController",
     "CollaborationController",
     "CompanyController",
+    "CompanyVersionController",
     "Controller",
     "CoordinationController",
     "CoordinationMetricsController",
     "DepartmentController",
+    "EvaluationConfigVersionController",
     "HealthController",
     "MeetingController",
     "MemoryAdminController",

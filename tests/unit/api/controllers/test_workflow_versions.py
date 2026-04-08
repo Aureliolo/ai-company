@@ -143,8 +143,8 @@ class TestListVersions:
         assert len(versions) == 3
         # Newest first.
         assert [v["version"] for v in versions] == [3, 2, 1]
-        assert versions[0]["name"] == "V3"
-        assert versions[2]["name"] == "V1"
+        assert versions[0]["snapshot"]["name"] == "V3"
+        assert versions[2]["snapshot"]["name"] == "V1"
 
     @pytest.mark.unit
     def test_list_versions_paginated(self, test_client: TestClient[Any]) -> None:
@@ -191,7 +191,7 @@ class TestGetVersion:
         )
         assert resp.status_code == 200
         assert resp.json()["data"]["version"] == 1
-        assert resp.json()["data"]["name"] == "test-workflow"
+        assert resp.json()["data"]["snapshot"]["name"] == "test-workflow"
 
     @pytest.mark.unit
     def test_version_not_found(self, test_client: TestClient[Any]) -> None:
@@ -281,7 +281,7 @@ class TestRollback:
         assert len(versions) == 3
         # Newest first -- v3 should be the rollback snapshot.
         assert versions[0]["version"] == 3
-        assert versions[0]["name"] == "Original"
+        assert versions[0]["snapshot"]["name"] == "Original"
 
     @pytest.mark.unit
     def test_rollback_version_conflict(self, test_client: TestClient[Any]) -> None:
