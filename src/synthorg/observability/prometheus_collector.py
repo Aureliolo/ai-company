@@ -281,13 +281,16 @@ class PrometheusCollector:
                 if unavailable.
         """
         if not app_state.has_cost_tracker or daily_cost is None:
+            self._budget_daily_used_percent.set(0.0)
             return
         try:
             tracker = app_state.cost_tracker
             if tracker.budget_config is None:
+                self._budget_daily_used_percent.set(0.0)
                 return
             monthly = tracker.budget_config.total_monthly
             if monthly <= 0:
+                self._budget_daily_used_percent.set(0.0)
                 return
             now = datetime.now(UTC)
             days = monthrange(now.year, now.month)[1]
@@ -358,11 +361,10 @@ class PrometheusCollector:
     ) -> None:
         """Update per-agent cost and budget utilization gauges.
 
-        Iterates over pre-fetched active agents, querying cumulative
-        and daily costs from the cost tracker.  Clears gauge label
-        series before setting so that disappeared agents are dropped.
-        Returns early without updating if *agents* is empty or the
-        cost tracker is unavailable.
+        Always clears gauge label series first so disappeared agents
+        are dropped.  Then returns early if *agents* is empty or the
+        cost tracker is unavailable; otherwise queries cumulative and
+        daily costs per agent.
 
         Args:
             app_state: The application state containing cost tracker.
@@ -370,15 +372,17 @@ class PrometheusCollector:
             utc_midnight: Start of the current UTC day for daily cost
                 queries.
         """
+        self._agent_cost_total.clear()
+        self._agent_budget_used_percent.clear()
         if not agents or not app_state.has_cost_tracker:
             return
         try:
             tracker = app_state.cost_tracker
-            self._agent_cost_total.clear()
-            self._agent_budget_used_percent.clear()
             budget_cfg = tracker.budget_config
             per_agent_limit = (
-                budget_cfg.per_agent_daily_limit if budget_cfg is not None else 0.0
+                budget_cfg.per_agent_daily_limit
+                if budget_cfg is not None and budget_cfg.total_monthly > 0
+                else 0.0
             )
             agent_ids = [str(a.id) for a in agents]
             # Fan-out cost queries in parallel.

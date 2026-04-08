@@ -332,8 +332,13 @@ class TestPrometheusCollectorDailyBudget:
         )
         await collector.refresh(state)
         output = generate_latest(collector.registry).decode()
-        assert "synthorg_budget_daily_used_percent" in output
-        assert "100.0" in output
+        lines = [
+            ln
+            for ln in output.splitlines()
+            if ln.startswith("synthorg_budget_daily_used_percent ")
+        ]
+        assert len(lines) == 1
+        assert float(lines[0].split()[-1]) == 100.0
 
     async def test_daily_budget_percent_partial_day(self) -> None:
         """Normal daily utilization produces correct percentage."""
@@ -425,6 +430,26 @@ class TestPrometheusCollectorDailyBudget:
         ]
         assert len(lines) == 1
         assert float(lines[0].split()[-1]) == 0.0
+
+    async def test_daily_budget_exception_does_not_crash(self) -> None:
+        """Exception during computation is caught; scrape continues."""
+        collector = PrometheusCollector()
+        state = _mock_app_state(
+            has_cost_tracker=True,
+            daily_cost=5.0,
+            budget_total_monthly=300.0,
+        )
+        # Patch monthrange to raise inside the try block.
+        from unittest.mock import patch
+
+        with patch(
+            "synthorg.observability.prometheus_collector.monthrange",
+            side_effect=RuntimeError("broken"),
+        ):
+            await collector.refresh(state)
+        # No crash; other metrics still updated.
+        output = generate_latest(collector.registry).decode()
+        assert "synthorg_app_info" in output
 
 
 @pytest.mark.unit
@@ -592,4 +617,37 @@ class TestPrometheusCollectorAgentCost:
             if ln.startswith("synthorg_agent_cost_total{")
         ]
         # Gauges were cleared before the error; no labels remain.
+        assert len(cost_lines) == 0
+
+    async def test_agent_cost_clears_on_empty_agents_second_scrape(
+        self,
+    ) -> None:
+        """Gauges cleared when agents disappear between scrapes."""
+        collector = PrometheusCollector()
+        agents = (_make_agent(name="alice"),)
+        state_v1 = _mock_app_state(
+            has_cost_tracker=True,
+            has_agent_registry=True,
+            agents=agents,
+            agent_costs={"alice": 5.0},
+            budget_total_monthly=100.0,
+        )
+        await collector.refresh(state_v1)
+        output_v1 = generate_latest(collector.registry).decode()
+        assert 'synthorg_agent_cost_total{agent_id="alice"}' in output_v1
+
+        # Second scrape: no agents.
+        state_v2 = _mock_app_state(
+            has_cost_tracker=True,
+            has_agent_registry=True,
+            agents=(),
+            budget_total_monthly=100.0,
+        )
+        await collector.refresh(state_v2)
+        output_v2 = generate_latest(collector.registry).decode()
+        cost_lines = [
+            ln
+            for ln in output_v2.splitlines()
+            if ln.startswith("synthorg_agent_cost_total{")
+        ]
         assert len(cost_lines) == 0
