@@ -41,7 +41,6 @@ from synthorg.observability.events.api import (
     API_VALIDATION_FAILED,
 )
 from synthorg.observability.events.versioning import VERSION_SNAPSHOT_FAILED
-from synthorg.persistence.errors import PersistenceError
 from synthorg.settings.errors import SettingNotFoundError
 from synthorg.settings.resolver import ConfigResolver  # noqa: TC001
 from synthorg.settings.service import SettingsService  # noqa: TC001
@@ -106,7 +105,7 @@ class OrgMutationService:
                 snapshot=budget,
                 saved_by=saved_by,
             )
-        except PersistenceError:
+        except Exception:
             logger.exception(
                 VERSION_SNAPSHOT_FAILED,
                 entity_type="BudgetConfig",
@@ -282,9 +281,9 @@ class OrgMutationService:
                 updated["communication_pattern"] = data.communication_pattern
             # Compute new ETag from full snapshot while still under lock.
             new_etag = await self._company_snapshot_etag()
+            if "budget_monthly" in updated:
+                await self._snapshot_budget_config(saved_by="api")
         logger.info(API_COMPANY_UPDATED, fields=list(updated.keys()))
-        if "budget_monthly" in updated:
-            await self._snapshot_budget_config(saved_by="api")
         return updated, new_etag
 
     # ── Departments ───────────────────────────────────────────
