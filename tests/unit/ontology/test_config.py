@@ -61,7 +61,7 @@ class TestOntologyInjectionConfig:
         c = OntologyInjectionConfig()
         assert c.strategy == InjectionStrategy.HYBRID
         assert c.core_token_budget > 0
-        assert c.tool_name == "get_entity_definition"
+        assert c.tool_name == "lookup_entity"
 
     def test_frozen(self) -> None:
         c = OntologyInjectionConfig()
