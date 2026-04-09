@@ -253,8 +253,9 @@ SynthOrg agents can delegate tasks to external A2A agents through the outbound c
 5. **State mapping**: Map external A2A task states back to internal states (see table above)
 
 The outbound client authenticates using the `a2a.auth.outbound` configuration (see
-[A2A Security](operations.md#a2a-security)). External agent capabilities are validated
-against the [DelegationGuard](#loop-prevention) before outbound delegation is permitted.
+[A2A Security](operations.md#a2a-security)). Outbound delegations pass through the
+[DelegationGuard](#loop-prevention) for loop-prevention checks (ancestry, depth,
+deduplication, rate limiting, circuit breaker) before dispatch.
 
 ---
 

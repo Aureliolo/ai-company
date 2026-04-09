@@ -1372,11 +1372,12 @@ before connection.
 
 The existing `MessageOverhead.is_quadratic` detection (see
 [Microservices Anti-Patterns](communication.md#microservices-anti-patterns-assessment))
-is extended with a pluggable `QuadraticEnforcementStrategy` protocol. This is
+will be extended with a pluggable `QuadraticEnforcementStrategy` protocol. This is
 particularly relevant for A2A federation where external agent connections can amplify
-quadratic scaling.
+quadratic scaling. Currently, only detection exists -- enforcement strategies are
+proposed below.
 
-Four built-in strategies are provided:
+Four built-in strategies are planned:
 
 | Strategy | Behavior | Default |
 |----------|----------|---------|
@@ -1385,7 +1386,7 @@ Four built-in strategies are provided:
 | `hard_block` | Reject new connections when agent count exceeds `max_agent_connections` | No |
 | `disabled` | No detection or enforcement | No |
 
-The strategy is pluggable via the `QuadraticEnforcementStrategy` protocol -- custom
+The strategy will be pluggable via the `QuadraticEnforcementStrategy` protocol -- custom
 strategies can be registered without modifying built-in code.
 
 ???+ example "Quadratic enforcement configuration"
