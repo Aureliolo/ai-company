@@ -608,13 +608,6 @@ def _build_lifecycle(  # noqa: PLR0913, PLR0915, C901
                     performance_tracker=app_state._performance_tracker,  # noqa: SLF001
                 )
                 raise
-        # Ontology auto-wire (non-fatal).
-        if effective_config is not None:
-            from synthorg.api.auto_wire import (  # noqa: PLC0415
-                auto_wire_ontology,
-            )
-
-            await auto_wire_ontology(effective_config)
         await _maybe_bootstrap_agents(app_state)
         await _maybe_promote_first_owner(app_state)
         _ticket_cleanup_task = asyncio.create_task(
