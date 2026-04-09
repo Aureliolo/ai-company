@@ -448,7 +448,7 @@ The HR system manages the agent workforce dynamically:
 
 ---
 
-## Pruning / Dropout
+## Pruning
 
 The pruning service automates performance-driven agent removal with mandatory human approval.
 
