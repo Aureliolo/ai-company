@@ -351,6 +351,52 @@ class TestEventConstants:
         assert DELEGATION_HIERARCHY_BUILT == "delegation.hierarchy.built"
         assert DELEGATION_HIERARCHY_CYCLE == "delegation.hierarchy.cycle"
 
+    def test_client_events_exist(self) -> None:
+        from synthorg.observability.events.client import (
+            CLIENT_FEEDBACK_RECORDED,
+            CLIENT_REQUEST_APPROVED,
+            CLIENT_REQUEST_REJECTED,
+            CLIENT_REQUEST_SCOPED,
+            CLIENT_REQUEST_SUBMITTED,
+            CLIENT_REQUEST_TRIAGING,
+            CLIENT_REQUIREMENT_GENERATED,
+            CLIENT_REVIEW_COMPLETED,
+            CLIENT_REVIEW_STARTED,
+            SIMULATION_ROUND_COMPLETED,
+            SIMULATION_RUN_COMPLETED,
+            SIMULATION_RUN_STARTED,
+        )
+
+        assert CLIENT_REQUEST_SUBMITTED == "client.request.submitted"
+        assert CLIENT_REQUEST_TRIAGING == "client.request.triaging"
+        assert CLIENT_REQUEST_SCOPED == "client.request.scoped"
+        assert CLIENT_REQUEST_APPROVED == "client.request.approved"
+        assert CLIENT_REQUEST_REJECTED == "client.request.rejected"
+        assert CLIENT_REVIEW_STARTED == "client.review.started"
+        assert CLIENT_REVIEW_COMPLETED == "client.review.completed"
+        assert CLIENT_FEEDBACK_RECORDED == "client.feedback.recorded"
+        assert CLIENT_REQUIREMENT_GENERATED == "client.requirement.generated"
+        assert SIMULATION_RUN_STARTED == "simulation.run.started"
+        assert SIMULATION_RUN_COMPLETED == "simulation.run.completed"
+        assert SIMULATION_ROUND_COMPLETED == "simulation.round.completed"
+
+    def test_review_pipeline_events_exist(self) -> None:
+        from synthorg.observability.events.review_pipeline import (
+            INTAKE_REQUEST_ACCEPTED,
+            INTAKE_REQUEST_RECEIVED,
+            INTAKE_REQUEST_REJECTED,
+            REVIEW_PIPELINE_COMPLETED,
+            REVIEW_PIPELINE_STAGE_COMPLETED,
+            REVIEW_PIPELINE_STARTED,
+        )
+
+        assert REVIEW_PIPELINE_STARTED == "review.pipeline.started"
+        assert REVIEW_PIPELINE_STAGE_COMPLETED == "review.pipeline.stage.completed"
+        assert REVIEW_PIPELINE_COMPLETED == "review.pipeline.completed"
+        assert INTAKE_REQUEST_RECEIVED == "intake.request.received"
+        assert INTAKE_REQUEST_ACCEPTED == "intake.request.accepted"
+        assert INTAKE_REQUEST_REJECTED == "intake.request.rejected"
+
     def test_conflict_events_exist(self) -> None:
         assert CONFLICT_DETECTED == "conflict.detected"
         assert CONFLICT_RESOLUTION_STARTED == "conflict.resolution.started"

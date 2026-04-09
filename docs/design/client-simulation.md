@@ -15,7 +15,7 @@ organizational throughput, and quality metrics without real external clients.
 
 ## Architecture Overview
 
-```
+```text
 ClientPool                    IntakeEngine              TaskEngine
   |                              |                         |
   +-- AIClient ----+             |                         |

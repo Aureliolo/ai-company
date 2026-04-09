@@ -45,37 +45,44 @@ class TestIntakeResult:
                 accepted=True,
             )
 
-    def test_accepted_without_task_id_rejected(self) -> None:
-        with pytest.raises(ValidationError, match="task_id is required"):
-            IntakeResult(
-                request_id="req-1",
-                accepted=True,
-            )
-
-    def test_accepted_with_rejection_reason_rejected(self) -> None:
-        with pytest.raises(ValidationError, match="rejection_reason must be None"):
-            IntakeResult(
-                request_id="req-1",
-                accepted=True,
-                task_id="task-1",
-                rejection_reason="should not be here",
-            )
-
-    def test_rejected_without_reason_rejected(self) -> None:
-        with pytest.raises(ValidationError, match="rejection_reason is required"):
-            IntakeResult(
-                request_id="req-1",
-                accepted=False,
-            )
-
-    def test_rejected_with_task_id_rejected(self) -> None:
-        with pytest.raises(ValidationError, match="task_id must be None"):
-            IntakeResult(
-                request_id="req-1",
-                accepted=False,
-                task_id="task-1",
-                rejection_reason="bad request",
-            )
+    @pytest.mark.parametrize(
+        ("kwargs", "match"),
+        [
+            (
+                {"request_id": "req-1", "accepted": True},
+                "task_id is required",
+            ),
+            (
+                {
+                    "request_id": "req-1",
+                    "accepted": True,
+                    "task_id": "task-1",
+                    "rejection_reason": "should not be here",
+                },
+                "rejection_reason must be None",
+            ),
+            (
+                {"request_id": "req-1", "accepted": False},
+                "rejection_reason is required",
+            ),
+            (
+                {
+                    "request_id": "req-1",
+                    "accepted": False,
+                    "task_id": "task-1",
+                    "rejection_reason": "bad request",
+                },
+                "task_id must be None",
+            ),
+        ],
+    )
+    def test_invalid_combinations_rejected(
+        self,
+        kwargs: dict[str, object],
+        match: str,
+    ) -> None:
+        with pytest.raises(ValidationError, match=match):
+            IntakeResult(**kwargs)
 
     def test_frozen(self) -> None:
         result = IntakeResult.accepted_result(

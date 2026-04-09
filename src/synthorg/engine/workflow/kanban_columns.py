@@ -51,8 +51,9 @@ COLUMN_TO_STATUSES: MappingProxyType[KanbanColumn, frozenset[TaskStatus]] = (
     )
 )
 
-# Off-board statuses (BLOCKED, FAILED, INTERRUPTED, SUSPENDED, CANCELLED)
-# map to None -- temporarily or permanently removed from the board.
+# Off-board statuses (BLOCKED, FAILED, INTERRUPTED, SUSPENDED, CANCELLED,
+# REJECTED, AUTH_REQUIRED) map to None -- temporarily or permanently
+# removed from the board.
 STATUS_TO_COLUMN: MappingProxyType[TaskStatus, KanbanColumn | None] = MappingProxyType(
     {
         TaskStatus.CREATED: KanbanColumn.BACKLOG,

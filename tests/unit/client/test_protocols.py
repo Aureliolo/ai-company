@@ -84,6 +84,24 @@ class TestProtocolStructuralConformance:
 
         assert isinstance(MockReport(), ReportStrategy)
 
+    def test_client_pool_strategy_conformance(self) -> None:
+        class MockPoolStrategy:
+            async def select_clients(
+                self,
+                pool: Any,
+                constraints: Any,
+            ) -> Any:
+                return ()
+
+        assert isinstance(MockPoolStrategy(), ClientPoolStrategy)
+
+    def test_entry_point_strategy_conformance(self) -> None:
+        class MockEntryPoint:
+            async def route(self, request: Any) -> Any:
+                return request
+
+        assert isinstance(MockEntryPoint(), EntryPointStrategy)
+
     def test_non_conforming_rejected(self) -> None:
         class NotAClient:
             def unrelated_method(self) -> None:

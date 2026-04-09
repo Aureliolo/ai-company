@@ -29,7 +29,10 @@ graph TB
 | Module | Purpose |
 |--------|---------|
 | **core** | Shared domain models -- Agent, Task, Role, Company, Project, Approval, Artifact |
+| **client** | Client simulation -- profiles, requirements, feedback, AI/human/hybrid clients, requirement generators, feedback strategies, pool strategies |
 | **engine** | Agent orchestration -- execution loops (ReAct, Plan-and-Execute), task decomposition, routing, assignment, parallel execution, recovery, shutdown |
+| **engine.intake** | Intake processing -- ClientRequest lifecycle, IntakeStrategy protocol, validation |
+| **engine.review** | Review pipeline -- ReviewStage protocol, multi-stage review orchestration, verdict tracking |
 | **providers** | LLM provider abstraction -- LiteLLM adapter, capability matching, routing strategies (5), retry + rate limiting |
 | **communication** | Inter-agent messaging -- bus, dispatcher, delegation, loop prevention, conflict resolution (4 strategies), meeting protocols (3) |
 | **memory** | Persistent agent memory -- retrieval pipeline (ranking, filtering, injection), shared org memory, consolidation/archival |

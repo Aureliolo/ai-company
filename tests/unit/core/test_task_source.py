@@ -41,17 +41,10 @@ class TestTaskSourceField:
         task = self._make_task()
         assert task.source is None
 
-    def test_source_internal(self) -> None:
-        task = self._make_task(source=TaskSource.INTERNAL)
-        assert task.source == TaskSource.INTERNAL
-
-    def test_source_client(self) -> None:
-        task = self._make_task(source=TaskSource.CLIENT)
-        assert task.source == TaskSource.CLIENT
-
-    def test_source_simulation(self) -> None:
-        task = self._make_task(source=TaskSource.SIMULATION)
-        assert task.source == TaskSource.SIMULATION
+    @pytest.mark.parametrize("source", list(TaskSource))
+    def test_source_values(self, source: TaskSource) -> None:
+        task = self._make_task(source=source)
+        assert task.source == source
 
     def test_source_preserved_in_transition(self) -> None:
         task = self._make_task(source=TaskSource.CLIENT)
@@ -100,3 +93,4 @@ class TestTaskSourceField:
         task = self._make_task()
         rejected = DelegationService.reject_delegated_task(task)
         assert rejected.status == TaskStatus.REJECTED
+        assert rejected.assigned_to is None

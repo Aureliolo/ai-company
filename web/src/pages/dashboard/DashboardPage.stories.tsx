@@ -87,7 +87,7 @@ const meta = {
   decorators: [
     (Story) => (
       <MemoryRouter>
-        <div className="p-6">
+        <div className="p-card">
           <Story />
         </div>
       </MemoryRouter>

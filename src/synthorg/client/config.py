@@ -38,11 +38,11 @@ class RequirementGeneratorConfig(BaseModel):
         default=None,
         description="Path to dataset file",
     )
-    llm_provider: str | None = Field(
+    llm_provider: NotBlankStr | None = Field(
         default=None,
         description="Provider identifier for LLM strategies",
     )
-    llm_model: str | None = Field(
+    llm_model: NotBlankStr | None = Field(
         default=None,
         description="Model identifier for LLM strategies",
     )

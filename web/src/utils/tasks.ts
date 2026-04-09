@@ -205,7 +205,7 @@ export function filterTasks(tasks: readonly Task[], filters: TaskBoardFilters): 
 export const VALID_TRANSITIONS: Record<TaskStatus, readonly TaskStatus[]> = {
   created: ['assigned', 'rejected'],
   assigned: ['in_progress', 'auth_required', 'failed', 'blocked', 'cancelled', 'interrupted', 'suspended'],
-  in_progress: ['in_review', 'auth_required', 'failed', 'cancelled', 'interrupted', 'suspended'],
+  in_progress: ['in_review', 'auth_required', 'blocked', 'failed', 'cancelled', 'interrupted', 'suspended'],
   in_review: ['completed', 'in_progress', 'blocked', 'cancelled'],
   completed: [],
   blocked: ['assigned'],
