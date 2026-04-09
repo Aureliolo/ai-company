@@ -18,6 +18,7 @@ from synthorg.ontology.models import (
     EntitySource,
     EntityTier,
 )
+from synthorg.persistence.errors import PersistenceError
 
 if TYPE_CHECKING:
     from synthorg.ontology.config import EntitiesConfig, OntologyConfig
@@ -73,7 +74,7 @@ class OntologyService:
                 continue
             try:
                 await self._snapshot(entity)
-            except OntologyError:
+            except OntologyError, PersistenceError:
                 logger.warning(
                     ONTOLOGY_BOOTSTRAP_ENTITY_SKIPPED,
                     entity_name=name,
@@ -137,7 +138,7 @@ class OntologyService:
                 continue
             try:
                 await self._snapshot(entity)
-            except OntologyError:
+            except OntologyError, PersistenceError:
                 logger.warning(
                     ONTOLOGY_BOOTSTRAP_ENTITY_SKIPPED,
                     entity_name=entry.name,

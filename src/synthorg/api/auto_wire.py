@@ -616,7 +616,8 @@ async def auto_wire_ontology(
             error=str(exc),
             exc_info=True,
         )
-        await backend.disconnect()
+        with contextlib.suppress(Exception):
+            await backend.disconnect()
         return None
     else:
         logger.info(API_SERVICE_AUTO_WIRED, service="ontology_service")
