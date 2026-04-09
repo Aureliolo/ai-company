@@ -82,8 +82,10 @@ class MeetingOrchestrator:
 
     __slots__ = (
         "_agent_caller",
+        "_lens_assigner",
         "_protocol_registry",
         "_records",
+        "_strategy_config",
         "_task_creator",
     )
 
@@ -93,12 +95,16 @@ class MeetingOrchestrator:
         protocol_registry: Mapping[MeetingProtocolType, MeetingProtocol],
         agent_caller: AgentCaller,
         task_creator: TaskCreator | None = None,
+        strategy_config: object | None = None,
+        lens_assigner: object | None = None,
     ) -> None:
         self._protocol_registry: MappingProxyType[
             MeetingProtocolType, MeetingProtocol
         ] = MappingProxyType(dict(protocol_registry))
         self._agent_caller = agent_caller
         self._task_creator = task_creator
+        self._strategy_config = strategy_config
+        self._lens_assigner = lens_assigner
         self._records: list[MeetingRecord] = []
 
     async def run_meeting(  # noqa: PLR0913
@@ -159,6 +165,9 @@ class MeetingOrchestrator:
             token_budget=token_budget,
         )
 
+        # Lens assignment (optional, when strategy config is present)
+        lens_assignments = self._compute_lens_assignments(participant_ids)
+
         result = await self._execute_protocol(
             protocol,
             meeting_id,
@@ -167,6 +176,7 @@ class MeetingOrchestrator:
             leader_id,
             participant_ids,
             token_budget,
+            lens_assignments=lens_assignments,
         )
 
         if isinstance(result, MeetingRecord):
@@ -198,6 +208,8 @@ class MeetingOrchestrator:
         leader_id: str,
         participant_ids: tuple[str, ...],
         token_budget: int,
+        *,
+        lens_assignments: dict[str, str] | None = None,
     ) -> MeetingMinutes | MeetingRecord:
         """Run the protocol, catching errors as failure records.
 
@@ -219,6 +231,7 @@ class MeetingOrchestrator:
                 participant_ids=participant_ids,
                 agent_caller=self._agent_caller,
                 token_budget=token_budget,
+                lens_assignments=lens_assignments,
             )
         except MeetingBudgetExhaustedError as exc:
             return self._make_failure_record(
@@ -371,6 +384,30 @@ class MeetingOrchestrator:
                 failed_count=failures,
                 total_count=total,
             )
+
+    def _compute_lens_assignments(
+        self,
+        participant_ids: tuple[str, ...],
+    ) -> dict[str, str] | None:
+        """Compute lens assignments for participants.
+
+        Returns ``None`` when no lens assigner is configured.
+        """
+        if self._lens_assigner is None or self._strategy_config is None:
+            return None
+        try:
+            # LensAssigner protocol: assign(participant_ids, available_lenses)
+            lenses = self._strategy_config.default_lenses  # type: ignore[union-attr]
+            return self._lens_assigner.assign(  # type: ignore[union-attr]
+                participant_ids,
+                lenses,
+            )
+        except Exception:
+            logger.warning(
+                MEETING_STARTED,
+                error="Lens assignment failed, proceeding without lenses",
+            )
+            return None
 
     def _validate_inputs(
         self,

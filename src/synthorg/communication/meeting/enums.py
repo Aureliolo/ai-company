@@ -35,6 +35,8 @@ class MeetingPhase(StrEnum):
         DISCUSSION: Conflict-driven discussion round.
         SYNTHESIS: Leader synthesizes all inputs into decisions.
         SUMMARY: Final summary generation.
+        PREMORTEM: Risk identification after synthesis.
+        DEVIL_ADVOCATE: Dissent injection on premature consensus.
     """
 
     AGENDA_BROADCAST = "agenda_broadcast"
@@ -44,6 +46,8 @@ class MeetingPhase(StrEnum):
     DISCUSSION = "discussion"
     SYNTHESIS = "synthesis"
     SUMMARY = "summary"
+    PREMORTEM = "premortem"
+    DEVIL_ADVOCATE = "devil_advocate"
 
 
 class MeetingStatus(StrEnum):

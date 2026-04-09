@@ -13,10 +13,16 @@ from synthorg.communication.meeting._parsing import (
     parse_action_items,
     parse_decisions,
 )
-from synthorg.communication.meeting._prompts import build_agenda_prompt
+from synthorg.communication.meeting._prompts import (
+    build_agenda_prompt,
+    inject_lens_perspective,
+)
 from synthorg.communication.meeting._token_tracker import TokenTracker
 from synthorg.communication.meeting.config import (
     StructuredPhasesConfig,  # noqa: TC001
+)
+from synthorg.communication.meeting.conflict_detection import (
+    KeywordConflictDetector,
 )
 from synthorg.communication.meeting.enums import (
     MeetingPhase,
@@ -53,19 +59,6 @@ logger = get_logger(__name__)
 
 # Reserve 20% of remaining budget for the synthesis phase.
 _SYNTHESIS_RESERVE_FRACTION = 0.20
-
-
-class KeywordConflictDetector:
-    """Default conflict detector using keyword matching.
-
-    Looks for the string ``"CONFLICTS: YES"`` (case-insensitive) in
-    the agent response.  This is the simplest approach and works well
-    when agents are prompted to include this marker.
-    """
-
-    def detect(self, response_content: str) -> bool:
-        """Detect conflicts via keyword matching."""
-        return "CONFLICTS: YES" in response_content.upper()
 
 
 def _build_input_prompt(agenda_text: str, agent_id: str) -> str:
@@ -182,6 +175,7 @@ class StructuredPhasesProtocol:
         participant_ids: tuple[str, ...],
         agent_caller: AgentCaller,
         token_budget: int,
+        lens_assignments: dict[str, str] | None = None,
     ) -> MeetingMinutes:
         """Execute the structured-phases meeting protocol.
 
@@ -195,6 +189,7 @@ class StructuredPhasesProtocol:
             participant_ids: IDs of participating agents.
             agent_caller: Callback to invoke agents.
             token_budget: Maximum tokens for the meeting.
+            lens_assignments: Optional lens assignments per participant.
 
         Returns:
             Complete meeting minutes.
@@ -228,6 +223,7 @@ class StructuredPhasesProtocol:
             participant_ids=participant_ids,
             agent_caller=agent_caller,
             tracker=tracker,
+            lens_assignments=lens_assignments,
         )
         turn_number = len(participant_ids)
 
@@ -315,7 +311,7 @@ class StructuredPhasesProtocol:
             ended_at=ended_at,
         )
 
-    async def _run_input_gathering(
+    async def _run_input_gathering(  # noqa: PLR0913
         self,
         *,
         meeting_id: str,
@@ -323,12 +319,21 @@ class StructuredPhasesProtocol:
         participant_ids: tuple[str, ...],
         agent_caller: AgentCaller,
         tracker: TokenTracker,
+        lens_assignments: dict[str, str] | None = None,
     ) -> tuple[list[tuple[str, str]], list[MeetingContribution]]:
         """Run parallel input gathering from all participants.
 
         Pre-divides the remaining token budget equally among
         participants and collects results into deterministically
         ordered lists (indexed by turn number).
+
+        Args:
+            meeting_id: Unique meeting identifier.
+            agenda_text: Formatted agenda prompt text.
+            participant_ids: IDs of participating agents.
+            agent_caller: Callback to invoke agents.
+            tracker: Token budget tracker.
+            lens_assignments: Optional lens assignments for participants.
 
         Returns:
             Tuple of (inputs, contributions) in participant order.
@@ -359,6 +364,11 @@ class StructuredPhasesProtocol:
             budget: int,
         ) -> None:
             prompt = _build_input_prompt(agenda_text, participant_id)
+            prompt = inject_lens_perspective(
+                prompt,
+                participant_id,
+                lens_assignments,
+            )
 
             logger.debug(
                 MEETING_AGENT_CALLED,

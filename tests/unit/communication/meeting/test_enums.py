@@ -45,11 +45,13 @@ class TestMeetingPhase:
             "discussion",
             "synthesis",
             "summary",
+            "premortem",
+            "devil_advocate",
         }
         assert {p.value for p in MeetingPhase} == expected
 
     def test_member_count(self) -> None:
-        assert len(MeetingPhase) == 7
+        assert len(MeetingPhase) == 9
 
     def test_is_str(self) -> None:
         assert isinstance(MeetingPhase.SUMMARY, str)

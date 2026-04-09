@@ -12,7 +12,10 @@ from synthorg.communication.meeting._parsing import (
     parse_action_items,
     parse_decisions,
 )
-from synthorg.communication.meeting._prompts import build_agenda_prompt
+from synthorg.communication.meeting._prompts import (
+    build_agenda_prompt,
+    inject_lens_perspective,
+)
 from synthorg.communication.meeting._token_tracker import TokenTracker
 from synthorg.communication.meeting.config import RoundRobinConfig  # noqa: TC001
 from synthorg.communication.meeting.enums import (
@@ -112,6 +115,7 @@ class RoundRobinProtocol:
         participant_ids: tuple[str, ...],
         agent_caller: AgentCaller,
         token_budget: int,
+        lens_assignments: dict[str, str] | None = None,
     ) -> MeetingMinutes:
         """Execute the round-robin meeting protocol.
 
@@ -122,6 +126,7 @@ class RoundRobinProtocol:
             participant_ids: IDs of participating agents.
             agent_caller: Callback to invoke agents.
             token_budget: Maximum tokens for the meeting.
+            lens_assignments: Optional lens assignments per participant.
 
         Returns:
             Complete meeting minutes.
@@ -144,6 +149,7 @@ class RoundRobinProtocol:
             tracker=tracker,
             discussion_budget=discussion_budget,
             agenda_text=agenda_text,
+            lens_assignments=lens_assignments,
         )
 
         turn_number = len(contributions)
@@ -229,6 +235,7 @@ class RoundRobinProtocol:
         tracker: TokenTracker,
         discussion_budget: int,
         agenda_text: str,
+        lens_assignments: dict[str, str] | None = None,
     ) -> list[MeetingContribution]:
         """Execute all discussion rounds and return contributions.
 
@@ -239,6 +246,7 @@ class RoundRobinProtocol:
             tracker: Token budget tracker.
             discussion_budget: Token budget for discussion (excluding summary).
             agenda_text: Formatted agenda text.
+            lens_assignments: Optional lens assignments for participants.
 
         Returns:
             List of contributions from the discussion phase.
@@ -281,6 +289,7 @@ class RoundRobinProtocol:
                     transcript=transcript,
                     turn_number=turn_number,
                     tokens_available=tokens_available,
+                    lens_assignments=lens_assignments,
                 )
                 contributions.append(contribution)
                 transcript.append(f"[{participant_id}]: {contribution.content}")
@@ -314,6 +323,7 @@ class RoundRobinProtocol:
         transcript: list[str],
         turn_number: int,
         tokens_available: int,
+        lens_assignments: dict[str, str] | None = None,
     ) -> MeetingContribution:
         """Execute a single agent turn and return the contribution.
 
@@ -326,11 +336,13 @@ class RoundRobinProtocol:
             transcript: Current transcript lines.
             turn_number: Current turn number.
             tokens_available: Tokens available for this turn.
+            lens_assignments: Optional lens assignments for participants.
 
         Returns:
             The contribution from this turn.
         """
         prompt = _build_turn_prompt(agenda_text, transcript, participant_id)
+        prompt = inject_lens_perspective(prompt, participant_id, lens_assignments)
 
         logger.debug(
             MEETING_AGENT_CALLED,

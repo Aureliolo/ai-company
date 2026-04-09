@@ -25,6 +25,11 @@ from pydantic import (
 from synthorg.core.enums import DecisionOutcome  # noqa: TC001
 from synthorg.core.types import NotBlankStr, validate_unique_strings
 from synthorg.engine.immutable import deep_copy_mapping, freeze_recursive
+from synthorg.engine.strategy.models import (
+    ConfidenceMetadata,  # noqa: TC001
+    LensAttribution,  # noqa: TC001
+    RiskCard,  # noqa: TC001
+)
 from synthorg.ontology.decorator import ontology_entity
 
 
@@ -93,6 +98,18 @@ class DecisionRecord(BaseModel):
     metadata: MappingProxyType[str, Any] = Field(
         default_factory=lambda: MappingProxyType({}),
         description="Forward-compatible metadata (read-only view)",
+    )
+    risk_card: RiskCard | None = Field(
+        default=None,
+        description="Risk assessment from premortem phase (if available)",
+    )
+    confidence_metadata: ConfidenceMetadata | None = Field(
+        default=None,
+        description="Confidence calibration from strategic analysis (if available)",
+    )
+    lens_attribution: tuple[LensAttribution, ...] = Field(
+        default=(),
+        description="Strategic lens attributions used in analysis",
     )
 
     @field_validator("reason", mode="before")
