@@ -19,6 +19,7 @@ async def db_path(tmp_path: Path) -> str:
     await atlas.migrate_apply(
         atlas.to_sqlite_url(path),
         revisions_url=rev_url,
+        skip_lock=True,
     )
     return path
 

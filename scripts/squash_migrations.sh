@@ -9,6 +9,11 @@
 
 set -euo pipefail
 
+if ! command -v atlas &> /dev/null; then
+    echo "Error: atlas CLI not found. Install from https://atlasgo.io/getting-started"
+    exit 1
+fi
+
 MIGRATION_DIR="src/synthorg/persistence/sqlite/revisions"
 THRESHOLD="${SQUASH_THRESHOLD:-50}"
 
@@ -17,7 +22,7 @@ if [ ! -d "$MIGRATION_DIR" ]; then
     exit 1
 fi
 
-count=$(find "$MIGRATION_DIR" -maxdepth 1 -name '*.sql' | wc -l)
+count=$(find "$MIGRATION_DIR" -maxdepth 1 -name '*.sql' -printf '.' | wc -c)
 echo "Migration count: $count (threshold: $THRESHOLD)"
 
 if [ "$count" -le "$THRESHOLD" ]; then

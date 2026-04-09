@@ -1,8 +1,6 @@
 """Tests for the account lockout store."""
 
 import time
-from collections.abc import AsyncGenerator
-from pathlib import Path
 from unittest.mock import patch
 
 import aiosqlite
@@ -10,7 +8,6 @@ import pytest
 
 from synthorg.api.auth.config import AuthConfig
 from synthorg.api.auth.lockout_store import LockoutStore
-from synthorg.persistence import atlas
 
 pytestmark = pytest.mark.unit
 
@@ -29,19 +26,9 @@ def _make_config(
 
 
 @pytest.fixture
-async def db(tmp_path: Path) -> AsyncGenerator[aiosqlite.Connection]:
-    db_path = tmp_path / "test.db"
-    rev_url = atlas.copy_revisions(tmp_path / "revisions")
-    await atlas.migrate_apply(
-        atlas.to_sqlite_url(str(db_path)),
-        revisions_url=rev_url,
-    )
-    conn = await aiosqlite.connect(str(db_path))
-    try:
-        conn.row_factory = aiosqlite.Row
-        yield conn
-    finally:
-        await conn.close()
+def db(migrated_db: aiosqlite.Connection) -> aiosqlite.Connection:
+    """Alias for the shared migrated_db fixture."""
+    return migrated_db
 
 
 @pytest.fixture

@@ -46,6 +46,7 @@ async def db(tmp_path: Path) -> AsyncGenerator[aiosqlite.Connection]:
     await atlas.migrate_apply(
         atlas.to_sqlite_url(str(db_path)),
         revisions_url=rev_url,
+        skip_lock=True,
     )
     conn = await aiosqlite.connect(str(db_path))
     try:

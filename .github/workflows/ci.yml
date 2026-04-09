@@ -39,6 +39,7 @@ jobs:
               - 'pyproject.toml'
               - 'uv.lock'
               - '.github/actions/**'
+              - 'atlas.hcl'
             dashboard:
               - 'web/**'
             docker:
@@ -82,8 +83,8 @@ jobs:
 
       - uses: ariga/setup-atlas@2f3c785c89a15e1c0d07bcae3900fb5feb969eea # v0.3
 
-      - name: Lint migrations
-        run: atlas migrate lint --env ci
+      - name: Validate migrations
+        run: atlas migrate validate --env ci
 
       - name: Drift detection
         run: atlas schema diff --env ci --from "file://src/synthorg/persistence/sqlite/revisions" --to "file://src/synthorg/persistence/sqlite/schema.sql"

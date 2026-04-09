@@ -417,12 +417,13 @@ class SQLitePersistenceBackend:
             PersistenceConnectionError: If not connected.
             MigrationError: If migration application fails.
         """
-        if self._db is None:
-            msg = "Cannot migrate: not connected"
-            logger.warning(PERSISTENCE_BACKEND_NOT_CONNECTED, error=msg)
-            raise PersistenceConnectionError(msg)
-        db_url = atlas.to_sqlite_url(self._config.path)
-        await atlas.migrate_apply(db_url)
+        async with self._lifecycle_lock:
+            if self._db is None:
+                msg = "Cannot migrate: not connected"
+                logger.warning(PERSISTENCE_BACKEND_NOT_CONNECTED, error=msg)
+                raise PersistenceConnectionError(msg)
+            db_url = atlas.to_sqlite_url(self._config.path)
+            await atlas.migrate_apply(db_url)
 
     @property
     def is_connected(self) -> bool:

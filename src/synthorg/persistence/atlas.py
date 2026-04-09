@@ -86,7 +86,20 @@ def to_sqlite_url(path: str) -> str:
 
     Returns:
         Atlas-compatible ``sqlite://`` URL.
+
+    Raises:
+        MigrationError: If *path* is ``":memory:"`` -- Atlas runs as
+            a separate process and cannot target an in-memory database
+            opened by aiosqlite in this process.
     """
+    if path == ":memory:":
+        msg = (
+            "Atlas cannot migrate in-memory databases -- "
+            "it runs as a separate process.  Use a file-backed "
+            "database path instead."
+        )
+        logger.error(PERSISTENCE_MIGRATION_FAILED, error=msg)
+        raise MigrationError(msg)
     posix_str = _to_posix(path)
     return f"sqlite://{posix_str}"
 
@@ -165,6 +178,7 @@ async def _run_atlas(
     *args: str,
     db_url: str | None = None,
     revisions_url: str | None = None,
+    skip_lock: bool = False,
 ) -> tuple[str, str]:
     """Run an Atlas CLI command and return (stdout, stderr).
 
@@ -173,6 +187,9 @@ async def _run_atlas(
         db_url: Optional ``--url`` value for the target database.
         revisions_url: Override for the ``--dir`` revisions URL.
             When ``None``, the installed package location is used.
+        skip_lock: If ``True``, append ``--skip-lock`` to disable
+            Atlas directory locking.  Use only in test fixtures
+            where each worker has an isolated revisions copy.
 
     Returns:
         Tuple of (stdout, stderr) as decoded strings.
@@ -189,11 +206,7 @@ async def _run_atlas(
         "--dir",
         rev_url,
     ]
-    # SQLite advisory locks can conflict when multiple Atlas processes
-    # run concurrently (e.g. pytest-xdist workers).  Since each
-    # invocation targets its own database file, skip the lock to
-    # avoid contention.  Production deployments are single-process.
-    if "apply" in args:
+    if skip_lock:
         cmd.append("--skip-lock")
     if db_url is not None:
         cmd.extend(["--url", db_url])
@@ -232,6 +245,7 @@ async def migrate_apply(
     db_url: str,
     *,
     revisions_url: str | None = None,
+    skip_lock: bool = False,
 ) -> MigrateResult:
     """Apply pending migrations to the target database.
 
@@ -244,6 +258,11 @@ async def migrate_apply(
             Useful for parallel test isolation -- pass a copy of
             the revisions directory per worker to avoid directory
             lock contention.
+        skip_lock: If ``True``, pass ``--skip-lock`` to Atlas.
+            Use only in test fixtures where each worker has an
+            isolated revisions copy.  Defaults to ``False`` so
+            production multi-process deployments are protected
+            by Atlas's directory lock.
 
     Returns:
         A ``MigrateResult`` with the number of applied migrations
@@ -261,6 +280,7 @@ async def migrate_apply(
         "{{ json .Applied }}",
         db_url=db_url,
         revisions_url=revisions_url,
+        skip_lock=skip_lock,
     )
 
     applied_count = 0
@@ -274,12 +294,14 @@ async def migrate_apply(
                 current_version = (
                     last.get("Version", "") if isinstance(last, dict) else ""
                 )
-    except json.JSONDecodeError:
-        logger.warning(
-            PERSISTENCE_MIGRATION_COMPLETED,
-            note="Atlas returned non-JSON output, assuming success",
+    except json.JSONDecodeError as exc:
+        msg = f"Atlas returned non-JSON output: {stdout[:200]}"
+        logger.exception(
+            PERSISTENCE_MIGRATION_FAILED,
+            note="Atlas returned non-JSON output",
             output_sample=stdout[:200],
         )
+        raise MigrationError(msg) from exc
 
     logger.info(
         PERSISTENCE_MIGRATION_COMPLETED,
@@ -320,17 +342,19 @@ async def migrate_status(db_url: str) -> MigrateStatus:
     current_version = ""
     pending_count = 0
     try:
-        data = json.loads(stdout)
+        data = json.loads(stdout) if stdout.strip() else {}
         if isinstance(data, dict):
             current_version = data.get("Current", "")
             pending = data.get("Pending", [])
             pending_count = len(pending) if isinstance(pending, list) else 0
-    except json.JSONDecodeError:
-        logger.warning(
+    except json.JSONDecodeError as exc:
+        msg = f"Atlas status returned non-JSON output: {stdout[:200]}"
+        logger.exception(
             PERSISTENCE_MIGRATION_FAILED,
             note="Atlas status returned non-JSON output",
             output_sample=stdout[:200],
         )
+        raise MigrationError(msg) from exc
 
     return MigrateStatus(
         current_version=current_version,

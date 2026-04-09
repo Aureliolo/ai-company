@@ -3,9 +3,10 @@
 import logging
 import os
 import time
-from collections.abc import Iterable
+from collections.abc import AsyncGenerator, Iterable
 from pathlib import Path
 
+import aiosqlite
 import pytest
 import structlog
 from hypothesis import HealthCheck, settings
@@ -14,6 +15,8 @@ from hypothesis.database import (
     ExampleDatabase,
     MultiplexedDatabase,
 )
+
+from synthorg.persistence import atlas
 
 
 class _WriteOnlyDatabase(ExampleDatabase):
@@ -165,3 +168,25 @@ def clear_logging_state() -> None:
         root.removeHandler(handler)
         handler.close()
     root.setLevel(logging.WARNING)
+
+
+@pytest.fixture
+async def migrated_db(tmp_path: Path) -> AsyncGenerator[aiosqlite.Connection]:
+    """Temp-file SQLite connection with Atlas migrations applied.
+
+    Uses an isolated copy of the revisions directory so parallel
+    xdist workers do not contend on the Atlas directory lock.
+    """
+    db_path = tmp_path / "test.db"
+    rev_url = atlas.copy_revisions(tmp_path / "revisions")
+    await atlas.migrate_apply(
+        atlas.to_sqlite_url(str(db_path)),
+        revisions_url=rev_url,
+        skip_lock=True,
+    )
+    db = await aiosqlite.connect(str(db_path))
+    try:
+        db.row_factory = aiosqlite.Row
+        yield db
+    finally:
+        await db.close()

@@ -2,7 +2,6 @@
 
 import sqlite3
 from pathlib import Path
-from typing import TYPE_CHECKING
 from unittest.mock import patch
 
 import aiosqlite
@@ -10,9 +9,6 @@ import pytest
 
 from synthorg.persistence import atlas
 from synthorg.persistence.errors import MigrationError
-
-if TYPE_CHECKING:
-    pass
 
 
 @pytest.mark.unit
@@ -26,6 +22,7 @@ class TestMigrateApply:
         result = await atlas.migrate_apply(
             atlas.to_sqlite_url(str(db_path)),
             revisions_url=rev_url,
+            skip_lock=True,
         )
 
         assert result.applied_count >= 1
@@ -49,8 +46,16 @@ class TestMigrateApply:
         db_path = tmp_path / "idem.db"
         db_url = atlas.to_sqlite_url(str(db_path))
         rev_url = atlas.copy_revisions(tmp_path / "revisions")
-        await atlas.migrate_apply(db_url, revisions_url=rev_url)
-        result = await atlas.migrate_apply(db_url, revisions_url=rev_url)
+        await atlas.migrate_apply(
+            db_url,
+            revisions_url=rev_url,
+            skip_lock=True,
+        )
+        result = await atlas.migrate_apply(
+            db_url,
+            revisions_url=rev_url,
+            skip_lock=True,
+        )
 
         assert result.applied_count == 0
 

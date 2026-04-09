@@ -1,18 +1,12 @@
 """Tests for SQLiteUserRepository and SQLiteApiKeyRepository."""
 
 from datetime import UTC, datetime
-from pathlib import Path
-from typing import TYPE_CHECKING
 
 import aiosqlite
 import pytest
 
-if TYPE_CHECKING:
-    from collections.abc import AsyncGenerator
-
 from synthorg.api.auth.models import ApiKey, User
 from synthorg.api.guards import HumanRole
-from synthorg.persistence import atlas
 from synthorg.persistence.sqlite.user_repo import (
     SQLiteApiKeyRepository,
     SQLiteUserRepository,
@@ -20,18 +14,9 @@ from synthorg.persistence.sqlite.user_repo import (
 
 
 @pytest.fixture
-async def db(tmp_path: Path) -> AsyncGenerator[aiosqlite.Connection]:
-    """Temp-file SQLite DB with Atlas migrations applied."""
-    db_path = tmp_path / "test.db"
-    rev_url = atlas.copy_revisions(tmp_path / "revisions")
-    await atlas.migrate_apply(
-        atlas.to_sqlite_url(str(db_path)),
-        revisions_url=rev_url,
-    )
-    conn = await aiosqlite.connect(str(db_path))
-    conn.row_factory = aiosqlite.Row
-    yield conn
-    await conn.close()
+def db(migrated_db: aiosqlite.Connection) -> aiosqlite.Connection:
+    """Alias for the shared migrated_db fixture."""
+    return migrated_db
 
 
 @pytest.fixture

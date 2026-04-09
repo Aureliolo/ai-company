@@ -48,16 +48,23 @@ def _make_entity(  # noqa: PLR0913
     )
 
 
-@pytest.fixture
-async def backend(tmp_path: Path) -> AsyncGenerator[SQLiteOntologyBackend]:
-    """A connected SQLiteOntologyBackend with Atlas migrations applied."""
+async def _prepare_migrated_db(tmp_path: Path) -> str:
+    """Apply Atlas migrations and return the database path."""
     db_path = tmp_path / "ontology.db"
     rev_url = atlas.copy_revisions(tmp_path / "revisions")
     await atlas.migrate_apply(
         atlas.to_sqlite_url(str(db_path)),
         revisions_url=rev_url,
+        skip_lock=True,
     )
-    b = SQLiteOntologyBackend(db_path=str(db_path))
+    return str(db_path)
+
+
+@pytest.fixture
+async def backend(tmp_path: Path) -> AsyncGenerator[SQLiteOntologyBackend]:
+    """A connected SQLiteOntologyBackend with Atlas migrations applied."""
+    path = await _prepare_migrated_db(tmp_path)
+    b = SQLiteOntologyBackend(db_path=path)
     await b.connect()
     yield b
     await b.disconnect()
@@ -68,13 +75,8 @@ async def backend(tmp_path: Path) -> AsyncGenerator[SQLiteOntologyBackend]:
 
 class TestLifecycle:
     async def test_connect_sets_connected(self, tmp_path: Path) -> None:
-        db_path = tmp_path / "lifecycle.db"
-        rev_url = atlas.copy_revisions(tmp_path / "revisions")
-        await atlas.migrate_apply(
-            atlas.to_sqlite_url(str(db_path)),
-            revisions_url=rev_url,
-        )
-        b = SQLiteOntologyBackend(db_path=str(db_path))
+        path = await _prepare_migrated_db(tmp_path)
+        b = SQLiteOntologyBackend(db_path=path)
         await b.connect()
         assert b.is_connected
         await b.disconnect()
@@ -83,25 +85,15 @@ class TestLifecycle:
         self,
         tmp_path: Path,
     ) -> None:
-        db_path = tmp_path / "lifecycle.db"
-        rev_url = atlas.copy_revisions(tmp_path / "revisions")
-        await atlas.migrate_apply(
-            atlas.to_sqlite_url(str(db_path)),
-            revisions_url=rev_url,
-        )
-        b = SQLiteOntologyBackend(db_path=str(db_path))
+        path = await _prepare_migrated_db(tmp_path)
+        b = SQLiteOntologyBackend(db_path=path)
         await b.connect()
         await b.disconnect()
         assert not b.is_connected
 
     async def test_disconnect_idempotent(self, tmp_path: Path) -> None:
-        db_path = tmp_path / "lifecycle.db"
-        rev_url = atlas.copy_revisions(tmp_path / "revisions")
-        await atlas.migrate_apply(
-            atlas.to_sqlite_url(str(db_path)),
-            revisions_url=rev_url,
-        )
-        b = SQLiteOntologyBackend(db_path=str(db_path))
+        path = await _prepare_migrated_db(tmp_path)
+        b = SQLiteOntologyBackend(db_path=path)
         await b.connect()
         await b.disconnect()
         await b.disconnect()  # Should not raise.
@@ -123,13 +115,8 @@ class TestLifecycle:
         assert backend.backend_name == "sqlite"
 
     async def test_connect_idempotent(self, tmp_path: Path) -> None:
-        db_path = tmp_path / "lifecycle.db"
-        rev_url = atlas.copy_revisions(tmp_path / "revisions")
-        await atlas.migrate_apply(
-            atlas.to_sqlite_url(str(db_path)),
-            revisions_url=rev_url,
-        )
-        b = SQLiteOntologyBackend(db_path=str(db_path))
+        path = await _prepare_migrated_db(tmp_path)
+        b = SQLiteOntologyBackend(db_path=path)
         await b.connect()
         await b.connect()  # Second connect should not raise.
         assert b.is_connected
