@@ -231,7 +231,11 @@ class SQLiteOntologyBackend:
         return self._row_to_entity(row)
 
     async def update(self, entity: EntityDefinition) -> None:
-        """Update an existing entity definition."""
+        """Update an existing entity definition.
+
+        Only mutable fields are written; ``created_by`` and
+        ``created_at`` are preserved from the original row.
+        """
         db = self._require_connected()
         params = self._entity_to_params(entity)
         cursor = await db.execute(
@@ -241,8 +245,7 @@ class SQLiteOntologyBackend:
                    constraints = :constraints,
                    disambiguation = :disambiguation,
                    relationships = :relationships,
-                   created_by = :created_by,
-                   created_at = :created_at, updated_at = :updated_at
+                   updated_at = :updated_at
                WHERE name = :name""",
             params,
         )

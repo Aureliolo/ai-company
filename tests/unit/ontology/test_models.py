@@ -194,6 +194,22 @@ class TestEntityDefinition:
                 updated_at=_NOW,
             )
 
+    def test_duplicate_relationships_rejected(self) -> None:
+        dup_rels = (
+            EntityRelation(target="Agent", relation="owns"),
+            EntityRelation(target="Agent", relation="owns"),
+        )
+        with pytest.raises(ValidationError, match="Duplicate relationship"):
+            EntityDefinition(
+                name="Task",
+                tier=EntityTier.CORE,
+                source=EntitySource.AUTO,
+                relationships=dup_rels,
+                created_by="system",
+                created_at=_NOW,
+                updated_at=_NOW,
+            )
+
     def test_defaults(self) -> None:
         e = EntityDefinition(
             name="Minimal",

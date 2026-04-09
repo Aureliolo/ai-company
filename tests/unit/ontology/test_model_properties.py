@@ -58,6 +58,20 @@ def _unique_fields(
     return tuple(result)
 
 
+def _unique_relationships(
+    rels: list[EntityRelation],
+) -> tuple[EntityRelation, ...]:
+    """Deduplicate relationships by (target, relation) pair."""
+    seen: set[tuple[str, str]] = set()
+    result: list[EntityRelation] = []
+    for r in rels:
+        key = (r.target, r.relation)
+        if key not in seen:
+            seen.add(key)
+            result.append(r)
+    return tuple(result)
+
+
 def _build_entity_definition(  # noqa: PLR0913
     name: str,
     tier: EntityTier,
@@ -78,7 +92,7 @@ def _build_entity_definition(  # noqa: PLR0913
         fields=_unique_fields(fields),
         constraints=tuple(constraints),
         disambiguation=disambiguation,
-        relationships=tuple(relationships),
+        relationships=_unique_relationships(relationships),
         created_by=created_by,
         created_at=ts,
         updated_at=ts,

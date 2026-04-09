@@ -224,22 +224,26 @@ class TestFullBootstrapLifecycle:
         # Write with first connection.
         backend1 = SQLiteOntologyBackend(db_path=db_path)
         await backend1.connect()
-        entity = EntityDefinition(
-            name="Persistent",
-            tier=EntityTier.CORE,
-            source=EntitySource.AUTO,
-            definition="Should survive reconnect.",
-            created_by="system",
-            created_at=_NOW,
-            updated_at=_NOW,
-        )
-        await backend1.register(entity)
-        await backend1.disconnect()
+        try:
+            entity = EntityDefinition(
+                name="Persistent",
+                tier=EntityTier.CORE,
+                source=EntitySource.AUTO,
+                definition="Should survive reconnect.",
+                created_by="system",
+                created_at=_NOW,
+                updated_at=_NOW,
+            )
+            await backend1.register(entity)
+        finally:
+            await backend1.disconnect()
 
         # Read with second connection.
         backend2 = SQLiteOntologyBackend(db_path=db_path)
         await backend2.connect()
-        result = await backend2.get("Persistent")
-        assert result.name == "Persistent"
-        assert result.definition == "Should survive reconnect."
-        await backend2.disconnect()
+        try:
+            result = await backend2.get("Persistent")
+            assert result.name == "Persistent"
+            assert result.definition == "Should survive reconnect."
+        finally:
+            await backend2.disconnect()

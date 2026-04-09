@@ -1,6 +1,7 @@
 """Shared fixtures for ontology integration tests."""
 
 from collections.abc import AsyncGenerator
+from pathlib import Path
 
 import pytest
 
@@ -10,9 +11,9 @@ pytestmark = pytest.mark.integration
 
 
 @pytest.fixture
-def db_path(tmp_path: object) -> str:
+def db_path(tmp_path: Path) -> str:
     """Temporary on-disk database path."""
-    return str(tmp_path / "ontology_test.db")  # type: ignore[operator]
+    return str(tmp_path / "ontology_test.db")
 
 
 @pytest.fixture

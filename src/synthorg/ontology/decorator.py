@@ -49,7 +49,8 @@ def get_entity_registry() -> MappingProxyType[str, EntityDefinition]:
     ``clear_entity_registry()``.
     """
     global _CACHE  # noqa: PLW0603
-    if _CACHE is None or len(_CACHE) != len(_RAW_REGISTRY):
+    # _CACHE is set to None by _do_register() and clear_entity_registry().
+    if _CACHE is None:
         _CACHE = {
             name: _derive_definition(entry) for name, entry in _RAW_REGISTRY.items()
         }
@@ -184,6 +185,11 @@ def ontology_entity(
             source=source_val,
         )
         _CACHE = None  # Invalidate cache.
+        logger.debug(
+            "ontology.entity.decorator_registered",
+            entity_name=name,
+            cls=target_cls.__qualname__,
+        )
         return target_cls
 
     if cls is not None:

@@ -191,6 +191,19 @@ class EntityDefinition(BaseModel):
             validate_unique_strings(names, "fields")
         return self
 
+    @model_validator(mode="after")
+    def _validate_unique_relationships(self) -> Self:
+        """Ensure (target, relation) pairs are unique."""
+        if self.relationships:
+            pairs: list[tuple[str, str]] = []
+            for r in self.relationships:
+                pair = (r.target, r.relation)
+                if pair in pairs:
+                    msg = f"Duplicate relationship ({r.target!r}, {r.relation!r})"
+                    raise ValueError(msg)
+                pairs.append(pair)
+        return self
+
 
 # ── Drift Models ────────────────────────────────────────────────
 
