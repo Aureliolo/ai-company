@@ -64,6 +64,24 @@ def compare_seniority(a: SeniorityLevel, b: SeniorityLevel) -> int:
     return _SENIORITY_RANK[a] - _SENIORITY_RANK[b]
 
 
+class StrategicOutputMode(StrEnum):
+    """Strategic output mode for C-suite decision-making.
+
+    Controls how strategic agents frame their recommendations:
+
+    - ``option_expander``: Present all options with analysis through each lens.
+    - ``advisor``: Recommend top 2-3 options with reasoning and caveats.
+    - ``decision_maker``: Make a final recommendation with full justification.
+    - ``context_dependent``: Choose advisor or decision_maker based on agent
+      seniority and decision risk level.
+    """
+
+    OPTION_EXPANDER = "option_expander"
+    ADVISOR = "advisor"
+    DECISION_MAKER = "decision_maker"
+    CONTEXT_DEPENDENT = "context_dependent"
+
+
 class AgentStatus(StrEnum):
     """Lifecycle status of an agent."""
 

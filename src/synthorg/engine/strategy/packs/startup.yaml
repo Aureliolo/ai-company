@@ -1,0 +1,46 @@
+name: "startup"
+version: "1.0.0"
+description: "Early-stage startup principles emphasizing cash constraints, market fit, and simplicity"
+principles:
+  - id: "cash_is_oxygen"
+    text: >-
+      Cash runway is the binding constraint. Every recommendation must
+      include its impact on burn rate and runway. Prefer strategies
+      that preserve optionality and extend runway over those that
+      require large upfront investment.
+    category: "cash_management"
+    severity: "critical"
+
+  - id: "validate_before_scale"
+    text: >-
+      Do not recommend scaling anything that has not been validated
+      with real users. Optimization is premature until product-market
+      fit signals are clear. Default to learning over efficiency.
+    category: "market_fit"
+    severity: "critical"
+
+  - id: "simplicity_bias"
+    text: >-
+      Prefer the simplest solution that could work. Complexity is a
+      hidden cost that compounds. If a recommendation requires more
+      than one paragraph to explain, consider whether a simpler
+      alternative exists.
+    category: "simplicity"
+    severity: "warning"
+
+  - id: "speed_over_perfection"
+    text: >-
+      In early-stage contexts, speed of iteration matters more than
+      quality of individual decisions. Prefer reversible, fast-to-
+      implement options over optimal but slow ones.
+    category: "execution_speed"
+    severity: "warning"
+
+  - id: "founder_capacity"
+    text: >-
+      The founding team's attention is the scarcest resource. Every
+      recommendation must account for the cognitive load it places
+      on the team. Do not recommend strategies that require hiring
+      unless the alternative is clearly worse.
+    category: "resource_awareness"
+    severity: "warning"

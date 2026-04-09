@@ -24,6 +24,7 @@ from synthorg.config.schema import (
 from synthorg.core.company import CompanyConfig
 from synthorg.core.resilience_config import RateLimiterConfig, RetryConfig
 from synthorg.engine.coordination.section_config import CoordinationSectionConfig
+from synthorg.engine.strategy.models import StrategyConfig
 from synthorg.engine.workflow.config import WorkflowConfig
 from synthorg.hr.performance.config import PerformanceConfig
 from synthorg.hr.promotion.config import PromotionConfig
@@ -104,6 +105,7 @@ class RootConfigFactory(ModelFactory[RootConfig]):
     promotion = PromotionConfig()
     performance = PerformanceConfig()
     coordination = CoordinationSectionConfig()
+    strategy = StrategyConfig()
     backup = BackupConfig()
     workflow = WorkflowConfig()
     design_tools = None

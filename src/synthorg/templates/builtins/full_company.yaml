@@ -159,6 +159,7 @@ template:
         min_context: 100000
       personality_preset: "visionary_leader"
       department: "executive"
+      strategic_output_mode: "advisor"
     - role: "CTO"
       name: ""
       level: "c_suite"
@@ -168,6 +169,7 @@ template:
         min_context: 100000
       personality_preset: "systems_thinker"
       department: "executive"
+      strategic_output_mode: "advisor"
     - role: "CFO"
       name: ""
       level: "c_suite"
@@ -177,6 +179,7 @@ template:
         min_context: 100000
       personality_preset: "data_driven_optimizer"
       department: "executive"
+      strategic_output_mode: "advisor"
     - role: "COO"
       name: ""
       level: "c_suite"
@@ -186,6 +189,7 @@ template:
         min_context: 100000
       personality_preset: "process_optimizer"
       department: "operations"
+      strategic_output_mode: "advisor"
     - role: "CPO"
       name: ""
       level: "c_suite"
@@ -195,6 +199,7 @@ template:
         min_context: 100000
       personality_preset: "user_advocate"
       department: "product"
+      strategic_output_mode: "advisor"
     # Product (2)
     - role: "Product Manager"
       name: ""

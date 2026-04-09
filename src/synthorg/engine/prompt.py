@@ -68,6 +68,7 @@ if TYPE_CHECKING:
     from synthorg.core.role import Role
     from synthorg.core.task import Task
     from synthorg.core.types import ModelTier
+    from synthorg.engine.strategy.models import StrategyConfig
     from synthorg.providers.models import ToolDefinition
     from synthorg.security.autonomy.models import EffectiveAutonomy
 
@@ -138,11 +139,13 @@ def build_system_prompt(  # noqa: PLR0913
     model_tier: ModelTier | None = None,
     personality_trimming_enabled: bool = True,
     max_personality_tokens_override: int | None = None,
+    strategy_config: StrategyConfig | None = None,
 ) -> SystemPrompt:
     """Build a system prompt from agent identity and optional context.
 
     When ``max_tokens`` is provided and the prompt exceeds it, optional
-    sections are progressively trimmed (company, task, org_policies).
+    sections are progressively trimmed (strategy, company, task,
+    org_policies).
 
     Args:
         agent: Agent identity containing personality, skills, authority.
@@ -170,6 +173,10 @@ def build_system_prompt(  # noqa: PLR0913
         max_personality_tokens_override: When set to a positive value,
             overrides the profile's ``max_personality_tokens`` limit.
             Values ``<= 0`` are ignored (profile default is used).
+        strategy_config: Strategy and trendslop mitigation config.
+            When provided and the agent qualifies (C-suite/VP/Director
+            or has explicit ``strategic_output_mode``), strategic
+            analysis sections are injected into the prompt.
 
     Returns:
         Immutable :class:`SystemPrompt` with rendered content and metadata.
@@ -244,6 +251,7 @@ def build_system_prompt(  # noqa: PLR0913
             currency=currency,
             profile=profile,
             trimming_enabled=personality_trimming_enabled,
+            strategy_config=strategy_config,
         )
     except PromptBuildError:
         raise  # Already logged by inner functions.
@@ -374,6 +382,7 @@ def _build_template_context(  # noqa: PLR0913
     profile: PromptProfile | None = None,
     trimming_enabled: bool = True,
     estimator: PromptTokenEstimator | None = None,
+    strategy_config: StrategyConfig | None = None,
 ) -> tuple[dict[str, Any], PersonalityTrimInfo | None]:
     """Assemble the full Jinja2 template context from agent and optional inputs.
 
@@ -390,6 +399,7 @@ def _build_template_context(  # noqa: PLR0913
         profile: Prompt profile controlling rendering verbosity.
         trimming_enabled: Whether personality trimming is active.
         estimator: Token estimator for personality trimming.
+        strategy_config: Strategy config for trendslop mitigation.
 
     Returns:
         Tuple of (template variables dict, personality trim info or None).
@@ -411,6 +421,9 @@ def _build_template_context(  # noqa: PLR0913
     )
     context["org_policies"] = org_policies
     context["context_budget"] = context_budget
+
+    # Strategic analysis sections (conditional on config + agent eligibility).
+    _inject_strategy_context(context, agent, strategy_config)
 
     if task is not None:
         context["task"] = {
@@ -443,6 +456,62 @@ def _build_template_context(  # noqa: PLR0913
         context["company_departments"] = None
 
     return context, trim_info
+
+
+def _inject_strategy_context(
+    context: dict[str, Any],
+    agent: AgentIdentity,
+    strategy_config: StrategyConfig | None,
+) -> None:
+    """Inject strategic analysis sections into template context.
+
+    Sets ``strategic_context`` to ``True`` and populates the individual
+    section text variables when the agent qualifies for strategic
+    injection.  Otherwise sets ``strategic_context`` to ``False``
+    and all section text variables to ``None``.
+    """
+    from synthorg.engine.strategy.prompt_injection import (  # noqa: PLC0415
+        build_strategic_prompt_sections,
+        should_inject_strategy,
+    )
+
+    if not should_inject_strategy(agent, strategy_config):
+        context["strategic_context"] = False
+        context["strategic_context_text"] = None
+        context["constitutional_principles_text"] = None
+        context["contrarian_text"] = None
+        context["confidence_text"] = None
+        context["assumption_text"] = None
+        context["output_instructions_text"] = None
+        return
+
+    assert strategy_config is not None  # noqa: S101 -- guarded by should_inject_strategy
+
+    # Load principles if configured.
+    principles: tuple[Any, ...] = ()
+    try:
+        from synthorg.engine.strategy.principles import (  # noqa: PLC0415
+            load_and_merge,
+        )
+
+        principles = load_and_merge(strategy_config.constitutional_principles)
+    except MemoryError, RecursionError:
+        raise
+    except Exception:
+        logger.warning(
+            "strategy.principles.load_failed",
+            agent_id=str(agent.id),
+            exc_info=True,
+        )
+
+    sections = build_strategic_prompt_sections(
+        config=strategy_config,
+        agent=agent,
+        principles=principles,
+    )
+
+    context["strategic_context"] = True
+    context.update(sections)
 
 
 def _render_template(template_str: str, context: dict[str, Any]) -> str:
@@ -483,18 +552,24 @@ def _trim_sections(  # noqa: PLR0913
     currency: str = DEFAULT_CURRENCY,
     profile: PromptProfile | None = None,
     trimming_enabled: bool = True,
+    strategy_config: StrategyConfig | None = None,
 ) -> tuple[
     str,
     int,
     Task | None,
     Company | None,
     tuple[str, ...],
+    StrategyConfig | None,
 ]:
     """Progressively remove optional sections until under token budget.
 
-    Returns ``(content, estimated, task, company, org_policies)``
-    so the caller can reuse the final render.
+    Returns ``(content, estimated, task, company, org_policies,
+    strategy_config)`` so the caller can reuse the final render.
     """
+    from synthorg.engine._prompt_helpers import (  # noqa: PLC0415
+        SECTION_STRATEGY as _SECTION_STRATEGY_LOCAL,
+    )
+
     trimmed_sections: list[str] = []
 
     for section in _TRIMMABLE_SECTIONS:
@@ -512,11 +587,14 @@ def _trim_sections(  # noqa: PLR0913
             currency=currency,
             profile=profile,
             trimming_enabled=trimming_enabled,
+            strategy_config=strategy_config,
         )
         if estimated <= max_tokens:
             break
 
-        if section == _SECTION_COMPANY and company is not None:
+        if section == _SECTION_STRATEGY_LOCAL and strategy_config is not None:
+            strategy_config = None
+        elif section == _SECTION_COMPANY and company is not None:
             company = None
         elif (
             section == _SECTION_ORG_POLICIES
@@ -546,11 +624,12 @@ def _trim_sections(  # noqa: PLR0913
             currency=currency,
             profile=profile,
             trimming_enabled=trimming_enabled,
+            strategy_config=strategy_config,
         )
 
     _log_trim_results(agent, max_tokens, estimated, trimmed_sections)
 
-    return content, estimated, task, company, org_policies
+    return content, estimated, task, company, org_policies, strategy_config
 
 
 def _log_trim_results(
@@ -593,6 +672,7 @@ def _render_with_trimming(  # noqa: PLR0913
     currency: str = DEFAULT_CURRENCY,
     profile: PromptProfile | None = None,
     trimming_enabled: bool = True,
+    strategy_config: StrategyConfig | None = None,
 ) -> SystemPrompt:
     """Render the prompt, trimming optional sections if over token budget."""
     content, estimated, trim_info = _render_and_estimate(
@@ -609,24 +689,28 @@ def _render_with_trimming(  # noqa: PLR0913
         currency=currency,
         profile=profile,
         trimming_enabled=trimming_enabled,
+        strategy_config=strategy_config,
     )
 
     if max_tokens is not None and estimated > max_tokens:
-        content, estimated, task, company, org_policies = _trim_sections(
-            template_str=template_str,
-            agent=agent,
-            role=role,
-            task=task,
-            available_tools=available_tools,
-            company=company,
-            org_policies=org_policies,
-            max_tokens=max_tokens,
-            estimator=estimator,
-            effective_autonomy=effective_autonomy,
-            context_budget=context_budget_indicator,
-            currency=currency,
-            profile=profile,
-            trimming_enabled=trimming_enabled,
+        content, estimated, task, company, org_policies, strategy_config = (
+            _trim_sections(
+                template_str=template_str,
+                agent=agent,
+                role=role,
+                task=task,
+                available_tools=available_tools,
+                company=company,
+                org_policies=org_policies,
+                max_tokens=max_tokens,
+                estimator=estimator,
+                effective_autonomy=effective_autonomy,
+                context_budget=context_budget_indicator,
+                currency=currency,
+                profile=profile,
+                trimming_enabled=trimming_enabled,
+                strategy_config=strategy_config,
+            )
         )
 
     return _build_prompt_result(
@@ -641,6 +725,7 @@ def _render_with_trimming(  # noqa: PLR0913
         context_budget=context_budget_indicator,
         profile=profile,
         personality_trim_info=trim_info,
+        strategy_config=strategy_config,
     )
 
 
@@ -657,8 +742,13 @@ def _build_prompt_result(  # noqa: PLR0913
     context_budget: str | None = None,
     profile: PromptProfile | None = None,
     personality_trim_info: PersonalityTrimInfo | None = None,
+    strategy_config: StrategyConfig | None = None,
 ) -> SystemPrompt:
     """Assemble the final ``SystemPrompt`` from rendered content."""
+    from synthorg.engine.strategy.prompt_injection import (  # noqa: PLC0415
+        should_inject_strategy,
+    )
+
     sections = _compute_sections(
         task=task,
         available_tools=available_tools,
@@ -667,6 +757,7 @@ def _build_prompt_result(  # noqa: PLR0913
         custom_template=custom_template,
         context_budget=context_budget,
         profile=profile,
+        has_strategy=should_inject_strategy(agent, strategy_config),
     )
     metadata = _build_metadata(agent)
     if profile is not None:
@@ -696,6 +787,7 @@ def _render_and_estimate(  # noqa: PLR0913
     currency: str = DEFAULT_CURRENCY,
     profile: PromptProfile | None = None,
     trimming_enabled: bool = True,
+    strategy_config: StrategyConfig | None = None,
 ) -> tuple[str, int, PersonalityTrimInfo | None]:
     """Render the template and estimate its token count.
 
@@ -713,6 +805,7 @@ def _render_and_estimate(  # noqa: PLR0913
         currency: ISO 4217 currency code for budget displays.
         profile: Prompt profile controlling rendering verbosity.
         trimming_enabled: Whether personality trimming is active.
+        strategy_config: Strategy config for trendslop mitigation.
 
     Returns:
         Tuple of (rendered content, estimated token count,
@@ -731,6 +824,7 @@ def _render_and_estimate(  # noqa: PLR0913
         profile=profile,
         trimming_enabled=trimming_enabled,
         estimator=estimator,
+        strategy_config=strategy_config,
     )
     content = _render_template(template_str, context)
     return content, estimator.estimate_tokens(content), trim_info

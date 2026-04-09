@@ -225,6 +225,7 @@ task completion history is a planned future enhancement.
         can_delegate_to: ["junior_developers"]
         budget_limit: 5.00
       autonomy_level: null       # full, semi, supervised, locked (overrides defaults)
+      strategic_output_mode: null  # option_expander, advisor, decision_maker, context_dependent (see strategy.md)
       hiring_date: "2026-02-27"
       status: "active"           # active, on_leave, terminated
     ```

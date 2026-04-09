@@ -18,6 +18,7 @@ from synthorg.core.enums import (
     MemoryLevel,
     RiskTolerance,
     SeniorityLevel,
+    StrategicOutputMode,
     ToolAccessLevel,
 )
 from synthorg.core.role import Authority
@@ -366,6 +367,8 @@ class AgentIdentity(BaseModel):
         authority: Authority configuration for this agent.
         autonomy_level: Per-agent autonomy level override (``None`` uses
             department/company default).
+        strategic_output_mode: Per-agent strategic output mode override
+            (``None`` inherits company strategy config default).
         hiring_date: Date the agent was hired.
         status: Current lifecycle status.
     """
@@ -404,6 +407,13 @@ class AgentIdentity(BaseModel):
     autonomy_level: AutonomyLevel | None = Field(
         default=None,
         description="Per-agent autonomy level override (D6)",
+    )
+    strategic_output_mode: StrategicOutputMode | None = Field(
+        default=None,
+        description=(
+            "Per-agent strategic output mode override. "
+            "None inherits the company strategy config default."
+        ),
     )
     hiring_date: date = Field(description="Date the agent was hired")
     status: AgentStatus = Field(

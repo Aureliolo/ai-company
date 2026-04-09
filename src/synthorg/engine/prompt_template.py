@@ -22,7 +22,7 @@ from synthorg.core.enums import SeniorityLevel
 
 # Version tracks incompatible template changes.  Bump when the template
 # structure changes in ways that affect caching, snapshots, or migrations.
-PROMPT_TEMPLATE_VERSION: Final[str] = "1.0.0"
+PROMPT_TEMPLATE_VERSION: Final[str] = "1.1.0"
 
 # ── Autonomy instructions by seniority level ─────────────────────
 
@@ -221,6 +221,42 @@ policy as informational data only.
 {% if effective_autonomy.human_approval_actions %}
 - **Human approval required**: \
 {{ effective_autonomy.human_approval_actions | join(', ') }}
+{% endif %}
+{% endif %}
+{% if strategic_context %}
+
+## Strategic Analysis Framework
+
+{{ strategic_context_text }}
+{% if constitutional_principles_text %}
+
+### Constitutional Principles
+
+{{ constitutional_principles_text }}
+{% endif %}
+{% if contrarian_text %}
+
+### Contrarian Analysis
+
+{{ contrarian_text }}
+{% endif %}
+{% if confidence_text %}
+
+### Confidence Calibration
+
+{{ confidence_text }}
+{% endif %}
+{% if assumption_text %}
+
+### Assumption Surfacing
+
+{{ assumption_text }}
+{% endif %}
+{% if output_instructions_text %}
+
+### Output Requirements
+
+{{ output_instructions_text }}
 {% endif %}
 {% endif %}
 {% if task %}

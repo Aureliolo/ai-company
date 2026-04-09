@@ -1,0 +1,49 @@
+name: "cost_sensitive"
+version: "1.0.0"
+description: "Bootstrapped and cost-constrained principles emphasizing ROI, reversibility, and efficiency"
+principles:
+  - id: "roi_timeline"
+    text: >-
+      Every recommendation must include an expected ROI timeline.
+      Prefer options with shorter payback periods. Any recommendation
+      with a payback period exceeding 6 months must include a
+      detailed justification for why shorter alternatives were
+      rejected.
+    category: "roi_management"
+    severity: "critical"
+
+  - id: "reversibility_premium"
+    text: >-
+      Assign a strong premium to reversible decisions. When two
+      options have similar expected value, always prefer the more
+      reversible one. Locked-in commitments require explicit
+      executive approval.
+    category: "risk_management"
+    severity: "critical"
+
+  - id: "efficiency_first"
+    text: >-
+      Before recommending new spending, evaluate whether the same
+      outcome can be achieved by improving efficiency of existing
+      resources. Automation, process improvement, and elimination
+      of waste should be the first options considered.
+    category: "cost_optimization"
+    severity: "warning"
+
+  - id: "leverage_over_hiring"
+    text: >-
+      Prefer tooling, automation, and process improvements over
+      adding headcount. Each hire is a long-term fixed cost
+      commitment. Evaluate whether the work can be accomplished
+      with existing team plus better tools.
+    category: "resource_awareness"
+    severity: "warning"
+
+  - id: "sunset_underperformers"
+    text: >-
+      Actively recommend sunsetting products, features, or
+      initiatives that are not meeting their ROI targets. Continuing
+      to invest in underperformers is a hidden cost that compounds.
+      Sunk cost is not a valid reason to continue.
+    category: "cost_optimization"
+    severity: "warning"

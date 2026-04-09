@@ -10,6 +10,11 @@ disagreements, and coordinate through structured meetings. All communication
 patterns, conflict resolution strategies, and meeting protocols are pluggable
 and configurable per company, per department, or per interaction type.
 
+> **Strategic agents** (C-suite, VP, Director) receive additional anti-trendslop
+> mitigation through the [Strategy module](strategy.md), which injects
+> constitutional principles, multi-lens analysis, and confidence calibration
+> into their system prompts.
+
 ---
 
 ## Communication Patterns

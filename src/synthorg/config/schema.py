@@ -23,6 +23,7 @@ from synthorg.core.resilience_config import RateLimiterConfig, RetryConfig
 from synthorg.core.role import CustomRole  # noqa: TC001
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.engine.coordination.section_config import CoordinationSectionConfig
+from synthorg.engine.strategy.models import StrategyConfig
 from synthorg.engine.task_engine_config import TaskEngineConfig
 from synthorg.engine.workflow.config import WorkflowConfig
 from synthorg.hr.performance.config import PerformanceConfig
@@ -586,6 +587,7 @@ class RootConfig(BaseModel):
             CI/LLM weights, trend thresholds).
         task_engine: Task engine configuration.
         coordination: Multi-agent coordination configuration.
+        strategy: Strategy and trendslop mitigation configuration.
         git_clone: Git clone SSRF prevention network policy.
         backup: Backup and restore configuration.
         workflow: Workflow type configuration.
@@ -718,6 +720,10 @@ class RootConfig(BaseModel):
     coordination: CoordinationSectionConfig = Field(
         default_factory=CoordinationSectionConfig,
         description="Multi-agent coordination configuration",
+    )
+    strategy: StrategyConfig = Field(
+        default_factory=StrategyConfig,
+        description="Strategy and trendslop mitigation configuration",
     )
     git_clone: GitCloneNetworkPolicy = Field(
         default_factory=GitCloneNetworkPolicy,

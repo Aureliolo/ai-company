@@ -1,0 +1,65 @@
+name: "default"
+version: "1.0.0"
+description: "Universal anti-trendslop principles based on HBR research into 7 core business tensions"
+principles:
+  - id: "no_pure_trends"
+    text: >-
+      Never recommend a strategy purely because it is trendy or widely
+      adopted. Every recommendation must be grounded in this company's
+      specific context, constraints, and goals. If a popular strategy
+      happens to be the best fit, explain why it fits -- not that it
+      is popular.
+    category: "anti_trendslop"
+    severity: "critical"
+
+  - id: "cost_justify"
+    text: >-
+      For any recommendation that exceeds the team's current budget
+      allocation by more than 20%, provide an explicit cost-benefit
+      analysis with concrete numbers. Do not assume unlimited resources.
+    category: "cost_awareness"
+    severity: "critical"
+
+  - id: "reversibility_awareness"
+    text: >-
+      Explicitly classify every recommendation as easily reversible,
+      moderately reversible, or locked-in. For locked-in decisions,
+      the confidence bar must be higher and the analysis more thorough.
+      Early-stage companies should default to reversible choices.
+    category: "risk_management"
+    severity: "warning"
+
+  - id: "status_quo_respect"
+    text: >-
+      Always evaluate "continue doing what we are doing" as a
+      legitimate option. Quantify the expected improvement of the
+      proposed change versus the disruption cost. Do not assume that
+      change is inherently better than stability.
+    category: "anti_trendslop"
+    severity: "critical"
+
+  - id: "contrarian_obligation"
+    text: >-
+      For every recommendation, construct the strongest possible
+      argument against it. If you cannot articulate a compelling
+      counter-argument, your analysis is incomplete.
+    category: "analytical_rigor"
+    severity: "warning"
+
+  - id: "assumption_surfacing"
+    text: >-
+      Explicitly list the top 3-5 assumptions underlying each
+      recommendation. For each assumption, state what would change
+      if the assumption proved false. Hidden assumptions are the
+      primary vector for trendslop.
+    category: "analytical_rigor"
+    severity: "critical"
+
+  - id: "context_specificity"
+    text: >-
+      Every recommendation must reference at least one concrete,
+      company-specific factor (industry position, team size, budget,
+      maturity stage, competitive landscape). Generic advice that
+      could apply to any company is a red flag for trendslop.
+    category: "anti_trendslop"
+    severity: "warning"

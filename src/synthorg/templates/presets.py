@@ -465,6 +465,36 @@ _validate_presets()
 del _validate_presets
 
 
+# ── Strategic output mode defaults by seniority ────────────────
+
+from synthorg.core.enums import SeniorityLevel, StrategicOutputMode  # noqa: E402
+
+STRATEGIC_OUTPUT_DEFAULTS: MappingProxyType[SeniorityLevel, StrategicOutputMode] = (
+    MappingProxyType(
+        {
+            SeniorityLevel.C_SUITE: StrategicOutputMode.ADVISOR,
+            SeniorityLevel.VP: StrategicOutputMode.ADVISOR,
+            SeniorityLevel.DIRECTOR: StrategicOutputMode.CONTEXT_DEPENDENT,
+        }
+    )
+)
+
+
+def get_strategic_output_default(
+    level: SeniorityLevel,
+) -> StrategicOutputMode | None:
+    """Return the default strategic output mode for a seniority level.
+
+    Args:
+        level: Agent seniority level.
+
+    Returns:
+        Default strategic output mode, or ``None`` if the level has
+        no strategic default (i.e. strategic output is not applicable).
+    """
+    return STRATEGIC_OUTPUT_DEFAULTS.get(level)
+
+
 def validate_preset_references(
     template: CompanyTemplate,
     custom_presets: Mapping[str, dict[str, Any]] | None = None,

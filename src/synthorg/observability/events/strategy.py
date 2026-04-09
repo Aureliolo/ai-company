@@ -1,0 +1,16 @@
+"""Strategy module event constants."""
+
+from typing import Final
+
+STRATEGY_PACK_LOADED: Final[str] = "strategy.pack.loaded"
+STRATEGY_PACK_NOT_FOUND: Final[str] = "strategy.pack.not_found"
+STRATEGY_PACK_INVALID: Final[str] = "strategy.pack.invalid"
+STRATEGY_CONTEXT_BUILT: Final[str] = "strategy.context.built"
+STRATEGY_IMPACT_SCORED: Final[str] = "strategy.impact.scored"
+STRATEGY_CONFIDENCE_FORMATTED: Final[str] = "strategy.confidence.formatted"
+STRATEGY_OUTPUT_HANDLED: Final[str] = "strategy.output.handled"
+STRATEGY_TIER_RESOLVED: Final[str] = "strategy.tier.resolved"
+STRATEGY_LENS_APPLIED: Final[str] = "strategy.lens.applied"
+STRATEGY_PRINCIPLE_VALIDATED: Final[str] = "strategy.principle.validated"
+STRATEGY_PROMPT_INJECTED: Final[str] = "strategy.prompt.injected"
+STRATEGY_CONFIG_VALIDATED: Final[str] = "strategy.config.validated"

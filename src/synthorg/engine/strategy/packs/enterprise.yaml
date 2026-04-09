@@ -1,0 +1,48 @@
+name: "enterprise"
+version: "1.0.0"
+description: "Established company principles emphasizing exploitation, incremental change, and change capacity"
+principles:
+  - id: "exploit_before_explore"
+    text: >-
+      Before recommending new initiatives, evaluate whether existing
+      assets, processes, or products can be better exploited. The
+      highest-ROI move is often optimizing what already works rather
+      than building something new.
+    category: "exploitation"
+    severity: "warning"
+
+  - id: "incremental_over_revolutionary"
+    text: >-
+      Prefer incremental improvements over revolutionary changes
+      unless there is strong evidence that incremental change is
+      insufficient. Large transformations carry disproportionate
+      execution risk.
+    category: "change_management"
+    severity: "warning"
+
+  - id: "change_capacity"
+    text: >-
+      Every organization has a finite capacity for change. Before
+      recommending a new initiative, assess the current change load.
+      If the organization is already executing multiple
+      transformations, the default should be to defer.
+    category: "change_management"
+    severity: "critical"
+
+  - id: "compliance_awareness"
+    text: >-
+      All recommendations must be evaluated against regulatory and
+      compliance requirements. Flag any recommendation that could
+      create compliance exposure and require legal or compliance
+      team review before proceeding.
+    category: "governance"
+    severity: "critical"
+
+  - id: "stakeholder_alignment"
+    text: >-
+      For cross-functional recommendations, identify all affected
+      stakeholders and assess their likely support or resistance.
+      Recommendations without a stakeholder alignment plan have a
+      high failure rate regardless of technical merit.
+    category: "governance"
+    severity: "warning"

@@ -115,11 +115,14 @@ SECTION_TASK: Final[str] = "task"
 SECTION_COMPANY: Final[str] = "company"
 SECTION_TOOLS: Final[str] = "tools"
 SECTION_CONTEXT_BUDGET: Final[str] = "context_budget"
+SECTION_STRATEGY: Final[str] = "strategy"
 
 # Sections trimmed when over token budget, least critical first.
+# Strategy is trimmed before company because it is additive context.
 # Tools section was removed from the default template per D22
 # (non-inferable principle), but custom templates may still render tools.
 TRIMMABLE_SECTIONS: Final[tuple[str, ...]] = (
+    SECTION_STRATEGY,
     SECTION_COMPANY,
     SECTION_TASK,
     SECTION_ORG_POLICIES,
@@ -492,6 +495,7 @@ def compute_sections(  # noqa: PLR0913
     custom_template: bool = False,
     context_budget: str | None = None,
     profile: PromptProfile | None = None,
+    has_strategy: bool = False,
 ) -> tuple[str, ...]:
     """Determine which sections are present in the rendered prompt.
 
@@ -508,6 +512,7 @@ def compute_sections(  # noqa: PLR0913
         custom_template: Whether a custom template is being used.
         context_budget: Formatted context budget indicator string.
         profile: Prompt profile controlling section inclusion.
+        has_strategy: Whether strategic analysis sections are present.
 
     Returns:
         Tuple of section names that are included.
@@ -524,6 +529,8 @@ def compute_sections(  # noqa: PLR0913
         sections.append(SECTION_ORG_POLICIES)
     # Autonomy follows org_policies in the template.
     sections.append(SECTION_AUTONOMY)
+    if has_strategy:
+        sections.append(SECTION_STRATEGY)
     if task is not None:
         sections.append(SECTION_TASK)
     if available_tools and custom_template:

@@ -84,6 +84,7 @@ template:
         min_context: 100000
       personality_preset: "rapid_prototyper"
       department: "executive"
+      strategic_output_mode: "advisor"
     - role: "Full-Stack Developer"
       name: ""
       merge_id: "fullstack-mid"
