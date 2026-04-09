@@ -191,7 +191,7 @@ class EntityEntry(BaseModel):
         default="",
         description="Free-text entity description",
     )
-    fields: dict[str, str] = Field(
+    fields: dict[NotBlankStr, str] = Field(
         default_factory=dict,
         description="Field name to description mapping",
     )

@@ -13,7 +13,10 @@ from datetime import UTC, datetime
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any, NamedTuple, overload
 
+from synthorg.observability import get_logger
 from synthorg.ontology.errors import OntologyDuplicateError
+
+logger = get_logger(__name__)
 
 if TYPE_CHECKING:
     from pydantic import BaseModel

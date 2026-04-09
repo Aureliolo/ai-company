@@ -11,6 +11,7 @@ from synthorg.observability import get_logger
 from synthorg.observability.events.ontology import (
     ONTOLOGY_BACKEND_CONNECTED,
     ONTOLOGY_BACKEND_CONNECTING,
+    ONTOLOGY_BACKEND_CONNECTION_FAILED,
     ONTOLOGY_BACKEND_DISCONNECTED,
     ONTOLOGY_BACKEND_HEALTH_CHECK,
     ONTOLOGY_ENTITY_DELETED,
@@ -35,6 +36,8 @@ from synthorg.ontology.models import (
 )
 
 if TYPE_CHECKING:
+    from collections.abc import Iterable
+
     from synthorg.core.types import NotBlankStr
 
 logger = get_logger(__name__)
@@ -45,6 +48,10 @@ class SQLiteOntologyBackend:
 
     Uses a single aiosqlite connection with WAL mode for
     file-based databases.
+
+    **Lifecycle contract**: ``connect()`` and ``disconnect()`` bracket
+    all CRUD usage.  Callers must not invoke ``disconnect()`` while
+    CRUD operations are in flight.
 
     Args:
         db_path: Path to the SQLite database file, or ``":memory:"``
@@ -64,6 +71,7 @@ class SQLiteOntologyBackend:
             if self._db is not None:
                 return
             logger.info(ONTOLOGY_BACKEND_CONNECTING, db_path=self._db_path)
+            db: aiosqlite.Connection | None = None
             try:
                 db = await aiosqlite.connect(self._db_path)
                 db.row_factory = aiosqlite.Row
@@ -72,10 +80,17 @@ class SQLiteOntologyBackend:
                 await apply_ontology_schema(db)
                 self._db = db
             except OntologyConnectionError:
+                if db is not None and db != self._db:
+                    await db.close()
                 raise
             except (sqlite3.Error, aiosqlite.Error, OSError) as exc:
+                if db is not None:
+                    await db.close()
                 msg = f"Failed to connect to {self._db_path}"
-                logger.exception(ONTOLOGY_BACKEND_CONNECTING, error=str(exc))
+                logger.exception(
+                    ONTOLOGY_BACKEND_CONNECTION_FAILED,
+                    error=str(exc),
+                )
                 raise OntologyConnectionError(msg) from exc
             logger.info(ONTOLOGY_BACKEND_CONNECTED, db_path=self._db_path)
 
@@ -262,21 +277,27 @@ class SQLiteOntologyBackend:
         db = self._require_connected()
         if tier is not None:
             cursor = await db.execute(
-                "SELECT * FROM entity_definitions WHERE tier = :tier",
+                """SELECT * FROM entity_definitions
+                   WHERE tier = :tier LIMIT 1000""",
                 {"tier": tier.value},
             )
         else:
-            cursor = await db.execute("SELECT * FROM entity_definitions")
+            cursor = await db.execute(
+                "SELECT * FROM entity_definitions LIMIT 1000",
+            )
         rows = await cursor.fetchall()
-        return tuple(self._row_to_entity(row) for row in rows)
+        return self._rows_to_entities(rows)
 
     async def search(self, query: str) -> tuple[EntityDefinition, ...]:
         """Search entities by name or definition text."""
         db = self._require_connected()
-        pattern = f"%{query}%"
+        escaped = query.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        pattern = f"%{escaped}%"
         cursor = await db.execute(
             """SELECT * FROM entity_definitions
-               WHERE name LIKE :pattern OR definition LIKE :pattern""",
+               WHERE name LIKE :pattern ESCAPE '\\'
+                  OR definition LIKE :pattern ESCAPE '\\'
+               LIMIT 1000""",
             {"pattern": pattern},
         )
         rows = list(await cursor.fetchall())
@@ -285,7 +306,20 @@ class SQLiteOntologyBackend:
             query=query,
             result_count=len(rows),
         )
-        return tuple(self._row_to_entity(row) for row in rows)
+        return self._rows_to_entities(rows)
+
+    def _rows_to_entities(
+        self,
+        rows: Iterable[aiosqlite.Row],
+    ) -> tuple[EntityDefinition, ...]:
+        """Deserialize rows, skipping corrupted entries."""
+        results: list[EntityDefinition] = []
+        for row in rows:
+            try:
+                results.append(self._row_to_entity(row))
+            except OntologyError:
+                continue  # Already logged by _row_to_entity.
+        return tuple(results)
 
     async def get_version_manifest(self) -> dict[str, int]:
         """Return the latest version number for each entity."""

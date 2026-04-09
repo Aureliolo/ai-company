@@ -725,6 +725,48 @@ class TestEventConstants:
         assert DETECTOR_COMPLETE == "classification.detector.complete"
         assert DETECTOR_ERROR == "classification.detector.error"
 
+    def test_ontology_events_exist(self) -> None:
+        from synthorg.observability.events.ontology import (
+            ONTOLOGY_AUTO_WIRE_FAILED,
+            ONTOLOGY_BACKEND_CONNECTED,
+            ONTOLOGY_BACKEND_CONNECTING,
+            ONTOLOGY_BACKEND_CONNECTION_FAILED,
+            ONTOLOGY_BACKEND_DISCONNECTED,
+            ONTOLOGY_BACKEND_HEALTH_CHECK,
+            ONTOLOGY_BOOTSTRAP_COMPLETED,
+            ONTOLOGY_BOOTSTRAP_ENTITY_SKIPPED,
+            ONTOLOGY_CONFIG_LOADED,
+            ONTOLOGY_ENTITY_DELETED,
+            ONTOLOGY_ENTITY_DESERIALIZATION_FAILED,
+            ONTOLOGY_ENTITY_REGISTERED,
+            ONTOLOGY_ENTITY_UPDATED,
+            ONTOLOGY_SCHEMA_FAILED,
+            ONTOLOGY_SEARCH_EXECUTED,
+            ONTOLOGY_VERSION_SNAPSHOT,
+        )
+
+        assert ONTOLOGY_ENTITY_REGISTERED == "ontology.entity.registered"
+        assert ONTOLOGY_ENTITY_UPDATED == "ontology.entity.updated"
+        assert ONTOLOGY_ENTITY_DELETED == "ontology.entity.deleted"
+        assert ONTOLOGY_BOOTSTRAP_COMPLETED == "ontology.bootstrap.completed"
+        assert ONTOLOGY_BOOTSTRAP_ENTITY_SKIPPED == "ontology.bootstrap.entity_skipped"
+        assert ONTOLOGY_VERSION_SNAPSHOT == "ontology.version.snapshot"
+        assert ONTOLOGY_CONFIG_LOADED == "ontology.config.loaded"
+        assert ONTOLOGY_BACKEND_CONNECTING == "ontology.backend.connecting"
+        assert (
+            ONTOLOGY_BACKEND_CONNECTION_FAILED == "ontology.backend.connection_failed"
+        )
+        assert ONTOLOGY_BACKEND_CONNECTED == "ontology.backend.connected"
+        assert ONTOLOGY_BACKEND_DISCONNECTED == "ontology.backend.disconnected"
+        assert ONTOLOGY_BACKEND_HEALTH_CHECK == "ontology.backend.health_check"
+        assert ONTOLOGY_SEARCH_EXECUTED == "ontology.search.executed"
+        assert ONTOLOGY_SCHEMA_FAILED == "ontology.backend.schema_failed"
+        assert ONTOLOGY_AUTO_WIRE_FAILED == "ontology.auto_wire.failed"
+        assert (
+            ONTOLOGY_ENTITY_DESERIALIZATION_FAILED
+            == "ontology.entity.deserialization_failed"
+        )
+
     def test_shipping_events_exist(self) -> None:
         from synthorg.observability.events.shipping import (
             SHIPPING_COMPRESSION_COMPLETED,

@@ -7,12 +7,28 @@ from the ontology backend's database connection.
 import json
 from typing import TYPE_CHECKING
 
+from pydantic import ValidationError
+
+from synthorg.observability import get_logger
+from synthorg.ontology.errors import OntologyError
 from synthorg.ontology.models import EntityDefinition
 from synthorg.persistence.sqlite.version_repo import SQLiteVersionRepository
 from synthorg.versioning.service import VersioningService
 
 if TYPE_CHECKING:
     import aiosqlite
+
+logger = get_logger(__name__)
+
+
+def _safe_deserialize_snapshot(raw: str) -> EntityDefinition:
+    """Deserialize a JSON snapshot, wrapping validation errors."""
+    try:
+        return EntityDefinition.model_validate_json(raw)
+    except ValidationError as exc:
+        msg = "Corrupted entity definition version snapshot"
+        logger.warning(msg, error=str(exc))
+        raise OntologyError(msg) from exc
 
 
 def create_ontology_version_repo(
@@ -32,7 +48,7 @@ def create_ontology_version_repo(
         serialize_snapshot=lambda m: json.dumps(
             m.model_dump(mode="json"),
         ),
-        deserialize_snapshot=EntityDefinition.model_validate_json,
+        deserialize_snapshot=_safe_deserialize_snapshot,
     )
 
 

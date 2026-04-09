@@ -36,6 +36,9 @@ ONTOLOGY_CONFIG_LOADED: Final[str] = "ontology.config.loaded"
 ONTOLOGY_BACKEND_CONNECTING: Final[str] = "ontology.backend.connecting"
 """Ontology backend connection attempt started."""
 
+ONTOLOGY_BACKEND_CONNECTION_FAILED: Final[str] = "ontology.backend.connection_failed"
+"""Ontology backend connection attempt failed."""
+
 ONTOLOGY_BACKEND_CONNECTED: Final[str] = "ontology.backend.connected"
 """Ontology backend connected successfully."""
 

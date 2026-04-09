@@ -6,6 +6,8 @@ import pytest
 
 from synthorg.ontology.backends.sqlite.backend import SQLiteOntologyBackend
 
+pytestmark = pytest.mark.integration
+
 
 @pytest.fixture
 def db_path(tmp_path: object) -> str:

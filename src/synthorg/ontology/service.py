@@ -86,6 +86,8 @@ class OntologyService:
     ) -> int:
         """Register user-defined entities from YAML configuration.
 
+        Already-registered entities are skipped (idempotent).
+
         Args:
             entities_config: Parsed entity entries from YAML.
 
@@ -222,10 +224,11 @@ class OntologyService:
 
     async def _snapshot(self, entity: EntityDefinition) -> None:
         """Create a version snapshot if content changed."""
+        saved_by = getattr(entity, "updated_by", entity.created_by)
         result = await self._versioning.snapshot_if_changed(
             entity_id=entity.name,
             snapshot=entity,
-            saved_by=entity.created_by,
+            saved_by=saved_by,
         )
         if result is not None:
             logger.debug(
