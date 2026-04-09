@@ -439,6 +439,8 @@ class TestBuildDefaultToolsFromConfig:
         names = {t.name for t in tools}
         assert "diagram_generator" in names
         assert "asset_manager" in names
+        # No backend provided -- image_generator excluded
+        assert "image_generator" not in names
 
     def test_from_config_wires_communication_tools(
         self,
@@ -465,6 +467,8 @@ class TestBuildDefaultToolsFromConfig:
         names = {t.name for t in tools}
         assert "email_sender" in names
         assert "template_formatter" in names
+        # No dispatcher provided -- notification_sender excluded
+        assert "notification_sender" not in names
 
     def test_from_config_wires_analytics_tools(
         self,
