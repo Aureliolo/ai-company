@@ -209,7 +209,7 @@ class DelegationService:
         request: DelegationRequest,
         sub_task: Task,
         *,
-        entity_versions: dict[str, int] | None = None,
+        entity_versions: Mapping[str, int] | None = None,
     ) -> None:
         """Record delegation in guard state and audit trail.
 
