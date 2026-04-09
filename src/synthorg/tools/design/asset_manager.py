@@ -231,7 +231,7 @@ class AssetManagerTool(BaseDesignTool):
     ) -> ToolExecutionResult:
         """Retrieve a specific asset by ID."""
         asset_id = arguments.get("asset_id")
-        if not isinstance(asset_id, str) or not asset_id:
+        if not isinstance(asset_id, str) or not asset_id.strip():
             logger.warning(
                 DESIGN_ASSET_VALIDATION_FAILED,
                 action="get",
@@ -274,7 +274,7 @@ class AssetManagerTool(BaseDesignTool):
     ) -> ToolExecutionResult:
         """Delete an asset by ID."""
         asset_id = arguments.get("asset_id")
-        if not isinstance(asset_id, str) or not asset_id:
+        if not isinstance(asset_id, str) or not asset_id.strip():
             logger.warning(
                 DESIGN_ASSET_VALIDATION_FAILED,
                 action="delete",
