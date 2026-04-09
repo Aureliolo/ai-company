@@ -166,3 +166,34 @@ class TestTierResolution:
             ),
         )
         assert _resolve_tier(composite, config) == expected_tier
+
+
+class TestNormalizationMapExhaustiveness:
+    """Verify normalization maps cover all enum variants."""
+
+    @pytest.mark.unit
+    def test_reversibility_map_covers_all_variants(self) -> None:
+        from synthorg.engine.strategy.impact import _REVERSIBILITY_SCORES
+
+        for variant in Reversibility:
+            assert variant.value in _REVERSIBILITY_SCORES, (
+                f"Missing {variant.value} in _REVERSIBILITY_SCORES"
+            )
+
+    @pytest.mark.unit
+    def test_blast_radius_map_covers_all_variants(self) -> None:
+        from synthorg.engine.strategy.impact import _BLAST_RADIUS_SCORES
+
+        for variant in BlastRadius:
+            assert variant.value in _BLAST_RADIUS_SCORES, (
+                f"Missing {variant.value} in _BLAST_RADIUS_SCORES"
+            )
+
+    @pytest.mark.unit
+    def test_time_horizon_map_covers_all_variants(self) -> None:
+        from synthorg.engine.strategy.impact import _TIME_HORIZON_SCORES
+
+        for variant in TimeHorizon:
+            assert variant.value in _TIME_HORIZON_SCORES, (
+                f"Missing {variant.value} in _TIME_HORIZON_SCORES"
+            )

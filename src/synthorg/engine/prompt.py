@@ -488,19 +488,26 @@ def _inject_strategy_context(
     assert strategy_config is not None  # noqa: S101 -- guarded by should_inject_strategy
 
     # Load principles if configured.
+    from synthorg.engine.strategy.principles import (  # noqa: PLC0415
+        StrategyPackNotFoundError,
+        StrategyPackValidationError,
+        load_and_merge,
+    )
+    from synthorg.observability.events.strategy import (  # noqa: PLC0415
+        STRATEGY_PRINCIPLES_LOAD_FAILED,
+    )
+
     principles: tuple[Any, ...] = ()
     try:
-        from synthorg.engine.strategy.principles import (  # noqa: PLC0415
-            load_and_merge,
-        )
-
         principles = load_and_merge(strategy_config.constitutional_principles)
     except MemoryError, RecursionError:
         raise
-    except Exception:
+    except (StrategyPackNotFoundError, StrategyPackValidationError) as exc:
         logger.warning(
-            "strategy.principles.load_failed",
+            STRATEGY_PRINCIPLES_LOAD_FAILED,
             agent_id=str(agent.id),
+            error_type=type(exc).__name__,
+            error=str(exc),
             exc_info=True,
         )
 

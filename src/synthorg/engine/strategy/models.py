@@ -9,6 +9,7 @@ because :class:`~synthorg.core.agent.AgentIdentity` references it.
 
 import copy
 from enum import StrEnum
+from types import MappingProxyType
 from typing import Any, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -486,8 +487,8 @@ class StrategyConfig(BaseModel):
     )
 
     @model_validator(mode="after")
-    def _validate_lenses_not_empty(self) -> Self:
-        """Ensure at least one default lens is configured."""
+    def _validate_lenses(self) -> Self:
+        """Ensure at least one lens is configured and all names are valid."""
         if not self.default_lenses:
             msg = "default_lenses must contain at least one lens"
             logger.warning(
@@ -496,6 +497,19 @@ class StrategyConfig(BaseModel):
                 error=msg,
             )
             raise ValueError(msg)
+
+        from synthorg.engine.strategy.lenses import StrategicLens  # noqa: PLC0415
+
+        available = {lens.value for lens in StrategicLens}
+        for lens_name in self.default_lenses:
+            if lens_name.lower() not in available:
+                msg = f"Unknown lens {lens_name!r}. Available: {sorted(available)}"
+                logger.warning(
+                    STRATEGY_CONFIG_VALIDATED,
+                    model="StrategyConfig",
+                    error=msg,
+                )
+                raise ValueError(msg)
         return self
 
 
@@ -641,12 +655,12 @@ class ImpactScore(BaseModel):
         return self
 
     @model_validator(mode="after")
-    def _deepcopy_dimensions(self) -> Self:
-        """Defensive copy of mutable dict field."""
+    def _make_dimensions_readonly(self) -> Self:
+        """Wrap dimensions in MappingProxyType for read-only enforcement."""
         object.__setattr__(
             self,
             "dimensions",
-            copy.deepcopy(self.dimensions),
+            MappingProxyType(copy.deepcopy(self.dimensions)),
         )
         return self
 

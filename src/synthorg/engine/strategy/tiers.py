@@ -106,16 +106,15 @@ class ProgressiveTierResolver:
 def get_tier_resolver(config: StrategyConfig) -> CostTierResolver:  # noqa: ARG001
     """Factory for cost tier resolvers.
 
-    Returns a :class:`ProgressiveTierResolver` when progressive
-    weights are configured, otherwise a :class:`FixedTierResolver`.
+    Currently always returns :class:`ProgressiveTierResolver`, which
+    falls back to the config's default tier when no impact score is
+    available (covering the ``FixedTierResolver`` use case).
 
     Args:
-        config: Strategy configuration.
+        config: Strategy configuration (reserved for future
+            resolver selection logic).
 
     Returns:
-        Appropriate tier resolver.
+        A :class:`ProgressiveTierResolver` instance.
     """
-    # Use progressive resolver when non-default weights are configured.
-    # This is a simple heuristic -- any explicit progressive config
-    # triggers the progressive resolver.
     return ProgressiveTierResolver()

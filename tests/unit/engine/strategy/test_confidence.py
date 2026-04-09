@@ -91,6 +91,35 @@ class TestProbabilityFormatter:
         assert "75%" in result
 
 
+class TestFormattersWithEmptyMetadata:
+    """Tests for formatters with empty assumptions/uncertainty."""
+
+    @pytest.mark.unit
+    def test_structured_with_empty_fields(self) -> None:
+        meta = ConfidenceMetadata(level=0.5, range_lower=0.3, range_upper=0.7)
+        fmt = StructuredFormatter()
+        result = fmt.format(metadata=meta)
+        assert "50%" in result
+        assert "assumptions" not in result.lower()
+        assert "uncertainty" not in result.lower()
+
+    @pytest.mark.unit
+    def test_narrative_with_empty_fields(self) -> None:
+        meta = ConfidenceMetadata(level=0.5, range_lower=0.3, range_upper=0.7)
+        fmt = NarrativeFormatter()
+        result = fmt.format(metadata=meta)
+        assert "50%" in result
+        assert len(result) > 10
+
+    @pytest.mark.unit
+    def test_probability_with_empty_fields(self) -> None:
+        meta = ConfidenceMetadata(level=0.5, range_lower=0.3, range_upper=0.7)
+        fmt = ProbabilityFormatter()
+        result = fmt.format(metadata=meta)
+        assert "50%" in result
+        assert "Conditional on" not in result
+
+
 class TestGetFormatter:
     """Tests for the get_formatter factory."""
 

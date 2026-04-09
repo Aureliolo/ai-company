@@ -10,7 +10,10 @@ from synthorg.core.enums import SeniorityLevel
 from synthorg.engine.strategy.lenses import get_lens_definitions
 from synthorg.engine.strategy.output import build_output_instructions
 from synthorg.observability import get_logger
-from synthorg.observability.events.strategy import STRATEGY_PROMPT_INJECTED
+from synthorg.observability.events.strategy import (
+    STRATEGY_LENS_LOOKUP_FAILED,
+    STRATEGY_PROMPT_INJECTED,
+)
 
 if TYPE_CHECKING:
     from synthorg.core.agent import AgentIdentity
@@ -123,7 +126,12 @@ def build_strategic_prompt_sections(
     # Output mode instructions.
     try:
         lens_definitions = get_lens_definitions(config.default_lenses)
-    except KeyError:
+    except KeyError as exc:
+        logger.warning(
+            STRATEGY_LENS_LOOKUP_FAILED,
+            error=str(exc),
+            configured_lenses=config.default_lenses,
+        )
         lens_definitions = ()
     output_text = build_output_instructions(
         mode=output_mode,

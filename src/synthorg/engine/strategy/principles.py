@@ -220,9 +220,10 @@ def load_pack(name: str) -> PrinciplePack:
             except StrategyPackValidationError:
                 if name_clean in BUILTIN_PACKS:
                     logger.warning(
-                        STRATEGY_PACK_NOT_FOUND,
+                        STRATEGY_PACK_INVALID,
                         pack_name=name_clean,
-                        action="user_pack_failed_fallback_builtin",
+                        source="user",
+                        action="fallback_to_builtin",
                     )
                 else:
                     raise

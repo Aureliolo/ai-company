@@ -10,6 +10,7 @@ from synthorg.engine.strategy.context import (
 )
 from synthorg.engine.strategy.models import (
     ContextSource,
+    StrategicContext,
     StrategicContextConfig,
     StrategyConfig,
 )
@@ -74,6 +75,42 @@ class TestCompositeContextProvider:
     def test_empty_providers_raises(self) -> None:
         with pytest.raises(ValueError, match="at least one"):
             CompositeContextProvider(providers=())
+
+    @pytest.mark.unit
+    def test_falls_back_on_first_provider_failure(
+        self,
+        default_strategy_config: StrategyConfig,
+    ) -> None:
+        """When first provider fails, second provider is used."""
+
+        class FailingProvider:
+            def provide(self, *, config: StrategyConfig) -> StrategicContext:
+                msg = "provider failed"
+                raise RuntimeError(msg)
+
+        provider = CompositeContextProvider(
+            providers=(FailingProvider(), ConfigContextProvider()),
+        )
+        ctx = provider.provide(config=default_strategy_config)
+        assert ctx.maturity_stage == "growth"
+
+    @pytest.mark.unit
+    def test_all_providers_fail_raises_runtime_error(
+        self,
+        default_strategy_config: StrategyConfig,
+    ) -> None:
+        """When all providers fail, RuntimeError is raised."""
+
+        class FailingProvider:
+            def provide(self, *, config: StrategyConfig) -> StrategicContext:
+                msg = "provider failed"
+                raise RuntimeError(msg)
+
+        provider = CompositeContextProvider(
+            providers=(FailingProvider(), FailingProvider()),
+        )
+        with pytest.raises(RuntimeError, match="All context providers failed"):
+            provider.provide(config=default_strategy_config)
 
 
 class TestBuildContext:

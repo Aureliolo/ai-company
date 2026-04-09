@@ -9,7 +9,10 @@ from typing import Protocol, runtime_checkable
 
 from synthorg.engine.strategy.models import StrategicContext, StrategyConfig
 from synthorg.observability import get_logger
-from synthorg.observability.events.strategy import STRATEGY_CONTEXT_BUILT
+from synthorg.observability.events.strategy import (
+    STRATEGY_CONTEXT_BUILT,
+    STRATEGY_CONTEXT_PROVIDER_FAILED,
+)
 
 logger = get_logger(__name__)
 
@@ -62,6 +65,7 @@ class MemoryContextProvider:
     """
 
     def __init__(self, *, fallback: StrategicContextProvider) -> None:
+        """Initialize with a fallback context provider."""
         self._fallback = fallback
 
     def provide(self, *, config: StrategyConfig) -> StrategicContext:
@@ -86,6 +90,7 @@ class CompositeContextProvider:
         self,
         providers: tuple[StrategicContextProvider, ...],
     ) -> None:
+        """Initialize with an ordered tuple of context providers."""
         if not providers:
             msg = "CompositeContextProvider requires at least one provider"
             raise ValueError(msg)
@@ -94,12 +99,20 @@ class CompositeContextProvider:
     def provide(self, *, config: StrategyConfig) -> StrategicContext:
         """Try each provider in order, return first success."""
         last_exc: Exception | None = None
-        for provider in self._providers:
+        for i, provider in enumerate(self._providers):
+            provider_name = type(provider).__name__
             try:
                 return provider.provide(config=config)
             except MemoryError, RecursionError:
                 raise
             except Exception as exc:
+                logger.warning(
+                    STRATEGY_CONTEXT_PROVIDER_FAILED,
+                    provider_index=i,
+                    provider_name=provider_name,
+                    error_type=type(exc).__name__,
+                    error=str(exc),
+                )
                 last_exc = exc
                 continue
         # Should not happen with ConfigContextProvider as final fallback.

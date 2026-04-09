@@ -92,6 +92,7 @@ class BothFormatter:
     """Renders both structured and narrative formats."""
 
     def __init__(self) -> None:
+        """Initialize with structured and narrative sub-formatters."""
         self._structured = StructuredFormatter()
         self._narrative = NarrativeFormatter()
 
