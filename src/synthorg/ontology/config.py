@@ -1,7 +1,7 @@
 """Ontology subsystem configuration models."""
 
 from enum import StrEnum
-from typing import Self
+from typing import Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -246,7 +246,7 @@ class OntologyConfig(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
-    backend: NotBlankStr = Field(
+    backend: Literal["sqlite"] = Field(
         default="sqlite",
         description="Ontology backend selection",
     )

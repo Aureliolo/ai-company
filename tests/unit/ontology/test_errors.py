@@ -19,17 +19,20 @@ class TestOntologyErrorHierarchy:
     def test_base_error_is_exception(self) -> None:
         assert issubclass(OntologyError, Exception)
 
-    def test_connection_error_inherits_base(self) -> None:
-        assert issubclass(OntologyConnectionError, OntologyError)
-
-    def test_not_found_error_inherits_base(self) -> None:
-        assert issubclass(OntologyNotFoundError, OntologyError)
-
-    def test_duplicate_error_inherits_base(self) -> None:
-        assert issubclass(OntologyDuplicateError, OntologyError)
-
-    def test_config_error_inherits_base(self) -> None:
-        assert issubclass(OntologyConfigError, OntologyError)
+    @pytest.mark.parametrize(
+        "subclass",
+        [
+            OntologyConnectionError,
+            OntologyNotFoundError,
+            OntologyDuplicateError,
+            OntologyConfigError,
+        ],
+    )
+    def test_subclass_inherits_base(
+        self,
+        subclass: type[OntologyError],
+    ) -> None:
+        assert issubclass(subclass, OntologyError)
 
     def test_catch_base_catches_subtypes(self) -> None:
         for cls in (

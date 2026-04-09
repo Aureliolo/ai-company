@@ -156,7 +156,7 @@ concept and the canonical definition:
 
 ## Error Hierarchy
 
-```
+```text
 OntologyError (base)
   +-- OntologyConnectionError
   +-- OntologyNotFoundError
