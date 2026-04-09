@@ -308,15 +308,6 @@ field and `attachments` array have been removed in favour of a single
 
 All metadata fields are nullable except `extra`, which is always present (defaults to an empty list). The `extra` field contains additional key-value pairs for extensibility.
 
-### Migration from flat content model
-
-No schema migration is required.  Parts are stored as JSON in the
-existing `content` TEXT column.  The persistence layer includes a
-backward-compatible deserializer: when `json.loads()` fails (legacy
-plain-text rows), the raw string is automatically wrapped as a single
-`TextPart` payload.  Existing messages remain readable without any
-manual data migration step.
-
 ---
 
 ## Communication Config
