@@ -224,6 +224,7 @@ class TestEventConstants:
             "sandbox",
             "security",
             "stagnation",
+            "strategy",
             "task",
             "task_assignment",
             "task_engine",
