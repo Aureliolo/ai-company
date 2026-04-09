@@ -201,6 +201,7 @@ class TestEntityGuardImmutability:
         # Mutate the source dict
         original["Task"] = 999
         # Outcome should be unaffected
+        assert outcome.entity_versions is not None
         assert outcome.entity_versions["Task"] == 1
 
 
