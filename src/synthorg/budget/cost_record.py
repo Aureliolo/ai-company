@@ -11,9 +11,11 @@ from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validato
 
 from synthorg.budget.call_category import LLMCallCategory  # noqa: TC001
 from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.ontology.decorator import ontology_entity
 from synthorg.providers.enums import FinishReason  # noqa: TC001
 
 
+@ontology_entity
 class CostRecord(BaseModel):
     """Immutable record of a single API call's cost.
 

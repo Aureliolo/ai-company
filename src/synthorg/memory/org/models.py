@@ -19,6 +19,7 @@ from synthorg.core.enums import (
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.observability import get_logger
 from synthorg.observability.events.org_memory import ORG_MEMORY_MODEL_INVALID
+from synthorg.ontology.decorator import ontology_entity
 
 logger = get_logger(__name__)
 
@@ -109,6 +110,7 @@ class OrgFactAuthor(BaseModel):
         return self
 
 
+@ontology_entity
 class OrgFact(BaseModel):
     """An organizational fact -- a piece of shared company-wide knowledge.
 

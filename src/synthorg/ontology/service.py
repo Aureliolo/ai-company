@@ -1,0 +1,235 @@
+"""Ontology service -- orchestrates backend, versioning, and bootstrap."""
+
+from datetime import UTC, datetime
+from typing import TYPE_CHECKING
+
+from synthorg.observability import get_logger
+from synthorg.observability.events.ontology import (
+    ONTOLOGY_BOOTSTRAP_COMPLETED,
+    ONTOLOGY_BOOTSTRAP_ENTITY_SKIPPED,
+    ONTOLOGY_CONFIG_LOADED,
+    ONTOLOGY_VERSION_SNAPSHOT,
+)
+from synthorg.ontology.decorator import get_entity_registry
+from synthorg.ontology.errors import OntologyDuplicateError
+from synthorg.ontology.models import (
+    EntityDefinition,
+    EntityField,
+    EntitySource,
+    EntityTier,
+)
+
+if TYPE_CHECKING:
+    from synthorg.ontology.config import EntitiesConfig, OntologyConfig
+    from synthorg.ontology.protocol import OntologyBackend
+    from synthorg.versioning.service import VersioningService
+
+logger = get_logger(__name__)
+
+
+class OntologyService:
+    """Orchestrates the ontology backend, versioning, and bootstrap.
+
+    Args:
+        backend: The ontology storage backend.
+        versioning: Versioning service for entity definition snapshots.
+        config: Ontology configuration.
+    """
+
+    def __init__(
+        self,
+        backend: OntologyBackend,
+        versioning: VersioningService[EntityDefinition],
+        config: OntologyConfig,
+    ) -> None:
+        self._backend = backend
+        self._versioning = versioning
+        self._config = config
+
+    # ── Bootstrap ───────────────────────────────────────────────
+
+    async def bootstrap(self) -> int:
+        """Register all ``@ontology_entity``-decorated models.
+
+        Discovers entity definitions from the decorator registry and
+        registers each in the backend.  Already-registered entities
+        are skipped (idempotent).
+
+        Returns:
+            Number of newly registered entities.
+        """
+        registry = get_entity_registry()
+        registered = 0
+        for name, entity in registry.items():
+            try:
+                await self._backend.register(entity)
+                registered += 1
+            except OntologyDuplicateError:
+                logger.debug(
+                    ONTOLOGY_BOOTSTRAP_ENTITY_SKIPPED,
+                    entity_name=name,
+                    reason="already registered",
+                )
+                continue
+            await self._snapshot(entity)
+        logger.info(
+            ONTOLOGY_BOOTSTRAP_COMPLETED,
+            total=len(registry),
+            registered=registered,
+            skipped=len(registry) - registered,
+        )
+        return registered
+
+    async def bootstrap_from_config(
+        self,
+        entities_config: EntitiesConfig,
+    ) -> int:
+        """Register user-defined entities from YAML configuration.
+
+        Args:
+            entities_config: Parsed entity entries from YAML.
+
+        Returns:
+            Number of newly registered entities.
+        """
+        registered = 0
+        now = datetime.now(UTC)
+        for entry in entities_config.entries:
+            fields = tuple(
+                EntityField(
+                    name=field_name,
+                    type_hint="str",
+                    description=desc,
+                )
+                for field_name, desc in entry.fields.items()
+            )
+            entity = EntityDefinition(
+                name=entry.name,
+                tier=EntityTier.USER,
+                source=EntitySource.CONFIG,
+                definition=entry.definition,
+                fields=fields,
+                constraints=entry.constraints,
+                disambiguation=entry.disambiguation,
+                created_by="config",
+                created_at=now,
+                updated_at=now,
+            )
+            try:
+                await self._backend.register(entity)
+                registered += 1
+            except OntologyDuplicateError:
+                logger.debug(
+                    ONTOLOGY_BOOTSTRAP_ENTITY_SKIPPED,
+                    entity_name=entry.name,
+                    reason="already registered",
+                )
+                continue
+            await self._snapshot(entity)
+        logger.info(
+            ONTOLOGY_CONFIG_LOADED,
+            total=len(entities_config.entries),
+            registered=registered,
+        )
+        return registered
+
+    # ── CRUD ────────────────────────────────────────────────────
+
+    async def register(self, entity: EntityDefinition) -> None:
+        """Register a new entity definition and snapshot it.
+
+        Args:
+            entity: The entity definition to register.
+
+        Raises:
+            OntologyDuplicateError: If the entity already exists.
+        """
+        await self._backend.register(entity)
+        await self._snapshot(entity)
+
+    async def update(self, entity: EntityDefinition) -> None:
+        """Update an existing entity definition and snapshot it.
+
+        Args:
+            entity: The updated entity definition.
+
+        Raises:
+            OntologyNotFoundError: If the entity does not exist.
+        """
+        await self._backend.update(entity)
+        await self._snapshot(entity)
+
+    async def delete(self, name: str) -> None:
+        """Delete an entity definition.
+
+        Args:
+            name: Entity name.
+
+        Raises:
+            OntologyNotFoundError: If the entity does not exist.
+        """
+        await self._backend.delete(name)
+
+    async def get(self, name: str) -> EntityDefinition:
+        """Retrieve an entity definition by name.
+
+        Args:
+            name: Entity name.
+
+        Returns:
+            The matching entity definition.
+
+        Raises:
+            OntologyNotFoundError: If not found.
+        """
+        return await self._backend.get(name)
+
+    async def list_entities(
+        self,
+        *,
+        tier: EntityTier | None = None,
+    ) -> tuple[EntityDefinition, ...]:
+        """List entity definitions, optionally filtered by tier.
+
+        Args:
+            tier: Optional tier filter.
+
+        Returns:
+            Tuple of matching entity definitions.
+        """
+        return await self._backend.list_entities(tier=tier)
+
+    async def search(self, query: str) -> tuple[EntityDefinition, ...]:
+        """Search entity definitions by name or definition text.
+
+        Args:
+            query: Search string.
+
+        Returns:
+            Tuple of matching entity definitions.
+        """
+        return await self._backend.search(query)
+
+    async def get_version_manifest(self) -> dict[str, int]:
+        """Return the latest version for each entity.
+
+        Returns:
+            Mapping from entity name to latest version number.
+        """
+        return await self._backend.get_version_manifest()
+
+    # ── Internal ────────────────────────────────────────────────
+
+    async def _snapshot(self, entity: EntityDefinition) -> None:
+        """Create a version snapshot if content changed."""
+        result = await self._versioning.snapshot_if_changed(
+            entity_id=entity.name,
+            snapshot=entity,
+            saved_by=entity.created_by,
+        )
+        if result is not None:
+            logger.debug(
+                ONTOLOGY_VERSION_SNAPSHOT,
+                entity_name=entity.name,
+                version=result.version,
+            )

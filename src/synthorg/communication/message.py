@@ -14,6 +14,7 @@ from synthorg.communication.enums import (
 from synthorg.core.types import (
     NotBlankStr,  # noqa: TC001 -- required at runtime by Pydantic
 )
+from synthorg.ontology.decorator import ontology_entity
 
 
 class Attachment(BaseModel):
@@ -85,6 +86,7 @@ class MessageMetadata(BaseModel):
         return self
 
 
+@ontology_entity
 class Message(BaseModel):
     """An inter-agent message.
 

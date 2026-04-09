@@ -185,6 +185,13 @@ graph TD
 
     Agent memory, retrieval pipeline, shared organizational memory, and consolidation.
 
+-   [**Semantic Ontology**](ontology.md)
+
+    ---
+
+    Shared entity vocabulary, versioned definitions, drift detection, and context
+    injection for inter-agent semantic alignment.
+
 -   [**Operations**](operations.md)
 
     ---

@@ -25,6 +25,7 @@ from synthorg.core.role import Authority
 from synthorg.core.types import ModelTier, NotBlankStr  # noqa: TC001
 from synthorg.observability import get_logger
 from synthorg.observability.events.config import CONFIG_VALIDATION_FAILED
+from synthorg.ontology.decorator import ontology_entity
 from synthorg.tools.sub_constraints import ToolSubConstraints  # noqa: TC001
 
 logger = get_logger(__name__)
@@ -346,6 +347,7 @@ class ToolPermissions(BaseModel):
         return self
 
 
+@ontology_entity
 class AgentIdentity(BaseModel):
     """Complete agent identity card.
 

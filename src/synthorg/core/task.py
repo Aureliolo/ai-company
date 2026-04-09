@@ -19,6 +19,7 @@ from synthorg.core.task_transitions import validate_transition
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.observability import get_logger
 from synthorg.observability.events.task import TASK_STATUS_CHANGED
+from synthorg.ontology.decorator import ontology_entity
 
 logger = get_logger(__name__)
 
@@ -42,6 +43,7 @@ class AcceptanceCriterion(BaseModel):
     )
 
 
+@ontology_entity
 class Task(BaseModel):
     """A unit of work within the company.
 

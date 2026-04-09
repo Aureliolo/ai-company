@@ -19,8 +19,10 @@ from synthorg.core.enums import (
     ApprovalStatus,
 )
 from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.ontology.decorator import ontology_entity
 
 
+@ontology_entity(entity_name="Approval")
 class ApprovalItem(BaseModel):
     """A single item in the human approval queue.
 

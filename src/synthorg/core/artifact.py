@@ -6,6 +6,7 @@ from synthorg.core.enums import (
     ArtifactType,  # noqa: TC001 -- required at runtime by Pydantic
 )
 from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.ontology.decorator import ontology_entity
 
 
 class ExpectedArtifact(BaseModel):
@@ -26,6 +27,7 @@ class ExpectedArtifact(BaseModel):
     )
 
 
+@ontology_entity
 class Artifact(BaseModel):
     """A concrete artifact produced by an agent during task execution.
 

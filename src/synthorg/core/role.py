@@ -9,6 +9,7 @@ from synthorg.core.enums import (
     SkillCategory,
 )
 from synthorg.core.types import ModelTier, NotBlankStr  # noqa: TC001
+from synthorg.ontology.decorator import ontology_entity
 
 
 class Skill(BaseModel):
@@ -85,6 +86,7 @@ class SeniorityInfo(BaseModel):
     )
 
 
+@ontology_entity
 class Role(BaseModel):
     """A job definition within the organization.
 

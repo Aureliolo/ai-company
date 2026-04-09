@@ -25,6 +25,7 @@ from pydantic import (
 from synthorg.core.enums import DecisionOutcome  # noqa: TC001
 from synthorg.core.types import NotBlankStr, validate_unique_strings
 from synthorg.engine.immutable import deep_copy_mapping
+from synthorg.ontology.decorator import ontology_entity
 
 
 def _freeze_recursive(value: object) -> object:
@@ -53,6 +54,7 @@ def _freeze_recursive(value: object) -> object:
     return value
 
 
+@ontology_entity
 class DecisionRecord(BaseModel):
     """Immutable record of a review gate decision.
 

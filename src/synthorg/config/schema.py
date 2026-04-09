@@ -39,6 +39,7 @@ from synthorg.notifications.config import NotificationConfig
 from synthorg.observability import get_logger
 from synthorg.observability.config import LogConfig  # noqa: TC001
 from synthorg.observability.events.config import CONFIG_VALIDATION_FAILED
+from synthorg.ontology.config import OntologyConfig
 from synthorg.persistence.config import PersistenceConfig
 from synthorg.providers.enums import AuthType
 from synthorg.security.config import SecurityConfig
@@ -609,6 +610,7 @@ class RootConfig(BaseModel):
         backup: Backup and restore configuration.
         workflow: Workflow type configuration.
         notifications: Notification subsystem configuration.
+        ontology: Semantic ontology configuration.
         web: Web tool configuration (``None`` = default web config).
         database: Database tool configuration (``None`` = no database
             tools).
@@ -757,6 +759,10 @@ class RootConfig(BaseModel):
     notifications: NotificationConfig = Field(
         default_factory=NotificationConfig,
         description="Notification subsystem configuration",
+    )
+    ontology: OntologyConfig = Field(
+        default_factory=OntologyConfig,
+        description="Semantic ontology configuration",
     )
     web: WebToolsConfig | None = Field(
         default=None,

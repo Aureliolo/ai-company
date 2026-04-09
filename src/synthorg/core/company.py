@@ -15,6 +15,7 @@ from synthorg.observability.events.company import (
     COMPANY_BUDGET_UNDER_ALLOCATED,
     COMPANY_VALIDATION_ERROR,
 )
+from synthorg.ontology.decorator import ontology_entity
 from synthorg.security.autonomy.models import AutonomyConfig
 from synthorg.security.timeout.config import (
     ApprovalTimeoutConfig,
@@ -349,6 +350,7 @@ class Team(BaseModel):
         return self
 
 
+@ontology_entity
 class Department(BaseModel):
     """An organizational department.
 

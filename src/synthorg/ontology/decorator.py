@@ -1,0 +1,188 @@
+"""``@ontology_entity`` decorator for auto-deriving entity definitions.
+
+Decorating a Pydantic ``BaseModel`` subclass with ``@ontology_entity``
+registers the model in a module-level registry for startup discovery.
+Entity definitions are derived lazily (on first access via
+``get_entity_registry()``) to avoid circular imports through
+``synthorg.core``.
+"""
+
+import inspect
+import textwrap
+from datetime import UTC, datetime
+from types import MappingProxyType
+from typing import TYPE_CHECKING, Any, NamedTuple, overload
+
+from synthorg.ontology.errors import OntologyDuplicateError
+
+if TYPE_CHECKING:
+    from pydantic import BaseModel
+
+    from synthorg.ontology.models import (
+        EntityDefinition,
+        EntitySource,
+        EntityTier,
+    )
+
+
+class _RegistryEntry(NamedTuple):
+    """Raw registration data -- no ontology.models dependency."""
+
+    cls: type[BaseModel]
+    entity_name: str
+    tier: str  # EntityTier value (e.g. "core")
+    source: str  # EntitySource value (e.g. "auto")
+
+
+_RAW_REGISTRY: dict[str, _RegistryEntry] = {}
+_CACHE: dict[str, EntityDefinition] | None = None
+
+
+def get_entity_registry() -> MappingProxyType[str, EntityDefinition]:
+    """Return a read-only view of all registered entity definitions.
+
+    Builds ``EntityDefinition`` objects lazily on first call and
+    caches the result.  The cache is invalidated by
+    ``clear_entity_registry()``.
+    """
+    global _CACHE  # noqa: PLW0603
+    if _CACHE is None or len(_CACHE) != len(_RAW_REGISTRY):
+        _CACHE = {
+            name: _derive_definition(entry) for name, entry in _RAW_REGISTRY.items()
+        }
+    return MappingProxyType(_CACHE)
+
+
+def clear_entity_registry() -> None:
+    """Clear the entity registry (for testing only)."""
+    global _CACHE  # noqa: PLW0603
+    _RAW_REGISTRY.clear()
+    _CACHE = None
+
+
+def _derive_definition(entry: _RegistryEntry) -> EntityDefinition:
+    """Introspect a Pydantic model and build an EntityDefinition."""
+    from synthorg.ontology.models import (  # noqa: PLC0415
+        EntityDefinition,
+        EntityField,
+        EntitySource,
+        EntityTier,
+    )
+
+    cls = entry.cls
+    name = entry.entity_name
+
+    # Extract definition text from docstring.
+    raw_doc = cls.__doc__
+    definition = textwrap.dedent(raw_doc).strip() if raw_doc else name
+
+    # Extract fields that have descriptions.
+    fields: list[EntityField] = []
+    for field_name, field_info in cls.model_fields.items():
+        desc = field_info.description
+        if not desc:
+            continue
+
+        annotation = cls.model_fields[field_name].annotation
+        type_hint = _annotation_to_str(annotation) if annotation is not None else "Any"
+
+        fields.append(
+            EntityField(
+                name=field_name,
+                type_hint=type_hint,
+                description=desc,
+            ),
+        )
+
+    now = datetime.now(UTC)
+    return EntityDefinition(
+        name=name,
+        tier=EntityTier(entry.tier),
+        source=EntitySource(entry.source),
+        definition=definition,
+        fields=tuple(fields),
+        created_by="system",
+        created_at=now,
+        updated_at=now,
+    )
+
+
+def _annotation_to_str(annotation: Any) -> str:
+    """Convert a type annotation to a readable string."""
+    origin = getattr(annotation, "__origin__", None)
+    if origin is not None:
+        args = getattr(annotation, "__args__", ())
+        args_str = ", ".join(_annotation_to_str(a) for a in args)
+        origin_name = getattr(origin, "__name__", str(origin))
+        return f"{origin_name}[{args_str}]" if args else origin_name
+    if inspect.isclass(annotation):
+        return annotation.__name__
+    return str(annotation)
+
+
+@overload
+def ontology_entity(cls: type[BaseModel], /) -> type[BaseModel]: ...
+
+
+@overload
+def ontology_entity(
+    *,
+    entity_name: str | None = None,
+    tier: EntityTier | None = None,
+    source: EntitySource | None = None,
+) -> Any: ...
+
+
+def ontology_entity(
+    cls: type[BaseModel] | None = None,
+    /,
+    *,
+    entity_name: str | None = None,
+    tier: EntityTier | None = None,
+    source: EntitySource | None = None,
+) -> Any:
+    """Decorator to register a Pydantic model as an ontology entity.
+
+    Can be used with or without arguments::
+
+        @ontology_entity
+        class Task(BaseModel): ...
+
+
+        @ontology_entity(entity_name="Approval")
+        class ApprovalItem(BaseModel): ...
+
+    Args:
+        cls: The model class (when used without parentheses).
+        entity_name: Override the entity name (defaults to class name).
+        tier: Entity protection tier (default: CORE).
+        source: Entity origin source (default: AUTO).
+
+    Returns:
+        The original class, unchanged.
+
+    Raises:
+        OntologyDuplicateError: If an entity with the same name is
+            already registered.
+    """
+    tier_val = tier.value if tier is not None else "core"
+    source_val = source.value if source is not None else "auto"
+
+    def _do_register(target_cls: type[BaseModel]) -> type[BaseModel]:
+        global _CACHE  # noqa: PLW0603
+        name = entity_name or target_cls.__name__
+        if name in _RAW_REGISTRY:
+            msg = f"Entity '{name}' is already registered"
+            raise OntologyDuplicateError(msg)
+        _RAW_REGISTRY[name] = _RegistryEntry(
+            cls=target_cls,
+            entity_name=name,
+            tier=tier_val,
+            source=source_val,
+        )
+        _CACHE = None  # Invalidate cache.
+        return target_cls
+
+    if cls is not None:
+        return _do_register(cls)
+    return _do_register

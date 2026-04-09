@@ -18,6 +18,7 @@ from synthorg.communication.meeting.enums import (
 )
 from synthorg.core.enums import Priority
 from synthorg.core.types import NotBlankStr, validate_unique_strings
+from synthorg.ontology.decorator import ontology_entity
 
 
 class AgentResponse(BaseModel):
@@ -268,6 +269,7 @@ class MeetingMinutes(BaseModel):
         return self
 
 
+@ontology_entity(entity_name="Meeting")
 class MeetingRecord(BaseModel):
     """Audit trail entry for a meeting execution.
 

@@ -8,8 +8,10 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.core.enums import ProjectStatus
 from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.ontology.decorator import ontology_entity
 
 
+@ontology_entity
 class Project(BaseModel):
     """A collection of related tasks with a shared goal, team, and deadline.
 
