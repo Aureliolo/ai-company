@@ -10,7 +10,7 @@ from synthorg.ontology.injection.prompt import (
     _format_entity,
 )
 from synthorg.ontology.models import EntityDefinition
-from synthorg.providers.models import MessageRole
+from synthorg.providers.enums import MessageRole
 
 
 @pytest.mark.unit
@@ -72,6 +72,7 @@ class TestPromptInjectionStrategy:
         )
         assert len(messages) == 1
         assert messages[0].role == MessageRole.SYSTEM
+        assert messages[0].content is not None
         assert "Entity Definitions" in messages[0].content
         assert "Task" in messages[0].content
         assert "AgentIdentity" in messages[0].content
@@ -87,6 +88,7 @@ class TestPromptInjectionStrategy:
             task_context="Do some work",
             token_budget=5000,
         )
+        assert messages[0].content is not None
         assert "Invoice" not in messages[0].content
 
     async def test_respects_token_budget(
@@ -106,6 +108,7 @@ class TestPromptInjectionStrategy:
         # With a very small budget, may include 0 or 1 entities
         if messages:
             content = messages[0].content
+            assert content is not None
             # Should not include both entities with tiny budget
             parts = content.split("## ")
             # parts[0] is header, each subsequent is an entity

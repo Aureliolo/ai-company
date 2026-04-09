@@ -6,7 +6,7 @@ import pytest
 
 from synthorg.ontology.injection.hybrid import HybridInjectionStrategy
 from synthorg.ontology.injection.tool import LOOKUP_ENTITY_TOOL_NAME
-from synthorg.providers.models import MessageRole
+from synthorg.providers.enums import MessageRole
 
 
 @pytest.mark.unit
@@ -26,6 +26,7 @@ class TestHybridInjectionStrategy:
         )
         assert len(messages) == 1
         assert messages[0].role == MessageRole.SYSTEM
+        assert messages[0].content is not None
         assert "Task" in messages[0].content
 
     async def test_user_entities_not_in_prompt(
@@ -39,6 +40,7 @@ class TestHybridInjectionStrategy:
             task_context="Do work",
             token_budget=5000,
         )
+        assert messages[0].content is not None
         assert "Invoice" not in messages[0].content
 
     def test_provides_lookup_tool(
