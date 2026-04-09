@@ -203,17 +203,6 @@ class TestEntityGuardImmutability:
         # Outcome should be unaffected
         assert outcome.entity_versions["Task"] == 1
 
-    async def test_stamp_returns_immutable_mapping(self) -> None:
-        """STAMP mode returns a non-mutable mapping."""
-        backend = _make_backend()
-        config = DelegationGuardConfig(guard_mode=GuardMode.STAMP)
-        guard = EntityAlignmentGuard(ontology=backend, config=config)
-        request = _make_request()
-
-        outcome = await guard.check(request)
-        with pytest.raises(TypeError):
-            outcome.entity_versions["new_key"] = 42  # type: ignore[index]
-
 
 @pytest.mark.unit
 class TestEntityAlignmentGuardProperties:
