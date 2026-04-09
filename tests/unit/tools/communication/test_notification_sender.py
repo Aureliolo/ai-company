@@ -66,37 +66,40 @@ class TestNotificationSenderTool:
         assert notif.title == "Deployment complete"
         assert notif.source == "deploy-agent"
 
-    async def test_execute_invalid_category(
+    @pytest.mark.parametrize(
+        ("args", "expected_msg"),
+        [
+            (
+                {
+                    "category": "invalid",
+                    "severity": "info",
+                    "title": "Test",
+                    "source": "test",
+                },
+                "Invalid category",
+            ),
+            (
+                {
+                    "category": "system",
+                    "severity": "invalid",
+                    "title": "Test",
+                    "source": "test",
+                },
+                "Invalid severity",
+            ),
+        ],
+        ids=["invalid_category", "invalid_severity"],
+    )
+    async def test_execute_invalid_enum(
         self,
         mock_dispatcher: MockNotificationDispatcher,
+        args: dict[str, str],
+        expected_msg: str,
     ) -> None:
         tool = NotificationSenderTool(dispatcher=mock_dispatcher)
-        result = await tool.execute(
-            arguments={
-                "category": "invalid",
-                "severity": "info",
-                "title": "Test",
-                "source": "test",
-            }
-        )
+        result = await tool.execute(arguments=args)
         assert result.is_error
-        assert "Invalid category" in result.content
-
-    async def test_execute_invalid_severity(
-        self,
-        mock_dispatcher: MockNotificationDispatcher,
-    ) -> None:
-        tool = NotificationSenderTool(dispatcher=mock_dispatcher)
-        result = await tool.execute(
-            arguments={
-                "category": "system",
-                "severity": "invalid",
-                "title": "Test",
-                "source": "test",
-            }
-        )
-        assert result.is_error
-        assert "Invalid severity" in result.content
+        assert expected_msg in result.content
 
     async def test_execute_dispatch_error(
         self,

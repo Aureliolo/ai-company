@@ -134,7 +134,7 @@ class TestEmailSenderTool:
     @patch.object(EmailSenderTool, "_send_sync")
     async def test_execute_rejects_newline_in_address(
         self,
-        mock_send: object,
+        mock_send: MagicMock,
         comm_config: CommunicationToolsConfig,
     ) -> None:
         tool = EmailSenderTool(config=comm_config)
@@ -146,6 +146,7 @@ class TestEmailSenderTool:
         )
         assert result.is_error
         assert "invalid characters" in result.content
+        mock_send.assert_not_called()
 
     def test_parameters_schema_requires_to_and_subject(
         self,

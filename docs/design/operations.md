@@ -691,8 +691,9 @@ Per-category backend selection is implemented in `tools/sandbox/factory.py` via 
 `build_sandbox_backends` (instantiates only the backends referenced by config),
 `resolve_sandbox_for_category` (looks up the correct backend for a `ToolCategory`), and
 `cleanup_sandbox_backends` (parallel cleanup with error isolation). The tool factory
-(`build_default_tools_from_config`) wires tool categories.  `VERSION_CONTROL` tools
-(git, file system) are part of the default toolset and always registered.  The
+(`build_default_tools_from_config`) wires tool categories.  Core tools
+(`FILE_SYSTEM`, `VERSION_CONTROL`, web, etc.) are part of the default toolset
+and always registered.  The
 auxiliary categories `DESIGN`, `COMMUNICATION`, and `ANALYTICS` are opt-in: tools
 are only registered when the corresponding config section is present, and some
 individual tools additionally require a runtime dependency (e.g. image tools

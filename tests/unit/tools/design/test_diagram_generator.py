@@ -105,28 +105,31 @@ class TestDiagramGeneratorTool:
         assert 'label="My \\"Quoted\\" Title"' in result.content
         assert 'label="My "Quoted" Title"' not in result.content
 
-    async def test_execute_invalid_diagram_type(self) -> None:
+    @pytest.mark.parametrize(
+        ("args", "expected_msg"),
+        [
+            (
+                {"diagram_type": "invalid", "description": "test"},
+                "Invalid diagram_type",
+            ),
+            (
+                {
+                    "diagram_type": "flowchart",
+                    "description": "test",
+                    "output_format": "pdf",
+                },
+                "Invalid output_format",
+            ),
+        ],
+        ids=["invalid_diagram_type", "invalid_output_format"],
+    )
+    async def test_execute_invalid_inputs(
+        self, args: dict[str, str], expected_msg: str
+    ) -> None:
         tool = DiagramGeneratorTool()
-        result = await tool.execute(
-            arguments={
-                "diagram_type": "invalid",
-                "description": "test",
-            }
-        )
+        result = await tool.execute(arguments=args)
         assert result.is_error
-        assert "Invalid diagram_type" in result.content
-
-    async def test_execute_invalid_output_format(self) -> None:
-        tool = DiagramGeneratorTool()
-        result = await tool.execute(
-            arguments={
-                "diagram_type": "flowchart",
-                "description": "test",
-                "output_format": "pdf",
-            }
-        )
-        assert result.is_error
-        assert "Invalid output_format" in result.content
+        assert expected_msg in result.content
 
     async def test_execute_architecture_uses_graph_in_graphviz(
         self,

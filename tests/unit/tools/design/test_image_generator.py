@@ -69,6 +69,7 @@ class TestImageGeneratorTool:
                 "quality": "high",
             }
         )
+        assert len(mock_provider.calls) == 1
         call = mock_provider.calls[0]
         assert call["prompt"] == "test"
         assert call["style"] == "sketch"
@@ -97,6 +98,7 @@ class TestImageGeneratorTool:
     ) -> None:
         tool = ImageGeneratorTool(provider=mock_provider)
         await tool.execute(arguments={"prompt": "test"})
+        assert len(mock_provider.calls) == 1
         call = mock_provider.calls[0]
         assert call["style"] == "realistic"
         assert call["quality"] == "standard"
