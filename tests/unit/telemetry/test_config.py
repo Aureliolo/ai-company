@@ -51,8 +51,8 @@ class TestTelemetryBackend:
     """TelemetryBackend enum values."""
 
     def test_values(self) -> None:
-        assert TelemetryBackend.LOGFIRE == "logfire"
-        assert TelemetryBackend.NOOP == "noop"
+        assert TelemetryBackend.LOGFIRE.value == "logfire"
+        assert TelemetryBackend.NOOP.value == "noop"
 
     def test_from_string(self) -> None:
         assert TelemetryBackend("logfire") == TelemetryBackend.LOGFIRE
