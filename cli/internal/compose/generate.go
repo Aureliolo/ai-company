@@ -43,6 +43,7 @@ type Params struct {
 	DockerSock         string
 	PersistenceBackend string
 	MemoryBackend      string
+	TelemetryOptIn     bool
 	DigestPins         map[string]string // image name suffix → digest (e.g. "backend" → "sha256:abc...")
 }
 
@@ -60,6 +61,7 @@ func ParamsFromState(s config.State) Params {
 		DockerSock:         s.DockerSock,
 		PersistenceBackend: s.PersistenceBackend,
 		MemoryBackend:      s.MemoryBackend,
+		TelemetryOptIn:     s.TelemetryOptIn,
 	}
 }
 

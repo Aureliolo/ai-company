@@ -25,6 +25,13 @@ logger = get_logger(__name__)
 
 _TOKEN_ENV = "SYNTHORG_TELEMETRY_TOKEN"  # noqa: S105
 
+# Write-only token for the SynthOrg project on Logfire.
+# This token can ONLY send data -- it cannot read telemetry,
+# access the account, or perform any other operation.  Safe to
+# embed in source (same pattern as Sentry DSNs, PostHog keys).
+# Override via SYNTHORG_TELEMETRY_TOKEN env var for self-hosted.
+_DEFAULT_TOKEN = "pylf_v1_eu_BMgmPmm3hLxdSz2fRQkpL0l62rYzvRJBbScQddH2wB7n"  # noqa: S105
+
 
 class LogfireReporter:
     """Logfire SDK-based telemetry reporter.
@@ -33,8 +40,9 @@ class LogfireReporter:
     Events are sent as Logfire log records with structured properties.
 
     Args:
-        token: Logfire write token.  When ``None``, reads from
-            ``SYNTHORG_TELEMETRY_TOKEN`` env var.
+        token: Logfire write token.  When ``None``, uses the
+            ``SYNTHORG_TELEMETRY_TOKEN`` env var or the embedded
+            default project token.
     """
 
     def __init__(self, token: str | None = None) -> None:
@@ -46,7 +54,7 @@ class LogfireReporter:
 
         self._logfire = _logfire
 
-        resolved_token = token or os.environ.get(_TOKEN_ENV)
+        resolved_token = token or os.environ.get(_TOKEN_ENV) or _DEFAULT_TOKEN
 
         self._logfire.configure(
             token=resolved_token,

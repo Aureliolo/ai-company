@@ -192,6 +192,7 @@ type setupAnswers struct {
 	memoryBackend      string
 	channel            string // optional override (empty = default "stable")
 	imageTag           string // optional override (empty = use CLI version)
+	telemetryOptIn     bool
 }
 
 // validateInitFlags checks that provided CLI flag values are valid before
@@ -303,6 +304,14 @@ func runSetupFormWithOverrides(resolvedDataDir string) (setupAnswers, error) {
 					a.persistenceBackend, a.memoryBackend,
 				)),
 		),
+		huh.NewGroup(
+			huh.NewConfirm().Title("Help improve SynthOrg?").
+				Description(
+					"Send anonymous usage data (agent count, feature usage, error rates).\n"+
+						"We NEVER collect API keys, chat content, or personal data.\n"+
+						"You can change this later: synthorg config set telemetry_opt_in false",
+				).Value(&a.telemetryOptIn),
+		),
 	)
 
 	if err := form.Run(); err != nil {
@@ -357,6 +366,7 @@ func buildState(a setupAnswers) (config.State, error) {
 		SettingsKey:        settingsKey,
 		PersistenceBackend: a.persistenceBackend,
 		MemoryBackend:      a.memoryBackend,
+		TelemetryOptIn:     a.telemetryOptIn,
 	}, nil
 }
 

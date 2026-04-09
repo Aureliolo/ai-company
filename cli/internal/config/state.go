@@ -41,6 +41,9 @@ type State struct {
 	AutoRestart        bool `json:"auto_restart"`
 	AutoApplyCompose   bool `json:"auto_apply_compose"`
 	AutoStartAfterWipe bool `json:"auto_start_after_wipe"`
+
+	// Telemetry (opt-in anonymous product telemetry, default false).
+	TelemetryOptIn bool `json:"telemetry_opt_in"`
 }
 
 // DefaultState returns a State with sensible defaults for the interactive init

@@ -17,6 +17,7 @@ services:
       SYNTHORG_MEMORY_BACKEND: "mem0"
       SYNTHORG_LOG_DIR: "/data/logs"
       MEM0_TELEMETRY: "false"
+      SYNTHORG_TELEMETRY: "false"
       SYNTHORG_LOG_LEVEL: "info"
     user: "65532:65532"
     # CIS Docker Benchmark v1.6.0 hardening (5.3, 5.12, 5.25, 5.28)

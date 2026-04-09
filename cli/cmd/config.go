@@ -24,7 +24,7 @@ var supportedConfigKeys = []string{
 	"auto_start_after_wipe", "auto_update_cli",
 	"backend_port", "channel", "color", "docker_sock",
 	"hints", "image_tag", "log_level", "output",
-	"sandbox", "timestamps", "web_port",
+	"sandbox", "telemetry_opt_in", "timestamps", "web_port",
 }
 
 var configCmd = &cobra.Command{
@@ -223,7 +223,8 @@ var gettableConfigKeys = []string{
 	"auto_start_after_wipe", "auto_update_cli",
 	"backend_port", "channel", "color", "docker_sock",
 	"hints", "image_tag", "log_level", "memory_backend",
-	"output", "persistence_backend", "sandbox", "timestamps", "web_port",
+	"output", "persistence_backend", "sandbox", "telemetry_opt_in",
+	"timestamps", "web_port",
 }
 
 func completeConfigGetKeys(_ *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) {
@@ -392,6 +393,8 @@ func applyConfigValue(state *config.State, key, value string) error {
 		return setEnum(value, key, config.IsValidOutputMode, config.OutputModeNames, &state.Output)
 	case "sandbox":
 		return setBool(value, key, &state.Sandbox)
+	case "telemetry_opt_in":
+		return setBool(value, key, &state.TelemetryOptIn)
 	case "timestamps":
 		return setEnum(value, key, config.IsValidTimestampMode, config.TimestampModeNames, &state.Timestamps)
 	case "web_port":
@@ -448,6 +451,7 @@ func maskSecret(s string) string {
 var composeAffectingKeys = map[string]bool{
 	"backend_port": true, "web_port": true, "sandbox": true,
 	"docker_sock": true, "image_tag": true, "log_level": true,
+	"telemetry_opt_in": true,
 }
 
 // regenerateCompose regenerates compose.yml from the current state.
@@ -549,6 +553,8 @@ func resetConfigValue(state *config.State, key string) error {
 		state.Output = ""
 	case "sandbox":
 		state.Sandbox = defaults.Sandbox
+	case "telemetry_opt_in":
+		state.TelemetryOptIn = defaults.TelemetryOptIn
 	case "timestamps":
 		state.Timestamps = ""
 	case "web_port":
@@ -585,6 +591,8 @@ func envVarForKey(key string) string {
 		return EnvAutoPull
 	case "auto_restart":
 		return EnvAutoRestart
+	case "telemetry_opt_in":
+		return EnvTelemetry
 	default:
 		return ""
 	}
@@ -667,6 +675,8 @@ func configGetValue(state config.State, key string) string {
 		return state.PersistenceBackend
 	case "sandbox":
 		return strconv.FormatBool(state.Sandbox)
+	case "telemetry_opt_in":
+		return strconv.FormatBool(state.TelemetryOptIn)
 	case "timestamps":
 		return state.Timestamps
 	case "web_port":
