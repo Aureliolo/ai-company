@@ -1778,14 +1778,24 @@ class AgentEngine:
             )
         if self._ontology_injection_strategy is not None:
             tool_defs = self._ontology_injection_strategy.get_tool_definitions()
-            if tool_defs and hasattr(self._ontology_injection_strategy, "tool"):
+            if tool_defs:
+                from synthorg.ontology.injection.hybrid import (  # noqa: PLC0415
+                    HybridInjectionStrategy,
+                )
+                from synthorg.ontology.injection.tool import (  # noqa: PLC0415
+                    ToolBasedInjectionStrategy,
+                )
                 from synthorg.tools.registry import (  # noqa: PLC0415
                     ToolRegistry as _ToolRegistry,
                 )
 
-                ontology_tool = self._ontology_injection_strategy.tool
-                existing = list(registry.all_tools())
-                registry = _ToolRegistry([*existing, ontology_tool])
+                if isinstance(
+                    self._ontology_injection_strategy,
+                    ToolBasedInjectionStrategy | HybridInjectionStrategy,
+                ):
+                    ontology_tool = self._ontology_injection_strategy.tool
+                    existing = list(registry.all_tools())
+                    registry = _ToolRegistry([*existing, ontology_tool])
         checker = ToolPermissionChecker.from_permissions(identity.tools)
         interceptor = self._make_security_interceptor(effective_autonomy)
         return ToolInvoker(

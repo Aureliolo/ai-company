@@ -1,6 +1,8 @@
 """Request and response DTOs for the ontology REST API."""
 
-from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
+from typing import Self
+
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.ontology.models import (
@@ -89,6 +91,22 @@ class UpdateEntityRequest(BaseModel):
         default=None,
         description="Updated relationships",
     )
+
+    @model_validator(mode="after")
+    def _validate_not_empty(self) -> Self:
+        """Ensure at least one field is being updated."""
+        if not any(
+            [
+                self.definition is not None,
+                self.fields is not None,
+                self.constraints is not None,
+                self.disambiguation is not None,
+                self.relationships is not None,
+            ]
+        ):
+            msg = "At least one field must be specified for update"
+            raise ValueError(msg)
+        return self
 
 
 # ── Response DTOs ──────────────────────────────────────────────

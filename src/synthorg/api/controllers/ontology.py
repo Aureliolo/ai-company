@@ -287,7 +287,7 @@ class OntologyController(Controller):
             msg = "Entity not found"
             raise NotFoundError(msg)  # noqa: B904
 
-        versions = await svc._versioning._repo.list_versions(  # noqa: SLF001
+        versions = await svc.list_versions(
             name,
             limit=limit,
             offset=offset,
@@ -321,10 +321,7 @@ class OntologyController(Controller):
         app_state: AppState = state.app_state
         svc = app_state.ontology_service
 
-        v = await svc._versioning._repo.get_version(  # noqa: SLF001
-            name,
-            version,
-        )
+        v = await svc.get_version(name, version)
         if v is None:
             msg = "Version not found"
             raise NotFoundError(msg)

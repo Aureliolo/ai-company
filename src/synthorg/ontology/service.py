@@ -22,6 +22,7 @@ from synthorg.ontology.models import (
 if TYPE_CHECKING:
     from synthorg.ontology.config import EntitiesConfig, OntologyConfig
     from synthorg.ontology.protocol import OntologyBackend
+    from synthorg.versioning.models import VersionSnapshot
     from synthorg.versioning.service import VersioningService
 
 logger = get_logger(__name__)
@@ -235,6 +236,48 @@ class OntologyService:
             Mapping from entity name to latest version number.
         """
         return await self._backend.get_version_manifest()
+
+    async def list_versions(
+        self,
+        entity_name: str,
+        *,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> tuple[VersionSnapshot[EntityDefinition], ...]:
+        """List version snapshots for an entity.
+
+        Args:
+            entity_name: Entity to query versions for.
+            limit: Maximum versions to return.
+            offset: Number of versions to skip.
+
+        Returns:
+            Version snapshots ordered newest first.
+        """
+        return await self._versioning._repo.list_versions(  # noqa: SLF001
+            entity_name,
+            limit=limit,
+            offset=offset,
+        )
+
+    async def get_version(
+        self,
+        entity_name: str,
+        version: int,
+    ) -> VersionSnapshot[EntityDefinition] | None:
+        """Get a specific version snapshot.
+
+        Args:
+            entity_name: Entity name.
+            version: Version number to retrieve.
+
+        Returns:
+            The version snapshot, or None if not found.
+        """
+        return await self._versioning._repo.get_version(  # noqa: SLF001
+            entity_name,
+            version,
+        )
 
     # ── Internal ────────────────────────────────────────────────
 

@@ -4,6 +4,7 @@
 import { AlertTriangle, BarChart3 } from 'lucide-react'
 import { SectionCard } from '@/components/ui/section-card'
 import { EmptyState } from '@/components/ui/empty-state'
+import { SkeletonTable } from '@/components/ui/skeleton'
 import { cn } from '@/lib/utils'
 import type { DriftReportResponse } from '@/api/endpoints/ontology'
 
@@ -53,7 +54,9 @@ export function DriftMonitor({ reports, loading, error }: DriftMonitorProps) {
         </div>
       )}
 
-      {!loading && reports.length === 0 ? (
+      {loading ? (
+        <SkeletonTable rows={3} />
+      ) : reports.length === 0 ? (
         <EmptyState
           title="No drift data"
           description="Drift detection results will appear here after the first analysis run."

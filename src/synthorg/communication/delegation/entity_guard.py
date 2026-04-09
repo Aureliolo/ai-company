@@ -5,9 +5,9 @@ delegatee at delegation time.  Four configurable modes control the
 enforcement level, from no-op to strict rejection.
 """
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Self
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.observability import get_logger
@@ -51,6 +51,17 @@ class EntityGuardOutcome(BaseModel):
         default=None,
         description="Entity version manifest at check time",
     )
+
+    @model_validator(mode="after")
+    def _validate_consistency(self) -> Self:
+        """Enforce pass/fail message consistency."""
+        if self.passed and self.message:
+            msg = "message must be empty when passed is True"
+            raise ValueError(msg)
+        if not self.passed and not self.message:
+            msg = "message is required when passed is False"
+            raise ValueError(msg)
+        return self
 
 
 class EntityAlignmentGuard:
