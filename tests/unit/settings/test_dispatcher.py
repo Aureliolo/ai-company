@@ -10,7 +10,7 @@ import pytest
 from synthorg.communication.channel import Channel
 from synthorg.communication.enums import ChannelType, MessageType
 from synthorg.communication.errors import ChannelAlreadyExistsError
-from synthorg.communication.message import Message, MessageMetadata
+from synthorg.communication.message import Message, MessageMetadata, TextPart
 from synthorg.communication.subscription import DeliveryEnvelope, Subscription
 from synthorg.settings.dispatcher import SettingsChangeDispatcher
 
@@ -29,7 +29,7 @@ def _settings_message(
         to="#settings",
         type=MessageType.ANNOUNCEMENT,
         channel="#settings",
-        content=f"Setting changed: {namespace}/{key}",
+        parts=(TextPart(text=f"Setting changed: {namespace}/{key}"),),
         metadata=MessageMetadata(
             extra=(
                 ("namespace", namespace),
@@ -411,7 +411,7 @@ class TestMetadataExtraction:
             to="#settings",
             type=MessageType.ANNOUNCEMENT,
             channel="#settings",
-            content="bad message",
+            parts=(TextPart(text="bad message"),),
             metadata=MessageMetadata(extra=()),
         )
         bus.enqueue(_envelope(msg))
@@ -431,7 +431,7 @@ class TestMetadataExtraction:
             to="#settings",
             type=MessageType.ANNOUNCEMENT,
             channel="#settings",
-            content="partial",
+            parts=(TextPart(text="partial"),),
             metadata=MessageMetadata(
                 extra=(("namespace", "providers"),),
             ),
@@ -457,7 +457,7 @@ class TestMetadataExtraction:
             to="#settings",
             type=MessageType.ANNOUNCEMENT,
             channel="#settings",
-            content="no restart flag",
+            parts=(TextPart(text="no restart flag"),),
             metadata=MessageMetadata(
                 extra=(("namespace", "ns"), ("key", "k")),
             ),

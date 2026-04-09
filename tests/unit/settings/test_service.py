@@ -412,7 +412,7 @@ class TestNotifications:
         bus.publish.assert_called_once()
         msg = bus.publish.call_args[0][0]
         assert msg.channel == "#settings"
-        assert "total_monthly" in msg.content
+        assert "total_monthly" in msg.text
 
     async def test_publishes_on_delete(
         self, mock_repo: AsyncMock, registry: SettingsRegistry, config: _FakeConfig

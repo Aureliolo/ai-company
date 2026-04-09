@@ -11,7 +11,7 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 from synthorg.communication.enums import MessageType
-from synthorg.communication.message import Message, MessageMetadata
+from synthorg.communication.message import Message, MessageMetadata, TextPart
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
 from synthorg.observability.events.settings import (
@@ -637,7 +637,7 @@ class SettingsService:
                 to="#settings",
                 type=MessageType.ANNOUNCEMENT,
                 channel="#settings",
-                content=f"Setting changed: {namespace}/{key}",
+                parts=(TextPart(text=f"Setting changed: {namespace}/{key}"),),
                 metadata=MessageMetadata(
                     extra=(
                         ("namespace", namespace),

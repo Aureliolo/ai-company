@@ -12,7 +12,7 @@ from synthorg.communication.enums import (
     MessageType,
 )
 from synthorg.communication.errors import ChannelNotFoundError
-from synthorg.communication.message import Message
+from synthorg.communication.message import Message, TextPart
 from synthorg.communication.messenger import AgentMessenger
 from synthorg.communication.subscription import Subscription
 
@@ -422,7 +422,7 @@ class TestHandlerDelegation:
             to="agent-a",
             type=MessageType.TASK_UPDATE,
             channel="#eng",
-            content="test",
+            parts=(TextPart(text="test"),),
         )
 
         result = await messenger.dispatch_message(msg)
@@ -448,7 +448,7 @@ class TestHandlerDelegation:
             to="agent-a",
             type=MessageType.TASK_UPDATE,
             channel="#eng",
-            content="test",
+            parts=(TextPart(text="test"),),
         )
 
         result = await messenger.dispatch_message(msg)
@@ -480,7 +480,7 @@ class TestHandlerDelegation:
             to="agent-a",
             type=MessageType.TASK_UPDATE,
             channel="#eng",
-            content="test",
+            parts=(TextPart(text="test"),),
         )
         result = await messenger.dispatch_message(msg)
         assert result.handlers_matched == 1

@@ -23,20 +23,15 @@ from synthorg.communication.conflict_resolution.config import (
     HybridConfig,
 )
 from synthorg.communication.enums import (
-    AttachmentType,
     ChannelType,
     MessagePriority,
     MessageType,
 )
 from synthorg.communication.meeting.frequency import MeetingFrequency
-from synthorg.communication.message import Attachment, Message, MessageMetadata
+from synthorg.communication.message import Message, MessageMetadata, TextPart
 from synthorg.communication.subscription import DeliveryEnvelope, Subscription
 
 # ── Factories ──────────────────────────────────────────────────────
-
-
-class AttachmentFactory(ModelFactory[Attachment]):
-    __model__ = Attachment
 
 
 class MessageMetadataFactory(ModelFactory[MessageMetadata]):
@@ -51,8 +46,12 @@ class MessageMetadataFactory(ModelFactory[MessageMetadata]):
 class MessageFactory(ModelFactory[Message]):
     __model__ = Message
     priority = MessagePriority.NORMAL
-    attachments = ()
     metadata = MessageMetadataFactory
+
+    @classmethod
+    def parts(cls) -> tuple[TextPart, ...]:
+        """Generate at least one TextPart for the message."""
+        return (TextPart(text="Sample message content"),)
 
 
 class ChannelFactory(ModelFactory[Channel]):
@@ -136,11 +135,6 @@ class CommunicationConfigFactory(ModelFactory[CommunicationConfig]):
 
 
 @pytest.fixture
-def sample_attachment() -> Attachment:
-    return Attachment(type=AttachmentType.ARTIFACT, ref="pr-42")
-
-
-@pytest.fixture
 def sample_metadata() -> MessageMetadata:
     return MessageMetadata(
         task_id="task-123",
@@ -159,8 +153,7 @@ def sample_message(sample_metadata: MessageMetadata) -> Message:
         type=MessageType.TASK_UPDATE,
         priority=MessagePriority.NORMAL,
         channel="#backend",
-        content="Completed API endpoint for user authentication.",
-        attachments=(Attachment(type=AttachmentType.ARTIFACT, ref="pr-42"),),
+        parts=(TextPart(text="Completed API endpoint for user authentication."),),
         metadata=sample_metadata,
     )
 

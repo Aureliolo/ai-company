@@ -81,7 +81,7 @@ async def publish_snapshot(
         # Deferred to break circular import:
         # communication -> engine -> communication
         from synthorg.communication.enums import MessageType  # noqa: PLC0415
-        from synthorg.communication.message import Message  # noqa: PLC0415
+        from synthorg.communication.message import Message, TextPart  # noqa: PLC0415
 
         msg = Message(
             timestamp=datetime.now(UTC),
@@ -89,7 +89,7 @@ async def publish_snapshot(
             to=channel,
             type=MessageType.TASK_UPDATE,
             channel=channel,
-            content=event.model_dump_json(),
+            parts=(TextPart(text=event.model_dump_json()),),
         )
         await message_bus.publish(msg)
         logger.debug(

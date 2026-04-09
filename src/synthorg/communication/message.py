@@ -1,34 +1,154 @@
 """Message domain models (see Communication design page)."""
 
 from collections import Counter
-from typing import Self
+from types import MappingProxyType
+from typing import Annotated, Any, Literal, Self
 from uuid import UUID, uuid4
 
-from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
+from pydantic import (
+    AwareDatetime,
+    BaseModel,
+    ConfigDict,
+    Discriminator,
+    Field,
+    computed_field,
+    field_serializer,
+    field_validator,
+    model_validator,
+)
 
 from synthorg.communication.enums import (
-    AttachmentType,
     MessagePriority,
     MessageType,
 )
+from synthorg.core.immutable import deep_copy_mapping, freeze_recursive
 from synthorg.core.types import (
     NotBlankStr,  # noqa: TC001 -- required at runtime by Pydantic
 )
 from synthorg.ontology.decorator import ontology_entity
 
+# ── Part types ────────────────────────────────────────────────────
 
-class Attachment(BaseModel):
-    """A reference attached to a message.
+
+class TextPart(BaseModel):
+    """Plain text message content.
 
     Attributes:
-        type: The kind of attachment.
-        ref: Reference identifier (e.g. artifact ID, URL, file path).
+        type: Discriminator literal (always ``"text"``).
+        text: The text content (must not be blank).
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
-    type: AttachmentType = Field(description="Kind of attachment")
-    ref: NotBlankStr = Field(description="Reference identifier")
+    type: Literal["text"] = Field(
+        default="text",
+        description="Part type discriminator",
+    )
+    text: NotBlankStr = Field(description="Text content")
+
+
+class DataPart(BaseModel):
+    """Structured JSON data attached to a message.
+
+    The ``data`` field is deep-copied and recursively frozen at
+    construction (``dict`` -> ``MappingProxyType``, ``list`` ->
+    ``tuple``, ``set`` -> ``frozenset``) to preserve the immutability
+    contract of frozen Pydantic models.
+
+    Attributes:
+        type: Discriminator literal (always ``"data"``).
+        data: Structured JSON content (read-only after construction).
+    """
+
+    model_config = ConfigDict(
+        frozen=True,
+        allow_inf_nan=False,
+        arbitrary_types_allowed=True,
+    )
+
+    type: Literal["data"] = Field(
+        default="data",
+        description="Part type discriminator",
+    )
+    data: MappingProxyType[str, Any] = Field(
+        description="Structured JSON content (read-only)",
+    )
+
+    @field_validator("data", mode="before")
+    @classmethod
+    def _deep_copy_and_freeze_data(cls, value: object) -> object:
+        """Deep-copy and recursively freeze data.
+
+        Follows the same pattern as
+        ``DecisionRecord._deep_copy_and_freeze_metadata``.
+        """
+        if isinstance(value, MappingProxyType):
+            value = dict(value)
+        copied = deep_copy_mapping(value)
+        return freeze_recursive(copied)
+
+    @field_serializer("data")
+    @classmethod
+    def _serialize_data(
+        cls,
+        value: MappingProxyType[str, Any],
+        _info: object,
+    ) -> dict[str, Any]:
+        """Serialize ``MappingProxyType`` back to a plain ``dict``."""
+        return dict(value)
+
+
+class FilePart(BaseModel):
+    """Reference to a file resource.
+
+    Attributes:
+        type: Discriminator literal (always ``"file"``).
+        uri: File URI or path.
+        mime_type: Optional MIME type of the file.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+
+    type: Literal["file"] = Field(
+        default="file",
+        description="Part type discriminator",
+    )
+    uri: NotBlankStr = Field(description="File URI or path")
+    mime_type: NotBlankStr | None = Field(
+        default=None,
+        description="Optional MIME type",
+    )
+
+
+class UriPart(BaseModel):
+    """Reference to an external URI resource.
+
+    Attributes:
+        type: Discriminator literal (always ``"uri"``).
+        uri: The URI or URL.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+
+    type: Literal["uri"] = Field(
+        default="uri",
+        description="Part type discriminator",
+    )
+    uri: NotBlankStr = Field(description="URI or URL")
+
+
+Part = Annotated[
+    TextPart | DataPart | FilePart | UriPart,
+    Discriminator("type"),
+]
+"""Discriminated union of message content parts.
+
+Pydantic uses the ``type`` literal field on each part to determine
+which subtype to deserialize into.
+"""
+
+
+# ── Metadata ──────────────────────────────────────────────────────
 
 
 class MessageMetadata(BaseModel):
@@ -86,13 +206,20 @@ class MessageMetadata(BaseModel):
         return self
 
 
+# ── Message ───────────────────────────────────────────────────────
+
+
 @ontology_entity
 class Message(BaseModel):
     """An inter-agent message.
 
-    Field schema is based on the Communication design page with typed refinements.
-    The ``sender`` field is aliased to ``"from"`` for JSON compatibility with
-    the spec format.
+    Field schema is based on the Communication design page with typed
+    refinements.  The ``sender`` field is aliased to ``"from"`` for
+    JSON compatibility with the spec format.
+
+    Content is represented as a tuple of typed ``Part`` objects
+    (text, data, file, URI) rather than a flat string, enabling rich
+    multi-part messages.
 
     Attributes:
         id: Unique message identifier.
@@ -102,12 +229,16 @@ class Message(BaseModel):
         type: Message type classification.
         priority: Message priority level.
         channel: Channel the message is sent through.
-        content: Message body text.
-        attachments: Attached references.
+        parts: Ordered content parts (text, data, files, URIs).
         metadata: Optional message metadata.
     """
 
-    model_config = ConfigDict(frozen=True, populate_by_name=True, allow_inf_nan=False)
+    model_config = ConfigDict(
+        frozen=True,
+        populate_by_name=True,
+        allow_inf_nan=False,
+        arbitrary_types_allowed=True,
+    )
 
     id: UUID = Field(
         default_factory=uuid4,
@@ -129,12 +260,24 @@ class Message(BaseModel):
     channel: NotBlankStr = Field(
         description="Channel the message is sent through",
     )
-    content: NotBlankStr = Field(description="Message body text")
-    attachments: tuple[Attachment, ...] = Field(
-        default=(),
-        description="Attached references",
+    parts: tuple[Part, ...] = Field(
+        min_length=1,
+        description="Ordered content parts (text, data, files, URIs)",
     )
     metadata: MessageMetadata = Field(
         default_factory=MessageMetadata,
         description="Optional message metadata",
     )
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def text(self) -> str:
+        """Extract the first ``TextPart`` text, or empty string.
+
+        Convenience accessor for consumers that only need the primary
+        text content of a message.
+        """
+        for part in self.parts:
+            if isinstance(part, TextPart):
+                return part.text
+        return ""

@@ -48,20 +48,6 @@ class ChannelType(StrEnum):
     BROADCAST = "broadcast"
 
 
-class AttachmentType(StrEnum):
-    """Type of message attachment.
-
-    Members:
-        ARTIFACT: Reference to a domain artifact (e.g. PR, build output).
-        FILE: Reference to a file path.
-        LINK: Reference to a URL.
-    """
-
-    ARTIFACT = "artifact"
-    FILE = "file"
-    LINK = "link"
-
-
 class CommunicationPattern(StrEnum):
     """High-level communication pattern for the company.
 

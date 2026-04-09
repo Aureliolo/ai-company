@@ -310,7 +310,7 @@ class TestSnapshotPublishingTaskId:
 
         assert len(message_bus.published) >= 1
         msg: Any = message_bus.published[0]
-        event = TaskStateChanged.model_validate_json(msg.content)
+        event = TaskStateChanged.model_validate_json(msg.text)
         assert event.task_id == task.id
 
     async def test_delete_snapshot_includes_task_id(
@@ -337,7 +337,7 @@ class TestSnapshotPublishingTaskId:
         # Second message is the delete event
         assert len(message_bus.published) >= 2
         msg: Any = message_bus.published[1]
-        event = TaskStateChanged.model_validate_json(msg.content)
+        event = TaskStateChanged.model_validate_json(msg.text)
         assert event.task_id == task.id
         assert event.task is None
 
@@ -669,7 +669,7 @@ class TestSnapshotNewStatusNone:
         # The delete event should have new_status=None
         assert len(message_bus.published) >= 2
         delete_msg: Any = message_bus.published[1]
-        event = TaskStateChanged.model_validate_json(delete_msg.content)
+        event = TaskStateChanged.model_validate_json(delete_msg.text)
         assert event.new_status is None
         assert event.task is None
 

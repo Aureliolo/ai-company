@@ -13,7 +13,7 @@ from synthorg.communication.handler import (
     MessageHandler,
     priority_at_least,
 )
-from synthorg.communication.message import Message
+from synthorg.communication.message import Message, TextPart
 
 _MESSAGE_KWARGS: dict[str, object] = {
     "timestamp": datetime(2026, 3, 7, 12, 0, tzinfo=UTC),
@@ -21,7 +21,7 @@ _MESSAGE_KWARGS: dict[str, object] = {
     "to": "agent-b",
     "type": MessageType.TASK_UPDATE,
     "channel": "#test",
-    "content": "test content",
+    "parts": (TextPart(text="test content"),),
 }
 
 

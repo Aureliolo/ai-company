@@ -3,7 +3,6 @@
 import pytest
 
 from synthorg.communication.enums import (
-    AttachmentType,
     ChannelType,
     CommunicationPattern,
     MessageBusBackend,
@@ -60,17 +59,6 @@ class TestChannelType:
         assert ChannelType.TOPIC.value == "topic"
         assert ChannelType.DIRECT.value == "direct"
         assert ChannelType.BROADCAST.value == "broadcast"
-
-
-@pytest.mark.unit
-class TestAttachmentType:
-    def test_member_count(self) -> None:
-        assert len(AttachmentType) == 3
-
-    def test_values(self) -> None:
-        assert AttachmentType.ARTIFACT.value == "artifact"
-        assert AttachmentType.FILE.value == "file"
-        assert AttachmentType.LINK.value == "link"
 
 
 @pytest.mark.unit

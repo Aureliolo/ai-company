@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING
 
 from synthorg.communication.enums import MessageType
 from synthorg.communication.errors import CommunicationError
-from synthorg.communication.message import Message
+from synthorg.communication.message import Message, TextPart
 from synthorg.core.enums import AgentStatus, TaskStatus
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.archival_protocol import ArchivalResult, MemoryArchivalStrategy
@@ -269,8 +269,11 @@ class OffboardingService:
                 to=NotBlankStr(str(identity.department)),
                 type=MessageType.HR_NOTIFICATION,
                 channel=NotBlankStr(f"dept-{identity.department}"),
-                content=NotBlankStr(
-                    f"Agent {identity.name} has been offboarded. Reason: {reason}."
+                parts=(
+                    TextPart(
+                        text=f"Agent {identity.name} has been offboarded."
+                        f" Reason: {reason}.",
+                    ),
                 ),
             )
             await self._message_bus.publish(notification)

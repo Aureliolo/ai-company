@@ -24,34 +24,8 @@ from pydantic import (
 
 from synthorg.core.enums import DecisionOutcome  # noqa: TC001
 from synthorg.core.types import NotBlankStr, validate_unique_strings
-from synthorg.engine.immutable import deep_copy_mapping
+from synthorg.engine.immutable import deep_copy_mapping, freeze_recursive
 from synthorg.ontology.decorator import ontology_entity
-
-
-def _freeze_recursive(value: object) -> object:
-    """Recursively convert mutable containers into immutable forms.
-
-    - ``dict`` -> ``MappingProxyType`` (read-only view of a frozen dict)
-    - ``list`` -> ``tuple`` with elements recursively frozen
-    - ``tuple`` -> ``tuple`` with elements recursively frozen (tuples
-      are themselves immutable but their *elements* can still be
-      mutable dicts/lists/sets, so we still recurse)
-    - ``set``  -> ``frozenset`` with elements recursively frozen
-    - anything else is returned unchanged
-
-    The input is already a deep copy produced by ``deep_copy_mapping``,
-    so nested containers can be freely transformed in place before
-    being re-wrapped for the frozen Pydantic model field.
-    """
-    if isinstance(value, dict):
-        return MappingProxyType({k: _freeze_recursive(v) for k, v in value.items()})
-    if isinstance(value, list):
-        return tuple(_freeze_recursive(item) for item in value)
-    if isinstance(value, tuple):
-        return tuple(_freeze_recursive(item) for item in value)
-    if isinstance(value, set):
-        return frozenset(_freeze_recursive(item) for item in value)
-    return value
 
 
 @ontology_entity
@@ -150,7 +124,7 @@ class DecisionRecord(BaseModel):
             # produces an independent copy before we re-wrap.
             value = dict(value)
         copied = deep_copy_mapping(value)
-        return _freeze_recursive(copied)
+        return freeze_recursive(copied)
 
     @field_validator("criteria_snapshot", mode="after")
     @classmethod

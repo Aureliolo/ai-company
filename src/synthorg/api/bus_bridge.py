@@ -165,7 +165,7 @@ class MessageBusBridge:
             "message_id": str(message.id),
             "sender": message.sender,
             "to": message.to,
-            "content": message.content,
+            "content": message.text,
         }
         return WsEvent(
             event_type=WsEventType.MESSAGE_SENT,

@@ -402,8 +402,8 @@ INSERT INTO messages (
                     "type": data["type"],
                     "priority": data["priority"],
                     "channel": data["channel"],
-                    "content": data["content"],
-                    "attachments": json.dumps(data["attachments"]),
+                    "content": json.dumps(data["parts"]),
+                    "attachments": "[]",
                     "metadata": json.dumps(data["metadata"]),
                 },
             )
@@ -442,7 +442,9 @@ INSERT INTO messages (
             data = dict(row)
             # Map DB column "sender" to Message's "from" alias.
             data["from"] = data.pop("sender")
-            data["attachments"] = json.loads(data["attachments"])
+            # Parts are stored as JSON in the content column.
+            data["parts"] = json.loads(data.pop("content"))
+            data.pop("attachments", None)
             data["metadata"] = json.loads(data["metadata"])
             return Message.model_validate(data)
         except (

@@ -9,7 +9,7 @@ from synthorg.communication.enums import (
     MessagePriority,
     MessageType,
 )
-from synthorg.communication.message import Message
+from synthorg.communication.message import Message, TextPart
 from synthorg.communication.subscription import DeliveryEnvelope, Subscription
 
 pytestmark = pytest.mark.unit
@@ -65,7 +65,7 @@ class TestDeliveryEnvelope:
             type=MessageType.TASK_UPDATE,
             priority=MessagePriority.NORMAL,
             channel="#eng",
-            content="hello",
+            parts=(TextPart(text="hello"),),
         )
         envelope = DeliveryEnvelope(
             message=msg,
@@ -82,7 +82,7 @@ class TestDeliveryEnvelope:
             to="bob",
             type=MessageType.TASK_UPDATE,
             channel="#eng",
-            content="hello",
+            parts=(TextPart(text="hello"),),
         )
         envelope = DeliveryEnvelope(
             message=msg,
@@ -99,7 +99,7 @@ class TestDeliveryEnvelope:
             to="bob",
             type=MessageType.TASK_UPDATE,
             channel="#eng",
-            content="hello",
+            parts=(TextPart(text="hello"),),
         )
         with pytest.raises(ValidationError):
             DeliveryEnvelope(

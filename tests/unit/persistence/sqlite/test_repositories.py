@@ -11,7 +11,6 @@ if TYPE_CHECKING:
 
 from synthorg.budget.cost_record import CostRecord
 from synthorg.communication.message import (
-    Message,
     MessageMetadata,
 )
 from synthorg.core.enums import (
@@ -351,7 +350,7 @@ class TestSQLiteMessageRepository:
 
         history = await repo.get_history("general")
         assert len(history) == 1
-        assert history[0].content == "Hello, world!"
+        assert history[0].text == "Hello, world!"
 
     async def test_history_ordered_newest_first(
         self, migrated_db: aiosqlite.Connection
@@ -370,8 +369,8 @@ class TestSQLiteMessageRepository:
 
         history = await repo.get_history("general")
         assert len(history) == 2
-        assert history[0].content == "second"
-        assert history[1].content == "first"
+        assert history[0].text == "second"
+        assert history[1].text == "first"
 
     async def test_history_with_limit(self, migrated_db: aiosqlite.Connection) -> None:
         repo = SQLiteMessageRepository(migrated_db)
@@ -419,12 +418,10 @@ class TestSQLiteMessageRepository:
         history = await repo.get_history("general")
         assert history[0].sender == "charlie"
 
-    async def test_round_trip_with_attachments_and_metadata(
+    async def test_round_trip_with_metadata(
         self, migrated_db: aiosqlite.Connection
     ) -> None:
         """Verify nested JSON fields round-trip correctly."""
-        from synthorg.communication.enums import AttachmentType
-
         msg = make_message(
             metadata=MessageMetadata(
                 task_id="task-001",
@@ -434,22 +431,15 @@ class TestSQLiteMessageRepository:
                 extra=(("key1", "val1"),),
             ),
         )
-        # Add attachments via model_validate to bypass frozen
-        msg_data = msg.model_dump(mode="json")
-        msg_data["attachments"] = [
-            {"type": AttachmentType.FILE, "ref": "/path/to/file"},
-        ]
-        msg_with_attach = Message.model_validate(msg_data)
-
         repo = SQLiteMessageRepository(migrated_db)
-        await repo.save(msg_with_attach)
+        await repo.save(msg)
 
         history = await repo.get_history("general")
         result = history[0]
-        assert len(result.attachments) == 1
-        assert result.attachments[0].type == AttachmentType.FILE
-        assert result.attachments[0].ref == "/path/to/file"
         assert result.metadata.task_id == "task-001"
+        assert result.metadata.project_id == "proj-a"
+        assert result.metadata.tokens_used == 100
+        assert result.metadata.cost_usd == 0.01
         assert result.metadata.extra == (("key1", "val1"),)
 
     async def test_round_trip_uuid_id(self, migrated_db: aiosqlite.Connection) -> None:
@@ -533,7 +523,7 @@ INSERT INTO tasks (
     async def test_row_to_message_corrupt_json(
         self, migrated_db: aiosqlite.Connection
     ) -> None:
-        """Corrupt JSON in attachments raises QueryError."""
+        """Corrupt JSON in content (parts) column raises QueryError."""
         from synthorg.persistence.errors import QueryError
 
         await migrated_db.execute(
@@ -544,7 +534,7 @@ INSERT INTO messages (
 ) VALUES (
     'corrupt-msg', '2026-01-01T00:00:00+00:00', 'alice',
     'bob', 'task_update', 'normal', 'general',
-    'hello', '{BAD}', '{}'
+    '{BAD}', '[]', '{}'
 )"""
         )
         await migrated_db.commit()
