@@ -22,8 +22,8 @@ The framework supports multiple communication patterns, configurable per company
 
     ```text
     ┌──────────┐     ┌─────────────────┐     ┌──────────┐
-    │  Agent A  │────>│   Message Bus    │<────│  Agent B  │
-    └──────────┘     │  (Topics/Queues) │     └──────────┘
+    │  Agent A  │────>│   Message Bus   │<────│  Agent B  │
+    └──────────┘     │ (Topics/Queues) │     └──────────┘
                      └────────┬────────┘
                               │
                   ┌───────────┼───────────┐
@@ -60,7 +60,7 @@ The framework supports multiple communication patterns, configurable per company
     ```text
     ┌─────────────────────────────────┐
     │        Sprint Planning          │
-    │  PM + CTO + Devs + QA + Design │
+    │  PM + CTO + Devs + QA + Design  │
     │  Output: Sprint backlog         │
     └─────────────────────────────────┘
              │

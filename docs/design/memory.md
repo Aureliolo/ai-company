@@ -29,10 +29,10 @@ configuration without modifying application code.
 | context  | decisions| learned   |               |
 +----------+----------+-----------+---------------+
 |            Storage Backend                      |
-|   Mem0 (durable, Qdrant+SQLite)                  |
-|   InMemory (session-scoped)                      |
-|   Composite (namespace-based routing adapter)    |
-|     See Decision Log                             |
+|   Mem0 (durable, Qdrant+SQLite)                 |
+|   InMemory (session-scoped)                     |
+|   Composite (namespace-based routing adapter)   |
+|     See Decision Log                            |
 +-------------------------------------------------+
 ```
 
@@ -543,15 +543,15 @@ repository protocols; the storage engine is an implementation detail swappable v
 |  engine/  budget/  communication/  security/                     |
 |     |        |           |             |                         |
 |     v        v           v             v                         |
-|  +------+ +------+ +----------+ +----------+                    |
-|  | Task | | Cost | | Message  | |  Audit   |  <-- Repository    |
-|  | Repo | | Repo | |  Repo    | |  Repo    |      Protocols     |
-|  +--+---+ +--+---+ +----+-----+ +----+-----+                    |
+|  +------+ +------+ +----------+ +----------+                     |
+|  | Task | | Cost | | Message  | |  Audit   |  <-- Repository     |
+|  | Repo | | Repo | |  Repo    | |  Repo    |      Protocols      |
+|  +--+---+ +--+---+ +----+-----+ +----+-----+                     |
 |     +--------+----------+------------+                           |
 |                      |                                           |
 |  +-------------------+-------------------------------------------+
 |  |              PersistenceBackend (protocol)                    |
-|  |  connect() . disconnect() . health_check() . migrate()       |
+|  |  connect() . disconnect() . health_check() . migrate()        |
 |  +-------------------+-------------------------------------------+
 |                      |                                           |
 |  +-------------------+-------------------------------------------+
