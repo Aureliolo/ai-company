@@ -173,11 +173,11 @@ class TestOntologyConfig:
     def test_frozen(self) -> None:
         c = OntologyConfig()
         with pytest.raises(ValidationError):
-            c.backend = "other"  # type: ignore[misc]
+            c.backend = "other"  # type: ignore[assignment,misc]
 
     def test_blank_backend_rejected(self) -> None:
         with pytest.raises(ValidationError, match="backend"):
-            OntologyConfig(backend="")
+            OntologyConfig(backend="")  # type: ignore[arg-type]
 
 
 class TestRootConfigIntegration:

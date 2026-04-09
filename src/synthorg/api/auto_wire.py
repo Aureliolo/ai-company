@@ -591,13 +591,6 @@ async def auto_wire_ontology(
     )
 
     ontology_config = effective_config.ontology
-    if ontology_config.backend != "sqlite":
-        logger.warning(
-            ONTOLOGY_AUTO_WIRE_FAILED,
-            error_type="UnsupportedBackend",
-            error=f"Unsupported ontology backend: {ontology_config.backend}",
-        )
-        return None
     # Resolve database path: use the persistence SQLite path if available,
     # otherwise default to in-memory.
     db_path = effective_config.persistence.sqlite.path or ":memory:"
