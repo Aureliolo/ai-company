@@ -6,8 +6,8 @@ require (
 	github.com/charmbracelet/huh v1.0.0
 	github.com/charmbracelet/lipgloss v1.1.0
 	github.com/google/go-containerregistry v0.21.4
-	github.com/mattn/go-isatty v0.0.20
-	github.com/mattn/go-runewidth v0.0.22
+	github.com/mattn/go-isatty v0.0.21
+	github.com/mattn/go-runewidth v0.0.23
 	github.com/muesli/termenv v0.16.0
 	github.com/sigstore/protobuf-specs v0.5.1
 	github.com/sigstore/sigstore-go v1.1.4
