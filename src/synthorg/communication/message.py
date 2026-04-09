@@ -120,7 +120,7 @@ class DataPart(BaseModel):
                 raw = dict(raw)
             frozen = freeze_recursive(deep_copy_mapping(raw))
             object.__setattr__(result, "data", frozen)
-        return result  # type: ignore[return-value]
+        return result
 
 
 class FilePart(BaseModel):
