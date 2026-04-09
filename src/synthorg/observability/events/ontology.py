@@ -124,4 +124,8 @@ ONTOLOGY_SYNC_PUBLISHED: Final[str] = "ontology.sync.published"
 """Entity definition published as OrgFact."""
 
 ONTOLOGY_SYNC_SKIPPED: Final[str] = "ontology.sync.skipped"
+"""Entity sync skipped (content unchanged)."""
+
+ONTOLOGY_ADMIN_SYNC_COMPLETED: Final[str] = "ontology.admin.sync_completed"
+"""Admin-triggered OrgMemory sync completed."""
 """Entity definition sync skipped (content unchanged)."""

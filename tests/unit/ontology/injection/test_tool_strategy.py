@@ -62,6 +62,28 @@ class TestLookupEntityTool:
         result = await tool.execute(arguments={"query": "zzzznothing"})
         assert "No entities match" in result.content
 
+    async def test_lookup_backend_error_returns_error(
+        self,
+        mock_backend: AsyncMock,
+    ) -> None:
+        """Unexpected backend error in _lookup_by_name returns error."""
+        mock_backend.get.side_effect = RuntimeError("connection lost")
+        tool = LookupEntityTool(backend=mock_backend)
+        result = await tool.execute(arguments={"name": "Task"})
+        assert result.is_error
+        assert "failed" in result.content.lower()
+
+    async def test_search_backend_error_returns_error(
+        self,
+        mock_backend: AsyncMock,
+    ) -> None:
+        """Unexpected backend error in _search returns error."""
+        mock_backend.search.side_effect = RuntimeError("connection lost")
+        tool = LookupEntityTool(backend=mock_backend)
+        result = await tool.execute(arguments={"query": "work"})
+        assert result.is_error
+        assert "failed" in result.content.lower()
+
     async def test_no_arguments_returns_error(
         self,
         mock_backend: AsyncMock,

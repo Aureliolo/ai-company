@@ -145,7 +145,7 @@ class OntologyAwareMemoryBackend:
 
         return await self._inner.store(agent_id, request)
 
-    async def retrieve(
+    async def retrieve(  # noqa: C901
         self,
         agent_id: NotBlankStr,
         query: MemoryQuery,
@@ -167,7 +167,15 @@ class OntologyAwareMemoryBackend:
         if not entries:
             return entries
 
-        manifest = await self._ontology.get_version_manifest()
+        try:
+            manifest = await self._ontology.get_version_manifest()
+        except Exception:
+            logger.warning(
+                "ontology.memory.manifest_failed",
+                agent_id=agent_id,
+                exc_info=True,
+            )
+            return entries
         if not manifest:
             return entries
 

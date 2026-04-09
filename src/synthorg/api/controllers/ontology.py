@@ -38,6 +38,7 @@ from synthorg.observability.events.api import (
     API_RESOURCE_NOT_FOUND,
 )
 from synthorg.observability.events.ontology import (
+    ONTOLOGY_ADMIN_SYNC_COMPLETED,
     ONTOLOGY_DRIFT_CHECK_COMPLETED,
     ONTOLOGY_DRIFT_CHECK_STARTED,
     ONTOLOGY_SYNC_PUBLISHED,
@@ -496,7 +497,7 @@ class OntologyController(Controller):
         logger.info(ONTOLOGY_SYNC_PUBLISHED, source="api_admin")
         count = await sync_service.sync_all()
         logger.info(
-            "ontology.admin.sync_completed",
+            ONTOLOGY_ADMIN_SYNC_COMPLETED,
             published_count=count,
         )
         return ApiResponse(

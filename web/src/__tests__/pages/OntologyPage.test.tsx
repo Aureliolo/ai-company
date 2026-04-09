@@ -50,10 +50,9 @@ const defaultHookReturn: UseOntologyDataReturn = {
 
 let hookReturn: UseOntologyDataReturn
 const getOntologyData = vi.fn(() => hookReturn)
-vi.mock('@/hooks/useOntologyData', () => {
-  const hookName = 'useOntologyData'
-  return { [hookName]: () => getOntologyData() }
-})
+vi.mock('@/hooks/useOntologyData', () => ({
+  useOntologyData: () => getOntologyData(),
+}))
 
 // Must import page AFTER vi.mock
 import OntologyPage from '@/pages/OntologyPage'
@@ -118,6 +117,7 @@ describe('OntologyPage', () => {
       filteredEntities: [],
       totalEntities: 0,
       coreCount: 0,
+      userCount: 0,
     }
     renderOntology()
     expect(screen.getByText(/no entities/i)).toBeInTheDocument()

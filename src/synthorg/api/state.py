@@ -789,6 +789,36 @@ class AppState:
         """Return the ontology sync service, or None if not configured."""
         return self._ontology_sync_service
 
+    def set_drift_report_store(self, store: DriftReportStore) -> None:
+        """Set the drift report store (deferred initialisation).
+
+        Args:
+            store: Configured drift report store.
+        """
+        self._drift_report_store = store
+
+    def set_drift_detection_service(
+        self,
+        service: DriftDetectionService,
+    ) -> None:
+        """Set the drift detection service (deferred initialisation).
+
+        Args:
+            service: Configured drift detection service.
+        """
+        self._drift_detection_service = service
+
+    def set_ontology_sync_service(
+        self,
+        service: OntologyOrgMemorySync,
+    ) -> None:
+        """Set the ontology sync service (deferred initialisation).
+
+        Args:
+            service: Configured ontology sync service.
+        """
+        self._ontology_sync_service = service
+
     @property
     def has_model_router(self) -> bool:
         """Check whether the model router is configured."""

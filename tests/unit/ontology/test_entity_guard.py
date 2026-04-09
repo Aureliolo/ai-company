@@ -169,6 +169,51 @@ class TestEntityAlignmentGuardEnforce:
         assert outcome.passed is False
         assert "no entities" in outcome.message.lower()
 
+    async def test_enforce_fails_closed_on_backend_error(self) -> None:
+        """ENFORCE mode rejects when manifest retrieval fails."""
+        backend = AsyncMock()
+        backend.get_version_manifest = AsyncMock(
+            side_effect=RuntimeError("connection lost"),
+        )
+        config = DelegationGuardConfig(guard_mode=GuardMode.ENFORCE)
+        guard = EntityAlignmentGuard(ontology=backend, config=config)
+        request = _make_request()
+
+        outcome = await guard.check(request)
+        assert outcome.passed is False
+        msg = outcome.message.lower()
+        assert "failed" in msg or "could not" in msg
+
+
+@pytest.mark.unit
+class TestEntityGuardImmutability:
+    """Tests for entity_versions immutability."""
+
+    async def test_stamp_returns_deep_copy(self) -> None:
+        """STAMP mode returns a copy -- mutating source doesn't affect outcome."""
+        original = {"Task": 1, "Agent": 2}
+        backend = _make_backend(manifest=original)
+        config = DelegationGuardConfig(guard_mode=GuardMode.STAMP)
+        guard = EntityAlignmentGuard(ontology=backend, config=config)
+        request = _make_request()
+
+        outcome = await guard.check(request)
+        # Mutate the source dict
+        original["Task"] = 999
+        # Outcome should be unaffected
+        assert outcome.entity_versions["Task"] == 1
+
+    async def test_stamp_returns_immutable_mapping(self) -> None:
+        """STAMP mode returns a non-mutable mapping."""
+        backend = _make_backend()
+        config = DelegationGuardConfig(guard_mode=GuardMode.STAMP)
+        guard = EntityAlignmentGuard(ontology=backend, config=config)
+        request = _make_request()
+
+        outcome = await guard.check(request)
+        with pytest.raises(TypeError):
+            outcome.entity_versions["new_key"] = 42  # type: ignore[index]
+
 
 @pytest.mark.unit
 class TestEntityAlignmentGuardProperties:
