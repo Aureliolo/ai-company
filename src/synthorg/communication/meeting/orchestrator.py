@@ -398,7 +398,7 @@ class MeetingOrchestrator:
             return None
         try:
             lenses = self._strategy_config.default_lenses
-            return self._lens_assigner.assign(
+            result: dict[str, str] = self._lens_assigner.assign(
                 participant_ids,
                 lenses,
             )
@@ -408,6 +408,8 @@ class MeetingOrchestrator:
                 error="Lens assignment failed, proceeding without lenses",
             )
             return None
+        else:
+            return result
 
     def _validate_inputs(
         self,
