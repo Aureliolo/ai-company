@@ -1,5 +1,7 @@
 """Tests for analytics tool configuration models."""
 
+from typing import Any
+
 import pytest
 from pydantic import ValidationError
 
@@ -50,7 +52,7 @@ class TestAnalyticsToolsConfig:
             "timeout_inf",
         ],
     )
-    def test_rejects_invalid_params(self, kwargs: dict) -> None:
+    def test_rejects_invalid_params(self, kwargs: dict[str, Any]) -> None:
         with pytest.raises(ValidationError):
             AnalyticsToolsConfig(**kwargs)
 
