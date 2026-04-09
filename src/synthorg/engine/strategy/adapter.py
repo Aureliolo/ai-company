@@ -20,7 +20,7 @@ from synthorg.observability.events.strategy import STRATEGY_PRINCIPLES_LOAD_FAIL
 
 if TYPE_CHECKING:
     from synthorg.core.agent import AgentIdentity
-    from synthorg.engine.strategy.models import StrategyConfig
+    from synthorg.engine.strategy.models import ConstitutionalPrinciple, StrategyConfig
 
 logger = get_logger(__name__)
 
@@ -54,7 +54,7 @@ def inject_strategy_context(
     assert strategy_config is not None  # noqa: S101
 
     # Load principles if configured.
-    principles: tuple[Any, ...] = ()
+    principles: tuple[ConstitutionalPrinciple, ...] = ()
     try:
         principles = load_and_merge(
             strategy_config.constitutional_principles,
