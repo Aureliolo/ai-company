@@ -5,6 +5,8 @@ from typing import TYPE_CHECKING
 from synthorg.observability import get_logger
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping
+
     from synthorg.communication.meeting.models import MeetingAgenda
 
 logger = get_logger(__name__)
@@ -37,7 +39,7 @@ def build_agenda_prompt(agenda: MeetingAgenda) -> str:
 def inject_lens_perspective(
     prompt: str,
     agent_id: str,
-    lens_assignments: dict[str, str] | None,
+    lens_assignments: Mapping[str, str] | None,
 ) -> str:
     """Append lens perspective instructions to a prompt.
 

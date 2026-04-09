@@ -146,6 +146,31 @@ class TestStructuredComparisonDetector:
         )
         assert detector.detect(response) is True
 
+    def test_ignores_identity_keys_only_differences(self) -> None:
+        """No conflict when positions differ only by identity/metadata keys."""
+        detector = StructuredComparisonDetector()
+        response = json.dumps(
+            {
+                "positions": [
+                    {
+                        "agent_id": "agent-1",
+                        "role": "engineer",
+                        "id": "pos-1",
+                        "metadata": {"ts": 1},
+                        "recommendation": "approve",
+                    },
+                    {
+                        "agent_id": "agent-2",
+                        "role": "designer",
+                        "id": "pos-2",
+                        "metadata": {"ts": 2},
+                        "recommendation": "approve",
+                    },
+                ]
+            }
+        )
+        assert detector.detect(response) is False
+
     def test_handles_missing_positions_field(self) -> None:
         """Gracefully handle missing positions field."""
         detector = StructuredComparisonDetector()

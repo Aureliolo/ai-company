@@ -8,6 +8,10 @@ bias and no quadratic context growth.
 
 import asyncio
 from datetime import UTC, datetime
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping
 
 from synthorg.communication.meeting._parsing import (
     parse_action_items,
@@ -111,7 +115,7 @@ class PositionPapersProtocol:
         participant_ids: tuple[str, ...],
         agent_caller: AgentCaller,
         token_budget: int,
-        lens_assignments: dict[str, str] | None = None,
+        lens_assignments: Mapping[str, str] | None = None,
     ) -> MeetingMinutes:
         """Execute the position-papers meeting protocol.
 
@@ -205,7 +209,7 @@ class PositionPapersProtocol:
         participant_ids: tuple[str, ...],
         agent_caller: AgentCaller,
         tracker: TokenTracker,
-        lens_assignments: dict[str, str] | None = None,
+        lens_assignments: Mapping[str, str] | None = None,
     ) -> tuple[list[tuple[str, str]], list[MeetingContribution]]:
         """Collect position papers from all participants in parallel.
 

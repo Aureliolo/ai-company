@@ -5,7 +5,7 @@ protocol, and the ``AgentCaller`` type alias used to invoke agents
 during a meeting without coupling to the engine layer.
 """
 
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Mapping
 from typing import Protocol, runtime_checkable
 
 from synthorg.communication.meeting.enums import MeetingProtocolType  # noqa: TC001
@@ -75,7 +75,7 @@ class MeetingProtocol(Protocol):
         participant_ids: tuple[str, ...],
         agent_caller: AgentCaller,
         token_budget: int,
-        lens_assignments: dict[str, str] | None = None,
+        lens_assignments: Mapping[str, str] | None = None,
     ) -> MeetingMinutes:
         """Execute the meeting protocol and produce minutes.
 

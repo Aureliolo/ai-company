@@ -8,6 +8,10 @@ meetings.
 
 import asyncio
 from datetime import UTC, datetime
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping
 
 from synthorg.communication.meeting._parsing import (
     parse_action_items,
@@ -175,7 +179,7 @@ class StructuredPhasesProtocol:
         participant_ids: tuple[str, ...],
         agent_caller: AgentCaller,
         token_budget: int,
-        lens_assignments: dict[str, str] | None = None,
+        lens_assignments: Mapping[str, str] | None = None,
     ) -> MeetingMinutes:
         """Execute the structured-phases meeting protocol.
 
@@ -320,7 +324,7 @@ class StructuredPhasesProtocol:
         participant_ids: tuple[str, ...],
         agent_caller: AgentCaller,
         tracker: TokenTracker,
-        lens_assignments: dict[str, str] | None = None,
+        lens_assignments: Mapping[str, str] | None = None,
     ) -> tuple[list[tuple[str, str]], list[MeetingContribution]]:
         """Run parallel input gathering from all participants.
 
@@ -460,7 +464,7 @@ class StructuredPhasesProtocol:
         token_budget: int,
         inputs: list[tuple[str, str]],
         turn_number: int,
-        lens_assignments: dict[str, str] | None = None,
+        lens_assignments: Mapping[str, str] | None = None,
     ) -> tuple[
         bool,
         int,
@@ -562,7 +566,7 @@ class StructuredPhasesProtocol:
         inputs: list[tuple[str, str]],
         conflict_analysis: str,
         turn_number: int,
-        lens_assignments: dict[str, str] | None = None,
+        lens_assignments: Mapping[str, str] | None = None,
     ) -> tuple[int, list[MeetingContribution], list[tuple[str, str]]]:
         """Run the discussion round with participants.
 

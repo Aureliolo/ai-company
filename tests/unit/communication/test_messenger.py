@@ -197,6 +197,27 @@ class TestSendMessage:
                 message_type=MessageType.TASK_UPDATE,
             )
 
+    @pytest.mark.unit
+    async def test_send_message_with_parts(self) -> None:
+        """send_message accepts explicit parts tuple."""
+        bus = _make_mock_bus()
+        messenger = AgentMessenger(
+            agent_id="agent-a",
+            agent_name="Agent A",
+            bus=bus,
+        )
+
+        msg = await messenger.send_message(
+            to="agent-b",
+            channel="#eng",
+            parts=(TextPart(text="via parts"),),
+            message_type=MessageType.TASK_UPDATE,
+        )
+
+        assert msg.text == "via parts"
+        assert len(msg.parts) == 1
+        bus.publish.assert_awaited_once()
+
 
 class TestSendDirect:
     """Tests for AgentMessenger.send_direct."""

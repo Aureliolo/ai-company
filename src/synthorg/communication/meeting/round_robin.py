@@ -7,6 +7,10 @@ growth.
 """
 
 from datetime import UTC, datetime
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping
 
 from synthorg.communication.meeting._parsing import (
     parse_action_items,
@@ -115,7 +119,7 @@ class RoundRobinProtocol:
         participant_ids: tuple[str, ...],
         agent_caller: AgentCaller,
         token_budget: int,
-        lens_assignments: dict[str, str] | None = None,
+        lens_assignments: Mapping[str, str] | None = None,
     ) -> MeetingMinutes:
         """Execute the round-robin meeting protocol.
 
@@ -235,7 +239,7 @@ class RoundRobinProtocol:
         tracker: TokenTracker,
         discussion_budget: int,
         agenda_text: str,
-        lens_assignments: dict[str, str] | None = None,
+        lens_assignments: Mapping[str, str] | None = None,
     ) -> list[MeetingContribution]:
         """Execute all discussion rounds and return contributions.
 
@@ -323,7 +327,7 @@ class RoundRobinProtocol:
         transcript: list[str],
         turn_number: int,
         tokens_available: int,
-        lens_assignments: dict[str, str] | None = None,
+        lens_assignments: Mapping[str, str] | None = None,
     ) -> MeetingContribution:
         """Execute a single agent turn and return the contribution.
 

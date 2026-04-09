@@ -250,6 +250,32 @@ class TestDefaultPremortemExecutor:
         assert all(t == 500 for t in token_allocations)
 
     @pytest.mark.unit
+    async def test_token_distribution_with_remainder(self) -> None:
+        """Remainder tokens are distributed to first participants."""
+        executor = DefaultPremortemExecutor()
+        config = PremortemConfig(participants=PremortemParticipation.ALL)
+
+        token_allocations: list[int] = []
+
+        async def tracking_caller(
+            agent_id: str, prompt: str, tokens: int
+        ) -> AgentResponse:
+            token_allocations.append(tokens)
+            return AgentResponse(agent_id=agent_id, content="response")
+
+        await executor.execute(
+            synthesis_text="Test decision",
+            participant_ids=("agent_1", "agent_2", "agent_3"),
+            agent_caller=tracking_caller,
+            config=config,
+            token_budget=1501,
+        )
+
+        # 1501 // 3 = 500 base, remainder 1 -> first agent gets 501
+        assert sorted(token_allocations, reverse=True) == [501, 500, 500]
+        assert sum(token_allocations) == 1501
+
+    @pytest.mark.unit
     async def test_prompt_contains_decision_summary(self) -> None:
         """Prompt includes the synthesis text."""
         executor = DefaultPremortemExecutor()

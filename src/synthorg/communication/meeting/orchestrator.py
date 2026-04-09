@@ -211,7 +211,7 @@ class MeetingOrchestrator:
         participant_ids: tuple[str, ...],
         token_budget: int,
         *,
-        lens_assignments: dict[str, str] | None = None,
+        lens_assignments: Mapping[str, str] | None = None,
     ) -> MeetingMinutes | MeetingRecord:
         """Run the protocol, catching errors as failure records.
 
