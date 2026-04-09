@@ -113,7 +113,7 @@ class DataPart(BaseModel):
 
         return _thaw(value)  # type: ignore[return-value]
 
-    def model_copy(  # type: ignore[override]
+    def model_copy(
         self,
         *,
         update: Mapping[str, Any] | None = None,
