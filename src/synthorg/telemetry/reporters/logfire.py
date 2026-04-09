@@ -9,6 +9,7 @@ so the import is deferred to avoid loading logfire when telemetry
 is disabled.
 """
 
+import asyncio
 import os
 from typing import TYPE_CHECKING
 
@@ -49,19 +50,35 @@ class LogfireReporter:
         try:
             import logfire as _logfire  # noqa: PLC0415
         except ImportError as exc:
-            msg = "logfire package not installed. Install with: uv add logfire"
+            msg = (
+                "logfire package not installed. "
+                'Install with: pip install "synthorg[telemetry]"'
+            )
+            logger.warning(
+                TELEMETRY_REPORT_FAILED,
+                detail="logfire_import_failed",
+                error_type="ImportError",
+            )
             raise ImportError(msg) from exc
 
         self._logfire = _logfire
 
         resolved_token = token or os.environ.get(_TOKEN_ENV) or _DEFAULT_TOKEN
 
-        self._logfire.configure(
-            token=resolved_token,
-            send_to_logfire="if-token-present",
-            service_name="synthorg-telemetry",
-            service_version=_get_synthorg_version(),
-        )
+        try:
+            self._logfire.configure(
+                token=resolved_token,
+                send_to_logfire="if-token-present",
+                service_name="synthorg-telemetry",
+                service_version=_get_synthorg_version(),
+            )
+        except Exception as exc:
+            logger.warning(
+                TELEMETRY_REPORT_FAILED,
+                detail="logfire_configure_failed",
+                error_type=type(exc).__name__,
+            )
+            raise
 
         logger.info(
             TELEMETRY_REPORTER_INITIALIZED,
@@ -70,9 +87,15 @@ class LogfireReporter:
         )
 
     async def report(self, event: TelemetryEvent) -> None:
-        """Send a telemetry event to Logfire."""
+        """Send a telemetry event to Logfire.
+
+        Offloads the synchronous SDK call to a thread to avoid
+        blocking the event loop.  Catches and logs all exceptions
+        (telemetry must never affect the main application).
+        """
         try:
-            self._logfire.info(
+            await asyncio.to_thread(
+                self._logfire.info,
                 event.event_type,
                 deployment_id=event.deployment_id,
                 synthorg_version=event.synthorg_version,
@@ -85,32 +108,29 @@ class LogfireReporter:
                 TELEMETRY_REPORT_FAILED,
                 event_type=event.event_type,
                 error_type=type(exc).__name__,
-                error_msg=str(exc),
             )
 
     async def flush(self) -> None:
         """Flush the Logfire exporter."""
         try:
-            self._logfire.force_flush()
+            await asyncio.to_thread(self._logfire.force_flush)
         except Exception as exc:
             logger.warning(
                 TELEMETRY_REPORT_FAILED,
                 detail="flush",
                 error_type=type(exc).__name__,
-                error_msg=str(exc),
             )
 
     async def shutdown(self) -> None:
         """Flush and shut down the Logfire exporter."""
         await self.flush()
         try:
-            self._logfire.shutdown()
+            await asyncio.to_thread(self._logfire.shutdown)
         except Exception as exc:
             logger.warning(
                 TELEMETRY_REPORT_FAILED,
                 detail="shutdown",
                 error_type=type(exc).__name__,
-                error_msg=str(exc),
             )
 
 

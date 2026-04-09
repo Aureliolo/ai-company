@@ -4,6 +4,8 @@ from enum import StrEnum, unique
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from synthorg.core.types import NotBlankStr  # noqa: TC001 -- Pydantic needs at runtime
+
 
 @unique
 class TelemetryBackend(StrEnum):
@@ -48,7 +50,8 @@ class TelemetryConfig(BaseModel):
         le=168.0,
         description="Hours between heartbeat events (1h--168h)",
     )
-    token: str | None = Field(
+    token: NotBlankStr | None = Field(
         default=None,
+        repr=False,
         description="Backend write token override (None = embedded default)",
     )

@@ -2,6 +2,7 @@
 
 import asyncio
 import contextlib
+import os
 import platform
 import sys
 import uuid
@@ -85,6 +86,13 @@ class TelemetryCollector:
         config: TelemetryConfig,
         data_dir: Path,
     ) -> None:
+        # Env var overrides config file (documented priority).
+        env_val = os.environ.get("SYNTHORG_TELEMETRY", "").lower()
+        if env_val in ("true", "1", "yes"):
+            config = config.model_copy(update={"enabled": True})
+        elif env_val in ("false", "0", "no"):
+            config = config.model_copy(update={"enabled": False})
+
         self._config = config
         self._data_dir = data_dir
         self._scrubber = PrivacyScrubber()
@@ -189,6 +197,7 @@ class TelemetryCollector:
         logger.debug(TELEMETRY_SESSION_SUMMARY_SENT)
 
     def _uptime_hours(self) -> float:
+        """Return elapsed hours since collector was initialised."""
         delta = datetime.now(UTC) - self._started_at
         return delta.total_seconds() / 3600
 
@@ -197,6 +206,7 @@ class TelemetryCollector:
         event_type: str,
         **properties: int | float | str | bool,
     ) -> TelemetryEvent:
+        """Construct a ``TelemetryEvent`` with runtime metadata."""
         vi = sys.version_info
         return TelemetryEvent(
             event_type=event_type,
@@ -209,9 +219,21 @@ class TelemetryCollector:
         )
 
     async def _send(self, event: TelemetryEvent) -> None:
+        """Validate and send a telemetry event.
+
+        Logs and drops events that fail privacy validation.
+        Logs and suppresses reporter errors (telemetry must not
+        affect the main application).
+        """
         try:
             self._scrubber.validate(event)
-        except PrivacyViolationError:
+        except PrivacyViolationError as exc:
+            logger.warning(
+                TELEMETRY_REPORT_FAILED,
+                event_type=event.event_type,
+                detail="privacy_violation",
+                error_msg=str(exc),
+            )
             return
 
         try:
@@ -221,10 +243,11 @@ class TelemetryCollector:
                 TELEMETRY_REPORT_FAILED,
                 event_type=event.event_type,
                 error_type=type(exc).__name__,
-                error_msg=str(exc),
+                error_msg=type(exc).__name__,
             )
 
     async def _send_startup_event(self) -> None:
+        """Send an initial deployment.startup event."""
         event = self._build_event(
             "deployment.startup",
             agent_count=0,
@@ -236,6 +259,7 @@ class TelemetryCollector:
         await self._send(event)
 
     async def _send_shutdown_event(self) -> None:
+        """Send a deployment.shutdown event with uptime."""
         event = self._build_event(
             "deployment.shutdown",
             uptime_hours=round(self._uptime_hours(), 2),
@@ -244,6 +268,12 @@ class TelemetryCollector:
         await self._send(event)
 
     async def _heartbeat_loop(self) -> None:
+        """Periodically send heartbeat events until cancelled.
+
+        Catches and logs non-cancellation exceptions so the loop
+        continues on transient failures.  ``CancelledError`` is
+        re-raised for graceful shutdown.
+        """
         interval = self._config.heartbeat_interval_hours * 3600
         while True:
             try:
@@ -256,36 +286,46 @@ class TelemetryCollector:
                     TELEMETRY_REPORT_FAILED,
                     detail="heartbeat_loop",
                     error_type=type(exc).__name__,
-                    error_msg=str(exc),
                 )
 
     def _load_or_create_deployment_id(self) -> str:
+        """Load deployment ID from file or create a new UUID.
+
+        Returns a valid UUID string in all cases (never raises).
+        Logs warnings on I/O errors.
+        """
         id_file = self._data_dir / "telemetry_id"
         try:
             if id_file.exists():
                 stored = id_file.read_text(encoding="utf-8").strip()
                 if stored:
-                    return stored
+                    try:
+                        uuid.UUID(stored)
+                    except ValueError:
+                        logger.warning(
+                            TELEMETRY_REPORT_FAILED,
+                            detail="deployment_id_invalid",
+                            error_type="ValueError",
+                        )
+                    else:
+                        return stored
         except OSError as exc:
             logger.warning(
                 TELEMETRY_REPORT_FAILED,
                 detail="deployment_id_read",
                 error_type=type(exc).__name__,
-                error_msg=str(exc),
-                path=str(id_file),
             )
 
         new_id = str(uuid.uuid4())
         try:
             id_file.parent.mkdir(parents=True, exist_ok=True)
             id_file.write_text(new_id, encoding="utf-8")
+            id_file.chmod(0o600)
         except OSError as exc:
             logger.warning(
                 TELEMETRY_REPORT_FAILED,
                 detail="deployment_id_write",
                 error_type=type(exc).__name__,
-                error_msg=str(exc),
-                path=str(id_file),
             )
         return new_id
 

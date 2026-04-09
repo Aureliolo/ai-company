@@ -59,6 +59,7 @@ The SynthOrg engine is structured as a set of loosely coupled subsystems. Each b
 | **Containerization** | Docker + Docker Compose | Chainguard Python distroless runtime (non-root, CIS Docker Benchmark v1.6.0 hardened, minimal attack surface, continuously scanned in CI). `nginxinc/nginx-unprivileged` web tier. GHCR registry, cosign image signing, Trivy + Grype vulnerability scanning, SBOM + SLSA L3 provenance. Also used for isolated code execution sandboxing. |
 | **Docker API** | aiodocker | Async-native Docker API client for the `DockerSandbox` backend. |
 | **Tool Integration** | MCP SDK (`mcp`) | Industry standard for LLM-to-tool integration. See [Industry Standards](../reference/standards.md). |
+| **Product Telemetry** | Optional: Logfire (via `logfire` SDK), NoopReporter (default) | Opt-in anonymous product telemetry (disabled by default). Pluggable `TelemetryReporter` protocol with `PrivacyScrubber` (allowlist validation). Optional dependency: `telemetry = ["logfire"]`. |
 | **Agent Communication** | A2A Protocol compatible | Future-proof inter-agent communication. See [Industry Standards](../reference/standards.md). |
 | **Authentication** | PyJWT + argon2-cffi | JWT (HMAC HS256/384/512) for session tokens, Argon2id for password hashing, HMAC-SHA256 for API key storage (keyed with server secret). |
 | **Name Generation** | Faker | Multi-locale agent name generation for templates and setup wizard. 57 Latin-script locales across 12 world regions, cached Faker instances, deterministic seeding for reproducible names. |

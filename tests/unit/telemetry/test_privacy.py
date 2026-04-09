@@ -118,22 +118,23 @@ class TestPrivacyScrubber:
             "auth_header",
         ],
     )
-    def test_rejects_forbidden_key_patterns(self, bad_key: str) -> None:
+    def test_rejects_forbidden_key_patterns(
+        self, bad_key: str, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """Even if somehow added to the allowlist, forbidden
         patterns are caught.
         """
-        # Bypass the allowlist check by testing the pattern check directly.
-        # We need to inject the key into the allowed set temporarily.
         from synthorg.telemetry import privacy
 
         original = privacy._ALLOWED_PROPERTIES["deployment.heartbeat"]
-        try:
-            privacy._ALLOWED_PROPERTIES["deployment.heartbeat"] = original | {bad_key}
-            event_with_bad = _make_event("deployment.heartbeat", **{bad_key: "value"})
-            with pytest.raises(PrivacyViolationError, match="Forbidden pattern"):
-                self.scrubber.validate(event_with_bad)
-        finally:
-            privacy._ALLOWED_PROPERTIES["deployment.heartbeat"] = original
+        monkeypatch.setitem(
+            privacy._ALLOWED_PROPERTIES,
+            "deployment.heartbeat",
+            original | {bad_key},
+        )
+        event_with_bad = _make_event("deployment.heartbeat", **{bad_key: "value"})
+        with pytest.raises(PrivacyViolationError, match="Forbidden pattern"):
+            self.scrubber.validate(event_with_bad)
 
     def test_rejects_long_string_values(self) -> None:
         event = _make_event(

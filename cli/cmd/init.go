@@ -53,6 +53,8 @@ func init() {
 // initAllFlagsSet returns true when all required init flags are provided,
 // enabling fully non-interactive setup. The --image-tag and --channel flags
 // are optional (default to CLI version and "stable" respectively).
+// Telemetry opt-in is intentionally interactive-only; non-interactive
+// init defaults to telemetry disabled (opt-in via "config set" or env var).
 func initAllFlagsSet() bool {
 	return initBackendPort > 0 && initWebPort > 0 && initSandbox != "" &&
 		initLogLevel != ""

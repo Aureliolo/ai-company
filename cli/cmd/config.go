@@ -281,7 +281,7 @@ func runConfigSet(cmd *cobra.Command, args []string) error {
 	}
 
 	if err := applyConfigValue(&state, key, value); err != nil {
-		return err
+		return fmt.Errorf("applying config value: %w", err)
 	}
 
 	if key == "image_tag" {
@@ -289,7 +289,7 @@ func runConfigSet(cmd *cobra.Command, args []string) error {
 	}
 	if composeAffectingKeys[key] {
 		if err := regenerateCompose(state); err != nil {
-			return err
+			return fmt.Errorf("regenerating compose after set: %w", err)
 		}
 	}
 
@@ -464,7 +464,7 @@ func regenerateCompose(state config.State) error {
 	// can trace the sanitization for go/path-injection.
 	safeDir, err := config.SecurePath(state.DataDir)
 	if err != nil {
-		return err
+		return fmt.Errorf("securing data dir path: %w", err)
 	}
 	composePath := filepath.Join(safeDir, "compose.yml")
 
@@ -493,7 +493,7 @@ func runConfigUnset(cmd *cobra.Command, args []string) error {
 	}
 
 	if err := resetConfigValue(&state, key); err != nil {
-		return err
+		return fmt.Errorf("resetting config value: %w", err)
 	}
 	// Validate port uniqueness after resetting to default.
 	if key == "backend_port" && state.BackendPort == state.WebPort {
@@ -508,7 +508,7 @@ func runConfigUnset(cmd *cobra.Command, args []string) error {
 
 	if composeAffectingKeys[key] {
 		if err := regenerateCompose(state); err != nil {
-			return err
+			return fmt.Errorf("regenerating compose after unset: %w", err)
 		}
 	}
 

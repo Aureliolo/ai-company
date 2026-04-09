@@ -2005,7 +2005,8 @@ swarm-style agent frameworks that lack centralized policy enforcement.
 | Performance-Driven Pruning | `hr/pruning/service.py`, `hr/pruning/policy.py` | Automated evaluation + human approval gate + offboarding delegation |
 | Policy Enforcement | `security/service.py`, `security/rules/engine.py`, `security/autonomy/resolver.py` | Fail-closed rule engine; 3-level inheritance (agent > department > company) |
 | Token Metering | `budget/enforcer.py`, `budget/tracker.py`, `budget/quota.py` | 3-layer enforcement (pre-flight, in-flight, task boundary) |
-| Telemetry | `observability/setup.py`, `observability/sinks.py`, `observability/events/` | 82+ structured events; multi-sink routing; 3 correlation IDs |
+| Observability | `observability/setup.py`, `observability/sinks.py`, `observability/events/` | 82+ structured events; multi-sink routing; 3 correlation IDs |
+| Product Telemetry | `telemetry/collector.py`, `telemetry/protocol.py`, `telemetry/privacy.py`, `telemetry/reporters/` | Opt-in (disabled by default); TelemetryReporter protocol; PrivacyScrubber validation; pluggable backends (Logfire, Noop) |
 
 The integration advantage is real and hard to replicate by composing separate tools: budget
 enforcement gates security escalation, performance tracking feeds autonomy decisions, and

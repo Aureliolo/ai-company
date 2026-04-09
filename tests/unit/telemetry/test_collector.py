@@ -27,7 +27,7 @@ class TestTelemetryCollector:
     def test_generates_deployment_id(self, tmp_path: Path) -> None:
         config = TelemetryConfig()
         collector = TelemetryCollector(config=config, data_dir=tmp_path)
-        assert len(collector.deployment_id) == 36  # UUID format
+        assert len(collector.deployment_id) == 36  # UUID4 with hyphens: 8-4-4-4-12
 
     def test_persists_deployment_id(self, tmp_path: Path) -> None:
         config = TelemetryConfig()
@@ -56,7 +56,6 @@ class TestTelemetryCollector:
             collector = TelemetryCollector(config=config, data_dir=tmp_path)
             assert len(collector.deployment_id) == 36
 
-    @pytest.mark.asyncio
     async def test_send_heartbeat_disabled(self, tmp_path: Path) -> None:
         """Heartbeat should be a no-op when disabled."""
         config = TelemetryConfig(enabled=False)
@@ -65,7 +64,6 @@ class TestTelemetryCollector:
             _HeartbeatParams(agent_count=5),
         )
 
-    @pytest.mark.asyncio
     async def test_send_heartbeat_enabled_noop(self, tmp_path: Path) -> None:
         """Heartbeat with noop backend should succeed silently."""
         config = TelemetryConfig(enabled=True, backend=TelemetryBackend.NOOP)
@@ -78,7 +76,6 @@ class TestTelemetryCollector:
             ),
         )
 
-    @pytest.mark.asyncio
     async def test_send_session_summary_noop(self, tmp_path: Path) -> None:
         config = TelemetryConfig(enabled=True, backend=TelemetryBackend.NOOP)
         collector = TelemetryCollector(config=config, data_dir=tmp_path)
@@ -91,7 +88,6 @@ class TestTelemetryCollector:
             ),
         )
 
-    @pytest.mark.asyncio
     async def test_start_and_shutdown(self, tmp_path: Path) -> None:
         config = TelemetryConfig(enabled=True, backend=TelemetryBackend.NOOP)
         collector = TelemetryCollector(config=config, data_dir=tmp_path)
@@ -100,7 +96,6 @@ class TestTelemetryCollector:
         await collector.shutdown()
         assert collector._heartbeat_task is None
 
-    @pytest.mark.asyncio
     async def test_start_disabled_no_task(self, tmp_path: Path) -> None:
         config = TelemetryConfig(enabled=False)
         collector = TelemetryCollector(config=config, data_dir=tmp_path)
@@ -113,7 +108,6 @@ class TestTelemetryCollector:
 class TestTelemetryCollectorWithMockReporter:
     """Collector tests with a mock reporter to verify event content."""
 
-    @pytest.mark.asyncio
     async def test_heartbeat_event_structure(self, tmp_path: Path) -> None:
         config = TelemetryConfig(enabled=True, backend=TelemetryBackend.NOOP)
         collector = TelemetryCollector(config=config, data_dir=tmp_path)
@@ -143,7 +137,6 @@ class TestTelemetryCollectorWithMockReporter:
         assert "uptime_hours" in event.properties
         assert isinstance(event.timestamp, datetime)
 
-    @pytest.mark.asyncio
     async def test_session_summary_event_structure(self, tmp_path: Path) -> None:
         config = TelemetryConfig(enabled=True, backend=TelemetryBackend.NOOP)
         collector = TelemetryCollector(config=config, data_dir=tmp_path)
@@ -169,7 +162,6 @@ class TestTelemetryCollectorWithMockReporter:
         assert event.properties["tasks_completed"] == 8
         assert event.properties["meetings_held"] == 3
 
-    @pytest.mark.asyncio
     async def test_reporter_exception_is_caught(self, tmp_path: Path) -> None:
         """Reporter raising Exception should not crash the collector."""
         config = TelemetryConfig(enabled=True, backend=TelemetryBackend.NOOP)
@@ -186,7 +178,6 @@ class TestTelemetryCollectorWithMockReporter:
 
         mock_reporter.report.assert_awaited_once()
 
-    @pytest.mark.asyncio
     async def test_reporter_exception_does_not_block_subsequent(
         self, tmp_path: Path
     ) -> None:
