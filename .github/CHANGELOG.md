@@ -1,5 +1,46 @@
 # Changelog
 
+## [0.6.5](https://github.com/Aureliolo/synthorg/compare/v0.6.4...v0.6.5) (2026-04-09)
+
+
+### Features
+
+* add control-plane API endpoints batch ([#1118](https://github.com/Aureliolo/synthorg/issues/1118), [#1119](https://github.com/Aureliolo/synthorg/issues/1119), [#1120](https://github.com/Aureliolo/synthorg/issues/1120), [#1121](https://github.com/Aureliolo/synthorg/issues/1121)) ([#1138](https://github.com/Aureliolo/synthorg/issues/1138)) ([af11f0a](https://github.com/Aureliolo/synthorg/commit/af11f0a91f599f04773b4531a323e67afe786a69))
+* engine intelligence v2 -- trace enrichment, compaction, versioning eval ([#1139](https://github.com/Aureliolo/synthorg/issues/1139)) ([ed57dfa](https://github.com/Aureliolo/synthorg/commit/ed57dfa6eb0c1fe56a3db1d641f616fc310210ab)), closes [#1123](https://github.com/Aureliolo/synthorg/issues/1123) [#1125](https://github.com/Aureliolo/synthorg/issues/1125) [#1113](https://github.com/Aureliolo/synthorg/issues/1113)
+* generalize versioning to VersionSnapshot[T] for all entity types ([#1155](https://github.com/Aureliolo/synthorg/issues/1155)) ([5f563ce](https://github.com/Aureliolo/synthorg/commit/5f563ced7a4e55e371f16dc24be0231c2f41aa15)), closes [#1131](https://github.com/Aureliolo/synthorg/issues/1131) [#1132](https://github.com/Aureliolo/synthorg/issues/1132) [#1133](https://github.com/Aureliolo/synthorg/issues/1133)
+* implement auxiliary tool categories -- design, communication, analytics ([#1152](https://github.com/Aureliolo/synthorg/issues/1152)) ([b506ba4](https://github.com/Aureliolo/synthorg/commit/b506ba4c4edda273166fdb06bdbb99924c854c16))
+* implement multi-project support -- engine orchestration ([#242](https://github.com/Aureliolo/synthorg/issues/242)) ([#1153](https://github.com/Aureliolo/synthorg/issues/1153)) ([74f1362](https://github.com/Aureliolo/synthorg/commit/74f1362d7fc29249b640d7ba802c298f76a5620e))
+* implement SharedKnowledgeStore append-only + MVCC consistency model (Phase 1.5) ([#1134](https://github.com/Aureliolo/synthorg/issues/1134)) ([965d3a1](https://github.com/Aureliolo/synthorg/commit/965d3a1bfb85334a4a42c850d8d785e6a9cbd88e)), closes [#1130](https://github.com/Aureliolo/synthorg/issues/1130)
+* implement shutdown strategies and SUSPENDED task status ([#1151](https://github.com/Aureliolo/synthorg/issues/1151)) ([6a0db11](https://github.com/Aureliolo/synthorg/commit/6a0db1110d1cd5b4517fce9ab59771c310fb4498))
+* persistent cost aggregation for project-lifetime budgets ([#1173](https://github.com/Aureliolo/synthorg/issues/1173)) ([5c212c5](https://github.com/Aureliolo/synthorg/commit/5c212c5eb3ba45885ed58a2892bc07dde8c8be22)), closes [#1156](https://github.com/Aureliolo/synthorg/issues/1156)
+* Prometheus /metrics endpoint and OTLP exporter ([#1122](https://github.com/Aureliolo/synthorg/issues/1122)) ([#1135](https://github.com/Aureliolo/synthorg/issues/1135)) ([aaeaae9](https://github.com/Aureliolo/synthorg/commit/aaeaae938285c68119aa507e4defd0f8efb06e10)), closes [#1124](https://github.com/Aureliolo/synthorg/issues/1124)
+* Prometheus metrics -- daily budget %, per-agent cost, per-agent budget % ([#1154](https://github.com/Aureliolo/synthorg/issues/1154)) ([581c494](https://github.com/Aureliolo/synthorg/commit/581c4942f7c1c8b48efa8e17b3f8e3b833c4376f)), closes [#1148](https://github.com/Aureliolo/synthorg/issues/1148)
+
+
+### Bug Fixes
+
+* communication hardening -- meeting cooldown, circuit breaker backoff, debate fallback ([#1140](https://github.com/Aureliolo/synthorg/issues/1140)) ([fe82894](https://github.com/Aureliolo/synthorg/commit/fe82894feaadd6fde8c17e1b7a7c50c64fecb10d)), closes [#1115](https://github.com/Aureliolo/synthorg/issues/1115) [#1116](https://github.com/Aureliolo/synthorg/issues/1116) [#1117](https://github.com/Aureliolo/synthorg/issues/1117)
+
+
+### CI/CD
+
+* bump wrangler from 4.80.0 to 4.81.0 in /.github in the all group ([#1144](https://github.com/Aureliolo/synthorg/issues/1144)) ([b7c0945](https://github.com/Aureliolo/synthorg/commit/b7c0945b5a6c85ee6cb4dc4b9a15a3e82d7aecd3))
+
+
+### Maintenance
+
+* bump python from `6869258` to `5e59aae` in /docker/backend in the all group ([#1141](https://github.com/Aureliolo/synthorg/issues/1141)) ([01e99c2](https://github.com/Aureliolo/synthorg/commit/01e99c222f65994b5c292fdf3b345e57d670d1e7))
+* bump python from `6869258` to `5e59aae` in /docker/sandbox in the all group ([#1143](https://github.com/Aureliolo/synthorg/issues/1143)) ([ea755bd](https://github.com/Aureliolo/synthorg/commit/ea755bda42930ece80c9a68de95ba8476ac7bb03))
+* bump python from `6869258` to `5e59aae` in /docker/web in the all group ([#1142](https://github.com/Aureliolo/synthorg/issues/1142)) ([5416dd9](https://github.com/Aureliolo/synthorg/commit/5416dd949ae00a46c28783f141c753ffc7aa0977))
+* bump the all group across 1 directory with 2 updates ([#1181](https://github.com/Aureliolo/synthorg/issues/1181)) ([d3d5adf](https://github.com/Aureliolo/synthorg/commit/d3d5adfb0c96315a39e53720a9078577891858ca))
+* bump the all group across 1 directory with 3 updates ([#1146](https://github.com/Aureliolo/synthorg/issues/1146)) ([c609e6c](https://github.com/Aureliolo/synthorg/commit/c609e6c92bec81284ef492c5d39cbdc3bd7aac9f))
+* bump the all group in /cli with 2 updates ([#1177](https://github.com/Aureliolo/synthorg/issues/1177)) ([afd9cde](https://github.com/Aureliolo/synthorg/commit/afd9cdea0a794ad26a2abbd9ef4cb54ee6f07116))
+* bump the all group in /site with 3 updates ([#1178](https://github.com/Aureliolo/synthorg/issues/1178)) ([7cff82a](https://github.com/Aureliolo/synthorg/commit/7cff82a57db67cd492b90b6aad17927e120bf104))
+* bump the all group with 2 updates ([#1180](https://github.com/Aureliolo/synthorg/issues/1180)) ([199a1a8](https://github.com/Aureliolo/synthorg/commit/199a1a823addf12a117ffa490d76e21ee8114714))
+* bump vitest from 4.1.2 to 4.1.3 in /site in the all group ([#1145](https://github.com/Aureliolo/synthorg/issues/1145)) ([a8c1194](https://github.com/Aureliolo/synthorg/commit/a8c11946b50153301c221f8639df3949ec639176))
+* consolidated web deps (11 packages + hono security + test fixes) ([#1150](https://github.com/Aureliolo/synthorg/issues/1150)) ([63a9390](https://github.com/Aureliolo/synthorg/commit/63a9390883c5775c417e509eab1cbcd2779a10ec)), closes [#1147](https://github.com/Aureliolo/synthorg/issues/1147) [#1136](https://github.com/Aureliolo/synthorg/issues/1136) [#1137](https://github.com/Aureliolo/synthorg/issues/1137)
+* pin Docker Python base image to 3.14.x ([#1182](https://github.com/Aureliolo/synthorg/issues/1182)) ([8ffdd86](https://github.com/Aureliolo/synthorg/commit/8ffdd868764163c57a83c4bf9bb5127f761c764a))
+
 ## [0.6.4](https://github.com/Aureliolo/synthorg/compare/v0.6.3...v0.6.4) (2026-04-07)
 
 
