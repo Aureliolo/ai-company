@@ -142,6 +142,20 @@ class TestEntityAlignmentGuardValidate:
         outcome = await guard.check(request)
         assert outcome.passed is True
 
+    async def test_validate_warns_on_stale_versions(self) -> None:
+        """VALIDATE mode passes but detects stale versions."""
+        backend = _make_backend(manifest={"Task": 3, "AgentIdentity": 2})
+        config = DelegationGuardConfig(guard_mode=GuardMode.VALIDATE)
+        guard = EntityAlignmentGuard(ontology=backend, config=config)
+        request = _make_request()
+        # Give request stale knowledge (Task at v1, but current is v3)
+        request = request.model_copy(
+            update={"entity_versions": {"Task": 1}},
+        )
+
+        outcome = await guard.check(request)
+        assert outcome.passed is True  # VALIDATE allows through
+
 
 @pytest.mark.unit
 class TestEntityAlignmentGuardEnforce:
@@ -157,6 +171,20 @@ class TestEntityAlignmentGuardEnforce:
         outcome = await guard.check(request)
         assert outcome.passed is True
         assert outcome.entity_versions is not None
+
+    async def test_enforce_blocks_stale_versions(self) -> None:
+        """ENFORCE mode rejects when request has stale entity versions."""
+        backend = _make_backend(manifest={"Task": 3, "AgentIdentity": 2})
+        config = DelegationGuardConfig(guard_mode=GuardMode.ENFORCE)
+        guard = EntityAlignmentGuard(ontology=backend, config=config)
+        request = _make_request()
+        request = request.model_copy(
+            update={"entity_versions": {"Task": 1}},
+        )
+
+        outcome = await guard.check(request)
+        assert outcome.passed is False
+        assert "stale" in outcome.message.lower() or "v1" in outcome.message
 
     async def test_enforce_blocks_empty_manifest(self) -> None:
         """ENFORCE mode blocks when no entities are registered."""

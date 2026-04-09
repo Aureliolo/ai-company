@@ -241,6 +241,7 @@ class OntologyController(Controller):
             existing = await svc.get(name)
         except OntologyNotFoundError:
             msg = "Entity not found"
+            logger.info(API_RESOURCE_NOT_FOUND, resource="entity", name=name)
             raise NotFoundError(msg)  # noqa: B904
 
         if existing.tier == EntityTier.CORE and any(
@@ -312,6 +313,7 @@ class OntologyController(Controller):
             entity = await svc.get(name)
         except OntologyNotFoundError:
             msg = "Entity not found"
+            logger.info(API_RESOURCE_NOT_FOUND, resource="entity", name=name)
             raise NotFoundError(msg)  # noqa: B904
 
         if entity.tier == EntityTier.CORE:
@@ -493,7 +495,6 @@ class OntologyController(Controller):
                 data={"status": "sync_service_not_configured"},
             )
 
-        logger.info(ONTOLOGY_DRIFT_CHECK_STARTED, source="api_admin_sync")
         count = await sync_service.sync_all()
         logger.info(
             ONTOLOGY_ADMIN_SYNC_COMPLETED,

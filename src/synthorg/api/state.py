@@ -803,6 +803,7 @@ class AppState:
             logger.error(API_APP_STARTUP, error=msg)
             raise RuntimeError(msg)
         self._drift_report_store = store
+        logger.info(API_APP_STARTUP, note="Drift report store configured")
 
     def set_drift_detection_service(
         self,
@@ -821,6 +822,7 @@ class AppState:
             logger.error(API_APP_STARTUP, error=msg)
             raise RuntimeError(msg)
         self._drift_detection_service = service
+        logger.info(API_APP_STARTUP, note="Drift detection service configured")
 
     def set_ontology_sync_service(
         self,
@@ -839,6 +841,7 @@ class AppState:
             logger.error(API_APP_STARTUP, error=msg)
             raise RuntimeError(msg)
         self._ontology_sync_service = service
+        logger.info(API_APP_STARTUP, note="Ontology sync service configured")
 
     @property
     def has_model_router(self) -> bool:
