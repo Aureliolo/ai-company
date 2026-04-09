@@ -6,36 +6,36 @@
 ┌──────────────────────────────────────────────────────────────┐
 │                        SynthOrg Engine                       │
 │                                                              │
-│  ┌─────────────┐  ┌──────────────┐  ┌────────────────────┐   │
-│  │ Company Mgr  │  │ Agent Engine  │  │ Task/Workflow Eng. │ │
-│  │ (Config,     │  │ (Lifecycle,   │  │ (Queue, Routing,   │ │
-│  │  Templates,  │  │  Personality, │  │  Dependencies,     │ │
-│  │  Hierarchy)  │  │  Execution)   │  │  Scheduling)       │ │
+│  ┌──────────────┐  ┌──────────────┐  ┌────────────────────┐  │
+│  │ Company Mgr  │  │ Agent Engine │  │ Task/Workflow Eng. │  │
+│  │ (Config,     │  │ (Lifecycle,  │  │ (Queue, Routing,   │  │
+│  │  Templates,  │  │  Personality,│  │  Dependencies,     │  │
+│  │  Hierarchy)  │  │  Execution)  │  │  Scheduling)       │  │
 │  └──────────────┘  └──────────────┘  └────────────────────┘  │
 │                                                              │
-│  ┌─────────────┐  ┌──────────────┐  ┌────────────────────┐   │
-│  │ Comms Layer  │  │ Memory Layer  │  │ Tool/Capability    │ │
+│  ┌──────────────┐  ┌──────────────┐  ┌────────────────────┐  │
+│  │ Comms Layer  │  │ Memory Layer │  │ Tool/Capability    │  │
 │  │ (Message Bus,│  │ (Pluggable,  │  │ System (MCP,       │  │
 │  │  Meetings,   │  │  Retrieval,  │  │  Sandboxing,       │  │
 │  │  A2A)        │  │  Archive)    │  │  Permissions)      │  │
 │  └──────────────┘  └──────────────┘  └────────────────────┘  │
 │                                                              │
-│  ┌─────────────┐  ┌──────────────┐  ┌────────────────────┐   │
+│  ┌──────────────┐  ┌──────────────┐  ┌────────────────────┐  │
 │  │ Provider Lyr │  │ Budget/Cost  │  │ Security/Approval  │  │
-│  │ (Unified,   │  │ Engine       │  │ System             │   │
-│  │  Routing,    │  │ (Tracking,   │  │ (SecOps Agent,     │  │
-│  │  Fallbacks)  │  │  Limits,     │  │  Audit Log,        │  │
-│  │              │  │  CFO Agent)  │  │  Human Queue)      │  │
+│  │ (Unified,    │  │ Engine       │  │ System (SecOps,    │  │
+│  │  Routing,    │  │ (Tracking,   │  │  Audit Log,        │  │
+│  │  Fallbacks)  │  │  Limits,     │  │  Human Queue)      │  │
+│  │              │  │  CFO Agent)  │  │                    │  │
 │  └──────────────┘  └──────────────┘  └────────────────────┘  │
 │                                                              │
-│  ┌────────────────────────────────────────────────────────┐  │
-│  │        API Layer (Async Framework + WebSocket)         │  │
-│  └────────────────────────────────────────────────────────┘  │
+│  ┌──────────────────────────────────────────────────────┐    │
+│  │    API Layer (Async Framework + WebSocket)           │    │
+│  └──────────────────────────────────────────────────────┘    │
 │                                                              │
-│  ┌──────────────────────┐  ┌─────────────────────────────┐   │
-│  │     Web UI (Local)    │  │         CLI Tool            │  │
-│  │     Web Dashboard      │  │    synthorg <command>     │   │
-│  └──────────────────────┘  └─────────────────────────────┘   │
+│  ┌──────────────────────────┐  ┌──────────────────────────┐  │
+│  │ Web UI (Local)           │  │ CLI Tool                 │  │
+│  │ Web Dashboard            │  │ synthorg <command>       │  │
+│  └──────────────────────────┘  └──────────────────────────┘  │
 └──────────────────────────────────────────────────────────────┘
 ```
 
