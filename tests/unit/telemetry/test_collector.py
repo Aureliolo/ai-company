@@ -23,20 +23,22 @@ class TestTelemetryCollector:
         config = TelemetryConfig()
         collector = TelemetryCollector(config=config, data_dir=tmp_path)
         assert collector.enabled is False
+        assert collector.deployment_id is None
 
     def test_generates_deployment_id(self, tmp_path: Path) -> None:
-        config = TelemetryConfig()
+        config = TelemetryConfig(enabled=True, backend=TelemetryBackend.NOOP)
         collector = TelemetryCollector(config=config, data_dir=tmp_path)
+        assert collector.deployment_id is not None
         assert len(collector.deployment_id) == 36  # UUID4 with hyphens: 8-4-4-4-12
 
     def test_persists_deployment_id(self, tmp_path: Path) -> None:
-        config = TelemetryConfig()
+        config = TelemetryConfig(enabled=True, backend=TelemetryBackend.NOOP)
         c1 = TelemetryCollector(config=config, data_dir=tmp_path)
         c2 = TelemetryCollector(config=config, data_dir=tmp_path)
         assert c1.deployment_id == c2.deployment_id
 
     def test_deployment_id_file_created(self, tmp_path: Path) -> None:
-        config = TelemetryConfig()
+        config = TelemetryConfig(enabled=True, backend=TelemetryBackend.NOOP)
         collector = TelemetryCollector(config=config, data_dir=tmp_path)
         id_file = tmp_path / "telemetry_id"
         assert id_file.exists()
@@ -44,17 +46,19 @@ class TestTelemetryCollector:
 
     def test_deployment_id_read_error_generates_new(self, tmp_path: Path) -> None:
         """OSError on read falls back to generating a new ID."""
-        config = TelemetryConfig()
+        config = TelemetryConfig(enabled=True, backend=TelemetryBackend.NOOP)
         with patch.object(Path, "exists", side_effect=OSError("permission denied")):
             collector = TelemetryCollector(config=config, data_dir=tmp_path)
-            assert len(collector.deployment_id) == 36
+            assert collector.deployment_id is not None
+            assert len(collector.deployment_id) == 36  # UUID4 with hyphens: 8-4-4-4-12
 
     def test_deployment_id_write_error_still_returns(self, tmp_path: Path) -> None:
         """OSError on write still returns the generated ID."""
-        config = TelemetryConfig()
+        config = TelemetryConfig(enabled=True, backend=TelemetryBackend.NOOP)
         with patch.object(Path, "write_text", side_effect=OSError("disk full")):
             collector = TelemetryCollector(config=config, data_dir=tmp_path)
-            assert len(collector.deployment_id) == 36
+            assert collector.deployment_id is not None
+            assert len(collector.deployment_id) == 36  # UUID4 with hyphens: 8-4-4-4-12
 
     async def test_send_heartbeat_disabled(self, tmp_path: Path) -> None:
         """Heartbeat should be a no-op when disabled."""

@@ -97,11 +97,13 @@ class TelemetryCollector:
         self._data_dir = data_dir
         self._scrubber = PrivacyScrubber()
         self._reporter: TelemetryReporter = create_reporter(config)
-        self._deployment_id = self._load_or_create_deployment_id()
+        self._deployment_id: str | None = None
         self._started_at = datetime.now(UTC)
         self._heartbeat_task: asyncio.Task[None] | None = None
 
         if config.enabled:
+            # Persist deployment ID only after consent is given.
+            self._deployment_id = self._load_or_create_deployment_id()
             logger.info(
                 TELEMETRY_ENABLED,
                 backend=config.backend.value,
@@ -111,8 +113,8 @@ class TelemetryCollector:
             logger.debug(TELEMETRY_DISABLED)
 
     @property
-    def deployment_id(self) -> str:
-        """The anonymous deployment UUID."""
+    def deployment_id(self) -> str | None:
+        """The anonymous deployment UUID, or ``None`` when disabled."""
         return self._deployment_id
 
     @property
@@ -148,6 +150,8 @@ class TelemetryCollector:
         params: _HeartbeatParams | None = None,
     ) -> None:
         """Send a heartbeat event with current deployment metrics."""
+        if not self._config.enabled:
+            return
         p = params or _HeartbeatParams()
         uptime = self._uptime_hours()
 
@@ -162,14 +166,16 @@ class TelemetryCollector:
             features_enabled=p.features_enabled,
             uptime_hours=round(uptime, 2),
         )
-        await self._send(event)
-        logger.debug(TELEMETRY_HEARTBEAT_SENT)
+        if await self._send(event):
+            logger.debug(TELEMETRY_HEARTBEAT_SENT)
 
     async def send_session_summary(
         self,
         params: _SessionSummaryParams | None = None,
     ) -> None:
         """Send a session summary event with aggregate metrics."""
+        if not self._config.enabled:
+            return
         p = params or _SessionSummaryParams()
         uptime = self._uptime_hours()
 
@@ -193,8 +199,8 @@ class TelemetryCollector:
             delegations_executed=p.delegations_executed,
             uptime_hours=round(uptime, 2),
         )
-        await self._send(event)
-        logger.debug(TELEMETRY_SESSION_SUMMARY_SENT)
+        if await self._send(event):
+            logger.debug(TELEMETRY_SESSION_SUMMARY_SENT)
 
     def _uptime_hours(self) -> float:
         """Return elapsed hours since collector was initialised."""
@@ -206,7 +212,11 @@ class TelemetryCollector:
         event_type: str,
         **properties: int | float | str | bool,
     ) -> TelemetryEvent:
-        """Construct a ``TelemetryEvent`` with runtime metadata."""
+        """Construct a ``TelemetryEvent`` with runtime metadata.
+
+        Only called when telemetry is enabled (deployment ID is set).
+        """
+        assert self._deployment_id is not None  # noqa: S101
         vi = sys.version_info
         return TelemetryEvent(
             event_type=event_type,
@@ -218,12 +228,15 @@ class TelemetryCollector:
             properties=properties,
         )
 
-    async def _send(self, event: TelemetryEvent) -> None:
+    async def _send(self, event: TelemetryEvent) -> bool:
         """Validate and send a telemetry event.
 
         Logs and drops events that fail privacy validation.
         Logs and suppresses reporter errors (telemetry must not
         affect the main application).
+
+        Returns:
+            ``True`` if the event was delivered, ``False`` otherwise.
         """
         try:
             self._scrubber.validate(event)
@@ -234,7 +247,7 @@ class TelemetryCollector:
                 detail="privacy_violation",
                 error_msg=str(exc),
             )
-            return
+            return False
 
         try:
             await self._reporter.report(event)
@@ -245,6 +258,9 @@ class TelemetryCollector:
                 error_type=type(exc).__name__,
                 error_msg=type(exc).__name__,
             )
+            return False
+
+        return True
 
     async def _send_startup_event(self) -> None:
         """Send an initial deployment.startup event."""

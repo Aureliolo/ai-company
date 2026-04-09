@@ -40,11 +40,11 @@ def create_reporter(config: TelemetryConfig) -> TelemetryReporter:
             )
 
             return LogfireReporter(token=config.token)
-        except ImportError:
+        except Exception as exc:
             logger.warning(
                 TELEMETRY_REPORT_FAILED,
-                detail="logfire_unavailable",
-                error_type="ImportError",
+                detail="logfire_init_failed",
+                error_type=type(exc).__name__,
             )
             return NoopReporter()
 

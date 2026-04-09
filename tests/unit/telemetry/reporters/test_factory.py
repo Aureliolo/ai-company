@@ -25,6 +25,7 @@ class TestCreateReporter:
         """Logfire backend returns a reporter or NoopReporter."""
         config = TelemetryConfig(enabled=True, backend=TelemetryBackend.LOGFIRE)
         reporter = create_reporter(config)
-        # Factory catches ImportError and falls back to NoopReporter
-        # when logfire is not installed, so this never raises.
-        assert reporter is not None
+        # Factory catches exceptions and falls back to NoopReporter
+        # when logfire is not installed or init fails.
+        reporter_name = type(reporter).__name__
+        assert reporter_name in {"LogfireReporter", "NoopReporter"}

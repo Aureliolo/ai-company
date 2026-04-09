@@ -206,7 +206,11 @@ func printConfigFields(out *ui.UI, state config.State) {
 	out.KeyValue("Auto restart", strconv.FormatBool(state.AutoRestart))
 	out.KeyValue("Auto apply compose", strconv.FormatBool(state.AutoApplyCompose))
 	out.KeyValue("Auto start after wipe", strconv.FormatBool(state.AutoStartAfterWipe))
-	out.KeyValue("Telemetry opt-in", strconv.FormatBool(state.TelemetryOptIn))
+	effectiveTelemetry := state.TelemetryOptIn
+	if os.Getenv(EnvTelemetry) != "" {
+		effectiveTelemetry = envBool(EnvTelemetry)
+	}
+	out.KeyValue("Telemetry opt-in", strconv.FormatBool(effectiveTelemetry))
 	out.KeyValue("JWT secret", maskSecret(state.JWTSecret))
 	out.KeyValue("Settings key", maskSecret(state.SettingsKey))
 }
@@ -261,7 +265,14 @@ func runConfigGet(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("loading config: %w", err)
 	}
 
-	_, _ = fmt.Fprintln(cmd.OutOrStdout(), configGetValue(state, key))
+	val := configGetValue(state, key)
+	// Apply env var override (same resolution as config list).
+	if envVar := envVarForKey(key); envVar != "" {
+		if envVal := os.Getenv(envVar); envVal != "" {
+			val = envVal
+		}
+	}
+	_, _ = fmt.Fprintln(cmd.OutOrStdout(), val)
 	return nil
 }
 
