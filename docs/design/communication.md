@@ -140,7 +140,7 @@ sole transport for intra-organization messages.
 |                       +--v-+--v-+--v-+--v-+                           |
 |                       | A1 | A2 | A3 | A4 |  Internal Agents          |
 |                       +----+----+----+----+                           |
-+-----------------------+-------------------------------------------+
++-----------------------+-----------------------------------------------+
 ```
 
 The gateway sits at the organization boundary and handles two directions:
