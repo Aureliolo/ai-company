@@ -659,7 +659,7 @@ persistence:
 - Atlas tracks applied versions in its `atlas_schema_revisions` table (no hand-rolled version tracking)
 - Both persistence and ontology tables are consolidated into a single `schema.sql` (same database file)
 - CI runs `atlas migrate lint` (migration safety) and `atlas schema diff` (drift detection) on every PR
-- Squashing: run `atlas migrate squash` during the release process when migration count exceeds 20
+- Squashing: run `atlas migrate squash` during the release process when migration count exceeds 50
 
 ### Key Principles
 

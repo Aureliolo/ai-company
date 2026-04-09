@@ -4,13 +4,18 @@
 # Run manually during the release process:
 #   bash scripts/squash_migrations.sh
 #
-# The threshold defaults to 20 and can be overridden:
-#   SQUASH_THRESHOLD=10 bash scripts/squash_migrations.sh
+# The threshold defaults to 50 and can be overridden:
+#   SQUASH_THRESHOLD=30 bash scripts/squash_migrations.sh
 
 set -euo pipefail
 
 MIGRATION_DIR="src/synthorg/persistence/sqlite/revisions"
 THRESHOLD="${SQUASH_THRESHOLD:-50}"
+
+if [ ! -d "$MIGRATION_DIR" ]; then
+    echo "Error: Migration directory not found: $MIGRATION_DIR"
+    exit 1
+fi
 
 count=$(find "$MIGRATION_DIR" -maxdepth 1 -name '*.sql' | wc -l)
 echo "Migration count: $count (threshold: $THRESHOLD)"

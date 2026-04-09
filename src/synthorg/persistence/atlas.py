@@ -103,11 +103,20 @@ def copy_revisions(dest: Path) -> str:
 
     Returns:
         A ``file://`` URL pointing to the copy.
+
+    Raises:
+        MigrationError: If the copy fails (permissions, disk space,
+            destination already exists).
     """
     src_ref = importlib.resources.files(
         "synthorg.persistence.sqlite.revisions",
     )
-    shutil.copytree(str(src_ref), str(dest))
+    try:
+        shutil.copytree(str(src_ref), str(dest))
+    except (OSError, shutil.Error) as exc:
+        msg = f"Failed to copy migration revisions to {dest}: {exc}"
+        logger.exception(PERSISTENCE_MIGRATION_FAILED, error=str(exc))
+        raise MigrationError(msg) from exc
     return _path_to_file_url(str(dest))
 
 
@@ -199,7 +208,11 @@ async def _run_atlas(
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
     )
-    stdout_bytes, stderr_bytes = await proc.communicate()
+    try:
+        stdout_bytes, stderr_bytes = await proc.communicate()
+    except BaseException:
+        proc.kill()
+        raise
     stdout = stdout_bytes.decode()
     stderr = stderr_bytes.decode()
 
@@ -261,9 +274,12 @@ async def migrate_apply(
                 current_version = (
                     last.get("Version", "") if isinstance(last, dict) else ""
                 )
-    except json.JSONDecodeError, KeyError, TypeError:
-        # Non-JSON output is fine -- fall back to raw parsing.
-        pass
+    except json.JSONDecodeError:
+        logger.warning(
+            PERSISTENCE_MIGRATION_COMPLETED,
+            note="Atlas returned non-JSON output, assuming success",
+            output_sample=stdout[:200],
+        )
 
     logger.info(
         PERSISTENCE_MIGRATION_COMPLETED,
@@ -309,8 +325,12 @@ async def migrate_status(db_url: str) -> MigrateStatus:
             current_version = data.get("Current", "")
             pending = data.get("Pending", [])
             pending_count = len(pending) if isinstance(pending, list) else 0
-    except json.JSONDecodeError, KeyError, TypeError:
-        pass
+    except json.JSONDecodeError:
+        logger.warning(
+            PERSISTENCE_MIGRATION_FAILED,
+            note="Atlas status returned non-JSON output",
+            output_sample=stdout[:200],
+        )
 
     return MigrateStatus(
         current_version=current_version,
@@ -351,4 +371,37 @@ async def migrate_apply_baseline(db_url: str, version: str) -> None:
     logger.info(
         PERSISTENCE_MIGRATION_COMPLETED,
         baseline=version,
+    )
+
+
+async def migrate_rollback(db_url: str, *, version: str) -> None:
+    """Roll back the database to a specific migration version.
+
+    Invokes ``atlas migrate down`` to revert migrations applied
+    after *version*.
+
+    Args:
+        db_url: Atlas-format database URL.
+        version: Target version to roll back to.
+
+    Raises:
+        MigrationError: If the rollback fails.
+    """
+    logger.info(
+        PERSISTENCE_MIGRATION_STARTED,
+        db_url=db_url,
+        rollback_target=version,
+    )
+
+    await _run_atlas(
+        "migrate",
+        "down",
+        "--to-version",
+        version,
+        db_url=db_url,
+    )
+
+    logger.info(
+        PERSISTENCE_MIGRATION_COMPLETED,
+        rollback_target=version,
     )
