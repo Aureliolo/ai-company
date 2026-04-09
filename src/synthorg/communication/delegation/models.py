@@ -37,6 +37,10 @@ class DelegationRequest(BaseModel):
         default=(),
         description="Extra constraints for the delegatee",
     )
+    entity_versions: Mapping[str, int] | None = Field(
+        default=None,
+        description="Delegator's known entity version manifest",
+    )
 
     @model_validator(mode="after")
     def _validate_self_delegation(self) -> Self:

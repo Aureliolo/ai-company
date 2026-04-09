@@ -46,7 +46,10 @@ from synthorg.observability.events.settings import SETTINGS_SERVICE_SWAPPED
 from synthorg.observability.prometheus_collector import (
     PrometheusCollector,  # noqa: TC001
 )
+from synthorg.ontology.drift.service import DriftDetectionService  # noqa: TC001
+from synthorg.ontology.drift.store import DriftReportStore  # noqa: TC001
 from synthorg.ontology.service import OntologyService  # noqa: TC001
+from synthorg.ontology.sync import OntologyOrgMemorySync  # noqa: TC001
 from synthorg.persistence.artifact_storage import (
     ArtifactStorageBackend,  # noqa: TC001
 )
@@ -766,17 +769,17 @@ class AppState:
         return self._ontology_service is not None
 
     @property
-    def drift_report_store(self) -> object | None:
+    def drift_report_store(self) -> DriftReportStore | None:
         """Return the drift report store, or None if not configured."""
         return getattr(self, "_drift_report_store", None)
 
     @property
-    def drift_detection_service(self) -> object | None:
+    def drift_detection_service(self) -> DriftDetectionService | None:
         """Return the drift detection service, or None if not configured."""
         return getattr(self, "_drift_detection_service", None)
 
     @property
-    def ontology_sync_service(self) -> object | None:
+    def ontology_sync_service(self) -> OntologyOrgMemorySync | None:
         """Return the ontology sync service, or None if not configured."""
         return getattr(self, "_ontology_sync_service", None)
 

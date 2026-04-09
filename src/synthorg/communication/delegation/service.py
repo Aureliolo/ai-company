@@ -1,5 +1,6 @@
 """Delegation service orchestrating hierarchy, authority, and loop prevention."""
 
+from collections.abc import Mapping  # noqa: TC003 -- runtime for type annotation
 from datetime import UTC, datetime
 from uuid import uuid4
 
@@ -135,7 +136,7 @@ class DelegationService:
             )
 
         # 3. Entity alignment guard (async)
-        entity_versions: dict[str, int] | None = None
+        entity_versions: Mapping[str, int] | None = None
         if self._entity_guard is not None:
             guard_result = await self._entity_guard.check(request)
             entity_versions = guard_result.entity_versions
