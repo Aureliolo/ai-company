@@ -175,10 +175,11 @@ of `AgentIdentity` -- only fields relevant to external capability discovery are 
 | `tools` | -- | No | Security-sensitive capability list |
 | `budget_limit` | -- | No | Internal financial data |
 
-The [Skill model](agents.md#skill-model) is A2A AgentSkill-aligned, enabling lossless
-bidirectional mapping between internal skills and Agent Card capabilities. When importing
-external Agent Cards, their `AgentSkill` objects are deserialized directly into the
-internal `Skill` model with no field loss.
+The proposed [Skill model](agents.md#skill-model) is A2A AgentSkill-aligned and will
+enable lossless bidirectional mapping between internal skills and Agent Card capabilities.
+Once implemented, importing external Agent Cards will deserialize their `AgentSkill`
+objects directly into the internal `Skill` model with no field loss. Currently, skills are
+string-based and require manual mapping.
 
 ### Concept Mapping
 
@@ -189,25 +190,30 @@ a bidirectional reference for the gateway translation layer.
 
 | SynthOrg State | A2A State | Direction | Notes |
 |----------------|-----------|-----------|-------|
-| `PENDING` | `submitted` | Bidirectional | Initial task creation |
-| `QUEUED` | `submitted` | SynthOrg -> A2A | Internal queue distinction lost externally |
+| `CREATED` | `submitted` | Bidirectional | Initial task creation |
 | `ASSIGNED` | `working` | SynthOrg -> A2A | Agent has accepted the task |
 | `IN_PROGRESS` | `working` | Bidirectional | Active execution |
 | `IN_REVIEW` | `working` | SynthOrg -> A2A | Internal review stage, opaque externally |
 | `BLOCKED` | `input-required` | Bidirectional | Waiting for external input |
-| `PAUSED` | `input-required` | SynthOrg -> A2A | Approval-parked tasks |
+| `SUSPENDED` | `input-required` | SynthOrg -> A2A | Approval-parked tasks |
+| `INTERRUPTED` | `failed` | SynthOrg -> A2A | Interrupted execution; externally indistinguishable from failure |
 | `COMPLETED` | `completed` | Bidirectional | Successful completion |
 | `FAILED` | `failed` | Bidirectional | Unrecoverable failure |
 | `CANCELLED` | `canceled` | Bidirectional | Client-initiated cancellation |
-| `REJECTED` | `rejected` | Bidirectional | Task refused by agent or guard |
-| (approval gate ESCALATED) | `auth-required` | SynthOrg -> A2A | Gateway maps ESCALATED verdict to A2A auth-required; external client must provide additional credentials |
+| `REJECTED` *(proposed)* | `rejected` | Bidirectional | Task refused by agent or guard (requires new TaskStatus value) |
+
+**Gate verdict mapping** (not a task state):
+
+| SynthOrg Verdict | A2A State | Direction | Notes |
+|------------------|-----------|-----------|-------|
+| Approval gate `ESCALATED` | `auth-required` | SynthOrg -> A2A | Gateway maps ESCALATED verdict to A2A auth-required; external client must provide additional credentials |
 
 #### Identity Mapping
 
 | SynthOrg | A2A | Direction | Notes |
 |----------|-----|-----------|-------|
 | `AgentIdentity` | `AgentCard` | SynthOrg -> A2A | One-way projection (safe subset) |
-| `Skill` | `AgentSkill` | Bidirectional | Lossless field correspondence |
+| `Skill` *(proposed)* | `AgentSkill` | Bidirectional | Lossless field correspondence (requires enriched Skill model) |
 | `SkillSet.primary` | `AgentCard.skills` (tagged `primary`) | SynthOrg -> A2A | Primary/secondary distinction preserved via tags |
 | `SkillSet.secondary` | `AgentCard.skills` (tagged `secondary`) | SynthOrg -> A2A | Primary/secondary distinction preserved via tags |
 

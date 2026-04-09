@@ -1284,7 +1284,8 @@ communication, configurable per direction:
 !!! warning "Production Requirement"
 
     `none` authentication is intended for local development and testing only. Production
-    deployments must configure at least `apiKey` or `bearer` for inbound requests.
+    deployments must not use `none` for inbound requests -- configure any of the
+    authenticated schemes (`apiKey`, `oauth2`, `bearer`, or `mTLS`).
 
 ### Inbound Request Validation
 
@@ -1334,7 +1335,7 @@ depth.
 ### Push Notification Webhook Security
 
 A2A push notifications allow external agents to receive task updates via webhooks.
-SynthOrg implements a generic `WebhookReceiver` that is reusable beyond A2A:
+SynthOrg will implement a generic `WebhookReceiver` that is reusable beyond A2A:
 
 | Protection | Description |
 |------------|-------------|
@@ -1342,7 +1343,7 @@ SynthOrg implements a generic `WebhookReceiver` that is reusable beyond A2A:
 | **Timestamp validation** | Requests include a timestamp header. The receiver rejects requests with timestamps outside the configured clock skew tolerance (default: 300 seconds) |
 | **Nonce/replay prevention** | Each request includes a unique nonce. The receiver maintains a TTL-based dedup window (default: 60 seconds) to reject replayed requests |
 
-The `WebhookReceiver` is a standalone reusable component, not A2A-specific. It can
+The `WebhookReceiver` will be a standalone reusable component, not A2A-specific. It will
 protect any endpoint that receives webhook callbacks from external systems.
 
 ### SSRF Prevention
@@ -1358,12 +1359,14 @@ that unifies URL validation across all outbound connection points:
 | Provider discovery | `ProviderDiscoveryPolicy` allowlist | `SsrfValidator` + allowlist |
 | A2A push notification webhooks | (new) | `SsrfValidator` |
 
-The `SsrfValidator` rejects URLs targeting private IP ranges (10.0.0.0/8,
-172.16.0.0/12, 192.168.0.0/16), loopback addresses, link-local addresses, and
-non-HTTP(S) schemes. A configurable allowlist permits legitimate internal endpoints
-(e.g., local providers, internal Git servers). DNS rebinding mitigation follows the
-existing pattern from `git_url_validator`: resolved IPs are pinned for HTTPS URLs and
-re-validated before connection for other protocols.
+For HTTP(S) consumers (webhooks, notifications, provider discovery), the `SsrfValidator`
+rejects URLs targeting private IP ranges (10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16),
+loopback addresses, link-local addresses, and non-HTTP(S) schemes. Git clone URLs
+continue to use the existing `git_url_validator` module, which supports SSH and SCP-like
+syntax with its own validation rules. A configurable allowlist permits legitimate internal
+endpoints (e.g., local providers, internal Git servers). DNS rebinding mitigation follows
+the existing pattern from `git_url_validator`: resolved IPs are pinned and re-validated
+before connection.
 
 ### Quadratic Communication Enforcement
 
