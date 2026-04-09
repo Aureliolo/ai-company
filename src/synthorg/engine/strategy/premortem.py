@@ -20,6 +20,9 @@ from synthorg.engine.strategy.models import (
     RiskCard,
 )
 from synthorg.observability import get_logger
+from synthorg.observability.events.strategy import (
+    STRATEGY_PREMORTEM_RESPONSE_SKIPPED,
+)
 
 logger = get_logger(__name__)
 
@@ -122,7 +125,7 @@ class DefaultPremortermExecutor:
     into a unified output.
     """
 
-    async def execute(
+    async def execute(  # noqa: C901
         self,
         *,
         synthesis_text: str,
@@ -195,15 +198,22 @@ class DefaultPremortermExecutor:
 
         for response in responses:
             content = response.content
-            # Simple heuristic parsing: extract first relevant section
-            if len(content) > _MIN_RESPONSE_LENGTH:
-                # If response contains failure discussion, create a mode entry
-                if any(
-                    word in content.lower()
-                    for word in ["fail", "risk", "problem", "wrong"]
-                ):
-                    # Take first ~200 chars as failure description
-                    desc = content[:200].strip()
+            if len(content) <= _MIN_RESPONSE_LENGTH:
+                logger.debug(
+                    STRATEGY_PREMORTEM_RESPONSE_SKIPPED,
+                    content_length=len(content),
+                    min_length=_MIN_RESPONSE_LENGTH,
+                )
+                continue
+
+            lower_content = content.lower()
+
+            # If response contains failure discussion, create a mode entry
+            if any(
+                word in lower_content for word in ["fail", "risk", "problem", "wrong"]
+            ):
+                desc = content[:200].strip()
+                if desc:
                     all_failure_modes.append(
                         FailureMode(
                             description=desc,
@@ -211,10 +221,10 @@ class DefaultPremortermExecutor:
                         )
                     )
 
-                # If response mentions assumptions, extract them
-                if "assumption" in content.lower():
-                    # Take first ~150 chars as assumption
-                    assumption = content[:150].strip()
+            # If response mentions assumptions, extract them
+            if "assumption" in lower_content:
+                assumption = content[:150].strip()
+                if assumption:
                     all_assumptions.append(assumption)
 
         return PremortermOutput(

@@ -16,6 +16,9 @@ import re
 from typing import Any
 
 from synthorg.observability import get_logger
+from synthorg.observability.events.strategy import STRATEGY_CONFLICT_PARSE_FAILED
+
+CONFLICT_PARSE_FAILED = STRATEGY_CONFLICT_PARSE_FAILED
 
 logger = get_logger(__name__)
 
@@ -85,8 +88,11 @@ class StructuredComparisonDetector:
             # Compare all pairs of positions field-by-field
             return self._has_field_conflicts(positions)
         except Exception:
-            # If JSON parsing or comparison fails, no conflict detected
-            # (safe fallback: don't assume conflict on parsing error)
+            logger.debug(
+                CONFLICT_PARSE_FAILED,
+                detector="StructuredComparisonDetector",
+                exc_info=True,
+            )
             return False
 
     def _extract_json(self, text: str) -> dict[str, Any] | None:

@@ -37,6 +37,7 @@ from synthorg.observability.events.meeting import (
     MEETING_BUDGET_EXHAUSTED,
     MEETING_COMPLETED,
     MEETING_FAILED,
+    MEETING_LENS_ASSIGNMENT_FAILED,
     MEETING_PROTOCOL_NOT_FOUND,
     MEETING_STARTED,
     MEETING_TASK_CREATED,
@@ -404,8 +405,9 @@ class MeetingOrchestrator:
             )
         except Exception:
             logger.warning(
-                MEETING_STARTED,
+                MEETING_LENS_ASSIGNMENT_FAILED,
                 error="Lens assignment failed, proceeding without lenses",
+                exc_info=True,
             )
             return None
         else:

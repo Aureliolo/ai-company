@@ -7,8 +7,9 @@ actions like devil's advocate or escalation.
 """
 
 import difflib
+from typing import Self
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.engine.strategy.models import (  # noqa: TC001
     ConsensusAction,
@@ -45,6 +46,14 @@ class ConsensusVelocityResult(BaseModel):
         ge=0,
         description="Number of substantially different position pairs",
     )
+
+    @model_validator(mode="after")
+    def _validate_action_consistency(self) -> Self:
+        """Ensure action is set when consensus is detected."""
+        if self.detected and self.action is None:
+            msg = "action must not be None when detected is True"
+            raise ValueError(msg)
+        return self
 
 
 _MIN_POSITION_PAIRS: int = 2
