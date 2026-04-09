@@ -1,5 +1,7 @@
 """Tests for the template formatter tool."""
 
+from typing import Any
+
 import pytest
 
 from synthorg.core.enums import ActionType, ToolCategory
@@ -98,6 +100,32 @@ class TestTemplateFormatterTool:
         )
         assert result.is_error
         assert "Invalid format" in result.content
+
+    @pytest.mark.parametrize(
+        ("args", "expected_msg"),
+        [
+            (
+                {"template": 123, "variables": {}},
+                "'template' must be a string",
+            ),
+            (
+                {"template": "hi", "variables": "notadict"},
+                "'variables' must be a dict",
+            ),
+            (
+                {"template": "hi", "variables": {}, "format": 123},
+                "'format' must be a string",
+            ),
+        ],
+        ids=["template_not_str", "variables_not_dict", "format_not_str"],
+    )
+    async def test_execute_rejects_invalid_arg_types(
+        self, args: dict[str, Any], expected_msg: str
+    ) -> None:
+        tool = TemplateFormatterTool()
+        result = await tool.execute(arguments=args)
+        assert result.is_error
+        assert expected_msg in result.content
 
     async def test_execute_html_template(self) -> None:
         tool = TemplateFormatterTool()

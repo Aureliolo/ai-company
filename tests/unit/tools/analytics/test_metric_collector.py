@@ -76,6 +76,7 @@ class TestMetricCollectorTool:
             }
         )
         assert not result.is_error
+        assert len(mock_sink.recorded) == 1
         recorded = mock_sink.recorded[0]
         assert recorded["tags"]["endpoint"] == "/api/tasks"
 

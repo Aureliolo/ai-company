@@ -284,9 +284,9 @@ class EmailSenderTool(BaseCommunicationTool):
         msg = EmailMessage()
         msg["Subject"] = safe_subject
         msg["From"] = email_config.from_address
-        msg["To"] = to_addrs
+        msg["To"] = ", ".join(to_addrs)
         if cc_addrs:
-            msg["Cc"] = cc_addrs
+            msg["Cc"] = ", ".join(cc_addrs)
 
         if body_is_html:
             msg.set_content(body, subtype="html")

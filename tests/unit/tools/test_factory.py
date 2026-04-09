@@ -483,6 +483,7 @@ class TestBuildDefaultToolsFromConfig:
         names = {t.name for t in tools}
         # Without backends, no analytics tools are created
         assert "data_aggregator" not in names
+        assert "report_generator" not in names
         assert "metric_collector" not in names
 
     def test_default_config_uses_default_policy(
