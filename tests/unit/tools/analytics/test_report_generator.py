@@ -14,26 +14,20 @@ from .conftest import MockAnalyticsProvider
 class TestReportGeneratorTool:
     """Tests for ReportGeneratorTool."""
 
-    def test_category_is_analytics(
-        self,
-        mock_provider: MockAnalyticsProvider,
+    @pytest.mark.parametrize(
+        ("attr", "expected"),
+        [
+            ("category", ToolCategory.ANALYTICS),
+            ("action_type", ActionType.CODE_READ),
+            ("name", "report_generator"),
+        ],
+        ids=["category", "action_type", "name"],
+    )
+    def test_tool_attributes(
+        self, mock_provider: MockAnalyticsProvider, attr: str, expected: object
     ) -> None:
         tool = ReportGeneratorTool(provider=mock_provider)
-        assert tool.category == ToolCategory.ANALYTICS
-
-    def test_action_type_is_code_read(
-        self,
-        mock_provider: MockAnalyticsProvider,
-    ) -> None:
-        tool = ReportGeneratorTool(provider=mock_provider)
-        assert tool.action_type == ActionType.CODE_READ
-
-    def test_name(
-        self,
-        mock_provider: MockAnalyticsProvider,
-    ) -> None:
-        tool = ReportGeneratorTool(provider=mock_provider)
-        assert tool.name == "report_generator"
+        assert getattr(tool, attr) == expected
 
     async def test_execute_no_provider_returns_error(self) -> None:
         tool = ReportGeneratorTool(provider=None)

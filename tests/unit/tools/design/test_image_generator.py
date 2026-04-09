@@ -70,6 +70,7 @@ class TestImageGeneratorTool:
             }
         )
         call = mock_provider.calls[0]
+        assert call["prompt"] == "test"
         assert call["style"] == "sketch"
         assert call["width"] == 512
         assert call["height"] == 768

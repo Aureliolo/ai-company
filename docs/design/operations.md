@@ -691,12 +691,13 @@ Per-category backend selection is implemented in `tools/sandbox/factory.py` via 
 `build_sandbox_backends` (instantiates only the backends referenced by config),
 `resolve_sandbox_for_category` (looks up the correct backend for a `ToolCategory`), and
 `cleanup_sandbox_backends` (parallel cleanup with error isolation). The tool factory
-(`build_default_tools_from_config`) conditionally wires `VERSION_CONTROL`, `DESIGN`,
-`COMMUNICATION`, and `ANALYTICS` categories.  Each auxiliary category is opt-in:
-tools are only registered when the corresponding config section is present *and*
-the required runtime dependency is injected (e.g. `DESIGN` image tools require an
-``ImageProvider``, `COMMUNICATION` notification tools require a dispatcher,
-`ANALYTICS` query/metric tools require a provider or sink).
+(`build_default_tools_from_config`) wires tool categories.  `VERSION_CONTROL` tools
+(git, file system) are part of the default toolset and always registered.  The
+auxiliary categories `DESIGN`, `COMMUNICATION`, and `ANALYTICS` are opt-in: tools
+are only registered when the corresponding config section is present, and some
+individual tools additionally require a runtime dependency (e.g. image tools
+require an ``ImageProvider``, notification tools require a dispatcher, analytics
+query/metric tools require a provider or sink).
 
 Docker is optional -- only required when code execution, terminal, web, or database tools are
 enabled. File system and git tools work out of the box with subprocess isolation. This keeps

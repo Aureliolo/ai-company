@@ -31,29 +31,28 @@ class TestAnalyticsToolsConfig:
         assert config.max_rows == 5000
         assert config.allowed_metrics == frozenset({"total_cost", "task_count"})
 
-    def test_query_timeout_must_be_positive(self) -> None:
+    @pytest.mark.parametrize(
+        "kwargs",
+        [
+            {"query_timeout": 0},
+            {"query_timeout": 301.0},
+            {"max_rows": 0},
+            {"max_rows": 100_001},
+            {"query_timeout": float("nan")},
+            {"query_timeout": float("inf")},
+        ],
+        ids=[
+            "timeout_zero",
+            "timeout_above_max",
+            "rows_zero",
+            "rows_above_max",
+            "timeout_nan",
+            "timeout_inf",
+        ],
+    )
+    def test_rejects_invalid_params(self, kwargs: dict) -> None:
         with pytest.raises(ValidationError):
-            AnalyticsToolsConfig(query_timeout=0)
-
-    def test_query_timeout_max(self) -> None:
-        with pytest.raises(ValidationError):
-            AnalyticsToolsConfig(query_timeout=301.0)
-
-    def test_max_rows_must_be_positive(self) -> None:
-        with pytest.raises(ValidationError):
-            AnalyticsToolsConfig(max_rows=0)
-
-    def test_max_rows_upper_bound(self) -> None:
-        with pytest.raises(ValidationError):
-            AnalyticsToolsConfig(max_rows=100_001)
-
-    def test_rejects_nan(self) -> None:
-        with pytest.raises(ValidationError):
-            AnalyticsToolsConfig(query_timeout=float("nan"))
-
-    def test_rejects_inf(self) -> None:
-        with pytest.raises(ValidationError):
-            AnalyticsToolsConfig(query_timeout=float("inf"))
+            AnalyticsToolsConfig(**kwargs)
 
     def test_blank_metric_name_rejected(self) -> None:
         with pytest.raises(ValidationError):

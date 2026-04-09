@@ -10,17 +10,18 @@ from synthorg.tools.design.diagram_generator import DiagramGeneratorTool
 class TestDiagramGeneratorTool:
     """Tests for DiagramGeneratorTool."""
 
-    def test_category_is_design(self) -> None:
+    @pytest.mark.parametrize(
+        ("attr", "expected"),
+        [
+            ("category", ToolCategory.DESIGN),
+            ("action_type", ActionType.DOCS_WRITE),
+            ("name", "diagram_generator"),
+        ],
+        ids=["category", "action_type", "name"],
+    )
+    def test_tool_attributes(self, attr: str, expected: object) -> None:
         tool = DiagramGeneratorTool()
-        assert tool.category == ToolCategory.DESIGN
-
-    def test_action_type_is_docs_write(self) -> None:
-        tool = DiagramGeneratorTool()
-        assert tool.action_type == ActionType.DOCS_WRITE
-
-    def test_name(self) -> None:
-        tool = DiagramGeneratorTool()
-        assert tool.name == "diagram_generator"
+        assert getattr(tool, attr) == expected
 
     @pytest.mark.parametrize(
         ("diagram_type", "description", "expected_keyword"),

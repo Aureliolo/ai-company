@@ -14,26 +14,23 @@ from .conftest import MockNotificationDispatcher
 class TestNotificationSenderTool:
     """Tests for NotificationSenderTool."""
 
-    def test_category_is_communication(
+    @pytest.mark.parametrize(
+        ("attr", "expected"),
+        [
+            ("category", ToolCategory.COMMUNICATION),
+            ("action_type", ActionType.COMMS_INTERNAL),
+            ("name", "notification_sender"),
+        ],
+        ids=["category", "action_type", "name"],
+    )
+    def test_tool_attributes(
         self,
         mock_dispatcher: MockNotificationDispatcher,
+        attr: str,
+        expected: object,
     ) -> None:
         tool = NotificationSenderTool(dispatcher=mock_dispatcher)
-        assert tool.category == ToolCategory.COMMUNICATION
-
-    def test_action_type_is_comms_internal(
-        self,
-        mock_dispatcher: MockNotificationDispatcher,
-    ) -> None:
-        tool = NotificationSenderTool(dispatcher=mock_dispatcher)
-        assert tool.action_type == ActionType.COMMS_INTERNAL
-
-    def test_name(
-        self,
-        mock_dispatcher: MockNotificationDispatcher,
-    ) -> None:
-        tool = NotificationSenderTool(dispatcher=mock_dispatcher)
-        assert tool.name == "notification_sender"
+        assert getattr(tool, attr) == expected
 
     async def test_execute_no_dispatcher_returns_error(self) -> None:
         tool = NotificationSenderTool(dispatcher=None)

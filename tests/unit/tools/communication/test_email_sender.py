@@ -1,6 +1,6 @@
 """Tests for the email sender tool."""
 
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -75,7 +75,7 @@ class TestEmailSenderTool:
     @patch.object(EmailSenderTool, "_send_sync")
     async def test_execute_success(
         self,
-        mock_send: object,
+        mock_send: MagicMock,
         comm_config: CommunicationToolsConfig,
     ) -> None:
         tool = EmailSenderTool(config=comm_config)
@@ -89,6 +89,7 @@ class TestEmailSenderTool:
         assert not result.is_error
         assert "sent successfully" in result.content
         assert result.metadata["to"] == ["user@example.com"]
+        mock_send.assert_called_once()
 
     @patch.object(
         EmailSenderTool,
@@ -97,7 +98,7 @@ class TestEmailSenderTool:
     )
     async def test_execute_smtp_error(
         self,
-        mock_send: object,
+        mock_send: MagicMock,
         comm_config: CommunicationToolsConfig,
     ) -> None:
         tool = EmailSenderTool(config=comm_config)
@@ -109,11 +110,12 @@ class TestEmailSenderTool:
         )
         assert result.is_error
         assert "Email sending failed" in result.content
+        mock_send.assert_called_once()
 
     @patch.object(EmailSenderTool, "_send_sync")
     async def test_execute_with_cc_and_bcc(
         self,
-        mock_send: object,
+        mock_send: MagicMock,
         comm_config: CommunicationToolsConfig,
     ) -> None:
         tool = EmailSenderTool(config=comm_config)
@@ -127,6 +129,7 @@ class TestEmailSenderTool:
         )
         assert not result.is_error
         assert "3 recipient(s)" in result.content
+        mock_send.assert_called_once()
 
     @patch.object(EmailSenderTool, "_send_sync")
     async def test_execute_rejects_newline_in_address(

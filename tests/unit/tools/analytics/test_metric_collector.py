@@ -16,23 +16,20 @@ from .conftest import MockMetricSink
 class TestMetricCollectorTool:
     """Tests for MetricCollectorTool."""
 
-    def test_category_is_analytics(
-        self,
-        mock_sink: MockMetricSink,
+    @pytest.mark.parametrize(
+        ("attr", "expected"),
+        [
+            ("category", ToolCategory.ANALYTICS),
+            ("action_type", "metrics:record"),
+            ("name", "metric_collector"),
+        ],
+        ids=["category", "action_type", "name"],
+    )
+    def test_tool_attributes(
+        self, mock_sink: MockMetricSink, attr: str, expected: object
     ) -> None:
         tool = MetricCollectorTool(sink=mock_sink)
-        assert tool.category == ToolCategory.ANALYTICS
-
-    def test_action_type_is_metrics_record(
-        self,
-        mock_sink: MockMetricSink,
-    ) -> None:
-        tool = MetricCollectorTool(sink=mock_sink)
-        assert tool.action_type == "metrics:record"
-
-    def test_name(self, mock_sink: MockMetricSink) -> None:
-        tool = MetricCollectorTool(sink=mock_sink)
-        assert tool.name == "metric_collector"
+        assert getattr(tool, attr) == expected
 
     async def test_execute_no_sink_returns_error(self) -> None:
         tool = MetricCollectorTool(sink=None)
