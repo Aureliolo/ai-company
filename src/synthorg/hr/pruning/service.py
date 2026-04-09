@@ -3,6 +3,13 @@
 Periodically evaluates active agents against pruning policies, creates
 approval items for eligible candidates, and delegates to OffboardingService
 once human approval is granted.
+
+Note:
+    ``_pending_requests`` and ``_processed_approval_ids`` are in-memory
+    only. If the service restarts, already-decided approvals may be
+    reprocessed.  The ``pruning_request_id`` stored in approval metadata
+    mitigates data loss for the audit trail, but full durability requires
+    a persistent backend (planned).
 """
 
 import asyncio
@@ -34,6 +41,8 @@ from synthorg.observability.events.hr import (
     HR_PRUNING_OFFBOARDED,
     HR_PRUNING_POLICY_ERROR,
     HR_PRUNING_REJECTED,
+    HR_PRUNING_SCHEDULER_STARTED,
+    HR_PRUNING_SCHEDULER_STOPPED,
 )
 
 if TYPE_CHECKING:
@@ -41,6 +50,7 @@ if TYPE_CHECKING:
 
     from synthorg.api.approval_store import ApprovalStore
     from synthorg.core.agent import AgentIdentity
+    from synthorg.hr.models import OffboardingRecord
     from synthorg.hr.offboarding_service import OffboardingService
     from synthorg.hr.performance.tracker import PerformanceTracker
     from synthorg.hr.pruning.policy import PruningPolicy
@@ -102,6 +112,7 @@ class PruningService:
             self._run_loop(),
             name="pruning-scheduler",
         )
+        logger.info(HR_PRUNING_SCHEDULER_STARTED)
 
     async def stop(self) -> None:
         """Stop the background scheduler gracefully."""
@@ -111,6 +122,7 @@ class PruningService:
         with contextlib.suppress(asyncio.CancelledError):
             await self._task
         self._task = None
+        logger.info(HR_PRUNING_SCHEDULER_STOPPED)
 
     def wake(self) -> None:
         """Trigger an early pruning cycle."""
@@ -127,7 +139,7 @@ class PruningService:
             now: Override for current time (testing).
 
         Returns:
-            Job run metadata.
+            Job run metadata with cycle statistics.
         """
         if now is None:
             now = datetime.now(UTC)
@@ -136,12 +148,12 @@ class PruningService:
         job_id = NotBlankStr(str(uuid4()))
         logger.info(HR_PRUNING_CYCLE_STARTED, job_id=str(job_id))
 
-        active_agents = await self._registry.list_active()
         errors: list[NotBlankStr] = []
-
-        eligible = await self._evaluate_all(active_agents, errors)
-        approvals = await self._submit_approvals(eligible, errors)
         await self._process_decided_approvals()
+
+        active_agents = await self._registry.list_active()
+        eligible = await self._evaluate_all(active_agents, now, errors)
+        approvals = await self._submit_approvals(eligible, now, errors)
 
         elapsed = (datetime.now(UTC) - cycle_start).total_seconds()
         job_run = PruningJobRun(
@@ -164,9 +176,12 @@ class PruningService:
         )
         return job_run
 
+    # ── Evaluation ────────────────────────────────────────────
+
     async def _evaluate_all(
         self,
         agents: tuple[AgentIdentity, ...],
+        now: datetime,
         errors: list[NotBlankStr],
     ) -> list[tuple[AgentIdentity, PruningEvaluation]]:
         """Evaluate all agents against policies, collecting errors."""
@@ -175,6 +190,7 @@ class PruningService:
             try:
                 evaluation = await self._evaluate_agent(
                     NotBlankStr(str(agent.id)),
+                    now=now,
                 )
                 if evaluation.eligible:
                     eligible.append((agent, evaluation))
@@ -194,39 +210,18 @@ class PruningService:
                 )
         return eligible
 
-    async def _submit_approvals(
-        self,
-        eligible: list[tuple[AgentIdentity, PruningEvaluation]],
-        errors: list[NotBlankStr],
-    ) -> int:
-        """Submit approval requests for eligible agents."""
-        created = 0
-        for agent, evaluation in eligible:
-            if created >= self._config.max_approvals_per_cycle:
-                break
-            try:
-                if await self._submit_approval(agent, evaluation):
-                    created += 1
-            except MemoryError, RecursionError:
-                raise
-            except Exception as exc:
-                errors.append(NotBlankStr(f"approval {agent.id}: {exc}"))
-                logger.warning(
-                    HR_PRUNING_POLICY_ERROR,
-                    agent_id=str(agent.id),
-                    error=str(exc),
-                )
-        return created
-
     async def _evaluate_agent(
         self,
         agent_id: NotBlankStr,
+        *,
+        now: datetime,
     ) -> PruningEvaluation:
         """Evaluate a single agent against all policies.
 
-        Returns the first eligible evaluation, or the last ineligible one.
+        Returns the first eligible evaluation, or the last
+        ineligible one.
         """
-        snapshot = await self._tracker.get_snapshot(agent_id)
+        snapshot = await self._tracker.get_snapshot(agent_id, now=now)
 
         last_evaluation = None
         for policy in self._policies:
@@ -245,40 +240,125 @@ class PruningService:
             scores={},
             policy_name=NotBlankStr("none"),
             snapshot=snapshot,
-            evaluated_at=datetime.now(UTC),
+            evaluated_at=now,
         )
+
+    # ── Approval Submission ───────────────────────────────────
+
+    async def _submit_approvals(
+        self,
+        eligible: list[tuple[AgentIdentity, PruningEvaluation]],
+        now: datetime,
+        errors: list[NotBlankStr],
+    ) -> int:
+        """Submit approval requests for eligible agents."""
+        pending = await self._approval_store.list_items(
+            action_type=_ACTION_TYPE,
+            status=ApprovalStatus.PENDING,
+        )
+        pending_agent_ids = {item.metadata.get("agent_id") for item in pending}
+
+        created = 0
+        for agent, evaluation in eligible:
+            if created >= self._config.max_approvals_per_cycle:
+                break
+            try:
+                submitted = await self._submit_approval(
+                    agent,
+                    evaluation,
+                    now,
+                    pending_agent_ids,
+                )
+                if submitted:
+                    created += 1
+            except MemoryError, RecursionError:
+                raise
+            except Exception as exc:
+                errors.append(NotBlankStr(f"approval {agent.id}: {exc}"))
+                logger.warning(
+                    HR_PRUNING_POLICY_ERROR,
+                    agent_id=str(agent.id),
+                    error=str(exc),
+                )
+        return created
 
     async def _submit_approval(
         self,
         agent: AgentIdentity,
         evaluation: PruningEvaluation,
+        now: datetime,
+        pending_agent_ids: set[str | None],
     ) -> bool:
         """Create an approval item for a pruning candidate.
 
-        Returns True if a new approval was created, False if deduped.
+        Args:
+            agent: Agent identity.
+            evaluation: Evaluation result for this agent.
+            now: Cycle timestamp for temporal consistency.
+            pending_agent_ids: Agent IDs with existing pending approvals.
+
+        Returns:
+            True if a new approval was created, False if deduped.
         """
         agent_id = str(agent.id)
 
-        pending = await self._approval_store.list_items(
-            action_type=_ACTION_TYPE,
-            status=ApprovalStatus.PENDING,
-        )
-        for item in pending:
-            if item.metadata.get("agent_id") == agent_id:
-                logger.debug(
-                    HR_PRUNING_APPROVAL_DEDUP_SKIP,
-                    agent_id=agent_id,
-                )
-                return False
+        if agent_id in pending_agent_ids:
+            logger.debug(
+                HR_PRUNING_APPROVAL_DEDUP_SKIP,
+                agent_id=agent_id,
+            )
+            return False
 
         approval_id = NotBlankStr(str(uuid4()))
-        expires_at = datetime.now(UTC) + timedelta(
+        request_id = NotBlankStr(str(uuid4()))
+        expires_at = now + timedelta(
             days=self._config.approval_expiry_days,
         )
-
         reason_summary = ", ".join(str(r) for r in evaluation.reasons)
 
-        approval = ApprovalItem(
+        approval = self._build_approval_item(
+            approval_id,
+            agent,
+            evaluation,
+            reason_summary,
+            now,
+            expires_at,
+            request_id,
+        )
+        await self._approval_store.add(approval)
+
+        request = PruningRequest(
+            id=request_id,
+            agent_id=NotBlankStr(agent_id),
+            agent_name=agent.name,
+            evaluation=evaluation,
+            approval_id=approval_id,
+            status=ApprovalStatus.PENDING,
+            created_at=now,
+        )
+        self._pending_requests[agent_id] = request
+        pending_agent_ids.add(agent_id)
+
+        logger.info(
+            HR_PRUNING_APPROVAL_SUBMITTED,
+            agent_id=agent_id,
+            approval_id=str(approval_id),
+            policy=str(evaluation.policy_name),
+        )
+        return True
+
+    @staticmethod
+    def _build_approval_item(  # noqa: PLR0913
+        approval_id: NotBlankStr,
+        agent: AgentIdentity,
+        evaluation: PruningEvaluation,
+        reason_summary: str,
+        now: datetime,
+        expires_at: datetime,
+        request_id: NotBlankStr,
+    ) -> ApprovalItem:
+        """Build an approval item for a pruning candidate."""
+        return ApprovalItem(
             id=approval_id,
             action_type=NotBlankStr(_ACTION_TYPE),
             title=NotBlankStr(f"Prune agent {agent.name}"),
@@ -290,33 +370,17 @@ class PruningService:
             requested_by=NotBlankStr("system"),
             risk_level=ApprovalRiskLevel.CRITICAL,
             status=ApprovalStatus.PENDING,
-            created_at=datetime.now(UTC),
+            created_at=now,
             expires_at=expires_at,
             metadata={
-                "agent_id": agent_id,
+                "agent_id": str(agent.id),
                 "policy_name": str(evaluation.policy_name),
                 "reason_summary": reason_summary,
+                "pruning_request_id": str(request_id),
             },
         )
-        await self._approval_store.add(approval)
 
-        request = PruningRequest(
-            agent_id=NotBlankStr(agent_id),
-            agent_name=agent.name,
-            evaluation=evaluation,
-            approval_id=approval_id,
-            status=ApprovalStatus.PENDING,
-            created_at=datetime.now(UTC),
-        )
-        self._pending_requests[agent_id] = request
-
-        logger.info(
-            HR_PRUNING_APPROVAL_SUBMITTED,
-            agent_id=agent_id,
-            approval_id=str(approval_id),
-            policy=str(evaluation.policy_name),
-        )
-        return True
+    # ── Approval Processing ───────────────────────────────────
 
     async def _process_decided_approvals(self) -> None:
         """Poll for decided approvals and process them."""
@@ -366,6 +430,19 @@ class PruningService:
             approval_id=str(item.id),
         )
 
+        result = await self._execute_offboarding(item, agent)
+        if result is None:
+            return
+
+        await self._record_completion(item, agent, result)
+
+    async def _execute_offboarding(
+        self,
+        item: ApprovalItem,
+        agent: AgentIdentity,
+    ) -> OffboardingRecord | None:
+        """Delegate to OffboardingService. Returns result or None."""
+        agent_id = str(agent.id)
         firing_request = FiringRequest(
             agent_id=NotBlankStr(agent_id),
             agent_name=agent.name,
@@ -379,7 +456,7 @@ class PruningService:
         )
 
         try:
-            offboarding_result = await self._offboarding_service.offboard(
+            return await self._offboarding_service.offboard(
                 firing_request,
             )
         except MemoryError, RecursionError:
@@ -391,25 +468,38 @@ class PruningService:
                 approval_id=str(item.id),
                 error="Offboarding failed after approval",
             )
-            self._processed_approval_ids.add(str(item.id))
-            return
+            return None
 
+    async def _record_completion(
+        self,
+        item: ApprovalItem,
+        agent: AgentIdentity,
+        offboarding_result: OffboardingRecord,
+    ) -> None:
+        """Create PruningRecord and notify after successful offboard."""
+        agent_id = str(agent.id)
         pending_request = self._pending_requests.pop(agent_id, None)
         self._processed_approval_ids.add(str(item.id))
+
+        request_id = (
+            pending_request.id
+            if pending_request
+            else NotBlankStr(
+                item.metadata.get("pruning_request_id", "unknown"),
+            )
+        )
 
         record = PruningRecord(
             agent_id=NotBlankStr(agent_id),
             agent_name=agent.name,
-            pruning_request_id=(
-                pending_request.id if pending_request else NotBlankStr("unknown")
-            ),
-            offboarding_record_id=offboarding_result.firing_request_id,
+            pruning_request_id=request_id,
+            firing_request_id=offboarding_result.firing_request_id,
             reason=NotBlankStr(
                 item.metadata.get("reason_summary", "performance-based"),
             ),
             approval_id=item.id,
             initiated_by=NotBlankStr("system"),
-            created_at=firing_request.created_at,
+            created_at=datetime.now(UTC),
             completed_at=datetime.now(UTC),
         )
         self._completed.append(record)
@@ -420,21 +510,32 @@ class PruningService:
             approval_id=str(item.id),
         )
 
-        if self._on_notification is not None:
+        callback = self._on_notification
+        if callback is not None:
             try:
-                await self._on_notification(record)
+                await callback(record)
             except MemoryError, RecursionError:
                 raise
             except Exception:
                 logger.warning(
                     HR_PRUNING_POLICY_ERROR,
                     agent_id=agent_id,
-                    note="notification callback failed",
+                    error="notification callback failed",
+                    exc_info=True,
                 )
 
     def _handle_rejected(self, item: ApprovalItem) -> None:
         """Clean up after a rejected approval."""
-        agent_id = item.metadata.get("agent_id", "unknown")
+        agent_id = item.metadata.get("agent_id")
+        if not agent_id:
+            logger.error(
+                HR_PRUNING_POLICY_ERROR,
+                approval_id=str(item.id),
+                error="Missing agent_id in rejected approval metadata",
+            )
+            self._processed_approval_ids.add(str(item.id))
+            return
+
         self._pending_requests.pop(agent_id, None)
         self._processed_approval_ids.add(str(item.id))
         logger.info(
@@ -443,6 +544,8 @@ class PruningService:
             approval_id=str(item.id),
             reason=str(item.decision_reason) if item.decision_reason else None,
         )
+
+    # ── Scheduler Loop ────────────────────────────────────────
 
     async def _run_loop(self) -> None:
         """Sleep-and-check scheduler loop."""

@@ -1826,6 +1826,7 @@ swarm-style agent frameworks that lack centralized policy enforcement.
 | Primitive | SynthOrg Module | Status |
 |-----------|----------------|--------|
 | Agent Inventory | `hr/registry.py`, `hr/hiring_service.py`, `hr/performance/tracker.py` | Full CRUD + lifecycle state + 5-pillar evaluation |
+| Performance-Driven Pruning | `hr/pruning/service.py`, `hr/pruning/policy.py` | Automated evaluation + human approval gate + offboarding delegation |
 | Policy Enforcement | `security/service.py`, `security/rules/engine.py`, `security/autonomy/resolver.py` | Fail-closed rule engine; 3-level inheritance (agent > department > company) |
 | Token Metering | `budget/enforcer.py`, `budget/tracker.py`, `budget/quota.py` | 3-layer enforcement (pre-flight, in-flight, task boundary) |
 | Telemetry | `observability/setup.py`, `observability/sinks.py`, `observability/events/` | 82+ structured events; multi-sink routing; 3 correlation IDs |

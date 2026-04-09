@@ -105,14 +105,13 @@ class PruningRequest(BaseModel):
     def _validate_decision_fields(self) -> Self:
         """Enforce decision field invariants.
 
-        - PENDING must have decided_at and decided_by as None.
-        - Non-PENDING statuses require decided_at and decided_by.
+        - PENDING/EXPIRED must have decided_at and decided_by as None.
+        - APPROVED/REJECTED require decided_at and decided_by.
         - decided_at must be >= created_at when present.
         """
         decided_statuses = {
             ApprovalStatus.APPROVED,
             ApprovalStatus.REJECTED,
-            ApprovalStatus.EXPIRED,
         }
 
         if self.status in decided_statuses:
@@ -145,7 +144,7 @@ class PruningRecord(BaseModel):
         agent_id: Agent who was pruned.
         agent_name: Agent's display name.
         pruning_request_id: Associated pruning request.
-        offboarding_record_id: Link to offboarding record.
+        firing_request_id: Firing request ID from offboarding.
         reason: Why agent was pruned.
         approval_id: Which approval authorized it.
         initiated_by: System or human who initiated.
@@ -160,8 +159,8 @@ class PruningRecord(BaseModel):
     pruning_request_id: NotBlankStr = Field(
         description="Associated pruning request",
     )
-    offboarding_record_id: NotBlankStr = Field(
-        description="Link to offboarding record",
+    firing_request_id: NotBlankStr = Field(
+        description="Firing request ID from offboarding",
     )
     reason: NotBlankStr = Field(description="Why agent was pruned")
     approval_id: NotBlankStr = Field(description="Approval that authorized it")

@@ -26,7 +26,6 @@ from synthorg.observability.events.hr import (
 logger = get_logger(__name__)
 
 _EXPECTED_WINDOWS = ("7d", "30d", "90d")
-_REQUIRED_DECLINING_WINDOWS = len(_EXPECTED_WINDOWS)
 
 
 @runtime_checkable
@@ -109,24 +108,40 @@ class ThresholdPruningPolicy:
         agent_id: NotBlankStr,
         snapshot: AgentPerformanceSnapshot,
     ) -> PruningEvaluation:
-        """Check quality/collaboration against thresholds."""
-        now = datetime.now(UTC)
-        consecutive = 0
-        failing_windows: list[str] = []
+        """Check quality/collaboration against thresholds.
 
-        for window in snapshot.windows:
-            if self._window_qualifies(window):
+        Args:
+            agent_id: The agent being evaluated.
+            snapshot: Current performance snapshot.
+
+        Returns:
+            Evaluation result with eligibility and reasons.
+        """
+        now = datetime.now(UTC)
+        windows_by_size = {str(w.window_size): w for w in snapshot.windows}
+
+        consecutive = 0
+        max_consecutive = 0
+        current_failing: list[str] = []
+        best_failing: list[str] = []
+
+        for size in _EXPECTED_WINDOWS:
+            window = windows_by_size.get(size)
+            if window and self._window_qualifies(window):
                 consecutive += 1
-                failing_windows.append(str(window.window_size))
+                current_failing.append(size)
+                if consecutive > max_consecutive:
+                    max_consecutive = consecutive
+                    best_failing = current_failing.copy()
             else:
                 consecutive = 0
-                failing_windows.clear()
+                current_failing.clear()
 
-        eligible = consecutive >= self._config.minimum_consecutive_windows
+        eligible = max_consecutive >= self._config.minimum_consecutive_windows
 
         reasons: tuple[NotBlankStr, ...] = ()
         if eligible:
-            windows_str = ", ".join(failing_windows)
+            windows_str = ", ".join(best_failing)
             reasons = (
                 NotBlankStr(
                     f"Quality and collaboration below thresholds "
@@ -136,12 +151,12 @@ class ThresholdPruningPolicy:
 
         scores = self._build_scores(snapshot)
 
-        logger.debug(
+        logger.info(
             HR_PRUNING_EVALUATION_COMPLETE,
             agent_id=str(agent_id),
             policy="threshold",
             eligible=eligible,
-            consecutive_windows=consecutive,
+            consecutive_windows=max_consecutive,
         )
 
         return PruningEvaluation(
@@ -227,7 +242,15 @@ class TrendPruningPolicy:
         agent_id: NotBlankStr,
         snapshot: AgentPerformanceSnapshot,
     ) -> PruningEvaluation:
-        """Check all windows for consistent declining trends."""
+        """Check all windows for consistent declining trends.
+
+        Args:
+            agent_id: The agent being evaluated.
+            snapshot: Current performance snapshot.
+
+        Returns:
+            Evaluation result with eligibility and reasons.
+        """
         now = datetime.now(UTC)
 
         qualifying_trends = [
@@ -244,10 +267,7 @@ class TrendPruningPolicy:
             if trend.direction == TrendDirection.DECLINING:
                 declining_windows[str(trend.window_size)] = trend.slope
 
-        has_all_three = all(w in declining_windows for w in _EXPECTED_WINDOWS)
-        eligible = (
-            has_all_three and len(declining_windows) >= _REQUIRED_DECLINING_WINDOWS
-        )
+        eligible = all(w in declining_windows for w in _EXPECTED_WINDOWS)
 
         reasons: tuple[NotBlankStr, ...] = ()
         if eligible:
@@ -262,7 +282,7 @@ class TrendPruningPolicy:
             f"slope_{w}": s for w, s in declining_windows.items()
         }
 
-        logger.debug(
+        logger.info(
             HR_PRUNING_EVALUATION_COMPLETE,
             agent_id=str(agent_id),
             policy="trend",

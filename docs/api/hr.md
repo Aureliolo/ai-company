@@ -62,3 +62,11 @@ Agent lifecycle management -- hiring, firing, onboarding, offboarding, performan
 ::: synthorg.hr.promotion.criteria_protocol
 
 ::: synthorg.hr.promotion.approval_protocol
+
+## Pruning
+
+::: synthorg.hr.pruning.models
+
+::: synthorg.hr.pruning.policy
+
+::: synthorg.hr.pruning.service

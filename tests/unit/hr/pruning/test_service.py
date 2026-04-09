@@ -484,7 +484,7 @@ class TestApprovalProcessing:
 
         assert len(offboarding.offboard_calls) == 0
 
-    async def test_approval_metadata_includes_agent_id_and_policy(
+    async def test_approval_metadata_includes_required_fields(
         self,
         registry: AgentRegistryService,
         approval_store: ApprovalStore,
@@ -501,9 +501,11 @@ class TestApprovalProcessing:
 
         items = await approval_store.list_items(action_type="hr:prune")
         assert len(items) == 1
-        assert "agent_id" in items[0].metadata
-        assert "policy_name" in items[0].metadata
-        assert items[0].metadata["agent_id"] == str(agent.id)
+        meta = items[0].metadata
+        assert meta["agent_id"] == str(agent.id)
+        assert meta["policy_name"] == "always-eligible"
+        assert "pruning_request_id" in meta
+        assert len(meta["pruning_request_id"]) > 0
 
     async def test_missing_agent_in_registry_after_approval(
         self,
@@ -616,7 +618,7 @@ class TestApprovalProcessing:
         registry: AgentRegistryService,
         approval_store: ApprovalStore,
     ) -> None:
-        """Offboarding failure is non-fatal and marks approval processed."""
+        """Offboarding failure is non-fatal and retries on next cycle."""
         agent = make_agent_identity(name="poor-performer")
         await registry.register(agent)
 
@@ -646,8 +648,65 @@ class TestApprovalProcessing:
         await service.run_pruning_cycle(now=NOW + timedelta(hours=2))
         assert len(offboarding.offboard_calls) == 0
 
-        # Running again should NOT retry (idempotency).
+        # Clear transient error -- retry should succeed.
+        offboarding.should_raise = None
         await service.run_pruning_cycle(now=NOW + timedelta(hours=3))
+        assert len(offboarding.offboard_calls) == 1
+
+    async def test_expired_approval_is_not_processed(
+        self,
+        registry: AgentRegistryService,
+        approval_store: ApprovalStore,
+        offboarding: FakeOffboardingService,
+    ) -> None:
+        """EXPIRED approvals are neither offboarded nor rejected."""
+        agent = make_agent_identity(name="slow-approver")
+        await registry.register(agent)
+
+        service = _make_service(
+            policies=(AlwaysEligiblePolicy(),),
+            registry=registry,
+            approval_store=approval_store,
+            offboarding=offboarding,
+        )
+
+        await service.run_pruning_cycle(now=NOW)
+        items = await approval_store.list_items(action_type="hr:prune")
+
+        expired = items[0].model_copy(
+            update={"status": ApprovalStatus.EXPIRED},
+        )
+        await approval_store.save(expired)
+
+        await service.run_pruning_cycle(now=NOW + timedelta(hours=2))
+        assert len(offboarding.offboard_calls) == 0
+
+    async def test_missing_agent_id_in_approval_metadata(
+        self,
+        registry: AgentRegistryService,
+        approval_store: ApprovalStore,
+        offboarding: FakeOffboardingService,
+    ) -> None:
+        """Approval with missing agent_id metadata is skipped safely."""
+        from .conftest import make_approval_item
+
+        bad_item = make_approval_item(
+            status=ApprovalStatus.APPROVED,
+            decided_at=NOW + timedelta(hours=1),
+            decided_by="admin",
+            metadata={"policy_name": "threshold"},
+        )
+        await approval_store.add(bad_item)
+
+        service = _make_service(
+            policies=(AlwaysEligiblePolicy(),),
+            registry=registry,
+            approval_store=approval_store,
+            offboarding=offboarding,
+        )
+
+        # Should not crash -- logs error and skips.
+        await service.run_pruning_cycle(now=NOW)
         assert len(offboarding.offboard_calls) == 0
 
     async def test_approved_agent_not_reprocessed_on_next_cycle(
@@ -724,6 +783,7 @@ class TestSchedulerLifecycle:
     async def test_wake_triggers_early_cycle(self) -> None:
         """Calling wake() triggers a cycle before the interval elapses."""
         import asyncio
+        from unittest.mock import patch
 
         registry = AgentRegistryService()
         store = ApprovalStore()
@@ -732,7 +792,7 @@ class TestSchedulerLifecycle:
         await registry.register(agent)
 
         cycle_executed = asyncio.Event()
-        original_cycle = None
+        loop_waiting = asyncio.Event()
 
         service = _make_service(
             policies=(AlwaysEligiblePolicy(),),
@@ -741,26 +801,37 @@ class TestSchedulerLifecycle:
             config=PruningServiceConfig(evaluation_interval_seconds=3600.0),
         )
 
+        original_wait_for = asyncio.wait_for
+
+        async def patched_wait_for(
+            coro: object,
+            *,
+            timeout: float | None = None,  # noqa: ASYNC109
+        ) -> object:
+            loop_waiting.set()
+            return await original_wait_for(coro, timeout=timeout)  # type: ignore[arg-type]
+
         original_cycle = service.run_pruning_cycle
 
-        async def patched_cycle(
-            **kwargs: object,
-        ) -> object:
+        async def patched_cycle(**kwargs: object) -> object:
             result = await original_cycle(**kwargs)  # type: ignore[arg-type]
             cycle_executed.set()
             return result
 
         service.run_pruning_cycle = patched_cycle  # type: ignore[assignment]
-        service.start()
 
-        # Small yield to let the loop start waiting.
-        await asyncio.sleep(0.01)
-        service.wake()
+        with patch("asyncio.wait_for", side_effect=patched_wait_for):
+            service.start()
+            await loop_waiting.wait()
+            service.wake()
 
-        try:
-            await asyncio.wait_for(cycle_executed.wait(), timeout=5.0)
-        finally:
-            await service.stop()
+            try:
+                await asyncio.wait_for(
+                    cycle_executed.wait(),
+                    timeout=5.0,
+                )
+            finally:
+                await service.stop()
 
         items = await store.list_items(action_type="hr:prune")
         assert len(items) >= 1

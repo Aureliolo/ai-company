@@ -361,6 +361,22 @@ The HR system manages the agent workforce dynamically:
 
 ---
 
+## Pruning / Dropout
+
+The pruning service automates performance-driven agent removal with mandatory human approval.
+
+- **`PruningPolicy`** protocol with two implementations:
+    - `ThresholdPruningPolicy` -- prunes agents with quality AND collaboration below thresholds for N+ consecutive windows (7d/30d/90d).
+    - `TrendPruningPolicy` -- prunes agents with declining Theil-Sen trend across all three windows.
+- **`PruningService`** runs as a periodic background task, evaluates all active agents, and creates CRITICAL-risk approval items for eligible candidates.
+- On human approval, delegates to `OffboardingService` with `FiringReason.PERFORMANCE`.
+- Approval deduplication prevents multiple pending approvals per agent.
+- Transient offboarding failures are retried on subsequent cycles.
+
+Module: `src/synthorg/hr/pruning/` (models, policy, service).
+
+---
+
 ## Firing / Offboarding
 
 Offboarding is triggered by: budget cuts, poor performance metrics, project completion, or

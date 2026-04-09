@@ -263,6 +263,54 @@ class TestPruningRequest:
                 created_at=NOW,
             )
 
+    def test_expired_without_decided_fields_allowed(self) -> None:
+        """EXPIRED is treated like PENDING -- no decided fields required."""
+        snapshot = make_performance_snapshot()
+        evaluation = PruningEvaluation(
+            agent_id=NotBlankStr("agent-001"),
+            eligible=True,
+            reasons=(NotBlankStr("test reason"),),
+            scores={},
+            policy_name=NotBlankStr("threshold"),
+            snapshot=snapshot,
+            evaluated_at=NOW,
+        )
+        request = PruningRequest(
+            agent_id=NotBlankStr("agent-001"),
+            agent_name=NotBlankStr("test-agent"),
+            evaluation=evaluation,
+            approval_id=NotBlankStr("a-001"),
+            status=ApprovalStatus.EXPIRED,
+            created_at=NOW,
+        )
+        assert request.status == ApprovalStatus.EXPIRED
+        assert request.decided_at is None
+        assert request.decided_by is None
+
+    def test_expired_with_decided_fields_rejected(self) -> None:
+        """EXPIRED should not have decided_at/decided_by."""
+        snapshot = make_performance_snapshot()
+        evaluation = PruningEvaluation(
+            agent_id=NotBlankStr("agent-001"),
+            eligible=True,
+            reasons=(NotBlankStr("test reason"),),
+            scores={},
+            policy_name=NotBlankStr("threshold"),
+            snapshot=snapshot,
+            evaluated_at=NOW,
+        )
+        with pytest.raises(ValidationError, match="decided_at and decided_by"):
+            PruningRequest(
+                agent_id=NotBlankStr("agent-001"),
+                agent_name=NotBlankStr("test-agent"),
+                evaluation=evaluation,
+                approval_id=NotBlankStr("a-001"),
+                status=ApprovalStatus.EXPIRED,
+                created_at=NOW,
+                decided_at=NOW + timedelta(hours=1),
+                decided_by=NotBlankStr("admin"),
+            )
+
     def test_pending_with_decided_fields_rejected(self) -> None:
         snapshot = make_performance_snapshot()
         evaluation = PruningEvaluation(
@@ -299,7 +347,7 @@ class TestPruningRecord:
             agent_id=NotBlankStr("agent-001"),
             agent_name=NotBlankStr("test-agent"),
             pruning_request_id=NotBlankStr("req-001"),
-            offboarding_record_id=NotBlankStr("offboard-001"),
+            firing_request_id=NotBlankStr("fire-001"),
             reason=NotBlankStr("quality below threshold"),
             approval_id=NotBlankStr("approval-001"),
             initiated_by=NotBlankStr("system"),
@@ -307,14 +355,14 @@ class TestPruningRecord:
             completed_at=NOW + timedelta(minutes=5),
         )
         assert record.agent_id == "agent-001"
-        assert record.offboarding_record_id == "offboard-001"
+        assert record.firing_request_id == "fire-001"
 
     def test_frozen_enforcement(self) -> None:
         record = PruningRecord(
             agent_id=NotBlankStr("agent-001"),
             agent_name=NotBlankStr("test-agent"),
             pruning_request_id=NotBlankStr("req-001"),
-            offboarding_record_id=NotBlankStr("offboard-001"),
+            firing_request_id=NotBlankStr("fire-001"),
             reason=NotBlankStr("test"),
             approval_id=NotBlankStr("a-001"),
             initiated_by=NotBlankStr("system"),
@@ -330,7 +378,7 @@ class TestPruningRecord:
                 agent_id=NotBlankStr("agent-001"),
                 agent_name=NotBlankStr("test-agent"),
                 pruning_request_id=NotBlankStr("req-001"),
-                offboarding_record_id=NotBlankStr("offboard-001"),
+                firing_request_id=NotBlankStr("fire-001"),
                 reason=NotBlankStr("test"),
                 approval_id=NotBlankStr("a-001"),
                 initiated_by=NotBlankStr("system"),
@@ -343,7 +391,7 @@ class TestPruningRecord:
             agent_id=NotBlankStr("agent-001"),
             agent_name=NotBlankStr("test-agent"),
             pruning_request_id=NotBlankStr("req-001"),
-            offboarding_record_id=NotBlankStr("offboard-001"),
+            firing_request_id=NotBlankStr("fire-001"),
             reason=NotBlankStr("test"),
             approval_id=NotBlankStr("a-001"),
             initiated_by=NotBlankStr("system"),
