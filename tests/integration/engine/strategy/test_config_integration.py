@@ -22,7 +22,7 @@ class TestRootConfigStrategy:
     def test_strategy_from_dict(self) -> None:
         rc = RootConfig(
             company_name="Test Corp",
-            strategy={
+            strategy={  # type: ignore[arg-type]
                 "output_mode": "decision_maker",
                 "cost_tier": "generous",
                 "default_lenses": ["contrarian"],
@@ -36,7 +36,7 @@ class TestRootConfigStrategy:
     def test_strategy_with_progressive_weights(self) -> None:
         rc = RootConfig(
             company_name="Test Corp",
-            strategy={
+            strategy={  # type: ignore[arg-type]
                 "progressive": {
                     "weights": {
                         "budget_impact": 0.3,
@@ -61,7 +61,7 @@ class TestRootConfigStrategy:
     def test_strategy_with_context(self) -> None:
         rc = RootConfig(
             company_name="Test Corp",
-            strategy={
+            strategy={  # type: ignore[arg-type]
                 "context": {
                     "maturity_stage": "seed",
                     "industry": "fintech",
@@ -80,6 +80,6 @@ class TestRootConfigStrategy:
 
     @pytest.mark.integration
     def test_empty_strategy_dict_uses_defaults(self) -> None:
-        rc = RootConfig(company_name="Test Corp", strategy={})
+        rc = RootConfig(company_name="Test Corp", strategy={})  # type: ignore[arg-type]
         assert rc.strategy.output_mode == StrategicOutputMode.ADVISOR
         assert len(rc.strategy.default_lenses) == 4

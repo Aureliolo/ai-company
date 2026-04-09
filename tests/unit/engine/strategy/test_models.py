@@ -28,10 +28,10 @@ class TestStrategicOutputMode:
     @pytest.mark.unit
     def test_all_members_exist(self) -> None:
         assert len(StrategicOutputMode) == 4
-        assert StrategicOutputMode.OPTION_EXPANDER == "option_expander"
-        assert StrategicOutputMode.ADVISOR == "advisor"
-        assert StrategicOutputMode.DECISION_MAKER == "decision_maker"
-        assert StrategicOutputMode.CONTEXT_DEPENDENT == "context_dependent"
+        assert StrategicOutputMode.OPTION_EXPANDER.value == "option_expander"
+        assert StrategicOutputMode.ADVISOR.value == "advisor"
+        assert StrategicOutputMode.DECISION_MAKER.value == "decision_maker"
+        assert StrategicOutputMode.CONTEXT_DEPENDENT.value == "context_dependent"
 
 
 class TestProgressiveWeights:
