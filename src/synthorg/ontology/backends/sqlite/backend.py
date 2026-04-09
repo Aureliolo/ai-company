@@ -20,7 +20,6 @@ from synthorg.observability.events.ontology import (
     ONTOLOGY_ENTITY_UPDATED,
     ONTOLOGY_SEARCH_EXECUTED,
 )
-from synthorg.ontology.backends.sqlite.migrations import apply_ontology_schema
 from synthorg.ontology.errors import (
     OntologyConnectionError,
     OntologyDuplicateError,
@@ -54,11 +53,12 @@ class SQLiteOntologyBackend:
     CRUD operations are in flight.
 
     Args:
-        db_path: Path to the SQLite database file, or ``":memory:"``
-            for in-memory databases.
+        db_path: Path to the SQLite database file.  In-memory
+            databases (``":memory:"``) are not supported because
+            schema setup requires Atlas CLI (a separate process).
     """
 
-    def __init__(self, db_path: str = ":memory:") -> None:
+    def __init__(self, db_path: str) -> None:
         self._db_path = db_path
         self._db: aiosqlite.Connection | None = None
         self._lifecycle_lock = asyncio.Lock()
@@ -66,7 +66,7 @@ class SQLiteOntologyBackend:
     # ── Lifecycle ───────────────────────────────────────────────
 
     async def connect(self) -> None:
-        """Establish connection, enable WAL, apply schema."""
+        """Establish connection, enable WAL, verify schema."""
         async with self._lifecycle_lock:
             if self._db is not None:
                 return
@@ -77,12 +77,14 @@ class SQLiteOntologyBackend:
                 db.row_factory = aiosqlite.Row
                 if self._db_path != ":memory:":
                     await db.execute("PRAGMA journal_mode=WAL")
-                await apply_ontology_schema(db)
-                self._db = db
-            except OntologyConnectionError:
-                if db is not None and db != self._db:
-                    await db.close()
-                raise
+                # Ontology tables are created by the persistence
+                # baseline migration (consolidated schema).  Verify
+                # the expected table exists as a fail-fast check.
+                cursor = await db.execute(
+                    "SELECT name FROM sqlite_master "
+                    "WHERE type='table' AND name='entity_definitions'",
+                )
+                has_table = await cursor.fetchone() is not None
             except (sqlite3.Error, aiosqlite.Error, OSError) as exc:
                 if db is not None:
                     await db.close()
@@ -92,6 +94,22 @@ class SQLiteOntologyBackend:
                     error=str(exc),
                 )
                 raise OntologyConnectionError(msg) from exc
+
+            if not has_table:
+                msg = (
+                    "entity_definitions table not found -- "
+                    "persistence migrations must run before "
+                    "ontology backend connects"
+                )
+                logger.error(
+                    ONTOLOGY_BACKEND_CONNECTION_FAILED,
+                    db_path=self._db_path,
+                    error=msg,
+                )
+                await db.close()
+                raise OntologyConnectionError(msg)
+
+            self._db = db
             logger.info(ONTOLOGY_BACKEND_CONNECTED, db_path=self._db_path)
 
     async def disconnect(self) -> None:
@@ -196,9 +214,14 @@ class SQLiteOntologyBackend:
 
     # ── CRUD ────────────────────────────────────────────────────
 
+    async def _get_db(self) -> aiosqlite.Connection:
+        """Return the active connection, guarded by the lifecycle lock."""
+        async with self._lifecycle_lock:
+            return self._require_connected()
+
     async def register(self, entity: EntityDefinition) -> None:
         """Register a new entity definition."""
-        db = self._require_connected()
+        db = await self._get_db()
         params = self._entity_to_params(entity)
         try:
             await db.execute(
@@ -224,7 +247,7 @@ class SQLiteOntologyBackend:
 
     async def get(self, name: str) -> EntityDefinition:
         """Retrieve an entity definition by name."""
-        db = self._require_connected()
+        db = await self._get_db()
         cursor = await db.execute(
             "SELECT * FROM entity_definitions WHERE name = :name",
             {"name": name},
@@ -241,7 +264,7 @@ class SQLiteOntologyBackend:
         Only mutable fields are written; ``created_by`` and
         ``created_at`` are preserved from the original row.
         """
-        db = self._require_connected()
+        db = await self._get_db()
         params = self._entity_to_params(entity)
         cursor = await db.execute(
             """UPDATE entity_definitions
@@ -266,7 +289,7 @@ class SQLiteOntologyBackend:
 
     async def delete(self, name: str) -> None:
         """Delete an entity definition by name."""
-        db = self._require_connected()
+        db = await self._get_db()
         cursor = await db.execute(
             "DELETE FROM entity_definitions WHERE name = :name",
             {"name": name},
@@ -284,7 +307,7 @@ class SQLiteOntologyBackend:
         tier: EntityTier | None = None,
     ) -> tuple[EntityDefinition, ...]:
         """List entities, optionally filtered by tier."""
-        db = self._require_connected()
+        db = await self._get_db()
         if tier is not None:
             cursor = await db.execute(
                 """SELECT * FROM entity_definitions
@@ -300,7 +323,7 @@ class SQLiteOntologyBackend:
 
     async def search(self, query: str) -> tuple[EntityDefinition, ...]:
         """Search entities by name or definition text."""
-        db = self._require_connected()
+        db = await self._get_db()
         escaped = query.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
         pattern = f"%{escaped}%"
         cursor = await db.execute(
@@ -333,7 +356,7 @@ class SQLiteOntologyBackend:
 
     async def get_version_manifest(self) -> dict[str, int]:
         """Return the latest version number for each entity."""
-        db = self._require_connected()
+        db = await self._get_db()
         cursor = await db.execute(
             """SELECT entity_id, MAX(version) AS latest_version
                FROM entity_definition_versions

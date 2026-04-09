@@ -1,23 +1,15 @@
 """Unit tests for SQLiteSettingsRepository."""
 
-from collections.abc import AsyncGenerator
-
 import aiosqlite
 import pytest
 
-from synthorg.persistence.sqlite.migrations import apply_schema
 from synthorg.persistence.sqlite.settings_repo import SQLiteSettingsRepository
 
 
 @pytest.fixture
-async def repo() -> AsyncGenerator[SQLiteSettingsRepository]:
-    """Create an in-memory SQLite DB with schema applied and return repo."""
-    db = await aiosqlite.connect(":memory:")
-    db.row_factory = aiosqlite.Row
-    await apply_schema(db)
-    repo = SQLiteSettingsRepository(db)
-    yield repo
-    await db.close()
+def repo(migrated_db: aiosqlite.Connection) -> SQLiteSettingsRepository:
+    """Settings repo backed by the shared migrated_db fixture."""
+    return SQLiteSettingsRepository(migrated_db)
 
 
 @pytest.mark.unit

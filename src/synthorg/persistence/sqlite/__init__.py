@@ -13,7 +13,6 @@ from synthorg.persistence.sqlite.checkpoint_repo import (
 from synthorg.persistence.sqlite.heartbeat_repo import (
     SQLiteHeartbeatRepository,
 )
-from synthorg.persistence.sqlite.migrations import apply_schema
 from synthorg.persistence.sqlite.repositories import (
     SQLiteCostRecordRepository,
     SQLiteMessageRepository,
@@ -29,5 +28,4 @@ __all__ = [
     "SQLiteMessageRepository",
     "SQLitePersistenceBackend",
     "SQLiteTaskRepository",
-    "apply_schema",
 ]

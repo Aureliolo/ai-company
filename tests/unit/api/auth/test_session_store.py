@@ -1,6 +1,5 @@
 """Tests for the session store."""
 
-from collections.abc import AsyncGenerator
 from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
@@ -15,7 +14,6 @@ import pytest
 from synthorg.api.auth.session import Session
 from synthorg.api.auth.session_store import SessionStore
 from synthorg.api.guards import HumanRole
-from synthorg.persistence.sqlite.migrations import apply_schema
 
 pytestmark = pytest.mark.unit
 
@@ -63,46 +61,40 @@ def _make_session(  # noqa: PLR0913
 
 
 @pytest.fixture
-async def db() -> AsyncGenerator[aiosqlite.Connection]:
-    conn = await aiosqlite.connect(":memory:")
-    try:
-        conn.row_factory = aiosqlite.Row
-        await apply_schema(conn)
-        # Insert a user so FK constraints pass.
-        await conn.execute(
-            "INSERT INTO users "
-            "(id, username, password_hash, role, "
-            "must_change_password, created_at, updated_at) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?)",
-            (
-                "user-1",
-                "alice",
-                "hash",
-                "ceo",
-                0,
-                _NOW.isoformat(),
-                _NOW.isoformat(),
-            ),
-        )
-        await conn.execute(
-            "INSERT INTO users "
-            "(id, username, password_hash, role, "
-            "must_change_password, created_at, updated_at) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?)",
-            (
-                "user-2",
-                "bob",
-                "hash",
-                "manager",
-                0,
-                _NOW.isoformat(),
-                _NOW.isoformat(),
-            ),
-        )
-        await conn.commit()
-        yield conn
-    finally:
-        await conn.close()
+async def db(migrated_db: aiosqlite.Connection) -> aiosqlite.Connection:
+    # Insert users so FK constraints pass.
+    await migrated_db.execute(
+        "INSERT INTO users "
+        "(id, username, password_hash, role, "
+        "must_change_password, created_at, updated_at) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?)",
+        (
+            "user-1",
+            "alice",
+            "hash",
+            "ceo",
+            0,
+            _NOW.isoformat(),
+            _NOW.isoformat(),
+        ),
+    )
+    await migrated_db.execute(
+        "INSERT INTO users "
+        "(id, username, password_hash, role, "
+        "must_change_password, created_at, updated_at) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?)",
+        (
+            "user-2",
+            "bob",
+            "hash",
+            "manager",
+            0,
+            _NOW.isoformat(),
+            _NOW.isoformat(),
+        ),
+    )
+    await migrated_db.commit()
+    return migrated_db
 
 
 @pytest.fixture

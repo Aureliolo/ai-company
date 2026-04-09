@@ -1,17 +1,12 @@
 """Tests for SQLiteUserRepository and SQLiteApiKeyRepository."""
 
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING
 
 import aiosqlite
 import pytest
 
-if TYPE_CHECKING:
-    from collections.abc import AsyncGenerator
-
 from synthorg.api.auth.models import ApiKey, User
 from synthorg.api.guards import HumanRole
-from synthorg.persistence.sqlite.migrations import apply_schema
 from synthorg.persistence.sqlite.user_repo import (
     SQLiteApiKeyRepository,
     SQLiteUserRepository,
@@ -19,13 +14,9 @@ from synthorg.persistence.sqlite.user_repo import (
 
 
 @pytest.fixture
-async def db() -> AsyncGenerator[aiosqlite.Connection]:
-    """Create an in-memory SQLite DB with schema applied."""
-    conn = await aiosqlite.connect(":memory:")
-    conn.row_factory = aiosqlite.Row
-    await apply_schema(conn)
-    yield conn
-    await conn.close()
+def db(migrated_db: aiosqlite.Connection) -> aiosqlite.Connection:
+    """Alias for the shared migrated_db fixture."""
+    return migrated_db
 
 
 @pytest.fixture

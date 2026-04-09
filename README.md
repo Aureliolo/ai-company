@@ -63,6 +63,8 @@ uv sync                  # install dev + test deps
 uv sync --group docs     # install docs toolchain
 ```
 
+Schema migrations require the [Atlas CLI](https://atlasgo.io/getting-started) on `PATH`.
+
 ### Docker Compose (manual)
 
 ```bash

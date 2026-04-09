@@ -39,6 +39,7 @@ jobs:
               - 'pyproject.toml'
               - 'uv.lock'
               - '.github/actions/**'
+              - 'atlas.hcl'
             dashboard:
               - 'web/**'
             docker:
@@ -65,6 +66,39 @@ jobs:
 
       - name: Ruff format check
         run: uv run ruff format --check src/ tests/
+
+  # ── Schema: Migration Validation ──
+  schema-validate:
+    name: Schema Validation
+    needs: changes
+    if: needs.changes.outputs.python == 'true' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
+
+      - uses: ariga/setup-atlas@2f3c785c89a15e1c0d07bcae3900fb5feb969eea # v0.3
+
+      - name: Validate migration checksums
+        run: atlas migrate validate --dir "file://src/synthorg/persistence/sqlite/revisions" --dev-url "sqlite://file?mode=memory"
+
+      - name: Drift detection
+        run: |
+          diff_output=$(atlas schema diff --env ci \
+            --from "file://src/synthorg/persistence/sqlite/revisions" \
+            --to "file://src/synthorg/persistence/sqlite/schema.sql")
+          if echo "$diff_output" | grep -qv "Schemas are synced"; then
+            echo "::error::Schema drift detected between revisions and schema.sql"
+            echo "$diff_output"
+            exit 1
+          fi
+          echo "$diff_output"
+        # NOTE: atlas migrate lint (policy checks) requires Atlas Pro.
+        # Add --env ci lint step here when Pro auth is available.
 
   # ── Python: Type Check ──
   type-check:
@@ -104,6 +138,8 @@ jobs:
       - uses: ./.github/actions/setup-python-uv
         with:
           python-version: ${{ matrix.python-version }}
+
+      - uses: ariga/setup-atlas@2f3c785c89a15e1c0d07bcae3900fb5feb969eea # v0.3
 
       - name: Run tests
         env:
@@ -348,7 +384,7 @@ jobs:
   ci-pass:
     name: CI Pass
     if: always()
-    needs: [changes, lint, type-check, test, python-audit, dockerfile-lint, dashboard-lint, dashboard-type-check, dashboard-test, dashboard-build, dashboard-audit, dashboard-storybook-build]
+    needs: [changes, lint, schema-validate, type-check, test, python-audit, dockerfile-lint, dashboard-lint, dashboard-type-check, dashboard-test, dashboard-build, dashboard-audit, dashboard-storybook-build]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions: {}
@@ -360,6 +396,7 @@ jobs:
           RESULTS: >-
             ${{ needs.changes.result }}
             ${{ needs.lint.result }}
+            ${{ needs.schema-validate.result }}
             ${{ needs.type-check.result }}
             ${{ needs.test.result }}
             ${{ needs.python-audit.result }}

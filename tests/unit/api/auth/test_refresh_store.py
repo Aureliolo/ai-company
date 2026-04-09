@@ -1,13 +1,11 @@
 """Tests for the refresh token store."""
 
-from collections.abc import AsyncGenerator
 from datetime import UTC, datetime, timedelta
 
 import aiosqlite
 import pytest
 
 from synthorg.api.auth.refresh_store import RefreshStore
-from synthorg.persistence.sqlite.migrations import apply_schema
 
 pytestmark = pytest.mark.unit
 
@@ -17,14 +15,9 @@ _FUTURE = _NOW + timedelta(days=7)
 
 
 @pytest.fixture
-async def db() -> AsyncGenerator[aiosqlite.Connection]:
-    conn = await aiosqlite.connect(":memory:")
-    try:
-        conn.row_factory = aiosqlite.Row
-        await apply_schema(conn)
-        yield conn
-    finally:
-        await conn.close()
+def db(migrated_db: aiosqlite.Connection) -> aiosqlite.Connection:
+    """Alias for the shared migrated_db fixture."""
+    return migrated_db
 
 
 @pytest.fixture

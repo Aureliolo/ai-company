@@ -1,7 +1,6 @@
 """Tests for the account lockout store."""
 
 import time
-from collections.abc import AsyncGenerator
 from unittest.mock import patch
 
 import aiosqlite
@@ -9,7 +8,6 @@ import pytest
 
 from synthorg.api.auth.config import AuthConfig
 from synthorg.api.auth.lockout_store import LockoutStore
-from synthorg.persistence.sqlite.migrations import apply_schema
 
 pytestmark = pytest.mark.unit
 
@@ -28,14 +26,9 @@ def _make_config(
 
 
 @pytest.fixture
-async def db() -> AsyncGenerator[aiosqlite.Connection]:
-    conn = await aiosqlite.connect(":memory:")
-    try:
-        conn.row_factory = aiosqlite.Row
-        await apply_schema(conn)
-        yield conn
-    finally:
-        await conn.close()
+def db(migrated_db: aiosqlite.Connection) -> aiosqlite.Connection:
+    """Alias for the shared migrated_db fixture."""
+    return migrated_db
 
 
 @pytest.fixture

@@ -10,6 +10,7 @@ End-to-end test covering:
 import json
 from collections.abc import AsyncGenerator
 from datetime import date
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
 
@@ -19,7 +20,7 @@ import pytest
 from synthorg.core.agent import AgentIdentity, ModelConfig
 from synthorg.core.enums import DecisionOutcome
 from synthorg.hr.registry import AgentRegistryService
-from synthorg.persistence.sqlite.migrations import apply_schema
+from synthorg.persistence import atlas
 from synthorg.persistence.sqlite.version_repo import SQLiteVersionRepository
 from synthorg.versioning.service import VersioningService
 
@@ -38,12 +39,18 @@ def _make_identity(name: str = "agent-x") -> AgentIdentity:
 
 
 @pytest.fixture
-async def db() -> AsyncGenerator[aiosqlite.Connection]:
-    """In-memory SQLite connection with schema applied."""
-    conn = await aiosqlite.connect(":memory:")
+async def db(tmp_path: Path) -> AsyncGenerator[aiosqlite.Connection]:
+    """Temp-file SQLite connection with Atlas migrations applied."""
+    db_path = tmp_path / "test.db"
+    rev_url = atlas.copy_revisions(tmp_path / "revisions")
+    await atlas.migrate_apply(
+        atlas.to_sqlite_url(str(db_path)),
+        revisions_url=rev_url,
+        skip_lock=True,
+    )
+    conn = await aiosqlite.connect(str(db_path))
     try:
         conn.row_factory = aiosqlite.Row
-        await apply_schema(conn)
         yield conn
     finally:
         await conn.close()

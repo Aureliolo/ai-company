@@ -6,14 +6,22 @@ from pathlib import Path
 import pytest
 
 from synthorg.ontology.backends.sqlite.backend import SQLiteOntologyBackend
+from synthorg.persistence import atlas
 
 pytestmark = pytest.mark.integration
 
 
 @pytest.fixture
-def db_path(tmp_path: Path) -> str:
-    """Temporary on-disk database path."""
-    return str(tmp_path / "ontology_test.db")
+async def db_path(tmp_path: Path) -> str:
+    """Temporary on-disk database path with Atlas migrations applied."""
+    path = str(tmp_path / "ontology_test.db")
+    rev_url = atlas.copy_revisions(tmp_path / "revisions")
+    await atlas.migrate_apply(
+        atlas.to_sqlite_url(path),
+        revisions_url=rev_url,
+        skip_lock=True,
+    )
+    return path
 
 
 @pytest.fixture

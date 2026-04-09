@@ -1,7 +1,6 @@
 """Tests for HR SQLite repository implementations."""
 
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING
 
 import aiosqlite
 import pytest
@@ -19,20 +18,12 @@ from synthorg.persistence.sqlite.hr_repositories import (
     SQLiteLifecycleEventRepository,
     SQLiteTaskMetricRepository,
 )
-from synthorg.persistence.sqlite.migrations import apply_schema
-
-if TYPE_CHECKING:
-    from collections.abc import AsyncGenerator
 
 
 @pytest.fixture
-async def db() -> AsyncGenerator[aiosqlite.Connection]:
-    """In-memory SQLite connection with schema applied."""
-    conn = await aiosqlite.connect(":memory:")
-    conn.row_factory = aiosqlite.Row
-    await apply_schema(conn)
-    yield conn
-    await conn.close()
+def db(migrated_db: aiosqlite.Connection) -> aiosqlite.Connection:
+    """Alias for the shared migrated_db fixture."""
+    return migrated_db
 
 
 def _make_lifecycle_event(  # noqa: PLR0913

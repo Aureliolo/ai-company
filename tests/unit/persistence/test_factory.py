@@ -1,5 +1,7 @@
 """Tests for persistence backend factory."""
 
+from pathlib import Path
+
 import pytest
 
 from synthorg.persistence.config import PersistenceConfig, SQLiteConfig
@@ -45,13 +47,16 @@ class TestCreateBackend:
         ):
             create_backend(bad_config)
 
-    async def test_multi_tenancy_separate_databases(self) -> None:
+    async def test_multi_tenancy_separate_databases(
+        self,
+        tmp_path: Path,
+    ) -> None:
         """Each company config creates an isolated backend instance."""
         config_a = PersistenceConfig(
-            sqlite=SQLiteConfig(path=":memory:"),
+            sqlite=SQLiteConfig(path=str(tmp_path / "company-a.db")),
         )
         config_b = PersistenceConfig(
-            sqlite=SQLiteConfig(path=":memory:"),
+            sqlite=SQLiteConfig(path=str(tmp_path / "company-b.db")),
         )
 
         backend_a = create_backend(config_a)
