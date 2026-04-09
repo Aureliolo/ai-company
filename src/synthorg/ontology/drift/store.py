@@ -175,7 +175,7 @@ class SQLiteDriftReportStore:
         return tuple(_row_to_report(row) for row in rows)
 
 
-def _row_to_report(row: tuple[object, ...]) -> DriftReport:
+def _row_to_report(row: object) -> DriftReport:
     """Deserialise a database row into a DriftReport.
 
     Args:
@@ -185,7 +185,7 @@ def _row_to_report(row: tuple[object, ...]) -> DriftReport:
     Returns:
         Reconstructed DriftReport.
     """
-    entity_name, divergence_score, canonical_version, rec, agents_json = row
+    entity_name, divergence_score, canonical_version, rec, agents_json = row  # type: ignore[misc]
     agents_data = json.loads(str(agents_json))
     agents = tuple(
         AgentDrift(
@@ -197,8 +197,8 @@ def _row_to_report(row: tuple[object, ...]) -> DriftReport:
     )
     return DriftReport(
         entity_name=str(entity_name),
-        divergence_score=float(divergence_score),  # type: ignore[arg-type]
-        canonical_version=int(canonical_version),  # type: ignore[arg-type]
+        divergence_score=float(str(divergence_score)),
+        canonical_version=int(str(canonical_version)),
         recommendation=DriftAction(str(rec)),
         divergent_agents=agents,
     )

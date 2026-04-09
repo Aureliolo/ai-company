@@ -1778,16 +1778,14 @@ class AgentEngine:
             )
         if self._ontology_injection_strategy is not None:
             tool_defs = self._ontology_injection_strategy.get_tool_definitions()
-            if tool_defs:
-                from synthorg.ontology.injection.tool import (  # noqa: PLC0415, TC001
-                    LookupEntityTool,
+            if tool_defs and hasattr(self._ontology_injection_strategy, "tool"):
+                from synthorg.tools.registry import (  # noqa: PLC0415
+                    ToolRegistry as _ToolRegistry,
                 )
 
-                if hasattr(self._ontology_injection_strategy, "tool"):
-                    tool_instance: LookupEntityTool = (
-                        self._ontology_injection_strategy.tool
-                    )
-                    registry = registry.register(tool_instance)
+                ontology_tool = self._ontology_injection_strategy.tool
+                existing = list(registry.all_tools())
+                registry = _ToolRegistry([*existing, ontology_tool])
         checker = ToolPermissionChecker.from_permissions(identity.tools)
         interceptor = self._make_security_interceptor(effective_autonomy)
         return ToolInvoker(

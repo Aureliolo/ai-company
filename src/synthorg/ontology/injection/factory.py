@@ -63,5 +63,5 @@ def create_injection_strategy(
     if strategy == InjectionStrategy.MEMORY:
         return MemoryBasedInjectionStrategy()
 
-    msg = f"Unknown injection strategy: {strategy!r}"
+    msg = f"Unknown injection strategy: {strategy!r}"  # type: ignore[unreachable]
     raise ValueError(msg)

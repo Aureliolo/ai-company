@@ -6,7 +6,7 @@ to OrgMemory), idempotent via SHA-256 content hashing.
 """
 
 import hashlib
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from synthorg.core.enums import OrgFactCategory
 from synthorg.observability import get_logger
@@ -55,7 +55,7 @@ class OntologyOrgMemorySync:
         self,
         *,
         ontology: OntologyBackend,
-        org_memory: object,
+        org_memory: Any,
         config: OntologySyncConfig,
     ) -> None:
         self._ontology = ontology

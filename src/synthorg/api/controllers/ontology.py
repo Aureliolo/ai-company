@@ -22,7 +22,6 @@ from synthorg.api.dto_ontology import (
 )
 from synthorg.api.errors import ApiValidationError, NotFoundError
 from synthorg.api.guards import (
-    require_admin_access,
     require_read_access,
     require_write_access,
 )
@@ -244,7 +243,7 @@ class OntologyController(Controller):
 
     @delete(
         "/entities/{name:str}",
-        guards=[require_admin_access],
+        guards=[require_write_access],
         status_code=HTTP_204_NO_CONTENT,
     )
     async def delete_entity(
@@ -288,7 +287,7 @@ class OntologyController(Controller):
             msg = "Entity not found"
             raise NotFoundError(msg)  # noqa: B904
 
-        versions = await svc._versioning.list_versions(  # noqa: SLF001
+        versions = await svc._versioning._repo.list_versions(  # noqa: SLF001
             name,
             limit=limit,
             offset=offset,
@@ -322,7 +321,7 @@ class OntologyController(Controller):
         app_state: AppState = state.app_state
         svc = app_state.ontology_service
 
-        v = await svc._versioning.get_version(  # noqa: SLF001
+        v = await svc._versioning._repo.get_version(  # noqa: SLF001
             name,
             version,
         )
@@ -373,7 +372,7 @@ class OntologyController(Controller):
         """Get drift reports for a specific entity."""
         return ApiResponse(data=())
 
-    @post("/drift/check", guards=[require_admin_access])
+    @post("/drift/check", guards=[require_write_access])
     async def trigger_drift_check(
         self,
         state: State,  # noqa: ARG002
@@ -383,7 +382,7 @@ class OntologyController(Controller):
 
     # ── Admin ──────────────────────────────────────────────────
 
-    @post("/admin/derive", guards=[require_admin_access])
+    @post("/admin/derive", guards=[require_write_access])
     async def admin_derive(
         self,
         state: State,
@@ -395,7 +394,7 @@ class OntologyController(Controller):
 
     @post(
         "/admin/sync-org-memory",
-        guards=[require_admin_access],
+        guards=[require_write_access],
     )
     async def admin_sync_org_memory(
         self,

@@ -1,5 +1,7 @@
 """Tests for SQLiteDriftReportStore."""
 
+from collections.abc import AsyncGenerator
+
 import aiosqlite
 import pytest
 
@@ -8,12 +10,12 @@ from synthorg.ontology.models import AgentDrift, DriftAction, DriftReport
 
 
 @pytest.fixture
-async def store() -> SQLiteDriftReportStore:
+async def store() -> AsyncGenerator[SQLiteDriftReportStore]:
     """Create an in-memory SQLite drift report store."""
     db = await aiosqlite.connect(":memory:")
     s = SQLiteDriftReportStore(db)
     await s.apply_schema()
-    yield s  # type: ignore[misc]
+    yield s
     await db.close()
 
 
