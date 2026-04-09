@@ -144,14 +144,11 @@ class TestCommunicationToolsConfig:
         assert config.email is not None
         assert config.email.host == "smtp.example.com"
 
-    def test_max_recipients_must_be_positive(self) -> None:
+    @pytest.mark.parametrize(
+        "value",
+        [0, 1001, float("nan")],
+        ids=["zero", "above_max", "nan"],
+    )
+    def test_invalid_max_recipients(self, value: Any) -> None:
         with pytest.raises(ValidationError):
-            CommunicationToolsConfig(max_recipients=0)
-
-    def test_max_recipients_upper_bound(self) -> None:
-        with pytest.raises(ValidationError):
-            CommunicationToolsConfig(max_recipients=1001)
-
-    def test_rejects_nan(self) -> None:
-        with pytest.raises(ValidationError):
-            CommunicationToolsConfig(max_recipients=float("nan"))  # type: ignore[arg-type]
+            CommunicationToolsConfig(max_recipients=value)

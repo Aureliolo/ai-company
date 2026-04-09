@@ -142,22 +142,23 @@ class TestImageGeneratorTool:
         assert "must be between" in result.content
         assert len(mock_provider.calls) == 0
 
-    async def test_execute_invalid_style(
+    @pytest.mark.parametrize(
+        ("key", "value", "expected_msg"),
+        [
+            ("style", "watercolor", "Invalid style"),
+            ("quality", "ultra", "Invalid quality"),
+        ],
+        ids=["invalid_style", "invalid_quality"],
+    )
+    async def test_execute_invalid_enum(
         self,
         mock_provider: MockImageProvider,
+        key: str,
+        value: str,
+        expected_msg: str,
     ) -> None:
         tool = ImageGeneratorTool(provider=mock_provider)
-        result = await tool.execute(arguments={"prompt": "test", "style": "watercolor"})
+        result = await tool.execute(arguments={"prompt": "test", key: value})
         assert result.is_error
-        assert "Invalid style" in result.content
-        assert len(mock_provider.calls) == 0
-
-    async def test_execute_invalid_quality(
-        self,
-        mock_provider: MockImageProvider,
-    ) -> None:
-        tool = ImageGeneratorTool(provider=mock_provider)
-        result = await tool.execute(arguments={"prompt": "test", "quality": "ultra"})
-        assert result.is_error
-        assert "Invalid quality" in result.content
+        assert expected_msg in result.content
         assert len(mock_provider.calls) == 0
