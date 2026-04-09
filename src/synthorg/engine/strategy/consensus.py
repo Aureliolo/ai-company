@@ -94,9 +94,20 @@ class ConsensusVelocityDetector:
             int,
         ):
             msg = "min_disagreements must be an int"
+            logger.warning(
+                "consensus.config.invalid",
+                min_disagreements=min_disagreements,
+                value_type=type(min_disagreements).__name__,
+                reason=msg,
+            )
             raise TypeError(msg)
         if min_disagreements < 0:
             msg = "min_disagreements must be >= 0"
+            logger.warning(
+                "consensus.config.invalid",
+                min_disagreements=min_disagreements,
+                reason=msg,
+            )
             raise ValueError(msg)
         self._min_disagreements = min_disagreements
 
@@ -137,17 +148,18 @@ class ConsensusVelocityDetector:
                 if ratio < _SUBSTANTIAL_DIFF_THRESHOLD:
                     disagreements += 1
 
-        # Calculate mean similarity
-        mean_sim = sum(similarities) / len(similarities)
+        # Calculate mean similarity (round before comparison so the
+        # reported metric and detection decision are consistent).
+        rounded_mean = round(sum(similarities) / len(similarities), 4)
 
         # Detect premature consensus: high similarity + few disagreements
         is_premature = (
-            mean_sim > config.threshold and disagreements < self._min_disagreements
+            rounded_mean > config.threshold and disagreements < self._min_disagreements
         )
 
         return ConsensusVelocityResult(
             detected=is_premature,
             action=config.action if is_premature else None,
-            mean_similarity=round(mean_sim, 4),
+            mean_similarity=rounded_mean,
             disagreement_count=disagreements,
         )

@@ -94,28 +94,24 @@ def _make_default_message_kwargs() -> dict[str, Any]:
 
 class TestPartRoundtripProperties:
     @given(part=_text_parts)
-    @settings(max_examples=50)
     def test_text_part_roundtrip(self, part: TextPart) -> None:
         dumped = part.model_dump()
         restored = TextPart.model_validate(dumped)
         assert restored == part
 
     @given(part=_data_parts)
-    @settings(max_examples=50)
     def test_data_part_roundtrip(self, part: DataPart) -> None:
         dumped = part.model_dump()
         restored = DataPart.model_validate(dumped)
         assert restored == part
 
     @given(part=_file_parts)
-    @settings(max_examples=50)
     def test_file_part_roundtrip(self, part: FilePart) -> None:
         dumped = part.model_dump()
         restored = FilePart.model_validate(dumped)
         assert restored == part
 
     @given(part=_uri_parts)
-    @settings(max_examples=50)
     def test_uri_part_roundtrip(self, part: UriPart) -> None:
         dumped = part.model_dump()
         restored = UriPart.model_validate(dumped)

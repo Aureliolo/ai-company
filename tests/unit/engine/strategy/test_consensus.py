@@ -237,12 +237,19 @@ class TestConsensusVelocityDetector:
     def test_mean_similarity_is_rounded(self) -> None:
         """mean_similarity is rounded to 4 decimal places."""
         detector = ConsensusVelocityDetector()
-        config = ConsensusVelocityConfig(threshold=0.5)
-        positions = ("testing", "testing")
+        config = ConsensusVelocityConfig(threshold=0.1)
+        # Non-trivial pair producing fractional similarity
+        positions = ("the quick brown fox", "the slow brown cat")
         result = detector.detect(positions, config)
 
-        # Check it's rounded (not more than 4 decimal places)
-        assert len(str(result.mean_similarity).split(".")[-1]) <= 4
+        # Verify rounding: re-compute expected via round(ratio, 4)
+        import difflib
+
+        expected = round(
+            difflib.SequenceMatcher(None, positions[0], positions[1]).ratio(),
+            4,
+        )
+        assert result.mean_similarity == expected
 
     @pytest.mark.unit
     def test_three_position_pairwise_combinations(self) -> None:

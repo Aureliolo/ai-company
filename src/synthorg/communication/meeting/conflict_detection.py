@@ -221,9 +221,14 @@ class LlmJudgeDetector:
                     judgment = parsed["judgment"]
                     if isinstance(judgment, str):
                         normalized = judgment.lower()
-                        if "no_conflict" in normalized or "no conflict" in normalized:
+                        # Negation-aware check: "no conflict(s)",
+                        # "not a conflict", "without conflict", etc.
+                        if re.search(
+                            r"\b(no|not|none|without|zero)\b.*\bconflicts?\b",
+                            normalized,
+                        ):
                             return False
-                        return "conflict" in normalized
+                        return bool(re.search(r"\bconflicts?\b", normalized))
         except json.JSONDecodeError, TypeError, ValueError:
             logger.debug(
                 CONFLICT_PARSE_FAILED,
@@ -299,6 +304,11 @@ class EmbeddingSimilarityDetector:
             "Embedding infrastructure unavailable: "
             "EmbeddingSimilarityDetector cannot be used"
         )
+        logger.warning(
+            CONFLICT_PARSE_FAILED,
+            detector="EmbeddingSimilarityDetector",
+            reason=msg,
+        )
         raise NotImplementedError(msg)
 
 
@@ -340,7 +350,11 @@ class HybridDetector:
             if self.embedding_detector.detect(response_content):
                 return True
         except NotImplementedError:
-            pass
+            logger.warning(
+                CONFLICT_PARSE_FAILED,
+                detector="HybridDetector",
+                reason="embedding detector unavailable, falling back to keyword",
+            )
         return self.keyword_detector.detect(response_content)
 
 

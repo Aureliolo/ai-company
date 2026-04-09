@@ -411,7 +411,7 @@ class MeetingOrchestrator:
             )
             return None
         else:
-            return result
+            return dict(result)
 
     def _validate_inputs(
         self,

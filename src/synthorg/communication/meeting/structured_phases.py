@@ -247,6 +247,7 @@ class StructuredPhasesProtocol:
                 token_budget=token_budget,
                 inputs=inputs,
                 turn_number=turn_number,
+                lens_assignments=lens_assignments,
             )
         else:
             logger.warning(
@@ -459,6 +460,7 @@ class StructuredPhasesProtocol:
         token_budget: int,
         inputs: list[tuple[str, str]],
         turn_number: int,
+        lens_assignments: dict[str, str] | None = None,
     ) -> tuple[
         bool,
         int,
@@ -536,6 +538,7 @@ class StructuredPhasesProtocol:
                 inputs=inputs,
                 conflict_analysis=conflict_response.content,
                 turn_number=turn_number,
+                lens_assignments=lens_assignments,
             )
             discussion_contributions.extend(round_contributions)
             discussion_pairs = round_pairs
@@ -559,6 +562,7 @@ class StructuredPhasesProtocol:
         inputs: list[tuple[str, str]],
         conflict_analysis: str,
         turn_number: int,
+        lens_assignments: dict[str, str] | None = None,
     ) -> tuple[int, list[MeetingContribution], list[tuple[str, str]]]:
         """Run the discussion round with participants.
 
@@ -604,6 +608,11 @@ class StructuredPhasesProtocol:
                 inputs,
                 conflict_analysis,
                 pid,
+            )
+            disc_prompt = inject_lens_perspective(
+                disc_prompt,
+                pid,
+                lens_assignments,
             )
 
             logger.debug(

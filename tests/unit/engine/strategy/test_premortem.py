@@ -222,7 +222,7 @@ class TestDefaultPremortemExecutor:
 
         # Should call approximately half: 4 // 2 = 2
         assert len(called_agents) == 2
-        assert called_agents == ["agent_1", "agent_2"]
+        assert set(called_agents) == {"agent_1", "agent_2"}
 
     @pytest.mark.unit
     async def test_token_distribution(self) -> None:

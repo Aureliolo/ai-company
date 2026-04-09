@@ -110,6 +110,18 @@ class DataPart(BaseModel):
 
         return _thaw(value)  # type: ignore[return-value]
 
+    def model_copy(self, **kwargs: Any) -> DataPart:
+        """Override to re-freeze data when model_copy updates it."""
+        result = super().model_copy(**kwargs)
+        update = kwargs.get("update")
+        if update and "data" in update:
+            raw = update["data"]
+            if isinstance(raw, MappingProxyType):
+                raw = dict(raw)
+            frozen = freeze_recursive(deep_copy_mapping(raw))
+            object.__setattr__(result, "data", frozen)
+        return result  # type: ignore[return-value]
+
 
 class FilePart(BaseModel):
     """Reference to a file resource.

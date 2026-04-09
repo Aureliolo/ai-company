@@ -216,6 +216,8 @@ class DefaultPremortemExecutor:
                     prompt,
                     tokens_list[idx],
                 )
+            except MemoryError, RecursionError:
+                raise
             except Exception:
                 logger.warning(
                     STRATEGY_PREMORTEM_RESPONSE_SKIPPED,

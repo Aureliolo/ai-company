@@ -36,7 +36,8 @@ class LensAssigner(Protocol):
             Dict mapping participant_id -> lens_name.
             Every participant receives a lens (round-robin wrap when
             participants outnumber available lenses).  An empty dict
-            is returned only when *available_lenses* is empty.
+            is returned when *available_lenses* or *participant_ids*
+            is empty.
         """
         ...
 
