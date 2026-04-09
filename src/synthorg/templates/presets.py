@@ -469,6 +469,11 @@ del _validate_presets
 
 from synthorg.core.enums import SeniorityLevel, StrategicOutputMode  # noqa: E402
 
+# Scope intentionally includes VP and Director (not just C-suite).
+# VP defaults to advisor (same as C-suite); Director defaults to
+# context_dependent (resolves by seniority at runtime).
+# See docs/design/strategy.md "Strategic Output Modes" and prompt
+# injection scope (C-suite, VP, Director).
 STRATEGIC_OUTPUT_DEFAULTS: MappingProxyType[SeniorityLevel, StrategicOutputMode] = (
     MappingProxyType(
         {

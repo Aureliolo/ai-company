@@ -116,7 +116,7 @@ def _parse_pack_yaml(
             description=data.get("description", ""),
             principles=principles,
         )
-    except (TypeError, ValueError, KeyError) as exc:
+    except (TypeError, ValueError, KeyError, ValidationError) as exc:
         msg = f"Validation failed for pack from {source_name}: {exc}"
         logger.warning(
             STRATEGY_PACK_INVALID,

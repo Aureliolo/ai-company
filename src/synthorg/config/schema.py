@@ -409,6 +409,11 @@ class AgentConfig(BaseModel):
         memory: Raw memory config dict.
         tools: Raw tools config dict.
         authority: Raw authority config dict.
+        autonomy_level: Per-agent autonomy level override
+            (``None`` inherits default).
+        strategic_output_mode: Per-agent strategic output mode override
+            (``StrategicOutputMode | None``).  ``None`` inherits the
+            company strategy config default.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)

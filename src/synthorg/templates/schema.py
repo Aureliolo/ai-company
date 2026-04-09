@@ -116,6 +116,9 @@ class TemplateAgentConfig(BaseModel):
             ``personality_preset``).
         department: Department override (``None`` uses the template
             system default during rendering).
+        strategic_output_mode: Strategic output mode override for this
+            agent (``StrategicOutputMode | None``).  ``None`` inherits
+            the company strategy config default.
         merge_id: Stable identity for inheritance merge.  When a
             template has multiple agents with the same ``(role,
             department)`` pair, ``merge_id`` disambiguates them so

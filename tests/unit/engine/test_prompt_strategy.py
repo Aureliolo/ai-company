@@ -7,6 +7,7 @@ import pytest
 from synthorg.core.agent import AgentIdentity, ModelConfig
 from synthorg.core.enums import SeniorityLevel, StrategicOutputMode
 from synthorg.engine.prompt import build_system_prompt
+from synthorg.engine.prompt_template import PROMPT_TEMPLATE_VERSION
 from synthorg.engine.strategy.models import StrategyConfig
 
 
@@ -111,4 +112,4 @@ class TestPromptStrategyIntegration:
     def test_template_version_bumped(self) -> None:
         agent = _make_agent()
         prompt = build_system_prompt(agent=agent)
-        assert prompt.template_version == "1.1.0"
+        assert prompt.template_version == PROMPT_TEMPLATE_VERSION

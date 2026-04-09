@@ -212,7 +212,7 @@ All major components are pluggable behind `@runtime_checkable Protocol`:
 
 ### Module Layout
 
-```
+```text
 engine/strategy/
   __init__.py         -- Public exports
   models.py           -- Config + domain models (frozen Pydantic)

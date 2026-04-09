@@ -5,7 +5,11 @@ level of strategic analysis (cost tier).  Pluggable behind the
 :class:`ImpactScorer` protocol.
 """
 
-from typing import Protocol, runtime_checkable
+from types import MappingProxyType
+from typing import TYPE_CHECKING, Protocol, runtime_checkable
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping
 
 from synthorg.engine.strategy.models import (
     CostTierPreset,
@@ -22,25 +26,31 @@ logger = get_logger(__name__)
 
 # ── Dimension normalization maps ───────────────────────────────
 
-_REVERSIBILITY_SCORES: dict[str, float] = {
-    "easily_reversible": 0.2,
-    "moderate": 0.5,
-    "locked_in": 0.9,
-}
+_REVERSIBILITY_SCORES: Mapping[str, float] = MappingProxyType(
+    {
+        "easily_reversible": 0.2,
+        "moderate": 0.5,
+        "locked_in": 0.9,
+    }
+)
 
-_BLAST_RADIUS_SCORES: dict[str, float] = {
-    "individual": 0.1,
-    "team": 0.3,
-    "department": 0.6,
-    "company_wide": 0.95,
-}
+_BLAST_RADIUS_SCORES: Mapping[str, float] = MappingProxyType(
+    {
+        "individual": 0.1,
+        "team": 0.3,
+        "department": 0.6,
+        "company_wide": 0.95,
+    }
+)
 
-_TIME_HORIZON_SCORES: dict[str, float] = {
-    "immediate": 0.1,
-    "short_term": 0.3,
-    "medium_term": 0.6,
-    "long_term": 0.9,
-}
+_TIME_HORIZON_SCORES: Mapping[str, float] = MappingProxyType(
+    {
+        "immediate": 0.1,
+        "short_term": 0.3,
+        "medium_term": 0.6,
+        "long_term": 0.9,
+    }
+)
 
 
 @runtime_checkable

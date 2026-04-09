@@ -19,8 +19,8 @@ class TestBuildOutputInstructions:
             mode=StrategicOutputMode.OPTION_EXPANDER,
             lenses=lenses,
         )
-        assert "ALL" in result
-        assert "status quo" in result.lower() or "lenses" in result.lower()
+        assert "ALL viable options" in result
+        assert "do not rank or recommend" in result.lower()
 
     @pytest.mark.unit
     def test_advisor_mode(self) -> None:

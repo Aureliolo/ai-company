@@ -423,7 +423,11 @@ def _build_template_context(  # noqa: PLR0913
     context["context_budget"] = context_budget
 
     # Strategic analysis sections (conditional on config + agent eligibility).
-    _inject_strategy_context(context, agent, strategy_config)
+    from synthorg.engine.strategy.adapter import (  # noqa: PLC0415
+        inject_strategy_context,
+    )
+
+    inject_strategy_context(context, agent, strategy_config)
 
     if task is not None:
         context["task"] = {
@@ -456,69 +460,6 @@ def _build_template_context(  # noqa: PLR0913
         context["company_departments"] = None
 
     return context, trim_info
-
-
-def _inject_strategy_context(
-    context: dict[str, Any],
-    agent: AgentIdentity,
-    strategy_config: StrategyConfig | None,
-) -> None:
-    """Inject strategic analysis sections into template context.
-
-    Sets ``strategic_context`` to ``True`` and populates the individual
-    section text variables when the agent qualifies for strategic
-    injection.  Otherwise sets ``strategic_context`` to ``False``
-    and all section text variables to ``None``.
-    """
-    from synthorg.engine.strategy.prompt_injection import (  # noqa: PLC0415
-        build_strategic_prompt_sections,
-        should_inject_strategy,
-    )
-
-    if not should_inject_strategy(agent, strategy_config):
-        context["strategic_context"] = False
-        context["strategic_context_text"] = None
-        context["constitutional_principles_text"] = None
-        context["contrarian_text"] = None
-        context["confidence_text"] = None
-        context["assumption_text"] = None
-        context["output_instructions_text"] = None
-        return
-
-    assert strategy_config is not None  # noqa: S101 -- guarded by should_inject_strategy
-
-    # Load principles if configured.
-    from synthorg.engine.strategy.principles import (  # noqa: PLC0415
-        StrategyPackNotFoundError,
-        StrategyPackValidationError,
-        load_and_merge,
-    )
-    from synthorg.observability.events.strategy import (  # noqa: PLC0415
-        STRATEGY_PRINCIPLES_LOAD_FAILED,
-    )
-
-    principles: tuple[Any, ...] = ()
-    try:
-        principles = load_and_merge(strategy_config.constitutional_principles)
-    except MemoryError, RecursionError:
-        raise
-    except (StrategyPackNotFoundError, StrategyPackValidationError) as exc:
-        logger.warning(
-            STRATEGY_PRINCIPLES_LOAD_FAILED,
-            agent_id=str(agent.id),
-            error_type=type(exc).__name__,
-            error=str(exc),
-            exc_info=True,
-        )
-
-    sections = build_strategic_prompt_sections(
-        config=strategy_config,
-        agent=agent,
-        principles=principles,
-    )
-
-    context["strategic_context"] = True
-    context.update(sections)
 
 
 def _render_template(template_str: str, context: dict[str, Any]) -> str:

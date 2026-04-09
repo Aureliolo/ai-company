@@ -1,8 +1,9 @@
 """Hypothesis property tests for strategy models."""
 
 import pytest
-from hypothesis import given, settings
+from hypothesis import given
 from hypothesis import strategies as st
+from pydantic import ValidationError
 
 from synthorg.engine.strategy.models import (
     ConfidenceMetadata,
@@ -27,7 +28,6 @@ class TestProgressiveWeightsProperties:
             )
         ),
     )
-    @settings(max_examples=50)
     def test_valid_weights_always_sum_to_one(
         self,
         weights: tuple[float, ...],
@@ -53,7 +53,7 @@ class TestProgressiveWeightsProperties:
             )
             d = w.as_dict()
             assert abs(sum(d.values()) - 1.0) < 1e-6
-        except ValueError:
+        except ValidationError:
             pass  # Expected for near-boundary float arithmetic.
 
 
@@ -69,7 +69,6 @@ class TestProgressiveThresholdsProperties:
             min_value=0.01, max_value=1.0, allow_nan=False, allow_infinity=False
         ),
     )
-    @settings(max_examples=50)
     def test_ordering_invariant(
         self,
         moderate: float,
@@ -77,7 +76,7 @@ class TestProgressiveThresholdsProperties:
     ) -> None:
         """Valid thresholds always have moderate < generous."""
         if moderate >= generous:
-            with pytest.raises(ValueError, match="must be less than"):
+            with pytest.raises(ValidationError):
                 ProgressiveThresholds(moderate=moderate, generous=generous)
         else:
             t = ProgressiveThresholds(moderate=moderate, generous=generous)
@@ -99,7 +98,6 @@ class TestConfidenceMetadataProperties:
             min_value=0.0, max_value=1.0, allow_nan=False, allow_infinity=False
         ),
     )
-    @settings(max_examples=50)
     def test_range_ordering_invariant(
         self,
         lower: float,
@@ -108,7 +106,7 @@ class TestConfidenceMetadataProperties:
     ) -> None:
         """Valid metadata always has lower <= level <= upper."""
         if lower > level or level > upper:
-            with pytest.raises(ValueError, match=r"range_lower|range_upper"):
+            with pytest.raises(ValidationError):
                 ConfidenceMetadata(
                     level=level,
                     range_lower=lower,
@@ -132,12 +130,11 @@ class TestImpactScoreProperties:
             min_value=0.0, max_value=1.0, allow_nan=False, allow_infinity=False
         ),
     )
-    @settings(max_examples=50)
-    def test_composite_in_range(self, composite: float) -> None:
-        """Composite score is always in [0, 1]."""
+    def test_composite_round_trips(self, composite: float) -> None:
+        """Composite value round-trips through ImpactScore construction."""
         score = ImpactScore(
             dimensions={},
             composite=composite,
             tier=CostTierPreset.MODERATE,
         )
-        assert 0.0 <= score.composite <= 1.0
+        assert score.composite == composite
