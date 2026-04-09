@@ -5,6 +5,7 @@ retrieve entity definitions.  No prompt injection -- agents
 discover entities through the tool interface.
 """
 
+import copy
 from typing import TYPE_CHECKING, Any
 
 from synthorg.core.enums import ToolCategory
@@ -14,7 +15,7 @@ from synthorg.observability.events.ontology import (
     ONTOLOGY_TOOL_LOOKUP,
 )
 from synthorg.ontology.errors import OntologyNotFoundError
-from synthorg.ontology.injection.prompt import _format_entity
+from synthorg.ontology.injection.prompt import format_entity
 from synthorg.tools.base import BaseTool, ToolExecutionResult
 
 if TYPE_CHECKING:
@@ -73,7 +74,7 @@ class LookupEntityTool(BaseTool):
                 "ontology. Use 'name' for exact lookup or 'query' for "
                 "free-text search across entity names and definitions."
             ),
-            parameters_schema=dict(_LOOKUP_SCHEMA),
+            parameters_schema=copy.deepcopy(_LOOKUP_SCHEMA),
             category=ToolCategory.ONTOLOGY,
         )
         self._backend = backend
@@ -94,6 +95,11 @@ class LookupEntityTool(BaseTool):
         name = arguments.get("name")
         query = arguments.get("query")
 
+        if name and query:
+            return ToolExecutionResult(
+                content="Provide exactly one of 'name' or 'query', not both.",
+                is_error=True,
+            )
         if name:
             return await self._lookup_by_name(name)
         if query:
@@ -130,7 +136,7 @@ class LookupEntityTool(BaseTool):
             found=True,
         )
         return ToolExecutionResult(
-            content=_format_entity(entity),
+            content=format_entity(entity),
         )
 
     async def _search(self, query: str) -> ToolExecutionResult:
@@ -170,7 +176,7 @@ class LookupEntityTool(BaseTool):
             query=query,
             result_count=len(results),
         )
-        formatted = "\n\n".join(_format_entity(e) for e in results)
+        formatted = "\n\n".join(format_entity(e) for e in results)
         return ToolExecutionResult(
             content=formatted,
             metadata={"result_count": len(results)},

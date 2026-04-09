@@ -6,11 +6,14 @@ Same logic as passive but intended to run at delegation time
 
 from typing import TYPE_CHECKING
 
+from synthorg.observability import get_logger
 from synthorg.ontology.drift.passive import PassiveMonitorStrategy
 
 if TYPE_CHECKING:
     from synthorg.memory.protocol import MemoryBackend
     from synthorg.ontology.protocol import OntologyBackend
+
+logger = get_logger(__name__)
 
 
 class ActiveValidatorStrategy(PassiveMonitorStrategy):

@@ -69,7 +69,16 @@ class DriftDetectionService:
             agent_count=len(agent_ids),
         )
 
-        report = await self._strategy.detect(entity_name, agent_ids)
+        try:
+            report = await self._strategy.detect(entity_name, agent_ids)
+        except Exception:
+            logger.error(
+                "ontology.drift.detect_failed",
+                entity_name=entity_name,
+                agent_count=len(agent_ids),
+                exc_info=True,
+            )
+            raise
 
         if report.divergence_score >= self._config.threshold:
             logger.warning(
@@ -86,7 +95,16 @@ class DriftDetectionService:
         )
 
         if self._store is not None:
-            await self._store.store_report(report)
+            try:
+                await self._store.store_report(report)
+            except Exception:
+                logger.error(
+                    "ontology.drift.store_failed",
+                    entity_name=entity_name,
+                    divergence_score=report.divergence_score,
+                    exc_info=True,
+                )
+                raise
 
         return report
 
@@ -102,12 +120,19 @@ class DriftDetectionService:
         Returns:
             Drift reports for all entities.
         """
+        import asyncio  # noqa: PLC0415
+
         entities = await self._ontology.list_entities()
-        reports: list[DriftReport] = []
-        for entity in entities:
-            report = await self.check_entity(entity.name, agent_ids)
-            reports.append(report)
-        return tuple(reports)
+
+        async with asyncio.TaskGroup() as tg:
+            tasks = [
+                tg.create_task(
+                    self.check_entity(entity.name, agent_ids),
+                )
+                for entity in entities
+            ]
+
+        return tuple(task.result() for task in tasks)
 
     @property
     def threshold(self) -> float:

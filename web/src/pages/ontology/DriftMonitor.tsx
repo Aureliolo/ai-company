@@ -109,10 +109,10 @@ export function DriftMonitor({ reports, loading, error }: DriftMonitorProps) {
                       {RECOMMENDATION_LABELS[report.recommendation]}
                     </span>
                   </td>
-                  <td className="py-2.5 pr-4 text-xs text-text-secondary">
+                  <td className="py-2.5 pr-4 text-xs text-muted-foreground">
                     {report.divergent_agents.length}
                   </td>
-                  <td className="py-2.5 text-xs text-text-secondary">
+                  <td className="py-2.5 text-xs text-muted-foreground">
                     v{report.canonical_version}
                   </td>
                 </tr>

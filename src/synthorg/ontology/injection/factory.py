@@ -6,6 +6,7 @@ strategy implementations.
 
 from typing import TYPE_CHECKING
 
+from synthorg.observability import get_logger
 from synthorg.ontology.config import InjectionStrategy, OntologyInjectionConfig
 from synthorg.ontology.injection.hybrid import HybridInjectionStrategy
 from synthorg.ontology.injection.memory import MemoryBasedInjectionStrategy
@@ -16,6 +17,8 @@ if TYPE_CHECKING:
     from synthorg.memory.injection import TokenEstimator
     from synthorg.ontology.injection.protocol import OntologyInjectionStrategy
     from synthorg.ontology.protocol import OntologyBackend
+
+logger = get_logger(__name__)
 
 
 def create_injection_strategy(
@@ -64,4 +67,8 @@ def create_injection_strategy(
         return MemoryBasedInjectionStrategy()
 
     msg = f"Unknown injection strategy: {strategy!r}"  # type: ignore[unreachable]
+    logger.error(
+        "ontology.injection.unknown_strategy",
+        strategy=str(strategy),
+    )
     raise ValueError(msg)

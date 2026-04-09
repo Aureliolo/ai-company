@@ -22,7 +22,7 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 
-def _format_entity(entity: EntityDefinition) -> str:
+def format_entity(entity: EntityDefinition) -> str:
     """Format a single entity definition as readable text.
 
     Args:
@@ -114,7 +114,7 @@ class PromptInjectionStrategy:
         sections: list[str] = [header]
         included = 0
         for entity in entities:
-            formatted = _format_entity(entity)
+            formatted = format_entity(entity)
             tokens = self._estimator.estimate_tokens(formatted)
             if tokens > remaining:
                 break

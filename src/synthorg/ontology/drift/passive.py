@@ -39,6 +39,10 @@ def _keyword_overlap(text_a: str, text_b: str) -> float:
     return len(words_a & words_b) / len(words_b)
 
 
+_NOTIFY_THRESHOLD = 0.5
+_RETRAIN_THRESHOLD = 0.7
+
+
 def _recommend(score: float, threshold: float) -> DriftAction:
     """Map divergence score to recommendation.
 
@@ -51,9 +55,9 @@ def _recommend(score: float, threshold: float) -> DriftAction:
     """
     if score < threshold:
         return DriftAction.NO_ACTION
-    if score < 0.5:  # noqa: PLR2004
+    if score < _NOTIFY_THRESHOLD:
         return DriftAction.NOTIFY
-    if score < 0.7:  # noqa: PLR2004
+    if score < _RETRAIN_THRESHOLD:
         return DriftAction.RETRAIN
     return DriftAction.ESCALATE
 
@@ -130,6 +134,7 @@ class PassiveMonitorStrategy:
         canonical_text = entity.definition or entity.name
 
         agent_drifts: list[AgentDrift] = []
+        agent_scores: list[float] = []
         for agent_id in sample_agents:
             query = MemoryQuery(
                 tags=(f"entity:{entity_name}",),
@@ -142,6 +147,7 @@ class PassiveMonitorStrategy:
             combined = " ".join(e.content for e in entries)
             overlap = _keyword_overlap(combined, canonical_text)
             divergence = round(1.0 - overlap, 3)
+            agent_scores.append(divergence)
             if divergence > 0.0:
                 agent_drifts.append(
                     AgentDrift(
@@ -151,12 +157,7 @@ class PassiveMonitorStrategy:
                     ),
                 )
 
-        if agent_drifts:
-            agg = sum(d.divergence_score for d in agent_drifts) / len(
-                agent_drifts,
-            )
-        else:
-            agg = 0.0
+        agg = sum(agent_scores) / len(agent_scores) if agent_scores else 0.0
 
         report = DriftReport(
             entity_name=entity_name,

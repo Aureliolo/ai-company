@@ -5,6 +5,9 @@ delegatee at delegation time.  Four configurable modes control the
 enforcement level, from no-op to strict rejection.
 """
 
+import copy
+from collections.abc import Mapping  # noqa: TC003 -- runtime for Pydantic
+from types import MappingProxyType
 from typing import TYPE_CHECKING, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -47,7 +50,7 @@ class EntityGuardOutcome(BaseModel):
         default="",
         description="Human-readable detail",
     )
-    entity_versions: dict[str, int] | None = Field(
+    entity_versions: Mapping[str, int] | None = Field(
         default=None,
         description="Entity version manifest at check time",
     )
@@ -91,7 +94,7 @@ class EntityAlignmentGuard:
         self._ontology = ontology
         self._config = config
 
-    async def check(
+    async def check(  # noqa: C901, PLR0911, PLR0912
         self,
         request: DelegationRequest,
     ) -> EntityGuardOutcome:
@@ -127,24 +130,44 @@ class EntityAlignmentGuard:
                 )
             manifest = {}
 
+        frozen_manifest: Mapping[str, int] = (
+            MappingProxyType(copy.deepcopy(manifest))
+            if manifest
+            else MappingProxyType({})
+        )
+
         if mode == GuardMode.STAMP:
             logger.debug(
                 ONTOLOGY_GUARD_STAMPED,
                 delegator=request.delegator_id,
                 delegatee=request.delegatee_id,
-                entity_count=len(manifest),
+                entity_count=len(frozen_manifest),
             )
             return EntityGuardOutcome(
                 passed=True,
-                entity_versions=manifest,
+                entity_versions=frozen_manifest,
             )
+
+        # Check version alignment for VALIDATE and ENFORCE modes.
+        # Compare the request's known versions against the current
+        # manifest to detect stale entity knowledge.
+        mismatches: list[str] = []
+        if request.entity_versions:
+            for name, known_ver in request.entity_versions.items():
+                current_ver = manifest.get(name)
+                if current_ver is None:
+                    mismatches.append(f"{name}: known v{known_ver}, not in manifest")
+                elif current_ver != known_ver:
+                    mismatches.append(
+                        f"{name}: known v{known_ver}, current v{current_ver}"
+                    )
 
         if mode == GuardMode.VALIDATE:
             logger.debug(
                 ONTOLOGY_GUARD_STAMPED,
                 delegator=request.delegator_id,
                 delegatee=request.delegatee_id,
-                entity_count=len(manifest),
+                entity_count=len(frozen_manifest),
             )
             if not manifest:
                 logger.warning(
@@ -153,9 +176,17 @@ class EntityAlignmentGuard:
                     delegatee=request.delegatee_id,
                     detail="No entities registered in ontology",
                 )
+            elif mismatches:
+                logger.warning(
+                    ONTOLOGY_GUARD_DRIFT_DETECTED,
+                    delegator=request.delegator_id,
+                    delegatee=request.delegatee_id,
+                    detail=f"Version mismatches: {', '.join(mismatches)}",
+                    mismatch_count=len(mismatches),
+                )
             return EntityGuardOutcome(
                 passed=True,
-                entity_versions=manifest,
+                entity_versions=frozen_manifest,
             )
 
         # GuardMode.ENFORCE
@@ -168,20 +199,35 @@ class EntityAlignmentGuard:
             )
             return EntityGuardOutcome(
                 passed=False,
-                entity_versions=manifest,
+                entity_versions=frozen_manifest,
                 message="Entity alignment enforcement failed: "
                 "no entities registered in ontology",
+            )
+
+        if mismatches:
+            detail = f"Stale entity versions: {', '.join(mismatches)}"
+            logger.warning(
+                ONTOLOGY_GUARD_BLOCKED,
+                delegator=request.delegator_id,
+                delegatee=request.delegatee_id,
+                detail=detail,
+                mismatch_count=len(mismatches),
+            )
+            return EntityGuardOutcome(
+                passed=False,
+                entity_versions=frozen_manifest,
+                message=f"Entity alignment enforcement failed: {detail}",
             )
 
         logger.debug(
             ONTOLOGY_GUARD_STAMPED,
             delegator=request.delegator_id,
             delegatee=request.delegatee_id,
-            entity_count=len(manifest),
+            entity_count=len(frozen_manifest),
         )
         return EntityGuardOutcome(
             passed=True,
-            entity_versions=manifest,
+            entity_versions=frozen_manifest,
         )
 
     @property

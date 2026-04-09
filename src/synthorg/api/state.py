@@ -766,6 +766,21 @@ class AppState:
         return self._ontology_service is not None
 
     @property
+    def drift_report_store(self) -> object | None:
+        """Return the drift report store, or None if not configured."""
+        return getattr(self, "_drift_report_store", None)
+
+    @property
+    def drift_detection_service(self) -> object | None:
+        """Return the drift detection service, or None if not configured."""
+        return getattr(self, "_drift_detection_service", None)
+
+    @property
+    def ontology_sync_service(self) -> object | None:
+        """Return the ontology sync service, or None if not configured."""
+        return getattr(self, "_ontology_sync_service", None)
+
+    @property
     def has_model_router(self) -> bool:
         """Check whether the model router is configured."""
         return self._model_router is not None

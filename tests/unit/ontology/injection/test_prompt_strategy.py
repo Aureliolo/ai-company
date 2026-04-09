@@ -7,7 +7,7 @@ import pytest
 from synthorg.memory.injection import DefaultTokenEstimator
 from synthorg.ontology.injection.prompt import (
     PromptInjectionStrategy,
-    _format_entity,
+    format_entity,
 )
 from synthorg.ontology.models import EntityDefinition
 from synthorg.providers.enums import MessageRole
@@ -15,14 +15,14 @@ from synthorg.providers.enums import MessageRole
 
 @pytest.mark.unit
 class TestFormatEntity:
-    """Tests for _format_entity helper."""
+    """Tests for format_entity helper."""
 
     def test_minimal_entity(
         self,
         core_entities: tuple[EntityDefinition, ...],
     ) -> None:
         """Entity with definition and fields is formatted correctly."""
-        result = _format_entity(core_entities[0])
+        result = format_entity(core_entities[0])
         assert "## Task" in result
         assert "A unit of work" in result
         assert "title: str" in result
@@ -33,7 +33,7 @@ class TestFormatEntity:
     ) -> None:
         """Constraints section is included."""
         # Use the fully-populated fixture from parent conftest
-        result = _format_entity(sample_entity)
+        result = format_entity(sample_entity)
         assert "Constraints:" in result
         assert "title must not be empty" in result
 
@@ -42,7 +42,7 @@ class TestFormatEntity:
         sample_entity: EntityDefinition,
     ) -> None:
         """Disambiguation line is included."""
-        result = _format_entity(sample_entity)
+        result = format_entity(sample_entity)
         assert "Not:" in result
 
     def test_entity_with_relationships(
@@ -50,7 +50,7 @@ class TestFormatEntity:
         sample_entity: EntityDefinition,
     ) -> None:
         """Relationships section is included."""
-        result = _format_entity(sample_entity)
+        result = format_entity(sample_entity)
         assert "Relationships:" in result
         assert "assigned_to -> AgentIdentity" in result
 

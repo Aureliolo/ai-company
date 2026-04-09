@@ -84,7 +84,7 @@ class HybridInjectionStrategy:
         logger.debug(
             ONTOLOGY_INJECTION_PREPARED,
             agent_id=agent_id,
-            entity_count=len(messages),
+            message_count=len(messages),
             strategy="hybrid",
         )
         return messages

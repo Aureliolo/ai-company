@@ -105,13 +105,13 @@ class OntologyAwareMemoryBackend:
         Returns:
             The backend-assigned memory ID.
         """
-        if not self._config.auto_tag:
-            return await self._inner.store(agent_id, request)
+        if self._config.auto_tag or self._config.warn_on_drift:
+            await self._refresh_entity_names()
+            found = self._detect_entities(request.content)
+        else:
+            found = ()
 
-        await self._refresh_entity_names()
-        found = self._detect_entities(request.content)
-
-        if found:
+        if found and self._config.auto_tag:
             new_tags = tuple(
                 f"entity:{name}"
                 for name in found
@@ -132,8 +132,8 @@ class OntologyAwareMemoryBackend:
                     tag_count=len(new_tags),
                 )
 
-            if self._config.warn_on_drift:
-                await self._warn_on_drift(agent_id, request.content, found)
+        if found and self._config.warn_on_drift:
+            await self._warn_on_drift(agent_id, request.content, found)
 
         return await self._inner.store(agent_id, request)
 
@@ -183,9 +183,17 @@ class OntologyAwareMemoryBackend:
 
             if version_tags:
                 existing = entry.metadata.tags
-                new_tags = tuple(t for t in version_tags if t not in existing)
+                entity_names = tuple(tag.removeprefix("entity:") for tag in entity_tags)
+                filtered_existing = tuple(
+                    t
+                    for t in existing
+                    if not any(
+                        t.startswith(f"entity_version:{name}=") for name in entity_names
+                    )
+                )
+                new_tags = tuple(t for t in version_tags if t not in filtered_existing)
                 if new_tags:
-                    all_tags = (*existing, *new_tags)
+                    all_tags = (*filtered_existing, *new_tags)
                     new_metadata = entry.metadata.model_copy(
                         update={"tags": all_tags},
                     )

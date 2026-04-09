@@ -1793,8 +1793,12 @@ class AgentEngine:
                     self._ontology_injection_strategy,
                     ToolBasedInjectionStrategy | HybridInjectionStrategy,
                 ):
-                    ontology_tool = self._ontology_injection_strategy.tool
-                    existing = list(registry.all_tools())
+                    import copy as _copy  # noqa: PLC0415
+
+                    ontology_tool = _copy.deepcopy(
+                        self._ontology_injection_strategy.tool,
+                    )
+                    existing = [_copy.deepcopy(t) for t in registry.all_tools()]
                     registry = _ToolRegistry([*existing, ontology_tool])
         checker = ToolPermissionChecker.from_permissions(identity.tools)
         interceptor = self._make_security_interceptor(effective_autonomy)

@@ -42,6 +42,7 @@ from synthorg.ontology.errors import (
     OntologyNotFoundError,
 )
 from synthorg.ontology.models import (
+    DriftReport,
     EntityDefinition,
     EntityField,
     EntityRelation,
@@ -83,6 +84,28 @@ def _entity_to_response(entity: EntityDefinition) -> EntityResponse:
     )
 
 
+def _drift_report_to_response(
+    report: DriftReport,
+) -> DriftReportResponse:
+    """Convert a DriftReport to a DriftReportResponse."""
+    from synthorg.api.dto_ontology import DriftAgentResponse  # noqa: PLC0415
+
+    return DriftReportResponse(
+        entity_name=report.entity_name,
+        divergence_score=report.divergence_score,
+        divergent_agents=tuple(
+            DriftAgentResponse(
+                agent_id=a.agent_id,
+                divergence_score=a.divergence_score,
+                details=a.details,
+            )
+            for a in report.divergent_agents
+        ),
+        canonical_version=report.canonical_version,
+        recommendation=report.recommendation,
+    )
+
+
 class OntologyController(Controller):
     """Entity definition CRUD, versioning, and drift detection."""
 
@@ -104,7 +127,19 @@ class OntologyController(Controller):
         app_state: AppState = state.app_state
         svc = app_state.ontology_service
 
-        tier_filter = EntityTier(tier) if tier else None
+        tier_filter: EntityTier | None = None
+        if tier is not None:
+            try:
+                tier_filter = EntityTier(tier)
+            except ValueError:
+                allowed = ", ".join(m.value for m in EntityTier)
+                msg = f"Invalid tier {tier!r}. Allowed: {allowed}"
+                logger.warning(
+                    API_REQUEST_ERROR,
+                    reason="invalid_tier",
+                    tier=tier,
+                )
+                raise ApiValidationError(msg)  # noqa: B904
         entities = await svc.list_entities(tier=tier_filter)
 
         responses = tuple(_entity_to_response(e) for e in entities)
@@ -214,8 +249,21 @@ class OntologyController(Controller):
             updates["constraints"] = data.constraints
 
         if existing.tier == EntityTier.CORE:
-            if data.fields is not None or data.relationships is not None:
-                msg = "CORE entity structural fields cannot be modified via API"
+            if any(
+                (
+                    data.definition is not None,
+                    data.fields is not None,
+                    data.constraints is not None,
+                    data.disambiguation is not None,
+                    data.relationships is not None,
+                ),
+            ):
+                msg = "CORE entities cannot be modified via API"
+                logger.warning(
+                    API_REQUEST_ERROR,
+                    reason="core_entity_modification",
+                    name=name,
+                )
                 raise ApiValidationError(msg)
         else:
             if data.fields is not None:
@@ -305,7 +353,7 @@ class OntologyController(Controller):
         )
         page, meta = paginate(
             responses,
-            offset=0,
+            offset=offset,
             limit=limit,
         )
         return PaginatedResponse(data=page, pagination=meta)
@@ -352,30 +400,60 @@ class OntologyController(Controller):
     @get("/drift")
     async def list_drift_reports(
         self,
-        state: State,  # noqa: ARG002
+        state: State,
         offset: PaginationOffset = 0,
         limit: PaginationLimit = 50,
     ) -> PaginatedResponse[DriftReportResponse]:
         """Get latest drift reports for all entities."""
-        _, meta = paginate((), offset=offset, limit=limit)
-        return PaginatedResponse(data=(), pagination=meta)
+        app_state: AppState = state.app_state
+        store = app_state.drift_report_store
+        if store is None:
+            _, meta = paginate((), offset=offset, limit=limit)
+            return PaginatedResponse(data=(), pagination=meta)
+
+        reports = await store.get_all_latest(limit=limit)
+        responses = tuple(_drift_report_to_response(r) for r in reports)
+        page, meta = paginate(responses, offset=offset, limit=limit)
+        return PaginatedResponse(data=page, pagination=meta)
 
     @get("/drift/{entity_name:str}")
     async def get_drift_report(
         self,
-        state: State,  # noqa: ARG002
-        entity_name: PathName,  # noqa: ARG002
+        state: State,
+        entity_name: PathName,
     ) -> ApiResponse[tuple[DriftReportResponse, ...]]:
         """Get drift reports for a specific entity."""
-        return ApiResponse(data=())
+        app_state: AppState = state.app_state
+        store = app_state.drift_report_store
+        if store is None:
+            return ApiResponse(data=())
+
+        reports = await store.get_latest(entity_name)
+        responses = tuple(_drift_report_to_response(r) for r in reports)
+        return ApiResponse(data=responses)
 
     @post("/drift/check", guards=[require_write_access])
     async def trigger_drift_check(
         self,
-        state: State,  # noqa: ARG002
-    ) -> ApiResponse[str]:
+        state: State,
+    ) -> ApiResponse[dict[str, str]]:
         """Trigger on-demand drift check for all entities."""
-        return ApiResponse(data="Drift check triggered")
+        app_state: AppState = state.app_state
+        drift_service = app_state.drift_detection_service
+        if drift_service is None:
+            logger.warning(
+                API_REQUEST_ERROR,
+                reason="drift_service_unavailable",
+            )
+            return ApiResponse(
+                data={"status": "drift_service_not_configured"},
+            )
+
+        # Agent discovery is handled by the engine -- trigger uses
+        # empty tuple to signal "check all entities, no agent sample".
+        logger.info("ontology.drift.check_triggered")
+        await drift_service.check_all(agent_ids=())
+        return ApiResponse(data={"status": "drift_check_completed"})
 
     # ── Admin ──────────────────────────────────────────────────
 
@@ -395,7 +473,26 @@ class OntologyController(Controller):
     )
     async def admin_sync_org_memory(
         self,
-        state: State,  # noqa: ARG002
-    ) -> ApiResponse[dict[str, str]]:
+        state: State,
+    ) -> ApiResponse[dict[str, int | str]]:
         """Force re-sync all entity definitions to OrgMemory."""
-        return ApiResponse(data={"status": "sync_triggered"})
+        app_state: AppState = state.app_state
+        sync_service = app_state.ontology_sync_service
+        if sync_service is None:
+            logger.warning(
+                API_REQUEST_ERROR,
+                reason="sync_service_unavailable",
+            )
+            return ApiResponse(
+                data={"status": "sync_service_not_configured"},
+            )
+
+        logger.info("ontology.admin.sync_triggered")
+        count = await sync_service.sync_all()
+        logger.info(
+            "ontology.admin.sync_completed",
+            published_count=count,
+        )
+        return ApiResponse(
+            data={"status": "sync_completed", "published_count": count},
+        )

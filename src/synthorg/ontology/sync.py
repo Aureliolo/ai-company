@@ -8,13 +8,14 @@ to OrgMemory), idempotent via SHA-256 content hashing.
 import hashlib
 from typing import TYPE_CHECKING, Any
 
-from synthorg.core.enums import OrgFactCategory
+from synthorg.core.enums import OrgFactCategory, SeniorityLevel
+from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
 from synthorg.observability.events.ontology import (
     ONTOLOGY_SYNC_PUBLISHED,
     ONTOLOGY_SYNC_SKIPPED,
 )
-from synthorg.ontology.injection.prompt import _format_entity
+from synthorg.ontology.injection.prompt import format_entity
 
 if TYPE_CHECKING:
     from synthorg.ontology.config import OntologySyncConfig
@@ -79,7 +80,7 @@ class OntologyOrgMemorySync:
             OrgFactWriteRequest,
         )
 
-        content = _format_entity(entity)
+        content = format_entity(entity)
         new_hash = _content_hash(content)
 
         if self._hashes.get(entity.name) == new_hash:
@@ -95,7 +96,10 @@ class OntologyOrgMemorySync:
             category=OrgFactCategory.ENTITY_DEFINITION,
             tags=("entity", entity.name, f"tier:{entity.tier.value}"),
         )
-        author = OrgFactAuthor(is_human=True)
+        author = OrgFactAuthor(
+            agent_id=NotBlankStr("system-ontology-sync"),
+            seniority=SeniorityLevel.SENIOR,
+        )
         await self._org_memory.write(request, author=author)
         self._hashes[entity.name] = new_hash
 

@@ -36,6 +36,7 @@ from synthorg.api.controllers.meetings import MeetingController
 from synthorg.api.controllers.memory import MemoryAdminController
 from synthorg.api.controllers.messages import MessageController
 from synthorg.api.controllers.metrics import MetricsController
+from synthorg.api.controllers.ontology import OntologyController
 from synthorg.api.controllers.personalities import (
     PersonalityPresetController,
 )
@@ -103,6 +104,7 @@ ALL_CONTROLLERS: tuple[type[Controller], ...] = (
     QualityController,
     ReportsController,
     WorkflowExecutionController,
+    OntologyController,
 )
 
 __all__ = [
@@ -132,6 +134,7 @@ __all__ = [
     "MemoryAdminController",
     "MessageController",
     "MetricsController",
+    "OntologyController",
     "PersonalityPresetController",
     "ProjectController",
     "ProviderController",

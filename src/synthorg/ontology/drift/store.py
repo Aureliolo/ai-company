@@ -3,12 +3,15 @@
 import json
 from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
+from synthorg.observability import get_logger
 from synthorg.ontology.models import AgentDrift, DriftAction, DriftReport
 
 if TYPE_CHECKING:
     import aiosqlite
 
     from synthorg.core.types import NotBlankStr
+
+logger = get_logger(__name__)
 
 
 @runtime_checkable
@@ -106,20 +109,28 @@ class SQLiteDriftReportStore:
                 for a in report.divergent_agents
             ],
         )
-        await self._db.execute(
-            "INSERT INTO drift_reports "
-            "(entity_name, divergence_score, canonical_version, "
-            "recommendation, divergent_agents) "
-            "VALUES (?, ?, ?, ?, ?)",
-            (
-                report.entity_name,
-                report.divergence_score,
-                report.canonical_version,
-                report.recommendation.value,
-                agents_json,
-            ),
-        )
-        await self._db.commit()
+        try:
+            await self._db.execute(
+                "INSERT INTO drift_reports "
+                "(entity_name, divergence_score, canonical_version, "
+                "recommendation, divergent_agents) "
+                "VALUES (?, ?, ?, ?, ?)",
+                (
+                    report.entity_name,
+                    report.divergence_score,
+                    report.canonical_version,
+                    report.recommendation.value,
+                    agents_json,
+                ),
+            )
+            await self._db.commit()
+        except Exception:
+            logger.error(
+                "ontology.drift.store_write_failed",
+                entity_name=report.entity_name,
+                exc_info=True,
+            )
+            raise
 
     async def get_latest(
         self,
@@ -184,21 +195,32 @@ def _row_to_report(row: Any) -> DriftReport:
 
     Returns:
         Reconstructed DriftReport.
+
+    Raises:
+        ValueError: If the row contains malformed data.
     """
     entity_name, divergence_score, canonical_version, rec, agents_json = row
-    agents_data = json.loads(str(agents_json))
-    agents = tuple(
-        AgentDrift(
-            agent_id=a["agent_id"],
-            divergence_score=a["divergence_score"],
-            details=a.get("details", ""),
+    try:
+        agents_data = json.loads(str(agents_json))
+        agents = tuple(
+            AgentDrift(
+                agent_id=a["agent_id"],
+                divergence_score=a["divergence_score"],
+                details=a.get("details", ""),
+            )
+            for a in agents_data
         )
-        for a in agents_data
-    )
-    return DriftReport(
-        entity_name=str(entity_name),
-        divergence_score=float(divergence_score),
-        canonical_version=int(canonical_version),
-        recommendation=DriftAction(str(rec)),
-        divergent_agents=agents,
-    )
+        return DriftReport(
+            entity_name=str(entity_name),
+            divergence_score=float(divergence_score),
+            canonical_version=int(canonical_version),
+            recommendation=DriftAction(str(rec)),
+            divergent_agents=agents,
+        )
+    except (json.JSONDecodeError, KeyError, ValueError, TypeError) as exc:
+        logger.exception(
+            "ontology.drift.store_deserialize_failed",
+            entity_name=str(entity_name),
+        )
+        msg = f"Malformed drift report row for entity {entity_name!r}"
+        raise ValueError(msg) from exc

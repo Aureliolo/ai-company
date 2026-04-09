@@ -82,7 +82,7 @@ class OntologyInjectionConfig(BaseModel):
         description="Max tokens for core entity injection",
     )
     tool_name: NotBlankStr = Field(
-        default="get_entity_definition",
+        default="lookup_entity",
         description="On-demand entity lookup tool name",
     )
 
