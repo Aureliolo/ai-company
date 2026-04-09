@@ -21,6 +21,8 @@ function makeOverview(overrides: Partial<OverviewMetrics> = {}): OverviewMetrics
       interrupted: 1,
       suspended: 0,
       cancelled: 1,
+      rejected: 0,
+      auth_required: 0,
     },
     total_agents: 10,
     total_cost_usd: 42.17,

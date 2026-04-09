@@ -40,6 +40,12 @@ class TestValidTransitions:
             (TaskStatus.FAILED, TaskStatus.ASSIGNED),
             (TaskStatus.INTERRUPTED, TaskStatus.ASSIGNED),
             (TaskStatus.SUSPENDED, TaskStatus.ASSIGNED),
+            # REJECTED and AUTH_REQUIRED transitions
+            (TaskStatus.CREATED, TaskStatus.REJECTED),
+            (TaskStatus.ASSIGNED, TaskStatus.AUTH_REQUIRED),
+            (TaskStatus.IN_PROGRESS, TaskStatus.AUTH_REQUIRED),
+            (TaskStatus.AUTH_REQUIRED, TaskStatus.ASSIGNED),
+            (TaskStatus.AUTH_REQUIRED, TaskStatus.CANCELLED),
         ],
         ids=lambda p: p.value if isinstance(p, TaskStatus) else str(p),
     )
@@ -71,6 +77,12 @@ class TestInvalidTransitions:
             (TaskStatus.SUSPENDED, TaskStatus.IN_PROGRESS),
             (TaskStatus.CREATED, TaskStatus.SUSPENDED),
             (TaskStatus.IN_REVIEW, TaskStatus.SUSPENDED),
+            # REJECTED and AUTH_REQUIRED invalid transitions
+            (TaskStatus.REJECTED, TaskStatus.ASSIGNED),
+            (TaskStatus.REJECTED, TaskStatus.CREATED),
+            (TaskStatus.AUTH_REQUIRED, TaskStatus.COMPLETED),
+            (TaskStatus.AUTH_REQUIRED, TaskStatus.IN_PROGRESS),
+            (TaskStatus.CREATED, TaskStatus.AUTH_REQUIRED),
         ],
         ids=lambda p: p.value if isinstance(p, TaskStatus) else str(p),
     )
@@ -94,6 +106,13 @@ class TestInvalidTransitions:
             with pytest.raises(ValueError, match="Invalid task status transition"):
                 validate_transition(TaskStatus.CANCELLED, target)
 
+    def test_rejected_to_any_rejected(self) -> None:
+        for target in TaskStatus:
+            if target is TaskStatus.REJECTED:
+                continue
+            with pytest.raises(ValueError, match="Invalid task status transition"):
+                validate_transition(TaskStatus.REJECTED, target)
+
     def test_error_message_includes_allowed(self) -> None:
         with pytest.raises(ValueError, match="Allowed from 'created'"):
             validate_transition(TaskStatus.CREATED, TaskStatus.COMPLETED)
@@ -114,9 +133,20 @@ class TestTransitionMapCompleteness:
             )
 
     def test_terminal_states_have_empty_transitions(self) -> None:
-        """COMPLETED and CANCELLED must have no outgoing transitions."""
+        """COMPLETED, CANCELLED, and REJECTED must have no outgoing transitions."""
         assert VALID_TRANSITIONS[TaskStatus.COMPLETED] == frozenset()
         assert VALID_TRANSITIONS[TaskStatus.CANCELLED] == frozenset()
+        assert VALID_TRANSITIONS[TaskStatus.REJECTED] == frozenset()
+
+    def test_auth_required_is_non_terminal(self) -> None:
+        """AUTH_REQUIRED has outgoing transitions (approved or denied)."""
+        assert len(VALID_TRANSITIONS[TaskStatus.AUTH_REQUIRED]) > 0
+
+    def test_auth_required_transitions(self) -> None:
+        """AUTH_REQUIRED can transition to ASSIGNED or CANCELLED."""
+        assert VALID_TRANSITIONS[TaskStatus.AUTH_REQUIRED] == frozenset(
+            {TaskStatus.ASSIGNED, TaskStatus.CANCELLED}
+        )
 
     def test_failed_is_non_terminal(self) -> None:
         """FAILED has outgoing transitions (reassignment)."""

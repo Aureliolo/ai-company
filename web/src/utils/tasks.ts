@@ -14,6 +14,8 @@ const TASK_STATUS_COLOR_MAP: Record<TaskStatus, SemanticColor | 'text-secondary'
   interrupted: 'warning',
   suspended: 'warning',
   cancelled: 'text-secondary',
+  rejected: 'danger',
+  auth_required: 'warning',
 }
 
 export function getTaskStatusColor(status: TaskStatus): SemanticColor | 'text-secondary' {
@@ -33,6 +35,8 @@ const TASK_STATUS_LABELS: Record<TaskStatus, string> = {
   interrupted: 'Interrupted',
   suspended: 'Suspended',
   cancelled: 'Cancelled',
+  rejected: 'Rejected',
+  auth_required: 'Auth Required',
 }
 
 export function getTaskStatusLabel(status: TaskStatus): string {
@@ -104,8 +108,8 @@ export const KANBAN_COLUMNS: readonly KanbanColumn[] = [
   { id: 'in_progress', label: 'In Progress', statuses: ['in_progress'], color: 'accent' },
   { id: 'in_review', label: 'In Review', statuses: ['in_review'], color: 'warning' },
   { id: 'done', label: 'Done', statuses: ['completed'], color: 'success' },
-  { id: 'blocked', label: 'Blocked', statuses: ['blocked'], color: 'danger' },
-  { id: 'terminal', label: 'Terminal', statuses: ['failed', 'interrupted', 'cancelled'], color: 'text-secondary' },
+  { id: 'blocked', label: 'Blocked', statuses: ['blocked', 'auth_required'], color: 'danger' },
+  { id: 'terminal', label: 'Terminal', statuses: ['failed', 'interrupted', 'cancelled', 'rejected'], color: 'text-secondary' },
 ] as const
 
 /** Off-board statuses not displayed on the Kanban board (resumable). */
@@ -199,9 +203,9 @@ export function filterTasks(tasks: readonly Task[], filters: TaskBoardFilters): 
 // ── Status transition validation ────────────────────────────
 
 export const VALID_TRANSITIONS: Record<TaskStatus, readonly TaskStatus[]> = {
-  created: ['assigned'],
-  assigned: ['in_progress', 'failed', 'blocked', 'cancelled', 'interrupted', 'suspended'],
-  in_progress: ['in_review', 'failed', 'cancelled', 'interrupted', 'suspended'],
+  created: ['assigned', 'rejected'],
+  assigned: ['in_progress', 'auth_required', 'failed', 'blocked', 'cancelled', 'interrupted', 'suspended'],
+  in_progress: ['in_review', 'auth_required', 'failed', 'cancelled', 'interrupted', 'suspended'],
   in_review: ['completed', 'in_progress'],
   completed: [],
   blocked: ['assigned'],
@@ -209,6 +213,8 @@ export const VALID_TRANSITIONS: Record<TaskStatus, readonly TaskStatus[]> = {
   interrupted: ['assigned'],
   suspended: ['assigned'],
   cancelled: [],
+  rejected: [],
+  auth_required: ['assigned', 'cancelled'],
 }
 
 export function canTransitionTo(currentStatus: TaskStatus, targetStatus: TaskStatus): boolean {

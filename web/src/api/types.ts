@@ -13,6 +13,8 @@ export type TaskStatus =
   | 'interrupted'
   | 'suspended'
   | 'cancelled'
+  | 'rejected'
+  | 'auth_required'
 
 export type TaskType =
   | 'development'

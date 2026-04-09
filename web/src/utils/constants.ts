@@ -25,30 +25,38 @@ export const TASK_STATUS_ORDER: readonly TaskStatus[] = [
   'created',
   'assigned',
   'in_progress',
+  'auth_required',
   'in_review',
   'blocked',
   'completed',
   'failed',
   'interrupted',
   'suspended',
+  'rejected',
   'cancelled',
 ] as const
 
 /** Terminal task statuses that cannot transition further. */
-export const TERMINAL_STATUSES: ReadonlySet<TaskStatus> = new Set<TaskStatus>(['completed', 'cancelled'])
+export const TERMINAL_STATUSES: ReadonlySet<TaskStatus> = new Set<TaskStatus>([
+  'completed',
+  'cancelled',
+  'rejected',
+])
 
 /** Task status transitions map. */
 export const VALID_TRANSITIONS: Readonly<Record<TaskStatus, readonly TaskStatus[]>> = {
-  created: ['assigned'],
-  assigned: ['in_progress', 'blocked', 'cancelled', 'failed', 'interrupted', 'suspended'],
-  in_progress: ['in_review', 'blocked', 'cancelled', 'failed', 'interrupted', 'suspended'],
+  created: ['assigned', 'rejected'],
+  assigned: ['in_progress', 'auth_required', 'blocked', 'cancelled', 'failed', 'interrupted', 'suspended'],
+  in_progress: ['in_review', 'auth_required', 'blocked', 'cancelled', 'failed', 'interrupted', 'suspended'],
   in_review: ['completed', 'in_progress', 'blocked', 'cancelled'],
+  auth_required: ['assigned', 'cancelled'],
   blocked: ['assigned'],
   failed: ['assigned'],
   interrupted: ['assigned'],
   suspended: ['assigned'],
   completed: [],
   cancelled: [],
+  rejected: [],
 }
 
 /** Write-capable human roles. */

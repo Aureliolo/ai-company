@@ -26,6 +26,8 @@ describe('WS Dashboard Integration', () => {
           interrupted: 0,
           suspended: 0,
           cancelled: 0,
+          rejected: 0,
+          auth_required: 0,
         },
         total_cost_usd: 42.17,
         budget_used_percent: 35,

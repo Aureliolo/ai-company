@@ -17,7 +17,7 @@ const mockOverview: OverviewMetrics = {
   total_tasks: 10,
   tasks_by_status: {
     created: 1, assigned: 1, in_progress: 2, in_review: 1, completed: 3,
-    blocked: 0, failed: 1, interrupted: 0, suspended: 0, cancelled: 1,
+    blocked: 0, failed: 1, interrupted: 0, suspended: 0, cancelled: 1, rejected: 0, auth_required: 0,
   },
   total_agents: 5,
   total_cost_usd: 400,

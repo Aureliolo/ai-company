@@ -6,7 +6,7 @@ import type { OverviewMetrics, BudgetConfig } from '@/api/types'
 function makeTasksByStatus(overrides: Partial<OverviewMetrics['tasks_by_status']> = {}): OverviewMetrics['tasks_by_status'] {
   return {
     created: 0, assigned: 0, in_progress: 0, in_review: 0, completed: 0,
-    blocked: 0, failed: 0, interrupted: 0, suspended: 0, cancelled: 0,
+    blocked: 0, failed: 0, interrupted: 0, suspended: 0, cancelled: 0, rejected: 0, auth_required: 0,
     ...overrides,
   }
 }

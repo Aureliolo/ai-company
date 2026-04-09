@@ -67,7 +67,7 @@ describe('useDashboardData', () => {
       total_tasks: 10,
       tasks_by_status: {
         created: 0, assigned: 0, in_progress: 0, in_review: 0, completed: 0,
-        blocked: 0, failed: 0, interrupted: 0, suspended: 0, cancelled: 0,
+        blocked: 0, failed: 0, interrupted: 0, suspended: 0, cancelled: 0, rejected: 0, auth_required: 0,
       },
       total_agents: 5,
       total_cost_usd: 50, budget_remaining_usd: 450, budget_used_percent: 10,

@@ -24,6 +24,7 @@ from synthorg.communication.loop_prevention.guard import (  # noqa: TC001
     DelegationGuard,
 )
 from synthorg.core.agent import AgentIdentity  # noqa: TC001
+from synthorg.core.enums import TaskStatus
 from synthorg.core.task import Task
 from synthorg.observability import get_logger
 from synthorg.observability.events.delegation import (
@@ -132,6 +133,24 @@ class DelegationService:
         self._record_delegation(request, sub_task)
 
         return DelegationResult(success=True, delegated_task=sub_task)
+
+    @staticmethod
+    def reject_delegated_task(task: Task) -> Task:
+        """Transition a CREATED task to REJECTED.
+
+        Used when a delegatee explicitly refuses a task that was
+        already created for them. The task must be in CREATED status.
+
+        Args:
+            task: The task to reject (must be in CREATED status).
+
+        Returns:
+            A new Task in REJECTED status.
+
+        Raises:
+            ValueError: If the task is not in CREATED status.
+        """
+        return task.with_transition(TaskStatus.REJECTED)
 
     @staticmethod
     def _validate_identity(

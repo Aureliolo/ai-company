@@ -249,18 +249,20 @@ class TaskStatus(StrEnum):
     ``synthorg.core.task_transitions.VALID_TRANSITIONS``.
     Summary for quick reference:
 
-        CREATED -> ASSIGNED
-        ASSIGNED -> IN_PROGRESS | BLOCKED | CANCELLED | FAILED
-                    | INTERRUPTED | SUSPENDED
-        IN_PROGRESS -> IN_REVIEW | BLOCKED | CANCELLED | FAILED
-                       | INTERRUPTED | SUSPENDED
+        CREATED -> ASSIGNED | REJECTED
+        ASSIGNED -> IN_PROGRESS | AUTH_REQUIRED | BLOCKED | CANCELLED
+                    | FAILED | INTERRUPTED | SUSPENDED
+        IN_PROGRESS -> IN_REVIEW | AUTH_REQUIRED | BLOCKED | CANCELLED
+                       | FAILED | INTERRUPTED | SUSPENDED
         IN_REVIEW -> COMPLETED | IN_PROGRESS (rework) | BLOCKED | CANCELLED
+        AUTH_REQUIRED -> ASSIGNED (approved) | CANCELLED (denied/timeout)
         BLOCKED -> ASSIGNED (unblocked)
         FAILED -> ASSIGNED (reassignment for retry)
         INTERRUPTED -> ASSIGNED (reassignment on restart)
-        COMPLETED and CANCELLED are terminal states.
-        FAILED, INTERRUPTED, and SUSPENDED are non-terminal (can be reassigned).
         SUSPENDED -> ASSIGNED (resume from checkpoint)
+        COMPLETED, CANCELLED, and REJECTED are terminal states.
+        FAILED, INTERRUPTED, and SUSPENDED are non-terminal (can be reassigned).
+        AUTH_REQUIRED is non-terminal (waiting for authorization).
     """
 
     CREATED = "created"
@@ -273,6 +275,8 @@ class TaskStatus(StrEnum):
     INTERRUPTED = "interrupted"
     SUSPENDED = "suspended"
     CANCELLED = "cancelled"
+    REJECTED = "rejected"
+    AUTH_REQUIRED = "auth_required"
 
 
 class TaskType(StrEnum):

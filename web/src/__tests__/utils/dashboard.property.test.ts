@@ -36,6 +36,8 @@ const arbOverview: fc.Arbitrary<OverviewMetrics> = fc.record({
     interrupted: fc.nat({ max: 100 }),
     suspended: fc.nat({ max: 100 }),
     cancelled: fc.nat({ max: 100 }),
+    rejected: fc.nat({ max: 100 }),
+    auth_required: fc.nat({ max: 100 }),
   }),
   total_agents: fc.nat({ max: 100 }),
   total_cost_usd: fc.float({ min: 0, max: 100000, noNaN: true }),
