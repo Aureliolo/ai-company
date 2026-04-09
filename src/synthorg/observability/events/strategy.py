@@ -23,3 +23,4 @@ STRATEGY_PREMORTEM_RESPONSE_SKIPPED: Final[str] = "strategy.premortem.response_s
 STRATEGY_CONFLICT_PARSE_FAILED: Final[str] = "strategy.conflict.parse_failed"
 STRATEGY_CONSENSUS_CONFIG_INVALID: Final[str] = "strategy.consensus.config_invalid"
 STRATEGY_CONSENSUS_DETECTED: Final[str] = "strategy.consensus.detected"
+STRATEGY_CONSENSUS_NOT_DETECTED: Final[str] = "strategy.consensus.not_detected"

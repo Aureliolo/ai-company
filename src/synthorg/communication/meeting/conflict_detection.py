@@ -137,7 +137,7 @@ class StructuredComparisonDetector:
 
             # Compare all pairs of positions field-by-field
             return self._has_field_conflicts(positions)
-        except json.JSONDecodeError, TypeError, KeyError, ValueError:
+        except TypeError, ValueError:
             logger.debug(
                 CONFLICT_PARSE_FAILED,
                 detector="StructuredComparisonDetector",
@@ -244,7 +244,7 @@ class LlmJudgeDetector:
                         ):
                             return False
                         return bool(re.search(r"\bconflicts?\b", normalized))
-        except json.JSONDecodeError, TypeError, ValueError:
+        except TypeError, ValueError:
             logger.debug(
                 CONFLICT_PARSE_FAILED,
                 detector="LlmJudgeDetector",
@@ -301,6 +301,11 @@ class EmbeddingSimilarityDetector:
         msg = (
             "Embedding infrastructure unavailable: "
             "EmbeddingSimilarityDetector cannot be used"
+        )
+        logger.warning(
+            CONFLICT_PARSE_FAILED,
+            detector="EmbeddingSimilarityDetector",
+            reason=msg,
         )
         raise NotImplementedError(msg)
 
@@ -390,15 +395,7 @@ class AutoDetector:
 
     def _is_structured_json(self, text: str) -> bool:
         """Check if text is JSON with position field."""
-        try:
-            parsed = _extract_json_object(text)
-            if parsed is not None:
-                return "position" in parsed or "positions" in parsed
-        except json.JSONDecodeError, TypeError, ValueError:
-            logger.debug(
-                CONFLICT_PARSE_FAILED,
-                detector="AutoDetector",
-                exc_info=True,
-            )
-
+        parsed = _extract_json_object(text)
+        if parsed is not None:
+            return "position" in parsed or "positions" in parsed
         return False

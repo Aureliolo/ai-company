@@ -19,6 +19,7 @@ from synthorg.observability import get_logger
 from synthorg.observability.events.strategy import (
     STRATEGY_CONSENSUS_CONFIG_INVALID,
     STRATEGY_CONSENSUS_DETECTED,
+    STRATEGY_CONSENSUS_NOT_DETECTED,
 )
 
 logger = get_logger(__name__)
@@ -114,6 +115,11 @@ class ConsensusVelocityDetector:
             )
             raise ValueError(msg)
         self._min_disagreements = min_disagreements
+        logger.debug(
+            STRATEGY_CONSENSUS_DETECTED,
+            phase="init",
+            min_disagreements=min_disagreements,
+        )
 
     def detect(
         self,
@@ -131,8 +137,7 @@ class ConsensusVelocityDetector:
         """
         if len(positions) < _MIN_POSITION_PAIRS:
             logger.info(
-                STRATEGY_CONSENSUS_DETECTED,
-                detected=False,
+                STRATEGY_CONSENSUS_NOT_DETECTED,
                 num_positions=len(positions),
                 reason="insufficient positions",
             )
@@ -164,8 +169,13 @@ class ConsensusVelocityDetector:
 
         action = config.action if is_premature else None
 
+        event = (
+            STRATEGY_CONSENSUS_DETECTED
+            if is_premature
+            else STRATEGY_CONSENSUS_NOT_DETECTED
+        )
         logger.info(
-            STRATEGY_CONSENSUS_DETECTED,
+            event,
             detected=is_premature,
             action=action,
             mean_similarity=rounded_mean,

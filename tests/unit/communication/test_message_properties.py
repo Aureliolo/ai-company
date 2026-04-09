@@ -71,7 +71,9 @@ _message_kwargs_st = st.fixed_dictionaries(
         "msg_type": _message_types,
         "priority": _priorities,
         "channel": _not_blank,
-        "parts": st.tuples(_text_parts),  # At minimum: one TextPart
+        "parts": st.tuples(_text_parts, st.lists(_parts, max_size=2)).map(
+            lambda t: (t[0], *t[1])
+        ),
         "ts": _aware_datetimes,
     }
 )
@@ -213,7 +215,6 @@ class TestTextPropertyProperties:
         )
         assert msg.text == ""
 
-    @pytest.mark.unit
     def test_text_property_finds_text_part_not_first(self) -> None:
         """Message.text returns the first TextPart even if it is not index 0."""
         msg = Message(
