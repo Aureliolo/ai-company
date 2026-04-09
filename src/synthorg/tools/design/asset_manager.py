@@ -119,19 +119,11 @@ class AssetManagerTool(BaseDesignTool):
             metadata: Asset metadata (type, dimensions, tags, etc.).
 
         Raises:
-            TypeError: If asset_id is not a string or metadata is
-                not a dict.
             ValueError: If asset_id is empty or whitespace-only.
         """
-        if not isinstance(asset_id, str):
-            msg = f"asset_id must be a str, got {type(asset_id).__name__}"
-            raise TypeError(msg)
         if not asset_id.strip():
             msg = "asset_id must not be empty"
             raise ValueError(msg)
-        if not isinstance(metadata, dict):
-            msg = f"metadata must be a dict, got {type(metadata).__name__}"
-            raise TypeError(msg)
         self._assets[asset_id] = copy.deepcopy(metadata)
         logger.info(
             DESIGN_ASSET_STORED,
