@@ -91,12 +91,12 @@ jobs:
           diff_output=$(atlas schema diff --env ci \
             --from "file://src/synthorg/persistence/sqlite/revisions" \
             --to "file://src/synthorg/persistence/sqlite/schema.sql")
-          if [ -n "$diff_output" ]; then
+          if echo "$diff_output" | grep -qv "Schemas are synced"; then
             echo "::error::Schema drift detected between revisions and schema.sql"
             echo "$diff_output"
             exit 1
           fi
-          echo "Schemas are synced."
+          echo "$diff_output"
         # NOTE: atlas migrate lint (policy checks) requires Atlas Pro.
         # Add --env ci lint step here when Pro auth is available.
 

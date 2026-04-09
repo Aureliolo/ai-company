@@ -25,6 +25,14 @@ logger = get_logger(__name__)
 _ATLAS_BIN = "atlas"
 
 
+def _redact_url(url: str) -> str:
+    """Return scheme + host hint, stripping path/credentials."""
+    scheme_end = url.find("://")
+    if scheme_end == -1:
+        return "REDACTED"
+    return f"{url[:scheme_end]}://..."
+
+
 @dataclass(frozen=True)
 class MigrateResult:
     """Result of an ``atlas migrate apply`` invocation.
@@ -302,7 +310,7 @@ async def migrate_apply(
     Raises:
         MigrationError: If the migration fails or Atlas is unavailable.
     """
-    logger.info(PERSISTENCE_MIGRATION_STARTED, db_url=db_url)
+    logger.info(PERSISTENCE_MIGRATION_STARTED, db_url=_redact_url(db_url))
 
     stdout, _ = await _run_atlas(
         "migrate",
@@ -411,7 +419,7 @@ async def migrate_apply_baseline(db_url: str, version: str) -> None:
     """
     logger.info(
         PERSISTENCE_MIGRATION_STARTED,
-        db_url=db_url,
+        db_url=_redact_url(db_url),
         baseline=version,
     )
 
@@ -444,7 +452,7 @@ async def migrate_rollback(db_url: str, *, version: str) -> None:
     """
     logger.info(
         PERSISTENCE_MIGRATION_STARTED,
-        db_url=db_url,
+        db_url=_redact_url(db_url),
         rollback_target=version,
     )
 
