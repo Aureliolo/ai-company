@@ -58,7 +58,7 @@ class SQLiteOntologyBackend:
             schema setup requires Atlas CLI (a separate process).
     """
 
-    def __init__(self, db_path: str = ":memory:") -> None:
+    def __init__(self, db_path: str) -> None:
         self._db_path = db_path
         self._db: aiosqlite.Connection | None = None
         self._lifecycle_lock = asyncio.Lock()

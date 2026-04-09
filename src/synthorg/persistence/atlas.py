@@ -211,22 +211,52 @@ async def _run_atlas(
     if db_url is not None:
         cmd.extend(["--url", db_url])
 
+    # Redact --url value to avoid leaking credentials in logs.
+    safe_cmd = []
+    skip_next = False
+    for token in cmd:
+        if skip_next:
+            safe_cmd.append("REDACTED")
+            skip_next = False
+        elif token == "--url":  # noqa: S105
+            safe_cmd.append(token)
+            skip_next = True
+        else:
+            safe_cmd.append(token)
     logger.debug(
         PERSISTENCE_MIGRATION_STARTED,
-        command=" ".join(cmd),
+        command=" ".join(safe_cmd),
     )
 
-    proc = await asyncio.create_subprocess_exec(
-        *cmd,
-        stdin=asyncio.subprocess.DEVNULL,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE,
-    )
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdin=asyncio.subprocess.DEVNULL,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+    except OSError as exc:
+        msg = f"Failed to start Atlas process: {exc}"
+        logger.exception(PERSISTENCE_MIGRATION_FAILED, error=msg)
+        raise MigrationError(msg) from exc
+
     try:
         stdout_bytes, stderr_bytes = await proc.communicate()
-    except BaseException:
+    except asyncio.CancelledError:
         proc.kill()
+        await proc.wait()
+        logger.warning(
+            PERSISTENCE_MIGRATION_FAILED,
+            note="Atlas process killed due to cancellation",
+        )
         raise
+    except OSError as exc:
+        proc.kill()
+        await proc.wait()
+        msg = f"Atlas process communication failed: {exc}"
+        logger.exception(PERSISTENCE_MIGRATION_FAILED, error=msg)
+        raise MigrationError(msg) from exc
+
     stdout = stdout_bytes.decode()
     stderr = stderr_bytes.decode()
 
