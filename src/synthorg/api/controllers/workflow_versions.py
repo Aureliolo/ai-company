@@ -186,6 +186,7 @@ def _build_rolled_back_definition(
             "updated_at": now,
             "version": existing.version + 1,
         },
+        deep=True,
     )
 
 

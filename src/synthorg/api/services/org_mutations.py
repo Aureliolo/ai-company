@@ -145,7 +145,7 @@ class OrgMutationService:
                 snapshot=company,
                 saved_by=saved_by,
             )
-        except PersistenceError, SettingNotFoundError:
+        except Exception:
             logger.exception(
                 VERSION_SNAPSHOT_FAILED,
                 entity_type="Company",

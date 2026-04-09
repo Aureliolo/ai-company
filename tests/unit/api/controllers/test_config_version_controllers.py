@@ -362,6 +362,35 @@ class TestRoleVersions:
         assert data[1]["version"] == 1
 
     @pytest.mark.unit
+    async def test_list_versions_paginated(
+        self,
+        test_client: TestClient[Any],
+        fake_persistence: Any,
+    ) -> None:
+        repo = fake_persistence.role_versions
+        for v in range(1, 4):
+            r = Role(
+                name="backend-dev",
+                department=DepartmentName.ENGINEERING,
+                required_skills=(),
+                system_prompt_template=f"v{v}",
+            )
+            await repo.save_version(_snap("backend-dev", r, version=v))
+
+        resp = test_client.get(
+            "/api/v1/roles/backend-dev/versions?limit=1&offset=1",
+            headers=make_auth_headers("ceo"),
+        )
+        assert resp.status_code == 200
+        body = resp.json()
+        assert len(body["data"]) == 1
+        # Descending order: v3, v2, v1 -- offset=1 skips v3
+        assert body["data"][0]["version"] == 2
+        assert body["pagination"]["total"] == 3
+        assert body["pagination"]["limit"] == 1
+        assert body["pagination"]["offset"] == 1
+
+    @pytest.mark.unit
     async def test_get_version(
         self,
         test_client: TestClient[Any],

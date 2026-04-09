@@ -102,6 +102,31 @@ class TestCrossDefinitionError:
         with pytest.raises(ValueError, match="different definitions"):
             compute_diff(v1, v2)
 
+    @pytest.mark.unit
+    def test_corrupted_snapshot_id_raises(self) -> None:
+        """Snapshot whose id differs from entity_id is rejected."""
+        good = _ver(1, definition_id="wfdef-x")
+        # Build a snapshot with mismatched snapshot.id vs entity_id.
+        defn = WorkflowDefinition(
+            id="wfdef-WRONG",
+            name="Bad",
+            description="",
+            workflow_type=WorkflowType.SEQUENTIAL_PIPELINE,
+            nodes=(_START, _END),
+            edges=(_EDGE_1,),
+            created_by="user",
+        )
+        corrupted = VersionSnapshot(
+            entity_id="wfdef-x",
+            version=2,
+            content_hash=compute_content_hash(defn),
+            snapshot=defn,
+            saved_by="user",
+            saved_at=_NOW,
+        )
+        with pytest.raises(ValueError, match="Corrupted"):
+            compute_diff(good, corrupted)
+
 
 # ── Identical versions ──────────────────────────────────────────
 
