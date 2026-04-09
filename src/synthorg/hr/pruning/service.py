@@ -499,8 +499,8 @@ class PruningService:
             ),
             approval_id=item.id,
             initiated_by=NotBlankStr("system"),
-            created_at=datetime.now(UTC),
-            completed_at=datetime.now(UTC),
+            created_at=offboarding_result.started_at,
+            completed_at=offboarding_result.completed_at,
         )
         self._completed.append(record)
 

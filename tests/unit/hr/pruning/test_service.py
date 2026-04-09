@@ -576,7 +576,7 @@ class TestApprovalProcessing:
         await approval_store.save(approved)
 
         await service.run_pruning_cycle(now=NOW + timedelta(hours=2))
-        callback.assert_called_once()
+        callback.assert_awaited_once()
 
     async def test_notification_callback_failure_does_not_crash(
         self,
