@@ -101,6 +101,8 @@ class AppState:
         "_coordinator",
         "_cost_tracker",
         "_delegation_record_store",
+        "_drift_detection_service",
+        "_drift_report_store",
         "_fine_tune_orchestrator",
         "_lockout_store",
         "_meeting_orchestrator",
@@ -109,6 +111,7 @@ class AppState:
         "_model_router",
         "_notification_dispatcher",
         "_ontology_service",
+        "_ontology_sync_service",
         "_org_mutation_service",
         "_performance_tracker",
         "_persistence",
@@ -169,6 +172,9 @@ class AppState:
         self._coordination_metrics_store = coordination_metrics_store
         self._notification_dispatcher = notification_dispatcher
         self._ontology_service = ontology_service
+        self._drift_report_store: DriftReportStore | None = None
+        self._drift_detection_service: DriftDetectionService | None = None
+        self._ontology_sync_service: OntologyOrgMemorySync | None = None
         self._persistence = persistence
         self._message_bus = message_bus
         self._cost_tracker = cost_tracker
@@ -771,17 +777,17 @@ class AppState:
     @property
     def drift_report_store(self) -> DriftReportStore | None:
         """Return the drift report store, or None if not configured."""
-        return getattr(self, "_drift_report_store", None)
+        return self._drift_report_store
 
     @property
     def drift_detection_service(self) -> DriftDetectionService | None:
         """Return the drift detection service, or None if not configured."""
-        return getattr(self, "_drift_detection_service", None)
+        return self._drift_detection_service
 
     @property
     def ontology_sync_service(self) -> OntologyOrgMemorySync | None:
         """Return the ontology sync service, or None if not configured."""
-        return getattr(self, "_ontology_sync_service", None)
+        return self._ontology_sync_service
 
     @property
     def has_model_router(self) -> bool:

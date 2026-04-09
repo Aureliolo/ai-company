@@ -130,6 +130,18 @@ class LookupEntityTool(BaseTool):
                 content=f"Entity '{name}' not found in the ontology.",
                 is_error=True,
             )
+        except MemoryError, RecursionError:
+            raise
+        except Exception as exc:
+            logger.warning(
+                ONTOLOGY_TOOL_LOOKUP,
+                name=name,
+                error=str(exc),
+            )
+            return ToolExecutionResult(
+                content="Entity lookup failed. Try again later.",
+                is_error=True,
+            )
         logger.debug(
             ONTOLOGY_TOOL_LOOKUP,
             name=name,

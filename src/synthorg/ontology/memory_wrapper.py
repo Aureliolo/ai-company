@@ -105,10 +105,18 @@ class OntologyAwareMemoryBackend:
         Returns:
             The backend-assigned memory ID.
         """
-        if self._config.auto_tag or self._config.warn_on_drift:
-            await self._refresh_entity_names()
-            found = self._detect_entities(request.content)
-        else:
+        try:
+            if self._config.auto_tag or self._config.warn_on_drift:
+                await self._refresh_entity_names()
+                found = self._detect_entities(request.content)
+            else:
+                found = ()
+        except Exception:
+            logger.warning(
+                "ontology.memory.enrichment_failed",
+                agent_id=agent_id,
+                exc_info=True,
+            )
             found = ()
 
         if found and self._config.auto_tag:

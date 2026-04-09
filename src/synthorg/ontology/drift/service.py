@@ -124,15 +124,22 @@ class DriftDetectionService:
 
         entities = await self._ontology.list_entities()
 
-        async with asyncio.TaskGroup() as tg:
-            tasks = [
-                tg.create_task(
-                    self.check_entity(entity.name, agent_ids),
-                )
-                for entity in entities
-            ]
+        results = await asyncio.gather(
+            *(self.check_entity(entity.name, agent_ids) for entity in entities),
+            return_exceptions=True,
+        )
 
-        return tuple(task.result() for task in tasks)
+        reports: list[DriftReport] = []
+        for i, result in enumerate(results):
+            if isinstance(result, BaseException):
+                logger.error(
+                    "ontology.drift.entity_check_failed",
+                    entity_name=entities[i].name,
+                    error=str(result),
+                )
+            else:
+                reports.append(result)
+        return tuple(reports)
 
     @property
     def threshold(self) -> float:

@@ -71,6 +71,18 @@ class TestLookupEntityTool:
         result = await tool.execute(arguments={})
         assert result.is_error
 
+    async def test_both_name_and_query_returns_error(
+        self,
+        mock_backend: AsyncMock,
+    ) -> None:
+        """Providing both name and query returns conflict error."""
+        tool = LookupEntityTool(backend=mock_backend)
+        result = await tool.execute(
+            arguments={"name": "Task", "query": "search"},
+        )
+        assert result.is_error
+        assert "exactly one" in result.content.lower()
+
     def test_to_definition(self, mock_backend: AsyncMock) -> None:
         """to_definition() returns valid ToolDefinition."""
         tool = LookupEntityTool(backend=mock_backend)

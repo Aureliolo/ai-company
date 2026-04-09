@@ -39,19 +39,18 @@ export function useOntologyData(): UseOntologyDataReturn {
   const searchQuery = useOntologyStore((s) => s.searchQuery)
   const selectedEntity = useOntologyStore((s) => s.selectedEntity)
 
-  // Initial fetch
-  useEffect(() => {
-    useOntologyStore.getState().fetchEntities()
-    useOntologyStore.getState().fetchDriftReports()
-  }, [])
-
-  // Polling
+  // Polling fetches both entities and drift reports
   const pollFn = useCallback(async () => {
-    await useOntologyStore.getState().fetchEntities()
+    await Promise.all([
+      useOntologyStore.getState().fetchEntities(),
+      useOntologyStore.getState().fetchDriftReports(),
+    ])
   }, [])
   const polling = usePolling(pollFn, POLL_INTERVAL)
 
+  // Initial fetch + start polling
   useEffect(() => {
+    void pollFn()
     polling.start()
     return () => polling.stop()
     // eslint-disable-next-line @eslint-react/exhaustive-deps

@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
+from synthorg.core.enums import OrgFactCategory
 from synthorg.ontology.config import OntologySyncConfig
 from synthorg.ontology.models import (
     EntityDefinition,
@@ -68,6 +69,7 @@ class TestSyncEntity:
         assert "Task" in request.content
         assert "entity" in request.tags
         assert "tier:core" in request.tags
+        assert request.category == OrgFactCategory.ENTITY_DEFINITION
 
     async def test_idempotent_skip(self) -> None:
         """Second sync of unchanged entity is skipped."""

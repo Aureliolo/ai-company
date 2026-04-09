@@ -37,6 +37,11 @@ from synthorg.observability.events.api import (
     API_REQUEST_ERROR,
     API_RESOURCE_NOT_FOUND,
 )
+from synthorg.observability.events.ontology import (
+    ONTOLOGY_DRIFT_CHECK_COMPLETED,
+    ONTOLOGY_DRIFT_CHECK_STARTED,
+    ONTOLOGY_SYNC_PUBLISHED,
+)
 from synthorg.ontology.errors import (
     OntologyDuplicateError,
     OntologyNotFoundError,
@@ -238,34 +243,31 @@ class OntologyController(Controller):
             msg = "Entity not found"
             raise NotFoundError(msg)  # noqa: B904
 
-        updates: dict[str, object] = {
-            "updated_at": datetime.now(UTC),
-        }
+        if existing.tier == EntityTier.CORE and any(
+            (
+                data.definition is not None,
+                data.fields is not None,
+                data.constraints is not None,
+                data.disambiguation is not None,
+                data.relationships is not None,
+            ),
+        ):
+            msg = "CORE entities cannot be modified via API"
+            logger.warning(
+                API_REQUEST_ERROR,
+                reason="core_entity_modification",
+                name=name,
+            )
+            raise ApiValidationError(msg)
+
+        updates: dict[str, object] = {}
         if data.definition is not None:
             updates["definition"] = data.definition
         if data.disambiguation is not None:
             updates["disambiguation"] = data.disambiguation
         if data.constraints is not None:
             updates["constraints"] = data.constraints
-
-        if existing.tier == EntityTier.CORE:
-            if any(
-                (
-                    data.definition is not None,
-                    data.fields is not None,
-                    data.constraints is not None,
-                    data.disambiguation is not None,
-                    data.relationships is not None,
-                ),
-            ):
-                msg = "CORE entities cannot be modified via API"
-                logger.warning(
-                    API_REQUEST_ERROR,
-                    reason="core_entity_modification",
-                    name=name,
-                )
-                raise ApiValidationError(msg)
-        else:
+        if existing.tier != EntityTier.CORE:
             if data.fields is not None:
                 updates["fields"] = tuple(
                     EntityField(
@@ -285,6 +287,9 @@ class OntologyController(Controller):
                     for r in data.relationships
                 )
 
+        if not updates:
+            return ApiResponse(data=_entity_to_response(existing))
+        updates["updated_at"] = datetime.now(UTC)
         updated = existing.model_copy(update=updates)
         await svc.update(updated)
         return ApiResponse(data=_entity_to_response(updated))
@@ -451,8 +456,9 @@ class OntologyController(Controller):
 
         # Agent discovery is handled by the engine -- trigger uses
         # empty tuple to signal "check all entities, no agent sample".
-        logger.info("ontology.drift.check_triggered")
+        logger.info(ONTOLOGY_DRIFT_CHECK_STARTED, source="api")
         await drift_service.check_all(agent_ids=())
+        logger.info(ONTOLOGY_DRIFT_CHECK_COMPLETED, source="api")
         return ApiResponse(data={"status": "drift_check_completed"})
 
     # ── Admin ──────────────────────────────────────────────────
@@ -487,7 +493,7 @@ class OntologyController(Controller):
                 data={"status": "sync_service_not_configured"},
             )
 
-        logger.info("ontology.admin.sync_triggered")
+        logger.info(ONTOLOGY_SYNC_PUBLISHED, source="api_admin")
         count = await sync_service.sync_all()
         logger.info(
             "ontology.admin.sync_completed",

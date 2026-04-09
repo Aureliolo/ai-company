@@ -65,8 +65,10 @@ class TestEntityGuardOutcome:
 
     def test_frozen(self) -> None:
         """Model is immutable."""
+        from pydantic_core import ValidationError
+
         outcome = EntityGuardOutcome(passed=True)
-        with pytest.raises(Exception):  # noqa: B017, PT011
+        with pytest.raises(ValidationError):
             outcome.passed = False  # type: ignore[misc]
 
 

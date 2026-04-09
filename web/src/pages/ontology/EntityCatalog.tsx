@@ -57,7 +57,7 @@ export function EntityCatalog({ entities }: EntityCatalogProps) {
         <EmptyState
           title="No entities found"
           description={
-            searchQuery
+            searchQuery || tierFilter !== 'all'
               ? 'Try adjusting your search or filter criteria.'
               : 'Entity definitions will appear here once registered.'
           }

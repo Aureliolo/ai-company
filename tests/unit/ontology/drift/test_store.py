@@ -68,7 +68,7 @@ class TestSQLiteDriftReportStore:
 
         results = await store.get_latest("Task")
         assert len(results) == 2
-        # Most recent (higher score) first
+        # Most recent first (ordered by recency, not score)
         assert results[0].divergence_score == 0.5
 
     async def test_get_latest_limit(

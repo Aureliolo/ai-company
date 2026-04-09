@@ -185,6 +185,22 @@ class DriftReportResponse(BaseModel):
     recommendation: DriftAction
 
 
+class DriftSummary(BaseModel):
+    """Aggregate drift metrics for entity list enrichment."""
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+
+    avg_drift_score: float = Field(
+        ge=0.0,
+        le=1.0,
+        description="Average divergence across all entities",
+    )
+    entities_with_drift: int = Field(
+        ge=0,
+        description="Count of entities above drift threshold",
+    )
+
+
 class EntityListMeta(BaseModel):
     """Enrichment metadata for entity list responses."""
 
@@ -193,3 +209,7 @@ class EntityListMeta(BaseModel):
     total_count: int = Field(ge=0)
     core_count: int = Field(ge=0)
     user_count: int = Field(ge=0)
+    drift_summary: DriftSummary | None = Field(
+        default=None,
+        description="Drift aggregate (None when drift store unavailable)",
+    )
