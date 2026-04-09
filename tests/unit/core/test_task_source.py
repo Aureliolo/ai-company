@@ -16,9 +16,9 @@ class TestTaskSourceEnum:
         assert len(TaskSource) == 3
 
     def test_values(self) -> None:
-        assert TaskSource.INTERNAL == "internal"
-        assert TaskSource.CLIENT == "client"
-        assert TaskSource.SIMULATION == "simulation"
+        assert TaskSource.INTERNAL.value == "internal"
+        assert TaskSource.CLIENT.value == "client"
+        assert TaskSource.SIMULATION.value == "simulation"
 
 
 class TestTaskSourceField:

@@ -19,9 +19,9 @@ class TestReviewVerdict:
         assert len(ReviewVerdict) == 3
 
     def test_values(self) -> None:
-        assert ReviewVerdict.PASS == "pass"
-        assert ReviewVerdict.FAIL == "fail"
-        assert ReviewVerdict.SKIP == "skip"
+        assert ReviewVerdict.PASS.value == "pass"
+        assert ReviewVerdict.FAIL.value == "fail"
+        assert ReviewVerdict.SKIP.value == "skip"
 
 
 class TestReviewStageResult:

@@ -1,5 +1,7 @@
 """Unit tests for client simulation protocol definitions."""
 
+from typing import Any
+
 import pytest
 
 from synthorg.client.protocols import (
@@ -53,31 +55,31 @@ class TestProtocolStructuralConformance:
 
     def test_client_interface_conformance(self) -> None:
         class MockClient:
-            async def submit_requirement(self, context):
+            async def submit_requirement(self, context: Any) -> Any:
                 return None
 
-            async def review_deliverable(self, context):
+            async def review_deliverable(self, context: Any) -> Any:
                 return None
 
         assert isinstance(MockClient(), ClientInterface)
 
     def test_requirement_generator_conformance(self) -> None:
         class MockGenerator:
-            async def generate(self, context):
+            async def generate(self, context: Any) -> Any:
                 return ()
 
         assert isinstance(MockGenerator(), RequirementGenerator)
 
     def test_feedback_strategy_conformance(self) -> None:
         class MockFeedback:
-            async def evaluate(self, context):
+            async def evaluate(self, context: Any) -> Any:
                 return None
 
         assert isinstance(MockFeedback(), FeedbackStrategy)
 
     def test_report_strategy_conformance(self) -> None:
         class MockReport:
-            async def generate_report(self, metrics):
+            async def generate_report(self, metrics: Any) -> Any:
                 return {}
 
         assert isinstance(MockReport(), ReportStrategy)
