@@ -60,6 +60,7 @@ class TestLookupEntityTool:
         """Search with no matches returns informative message."""
         tool = LookupEntityTool(backend=mock_backend)
         result = await tool.execute(arguments={"query": "zzzznothing"})
+        assert result.is_error is False
         assert "No entities match" in result.content
 
     async def test_lookup_backend_error_returns_error(

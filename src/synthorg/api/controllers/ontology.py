@@ -41,7 +41,6 @@ from synthorg.observability.events.ontology import (
     ONTOLOGY_ADMIN_SYNC_COMPLETED,
     ONTOLOGY_DRIFT_CHECK_COMPLETED,
     ONTOLOGY_DRIFT_CHECK_STARTED,
-    ONTOLOGY_SYNC_PUBLISHED,
 )
 from synthorg.ontology.errors import (
     OntologyDuplicateError,
@@ -494,7 +493,7 @@ class OntologyController(Controller):
                 data={"status": "sync_service_not_configured"},
             )
 
-        logger.info(ONTOLOGY_SYNC_PUBLISHED, source="api_admin")
+        logger.info(ONTOLOGY_DRIFT_CHECK_STARTED, source="api_admin_sync")
         count = await sync_service.sync_all()
         logger.info(
             ONTOLOGY_ADMIN_SYNC_COMPLETED,

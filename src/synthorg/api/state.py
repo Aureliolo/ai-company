@@ -794,7 +794,14 @@ class AppState:
 
         Args:
             store: Configured drift report store.
+
+        Raises:
+            RuntimeError: If the store was already configured.
         """
+        if self._drift_report_store is not None:
+            msg = "Drift report store already configured"
+            logger.error(API_APP_STARTUP, error=msg)
+            raise RuntimeError(msg)
         self._drift_report_store = store
 
     def set_drift_detection_service(
@@ -805,7 +812,14 @@ class AppState:
 
         Args:
             service: Configured drift detection service.
+
+        Raises:
+            RuntimeError: If the service was already configured.
         """
+        if self._drift_detection_service is not None:
+            msg = "Drift detection service already configured"
+            logger.error(API_APP_STARTUP, error=msg)
+            raise RuntimeError(msg)
         self._drift_detection_service = service
 
     def set_ontology_sync_service(
@@ -816,7 +830,14 @@ class AppState:
 
         Args:
             service: Configured ontology sync service.
+
+        Raises:
+            RuntimeError: If the service was already configured.
         """
+        if self._ontology_sync_service is not None:
+            msg = "Ontology sync service already configured"
+            logger.error(API_APP_STARTUP, error=msg)
+            raise RuntimeError(msg)
         self._ontology_sync_service = service
 
     @property

@@ -204,6 +204,14 @@ class TestEntityGuardImmutability:
         assert outcome.entity_versions is not None
         assert outcome.entity_versions["Task"] == 1
 
+        # Field reassignment is blocked by frozen model
+        from pydantic_core import ValidationError
+
+        with pytest.raises(ValidationError):
+            outcome.entity_versions = {}  # type: ignore[misc]
+        # Value still intact after failed reassignment
+        assert outcome.entity_versions["Task"] == 1
+
 
 @pytest.mark.unit
 class TestEntityAlignmentGuardProperties:
