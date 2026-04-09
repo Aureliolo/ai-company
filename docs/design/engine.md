@@ -1636,3 +1636,28 @@ score each token, and treat low-scoring tokens (below a tunable percentile thres
 as compressible filler. The resulting importance map can drive selective truncation in
 `_build_summary()` without any additional model inference -- a significantly cheaper
 approximation of the surprisal signal.
+
+---
+
+## Review Pipeline
+
+The review pipeline provides a configurable chain of review stages for tasks
+in `IN_REVIEW` status. See the [Client Simulation](client-simulation.md) design
+page for the full architecture, including `ReviewStage` protocol, pipeline
+execution semantics, and metadata tracking.
+
+Key design decisions:
+
+- **No new TaskStatus values** for pipeline tracking -- tasks stay `IN_REVIEW`
+  throughout; progress is tracked in task metadata.
+- **Short-circuit on FAIL** -- first failing stage sends the task back to
+  `IN_PROGRESS` for rework with the stage name and reason in metadata.
+- **Backward compatible** -- when no pipeline is configured, the existing
+  `ReviewGateService` single-stage behavior is preserved.
+
+## Intake Engine
+
+The intake engine processes `ClientRequest` submissions through an independent
+state machine (`RequestStatus`) before creating tasks in the task engine. See
+[Client Simulation](client-simulation.md) for the full request lifecycle and
+intake strategy contracts.

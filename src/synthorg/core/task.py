@@ -11,6 +11,7 @@ from synthorg.core.enums import (
     Complexity,
     CoordinationTopology,
     Priority,
+    TaskSource,
     TaskStatus,
     TaskStructure,
     TaskType,
@@ -153,6 +154,10 @@ class Task(BaseModel):
     coordination_topology: CoordinationTopology = Field(
         default=CoordinationTopology.AUTO,
         description="Coordination topology for multi-agent execution",
+    )
+    source: TaskSource | None = Field(
+        default=None,
+        description="Origin of this task (internal, client, or simulation)",
     )
 
     @model_validator(mode="after")

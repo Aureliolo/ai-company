@@ -648,3 +648,24 @@ more human labels.
     redistribution follows the `BehavioralTelemetryStrategy` pattern. Pull-based
     evaluation (no background daemon). Settings system integration deferred --
     config model is ready for it.
+
+---
+
+## Client Agents
+
+Client agents are synthetic or real external actors that submit task requirements
+and review deliverables. Unlike internal agents (which execute tasks), client agents
+drive the organization from the outside -- generating workloads and evaluating outputs.
+
+All client types implement `ClientInterface` from `synthorg.client.protocols`:
+
+- **AIClient** -- LLM-backed persona that generates requirements and reviews
+  deliverables autonomously.
+- **HumanClient** -- Delegates decisions to a human via the API/dashboard.
+- **HybridClient** -- AI drafts, human confirms.
+
+Client behavior is configured via `ClientProfile` (persona, expertise domains,
+strictness level) and driven by pluggable strategies for requirement generation
+and feedback evaluation.
+
+See [Client Simulation](client-simulation.md) for the full architecture.

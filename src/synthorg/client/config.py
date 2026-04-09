@@ -1,0 +1,204 @@
+"""Client simulation configuration models.
+
+All configuration models are frozen Pydantic models following
+project conventions. Used to configure simulation runs, client
+pools, requirement generators, and feedback strategies.
+"""
+
+from pydantic import BaseModel, ConfigDict, Field
+
+from synthorg.core.types import NotBlankStr  # noqa: TC001
+
+
+class RequirementGeneratorConfig(BaseModel):
+    """Configuration for requirement generation strategy.
+
+    Attributes:
+        strategy: Strategy identifier (template, llm, dataset,
+            hybrid, procedural).
+        template_path: Path to template file (for template strategy).
+        dataset_path: Path to dataset file (for dataset strategy).
+        llm_provider: Provider identifier (for llm/hybrid strategies).
+        llm_model: Model identifier (for llm/hybrid strategies).
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+
+    strategy: NotBlankStr = Field(
+        default="template",
+        description="Strategy identifier",
+    )
+    template_path: str | None = Field(
+        default=None,
+        description="Path to template file",
+    )
+    dataset_path: str | None = Field(
+        default=None,
+        description="Path to dataset file",
+    )
+    llm_provider: str | None = Field(
+        default=None,
+        description="Provider identifier for LLM strategies",
+    )
+    llm_model: str | None = Field(
+        default=None,
+        description="Model identifier for LLM strategies",
+    )
+
+
+class FeedbackConfig(BaseModel):
+    """Configuration for feedback evaluation strategy.
+
+    Attributes:
+        strategy: Strategy identifier (binary, scored,
+            criteria_check, adversarial).
+        passing_score: Minimum score for acceptance (scored strategy).
+        strictness_multiplier: Multiplier applied to client strictness.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+
+    strategy: NotBlankStr = Field(
+        default="binary",
+        description="Strategy identifier",
+    )
+    passing_score: float = Field(
+        default=0.7,
+        ge=0.0,
+        le=1.0,
+        description="Minimum score for acceptance",
+    )
+    strictness_multiplier: float = Field(
+        default=1.0,
+        gt=0.0,
+        description="Multiplier applied to client strictness",
+    )
+
+
+class ClientPoolConfig(BaseModel):
+    """Configuration for the client pool.
+
+    Attributes:
+        pool_size: Total number of clients in the pool.
+        ai_ratio: Proportion of AI clients (0.0-1.0).
+        human_ratio: Proportion of human clients (0.0-1.0).
+        hybrid_ratio: Proportion of hybrid clients (0.0-1.0).
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+
+    pool_size: int = Field(
+        default=10,
+        gt=0,
+        description="Total number of clients in the pool",
+    )
+    ai_ratio: float = Field(
+        default=0.8,
+        ge=0.0,
+        le=1.0,
+        description="Proportion of AI clients",
+    )
+    human_ratio: float = Field(
+        default=0.1,
+        ge=0.0,
+        le=1.0,
+        description="Proportion of human clients",
+    )
+    hybrid_ratio: float = Field(
+        default=0.1,
+        ge=0.0,
+        le=1.0,
+        description="Proportion of hybrid clients",
+    )
+
+
+class SimulationRunnerConfig(BaseModel):
+    """Configuration for the simulation runner.
+
+    Attributes:
+        max_concurrent_tasks: Maximum tasks running in parallel.
+        task_timeout_sec: Timeout for individual task completion.
+        review_timeout_sec: Timeout for client review.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+
+    max_concurrent_tasks: int = Field(
+        default=10,
+        gt=0,
+        description="Maximum tasks running in parallel",
+    )
+    task_timeout_sec: float = Field(
+        default=300.0,
+        gt=0.0,
+        description="Timeout for individual task completion",
+    )
+    review_timeout_sec: float = Field(
+        default=60.0,
+        gt=0.0,
+        description="Timeout for client review",
+    )
+
+
+class ContinuousModeConfig(BaseModel):
+    """Configuration for continuous simulation mode.
+
+    Attributes:
+        enabled: Whether continuous mode is active.
+        request_interval_sec: Seconds between requirement batches.
+        max_concurrent_requests: Maximum parallel requests.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+
+    enabled: bool = Field(
+        default=False,
+        description="Whether continuous mode is active",
+    )
+    request_interval_sec: float = Field(
+        default=300.0,
+        gt=0.0,
+        description="Seconds between requirement batches",
+    )
+    max_concurrent_requests: int = Field(
+        default=5,
+        gt=0,
+        description="Maximum parallel requests",
+    )
+
+
+class ClientSimulationConfig(BaseModel):
+    """Top-level client simulation configuration.
+
+    Composes all sub-configurations into a single frozen model.
+
+    Attributes:
+        pool: Client pool configuration.
+        generators: Requirement generator configuration.
+        feedback: Feedback strategy configuration.
+        runner: Simulation runner configuration.
+        continuous: Continuous mode configuration.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+
+    pool: ClientPoolConfig = Field(
+        default_factory=ClientPoolConfig,
+        description="Client pool configuration",
+    )
+    generators: RequirementGeneratorConfig = Field(
+        default_factory=RequirementGeneratorConfig,
+        description="Requirement generator configuration",
+    )
+    feedback: FeedbackConfig = Field(
+        default_factory=FeedbackConfig,
+        description="Feedback strategy configuration",
+    )
+    runner: SimulationRunnerConfig = Field(
+        default_factory=SimulationRunnerConfig,
+        description="Simulation runner configuration",
+    )
+    continuous: ContinuousModeConfig = Field(
+        default_factory=ContinuousModeConfig,
+        description="Continuous mode configuration",
+    )

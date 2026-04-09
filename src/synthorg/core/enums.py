@@ -679,3 +679,15 @@ class TimeoutActionType(StrEnum):
     APPROVE = "approve"
     DENY = "deny"
     ESCALATE = "escalate"
+
+
+class TaskSource(StrEnum):
+    """Origin of a task within the system.
+
+    Distinguishes tasks created internally by agents from those
+    originating from client simulation or external API calls.
+    """
+
+    INTERNAL = "internal"
+    CLIENT = "client"
+    SIMULATION = "simulation"
