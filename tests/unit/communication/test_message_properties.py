@@ -187,7 +187,7 @@ class TestTextPropertyProperties:
                 **_make_default_message_kwargs(),
                 "parts": (
                     TextPart(text=text),
-                    DataPart(data={"key": "value"}),
+                    DataPart(data={"key": "value"}),  # type: ignore[arg-type]
                     UriPart(uri="https://example.com"),
                 ),
             }
@@ -203,7 +203,7 @@ class TestTextPropertyProperties:
             **{
                 **_make_default_message_kwargs(),
                 "parts": (
-                    DataPart(data=data),
+                    DataPart(data=data),  # type: ignore[arg-type]
                     UriPart(uri="https://example.com"),
                 ),
             }

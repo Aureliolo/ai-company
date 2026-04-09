@@ -3,6 +3,9 @@
 import pytest
 
 from synthorg.communication.meeting.config import StructuredPhasesConfig
+from synthorg.communication.meeting.conflict_detection import (
+    KeywordConflictDetector,
+)
 from synthorg.communication.meeting.enums import (
     MeetingPhase,
     MeetingProtocolType,
@@ -13,7 +16,6 @@ from synthorg.communication.meeting.errors import (
 from synthorg.communication.meeting.models import MeetingAgenda
 from synthorg.communication.meeting.protocol import ConflictDetector, MeetingProtocol
 from synthorg.communication.meeting.structured_phases import (
-    KeywordConflictDetector,
     StructuredPhasesProtocol,
 )
 from tests.unit.communication.meeting.conftest import (

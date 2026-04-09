@@ -86,20 +86,20 @@ class TestTextPart:
 class TestDataPart:
     def test_construction(self) -> None:
         data = {"key": "value", "count": 42}
-        part = DataPart(data=data)
+        part = DataPart(data=data)  # type: ignore[arg-type]
         assert part.type == "data"
         assert isinstance(part.data, MappingProxyType)
         assert part.data["key"] == "value"
         assert part.data["count"] == 42
 
     def test_frozen(self) -> None:
-        part = DataPart(data={"key": "value"})
+        part = DataPart(data={"key": "value"})  # type: ignore[arg-type]
         with pytest.raises(ValidationError):
-            part.data = {}  # type: ignore[misc]
+            part.data = {}  # type: ignore[misc,assignment]
 
     def test_data_deep_copied(self) -> None:
         original_dict = {"key": "value"}
-        part = DataPart(data=original_dict)
+        part = DataPart(data=original_dict)  # type: ignore[arg-type]
         original_dict["key"] = "modified"
         assert part.data["key"] == "value"
 
@@ -108,18 +108,18 @@ class TestDataPart:
             "nested": {"inner": "value"},
             "list": [1, 2, 3],
         }
-        part = DataPart(data=data)
+        part = DataPart(data=data)  # type: ignore[arg-type]
         assert isinstance(part.data["nested"], MappingProxyType)
         assert isinstance(part.data["list"], tuple)
 
     def test_json_roundtrip(self) -> None:
-        part = DataPart(data={"key": "value", "num": 123})
+        part = DataPart(data={"key": "value", "num": 123})  # type: ignore[arg-type]
         restored = DataPart.model_validate_json(part.model_dump_json())
         assert restored.data["key"] == "value"
         assert restored.data["num"] == 123
 
     def test_model_copy(self) -> None:
-        original = DataPart(data={"key": "value"})
+        original = DataPart(data={"key": "value"})  # type: ignore[arg-type]
         updated = original.model_copy(update={"data": {"key": "new"}})
         assert updated.data["key"] == "new"
         assert original.data["key"] == "value"
@@ -372,7 +372,7 @@ class TestMessageConstruction:
             channel="#general",
             parts=(
                 TextPart(text="Status update:"),
-                DataPart(data={"status": "complete", "progress": 100}),
+                DataPart(data={"status": "complete", "progress": 100}),  # type: ignore[arg-type]
                 UriPart(uri="https://example.com/report"),
             ),
         )
@@ -393,7 +393,7 @@ class TestMessageTextComputedField:
             channel="#general",
             parts=(
                 TextPart(text="Primary message"),
-                DataPart(data={"key": "value"}),
+                DataPart(data={"key": "value"}),  # type: ignore[arg-type]
             ),
         )
         assert msg.text == "Primary message"
@@ -406,7 +406,7 @@ class TestMessageTextComputedField:
             type=MessageType.TASK_UPDATE,
             channel="#general",
             parts=(
-                DataPart(data={"key": "value"}),
+                DataPart(data={"key": "value"}),  # type: ignore[arg-type]
                 UriPart(uri="https://example.com"),
             ),
         )
@@ -569,7 +569,7 @@ class TestMessageSerialization:
             channel="#general",
             parts=(
                 TextPart(text="Status:"),
-                DataPart(data={"status": "done"}),
+                DataPart(data={"status": "done"}),  # type: ignore[arg-type]
                 FilePart(uri="/report.pdf", mime_type="application/pdf"),
             ),
             metadata=MessageMetadata(task_id="task-1"),
@@ -592,7 +592,7 @@ class TestMessageSerialization:
             channel="#general",
             parts=(
                 TextPart(text="Text"),
-                DataPart(data={"k": "v"}),
+                DataPart(data={"k": "v"}),  # type: ignore[arg-type]
                 FilePart(uri="/file.txt"),
                 UriPart(uri="https://example.com"),
             ),

@@ -26,43 +26,43 @@ from synthorg.communication.meeting.conflict_detection import (
 class TestKeywordConflictDetector:
     """Tests for KeywordConflictDetector."""
 
-    def test_detects_conflicts_uppercase_marker(self):
+    def test_detects_conflicts_uppercase_marker(self) -> None:
         """Detect conflicts with exact uppercase marker."""
         detector = KeywordConflictDetector()
         response = "Analysis: CONFLICTS: YES - agents disagree on approach"
         assert detector.detect(response) is True
 
-    def test_detects_conflicts_lowercase_marker(self):
+    def test_detects_conflicts_lowercase_marker(self) -> None:
         """Detect conflicts with lowercase marker (case-insensitive)."""
         detector = KeywordConflictDetector()
         response = "conflicts: yes - there are disagreements"
         assert detector.detect(response) is True
 
-    def test_detects_conflicts_mixed_case_marker(self):
+    def test_detects_conflicts_mixed_case_marker(self) -> None:
         """Detect conflicts with mixed-case marker."""
         detector = KeywordConflictDetector()
         response = "Conflicts: Yes - engineering and product disagree"
         assert detector.detect(response) is True
 
-    def test_no_conflicts_with_no_marker(self):
+    def test_no_conflicts_with_no_marker(self) -> None:
         """No conflicts when marker is absent."""
         detector = KeywordConflictDetector()
         response = "All agents agree on the approach"
         assert detector.detect(response) is False
 
-    def test_no_conflicts_with_conflicts_no(self):
+    def test_no_conflicts_with_conflicts_no(self) -> None:
         """No conflicts when explicitly saying CONFLICTS: NO."""
         detector = KeywordConflictDetector()
         response = "CONFLICTS: NO - consensus reached"
         assert detector.detect(response) is False
 
-    def test_detects_marker_in_middle_of_text(self):
+    def test_detects_marker_in_middle_of_text(self) -> None:
         """Marker can appear anywhere in response."""
         detector = KeywordConflictDetector()
         response = "Starting analysis... CONFLICTS: YES ...ending analysis"
         assert detector.detect(response) is True
 
-    def test_empty_response(self):
+    def test_empty_response(self) -> None:
         """Empty response means no conflicts."""
         detector = KeywordConflictDetector()
         assert detector.detect("") is False
@@ -72,7 +72,7 @@ class TestKeywordConflictDetector:
 class TestStructuredComparisonDetector:
     """Tests for StructuredComparisonDetector."""
 
-    def test_detects_conflicts_with_differing_fields(self):
+    def test_detects_conflicts_with_differing_fields(self) -> None:
         """Detect conflicts when position fields differ."""
         detector = StructuredComparisonDetector()
         response = json.dumps(
@@ -85,7 +85,7 @@ class TestStructuredComparisonDetector:
         )
         assert detector.detect(response) is True
 
-    def test_no_conflicts_with_identical_fields(self):
+    def test_no_conflicts_with_identical_fields(self) -> None:
         """No conflicts when all positions agree."""
         detector = StructuredComparisonDetector()
         response = json.dumps(
@@ -98,14 +98,14 @@ class TestStructuredComparisonDetector:
         )
         assert detector.detect(response) is False
 
-    def test_handles_singular_position_field(self):
+    def test_handles_singular_position_field(self) -> None:
         """Handles "position" (singular) field."""
         detector = StructuredComparisonDetector()
         # Single position doesn't create conflict
         response = json.dumps({"position": {"approach": "A"}})
         assert detector.detect(response) is False
 
-    def test_detects_conflicts_with_multiple_field_differences(self):
+    def test_detects_conflicts_with_multiple_field_differences(self) -> None:
         """Detect conflicts with multiple differing fields."""
         detector = StructuredComparisonDetector()
         response = json.dumps(
@@ -118,7 +118,7 @@ class TestStructuredComparisonDetector:
         )
         assert detector.detect(response) is True
 
-    def test_no_conflicts_with_three_positions_all_matching(self):
+    def test_no_conflicts_with_three_positions_all_matching(self) -> None:
         """No conflicts with multiple positions that all agree."""
         detector = StructuredComparisonDetector()
         response = json.dumps(
@@ -132,7 +132,7 @@ class TestStructuredComparisonDetector:
         )
         assert detector.detect(response) is False
 
-    def test_detects_conflicts_with_three_positions_some_differing(self):
+    def test_detects_conflicts_with_three_positions_some_differing(self) -> None:
         """Detect conflicts when any pair differs."""
         detector = StructuredComparisonDetector()
         response = json.dumps(
@@ -146,37 +146,37 @@ class TestStructuredComparisonDetector:
         )
         assert detector.detect(response) is True
 
-    def test_handles_missing_positions_field(self):
+    def test_handles_missing_positions_field(self) -> None:
         """Gracefully handle missing positions field."""
         detector = StructuredComparisonDetector()
         response = json.dumps({"analysis": "some analysis"})
         assert detector.detect(response) is False
 
-    def test_handles_empty_positions_list(self):
+    def test_handles_empty_positions_list(self) -> None:
         """Gracefully handle empty positions list."""
         detector = StructuredComparisonDetector()
         response = json.dumps({"positions": []})
         assert detector.detect(response) is False
 
-    def test_handles_single_position_in_list(self):
+    def test_handles_single_position_in_list(self) -> None:
         """Gracefully handle single position (no comparison needed)."""
         detector = StructuredComparisonDetector()
         response = json.dumps({"positions": [{"approach": "A"}]})
         assert detector.detect(response) is False
 
-    def test_handles_invalid_json(self):
+    def test_handles_invalid_json(self) -> None:
         """Gracefully handle invalid JSON."""
         detector = StructuredComparisonDetector()
         response = "This is not JSON at all"
         assert detector.detect(response) is False
 
-    def test_handles_json_with_non_dict_positions(self):
+    def test_handles_json_with_non_dict_positions(self) -> None:
         """Handle positions field that's not a list of dicts."""
         detector = StructuredComparisonDetector()
         response = json.dumps({"positions": ["string1", "string2"]})
         assert detector.detect(response) is False
 
-    def test_detects_conflict_from_different_field_keys(self):
+    def test_detects_conflict_from_different_field_keys(self) -> None:
         """Detect conflict when positions have different field keys."""
         detector = StructuredComparisonDetector()
         response = json.dumps(
@@ -190,7 +190,7 @@ class TestStructuredComparisonDetector:
         # Different keys means different values (None vs actual value)
         assert detector.detect(response) is True
 
-    def test_handles_json_embedded_in_text(self):
+    def test_handles_json_embedded_in_text(self) -> None:
         """Extract and parse JSON embedded in text."""
         detector = StructuredComparisonDetector()
         response = (
@@ -200,7 +200,7 @@ class TestStructuredComparisonDetector:
         )
         assert detector.detect(response) is True
 
-    def test_handles_nested_json_structures(self):
+    def test_handles_nested_json_structures(self) -> None:
         """Handle nested JSON objects in positions."""
         detector = StructuredComparisonDetector()
         response = json.dumps(
@@ -214,7 +214,7 @@ class TestStructuredComparisonDetector:
         # "details" fields with different dicts => conflict detected
         assert detector.detect(response) is True
 
-    def test_handles_null_values_in_positions(self):
+    def test_handles_null_values_in_positions(self) -> None:
         """Handle null values in position fields."""
         detector = StructuredComparisonDetector()
         response = json.dumps(
@@ -232,19 +232,19 @@ class TestStructuredComparisonDetector:
 class TestLlmJudgeDetector:
     """Tests for LlmJudgeDetector."""
 
-    def test_detects_conflicts_from_json_boolean(self):
+    def test_detects_conflicts_from_json_boolean(self) -> None:
         """Parse conflicts from JSON boolean field."""
         detector = LlmJudgeDetector()
         response = json.dumps({"conflicts": True, "areas": ["scope", "timeline"]})
         assert detector.detect(response) is True
 
-    def test_no_conflicts_from_json_boolean_false(self):
+    def test_no_conflicts_from_json_boolean_false(self) -> None:
         """Parse no-conflicts from JSON boolean field."""
         detector = LlmJudgeDetector()
         response = json.dumps({"conflicts": False, "areas": []})
         assert detector.detect(response) is False
 
-    def test_detects_conflicts_from_judgment_field(self):
+    def test_detects_conflicts_from_judgment_field(self) -> None:
         """Parse conflicts from "judgment" field."""
         detector = LlmJudgeDetector()
         response = json.dumps(
@@ -255,54 +255,54 @@ class TestLlmJudgeDetector:
         )
         assert detector.detect(response) is True
 
-    def test_no_conflicts_from_judgment_field_without_conflict(self):
+    def test_no_conflicts_from_judgment_field_without_conflict(self) -> None:
         """Parse no-conflicts from judgment field."""
         detector = LlmJudgeDetector()
         response = json.dumps({"judgment": "no issues found"})
         assert detector.detect(response) is False
 
-    def test_detects_judge_conflict_marker(self):
+    def test_detects_judge_conflict_marker(self) -> None:
         """Detect from JUDGE: CONFLICT marker."""
         detector = LlmJudgeDetector()
         response = "JUDGE: CONFLICT\nReasons: timing and scope disagree"
         assert detector.detect(response) is True
 
-    def test_detects_judge_no_conflict_marker(self):
+    def test_detects_judge_no_conflict_marker(self) -> None:
         """Detect no-conflict from JUDGE: NO_CONFLICT marker."""
         detector = LlmJudgeDetector()
         response = "JUDGE: NO_CONFLICT\nAll positions are compatible"
         assert detector.detect(response) is False
 
-    def test_fallback_to_conflicts_yes_keyword(self):
+    def test_fallback_to_conflicts_yes_keyword(self) -> None:
         """Fallback to CONFLICTS: YES keyword."""
         detector = LlmJudgeDetector()
         response = "CONFLICTS: YES - disagreement on priorities"
         assert detector.detect(response) is True
 
-    def test_handles_invalid_json_with_keyword(self):
+    def test_handles_invalid_json_with_keyword(self) -> None:
         """Fallback to keyword when JSON parsing fails."""
         detector = LlmJudgeDetector()
         response = "Invalid json { broken CONFLICTS: YES"
         assert detector.detect(response) is True
 
-    def test_handles_invalid_json_without_keyword(self):
+    def test_handles_invalid_json_without_keyword(self) -> None:
         """Fallback to False when no keywords found."""
         detector = LlmJudgeDetector()
         response = "No structured format or keywords here"
         assert detector.detect(response) is False
 
-    def test_handles_case_insensitive_judgment(self):
+    def test_handles_case_insensitive_judgment(self) -> None:
         """Handle case variations in judgment keywords."""
         detector = LlmJudgeDetector()
         response = json.dumps({"judgment": "Conflict between proposals"})
         assert detector.detect(response) is True
 
-    def test_handles_empty_response(self):
+    def test_handles_empty_response(self) -> None:
         """Handle empty response gracefully."""
         detector = LlmJudgeDetector()
         assert detector.detect("") is False
 
-    def test_prefers_json_boolean_over_keyword(self):
+    def test_prefers_json_boolean_over_keyword(self) -> None:
         """Prefer JSON parsing when both formats present."""
         detector = LlmJudgeDetector()
         # JSON says no conflict, but text has "CONFLICTS: YES"
@@ -315,22 +315,22 @@ class TestLlmJudgeDetector:
 class TestEmbeddingSimilarityDetector:
     """Tests for EmbeddingSimilarityDetector."""
 
-    def test_always_returns_false_stub(self):
+    def test_always_returns_false_stub(self) -> None:
         """Stub implementation always returns False."""
         detector = EmbeddingSimilarityDetector()
         assert detector.detect("anything") is False
 
-    def test_accepts_similarity_threshold(self):
+    def test_accepts_similarity_threshold(self) -> None:
         """Accepts custom similarity threshold."""
         detector = EmbeddingSimilarityDetector(similarity_threshold=0.5)
         assert detector.similarity_threshold == 0.5
 
-    def test_default_threshold_is_0_7(self):
+    def test_default_threshold_is_0_7(self) -> None:
         """Default similarity threshold is 0.7."""
         detector = EmbeddingSimilarityDetector()
         assert detector.similarity_threshold == 0.7
 
-    def test_handles_json_response(self):
+    def test_handles_json_response(self) -> None:
         """Stub handles JSON responses gracefully."""
         detector = EmbeddingSimilarityDetector()
         response = json.dumps(
@@ -343,7 +343,7 @@ class TestEmbeddingSimilarityDetector:
         )
         assert detector.detect(response) is False
 
-    def test_handles_empty_response(self):
+    def test_handles_empty_response(self) -> None:
         """Stub handles empty response."""
         detector = EmbeddingSimilarityDetector()
         assert detector.detect("") is False
@@ -353,31 +353,31 @@ class TestEmbeddingSimilarityDetector:
 class TestHybridDetector:
     """Tests for HybridDetector."""
 
-    def test_detects_conflicts_via_keyword_fallback(self):
+    def test_detects_conflicts_via_keyword_fallback(self) -> None:
         """Detect conflicts through keyword fallback."""
         detector = HybridDetector()
         response = "CONFLICTS: YES - scope disagreement"
         assert detector.detect(response) is True
 
-    def test_no_conflicts_via_keyword_fallback(self):
+    def test_no_conflicts_via_keyword_fallback(self) -> None:
         """No conflicts when keyword absent."""
         detector = HybridDetector()
         response = "All positions align on timing"
         assert detector.detect(response) is False
 
-    def test_accepts_custom_threshold(self):
+    def test_accepts_custom_threshold(self) -> None:
         """Accepts custom similarity threshold."""
         detector = HybridDetector(similarity_threshold=0.5)
         # Verify it's stored in the embedding detector
         assert detector.embedding_detector.similarity_threshold == 0.5
 
-    def test_has_both_detectors(self):
+    def test_has_both_detectors(self) -> None:
         """Initializes both embedding and keyword detectors."""
         detector = HybridDetector()
         assert isinstance(detector.embedding_detector, EmbeddingSimilarityDetector)
         assert isinstance(detector.keyword_detector, KeywordConflictDetector)
 
-    def test_handles_json_response_via_keyword(self):
+    def test_handles_json_response_via_keyword(self) -> None:
         """Handle JSON responses via keyword fallback."""
         detector = HybridDetector()
         response = json.dumps(
@@ -393,7 +393,7 @@ class TestHybridDetector:
 class TestAutoDetector:
     """Tests for AutoDetector."""
 
-    def test_selects_structured_detector_for_json_positions(self):
+    def test_selects_structured_detector_for_json_positions(self) -> None:
         """Select StructuredComparisonDetector for JSON with positions."""
         detector = AutoDetector()
         response = json.dumps(
@@ -406,25 +406,25 @@ class TestAutoDetector:
         )
         assert detector.detect(response) is True
 
-    def test_selects_structured_detector_for_singular_position(self):
+    def test_selects_structured_detector_for_singular_position(self) -> None:
         """Select StructuredComparisonDetector for 'position' field."""
         detector = AutoDetector()
         response = json.dumps({"position": {"approach": "A"}})
         assert detector.detect(response) is False
 
-    def test_falls_back_to_keyword_for_non_json(self):
+    def test_falls_back_to_keyword_for_non_json(self) -> None:
         """Fall back to keyword detector for non-JSON responses."""
         detector = AutoDetector()
         response = "CONFLICTS: YES - timeline mismatch"
         assert detector.detect(response) is True
 
-    def test_falls_back_to_keyword_when_no_position_field(self):
+    def test_falls_back_to_keyword_when_no_position_field(self) -> None:
         """Fall back to keyword when JSON lacks position field."""
         detector = AutoDetector()
         response = json.dumps({"analysis": "something", "note": "CONFLICTS: YES"})
         assert detector.detect(response) is True
 
-    def test_detects_no_conflict_structured(self):
+    def test_detects_no_conflict_structured(self) -> None:
         """AutoDetector handles no-conflict structured responses."""
         detector = AutoDetector()
         response = json.dumps(
@@ -437,26 +437,26 @@ class TestAutoDetector:
         )
         assert detector.detect(response) is False
 
-    def test_detects_no_conflict_keyword(self):
+    def test_detects_no_conflict_keyword(self) -> None:
         """AutoDetector handles no-conflict keyword responses."""
         detector = AutoDetector()
         response = "Analysis complete. No disagreements found."
         assert detector.detect(response) is False
 
-    def test_handles_invalid_json_gracefully(self):
+    def test_handles_invalid_json_gracefully(self) -> None:
         """Handle invalid JSON gracefully."""
         detector = AutoDetector()
         response = "{ broken json CONFLICTS: YES"
         # Falls back to keyword detector
         assert detector.detect(response) is True
 
-    def test_has_both_detectors(self):
+    def test_has_both_detectors(self) -> None:
         """Initializes both detector strategies."""
         detector = AutoDetector()
         assert isinstance(detector.structured_detector, StructuredComparisonDetector)
         assert isinstance(detector.keyword_detector, KeywordConflictDetector)
 
-    def test_complex_nested_json_with_positions(self):
+    def test_complex_nested_json_with_positions(self) -> None:
         """Handle complex nested JSON with positions."""
         detector = AutoDetector()
         response = json.dumps(
@@ -471,7 +471,7 @@ class TestAutoDetector:
         )
         assert detector.detect(response) is True
 
-    def test_json_without_positions_falls_back(self):
+    def test_json_without_positions_falls_back(self) -> None:
         """JSON without positions field falls back to keyword."""
         detector = AutoDetector()
         response = json.dumps(
@@ -487,42 +487,42 @@ class TestAutoDetector:
 class TestDetectorProtocolCompliance:
     """Tests to verify all detectors implement ConflictDetector protocol."""
 
-    def test_keyword_detector_has_detect_method(self):
+    def test_keyword_detector_has_detect_method(self) -> None:
         """KeywordConflictDetector has detect(response_content: str) -> bool."""
         detector = KeywordConflictDetector()
         assert callable(detector.detect)
         result = detector.detect("test")
         assert isinstance(result, bool)
 
-    def test_structured_detector_has_detect_method(self):
+    def test_structured_detector_has_detect_method(self) -> None:
         """StructuredComparisonDetector has detect(response_content: str) -> bool."""
         detector = StructuredComparisonDetector()
         assert callable(detector.detect)
         result = detector.detect("test")
         assert isinstance(result, bool)
 
-    def test_llm_judge_detector_has_detect_method(self):
+    def test_llm_judge_detector_has_detect_method(self) -> None:
         """LlmJudgeDetector has detect(response_content: str) -> bool."""
         detector = LlmJudgeDetector()
         assert callable(detector.detect)
         result = detector.detect("test")
         assert isinstance(result, bool)
 
-    def test_embedding_detector_has_detect_method(self):
+    def test_embedding_detector_has_detect_method(self) -> None:
         """EmbeddingSimilarityDetector has detect(response_content: str) -> bool."""
         detector = EmbeddingSimilarityDetector()
         assert callable(detector.detect)
         result = detector.detect("test")
         assert isinstance(result, bool)
 
-    def test_hybrid_detector_has_detect_method(self):
+    def test_hybrid_detector_has_detect_method(self) -> None:
         """HybridDetector has detect(response_content: str) -> bool."""
         detector = HybridDetector()
         assert callable(detector.detect)
         result = detector.detect("test")
         assert isinstance(result, bool)
 
-    def test_auto_detector_has_detect_method(self):
+    def test_auto_detector_has_detect_method(self) -> None:
         """AutoDetector has detect(response_content: str) -> bool."""
         detector = AutoDetector()
         assert callable(detector.detect)
@@ -534,7 +534,7 @@ class TestDetectorProtocolCompliance:
 class TestEdgeCases:
     """Tests for edge cases and robustness."""
 
-    def test_keyword_detector_with_whitespace_variations(self):
+    def test_keyword_detector_with_whitespace_variations(self) -> None:
         """Handle whitespace variations around marker."""
         detector = KeywordConflictDetector()
         assert detector.detect("CONFLICTS: YES") is True
@@ -542,7 +542,7 @@ class TestEdgeCases:
         assert detector.detect("CONFLICTS : YES") is True
         assert detector.detect("  CONFLICTS: YES  ") is True
 
-    def test_structured_detector_with_numeric_values(self):
+    def test_structured_detector_with_numeric_values(self) -> None:
         """Handle numeric field values in positions."""
         detector = StructuredComparisonDetector()
         response = json.dumps(
@@ -555,7 +555,7 @@ class TestEdgeCases:
         )
         assert detector.detect(response) is True
 
-    def test_structured_detector_with_boolean_values(self):
+    def test_structured_detector_with_boolean_values(self) -> None:
         """Handle boolean field values in positions."""
         detector = StructuredComparisonDetector()
         response = json.dumps(
@@ -568,13 +568,13 @@ class TestEdgeCases:
         )
         assert detector.detect(response) is True
 
-    def test_llm_judge_with_mixed_case_judgment(self):
+    def test_llm_judge_with_mixed_case_judgment(self) -> None:
         """Handle mixed-case judgment keywords."""
         detector = LlmJudgeDetector()
         response = json.dumps({"judgment": "CONFLICT detected"})
         assert detector.detect(response) is True
 
-    def test_auto_detector_with_json_array_not_object(self):
+    def test_auto_detector_with_json_array_not_object(self) -> None:
         """Handle JSON array (not object) gracefully."""
         detector = AutoDetector()
         response = json.dumps(
@@ -586,20 +586,20 @@ class TestEdgeCases:
         # JSON array doesn't have "positions" field, falls back to keyword
         assert detector.detect(response) is False
 
-    def test_structured_detector_with_very_large_json(self):
+    def test_structured_detector_with_very_large_json(self) -> None:
         """Handle large JSON with many positions."""
         detector = StructuredComparisonDetector()
         positions = [{"id": i, "stance": "yes" if i < 5 else "no"} for i in range(100)]
         response = json.dumps({"positions": positions})
         assert detector.detect(response) is True
 
-    def test_keyword_detector_with_unicode_content(self):
+    def test_keyword_detector_with_unicode_content(self) -> None:
         """Handle unicode content in response."""
         detector = KeywordConflictDetector()
         response = "Analysis: 分析結果 CONFLICTS: YES チーム"
         assert detector.detect(response) is True
 
-    def test_structured_detector_with_special_characters(self):
+    def test_structured_detector_with_special_characters(self) -> None:
         """Handle special characters in JSON values."""
         detector = StructuredComparisonDetector()
         response = json.dumps(

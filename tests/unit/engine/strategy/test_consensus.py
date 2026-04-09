@@ -4,10 +4,12 @@ import pytest
 from pydantic import ValidationError
 
 from synthorg.engine.strategy.consensus import (
-    ConsensusAction,
-    ConsensusVelocityConfig,
     ConsensusVelocityDetector,
     ConsensusVelocityResult,
+)
+from synthorg.engine.strategy.models import (
+    ConsensusAction,
+    ConsensusVelocityConfig,
 )
 
 
