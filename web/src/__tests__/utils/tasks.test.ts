@@ -25,6 +25,7 @@ function makeTask(overrides: Partial<Task> = {}): Task {
 const ALL_STATUSES: TaskStatus[] = [
   'created', 'assigned', 'in_progress', 'in_review', 'completed',
   'blocked', 'failed', 'interrupted', 'suspended', 'cancelled',
+  'rejected', 'auth_required',
 ]
 
 // ── getTaskStatusColor ──────────────────────────────────────

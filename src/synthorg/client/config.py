@@ -5,7 +5,9 @@ project conventions. Used to configure simulation runs, client
 pools, requirement generators, and feedback strategies.
 """
 
-from pydantic import BaseModel, ConfigDict, Field
+from typing import Self
+
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 
@@ -110,6 +112,21 @@ class ClientPoolConfig(BaseModel):
         le=1.0,
         description="Proportion of hybrid clients",
     )
+
+    @model_validator(mode="after")
+    def _validate_ratio_sum(self) -> Self:
+        """Ensure ratios sum to approximately 1.0."""
+        total = self.ai_ratio + self.human_ratio + self.hybrid_ratio
+        _tolerance_low = 0.99
+        _tolerance_high = 1.01
+        if not (_tolerance_low <= total <= _tolerance_high):
+            msg = (
+                f"Ratios must sum to approximately 1.0, got "
+                f"{self.ai_ratio} + {self.human_ratio} + "
+                f"{self.hybrid_ratio} = {total}"
+            )
+            raise ValueError(msg)
+        return self
 
 
 class SimulationRunnerConfig(BaseModel):

@@ -3,6 +3,7 @@
 import pytest
 from pydantic import ValidationError
 
+from synthorg.communication.delegation.service import DelegationService
 from synthorg.core.enums import TaskSource, TaskStatus, TaskType
 from synthorg.core.task import Task
 
@@ -60,6 +61,42 @@ class TestTaskSourceField:
         )
         assert assigned.source == TaskSource.CLIENT
 
+    def test_source_preserved_through_full_lifecycle(self) -> None:
+        task = self._make_task(source=TaskSource.CLIENT)
+        assigned = task.with_transition(TaskStatus.ASSIGNED, assigned_to="agent-1")
+        in_progress = assigned.with_transition(TaskStatus.IN_PROGRESS)
+        in_review = in_progress.with_transition(TaskStatus.IN_REVIEW)
+        completed = in_review.with_transition(TaskStatus.COMPLETED)
+        assert completed.source == TaskSource.CLIENT
+
     def test_invalid_source_rejected(self) -> None:
         with pytest.raises(ValidationError):
             self._make_task(source="invalid")
+
+    def test_auth_required_requires_assignee(self) -> None:
+        task = self._make_task()
+        assigned = task.with_transition(TaskStatus.ASSIGNED, assigned_to="agent-1")
+        auth = assigned.with_transition(TaskStatus.AUTH_REQUIRED)
+        assert auth.assigned_to == "agent-1"
+
+    def test_auth_required_without_assignee_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="assigned_to is required"):
+            Task(
+                id="task-auth",
+                title="Auth task",
+                description="Needs auth",
+                type=TaskType.DEVELOPMENT,
+                project="proj-001",
+                created_by="manager",
+                status=TaskStatus.AUTH_REQUIRED,
+            )
+
+    def test_rejected_allows_no_assignee(self) -> None:
+        task = self._make_task()
+        rejected = task.with_transition(TaskStatus.REJECTED)
+        assert rejected.assigned_to is None
+
+    def test_reject_delegated_task(self) -> None:
+        task = self._make_task()
+        rejected = DelegationService.reject_delegated_task(task)
+        assert rejected.status == TaskStatus.REJECTED

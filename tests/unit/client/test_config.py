@@ -66,6 +66,22 @@ class TestClientPoolConfig:
         with pytest.raises(ValidationError):
             ClientPoolConfig(ai_ratio=1.5)
 
+    def test_ratio_sum_must_equal_one(self) -> None:
+        with pytest.raises(ValidationError, match="sum to approximately"):
+            ClientPoolConfig(
+                ai_ratio=0.9,
+                human_ratio=0.9,
+                hybrid_ratio=0.9,
+            )
+
+    def test_valid_ratio_sum(self) -> None:
+        config = ClientPoolConfig(
+            ai_ratio=0.6,
+            human_ratio=0.3,
+            hybrid_ratio=0.1,
+        )
+        assert config.ai_ratio == 0.6
+
 
 class TestSimulationRunnerConfig:
     """Tests for SimulationRunnerConfig."""

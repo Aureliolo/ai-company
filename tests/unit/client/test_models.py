@@ -201,6 +201,14 @@ class TestGenerationContext:
                 count=0,
             )
 
+    def test_empty_complexity_range_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="complexity_range"):
+            GenerationContext(
+                project_id="proj-1",
+                domain="backend",
+                complexity_range=(),
+            )
+
 
 # ── ReviewContext ───────────────────────────────────────────────
 
@@ -269,6 +277,24 @@ class TestClientFeedback:
         )
         assert feedback.scores is not None
         assert feedback.scores["quality"] == 0.9
+
+    def test_scores_out_of_range_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="scores"):
+            ClientFeedback(
+                task_id="task-1",
+                client_id="client-1",
+                accepted=True,
+                scores={"quality": 1.5},
+            )
+
+    def test_scores_negative_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="scores"):
+            ClientFeedback(
+                task_id="task-1",
+                client_id="client-1",
+                accepted=True,
+                scores={"quality": -0.1},
+            )
 
     def test_with_unmet_criteria(self) -> None:
         feedback = ClientFeedback(
@@ -380,6 +406,13 @@ class TestPoolConstraints:
         )
         assert constraints.min_strictness == 0.3
 
+    def test_equal_min_max_valid(self) -> None:
+        constraints = PoolConstraints(
+            min_strictness=0.5,
+            max_strictness=0.5,
+        )
+        assert constraints.min_strictness == constraints.max_strictness
+
 
 # ── SimulationConfig ────────────────────────────────────────────
 
@@ -426,3 +459,22 @@ class TestSimulationMetrics:
         metrics = SimulationMetrics()
         with pytest.raises(ValidationError):
             metrics.total_requirements = 5  # type: ignore[misc]
+
+    def test_acceptance_rate_computed(self) -> None:
+        metrics = SimulationMetrics(
+            total_tasks_created=10,
+            tasks_accepted=7,
+        )
+        assert metrics.acceptance_rate == 0.7
+
+    def test_rework_rate_computed(self) -> None:
+        metrics = SimulationMetrics(
+            total_tasks_created=10,
+            tasks_reworked=3,
+        )
+        assert metrics.rework_rate == 0.3
+
+    def test_rates_zero_when_no_tasks(self) -> None:
+        metrics = SimulationMetrics()
+        assert metrics.acceptance_rate == 0.0
+        assert metrics.rework_rate == 0.0

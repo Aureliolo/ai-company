@@ -19,8 +19,10 @@ behind a pluggable protocol interface.
 stateDiagram-v2
     [*] --> CREATED
     CREATED --> ASSIGNED : assignment
+    CREATED --> REJECTED : delegation refused
 
     ASSIGNED --> IN_PROGRESS : starts
+    ASSIGNED --> AUTH_REQUIRED : requires authorization
     ASSIGNED --> FAILED : early setup failure
     ASSIGNED --> BLOCKED : blocked
     ASSIGNED --> CANCELLED : cancelled
@@ -28,6 +30,7 @@ stateDiagram-v2
     ASSIGNED --> SUSPENDED : checkpoint shutdown
 
     IN_PROGRESS --> IN_REVIEW : agent done
+    IN_PROGRESS --> AUTH_REQUIRED : requires authorization
     IN_PROGRESS --> FAILED : runtime crash
     IN_PROGRESS --> CANCELLED : cancelled
     IN_PROGRESS --> INTERRUPTED : shutdown signal
@@ -35,6 +38,9 @@ stateDiagram-v2
 
     IN_REVIEW --> COMPLETED : approved
     IN_REVIEW --> IN_PROGRESS : rework
+
+    AUTH_REQUIRED --> ASSIGNED : approved
+    AUTH_REQUIRED --> CANCELLED : denied/timeout
 
     BLOCKED --> ASSIGNED : unblocked
 
@@ -46,10 +52,12 @@ stateDiagram-v2
 
     COMPLETED --> [*]
     CANCELLED --> [*]
+    REJECTED --> [*]
 ```
 
 !!! info "Non-terminal states"
-    `BLOCKED`, `FAILED`, `INTERRUPTED`, and `SUSPENDED` are non-terminal:
+    `BLOCKED`, `FAILED`, `INTERRUPTED`, `SUSPENDED`, and `AUTH_REQUIRED` are
+    non-terminal:
 
     - **BLOCKED** returns to `ASSIGNED` when unblocked.
     - **FAILED** returns to `ASSIGNED` for retry when `retry_count < max_retries`
@@ -58,7 +66,9 @@ stateDiagram-v2
       (see [Graceful Shutdown](#graceful-shutdown-protocol)).
     - **SUSPENDED** returns to `ASSIGNED` for resume from checkpoint
       (see [Graceful Shutdown](#graceful-shutdown-protocol), Strategy 4).
-    - **COMPLETED** and **CANCELLED** are the only terminal states with no
+    - **AUTH_REQUIRED** returns to `ASSIGNED` when approved or to `CANCELLED`
+      when denied or timed out.
+    - **COMPLETED**, **CANCELLED**, and **REJECTED** are terminal states with no
       outgoing transitions.
 
 !!! info "Runtime wrapper"

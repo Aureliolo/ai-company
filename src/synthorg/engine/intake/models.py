@@ -4,8 +4,9 @@ Defines the data structures for intake processing results.
 """
 
 from datetime import UTC, datetime
+from typing import Self
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 
@@ -41,6 +42,25 @@ class IntakeResult(BaseModel):
         default_factory=lambda: datetime.now(UTC),
         description="Timestamp of processing completion",
     )
+
+    @model_validator(mode="after")
+    def _validate_accepted_consistency(self) -> Self:
+        """Ensure task_id and rejection_reason match accepted status."""
+        if self.accepted:
+            if self.task_id is None:
+                msg = "task_id is required when accepted is True"
+                raise ValueError(msg)
+            if self.rejection_reason is not None:
+                msg = "rejection_reason must be None when accepted is True"
+                raise ValueError(msg)
+        else:
+            if self.rejection_reason is None:
+                msg = "rejection_reason is required when accepted is False"
+                raise ValueError(msg)
+            if self.task_id is not None:
+                msg = "task_id must be None when accepted is False"
+                raise ValueError(msg)
+        return self
 
     @classmethod
     def accepted_result(

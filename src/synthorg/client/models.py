@@ -10,7 +10,7 @@ from enum import StrEnum
 from typing import Any, Self
 from uuid import uuid4
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
 
 from synthorg.core.enums import Complexity, Priority, TaskType
 from synthorg.core.types import NotBlankStr  # noqa: TC001
@@ -179,6 +179,14 @@ class GenerationContext(BaseModel):
         description="Number of requirements to generate",
     )
 
+    @model_validator(mode="after")
+    def _validate_complexity_range(self) -> Self:
+        """Ensure at least one complexity level is included."""
+        if not self.complexity_range:
+            msg = "complexity_range must not be empty"
+            raise ValueError(msg)
+        return self
+
 
 class ReviewContext(BaseModel):
     """Context provided to feedback strategies for deliverable review.
@@ -262,6 +270,16 @@ class ClientFeedback(BaseModel):
         if not self.accepted and self.reason is None:
             msg = "reason is required when accepted is False"
             raise ValueError(msg)
+        return self
+
+    @model_validator(mode="after")
+    def _validate_scores_range(self) -> Self:
+        """Ensure all scores are in [0.0, 1.0] range."""
+        if self.scores is not None:
+            for key, value in self.scores.items():
+                if not (0.0 <= value <= 1.0):
+                    msg = f"scores[{key!r}] must be in [0.0, 1.0], got {value}"
+                    raise ValueError(msg)
         return self
 
 
@@ -422,10 +440,10 @@ class SimulationMetrics(BaseModel):
         tasks_accepted: Tasks accepted by clients.
         tasks_rejected: Tasks rejected by clients.
         tasks_reworked: Tasks sent back for rework.
-        acceptance_rate: Proportion of accepted tasks (computed).
-        rework_rate: Proportion of reworked tasks (computed).
         avg_review_rounds: Average review rounds per task.
         round_metrics: Per-round metric snapshots.
+        acceptance_rate: Proportion of accepted tasks (computed).
+        rework_rate: Proportion of reworked tasks (computed).
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
@@ -440,3 +458,19 @@ class SimulationMetrics(BaseModel):
         default=(),
         description="Per-round metric snapshots",
     )
+
+    @computed_field(description="Proportion of accepted tasks (0.0-1.0)")
+    @property
+    def acceptance_rate(self) -> float:
+        """Proportion of accepted tasks."""
+        if self.total_tasks_created == 0:
+            return 0.0
+        return self.tasks_accepted / self.total_tasks_created
+
+    @computed_field(description="Proportion of reworked tasks (0.0-1.0)")
+    @property
+    def rework_rate(self) -> float:
+        """Proportion of reworked tasks."""
+        if self.total_tasks_created == 0:
+            return 0.0
+        return self.tasks_reworked / self.total_tasks_created
