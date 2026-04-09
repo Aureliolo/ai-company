@@ -45,6 +45,7 @@ class TestIntakeResult:
             IntakeResult(
                 request_id="   ",
                 accepted=True,
+                task_id="task-1",
             )
 
     @pytest.mark.parametrize(
