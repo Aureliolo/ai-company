@@ -129,7 +129,6 @@ class TestPartRoundtripProperties:
 
 class TestMessageRoundtripProperties:
     @given(data=_message_kwargs_st)
-    @settings(max_examples=100)
     def test_model_dump_validate_roundtrip(self, data: dict[str, Any]) -> None:
         msg = Message(**_kwargs_to_message_dict(data))
         dumped = msg.model_dump(by_alias=True)
@@ -137,7 +136,6 @@ class TestMessageRoundtripProperties:
         assert restored == msg
 
     @given(data=_message_kwargs_st)
-    @settings(max_examples=50)
     def test_roundtrip_preserves_sender_alias(self, data: dict[str, Any]) -> None:
         msg = Message(**_kwargs_to_message_dict(data))
         sender = data["sender"]
@@ -214,6 +212,21 @@ class TestTextPropertyProperties:
             }
         )
         assert msg.text == ""
+
+    @pytest.mark.unit
+    def test_text_property_finds_text_part_not_first(self) -> None:
+        """Message.text returns the first TextPart even if it is not index 0."""
+        msg = Message(
+            **{
+                **_make_default_message_kwargs(),
+                "parts": (
+                    DataPart(data={"key": "value"}),  # type: ignore[arg-type]
+                    TextPart(text="the actual text"),
+                    UriPart(uri="https://example.com"),
+                ),
+            }
+        )
+        assert msg.text == "the actual text"
 
 
 class TestMetadataRoundtripProperties:

@@ -129,15 +129,13 @@ class ConsensusVelocityDetector:
         Returns:
             ConsensusVelocityResult with detection status and metrics.
         """
-        logger.debug(
-            STRATEGY_CONSENSUS_DETECTED,
-            phase="entry",
-            num_positions=len(positions),
-            threshold=config.threshold,
-            min_disagreements=self._min_disagreements,
-        )
-
         if len(positions) < _MIN_POSITION_PAIRS:
+            logger.info(
+                STRATEGY_CONSENSUS_DETECTED,
+                detected=False,
+                num_positions=len(positions),
+                reason="insufficient positions",
+            )
             return ConsensusVelocityResult(
                 detected=False,
                 mean_similarity=1.0,
@@ -169,7 +167,7 @@ class ConsensusVelocityDetector:
         logger.info(
             STRATEGY_CONSENSUS_DETECTED,
             detected=is_premature,
-            action=str(action),
+            action=action,
             mean_similarity=rounded_mean,
             disagreement_count=disagreements,
         )

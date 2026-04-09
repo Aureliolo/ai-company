@@ -59,10 +59,7 @@ def _extract_json_object(text: str) -> dict[str, Any] | None:
         if isinstance(parsed, dict):
             return parsed
     except json.JSONDecodeError:
-        logger.debug(
-            CONFLICT_PARSE_FAILED,
-            reason="full-text parse failed, trying brace matching",
-        )
+        pass
 
     # Find outermost braces to handle nested structures
     start = text.find("{")
@@ -73,11 +70,7 @@ def _extract_json_object(text: str) -> dict[str, Any] | None:
             if isinstance(parsed, dict):
                 return parsed
         except json.JSONDecodeError:
-            logger.debug(
-                CONFLICT_PARSE_FAILED,
-                reason="brace-matched parse failed",
-                slice_length=end + 1 - start,
-            )
+            pass
 
     return None
 
@@ -274,16 +267,18 @@ class LlmJudgeDetector:
 
 
 class EmbeddingSimilarityDetector:
-    """Placeholder for embedding-based similarity detection.
+    """Embedding-based similarity detection (not yet available).
 
-    This detector is a stub that always returns False. It exists to
-    document the design for future implementation when embedding
-    infrastructure is available.
+    Raises ``NotImplementedError`` when ``detect()`` is called because
+    embedding infrastructure is not yet available.  Call sites that
+    need graceful degradation (e.g. :class:`HybridDetector`) catch the
+    error and fall back to keyword detection.
 
-    In the future, this would:
+    Once embedding infrastructure is available, this will:
     - Extract position texts from response
-    - Compute pairwise cosine similarity
-    - Report conflict if any pair falls below threshold
+    - Compute embedding vectors for each position
+    - Calculate pairwise cosine similarity
+    - Return True if any pair has similarity below threshold
     """
 
     def __init__(self, *, similarity_threshold: float = 0.7) -> None:
