@@ -26,8 +26,8 @@ _NOW = datetime(2026, 4, 1, 12, 0, 0, tzinfo=UTC)
 
 class TestEntityTier:
     def test_values(self) -> None:
-        assert EntityTier.CORE == "core"
-        assert EntityTier.USER == "user"
+        assert EntityTier.CORE.value == "core"
+        assert EntityTier.USER.value == "user"
 
     def test_all_members(self) -> None:
         assert set(EntityTier) == {EntityTier.CORE, EntityTier.USER}
@@ -38,9 +38,9 @@ class TestEntityTier:
 
 class TestEntitySource:
     def test_values(self) -> None:
-        assert EntitySource.AUTO == "auto"
-        assert EntitySource.CONFIG == "config"
-        assert EntitySource.API == "api"
+        assert EntitySource.AUTO.value == "auto"
+        assert EntitySource.CONFIG.value == "config"
+        assert EntitySource.API.value == "api"
 
     def test_all_members(self) -> None:
         assert set(EntitySource) == {
@@ -223,10 +223,10 @@ class TestEntityDefinition:
 
 class TestDriftAction:
     def test_values(self) -> None:
-        assert DriftAction.NO_ACTION == "no_action"
-        assert DriftAction.NOTIFY == "notify"
-        assert DriftAction.RETRAIN == "retrain"
-        assert DriftAction.ESCALATE == "escalate"
+        assert DriftAction.NO_ACTION.value == "no_action"
+        assert DriftAction.NOTIFY.value == "notify"
+        assert DriftAction.RETRAIN.value == "retrain"
+        assert DriftAction.ESCALATE.value == "escalate"
 
     def test_all_members(self) -> None:
         assert len(DriftAction) == 4

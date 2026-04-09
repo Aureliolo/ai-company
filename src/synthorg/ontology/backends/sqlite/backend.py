@@ -137,7 +137,7 @@ class SQLiteOntologyBackend:
             updated_at=row["updated_at"],
         )
 
-    def _entity_to_params(self, entity: EntityDefinition) -> dict:
+    def _entity_to_params(self, entity: EntityDefinition) -> dict[str, str]:
         """Serialize an EntityDefinition into SQL parameters."""
         return {
             "name": entity.name,
@@ -261,7 +261,7 @@ class SQLiteOntologyBackend:
                WHERE name LIKE :pattern OR definition LIKE :pattern""",
             {"pattern": pattern},
         )
-        rows = await cursor.fetchall()
+        rows = list(await cursor.fetchall())
         logger.debug(
             ONTOLOGY_SEARCH_EXECUTED,
             query=query,

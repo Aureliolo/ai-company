@@ -25,10 +25,10 @@ pytestmark = pytest.mark.unit
 
 class TestInjectionStrategy:
     def test_values(self) -> None:
-        assert InjectionStrategy.HYBRID == "hybrid"
-        assert InjectionStrategy.FULL == "full"
-        assert InjectionStrategy.SUMMARY == "summary"
-        assert InjectionStrategy.NONE == "none"
+        assert InjectionStrategy.HYBRID.value == "hybrid"
+        assert InjectionStrategy.FULL.value == "full"
+        assert InjectionStrategy.SUMMARY.value == "summary"
+        assert InjectionStrategy.NONE.value == "none"
 
 
 # ── DriftStrategy ───────────────────────────────────────────────
@@ -36,9 +36,9 @@ class TestInjectionStrategy:
 
 class TestDriftStrategy:
     def test_values(self) -> None:
-        assert DriftStrategy.PASSIVE == "passive"
-        assert DriftStrategy.ACTIVE == "active"
-        assert DriftStrategy.NONE == "none"
+        assert DriftStrategy.PASSIVE.value == "passive"
+        assert DriftStrategy.ACTIVE.value == "active"
+        assert DriftStrategy.NONE.value == "none"
 
 
 # ── GuardMode ───────────────────────────────────────────────────
@@ -46,10 +46,10 @@ class TestDriftStrategy:
 
 class TestGuardMode:
     def test_values(self) -> None:
-        assert GuardMode.NONE == "none"
-        assert GuardMode.STAMP == "stamp"
-        assert GuardMode.VALIDATE == "validate"
-        assert GuardMode.ENFORCE == "enforce"
+        assert GuardMode.NONE.value == "none"
+        assert GuardMode.STAMP.value == "stamp"
+        assert GuardMode.VALIDATE.value == "validate"
+        assert GuardMode.ENFORCE.value == "enforce"
 
 
 # ── OntologyInjectionConfig ─────────────────────────────────────

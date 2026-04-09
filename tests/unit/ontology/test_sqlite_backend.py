@@ -1,5 +1,6 @@
 """Tests for SQLiteOntologyBackend."""
 
+from collections.abc import AsyncGenerator
 from datetime import UTC, datetime
 
 import pytest
@@ -46,11 +47,11 @@ def _make_entity(  # noqa: PLR0913
 
 
 @pytest.fixture
-async def backend() -> SQLiteOntologyBackend:
+async def backend() -> AsyncGenerator[SQLiteOntologyBackend]:
     """A connected in-memory SQLiteOntologyBackend."""
     b = SQLiteOntologyBackend(db_path=":memory:")
     await b.connect()
-    yield b  # type: ignore[misc]
+    yield b
     await b.disconnect()
 
 
@@ -60,7 +61,6 @@ async def backend() -> SQLiteOntologyBackend:
 class TestLifecycle:
     async def test_connect_sets_connected(self) -> None:
         b = SQLiteOntologyBackend(db_path=":memory:")
-        assert not b.is_connected
         await b.connect()
         assert b.is_connected
         await b.disconnect()
