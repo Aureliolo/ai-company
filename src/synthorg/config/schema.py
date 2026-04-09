@@ -44,6 +44,7 @@ from synthorg.persistence.config import PersistenceConfig
 from synthorg.providers.enums import AuthType
 from synthorg.security.config import SecurityConfig
 from synthorg.security.trust.config import TrustConfig
+from synthorg.telemetry.config import TelemetryConfig
 from synthorg.tools.analytics.config import AnalyticsToolsConfig  # noqa: TC001
 from synthorg.tools.communication.config import CommunicationToolsConfig  # noqa: TC001
 from synthorg.tools.database.config import DatabaseConfig  # noqa: TC001
@@ -611,6 +612,8 @@ class RootConfig(BaseModel):
         workflow: Workflow type configuration.
         notifications: Notification subsystem configuration.
         ontology: Semantic ontology configuration.
+        telemetry: Anonymous product telemetry configuration (opt-in,
+            disabled by default).
         web: Web tool configuration (``None`` = default web config).
         database: Database tool configuration (``None`` = no database
             tools).
@@ -763,6 +766,10 @@ class RootConfig(BaseModel):
     ontology: OntologyConfig = Field(
         default_factory=OntologyConfig,
         description="Semantic ontology configuration",
+    )
+    telemetry: TelemetryConfig = Field(
+        default_factory=TelemetryConfig,
+        description="Anonymous product telemetry configuration (opt-in)",
     )
     web: WebToolsConfig | None = Field(
         default=None,

@@ -38,6 +38,7 @@ build-backend = "hatchling.build"
 
 [project.optional-dependencies]
 fine-tune = ["torch==2.11.0", "sentence-transformers==5.3.0"]
+telemetry = ["logfire==4.31.1"]
 
 [tool.hatch.version]
 path = "src/synthorg/__init__.py"
@@ -215,6 +216,10 @@ ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
 module = "defusedxml.*"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "logfire.*"
 ignore_missing_imports = true
 
 [tool.pydantic-mypy]

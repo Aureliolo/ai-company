@@ -33,6 +33,9 @@ web/coverage/
 .env.local
 .env.*.local
 
+# Logfire (telemetry local config)
+.logfire/
+
 # Log files
 logs/
 
