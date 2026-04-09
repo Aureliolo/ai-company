@@ -214,27 +214,31 @@ class SQLiteOntologyBackend:
 
     # ── CRUD ────────────────────────────────────────────────────
 
+    async def _get_db(self) -> aiosqlite.Connection:
+        """Return the active connection, guarded by the lifecycle lock."""
+        async with self._lifecycle_lock:
+            return self._require_connected()
+
     async def register(self, entity: EntityDefinition) -> None:
         """Register a new entity definition."""
-        async with self._lifecycle_lock:
-            db = self._require_connected()
-            params = self._entity_to_params(entity)
-            try:
-                await db.execute(
-                    """INSERT INTO entity_definitions
-                       (name, tier, source, definition, fields, constraints,
-                        disambiguation, relationships, created_by,
-                        created_at, updated_at)
-                       VALUES (:name, :tier, :source, :definition, :fields,
-                               :constraints, :disambiguation, :relationships,
-                               :created_by, :created_at, :updated_at)""",
-                    params,
-                )
-                await db.commit()
-            except sqlite3.IntegrityError as exc:
-                await db.rollback()
-                msg = f"Entity '{entity.name}' already exists"
-                raise OntologyDuplicateError(msg) from exc
+        db = await self._get_db()
+        params = self._entity_to_params(entity)
+        try:
+            await db.execute(
+                """INSERT INTO entity_definitions
+                   (name, tier, source, definition, fields, constraints,
+                    disambiguation, relationships, created_by,
+                    created_at, updated_at)
+                   VALUES (:name, :tier, :source, :definition, :fields,
+                           :constraints, :disambiguation, :relationships,
+                           :created_by, :created_at, :updated_at)""",
+                params,
+            )
+            await db.commit()
+        except sqlite3.IntegrityError as exc:
+            await db.rollback()
+            msg = f"Entity '{entity.name}' already exists"
+            raise OntologyDuplicateError(msg) from exc
         logger.info(
             ONTOLOGY_ENTITY_REGISTERED,
             entity_name=entity.name,
@@ -243,13 +247,12 @@ class SQLiteOntologyBackend:
 
     async def get(self, name: str) -> EntityDefinition:
         """Retrieve an entity definition by name."""
-        async with self._lifecycle_lock:
-            db = self._require_connected()
-            cursor = await db.execute(
-                "SELECT * FROM entity_definitions WHERE name = :name",
-                {"name": name},
-            )
-            row = await cursor.fetchone()
+        db = await self._get_db()
+        cursor = await db.execute(
+            "SELECT * FROM entity_definitions WHERE name = :name",
+            {"name": name},
+        )
+        row = await cursor.fetchone()
         if row is None:
             msg = f"Entity '{name}' not found"
             raise OntologyNotFoundError(msg)
@@ -261,25 +264,24 @@ class SQLiteOntologyBackend:
         Only mutable fields are written; ``created_by`` and
         ``created_at`` are preserved from the original row.
         """
-        async with self._lifecycle_lock:
-            db = self._require_connected()
-            params = self._entity_to_params(entity)
-            cursor = await db.execute(
-                """UPDATE entity_definitions
-                   SET tier = :tier, source = :source,
-                       definition = :definition, fields = :fields,
-                       constraints = :constraints,
-                       disambiguation = :disambiguation,
-                       relationships = :relationships,
-                       updated_at = :updated_at
-                   WHERE name = :name""",
-                params,
-            )
-            if cursor.rowcount == 0:
-                await db.rollback()
-                msg = f"Entity '{entity.name}' not found"
-                raise OntologyNotFoundError(msg)
-            await db.commit()
+        db = await self._get_db()
+        params = self._entity_to_params(entity)
+        cursor = await db.execute(
+            """UPDATE entity_definitions
+               SET tier = :tier, source = :source,
+                   definition = :definition, fields = :fields,
+                   constraints = :constraints,
+                   disambiguation = :disambiguation,
+                   relationships = :relationships,
+                   updated_at = :updated_at
+               WHERE name = :name""",
+            params,
+        )
+        if cursor.rowcount == 0:
+            await db.rollback()
+            msg = f"Entity '{entity.name}' not found"
+            raise OntologyNotFoundError(msg)
+        await db.commit()
         logger.info(
             ONTOLOGY_ENTITY_UPDATED,
             entity_name=entity.name,
@@ -287,17 +289,16 @@ class SQLiteOntologyBackend:
 
     async def delete(self, name: str) -> None:
         """Delete an entity definition by name."""
-        async with self._lifecycle_lock:
-            db = self._require_connected()
-            cursor = await db.execute(
-                "DELETE FROM entity_definitions WHERE name = :name",
-                {"name": name},
-            )
-            if cursor.rowcount == 0:
-                await db.rollback()
-                msg = f"Entity '{name}' not found"
-                raise OntologyNotFoundError(msg)
-            await db.commit()
+        db = await self._get_db()
+        cursor = await db.execute(
+            "DELETE FROM entity_definitions WHERE name = :name",
+            {"name": name},
+        )
+        if cursor.rowcount == 0:
+            await db.rollback()
+            msg = f"Entity '{name}' not found"
+            raise OntologyNotFoundError(msg)
+        await db.commit()
         logger.info(ONTOLOGY_ENTITY_DELETED, entity_name=name)
 
     async def list_entities(
@@ -306,37 +307,33 @@ class SQLiteOntologyBackend:
         tier: EntityTier | None = None,
     ) -> tuple[EntityDefinition, ...]:
         """List entities, optionally filtered by tier."""
-        async with self._lifecycle_lock:
-            db = self._require_connected()
-            if tier is not None:
-                cursor = await db.execute(
-                    """SELECT * FROM entity_definitions
-                       WHERE tier = :tier LIMIT 1000""",
-                    {"tier": tier.value},
-                )
-            else:
-                cursor = await db.execute(
-                    "SELECT * FROM entity_definitions LIMIT 1000",
-                )
-            rows = await cursor.fetchall()
+        db = await self._get_db()
+        if tier is not None:
+            cursor = await db.execute(
+                """SELECT * FROM entity_definitions
+                   WHERE tier = :tier LIMIT 1000""",
+                {"tier": tier.value},
+            )
+        else:
+            cursor = await db.execute(
+                "SELECT * FROM entity_definitions LIMIT 1000",
+            )
+        rows = await cursor.fetchall()
         return self._rows_to_entities(rows)
 
     async def search(self, query: str) -> tuple[EntityDefinition, ...]:
         """Search entities by name or definition text."""
-        async with self._lifecycle_lock:
-            db = self._require_connected()
-            escaped = (
-                query.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
-            )
-            pattern = f"%{escaped}%"
-            cursor = await db.execute(
-                """SELECT * FROM entity_definitions
-                   WHERE name LIKE :pattern ESCAPE '\\'
-                      OR definition LIKE :pattern ESCAPE '\\'
-                   LIMIT 1000""",
-                {"pattern": pattern},
-            )
-            rows = list(await cursor.fetchall())
+        db = await self._get_db()
+        escaped = query.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        pattern = f"%{escaped}%"
+        cursor = await db.execute(
+            """SELECT * FROM entity_definitions
+               WHERE name LIKE :pattern ESCAPE '\\'
+                  OR definition LIKE :pattern ESCAPE '\\'
+               LIMIT 1000""",
+            {"pattern": pattern},
+        )
+        rows = list(await cursor.fetchall())
         logger.debug(
             ONTOLOGY_SEARCH_EXECUTED,
             query=query,
@@ -359,14 +356,13 @@ class SQLiteOntologyBackend:
 
     async def get_version_manifest(self) -> dict[str, int]:
         """Return the latest version number for each entity."""
-        async with self._lifecycle_lock:
-            db = self._require_connected()
-            cursor = await db.execute(
-                """SELECT entity_id, MAX(version) AS latest_version
-                   FROM entity_definition_versions
-                   GROUP BY entity_id""",
-            )
-            rows = await cursor.fetchall()
+        db = await self._get_db()
+        cursor = await db.execute(
+            """SELECT entity_id, MAX(version) AS latest_version
+               FROM entity_definition_versions
+               GROUP BY entity_id""",
+        )
+        rows = await cursor.fetchall()
         return {row["entity_id"]: row["latest_version"] for row in rows}
 
     def get_db(self) -> aiosqlite.Connection:

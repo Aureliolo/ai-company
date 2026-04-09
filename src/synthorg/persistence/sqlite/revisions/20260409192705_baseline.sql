@@ -1,6 +1,6 @@
 -- Create "tasks" table
 CREATE TABLE `tasks` (
-  `id` text NULL,
+  `id` text NOT NULL,
   `title` text NOT NULL,
   `description` text NOT NULL,
   `type` text NOT NULL,
@@ -49,7 +49,7 @@ CREATE INDEX `idx_cost_records_agent_id` ON `cost_records` (`agent_id`);
 CREATE INDEX `idx_cost_records_task_id` ON `cost_records` (`task_id`);
 -- Create "messages" table
 CREATE TABLE `messages` (
-  `id` text NULL,
+  `id` text NOT NULL,
   `timestamp` text NOT NULL,
   `sender` text NOT NULL,
   `to` text NOT NULL,
@@ -67,7 +67,7 @@ CREATE INDEX `idx_messages_channel` ON `messages` (`channel`);
 CREATE INDEX `idx_messages_timestamp` ON `messages` (`timestamp`);
 -- Create "lifecycle_events" table
 CREATE TABLE `lifecycle_events` (
-  `id` text NULL,
+  `id` text NOT NULL,
   `agent_id` text NOT NULL,
   `agent_name` text NOT NULL,
   `event_type` text NOT NULL,
@@ -85,7 +85,7 @@ CREATE INDEX `idx_le_event_type` ON `lifecycle_events` (`event_type`);
 CREATE INDEX `idx_le_timestamp` ON `lifecycle_events` (`timestamp`);
 -- Create "task_metrics" table
 CREATE TABLE `task_metrics` (
-  `id` text NULL,
+  `id` text NOT NULL,
   `agent_id` text NOT NULL,
   `task_id` text NOT NULL,
   `task_type` text NOT NULL,
@@ -108,7 +108,7 @@ CREATE INDEX `idx_tm_completed_at` ON `task_metrics` (`completed_at`);
 CREATE INDEX `idx_tm_agent_completed` ON `task_metrics` (`agent_id`, `completed_at`);
 -- Create "collaboration_metrics" table
 CREATE TABLE `collaboration_metrics` (
-  `id` text NULL,
+  `id` text NOT NULL,
   `agent_id` text NOT NULL,
   `recorded_at` text NOT NULL,
   `delegation_success` integer NULL,
@@ -127,7 +127,7 @@ CREATE INDEX `idx_cm_recorded_at` ON `collaboration_metrics` (`recorded_at`);
 CREATE INDEX `idx_cm_agent_recorded` ON `collaboration_metrics` (`agent_id`, `recorded_at`);
 -- Create "parked_contexts" table
 CREATE TABLE `parked_contexts` (
-  `id` text NULL,
+  `id` text NOT NULL,
   `execution_id` text NOT NULL,
   `agent_id` text NOT NULL,
   `task_id` text NULL,
@@ -143,7 +143,7 @@ CREATE INDEX `idx_pc_agent_id` ON `parked_contexts` (`agent_id`);
 CREATE INDEX `idx_pc_approval_id` ON `parked_contexts` (`approval_id`);
 -- Create "audit_entries" table
 CREATE TABLE `audit_entries` (
-  `id` text NULL,
+  `id` text NOT NULL,
   `timestamp` text NOT NULL,
   `agent_id` text NULL,
   `task_id` text NULL,
@@ -179,7 +179,7 @@ CREATE TABLE `settings` (
 );
 -- Create "users" table
 CREATE TABLE `users` (
-  `id` text NULL,
+  `id` text NOT NULL,
   `username` text NOT NULL,
   `password_hash` text NOT NULL,
   `role` text NOT NULL,
@@ -198,7 +198,7 @@ CREATE INDEX `idx_users_role` ON `users` (`role`);
 CREATE UNIQUE INDEX `idx_single_ceo` ON `users` (`role`) WHERE role = 'ceo';
 -- Create "api_keys" table
 CREATE TABLE `api_keys` (
-  `id` text NULL,
+  `id` text NOT NULL,
   `key_hash` text NOT NULL,
   `name` text NOT NULL,
   `role` text NOT NULL,
@@ -215,7 +215,7 @@ CREATE UNIQUE INDEX `api_keys_key_hash` ON `api_keys` (`key_hash`);
 CREATE INDEX `idx_api_keys_user_id` ON `api_keys` (`user_id`);
 -- Create "sessions" table
 CREATE TABLE `sessions` (
-  `session_id` text NULL,
+  `session_id` text NOT NULL,
   `user_id` text NOT NULL,
   `username` text NOT NULL,
   `role` text NOT NULL,
@@ -236,7 +236,7 @@ CREATE INDEX `idx_sessions_revoked_expires` ON `sessions` (`revoked`, `expires_a
 CREATE INDEX `idx_sessions_expires_at` ON `sessions` (`expires_at`);
 -- Create "checkpoints" table
 CREATE TABLE `checkpoints` (
-  `id` text NULL,
+  `id` text NOT NULL,
   `execution_id` text NOT NULL,
   `agent_id` text NOT NULL,
   `task_id` text NOT NULL,
@@ -256,7 +256,7 @@ CREATE INDEX `idx_cp_exec_turn` ON `checkpoints` (`execution_id`, `turn_number`)
 CREATE INDEX `idx_cp_task_turn` ON `checkpoints` (`task_id`, `turn_number`);
 -- Create "heartbeats" table
 CREATE TABLE `heartbeats` (
-  `execution_id` text NULL,
+  `execution_id` text NOT NULL,
   `agent_id` text NOT NULL,
   `task_id` text NOT NULL,
   `last_heartbeat_at` text NOT NULL,
@@ -266,7 +266,7 @@ CREATE TABLE `heartbeats` (
 CREATE INDEX `idx_hb_last_heartbeat` ON `heartbeats` (`last_heartbeat_at`);
 -- Create "agent_states" table
 CREATE TABLE `agent_states` (
-  `agent_id` text NULL,
+  `agent_id` text NOT NULL,
   `execution_id` text NULL,
   `task_id` text NULL,
   `status` text NOT NULL DEFAULT 'idle',
@@ -295,7 +295,7 @@ CREATE TABLE `agent_states` (
 CREATE INDEX `idx_as_status_activity` ON `agent_states` (`status`, `last_activity_at` DESC);
 -- Create "artifacts" table
 CREATE TABLE `artifacts` (
-  `id` text NULL,
+  `id` text NOT NULL,
   `type` text NOT NULL,
   `path` text NOT NULL,
   `task_id` text NOT NULL,
@@ -315,7 +315,7 @@ CREATE INDEX `idx_artifacts_created_by` ON `artifacts` (`created_by`);
 CREATE INDEX `idx_artifacts_type` ON `artifacts` (`type`);
 -- Create "projects" table
 CREATE TABLE `projects` (
-  `id` text NULL,
+  `id` text NOT NULL,
   `name` text NOT NULL,
   `description` text NOT NULL DEFAULT '',
   `team` text NOT NULL DEFAULT '[]',
@@ -333,7 +333,7 @@ CREATE INDEX `idx_projects_status` ON `projects` (`status`);
 CREATE INDEX `idx_projects_lead` ON `projects` (`lead`);
 -- Create "project_cost_aggregates" table
 CREATE TABLE `project_cost_aggregates` (
-  `project_id` text NULL,
+  `project_id` text NOT NULL,
   `total_cost` real NOT NULL DEFAULT 0.0,
   `total_input_tokens` integer NOT NULL DEFAULT 0,
   `total_output_tokens` integer NOT NULL DEFAULT 0,
@@ -351,7 +351,7 @@ CREATE TABLE `project_cost_aggregates` (
 );
 -- Create "custom_presets" table
 CREATE TABLE `custom_presets` (
-  `name` text NULL,
+  `name` text NOT NULL,
   `config_json` text NOT NULL,
   `description` text NOT NULL DEFAULT '',
   `created_at` text NOT NULL,
@@ -496,7 +496,7 @@ CREATE INDEX `idx_wdv_entity_saved` ON `workflow_definition_versions` (`entity_i
 CREATE INDEX `idx_wdv_content_hash` ON `workflow_definition_versions` (`entity_id`, `content_hash`);
 -- Create "decision_records" table
 CREATE TABLE `decision_records` (
-  `id` text NULL,
+  `id` text NOT NULL,
   `task_id` text NOT NULL,
   `approval_id` text NULL,
   `executing_agent_id` text NOT NULL,
@@ -537,7 +537,7 @@ CREATE INDEX `idx_la_username_attempted` ON `login_attempts` (`username`, `attem
 CREATE INDEX `idx_la_attempted_at` ON `login_attempts` (`attempted_at`);
 -- Create "refresh_tokens" table
 CREATE TABLE `refresh_tokens` (
-  `token_hash` text NULL,
+  `token_hash` text NOT NULL,
   `session_id` text NOT NULL,
   `user_id` text NOT NULL,
   `expires_at` text NOT NULL,
@@ -556,7 +556,7 @@ CREATE INDEX `idx_rt_session_id` ON `refresh_tokens` (`session_id`);
 CREATE INDEX `idx_rt_expires_at` ON `refresh_tokens` (`expires_at`);
 -- Create "risk_overrides" table
 CREATE TABLE `risk_overrides` (
-  `id` text NULL,
+  `id` text NOT NULL,
   `action_type` text NOT NULL,
   `original_tier` text NOT NULL,
   `override_tier` text NOT NULL,
@@ -579,7 +579,7 @@ CREATE INDEX `idx_ro_action_type` ON `risk_overrides` (`action_type`);
 CREATE INDEX `idx_ro_active` ON `risk_overrides` (`created_at` DESC, `expires_at`) WHERE revoked_at IS NULL;
 -- Create "ssrf_violations" table
 CREATE TABLE `ssrf_violations` (
-  `id` text NULL,
+  `id` text NOT NULL,
   `timestamp` text NOT NULL,
   `url` text NOT NULL,
   `hostname` text NOT NULL,
@@ -732,7 +732,7 @@ CREATE TABLE `circuit_breaker_state` (
 );
 -- Create "entity_definitions" table
 CREATE TABLE `entity_definitions` (
-  `name` text NULL,
+  `name` text NOT NULL,
   `tier` text NOT NULL,
   `source` text NOT NULL,
   `definition` text NOT NULL DEFAULT '',

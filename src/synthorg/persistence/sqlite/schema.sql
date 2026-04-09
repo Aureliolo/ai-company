@@ -6,7 +6,7 @@
 
 -- ── Tasks ─────────────────────────────────────────────────────
 CREATE TABLE tasks (
-    id TEXT PRIMARY KEY,
+    id TEXT NOT NULL PRIMARY KEY,
     title TEXT NOT NULL,
     description TEXT NOT NULL,
     type TEXT NOT NULL,
@@ -52,7 +52,7 @@ CREATE INDEX idx_cost_records_task_id ON cost_records(task_id);
 
 -- ── Messages ──────────────────────────────────────────────────
 CREATE TABLE messages (
-    id TEXT PRIMARY KEY,
+    id TEXT NOT NULL PRIMARY KEY,
     timestamp TEXT NOT NULL,
     sender TEXT NOT NULL,
     "to" TEXT NOT NULL,
@@ -69,7 +69,7 @@ CREATE INDEX idx_messages_timestamp ON messages(timestamp);
 
 -- ── Lifecycle events ──────────────────────────────────────────
 CREATE TABLE lifecycle_events (
-    id TEXT PRIMARY KEY,
+    id TEXT NOT NULL PRIMARY KEY,
     agent_id TEXT NOT NULL,
     agent_name TEXT NOT NULL,
     event_type TEXT NOT NULL,
@@ -85,7 +85,7 @@ CREATE INDEX idx_le_timestamp ON lifecycle_events(timestamp);
 
 -- ── Task metrics ──────────────────────────────────────────────
 CREATE TABLE task_metrics (
-    id TEXT PRIMARY KEY,
+    id TEXT NOT NULL PRIMARY KEY,
     agent_id TEXT NOT NULL,
     task_id TEXT NOT NULL REFERENCES tasks(id),
     task_type TEXT NOT NULL,
@@ -106,7 +106,7 @@ CREATE INDEX idx_tm_agent_completed
 
 -- ── Collaboration metrics ─────────────────────────────────────
 CREATE TABLE collaboration_metrics (
-    id TEXT PRIMARY KEY,
+    id TEXT NOT NULL PRIMARY KEY,
     agent_id TEXT NOT NULL,
     recorded_at TEXT NOT NULL,
     delegation_success INTEGER,
@@ -125,7 +125,7 @@ CREATE INDEX idx_cm_agent_recorded
 
 -- ── Parked contexts ───────────────────────────────────────────
 CREATE TABLE parked_contexts (
-    id TEXT PRIMARY KEY,
+    id TEXT NOT NULL PRIMARY KEY,
     execution_id TEXT NOT NULL,
     agent_id TEXT NOT NULL,
     task_id TEXT,
@@ -140,7 +140,7 @@ CREATE INDEX idx_pc_approval_id ON parked_contexts(approval_id);
 
 -- ── Audit entries ─────────────────────────────────────────────
 CREATE TABLE audit_entries (
-    id TEXT PRIMARY KEY,
+    id TEXT NOT NULL PRIMARY KEY,
     timestamp TEXT NOT NULL,
     agent_id TEXT,
     task_id TEXT,
@@ -173,7 +173,7 @@ CREATE TABLE settings (
 
 -- ── Users ─────────────────────────────────────────────────────
 CREATE TABLE users (
-    id TEXT PRIMARY KEY,
+    id TEXT NOT NULL PRIMARY KEY,
     username TEXT NOT NULL UNIQUE,
     password_hash TEXT NOT NULL,
     role TEXT NOT NULL,
@@ -189,7 +189,7 @@ CREATE UNIQUE INDEX idx_single_ceo ON users(role) WHERE role = 'ceo';
 
 -- ── API keys ──────────────────────────────────────────────────
 CREATE TABLE api_keys (
-    id TEXT PRIMARY KEY,
+    id TEXT NOT NULL PRIMARY KEY,
     key_hash TEXT NOT NULL UNIQUE,
     name TEXT NOT NULL,
     role TEXT NOT NULL,
@@ -203,7 +203,7 @@ CREATE INDEX idx_api_keys_user_id ON api_keys(user_id);
 
 -- ── Sessions ─────────────────────────────────────────────────
 CREATE TABLE sessions (
-    session_id TEXT PRIMARY KEY,
+    session_id TEXT NOT NULL PRIMARY KEY,
     user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     username TEXT NOT NULL,
     role TEXT NOT NULL,
@@ -223,7 +223,7 @@ CREATE INDEX idx_sessions_expires_at ON sessions(expires_at);
 
 -- ── Checkpoints ───────────────────────────────────────────────
 CREATE TABLE checkpoints (
-    id TEXT PRIMARY KEY,
+    id TEXT NOT NULL PRIMARY KEY,
     execution_id TEXT NOT NULL,
     agent_id TEXT NOT NULL,
     task_id TEXT NOT NULL,
@@ -241,7 +241,7 @@ CREATE INDEX idx_cp_task_turn
 
 -- ── Heartbeats ────────────────────────────────────────────────
 CREATE TABLE heartbeats (
-    execution_id TEXT PRIMARY KEY,
+    execution_id TEXT NOT NULL PRIMARY KEY,
     agent_id TEXT NOT NULL,
     task_id TEXT NOT NULL,
     last_heartbeat_at TEXT NOT NULL
@@ -252,7 +252,7 @@ CREATE INDEX idx_hb_last_heartbeat
 
 -- ── Agent states ──────────────────────────────────────────────
 CREATE TABLE agent_states (
-    agent_id TEXT PRIMARY KEY,
+    agent_id TEXT NOT NULL PRIMARY KEY,
     execution_id TEXT,
     task_id TEXT,
     status TEXT NOT NULL DEFAULT 'idle'
@@ -281,7 +281,7 @@ CREATE INDEX idx_as_status_activity
 
 -- ── Artifacts ────────────────────────────────────────────────
 CREATE TABLE artifacts (
-    id TEXT PRIMARY KEY,
+    id TEXT NOT NULL PRIMARY KEY,
     type TEXT NOT NULL,
     path TEXT NOT NULL,
     task_id TEXT NOT NULL,
@@ -298,7 +298,7 @@ CREATE INDEX idx_artifacts_type ON artifacts(type);
 
 -- ── Projects ─────────────────────────────────────────────────
 CREATE TABLE projects (
-    id TEXT PRIMARY KEY,
+    id TEXT NOT NULL PRIMARY KEY,
     name TEXT NOT NULL,
     description TEXT NOT NULL DEFAULT '',
     team TEXT NOT NULL DEFAULT '[]',
@@ -314,7 +314,7 @@ CREATE INDEX idx_projects_lead ON projects(lead);
 
 -- ── Project-lifetime cost aggregates ─────────────────────────
 CREATE TABLE project_cost_aggregates (
-    project_id TEXT PRIMARY KEY CHECK(length(project_id) > 0),
+    project_id TEXT NOT NULL PRIMARY KEY CHECK(length(project_id) > 0),
     total_cost REAL NOT NULL DEFAULT 0.0 CHECK(total_cost >= 0.0),
     total_input_tokens INTEGER NOT NULL DEFAULT 0 CHECK(total_input_tokens >= 0),
     total_output_tokens INTEGER NOT NULL DEFAULT 0 CHECK(total_output_tokens >= 0),
@@ -326,7 +326,7 @@ CREATE TABLE project_cost_aggregates (
 
 -- ── Custom personality presets (user-defined) ────────────────
 CREATE TABLE custom_presets (
-    name TEXT PRIMARY KEY CHECK(length(name) > 0),
+    name TEXT NOT NULL PRIMARY KEY CHECK(length(name) > 0),
     config_json TEXT NOT NULL CHECK(length(config_json) > 0),
     description TEXT NOT NULL DEFAULT '',
     created_at TEXT NOT NULL,
@@ -462,7 +462,7 @@ CREATE INDEX idx_wdv_content_hash
 
 -- ── Decision records (auditable decisions drop-box) ─────────────
 CREATE TABLE decision_records (
-    id TEXT PRIMARY KEY,
+    id TEXT NOT NULL PRIMARY KEY,
     task_id TEXT NOT NULL REFERENCES tasks(id) ON DELETE RESTRICT,
     approval_id TEXT,
     executing_agent_id TEXT NOT NULL,
@@ -500,7 +500,7 @@ CREATE INDEX idx_la_attempted_at
 
 -- ── Refresh Tokens ───────────────────────────────────────────
 CREATE TABLE refresh_tokens (
-    token_hash TEXT PRIMARY KEY,
+    token_hash TEXT NOT NULL PRIMARY KEY,
     session_id TEXT NOT NULL
         REFERENCES sessions(session_id) ON DELETE CASCADE,
     user_id TEXT NOT NULL
@@ -516,7 +516,7 @@ CREATE INDEX idx_rt_expires_at ON refresh_tokens(expires_at);
 
 -- ── Risk tier overrides ─────────────────────────────────────
 CREATE TABLE risk_overrides (
-    id TEXT PRIMARY KEY,
+    id TEXT NOT NULL PRIMARY KEY,
     action_type TEXT NOT NULL,
     original_tier TEXT NOT NULL,
     override_tier TEXT NOT NULL,
@@ -540,7 +540,7 @@ CREATE INDEX idx_ro_active
 
 -- ── SSRF violations ─────────────────────────────────────────
 CREATE TABLE ssrf_violations (
-    id TEXT PRIMARY KEY,
+    id TEXT NOT NULL PRIMARY KEY,
     timestamp TEXT NOT NULL,
     url TEXT NOT NULL,
     hostname TEXT NOT NULL,
@@ -674,7 +674,7 @@ CREATE TABLE circuit_breaker_state (
 -- ── Ontology: Entity definitions ──────────────────────────────
 
 CREATE TABLE entity_definitions (
-    name TEXT PRIMARY KEY CHECK(length(name) > 0),
+    name TEXT NOT NULL PRIMARY KEY CHECK(length(name) > 0),
     tier TEXT NOT NULL CHECK(tier IN ('core', 'user')),
     source TEXT NOT NULL CHECK(source IN ('auto', 'config', 'api')),
     definition TEXT NOT NULL DEFAULT '',
