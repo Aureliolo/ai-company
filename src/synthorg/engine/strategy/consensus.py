@@ -86,8 +86,15 @@ class ConsensusVelocityDetector:
                 positions keeps consensus from being "too fast").
 
         Raises:
+            TypeError: If min_disagreements is not an int or is a bool.
             ValueError: If min_disagreements is negative.
         """
+        if isinstance(min_disagreements, bool) or not isinstance(
+            min_disagreements,
+            int,
+        ):
+            msg = "min_disagreements must be an int"
+            raise TypeError(msg)
         if min_disagreements < 0:
             msg = "min_disagreements must be >= 0"
             raise ValueError(msg)

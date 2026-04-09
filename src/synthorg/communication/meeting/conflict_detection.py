@@ -24,6 +24,22 @@ logger = get_logger(__name__)
 
 _MIN_POSITIONS_FOR_CONFLICT: int = 2
 
+# Identity/metadata keys to skip during structured field comparison.
+# These always differ between agents and are not substantive decision fields.
+_IDENTITY_KEYS: frozenset[str] = frozenset(
+    {
+        "agent_id",
+        "role",
+        "timestamp",
+        "created_at",
+        "updated_at",
+        "metadata",
+        "id",
+        "author",
+        "participant_id",
+    }
+)
+
 
 class KeywordConflictDetector:
     """Default conflict detector using keyword matching.
@@ -153,8 +169,8 @@ class StructuredComparisonDetector:
                 pos_a = positions[i]
                 pos_b = positions[j]
 
-                # Collect all field keys
-                all_keys = set(pos_a.keys()) | set(pos_b.keys())
+                # Collect substantive field keys (skip identity/metadata)
+                all_keys = (set(pos_a.keys()) | set(pos_b.keys())) - _IDENTITY_KEYS
 
                 for key in all_keys:
                     val_a = pos_a.get(key)
@@ -272,22 +288,18 @@ class EmbeddingSimilarityDetector:
         self.similarity_threshold = similarity_threshold
 
     def detect(self, _response_content: str) -> bool:
-        """Placeholder: always returns False.
+        """Detect conflicts via embedding similarity.
 
-        Once embedding infrastructure is available, this will:
-        1. Extract position texts from _response_content
-        2. Compute embedding vectors for each position
-        3. Calculate pairwise cosine similarity
-        4. Return True if any pair has similarity < threshold
-
-        Args:
-            response_content: The conflict-check response.
-
-        Returns:
-            Always False (stub implementation).
+        Raises:
+            NotImplementedError: Embedding infrastructure is not yet
+                available.  Call sites that need graceful degradation
+                (e.g. :class:`HybridDetector`) should catch this.
         """
-        # Stub: embedding infrastructure not yet available
-        return False
+        msg = (
+            "Embedding infrastructure unavailable: "
+            "EmbeddingSimilarityDetector cannot be used"
+        )
+        raise NotImplementedError(msg)
 
 
 class HybridDetector:
@@ -324,8 +336,11 @@ class HybridDetector:
         Returns:
             True if conflicts detected via either strategy.
         """
-        if self.embedding_detector.detect(response_content):
-            return True
+        try:
+            if self.embedding_detector.detect(response_content):
+                return True
+        except NotImplementedError:
+            pass
         return self.keyword_detector.detect(response_content)
 
 

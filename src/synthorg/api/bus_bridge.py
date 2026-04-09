@@ -110,6 +110,8 @@ class MessageBusBridge:
                 return_exceptions=True,
             )
             for result in results:
+                if isinstance(result, asyncio.CancelledError):
+                    continue
                 if isinstance(result, BaseException):
                     logger.warning(
                         API_APP_SHUTDOWN,
@@ -177,6 +179,7 @@ class MessageBusBridge:
             "sender": message.sender,
             "to": message.to,
             "content": message.text,
+            "parts": [p.model_dump(mode="json") for p in message.parts],
         }
         return WsEvent(
             event_type=WsEventType.MESSAGE_SENT,

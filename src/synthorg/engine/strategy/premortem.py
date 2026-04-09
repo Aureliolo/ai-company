@@ -17,7 +17,6 @@ from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.engine.strategy.models import (
     PremortemConfig,
     PremortemParticipation,
-    RiskCard,
 )
 from synthorg.observability import get_logger
 from synthorg.observability.events.strategy import (
@@ -64,7 +63,6 @@ class PremortemOutput(BaseModel):
     Attributes:
         failure_modes: Potential failure modes identified.
         assumptions: Key assumptions underlying the decision.
-        risk_card: Optional risk assessment metadata.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
@@ -76,10 +74,6 @@ class PremortemOutput(BaseModel):
     assumptions: tuple[str, ...] = Field(
         default=(),
         description="Key assumptions underlying the decision",
-    )
-    risk_card: RiskCard | None = Field(
-        default=None,
-        description="Risk assessment metadata (optional)",
     )
 
 
@@ -200,15 +194,27 @@ class DefaultPremortemExecutor:
         token_budget: int,
     ) -> list[AgentResponse]:
         """Fan-out agent calls and collect responses."""
-        tokens_per_agent = max(1, token_budget // len(selected))
-        result_slots: list[AgentResponse | None] = [None] * len(selected)
+        n = len(selected)
+        base = token_budget // n
+        remainder = token_budget % n
+
+        # When budget < agents, only the first token_budget agents
+        # get 1 token each; the rest are skipped.
+        if base == 0:
+            active = selected[: min(n, token_budget)]
+            tokens_list = [1] * len(active)
+        else:
+            active = selected
+            tokens_list = [base + (1 if i < remainder else 0) for i in range(n)]
+
+        result_slots: list[AgentResponse | None] = [None] * len(active)
 
         async def _call_and_store(idx: int, pid: NotBlankStr) -> None:
             try:
                 result_slots[idx] = await agent_caller(
                     pid,
                     prompt,
-                    tokens_per_agent,
+                    tokens_list[idx],
                 )
             except Exception:
                 logger.warning(
@@ -219,7 +225,7 @@ class DefaultPremortemExecutor:
                 )
 
         async with asyncio.TaskGroup() as tg:
-            for idx, pid in enumerate(selected):
+            for idx, pid in enumerate(active):
                 tg.create_task(_call_and_store(idx, pid))
 
         return [r for r in result_slots if r is not None]

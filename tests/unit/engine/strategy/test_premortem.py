@@ -7,7 +7,6 @@ from synthorg.communication.meeting.models import AgentResponse
 from synthorg.engine.strategy.models import (
     PremortemConfig,
     PremortemParticipation,
-    RiskCard,
 )
 from synthorg.engine.strategy.premortem import (
     DefaultPremortemExecutor,
@@ -87,7 +86,6 @@ class TestPremortemOutput:
         output = PremortemOutput()
         assert output.failure_modes == ()
         assert output.assumptions == ()
-        assert output.risk_card is None
 
     @pytest.mark.unit
     def test_with_failure_modes(self) -> None:
@@ -107,29 +105,16 @@ class TestPremortemOutput:
         assert output.assumptions == assumptions
 
     @pytest.mark.unit
-    def test_with_risk_card(self) -> None:
-        """Output can include risk card."""
-        risk_card = RiskCard(
-            decision_type="infrastructure_change",
-        )
-        output = PremortemOutput(risk_card=risk_card)
-        assert output.risk_card is not None
-        assert output.risk_card.decision_type == "infrastructure_change"
-
-    @pytest.mark.unit
     def test_full_output(self) -> None:
         """Output can have all fields populated."""
         modes = (FailureMode(description="Failure 1"),)
         assumptions = ("Assumption 1",)
-        risk_card = RiskCard(decision_type="budget")
         output = PremortemOutput(
             failure_modes=modes,
             assumptions=assumptions,
-            risk_card=risk_card,
         )
         assert len(output.failure_modes) == 1
         assert len(output.assumptions) == 1
-        assert output.risk_card is not None
 
 
 class TestPremortemExecutor:
@@ -166,7 +151,6 @@ class TestDefaultPremortemExecutor:
 
         assert output.failure_modes == ()
         assert output.assumptions == ()
-        assert output.risk_card is None
 
     @pytest.mark.unit
     async def test_empty_participants_returns_empty(self) -> None:
@@ -421,7 +405,7 @@ class TestDefaultPremortemExecutor:
         assert isinstance(output, PremortemOutput)
         assert isinstance(output.failure_modes, tuple)
         assert isinstance(output.assumptions, tuple)
-        assert output.risk_card is None or isinstance(output.risk_card, RiskCard)
+        assert all(isinstance(m, FailureMode) for m in output.failure_modes)
 
     @pytest.mark.unit
     async def test_strategic_odd_number_participants(self) -> None:

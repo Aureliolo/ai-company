@@ -302,6 +302,22 @@ class TestLlmJudgeDetector:
         detector = LlmJudgeDetector()
         assert detector.detect("") is False
 
+    @pytest.mark.parametrize(
+        "judgment",
+        [
+            "no conflict detected",
+            "no conflicts",
+            "no conflicts.",
+            "no_conflict",
+            "No Conflict Found",
+        ],
+    )
+    def test_negative_judgment_returns_false(self, judgment: str) -> None:
+        """Negated judgment phrases must not trigger conflict."""
+        detector = LlmJudgeDetector()
+        response = json.dumps({"judgment": judgment})
+        assert detector.detect(response) is False
+
     def test_prefers_json_boolean_over_keyword(self) -> None:
         """Prefer JSON parsing when both formats present."""
         detector = LlmJudgeDetector()
@@ -315,10 +331,11 @@ class TestLlmJudgeDetector:
 class TestEmbeddingSimilarityDetector:
     """Tests for EmbeddingSimilarityDetector."""
 
-    def test_always_returns_false_stub(self) -> None:
-        """Stub implementation always returns False."""
+    def test_raises_not_implemented(self) -> None:
+        """detect() raises NotImplementedError until infra is available."""
         detector = EmbeddingSimilarityDetector()
-        assert detector.detect("anything") is False
+        with pytest.raises(NotImplementedError, match="Embedding infrastructure"):
+            detector.detect("anything")
 
     def test_accepts_similarity_threshold(self) -> None:
         """Accepts custom similarity threshold."""
@@ -329,24 +346,6 @@ class TestEmbeddingSimilarityDetector:
         """Default similarity threshold is 0.7."""
         detector = EmbeddingSimilarityDetector()
         assert detector.similarity_threshold == 0.7
-
-    def test_handles_json_response(self) -> None:
-        """Stub handles JSON responses gracefully."""
-        detector = EmbeddingSimilarityDetector()
-        response = json.dumps(
-            {
-                "positions": [
-                    {"text": "position 1"},
-                    {"text": "position 2"},
-                ]
-            }
-        )
-        assert detector.detect(response) is False
-
-    def test_handles_empty_response(self) -> None:
-        """Stub handles empty response."""
-        detector = EmbeddingSimilarityDetector()
-        assert detector.detect("") is False
 
 
 @pytest.mark.unit
@@ -509,11 +508,11 @@ class TestDetectorProtocolCompliance:
         assert isinstance(result, bool)
 
     def test_embedding_detector_has_detect_method(self) -> None:
-        """EmbeddingSimilarityDetector has detect(response_content: str) -> bool."""
+        """EmbeddingSimilarityDetector has detect but raises NotImplementedError."""
         detector = EmbeddingSimilarityDetector()
         assert callable(detector.detect)
-        result = detector.detect("test")
-        assert isinstance(result, bool)
+        with pytest.raises(NotImplementedError):
+            detector.detect("test")
 
     def test_hybrid_detector_has_detect_method(self) -> None:
         """HybridDetector has detect(response_content: str) -> bool."""
