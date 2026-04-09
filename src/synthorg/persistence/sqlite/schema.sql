@@ -1,11 +1,11 @@
--- SynthOrg SQLite schema -- single source of truth.
+-- SynthOrg consolidated schema -- single source of truth.
 --
--- Fresh installs apply this file directly via apply_schema().
--- When data stability is declared, adopt Atlas for declarative
--- migrations (diff schema.sql against the current DB).
+-- This file defines the desired database state. Atlas diffs it
+-- against the current DB to generate versioned migrations.
+-- Do NOT execute this file directly -- use `atlas migrate diff`.
 
 -- ── Tasks ─────────────────────────────────────────────────────
-CREATE TABLE IF NOT EXISTS tasks (
+CREATE TABLE tasks (
     id TEXT PRIMARY KEY,
     title TEXT NOT NULL,
     description TEXT NOT NULL,
@@ -29,12 +29,12 @@ CREATE TABLE IF NOT EXISTS tasks (
     delegation_chain TEXT NOT NULL DEFAULT '[]'
 );
 
-CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
-CREATE INDEX IF NOT EXISTS idx_tasks_assigned_to ON tasks(assigned_to);
-CREATE INDEX IF NOT EXISTS idx_tasks_project ON tasks(project);
+CREATE INDEX idx_tasks_status ON tasks(status);
+CREATE INDEX idx_tasks_assigned_to ON tasks(assigned_to);
+CREATE INDEX idx_tasks_project ON tasks(project);
 
 -- ── Cost records ──────────────────────────────────────────────
-CREATE TABLE IF NOT EXISTS cost_records (
+CREATE TABLE cost_records (
     rowid INTEGER PRIMARY KEY AUTOINCREMENT,
     agent_id TEXT NOT NULL,
     task_id TEXT NOT NULL REFERENCES tasks(id),
@@ -47,11 +47,11 @@ CREATE TABLE IF NOT EXISTS cost_records (
     call_category TEXT
 );
 
-CREATE INDEX IF NOT EXISTS idx_cost_records_agent_id ON cost_records(agent_id);
-CREATE INDEX IF NOT EXISTS idx_cost_records_task_id ON cost_records(task_id);
+CREATE INDEX idx_cost_records_agent_id ON cost_records(agent_id);
+CREATE INDEX idx_cost_records_task_id ON cost_records(task_id);
 
 -- ── Messages ──────────────────────────────────────────────────
-CREATE TABLE IF NOT EXISTS messages (
+CREATE TABLE messages (
     id TEXT PRIMARY KEY,
     timestamp TEXT NOT NULL,
     sender TEXT NOT NULL,
@@ -64,11 +64,11 @@ CREATE TABLE IF NOT EXISTS messages (
     metadata TEXT NOT NULL DEFAULT '{}'
 );
 
-CREATE INDEX IF NOT EXISTS idx_messages_channel ON messages(channel);
-CREATE INDEX IF NOT EXISTS idx_messages_timestamp ON messages(timestamp);
+CREATE INDEX idx_messages_channel ON messages(channel);
+CREATE INDEX idx_messages_timestamp ON messages(timestamp);
 
 -- ── Lifecycle events ──────────────────────────────────────────
-CREATE TABLE IF NOT EXISTS lifecycle_events (
+CREATE TABLE lifecycle_events (
     id TEXT PRIMARY KEY,
     agent_id TEXT NOT NULL,
     agent_name TEXT NOT NULL,
@@ -79,12 +79,12 @@ CREATE TABLE IF NOT EXISTS lifecycle_events (
     metadata TEXT NOT NULL DEFAULT '{}'
 );
 
-CREATE INDEX IF NOT EXISTS idx_le_agent_id ON lifecycle_events(agent_id);
-CREATE INDEX IF NOT EXISTS idx_le_event_type ON lifecycle_events(event_type);
-CREATE INDEX IF NOT EXISTS idx_le_timestamp ON lifecycle_events(timestamp);
+CREATE INDEX idx_le_agent_id ON lifecycle_events(agent_id);
+CREATE INDEX idx_le_event_type ON lifecycle_events(event_type);
+CREATE INDEX idx_le_timestamp ON lifecycle_events(timestamp);
 
 -- ── Task metrics ──────────────────────────────────────────────
-CREATE TABLE IF NOT EXISTS task_metrics (
+CREATE TABLE task_metrics (
     id TEXT PRIMARY KEY,
     agent_id TEXT NOT NULL,
     task_id TEXT NOT NULL REFERENCES tasks(id),
@@ -99,13 +99,13 @@ CREATE TABLE IF NOT EXISTS task_metrics (
     complexity TEXT NOT NULL
 );
 
-CREATE INDEX IF NOT EXISTS idx_tm_agent_id ON task_metrics(agent_id);
-CREATE INDEX IF NOT EXISTS idx_tm_completed_at ON task_metrics(completed_at);
-CREATE INDEX IF NOT EXISTS idx_tm_agent_completed
+CREATE INDEX idx_tm_agent_id ON task_metrics(agent_id);
+CREATE INDEX idx_tm_completed_at ON task_metrics(completed_at);
+CREATE INDEX idx_tm_agent_completed
     ON task_metrics(agent_id, completed_at);
 
 -- ── Collaboration metrics ─────────────────────────────────────
-CREATE TABLE IF NOT EXISTS collaboration_metrics (
+CREATE TABLE collaboration_metrics (
     id TEXT PRIMARY KEY,
     agent_id TEXT NOT NULL,
     recorded_at TEXT NOT NULL,
@@ -117,14 +117,14 @@ CREATE TABLE IF NOT EXISTS collaboration_metrics (
     handoff_completeness REAL
 );
 
-CREATE INDEX IF NOT EXISTS idx_cm_agent_id ON collaboration_metrics(agent_id);
-CREATE INDEX IF NOT EXISTS idx_cm_recorded_at
+CREATE INDEX idx_cm_agent_id ON collaboration_metrics(agent_id);
+CREATE INDEX idx_cm_recorded_at
     ON collaboration_metrics(recorded_at);
-CREATE INDEX IF NOT EXISTS idx_cm_agent_recorded
+CREATE INDEX idx_cm_agent_recorded
     ON collaboration_metrics(agent_id, recorded_at);
 
 -- ── Parked contexts ───────────────────────────────────────────
-CREATE TABLE IF NOT EXISTS parked_contexts (
+CREATE TABLE parked_contexts (
     id TEXT PRIMARY KEY,
     execution_id TEXT NOT NULL,
     agent_id TEXT NOT NULL,
@@ -135,11 +135,11 @@ CREATE TABLE IF NOT EXISTS parked_contexts (
     metadata TEXT NOT NULL DEFAULT '{}'
 );
 
-CREATE INDEX IF NOT EXISTS idx_pc_agent_id ON parked_contexts(agent_id);
-CREATE INDEX IF NOT EXISTS idx_pc_approval_id ON parked_contexts(approval_id);
+CREATE INDEX idx_pc_agent_id ON parked_contexts(agent_id);
+CREATE INDEX idx_pc_approval_id ON parked_contexts(approval_id);
 
 -- ── Audit entries ─────────────────────────────────────────────
-CREATE TABLE IF NOT EXISTS audit_entries (
+CREATE TABLE audit_entries (
     id TEXT PRIMARY KEY,
     timestamp TEXT NOT NULL,
     agent_id TEXT,
@@ -156,14 +156,14 @@ CREATE TABLE IF NOT EXISTS audit_entries (
     approval_id TEXT
 );
 
-CREATE INDEX IF NOT EXISTS idx_ae_timestamp ON audit_entries(timestamp);
-CREATE INDEX IF NOT EXISTS idx_ae_agent_id ON audit_entries(agent_id);
-CREATE INDEX IF NOT EXISTS idx_ae_action_type ON audit_entries(action_type);
-CREATE INDEX IF NOT EXISTS idx_ae_verdict ON audit_entries(verdict);
-CREATE INDEX IF NOT EXISTS idx_ae_risk_level ON audit_entries(risk_level);
+CREATE INDEX idx_ae_timestamp ON audit_entries(timestamp);
+CREATE INDEX idx_ae_agent_id ON audit_entries(agent_id);
+CREATE INDEX idx_ae_action_type ON audit_entries(action_type);
+CREATE INDEX idx_ae_verdict ON audit_entries(verdict);
+CREATE INDEX idx_ae_risk_level ON audit_entries(risk_level);
 
 -- ── Settings (namespaced key-value) ───────────────────────────
-CREATE TABLE IF NOT EXISTS settings (
+CREATE TABLE settings (
     namespace TEXT NOT NULL,
     key TEXT NOT NULL,
     value TEXT NOT NULL,
@@ -172,7 +172,7 @@ CREATE TABLE IF NOT EXISTS settings (
 );
 
 -- ── Users ─────────────────────────────────────────────────────
-CREATE TABLE IF NOT EXISTS users (
+CREATE TABLE users (
     id TEXT PRIMARY KEY,
     username TEXT NOT NULL UNIQUE,
     password_hash TEXT NOT NULL,
@@ -184,11 +184,11 @@ CREATE TABLE IF NOT EXISTS users (
     updated_at TEXT NOT NULL
 );
 
-CREATE INDEX IF NOT EXISTS idx_users_role ON users(role);
-CREATE UNIQUE INDEX IF NOT EXISTS idx_single_ceo ON users(role) WHERE role = 'ceo';
+CREATE INDEX idx_users_role ON users(role);
+CREATE UNIQUE INDEX idx_single_ceo ON users(role) WHERE role = 'ceo';
 
 -- ── API keys ──────────────────────────────────────────────────
-CREATE TABLE IF NOT EXISTS api_keys (
+CREATE TABLE api_keys (
     id TEXT PRIMARY KEY,
     key_hash TEXT NOT NULL UNIQUE,
     name TEXT NOT NULL,
@@ -199,10 +199,10 @@ CREATE TABLE IF NOT EXISTS api_keys (
     revoked INTEGER NOT NULL DEFAULT 0
 );
 
-CREATE INDEX IF NOT EXISTS idx_api_keys_user_id ON api_keys(user_id);
+CREATE INDEX idx_api_keys_user_id ON api_keys(user_id);
 
 -- ── Sessions ─────────────────────────────────────────────────
-CREATE TABLE IF NOT EXISTS sessions (
+CREATE TABLE sessions (
     session_id TEXT PRIMARY KEY,
     user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     username TEXT NOT NULL,
@@ -215,14 +215,14 @@ CREATE TABLE IF NOT EXISTS sessions (
     revoked INTEGER NOT NULL DEFAULT 0
 );
 
-CREATE INDEX IF NOT EXISTS idx_sessions_user_revoked_expires
+CREATE INDEX idx_sessions_user_revoked_expires
     ON sessions(user_id, revoked, expires_at);
-CREATE INDEX IF NOT EXISTS idx_sessions_revoked_expires
+CREATE INDEX idx_sessions_revoked_expires
     ON sessions(revoked, expires_at);
-CREATE INDEX IF NOT EXISTS idx_sessions_expires_at ON sessions(expires_at);
+CREATE INDEX idx_sessions_expires_at ON sessions(expires_at);
 
 -- ── Checkpoints ───────────────────────────────────────────────
-CREATE TABLE IF NOT EXISTS checkpoints (
+CREATE TABLE checkpoints (
     id TEXT PRIMARY KEY,
     execution_id TEXT NOT NULL,
     agent_id TEXT NOT NULL,
@@ -232,29 +232,26 @@ CREATE TABLE IF NOT EXISTS checkpoints (
     created_at TEXT NOT NULL
 );
 
-CREATE INDEX IF NOT EXISTS idx_cp_execution_id ON checkpoints(execution_id);
-CREATE INDEX IF NOT EXISTS idx_cp_task_id ON checkpoints(task_id);
-CREATE INDEX IF NOT EXISTS idx_cp_exec_turn
+CREATE INDEX idx_cp_execution_id ON checkpoints(execution_id);
+CREATE INDEX idx_cp_task_id ON checkpoints(task_id);
+CREATE INDEX idx_cp_exec_turn
     ON checkpoints(execution_id, turn_number);
-CREATE INDEX IF NOT EXISTS idx_cp_task_turn
+CREATE INDEX idx_cp_task_turn
     ON checkpoints(task_id, turn_number);
 
 -- ── Heartbeats ────────────────────────────────────────────────
--- No FK to tasks -- checkpoints/heartbeats are ephemeral recovery
--- data that may outlive their tasks.  Cleanup is the engine's
--- responsibility (delete_by_execution after completion).
-CREATE TABLE IF NOT EXISTS heartbeats (
+CREATE TABLE heartbeats (
     execution_id TEXT PRIMARY KEY,
     agent_id TEXT NOT NULL,
     task_id TEXT NOT NULL,
     last_heartbeat_at TEXT NOT NULL
 );
 
-CREATE INDEX IF NOT EXISTS idx_hb_last_heartbeat
+CREATE INDEX idx_hb_last_heartbeat
     ON heartbeats(last_heartbeat_at);
 
 -- ── Agent states ──────────────────────────────────────────────
-CREATE TABLE IF NOT EXISTS agent_states (
+CREATE TABLE agent_states (
     agent_id TEXT PRIMARY KEY,
     execution_id TEXT,
     task_id TEXT,
@@ -279,13 +276,11 @@ CREATE TABLE IF NOT EXISTS agent_states (
     )
 );
 
-CREATE INDEX IF NOT EXISTS idx_as_status_activity
+CREATE INDEX idx_as_status_activity
     ON agent_states(status, last_activity_at DESC);
 
 -- ── Artifacts ────────────────────────────────────────────────
--- No FK to tasks -- artifacts may outlive tasks (same rationale
--- as heartbeats/checkpoints).
-CREATE TABLE IF NOT EXISTS artifacts (
+CREATE TABLE artifacts (
     id TEXT PRIMARY KEY,
     type TEXT NOT NULL,
     path TEXT NOT NULL,
@@ -297,12 +292,12 @@ CREATE TABLE IF NOT EXISTS artifacts (
     created_at TEXT NOT NULL
 );
 
-CREATE INDEX IF NOT EXISTS idx_artifacts_task_id ON artifacts(task_id);
-CREATE INDEX IF NOT EXISTS idx_artifacts_created_by ON artifacts(created_by);
-CREATE INDEX IF NOT EXISTS idx_artifacts_type ON artifacts(type);
+CREATE INDEX idx_artifacts_task_id ON artifacts(task_id);
+CREATE INDEX idx_artifacts_created_by ON artifacts(created_by);
+CREATE INDEX idx_artifacts_type ON artifacts(type);
 
 -- ── Projects ─────────────────────────────────────────────────
-CREATE TABLE IF NOT EXISTS projects (
+CREATE TABLE projects (
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL,
     description TEXT NOT NULL DEFAULT '',
@@ -314,11 +309,11 @@ CREATE TABLE IF NOT EXISTS projects (
     status TEXT NOT NULL DEFAULT 'planning'
 );
 
-CREATE INDEX IF NOT EXISTS idx_projects_status ON projects(status);
-CREATE INDEX IF NOT EXISTS idx_projects_lead ON projects(lead);
+CREATE INDEX idx_projects_status ON projects(status);
+CREATE INDEX idx_projects_lead ON projects(lead);
 
 -- ── Project-lifetime cost aggregates ─────────────────────────
-CREATE TABLE IF NOT EXISTS project_cost_aggregates (
+CREATE TABLE project_cost_aggregates (
     project_id TEXT PRIMARY KEY CHECK(length(project_id) > 0),
     total_cost REAL NOT NULL DEFAULT 0.0 CHECK(total_cost >= 0.0),
     total_input_tokens INTEGER NOT NULL DEFAULT 0 CHECK(total_input_tokens >= 0),
@@ -330,7 +325,7 @@ CREATE TABLE IF NOT EXISTS project_cost_aggregates (
 );
 
 -- ── Custom personality presets (user-defined) ────────────────
-CREATE TABLE IF NOT EXISTS custom_presets (
+CREATE TABLE custom_presets (
     name TEXT PRIMARY KEY CHECK(length(name) > 0),
     config_json TEXT NOT NULL CHECK(length(config_json) > 0),
     description TEXT NOT NULL DEFAULT '',
@@ -338,7 +333,7 @@ CREATE TABLE IF NOT EXISTS custom_presets (
     updated_at TEXT NOT NULL
 );
 
-CREATE TABLE IF NOT EXISTS workflow_definitions (
+CREATE TABLE workflow_definitions (
     id TEXT PRIMARY KEY NOT NULL CHECK(length(id) > 0),
     name TEXT NOT NULL CHECK(length(name) > 0),
     description TEXT NOT NULL DEFAULT '',
@@ -353,15 +348,15 @@ CREATE TABLE IF NOT EXISTS workflow_definitions (
     version INTEGER NOT NULL DEFAULT 1 CHECK(version >= 1)
 );
 
-CREATE INDEX IF NOT EXISTS idx_wd_workflow_type
+CREATE INDEX idx_wd_workflow_type
     ON workflow_definitions(workflow_type);
 
-CREATE INDEX IF NOT EXISTS idx_wd_updated_at
+CREATE INDEX idx_wd_updated_at
     ON workflow_definitions(updated_at DESC);
 
--- Workflow execution instances ------------------------------------------------
+-- ── Workflow execution instances ─────────────────────────────
 
-CREATE TABLE IF NOT EXISTS workflow_executions (
+CREATE TABLE workflow_executions (
     id TEXT PRIMARY KEY NOT NULL CHECK(length(id) > 0),
     definition_id TEXT NOT NULL CHECK(length(definition_id) > 0),
     definition_version INTEGER NOT NULL CHECK(definition_version >= 1),
@@ -379,26 +374,26 @@ CREATE TABLE IF NOT EXISTS workflow_executions (
     FOREIGN KEY (definition_id) REFERENCES workflow_definitions(id)
 );
 
-CREATE INDEX IF NOT EXISTS idx_wfe_definition_id
+CREATE INDEX idx_wfe_definition_id
     ON workflow_executions(definition_id);
 
-CREATE INDEX IF NOT EXISTS idx_wfe_status
+CREATE INDEX idx_wfe_status
     ON workflow_executions(status);
 
-CREATE INDEX IF NOT EXISTS idx_wfe_updated_at
+CREATE INDEX idx_wfe_updated_at
     ON workflow_executions(updated_at DESC);
 
-CREATE INDEX IF NOT EXISTS idx_wfe_definition_updated
+CREATE INDEX idx_wfe_definition_updated
     ON workflow_executions(definition_id, updated_at DESC);
 
-CREATE INDEX IF NOT EXISTS idx_wfe_status_updated
+CREATE INDEX idx_wfe_status_updated
     ON workflow_executions(status, updated_at DESC);
 
-CREATE INDEX IF NOT EXISTS idx_wfe_project
+CREATE INDEX idx_wfe_project
     ON workflow_executions(project);
 
 -- ── Fine-tuning pipeline runs ───────────────────────────────────
-CREATE TABLE IF NOT EXISTS fine_tune_runs (
+CREATE TABLE fine_tune_runs (
     id TEXT PRIMARY KEY NOT NULL CHECK(length(id) > 0),
     stage TEXT NOT NULL CHECK(stage IN ('idle', 'generating_data', 'mining_negatives', 'training', 'evaluating', 'deploying', 'complete', 'failed')),
     progress REAL CHECK(progress IS NULL OR (progress >= 0.0 AND progress <= 1.0)),
@@ -410,17 +405,17 @@ CREATE TABLE IF NOT EXISTS fine_tune_runs (
     stages_completed TEXT NOT NULL DEFAULT '[]'
 );
 
-CREATE INDEX IF NOT EXISTS idx_ftr_stage
+CREATE INDEX idx_ftr_stage
     ON fine_tune_runs(stage);
 
-CREATE INDEX IF NOT EXISTS idx_ftr_started_at
+CREATE INDEX idx_ftr_started_at
     ON fine_tune_runs(started_at DESC);
 
-CREATE INDEX IF NOT EXISTS idx_ftr_updated_at
+CREATE INDEX idx_ftr_updated_at
     ON fine_tune_runs(updated_at DESC);
 
 -- ── Fine-tuning checkpoints ─────────────────────────────────────
-CREATE TABLE IF NOT EXISTS fine_tune_checkpoints (
+CREATE TABLE fine_tune_checkpoints (
     id TEXT PRIMARY KEY NOT NULL CHECK(length(id) > 0),
     run_id TEXT NOT NULL REFERENCES fine_tune_runs(id) ON DELETE CASCADE,
     model_path TEXT NOT NULL,
@@ -433,37 +428,22 @@ CREATE TABLE IF NOT EXISTS fine_tune_checkpoints (
     backup_config_json TEXT
 );
 
-CREATE INDEX IF NOT EXISTS idx_ftc_run_id
+CREATE INDEX idx_ftc_run_id
     ON fine_tune_checkpoints(run_id);
 
-CREATE INDEX IF NOT EXISTS idx_ftc_active
+CREATE INDEX idx_ftc_active
     ON fine_tune_checkpoints(is_active);
 
-CREATE UNIQUE INDEX IF NOT EXISTS idx_ftc_single_active
+CREATE UNIQUE INDEX idx_ftc_single_active
     ON fine_tune_checkpoints(is_active)
     WHERE is_active = 1;
 
-CREATE INDEX IF NOT EXISTS idx_ftc_created_at
+CREATE INDEX idx_ftc_created_at
     ON fine_tune_checkpoints(created_at DESC);
 
 -- ── Workflow Definition Versions ─────────────────────────────
--- Breaking change from v0.6.x: migrated from bespoke flattened
--- columns (definition_id, name, description, workflow_type, nodes,
--- edges, created_by) to generic VersionSnapshot format (entity_id,
--- content_hash, snapshot JSON, saved_by, saved_at).
--- Manual migration for existing databases:
---   1. ALTER TABLE workflow_definition_versions RENAME TO _wdv_old;
---   2. Create the new table (below) and indexes.
---   3. INSERT INTO workflow_definition_versions (entity_id, version,
---      content_hash, snapshot, saved_by, saved_at)
---      SELECT definition_id, version,
---        '<compute-sha256-of-snapshot>', json_object(...old columns...),
---        created_by, saved_at FROM _wdv_old;
---   4. DROP TABLE _wdv_old;
--- FK to workflow_definitions intentionally dropped for generic
--- VersionSnapshot[T] pattern consistency across all entity types.
 
-CREATE TABLE IF NOT EXISTS workflow_definition_versions (
+CREATE TABLE workflow_definition_versions (
     entity_id TEXT NOT NULL CHECK(length(entity_id) > 0),
     version INTEGER NOT NULL CHECK(version >= 1),
     content_hash TEXT NOT NULL CHECK(length(content_hash) > 0),
@@ -475,19 +455,13 @@ CREATE TABLE IF NOT EXISTS workflow_definition_versions (
     PRIMARY KEY (entity_id, version)
 );
 
-CREATE INDEX IF NOT EXISTS idx_wdv_entity_saved
+CREATE INDEX idx_wdv_entity_saved
     ON workflow_definition_versions(entity_id, saved_at DESC);
-CREATE INDEX IF NOT EXISTS idx_wdv_content_hash
+CREATE INDEX idx_wdv_content_hash
     ON workflow_definition_versions(entity_id, content_hash);
 
 -- ── Decision records (auditable decisions drop-box) ─────────────
--- Append-only audit trail.  ON DELETE RESTRICT on the tasks FK is
--- deliberate: preserving the audit trail takes priority over task
--- cleanup, so tasks with decision records cannot be deleted until
--- their audit entries are explicitly archived or purged.  Dropping
--- this RESTRICT would silently cascade-delete audit data and violate
--- issue #700's append-only guarantee.
-CREATE TABLE IF NOT EXISTS decision_records (
+CREATE TABLE decision_records (
     id TEXT PRIMARY KEY,
     task_id TEXT NOT NULL REFERENCES tasks(id) ON DELETE RESTRICT,
     approval_id TEXT,
@@ -498,11 +472,6 @@ CREATE TABLE IF NOT EXISTS decision_records (
     )),
     reason TEXT,
     criteria_snapshot TEXT NOT NULL DEFAULT '[]',
-    -- recorded_at must be ISO 8601 with a UTC offset ('+00:00' or 'Z')
-    -- so lexicographic ordering equals chronological ordering.  The
-    -- repository normalizes to UTC via .astimezone(UTC).isoformat()
-    -- before inserting; the CHECK here enforces the invariant against
-    -- raw SQL callers and migrations.
     recorded_at TEXT NOT NULL CHECK(
         recorded_at LIKE '%+00:00' OR recorded_at LIKE '%Z'
     ),
@@ -511,30 +480,26 @@ CREATE TABLE IF NOT EXISTS decision_records (
     UNIQUE(task_id, version)
 );
 
--- idx_dr_task_id is intentionally omitted -- the UNIQUE(task_id, version)
--- constraint already creates a covering index on task_id as the leading
--- key.  Adding a separate idx on task_id alone would be redundant write
--- overhead with no planner benefit.
-CREATE INDEX IF NOT EXISTS idx_dr_executing_agent_recorded
+CREATE INDEX idx_dr_executing_agent_recorded
     ON decision_records(executing_agent_id, recorded_at DESC);
-CREATE INDEX IF NOT EXISTS idx_dr_reviewer_agent_recorded
+CREATE INDEX idx_dr_reviewer_agent_recorded
     ON decision_records(reviewer_agent_id, recorded_at DESC);
 
 -- ── Login Attempts (account lockout) ─────────────────────────
-CREATE TABLE IF NOT EXISTS login_attempts (
+CREATE TABLE login_attempts (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     username TEXT NOT NULL,
     attempted_at TEXT NOT NULL,
     ip_address TEXT NOT NULL DEFAULT ''
 );
 
-CREATE INDEX IF NOT EXISTS idx_la_username_attempted
+CREATE INDEX idx_la_username_attempted
     ON login_attempts(username, attempted_at);
-CREATE INDEX IF NOT EXISTS idx_la_attempted_at
+CREATE INDEX idx_la_attempted_at
     ON login_attempts(attempted_at);
 
 -- ── Refresh Tokens ───────────────────────────────────────────
-CREATE TABLE IF NOT EXISTS refresh_tokens (
+CREATE TABLE refresh_tokens (
     token_hash TEXT PRIMARY KEY,
     session_id TEXT NOT NULL
         REFERENCES sessions(session_id) ON DELETE CASCADE,
@@ -545,12 +510,12 @@ CREATE TABLE IF NOT EXISTS refresh_tokens (
     created_at TEXT NOT NULL
 );
 
-CREATE INDEX IF NOT EXISTS idx_rt_user_id ON refresh_tokens(user_id);
-CREATE INDEX IF NOT EXISTS idx_rt_session_id ON refresh_tokens(session_id);
-CREATE INDEX IF NOT EXISTS idx_rt_expires_at ON refresh_tokens(expires_at);
+CREATE INDEX idx_rt_user_id ON refresh_tokens(user_id);
+CREATE INDEX idx_rt_session_id ON refresh_tokens(session_id);
+CREATE INDEX idx_rt_expires_at ON refresh_tokens(expires_at);
 
 -- ── Risk tier overrides ─────────────────────────────────────
-CREATE TABLE IF NOT EXISTS risk_overrides (
+CREATE TABLE risk_overrides (
     id TEXT PRIMARY KEY,
     action_type TEXT NOT NULL,
     original_tier TEXT NOT NULL,
@@ -568,14 +533,13 @@ CREATE TABLE IF NOT EXISTS risk_overrides (
     )
 );
 
-CREATE INDEX IF NOT EXISTS idx_ro_action_type ON risk_overrides(action_type);
--- Partial composite index for list_active query (WHERE revoked_at IS NULL).
-CREATE INDEX IF NOT EXISTS idx_ro_active
+CREATE INDEX idx_ro_action_type ON risk_overrides(action_type);
+CREATE INDEX idx_ro_active
     ON risk_overrides(created_at DESC, expires_at)
     WHERE revoked_at IS NULL;
 
 -- ── SSRF violations ─────────────────────────────────────────
-CREATE TABLE IF NOT EXISTS ssrf_violations (
+CREATE TABLE ssrf_violations (
     id TEXT PRIMARY KEY,
     timestamp TEXT NOT NULL,
     url TEXT NOT NULL,
@@ -597,14 +561,13 @@ CREATE TABLE IF NOT EXISTS ssrf_violations (
     )
 );
 
--- Composite index for list_violations filtered by status + ordered by timestamp.
-CREATE INDEX IF NOT EXISTS idx_sv_status_timestamp
+CREATE INDEX idx_sv_status_timestamp
     ON ssrf_violations(status, timestamp DESC);
-CREATE INDEX IF NOT EXISTS idx_sv_timestamp ON ssrf_violations(timestamp);
-CREATE INDEX IF NOT EXISTS idx_sv_hostname ON ssrf_violations(hostname, port);
+CREATE INDEX idx_sv_timestamp ON ssrf_violations(timestamp);
+CREATE INDEX idx_sv_hostname ON ssrf_violations(hostname, port);
 
 -- ── Agent identity versions ────────────────────────────────────
-CREATE TABLE IF NOT EXISTS agent_identity_versions (
+CREATE TABLE agent_identity_versions (
     entity_id TEXT NOT NULL CHECK(length(entity_id) > 0),
     version INTEGER NOT NULL CHECK(version >= 1),
     content_hash TEXT NOT NULL CHECK(length(content_hash) > 0),
@@ -616,14 +579,14 @@ CREATE TABLE IF NOT EXISTS agent_identity_versions (
     PRIMARY KEY (entity_id, version)
 );
 
-CREATE INDEX IF NOT EXISTS idx_aiv_entity_saved
+CREATE INDEX idx_aiv_entity_saved
     ON agent_identity_versions(entity_id, saved_at DESC);
-CREATE INDEX IF NOT EXISTS idx_aiv_content_hash
+CREATE INDEX idx_aiv_content_hash
     ON agent_identity_versions(entity_id, content_hash);
 
 -- ── Evaluation config versions ────────────────────────────────────
 
-CREATE TABLE IF NOT EXISTS evaluation_config_versions (
+CREATE TABLE evaluation_config_versions (
     entity_id TEXT NOT NULL CHECK(length(entity_id) > 0),
     version INTEGER NOT NULL CHECK(version >= 1),
     content_hash TEXT NOT NULL CHECK(length(content_hash) > 0),
@@ -635,14 +598,14 @@ CREATE TABLE IF NOT EXISTS evaluation_config_versions (
     PRIMARY KEY (entity_id, version)
 );
 
-CREATE INDEX IF NOT EXISTS idx_ecv_entity_saved
+CREATE INDEX idx_ecv_entity_saved
     ON evaluation_config_versions(entity_id, saved_at DESC);
-CREATE INDEX IF NOT EXISTS idx_ecv_content_hash
+CREATE INDEX idx_ecv_content_hash
     ON evaluation_config_versions(entity_id, content_hash);
 
 -- ── Budget config versions ───────────────────────────────────────
 
-CREATE TABLE IF NOT EXISTS budget_config_versions (
+CREATE TABLE budget_config_versions (
     entity_id TEXT NOT NULL CHECK(length(entity_id) > 0),
     version INTEGER NOT NULL CHECK(version >= 1),
     content_hash TEXT NOT NULL CHECK(length(content_hash) > 0),
@@ -654,14 +617,14 @@ CREATE TABLE IF NOT EXISTS budget_config_versions (
     PRIMARY KEY (entity_id, version)
 );
 
-CREATE INDEX IF NOT EXISTS idx_bcv_entity_saved
+CREATE INDEX idx_bcv_entity_saved
     ON budget_config_versions(entity_id, saved_at DESC);
-CREATE INDEX IF NOT EXISTS idx_bcv_content_hash
+CREATE INDEX idx_bcv_content_hash
     ON budget_config_versions(entity_id, content_hash);
 
 -- ── Company versions ─────────────────────────────────────────────
 
-CREATE TABLE IF NOT EXISTS company_versions (
+CREATE TABLE company_versions (
     entity_id TEXT NOT NULL CHECK(length(entity_id) > 0),
     version INTEGER NOT NULL CHECK(version >= 1),
     content_hash TEXT NOT NULL CHECK(length(content_hash) > 0),
@@ -673,14 +636,14 @@ CREATE TABLE IF NOT EXISTS company_versions (
     PRIMARY KEY (entity_id, version)
 );
 
-CREATE INDEX IF NOT EXISTS idx_cv_entity_saved
+CREATE INDEX idx_cv_entity_saved
     ON company_versions(entity_id, saved_at DESC);
-CREATE INDEX IF NOT EXISTS idx_cv_content_hash
+CREATE INDEX idx_cv_content_hash
     ON company_versions(entity_id, content_hash);
 
 -- ── Role versions ────────────────────────────────────────────────
 
-CREATE TABLE IF NOT EXISTS role_versions (
+CREATE TABLE role_versions (
     entity_id TEXT NOT NULL CHECK(length(entity_id) > 0),
     version INTEGER NOT NULL CHECK(version >= 1),
     content_hash TEXT NOT NULL CHECK(length(content_hash) > 0),
@@ -692,14 +655,14 @@ CREATE TABLE IF NOT EXISTS role_versions (
     PRIMARY KEY (entity_id, version)
 );
 
-CREATE INDEX IF NOT EXISTS idx_rv_entity_saved
+CREATE INDEX idx_rv_entity_saved
     ON role_versions(entity_id, saved_at DESC);
-CREATE INDEX IF NOT EXISTS idx_rv_content_hash
+CREATE INDEX idx_rv_content_hash
     ON role_versions(entity_id, content_hash);
 
 -- ── Circuit breaker state ─────────────────────────────────────────
 
-CREATE TABLE IF NOT EXISTS circuit_breaker_state (
+CREATE TABLE circuit_breaker_state (
     pair_key_a TEXT NOT NULL CHECK (length(pair_key_a) > 0),
     pair_key_b TEXT NOT NULL CHECK (length(pair_key_b) > 0),
     bounce_count INTEGER NOT NULL DEFAULT 0 CHECK (bounce_count >= 0),
@@ -707,3 +670,41 @@ CREATE TABLE IF NOT EXISTS circuit_breaker_state (
     opened_at REAL,
     PRIMARY KEY (pair_key_a, pair_key_b)
 );
+
+-- ── Ontology: Entity definitions ──────────────────────────────
+
+CREATE TABLE entity_definitions (
+    name TEXT PRIMARY KEY CHECK(length(name) > 0),
+    tier TEXT NOT NULL CHECK(tier IN ('core', 'user')),
+    source TEXT NOT NULL CHECK(source IN ('auto', 'config', 'api')),
+    definition TEXT NOT NULL DEFAULT '',
+    fields TEXT NOT NULL DEFAULT '[]',
+    constraints TEXT NOT NULL DEFAULT '[]',
+    disambiguation TEXT NOT NULL DEFAULT '',
+    relationships TEXT NOT NULL DEFAULT '[]',
+    created_by TEXT NOT NULL CHECK(length(created_by) > 0),
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+
+CREATE INDEX idx_ed_tier
+    ON entity_definitions(tier);
+
+-- ── Ontology: Entity definition versions ──────────────────────
+
+CREATE TABLE entity_definition_versions (
+    entity_id TEXT NOT NULL CHECK(length(entity_id) > 0),
+    version INTEGER NOT NULL CHECK(version >= 1),
+    content_hash TEXT NOT NULL CHECK(length(content_hash) > 0),
+    snapshot TEXT NOT NULL CHECK(length(snapshot) > 0),
+    saved_by TEXT NOT NULL CHECK(length(saved_by) > 0),
+    saved_at TEXT NOT NULL CHECK(
+        saved_at LIKE '%+00:00' OR saved_at LIKE '%Z'
+    ),
+    PRIMARY KEY (entity_id, version)
+);
+
+CREATE INDEX idx_edv_entity_saved
+    ON entity_definition_versions(entity_id, saved_at DESC);
+CREATE INDEX idx_edv_content_hash
+    ON entity_definition_versions(entity_id, content_hash);

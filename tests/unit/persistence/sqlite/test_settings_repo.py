@@ -1,20 +1,26 @@
 """Unit tests for SQLiteSettingsRepository."""
 
 from collections.abc import AsyncGenerator
+from pathlib import Path
 
 import aiosqlite
 import pytest
 
-from synthorg.persistence.sqlite.migrations import apply_schema
+from synthorg.persistence import atlas
 from synthorg.persistence.sqlite.settings_repo import SQLiteSettingsRepository
 
 
 @pytest.fixture
-async def repo() -> AsyncGenerator[SQLiteSettingsRepository]:
-    """Create an in-memory SQLite DB with schema applied and return repo."""
-    db = await aiosqlite.connect(":memory:")
+async def repo(tmp_path: Path) -> AsyncGenerator[SQLiteSettingsRepository]:
+    """Temp-file SQLite DB with Atlas migrations applied and repo."""
+    db_path = tmp_path / "test.db"
+    rev_url = atlas.copy_revisions(tmp_path / "revisions")
+    await atlas.migrate_apply(
+        atlas.to_sqlite_url(str(db_path)),
+        revisions_url=rev_url,
+    )
+    db = await aiosqlite.connect(str(db_path))
     db.row_factory = aiosqlite.Row
-    await apply_schema(db)
     repo = SQLiteSettingsRepository(db)
     yield repo
     await db.close()

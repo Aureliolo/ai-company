@@ -2,12 +2,13 @@
 
 from collections.abc import AsyncGenerator
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 
 import aiosqlite
 import pytest
 
 from synthorg.api.auth.refresh_store import RefreshStore
-from synthorg.persistence.sqlite.migrations import apply_schema
+from synthorg.persistence import atlas
 
 pytestmark = pytest.mark.unit
 
@@ -17,11 +18,16 @@ _FUTURE = _NOW + timedelta(days=7)
 
 
 @pytest.fixture
-async def db() -> AsyncGenerator[aiosqlite.Connection]:
-    conn = await aiosqlite.connect(":memory:")
+async def db(tmp_path: Path) -> AsyncGenerator[aiosqlite.Connection]:
+    db_path = tmp_path / "test.db"
+    rev_url = atlas.copy_revisions(tmp_path / "revisions")
+    await atlas.migrate_apply(
+        atlas.to_sqlite_url(str(db_path)),
+        revisions_url=rev_url,
+    )
+    conn = await aiosqlite.connect(str(db_path))
     try:
         conn.row_factory = aiosqlite.Row
-        await apply_schema(conn)
         yield conn
     finally:
         await conn.close()

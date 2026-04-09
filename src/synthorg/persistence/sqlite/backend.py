@@ -29,6 +29,7 @@ from synthorg.observability.events.persistence import (
     PERSISTENCE_BACKEND_NOT_CONNECTED,
     PERSISTENCE_BACKEND_WAL_MODE_FAILED,
 )
+from synthorg.persistence import atlas
 from synthorg.persistence.errors import PersistenceConnectionError
 from synthorg.persistence.sqlite.agent_state_repo import (
     SQLiteAgentStateRepository,
@@ -56,7 +57,6 @@ from synthorg.persistence.sqlite.hr_repositories import (
     SQLiteLifecycleEventRepository,
     SQLiteTaskMetricRepository,
 )
-from synthorg.persistence.sqlite.migrations import apply_schema
 from synthorg.persistence.sqlite.parked_context_repo import (
     SQLiteParkedContextRepository,
 )
@@ -411,17 +411,18 @@ class SQLitePersistenceBackend:
         return healthy
 
     async def migrate(self) -> None:
-        """Apply the database schema.
+        """Apply pending schema migrations via Atlas CLI.
 
         Raises:
             PersistenceConnectionError: If not connected.
-            MigrationError: If schema application fails.
+            MigrationError: If migration application fails.
         """
         if self._db is None:
             msg = "Cannot migrate: not connected"
             logger.warning(PERSISTENCE_BACKEND_NOT_CONNECTED, error=msg)
             raise PersistenceConnectionError(msg)
-        await apply_schema(self._db)
+        db_url = atlas.to_sqlite_url(self._config.path)
+        await atlas.migrate_apply(db_url)
 
     @property
     def is_connected(self) -> bool:

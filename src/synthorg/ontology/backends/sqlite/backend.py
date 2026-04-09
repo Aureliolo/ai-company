@@ -20,7 +20,6 @@ from synthorg.observability.events.ontology import (
     ONTOLOGY_ENTITY_UPDATED,
     ONTOLOGY_SEARCH_EXECUTED,
 )
-from synthorg.ontology.backends.sqlite.migrations import apply_ontology_schema
 from synthorg.ontology.errors import (
     OntologyConnectionError,
     OntologyDuplicateError,
@@ -66,7 +65,7 @@ class SQLiteOntologyBackend:
     # ── Lifecycle ───────────────────────────────────────────────
 
     async def connect(self) -> None:
-        """Establish connection, enable WAL, apply schema."""
+        """Establish connection, enable WAL, verify schema."""
         async with self._lifecycle_lock:
             if self._db is not None:
                 return
@@ -77,12 +76,14 @@ class SQLiteOntologyBackend:
                 db.row_factory = aiosqlite.Row
                 if self._db_path != ":memory:":
                     await db.execute("PRAGMA journal_mode=WAL")
-                await apply_ontology_schema(db)
-                self._db = db
-            except OntologyConnectionError:
-                if db is not None and db != self._db:
-                    await db.close()
-                raise
+                # Ontology tables are created by the persistence
+                # baseline migration (consolidated schema).  Verify
+                # the expected table exists as a fail-fast check.
+                cursor = await db.execute(
+                    "SELECT name FROM sqlite_master "
+                    "WHERE type='table' AND name='entity_definitions'",
+                )
+                has_table = await cursor.fetchone() is not None
             except (sqlite3.Error, aiosqlite.Error, OSError) as exc:
                 if db is not None:
                     await db.close()
@@ -92,6 +93,17 @@ class SQLiteOntologyBackend:
                     error=str(exc),
                 )
                 raise OntologyConnectionError(msg) from exc
+
+            if not has_table:
+                await db.close()
+                msg = (
+                    "entity_definitions table not found -- "
+                    "persistence migrations must run before "
+                    "ontology backend connects"
+                )
+                raise OntologyConnectionError(msg)
+
+            self._db = db
             logger.info(ONTOLOGY_BACKEND_CONNECTED, db_path=self._db_path)
 
     async def disconnect(self) -> None:

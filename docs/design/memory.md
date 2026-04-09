@@ -654,10 +654,12 @@ persistence:
 
 ### Schema Strategy
 
-- Schema is applied at startup via `PersistenceBackend.migrate()` which calls `apply_schema()`
-- The canonical schema lives in `src/synthorg/persistence/sqlite/schema.sql` (single source of truth)
-- All DDL uses `IF NOT EXISTS` guards, making application idempotent
-- No sequential migrations exist yet -- when data stability is declared, adopt Atlas for declarative migrations (diff `schema.sql` against the live DB)
+- **Declarative migrations via [Atlas](https://atlasgo.io/)**: `schema.sql` defines the desired state; `atlas migrate diff` generates versioned SQL in `revisions/`
+- At startup, `PersistenceBackend.migrate()` invokes `atlas migrate apply` to apply pending revisions
+- Atlas tracks applied versions in its `atlas_schema_revisions` table (no hand-rolled version tracking)
+- Both persistence and ontology tables are consolidated into a single `schema.sql` (same database file)
+- CI runs `atlas migrate lint` (migration safety) and `atlas schema diff` (drift detection) on every PR
+- Squashing: run `atlas migrate squash` during the release process when migration count exceeds 20
 
 ### Key Principles
 

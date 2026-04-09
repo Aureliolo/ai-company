@@ -1,5 +1,10 @@
--- Ontology subsystem schema.
--- All statements use IF NOT EXISTS for idempotency.
+-- Ontology subsystem schema (DEPRECATED).
+--
+-- Canonical schema consolidated into persistence/sqlite/schema.sql.
+-- This file is retained as reference only -- do NOT execute directly.
+-- Atlas migrations manage all schema changes.
+--
+-- Original statements below (kept for reference):
 
 -- ── Entity definitions ─────────────────────────────────────────
 

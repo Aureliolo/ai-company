@@ -1,6 +1,7 @@
 """Tests for HR SQLite repository implementations."""
 
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 import aiosqlite
@@ -14,23 +15,28 @@ from synthorg.hr.performance.models import (
     CollaborationMetricRecord,
     TaskMetricRecord,
 )
+from synthorg.persistence import atlas
 from synthorg.persistence.sqlite.hr_repositories import (
     SQLiteCollaborationMetricRepository,
     SQLiteLifecycleEventRepository,
     SQLiteTaskMetricRepository,
 )
-from synthorg.persistence.sqlite.migrations import apply_schema
 
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator
 
 
 @pytest.fixture
-async def db() -> AsyncGenerator[aiosqlite.Connection]:
-    """In-memory SQLite connection with schema applied."""
-    conn = await aiosqlite.connect(":memory:")
+async def db(tmp_path: Path) -> AsyncGenerator[aiosqlite.Connection]:
+    """Temp-file SQLite connection with Atlas migrations applied."""
+    db_path = tmp_path / "test.db"
+    rev_url = atlas.copy_revisions(tmp_path / "revisions")
+    await atlas.migrate_apply(
+        atlas.to_sqlite_url(str(db_path)),
+        revisions_url=rev_url,
+    )
+    conn = await aiosqlite.connect(str(db_path))
     conn.row_factory = aiosqlite.Row
-    await apply_schema(conn)
     yield conn
     await conn.close()
 

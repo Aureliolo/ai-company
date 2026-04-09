@@ -66,6 +66,29 @@ jobs:
       - name: Ruff format check
         run: uv run ruff format --check src/ tests/
 
+  # ── Schema: Migration Validation ──
+  schema-validate:
+    name: Schema Validation
+    needs: changes
+    if: needs.changes.outputs.python == 'true' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
+
+      - name: Install Atlas CLI
+        run: curl -sSf https://atlasgo.sh | sh
+
+      - name: Lint migrations
+        run: atlas migrate lint --env ci
+
+      - name: Drift detection
+        run: atlas schema diff --env sqlite --from "file://src/synthorg/persistence/sqlite/revisions" --to "file://src/synthorg/persistence/sqlite/schema.sql"
+
   # ── Python: Type Check ──
   type-check:
     name: Type Check
@@ -104,6 +127,9 @@ jobs:
       - uses: ./.github/actions/setup-python-uv
         with:
           python-version: ${{ matrix.python-version }}
+
+      - name: Install Atlas CLI
+        run: curl -sSf https://atlasgo.sh | sh
 
       - name: Run tests
         env:
@@ -348,7 +374,7 @@ jobs:
   ci-pass:
     name: CI Pass
     if: always()
-    needs: [changes, lint, type-check, test, python-audit, dockerfile-lint, dashboard-lint, dashboard-type-check, dashboard-test, dashboard-build, dashboard-audit, dashboard-storybook-build]
+    needs: [changes, lint, schema-validate, type-check, test, python-audit, dockerfile-lint, dashboard-lint, dashboard-type-check, dashboard-test, dashboard-build, dashboard-audit, dashboard-storybook-build]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions: {}
@@ -360,6 +386,7 @@ jobs:
           RESULTS: >-
             ${{ needs.changes.result }}
             ${{ needs.lint.result }}
+            ${{ needs.schema-validate.result }}
             ${{ needs.type-check.result }}
             ${{ needs.test.result }}
             ${{ needs.python-audit.result }}

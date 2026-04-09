@@ -1,6 +1,7 @@
 """Tests for SQLitePersistenceBackend."""
 
 import sqlite3
+from pathlib import Path
 
 import aiosqlite
 import pytest
@@ -53,8 +54,9 @@ class TestSQLitePersistenceBackend:
         backend = SQLitePersistenceBackend(SQLiteConfig(path=":memory:"))
         assert backend.backend_name == "sqlite"
 
-    async def test_migrate_creates_tables(self) -> None:
-        backend = SQLitePersistenceBackend(SQLiteConfig(path=":memory:"))
+    async def test_migrate_creates_tables(self, tmp_path: Path) -> None:
+        db_path = str(tmp_path / "migrate-test.db")
+        backend = SQLitePersistenceBackend(SQLiteConfig(path=db_path))
         await backend.connect()
         await backend.migrate()
 
