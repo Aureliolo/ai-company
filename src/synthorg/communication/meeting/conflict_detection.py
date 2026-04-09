@@ -134,7 +134,7 @@ class StructuredComparisonDetector:
                 return [position]
 
         # If neither field exists, try list values that look like positions
-        positions_list = []
+        positions_list: list[dict[str, object]] = []
         for value in data.values():
             if isinstance(value, list):
                 positions_list.extend(item for item in value if isinstance(item, dict))
@@ -227,14 +227,18 @@ class LlmJudgeDetector:
         match = re.search(json_pattern, text, re.DOTALL)
         if match:
             try:
-                return json.loads(match.group())
+                parsed: dict[str, Any] = json.loads(match.group())
             except json.JSONDecodeError:
                 pass
+            else:
+                return parsed
 
         try:
-            return json.loads(text)
+            parsed = json.loads(text)
         except json.JSONDecodeError:
             pass
+        else:
+            return parsed
 
         return None
 

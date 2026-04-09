@@ -8,7 +8,12 @@ from action items, and records audit trail entries.
 from collections import Counter
 from collections.abc import Mapping  # noqa: TC003
 from types import MappingProxyType
+from typing import TYPE_CHECKING
 from uuid import uuid4
+
+if TYPE_CHECKING:
+    from synthorg.engine.strategy.lens_assignment import LensAssigner
+    from synthorg.engine.strategy.models import StrategyConfig
 
 from synthorg.communication.meeting.config import MeetingProtocolConfig  # noqa: TC001
 from synthorg.communication.meeting.enums import (
@@ -95,8 +100,8 @@ class MeetingOrchestrator:
         protocol_registry: Mapping[MeetingProtocolType, MeetingProtocol],
         agent_caller: AgentCaller,
         task_creator: TaskCreator | None = None,
-        strategy_config: object | None = None,
-        lens_assigner: object | None = None,
+        strategy_config: StrategyConfig | None = None,
+        lens_assigner: LensAssigner | None = None,
     ) -> None:
         self._protocol_registry: MappingProxyType[
             MeetingProtocolType, MeetingProtocol
@@ -396,9 +401,8 @@ class MeetingOrchestrator:
         if self._lens_assigner is None or self._strategy_config is None:
             return None
         try:
-            # LensAssigner protocol: assign(participant_ids, available_lenses)
-            lenses = self._strategy_config.default_lenses  # type: ignore[union-attr]
-            return self._lens_assigner.assign(  # type: ignore[union-attr]
+            lenses = self._strategy_config.default_lenses
+            return self._lens_assigner.assign(
                 participant_ids,
                 lenses,
             )

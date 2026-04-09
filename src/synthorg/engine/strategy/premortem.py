@@ -23,7 +23,7 @@ from synthorg.observability import get_logger
 
 logger = get_logger(__name__)
 
-_MIN_RESPONSE_LENGTH: int = 50
+_MIN_RESPONSE_LENGTH: int = 10
 
 
 class FailureMode(BaseModel):
