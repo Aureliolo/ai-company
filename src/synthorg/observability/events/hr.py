@@ -47,3 +47,16 @@ HR_ARCHIVAL_ENTRY_FAILED: Final[str] = "hr.archival.entry_failed"
 # ── Activity timeline ──────────────────────────────────────────
 
 HR_ACTIVITY_REDACTION_MISMATCH: Final[str] = "hr.activity.redaction_pattern_mismatch"
+
+# ── Pruning ────────────────────────────────────────────────────
+
+HR_PRUNING_CYCLE_STARTED: Final[str] = "hr.pruning.cycle_started"
+HR_PRUNING_EVALUATION_COMPLETE: Final[str] = "hr.pruning.evaluation_complete"
+HR_PRUNING_AGENT_ELIGIBLE: Final[str] = "hr.pruning.agent_eligible"
+HR_PRUNING_APPROVAL_SUBMITTED: Final[str] = "hr.pruning.approval_submitted"
+HR_PRUNING_APPROVAL_DEDUP_SKIP: Final[str] = "hr.pruning.approval_dedup_skip"
+HR_PRUNING_APPROVED: Final[str] = "hr.pruning.approved"
+HR_PRUNING_REJECTED: Final[str] = "hr.pruning.rejected"
+HR_PRUNING_OFFBOARDED: Final[str] = "hr.pruning.offboarded"
+HR_PRUNING_CYCLE_COMPLETE: Final[str] = "hr.pruning.cycle_complete"
+HR_PRUNING_POLICY_ERROR: Final[str] = "hr.pruning.policy_error"

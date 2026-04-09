@@ -89,3 +89,18 @@ class PromotionCooldownError(PromotionError):
 
 class PromotionApprovalRequiredError(PromotionError):
     """Promotion requires human approval before proceeding."""
+
+
+# ── Pruning ────────────────────────────────────────────────────
+
+
+class PruningError(HRError):
+    """Error during the pruning process."""
+
+
+class PruningPolicyError(PruningError):
+    """Error in pruning policy evaluation."""
+
+
+class PruningApprovalRequiredError(PruningError):
+    """Pruning requires human approval before proceeding."""
