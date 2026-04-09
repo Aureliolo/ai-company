@@ -7,7 +7,7 @@ import aiosqlite
 
 from synthorg.observability import get_logger
 from synthorg.observability.events.ontology import (
-    ONTOLOGY_BACKEND_CONNECTED,
+    ONTOLOGY_SCHEMA_FAILED,
 )
 from synthorg.ontology.errors import OntologyConnectionError
 
@@ -36,5 +36,5 @@ async def apply_ontology_schema(db: aiosqlite.Connection) -> None:
         await db.executescript(ddl)
     except (sqlite3.Error, aiosqlite.Error, OSError) as exc:
         msg = "Failed to apply ontology schema"
-        logger.exception(ONTOLOGY_BACKEND_CONNECTED, error=str(exc))
+        logger.exception(ONTOLOGY_SCHEMA_FAILED, error=str(exc))
         raise OntologyConnectionError(msg) from exc

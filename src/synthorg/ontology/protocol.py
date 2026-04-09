@@ -126,6 +126,9 @@ class OntologyBackend(Protocol):
     async def search(self, query: str) -> tuple[EntityDefinition, ...]:
         """Search entity definitions by name or definition text.
 
+        Matching is implementation-defined (e.g. substring via SQL LIKE
+        for the SQLite backend).
+
         Args:
             query: Search string (matched against name and definition).
 

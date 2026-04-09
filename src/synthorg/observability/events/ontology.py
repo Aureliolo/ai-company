@@ -49,3 +49,20 @@ ONTOLOGY_BACKEND_HEALTH_CHECK: Final[str] = "ontology.backend.health_check"
 
 ONTOLOGY_SEARCH_EXECUTED: Final[str] = "ontology.search.executed"
 """Entity search query executed."""
+
+# ── Schema ──────────────────────────────────────────────────────
+
+ONTOLOGY_SCHEMA_FAILED: Final[str] = "ontology.backend.schema_failed"
+"""Ontology schema application failed."""
+
+# ── Auto-wire ───────────────────────────────────────────────────
+
+ONTOLOGY_AUTO_WIRE_FAILED: Final[str] = "ontology.auto_wire.failed"
+"""Ontology auto-wiring failed during startup."""
+
+# ── Deserialization ─────────────────────────────────────────────
+
+ONTOLOGY_ENTITY_DESERIALIZATION_FAILED: Final[str] = (
+    "ontology.entity.deserialization_failed"
+)
+"""Entity definition deserialization from database failed."""

@@ -14,6 +14,7 @@ from synthorg.observability.events.ontology import (
     ONTOLOGY_BACKEND_DISCONNECTED,
     ONTOLOGY_BACKEND_HEALTH_CHECK,
     ONTOLOGY_ENTITY_DELETED,
+    ONTOLOGY_ENTITY_DESERIALIZATION_FAILED,
     ONTOLOGY_ENTITY_REGISTERED,
     ONTOLOGY_ENTITY_UPDATED,
     ONTOLOGY_SEARCH_EXECUTED,
@@ -22,6 +23,7 @@ from synthorg.ontology.backends.sqlite.migrations import apply_ontology_schema
 from synthorg.ontology.errors import (
     OntologyConnectionError,
     OntologyDuplicateError,
+    OntologyError,
     OntologyNotFoundError,
 )
 from synthorg.ontology.models import (
@@ -89,14 +91,20 @@ class SQLiteOntologyBackend:
 
     async def health_check(self) -> bool:
         """Return True if the connection is alive."""
-        if self._db is None:
-            return False
-        try:
-            cursor = await self._db.execute("SELECT 1")
-            await cursor.fetchone()
-        except sqlite3.Error, aiosqlite.Error:
-            logger.warning(ONTOLOGY_BACKEND_HEALTH_CHECK, healthy=False)
-            return False
+        async with self._lifecycle_lock:
+            if self._db is None:
+                return False
+            try:
+                cursor = await self._db.execute("SELECT 1")
+                await cursor.fetchone()
+            except (sqlite3.Error, aiosqlite.Error) as exc:
+                logger.warning(
+                    ONTOLOGY_BACKEND_HEALTH_CHECK,
+                    healthy=False,
+                    error_type=type(exc).__name__,
+                    error=str(exc),
+                )
+                return False
         logger.debug(ONTOLOGY_BACKEND_HEALTH_CHECK, healthy=True)
         return True
 
@@ -121,21 +129,31 @@ class SQLiteOntologyBackend:
 
     def _row_to_entity(self, row: aiosqlite.Row) -> EntityDefinition:
         """Deserialize a database row into an EntityDefinition."""
-        return EntityDefinition(
-            name=row["name"],
-            tier=EntityTier(row["tier"]),
-            source=EntitySource(row["source"]),
-            definition=row["definition"],
-            fields=tuple(EntityField(**f) for f in json.loads(row["fields"])),
-            constraints=tuple(json.loads(row["constraints"])),
-            disambiguation=row["disambiguation"],
-            relationships=tuple(
-                EntityRelation(**r) for r in json.loads(row["relationships"])
-            ),
-            created_by=row["created_by"],
-            created_at=row["created_at"],
-            updated_at=row["updated_at"],
-        )
+        entity_name = row["name"]
+        try:
+            return EntityDefinition(
+                name=entity_name,
+                tier=EntityTier(row["tier"]),
+                source=EntitySource(row["source"]),
+                definition=row["definition"],
+                fields=tuple(EntityField(**f) for f in json.loads(row["fields"])),
+                constraints=tuple(json.loads(row["constraints"])),
+                disambiguation=row["disambiguation"],
+                relationships=tuple(
+                    EntityRelation(**r) for r in json.loads(row["relationships"])
+                ),
+                created_by=row["created_by"],
+                created_at=row["created_at"],
+                updated_at=row["updated_at"],
+            )
+        except (json.JSONDecodeError, ValueError, TypeError) as exc:
+            msg = f"Corrupted entity definition for '{entity_name}'"
+            logger.exception(
+                ONTOLOGY_ENTITY_DESERIALIZATION_FAILED,
+                entity_name=entity_name,
+                error=str(exc),
+            )
+            raise OntologyError(msg) from exc
 
     def _entity_to_params(self, entity: EntityDefinition) -> dict[str, str]:
         """Serialize an EntityDefinition into SQL parameters."""

@@ -579,6 +579,9 @@ async def auto_wire_ontology(
         The bootstrapped ``OntologyService``, or ``None`` if wiring
         fails (non-fatal -- ontology is not required for startup).
     """
+    from synthorg.observability.events.ontology import (  # noqa: PLC0415
+        ONTOLOGY_AUTO_WIRE_FAILED,
+    )
     from synthorg.ontology.backends.sqlite.backend import (  # noqa: PLC0415
         SQLiteOntologyBackend,
     )
@@ -594,8 +597,8 @@ async def auto_wire_ontology(
     if effective_config.persistence.sqlite.path:
         db_path = effective_config.persistence.sqlite.path
 
+    backend = SQLiteOntologyBackend(db_path=db_path)
     try:
-        backend = SQLiteOntologyBackend(db_path=db_path)
         await backend.connect()
         versioning = create_ontology_versioning(backend.get_db())
         service = OntologyService(
@@ -608,12 +611,14 @@ async def auto_wire_ontology(
             await service.bootstrap_from_config(ontology_config.entities)
     except MemoryError, RecursionError:
         raise
-    except Exception:
+    except Exception as exc:
         logger.warning(
-            API_APP_STARTUP,
-            error="Ontology auto-wire failed (non-fatal)",
+            ONTOLOGY_AUTO_WIRE_FAILED,
+            error_type=type(exc).__name__,
+            error=str(exc),
             exc_info=True,
         )
+        await backend.disconnect()
         return None
     else:
         logger.info(API_SERVICE_AUTO_WIRED, service="ontology_service")
