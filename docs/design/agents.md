@@ -60,6 +60,57 @@ Personality is split into two tiers:
     | `CommunicationVerbosity` | `terse`, `balanced`, `verbose` |
     | `ConflictApproach` | `avoid`, `accommodate`, `compete`, `compromise`, `collaborate` (Thomas-Kilmann model) |
 
+### Skill Model
+
+Agent skills are represented as structured capability descriptions aligned with the
+[A2A AgentSkill specification](communication.md#agent-card-projection), enabling lossless
+bidirectional mapping between internal skills and external Agent Card capabilities.
+
+```python
+class Skill(BaseModel, frozen=True):
+    """Structured capability description, A2A AgentSkill-aligned."""
+    id: NotBlankStr                              # e.g. "code-review"
+    name: NotBlankStr                            # e.g. "Code Review"
+    description: str = ""                        # human-readable capability description
+    tags: tuple[NotBlankStr, ...] = ()           # searchable tags for multi-faceted matching
+    input_modes: tuple[str, ...] = ("text/plain",)   # MIME types accepted
+    output_modes: tuple[str, ...] = ("text/plain",)  # MIME types produced
+    proficiency: float = 1.0                     # 0.0--1.0, agent's proficiency level
+
+class SkillSet(BaseModel, frozen=True):
+    """Agent skill inventory, split into primary and secondary."""
+    primary: tuple[Skill, ...] = ()
+    secondary: tuple[Skill, ...] = ()
+```
+
+| Field | A2A AgentSkill Equivalent | Purpose |
+|-------|--------------------------|---------|
+| `id` | `id` | Unique skill identifier |
+| `name` | `name` | Human-readable display name |
+| `description` | `description` | Capability description for semantic matching |
+| `tags` | `tags` | Searchable tags for multi-faceted routing |
+| `input_modes` | `inputModes` | MIME types the agent accepts for this skill |
+| `output_modes` | `outputModes` | MIME types the agent produces for this skill |
+| `proficiency` | -- | SynthOrg-specific: proficiency level for quality-aware routing |
+
+**Defaults and backward compatibility:**
+
+- `input_modes` and `output_modes` default to `("text/plain",)` -- internal agents that
+  only handle text do not need to specify these fields
+- `proficiency` defaults to `1.0` -- only meaningful when comparing agents with the same
+  skill at different proficiency levels
+- Existing string-based YAML configs auto-migrate: a bare string `"python"` is
+  interpreted as `Skill(id="python", name="python")` with all other fields at defaults
+
+**Routing impact:** The `AgentTaskScorer` uses structured skills for richer matching:
+primary skill overlap (40% weight), secondary skill overlap (20% weight), tag-based
+multi-faceted matching, and proficiency-weighted scoring. Proficiency enables
+quality-aware routing: "route to the agent with the highest Python proficiency."
+
+**Maintenance:** Skills are template-seeded at hire time (company templates provide
+default skill sets per role) and human-editable via the REST API. Auto-derivation from
+task completion history is a planned future enhancement.
+
 ### Agent Configuration Example
 
 ???+ example "Full agent identity YAML"
@@ -97,14 +148,33 @@ Personality is split into two tiers:
         conflict_approach: "compromise"
       skills:
         primary:
-          - python
-          - litestar
-          - postgresql
-          - system-design
+          - id: python
+            name: Python
+            description: "Backend development with Python 3.14+"
+            tags: [backend, scripting]
+            proficiency: 0.95
+          - id: litestar
+            name: Litestar
+            description: "Async web framework API development"
+            tags: [backend, api, async]
+          - id: postgresql
+            name: PostgreSQL
+            description: "Relational database design and optimization"
+            tags: [database, sql]
+          - id: system-design
+            name: System Design
+            description: "Distributed system architecture"
+            tags: [architecture, backend]
         secondary:
-          - docker
-          - redis
-          - testing
+          - id: docker
+            name: Docker
+            tags: [devops, containers]
+          - id: redis
+            name: Redis
+            tags: [database, caching]
+          - id: testing
+            name: Testing
+            tags: [quality, automation]
       model:
         provider: "example-provider"
         model_id: "example-medium-001"
