@@ -131,12 +131,12 @@ sole transport for intra-organization messages.
 |                             |     |                                   |
 |                      inbound|     |outbound                           |
 |                             v     v                                   |
-|                       +-----+-----+-----+                             |
-|                       |   Message Bus    |                             |
-|                       |  (internal,      |                             |
-|                       |   unchanged)     |                             |
-|                       +--+----+----+--+--+                             |
-|                          |    |    |  |                                |
+|                       +--------------------+                          |
+|                       |   Message Bus      |                          |
+|                       |  (internal,        |                          |
+|                       |   unchanged)       |                          |
+|                       +--+----+----+----+--+                          |
+|                          |    |    |    |                             |
 |                       +--v-+--v-+--v-+--v-+                           |
 |                       | A1 | A2 | A3 | A4 |  Internal Agents          |
 |                       +----+----+----+----+                           |
@@ -213,7 +213,7 @@ a bidirectional reference for the gateway translation layer.
 | SynthOrg | A2A | Direction | Notes |
 |----------|-----|-----------|-------|
 | `AgentIdentity` | `AgentCard` | SynthOrg -> A2A | One-way projection (safe subset) |
-| `Skill` *(proposed)* | `AgentSkill` | Bidirectional | Lossless field correspondence (requires enriched Skill model) |
+| `Skill` *(proposed)* | `AgentSkill` | Bidirectional | Lossless field correspondence (requires the enriched Skill model) |
 | `SkillSet.primary` | `AgentCard.skills` (tagged `primary`) | SynthOrg -> A2A | Primary/secondary distinction preserved via tags |
 | `SkillSet.secondary` | `AgentCard.skills` (tagged `secondary`) | SynthOrg -> A2A | Primary/secondary distinction preserved via tags |
 

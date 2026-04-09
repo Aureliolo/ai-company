@@ -20,7 +20,7 @@ abstracts away vendor differences, exposing a single `completion()` method regar
 whether the backend is a cloud API, OpenRouter, Ollama, or a custom endpoint.
 
 ```text
-+-------------------------------------------------+
++--------------------------------------------------+
 |            Unified Model Interface               |
 |   completion(messages, tools, config) -> resp    |
 +-----------+-----------+-----------+--------------+
@@ -968,7 +968,7 @@ implemented.
                     |   Agent       |
                     +-------+-------+
                       /           \
-               +-----v-+      +---v----+
+               +-----v--+      +--v-----+
                |APPROVE |      | DENY   |
                |(auto)  |      |+ reason|
                +----+---+      +---+----+
@@ -978,7 +978,7 @@ implemented.
                                | (Dashboard) |
                                +---+---------+
                              /         \
-                      +-----v-+    +---v----------+
+                      +-----v--+    +---v----------+
                       |Override|    |Alternative   |
                       |Approve |    |Suggested     |
                       +--------+    +--------------+
@@ -1447,18 +1447,18 @@ future CLI tool are thin clients that call the API -- they contain no business l
 ```text
 +-------------------------------------------------+
 |               SynthOrg Engine                   |
-|  (Core Logic, Agent Orchestration, Tasks)        |
+|  (Core Logic, Agent Orchestration, Tasks)       |
 +--------------------+----------------------------+
                      |
             +--------v--------+
-            |   REST/WS API    |  <-- primary interface
-            |   (Litestar)     |
+            |   REST/WS API   |  <-- primary interface
+            |   (Litestar)    |
             +---+----------+--+
                 |          |
-        +-------v--+  +---v--------+
+        +-------v---+  +---v--------+
         |  Web UI   |  |  CLI Tool  |
         |  (React)  |  |  (Go)      |
-        +----------+   +-----------+
+        +-----------+  +------------+
 ```
 
 !!! info "CLI Tool (Implemented)"
