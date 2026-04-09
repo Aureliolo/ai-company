@@ -142,7 +142,20 @@ class LookupEntityTool(BaseTool):
         Returns:
             Formatted list of matching entities or empty result.
         """
-        results = await self._backend.search(query)
+        try:
+            results = await self._backend.search(query)
+        except MemoryError, RecursionError:
+            raise
+        except Exception as exc:
+            logger.warning(
+                ONTOLOGY_TOOL_LOOKUP,
+                query=query,
+                error=str(exc),
+            )
+            return ToolExecutionResult(
+                content="Entity search failed. Try again later.",
+                is_error=True,
+            )
         if not results:
             logger.debug(
                 ONTOLOGY_TOOL_LOOKUP,

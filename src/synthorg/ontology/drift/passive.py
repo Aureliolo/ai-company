@@ -107,9 +107,17 @@ class PassiveMonitorStrategy:
             strategy="passive",
         )
 
+        from synthorg.ontology.errors import OntologyNotFoundError  # noqa: PLC0415
+
         try:
             entity = await self._ontology.get(entity_name)
-        except Exception:
+        except OntologyNotFoundError:
+            logger.warning(
+                ONTOLOGY_DRIFT_CHECK_COMPLETED,
+                entity_name=entity_name,
+                divergence_score=0.0,
+                reason="entity_not_found",
+            )
             return DriftReport(
                 entity_name=entity_name,
                 divergence_score=0.0,

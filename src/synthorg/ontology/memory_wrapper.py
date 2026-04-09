@@ -275,7 +275,15 @@ class OntologyAwareMemoryBackend:
         for name in entities:
             try:
                 entity = await self._ontology.get(name)
-            except Exception:  # noqa: S112
+            except MemoryError, RecursionError:
+                raise
+            except Exception:
+                logger.warning(
+                    ONTOLOGY_MEMORY_DRIFT_WARNED,
+                    agent_id=agent_id,
+                    entity_name=name,
+                    reason="entity_lookup_failed",
+                )
                 continue
             if not entity.definition:
                 continue

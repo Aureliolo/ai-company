@@ -97,7 +97,24 @@ class EntityAlignmentGuard:
         if mode == GuardMode.NONE:
             return EntityGuardOutcome(passed=True)
 
-        manifest = await self._ontology.get_version_manifest()
+        try:
+            manifest = await self._ontology.get_version_manifest()
+        except MemoryError, RecursionError:
+            raise
+        except Exception:
+            logger.warning(
+                ONTOLOGY_GUARD_BLOCKED,
+                delegator=request.delegator_id,
+                delegatee=request.delegatee_id,
+                detail="Failed to retrieve entity version manifest",
+            )
+            if mode == GuardMode.ENFORCE:
+                return EntityGuardOutcome(
+                    passed=False,
+                    message="Entity alignment check failed: "
+                    "could not retrieve version manifest",
+                )
+            manifest = {}
 
         if mode == GuardMode.STAMP:
             logger.debug(

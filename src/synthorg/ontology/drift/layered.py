@@ -6,6 +6,9 @@ for CORE entities, passive monitoring for USER entities.
 
 from typing import TYPE_CHECKING
 
+from synthorg.observability import get_logger
+from synthorg.observability.events.ontology import ONTOLOGY_DRIFT_CHECK_COMPLETED
+from synthorg.ontology.errors import OntologyNotFoundError
 from synthorg.ontology.models import EntityTier
 
 if TYPE_CHECKING:
@@ -13,6 +16,8 @@ if TYPE_CHECKING:
     from synthorg.ontology.drift.protocol import DriftDetectionStrategy
     from synthorg.ontology.models import DriftReport
     from synthorg.ontology.protocol import OntologyBackend
+
+logger = get_logger(__name__)
 
 
 class LayeredDetectionStrategy:
@@ -57,7 +62,12 @@ class LayeredDetectionStrategy:
         """
         try:
             entity = await self._ontology.get(entity_name)
-        except Exception:
+        except OntologyNotFoundError:
+            logger.warning(
+                ONTOLOGY_DRIFT_CHECK_COMPLETED,
+                entity_name=entity_name,
+                reason="entity_not_found_using_user_strategy",
+            )
             return await self._user_strategy.detect(
                 entity_name,
                 sample_agents,
