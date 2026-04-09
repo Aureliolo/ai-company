@@ -5,6 +5,7 @@ to evaluate recommendations from multiple perspectives.  Each lens
 includes a prompt fragment injected into the system prompt when active.
 """
 
+import copy
 from enum import StrEnum
 from types import MappingProxyType
 from typing import Final
@@ -12,6 +13,13 @@ from typing import Final
 from pydantic import BaseModel, ConfigDict, Field
 
 from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.observability import get_logger
+from synthorg.observability.events.strategy import (
+    STRATEGY_LENS_DEFINITION_INCOMPLETE,
+    STRATEGY_LENS_LOOKUP_FAILED,
+)
+
+logger = get_logger(__name__)
 
 
 class StrategicLens(StrEnum):
@@ -184,10 +192,14 @@ _missing_lenses = set(StrategicLens) - set(_RAW_DEFINITIONS)
 if _missing_lenses:
     _names = sorted(lv.value for lv in _missing_lenses)
     _msg = f"Missing lens definitions for: {_names}"
+    logger.error(
+        STRATEGY_LENS_DEFINITION_INCOMPLETE,
+        missing_lenses=_names,
+    )
     raise ValueError(_msg)
 
 LENS_DEFINITIONS: Final[MappingProxyType[StrategicLens, LensDefinition]] = (
-    MappingProxyType(_RAW_DEFINITIONS)
+    MappingProxyType(copy.deepcopy(_RAW_DEFINITIONS))
 )
 del _RAW_DEFINITIONS
 
@@ -218,6 +230,11 @@ def get_lens_definitions(
         except ValueError:
             available = sorted(lv.value for lv in StrategicLens)
             msg = f"Unknown lens {name!r}. Available: {available}"
+            logger.warning(
+                STRATEGY_LENS_LOOKUP_FAILED,
+                lens_name=name,
+                available=available,
+            )
             raise KeyError(msg) from None
         results.append(LENS_DEFINITIONS[lens])
     return tuple(results)

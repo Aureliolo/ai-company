@@ -142,10 +142,7 @@ def build_context(config: StrategyConfig) -> StrategicContext:
         )
     elif config.context.source == ContextSource.COMPOSITE:
         provider = CompositeContextProvider(
-            providers=(
-                MemoryContextProvider(fallback=config_provider),
-                config_provider,
-            ),
+            providers=(MemoryContextProvider(fallback=config_provider),),
         )
     else:
         provider = config_provider

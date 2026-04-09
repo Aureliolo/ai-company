@@ -28,7 +28,8 @@ class TestBuildOutputInstructions:
             mode=StrategicOutputMode.ADVISOR,
             lenses=(),
         )
-        assert "top 2-3" in result.lower() or "recommend" in result.lower()
+        assert "top 2-3" in result.lower()
+        assert "advice, not a decision" in result.lower()
 
     @pytest.mark.unit
     def test_decision_maker_mode(self) -> None:
@@ -36,7 +37,8 @@ class TestBuildOutputInstructions:
             mode=StrategicOutputMode.DECISION_MAKER,
             lenses=(),
         )
-        assert "recommendation" in result.lower() or "decision" in result.lower()
+        assert "make a final recommendation" in result.lower()
+        assert "state your decision clearly" in result.lower()
 
     @pytest.mark.unit
     def test_context_dependent_resolves_for_c_suite(self) -> None:
@@ -47,7 +49,8 @@ class TestBuildOutputInstructions:
             agent=agent,
         )
         # Should resolve to decision_maker for C-suite.
-        assert "recommendation" in result.lower() or "decision" in result.lower()
+        assert "state your decision clearly" in result.lower()
+        assert "advice, not a decision" not in result.lower()
 
     @pytest.mark.unit
     def test_context_dependent_resolves_for_mid(self) -> None:
@@ -58,7 +61,8 @@ class TestBuildOutputInstructions:
             agent=agent,
         )
         # Should resolve to advisor for non-C-suite.
-        assert "recommend" in result.lower() or "advice" in result.lower()
+        assert "advice, not a decision" in result.lower()
+        assert "state your decision clearly" not in result.lower()
 
     @pytest.mark.unit
     def test_lenses_included_in_output(self) -> None:

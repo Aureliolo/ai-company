@@ -21,7 +21,7 @@ Controls how strategic agents frame their recommendations. Set per-agent via `Ag
 | `option_expander` | Present ALL options with lens analysis, no ranking | -- |
 | `advisor` | Recommend top 2-3 with reasoning and caveats | C-suite, VP |
 | `decision_maker` | Make final recommendation with full justification | -- |
-| `context_dependent` | Resolves to advisor or decision_maker based on seniority and risk | Director |
+| `context_dependent` | Resolves to advisor or decision_maker based on agent seniority | Director |
 
 Resolution: agent override > config default. `context_dependent` resolves to `decision_maker` for C-suite/VP, `advisor` otherwise.
 
@@ -107,7 +107,7 @@ Weights must sum to 1.0. Composite score maps to cost tiers via thresholds.
 | Tier | Composite Score | Analysis Depth |
 |------|----------------|----------------|
 | `minimal` | < 0.4 | Basic lens evaluation |
-| `moderate` | 0.4 -- 0.7 | Full lens + constitutional review |
+| `moderate` | 0.4 <= score < 0.7 | Full lens + constitutional review |
 | `generous` | >= 0.7 | Full lens + constitutional + premortem |
 
 Resolution: `ProgressiveTierResolver` (score-based) or `FixedTierResolver` (config-based).

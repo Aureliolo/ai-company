@@ -68,6 +68,7 @@ def _identity_from_config(config: AgentConfig) -> AgentIdentity:
         tools=(ToolPermissions(**config.tools) if config.tools else ToolPermissions()),
         authority=(Authority(**config.authority) if config.authority else Authority()),
         autonomy_level=config.autonomy_level,
+        strategic_output_mode=config.strategic_output_mode,
         # Hiring date is always "today" -- bootstrap represents re-activation
         # into runtime, not re-creation.  AgentConfig does not persist
         # hiring_date.

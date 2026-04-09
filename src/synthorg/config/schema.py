@@ -18,7 +18,12 @@ from synthorg.core.company import (
     EscalationPath,
     WorkflowHandoff,
 )
-from synthorg.core.enums import AutonomyLevel, CompanyType, SeniorityLevel
+from synthorg.core.enums import (
+    AutonomyLevel,
+    CompanyType,
+    SeniorityLevel,
+    StrategicOutputMode,
+)
 from synthorg.core.resilience_config import RateLimiterConfig, RetryConfig
 from synthorg.core.role import CustomRole  # noqa: TC001
 from synthorg.core.types import NotBlankStr  # noqa: TC001
@@ -438,6 +443,13 @@ class AgentConfig(BaseModel):
     autonomy_level: AutonomyLevel | None = Field(
         default=None,
         description="Per-agent autonomy level override (D6)",
+    )
+    strategic_output_mode: StrategicOutputMode | None = Field(
+        default=None,
+        description=(
+            "Per-agent strategic output mode override. "
+            "None inherits the company strategy config default."
+        ),
     )
 
 

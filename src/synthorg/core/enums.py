@@ -73,7 +73,7 @@ class StrategicOutputMode(StrEnum):
     - ``advisor``: Recommend top 2-3 options with reasoning and caveats.
     - ``decision_maker``: Make a final recommendation with full justification.
     - ``context_dependent``: Choose advisor or decision_maker based on agent
-      seniority and decision risk level.
+      seniority (C-suite/VP resolves to decision_maker, others to advisor).
     """
 
     OPTION_EXPANDER = "option_expander"

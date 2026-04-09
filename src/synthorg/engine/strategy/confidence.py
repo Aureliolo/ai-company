@@ -100,7 +100,13 @@ class BothFormatter:
         """Format as structured block followed by narrative."""
         structured = self._structured.format(metadata=metadata)
         narrative = self._narrative.format(metadata=metadata)
-        return f"{structured}\n\n{narrative}"
+        result = f"{structured}\n\n{narrative}"
+        logger.debug(
+            STRATEGY_CONFIDENCE_FORMATTED,
+            format="both",
+            level=metadata.level,
+        )
+        return result
 
 
 class ProbabilityFormatter:
@@ -120,6 +126,10 @@ class ProbabilityFormatter:
             parts.append("Conditional on:")
             parts.extend(f"  - {a}" for a in metadata.assumptions)
 
+        if metadata.uncertainty_factors:
+            parts.append("Uncertainty factors:")
+            parts.extend(f"  - {f}" for f in metadata.uncertainty_factors)
+
         result = "\n".join(parts)
         logger.debug(
             STRATEGY_CONFIDENCE_FORMATTED,
@@ -127,6 +137,14 @@ class ProbabilityFormatter:
             level=metadata.level,
         )
         return result
+
+
+_FORMATTERS: dict[ConfidenceFormat, ConfidenceFormatter] = {
+    ConfidenceFormat.STRUCTURED: StructuredFormatter(),
+    ConfidenceFormat.NARRATIVE: NarrativeFormatter(),
+    ConfidenceFormat.BOTH: BothFormatter(),
+    ConfidenceFormat.PROBABILITY: ProbabilityFormatter(),
+}
 
 
 def get_formatter(config: ConfidenceConfig) -> ConfidenceFormatter:
@@ -138,10 +156,4 @@ def get_formatter(config: ConfidenceConfig) -> ConfidenceFormatter:
     Returns:
         Formatter matching the configured format.
     """
-    formatters: dict[ConfidenceFormat, ConfidenceFormatter] = {
-        ConfidenceFormat.STRUCTURED: StructuredFormatter(),
-        ConfidenceFormat.NARRATIVE: NarrativeFormatter(),
-        ConfidenceFormat.BOTH: BothFormatter(),
-        ConfidenceFormat.PROBABILITY: ProbabilityFormatter(),
-    }
-    return formatters[config.format]
+    return _FORMATTERS[config.format]

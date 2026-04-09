@@ -4,6 +4,7 @@ Generates output-mode-specific prompt instructions that shape how
 strategic agents frame their recommendations.
 """
 
+from types import MappingProxyType
 from typing import TYPE_CHECKING
 
 from synthorg.core.enums import SeniorityLevel, StrategicOutputMode
@@ -25,8 +26,8 @@ def build_output_instructions(
 ) -> str:
     """Generate output-mode-specific prompt instructions.
 
-    For ``context_dependent`` mode, resolves to ``advisor`` or
-    ``decision_maker`` based on agent seniority.
+    For ``context_dependent`` mode, resolves to ``decision_maker`` for
+    C-suite/VP agents, ``advisor`` for all others.
 
     Args:
         mode: Strategic output mode.
@@ -84,23 +85,25 @@ def _format_lens_instructions(
     return "\n".join(parts)
 
 
-_MODE_INSTRUCTIONS: dict[StrategicOutputMode, str] = {
-    StrategicOutputMode.OPTION_EXPANDER: (
-        "Present ALL viable options with analysis through each strategic "
-        "lens. Do not rank or recommend -- lay out the full option space "
-        "with trade-offs for each. Include at least one unconventional "
-        "option and explicitly evaluate the status quo."
-    ),
-    StrategicOutputMode.ADVISOR: (
-        "Recommend the top 2-3 options with reasoning and caveats for "
-        "each. Clearly state your top recommendation but present it as "
-        "advice, not a decision. Include the key assumptions underlying "
-        "each recommendation and what would change your advice."
-    ),
-    StrategicOutputMode.DECISION_MAKER: (
-        "Make a final recommendation with full justification. State your "
-        "decision clearly, then provide the reasoning. Include a risk "
-        "assessment, confidence level, key assumptions, and what "
-        "conditions would warrant revisiting this decision."
-    ),
-}
+_MODE_INSTRUCTIONS: MappingProxyType[StrategicOutputMode, str] = MappingProxyType(
+    {
+        StrategicOutputMode.OPTION_EXPANDER: (
+            "Present ALL viable options with analysis through each strategic "
+            "lens. Do not rank or recommend -- lay out the full option space "
+            "with trade-offs for each. Include at least one unconventional "
+            "option and explicitly evaluate the status quo."
+        ),
+        StrategicOutputMode.ADVISOR: (
+            "Recommend the top 2-3 options with reasoning and caveats for "
+            "each. Clearly state your top recommendation but present it as "
+            "advice, not a decision. Include the key assumptions underlying "
+            "each recommendation and what would change your advice."
+        ),
+        StrategicOutputMode.DECISION_MAKER: (
+            "Make a final recommendation with full justification. State your "
+            "decision clearly, then provide the reasoning. Include a risk "
+            "assessment, confidence level, key assumptions, and what "
+            "conditions would warrant revisiting this decision."
+        ),
+    }
+)

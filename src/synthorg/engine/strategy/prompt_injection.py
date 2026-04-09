@@ -80,6 +80,8 @@ def build_strategic_prompt_sections(
     output_mode = agent.strategic_output_mode or config.output_mode
 
     # Strategic context section.
+    # Phase 1: reads context directly from config fields. Phase 2 will
+    # wire build_context() to support memory/composite context providers.
     context_text = (
         f"You operate in the **{config.context.industry}** industry "
         f"at the **{config.context.maturity_stage}** stage. "
@@ -94,6 +96,8 @@ def build_strategic_prompt_sections(
             "Violations of critical principles must be explicitly justified."
         ]
         for i, p in enumerate(principles, 1):
+            # "warning" is the default severity -- omit the tag so only
+            # non-default severities (critical, informational) are marked.
             severity_tag = (
                 f" [{p.severity.value}]" if p.severity.value != "warning" else ""
             )

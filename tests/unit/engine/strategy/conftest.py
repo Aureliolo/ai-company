@@ -60,11 +60,12 @@ def make_agent(
     level: SeniorityLevel = SeniorityLevel.C_SUITE,
     strategic_output_mode: StrategicOutputMode | None = None,
     name: str = "Test Agent",
+    role: str = "Test Role",
 ) -> AgentIdentity:
     """Create a minimal agent for testing."""
     return AgentIdentity(
         name=name,
-        role="CEO",
+        role=role,
         department="executive",
         level=level,
         model=ModelConfig(provider="test-provider", model_id="test-model-001"),

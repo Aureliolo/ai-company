@@ -18,7 +18,14 @@ class TestProgressiveWeightsProperties:
 
     @pytest.mark.unit
     @given(
-        weights=st.tuples(*(st.floats(min_value=0.0, max_value=1.0) for _ in range(6))),
+        weights=st.tuples(
+            *(
+                st.floats(
+                    min_value=0.0, max_value=1.0, allow_nan=False, allow_infinity=False
+                )
+                for _ in range(6)
+            )
+        ),
     )
     @settings(max_examples=50)
     def test_valid_weights_always_sum_to_one(
@@ -55,8 +62,12 @@ class TestProgressiveThresholdsProperties:
 
     @pytest.mark.unit
     @given(
-        moderate=st.floats(min_value=0.0, max_value=0.99),
-        generous=st.floats(min_value=0.01, max_value=1.0),
+        moderate=st.floats(
+            min_value=0.0, max_value=0.99, allow_nan=False, allow_infinity=False
+        ),
+        generous=st.floats(
+            min_value=0.01, max_value=1.0, allow_nan=False, allow_infinity=False
+        ),
     )
     @settings(max_examples=50)
     def test_ordering_invariant(
@@ -78,9 +89,15 @@ class TestConfidenceMetadataProperties:
 
     @pytest.mark.unit
     @given(
-        lower=st.floats(min_value=0.0, max_value=1.0),
-        level=st.floats(min_value=0.0, max_value=1.0),
-        upper=st.floats(min_value=0.0, max_value=1.0),
+        lower=st.floats(
+            min_value=0.0, max_value=1.0, allow_nan=False, allow_infinity=False
+        ),
+        level=st.floats(
+            min_value=0.0, max_value=1.0, allow_nan=False, allow_infinity=False
+        ),
+        upper=st.floats(
+            min_value=0.0, max_value=1.0, allow_nan=False, allow_infinity=False
+        ),
     )
     @settings(max_examples=50)
     def test_range_ordering_invariant(
@@ -111,7 +128,9 @@ class TestImpactScoreProperties:
 
     @pytest.mark.unit
     @given(
-        composite=st.floats(min_value=0.0, max_value=1.0),
+        composite=st.floats(
+            min_value=0.0, max_value=1.0, allow_nan=False, allow_infinity=False
+        ),
     )
     @settings(max_examples=50)
     def test_composite_in_range(self, composite: float) -> None:

@@ -12,6 +12,7 @@ from types import MappingProxyType
 from typing import Any
 
 import yaml
+from pydantic import ValidationError
 
 from synthorg.engine.strategy.models import (
     ConstitutionalPrinciple,
@@ -272,8 +273,12 @@ def load_and_merge(
 
     # Merge custom principles, skipping duplicates by ID.
     existing_ids = {p.id for p in principles}
-    for raw in config.custom:
-        principle = ConstitutionalPrinciple(**raw)
+    for i, raw in enumerate(config.custom):
+        try:
+            principle = ConstitutionalPrinciple(**raw)
+        except (TypeError, ValidationError) as exc:
+            msg = f"Invalid custom principle at index {i}: {exc}"
+            raise StrategyPackValidationError(msg) from exc
         if principle.id not in existing_ids:
             principles.append(principle)
             existing_ids.add(principle.id)
