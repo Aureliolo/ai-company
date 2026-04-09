@@ -165,7 +165,7 @@ single GPU.
 |  Org docs, ADRs,  |     |  Base model embeds  |     |  InfoNCE loss     |
 |  procedures -->   |     |  all passages,      |     |  tau = 0.02       |
 |  LLM generates    |     |  selects top-k      |     |  3 epochs,        |
-|  query-doc pairs  |     |  confusing negatives |     |  lr = 1e-5        |
+|  query-doc pairs  |     |  confusing negatives|     |  lr = 1e-5        |
 +-------------------+     +---------------------+     +-------------------+
                                                               |
                                                               v

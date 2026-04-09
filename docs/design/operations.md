@@ -20,7 +20,7 @@ abstracts away vendor differences, exposing a single `completion()` method regar
 whether the backend is a cloud API, OpenRouter, Ollama, or a custom endpoint.
 
 ```text
-+-------------------------------------------------+
++--------------------------------------------------+
 |            Unified Model Interface               |
 |   completion(messages, tools, config) -> resp    |
 +-----------+-----------+-----------+--------------+
@@ -968,7 +968,7 @@ implemented.
                     |   Agent       |
                     +-------+-------+
                       /           \
-               +-----v-+      +---v----+
+               +-----v--+      +--v-----+
                |APPROVE |      | DENY   |
                |(auto)  |      |+ reason|
                +----+---+      +---+----+
@@ -978,7 +978,7 @@ implemented.
                                | (Dashboard) |
                                +---+---------+
                              /         \
-                      +-----v-+    +---v----------+
+                      +-----v--+    +---v----------+
                       |Override|    |Alternative   |
                       |Approve |    |Suggested     |
                       +--------+    +--------------+
@@ -1262,6 +1262,182 @@ feedback arrives.
 
 ---
 
+## A2A Security
+
+*Applies when the [A2A External Gateway](communication.md#a2a-external-gateway) is
+enabled (`a2a.enabled: true`). All A2A security controls are inactive when the gateway
+is disabled (the default).*
+
+### Authentication Schemes
+
+The gateway supports multiple authentication schemes for both inbound and outbound A2A
+communication, configurable per direction:
+
+| Scheme | Inbound (external -> SynthOrg) | Outbound (SynthOrg -> external) |
+|--------|-------------------------------|--------------------------------|
+| `apiKey` | Validate API key in request header | Send API key with outbound requests |
+| `oauth2` | Validate OAuth2 bearer token | Obtain and send bearer token |
+| `bearer` | Validate static bearer token | Send static bearer token |
+| `mTLS` | Verify client certificate | Present client certificate |
+| `none` | No authentication (development only) | No authentication |
+
+!!! warning "Production Requirement"
+
+    `none` authentication is intended for local development and testing only. Production
+    deployments must not use `none` for inbound requests -- configure any of the
+    authenticated schemes (`apiKey`, `oauth2`, `bearer`, or `mTLS`).
+
+### Inbound Request Validation
+
+Every inbound A2A request passes through two validation layers before reaching internal
+agents:
+
+1. **DelegationGuard** -- the same
+   [five loop prevention mechanisms](communication.md#loop-prevention) that protect
+   internal delegation also apply to external requests. External agents are treated as
+   delegation sources with the gateway as the entry point into the delegation chain.
+
+2. **External-specific checks**:
+    - Agent Card verification (see below)
+    - Request signature validation (when configured)
+    - Rate limiting scoped to external callers (separate from internal per-pair limits)
+    - Payload size validation (configurable max request body size)
+
+### Agent Trust Establishment
+
+External agent identity is verified through two independent layers, both configurable:
+
+Allowlist (default, always available)
+:   The `a2a.allowed_agents` list controls which external agents can interact with the
+    organization. Entries are matched against the Agent Card URL or agent ID. An empty
+    allowlist with `a2a.enabled: true` rejects all inbound requests (fail-closed). The
+    allowlist is operator-managed via the A2A configuration.
+
+Agent Card signature verification (opt-in)
+:   When `a2a.agent_card_verification.require_signatures` is enabled, inbound requests
+    must include a JWS-signed Agent Card. The gateway verifies the signature against a
+    set of trusted public keys or JWKS endpoints. This provides cryptographic proof of
+    agent identity beyond the allowlist.
+
+    ```yaml
+    a2a:
+      agent_card_verification:
+        enabled: true
+        require_signatures: false    # opt-in for high-security deployments
+        trusted_jwks_urls: []        # JWKS endpoints for key discovery
+        trusted_public_keys: []      # inline PEM-encoded public keys
+    ```
+
+The two layers are independent: the allowlist gates access (who may connect), signatures
+verify identity (who is connecting). Both can be enabled simultaneously for defense in
+depth.
+
+### Push Notification Webhook Security
+
+A2A push notifications allow external agents to receive task updates via webhooks.
+SynthOrg will implement a generic `WebhookReceiver` that is reusable beyond A2A:
+
+| Protection | Description |
+|------------|-------------|
+| **HMAC signature verification** | Webhook payloads are signed with a shared secret using the configured algorithm (default: HMAC-SHA256). The receiver verifies the signature before processing |
+| **Timestamp validation** | Requests include a timestamp header. The receiver rejects requests with timestamps outside the configured clock skew tolerance (default: 300 seconds) |
+| **Nonce/replay prevention** | Each request includes a unique nonce. The receiver maintains a TTL-based dedup window (default: 60 seconds) to reject replayed requests |
+
+The `WebhookReceiver` will be a standalone reusable component, not A2A-specific. It will
+protect any endpoint that receives webhook callbacks from external systems.
+
+### SSRF Prevention
+
+A2A push notification webhook URLs submitted by external agents must be validated
+against SSRF attacks. The framework provides a consolidated `SsrfValidator` service
+that unifies URL validation across all outbound connection points:
+
+| Consumer | Current Implementation | After Consolidation |
+|----------|----------------------|-------------------|
+| Notification adapters (ntfy, Slack) | `_validate_outbound_url()` | `SsrfValidator` |
+| Git clone URLs | `git_url_validator` module | `SsrfValidator` |
+| Provider discovery | `ProviderDiscoveryPolicy` allowlist | `SsrfValidator` + allowlist |
+| A2A push notification webhooks | (new) | `SsrfValidator` |
+
+For HTTP(S) consumers (webhooks, notifications, provider discovery), the `SsrfValidator`
+rejects URLs targeting private IP ranges (10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16),
+loopback addresses, link-local addresses, and non-HTTP(S) schemes. Git clone URLs
+continue to use the existing `git_url_validator` module, which supports SSH and SCP-like
+syntax with its own validation rules. A configurable allowlist permits legitimate internal
+endpoints (e.g., local providers, internal Git servers). DNS rebinding mitigation follows
+the existing pattern from `git_url_validator`: resolved IPs are pinned and re-validated
+before connection.
+
+### Quadratic Communication Enforcement
+
+The existing `MessageOverhead.is_quadratic` detection (see
+[Microservices Anti-Patterns](communication.md#microservices-anti-patterns-assessment))
+will be extended with a pluggable `QuadraticEnforcementStrategy` protocol. This is
+particularly relevant for A2A federation where external agent connections can amplify
+quadratic scaling. Currently, only detection exists -- enforcement strategies are
+proposed below.
+
+Four built-in strategies are planned:
+
+| Strategy | Behavior | Default |
+|----------|----------|---------|
+| `alert_only` | Current behavior -- detect and notify via `NotificationDispatcher` | Yes |
+| `soft_throttle` | Auto-tighten rate limiter for affected agent group by `rate_reduction_factor` | No |
+| `hard_block` | Reject new connections when agent count exceeds `max_agent_connections` | No |
+| `disabled` | No detection or enforcement | No |
+
+The strategy will be pluggable via the `QuadraticEnforcementStrategy` protocol -- custom
+strategies can be registered without modifying built-in code.
+
+???+ example "Quadratic enforcement configuration"
+
+    ```yaml
+    loop_prevention:
+      quadratic_enforcement:
+        strategy: "alert_only"         # alert_only, soft_throttle, hard_block, disabled
+        soft_throttle:
+          rate_reduction_factor: 0.5   # halve rate limits for affected group
+        hard_block:
+          max_agent_connections: 20    # reject connections beyond this count
+    ```
+
+### A2AConfig
+
+The gateway is configured under the `a2a` key in the company YAML:
+
+???+ example "Full A2A configuration"
+
+    ```yaml
+    a2a:
+      enabled: false                     # gateway disabled by default
+      auth:
+        inbound: apiKey                  # apiKey, oauth2, bearer, mTLS, none
+        outbound: bearer                 # auth scheme for outbound requests
+        api_key: "${A2A_API_KEY}"        # inbound API key (env var recommended)
+        outbound_token: "${A2A_OUTBOUND_TOKEN}"  # outbound bearer token
+      allowed_agents: []                 # allowlist of external agent IDs/URLs
+      agent_card_verification:
+        enabled: false                   # Agent Card verification
+        require_signatures: false        # JWS signature verification (opt-in)
+        trusted_jwks_urls: []
+        trusted_public_keys: []
+      push_notifications:
+        enabled: false                   # push notification support
+        webhook_receiver:
+          signature_algorithm: hmac-sha256
+          clock_skew_seconds: 300        # timestamp tolerance
+          replay_window_seconds: 60      # nonce dedup window
+      rate_limiting:
+        external_max_per_minute: 30      # per-external-agent rate limit
+        external_burst_allowance: 5
+      max_request_body_bytes: 1048576    # 1 MB payload limit
+    ```
+
+See [A2A External Gateway](communication.md#a2a-external-gateway) for the architecture
+overview, Agent Card projection, and concept mapping tables.
+
+---
+
 ## Human Interaction Layer
 
 ### API-First Architecture
@@ -1272,18 +1448,18 @@ future CLI tool are thin clients that call the API -- they contain no business l
 ```text
 +-------------------------------------------------+
 |               SynthOrg Engine                   |
-|  (Core Logic, Agent Orchestration, Tasks)        |
+|  (Core Logic, Agent Orchestration, Tasks)       |
 +--------------------+----------------------------+
                      |
             +--------v--------+
-            |   REST/WS API    |  <-- primary interface
-            |   (Litestar)     |
+            |   REST/WS API   |  <-- primary interface
+            |   (Litestar)    |
             +---+----------+--+
                 |          |
-        +-------v--+  +---v--------+
+        +-------v---+  +---v--------+
         |  Web UI   |  |  CLI Tool  |
         |  (React)  |  |  (Go)      |
-        +----------+   +-----------+
+        +-----------+  +------------+
 ```
 
 !!! info "CLI Tool (Implemented)"
