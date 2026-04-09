@@ -86,6 +86,7 @@ class PruningService:
         self._wake_event = asyncio.Event()
         self._pending_requests: dict[str, PruningRequest] = {}
         self._completed: list[PruningRecord] = []
+        self._processed_approval_ids: set[str] = set()
 
     @property
     def is_running(self) -> bool:
@@ -324,34 +325,39 @@ class PruningService:
             status=ApprovalStatus.APPROVED,
         )
         for item in approved_items:
-            await self._handle_approved(item)
+            if str(item.id) not in self._processed_approval_ids:
+                await self._handle_approved(item)
 
         rejected_items = await self._approval_store.list_items(
             action_type=_ACTION_TYPE,
             status=ApprovalStatus.REJECTED,
         )
         for item in rejected_items:
-            self._handle_rejected(item)
+            if str(item.id) not in self._processed_approval_ids:
+                self._handle_rejected(item)
 
     async def _handle_approved(self, item: ApprovalItem) -> None:
         """Execute offboarding after approval."""
         agent_id = item.metadata.get("agent_id")
         if not agent_id:
-            logger.warning(
-                HR_PRUNING_APPROVED,
+            logger.error(
+                HR_PRUNING_POLICY_ERROR,
                 approval_id=str(item.id),
                 error="Missing agent_id in approval metadata",
             )
+            self._processed_approval_ids.add(str(item.id))
             return
 
         agent = await self._registry.get(NotBlankStr(agent_id))
         if agent is None:
             logger.warning(
-                HR_PRUNING_APPROVED,
+                HR_PRUNING_POLICY_ERROR,
                 agent_id=agent_id,
-                error="Agent not found in registry",
+                approval_id=str(item.id),
+                error="Agent not found in registry after approval",
             )
             self._pending_requests.pop(agent_id, None)
+            self._processed_approval_ids.add(str(item.id))
             return
 
         logger.info(
@@ -382,11 +388,14 @@ class PruningService:
             logger.exception(
                 HR_PRUNING_POLICY_ERROR,
                 agent_id=agent_id,
+                approval_id=str(item.id),
                 error="Offboarding failed after approval",
             )
+            self._processed_approval_ids.add(str(item.id))
             return
 
         pending_request = self._pending_requests.pop(agent_id, None)
+        self._processed_approval_ids.add(str(item.id))
 
         record = PruningRecord(
             agent_id=NotBlankStr(agent_id),
@@ -418,7 +427,7 @@ class PruningService:
                 raise
             except Exception:
                 logger.warning(
-                    HR_PRUNING_OFFBOARDED,
+                    HR_PRUNING_POLICY_ERROR,
                     agent_id=agent_id,
                     note="notification callback failed",
                 )
@@ -427,6 +436,7 @@ class PruningService:
         """Clean up after a rejected approval."""
         agent_id = item.metadata.get("agent_id", "unknown")
         self._pending_requests.pop(agent_id, None)
+        self._processed_approval_ids.add(str(item.id))
         logger.info(
             HR_PRUNING_REJECTED,
             agent_id=agent_id,
@@ -437,18 +447,18 @@ class PruningService:
     async def _run_loop(self) -> None:
         """Sleep-and-check scheduler loop."""
         while True:
-            self._wake_event.clear()
             with contextlib.suppress(TimeoutError):
                 await asyncio.wait_for(
                     self._wake_event.wait(),
                     timeout=self._config.evaluation_interval_seconds,
                 )
+            self._wake_event.clear()
             try:
                 await self.run_pruning_cycle()
             except MemoryError, RecursionError:
                 raise
             except Exception:
                 logger.exception(
-                    HR_PRUNING_CYCLE_COMPLETE,
+                    HR_PRUNING_POLICY_ERROR,
                     error="Unexpected error in pruning scheduler loop",
                 )

@@ -91,6 +91,30 @@ class TestPruningEvaluation:
                 evaluated_at=NOW,
             )
 
+    def test_eligible_with_empty_reasons_rejected(self) -> None:
+        with pytest.raises(ValidationError, match=r"eligible.*must have.*reason"):
+            PruningEvaluation(
+                agent_id=NotBlankStr("agent-001"),
+                eligible=True,
+                reasons=(),
+                scores={},
+                policy_name=NotBlankStr("threshold"),
+                snapshot=make_performance_snapshot(),
+                evaluated_at=NOW,
+            )
+
+    def test_ineligible_with_empty_reasons_allowed(self) -> None:
+        evaluation = PruningEvaluation(
+            agent_id=NotBlankStr("agent-001"),
+            eligible=False,
+            reasons=(),
+            scores={},
+            policy_name=NotBlankStr("threshold"),
+            snapshot=make_performance_snapshot(),
+            evaluated_at=NOW,
+        )
+        assert evaluation.reasons == ()
+
 
 # ── PruningRequest ───────────────────────────────────────────────
 
@@ -128,7 +152,7 @@ class TestPruningRequest:
         evaluation = PruningEvaluation(
             agent_id=NotBlankStr("agent-001"),
             eligible=True,
-            reasons=(),
+            reasons=(NotBlankStr("test reason"),),
             scores={},
             policy_name=NotBlankStr("threshold"),
             snapshot=snapshot,
@@ -155,7 +179,7 @@ class TestPruningRequest:
         evaluation = PruningEvaluation(
             agent_id=NotBlankStr("agent-001"),
             eligible=True,
-            reasons=(),
+            reasons=(NotBlankStr("test reason"),),
             scores={},
             policy_name=NotBlankStr("threshold"),
             snapshot=snapshot,
@@ -176,7 +200,7 @@ class TestPruningRequest:
         evaluation = PruningEvaluation(
             agent_id=NotBlankStr("agent-001"),
             eligible=True,
-            reasons=(),
+            reasons=(NotBlankStr("test reason"),),
             scores={},
             policy_name=NotBlankStr("threshold"),
             snapshot=snapshot,
@@ -199,7 +223,7 @@ class TestPruningRequest:
         evaluation = PruningEvaluation(
             agent_id=NotBlankStr("agent-001"),
             eligible=True,
-            reasons=(),
+            reasons=(NotBlankStr("test reason"),),
             scores={},
             policy_name=NotBlankStr("threshold"),
             snapshot=snapshot,
@@ -217,6 +241,50 @@ class TestPruningRequest:
         )
         assert request.decided_at == NOW + timedelta(hours=1)
         assert request.decided_by == "admin"
+
+    def test_approved_without_decided_fields_rejected(self) -> None:
+        snapshot = make_performance_snapshot()
+        evaluation = PruningEvaluation(
+            agent_id=NotBlankStr("agent-001"),
+            eligible=True,
+            reasons=(NotBlankStr("test reason"),),
+            scores={},
+            policy_name=NotBlankStr("threshold"),
+            snapshot=snapshot,
+            evaluated_at=NOW,
+        )
+        with pytest.raises(ValidationError, match="decided_at and decided_by"):
+            PruningRequest(
+                agent_id=NotBlankStr("agent-001"),
+                agent_name=NotBlankStr("test-agent"),
+                evaluation=evaluation,
+                approval_id=NotBlankStr("a-001"),
+                status=ApprovalStatus.APPROVED,
+                created_at=NOW,
+            )
+
+    def test_pending_with_decided_fields_rejected(self) -> None:
+        snapshot = make_performance_snapshot()
+        evaluation = PruningEvaluation(
+            agent_id=NotBlankStr("agent-001"),
+            eligible=True,
+            reasons=(NotBlankStr("test reason"),),
+            scores={},
+            policy_name=NotBlankStr("threshold"),
+            snapshot=snapshot,
+            evaluated_at=NOW,
+        )
+        with pytest.raises(ValidationError, match="decided_at and decided_by"):
+            PruningRequest(
+                agent_id=NotBlankStr("agent-001"),
+                agent_name=NotBlankStr("test-agent"),
+                evaluation=evaluation,
+                approval_id=NotBlankStr("a-001"),
+                status=ApprovalStatus.PENDING,
+                created_at=NOW,
+                decided_at=NOW + timedelta(hours=1),
+                decided_by=NotBlankStr("admin"),
+            )
 
 
 # ── PruningRecord ───────────────────────────────────────────────
@@ -283,6 +351,58 @@ class TestPruningRecord:
             completed_at=NOW,
         )
         assert record.completed_at == record.created_at
+
+
+# ── PruningJobRun ────────────────────────────────────────────────
+
+
+@pytest.mark.unit
+class TestPruningJobRun:
+    """PruningJobRun count relationship validation."""
+
+    def test_eligible_exceeds_evaluated_rejected(self) -> None:
+        from synthorg.hr.pruning.models import PruningJobRun
+
+        with pytest.raises(ValidationError, match=r"agents_eligible.*cannot exceed"):
+            PruningJobRun(
+                job_id=NotBlankStr("job-001"),
+                run_at=NOW,
+                agents_evaluated=5,
+                agents_eligible=10,
+                approval_requests_created=0,
+                elapsed_seconds=1.0,
+            )
+
+    def test_approvals_exceeds_eligible_rejected(self) -> None:
+        from synthorg.hr.pruning.models import PruningJobRun
+
+        with pytest.raises(
+            ValidationError,
+            match=r"approval_requests_created.*cannot exceed",
+        ):
+            PruningJobRun(
+                job_id=NotBlankStr("job-001"),
+                run_at=NOW,
+                agents_evaluated=10,
+                agents_eligible=3,
+                approval_requests_created=5,
+                elapsed_seconds=1.0,
+            )
+
+    def test_valid_counts(self) -> None:
+        from synthorg.hr.pruning.models import PruningJobRun
+
+        job = PruningJobRun(
+            job_id=NotBlankStr("job-001"),
+            run_at=NOW,
+            agents_evaluated=10,
+            agents_eligible=3,
+            approval_requests_created=2,
+            elapsed_seconds=1.5,
+        )
+        assert job.agents_evaluated == 10
+        assert job.agents_eligible == 3
+        assert job.approval_requests_created == 2
 
 
 # ── PruningServiceConfig ────────────────────────────────────────

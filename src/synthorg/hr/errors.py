@@ -96,11 +96,3 @@ class PromotionApprovalRequiredError(PromotionError):
 
 class PruningError(HRError):
     """Error during the pruning process."""
-
-
-class PruningPolicyError(PruningError):
-    """Error in pruning policy evaluation."""
-
-
-class PruningApprovalRequiredError(PruningError):
-    """Pruning requires human approval before proceeding."""

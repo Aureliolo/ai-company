@@ -53,6 +53,14 @@ class PruningEvaluation(BaseModel):
     )
     evaluated_at: AwareDatetime = Field(description="When evaluation occurred")
 
+    @model_validator(mode="after")
+    def _validate_eligible_reasons(self) -> Self:
+        """Eligible evaluations must have at least one reason."""
+        if self.eligible and not self.reasons:
+            msg = "eligible evaluations must have at least one reason"
+            raise ValueError(msg)
+        return self
+
 
 class PruningRequest(BaseModel):
     """Request to prune an agent pending human approval.
@@ -94,8 +102,33 @@ class PruningRequest(BaseModel):
     )
 
     @model_validator(mode="after")
-    def _validate_temporal_order(self) -> Self:
-        """Ensure decided_at >= created_at when both are present."""
+    def _validate_decision_fields(self) -> Self:
+        """Enforce decision field invariants.
+
+        - PENDING must have decided_at and decided_by as None.
+        - Non-PENDING statuses require decided_at and decided_by.
+        - decided_at must be >= created_at when present.
+        """
+        decided_statuses = {
+            ApprovalStatus.APPROVED,
+            ApprovalStatus.REJECTED,
+            ApprovalStatus.EXPIRED,
+        }
+
+        if self.status in decided_statuses:
+            if self.decided_at is None or self.decided_by is None:
+                msg = (
+                    f"decided_at and decided_by are required "
+                    f"when status is {self.status.value}"
+                )
+                raise ValueError(msg)
+        elif self.decided_at is not None or self.decided_by is not None:
+            msg = (
+                f"decided_at and decided_by must be None "
+                f"when status is {self.status.value}"
+            )
+            raise ValueError(msg)
+
         if self.decided_at is not None and self.decided_at < self.created_at:
             msg = (
                 f"decided_at ({self.decided_at}) must be >= "
@@ -176,6 +209,24 @@ class PruningJobRun(BaseModel):
         default=(),
         description="Non-fatal errors encountered",
     )
+
+    @model_validator(mode="after")
+    def _validate_count_relationships(self) -> Self:
+        """Ensure count relationships are logically consistent."""
+        if self.agents_eligible > self.agents_evaluated:
+            msg = (
+                f"agents_eligible ({self.agents_eligible}) cannot exceed "
+                f"agents_evaluated ({self.agents_evaluated})"
+            )
+            raise ValueError(msg)
+        if self.approval_requests_created > self.agents_eligible:
+            msg = (
+                f"approval_requests_created "
+                f"({self.approval_requests_created}) cannot exceed "
+                f"agents_eligible ({self.agents_eligible})"
+            )
+            raise ValueError(msg)
+        return self
 
 
 class PruningServiceConfig(BaseModel):

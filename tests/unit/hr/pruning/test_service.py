@@ -611,6 +611,82 @@ class TestApprovalProcessing:
         await service.run_pruning_cycle(now=NOW + timedelta(hours=2))
         assert len(offboarding.offboard_calls) == 1
 
+    async def test_offboarding_failure_does_not_crash_cycle(
+        self,
+        registry: AgentRegistryService,
+        approval_store: ApprovalStore,
+    ) -> None:
+        """Offboarding failure is non-fatal and marks approval processed."""
+        agent = make_agent_identity(name="poor-performer")
+        await registry.register(agent)
+
+        offboarding = FakeOffboardingService()
+        offboarding.should_raise = RuntimeError("Offboarding exploded")
+
+        service = _make_service(
+            policies=(AlwaysEligiblePolicy(),),
+            registry=registry,
+            approval_store=approval_store,
+            offboarding=offboarding,
+        )
+
+        await service.run_pruning_cycle(now=NOW)
+        items = await approval_store.list_items(action_type="hr:prune")
+
+        approved = items[0].model_copy(
+            update={
+                "status": ApprovalStatus.APPROVED,
+                "decided_at": NOW + timedelta(hours=1),
+                "decided_by": NotBlankStr("admin"),
+            },
+        )
+        await approval_store.save(approved)
+
+        # Should not crash despite offboarding failure.
+        await service.run_pruning_cycle(now=NOW + timedelta(hours=2))
+        assert len(offboarding.offboard_calls) == 0
+
+        # Running again should NOT retry (idempotency).
+        await service.run_pruning_cycle(now=NOW + timedelta(hours=3))
+        assert len(offboarding.offboard_calls) == 0
+
+    async def test_approved_agent_not_reprocessed_on_next_cycle(
+        self,
+        registry: AgentRegistryService,
+        approval_store: ApprovalStore,
+        offboarding: FakeOffboardingService,
+    ) -> None:
+        """Once an approval is processed, it should not be reprocessed."""
+        agent = make_agent_identity(name="poor-performer")
+        await registry.register(agent)
+
+        service = _make_service(
+            policies=(AlwaysEligiblePolicy(),),
+            registry=registry,
+            approval_store=approval_store,
+            offboarding=offboarding,
+        )
+
+        await service.run_pruning_cycle(now=NOW)
+        items = await approval_store.list_items(action_type="hr:prune")
+
+        approved = items[0].model_copy(
+            update={
+                "status": ApprovalStatus.APPROVED,
+                "decided_at": NOW + timedelta(hours=1),
+                "decided_by": NotBlankStr("admin"),
+            },
+        )
+        await approval_store.save(approved)
+
+        # First cycle processes the approval.
+        await service.run_pruning_cycle(now=NOW + timedelta(hours=2))
+        assert len(offboarding.offboard_calls) == 1
+
+        # Second cycle should NOT reprocess the same approval.
+        await service.run_pruning_cycle(now=NOW + timedelta(hours=3))
+        assert len(offboarding.offboard_calls) == 1
+
 
 # ── Scheduler Lifecycle ──────────────────────────────────────────
 
@@ -655,28 +731,36 @@ class TestSchedulerLifecycle:
         agent = make_agent_identity(name="test-agent")
         await registry.register(agent)
 
+        cycle_executed = asyncio.Event()
+        original_cycle = None
+
         service = _make_service(
             policies=(AlwaysEligiblePolicy(),),
             registry=registry,
             approval_store=store,
             config=PruningServiceConfig(evaluation_interval_seconds=3600.0),
         )
+
+        original_cycle = service.run_pruning_cycle
+
+        async def patched_cycle(
+            **kwargs: object,
+        ) -> object:
+            result = await original_cycle(**kwargs)  # type: ignore[arg-type]
+            cycle_executed.set()
+            return result
+
+        service.run_pruning_cycle = patched_cycle  # type: ignore[assignment]
         service.start()
 
-        # Yield control so the loop reaches wait_for before we wake.
-        for _ in range(5):
-            await asyncio.sleep(0)
-
+        # Small yield to let the loop start waiting.
+        await asyncio.sleep(0.01)
         service.wake()
 
-        # Give the event loop time to execute the cycle.
-        for _ in range(20):
-            await asyncio.sleep(0.05)
-            items = await store.list_items(action_type="hr:prune")
-            if len(items) >= 1:
-                break
-
-        await service.stop()
+        try:
+            await asyncio.wait_for(cycle_executed.wait(), timeout=5.0)
+        finally:
+            await service.stop()
 
         items = await store.list_items(action_type="hr:prune")
         assert len(items) >= 1
