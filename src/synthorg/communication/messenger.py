@@ -69,8 +69,14 @@ def _resolve_parts(
         msg = "Provide either 'content' or 'parts', not both"
         raise ValueError(msg)
     if content is not None:
+        if not content.strip():
+            msg = "content must not be blank"
+            raise ValueError(msg)
         return (TextPart(text=content),)
     if parts is not None:
+        if not parts:
+            msg = "parts must not be empty"
+            raise ValueError(msg)
         return parts
     msg = "Either 'content' or 'parts' must be provided"
     raise ValueError(msg)

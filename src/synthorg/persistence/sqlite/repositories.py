@@ -443,7 +443,29 @@ INSERT INTO messages (
             # Map DB column "sender" to Message's "from" alias.
             data["from"] = data.pop("sender")
             # Parts are stored as JSON in the content column.
-            data["parts"] = json.loads(data.pop("content"))
+            # Legacy rows may contain plain text instead of JSON.
+            raw_content = data.pop("content")
+            try:
+                parsed_content = json.loads(raw_content)
+            except json.JSONDecodeError, TypeError:
+                # Legacy plain-text row: wrap as a single TextPart.
+                parsed_content = (
+                    [{"type": "text", "text": raw_content}]
+                    if raw_content and raw_content.strip()
+                    else []
+                )
+            else:
+                # json.loads may return a string (double-encoded).
+                if isinstance(parsed_content, str):
+                    parsed_content = (
+                        [{"type": "text", "text": parsed_content}]
+                        if parsed_content.strip()
+                        else []
+                    )
+                elif not isinstance(parsed_content, list):
+                    msg = "Invalid message content format"
+                    raise TypeError(msg)
+            data["parts"] = parsed_content
             data.pop("attachments", None)
             data["metadata"] = json.loads(data["metadata"])
             return Message.model_validate(data)

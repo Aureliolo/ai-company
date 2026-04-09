@@ -266,6 +266,11 @@ deduplication, rate limiting, circuit breaker) before dispatch.
 
 ## Message Format
 
+Messages use a **parts-based content model** with typed content parts
+(`TextPart`, `DataPart`, `FilePart`, `UriPart`).  The flat `content: str`
+field and `attachments` array have been removed in favour of a single
+`parts` tuple.
+
 ```json
 {
   "id": "msg-uuid",
@@ -275,9 +280,9 @@ deduplication, rate limiting, circuit breaker) before dispatch.
   "type": "task_update",
   "priority": "normal",
   "channel": "#backend",
-  "content": "Completed API endpoint for user authentication. PR ready for review.",
-  "attachments": [
-    {"type": "artifact", "ref": "pr-42"}
+  "parts": [
+    {"type": "text", "text": "Completed API endpoint. PR ready for review."},
+    {"type": "data", "data": {"pr_number": 42, "status": "open"}}
   ],
   "metadata": {
     "task_id": "task-123",
@@ -289,7 +294,28 @@ deduplication, rate limiting, circuit breaker) before dispatch.
 }
 ```
 
+### Part Types
+
+| Type | Discriminator | Key Fields | Purpose |
+|------|---------------|-----------|---------|
+| `TextPart` | `"text"` | `text: str` | Plain text content |
+| `DataPart` | `"data"` | `data: dict` | Structured JSON payload (deep-frozen at construction) |
+| `FilePart` | `"file"` | `uri: str`, `mime_type: str \| None` | File reference |
+| `UriPart` | `"uri"` | `uri: str` | Generic URI reference |
+
+`Message.text` is a computed field returning the first `TextPart.text`
+(or `""` if no text parts exist), providing backward-compatible text access.
+
 All metadata fields are nullable except `extra`, which is always present (defaults to an empty list). The `extra` field contains additional key-value pairs for extensibility.
+
+### Migration from flat content model
+
+No schema migration is required.  Parts are stored as JSON in the
+existing `content` TEXT column.  The persistence layer includes a
+backward-compatible deserializer: when `json.loads()` fails (legacy
+plain-text rows), the raw string is automatically wrapped as a single
+`TextPart` payload.  Existing messages remain readable without any
+manual data migration step.
 
 ---
 
@@ -514,10 +540,16 @@ registered and selected per meeting type. Cost bounds are enforced by
 
     1. **Agenda broadcast** -- leader shares agenda and context to all
        participants
-    2. **Input gathering** -- each agent submits input independently (parallel)
+    2. **Input gathering** -- each agent submits input independently (parallel);
+       strategic lens perspective injected per participant when configured
     3. **Discussion round** -- only triggered if conflicts are detected between
-       inputs; relevant agents debate (1 round, capped tokens)
-    4. **Decision + action items** -- leader synthesizes, creates tasks from
+       inputs (pluggable conflict detection: keyword, structured comparison,
+       LLM judge, hybrid, or auto-select); relevant agents debate
+    4. **Premortem** *(optional)* -- participants imagine the decision failed
+       and identify failure modes, risks, and hidden assumptions
+    5. **Devil's advocate** *(optional)* -- injected automatically when
+       consensus velocity detector identifies premature agreement
+    6. **Decision + action items** -- leader synthesizes, creates tasks from
        action items
 
     ```yaml

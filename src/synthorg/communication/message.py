@@ -94,8 +94,21 @@ class DataPart(BaseModel):
         value: MappingProxyType[str, Any],
         _info: object,
     ) -> dict[str, Any]:
-        """Serialize ``MappingProxyType`` back to a plain ``dict``."""
-        return dict(value)
+        """Serialize ``MappingProxyType`` back to a plain ``dict``.
+
+        Recursively thaws nested ``MappingProxyType`` instances and
+        converts ``tuple``/``frozenset`` back to ``list`` so the
+        result is JSON-serializable.
+        """
+
+        def _thaw(current: object) -> object:
+            if isinstance(current, MappingProxyType):
+                return {k: _thaw(v) for k, v in current.items()}
+            if isinstance(current, (tuple, frozenset)):
+                return [_thaw(item) for item in current]
+            return current
+
+        return _thaw(value)  # type: ignore[return-value]
 
 
 class FilePart(BaseModel):

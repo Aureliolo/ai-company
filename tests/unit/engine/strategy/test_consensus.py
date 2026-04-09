@@ -155,17 +155,16 @@ class TestConsensusVelocityDetector:
 
     @pytest.mark.unit
     def test_threshold_boundary_below(self) -> None:
-        """Similarity just below threshold should not be detected."""
+        """Similarity below threshold should not be detected."""
         detector = ConsensusVelocityDetector()
-        config = ConsensusVelocityConfig(threshold=0.95)
-        # Similar but not identical
-        positions = ("The answer is yes", "the answer is yes")
+        config = ConsensusVelocityConfig(threshold=0.99)
+        # Clearly dissimilar positions guaranteed below 0.99
+        positions = ("apples oranges fruit", "quantum physics theory")
         result = detector.detect(positions, config)
 
-        # Even with high similarity, if there's disagreement, not detected
-        # (or if similarity < threshold)
-        if result.mean_similarity <= config.threshold:
-            assert result.detected is False
+        assert result.mean_similarity < config.threshold
+        assert result.detected is False
+        assert result.action is None
 
     @pytest.mark.unit
     def test_multiple_positions_calculates_mean(self) -> None:
@@ -193,20 +192,23 @@ class TestConsensusVelocityDetector:
 
     @pytest.mark.unit
     def test_min_disagreements_threshold(self) -> None:
-        """min_disagreements parameter affects detection."""
+        """min_disagreements parameter prevents detection when met."""
         detector = ConsensusVelocityDetector(min_disagreements=3)
-        config = ConsensusVelocityConfig(threshold=0.8)
-        # High similarity but only 1 disagreement pair
+        config = ConsensusVelocityConfig(threshold=0.1)
+        # 3 identical + 1 very different: mean_sim > 0.1 but
+        # disagreement_count == 3 which is NOT < min_disagreements (3)
         positions = (
-            "We should do this",
-            "We should do this",
-            "Completely different",
+            "yes go ahead",
+            "yes go ahead",
+            "yes go ahead",
+            "no absolutely not",
         )
         result = detector.detect(positions, config)
 
-        # Only 1 disagreement pair < 3, so not detected even if high sim
-        if result.disagreement_count < 3:
-            assert result.detected is False
+        assert result.mean_similarity > config.threshold
+        assert result.disagreement_count >= 3
+        assert result.detected is False
+        assert result.action is None
 
     @pytest.mark.unit
     def test_action_reflects_config(self) -> None:
@@ -224,11 +226,12 @@ class TestConsensusVelocityDetector:
         """Action is None when consensus not detected."""
         detector = ConsensusVelocityDetector()
         config = ConsensusVelocityConfig(threshold=0.99)
-        positions = ("position 1", "position 2")
+        # Clearly dissimilar positions
+        positions = ("alpha beta gamma", "quantum delta epsilon zeta")
         result = detector.detect(positions, config)
 
-        if not result.detected:
-            assert result.action is None
+        assert result.detected is False
+        assert result.action is None
 
     @pytest.mark.unit
     def test_mean_similarity_is_rounded(self) -> None:

@@ -1,7 +1,5 @@
 """Meeting protocol configuration models (see Communication design page)."""
 
-from typing import Literal
-
 from pydantic import BaseModel, ConfigDict, Field
 
 from synthorg.communication.meeting.enums import MeetingProtocolType
@@ -124,13 +122,4 @@ class MeetingProtocolConfig(BaseModel):
     structured_phases: StructuredPhasesConfig = Field(
         default_factory=StructuredPhasesConfig,
         description="Structured-phases protocol settings",
-    )
-    conflict_detection_strategy: Literal[
-        "auto", "keyword", "structured", "llm_judge", "hybrid"
-    ] = Field(
-        default="auto",
-        description=(
-            "Conflict detection strategy for structured-phases protocol. "
-            "'auto' selects based on response format."
-        ),
     )

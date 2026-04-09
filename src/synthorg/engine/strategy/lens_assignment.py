@@ -34,8 +34,9 @@ class LensAssigner(Protocol):
 
         Returns:
             Dict mapping participant_id -> lens_name.
-            Not all participants need a lens (empty dict is valid).
-            Participants without assigned lenses use default perspectives.
+            Every participant receives a lens (round-robin wrap when
+            participants outnumber available lenses).  An empty dict
+            is returned only when *available_lenses* is empty.
         """
         ...
 

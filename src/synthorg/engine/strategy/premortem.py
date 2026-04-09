@@ -58,7 +58,7 @@ class FailureMode(BaseModel):
     )
 
 
-class PremortermOutput(BaseModel):
+class PremortemOutput(BaseModel):
     """Aggregated output from premortem analysis.
 
     Attributes:
@@ -84,7 +84,7 @@ class PremortermOutput(BaseModel):
 
 
 @runtime_checkable
-class PremortermExecutor(Protocol):
+class PremortemExecutor(Protocol):
     """Execute premortem analysis on meeting synthesis.
 
     Implementations conduct a premortem activity where participants
@@ -100,7 +100,7 @@ class PremortermExecutor(Protocol):
         agent_caller: AgentCaller,
         config: PremortemConfig,
         token_budget: int,
-    ) -> PremortermOutput:
+    ) -> PremortemOutput:
         """Conduct premortem analysis.
 
         Args:
@@ -116,7 +116,7 @@ class PremortermExecutor(Protocol):
         ...
 
 
-class DefaultPremortermExecutor:
+class DefaultPremortemExecutor:
     """Default premortem executor with configurable participant selection.
 
     Conducts parallel premortem by invoking selected participants with
@@ -125,7 +125,7 @@ class DefaultPremortermExecutor:
     into a unified output.
     """
 
-    async def execute(  # noqa: C901
+    async def execute(
         self,
         *,
         synthesis_text: str,
@@ -133,7 +133,7 @@ class DefaultPremortermExecutor:
         agent_caller: AgentCaller,
         config: PremortemConfig,
         token_budget: int,
-    ) -> PremortermOutput:
+    ) -> PremortemOutput:
         """Conduct premortem analysis.
 
         Args:
@@ -146,24 +146,41 @@ class DefaultPremortermExecutor:
         Returns:
             Aggregated premortem analysis output.
         """
-        # Handle NONE configuration
+        selected = self._select_participants(participant_ids, config)
+        if not selected:
+            return PremortemOutput()
+
+        prompt = self._build_prompt(synthesis_text)
+        responses = await self._gather_responses(
+            agent_caller,
+            selected,
+            prompt,
+            token_budget,
+        )
+        failure_modes, assumptions = self._aggregate_responses(responses)
+
+        return PremortemOutput(
+            failure_modes=tuple(failure_modes),
+            assumptions=tuple(assumptions),
+        )
+
+    @staticmethod
+    def _select_participants(
+        participant_ids: tuple[NotBlankStr, ...],
+        config: PremortemConfig,
+    ) -> tuple[NotBlankStr, ...]:
+        """Select participants based on config."""
         if config.participants == PremortemParticipation.NONE:
-            return PremortermOutput()
-
-        # Select participants based on configuration
-        selected_participants = participant_ids
+            return ()
         if config.participants == PremortemParticipation.STRATEGIC:
-            # In production, this would filter by agent seniority/role.
-            # For now, take approximately the first half.
             half = max(1, len(participant_ids) // 2)
-            selected_participants = participant_ids[:half]
+            return participant_ids[:half]
+        return participant_ids
 
-        # Return empty if no participants selected
-        if not selected_participants:
-            return PremortermOutput()
-
-        # Build premortem prompt
-        prompt = (
+    @staticmethod
+    def _build_prompt(synthesis_text: str) -> str:
+        """Build the premortem prompt."""
+        return (
             f"The following decision has been made:\n\n{synthesis_text}\n\n"
             "Imagine this decision was implemented and failed spectacularly. "
             "Working backward from the failure, identify:\n"
@@ -175,24 +192,43 @@ class DefaultPremortermExecutor:
             "could be wrong. Be specific and concrete."
         )
 
-        # Distribute tokens evenly across participants
-        tokens_per_agent = max(1, token_budget // len(selected_participants))
-
-        # Pre-allocate result slots for deterministic ordering
-        result_slots: list[AgentResponse | None] = [None] * len(
-            selected_participants,
-        )
+    @staticmethod
+    async def _gather_responses(
+        agent_caller: AgentCaller,
+        selected: tuple[NotBlankStr, ...],
+        prompt: str,
+        token_budget: int,
+    ) -> list[AgentResponse]:
+        """Fan-out agent calls and collect responses."""
+        tokens_per_agent = max(1, token_budget // len(selected))
+        result_slots: list[AgentResponse | None] = [None] * len(selected)
 
         async def _call_and_store(idx: int, pid: NotBlankStr) -> None:
-            result_slots[idx] = await agent_caller(pid, prompt, tokens_per_agent)
+            try:
+                result_slots[idx] = await agent_caller(
+                    pid,
+                    prompt,
+                    tokens_per_agent,
+                )
+            except Exception:
+                logger.warning(
+                    STRATEGY_PREMORTEM_RESPONSE_SKIPPED,
+                    participant_id=str(pid),
+                    reason="agent_caller raised",
+                    exc_info=True,
+                )
 
         async with asyncio.TaskGroup() as tg:
-            for idx, pid in enumerate(selected_participants):
+            for idx, pid in enumerate(selected):
                 tg.create_task(_call_and_store(idx, pid))
 
-        responses: list[AgentResponse] = [r for r in result_slots if r is not None]
+        return [r for r in result_slots if r is not None]
 
-        # Parse and aggregate failure modes and assumptions
+    @staticmethod
+    def _aggregate_responses(
+        responses: list[AgentResponse],
+    ) -> tuple[list[FailureMode], list[str]]:
+        """Parse failure modes and assumptions from responses."""
         all_failure_modes: list[FailureMode] = []
         all_assumptions: list[str] = []
 
@@ -208,7 +244,6 @@ class DefaultPremortermExecutor:
 
             lower_content = content.lower()
 
-            # If response contains failure discussion, create a mode entry
             if any(
                 word in lower_content for word in ["fail", "risk", "problem", "wrong"]
             ):
@@ -221,13 +256,9 @@ class DefaultPremortermExecutor:
                         )
                     )
 
-            # If response mentions assumptions, extract them
             if "assumption" in lower_content:
                 assumption = content[:150].strip()
                 if assumption:
                     all_assumptions.append(assumption)
 
-        return PremortermOutput(
-            failure_modes=tuple(all_failure_modes),
-            assumptions=tuple(all_assumptions),
-        )
+        return all_failure_modes, all_assumptions

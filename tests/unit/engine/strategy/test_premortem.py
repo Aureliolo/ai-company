@@ -10,10 +10,10 @@ from synthorg.engine.strategy.models import (
     RiskCard,
 )
 from synthorg.engine.strategy.premortem import (
-    DefaultPremortermExecutor,
+    DefaultPremortemExecutor,
     FailureMode,
-    PremortermExecutor,
-    PremortermOutput,
+    PremortemExecutor,
+    PremortemOutput,
 )
 
 
@@ -71,20 +71,20 @@ class TestFailureMode:
         assert mode.mitigation == "Implement connection pooling"
 
 
-class TestPremortermOutput:
-    """Tests for PremortermOutput model."""
+class TestPremortemOutput:
+    """Tests for PremortemOutput model."""
 
     @pytest.mark.unit
     def test_frozen(self) -> None:
-        """PremortermOutput should be frozen."""
-        output = PremortermOutput()
+        """PremortemOutput should be frozen."""
+        output = PremortemOutput()
         with pytest.raises(ValidationError):
             output.failure_modes = ()  # type: ignore[misc]
 
     @pytest.mark.unit
     def test_empty_output(self) -> None:
         """Empty output is valid."""
-        output = PremortermOutput()
+        output = PremortemOutput()
         assert output.failure_modes == ()
         assert output.assumptions == ()
         assert output.risk_card is None
@@ -96,14 +96,14 @@ class TestPremortermOutput:
             FailureMode(description="Failure 1"),
             FailureMode(description="Failure 2"),
         )
-        output = PremortermOutput(failure_modes=modes)
+        output = PremortemOutput(failure_modes=modes)
         assert len(output.failure_modes) == 2
 
     @pytest.mark.unit
     def test_with_assumptions(self) -> None:
         """Output can contain assumptions."""
         assumptions = ("Users will adopt it", "Team has bandwidth")
-        output = PremortermOutput(assumptions=assumptions)
+        output = PremortemOutput(assumptions=assumptions)
         assert output.assumptions == assumptions
 
     @pytest.mark.unit
@@ -112,7 +112,7 @@ class TestPremortermOutput:
         risk_card = RiskCard(
             decision_type="infrastructure_change",
         )
-        output = PremortermOutput(risk_card=risk_card)
+        output = PremortemOutput(risk_card=risk_card)
         assert output.risk_card is not None
         assert output.risk_card.decision_type == "infrastructure_change"
 
@@ -122,7 +122,7 @@ class TestPremortermOutput:
         modes = (FailureMode(description="Failure 1"),)
         assumptions = ("Assumption 1",)
         risk_card = RiskCard(decision_type="budget")
-        output = PremortermOutput(
+        output = PremortemOutput(
             failure_modes=modes,
             assumptions=assumptions,
             risk_card=risk_card,
@@ -132,23 +132,23 @@ class TestPremortermOutput:
         assert output.risk_card is not None
 
 
-class TestPremortermExecutor:
-    """Tests for PremortermExecutor protocol."""
+class TestPremortemExecutor:
+    """Tests for PremortemExecutor protocol."""
 
     @pytest.mark.unit
     def test_is_runtime_checkable(self) -> None:
-        """PremortermExecutor is a runtime_checkable protocol."""
-        executor = DefaultPremortermExecutor()
-        assert isinstance(executor, PremortermExecutor)
+        """PremortemExecutor is a runtime_checkable protocol."""
+        executor = DefaultPremortemExecutor()
+        assert isinstance(executor, PremortemExecutor)
 
 
-class TestDefaultPremortermExecutor:
-    """Tests for DefaultPremortermExecutor."""
+class TestDefaultPremortemExecutor:
+    """Tests for DefaultPremortemExecutor."""
 
     @pytest.mark.unit
     async def test_none_participation_returns_empty(self) -> None:
         """NONE participation returns empty output."""
-        executor = DefaultPremortermExecutor()
+        executor = DefaultPremortemExecutor()
         config = PremortemConfig(participants=PremortemParticipation.NONE)
 
         async def dummy_caller(
@@ -171,7 +171,7 @@ class TestDefaultPremortermExecutor:
     @pytest.mark.unit
     async def test_empty_participants_returns_empty(self) -> None:
         """Empty participants returns empty output."""
-        executor = DefaultPremortermExecutor()
+        executor = DefaultPremortemExecutor()
         config = PremortemConfig(participants=PremortemParticipation.ALL)
 
         async def dummy_caller(
@@ -187,12 +187,12 @@ class TestDefaultPremortermExecutor:
             token_budget=1000,
         )
 
-        assert output == PremortermOutput()
+        assert output == PremortemOutput()
 
     @pytest.mark.unit
     async def test_all_participation_calls_all(self) -> None:
         """ALL participation invokes all participants."""
-        executor = DefaultPremortermExecutor()
+        executor = DefaultPremortemExecutor()
         config = PremortemConfig(participants=PremortemParticipation.ALL)
 
         called_agents = []
@@ -217,7 +217,7 @@ class TestDefaultPremortermExecutor:
     @pytest.mark.unit
     async def test_strategic_participation_calls_subset(self) -> None:
         """STRATEGIC participation invokes approximately half."""
-        executor = DefaultPremortermExecutor()
+        executor = DefaultPremortemExecutor()
         config = PremortemConfig(participants=PremortemParticipation.STRATEGIC)
 
         called_agents = []
@@ -243,7 +243,7 @@ class TestDefaultPremortermExecutor:
     @pytest.mark.unit
     async def test_token_distribution(self) -> None:
         """Tokens are distributed evenly across participants."""
-        executor = DefaultPremortermExecutor()
+        executor = DefaultPremortemExecutor()
         config = PremortemConfig(participants=PremortemParticipation.ALL)
 
         token_allocations = []
@@ -268,7 +268,7 @@ class TestDefaultPremortermExecutor:
     @pytest.mark.unit
     async def test_prompt_contains_decision_summary(self) -> None:
         """Prompt includes the synthesis text."""
-        executor = DefaultPremortermExecutor()
+        executor = DefaultPremortemExecutor()
         config = PremortemConfig(participants=PremortemParticipation.ALL)
 
         captured_prompts = []
@@ -294,7 +294,7 @@ class TestDefaultPremortermExecutor:
     @pytest.mark.unit
     async def test_prompt_asks_for_failure_modes(self) -> None:
         """Prompt asks agents to imagine failure."""
-        executor = DefaultPremortermExecutor()
+        executor = DefaultPremortemExecutor()
         config = PremortemConfig(participants=PremortemParticipation.ALL)
 
         captured_prompts = []
@@ -320,7 +320,7 @@ class TestDefaultPremortermExecutor:
     @pytest.mark.unit
     async def test_parses_failure_responses(self) -> None:
         """Extracts failure modes from responses."""
-        executor = DefaultPremortermExecutor()
+        executor = DefaultPremortemExecutor()
         config = PremortemConfig(participants=PremortemParticipation.ALL)
 
         async def failure_caller(
@@ -345,7 +345,7 @@ class TestDefaultPremortermExecutor:
     @pytest.mark.unit
     async def test_parses_assumption_responses(self) -> None:
         """Extracts assumptions from responses."""
-        executor = DefaultPremortermExecutor()
+        executor = DefaultPremortemExecutor()
         config = PremortemConfig(participants=PremortemParticipation.ALL)
 
         async def assumption_caller(
@@ -370,7 +370,7 @@ class TestDefaultPremortermExecutor:
     @pytest.mark.unit
     async def test_multiple_responses_aggregated(self) -> None:
         """Multiple agent responses are aggregated."""
-        executor = DefaultPremortermExecutor()
+        executor = DefaultPremortemExecutor()
         config = PremortemConfig(participants=PremortemParticipation.ALL)
 
         response_count = 0
@@ -401,8 +401,8 @@ class TestDefaultPremortermExecutor:
 
     @pytest.mark.unit
     async def test_returns_valid_premortem_output(self) -> None:
-        """Result is always a valid PremortermOutput."""
-        executor = DefaultPremortermExecutor()
+        """Result is always a valid PremortemOutput."""
+        executor = DefaultPremortemExecutor()
         config = PremortemConfig(participants=PremortemParticipation.ALL)
 
         async def dummy_caller(
@@ -418,7 +418,7 @@ class TestDefaultPremortermExecutor:
             token_budget=1000,
         )
 
-        assert isinstance(output, PremortermOutput)
+        assert isinstance(output, PremortemOutput)
         assert isinstance(output.failure_modes, tuple)
         assert isinstance(output.assumptions, tuple)
         assert output.risk_card is None or isinstance(output.risk_card, RiskCard)
@@ -426,7 +426,7 @@ class TestDefaultPremortermExecutor:
     @pytest.mark.unit
     async def test_strategic_odd_number_participants(self) -> None:
         """STRATEGIC with odd number rounds down."""
-        executor = DefaultPremortermExecutor()
+        executor = DefaultPremortemExecutor()
         config = PremortemConfig(participants=PremortemParticipation.STRATEGIC)
 
         called_agents = []
@@ -451,7 +451,7 @@ class TestDefaultPremortermExecutor:
     @pytest.mark.unit
     async def test_strategic_single_participant(self) -> None:
         """STRATEGIC with single participant calls that one."""
-        executor = DefaultPremortermExecutor()
+        executor = DefaultPremortemExecutor()
         config = PremortemConfig(participants=PremortemParticipation.STRATEGIC)
 
         called_agents = []

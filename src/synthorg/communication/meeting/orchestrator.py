@@ -97,8 +97,8 @@ class MeetingOrchestrator:
         protocol_registry: Mapping[MeetingProtocolType, MeetingProtocol],
         agent_caller: AgentCaller,
         task_creator: TaskCreator | None = None,
-        strategy_config: Any = None,
-        lens_assigner: Any = None,
+        strategy_config: Any = None,  # typed as Any to avoid circular import
+        lens_assigner: Any = None,  # typed as Any to avoid circular import
     ) -> None:
         self._protocol_registry: MappingProxyType[
             MeetingProtocolType, MeetingProtocol

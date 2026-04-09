@@ -49,9 +49,12 @@ class ConsensusVelocityResult(BaseModel):
 
     @model_validator(mode="after")
     def _validate_action_consistency(self) -> Self:
-        """Ensure action is set when consensus is detected."""
+        """Ensure action/detected are consistent."""
         if self.detected and self.action is None:
             msg = "action must not be None when detected is True"
+            raise ValueError(msg)
+        if not self.detected and self.action is not None:
+            msg = "action must be None when detected is False"
             raise ValueError(msg)
         return self
 
@@ -81,7 +84,13 @@ class ConsensusVelocityDetector:
                 position pairs to consider consensus as non-premature.
                 Default is 2 (at least one pair of significantly different
                 positions keeps consensus from being "too fast").
+
+        Raises:
+            ValueError: If min_disagreements is negative.
         """
+        if min_disagreements < 0:
+            msg = "min_disagreements must be >= 0"
+            raise ValueError(msg)
         self._min_disagreements = min_disagreements
 
     def detect(

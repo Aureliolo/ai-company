@@ -87,7 +87,7 @@ class StructuredComparisonDetector:
 
             # Compare all pairs of positions field-by-field
             return self._has_field_conflicts(positions)
-        except Exception:
+        except json.JSONDecodeError, TypeError, KeyError, ValueError:
             logger.debug(
                 CONFLICT_PARSE_FAILED,
                 detector="StructuredComparisonDetector",
@@ -96,10 +96,7 @@ class StructuredComparisonDetector:
             return False
 
     def _extract_json(self, text: str) -> dict[str, Any] | None:
-        """Extract JSON object from text.
-
-        Looks for JSON object or array patterns and parses.
-        """
+        """Extract JSON object from text using brace matching."""
         # Try parsing entire text as JSON first (works for clean JSON)
         try:
             parsed = json.loads(text)
@@ -108,12 +105,12 @@ class StructuredComparisonDetector:
         except json.JSONDecodeError:
             pass
 
-        # Try to find JSON object in curly braces (first one)
-        json_pattern = r"\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}"
-        match = re.search(json_pattern, text, re.DOTALL)
-        if match:
+        # Find outermost braces to handle nested structures
+        start = text.find("{")
+        end = text.rfind("}")
+        if start != -1 and end != -1 and end > start:
             try:
-                parsed = json.loads(match.group())
+                parsed = json.loads(text[start : end + 1])
                 if isinstance(parsed, dict):
                     return parsed
             except json.JSONDecodeError:
@@ -139,13 +136,7 @@ class StructuredComparisonDetector:
             if isinstance(position, dict):
                 return [position]
 
-        # If neither field exists, try list values that look like positions
-        positions_list: list[dict[str, object]] = []
-        for value in data.values():
-            if isinstance(value, list):
-                positions_list.extend(item for item in value if isinstance(item, dict))
-
-        return positions_list
+        return []
 
     def _has_field_conflicts(
         self,
@@ -213,38 +204,47 @@ class LlmJudgeDetector:
                 if "judgment" in parsed:
                     judgment = parsed["judgment"]
                     if isinstance(judgment, str):
-                        return "conflict" in judgment.lower()
-        except Exception as e:
-            logger.debug("Failed to parse response for judge conflicts", exc_info=e)
+                        normalized = judgment.lower()
+                        if "no_conflict" in normalized or "no conflict" in normalized:
+                            return False
+                        return "conflict" in normalized
+        except json.JSONDecodeError, TypeError, ValueError:
+            logger.debug(
+                CONFLICT_PARSE_FAILED,
+                detector="LlmJudgeDetector",
+                exc_info=True,
+            )
 
         # Fallback to keyword markers
         content_upper = response_content.upper()
-        if "JUDGE: CONFLICT" in content_upper:
-            return True
         if "JUDGE: NO_CONFLICT" in content_upper:
             return False
+        if "JUDGE: CONFLICT" in content_upper:
+            return True
 
-        # Fallback to generic conflict keyword
-        return "CONFLICTS: YES" in content_upper
+        # Fallback to whitespace-tolerant keyword detection
+        return KeywordConflictDetector().detect(response_content)
 
     def _extract_json(self, text: str) -> dict[str, Any] | None:
-        """Extract JSON object from text."""
-        json_pattern = r"\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}"
-        match = re.search(json_pattern, text, re.DOTALL)
-        if match:
-            try:
-                parsed: dict[str, Any] = json.loads(match.group())
-            except json.JSONDecodeError:
-                pass
-            else:
-                return parsed
-
+        """Extract JSON object from text using brace matching."""
+        # Try parsing entire text as JSON first (works for clean JSON)
         try:
             parsed = json.loads(text)
+            if isinstance(parsed, dict):
+                return parsed
         except json.JSONDecodeError:
             pass
-        else:
-            return parsed
+
+        # Find outermost braces to handle nested structures
+        start = text.find("{")
+        end = text.rfind("}")
+        if start != -1 and end != -1 and end > start:
+            try:
+                parsed = json.loads(text[start : end + 1])
+                if isinstance(parsed, dict):
+                    return parsed
+            except json.JSONDecodeError:
+                pass
 
         return None
 
@@ -314,10 +314,9 @@ class HybridDetector:
     def detect(self, response_content: str) -> bool:
         """Detect conflicts using embedding + keyword fallback.
 
-        Currently delegates to KeywordConflictDetector (since embedding
-        detector is a stub). Once embeddings are available, will:
-        1. Try embedding similarity
-        2. If in ambiguous zone, use keyword fallback
+        Consults the embedding detector first.  If it detects a
+        conflict the method returns ``True`` immediately.  Otherwise
+        falls back to keyword detection.
 
         Args:
             response_content: The conflict-check response.
@@ -325,8 +324,8 @@ class HybridDetector:
         Returns:
             True if conflicts detected via either strategy.
         """
-        # For now, just use keyword detection
-        # (embedding_detector is a stub that always returns False)
+        if self.embedding_detector.detect(response_content):
+            return True
         return self.keyword_detector.detect(response_content)
 
 
@@ -370,13 +369,36 @@ class AutoDetector:
     def _is_structured_json(self, text: str) -> bool:
         """Check if text is JSON with position field."""
         try:
-            json_pattern = r"\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}"
-            match = re.search(json_pattern, text, re.DOTALL)
-            if match:
-                parsed = json.loads(match.group())
-                if isinstance(parsed, dict):
-                    return "position" in parsed or "positions" in parsed
-        except Exception as e:
-            logger.debug("Failed to parse position from text", exc_info=e)
+            parsed = self._try_parse_json_object(text)
+            if parsed is not None:
+                return "position" in parsed or "positions" in parsed
+        except json.JSONDecodeError, TypeError, ValueError:
+            logger.debug(
+                CONFLICT_PARSE_FAILED,
+                detector="AutoDetector",
+                exc_info=True,
+            )
 
         return False
+
+    @staticmethod
+    def _try_parse_json_object(text: str) -> dict[str, Any] | None:
+        """Extract a JSON object from text using brace matching."""
+        try:
+            parsed = json.loads(text)
+            if isinstance(parsed, dict):
+                return parsed
+        except json.JSONDecodeError:
+            pass
+
+        start = text.find("{")
+        end = text.rfind("}")
+        if start != -1 and end != -1 and end > start:
+            try:
+                parsed = json.loads(text[start : end + 1])
+                if isinstance(parsed, dict):
+                    return parsed
+            except json.JSONDecodeError:
+                pass
+
+        return None

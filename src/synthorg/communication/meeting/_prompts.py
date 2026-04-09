@@ -2,8 +2,12 @@
 
 from typing import TYPE_CHECKING
 
+from synthorg.observability import get_logger
+
 if TYPE_CHECKING:
     from synthorg.communication.meeting.models import MeetingAgenda
+
+logger = get_logger(__name__)
 
 
 def build_agenda_prompt(agenda: MeetingAgenda) -> str:
