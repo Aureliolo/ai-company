@@ -2,6 +2,7 @@
 
 import logging
 import os
+import shutil
 import time
 from collections.abc import AsyncGenerator, Iterable
 from pathlib import Path
@@ -170,20 +171,46 @@ def clear_logging_state() -> None:
     root.setLevel(logging.WARNING)
 
 
-@pytest.fixture
-async def migrated_db(tmp_path: Path) -> AsyncGenerator[aiosqlite.Connection]:
-    """Temp-file SQLite connection with Atlas migrations applied.
+_TEMPLATE_DB: Path | None = None
+"""Session-wide migrated template DB.  Created once, copied per test."""
 
-    Uses an isolated copy of the revisions directory so parallel
-    xdist workers do not contend on the Atlas directory lock.
+
+async def _get_template_db(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    """Return path to the session-wide migrated template database.
+
+    Migrates a fresh SQLite file via Atlas on first call, then
+    reuses the same file for all subsequent calls.  Each test
+    copies this file instead of spawning a new Atlas subprocess.
     """
-    db_path = tmp_path / "test.db"
-    rev_url = atlas.copy_revisions(tmp_path / "revisions")
+    global _TEMPLATE_DB  # noqa: PLW0603
+    if _TEMPLATE_DB is not None:
+        return _TEMPLATE_DB
+    base = tmp_path_factory.mktemp("atlas_template")
+    db_path = base / "template.db"
+    rev_url = atlas.copy_revisions(base / "revisions")
     await atlas.migrate_apply(
         atlas.to_sqlite_url(str(db_path)),
         revisions_url=rev_url,
         skip_lock=True,
     )
+    _TEMPLATE_DB = db_path
+    return _TEMPLATE_DB
+
+
+@pytest.fixture
+async def migrated_db(
+    tmp_path: Path,
+    tmp_path_factory: pytest.TempPathFactory,
+) -> AsyncGenerator[aiosqlite.Connection]:
+    """Temp-file SQLite connection with Atlas migrations applied.
+
+    Copies a session-wide template database instead of spawning
+    an Atlas subprocess per test -- eliminates ~hundreds of Go
+    process launches during a full test run.
+    """
+    template = await _get_template_db(tmp_path_factory)
+    db_path = tmp_path / "test.db"
+    shutil.copy2(str(template), str(db_path))
     db = await aiosqlite.connect(str(db_path))
     try:
         db.row_factory = aiosqlite.Row
