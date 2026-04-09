@@ -13,14 +13,39 @@ Strategies include:
 
 import json
 import re
-from typing import Any
+from typing import Any, Protocol, runtime_checkable
 
 from synthorg.observability import get_logger
-from synthorg.observability.events.strategy import STRATEGY_CONFLICT_PARSE_FAILED
+from synthorg.observability.events.strategy import (
+    STRATEGY_CONFLICT_PARSE_FAILED,
+    STRATEGY_DETECTOR_FALLBACK,
+    STRATEGY_DETECTOR_UNAVAILABLE,
+)
 
 CONFLICT_PARSE_FAILED = STRATEGY_CONFLICT_PARSE_FAILED
 
 logger = get_logger(__name__)
+
+
+@runtime_checkable
+class ConflictDetector(Protocol):
+    """Protocol for pluggable conflict detection strategies.
+
+    All conflict detectors share this interface so consumers can
+    type against the pluggable API under mypy strict mode.
+    """
+
+    def detect(self, response_content: str) -> bool:
+        """Determine whether the response indicates conflicts.
+
+        Args:
+            response_content: The conflict-check agent response text.
+
+        Returns:
+            True if conflicts detected, False otherwise.
+        """
+        ...
+
 
 _MIN_POSITIONS_FOR_CONFLICT: int = 2
 
@@ -251,11 +276,18 @@ class LlmJudgeDetector:
                 exc_info=True,
             )
 
-        # Fallback to keyword markers
-        content_upper = response_content.upper()
-        if "JUDGE: NO_CONFLICT" in content_upper:
+        # Fallback to keyword markers (whitespace-tolerant)
+        if re.search(
+            r"JUDGE\s*[:\-]\s*NO[_\s]*CONFLICT",
+            response_content,
+            re.IGNORECASE,
+        ):
             return False
-        if "JUDGE: CONFLICT" in content_upper:
+        if re.search(
+            r"JUDGE\s*[:\-]\s*CONFLICT",
+            response_content,
+            re.IGNORECASE,
+        ):
             return True
 
         # Fallback to whitespace-tolerant keyword detection
@@ -303,7 +335,7 @@ class EmbeddingSimilarityDetector:
             "EmbeddingSimilarityDetector cannot be used"
         )
         logger.warning(
-            CONFLICT_PARSE_FAILED,
+            STRATEGY_DETECTOR_UNAVAILABLE,
             detector="EmbeddingSimilarityDetector",
             reason=msg,
         )
@@ -349,7 +381,7 @@ class HybridDetector:
                 return True
         except NotImplementedError:
             logger.warning(
-                CONFLICT_PARSE_FAILED,
+                STRATEGY_DETECTOR_FALLBACK,
                 detector="HybridDetector",
                 reason="embedding detector unavailable, falling back to keyword",
             )

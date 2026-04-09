@@ -174,7 +174,6 @@ class TestFromAliasProperties:
 
 class TestTextPropertyProperties:
     @given(text=_not_blank)
-    @settings(max_examples=50)
     def test_text_property_returns_first_text_part(self, text: str) -> None:
         msg = Message(
             **{
@@ -185,7 +184,6 @@ class TestTextPropertyProperties:
         assert msg.text == text
 
     @given(text=_not_blank)
-    @settings(max_examples=50)
     def test_text_property_returns_first_text_part_from_mixed(self, text: str) -> None:
         msg = Message(
             **{
@@ -200,7 +198,6 @@ class TestTextPropertyProperties:
         assert msg.text == text
 
     @given(data=st.fixed_dictionaries({"key": _not_blank}))
-    @settings(max_examples=50)
     def test_text_property_returns_empty_when_no_text_part(
         self, data: dict[str, str]
     ) -> None:

@@ -19,6 +19,7 @@ from synthorg.observability import get_logger
 from synthorg.observability.events.strategy import (
     STRATEGY_CONSENSUS_CONFIG_INVALID,
     STRATEGY_CONSENSUS_DETECTED,
+    STRATEGY_CONSENSUS_INIT,
     STRATEGY_CONSENSUS_NOT_DETECTED,
 )
 
@@ -116,8 +117,7 @@ class ConsensusVelocityDetector:
             raise ValueError(msg)
         self._min_disagreements = min_disagreements
         logger.debug(
-            STRATEGY_CONSENSUS_DETECTED,
-            phase="init",
+            STRATEGY_CONSENSUS_INIT,
             min_disagreements=min_disagreements,
         )
 
