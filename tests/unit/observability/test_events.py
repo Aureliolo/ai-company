@@ -736,6 +736,7 @@ class TestEventConstants:
             ONTOLOGY_BOOTSTRAP_COMPLETED,
             ONTOLOGY_BOOTSTRAP_ENTITY_SKIPPED,
             ONTOLOGY_CONFIG_LOADED,
+            ONTOLOGY_ENTITY_DECORATOR_REGISTERED,
             ONTOLOGY_ENTITY_DELETED,
             ONTOLOGY_ENTITY_DESERIALIZATION_FAILED,
             ONTOLOGY_ENTITY_REGISTERED,
@@ -765,6 +766,10 @@ class TestEventConstants:
         assert (
             ONTOLOGY_ENTITY_DESERIALIZATION_FAILED
             == "ontology.entity.deserialization_failed"
+        )
+        assert (
+            ONTOLOGY_ENTITY_DECORATOR_REGISTERED
+            == "ontology.entity.decorator_registered"
         )
 
     def test_shipping_events_exist(self) -> None:

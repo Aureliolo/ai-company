@@ -3,7 +3,7 @@
 from datetime import UTC, datetime
 
 import pytest
-from hypothesis import given, settings
+from hypothesis import given
 from hypothesis import strategies as st
 
 from synthorg.ontology.models import (
@@ -118,7 +118,6 @@ class TestEntityDefinitionProperties:
     """Property-based tests for EntityDefinition."""
 
     @given(entity=_entity_definition_st)
-    @settings(max_examples=100)
     def test_model_dump_validate_roundtrip(
         self,
         entity: EntityDefinition,
@@ -128,7 +127,6 @@ class TestEntityDefinitionProperties:
         assert restored == entity
 
     @given(entity=_entity_definition_st)
-    @settings(max_examples=100)
     def test_json_roundtrip(
         self,
         entity: EntityDefinition,
@@ -140,7 +138,6 @@ class TestEntityDefinitionProperties:
     @given(
         fields=st.lists(_entity_fields_st, min_size=0, max_size=50),
     )
-    @settings(max_examples=50)
     def test_arbitrary_field_counts(
         self,
         fields: list[EntityField],
@@ -167,7 +164,6 @@ class TestDriftReportProperties:
         version=st.integers(min_value=1, max_value=10000),
         action=_drift_actions,
     )
-    @settings(max_examples=100)
     def test_valid_scores_accepted(
         self,
         score: float,
@@ -193,7 +189,6 @@ class TestDriftReportProperties:
             max_size=10,
         ),
     )
-    @settings(max_examples=50)
     def test_arbitrary_agent_counts(
         self,
         agents: list[AgentDrift],

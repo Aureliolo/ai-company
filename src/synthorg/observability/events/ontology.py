@@ -63,6 +63,13 @@ ONTOLOGY_SCHEMA_FAILED: Final[str] = "ontology.backend.schema_failed"
 ONTOLOGY_AUTO_WIRE_FAILED: Final[str] = "ontology.auto_wire.failed"
 """Ontology auto-wiring failed during startup."""
 
+# ── Decorator ──────────────────────────────────────────────────
+
+ONTOLOGY_ENTITY_DECORATOR_REGISTERED: Final[str] = (
+    "ontology.entity.decorator_registered"
+)
+"""Entity model registered via ``@ontology_entity`` decorator."""
+
 # ── Deserialization ─────────────────────────────────────────────
 
 ONTOLOGY_ENTITY_DESERIALIZATION_FAILED: Final[str] = (

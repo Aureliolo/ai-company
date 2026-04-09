@@ -71,7 +71,15 @@ class OntologyService:
                     reason="already registered",
                 )
                 continue
-            await self._snapshot(entity)
+            try:
+                await self._snapshot(entity)
+            except Exception:
+                logger.warning(
+                    ONTOLOGY_BOOTSTRAP_ENTITY_SKIPPED,
+                    entity_name=name,
+                    reason="version snapshot failed",
+                    exc_info=True,
+                )
         logger.info(
             ONTOLOGY_BOOTSTRAP_COMPLETED,
             total=len(registry),
@@ -127,7 +135,15 @@ class OntologyService:
                     reason="already registered",
                 )
                 continue
-            await self._snapshot(entity)
+            try:
+                await self._snapshot(entity)
+            except Exception:
+                logger.warning(
+                    ONTOLOGY_BOOTSTRAP_ENTITY_SKIPPED,
+                    entity_name=entry.name,
+                    reason="version snapshot failed",
+                    exc_info=True,
+                )
         logger.info(
             ONTOLOGY_CONFIG_LOADED,
             total=len(entities_config.entries),

@@ -14,6 +14,9 @@ from types import MappingProxyType
 from typing import TYPE_CHECKING, Any, NamedTuple, overload
 
 from synthorg.observability import get_logger
+from synthorg.observability.events.ontology import (
+    ONTOLOGY_ENTITY_DECORATOR_REGISTERED,
+)
 from synthorg.ontology.errors import OntologyDuplicateError
 
 logger = get_logger(__name__)
@@ -186,7 +189,7 @@ def ontology_entity(
         )
         _CACHE = None  # Invalidate cache.
         logger.debug(
-            "ontology.entity.decorator_registered",
+            ONTOLOGY_ENTITY_DECORATOR_REGISTERED,
             entity_name=name,
             cls=target_cls.__qualname__,
         )

@@ -139,6 +139,10 @@ class SQLiteOntologyBackend:
         """Return the active connection or raise."""
         if self._db is None:
             msg = "Ontology backend is not connected"
+            logger.warning(
+                ONTOLOGY_BACKEND_CONNECTION_FAILED,
+                error=msg,
+            )
             raise OntologyConnectionError(msg)
         return self._db
 
@@ -209,6 +213,7 @@ class SQLiteOntologyBackend:
             )
             await db.commit()
         except sqlite3.IntegrityError as exc:
+            await db.rollback()
             msg = f"Entity '{entity.name}' already exists"
             raise OntologyDuplicateError(msg) from exc
         logger.info(
@@ -250,6 +255,7 @@ class SQLiteOntologyBackend:
             params,
         )
         if cursor.rowcount == 0:
+            await db.rollback()
             msg = f"Entity '{entity.name}' not found"
             raise OntologyNotFoundError(msg)
         await db.commit()
@@ -266,6 +272,7 @@ class SQLiteOntologyBackend:
             {"name": name},
         )
         if cursor.rowcount == 0:
+            await db.rollback()
             msg = f"Entity '{name}' not found"
             raise OntologyNotFoundError(msg)
         await db.commit()
