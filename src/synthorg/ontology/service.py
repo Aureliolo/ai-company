@@ -11,14 +11,13 @@ from synthorg.observability.events.ontology import (
     ONTOLOGY_VERSION_SNAPSHOT,
 )
 from synthorg.ontology.decorator import get_entity_registry
-from synthorg.ontology.errors import OntologyDuplicateError, OntologyError
+from synthorg.ontology.errors import OntologyDuplicateError
 from synthorg.ontology.models import (
     EntityDefinition,
     EntityField,
     EntitySource,
     EntityTier,
 )
-from synthorg.persistence.errors import PersistenceError
 
 if TYPE_CHECKING:
     from synthorg.ontology.config import EntitiesConfig, OntologyConfig
@@ -74,7 +73,7 @@ class OntologyService:
                 continue
             try:
                 await self._snapshot(entity)
-            except OntologyError, PersistenceError:
+            except Exception:
                 logger.warning(
                     ONTOLOGY_BOOTSTRAP_ENTITY_SKIPPED,
                     entity_name=name,
@@ -138,7 +137,7 @@ class OntologyService:
                 continue
             try:
                 await self._snapshot(entity)
-            except OntologyError, PersistenceError:
+            except Exception:
                 logger.warning(
                     ONTOLOGY_BOOTSTRAP_ENTITY_SKIPPED,
                     entity_name=entry.name,
