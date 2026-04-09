@@ -32,17 +32,26 @@ _aware_datetimes = st.datetimes(
 # Part strategies
 _text_parts = st.builds(TextPart, text=_not_blank)
 
+_json_leaves = st.one_of(
+    st.text(min_size=1, max_size=20),
+    st.integers(min_value=-1000, max_value=1000),
+    st.floats(allow_nan=False, allow_infinity=False, min_value=-1e6, max_value=1e6),
+    st.booleans(),
+    st.none(),
+)
+
+_nested_values = st.recursive(
+    _json_leaves,
+    lambda children: st.one_of(
+        st.lists(children, max_size=3),
+        st.dictionaries(_not_blank, children, max_size=3),
+    ),
+    max_leaves=10,
+)
+
 _data_parts = st.builds(
     DataPart,
-    data=st.fixed_dictionaries(
-        {
-            "key": _not_blank,
-            "value": st.one_of(
-                st.text(min_size=1, max_size=20),
-                st.integers(min_value=-1000, max_value=1000),
-            ),
-        }
-    ),
+    data=st.dictionaries(_not_blank, _nested_values, min_size=1, max_size=4),
 )
 
 _file_parts = st.builds(

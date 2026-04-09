@@ -16,6 +16,10 @@ from synthorg.engine.strategy.models import (  # noqa: TC001
     ConsensusVelocityConfig,
 )
 from synthorg.observability import get_logger
+from synthorg.observability.events.strategy import (
+    STRATEGY_CONSENSUS_CONFIG_INVALID,
+    STRATEGY_CONSENSUS_DETECTED,
+)
 
 logger = get_logger(__name__)
 
@@ -95,7 +99,7 @@ class ConsensusVelocityDetector:
         ):
             msg = "min_disagreements must be an int"
             logger.warning(
-                "consensus.config.invalid",
+                STRATEGY_CONSENSUS_CONFIG_INVALID,
                 min_disagreements=min_disagreements,
                 value_type=type(min_disagreements).__name__,
                 reason=msg,
@@ -104,7 +108,7 @@ class ConsensusVelocityDetector:
         if min_disagreements < 0:
             msg = "min_disagreements must be >= 0"
             logger.warning(
-                "consensus.config.invalid",
+                STRATEGY_CONSENSUS_CONFIG_INVALID,
                 min_disagreements=min_disagreements,
                 reason=msg,
             )
@@ -125,6 +129,14 @@ class ConsensusVelocityDetector:
         Returns:
             ConsensusVelocityResult with detection status and metrics.
         """
+        logger.debug(
+            STRATEGY_CONSENSUS_DETECTED,
+            phase="entry",
+            num_positions=len(positions),
+            threshold=config.threshold,
+            min_disagreements=self._min_disagreements,
+        )
+
         if len(positions) < _MIN_POSITION_PAIRS:
             return ConsensusVelocityResult(
                 detected=False,
@@ -138,28 +150,33 @@ class ConsensusVelocityDetector:
 
         for i in range(len(positions)):
             for j in range(i + 1, len(positions)):
-                # Use SequenceMatcher for pure-Python text similarity
                 ratio = difflib.SequenceMatcher(
                     None, positions[i], positions[j]
                 ).ratio()
                 similarities.append(ratio)
 
-                # Positions with < threshold are "substantially different"
                 if ratio < _SUBSTANTIAL_DIFF_THRESHOLD:
                     disagreements += 1
 
-        # Calculate mean similarity (round before comparison so the
-        # reported metric and detection decision are consistent).
         rounded_mean = round(sum(similarities) / len(similarities), 4)
 
-        # Detect premature consensus: high similarity + few disagreements
         is_premature = (
             rounded_mean > config.threshold and disagreements < self._min_disagreements
         )
 
+        action = config.action if is_premature else None
+
+        logger.info(
+            STRATEGY_CONSENSUS_DETECTED,
+            detected=is_premature,
+            action=str(action),
+            mean_similarity=rounded_mean,
+            disagreement_count=disagreements,
+        )
+
         return ConsensusVelocityResult(
             detected=is_premature,
-            action=config.action if is_premature else None,
+            action=action,
             mean_similarity=rounded_mean,
             disagreement_count=disagreements,
         )

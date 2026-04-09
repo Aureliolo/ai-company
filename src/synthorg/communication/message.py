@@ -2,7 +2,10 @@
 
 from collections import Counter
 from types import MappingProxyType
-from typing import Annotated, Any, Literal, Self
+from typing import TYPE_CHECKING, Annotated, Any, Literal, Self
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping
 from uuid import UUID, uuid4
 
 from pydantic import (
@@ -110,10 +113,14 @@ class DataPart(BaseModel):
 
         return _thaw(value)  # type: ignore[return-value]
 
-    def model_copy(self, **kwargs: Any) -> DataPart:
+    def model_copy(  # type: ignore[override]
+        self,
+        *,
+        update: Mapping[str, Any] | None = None,
+        deep: bool = False,
+    ) -> Self:
         """Override to re-freeze data when model_copy updates it."""
-        result = super().model_copy(**kwargs)
-        update = kwargs.get("update")
+        result = super().model_copy(update=update, deep=deep)
         if update and "data" in update:
             raw = update["data"]
             if isinstance(raw, MappingProxyType):
