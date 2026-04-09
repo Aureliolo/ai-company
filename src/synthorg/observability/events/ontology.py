@@ -76,3 +76,52 @@ ONTOLOGY_ENTITY_DESERIALIZATION_FAILED: Final[str] = (
     "ontology.entity.deserialization_failed"
 )
 """Entity definition deserialization from database failed."""
+
+# ── Injection ──────────────────────────────────────────────────
+
+ONTOLOGY_INJECTION_PREPARED: Final[str] = "ontology.injection.prepared"
+"""Ontology context injection messages prepared for agent."""
+
+ONTOLOGY_TOOL_LOOKUP: Final[str] = "ontology.tool.lookup"
+"""Agent invoked the entity lookup tool."""
+
+# ── Delegation guard ───────────────────────────────────────────
+
+ONTOLOGY_GUARD_STAMPED: Final[str] = "ontology.guard.stamped"
+"""Entity version manifest stamped onto delegation record."""
+
+ONTOLOGY_GUARD_DRIFT_DETECTED: Final[str] = "ontology.guard.drift_detected"
+"""Entity version drift detected during delegation validation."""
+
+ONTOLOGY_GUARD_BLOCKED: Final[str] = "ontology.guard.blocked"
+"""Delegation blocked due to stale entity versions (enforce mode)."""
+
+# ── Memory wrapper ─────────────────────────────────────────────
+
+ONTOLOGY_MEMORY_TAGGED: Final[str] = "ontology.memory.tagged"
+"""Memory entry auto-tagged with entity references."""
+
+ONTOLOGY_MEMORY_DRIFT_WARNED: Final[str] = "ontology.memory.drift_warned"
+"""Memory content diverges from canonical entity definition."""
+
+ONTOLOGY_MEMORY_ENRICHED: Final[str] = "ontology.memory.enriched"
+"""Retrieved memory entries enriched with entity version info."""
+
+# ── Drift detection ────────────────────────────────────────────
+
+ONTOLOGY_DRIFT_CHECK_STARTED: Final[str] = "ontology.drift.check_started"
+"""Drift detection check started for entity."""
+
+ONTOLOGY_DRIFT_CHECK_COMPLETED: Final[str] = "ontology.drift.check_completed"
+"""Drift detection check completed for entity."""
+
+ONTOLOGY_DRIFT_DETECTED: Final[str] = "ontology.drift.detected"
+"""Semantic drift detected for entity above threshold."""
+
+# ── OrgMemory sync ─────────────────────────────────────────────
+
+ONTOLOGY_SYNC_PUBLISHED: Final[str] = "ontology.sync.published"
+"""Entity definition published as OrgFact."""
+
+ONTOLOGY_SYNC_SKIPPED: Final[str] = "ontology.sync.skipped"
+"""Entity definition sync skipped (content unchanged)."""

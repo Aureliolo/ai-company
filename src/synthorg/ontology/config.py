@@ -14,16 +14,16 @@ class InjectionStrategy(StrEnum):
     """How entity definitions are injected into agent context.
 
     Attributes:
-        HYBRID: Core entities in system prompt, others via tool.
-        FULL: All entities in system prompt.
-        SUMMARY: Condensed summaries in system prompt.
-        NONE: No injection (agents use tools on demand).
+        PROMPT: Core-tier entities injected as system message section.
+        TOOL: On-demand retrieval via ``lookup_entity`` tool only.
+        HYBRID: Core entities via system prompt, extended via tool.
+        MEMORY: Relies on OrgMemory sync; no direct injection.
     """
 
+    PROMPT = "prompt"
+    TOOL = "tool"
     HYBRID = "hybrid"
-    FULL = "full"
-    SUMMARY = "summary"
-    NONE = "none"
+    MEMORY = "memory"
 
 
 class DriftStrategy(StrEnum):
@@ -32,11 +32,13 @@ class DriftStrategy(StrEnum):
     Attributes:
         PASSIVE: Check drift on explicit request only.
         ACTIVE: Periodically scan agent outputs for drift.
+        LAYERED: Active for CORE entities, passive for USER entities.
         NONE: Drift detection disabled.
     """
 
     PASSIVE = "passive"
     ACTIVE = "active"
+    LAYERED = "layered"
     NONE = "none"
 
 

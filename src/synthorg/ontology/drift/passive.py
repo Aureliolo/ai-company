@@ -1,0 +1,171 @@
+"""Passive drift monitoring strategy.
+
+Queries agent memories for entity-tagged entries and computes
+divergence via keyword overlap between stored content and the
+canonical entity definition.
+"""
+
+from typing import TYPE_CHECKING
+
+from synthorg.observability import get_logger
+from synthorg.observability.events.ontology import (
+    ONTOLOGY_DRIFT_CHECK_COMPLETED,
+    ONTOLOGY_DRIFT_CHECK_STARTED,
+)
+from synthorg.ontology.models import AgentDrift, DriftAction, DriftReport
+
+if TYPE_CHECKING:
+    from synthorg.core.types import NotBlankStr
+    from synthorg.memory.protocol import MemoryBackend
+    from synthorg.ontology.protocol import OntologyBackend
+
+logger = get_logger(__name__)
+
+
+def _keyword_overlap(text_a: str, text_b: str) -> float:
+    """Compute keyword overlap ratio between two texts.
+
+    Args:
+        text_a: First text.
+        text_b: Reference text (denominator).
+
+    Returns:
+        Overlap ratio (0.0 to 1.0).  Returns 0.0 if reference is empty.
+    """
+    words_a = set(text_a.lower().split())
+    words_b = set(text_b.lower().split())
+    if not words_b:
+        return 0.0
+    return len(words_a & words_b) / len(words_b)
+
+
+def _recommend(score: float, threshold: float) -> DriftAction:
+    """Map divergence score to recommendation.
+
+    Args:
+        score: Aggregate divergence score.
+        threshold: Configured drift threshold.
+
+    Returns:
+        Recommended action.
+    """
+    if score < threshold:
+        return DriftAction.NO_ACTION
+    if score < 0.5:  # noqa: PLR2004
+        return DriftAction.NOTIFY
+    if score < 0.7:  # noqa: PLR2004
+        return DriftAction.RETRAIN
+    return DriftAction.ESCALATE
+
+
+class PassiveMonitorStrategy:
+    """Passive drift detection via keyword overlap.
+
+    Queries each sampled agent's memory for entity-tagged entries,
+    then computes divergence as ``1 - keyword_overlap`` between
+    stored content and the canonical definition.
+
+    Args:
+        ontology: Ontology backend for definitions.
+        memory: Memory backend for agent memories.
+        threshold: Divergence threshold for recommendations.
+    """
+
+    __slots__ = ("_memory", "_ontology", "_threshold")
+
+    def __init__(
+        self,
+        *,
+        ontology: OntologyBackend,
+        memory: MemoryBackend,
+        threshold: float = 0.3,
+    ) -> None:
+        self._ontology = ontology
+        self._memory = memory
+        self._threshold = threshold
+
+    async def detect(
+        self,
+        entity_name: NotBlankStr,
+        sample_agents: tuple[NotBlankStr, ...],
+    ) -> DriftReport:
+        """Detect drift for a single entity across sampled agents.
+
+        Args:
+            entity_name: Entity to check.
+            sample_agents: Agent IDs to sample.
+
+        Returns:
+            Drift report with per-agent divergence details.
+        """
+        from synthorg.memory.models import MemoryQuery  # noqa: PLC0415
+
+        logger.debug(
+            ONTOLOGY_DRIFT_CHECK_STARTED,
+            entity_name=entity_name,
+            agent_count=len(sample_agents),
+            strategy="passive",
+        )
+
+        try:
+            entity = await self._ontology.get(entity_name)
+        except Exception:
+            return DriftReport(
+                entity_name=entity_name,
+                divergence_score=0.0,
+                canonical_version=1,
+                recommendation=DriftAction.NO_ACTION,
+            )
+
+        manifest = await self._ontology.get_version_manifest()
+        version = manifest.get(entity_name, 1)
+        canonical_text = entity.definition or entity.name
+
+        agent_drifts: list[AgentDrift] = []
+        for agent_id in sample_agents:
+            query = MemoryQuery(
+                tags=(f"entity:{entity_name}",),
+                limit=20,
+            )
+            entries = await self._memory.retrieve(agent_id, query)
+            if not entries:
+                continue
+
+            combined = " ".join(e.content for e in entries)
+            overlap = _keyword_overlap(combined, canonical_text)
+            divergence = round(1.0 - overlap, 3)
+            if divergence > 0.0:
+                agent_drifts.append(
+                    AgentDrift(
+                        agent_id=agent_id,
+                        divergence_score=divergence,
+                        details=f"Keyword overlap: {overlap:.1%}",
+                    ),
+                )
+
+        if agent_drifts:
+            agg = sum(d.divergence_score for d in agent_drifts) / len(
+                agent_drifts,
+            )
+        else:
+            agg = 0.0
+
+        report = DriftReport(
+            entity_name=entity_name,
+            divergence_score=round(agg, 3),
+            divergent_agents=tuple(agent_drifts),
+            canonical_version=version,
+            recommendation=_recommend(agg, self._threshold),
+        )
+        logger.debug(
+            ONTOLOGY_DRIFT_CHECK_COMPLETED,
+            entity_name=entity_name,
+            divergence_score=report.divergence_score,
+            recommendation=report.recommendation.value,
+        )
+        return report
+
+    @property
+    def strategy_name(self) -> str:
+        """Return ``"passive"``."""
+        return "passive"

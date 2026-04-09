@@ -1,0 +1,120 @@
+"""Drift detection background service."""
+
+from typing import TYPE_CHECKING
+
+from synthorg.observability import get_logger
+from synthorg.observability.events.ontology import (
+    ONTOLOGY_DRIFT_CHECK_COMPLETED,
+    ONTOLOGY_DRIFT_CHECK_STARTED,
+    ONTOLOGY_DRIFT_DETECTED,
+)
+
+if TYPE_CHECKING:
+    from synthorg.core.types import NotBlankStr
+    from synthorg.ontology.config import DriftDetectionConfig
+    from synthorg.ontology.drift.protocol import DriftDetectionStrategy
+    from synthorg.ontology.drift.store import DriftReportStore
+    from synthorg.ontology.models import DriftReport
+    from synthorg.ontology.protocol import OntologyBackend
+
+logger = get_logger(__name__)
+
+
+class DriftDetectionService:
+    """Runs drift detection strategies and stores results.
+
+    Provides on-demand checking for single entities or full scans.
+    Background scheduling is handled by the caller (e.g. an asyncio
+    periodic task in the engine).
+
+    Args:
+        strategy: Drift detection strategy implementation.
+        ontology: Ontology backend for entity listing.
+        config: Drift detection configuration.
+        store: Optional report store for persistence.
+    """
+
+    __slots__ = ("_config", "_ontology", "_store", "_strategy")
+
+    def __init__(
+        self,
+        *,
+        strategy: DriftDetectionStrategy,
+        ontology: OntologyBackend,
+        config: DriftDetectionConfig,
+        store: DriftReportStore | None = None,
+    ) -> None:
+        self._strategy = strategy
+        self._ontology = ontology
+        self._config = config
+        self._store = store
+
+    async def check_entity(
+        self,
+        entity_name: NotBlankStr,
+        agent_ids: tuple[NotBlankStr, ...],
+    ) -> DriftReport:
+        """Run drift detection for a single entity.
+
+        Args:
+            entity_name: Entity to check.
+            agent_ids: Agent IDs to sample.
+
+        Returns:
+            Drift report for the entity.
+        """
+        logger.info(
+            ONTOLOGY_DRIFT_CHECK_STARTED,
+            entity_name=entity_name,
+            agent_count=len(agent_ids),
+        )
+
+        report = await self._strategy.detect(entity_name, agent_ids)
+
+        if report.divergence_score >= self._config.threshold:
+            logger.warning(
+                ONTOLOGY_DRIFT_DETECTED,
+                entity_name=entity_name,
+                divergence_score=report.divergence_score,
+                recommendation=report.recommendation.value,
+            )
+
+        logger.info(
+            ONTOLOGY_DRIFT_CHECK_COMPLETED,
+            entity_name=entity_name,
+            divergence_score=report.divergence_score,
+        )
+
+        if self._store is not None:
+            await self._store.store_report(report)
+
+        return report
+
+    async def check_all(
+        self,
+        agent_ids: tuple[NotBlankStr, ...],
+    ) -> tuple[DriftReport, ...]:
+        """Run drift detection for all registered entities.
+
+        Args:
+            agent_ids: Agent IDs to sample per entity.
+
+        Returns:
+            Drift reports for all entities.
+        """
+        entities = await self._ontology.list_entities()
+        reports: list[DriftReport] = []
+        for entity in entities:
+            report = await self.check_entity(entity.name, agent_ids)
+            reports.append(report)
+        return tuple(reports)
+
+    @property
+    def threshold(self) -> float:
+        """Configured drift threshold."""
+        return self._config.threshold
+
+    @property
+    def strategy_name(self) -> str:
+        """Name of the active detection strategy."""
+        return self._strategy.strategy_name

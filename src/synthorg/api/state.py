@@ -46,6 +46,7 @@ from synthorg.observability.events.settings import SETTINGS_SERVICE_SWAPPED
 from synthorg.observability.prometheus_collector import (
     PrometheusCollector,  # noqa: TC001
 )
+from synthorg.ontology.service import OntologyService  # noqa: TC001
 from synthorg.persistence.artifact_storage import (
     ArtifactStorageBackend,  # noqa: TC001
 )
@@ -104,6 +105,7 @@ class AppState:
         "_message_bus",
         "_model_router",
         "_notification_dispatcher",
+        "_ontology_service",
         "_org_mutation_service",
         "_performance_tracker",
         "_persistence",
@@ -149,6 +151,7 @@ class AppState:
         delegation_record_store: DelegationRecordStore | None = None,
         artifact_storage: ArtifactStorageBackend | None = None,
         notification_dispatcher: NotificationDispatcher | None = None,
+        ontology_service: OntologyService | None = None,
         audit_log: AuditLog | None = None,
         trust_service: TrustService | None = None,
         coordination_metrics_store: CoordinationMetricsStore | None = None,
@@ -162,6 +165,7 @@ class AppState:
         self._backup_service: BackupService | None = None
         self._coordination_metrics_store = coordination_metrics_store
         self._notification_dispatcher = notification_dispatcher
+        self._ontology_service = ontology_service
         self._persistence = persistence
         self._message_bus = message_bus
         self._cost_tracker = cost_tracker
@@ -747,6 +751,19 @@ class AppState:
         return self._require_service(
             self._notification_dispatcher, "notification_dispatcher"
         )
+
+    @property
+    def ontology_service(self) -> OntologyService:
+        """Return ontology service or raise 503."""
+        return self._require_service(
+            self._ontology_service,
+            "ontology_service",
+        )
+
+    @property
+    def has_ontology_service(self) -> bool:
+        """Check whether the ontology service is configured."""
+        return self._ontology_service is not None
 
     @property
     def has_model_router(self) -> bool:

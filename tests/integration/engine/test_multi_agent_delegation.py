@@ -414,7 +414,7 @@ class TestHappyPathDecomposeRouteExecute:
             task=root,
             refinement="Focus on API and UI components",
         )
-        dr = delegation_svc.delegate(
+        dr = await delegation_svc.delegate(
             req,
             agents["ceo"],
             agents["lead"],
@@ -555,7 +555,7 @@ class TestPartialFailure:
             delegatee_id="lead",
             task=root,
         )
-        dr = delegation_svc.delegate(
+        dr = await delegation_svc.delegate(
             req,
             agents["ceo"],
             agents["lead"],
@@ -669,7 +669,7 @@ class TestPartialFailure:
 class TestLoopPrevention:
     """Scenario 3: Delegation back to ancestors is blocked."""
 
-    def test_loop_prevention_blocks_back_delegation(self) -> None:
+    async def test_loop_prevention_blocks_back_delegation(self) -> None:
         """Back-delegation to ancestors is blocked by the guard."""
         agents = _build_agent_pool()
         delegation_svc, _, _ = _build_pipeline(agents)
@@ -682,7 +682,7 @@ class TestLoopPrevention:
             delegatee_id="lead",
             task=root,
         )
-        r1 = delegation_svc.delegate(
+        r1 = await delegation_svc.delegate(
             req1,
             agents["ceo"],
             agents["lead"],
@@ -708,7 +708,7 @@ class TestLoopPrevention:
             delegatee_id="backend",
             task=sub1_for_delegation,
         )
-        r2 = delegation_svc.delegate(
+        r2 = await delegation_svc.delegate(
             req2,
             agents["lead"],
             agents["backend"],
@@ -724,7 +724,7 @@ class TestLoopPrevention:
             delegatee_id="ceo",
             task=sub2,
         )
-        r3 = delegation_svc.delegate(
+        r3 = await delegation_svc.delegate(
             req3,
             agents["backend"],
             agents["ceo"],
@@ -738,7 +738,7 @@ class TestLoopPrevention:
             delegatee_id="lead",
             task=sub2,
         )
-        r4 = delegation_svc.delegate(
+        r4 = await delegation_svc.delegate(
             req4,
             agents["backend"],
             agents["lead"],

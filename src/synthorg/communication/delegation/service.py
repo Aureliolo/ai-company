@@ -8,6 +8,9 @@ from pydantic import ValidationError
 from synthorg.communication.delegation.authority import (  # noqa: TC001
     AuthorityValidator,
 )
+from synthorg.communication.delegation.entity_guard import (  # noqa: TC001
+    EntityAlignmentGuard,
+)
 from synthorg.communication.delegation.hierarchy import (  # noqa: TC001
     HierarchyResolver,
 )
@@ -56,6 +59,7 @@ class DelegationService:
     __slots__ = (
         "_audit_trail",
         "_authority_validator",
+        "_entity_guard",
         "_guard",
         "_hierarchy",
         "_record_store",
@@ -68,14 +72,16 @@ class DelegationService:
         authority_validator: AuthorityValidator,
         guard: DelegationGuard,
         record_store: DelegationRecordStore | None = None,
+        entity_guard: EntityAlignmentGuard | None = None,
     ) -> None:
         self._hierarchy = hierarchy
         self._authority_validator = authority_validator
         self._guard = guard
         self._record_store = record_store
+        self._entity_guard = entity_guard
         self._audit_trail: list[DelegationRecord] = []
 
-    def delegate(
+    async def delegate(
         self,
         request: DelegationRequest,
         delegator: AgentIdentity,
@@ -128,9 +134,25 @@ class DelegationService:
                 blocked_by=guard_outcome.mechanism,
             )
 
-        # 3. Create sub-task and record
+        # 3. Entity alignment guard (async)
+        entity_versions: dict[str, int] | None = None
+        if self._entity_guard is not None:
+            guard_result = await self._entity_guard.check(request)
+            entity_versions = guard_result.entity_versions
+            if not guard_result.passed:
+                return DelegationResult(
+                    success=False,
+                    rejection_reason=guard_result.message,
+                    blocked_by=guard_result.mechanism,
+                )
+
+        # 4. Create sub-task and record
         sub_task = self._create_sub_task(request)
-        self._record_delegation(request, sub_task)
+        self._record_delegation(
+            request,
+            sub_task,
+            entity_versions=entity_versions,
+        )
 
         return DelegationResult(success=True, delegated_task=sub_task)
 
@@ -185,12 +207,15 @@ class DelegationService:
         self,
         request: DelegationRequest,
         sub_task: Task,
+        *,
+        entity_versions: dict[str, int] | None = None,
     ) -> None:
         """Record delegation in guard state and audit trail.
 
         Args:
             request: The delegation request.
             sub_task: The created sub-task.
+            entity_versions: Entity version manifest at delegation time.
         """
         self._guard.record_delegation(
             request.delegator_id,
@@ -205,6 +230,7 @@ class DelegationService:
             delegated_task_id=sub_task.id,
             timestamp=datetime.now(UTC),
             refinement=request.refinement,
+            entity_versions=entity_versions,
         )
         self._audit_trail.append(record)
         if self._record_store is not None:

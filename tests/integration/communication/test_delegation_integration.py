@@ -135,7 +135,7 @@ def _build_three_level_service() -> tuple[
 class TestFullDelegationFlow:
     """End-to-end delegation through a 3-level hierarchy."""
 
-    def test_ceo_to_cto_to_dev(self) -> None:
+    async def test_ceo_to_cto_to_dev(self) -> None:
         """CEO delegates to CTO, CTO delegates to Dev."""
         service, _, agents = _build_three_level_service()
         task = _make_task()
@@ -147,7 +147,7 @@ class TestFullDelegationFlow:
             task=task,
             refinement="Focus on backend API",
         )
-        r1 = service.delegate(req1, agents["ceo"], agents["cto"])
+        r1 = await service.delegate(req1, agents["ceo"], agents["cto"])
         assert r1.success is True
         sub1 = r1.delegated_task
         assert sub1 is not None
@@ -172,7 +172,7 @@ class TestFullDelegationFlow:
             delegatee_id="dev",
             task=sub1_retitled,
         )
-        r2 = service.delegate(req2, agents["cto"], agents["dev"])
+        r2 = await service.delegate(req2, agents["cto"], agents["dev"])
         assert r2.success is True
         sub2 = r2.delegated_task
         assert sub2 is not None
@@ -183,7 +183,7 @@ class TestFullDelegationFlow:
         trail = service.get_audit_trail()
         assert len(trail) == 2
 
-    def test_ancestry_prevents_back_delegation(self) -> None:
+    async def test_ancestry_prevents_back_delegation(self) -> None:
         """Dev cannot delegate back to CEO (ancestry block)."""
         service, _, agents = _build_three_level_service()
         task = _make_task()
@@ -194,7 +194,7 @@ class TestFullDelegationFlow:
             delegatee_id="cto",
             task=task,
         )
-        r1 = service.delegate(req1, agents["ceo"], agents["cto"])
+        r1 = await service.delegate(req1, agents["ceo"], agents["cto"])
         sub1 = r1.delegated_task
         assert sub1 is not None
 
@@ -214,7 +214,7 @@ class TestFullDelegationFlow:
             delegatee_id="dev",
             task=sub1_new,
         )
-        r2 = service.delegate(req2, agents["cto"], agents["dev"])
+        r2 = await service.delegate(req2, agents["cto"], agents["dev"])
         sub2 = r2.delegated_task
         assert sub2 is not None
         # chain is now ("ceo", "cto")
@@ -226,12 +226,12 @@ class TestFullDelegationFlow:
             delegatee_id="ceo",
             task=sub2,
         )
-        r3 = service.delegate(req3, agents["dev"], agents["ceo"])
+        r3 = await service.delegate(req3, agents["dev"], agents["ceo"])
         assert r3.success is False
         # Blocked by either ancestry or authority
         assert r3.blocked_by is not None
 
-    def test_dedup_prevents_repeated_delegation(self) -> None:
+    async def test_dedup_prevents_repeated_delegation(self) -> None:
         """Same delegation request is rejected on second attempt."""
         service, _, agents = _build_three_level_service()
         task = _make_task()
@@ -240,10 +240,10 @@ class TestFullDelegationFlow:
             delegatee_id="cto",
             task=task,
         )
-        r1 = service.delegate(req, agents["ceo"], agents["cto"])
+        r1 = await service.delegate(req, agents["ceo"], agents["cto"])
         assert r1.success is True
 
-        r2 = service.delegate(req, agents["ceo"], agents["cto"])
+        r2 = await service.delegate(req, agents["ceo"], agents["cto"])
         assert r2.success is False
         assert r2.blocked_by == "dedup"
 
@@ -252,7 +252,7 @@ class TestFullDelegationFlow:
 class TestCircuitBreakerIntegration:
     """Circuit breaker triggers after repeated bounces."""
 
-    def test_circuit_opens_after_threshold(self) -> None:
+    async def test_circuit_opens_after_threshold(self) -> None:
         company = Company(
             name="Test Corp",
             departments=(
@@ -308,7 +308,7 @@ class TestCircuitBreakerIntegration:
                 delegatee_id="cto",
                 task=task,
             )
-            result = service.delegate(req, ceo, cto)
+            result = await service.delegate(req, ceo, cto)
             assert result.success is True
 
         # 4th delegation: circuit breaker should block
@@ -318,7 +318,7 @@ class TestCircuitBreakerIntegration:
             delegatee_id="cto",
             task=task4,
         )
-        r4 = service.delegate(req4, ceo, cto)
+        r4 = await service.delegate(req4, ceo, cto)
         assert r4.success is False
         assert r4.blocked_by == "circuit_breaker"
 
@@ -327,7 +327,7 @@ class TestCircuitBreakerIntegration:
 class TestDelegationChainValidation:
     """Validate delegation chain grows correctly across hops."""
 
-    def test_chain_carries_full_ancestry(self) -> None:
+    async def test_chain_carries_full_ancestry(self) -> None:
         service, _, agents = _build_three_level_service()
 
         # Start with root task
@@ -340,7 +340,7 @@ class TestDelegationChainValidation:
             delegatee_id="cto",
             task=root,
         )
-        r1 = service.delegate(req1, agents["ceo"], agents["cto"])
+        r1 = await service.delegate(req1, agents["ceo"], agents["cto"])
         sub1 = r1.delegated_task
         assert sub1 is not None
         assert sub1.delegation_chain == ("ceo",)
@@ -361,7 +361,7 @@ class TestDelegationChainValidation:
             delegatee_id="dev",
             task=sub1_retitled,
         )
-        r2 = service.delegate(req2, agents["cto"], agents["dev"])
+        r2 = await service.delegate(req2, agents["cto"], agents["dev"])
         sub2 = r2.delegated_task
         assert sub2 is not None
         assert sub2.delegation_chain == ("ceo", "cto")

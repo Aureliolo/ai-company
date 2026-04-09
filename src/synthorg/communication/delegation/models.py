@@ -133,3 +133,7 @@ class DelegationRecord(BaseModel):
         default="",
         description="Context provided by delegator",
     )
+    entity_versions: dict[str, int] | None = Field(
+        default=None,
+        description="Entity version manifest at delegation time",
+    )

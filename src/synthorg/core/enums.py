@@ -147,6 +147,7 @@ class OrgFactCategory(StrEnum):
     ADR = "adr"
     PROCEDURE = "procedure"
     CONVENTION = "convention"
+    ENTITY_DEFINITION = "entity_definition"
 
 
 class CostTier(StrEnum):
@@ -431,6 +432,7 @@ class ToolCategory(StrEnum):
     ANALYTICS = "analytics"
     DEPLOYMENT = "deployment"
     MEMORY = "memory"
+    ONTOLOGY = "ontology"
     MCP = "mcp"
     OTHER = "other"
 

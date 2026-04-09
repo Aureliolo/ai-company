@@ -21,6 +21,7 @@ const MeetingsPage = lazy(() => import('@/pages/MeetingsPage'))
 const MeetingDetailPage = lazy(() => import('@/pages/MeetingDetailPage'))
 const ProvidersPage = lazy(() => import('@/pages/ProvidersPage'))
 const ProviderDetailPage = lazy(() => import('@/pages/ProviderDetailPage'))
+const OntologyPage = lazy(() => import('@/pages/OntologyPage'))
 const ProjectsPage = lazy(() => import('@/pages/ProjectsPage'))
 const ProjectDetailPage = lazy(() => import('@/pages/ProjectDetailPage'))
 const ArtifactsPage = lazy(() => import('@/pages/ArtifactsPage'))
@@ -113,6 +114,7 @@ export const router = createBrowserRouter([
               { path: 'meetings/:meetingId', element: <MeetingDetailPage /> },
               { path: 'providers', element: <ProvidersPage /> },
               { path: 'providers/:providerName', element: <ProviderDetailPage /> },
+              { path: 'ontology', element: <OntologyPage /> },
               { path: 'projects', element: <ProjectsPage /> },
               { path: 'projects/:projectId', element: <ProjectDetailPage /> },
               { path: 'artifacts', element: <ArtifactsPage /> },

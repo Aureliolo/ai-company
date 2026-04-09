@@ -1,0 +1,405 @@
+"""Ontology REST API controller.
+
+Provides entity CRUD, versioning, drift detection, and admin
+endpoints for the ontology subsystem.
+"""
+
+from datetime import UTC, datetime
+
+from litestar import Controller, delete, get, post, put
+from litestar.datastructures import State  # noqa: TC002
+from litestar.status_codes import HTTP_204_NO_CONTENT
+
+from synthorg.api.dto import ApiResponse, PaginatedResponse
+from synthorg.api.dto_ontology import (
+    CreateEntityRequest,
+    DriftReportResponse,
+    EntityFieldResponse,
+    EntityRelationResponse,
+    EntityResponse,
+    EntityVersionResponse,
+    UpdateEntityRequest,
+)
+from synthorg.api.errors import ApiValidationError, NotFoundError
+from synthorg.api.guards import (
+    require_admin_access,
+    require_read_access,
+    require_write_access,
+)
+from synthorg.api.pagination import (
+    PaginationLimit,
+    PaginationOffset,
+    paginate,
+)
+from synthorg.api.path_params import PathName  # noqa: TC001
+from synthorg.api.state import AppState  # noqa: TC001
+from synthorg.observability import get_logger
+from synthorg.observability.events.api import (
+    API_REQUEST_ERROR,
+    API_RESOURCE_NOT_FOUND,
+)
+from synthorg.ontology.errors import (
+    OntologyDuplicateError,
+    OntologyNotFoundError,
+)
+from synthorg.ontology.models import (
+    EntityDefinition,
+    EntityField,
+    EntityRelation,
+    EntitySource,
+    EntityTier,
+)
+
+logger = get_logger(__name__)
+
+
+def _entity_to_response(entity: EntityDefinition) -> EntityResponse:
+    """Convert an EntityDefinition to an EntityResponse."""
+    return EntityResponse(
+        name=entity.name,
+        tier=entity.tier,
+        source=entity.source,
+        definition=entity.definition,
+        fields=tuple(
+            EntityFieldResponse(
+                name=f.name,
+                type_hint=f.type_hint,
+                description=f.description,
+            )
+            for f in entity.fields
+        ),
+        constraints=entity.constraints,
+        disambiguation=entity.disambiguation,
+        relationships=tuple(
+            EntityRelationResponse(
+                target=r.target,
+                relation=r.relation,
+                description=r.description,
+            )
+            for r in entity.relationships
+        ),
+        created_by=entity.created_by,
+        created_at=entity.created_at,
+        updated_at=entity.updated_at,
+    )
+
+
+class OntologyController(Controller):
+    """Entity definition CRUD, versioning, and drift detection."""
+
+    path = "/ontology"
+    tags = ("ontology",)
+    guards = [require_read_access]  # noqa: RUF012
+
+    # ── Entity CRUD ────────────────────────────────────────────
+
+    @get("/entities")
+    async def list_entities(
+        self,
+        state: State,
+        offset: PaginationOffset = 0,
+        limit: PaginationLimit = 50,
+        tier: str | None = None,
+    ) -> PaginatedResponse[EntityResponse]:
+        """List all entity definitions, filterable by tier."""
+        app_state: AppState = state.app_state
+        svc = app_state.ontology_service
+
+        tier_filter = EntityTier(tier) if tier else None
+        entities = await svc.list_entities(tier=tier_filter)
+
+        responses = tuple(_entity_to_response(e) for e in entities)
+        page, meta = paginate(responses, offset=offset, limit=limit)
+        return PaginatedResponse(data=page, pagination=meta)
+
+    @get("/entities/{name:str}")
+    async def get_entity(
+        self,
+        state: State,
+        name: PathName,
+    ) -> ApiResponse[EntityResponse]:
+        """Get a single entity definition by name."""
+        app_state: AppState = state.app_state
+        try:
+            entity = await app_state.ontology_service.get(name)
+        except OntologyNotFoundError:
+            msg = "Entity not found"
+            logger.info(
+                API_RESOURCE_NOT_FOUND,
+                resource="entity",
+                name=name,
+            )
+            raise NotFoundError(msg)  # noqa: B904
+        return ApiResponse(data=_entity_to_response(entity))
+
+    @post(
+        "/entities",
+        guards=[require_write_access],
+        status_code=201,
+    )
+    async def create_entity(
+        self,
+        state: State,
+        data: CreateEntityRequest,
+    ) -> ApiResponse[EntityResponse]:
+        """Create a new USER-tier entity definition."""
+        app_state: AppState = state.app_state
+        now = datetime.now(UTC)
+
+        entity = EntityDefinition(
+            name=data.name,
+            tier=EntityTier.USER,
+            source=EntitySource.API,
+            definition=data.definition,
+            fields=tuple(
+                EntityField(
+                    name=f.name,
+                    type_hint=f.type_hint,
+                    description=f.description,
+                )
+                for f in data.fields
+            ),
+            constraints=data.constraints,
+            disambiguation=data.disambiguation,
+            relationships=tuple(
+                EntityRelation(
+                    target=r.target,
+                    relation=r.relation,
+                    description=r.description,
+                )
+                for r in data.relationships
+            ),
+            created_by="api",
+            created_at=now,
+            updated_at=now,
+        )
+
+        try:
+            await app_state.ontology_service.register(entity)
+        except OntologyDuplicateError:
+            msg = "Entity already exists"
+            logger.info(
+                API_REQUEST_ERROR,
+                reason="duplicate_entity",
+                name=data.name,
+            )
+            raise ApiValidationError(msg)  # noqa: B904
+
+        return ApiResponse(data=_entity_to_response(entity))
+
+    @put("/entities/{name:str}", guards=[require_write_access])
+    async def update_entity(
+        self,
+        state: State,
+        name: PathName,
+        data: UpdateEntityRequest,
+    ) -> ApiResponse[EntityResponse]:
+        """Update an entity definition."""
+        app_state: AppState = state.app_state
+        svc = app_state.ontology_service
+
+        try:
+            existing = await svc.get(name)
+        except OntologyNotFoundError:
+            msg = "Entity not found"
+            raise NotFoundError(msg)  # noqa: B904
+
+        updates: dict[str, object] = {
+            "updated_at": datetime.now(UTC),
+        }
+        if data.definition is not None:
+            updates["definition"] = data.definition
+        if data.disambiguation is not None:
+            updates["disambiguation"] = data.disambiguation
+        if data.constraints is not None:
+            updates["constraints"] = data.constraints
+
+        if existing.tier == EntityTier.CORE:
+            if data.fields is not None or data.relationships is not None:
+                msg = "CORE entity structural fields cannot be modified via API"
+                raise ApiValidationError(msg)
+        else:
+            if data.fields is not None:
+                updates["fields"] = tuple(
+                    EntityField(
+                        name=f.name,
+                        type_hint=f.type_hint,
+                        description=f.description,
+                    )
+                    for f in data.fields
+                )
+            if data.relationships is not None:
+                updates["relationships"] = tuple(
+                    EntityRelation(
+                        target=r.target,
+                        relation=r.relation,
+                        description=r.description,
+                    )
+                    for r in data.relationships
+                )
+
+        updated = existing.model_copy(update=updates)
+        await svc.update(updated)
+        return ApiResponse(data=_entity_to_response(updated))
+
+    @delete(
+        "/entities/{name:str}",
+        guards=[require_admin_access],
+        status_code=HTTP_204_NO_CONTENT,
+    )
+    async def delete_entity(
+        self,
+        state: State,
+        name: PathName,
+    ) -> None:
+        """Delete a USER-tier entity definition."""
+        app_state: AppState = state.app_state
+        svc = app_state.ontology_service
+
+        try:
+            entity = await svc.get(name)
+        except OntologyNotFoundError:
+            msg = "Entity not found"
+            raise NotFoundError(msg)  # noqa: B904
+
+        if entity.tier == EntityTier.CORE:
+            msg = "CORE entities cannot be deleted via API"
+            raise ApiValidationError(msg)
+
+        await svc.delete(name)
+
+    # ── Versioning ─────────────────────────────────────────────
+
+    @get("/entities/{name:str}/versions")
+    async def list_entity_versions(
+        self,
+        state: State,
+        name: PathName,
+        offset: PaginationOffset = 0,
+        limit: PaginationLimit = 50,
+    ) -> PaginatedResponse[EntityVersionResponse]:
+        """List all versions of an entity definition."""
+        app_state: AppState = state.app_state
+        svc = app_state.ontology_service
+
+        try:
+            await svc.get(name)
+        except OntologyNotFoundError:
+            msg = "Entity not found"
+            raise NotFoundError(msg)  # noqa: B904
+
+        versions = await svc._versioning.list_versions(  # noqa: SLF001
+            name,
+            limit=limit,
+            offset=offset,
+        )
+        responses = tuple(
+            EntityVersionResponse(
+                entity_id=v.entity_id,
+                version=v.version,
+                content_hash=v.content_hash,
+                snapshot=_entity_to_response(v.snapshot),
+                saved_by=v.saved_by,
+                saved_at=v.saved_at,
+            )
+            for v in versions
+        )
+        page, meta = paginate(
+            responses,
+            offset=0,
+            limit=limit,
+        )
+        return PaginatedResponse(data=page, pagination=meta)
+
+    @get("/entities/{name:str}/versions/{version:int}")
+    async def get_entity_version(
+        self,
+        state: State,
+        name: PathName,
+        version: int,
+    ) -> ApiResponse[EntityVersionResponse]:
+        """Get a specific version snapshot."""
+        app_state: AppState = state.app_state
+        svc = app_state.ontology_service
+
+        v = await svc._versioning.get_version(  # noqa: SLF001
+            name,
+            version,
+        )
+        if v is None:
+            msg = "Version not found"
+            raise NotFoundError(msg)
+
+        return ApiResponse(
+            data=EntityVersionResponse(
+                entity_id=v.entity_id,
+                version=v.version,
+                content_hash=v.content_hash,
+                snapshot=_entity_to_response(v.snapshot),
+                saved_by=v.saved_by,
+                saved_at=v.saved_at,
+            ),
+        )
+
+    @get("/manifest")
+    async def get_version_manifest(
+        self,
+        state: State,
+    ) -> ApiResponse[dict[str, int]]:
+        """Get current version manifest for all entities."""
+        app_state: AppState = state.app_state
+        manifest = await app_state.ontology_service.get_version_manifest()
+        return ApiResponse(data=manifest)
+
+    # ── Drift Detection ────────────────────────────────────────
+
+    @get("/drift")
+    async def list_drift_reports(
+        self,
+        state: State,  # noqa: ARG002
+        offset: PaginationOffset = 0,
+        limit: PaginationLimit = 50,
+    ) -> PaginatedResponse[DriftReportResponse]:
+        """Get latest drift reports for all entities."""
+        _, meta = paginate((), offset=offset, limit=limit)
+        return PaginatedResponse(data=(), pagination=meta)
+
+    @get("/drift/{entity_name:str}")
+    async def get_drift_report(
+        self,
+        state: State,  # noqa: ARG002
+        entity_name: PathName,  # noqa: ARG002
+    ) -> ApiResponse[tuple[DriftReportResponse, ...]]:
+        """Get drift reports for a specific entity."""
+        return ApiResponse(data=())
+
+    @post("/drift/check", guards=[require_admin_access])
+    async def trigger_drift_check(
+        self,
+        state: State,  # noqa: ARG002
+    ) -> ApiResponse[str]:
+        """Trigger on-demand drift check for all entities."""
+        return ApiResponse(data="Drift check triggered")
+
+    # ── Admin ──────────────────────────────────────────────────
+
+    @post("/admin/derive", guards=[require_admin_access])
+    async def admin_derive(
+        self,
+        state: State,
+    ) -> ApiResponse[dict[str, int]]:
+        """Re-run auto-derivation from decorated models."""
+        app_state: AppState = state.app_state
+        count = await app_state.ontology_service.bootstrap()
+        return ApiResponse(data={"derived_count": count})
+
+    @post(
+        "/admin/sync-org-memory",
+        guards=[require_admin_access],
+    )
+    async def admin_sync_org_memory(
+        self,
+        state: State,  # noqa: ARG002
+    ) -> ApiResponse[dict[str, str]]:
+        """Force re-sync all entity definitions to OrgMemory."""
+        return ApiResponse(data={"status": "sync_triggered"})

@@ -29,6 +29,7 @@ export const ROUTES = {
   ARTIFACT_DETAIL: '/artifacts/:artifactId',
   WORKFLOWS: '/workflows',
   WORKFLOW_EDITOR: '/workflows/editor',
+  ONTOLOGY: '/ontology',
   SETTINGS: '/settings',
   SETTINGS_NAMESPACE: '/settings/:namespace',
   SETTINGS_SINKS: '/settings/observability/sinks',

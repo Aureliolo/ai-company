@@ -132,7 +132,7 @@ def _build_service(
 
 @pytest.mark.unit
 class TestDelegationServiceSuccess:
-    def test_successful_delegation(self) -> None:
+    async def test_successful_delegation(self) -> None:
         service, _ = _build_service()
         task = _make_task()
         delegator = _make_agent("ceo", "ceo")
@@ -142,14 +142,14 @@ class TestDelegationServiceSuccess:
             delegatee_id="cto",
             task=task,
         )
-        result = service.delegate(request, delegator, delegatee)
+        result = await service.delegate(request, delegator, delegatee)
         assert result.success is True
         assert result.delegated_task is not None
         assert result.delegated_task.parent_task_id == "task-1"
         assert result.delegated_task.delegation_chain == ("ceo",)
         assert result.delegated_task.status is TaskStatus.CREATED
 
-    def test_sub_task_inherits_properties(self) -> None:
+    async def test_sub_task_inherits_properties(self) -> None:
         service, _ = _build_service()
         task = _make_task(budget_limit=50.0, deadline="2026-12-31")
         delegator = _make_agent("ceo", "ceo")
@@ -159,14 +159,14 @@ class TestDelegationServiceSuccess:
             delegatee_id="cto",
             task=task,
         )
-        result = service.delegate(request, delegator, delegatee)
+        result = await service.delegate(request, delegator, delegatee)
         sub = result.delegated_task
         assert sub is not None
         assert sub.budget_limit == 50.0
         assert sub.deadline == "2026-12-31"
         assert sub.type is TaskType.DEVELOPMENT
 
-    def test_refinement_appended_to_description(self) -> None:
+    async def test_refinement_appended_to_description(self) -> None:
         service, _ = _build_service()
         task = _make_task()
         delegator = _make_agent("ceo", "ceo")
@@ -177,12 +177,12 @@ class TestDelegationServiceSuccess:
             task=task,
             refinement="Focus on API layer",
         )
-        result = service.delegate(request, delegator, delegatee)
+        result = await service.delegate(request, delegator, delegatee)
         sub = result.delegated_task
         assert sub is not None
         assert "Focus on API layer" in sub.description
 
-    def test_audit_trail_recorded(self) -> None:
+    async def test_audit_trail_recorded(self) -> None:
         service, _ = _build_service()
         task = _make_task()
         delegator = _make_agent("ceo", "ceo")
@@ -192,7 +192,7 @@ class TestDelegationServiceSuccess:
             delegatee_id="cto",
             task=task,
         )
-        service.delegate(request, delegator, delegatee)
+        await service.delegate(request, delegator, delegatee)
         trail = service.get_audit_trail()
         assert len(trail) == 1
         assert trail[0].delegator_id == "ceo"
@@ -202,7 +202,7 @@ class TestDelegationServiceSuccess:
 
 @pytest.mark.unit
 class TestDelegationServiceAuthority:
-    def test_authority_denied(self) -> None:
+    async def test_authority_denied(self) -> None:
         service, _ = _build_service()
         task = _make_task()
         # dev trying to delegate to ceo (not a report)
@@ -213,11 +213,11 @@ class TestDelegationServiceAuthority:
             delegatee_id="ceo",
             task=task,
         )
-        result = service.delegate(request, delegator, delegatee)
+        result = await service.delegate(request, delegator, delegatee)
         assert result.success is False
         assert result.blocked_by == "authority"
 
-    def test_role_permission_denied(self) -> None:
+    async def test_role_permission_denied(self) -> None:
         service, _ = _build_service()
         task = _make_task()
         delegator = _make_agent("ceo", "ceo", can_delegate_to=("qa",))
@@ -227,14 +227,14 @@ class TestDelegationServiceAuthority:
             delegatee_id="cto",
             task=task,
         )
-        result = service.delegate(request, delegator, delegatee)
+        result = await service.delegate(request, delegator, delegatee)
         assert result.success is False
         assert result.blocked_by == "authority"
 
 
 @pytest.mark.unit
 class TestDelegationServiceLoopPrevention:
-    def test_ancestry_blocked(self) -> None:
+    async def test_ancestry_blocked(self) -> None:
         service, _ = _build_service(enforce_chain=False)
         # First delegation: ceo -> cto
         task1 = _make_task()
@@ -245,7 +245,7 @@ class TestDelegationServiceLoopPrevention:
             delegatee_id="cto",
             task=task1,
         )
-        r1 = service.delegate(req1, ceo, cto)
+        r1 = await service.delegate(req1, ceo, cto)
         assert r1.success is True
 
         # Second: cto -> dev using sub-task
@@ -257,7 +257,7 @@ class TestDelegationServiceLoopPrevention:
             delegatee_id="dev",
             task=sub,
         )
-        r2 = service.delegate(req2, cto, dev)
+        r2 = await service.delegate(req2, cto, dev)
         assert r2.success is True
 
         # Third: dev tries to delegate back to ceo → blocked by ancestry
@@ -268,11 +268,11 @@ class TestDelegationServiceLoopPrevention:
             delegatee_id="ceo",
             task=sub2,
         )
-        r3 = service.delegate(req3, dev, ceo)
+        r3 = await service.delegate(req3, dev, ceo)
         assert r3.success is False
         assert r3.blocked_by == "ancestry"
 
-    def test_depth_exceeded(self) -> None:
+    async def test_depth_exceeded(self) -> None:
         service, _ = _build_service(max_depth=1)
         task = _make_task(delegation_chain=("root",))
         delegator = _make_agent("ceo", "ceo")
@@ -282,11 +282,11 @@ class TestDelegationServiceLoopPrevention:
             delegatee_id="cto",
             task=task,
         )
-        result = service.delegate(request, delegator, delegatee)
+        result = await service.delegate(request, delegator, delegatee)
         assert result.success is False
         assert result.blocked_by == "max_depth"
 
-    def test_dedup_blocked(self) -> None:
+    async def test_dedup_blocked(self) -> None:
         service, _ = _build_service()
         task = _make_task()
         delegator = _make_agent("ceo", "ceo")
@@ -297,17 +297,17 @@ class TestDelegationServiceLoopPrevention:
             task=task,
         )
         # First succeeds
-        r1 = service.delegate(request, delegator, delegatee)
+        r1 = await service.delegate(request, delegator, delegatee)
         assert r1.success is True
         # Second is dedup blocked (same delegator, delegatee, task ID)
-        r2 = service.delegate(request, delegator, delegatee)
+        r2 = await service.delegate(request, delegator, delegatee)
         assert r2.success is False
         assert r2.blocked_by == "dedup"
 
 
 @pytest.mark.unit
 class TestDelegationServiceMultiHop:
-    def test_multi_level_delegation_chain(self) -> None:
+    async def test_multi_level_delegation_chain(self) -> None:
         """CEO → CTO → Dev: delegation chain grows correctly."""
         service, _ = _build_service(allow_skip=True)
         task = _make_task()
@@ -321,7 +321,7 @@ class TestDelegationServiceMultiHop:
             delegatee_id="cto",
             task=task,
         )
-        r1 = service.delegate(req1, ceo, cto)
+        r1 = await service.delegate(req1, ceo, cto)
         assert r1.success is True
         sub1 = r1.delegated_task
         assert sub1 is not None
@@ -343,14 +343,14 @@ class TestDelegationServiceMultiHop:
             delegatee_id="dev",
             task=sub1_new_title,
         )
-        r2 = service.delegate(req2, cto, dev)
+        r2 = await service.delegate(req2, cto, dev)
         assert r2.success is True
         sub2 = r2.delegated_task
         assert sub2 is not None
         assert sub2.delegation_chain == ("ceo", "cto")
         assert sub2.parent_task_id == sub1.id
 
-    def test_audit_trail_multi_hop(self) -> None:
+    async def test_audit_trail_multi_hop(self) -> None:
         service, _ = _build_service(allow_skip=True)
         task = _make_task()
         ceo = _make_agent("ceo", "ceo")
@@ -362,7 +362,7 @@ class TestDelegationServiceMultiHop:
             delegatee_id="cto",
             task=task,
         )
-        r1 = service.delegate(req1, ceo, cto)
+        r1 = await service.delegate(req1, ceo, cto)
         sub1 = r1.delegated_task
         assert sub1 is not None
 
@@ -381,7 +381,7 @@ class TestDelegationServiceMultiHop:
             delegatee_id="dev",
             task=sub1_retitled,
         )
-        service.delegate(req2, cto, dev)
+        await service.delegate(req2, cto, dev)
 
         trail = service.get_audit_trail()
         assert len(trail) == 2
@@ -391,7 +391,7 @@ class TestDelegationServiceMultiHop:
 
 @pytest.mark.unit
 class TestDelegationServiceIdentityValidation:
-    def test_delegator_id_mismatch_raises(self) -> None:
+    async def test_delegator_id_mismatch_raises(self) -> None:
         service, _ = _build_service()
         task = _make_task()
         delegatee = _make_agent("cto", "cto")
@@ -402,9 +402,9 @@ class TestDelegationServiceIdentityValidation:
         )
         wrong_delegator = _make_agent("imposter", "imposter")
         with pytest.raises(ValueError, match="delegator_id"):
-            service.delegate(request, wrong_delegator, delegatee)
+            await service.delegate(request, wrong_delegator, delegatee)
 
-    def test_delegatee_id_mismatch_raises(self) -> None:
+    async def test_delegatee_id_mismatch_raises(self) -> None:
         service, _ = _build_service()
         task = _make_task()
         delegator = _make_agent("ceo", "ceo")
@@ -415,12 +415,12 @@ class TestDelegationServiceIdentityValidation:
         )
         wrong_delegatee = _make_agent("imposter", "imposter")
         with pytest.raises(ValueError, match="delegatee_id"):
-            service.delegate(request, delegator, wrong_delegatee)
+            await service.delegate(request, delegator, wrong_delegatee)
 
 
 @pytest.mark.unit
 class TestDelegationServiceConstraints:
-    def test_constraints_appended_to_description(self) -> None:
+    async def test_constraints_appended_to_description(self) -> None:
         service, _ = _build_service()
         task = _make_task()
         delegator = _make_agent("ceo", "ceo")
@@ -431,7 +431,7 @@ class TestDelegationServiceConstraints:
             task=task,
             constraints=("no-external-deps", "max-2-files"),
         )
-        result = service.delegate(request, delegator, delegatee)
+        result = await service.delegate(request, delegator, delegatee)
         sub = result.delegated_task
         assert sub is not None
         assert "- no-external-deps" in sub.description
@@ -463,14 +463,14 @@ class TestDelegationServiceRecordStore:
             delegatee_id="cto",
             task=task,
         )
-        service.delegate(request, delegator, delegatee)
+        await service.delegate(request, delegator, delegatee)
 
         records = await store.get_all_records()
         assert len(records) == 1
         assert records[0].delegator_id == "ceo"
         assert records[0].delegatee_id == "cto"
 
-    def test_record_store_failure_does_not_block_delegation(self) -> None:
+    async def test_record_store_failure_does_not_block_delegation(self) -> None:
         from unittest.mock import MagicMock
 
         store = MagicMock(spec=DelegationRecordStore)
@@ -486,7 +486,7 @@ class TestDelegationServiceRecordStore:
             delegatee_id="cto",
             task=task,
         )
-        result = service.delegate(request, delegator, delegatee)
+        result = await service.delegate(request, delegator, delegatee)
         assert result.success is True
 
     @pytest.mark.parametrize(
@@ -494,7 +494,7 @@ class TestDelegationServiceRecordStore:
         [MemoryError, RecursionError],
         ids=["memory_error", "recursion_error"],
     )
-    def test_fatal_error_in_record_store_propagates(
+    async def test_fatal_error_in_record_store_propagates(
         self,
         exc_class: type[BaseException],
     ) -> None:
@@ -514,4 +514,4 @@ class TestDelegationServiceRecordStore:
             task=task,
         )
         with pytest.raises(exc_class):
-            service.delegate(request, delegator, delegatee)
+            await service.delegate(request, delegator, delegatee)

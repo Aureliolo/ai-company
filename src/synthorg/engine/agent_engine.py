@@ -142,6 +142,7 @@ if TYPE_CHECKING:
     from synthorg.memory.procedural.models import ProceduralMemoryConfig
     from synthorg.memory.procedural.proposer import ProceduralMemoryProposer
     from synthorg.memory.protocol import MemoryBackend
+    from synthorg.ontology.injection.protocol import OntologyInjectionStrategy
     from synthorg.persistence.artifact_project_repos import (
         ProjectRepository,
     )
@@ -344,6 +345,7 @@ class AgentEngine:
         model_resolver: ModelResolver | None = None,
         tool_invocation_tracker: ToolInvocationTracker | None = None,
         memory_injection_strategy: MemoryInjectionStrategy | None = None,
+        ontology_injection_strategy: OntologyInjectionStrategy | None = None,
         procedural_memory_config: ProceduralMemoryConfig | None = None,
         memory_backend: MemoryBackend | None = None,
         distillation_capture_enabled: bool = False,
@@ -421,6 +423,7 @@ class AgentEngine:
         self._coordinator = coordinator
         self._tool_invocation_tracker = tool_invocation_tracker
         self._memory_injection_strategy = memory_injection_strategy
+        self._ontology_injection_strategy = ontology_injection_strategy
         self._procedural_memory_config = procedural_memory_config
         self._memory_backend = memory_backend
         self._distillation_capture_enabled = distillation_capture_enabled
@@ -1773,6 +1776,18 @@ class AgentEngine:
                 self._memory_injection_strategy,
                 agent_id=str(identity.id),
             )
+        if self._ontology_injection_strategy is not None:
+            tool_defs = self._ontology_injection_strategy.get_tool_definitions()
+            if tool_defs:
+                from synthorg.ontology.injection.tool import (  # noqa: PLC0415, TC001
+                    LookupEntityTool,
+                )
+
+                if hasattr(self._ontology_injection_strategy, "tool"):
+                    tool_instance: LookupEntityTool = (
+                        self._ontology_injection_strategy.tool
+                    )
+                    registry = registry.register(tool_instance)
         checker = ToolPermissionChecker.from_permissions(identity.tools)
         interceptor = self._make_security_interceptor(effective_autonomy)
         return ToolInvoker(

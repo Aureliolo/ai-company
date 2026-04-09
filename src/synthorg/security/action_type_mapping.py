@@ -25,6 +25,7 @@ DEFAULT_CATEGORY_ACTION_MAP: Final[MappingProxyType[ToolCategory, ActionType]] =
             ToolCategory.ANALYTICS: ActionType.CODE_READ,
             ToolCategory.DEPLOYMENT: ActionType.DEPLOY_STAGING,
             ToolCategory.MEMORY: ActionType.MEMORY_READ,
+            ToolCategory.ONTOLOGY: ActionType.MEMORY_READ,
             ToolCategory.MCP: ActionType.CODE_WRITE,
             ToolCategory.OTHER: ActionType.CODE_READ,
         }
