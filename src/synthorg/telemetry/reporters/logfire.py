@@ -80,32 +80,51 @@ class LogfireReporter:
                 os_platform=event.os_platform,
                 **event.properties,
             )
-        except Exception:
-            logger.debug(
+        except Exception as exc:
+            logger.warning(
                 TELEMETRY_REPORT_FAILED,
                 event_type=event.event_type,
+                error_type=type(exc).__name__,
+                error_msg=str(exc),
             )
 
     async def flush(self) -> None:
         """Flush the Logfire exporter."""
         try:
             self._logfire.force_flush()
-        except Exception:
-            logger.debug(TELEMETRY_REPORT_FAILED, detail="flush")
+        except Exception as exc:
+            logger.warning(
+                TELEMETRY_REPORT_FAILED,
+                detail="flush",
+                error_type=type(exc).__name__,
+                error_msg=str(exc),
+            )
 
     async def shutdown(self) -> None:
         """Flush and shut down the Logfire exporter."""
         await self.flush()
         try:
             self._logfire.shutdown()
-        except Exception:
-            logger.debug(TELEMETRY_REPORT_FAILED, detail="shutdown")
+        except Exception as exc:
+            logger.warning(
+                TELEMETRY_REPORT_FAILED,
+                detail="shutdown",
+                error_type=type(exc).__name__,
+                error_msg=str(exc),
+            )
 
 
 def _get_synthorg_version() -> str:
     try:
         import synthorg  # noqa: PLC0415
-    except ImportError, AttributeError:
+    except ImportError:
         return "unknown"
-    else:
+
+    try:
         return synthorg.__version__
+    except AttributeError:
+        logger.warning(
+            TELEMETRY_REPORT_FAILED,
+            detail="version_attribute_missing",
+        )
+        return "unknown"

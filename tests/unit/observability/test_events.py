@@ -258,6 +258,7 @@ class TestEventConstants:
             "coordination_metrics",
             "database",
             "sub_constraint",
+            "telemetry",
             "terminal",
             "versioning",
             "web",

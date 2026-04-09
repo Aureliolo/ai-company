@@ -5,6 +5,8 @@ from typing import Protocol, runtime_checkable
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from synthorg.core.types import NotBlankStr  # noqa: TC001
+
 
 class TelemetryEvent(BaseModel):
     """A single telemetry event to report.
@@ -27,19 +29,19 @@ class TelemetryEvent(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
-    event_type: str = Field(
+    event_type: NotBlankStr = Field(
         description="Dot-separated event name",
     )
-    deployment_id: str = Field(
+    deployment_id: NotBlankStr = Field(
         description="Anonymous UUID for this deployment",
     )
-    synthorg_version: str = Field(
+    synthorg_version: NotBlankStr = Field(
         description="Installed SynthOrg version",
     )
-    python_version: str = Field(
+    python_version: NotBlankStr = Field(
         description="Python interpreter version",
     )
-    os_platform: str = Field(
+    os_platform: NotBlankStr = Field(
         description="OS platform identifier",
     )
     timestamp: datetime = Field(

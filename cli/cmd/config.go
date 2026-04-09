@@ -72,6 +72,7 @@ Supported keys:
   output                Output format
   persistence_backend   Persistence backend (read-only)
   sandbox               Sandbox enabled
+  telemetry_opt_in      Anonymous product telemetry opt-in
   timestamps            Timestamp display mode
   web_port              Web dashboard port`,
 	Args:              cobra.ExactArgs(1),
@@ -100,11 +101,12 @@ Supported keys:
   log_level              Log verbosity: "debug", "info", "warn", "error"
   output                 Output format: "text" or "json"
   sandbox                Enable sandbox: "true" or "false"
+  telemetry_opt_in       Anonymous product telemetry: "true" or "false"
   timestamps             Timestamp format: "relative" or "iso8601"
   web_port               Web dashboard port: 1-65535
 
 Keys that affect Docker compose (backend_port, web_port, sandbox, docker_sock,
-image_tag, log_level) trigger automatic compose.yml regeneration.`,
+image_tag, log_level, telemetry_opt_in) trigger automatic compose.yml regeneration.`,
 	Args:              cobra.ExactArgs(2),
 	RunE:              runConfigSet,
 	ValidArgsFunction: completeConfigSetKeys,
@@ -204,6 +206,7 @@ func printConfigFields(out *ui.UI, state config.State) {
 	out.KeyValue("Auto restart", strconv.FormatBool(state.AutoRestart))
 	out.KeyValue("Auto apply compose", strconv.FormatBool(state.AutoApplyCompose))
 	out.KeyValue("Auto start after wipe", strconv.FormatBool(state.AutoStartAfterWipe))
+	out.KeyValue("Telemetry opt-in", strconv.FormatBool(state.TelemetryOptIn))
 	out.KeyValue("JWT secret", maskSecret(state.JWTSecret))
 	out.KeyValue("Settings key", maskSecret(state.SettingsKey))
 }

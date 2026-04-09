@@ -65,6 +65,7 @@ No corresponding flag -- settable via env var or `config set`:
 | `SYNTHORG_AUTO_UPDATE_CLI` | Auto-accept CLI self-updates |
 | `SYNTHORG_AUTO_PULL` | Auto-accept container image pulls |
 | `SYNTHORG_AUTO_RESTART` | Auto-restart containers after update |
+| `SYNTHORG_TELEMETRY` | Enable anonymous product telemetry (true/false) |
 
 ## Exit Codes
 
@@ -84,14 +85,14 @@ No corresponding flag -- settable via env var or `config set`:
 | Subcommand | Description |
 |------------|-------------|
 | `show` | Display all current settings (default when no subcommand) |
-| `get <key>` | Get a single config value (19 gettable keys) |
-| `set <key> <value>` | Set a config value (17 settable keys, compose-affecting keys trigger regeneration) |
+| `get <key>` | Get a single config value (20 gettable keys) |
+| `set <key> <value>` | Set a config value (18 settable keys, compose-affecting keys trigger regeneration) |
 | `unset <key>` | Reset a key to its default value |
 | `list` | Show all keys with resolved value and source (env/config/default) |
 | `path` | Print the config file path |
 | `edit` | Open config file in $VISUAL/$EDITOR |
 
-Settable keys: `auto_apply_compose`, `auto_cleanup`, `auto_pull`, `auto_restart`, `auto_start_after_wipe`, `auto_update_cli`, `backend_port`, `channel`, `color`, `docker_sock`, `hints`, `image_tag`, `log_level`, `output`, `sandbox`, `timestamps`, `web_port`. Keys that affect Docker compose (`backend_port`, `web_port`, `sandbox`, `docker_sock`, `image_tag`, `log_level`) trigger automatic `compose.yml` regeneration.
+Settable keys: `auto_apply_compose`, `auto_cleanup`, `auto_pull`, `auto_restart`, `auto_start_after_wipe`, `auto_update_cli`, `backend_port`, `channel`, `color`, `docker_sock`, `hints`, `image_tag`, `log_level`, `output`, `sandbox`, `telemetry_opt_in`, `timestamps`, `web_port`. Keys that affect Docker compose (`backend_port`, `web_port`, `sandbox`, `docker_sock`, `image_tag`, `log_level`, `telemetry_opt_in`) trigger automatic `compose.yml` regeneration.
 
 ## Per-Command Flags
 

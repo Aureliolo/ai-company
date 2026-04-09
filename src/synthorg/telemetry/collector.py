@@ -5,6 +5,7 @@ import contextlib
 import platform
 import sys
 import uuid
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
@@ -28,68 +29,39 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 
+@dataclass(frozen=True)
 class _HeartbeatParams:
     """Parameter bundle for heartbeat events."""
 
-    def __init__(  # noqa: PLR0913
-        self,
-        *,
-        agent_count: int = 0,
-        department_count: int = 0,
-        team_count: int = 0,
-        template_name: str = "",
-        persistence_backend: str = "sqlite",
-        memory_backend: str = "mem0",
-        features_enabled: str = "",
-    ) -> None:
-        self.agent_count = agent_count
-        self.department_count = department_count
-        self.team_count = team_count
-        self.template_name = template_name
-        self.persistence_backend = persistence_backend
-        self.memory_backend = memory_backend
-        self.features_enabled = features_enabled
+    agent_count: int = 0
+    department_count: int = 0
+    team_count: int = 0
+    template_name: str = ""
+    persistence_backend: str = "sqlite"
+    memory_backend: str = "mem0"
+    features_enabled: str = ""
 
 
+@dataclass(frozen=True)
 class _SessionSummaryParams:
     """Parameter bundle for session summary events."""
 
-    def __init__(  # noqa: PLR0913
-        self,
-        *,
-        tasks_created: int = 0,
-        tasks_completed: int = 0,
-        tasks_failed: int = 0,
-        error_rate_limit: int = 0,
-        error_timeout: int = 0,
-        error_connection: int = 0,
-        error_internal: int = 0,
-        error_validation: int = 0,
-        error_other: int = 0,
-        provider_count: int = 0,
-        topology_hierarchical: int = 0,
-        topology_parallel: int = 0,
-        topology_sequential: int = 0,
-        topology_auto: int = 0,
-        meetings_held: int = 0,
-        delegations_executed: int = 0,
-    ) -> None:
-        self.tasks_created = tasks_created
-        self.tasks_completed = tasks_completed
-        self.tasks_failed = tasks_failed
-        self.error_rate_limit = error_rate_limit
-        self.error_timeout = error_timeout
-        self.error_connection = error_connection
-        self.error_internal = error_internal
-        self.error_validation = error_validation
-        self.error_other = error_other
-        self.provider_count = provider_count
-        self.topology_hierarchical = topology_hierarchical
-        self.topology_parallel = topology_parallel
-        self.topology_sequential = topology_sequential
-        self.topology_auto = topology_auto
-        self.meetings_held = meetings_held
-        self.delegations_executed = delegations_executed
+    tasks_created: int = 0
+    tasks_completed: int = 0
+    tasks_failed: int = 0
+    error_rate_limit: int = 0
+    error_timeout: int = 0
+    error_connection: int = 0
+    error_internal: int = 0
+    error_validation: int = 0
+    error_other: int = 0
+    provider_count: int = 0
+    topology_hierarchical: int = 0
+    topology_parallel: int = 0
+    topology_sequential: int = 0
+    topology_auto: int = 0
+    meetings_held: int = 0
+    delegations_executed: int = 0
 
 
 class TelemetryCollector:
@@ -244,10 +216,12 @@ class TelemetryCollector:
 
         try:
             await self._reporter.report(event)
-        except Exception:
-            logger.debug(
+        except Exception as exc:
+            logger.warning(
                 TELEMETRY_REPORT_FAILED,
                 event_type=event.event_type,
+                error_type=type(exc).__name__,
+                error_msg=str(exc),
             )
 
     async def _send_startup_event(self) -> None:
@@ -272,8 +246,18 @@ class TelemetryCollector:
     async def _heartbeat_loop(self) -> None:
         interval = self._config.heartbeat_interval_hours * 3600
         while True:
-            await asyncio.sleep(interval)
-            await self.send_heartbeat()
+            try:
+                await asyncio.sleep(interval)
+                await self.send_heartbeat()
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:
+                logger.warning(
+                    TELEMETRY_REPORT_FAILED,
+                    detail="heartbeat_loop",
+                    error_type=type(exc).__name__,
+                    error_msg=str(exc),
+                )
 
     def _load_or_create_deployment_id(self) -> str:
         id_file = self._data_dir / "telemetry_id"
@@ -282,22 +266,41 @@ class TelemetryCollector:
                 stored = id_file.read_text(encoding="utf-8").strip()
                 if stored:
                     return stored
-        except OSError:
-            pass
+        except OSError as exc:
+            logger.warning(
+                TELEMETRY_REPORT_FAILED,
+                detail="deployment_id_read",
+                error_type=type(exc).__name__,
+                error_msg=str(exc),
+                path=str(id_file),
+            )
 
         new_id = str(uuid.uuid4())
         try:
             id_file.parent.mkdir(parents=True, exist_ok=True)
             id_file.write_text(new_id, encoding="utf-8")
-        except OSError:
-            pass
+        except OSError as exc:
+            logger.warning(
+                TELEMETRY_REPORT_FAILED,
+                detail="deployment_id_write",
+                error_type=type(exc).__name__,
+                error_msg=str(exc),
+                path=str(id_file),
+            )
         return new_id
 
 
 def _get_version() -> str:
     try:
         import synthorg  # noqa: PLC0415
-    except ImportError, AttributeError:
+    except ImportError:
         return "unknown"
-    else:
+
+    try:
         return synthorg.__version__
+    except AttributeError:
+        logger.warning(
+            TELEMETRY_REPORT_FAILED,
+            detail="version_attribute_missing",
+        )
+        return "unknown"
