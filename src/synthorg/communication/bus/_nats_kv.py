@@ -12,6 +12,7 @@ from synthorg.communication.bus._nats_state import _NatsState  # noqa: TC001
 from synthorg.communication.bus._nats_utils import decode_token, encode_token
 from synthorg.communication.bus.errors import BusStreamError
 from synthorg.communication.channel import Channel
+from synthorg.communication.errors import ChannelAlreadyExistsError
 from synthorg.observability import get_logger
 from synthorg.observability.events.communication import (
     COMM_BUS_KV_READ_FAILED,
@@ -21,8 +22,50 @@ from synthorg.observability.events.communication import (
 logger = get_logger(__name__)
 
 
+async def create_channel_in_kv(
+    state: _NatsState,
+    channel: Channel,
+) -> None:
+    """Atomically create a channel entry in KV (fails if it exists).
+
+    Uses the KV ``create`` API which is an atomic create-if-not-exists.
+
+    Raises:
+        ChannelAlreadyExistsError: If the key already exists.
+        BusStreamError: If a transport error prevents the write.
+    """
+    from nats.js.errors import (  # noqa: PLC0415
+        KeyWrongLastSequenceError,
+    )
+
+    if state.kv is None:
+        return
+    key = encode_token(channel.name)
+    value = channel.model_dump_json().encode("utf-8")
+    try:
+        await state.kv.create(key, value)
+    except KeyWrongLastSequenceError:
+        msg = f"Channel already exists in KV: {channel.name}"
+        raise ChannelAlreadyExistsError(
+            msg, context={"channel": channel.name}
+        ) from None
+    except Exception as exc:
+        logger.warning(
+            COMM_BUS_KV_WRITE_FAILED,
+            channel=channel.name,
+            error=str(exc),
+        )
+        msg = f"KV create failed for channel {channel.name!r}: {exc}"
+        raise BusStreamError(msg, context={"channel": channel.name}) from exc
+
+
 async def write_channel_to_kv(state: _NatsState, channel: Channel) -> None:
-    """Persist a Channel definition to the KV bucket."""
+    """Persist a Channel definition to the KV bucket (best-effort update).
+
+    Used for subscription changes and direct channel updates where
+    local state is authoritative and KV persistence is secondary.
+    Logs failures but does not raise.
+    """
     if state.kv is None:
         return
     key = encode_token(channel.name)
@@ -118,8 +161,12 @@ async def scan_kv_channels(state: _NatsState) -> list[Channel]:
     """
     if state.kv is None:
         return []
+    from nats.js.errors import NoKeysError  # noqa: PLC0415
+
     try:
         keys = await state.kv.keys()
+    except NoKeysError:
+        return []
     except Exception as exc:
         logger.warning(
             COMM_BUS_KV_READ_FAILED,
@@ -144,11 +191,10 @@ async def scan_kv_channels(state: _NatsState) -> list[Channel]:
 
     entries = await asyncio.gather(
         *(fetch_kv_entry(state, name) for _, name in decoded_keys),
-        return_exceptions=True,
     )
     channels: list[Channel] = []
     for (_, decoded_name), entry in zip(decoded_keys, entries, strict=True):
-        if isinstance(entry, Exception) or entry is None:
+        if entry is None:
             continue
         ch = decode_kv_channel(decoded_name, entry)
         if ch is not None:

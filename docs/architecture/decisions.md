@@ -124,7 +124,7 @@ All significant design and architecture decisions, organized by domain. Each ent
 
 **Eliminated:** No other Python NATS clients exist. Custom JetStream client over raw NATS protocol was not considered (substantial effort, no ecosystem benefit).
 
-**SynthOrg JetStream usage** (verified in `bus/nats.py` and `workers/claim.py`): `SYNTHORG_BUS` stream (LimitsPolicy), `SYNTHORG_TASKS` stream (WorkQueuePolicy), `SYNTHORG_BUS_CHANNELS` KV bucket, durable pull consumers with `ConsumerConfig`, stream management (`stream_info`/`add_stream`/`update_stream`), history scanning with ephemeral consumers (`DeliverPolicy.ALL`/`AckPolicy.NONE`), connection lifecycle callbacks.
+**SynthOrg JetStream usage** (verified in `bus/nats.py` facade and `workers/claim.py`): `SYNTHORG_BUS` stream (LimitsPolicy, `_nats_connection`), `SYNTHORG_TASKS` stream (WorkQueuePolicy, `claim.py`), `SYNTHORG_BUS_CHANNELS` KV bucket (`_nats_kv`), durable pull consumers with `ConsumerConfig` (`_nats_consumers`), stream management via `stream_info`/`add_stream`/`update_stream` (`_nats_connection`), history scanning with ephemeral consumers using `DeliverPolicy.ALL`/`AckPolicy.NONE` (`_nats_history`), connection lifecycle callbacks (`_nats_connection`).
 
 **Mitigation plan:** (1) File upstream PR against `nats-io/nats.py` with the one-line `inspect.iscoroutinefunction` fix (TODO: pending -- link back here once filed). (2) Keep scoped `filterwarnings` in `pyproject.toml` as workaround. (3) If upstream is unresponsive after 60 days, maintain a local monkey-patch in `bus/_nats_compat.py`. (4) Monitor `nats-core` for future JetStream support.
 

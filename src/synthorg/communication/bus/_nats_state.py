@@ -18,10 +18,11 @@ from synthorg.communication.config import (  # noqa: TC001
 if TYPE_CHECKING:
     from nats.aio.client import Client as NatsClient
     from nats.js import JetStreamContext
-    from nats.js.client import JetStreamContext as _JSCtx
     from nats.js.kv import KeyValue
 
-    PullSubscription = _JSCtx.PullSubscription
+    # PullSubscription is a nested class on JetStreamContext, not a
+    # module-level export, so it cannot be imported directly.
+    PullSubscription = JetStreamContext.PullSubscription
 
 
 @dataclass

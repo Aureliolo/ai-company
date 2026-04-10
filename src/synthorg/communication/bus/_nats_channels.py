@@ -6,6 +6,7 @@ KV bucket for multi-process discovery.
 """
 
 from synthorg.communication.bus._nats_kv import (
+    create_channel_in_kv,
     load_channel_from_kv,
     scan_kv_channels,
     write_channel_to_kv,
@@ -98,15 +99,15 @@ async def ensure_direct_channel(
 async def create_channel(state: _NatsState, ch: Channel) -> Channel:
     """Create a new channel.
 
-    Uses an optimistic check-then-act pattern: local cache, then KV
-    bucket, then local cache again. Two processes creating the same
-    channel concurrently may both succeed at the KV write (last-write
-    wins). A future improvement could use KV CAS/revision checks for
-    cross-process atomicity.
+    Uses an atomic KV create to enforce cross-process uniqueness:
+    ``kv.create()`` fails with ``KeyWrongLastSequenceError`` if the
+    key already exists, which is translated to
+    ``ChannelAlreadyExistsError``.
 
     Raises:
         MessageBusNotRunningError: If not running.
-        ChannelAlreadyExistsError: If the channel already exists.
+        ChannelAlreadyExistsError: If the channel already exists
+            (locally or in the KV bucket).
     """
     async with state.lock:
         require_running(state)
@@ -120,34 +121,12 @@ async def create_channel(state: _NatsState, ch: Channel) -> Channel:
                 msg,
                 context={"channel": ch.name},
             )
-    kv_existing = await load_channel_from_kv(state, ch.name)
-    if kv_existing is not None:
-        async with state.lock:
-            if ch.name not in state.channels:
-                state.channels[ch.name] = kv_existing
-        logger.warning(
-            COMM_CHANNEL_ALREADY_EXISTS,
-            channel=ch.name,
-            source="kv",
-        )
-        msg = f"Channel already exists (peer-created): {ch.name}"
-        raise ChannelAlreadyExistsError(
-            msg,
-            context={"channel": ch.name},
-        )
+
+    # Atomic KV create -- raises ChannelAlreadyExistsError if a peer
+    # already created this channel, BusStreamError on transport failure.
+    await create_channel_in_kv(state, ch)
+
     async with state.lock:
-        require_running(state)
-        if ch.name in state.channels:
-            logger.warning(
-                COMM_CHANNEL_ALREADY_EXISTS,
-                channel=ch.name,
-            )
-            msg = f"Channel already exists: {ch.name}"
-            raise ChannelAlreadyExistsError(
-                msg,
-                context={"channel": ch.name},
-            )
-        await write_channel_to_kv(state, ch)
         state.channels[ch.name] = ch
     logger.info(
         COMM_CHANNEL_CREATED,

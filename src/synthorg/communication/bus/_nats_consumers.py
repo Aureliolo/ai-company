@@ -89,7 +89,8 @@ async def subscribe(
     if needs_consumer:
         sub = await create_pull_consumer(state, channel_name, subscriber_id, channel)
 
-    # Store results under lock.
+    # Store results under lock; KV write deferred to outside the lock.
+    updated_channel = None
     async with state.lock:
         if sub is not None and key not in state.subscriptions:
             state.subscriptions[key] = sub
@@ -97,11 +98,13 @@ async def subscribe(
         channel = state.channels[channel_name]
         if subscriber_id not in channel.subscribers:
             new_subs = (*channel.subscribers, subscriber_id)
-            updated = channel.model_copy(
+            updated_channel = channel.model_copy(
                 update={"subscribers": new_subs},
             )
-            await write_channel_to_kv(state, updated)
-            state.channels[channel_name] = updated
+            state.channels[channel_name] = updated_channel
+
+    if updated_channel is not None:
+        await write_channel_to_kv(state, updated_channel)
 
     logger.info(
         COMM_SUBSCRIPTION_CREATED,
@@ -134,9 +137,10 @@ async def unsubscribe(
             update={"subscribers": new_subs},
         )
         state.channels[channel_name] = updated
-        await write_channel_to_kv(state, updated)
         key = (channel_name, subscriber_id)
         sub: Any = state.subscriptions.pop(key, None)
+
+    await write_channel_to_kv(state, updated)
 
     if sub is not None:
         try:
