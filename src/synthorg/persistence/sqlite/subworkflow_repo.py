@@ -316,7 +316,27 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             )
             raise QueryError(msg) from exc
 
-        return self._build_summaries_from_rows(rows)
+        matched_ids = {str(row["subworkflow_id"]) for row in rows}
+        if not matched_ids:
+            return ()
+        placeholders = ", ".join("?" for _ in matched_ids)
+        try:
+            full_cursor = await self._db.execute(
+                f"SELECT {_SUBWORKFLOW_SELECT} FROM subworkflows "  # noqa: S608
+                f"WHERE subworkflow_id IN ({placeholders})",
+                tuple(matched_ids),
+            )
+            full_rows = await full_cursor.fetchall()
+        except sqlite3.Error as exc:
+            msg = "Failed to load full versions for search results"
+            logger.exception(
+                PERSISTENCE_SUBWORKFLOW_LIST_FAILED,
+                query=query,
+                error=str(exc),
+            )
+            raise QueryError(msg) from exc
+
+        return self._build_summaries_from_rows(full_rows)
 
     async def delete(
         self,

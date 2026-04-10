@@ -33,7 +33,7 @@ _VALUE_TYPE_CHECKS: dict[WorkflowValueType, type | tuple[type, ...]] = {
     WorkflowValueType.INTEGER: int,
     WorkflowValueType.FLOAT: (int, float),
     WorkflowValueType.BOOLEAN: bool,
-    WorkflowValueType.DATETIME: datetime,
+    WorkflowValueType.DATETIME: (datetime, str),
     WorkflowValueType.TASK_REF: str,
     WorkflowValueType.AGENT_REF: str,
 }
@@ -62,6 +62,12 @@ def _check_default_type(name: str, default: object, vtype: WorkflowValueType) ->
             f" {vtype.value}, got {type(default).__name__}"
         )
         raise TypeError(msg)
+    if vtype is WorkflowValueType.DATETIME and isinstance(default, str):
+        try:
+            datetime.fromisoformat(default)
+        except ValueError as exc:
+            msg = f"Declaration {name!r}: DATETIME default is not valid ISO-8601"
+            raise TypeError(msg) from exc
     if (
         vtype is WorkflowValueType.FLOAT
         and isinstance(default, (int, float))
