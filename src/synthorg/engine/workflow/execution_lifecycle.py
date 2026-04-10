@@ -222,6 +222,12 @@ async def handle_task_state_changed(
         )
         refreshed = await repo.get(execution.id)
         if refreshed is None:
+            logger.warning(
+                retry_event,
+                execution_id=execution.id,
+                task_id=event.task_id,
+                error="Execution not found after version conflict",
+            )
             return
         if refreshed.status in {
             WorkflowExecutionStatus.COMPLETED,
@@ -229,10 +235,21 @@ async def handle_task_state_changed(
             WorkflowExecutionStatus.CANCELLED,
         }:
             return
-        if event.new_status in {TaskStatus.FAILED, TaskStatus.CANCELLED}:
-            await _handle_task_failed(repo, refreshed, event)
-        else:
-            await _handle_task_completed(repo, refreshed, event)
+        try:
+            if event.new_status in {
+                TaskStatus.FAILED,
+                TaskStatus.CANCELLED,
+            }:
+                await _handle_task_failed(repo, refreshed, event)
+            else:
+                await _handle_task_completed(repo, refreshed, event)
+        except Exception:
+            logger.exception(
+                retry_event,
+                execution_id=execution.id,
+                task_id=event.task_id,
+                error="Retry after version conflict also failed",
+            )
 
 
 # -- Private helpers -------------------------------------------------------

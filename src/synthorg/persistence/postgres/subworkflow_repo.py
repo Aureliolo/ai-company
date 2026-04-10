@@ -314,7 +314,8 @@ VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
         query: NotBlankStr,
     ) -> tuple[SubworkflowSummary, ...]:
         """Search subworkflows by name or description substring."""
-        pattern = f"%{query}%"
+        escaped = query.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        pattern = f"%{escaped}%"
         try:
             async with (
                 self._pool.connection() as conn,

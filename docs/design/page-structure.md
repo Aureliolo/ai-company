@@ -194,6 +194,13 @@ No WebSocket subscription -- workflow definitions are persisted via REST and do 
 **API endpoints**: `GET /workflows`, `POST /workflows`, `GET /workflows/{id}`, `PATCH /workflows/{id}`, `DELETE /workflows/{id}`, `POST /workflows/{id}/validate`, `POST /workflows/{id}/export`, `GET /workflows/{id}/versions`, `GET /workflows/{id}/versions/{version_num}`, `GET /workflows/{id}/diff?from_version=N&to_version=M`, `POST /workflows/{id}/rollback`
 **WS channels**: (none)
 
+#### Subworkflows (`/subworkflows`)
+
+Registry listing of reusable subworkflow components. Card grid with search, I/O signature summary (input count / output count), version count, and latest version badge. Click opens a detail drawer showing version history, parent references, and delete action (blocked when parents pin the version).
+
+**API endpoints**: `GET /subworkflows`, `GET /subworkflows/search?q=`, `GET /subworkflows/{id}/versions`, `GET /subworkflows/{id}/versions/{version}`, `GET /subworkflows/{id}/versions/{version}/parents`, `POST /subworkflows`, `DELETE /subworkflows/{id}/versions/{version}`
+**WS channels**: (polling, 30s)
+
 #### Settings (`/settings`)
 
 Configuration for 7 namespaces: api, memory, budget, security, coordination, observability, backup. Navigation uses a horizontal **namespace tab bar** across the top of the settings page, with each namespace as a clickable tab. Within each namespace, settings are displayed in a single-column layout with sub-group headings, basic/advanced mode, GUI/Code edit toggle (JSON/YAML within Code mode). Each namespace is URL-addressable (`/settings/{namespace}`) for deep linking from other pages (e.g. Dashboard budget warning links to `/settings/budget`).
@@ -303,6 +310,7 @@ SIDEBAR (220px expanded / 56px icon rail)
 |   +-- Agents             [Users]               /agents
 |   +-- Projects           [FolderKanban]        /projects
 |   +-- Workflows          [Workflow]            /workflows
+|   +-- Subworkflows       [Layers]              /subworkflows
 |   +-- Artifacts          [Package]             /artifacts
 |   +-- Messages           [MessageSquare]       /messages  [badge: unread count]
 |   +-- Meetings           [Video]               /meetings
@@ -362,7 +370,8 @@ SIDEBAR (220px expanded / 56px icon rail)
 | `/projects` | Projects | List with search/filter |
 | `/projects/:projectId` | Project detail | Full page with team, tasks |
 | `/workflows` | Workflows | Card grid list with search, type filter, create (blank or from blueprint)/duplicate/delete |
-| `/workflows/editor` | Workflow Editor | Visual DAG editor for workflow definitions (7 node types, 4 edge types, YAML preview, validation, version history with diff/rollback) |
+| `/workflows/editor` | Workflow Editor | Visual DAG editor for workflow definitions (8 node types incl. subworkflow, 4 edge types, YAML preview, validation, version history with diff/rollback) |
+| `/subworkflows` | Subworkflows | Registry card grid with search, I/O signature, version count, detail drawer with parents and delete |
 | `/artifacts` | Artifacts | List with search/filter |
 | `/artifacts/:artifactId` | Artifact detail | Full page with metadata, content preview |
 | `/messages` | Messages | Channel feed |

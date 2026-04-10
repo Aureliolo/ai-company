@@ -35,26 +35,36 @@ export function SubworkflowDetailDrawer({
 
   useEffect(() => {
     if (!open || !subworkflow) return
+    const subId = subworkflow.subworkflow_id
+    const subVersion = subworkflow.latest_version
     let cancelled = false
     async function load() {
+      setLoading(true)
       try {
         const [v, p] = await Promise.all([
-          listVersions(subworkflow!.subworkflow_id),
-          listParents(subworkflow!.subworkflow_id),
+          listVersions(subId),
+          listParents(subId, subVersion),
         ])
         if (!cancelled) {
           setVersions(v)
           setParents(p)
         }
       } catch (err: unknown) {
-        log.warn('Failed to load subworkflow details', sanitizeForLog(err))
+        if (!cancelled) {
+          log.warn('Failed to load subworkflow details', sanitizeForLog(err))
+          addToast({
+            variant: 'error',
+            title: 'Failed to load details',
+            description: getErrorMessage(err),
+          })
+        }
       } finally {
         if (!cancelled) setLoading(false)
       }
     }
     void load()
     return () => { cancelled = true }
-  }, [open, subworkflow])
+  }, [open, subworkflow, addToast])
 
   const handleDelete = useCallback(async () => {
     if (!subworkflow) return
@@ -108,7 +118,7 @@ export function SubworkflowDetailDrawer({
               Versions ({versions.length})
             </h3>
             {loading ? (
-              <div className="flex flex-col gap-1">
+              <div className="flex flex-col gap-1" role="status" aria-label="Loading versions">
                 <Skeleton className="h-6 rounded" />
                 <Skeleton className="h-6 rounded" />
               </div>

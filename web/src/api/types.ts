@@ -1752,6 +1752,7 @@ export interface ParentReference {
   readonly parent_name: string
   readonly pinned_version: string
   readonly node_id: string
+  readonly parent_type: 'workflow_definition' | 'subworkflow'
 }
 
 export interface CreateSubworkflowRequest {

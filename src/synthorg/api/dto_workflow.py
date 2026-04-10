@@ -5,9 +5,9 @@ Re-exported via ``dto.__all__`` for backward compatibility.
 """
 
 import re
-from typing import Literal
+from typing import Literal, Self
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from synthorg.core.enums import WorkflowType, WorkflowValueType  # noqa: TC001
 from synthorg.core.types import NotBlankStr  # noqa: TC001
@@ -42,6 +42,17 @@ class WorkflowIODeclarationRequest(BaseModel):
         max_length=1024,
         description="Human-readable description",
     )
+
+    @model_validator(mode="after")
+    def _validate_default_with_required(self) -> Self:
+        """Reject defaults on required declarations at the DTO boundary."""
+        if self.required and self.default is not None:
+            msg = (
+                f"Declaration {self.name!r}: required declarations "
+                f"must not carry a default value"
+            )
+            raise ValueError(msg)
+        return self
 
 
 class CreateWorkflowDefinitionRequest(BaseModel):

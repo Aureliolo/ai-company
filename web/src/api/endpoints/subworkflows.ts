@@ -45,10 +45,10 @@ export async function getVersion(
 
 export async function listParents(
   subworkflowId: string,
-  version?: string,
+  version: string,
 ): Promise<readonly ParentReference[]> {
   const response = await apiClient.get<ApiResponse<readonly ParentReference[]>>(
-    `/subworkflows/${encodeURIComponent(subworkflowId)}/versions/${encodeURIComponent(version ?? '')}/parents`,
+    `/subworkflows/${encodeURIComponent(subworkflowId)}/versions/${encodeURIComponent(version)}/parents`,
   )
   return unwrap(response)
 }

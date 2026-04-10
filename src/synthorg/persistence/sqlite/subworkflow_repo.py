@@ -474,7 +474,15 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             )
             await self._db.commit()
         except Exception:
-            await self._db.rollback()
+            try:
+                await self._db.rollback()
+            except sqlite3.Error:
+                logger.exception(
+                    PERSISTENCE_SUBWORKFLOW_DELETE_FAILED,
+                    subworkflow_id=subworkflow_id,
+                    version=version,
+                    error="Rollback failed after primary error",
+                )
             raise
 
         deleted = cursor.rowcount > 0

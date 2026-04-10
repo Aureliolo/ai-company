@@ -110,7 +110,7 @@ def _collect_terminal_task_ids(
     child_definition: WorkflowDefinition,
     child_prefix: str,
     state: _WalkState,
-) -> str | tuple[str, ...]:
+) -> tuple[str, ...]:
     """Collect task IDs from a child graph's terminal TASK nodes.
 
     A terminal TASK node is one whose only successors are END nodes
@@ -118,10 +118,9 @@ def _collect_terminal_task_ids(
     parent frame's ``frame_node_task_ids`` so downstream parent TASK
     nodes receive these as dependencies.
 
-    Returns a single task ID string when there is exactly one
-    terminal task, or a tuple for multiple.  Returns an empty tuple
-    when no terminal tasks exist (e.g. the child graph had no TASK
-    nodes).
+    Returns:
+        A tuple of task IDs (possibly empty when the child graph
+        had no TASK nodes or all tasks were skipped).
     """
     adjacency, _, _ = build_adjacency_maps(child_definition)
     node_map = {n.id: n for n in child_definition.nodes}
@@ -141,8 +140,6 @@ def _collect_terminal_task_ids(
             or not successors
         ):
             terminal_task_ids.append(task_id)
-    if len(terminal_task_ids) == 1:
-        return terminal_task_ids[0]
     return tuple(terminal_task_ids)
 
 

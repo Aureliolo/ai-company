@@ -42,13 +42,19 @@ export const useSubworkflowsStore = create<SubworkflowsState>((set, get) => ({
       const results = query
         ? await searchSubworkflows(query)
         : await listSubworkflows()
-      if (isStaleRequest(token)) return
+      if (isStaleRequest(token)) {
+        set(() => ({ listLoading: false }))
+        return
+      }
       set(() => ({
         subworkflows: results,
         listLoading: false,
       }))
     } catch (err: unknown) {
-      if (isStaleRequest(token)) return
+      if (isStaleRequest(token)) {
+        set(() => ({ listLoading: false }))
+        return
+      }
       log.warn('Failed to fetch subworkflows', sanitizeForLog(err))
       set(() => ({
         listLoading: false,
