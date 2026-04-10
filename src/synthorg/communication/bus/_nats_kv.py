@@ -52,6 +52,12 @@ async def create_channel_in_kv(
         await state.kv.create(key, value)
     except KeyWrongLastSequenceError:
         msg = f"Channel already exists in KV: {channel.name}"
+        logger.warning(
+            COMM_BUS_KV_WRITE_FAILED,
+            channel=channel.name,
+            error=msg,
+            phase="atomic_create",
+        )
         raise ChannelAlreadyExistsError(
             msg, context={"channel": channel.name}
         ) from None
