@@ -1,0 +1,222 @@
+"""Tests for Pareto frontier-based memory pruning strategy."""
+
+from datetime import UTC, datetime, timedelta
+from unittest.mock import MagicMock
+
+import pytest
+
+from synthorg.memory.procedural.pruning.pareto_strategy import (
+    ParetoPruningStrategy,
+)
+
+
+class TestParetoPruningStrategy:
+    """Pareto pruning strategy tests."""
+
+    @pytest.mark.unit
+    async def test_name_property(self) -> None:
+        """Test that strategy has correct name."""
+        strategy = ParetoPruningStrategy(max_entries=100)
+        assert strategy.name == "pareto"
+
+    @pytest.mark.unit
+    async def test_empty_entries(self) -> None:
+        """Test pruning with empty entries."""
+        strategy = ParetoPruningStrategy(max_entries=100)
+        result = await strategy.prune(agent_id="test-agent-1", entries=())
+        assert result == ()
+
+    @pytest.mark.unit
+    async def test_entries_under_limit_no_pruning(self) -> None:
+        """Test that no pruning occurs when under max_entries."""
+        entries = []
+        for i in range(50):
+            entry = MagicMock()
+            entry.id = f"mem-{i}"
+            entry.relevance_score = 0.5
+            entries.append(entry)
+
+        strategy = ParetoPruningStrategy(max_entries=100)
+        result = await strategy.prune(
+            agent_id="test-agent-1",
+            entries=tuple(entries),
+        )
+        assert result == ()
+
+    @pytest.mark.unit
+    async def test_pareto_frontier_basic(self) -> None:
+        """Test basic Pareto frontier calculation.
+
+        Entry A: relevance=1.0, created 2 days ago (oldest)
+        Entry B: relevance=0.5, created 0 days ago (newest)
+        Entry C: relevance=0.0, created 1 day ago (middle)
+
+        Only B and A are on the Pareto frontier.
+        C is dominated by both (lower relevance and lower recency).
+        """
+        now = datetime.now(UTC)
+        entries = []
+
+        entry_a = MagicMock()
+        entry_a.id = "mem-a"
+        entry_a.relevance_score = 1.0
+        entry_a.created_at = now - timedelta(days=2)  # oldest
+        entries.append(entry_a)
+
+        entry_b = MagicMock()
+        entry_b.id = "mem-b"
+        entry_b.relevance_score = 0.5
+        entry_b.created_at = now  # newest
+        entries.append(entry_b)
+
+        entry_c = MagicMock()
+        entry_c.id = "mem-c"
+        entry_c.relevance_score = 0.0
+        entry_c.created_at = now - timedelta(days=1)  # middle
+        entries.append(entry_c)
+
+        strategy = ParetoPruningStrategy(max_entries=2)
+        result = await strategy.prune(
+            agent_id="test-agent-1",
+            entries=tuple(entries),
+        )
+        # C is dominated and should be pruned
+        assert "mem-c" in result
+
+    @pytest.mark.unit
+    async def test_high_relevance_kept(self) -> None:
+        """Test that high-relevance entries are kept."""
+        now = datetime.now(UTC)
+        entries = []
+        for i in range(5):
+            entry = MagicMock()
+            entry.id = f"mem-{i}"
+            entry.relevance_score = 1.0 - (i * 0.1)
+            entry.created_at = now - timedelta(days=i)
+            entries.append(entry)
+
+        strategy = ParetoPruningStrategy(max_entries=3)
+        result = await strategy.prune(
+            agent_id="test-agent-1",
+            entries=tuple(entries),
+        )
+        # Top relevance entries should be on frontier
+        assert "mem-0" not in result  # relevance=1.0, should be kept
+
+    @pytest.mark.unit
+    async def test_none_relevance_score(self) -> None:
+        """Test entries with None relevance_score."""
+        now = datetime.now(UTC)
+        entry_with_score = MagicMock()
+        entry_with_score.id = "mem-1"
+        entry_with_score.relevance_score = 0.8
+        entry_with_score.created_at = now
+
+        entry_no_score = MagicMock()
+        entry_no_score.id = "mem-2"
+        entry_no_score.relevance_score = None
+        entry_no_score.created_at = now - timedelta(days=1)
+
+        strategy = ParetoPruningStrategy(max_entries=1)
+        result = await strategy.prune(
+            agent_id="test-agent-1",
+            entries=(entry_with_score, entry_no_score),
+        )
+        # Entries with None score are treated as 0.0
+        assert "mem-2" in result
+
+    @pytest.mark.unit
+    async def test_equals_max_entries_no_pruning(self) -> None:
+        """Test when entry count equals max_entries."""
+        entries = []
+        for i in range(5):
+            entry = MagicMock()
+            entry.id = f"mem-{i}"
+            entry.relevance_score = 0.5
+            entries.append(entry)
+
+        strategy = ParetoPruningStrategy(max_entries=5)
+        result = await strategy.prune(
+            agent_id="test-agent-1",
+            entries=tuple(entries),
+        )
+        assert result == ()
+
+    @pytest.mark.unit
+    async def test_single_entry_below_limit(self) -> None:
+        """Test with single entry below limit."""
+        entry = MagicMock()
+        entry.id = "mem-1"
+        entry.relevance_score = 0.5
+
+        strategy = ParetoPruningStrategy(max_entries=100)
+        result = await strategy.prune(
+            agent_id="test-agent-1",
+            entries=(entry,),
+        )
+        assert result == ()
+
+    @pytest.mark.unit
+    async def test_default_max_entries_is_100(self) -> None:
+        """Test that default max_entries is 100."""
+        strategy = ParetoPruningStrategy()
+        entries = []
+        for i in range(50):
+            entry = MagicMock()
+            entry.id = f"mem-{i}"
+            entry.relevance_score = 0.5
+            entries.append(entry)
+
+        result = await strategy.prune(
+            agent_id="test-agent-1",
+            entries=tuple(entries),
+        )
+        assert result == ()
+
+    @pytest.mark.unit
+    async def test_all_same_relevance(self) -> None:
+        """Test entries with identical relevance scores.
+
+        When all have same relevance, recency becomes the differentiator.
+        """
+        now = datetime.now(UTC)
+        entries = []
+        for i in range(3):
+            entry = MagicMock()
+            entry.id = f"mem-{i}"
+            entry.relevance_score = 0.5
+            entry.created_at = now - timedelta(days=i)
+            entries.append(entry)
+
+        strategy = ParetoPruningStrategy(max_entries=2)
+        result = await strategy.prune(
+            agent_id="test-agent-1",
+            entries=tuple(entries),
+        )
+        # At least one entry should be pruned
+        assert len(result) >= 1
+
+    @pytest.mark.unit
+    async def test_dominated_entries_pruned(self) -> None:
+        """Test that strictly dominated entries are identified for pruning."""
+        now = datetime.now(UTC)
+        entries = []
+
+        entry_dominant = MagicMock()
+        entry_dominant.id = "mem-dominant"
+        entry_dominant.relevance_score = 1.0
+        entry_dominant.created_at = now  # newest
+        entries.append(entry_dominant)
+
+        entry_dominated = MagicMock()
+        entry_dominated.id = "mem-dominated"
+        entry_dominated.relevance_score = 0.5
+        entry_dominated.created_at = now - timedelta(days=1)  # older
+        entries.append(entry_dominated)
+
+        strategy = ParetoPruningStrategy(max_entries=1)
+        result = await strategy.prune(
+            agent_id="test-agent-1",
+            entries=tuple(entries),
+        )
+        assert "mem-dominated" in result

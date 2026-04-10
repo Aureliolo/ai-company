@@ -35,6 +35,7 @@ HR_REGISTRY_AGENT_REGISTERED: Final[str] = "hr.registry.agent_registered"
 HR_REGISTRY_AGENT_REMOVED: Final[str] = "hr.registry.agent_removed"
 HR_REGISTRY_STATUS_UPDATED: Final[str] = "hr.registry.status_updated"
 HR_REGISTRY_IDENTITY_UPDATED: Final[str] = "hr.registry.identity_updated"
+HR_REGISTRY_IDENTITY_EVOLVED: Final[str] = "hr.registry.identity_evolved"
 
 # ── Error-path events ───────────────────────────────────────────
 

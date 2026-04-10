@@ -20,6 +20,10 @@ from synthorg.hr.performance.models import (
     WindowMetrics,
 )
 from synthorg.observability import get_logger
+from synthorg.observability.events.inflection import (
+    PERF_INFLECTION_DETECTED,
+    PERF_INFLECTION_EMISSION_FAILED,
+)
 from synthorg.observability.events.performance import (
     PERF_LLM_SAMPLE_FAILED,
     PERF_METRIC_RECORDED,
@@ -33,12 +37,14 @@ if TYPE_CHECKING:
 
     from synthorg.core.task import AcceptanceCriterion
     from synthorg.engine.coordination.attribution import AgentContribution
+    from synthorg.hr.enums import TrendDirection
     from synthorg.hr.performance.collaboration_override_store import (
         CollaborationOverrideStore,
     )
     from synthorg.hr.performance.collaboration_protocol import (
         CollaborationScoringStrategy,
     )
+    from synthorg.hr.performance.inflection_protocol import InflectionSink
     from synthorg.hr.performance.llm_calibration_sampler import (
         LlmCalibrationSampler,
     )
@@ -83,6 +89,7 @@ class PerformanceTracker:
         sampler: LlmCalibrationSampler | None = None,
         override_store: CollaborationOverrideStore | None = None,
         quality_override_store: QualityOverrideStore | None = None,
+        inflection_sink: InflectionSink | None = None,
     ) -> None:
         cfg = config or PerformanceConfig()
         self._config = cfg
@@ -95,6 +102,8 @@ class PerformanceTracker:
         self._sampler = sampler
         self._override_store = override_store
         self._quality_override_store = quality_override_store
+        self._inflection_sink = inflection_sink
+        self._trend_direction_cache: dict[tuple[str, str, str], TrendDirection] = {}
         self._task_metrics: dict[str, list[TaskMetricRecord]] = {}
         self._collab_metrics: dict[str, list[CollaborationMetricRecord]] = {}
         self._contributions: dict[str, list[AgentContribution]] = {}
@@ -332,6 +341,10 @@ class PerformanceTracker:
         # Compute trends for quality and cost metrics.
         trends = self._compute_trends(task_records, windows, now=now)
 
+        # Emit inflection events for trend direction changes.
+        if self._inflection_sink is not None and trends:
+            self._schedule_inflection_emission(agent_id, trends)
+
         # Overall quality: average of all scored records.
         scored = [r.quality_score for r in task_records if r.quality_score is not None]
         overall_quality = round(sum(scored) / len(scored), 4) if scored else None
@@ -554,5 +567,82 @@ class PerformanceTracker:
                 agent_id=record.agent_id,
                 record_id=record.id,
                 reason="llm_sample_failed",
+                exc_info=True,
+            )
+
+    # ── Inflection emission ─────────────────────────────────────
+
+    def _schedule_inflection_emission(
+        self,
+        agent_id: NotBlankStr,
+        trends: list[TrendResult],
+    ) -> None:
+        """Schedule inflection emission as a background task.
+
+        Compares each trend's direction against the cached previous
+        direction.  Emits a ``PerformanceInflection`` for every
+        direction change.  The task is tracked to prevent GC warnings.
+        """
+        task = asyncio.create_task(
+            self._do_emit_inflections(agent_id, trends),
+        )
+        self._background_tasks.add(task)
+        task.add_done_callback(self._background_tasks.discard)
+
+    async def _do_emit_inflections(
+        self,
+        agent_id: NotBlankStr,
+        trends: list[TrendResult],
+    ) -> None:
+        """Emit inflection events for trend direction changes.
+
+        Best-effort: failures are logged and never propagated.
+        """
+        from synthorg.hr.performance.inflection_protocol import (  # noqa: PLC0415
+            PerformanceInflection,
+        )
+
+        sink = self._inflection_sink
+        if sink is None:  # pragma: no cover -- guarded by caller
+            return
+
+        try:
+            for trend in trends:
+                cache_key = (
+                    str(agent_id),
+                    str(trend.metric_name),
+                    str(trend.window_size),
+                )
+                old_direction = self._trend_direction_cache.get(
+                    cache_key,
+                )
+                if old_direction is not None and old_direction != trend.direction:
+                    inflection = PerformanceInflection(
+                        agent_id=agent_id,
+                        metric_name=trend.metric_name,
+                        window_size=trend.window_size,
+                        old_direction=old_direction,
+                        new_direction=trend.direction,
+                        slope=trend.slope,
+                    )
+                    logger.info(
+                        PERF_INFLECTION_DETECTED,
+                        agent_id=str(agent_id),
+                        metric=str(trend.metric_name),
+                        window=str(trend.window_size),
+                        old=old_direction.value,
+                        new=trend.direction.value,
+                    )
+                    await sink.emit(inflection)
+                self._trend_direction_cache[cache_key] = trend.direction
+        except MemoryError, RecursionError:
+            raise
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            logger.warning(
+                PERF_INFLECTION_EMISSION_FAILED,
+                agent_id=str(agent_id),
+                error=f"{type(exc).__name__}: {exc}",
                 exc_info=True,
             )

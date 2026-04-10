@@ -1,4 +1,4 @@
-"""Post-execution memory hooks -- distillation capture and procedural memory.
+"""Post-execution memory hooks -- distillation, procedural memory, evolution.
 
 Extracted from ``agent_engine.py`` to keep the engine file under 800 lines.
 The functions here are standalone async helpers that receive all dependencies
@@ -13,12 +13,17 @@ from synthorg.observability.events.consolidation import (
     DISTILLATION_CAPTURE_FAILED,
     DISTILLATION_CAPTURE_SKIPPED,
 )
+from synthorg.observability.events.evolution import (
+    EVOLUTION_TRIGGER_FAILED,
+    EVOLUTION_TRIGGER_SKIPPED,
+)
 from synthorg.observability.events.procedural_memory import (
     PROCEDURAL_MEMORY_ERROR,
     PROCEDURAL_MEMORY_SKIPPED,
 )
 
 if TYPE_CHECKING:
+    from synthorg.engine.evolution.service import EvolutionService
     from synthorg.engine.loop_protocol import ExecutionResult
     from synthorg.engine.recovery import RecoveryResult
     from synthorg.memory.procedural.models import ProceduralMemoryConfig
@@ -147,5 +152,53 @@ async def try_procedural_memory(  # noqa: PLR0913
             agent_id=agent_id,
             task_id=task_id,
             error=f"procedural memory failed: {type(exc).__name__}: {exc}",
+            exc_info=True,
+        )
+
+
+async def try_evolution_trigger(
+    agent_id: str,
+    task_id: str,
+    *,
+    evolution_service: EvolutionService | None,
+) -> None:
+    """Run evolution pipeline post-task (non-critical, never fatal).
+
+    Fires after distillation capture so distilled knowledge is
+    available for evolution context.  System errors and cancellation
+    propagate; all others are swallowed.
+
+    Args:
+        agent_id: Agent that executed the task.
+        task_id: Task that was executed.
+        evolution_service: Evolution service (None = skip).
+    """
+    if evolution_service is None:
+        logger.debug(
+            EVOLUTION_TRIGGER_SKIPPED,
+            agent_id=agent_id,
+            task_id=task_id,
+            reason="no_evolution_service",
+        )
+        return
+    try:
+        from pydantic import TypeAdapter  # noqa: PLC0415
+
+        from synthorg.core.types import NotBlankStr  # noqa: PLC0415
+
+        _nb = TypeAdapter(NotBlankStr)
+        await evolution_service.evolve(
+            agent_id=_nb.validate_python(agent_id),
+        )
+    except MemoryError, RecursionError:
+        raise
+    except asyncio.CancelledError:
+        raise
+    except Exception as exc:
+        logger.warning(
+            EVOLUTION_TRIGGER_FAILED,
+            agent_id=agent_id,
+            task_id=task_id,
+            error=f"evolution trigger failed: {type(exc).__name__}: {exc}",
             exc_info=True,
         )

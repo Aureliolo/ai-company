@@ -1,0 +1,156 @@
+"""Success-only capture strategy for procedural memory.
+
+Captures procedural memories from successful task executions based on
+a configurable quality threshold derived from the proposer's confidence.
+"""
+
+from synthorg.core.enums import MemoryCategory
+from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.engine.loop_protocol import (
+    ExecutionResult,
+    TerminationReason,
+)
+from synthorg.engine.recovery import RecoveryResult  # noqa: TC001
+from synthorg.memory.filter import NON_INFERABLE_TAG
+from synthorg.memory.models import MemoryMetadata, MemoryStoreRequest
+from synthorg.memory.procedural.models import ProceduralMemoryConfig  # noqa: TC001
+from synthorg.memory.procedural.success_proposer import (
+    SuccessMemoryProposer,  # noqa: TC001
+)
+from synthorg.memory.protocol import MemoryBackend  # noqa: TC001
+from synthorg.observability import get_logger
+
+logger = get_logger(__name__)
+
+
+class SuccessCaptureStrategy:
+    """Captures procedural memories from successful task executions.
+
+    Only fires when execution succeeds (termination_reason is SUCCESS)
+    and the proposed memory meets the quality threshold.
+
+    Args:
+        proposer: SuccessMemoryProposer instance.
+        config: ProceduralMemoryConfig instance.
+        min_quality_score: Minimum quality score (0-10) required to store.
+            Derived from confidence: quality = confidence * 10.
+            Default 8.0 means confidence >= 0.8.
+    """
+
+    def __init__(
+        self,
+        *,
+        proposer: SuccessMemoryProposer,
+        config: ProceduralMemoryConfig,
+        min_quality_score: float = 8.0,
+    ) -> None:
+        self._proposer = proposer
+        self._config = config
+        self._min_quality_score = min_quality_score
+
+    @property
+    def name(self) -> str:
+        """Return the strategy name."""
+        return "success"
+
+    async def capture(
+        self,
+        *,
+        execution_result: ExecutionResult,
+        recovery_result: RecoveryResult | None,
+        agent_id: NotBlankStr,
+        task_id: NotBlankStr,
+        memory_backend: MemoryBackend,
+    ) -> NotBlankStr | None:
+        """Capture a procedural memory from a successful execution.
+
+        Only captures when execution succeeded (no recovery) and the
+        proposed memory's quality (confidence * 10) meets the threshold.
+
+        Args:
+            execution_result: Result of the task execution.
+            recovery_result: Recovery result (None if no recovery).
+            agent_id: Agent that executed the task.
+            task_id: Task that was executed.
+            memory_backend: Memory backend for storage.
+
+        Returns:
+            Memory entry ID if a memory was captured, None otherwise.
+        """
+        # Only proceed if execution succeeded (no recovery)
+        if recovery_result is not None:
+            return None
+
+        # Check if execution was successful
+        if execution_result.termination_reason != TerminationReason.COMPLETED:
+            return None
+
+        # Propose memory from successful execution
+        proposal = await self._proposer.propose(execution_result)
+        if proposal is None:
+            return None
+
+        # Check quality threshold (confidence * 10)
+        quality_score = proposal.confidence * 10.0
+        if quality_score < self._min_quality_score:
+            logger.info(
+                "success_memory.quality_below_threshold",
+                quality=quality_score,
+                min_quality=self._min_quality_score,
+                confidence=proposal.confidence,
+            )
+            return None
+
+        # Store the memory with success-derived tag
+        tags = (NON_INFERABLE_TAG, "success-derived", *proposal.tags)
+        request = MemoryStoreRequest(
+            category=MemoryCategory.PROCEDURAL,
+            content=self._format_content(proposal),
+            metadata=MemoryMetadata(
+                source=f"success:{task_id}",
+                confidence=proposal.confidence,
+                tags=tags,
+            ),
+        )
+
+        try:
+            memory_id = await memory_backend.store(agent_id, request)
+            logger.info(
+                "success_memory.stored",
+                memory_id=memory_id,
+                quality=quality_score,
+                confidence=proposal.confidence,
+            )
+        except MemoryError, RecursionError:
+            raise
+        except Exception as exc:
+            logger.warning(
+                "success_memory.store_failed",
+                error=f"{type(exc).__name__}: {exc}",
+                exc_info=True,
+            )
+            return None
+        else:
+            return memory_id
+
+    @staticmethod
+    def _format_content(proposal: object) -> str:
+        """Format a proposal into three-tier progressive disclosure text."""
+        discovery = getattr(proposal, "discovery", "")
+        condition = getattr(proposal, "condition", "")
+        action = getattr(proposal, "action", "")
+        rationale = getattr(proposal, "rationale", "")
+        execution_steps = getattr(proposal, "execution_steps", ())
+
+        parts = [
+            f"[DISCOVERY] {discovery}",
+            f"[CONDITION] {condition}",
+            f"[ACTION] {action}",
+            f"[RATIONALE] {rationale}",
+        ]
+        if execution_steps:
+            steps = "\n".join(
+                f"  {i}. {step}" for i, step in enumerate(execution_steps, 1)
+            )
+            parts.append(f"[EXECUTION]\n{steps}")
+        return "\n\n".join(parts)

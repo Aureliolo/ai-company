@@ -1,0 +1,284 @@
+"""Factory for building the evolution service from config."""
+
+from typing import TYPE_CHECKING
+
+from synthorg.engine.evolution.config import EvolutionConfig
+from synthorg.engine.evolution.models import AdaptationAxis
+from synthorg.engine.identity.store.factory import build_identity_store
+from synthorg.observability import get_logger
+
+if TYPE_CHECKING:
+    from synthorg.core.agent import AgentIdentity
+    from synthorg.engine.evolution.protocols import (
+        AdaptationAdapter,
+        AdaptationGuard,
+        AdaptationProposer,
+        EvolutionTrigger,
+    )
+    from synthorg.engine.evolution.service import EvolutionService
+    from synthorg.engine.identity.store.protocol import (
+        IdentityVersionStore,
+    )
+    from synthorg.hr.performance.tracker import PerformanceTracker
+    from synthorg.hr.registry import AgentRegistryService
+    from synthorg.memory.protocol import MemoryBackend
+    from synthorg.providers.protocol import BaseCompletionProvider
+    from synthorg.versioning.service import VersioningService
+
+logger = get_logger(__name__)
+
+
+def build_evolution_service(  # noqa: PLR0913
+    config: EvolutionConfig,
+    *,
+    registry: AgentRegistryService,
+    versioning: VersioningService[AgentIdentity],
+    tracker: PerformanceTracker,
+    memory_backend: MemoryBackend | None = None,
+    provider: BaseCompletionProvider | None = None,
+) -> EvolutionService:
+    """Build a fully wired ``EvolutionService`` from configuration.
+
+    Args:
+        config: Evolution configuration.
+        registry: Agent registry.
+        versioning: Versioning service for AgentIdentity.
+        tracker: Performance tracker.
+        memory_backend: Memory backend (optional).
+        provider: LLM completion provider (for proposers).
+
+    Returns:
+        Configured evolution service.
+    """
+    from synthorg.engine.evolution.service import (  # noqa: PLC0415
+        EvolutionService,
+    )
+
+    identity_store = build_identity_store(
+        config.identity_store,
+        registry=registry,
+        versioning=versioning,
+    )
+
+    trigger = _build_trigger(config, tracker=tracker)
+    proposer = _build_proposer(config, provider=provider)
+    guard = _build_guard(config, identity_store=identity_store)
+    adapters = _build_adapters(
+        config,
+        identity_store=identity_store,
+        memory_backend=memory_backend,
+    )
+
+    return EvolutionService(
+        identity_store=identity_store,
+        tracker=tracker,
+        proposer=proposer,
+        guard=guard,
+        adapters=adapters,
+        memory_backend=memory_backend,
+        config=config,
+    )
+
+
+def _build_trigger(
+    config: EvolutionConfig,
+    *,
+    tracker: PerformanceTracker,
+) -> EvolutionTrigger:
+    """Build trigger from config."""
+    from synthorg.engine.evolution.triggers.batched import (  # noqa: PLC0415
+        BatchedTrigger,
+    )
+    from synthorg.engine.evolution.triggers.composite import (  # noqa: PLC0415
+        CompositeTrigger,
+    )
+    from synthorg.engine.evolution.triggers.inflection import (  # noqa: PLC0415
+        InflectionTrigger,
+    )
+    from synthorg.engine.evolution.triggers.per_task import (  # noqa: PLC0415
+        PerTaskTrigger,
+    )
+
+    triggers: list[EvolutionTrigger] = []
+    for trigger_type in config.triggers.types:
+        if trigger_type == "batched":
+            triggers.append(
+                BatchedTrigger(
+                    interval_seconds=config.triggers.batched_interval_seconds,
+                )
+            )
+        elif trigger_type == "inflection":
+            trigger = InflectionTrigger()
+            # Wire the trigger as the tracker's inflection sink
+            # if the tracker doesn't already have one.
+            if tracker._inflection_sink is None:  # noqa: SLF001
+                tracker._inflection_sink = trigger  # noqa: SLF001
+            triggers.append(trigger)
+        elif trigger_type == "per_task":
+            triggers.append(
+                PerTaskTrigger(
+                    min_tasks_since_last=config.triggers.per_task_min_tasks,
+                )
+            )
+
+    if not triggers:
+        triggers.append(BatchedTrigger())
+
+    if len(triggers) == 1:
+        return triggers[0]
+    return CompositeTrigger(triggers=tuple(triggers))
+
+
+def _build_proposer(
+    config: EvolutionConfig,
+    *,
+    provider: BaseCompletionProvider | None,
+) -> AdaptationProposer:
+    """Build proposer from config."""
+    from synthorg.engine.evolution.proposers.self_report import (  # noqa: PLC0415
+        SelfReportProposer,
+    )
+
+    proposer_cfg = config.proposer
+    if provider is None:
+        return _NoOpProposer()
+
+    if proposer_cfg.type == "self_report":
+        return SelfReportProposer(
+            provider,
+            model=proposer_cfg.model,
+            temperature=proposer_cfg.temperature,
+        )
+
+    from synthorg.engine.evolution.proposers.separate_analyzer import (  # noqa: PLC0415
+        SeparateAnalyzerProposer,
+    )
+
+    if proposer_cfg.type == "separate_analyzer":
+        return SeparateAnalyzerProposer(
+            provider,
+            model=proposer_cfg.model,
+            temperature=proposer_cfg.temperature,
+            max_tokens=proposer_cfg.max_tokens,
+        )
+
+    # Composite: use both.
+    from synthorg.engine.evolution.proposers.composite import (  # noqa: PLC0415
+        CompositeProposer,
+    )
+
+    failure_proposer = SeparateAnalyzerProposer(
+        provider,
+        model=proposer_cfg.model,
+        temperature=proposer_cfg.temperature,
+        max_tokens=proposer_cfg.max_tokens,
+    )
+    success_proposer = SelfReportProposer(
+        provider,
+        model=proposer_cfg.model,
+        temperature=proposer_cfg.temperature,
+    )
+    return CompositeProposer(
+        failure_proposer=failure_proposer,
+        success_proposer=success_proposer,
+    )
+
+
+def _build_guard(
+    config: EvolutionConfig,
+    *,
+    identity_store: IdentityVersionStore,
+) -> AdaptationGuard:
+    """Build guard from config."""
+    guards: list[AdaptationGuard] = []
+    guard_cfg = config.guards
+
+    if guard_cfg.rate_limit:
+        from synthorg.engine.evolution.guards.rate_limit import (  # noqa: PLC0415
+            RateLimitGuard,
+        )
+
+        guards.append(RateLimitGuard(max_per_day=guard_cfg.rate_limit_per_day))
+
+    if guard_cfg.review_gate:
+        from synthorg.engine.evolution.guards.review_gate import (  # noqa: PLC0415
+            ReviewGateGuard,
+        )
+
+        guards.append(ReviewGateGuard())
+
+    if guard_cfg.rollback:
+        from synthorg.engine.evolution.guards.rollback import (  # noqa: PLC0415
+            RollbackGuard,
+        )
+
+        guards.append(
+            RollbackGuard(
+                window_tasks=guard_cfg.rollback_window_tasks,
+                regression_threshold=guard_cfg.rollback_regression_threshold,
+            )
+        )
+
+    if guard_cfg.shadow_evaluation:
+        from synthorg.engine.evolution.guards.shadow_evaluation import (  # noqa: PLC0415
+            ShadowEvaluationGuard,
+        )
+
+        guards.append(ShadowEvaluationGuard())
+
+    if not guards:
+        # No guards enabled -- auto-approve everything.
+        from synthorg.engine.evolution.guards.shadow_evaluation import (  # noqa: PLC0415
+            ShadowEvaluationGuard,
+        )
+
+        return ShadowEvaluationGuard()
+
+    if len(guards) == 1:
+        return guards[0]
+
+    from synthorg.engine.evolution.guards.composite import (  # noqa: PLC0415
+        CompositeGuard,
+    )
+
+    return CompositeGuard(guards=tuple(guards))
+
+
+def _build_adapters(
+    config: EvolutionConfig,
+    *,
+    identity_store: IdentityVersionStore,
+    memory_backend: MemoryBackend | None,
+) -> dict[AdaptationAxis, AdaptationAdapter]:
+    """Build adapters from config."""
+    adapters: dict[AdaptationAxis, AdaptationAdapter] = {}
+    adapter_cfg = config.adapters
+
+    if adapter_cfg.identity:
+        from synthorg.engine.evolution.adapters.identity_adapter import (  # noqa: PLC0415
+            IdentityAdapter,
+        )
+
+        adapters[AdaptationAxis.IDENTITY] = IdentityAdapter(
+            identity_store=identity_store,
+        )
+
+    if adapter_cfg.strategy_selection and memory_backend is not None:
+        from synthorg.engine.evolution.adapters.strategy_selection import (  # noqa: PLC0415
+            StrategySelectionAdapter,
+        )
+
+        adapters[AdaptationAxis.STRATEGY_SELECTION] = StrategySelectionAdapter(
+            memory_backend=memory_backend
+        )
+
+    if adapter_cfg.prompt_template and memory_backend is not None:
+        from synthorg.engine.evolution.adapters.prompt_template import (  # noqa: PLC0415
+            PromptTemplateAdapter,
+        )
+
+        adapters[AdaptationAxis.PROMPT_TEMPLATE] = PromptTemplateAdapter(
+            memory_backend=memory_backend
+        )
+
+    return adapters

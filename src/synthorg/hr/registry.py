@@ -16,6 +16,7 @@ from synthorg.observability import get_logger
 from synthorg.observability.events.hr import (
     HR_REGISTRY_AGENT_REGISTERED,
     HR_REGISTRY_AGENT_REMOVED,
+    HR_REGISTRY_IDENTITY_EVOLVED,
     HR_REGISTRY_IDENTITY_UPDATED,
     HR_REGISTRY_STATUS_UPDATED,
 )
@@ -270,6 +271,67 @@ class AgentRegistryService:
         )
         await self._snapshot(updated, saved_by=f"update_identity:{key}")
         return updated
+
+    async def evolve_identity(
+        self,
+        agent_id: NotBlankStr,
+        evolved_identity: AgentIdentity,
+        *,
+        evolution_rationale: str,
+    ) -> AgentIdentity:
+        """Apply an evolved identity after evolution guards have passed.
+
+        Replaces the agent's identity wholesale. Unlike
+        ``update_identity`` (which restricts to an allowlist), this
+        method accepts any field changes because the evolution pipeline
+        has already validated them through guards.
+
+        Immutable identifiers (``id``, ``name``, ``department``) must
+        match the existing identity.
+
+        Args:
+            agent_id: The agent to evolve.
+            evolved_identity: The complete new identity.
+            evolution_rationale: Human-readable reason (for audit).
+
+        Returns:
+            The updated agent identity.
+
+        Raises:
+            AgentNotFoundError: If agent not found.
+            ValueError: If immutable fields differ.
+        """
+        key = str(agent_id)
+        async with self._lock:
+            current = self._agents.get(key)
+            if current is None:
+                msg = f"Agent {agent_id!r} not found in registry"
+                raise AgentNotFoundError(msg)
+            if str(evolved_identity.id) != str(current.id):
+                msg = (
+                    f"evolved_identity.id {evolved_identity.id} "
+                    f"does not match current id {current.id}"
+                )
+                raise ValueError(msg)
+            if str(evolved_identity.name) != str(current.name):
+                msg = "name cannot be changed during evolution"
+                raise ValueError(msg)
+            if str(evolved_identity.department) != str(current.department):
+                msg = "department cannot be changed during evolution"
+                raise ValueError(msg)
+            self._agents[key] = evolved_identity
+
+        logger.info(
+            HR_REGISTRY_IDENTITY_EVOLVED,
+            agent_id=key,
+            agent_name=str(evolved_identity.name),
+            evolution_rationale=evolution_rationale,
+        )
+        await self._snapshot(
+            evolved_identity,
+            saved_by=f"evolution:{evolution_rationale}",
+        )
+        return evolved_identity
 
     async def agent_count(self) -> int:
         """Number of agents currently in the registry."""
