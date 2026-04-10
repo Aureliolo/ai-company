@@ -10,12 +10,12 @@ for Kanban/Sprint settings).
 
 import json
 import math
+import re
 from collections import Counter
 from collections.abc import Mapping  # noqa: TC003
 from datetime import UTC, datetime
 from typing import Self
 
-from packaging.version import InvalidVersion, Version
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from synthorg.core.enums import (
@@ -242,13 +242,26 @@ class WorkflowDefinition(BaseModel):
     @field_validator("version")
     @classmethod
     def _validate_semver(cls, value: str) -> str:
-        """Reject invalid semver strings via :mod:`packaging`."""
-        try:
-            Version(value)
-        except InvalidVersion as exc:
-            msg = f"Invalid version string {value!r}: {exc}"
-            raise ValueError(msg) from exc
+        """Reject non-strict semver (must be MAJOR.MINOR.PATCH)."""
+        if not re.fullmatch(r"\d+\.\d+\.\d+", value):
+            msg = (
+                f"Invalid version {value!r}: must be strict"
+                f" MAJOR.MINOR.PATCH (e.g. '1.0.0')"
+            )
+            raise ValueError(msg)
         return value
+
+    @model_validator(mode="after")
+    def _validate_outputs_required(self) -> Self:
+        """Ensure all output declarations are required."""
+        for decl in self.outputs:
+            if not decl.required:
+                msg = (
+                    f"Output declaration {decl.name!r} must be"
+                    f" required (optional outputs are not supported)"
+                )
+                raise ValueError(msg)
+        return self
 
     @model_validator(mode="after")
     def _validate_unique_io_names(self) -> Self:

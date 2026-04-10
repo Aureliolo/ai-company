@@ -449,14 +449,14 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             try:
                 inputs = json.loads(latest["inputs"])
                 outputs = json.loads(latest["outputs"])
-            except json.JSONDecodeError:
+            except json.JSONDecodeError as exc:
+                msg = f"Corrupted I/O JSON in subworkflow {sub_id!r}"
                 logger.warning(
                     PERSISTENCE_SUBWORKFLOW_LIST_FAILED,
                     subworkflow_id=sub_id,
-                    error="Corrupted I/O JSON in subworkflow",
+                    error=str(exc),
                 )
-                inputs = []
-                outputs = []
+                raise QueryError(msg) from exc
             summaries.append(
                 SubworkflowSummary(
                     subworkflow_id=sub_id,

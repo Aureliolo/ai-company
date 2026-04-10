@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Partial migration squash: when migration count exceeds THRESHOLD (default
-# 100), squash the oldest half into a checkpoint baseline while keeping the
-# newest KEEP (default 50) as individual files.
+# 100), squash the oldest (count - KEEP) migrations into a checkpoint baseline
+# while keeping the newest KEEP (default 50) as individual files.
 #
 # This preserves the upgrade path for users on older versions -- their applied
 # migrations still exist as individual files above the checkpoint.
@@ -24,11 +24,11 @@ THRESHOLD="${SQUASH_THRESHOLD:-100}"
 KEEP="${SQUASH_KEEP:-50}"
 
 if ! [[ "$THRESHOLD" =~ ^[0-9]+$ ]]; then
-    echo "Error: SQUASH_THRESHOLD must be a positive integer, got '$THRESHOLD'" >&2
+    echo "Error: SQUASH_THRESHOLD must be a non-negative integer, got '$THRESHOLD'" >&2
     exit 1
 fi
 if ! [[ "$KEEP" =~ ^[0-9]+$ ]]; then
-    echo "Error: SQUASH_KEEP must be a positive integer, got '$KEEP'" >&2
+    echo "Error: SQUASH_KEEP must be a non-negative integer, got '$KEEP'" >&2
     exit 1
 fi
 
@@ -38,7 +38,7 @@ if [ ! -d "$MIGRATION_DIR" ]; then
 fi
 
 mapfile -t ALL_MIGRATIONS < <(
-    find "$MIGRATION_DIR" -maxdepth 1 -name '*.sql' -printf '%f\n' | sort
+    find "$MIGRATION_DIR" -maxdepth 1 -name '*.sql' -exec basename {} \; | sort
 )
 count=${#ALL_MIGRATIONS[@]}
 echo "Migration count: $count (threshold: $THRESHOLD, keep newest: $KEEP)"

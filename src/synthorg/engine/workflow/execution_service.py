@@ -558,8 +558,8 @@ class WorkflowExecutionService:
         config = dict(node.config)
         subworkflow_id = config.get("subworkflow_id")
         version = config.get("version")
-        input_bindings = config.get("input_bindings") or {}
-        output_bindings = config.get("output_bindings") or {}
+        input_bindings = config.get("input_bindings")
+        output_bindings = config.get("output_bindings")
         if not isinstance(subworkflow_id, str) or not subworkflow_id.strip():
             msg = f"SUBWORKFLOW node {nid!r} is missing subworkflow_id in config"
             raise WorkflowExecutionError(msg)
@@ -870,8 +870,13 @@ class WorkflowExecutionService:
             else:
                 await self._handle_task_completed(execution, event)
         except VersionConflictError:
+            retry_event = (
+                WORKFLOW_EXEC_NODE_TASK_FAILED
+                if event.new_status in {TaskStatus.FAILED, TaskStatus.CANCELLED}
+                else WORKFLOW_EXEC_NODE_TASK_COMPLETED
+            )
             logger.warning(
-                WORKFLOW_EXEC_NODE_TASK_COMPLETED,
+                retry_event,
                 execution_id=execution.id,
                 task_id=event.task_id,
                 error="Concurrent modification; re-fetching execution",
