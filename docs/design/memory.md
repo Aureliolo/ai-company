@@ -555,8 +555,8 @@ repository protocols; the storage engine is an implementation detail swappable v
 |  +-------------------+-------------------------------------------+
 |                      |                                           |
 |  +-------------------+-------------------------------------------+
-|  |  SQLitePersistenceBackend (initial)                           |
-|  |  PostgresPersistenceBackend (future)                          |
+|  |  SQLitePersistenceBackend (implemented)                       |
+|  |  PostgresPersistenceBackend (implemented -- v0.6.5)           |
 |  |  MariaDBPersistenceBackend (future)                           |
 |  +---------------------------------------------------------------+
 +------------------------------------------------------------------+
@@ -623,14 +623,24 @@ class MessageRepository(Protocol):
 
 ```yaml
 persistence:
-  backend: "sqlite"                   # sqlite, postgresql, mariadb (future)
+  backend: "sqlite"                   # sqlite, postgres (mariadb future)
   sqlite:
     path: "/data/synthorg.db"       # database file path (mounted volume in Docker)
     wal_mode: true                    # WAL for concurrent read performance
     journal_size_limit: 67108864      # 64 MB WAL journal limit
-  # postgresql:                       # future
-  #   url: "postgresql://user:pass@host:5432/synthorg"
-  #   pool_size: 10
+  postgres:                           # v0.6.5 -- requires `synthorg[postgres]` extra
+    host: "db.internal"
+    port: 5432
+    database: "synthorg"
+    username: "synthorg_app"
+    password: "${POSTGRES_PASSWORD}"   # SecretStr -- redacted from logs
+    ssl_mode: "require"                # disable, allow, prefer, require, verify-ca, verify-full
+    pool_min_size: 1
+    pool_max_size: 10
+    pool_timeout_seconds: 30.0
+    application_name: "synthorg"
+    statement_timeout_ms: 30000        # server-side per-query limit
+    connect_timeout_seconds: 10.0
   # mariadb:                          # future
   #   url: "mariadb://user:pass@host:3306/synthorg"
   #   pool_size: 10

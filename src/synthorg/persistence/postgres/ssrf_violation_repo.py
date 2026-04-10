@@ -218,6 +218,7 @@ class PostgresSsrfViolationRepository:
                         violation_id,
                     ),
                 )
+                updated = cur.rowcount > 0
                 await conn.commit()
         except psycopg.Error as exc:
             msg = f"Failed to update SSRF violation status: {exc}"
@@ -227,7 +228,7 @@ class PostgresSsrfViolationRepository:
             )
             raise PersistenceError(msg) from exc
 
-        return cur.rowcount > 0
+        return updated
 
 
 def _row_to_violation(row: dict[str, object]) -> SsrfViolation:

@@ -181,6 +181,7 @@ class PostgresRiskOverrideRepository:
                     "WHERE id = %s AND revoked_at IS NULL",
                     (revoked_at_utc, revoked_by, override_id),
                 )
+                revoked = cur.rowcount > 0
                 await conn.commit()
         except psycopg.Error as exc:
             msg = f"Failed to revoke risk override: {exc}"
@@ -190,7 +191,7 @@ class PostgresRiskOverrideRepository:
             )
             raise PersistenceError(msg) from exc
 
-        return cur.rowcount > 0
+        return revoked
 
 
 def _row_to_override(row: dict[str, object]) -> RiskTierOverride:

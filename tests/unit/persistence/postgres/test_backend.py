@@ -9,6 +9,7 @@ Postgres (or Docker) is required.  Integration tests against a real
 from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import psycopg
 import pytest
 from pydantic import SecretStr
 
@@ -249,14 +250,36 @@ class TestHealthCheck:
     ) -> None:
         backend = PostgresPersistenceBackend(_cfg())
         await backend.connect()
-        # Make the next cursor execute raise.
+        # Make the next cursor execute raise a psycopg.Error -- that
+        # is what the production code catches.
         pool = fake_pool_factory.pools[0]
         conn_cm = pool.connection.return_value
         conn = conn_cm.__aenter__.return_value
         cursor_cm = conn.cursor.return_value
         cursor = cursor_cm.__aenter__.return_value
-        # psycopg.Error subclass -- use generic Exception for the mock.
-        cursor.execute.side_effect = RuntimeError("boom")
+        cursor.execute.side_effect = psycopg.OperationalError("connection reset")
+        assert await backend.health_check() is False
+
+    async def test_returns_false_when_pool_checkout_times_out(
+        self,
+        patched_pool: Any,
+        fake_pool_factory: _FakePoolFactory,
+    ) -> None:
+        """pool.connection() hang is bounded by pool_timeout_seconds.
+
+        The production code wraps the probe in asyncio.timeout so a
+        stuck pool checkout surfaces as TimeoutError, which is caught
+        and reported as unhealthy.
+        """
+        backend = PostgresPersistenceBackend(_cfg())
+        await backend.connect()
+        pool = fake_pool_factory.pools[0]
+        # Replace pool.connection() with a context manager whose
+        # __aenter__ never returns -- simulates pool exhaustion.
+        stuck = AsyncMock()
+        stuck.__aenter__ = AsyncMock(side_effect=TimeoutError("pool timeout"))
+        stuck.__aexit__ = AsyncMock(return_value=None)
+        pool.connection = MagicMock(return_value=stuck)
         assert await backend.health_check() is False
 
 

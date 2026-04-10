@@ -407,6 +407,7 @@ class PostgresPersistenceBackend:
         """
         if self._pool is None:
             msg = "Postgres backend not connected"
+            logger.warning(PERSISTENCE_BACKEND_NOT_CONNECTED, error=msg)
             raise PersistenceConnectionError(msg)
         return self._pool
 
@@ -439,18 +440,25 @@ class PostgresPersistenceBackend:
                 self._clear_state()
 
     async def health_check(self) -> bool:
-        """Check database connectivity via ``SELECT 1``."""
+        """Check database connectivity via ``SELECT 1``.
+
+        Bounded by ``pool_timeout_seconds`` so the probe cannot hang
+        indefinitely when the pool is exhausted or the server is
+        unreachable -- a stuck health check would otherwise block
+        orchestration loops that poll backend readiness.
+        """
         if self._pool is None:
             return False
         try:
-            async with (
-                self._pool.connection() as conn,
-                conn.cursor() as cur,
-            ):
-                await cur.execute("SELECT 1")
-                row = await cur.fetchone()
-                healthy = row is not None
-        except (psycopg.Error, OSError, RuntimeError) as exc:
+            async with asyncio.timeout(self._config.pool_timeout_seconds):
+                async with (
+                    self._pool.connection() as conn,
+                    conn.cursor() as cur,
+                ):
+                    await cur.execute("SELECT 1")
+                    row = await cur.fetchone()
+                    healthy = row is not None
+        except (psycopg.Error, OSError, TimeoutError) as exc:
             logger.warning(
                 PERSISTENCE_BACKEND_HEALTH_CHECK,
                 healthy=False,

@@ -40,9 +40,12 @@ uv run python -m pytest tests/ -n 8 --cov=synthorg --cov-fail-under=80  # full s
 HYPOTHESIS_PROFILE=dev uv run python -m pytest tests/ -m unit -n 8 -k properties   # property tests (dev, 1000 examples)
 HYPOTHESIS_PROFILE=fuzz uv run python -m pytest tests/ -m unit -n 8 --timeout=0    # deep fuzzing (10,000 examples, no deadline, all @given tests)
 uv run pre-commit run --all-files          # all pre-commit hooks
-atlas migrate diff --env sqlite <name>     # generate migration from schema.sql diff
-atlas migrate validate --dir "file://src/synthorg/persistence/sqlite/revisions"  # validate migration checksums
-atlas schema diff --env sqlite             # drift detection (schema.sql vs revisions)
+atlas migrate diff --env sqlite <name>     # generate SQLite migration from schema.sql diff
+atlas migrate diff --env postgres <name>   # generate Postgres migration (requires Docker for dev DB)
+atlas migrate validate --dir "file://src/synthorg/persistence/sqlite/revisions"    # validate SQLite migration checksums
+atlas migrate validate --dir "file://src/synthorg/persistence/postgres/revisions"  # validate Postgres migration checksums
+atlas schema diff --env sqlite             # drift detection for SQLite (schema.sql vs revisions)
+atlas schema diff --env postgres           # drift detection for Postgres (schema.sql vs revisions)
 bash scripts/squash_migrations.sh          # squash old migrations (release-time)
 uv run python scripts/export_openapi.py    # export OpenAPI schema (needed before docs build)
 uv run python scripts/generate_comparison.py  # generate comparison page (needed before docs build)

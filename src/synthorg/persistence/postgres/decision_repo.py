@@ -1,15 +1,22 @@
 """Postgres repository implementation for decision records.
 
-Append-only: records can be appended and queried but never updated or
-deleted, preserving audit integrity. Version numbers for
-``(task_id, version)`` are computed atomically in SQL via a subquery
-to eliminate the TOCTOU race that a read-then-write pattern would
-create under concurrent review gate decisions.
+Append-only: records can be appended and queried but never updated
+or deleted, preserving audit integrity.
 
-The asyncio.Lock serialization used by the SQLite sibling is not
-necessary here: Postgres' SERIALIZABLE isolation level (used by
-psycopg) handles concurrent writes atomically, and the UNIQUE
-(task_id, version) constraint rejects any race.
+Version numbers for ``(task_id, version)`` are computed via a
+``SELECT COALESCE(MAX(version), 0) + 1`` subquery inside the INSERT.
+psycopg uses Postgres' default READ COMMITTED isolation level (not
+SERIALIZABLE), so two concurrent writers can race and compute the
+same next version.  The ``UNIQUE(task_id, version)`` constraint
+guarantees only one writer wins -- the other gets a
+``UniqueViolation`` which this repository catches and retries with a
+newly computed version.  After a small bounded number of retries the
+write is treated as a duplicate ``record_id`` and surfaced as
+``DuplicateRecordError``.
+
+The asyncio.Lock serialization used by the SQLite sibling is
+therefore replaced by the retry loop below -- no in-process locks
+are needed because Postgres enforces the serialization itself.
 """
 
 import copy
@@ -264,6 +271,13 @@ class PostgresDecisionRepository:
         )
         return record
 
+    #: Maximum attempts to retry a version-race UniqueViolation before
+    #: giving up and treating the failure as a genuine duplicate record
+    #: id.  Picked to comfortably exceed contention between concurrent
+    #: review gates on the same task without allowing runaway retries
+    #: under pathological load.
+    _MAX_VERSION_RACE_ATTEMPTS: Final[int] = 5
+
     async def _execute_insert(
         self,
         record_id: NotBlankStr,
@@ -271,68 +285,118 @@ class PostgresDecisionRepository:
     ) -> int:
         """Insert the record and return the server-assigned version.
 
+        psycopg uses Postgres' default READ COMMITTED isolation, so the
+        ``SELECT MAX(version) + 1`` subquery inside ``_INSERT_SQL`` is
+        NOT atomic against concurrent writers on the same ``task_id``.
+        Two concurrent writers can compute the same next version; the
+        ``UNIQUE(task_id, version)`` constraint forces exactly one to
+        succeed and the loser gets a ``UniqueViolation``.
+
+        We distinguish the two unique-constraint paths by inspecting
+        ``exc.diag.constraint_name``:
+        - The ``id`` primary key: a genuine duplicate record id; raise
+          ``DuplicateRecordError`` immediately.
+        - The ``(task_id, version)`` unique constraint: a version race;
+          retry up to ``_MAX_VERSION_RACE_ATTEMPTS`` times with a fresh
+          subquery result.  If retries are exhausted, fall through to a
+          final ``DuplicateRecordError``.
+
         Keeps ``append_with_next_version`` under the 50-line budget and
         centralizes the error-mapping logic for the write path.
         """
-        try:
-            async with self._pool.connection() as conn, conn.cursor() as cur:
-                await cur.execute(_INSERT_SQL, params)
-                await cur.execute(
-                    "SELECT version FROM decision_records WHERE id = %s",
-                    (record_id,),
+        last_exc: psycopg.errors.UniqueViolation | None = None
+        for attempt in range(self._MAX_VERSION_RACE_ATTEMPTS):
+            try:
+                async with (
+                    self._pool.connection() as conn,
+                    conn.cursor() as cur,
+                ):
+                    await cur.execute(_INSERT_SQL, params)
+                    await cur.execute(
+                        "SELECT version FROM decision_records WHERE id = %s",
+                        (record_id,),
+                    )
+                    row = await cur.fetchone()
+            except psycopg.errors.UniqueViolation as exc:
+                last_exc = exc
+                constraint = getattr(exc.diag, "constraint_name", "") or ""
+                is_version_race = "version" in constraint
+                if not is_version_race:
+                    # Genuine duplicate record id -- surface immediately.
+                    msg = f"Duplicate decision record {record_id!r}"
+                    logger.warning(
+                        PERSISTENCE_DECISION_RECORD_SAVE_FAILED,
+                        record_id=record_id,
+                        error=str(exc),
+                        sqlstate=exc.sqlstate,
+                        constraint=constraint,
+                    )
+                    raise DuplicateRecordError(msg) from exc
+                # Version race -- log at DEBUG and retry.
+                logger.debug(
+                    PERSISTENCE_DECISION_RECORD_SAVE_FAILED,
+                    record_id=record_id,
+                    attempt=attempt + 1,
+                    max_attempts=self._MAX_VERSION_RACE_ATTEMPTS,
+                    sqlstate=exc.sqlstate,
+                    constraint=constraint,
+                    error_type="VersionRace",
                 )
-                row = await cur.fetchone()
-        except psycopg.errors.UniqueViolation as exc:
-            msg = f"Duplicate decision record {record_id!r}"
-            logger.warning(
-                PERSISTENCE_DECISION_RECORD_SAVE_FAILED,
-                record_id=record_id,
-                error=str(exc),
-                sqlstate=exc.sqlstate,
-            )
-            raise DuplicateRecordError(msg) from exc
-        except (
-            psycopg.errors.CheckViolation,
-            psycopg.errors.ForeignKeyViolation,
-            psycopg.errors.NotNullViolation,
-        ) as exc:
-            # CHECK / FOREIGN KEY / NOT NULL violations are schema-level
-            # programming errors -- re-raise the original error so
-            # callers see the structural failure.
-            logger.exception(
-                PERSISTENCE_DECISION_RECORD_SAVE_FAILED,
-                record_id=record_id,
-                error=str(exc),
-                sqlstate=exc.sqlstate,
-                error_type="StructuralConstraintViolation",
-            )
-            raise
-        except psycopg.Error as exc:
-            msg = f"Failed to save decision record {record_id!r}"
-            logger.exception(
-                PERSISTENCE_DECISION_RECORD_SAVE_FAILED,
-                record_id=record_id,
-                error=str(exc),
-            )
-            raise QueryError(msg) from exc
-        if row is None:
-            # Defensive: SELECT immediately after INSERT should always
-            # find the row. Surface the anomaly loudly.
-            msg = (
-                f"Failed to read back decision record {record_id!r} "
-                "immediately after insert"
-            )
-            task_id_value = params.get("task_id")
-            logger.error(
-                PERSISTENCE_DECISION_RECORD_SAVE_FAILED,
-                record_id=record_id,
-                task_id=task_id_value,
-                error=msg,
-            )
-            raise QueryError(msg)
-        async with self._pool.connection() as conn:
-            await conn.commit()
-        return int(row[0])
+                continue
+            except (
+                psycopg.errors.CheckViolation,
+                psycopg.errors.ForeignKeyViolation,
+                psycopg.errors.NotNullViolation,
+            ) as exc:
+                # CHECK / FOREIGN KEY / NOT NULL violations are
+                # schema-level programming errors -- re-raise the
+                # original error so callers see the structural failure.
+                logger.exception(
+                    PERSISTENCE_DECISION_RECORD_SAVE_FAILED,
+                    record_id=record_id,
+                    error=str(exc),
+                    sqlstate=exc.sqlstate,
+                    error_type="StructuralConstraintViolation",
+                )
+                raise
+            except psycopg.Error as exc:
+                msg = f"Failed to save decision record {record_id!r}"
+                logger.exception(
+                    PERSISTENCE_DECISION_RECORD_SAVE_FAILED,
+                    record_id=record_id,
+                    error=str(exc),
+                )
+                raise QueryError(msg) from exc
+            if row is None:
+                # Defensive: SELECT immediately after INSERT should
+                # always find the row.  Surface the anomaly loudly.
+                msg = (
+                    f"Failed to read back decision record {record_id!r} "
+                    "immediately after insert"
+                )
+                task_id_value = params.get("task_id")
+                logger.error(
+                    PERSISTENCE_DECISION_RECORD_SAVE_FAILED,
+                    record_id=record_id,
+                    task_id=task_id_value,
+                    error=msg,
+                )
+                raise QueryError(msg)
+            return int(row[0])
+
+        # All retries exhausted on version-race path.
+        msg = (
+            f"Decision record {record_id!r} lost the version race "
+            f"after {self._MAX_VERSION_RACE_ATTEMPTS} attempts"
+        )
+        logger.warning(
+            PERSISTENCE_DECISION_RECORD_SAVE_FAILED,
+            record_id=record_id,
+            error=msg,
+            max_attempts=self._MAX_VERSION_RACE_ATTEMPTS,
+            error_type="VersionRaceExhausted",
+        )
+        raise DuplicateRecordError(msg) from last_exc
 
     async def get(self, record_id: NotBlankStr) -> DecisionRecord | None:
         """Retrieve a decision record by ID."""
