@@ -41,7 +41,7 @@ logger = get_logger(__name__)
 
 _SELECT_COLUMNS = """\
 id, name, description, workflow_type, nodes, edges,
-created_by, created_at, updated_at, version"""
+created_by, created_at, updated_at, revision"""
 
 
 def _deserialize_row(
@@ -112,10 +112,10 @@ class PostgresWorkflowDefinitionRepository:
             QueryError: If the database operation fails.
             VersionConflictError: If optimistic concurrency check fails.
         """
-        if definition.version < 1:
+        if definition.revision < 1:
             msg = (
                 f"Workflow definition version must be >= 1, got"
-                f" {definition.version} for {definition.id!r}"
+                f" {definition.revision} for {definition.id!r}"
             )
             logger.warning(
                 PERSISTENCE_WORKFLOW_DEF_SAVE_FAILED,
@@ -128,7 +128,7 @@ class PostgresWorkflowDefinitionRepository:
         edges_jsonb = Jsonb([e.model_dump(mode="json") for e in definition.edges])
         try:
             async with self._pool.connection() as conn, conn.cursor() as cur:
-                if definition.version > 1:
+                if definition.revision > 1:
                     # Update path: optimistic concurrency via WHERE
                     # version = incoming_version - 1.  If no row exists
                     # at all this is also a version conflict (you can't
@@ -137,8 +137,8 @@ class PostgresWorkflowDefinitionRepository:
                         """
                         UPDATE workflow_definitions SET
                             name=%s, description=%s, workflow_type=%s,
-                            nodes=%s, edges=%s, updated_at=%s, version=%s
-                        WHERE id = %s AND version = %s
+                            nodes=%s, edges=%s, updated_at=%s, revision=%s
+                        WHERE id = %s AND revision = %s
                         """,
                         (
                             definition.name,
@@ -147,9 +147,9 @@ class PostgresWorkflowDefinitionRepository:
                             nodes_jsonb,
                             edges_jsonb,
                             definition.updated_at,
-                            definition.version,
+                            definition.revision,
                             definition.id,
-                            definition.version - 1,
+                            definition.revision - 1,
                         ),
                     )
                 else:
@@ -160,7 +160,7 @@ class PostgresWorkflowDefinitionRepository:
                         INSERT INTO workflow_definitions
                             (id, name, description, workflow_type, nodes,
                              edges, created_by, created_at, updated_at,
-                             version)
+                             revision)
                         VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                         ON CONFLICT(id) DO NOTHING
                         """,
@@ -174,15 +174,15 @@ class PostgresWorkflowDefinitionRepository:
                             definition.created_by,
                             definition.created_at,
                             definition.updated_at,
-                            definition.version,
+                            definition.revision,
                         ),
                     )
                 if cur.rowcount == 0:
-                    if definition.version > 1:
+                    if definition.revision > 1:
                         msg = (
                             f"Version conflict saving workflow definition"
                             f" {definition.id!r}: expected version"
-                            f" {definition.version - 1}, not found"
+                            f" {definition.revision - 1}, not found"
                         )
                     else:
                         msg = (

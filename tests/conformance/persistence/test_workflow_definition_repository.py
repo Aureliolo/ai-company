@@ -172,7 +172,7 @@ class TestWorkflowDefinitionRepository:
             name="Updated",
             description="Updated description",
             workflow_type=WorkflowType.PARALLEL_EXECUTION,
-            version=2,
+            revision=2,
         )
         await repo.save(updated)
 
@@ -180,7 +180,7 @@ class TestWorkflowDefinitionRepository:
         assert retrieved is not None
         assert retrieved.name == "Updated"
         assert retrieved.description == "Updated description"
-        assert retrieved.version == 2
+        assert retrieved.revision == 2
 
     async def test_version_conflict_on_stale_update(
         self,
@@ -198,7 +198,7 @@ class TestWorkflowDefinitionRepository:
         stale = _make_workflow_definition(
             definition_id="wf-003",
             name="Stale",
-            version=5,
+            revision=5,
         )
 
         with pytest.raises(VersionConflictError):

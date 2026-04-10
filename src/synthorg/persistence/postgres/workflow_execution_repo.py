@@ -49,7 +49,7 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 _SELECT_COLUMNS = """\
-id, definition_id, definition_version, status, node_executions,
+id, definition_id, definition_revision, status, node_executions,
 activated_by, project, created_at, updated_at, completed_at,
 error, version"""
 
@@ -162,7 +162,7 @@ class PostgresWorkflowExecutionRepository:
         return (
             execution.id,
             execution.definition_id,
-            execution.definition_version,
+            execution.definition_revision,
             execution.status.value,
             node_jsonb,
             execution.activated_by,
@@ -182,7 +182,8 @@ class PostgresWorkflowExecutionRepository:
                 await cur.execute(
                     """
                     INSERT INTO workflow_executions
-                        (id, definition_id, definition_version, status, node_executions,
+                        (id, definition_id, definition_revision, status,
+                         node_executions,
                          activated_by, project, created_at, updated_at, completed_at,
                          error, version)
                     VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
@@ -216,7 +217,7 @@ class PostgresWorkflowExecutionRepository:
                 await cur.execute(
                     """
                     UPDATE workflow_executions SET
-                        definition_id=%s, definition_version=%s, status=%s,
+                        definition_id=%s, definition_revision=%s, status=%s,
                         node_executions=%s, activated_by=%s, project=%s,
                         created_at=%s, updated_at=%s, completed_at=%s,
                         error=%s, version=%s
