@@ -3,9 +3,9 @@
 Defines the configuration for selecting and tuning capture strategies.
 """
 
-from pydantic import BaseModel, ConfigDict, Field
+from typing import Literal
 
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class CaptureConfig(BaseModel):
@@ -27,7 +27,7 @@ class CaptureConfig(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
-    type: NotBlankStr = Field(
+    type: Literal["failure", "success", "hybrid"] = Field(
         default="hybrid",
         description='Strategy type: "failure", "success", or "hybrid"',
     )

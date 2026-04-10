@@ -23,11 +23,30 @@ PROCEDURAL_MEMORY_LOW_CONFIDENCE: Final[str] = (
 )
 """Proposal discarded because confidence was below threshold."""
 
+PROCEDURAL_CAPTURE_QUALITY_BELOW_THRESHOLD: Final[str] = (
+    "procedural_capture.quality_below_threshold"
+)
+"""Captured procedural memory discarded due to low quality score."""
+
+PROCEDURAL_CAPTURE_STORED: Final[str] = "procedural_capture.stored"
+"""Procedural memory capture entry stored."""
+
+PROCEDURAL_CAPTURE_STORE_FAILED: Final[str] = "procedural_capture.store_failed"
+"""Failed to store procedural memory capture entry."""
+
 PROCEDURAL_MEMORY_STORED: Final[str] = "procedural_memory.entry.stored"
 """Procedural memory entry stored in backend."""
 
 PROCEDURAL_MEMORY_STORE_FAILED: Final[str] = "procedural_memory.entry.store_failed"
 """Failed to store procedural memory entry."""
+
+PROCEDURAL_PROPAGATION_TARGET_FAILED: Final[str] = (
+    "procedural_propagation.target_failed"
+)
+"""Failed to propagate procedural memory to target agent."""
+
+PROCEDURAL_CAPTURE_BUILD: Final[str] = "procedural_capture.build"
+"""Procedural memory capture payload constructed."""
 
 PROCEDURAL_MEMORY_ERROR: Final[str] = "procedural_memory.error"
 """Unrecoverable error in procedural memory pipeline."""

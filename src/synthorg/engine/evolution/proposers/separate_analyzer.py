@@ -21,6 +21,7 @@ from synthorg.observability.events.evolution import (
     EVOLUTION_PROPOSER_PARSE_ERROR,
 )
 from synthorg.providers.enums import MessageRole
+from synthorg.providers.errors import ProviderError
 from synthorg.providers.models import ChatMessage, CompletionConfig
 from synthorg.providers.protocol import CompletionProvider  # noqa: TC001
 
@@ -207,6 +208,17 @@ class SeparateAnalyzerProposer:
             )
         except MemoryError, RecursionError:
             raise
+        except ProviderError as exc:
+            if not exc.is_retryable:
+                raise
+            logger.warning(
+                EVOLUTION_PROPOSER_PARSE_ERROR,
+                agent_id=str(agent_id),
+                error=f"{type(exc).__name__}: {exc}",
+                reason="provider_error_retryable",
+                exc_info=True,
+            )
+            return ()
         except Exception as exc:
             logger.warning(
                 EVOLUTION_PROPOSER_PARSE_ERROR,

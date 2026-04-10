@@ -6,9 +6,13 @@ recency). Entries on the Pareto frontier are preserved.
 
 from typing import TYPE_CHECKING
 
+from synthorg.observability import get_logger
+
 if TYPE_CHECKING:
     from synthorg.core.types import NotBlankStr
     from synthorg.memory.models import MemoryEntry
+
+logger = get_logger(__name__)
 
 
 class ParetoPruningStrategy:

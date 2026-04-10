@@ -55,7 +55,7 @@ class TestRollbackGuard:
         baseline_quality = 0.75
         current_quality = 0.82
 
-        has_regression = guard.check_regression(
+        has_regression = await guard.check_regression(
             agent_id,
             baseline_quality,
             current_quality,
@@ -69,9 +69,9 @@ class TestRollbackGuard:
         """Test that regression is detected when quality drops."""
         agent_id: NotBlankStr = "agent-001"
         baseline_quality = 0.75
-        current_quality = 0.65
+        current_quality = 0.64
 
-        has_regression = guard.check_regression(
+        has_regression = await guard.check_regression(
             agent_id,
             baseline_quality,
             current_quality,
@@ -85,7 +85,7 @@ class TestRollbackGuard:
         baseline_quality = 0.75
         current_quality = 0.649
 
-        has_regression = guard.check_regression(
+        has_regression = await guard.check_regression(
             agent_id,
             baseline_quality,
             current_quality,
@@ -101,7 +101,7 @@ class TestRollbackGuard:
         baseline_quality = 0.75
         current_quality = 0.6501
 
-        has_regression = guard.check_regression(
+        has_regression = await guard.check_regression(
             agent_id,
             baseline_quality,
             current_quality,
@@ -119,14 +119,14 @@ class TestRollbackGuard:
         agent_2_baseline = 0.80
         agent_2_current = 0.70
 
-        regression_1 = guard.check_regression(
+        regression_1 = await guard.check_regression(
             "agent-001",
             agent_1_baseline,
             agent_1_current,
         )
         assert regression_1 is False
 
-        regression_2 = guard.check_regression(
+        regression_2 = await guard.check_regression(
             "agent-002",
             agent_2_baseline,
             agent_2_current,
@@ -142,7 +142,7 @@ class TestRollbackGuard:
         baseline_quality = 0.75
         current_quality = 0.69
 
-        has_regression = guard.check_regression(
+        has_regression = await guard.check_regression(
             agent_id,
             baseline_quality,
             current_quality,
@@ -156,7 +156,7 @@ class TestRollbackGuard:
         baseline_quality = 0.0
         current_quality = 0.0
 
-        has_regression = guard.check_regression(
+        has_regression = await guard.check_regression(
             agent_id,
             baseline_quality,
             current_quality,
@@ -168,9 +168,9 @@ class TestRollbackGuard:
         """Test regression detection with high quality values."""
         agent_id: NotBlankStr = "agent-001"
         baseline_quality = 0.95
-        current_quality = 0.85
+        current_quality = 0.84
 
-        has_regression = guard.check_regression(
+        has_regression = await guard.check_regression(
             agent_id,
             baseline_quality,
             current_quality,

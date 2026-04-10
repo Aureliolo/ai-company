@@ -6,6 +6,7 @@ new version, making it cheaper but losing the rollback audit
 trail that append-only preserves.
 """
 
+import asyncio
 from typing import TYPE_CHECKING
 
 from synthorg.observability import get_logger
@@ -44,6 +45,7 @@ class CopyOnWriteIdentityStore:
         self._registry = registry
         self._versioning = versioning
         self._current_version: dict[str, int] = {}
+        self._version_lock = asyncio.Lock()
 
     @property
     def _repo(self) -> VersionRepository[AgentIdentity]:
@@ -68,15 +70,16 @@ class CopyOnWriteIdentityStore:
             identity,
             str(saved_by),
         )
-        if snapshot is not None:
-            self._current_version[str(agent_id)] = snapshot.version
-            return snapshot
-        latest = await self._versioning.get_latest(str(agent_id))
-        if latest is None:  # pragma: no cover
-            msg = f"No version found for agent {agent_id!r} after put"
-            raise RuntimeError(msg)
-        self._current_version[str(agent_id)] = latest.version
-        return latest
+        async with self._version_lock:
+            if snapshot is not None:
+                self._current_version[str(agent_id)] = snapshot.version
+                return snapshot
+            latest = await self._versioning.get_latest(str(agent_id))
+            if latest is None:  # pragma: no cover
+                msg = f"No version found for agent {agent_id!r} after put"
+                raise RuntimeError(msg)
+            self._current_version[str(agent_id)] = latest.version
+            return latest
 
     async def get_current(
         self,
@@ -88,7 +91,8 @@ class CopyOnWriteIdentityStore:
         Otherwise falls back to the registry.
         """
         key = str(agent_id)
-        version = self._current_version.get(key)
+        async with self._version_lock:
+            version = self._current_version.get(key)
         if version is not None:
             snapshot = await self._repo.get_version(key, version)
             if snapshot is not None:
@@ -146,7 +150,8 @@ class CopyOnWriteIdentityStore:
             restored,
             evolution_rationale=f"rollback to version {version}",
         )
-        self._current_version[key] = version
+        async with self._version_lock:
+            self._current_version[key] = version
         logger.info(
             EVOLUTION_ROLLBACK_TRIGGERED,
             agent_id=key,

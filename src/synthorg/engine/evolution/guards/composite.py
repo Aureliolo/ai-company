@@ -3,6 +3,9 @@
 from typing import TYPE_CHECKING
 
 from synthorg.engine.evolution.models import AdaptationDecision, AdaptationProposal
+from synthorg.observability import get_logger
+
+logger = get_logger(__name__)
 
 if TYPE_CHECKING:
     from synthorg.engine.evolution.protocols import AdaptationGuard

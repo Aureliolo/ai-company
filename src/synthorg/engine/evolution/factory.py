@@ -63,7 +63,7 @@ def build_evolution_service(  # noqa: PLR0913
         versioning=versioning,
     )
 
-    _build_trigger(config, tracker=tracker)
+    trigger = _build_trigger(config, tracker=tracker)
     proposer = _build_proposer(config, provider=provider)
     guard = _build_guard(config, identity_store=identity_store)
     adapters = _build_adapters(
@@ -75,6 +75,7 @@ def build_evolution_service(  # noqa: PLR0913
     return EvolutionService(
         identity_store=identity_store,
         tracker=tracker,
+        trigger=trigger,
         proposer=proposer,
         guard=guard,
         adapters=adapters,

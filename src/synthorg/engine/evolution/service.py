@@ -17,11 +17,14 @@ from synthorg.observability.events.evolution import (
     EVOLUTION_ADAPTATION_FAILED,
     EVOLUTION_ADAPTED,
     EVOLUTION_CONTEXT_BUILD_FAILED,
+    EVOLUTION_CONTEXT_MEMORY_FAILED,
+    EVOLUTION_CONTEXT_SNAPSHOT_FAILED,
     EVOLUTION_GUARDS_PASSED,
     EVOLUTION_GUARDS_REJECTED,
     EVOLUTION_PROPOSAL_GENERATED,
     EVOLUTION_SERVICE_COMPLETE,
     EVOLUTION_SERVICE_STARTED,
+    EVOLUTION_TRIGGER_SKIPPED,
 )
 
 if TYPE_CHECKING:
@@ -32,6 +35,7 @@ if TYPE_CHECKING:
         AdaptationGuard,
         AdaptationProposer,
         EvolutionContext,
+        EvolutionTrigger,
     )
     from synthorg.engine.identity.store.protocol import (
         IdentityVersionStore,
@@ -59,6 +63,7 @@ class EvolutionService:
         proposer: Adaptation proposer strategy.
         guard: Adaptation guard (typically CompositeGuard).
         adapters: Mapping from axis to adapter.
+        trigger: Evolution trigger (None = triggers disabled).
         memory_backend: Memory backend for context retrieval.
         config: Evolution configuration.
     """
@@ -71,11 +76,13 @@ class EvolutionService:
         proposer: AdaptationProposer,
         guard: AdaptationGuard,
         adapters: dict[AdaptationAxis, AdaptationAdapter],
+        trigger: EvolutionTrigger | None = None,
         memory_backend: MemoryBackend | None = None,
         config: EvolutionConfig,
     ) -> None:
         self._identity_store = identity_store
         self._tracker = tracker
+        self._trigger = trigger
         self._proposer = proposer
         self._guard = guard
         self._adapters = adapters
@@ -119,6 +126,20 @@ class EvolutionService:
                 exc_info=True,
             )
             return ()
+
+        # 1b. Check trigger (skip if trigger says no).
+        if self._trigger is not None:
+            should_run = await self._trigger.should_trigger(
+                agent_id=agent_id,
+                context=context,
+            )
+            if not should_run:
+                logger.debug(
+                    EVOLUTION_TRIGGER_SKIPPED,
+                    agent_id=str(agent_id),
+                    trigger=self._trigger.name,
+                )
+                return ()
 
         # 2. Generate proposals.
         proposals = await self._proposer.propose(
@@ -303,10 +324,12 @@ class EvolutionService:
             snapshot = await self._tracker.get_snapshot(agent_id)
         except MemoryError, RecursionError:
             raise
-        except Exception:
-            logger.debug(
-                "evolution.context.snapshot_failed",
+        except Exception as exc:
+            logger.warning(
+                EVOLUTION_CONTEXT_SNAPSHOT_FAILED,
                 agent_id=str(agent_id),
+                error=f"{type(exc).__name__}: {exc}",
+                exc_info=True,
             )
 
         # Get recent procedural memories (best-effort).
@@ -331,10 +354,12 @@ class EvolutionService:
                 memories = result
             except MemoryError, RecursionError:
                 raise
-            except Exception:
-                logger.debug(
-                    "evolution.context.memory_failed",
+            except Exception as exc:
+                logger.warning(
+                    EVOLUTION_CONTEXT_MEMORY_FAILED,
                     agent_id=str(agent_id),
+                    error=f"{type(exc).__name__}: {exc}",
+                    exc_info=True,
                 )
 
         # Get recent task metrics.

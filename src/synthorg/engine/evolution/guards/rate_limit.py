@@ -1,5 +1,6 @@
 """RateLimitGuard -- caps adaptations per agent per day."""
 
+import asyncio
 from datetime import datetime, timedelta
 
 from synthorg.engine.evolution.models import AdaptationDecision, AdaptationProposal
@@ -25,6 +26,7 @@ class RateLimitGuard:
         """
         self._max_per_day = max_per_day
         self._timestamps: dict[str, list[datetime]] = {}
+        self._lock = asyncio.Lock()
 
     @property
     def name(self) -> str:
@@ -47,32 +49,33 @@ class RateLimitGuard:
         proposal_time = proposal.proposed_at
         cutoff = proposal_time - timedelta(days=1)
 
-        if agent_id not in self._timestamps:
-            self._timestamps[agent_id] = []
+        async with self._lock:
+            if agent_id not in self._timestamps:
+                self._timestamps[agent_id] = []
 
-        recent_timestamps = [ts for ts in self._timestamps[agent_id] if ts > cutoff]
+            recent_timestamps = [ts for ts in self._timestamps[agent_id] if ts > cutoff]
 
-        if len(recent_timestamps) >= self._max_per_day:
-            logger.warning(
-                EVOLUTION_RATE_LIMITED,
-                agent_id=agent_id,
-                proposal_id=str(proposal.id),
-                count=len(recent_timestamps),
-                limit=self._max_per_day,
-            )
-            msg = (
-                f"Rate limit exceeded: {len(recent_timestamps)}/"
-                f"{self._max_per_day} adaptations in the last 24 hours"
-            )
-            return AdaptationDecision(
-                proposal_id=proposal.id,
-                approved=False,
-                guard_name=self.name,
-                reason=msg,
-            )
+            if len(recent_timestamps) >= self._max_per_day:
+                logger.warning(
+                    EVOLUTION_RATE_LIMITED,
+                    agent_id=agent_id,
+                    proposal_id=str(proposal.id),
+                    count=len(recent_timestamps),
+                    limit=self._max_per_day,
+                )
+                msg = (
+                    f"Rate limit exceeded: {len(recent_timestamps)}/"
+                    f"{self._max_per_day} adaptations in the last 24 hours"
+                )
+                return AdaptationDecision(
+                    proposal_id=proposal.id,
+                    approved=False,
+                    guard_name=self.name,
+                    reason=msg,
+                )
 
-        recent_timestamps.append(proposal_time)
-        self._timestamps[agent_id] = recent_timestamps
+            recent_timestamps.append(proposal_time)
+            self._timestamps[agent_id] = recent_timestamps
 
         return AdaptationDecision(
             proposal_id=proposal.id,

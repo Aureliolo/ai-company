@@ -613,9 +613,10 @@ class PerformanceTracker:
                     str(trend.metric_name),
                     str(trend.window_size),
                 )
-                old_direction = self._trend_direction_cache.get(
-                    cache_key,
-                )
+                async with self._metrics_lock:
+                    old_direction = self._trend_direction_cache.get(
+                        cache_key,
+                    )
                 if old_direction is not None and old_direction != trend.direction:
                     inflection = PerformanceInflection(
                         agent_id=agent_id,
@@ -634,7 +635,8 @@ class PerformanceTracker:
                         new=trend.direction.value,
                     )
                     await sink.emit(inflection)
-                self._trend_direction_cache[cache_key] = trend.direction
+                async with self._metrics_lock:
+                    self._trend_direction_cache[cache_key] = trend.direction
         except MemoryError, RecursionError:
             raise
         except asyncio.CancelledError:

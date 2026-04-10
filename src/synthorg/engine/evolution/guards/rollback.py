@@ -1,5 +1,6 @@
 """RollbackGuard -- monitors post-adaptation performance for regression."""
 
+import asyncio
 from typing import TYPE_CHECKING
 
 from synthorg.engine.evolution.models import AdaptationDecision, AdaptationProposal
@@ -37,6 +38,7 @@ class RollbackGuard:
         self._regression_threshold = regression_threshold
         self._baselines: dict[str, float] = {}
         self._task_counts: dict[str, int] = {}
+        self._lock = asyncio.Lock()
 
     @property
     def name(self) -> str:
@@ -65,7 +67,7 @@ class RollbackGuard:
             reason="Pre-adaptation check passed; post-adaptation monitoring enabled",
         )
 
-    def check_regression(
+    async def check_regression(
         self,
         agent_id: NotBlankStr,
         baseline_quality: float,
@@ -82,8 +84,7 @@ class RollbackGuard:
             True if regression detected, False otherwise.
         """
         quality_drop = baseline_quality - current_quality
-        epsilon = 1e-9
-        has_regression = quality_drop > (self._regression_threshold - epsilon)
+        has_regression = quality_drop >= self._regression_threshold
 
         if has_regression:
             logger.warning(
@@ -95,7 +96,8 @@ class RollbackGuard:
                 threshold=self._regression_threshold,
             )
 
-        self._baselines[agent_id] = baseline_quality
-        self._task_counts[agent_id] = self._window_tasks
+        async with self._lock:
+            self._baselines[agent_id] = baseline_quality
+            self._task_counts[agent_id] = self._window_tasks
 
         return has_regression

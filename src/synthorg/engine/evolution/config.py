@@ -9,6 +9,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.engine.identity.store.config import (
     IdentityStoreConfig,
 )
@@ -61,7 +62,7 @@ class ProposerConfig(BaseModel):
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     type: Literal["separate_analyzer", "self_report", "composite"] = "composite"
-    model: str = Field(
+    model: NotBlankStr = Field(
         default="example-small-001",
         description="Model for proposer LLM calls",
     )
