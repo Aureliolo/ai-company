@@ -5,12 +5,11 @@ exercise the dispatcher's filter + claim-building logic without
 requiring a live NATS container.
 """
 
-from datetime import UTC, datetime
 from typing import Any
 
 import pytest
 
-from synthorg.core.enums import Priority, SeniorityLevel, TaskStatus, TaskType
+from synthorg.core.enums import Priority, TaskStatus, TaskType
 from synthorg.core.task import Task
 from synthorg.engine.task_engine_models import TaskStateChanged
 from synthorg.workers.claim import TaskClaim
@@ -47,13 +46,10 @@ def _make_task(status: TaskStatus = TaskStatus.ASSIGNED) -> Task:
         description="Integration fixture for dispatcher tests.",
         type=TaskType.DEVELOPMENT,
         project="project-1",
-        required_seniority=SeniorityLevel.JUNIOR,
         priority=Priority.MEDIUM,
         status=status,
         assigned_to="agent-1",
         created_by="engine",
-        created_at=datetime.now(UTC),
-        updated_at=datetime.now(UTC),
     )
 
 

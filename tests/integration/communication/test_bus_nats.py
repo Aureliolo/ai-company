@@ -89,7 +89,9 @@ def nats_url() -> Iterator[str]:
     running).
     """
     try:
-        from testcontainers.core.container import DockerContainer
+        from testcontainers.core.container import (
+            DockerContainer,  # type: ignore[import-untyped]
+        )
     except ImportError:
         pytest.skip("testcontainers not installed")
 
