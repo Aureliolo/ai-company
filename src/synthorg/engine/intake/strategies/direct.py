@@ -10,6 +10,9 @@ from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.engine.intake.models import IntakeResult
 from synthorg.engine.task_engine_models import CreateTaskData
 from synthorg.observability import get_logger
+from synthorg.observability.events.review_pipeline import (
+    INTAKE_DIRECT_TASK_CREATED,
+)
 
 if TYPE_CHECKING:
     from synthorg.engine.task_engine import TaskEngine
@@ -52,7 +55,7 @@ class DirectIntake:
             requested_by=self._requested_by,
         )
         logger.debug(
-            "intake.direct.task_created",
+            INTAKE_DIRECT_TASK_CREATED,
             request_id=request.request_id,
             task_id=task.id,
         )

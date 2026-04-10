@@ -19,9 +19,8 @@ const log = createLogger('ClientDetailPage')
 /**
  * Detail view for a single simulated client.
  *
- * Shows persona, strictness, domains, and links back to the list.
- * Activity timeline and feedback history charts follow in the next
- * dashboard iteration.
+ * Shows persona, strictness, domains, and the satisfaction history
+ * derived from recorded review feedback.
  */
 export default function ClientDetailPage() {
   const { clientId } = useParams<{ clientId: string }>()

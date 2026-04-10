@@ -14,6 +14,7 @@ from synthorg.client.protocols import (
 )
 from synthorg.client.runner import SimulationRunner  # noqa: TC001
 from synthorg.observability import get_logger
+from synthorg.observability.events.client import CONTINUOUS_MODE_DISABLED
 
 logger = get_logger(__name__)
 
@@ -70,7 +71,7 @@ class ContinuousMode:
             Ordered list of per-run :class:`SimulationMetrics`.
         """
         if not self._config.enabled:
-            logger.debug("continuous.mode.disabled")
+            logger.debug(CONTINUOUS_MODE_DISABLED)
             return []
         self._stop_event.clear()
         self._runs_completed = 0

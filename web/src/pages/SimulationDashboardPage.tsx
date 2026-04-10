@@ -22,8 +22,8 @@ const log = createLogger('SimulationDashboardPage')
  *
  * Aggregates metrics across every known simulation record so
  * operators get a single-glance view of throughput and
- * acceptance rates. Detailed charts and live-stream updates land
- * in the next iteration.
+ * acceptance rates. Surfaces cancel and summary-report actions
+ * per run.
  */
 export default function SimulationDashboardPage() {
   const [runs, setRuns] = useState<readonly SimulationStatus[]>([])

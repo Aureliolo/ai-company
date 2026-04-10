@@ -13,6 +13,11 @@ from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.engine.intake.models import IntakeResult
 from synthorg.engine.task_engine_models import CreateTaskData
 from synthorg.observability import get_logger
+from synthorg.observability.events.review_pipeline import (
+    INTAKE_AGENT_EMPTY_RESPONSE,
+    INTAKE_AGENT_PARSE_FAILED,
+    INTAKE_AGENT_REFINED_INVALID,
+)
 from synthorg.providers.enums import MessageRole
 from synthorg.providers.models import ChatMessage
 
@@ -76,11 +81,21 @@ class AgentIntake:
             messages=messages,
             model=self._model,
         )
-        decision = self._parse_decision(response.content or "")
+        content = response.content
+        if not content:
+            logger.warning(
+                INTAKE_AGENT_EMPTY_RESPONSE,
+                request_id=request.request_id,
+            )
+            return IntakeResult.rejected_result(
+                request_id=request.request_id,
+                reason="intake agent returned empty response",
+            )
+        decision = self._parse_decision(content)
         if decision is None:
             reason = "intake agent returned malformed response"
             logger.warning(
-                "intake.agent.parse_failed",
+                INTAKE_AGENT_PARSE_FAILED,
                 request_id=request.request_id,
             )
             return IntakeResult.rejected_result(
@@ -99,7 +114,7 @@ class AgentIntake:
             data = self._build_task_data(refined)
         except ValidationError:
             logger.warning(
-                "intake.agent.refined_invalid",
+                INTAKE_AGENT_REFINED_INVALID,
                 request_id=request.request_id,
             )
             return IntakeResult.rejected_result(

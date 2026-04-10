@@ -37,6 +37,11 @@ class ClientPool:
     ) -> None:
         """Add or replace a client and its profile.
 
+        Re-adding a previously deactivated client id resets the
+        active flag to ``True`` -- deactivation is a soft delete,
+        and ``add`` is the explicit "make this present and live"
+        operation.
+
         Args:
             profile: Profile describing the client.
             client: Client implementation keyed on the profile id.
@@ -44,7 +49,17 @@ class ClientPool:
         async with self._lock:
             self._profiles[profile.client_id] = profile
             self._clients[profile.client_id] = client
-            self._active.setdefault(profile.client_id, True)
+            self._active[profile.client_id] = True
+
+    async def has_profile(self, client_id: str) -> bool:
+        """Return whether a profile exists for ``client_id``.
+
+        Includes deactivated profiles -- mirrors ``get_profile`` which
+        is also index-inclusive. Use ``is_active`` to distinguish
+        live clients from tombstoned ones.
+        """
+        async with self._lock:
+            return client_id in self._profiles
 
     async def remove(self, client_id: str) -> ClientProfile:
         """Remove a client by id and return its profile.
@@ -178,8 +193,15 @@ def _filter_by_constraints(
 class RoundRobinStrategy:
     """Cycles through clients in insertion order.
 
-    State is carried across calls, so repeated invocations on the
-    same strategy instance continue the cycle.
+    State (the rotation cursor) is carried across calls, so
+    repeated invocations on the same strategy instance continue
+    the cycle.
+
+    **Not thread-safe.** The cursor is updated without a lock, so
+    do not share a single ``RoundRobinStrategy`` instance across
+    concurrent ``select_clients`` invocations from different async
+    tasks -- create one instance per simulation run or guard calls
+    externally.
     """
 
     def __init__(self) -> None:
@@ -208,6 +230,11 @@ class WeightedRandomStrategy:
 
     Strict personas have higher selection probability. Useful for
     adversarial simulation runs that want more rigorous reviewers.
+
+    **Not thread-safe.** The underlying ``random.Random`` instance
+    is mutated on every call, so do not share a single
+    ``WeightedRandomStrategy`` across concurrent ``select_clients``
+    invocations -- create one instance per simulation run.
     """
 
     def __init__(self, *, seed: int | None = None) -> None:

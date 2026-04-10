@@ -1,8 +1,10 @@
 """In-memory stores for client simulation runtime state."""
 
 import asyncio
-from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from typing import Literal
+
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
 
 from synthorg.client.models import (
     ClientFeedback,
@@ -11,6 +13,17 @@ from synthorg.client.models import (
     SimulationMetrics,
 )
 from synthorg.core.types import NotBlankStr  # noqa: TC001
+
+SimulationRunStatus = Literal[
+    "pending",
+    "running",
+    "completed",
+    "cancelled",
+    "failed",
+]
+_TERMINAL_STATUSES: frozenset[SimulationRunStatus] = frozenset(
+    {"completed", "cancelled", "failed"},
+)
 
 
 class FeedbackStore:
@@ -83,22 +96,26 @@ class RequestStore:
             self._requests.pop(request_id, None)
 
 
-@dataclass
-class SimulationRecord:
+class SimulationRecord(BaseModel):
     """Status record for a simulation run.
 
-    Persisted in-memory by :class:`SimulationStore` and exposed
-    through the ``/simulations`` endpoints.
+    Frozen Pydantic model. Persisted in-memory by
+    :class:`SimulationStore` and exposed through the
+    ``/simulations`` endpoints. Mutations go through
+    ``SimulationStore.update_status`` which constructs a new record
+    and rebinds it in the store -- never mutates in place.
     """
 
-    simulation_id: NotBlankStr
-    config: SimulationConfig
-    status: str = "pending"
-    metrics: SimulationMetrics = field(default_factory=SimulationMetrics)
-    progress: float = 0.0
-    started_at: datetime | None = None
-    completed_at: datetime | None = None
-    error: str | None = None
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+
+    simulation_id: NotBlankStr = Field(description="Run identifier")
+    config: SimulationConfig = Field(description="Run configuration")
+    status: SimulationRunStatus = Field(default="pending")
+    metrics: SimulationMetrics = Field(default_factory=SimulationMetrics)
+    progress: float = Field(default=0.0, ge=0.0, le=1.0)
+    started_at: AwareDatetime | None = Field(default=None)
+    completed_at: AwareDatetime | None = Field(default=None)
+    error: str | None = Field(default=None)
 
 
 class SimulationStore:
@@ -131,26 +148,33 @@ class SimulationStore:
         self,
         simulation_id: str,
         *,
-        status: str,
+        status: SimulationRunStatus,
         metrics: SimulationMetrics | None = None,
         progress: float | None = None,
         error: str | None = None,
     ) -> SimulationRecord:
-        """Update an existing record in place."""
+        """Replace the stored record with an updated copy.
+
+        Constructs a new frozen :class:`SimulationRecord` via
+        ``model_copy`` rather than mutating in place, honoring the
+        project's immutability rule.
+        """
         async with self._lock:
             if simulation_id not in self._runs:
                 msg = f"Simulation {simulation_id!r} not found"
                 raise KeyError(msg)
-            record = self._runs[simulation_id]
-            record.status = status
+            existing = self._runs[simulation_id]
+            updates: dict[str, object] = {"status": status}
             if metrics is not None:
-                record.metrics = metrics
+                updates["metrics"] = metrics
             if progress is not None:
-                record.progress = progress
+                updates["progress"] = progress
             if error is not None:
-                record.error = error
-            if status == "running" and record.started_at is None:
-                record.started_at = datetime.now(UTC)
-            if status in {"completed", "cancelled", "failed"}:
-                record.completed_at = datetime.now(UTC)
-            return record
+                updates["error"] = error
+            if status == "running" and existing.started_at is None:
+                updates["started_at"] = datetime.now(UTC)
+            if status in _TERMINAL_STATUSES:
+                updates["completed_at"] = datetime.now(UTC)
+            updated = existing.model_copy(update=updates)
+            self._runs[simulation_id] = updated
+            return updated

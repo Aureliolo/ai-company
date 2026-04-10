@@ -329,11 +329,21 @@ export async function decideReviewStage(
   stageName: string,
   data: StageDecisionBody,
 ): Promise<StageDecisionResult> {
+  // The backend treats `reason` as NotBlankStr | None: an empty or
+  // whitespace-only string fails Pydantic validation. Trim and
+  // coerce to undefined so callers can pass raw form state without
+  // tripping a 422 at the API boundary.
+  const trimmedReason = data.reason?.trim()
+  const payload: StageDecisionBody = {
+    verdict: data.verdict,
+    decided_by: data.decided_by,
+    ...(trimmedReason ? { reason: trimmedReason } : {}),
+  }
   const response = await apiClient.post<ApiResponse<StageDecisionResult>>(
     `/reviews/${encodeURIComponent(taskId)}/stages/${encodeURIComponent(
       stageName,
     )}/decide`,
-    data,
+    payload,
   )
   return unwrap(response)
 }

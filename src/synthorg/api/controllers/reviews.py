@@ -20,6 +20,10 @@ from synthorg.engine.review.models import (
     ReviewVerdict,
 )
 from synthorg.observability import get_logger
+from synthorg.observability.events.review_pipeline import (
+    REVIEW_STAGE_DECIDED,
+    REVIEW_TASK_LOOKUP_FAILED,
+)
 
 logger = get_logger(__name__)
 
@@ -89,7 +93,7 @@ class ReviewController(Controller):
         try:
             task = await app_state.task_engine.get_task(task_id)
         except Exception as exc:
-            logger.warning("review.task_lookup_failed", task_id=task_id)
+            logger.warning(REVIEW_TASK_LOOKUP_FAILED, task_id=task_id)
             msg = f"Task {task_id!r} not found"
             raise NotFoundError(msg) from exc
         if task is None:
@@ -133,7 +137,7 @@ class ReviewController(Controller):
         try:
             task = await app_state.task_engine.get_task(task_id)
         except Exception as exc:
-            logger.warning("review.task_lookup_failed", task_id=task_id)
+            logger.warning(REVIEW_TASK_LOOKUP_FAILED, task_id=task_id)
             msg = f"Task {task_id!r} not found"
             raise NotFoundError(msg) from exc
         if task is None:
@@ -162,7 +166,7 @@ class ReviewController(Controller):
             total_duration_ms=0,
         )
         logger.info(
-            "review.stage_decided",
+            REVIEW_STAGE_DECIDED,
             task_id=task_id,
             stage_name=stage_name,
             verdict=data.verdict.value,

@@ -11,8 +11,8 @@ import { ROUTES } from '@/router/routes'
  * Client pool list page.
  *
  * Surfaces every simulated client profile with a quick-link to the
- * detail page. Read-only for now; creation and editing flow lands in
- * the follow-up PR that introduces the create drawer.
+ * detail page. Creation and editing happen via the REST API; this
+ * page is read-only.
  */
 export default function ClientListPage() {
   const { clients, loading, error, wsConnected } = useClientsData()

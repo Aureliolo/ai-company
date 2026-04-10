@@ -17,14 +17,12 @@ export function useClientsData(): {
   loading: boolean
   error: string | null
   wsConnected: boolean
-  wsSetupError: string | null
   reload: () => Promise<void>
 } {
   const [clients, setClients] = useState<readonly ClientProfile[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const wsConnected = useWebSocketStore((s) => s.connected)
-  const wsSetupError: string | null = null
 
   const reload = useCallback(async () => {
     try {
@@ -43,5 +41,5 @@ export function useClientsData(): {
     void reload()
   }, [reload])
 
-  return { clients, loading, error, wsConnected, wsSetupError, reload }
+  return { clients, loading, error, wsConnected, reload }
 }

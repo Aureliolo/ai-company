@@ -20,6 +20,7 @@ from synthorg.client.generators.procedural import ProceduralGenerator
 from synthorg.client.models import ClientProfile
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.observability import get_logger
+from synthorg.observability.events.api import API_RESOURCE_NOT_FOUND
 
 logger = get_logger(__name__)
 
@@ -156,7 +157,11 @@ class ClientController(Controller):
         try:
             profile = await sim_state.pool.get_profile(client_id)
         except KeyError as exc:
-            logger.warning("client.not_found", client_id=client_id)
+            logger.warning(
+                API_RESOURCE_NOT_FOUND,
+                resource="client",
+                client_id=client_id,
+            )
             msg = f"Client {client_id!r} not found"
             raise NotFoundError(msg) from exc
         return ApiResponse(data=profile)
@@ -175,8 +180,7 @@ class ClientController(Controller):
         """
         app_state: AppState = state.app_state
         sim_state = app_state.client_simulation_state
-        existing_profiles = await sim_state.pool.list_profiles()
-        if any(p.client_id == data.client_id for p in existing_profiles):
+        if await sim_state.pool.has_profile(data.client_id):
             msg = f"Client {data.client_id!r} already exists"
             raise ConflictError(msg)
         profile = ClientProfile(
