@@ -186,6 +186,7 @@ class PostgresWorkflowExecutionRepository:
                          activated_by, project, created_at, updated_at, completed_at,
                          error, version)
                     VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    ON CONFLICT (id) DO NOTHING
                     """,
                     params,
                 )
@@ -198,17 +199,7 @@ class PostgresWorkflowExecutionRepository:
                     )
                     raise DuplicateRecordError(msg)
                 await conn.commit()
-        except psycopg.errors.UniqueViolation as exc:
-            await conn.rollback()
-            msg = f"Workflow execution {execution.id!r} already exists (duplicate ID)"
-            logger.warning(
-                PERSISTENCE_WORKFLOW_EXEC_SAVE_FAILED,
-                execution_id=execution.id,
-                error=msg,
-            )
-            raise DuplicateRecordError(msg) from exc
         except psycopg.Error as exc:
-            await conn.rollback()
             msg = f"Failed to save workflow execution {execution.id!r}"
             logger.exception(
                 PERSISTENCE_WORKFLOW_EXEC_SAVE_FAILED,
@@ -238,7 +229,6 @@ class PostgresWorkflowExecutionRepository:
                     ),
                 )
                 if cur.rowcount == 0:
-                    await conn.rollback()
                     msg = (
                         f"Version conflict saving workflow execution"
                         f" {execution.id!r}: expected version"
@@ -252,7 +242,6 @@ class PostgresWorkflowExecutionRepository:
                     raise VersionConflictError(msg)
                 await conn.commit()
         except psycopg.Error as exc:
-            await conn.rollback()
             msg = f"Failed to save workflow execution {execution.id!r}"
             logger.exception(
                 PERSISTENCE_WORKFLOW_EXEC_SAVE_FAILED,

@@ -4,10 +4,12 @@ This is the Postgres sibling of src/synthorg/persistence/sqlite/checkpoint_repo.
 Postgres stores context_json as native JSONB and timestamps as TIMESTAMPTZ.
 """
 
+import json
 from typing import TYPE_CHECKING
 
 import psycopg
 from psycopg.rows import dict_row
+from psycopg.types.json import Jsonb
 from pydantic import ValidationError
 
 from synthorg.core.types import NotBlankStr  # noqa: TC001
@@ -42,9 +44,18 @@ class PostgresCheckpointRepository:
         self._pool = pool
 
     async def save(self, checkpoint: Checkpoint) -> None:
-        """Persist a checkpoint (upsert)."""
+        """Persist a checkpoint (upsert).
+
+        ``Checkpoint.context_json`` is a pre-serialized JSON **string**
+        at the Python level but the Postgres column is native ``JSONB``.
+        psycopg's default string adapter sends ``TEXT`` on the wire and
+        Postgres does not implicitly cast ``text`` to ``jsonb``, so we
+        parse the string to a structured Python value and let psycopg
+        route it through its native JSONB adapter.
+        """
         try:
             data = checkpoint.model_dump(mode="json")
+            data["context_json"] = Jsonb(json.loads(data["context_json"]))
             async with self._pool.connection() as conn, conn.cursor() as cur:
                 await cur.execute(
                     """\

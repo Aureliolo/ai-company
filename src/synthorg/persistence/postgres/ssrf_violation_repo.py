@@ -18,7 +18,7 @@ from synthorg.observability.events.persistence import (
     PERSISTENCE_SSRF_VIOLATION_SAVE_FAILED,
     PERSISTENCE_SSRF_VIOLATION_SAVED,
 )
-from synthorg.persistence.errors import DuplicateRecordError, PersistenceError
+from synthorg.persistence.errors import DuplicateRecordError, QueryError
 from synthorg.security.ssrf_violation import SsrfViolation, SsrfViolationStatus
 
 if TYPE_CHECKING:
@@ -57,7 +57,7 @@ class PostgresSsrfViolationRepository:
 
         Raises:
             DuplicateRecordError: If a violation with the same ID exists.
-            PersistenceError: If the save fails.
+            QueryError: If the save fails.
         """
         ts_utc = violation.timestamp.astimezone(UTC)
         resolved_at_utc = (
@@ -93,7 +93,7 @@ class PostgresSsrfViolationRepository:
                 PERSISTENCE_SSRF_VIOLATION_SAVE_FAILED,
                 error=msg,
             )
-            raise PersistenceError(msg) from exc
+            raise QueryError(msg) from exc
         else:
             logger.debug(
                 PERSISTENCE_SSRF_VIOLATION_SAVED,
@@ -121,12 +121,12 @@ class PostgresSsrfViolationRepository:
                 PERSISTENCE_SSRF_VIOLATION_QUERY_FAILED,
                 error=msg,
             )
-            raise PersistenceError(msg) from exc
+            raise QueryError(msg) from exc
 
         if row is None:
             return None
         try:
-            return _row_to_violation(dict(row))
+            return _row_to_violation(row)
         except (ValueError, ValidationError) as exc:
             msg = f"Failed to deserialize SSRF violation {violation_id!r}: {exc}"
             logger.exception(
@@ -134,7 +134,7 @@ class PostgresSsrfViolationRepository:
                 error=msg,
                 violation_id=violation_id,
             )
-            raise PersistenceError(msg) from exc
+            raise QueryError(msg) from exc
 
     async def list_violations(
         self,
@@ -171,18 +171,25 @@ class PostgresSsrfViolationRepository:
                 PERSISTENCE_SSRF_VIOLATION_QUERY_FAILED,
                 error=msg,
             )
-            raise PersistenceError(msg) from exc
+            raise QueryError(msg) from exc
 
         results: list[SsrfViolation] = []
         for row in rows:
             try:
-                results.append(_row_to_violation(dict(row)))
-            except ValueError, ValidationError:
-                logger.warning(
+                results.append(_row_to_violation(row))
+            except (ValueError, ValidationError) as exc:
+                # Do not silently drop malformed violation rows:
+                # list_violations is how operators audit the full
+                # history of blocked SSRF attempts, so returning a
+                # partial list would hide security-relevant events.
+                row_id = row.get("id") if row else "unknown"
+                logger.exception(
                     PERSISTENCE_SSRF_VIOLATION_QUERY_FAILED,
-                    error="failed to deserialize row",
-                    row_id=row.get("id") if row else "unknown",
+                    error="failed to deserialize violation row",
+                    row_id=row_id,
                 )
+                msg = f"Failed to deserialize SSRF violation row {row_id!r}: {exc}"
+                raise QueryError(msg) from exc
         return tuple(results)
 
     async def update_status(
@@ -226,7 +233,7 @@ class PostgresSsrfViolationRepository:
                 PERSISTENCE_SSRF_VIOLATION_SAVE_FAILED,
                 error=msg,
             )
-            raise PersistenceError(msg) from exc
+            raise QueryError(msg) from exc
 
         return updated
 

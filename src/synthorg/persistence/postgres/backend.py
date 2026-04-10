@@ -14,6 +14,7 @@ backend: callers get Pydantic models back either way.
 """
 
 import asyncio
+import math
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
@@ -144,7 +145,14 @@ def _build_conninfo(config: PostgresConfig) -> str:
     Uses ``psycopg.conninfo.make_conninfo`` for correct escaping of
     special characters (spaces, backslashes, equals signs) inside
     credentials and identifiers.
+
+    ``connect_timeout`` is rounded up to a whole number of seconds
+    because libpq accepts only integer seconds (with a minimum of 2);
+    truncating a sub-second value via ``int()`` would round 0.5 down
+    to 0 which libpq interprets as "wait indefinitely", silently
+    turning a short configured timeout into no timeout at all.
     """
+    connect_timeout = max(2, math.ceil(config.connect_timeout_seconds))
     return psycopg.conninfo.make_conninfo(
         host=config.host,
         port=config.port,
@@ -153,7 +161,7 @@ def _build_conninfo(config: PostgresConfig) -> str:
         password=config.password.get_secret_value(),
         sslmode=config.ssl_mode,
         application_name=config.application_name,
-        connect_timeout=int(config.connect_timeout_seconds),
+        connect_timeout=connect_timeout,
     )
 
 
@@ -207,6 +215,9 @@ class PostgresPersistenceBackend:
         self._risk_overrides: RiskOverrideRepository | None = None
         self._ssrf_violations: SsrfViolationRepository | None = None
         self._circuit_breaker_state: CircuitBreakerStateRepository | None = None
+        self._project_cost_aggregates: PostgresProjectCostAggregateRepository | None = (
+            None
+        )
 
     def _clear_state(self) -> None:
         """Reset pool and repository references to ``None``."""
@@ -240,6 +251,7 @@ class PostgresPersistenceBackend:
         self._risk_overrides = None
         self._ssrf_violations = None
         self._circuit_breaker_state = None
+        self._project_cost_aggregates = None
 
     async def _configure_connection(
         self,
@@ -445,14 +457,22 @@ class PostgresPersistenceBackend:
         Bounded by ``pool_timeout_seconds`` so the probe cannot hang
         indefinitely when the pool is exhausted or the server is
         unreachable -- a stuck health check would otherwise block
-        orchestration loops that poll backend readiness.
+        orchestration loops that poll backend readiness.  The timeout
+        covers the full probe: waiting for a pool connection checkout
+        AND executing the query, whichever takes longer.
+
+        Pool state is captured into a local reference while holding
+        ``_lifecycle_lock`` so ``disconnect()`` cannot close the pool
+        out from under us after the ``None`` check passes.
         """
-        if self._pool is None:
+        async with self._lifecycle_lock:
+            pool = self._pool
+        if pool is None:
             return False
         try:
             async with asyncio.timeout(self._config.pool_timeout_seconds):
                 async with (
-                    self._pool.connection() as conn,
+                    pool.connection() as conn,
                     conn.cursor() as cur,
                 ):
                     await cur.execute("SELECT 1")
@@ -472,6 +492,11 @@ class PostgresPersistenceBackend:
     async def migrate(self) -> None:
         """Apply pending schema migrations via Atlas CLI.
 
+        If migration fails, the pool is closed and backend state is
+        cleared so callers cannot continue against a backend whose
+        schema is in an indeterminate state (partially applied, or
+        rolled back by Atlas).  They must reconnect explicitly.
+
         Raises:
             PersistenceConnectionError: If not connected.
             MigrationError: If migration application fails.
@@ -482,7 +507,23 @@ class PostgresPersistenceBackend:
                 logger.warning(PERSISTENCE_BACKEND_NOT_CONNECTED, error=msg)
                 raise PersistenceConnectionError(msg)
             db_url = atlas.to_postgres_url(self._config)
-            await atlas.migrate_apply(db_url, backend="postgres")
+            try:
+                await atlas.migrate_apply(db_url, backend="postgres")
+            except BaseException:
+                pool = self._pool
+                if pool is not None:
+                    try:
+                        await pool.close()
+                    except (psycopg.Error, OSError) as cleanup_exc:
+                        logger.warning(
+                            PERSISTENCE_BACKEND_DISCONNECT_ERROR,
+                            host=self._config.host,
+                            error=str(cleanup_exc),
+                            error_type=type(cleanup_exc).__name__,
+                            context="cleanup_after_migration_failure",
+                        )
+                self._clear_state()
+                raise
 
     @property
     def is_connected(self) -> bool:
@@ -672,6 +713,18 @@ class PostgresPersistenceBackend:
         """Repository for circuit breaker state persistence."""
         return self._require_connected(
             self._circuit_breaker_state, "circuit_breaker_state"
+        )
+
+    @property
+    def project_cost_aggregates(self) -> PostgresProjectCostAggregateRepository:
+        """Repository for durable project cost aggregates.
+
+        Raises:
+            PersistenceConnectionError: If not connected.
+        """
+        return self._require_connected(
+            self._project_cost_aggregates,
+            "project_cost_aggregates",
         )
 
     async def get_setting(self, key: NotBlankStr) -> str | None:

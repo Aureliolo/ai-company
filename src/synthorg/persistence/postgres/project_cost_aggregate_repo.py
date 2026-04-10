@@ -67,6 +67,43 @@ class PostgresProjectCostAggregateRepository:
     def __init__(self, pool: AsyncConnectionPool) -> None:
         self._pool = pool
 
+    @staticmethod
+    def _deserialize(
+        row: dict[str, object],
+        project_id: NotBlankStr,
+        *,
+        context: str = "",
+    ) -> ProjectCostAggregate:
+        """Validate a raw row into a ``ProjectCostAggregate``.
+
+        Centralizes the Pydantic validation + ``QueryError`` wrap used
+        by both ``get()`` and ``increment()`` so the logging/event
+        constant stays consistent.
+
+        Args:
+            row: Raw mapping returned by psycopg.
+            project_id: Project id (for error context + logging).
+            context: Optional suffix describing the call site
+                (e.g. ``"after increment"``).
+
+        Raises:
+            QueryError: If the row cannot be validated.
+        """
+        try:
+            return ProjectCostAggregate.model_validate(row)
+        except ValidationError as exc:
+            logger.exception(
+                PERSISTENCE_PROJECT_COST_AGG_DESERIALIZE_FAILED,
+                project_id=project_id,
+                error=str(exc),
+            )
+            suffix = f" {context}" if context else ""
+            msg = (
+                f"Failed to deserialize project cost aggregate"
+                f" for {project_id!r}{suffix}: {exc}"
+            )
+            raise QueryError(msg) from exc
+
     async def get(
         self,
         project_id: NotBlankStr,
@@ -106,19 +143,7 @@ class PostgresProjectCostAggregateRepository:
             )
             return None
 
-        try:
-            aggregate = ProjectCostAggregate.model_validate(row)
-        except ValidationError as exc:
-            logger.exception(
-                PERSISTENCE_PROJECT_COST_AGG_DESERIALIZE_FAILED,
-                project_id=project_id,
-                error=str(exc),
-            )
-            msg = (
-                f"Failed to deserialize project cost aggregate"
-                f" for {project_id!r}: {exc}"
-            )
-            raise QueryError(msg) from exc
+        aggregate = self._deserialize(row, project_id)
 
         logger.debug(
             PERSISTENCE_PROJECT_COST_AGG_FETCHED,
@@ -182,6 +207,17 @@ class PostgresProjectCostAggregateRepository:
                     (project_id, cost, input_tokens, output_tokens, now),
                 )
                 row = await cur.fetchone()
+                if row is None:  # pragma: no cover -- defensive
+                    await conn.rollback()
+                    msg = f"Aggregate for {project_id!r} missing after upsert"
+                    raise QueryError(msg)
+                # Validate BEFORE committing -- if the row can't be
+                # deserialized into the domain model, the raw increment
+                # must be rolled back so a retry can try again without
+                # double-counting.
+                aggregate = self._deserialize(
+                    row, project_id, context="after increment"
+                )
                 await conn.commit()
         except psycopg.Error as exc:
             logger.exception(
@@ -192,24 +228,6 @@ class PostgresProjectCostAggregateRepository:
             )
             msg = (
                 f"Failed to increment project cost aggregate for {project_id!r}: {exc}"
-            )
-            raise QueryError(msg) from exc
-
-        if row is None:  # pragma: no cover -- defensive
-            msg = f"Aggregate for {project_id!r} missing after upsert"
-            raise QueryError(msg)
-
-        try:
-            aggregate = ProjectCostAggregate.model_validate(row)
-        except ValidationError as exc:
-            logger.exception(
-                PERSISTENCE_PROJECT_COST_AGG_DESERIALIZE_FAILED,
-                project_id=project_id,
-                error=str(exc),
-            )
-            msg = (
-                f"Failed to deserialize project cost aggregate"
-                f" for {project_id!r} after increment: {exc}"
             )
             raise QueryError(msg) from exc
 

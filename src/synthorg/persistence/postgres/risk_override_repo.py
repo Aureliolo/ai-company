@@ -20,7 +20,7 @@ from synthorg.observability.events.persistence import (
     PERSISTENCE_RISK_OVERRIDE_SAVE_FAILED,
     PERSISTENCE_RISK_OVERRIDE_SAVED,
 )
-from synthorg.persistence.errors import DuplicateRecordError, PersistenceError
+from synthorg.persistence.errors import DuplicateRecordError, QueryError
 from synthorg.security.rules.risk_override import RiskTierOverride
 
 if TYPE_CHECKING:
@@ -95,7 +95,7 @@ class PostgresRiskOverrideRepository:
                 PERSISTENCE_RISK_OVERRIDE_SAVE_FAILED,
                 error=msg,
             )
-            raise PersistenceError(msg) from exc
+            raise QueryError(msg) from exc
         else:
             logger.debug(
                 PERSISTENCE_RISK_OVERRIDE_SAVED,
@@ -123,11 +123,11 @@ class PostgresRiskOverrideRepository:
                 PERSISTENCE_RISK_OVERRIDE_QUERY_FAILED,
                 error=msg,
             )
-            raise PersistenceError(msg) from exc
+            raise QueryError(msg) from exc
 
         if row is None:
             return None
-        return _row_to_override(dict(row))
+        return _row_to_override(row)
 
     async def list_active(self) -> tuple[RiskTierOverride, ...]:
         """Return all active (non-expired, non-revoked) overrides."""
@@ -150,18 +150,28 @@ class PostgresRiskOverrideRepository:
                 PERSISTENCE_RISK_OVERRIDE_QUERY_FAILED,
                 error=msg,
             )
-            raise PersistenceError(msg) from exc
+            raise QueryError(msg) from exc
 
         results: list[RiskTierOverride] = []
         for row in rows:
             try:
-                results.append(_row_to_override(dict(row)))
-            except ValueError, ValidationError:
-                logger.warning(
+                results.append(_row_to_override(row))
+            except (ValueError, ValidationError) as exc:
+                # Never silently drop a malformed active override:
+                # callers rely on ``list_active`` to return the full
+                # current policy set, so a partial result would be a
+                # dangerous security regression (missing overrides
+                # mean risk rules silently revert to defaults).
+                row_id = row.get("id") if row else "unknown"
+                logger.exception(
                     PERSISTENCE_RISK_OVERRIDE_QUERY_FAILED,
-                    error="failed to deserialize row",
-                    row_id=row.get("id") if row else "unknown",
+                    error="failed to deserialize active override row",
+                    row_id=row_id,
                 )
+                msg = (
+                    f"Failed to deserialize active risk override row {row_id!r}: {exc}"
+                )
+                raise QueryError(msg) from exc
         return tuple(results)
 
     async def revoke(
@@ -189,7 +199,7 @@ class PostgresRiskOverrideRepository:
                 PERSISTENCE_RISK_OVERRIDE_SAVE_FAILED,
                 error=msg,
             )
-            raise PersistenceError(msg) from exc
+            raise QueryError(msg) from exc
 
         return revoked
 

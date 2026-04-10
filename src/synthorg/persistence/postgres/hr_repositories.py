@@ -141,6 +141,13 @@ FROM lifecycle_events"""
             sql += " WHERE " + " AND ".join(clauses)
         sql += " ORDER BY timestamp DESC"
         if limit is not None:
+            # Validate at the repository boundary so callers cannot
+            # accidentally pass a float, bool, or negative value into
+            # the raw "LIMIT %s" parameter and get a confusing DB-side
+            # error (or worse, a silently-wrong result).
+            if not isinstance(limit, int) or isinstance(limit, bool) or limit < 1:
+                msg = f"limit must be a positive integer, got {limit!r}"
+                raise QueryError(msg)
             sql += " LIMIT %s"
             params.append(limit)
 

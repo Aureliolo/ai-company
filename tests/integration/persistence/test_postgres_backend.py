@@ -18,6 +18,7 @@ from pydantic import SecretStr
 
 from synthorg.budget.call_category import LLMCallCategory
 from synthorg.budget.cost_record import CostRecord
+from synthorg.communication.message import MessageMetadata
 from synthorg.core.types import NotBlankStr
 from synthorg.persistence.config import PostgresConfig
 from synthorg.persistence.postgres.backend import PostgresPersistenceBackend
@@ -240,15 +241,31 @@ class TestNativePostgresTypes:
         postgres_backend: PostgresPersistenceBackend,
     ) -> None:
         """Message.metadata round-trips through JSONB preserving structure."""
+        metadata = MessageMetadata(
+            task_id=NotBlankStr("round-trip-task"),
+            project_id=NotBlankStr("round-trip-project"),
+            tokens_used=1234,
+            cost_usd=0.0425,
+        )
         msg = make_message(
             msg_id=uuid4(),
             channel="jsonb-chan",
             content="payload",
+            metadata=metadata,
         )
         await postgres_backend.messages.save(msg)
 
         history = await postgres_backend.messages.get_history("jsonb-chan")
         assert len(history) == 1
+        # Assert the actual payload: a row-count-only assertion would
+        # silently pass even if every metadata field were dropped on
+        # the write or deserialized as ``None`` on the read path.
+        fetched = history[0]
+        assert fetched.metadata == metadata
+        assert fetched.metadata.task_id == "round-trip-task"
+        assert fetched.metadata.project_id == "round-trip-project"
+        assert fetched.metadata.tokens_used == 1234
+        assert fetched.metadata.cost_usd == 0.0425
 
 
 @pytest.mark.integration

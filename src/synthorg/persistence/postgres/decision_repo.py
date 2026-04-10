@@ -136,11 +136,14 @@ class PostgresDecisionRepository:
     review gate decisions. Timestamps are normalized to UTC before
     storage for consistent ordering.
 
-    Unlike the SQLite sibling, Postgres' SERIALIZABLE isolation and
-    the UNIQUE(task_id, version) constraint eliminate the need for
-    an explicit asyncio.Lock to serialize concurrent writers. The
-    atomic subquery computes version inside the INSERT statement,
-    and Postgres rejects any race with a UNIQUE violation.
+    Unlike the SQLite sibling, the ``UNIQUE(task_id, version)``
+    constraint combined with a bounded retry loop eliminates the
+    need for an explicit asyncio.Lock to serialize concurrent
+    writers. psycopg uses Postgres' default READ COMMITTED
+    isolation, so two concurrent writers may compute the same next
+    version; the constraint guarantees only one wins and the loser
+    retries with a freshly computed version (see
+    ``append_with_next_version``).
 
     Args:
         pool: An open psycopg_pool.AsyncConnectionPool.
@@ -166,10 +169,13 @@ class PostgresDecisionRepository:
         """Atomically insert a decision record with server-computed version.
 
         Version is derived via ``COALESCE(MAX(version), 0) + 1`` inside
-        the ``INSERT`` statement itself. The entire statement runs
-        atomically under Postgres' SERIALIZABLE isolation, and the
-        ``UNIQUE(task_id, version)`` constraint rejects any race --
-        surfaced as ``DuplicateRecordError``.
+        the ``INSERT`` statement itself.  Under READ COMMITTED (the
+        psycopg default) two concurrent writers may compute the same
+        next version, so the ``UNIQUE(task_id, version)`` constraint
+        breaks the tie and the loser retries up to
+        ``_MAX_VERSION_RACE_ATTEMPTS`` times with a freshly computed
+        version.  After exhausting retries the write is surfaced as
+        ``DuplicateRecordError``.
 
         See the ``DecisionRepository`` protocol for the full argument
         descriptions. ``recorded_at`` is normalized to UTC before
@@ -515,73 +521,78 @@ class PostgresDecisionRepository:
         )
         return results
 
+    _REQUIRED_COLUMNS: Final[tuple[str, ...]] = (
+        "id",
+        "task_id",
+        "approval_id",
+        "executing_agent_id",
+        "reviewer_agent_id",
+        "decision",
+        "reason",
+        "recorded_at",
+        "version",
+    )
+
+    @staticmethod
+    def _coerce_criteria(raw_criteria: object, record_id: object) -> tuple[object, ...]:
+        """Normalize a ``criteria_snapshot`` JSONB value to a tuple.
+
+        Postgres JSONB comes back as ``list``/``dict``; the "string"
+        branch is defensive against callers that migrate data from
+        the SQLite backend (which stored criteria as a JSON string).
+        """
+        if isinstance(raw_criteria, str):
+            decoded = json.loads(raw_criteria)
+            if not isinstance(decoded, list):
+                msg = (
+                    f"criteria_snapshot for decision record "
+                    f"{record_id!r} is not a JSON array "
+                    f"(got {type(decoded).__name__})"
+                )
+                raise TypeError(msg)
+            return tuple(decoded)
+        if not isinstance(raw_criteria, list):
+            msg = (
+                f"criteria_snapshot for decision record {record_id!r} "
+                f"is not a list (got {type(raw_criteria).__name__})"
+            )
+            raise TypeError(msg)
+        return tuple(raw_criteria)
+
     def _row_to_record(self, row: dict[str, object]) -> DecisionRecord:
         """Convert a database row to a ``DecisionRecord`` model.
 
         JSONB columns in Postgres come back as dicts/lists, not strings.
         The ``criteria_snapshot`` is shape-checked to ensure it's a list.
+        All failure modes (missing columns, malformed JSON, shape
+        mismatches, Pydantic validation errors) are normalized into
+        ``QueryError`` with a consistent event payload so callers get
+        the same exception type regardless of the root cause.
         """
+        record_id = row.get("id")
         try:
-            try:
-                # Explicit reads for every required column
-                parsed: dict[str, object] = {
-                    "id": row["id"],
-                    "task_id": row["task_id"],
-                    "approval_id": row["approval_id"],
-                    "executing_agent_id": row["executing_agent_id"],
-                    "reviewer_agent_id": row["reviewer_agent_id"],
-                    "decision": row["decision"],
-                    "reason": row["reason"],
-                    "recorded_at": row["recorded_at"],
-                    "version": row["version"],
-                }
-                raw_criteria = row["criteria_snapshot"]
-                raw_metadata = row["metadata"]
-            except KeyError as exc:
-                logger.exception(
-                    PERSISTENCE_DECISION_RECORD_DESERIALIZE_FAILED,
-                    record_id=row.get("id"),
-                    missing_column=str(exc).strip("'\""),
-                    error_type="KeyError",
-                    error=f"schema drift: missing column {exc}",
-                )
-                raise
-            # Postgres JSONB comes back as dict/list, not string
-            if isinstance(raw_criteria, str):
-                # Defensive: shouldn't happen with JSONB
-                decoded_criteria = json.loads(raw_criteria)
-                if not isinstance(decoded_criteria, list):
-                    msg = (
-                        f"criteria_snapshot for decision record "
-                        f"{row.get('id')!r} is not a JSON array "
-                        f"(got {type(decoded_criteria).__name__})"
-                    )
-                    raise TypeError(msg)  # noqa: TRY301
-                parsed["criteria_snapshot"] = tuple(decoded_criteria)
-            else:
-                # JSONB comes as list or dict
-                if not isinstance(raw_criteria, list):
-                    msg = (
-                        f"criteria_snapshot for decision record "
-                        f"{row.get('id')!r} is not a list "
-                        f"(got {type(raw_criteria).__name__})"
-                    )
-                    raise TypeError(msg)  # noqa: TRY301
-                parsed["criteria_snapshot"] = tuple(raw_criteria)
-            # metadata is either a dict (JSONB) or string (shouldn't happen)
-            if isinstance(raw_metadata, str):
-                parsed["metadata"] = json.loads(raw_metadata)
-            else:
-                parsed["metadata"] = raw_metadata
+            parsed: dict[str, object] = {
+                col: row[col] for col in self._REQUIRED_COLUMNS
+            }
+            raw_criteria = row["criteria_snapshot"]
+            raw_metadata = row["metadata"]
+            parsed["criteria_snapshot"] = self._coerce_criteria(raw_criteria, record_id)
+            parsed["metadata"] = (
+                json.loads(raw_metadata)
+                if isinstance(raw_metadata, str)
+                else raw_metadata
+            )
             return DecisionRecord.model_validate(parsed)
-        except (ValidationError, TypeError) as exc:
+        except (KeyError, ValidationError, TypeError, json.JSONDecodeError) as exc:
+            missing = str(exc).strip("'\"") if isinstance(exc, KeyError) else None
             msg = (
-                f"Failed to deserialize decision record {row.get('id')!r}: "
+                f"Failed to deserialize decision record {record_id!r}: "
                 f"{type(exc).__name__}"
             )
             logger.exception(
                 PERSISTENCE_DECISION_RECORD_DESERIALIZE_FAILED,
-                record_id=row.get("id"),
+                record_id=record_id,
+                missing_column=missing,
                 error=str(exc),
                 error_type=type(exc).__name__,
             )

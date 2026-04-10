@@ -6,8 +6,6 @@ company, selectable via the ``PersistenceConfig`` embedded in each
 company's ``RootConfig``.
 """
 
-from typing import cast
-
 from synthorg.observability import get_logger
 from synthorg.observability.events.persistence import (
     PERSISTENCE_BACKEND_CREATED,
@@ -80,13 +78,7 @@ def create_backend(config: PersistenceConfig) -> PersistenceBackend:
                 error=str(exc),
             )
             raise PersistenceConnectionError(msg) from exc
-        # Phase 0 stub raises NotImplementedError from __init__, so the
-        # cast is temporary scaffolding.  Phase 2 lands the full
-        # PersistenceBackend protocol surface and this cast goes away.
-        pg_backend = cast(
-            "PersistenceBackend",
-            PostgresPersistenceBackend(config.postgres),
-        )
+        pg_backend: PersistenceBackend = PostgresPersistenceBackend(config.postgres)
         logger.debug(
             PERSISTENCE_BACKEND_CREATED,
             backend="postgres",

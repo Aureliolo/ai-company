@@ -5,7 +5,7 @@ search:
 
 # Persistence
 
-Pluggable operational data persistence -- protocol, configuration, and SQLite backend.
+Pluggable operational data persistence -- protocol, configuration, SQLite backend, and Postgres backend.
 
 ## Protocol
 
@@ -32,3 +32,9 @@ Pluggable operational data persistence -- protocol, configuration, and SQLite ba
 ::: synthorg.persistence.sqlite.backend
 
 ::: synthorg.persistence.sqlite.repositories
+
+## Postgres Backend
+
+::: synthorg.persistence.postgres.backend
+
+::: synthorg.persistence.postgres.repositories

@@ -20,8 +20,12 @@ stay small.
 
 from typing import TYPE_CHECKING
 
+from synthorg.observability import get_logger
+
 if TYPE_CHECKING:
     import psycopg
+
+logger = get_logger(__name__)
 
 
 async def register_adapters(conn: psycopg.AsyncConnection[object]) -> None:

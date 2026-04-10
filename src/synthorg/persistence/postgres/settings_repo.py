@@ -6,7 +6,7 @@ from ISO strings at the boundary so the protocol surface --
 ``tuple[str, str]`` -- is identical for both backends.
 """
 
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING, cast
 
 import psycopg
@@ -30,13 +30,36 @@ logger = get_logger(__name__)
 
 
 def _parse_iso(value: str) -> datetime:
-    """Parse an ISO 8601 timestamp string to a timezone-aware datetime."""
-    return datetime.fromisoformat(value)
+    """Parse an ISO 8601 timestamp string to a tz-aware UTC datetime.
+
+    Naive datetimes (no ``tzinfo``) are rejected -- the Postgres
+    ``TIMESTAMPTZ`` column is always tz-aware and allowing naive
+    values to slip in would create round-trip drift (the server would
+    interpret them in its session time zone).  Values with an offset
+    are normalized to UTC so round-tripped timestamps always come
+    back with ``tzinfo == UTC``.
+    """
+    parsed = datetime.fromisoformat(value)
+    if parsed.tzinfo is None:
+        msg = f"settings updated_at must be timezone-aware, got naive value {value!r}"
+        raise ValueError(msg)
+    return parsed.astimezone(UTC)
 
 
 def _format_iso(value: datetime) -> str:
-    """Format a timezone-aware datetime as an ISO 8601 string."""
-    return value.isoformat()
+    """Format a tz-aware datetime as a UTC ISO 8601 string.
+
+    Naive datetimes are rejected for the same reason as
+    :func:`_parse_iso`.  Values with a non-UTC offset are normalized
+    to UTC so stored timestamps and retrieved timestamps always use
+    the same offset string.
+    """
+    if value.tzinfo is None:
+        msg = (
+            f"settings updated_at must be timezone-aware, got naive datetime {value!r}"
+        )
+        raise ValueError(msg)
+    return value.astimezone(UTC).isoformat()
 
 
 class PostgresSettingsRepository:

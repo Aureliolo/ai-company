@@ -20,6 +20,7 @@ Postgres arm:
 """
 
 import asyncio
+import contextlib
 import shutil
 import sys
 import uuid
@@ -77,7 +78,12 @@ def _docker_available() -> bool:
 def postgres_container() -> Iterator[PostgresContainer]:
     """Start one shared Postgres 18 container per pytest session.
 
-    Skips tests that depend on it when Docker is unavailable.
+    Skips tests that depend on it when Docker is unavailable OR when
+    container startup fails for any reason (daemon not running,
+    permission denied, image pull failure, port collision, etc.).
+    A bare ``container.start()`` would otherwise raise an error that
+    pytest reports as a test failure rather than a skip, which is
+    confusing when the real problem is a missing dev dependency.
     """
     if not _docker_available():
         pytest.skip("Docker is required for the postgres conformance arm")
@@ -85,7 +91,10 @@ def postgres_container() -> Iterator[PostgresContainer]:
     from testcontainers.postgres import PostgresContainer
 
     container = PostgresContainer("postgres:18-alpine")
-    container.start()
+    try:
+        container.start()
+    except Exception as exc:
+        pytest.skip(f"Could not start Postgres test container: {exc}")
     try:
         yield container
     finally:
@@ -96,7 +105,15 @@ async def _create_postgres_backend(
     container: PostgresContainer,
     db_name: str,
 ) -> PostgresPersistenceBackend:
-    """Create a test database on *container* and return a migrated backend."""
+    """Create a test database on *container* and return a migrated backend.
+
+    On any failure after ``CREATE DATABASE`` (backend construct,
+    ``connect()``, ``migrate()``) the partially-created database is
+    dropped and the backend is disconnected so the session does not
+    accumulate orphaned databases and dangling pools.  The
+    ``finally``/cleanup in the outer ``backend`` fixture only runs
+    once this helper has returned a successfully-created backend.
+    """
     admin_conninfo = psycopg.conninfo.make_conninfo(
         host=container.get_container_host_ip(),
         port=int(container.get_exposed_port(5432)),
@@ -124,8 +141,15 @@ async def _create_postgres_backend(
         connect_timeout_seconds=5.0,
     )
     backend = PostgresPersistenceBackend(config)
-    await backend.connect()
-    await backend.migrate()
+    try:
+        await backend.connect()
+        await backend.migrate()
+    except BaseException:
+        with contextlib.suppress(Exception):
+            await backend.disconnect()
+        with contextlib.suppress(Exception):
+            await _drop_postgres_database(container, db_name)
+        raise
     return backend
 
 

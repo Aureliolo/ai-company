@@ -5,12 +5,15 @@ Postgres stores context_json and metadata as native JSONB columns. The repositor
 handles direct JSONB usage without manual JSON serialization.
 """
 
+import json
 from typing import TYPE_CHECKING
 
 import psycopg
 from psycopg.rows import dict_row
+from psycopg.types.json import Jsonb
 from pydantic import ValidationError
 
+from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.observability import get_logger
 from synthorg.observability.events.persistence import (
     PERSISTENCE_PARKED_CONTEXT_DELETED,
@@ -41,9 +44,18 @@ class PostgresParkedContextRepository:
         self._pool = pool
 
     async def save(self, context: ParkedContext) -> None:
-        """Persist a parked context."""
+        """Persist a parked context.
+
+        ``ParkedContext.context_json`` is a pre-serialized JSON
+        **string** at the Python level but the Postgres column is
+        native ``JSONB``.  psycopg sends bare strings as ``TEXT`` and
+        Postgres does not implicitly cast ``text`` to ``jsonb``, so we
+        parse the string into a Python object and wrap it in
+        ``Jsonb(...)`` for the native wire format.
+        """
         try:
             data = context.model_dump(mode="json")
+            data["context_json"] = Jsonb(json.loads(data["context_json"]))
             async with self._pool.connection() as conn, conn.cursor() as cur:
                 await cur.execute(
                     """\
@@ -80,7 +92,7 @@ ON CONFLICT(id) DO UPDATE SET
             agent_id=context.agent_id,
         )
 
-    async def get(self, parked_id: str) -> ParkedContext | None:
+    async def get(self, parked_id: NotBlankStr) -> ParkedContext | None:
         """Retrieve a parked context by ID."""
         try:
             async with (
@@ -112,7 +124,7 @@ ON CONFLICT(id) DO UPDATE SET
 
         return self._row_to_model(dict(row))
 
-    async def get_by_approval(self, approval_id: str) -> ParkedContext | None:
+    async def get_by_approval(self, approval_id: NotBlankStr) -> ParkedContext | None:
         """Retrieve a parked context by approval ID."""
         try:
             async with (
@@ -140,7 +152,7 @@ ON CONFLICT(id) DO UPDATE SET
 
         return self._row_to_model(dict(row))
 
-    async def get_by_agent(self, agent_id: str) -> tuple[ParkedContext, ...]:
+    async def get_by_agent(self, agent_id: NotBlankStr) -> tuple[ParkedContext, ...]:
         """Retrieve all parked contexts for an agent."""
         try:
             async with (
@@ -173,7 +185,7 @@ ON CONFLICT(id) DO UPDATE SET
         )
         return results
 
-    async def delete(self, parked_id: str) -> bool:
+    async def delete(self, parked_id: NotBlankStr) -> bool:
         """Delete a parked context by ID."""
         try:
             async with self._pool.connection() as conn, conn.cursor() as cur:

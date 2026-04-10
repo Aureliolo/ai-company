@@ -145,13 +145,31 @@ class PostgresWorkflowDefinitionRepository:
                         definition.version,
                     ),
                 )
-                if cur.rowcount == 0 and definition.version > 1:
-                    await conn.rollback()
-                    msg = (
-                        f"Version conflict saving workflow definition"
-                        f" {definition.id!r}: expected version"
-                        f" {definition.version - 1}, not found"
-                    )
+                if cur.rowcount == 0:
+                    # rowcount == 0 means the upsert was a no-op.  That
+                    # happens in two distinct cases which must both be
+                    # rejected (otherwise callers silently "succeed"
+                    # against a stale row):
+                    #   - version > 1: the optimistic concurrency WHERE
+                    #     clause did not match -> concurrent writer won
+                    #     the race -> VersionConflictError.
+                    #   - version == 1: a row with this id already
+                    #     exists and the WHERE clause on the UPDATE
+                    #     branch rejected the overwrite -> duplicate
+                    #     create attempt -> VersionConflictError so the
+                    #     caller knows to re-fetch + bump the version.
+                    if definition.version > 1:
+                        msg = (
+                            f"Version conflict saving workflow definition"
+                            f" {definition.id!r}: expected version"
+                            f" {definition.version - 1}, not found"
+                        )
+                    else:
+                        msg = (
+                            f"Workflow definition {definition.id!r} already"
+                            f" exists: cannot create version 1 over an"
+                            f" existing row"
+                        )
                     logger.warning(
                         PERSISTENCE_WORKFLOW_DEF_SAVE_FAILED,
                         definition_id=definition.id,

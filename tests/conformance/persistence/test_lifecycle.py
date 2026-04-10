@@ -24,8 +24,11 @@ class TestBackendLifecycle:
         self,
         backend: PersistenceBackend,
     ) -> None:
+        # Conformance suite intentionally stays backend-agnostic:
+        # asserting a fixed set like {"sqlite", "postgres"} would
+        # force every new backend to edit this shared test.  The
+        # protocol only requires a non-blank name.
         assert backend.backend_name
-        assert backend.backend_name in {"sqlite", "postgres"}
 
     async def test_health_check_passes(
         self,

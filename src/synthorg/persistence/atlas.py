@@ -6,8 +6,11 @@ the ``atlas_schema_revisions`` table automatically.
 """
 
 import asyncio
+import contextlib
 import importlib.resources
 import json
+import math
+import os
 import shutil
 import subprocess
 import urllib.parse
@@ -29,6 +32,12 @@ logger = get_logger(__name__)
 _ATLAS_BIN = "atlas"
 
 BackendName = Literal["sqlite", "postgres"]
+
+# Maximum wall-clock seconds a single Atlas CLI invocation may run.
+# Protects callers from hanging indefinitely if Atlas gets stuck on a
+# lock, network hang, or malformed migration.  Applied via
+# ``Popen.wait(timeout=...)`` in ``_run_atlas``.
+_ATLAS_SUBPROCESS_TIMEOUT_SECONDS = 120.0
 
 
 def _redact_url(url: str) -> str:
@@ -124,23 +133,32 @@ def to_postgres_url(config: PostgresConfig) -> str:
     Unwraps ``SecretStr`` credentials via ``get_secret_value`` and
     URL-encodes user, password, and database so special characters
     (``@``, ``/``, ``:``, spaces, non-ASCII) do not corrupt the
-    connection string.  Appends ``sslmode`` and ``application_name``
-    as query parameters.
+    connection string.  Appends ``sslmode``, ``application_name``,
+    and ``connect_timeout`` as query parameters so migrations use the
+    same connection semantics as the runtime backend.
+
+    libpq's ``connect_timeout`` accepts only integer seconds with a
+    minimum of 2 -- sub-second configured values are rounded up so a
+    configured ``0.5`` second timeout does not silently become
+    "wait indefinitely" via ``int(0.5) == 0``.
 
     Args:
         config: Postgres configuration model.
 
     Returns:
         A ``postgres://user:password@host:port/database`` URL with
-        ``sslmode`` and ``application_name`` query parameters.
+        ``sslmode``, ``application_name``, and ``connect_timeout``
+        query parameters.
     """
     user = urllib.parse.quote(config.username, safe="")
     password = urllib.parse.quote(config.password.get_secret_value(), safe="")
     database = urllib.parse.quote(config.database, safe="")
+    connect_timeout = max(2, math.ceil(config.connect_timeout_seconds))
     query = urllib.parse.urlencode(
         {
             "sslmode": config.ssl_mode,
             "application_name": config.application_name,
+            "connect_timeout": connect_timeout,
         }
     )
     return (
@@ -237,7 +255,49 @@ def _require_atlas() -> str:
     return path
 
 
-async def _run_atlas(
+def _split_postgres_credentials(db_url: str) -> tuple[str, dict[str, str]]:
+    """Strip the password from a postgres URL and return it as an env var.
+
+    Atlas accepts URLs with inline credentials, but passing the
+    password on the command line leaks it into ``ps``/Task Manager
+    and shell history for any local user on the machine.  libpq
+    (which Atlas uses for Postgres) honors ``PGPASSWORD`` as a
+    fallback when the URL has no password, so we strip the password
+    out of the URL and hand it to Atlas via the environment instead.
+
+    Non-postgres URLs (e.g. ``sqlite://...``) are returned unchanged
+    with an empty env dict.
+
+    Args:
+        db_url: Original Atlas-format URL, possibly containing a
+            password.
+
+    Returns:
+        Tuple of (url_without_password, extra_env_vars).
+    """
+    if not db_url.startswith(("postgres://", "postgresql://")):
+        return db_url, {}
+    parsed = urllib.parse.urlsplit(db_url)
+    if parsed.password is None:
+        return db_url, {}
+    # Rebuild netloc without the password component.
+    user = parsed.username or ""
+    host = parsed.hostname or ""
+    port = f":{parsed.port}" if parsed.port is not None else ""
+    userinfo = f"{user}@" if user else ""
+    scrubbed = urllib.parse.urlunsplit(
+        (
+            parsed.scheme,
+            f"{userinfo}{host}{port}",
+            parsed.path,
+            parsed.query,
+            parsed.fragment,
+        )
+    )
+    return scrubbed, {"PGPASSWORD": parsed.password}
+
+
+async def _run_atlas(  # noqa: C901, PLR0915 -- subprocess lifecycle + cancellation handling
     *args: str,
     db_url: str | None = None,
     revisions_url: str | None = None,
@@ -246,9 +306,30 @@ async def _run_atlas(
 ) -> tuple[str, str]:
     """Run an Atlas CLI command and return (stdout, stderr).
 
+    The command is executed via ``subprocess.Popen`` inside
+    ``asyncio.to_thread`` so the call stays compatible with any
+    asyncio event loop.  Windows ``SelectorEventLoop`` (required by
+    psycopg async mode) does not implement ``create_subprocess_exec``
+    and Windows ``ProactorEventLoop`` is incompatible with psycopg,
+    so ``asyncio.to_thread`` side-steps the split.
+
+    Cancellation safety: if the surrounding task is cancelled while
+    the subprocess is running, we terminate the Atlas process in the
+    worker thread before re-raising ``CancelledError``, so neither
+    the thread nor the Atlas subprocess are left dangling.
+
+    A hard wall-clock timeout (``_ATLAS_SUBPROCESS_TIMEOUT_SECONDS``)
+    guards against Atlas hanging forever on a stuck lock or network
+    wait -- the backend's ``_lifecycle_lock`` is held for the
+    duration of a migration, so an unbounded hang would freeze all
+    connect/disconnect operations on the backend.
+
     Args:
         *args: Atlas subcommand and flags.
         db_url: Optional ``--url`` value for the target database.
+            For ``postgres://`` URLs the password is stripped from
+            the URL and passed to Atlas via ``PGPASSWORD`` to avoid
+            leaking credentials into the local process list.
         revisions_url: Override for the ``--dir`` revisions URL.
             When ``None``, the installed package location for the
             selected *backend* is used.
@@ -262,10 +343,15 @@ async def _run_atlas(
         Tuple of (stdout, stderr) as decoded strings.
 
     Raises:
-        MigrationError: If the command exits with a non-zero code.
+        MigrationError: If the command exits non-zero or times out.
     """
     atlas_bin = _require_atlas()
     rev_url = revisions_url or _revisions_dir_for(backend)
+
+    safe_url = db_url
+    extra_env: dict[str, str] = {}
+    if db_url is not None:
+        safe_url, extra_env = _split_postgres_credentials(db_url)
 
     cmd: list[str] = [
         atlas_bin,
@@ -275,11 +361,11 @@ async def _run_atlas(
     ]
     if skip_lock:
         cmd.append("--skip-lock")
-    if db_url is not None:
-        cmd.extend(["--url", db_url])
+    if safe_url is not None:
+        cmd.extend(["--url", safe_url])
 
-    # Redact --url value to avoid leaking credentials in logs.
-    safe_cmd = []
+    # Redact --url value to avoid leaking host/db/user in debug logs.
+    safe_cmd: list[str] = []
     skip_next = False
     for token in cmd:
         if skip_next:
@@ -295,33 +381,58 @@ async def _run_atlas(
         command=" ".join(safe_cmd),
     )
 
-    # Execute via blocking subprocess in a thread so we stay compatible
-    # with any asyncio event loop.  Windows SelectorEventLoop (required
-    # by psycopg async mode) does not implement create_subprocess_exec;
-    # ProactorEventLoop (the Windows default) does not work with
-    # psycopg.  asyncio.to_thread side-steps the split.
+    env = {**os.environ, **extra_env} if extra_env else None
+
+    def _spawn_and_wait() -> tuple[int, bytes, bytes]:
+        try:
+            proc = subprocess.Popen(  # noqa: S603
+                cmd,
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                env=env,
+            )
+        except OSError as exc:
+            msg = f"Failed to start Atlas process: {exc}"
+            raise MigrationError(msg) from exc
+        try:
+            out, err = proc.communicate(timeout=_ATLAS_SUBPROCESS_TIMEOUT_SECONDS)
+        except subprocess.TimeoutExpired as exc:
+            proc.kill()
+            # Drain pipes so the process actually exits.
+            with contextlib.suppress(subprocess.TimeoutExpired):
+                proc.communicate(timeout=5)
+            stderr_text = (exc.stderr or b"").decode(errors="replace")
+            msg = (
+                f"Atlas command timed out after "
+                f"{_ATLAS_SUBPROCESS_TIMEOUT_SECONDS:.0f}s: {stderr_text}"
+            )
+            raise MigrationError(msg) from exc
+        except BaseException:
+            # Cancellation / KeyboardInterrupt / anything else -- do
+            # not orphan the subprocess.
+            proc.kill()
+            with contextlib.suppress(subprocess.TimeoutExpired):
+                proc.communicate(timeout=5)
+            raise
+        return proc.returncode, out, err
+
     try:
-        result = await asyncio.to_thread(
-            subprocess.run,
-            cmd,
-            stdin=subprocess.DEVNULL,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            check=False,
+        returncode, stdout_bytes, stderr_bytes = await asyncio.to_thread(
+            _spawn_and_wait,
         )
-    except OSError as exc:
-        msg = f"Failed to start Atlas process: {exc}"
-        logger.exception(PERSISTENCE_MIGRATION_FAILED, error=msg)
-        raise MigrationError(msg) from exc
+    except MigrationError:
+        logger.exception(PERSISTENCE_MIGRATION_FAILED, command=" ".join(safe_cmd))
+        raise
 
-    stdout = result.stdout.decode()
-    stderr = result.stderr.decode()
+    stdout = stdout_bytes.decode()
+    stderr = stderr_bytes.decode()
 
-    if result.returncode != 0:
-        msg = f"Atlas command failed (exit {result.returncode}): {stderr}"
+    if returncode != 0:
+        msg = f"Atlas command failed (exit {returncode}): {stderr}"
         logger.error(
             PERSISTENCE_MIGRATION_FAILED,
-            exit_code=result.returncode,
+            exit_code=returncode,
             stderr=stderr,
         )
         raise MigrationError(msg)

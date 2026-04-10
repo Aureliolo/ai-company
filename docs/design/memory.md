@@ -634,7 +634,7 @@ persistence:
     database: "synthorg"
     username: "synthorg_app"
     password: "${POSTGRES_PASSWORD}"   # SecretStr -- redacted from logs
-    ssl_mode: "require"                # disable, allow, prefer, require, verify-ca, verify-full
+    ssl_mode: "verify-full"            # production: verify-full authenticates the server's certificate chain AND hostname; "require" only encrypts the transport without verifying identity (MITM-vulnerable). Use verify-ca or verify-full in any deployment exposed to a network path you do not fully control.
     pool_min_size: 1
     pool_max_size: 10
     pool_timeout_seconds: 30.0

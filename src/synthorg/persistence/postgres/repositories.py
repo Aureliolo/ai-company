@@ -76,7 +76,9 @@ def _task_params(task: Task) -> dict[str, Any]:
         "deadline": task.deadline,
         "max_retries": task.max_retries,
         "parent_task_id": task.parent_task_id,
-        "task_structure": _enum_value(task.task_structure)
+        # task_structure is stored as JSONB in Postgres (TEXT in SQLite);
+        # wrap the serialized scalar so psycopg emits valid JSONB.
+        "task_structure": Jsonb(dumped["task_structure"])
         if task.task_structure is not None
         else None,
         "coordination_topology": _enum_value(task.coordination_topology),
@@ -346,10 +348,27 @@ class PostgresCostRecordRepository:
             ):
                 await cur.execute(sql, params)
                 rows = await cur.fetchall()
-                records = tuple(CostRecord.model_validate(dict(row)) for row in rows)
-        except (psycopg.Error, ValidationError) as exc:
+        except psycopg.Error as exc:
             msg = "Failed to query cost records"
-            logger.exception(PERSISTENCE_COST_RECORD_QUERY_FAILED, error=str(exc))
+            logger.exception(
+                PERSISTENCE_COST_RECORD_QUERY_FAILED,
+                error=str(exc),
+                error_type=type(exc).__name__,
+            )
+            raise QueryError(msg) from exc
+        try:
+            records = tuple(CostRecord.model_validate(row) for row in rows)
+        except ValidationError as exc:
+            # Deserialization failures are programmer/schema drift
+            # errors, NOT transient DB failures.  Keep them distinct
+            # in the event payload so callers can tell them apart --
+            # retrying a ValidationError will never succeed.
+            msg = "Failed to deserialize cost records"
+            logger.exception(
+                PERSISTENCE_COST_RECORD_QUERY_FAILED,
+                error=str(exc),
+                error_type="ValidationError",
+            )
             raise QueryError(msg) from exc
         logger.debug(PERSISTENCE_COST_RECORD_QUERIED, count=len(records))
         return records
@@ -443,7 +462,7 @@ class PostgresMessageRepository:
                         "priority": data["priority"],
                         "channel": data["channel"],
                         "content": json.dumps(data["parts"]),
-                        "attachments": Jsonb([]),
+                        "attachments": Jsonb(data.get("attachments", [])),
                         "metadata": Jsonb(data["metadata"]),
                     },
                 )
@@ -471,7 +490,8 @@ class PostgresMessageRepository:
             # Parts are stored as JSON in the content column.
             content = data.pop("content")
             data["parts"] = json.loads(content) if isinstance(content, str) else content
-            data.pop("attachments", None)
+            # attachments round-trips through JSONB as a Python list;
+            # leave it in place for Pydantic to validate.
             # metadata comes back as a Python dict (JSONB).
             return Message.model_validate(data)
         except (json.JSONDecodeError, ValidationError, KeyError, TypeError) as exc:

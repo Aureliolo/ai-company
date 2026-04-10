@@ -290,6 +290,43 @@ Memory configuration is covered in detail in the [Memory Configuration](memory.m
 
 ---
 
+## Persistence
+
+Operational data persistence (tasks, cost records, messages, workflows, audit entries, etc.) has two supported backends:
+
+- **SQLite** (default): zero-ops file database, great for single-process deployments
+- **Postgres**: production backend with native JSONB, TIMESTAMPTZ, connection pooling; required for multi-instance deployments
+
+```yaml
+persistence:
+  backend: "postgres"              # "sqlite" (default) or "postgres"
+  sqlite:
+    path: "/data/synthorg.db"    # file path; used when backend == "sqlite"
+  postgres:                        # used when backend == "postgres"
+    host: "db.internal"
+    port: 5432
+    database: "synthorg"
+    username: "synthorg_app"
+    password: "${POSTGRES_PASSWORD}"  # SecretStr -- redacted from logs
+    ssl_mode: "verify-full"          # prefer verify-full in production
+    pool_min_size: 1
+    pool_max_size: 10
+    pool_timeout_seconds: 30.0
+    application_name: "synthorg"
+    statement_timeout_ms: 30000
+    connect_timeout_seconds: 10.0
+```
+
+The Postgres backend requires the optional extra: install with
+`uv pip install 'synthorg[postgres]'` (or `pip install 'synthorg[postgres]'`).
+Without the extra, selecting `backend: postgres` raises an actionable
+`PersistenceConnectionError` at startup.
+
+Full field reference and architectural rationale are in the
+[Memory / Persistence](../design/memory.md) design page.
+
+---
+
 ## Security & Trust
 
 Security configuration is covered in detail in the [Security & Trust Policies](security.md) guide. Key fields:

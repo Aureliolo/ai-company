@@ -146,6 +146,14 @@ class TestWorkflowDefinitionRepository:
         )
         assert len(sequential_only) >= 1
         assert any(d.id == "wf-sequential" for d in sequential_only)
+        # Strict filter enforcement: the non-matching parallel
+        # definition must not leak through, and every returned row
+        # must have the requested type.  Otherwise a backend that
+        # ignored the filter would silently pass this test.
+        assert all(
+            d.workflow_type == WorkflowType.SEQUENTIAL_PIPELINE for d in sequential_only
+        )
+        assert not any(d.id == "wf-parallel" for d in sequential_only)
 
     async def test_update_workflow_definition(
         self,

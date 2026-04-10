@@ -16,6 +16,10 @@ from typing import Any
 
 from pydantic import BaseModel
 
+from synthorg.observability import get_logger
+
+logger = get_logger(__name__)
+
 
 def jsonify(value: object) -> Any:
     """Convert a value to a JSON-shaped Python structure.

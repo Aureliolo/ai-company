@@ -102,7 +102,7 @@ ON CONFLICT(pair_key_a, pair_key_b) DO UPDATE SET
         for row in rows:
             try:
                 results.append(
-                    CircuitBreakerStateRecord.model_validate(dict(row)),
+                    CircuitBreakerStateRecord.model_validate(row),
                 )
             except ValidationError as exc:
                 msg = (

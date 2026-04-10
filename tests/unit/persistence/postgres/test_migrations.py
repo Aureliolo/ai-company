@@ -270,18 +270,22 @@ class TestMigrateBackendKwarg:
         with backend='sqlite' and no explicit revisions_url."""
         captured: dict[str, object] = {}
 
-        def fake_run(cmd: list[str], **_kwargs: object) -> object:
+        class _FakeProc:
+            returncode = 0
+
+            def communicate(self, timeout: float | None = None) -> tuple[bytes, bytes]:
+                del timeout
+                return (b"[]", b"")
+
+            def kill(self) -> None:
+                pass
+
+        def fake_popen(cmd: list[str], **_kwargs: object) -> _FakeProc:
             captured["cmd"] = cmd
-
-            class _Result:
-                returncode = 0
-                stdout = b"[]"
-                stderr = b""
-
-            return _Result()
+            return _FakeProc()
 
         monkeypatch.setattr(atlas, "_require_atlas", lambda: "atlas")
-        monkeypatch.setattr(subprocess, "run", fake_run)
+        monkeypatch.setattr(subprocess, "Popen", fake_popen)
 
         await atlas._run_atlas("migrate", "status", backend="sqlite")
 
@@ -301,18 +305,22 @@ class TestMigrateBackendKwarg:
         with backend='postgres' and no explicit revisions_url."""
         captured: dict[str, object] = {}
 
-        def fake_run(cmd: list[str], **_kwargs: object) -> object:
+        class _FakeProc:
+            returncode = 0
+
+            def communicate(self, timeout: float | None = None) -> tuple[bytes, bytes]:
+                del timeout
+                return (b"[]", b"")
+
+            def kill(self) -> None:
+                pass
+
+        def fake_popen(cmd: list[str], **_kwargs: object) -> _FakeProc:
             captured["cmd"] = cmd
-
-            class _Result:
-                returncode = 0
-                stdout = b"[]"
-                stderr = b""
-
-            return _Result()
+            return _FakeProc()
 
         monkeypatch.setattr(atlas, "_require_atlas", lambda: "atlas")
-        monkeypatch.setattr(subprocess, "run", fake_run)
+        monkeypatch.setattr(subprocess, "Popen", fake_popen)
 
         await atlas._run_atlas("migrate", "status", backend="postgres")
 

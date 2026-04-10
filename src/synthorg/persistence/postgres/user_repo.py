@@ -142,7 +142,7 @@ class PostgresUserRepository:
             return None
         try:
             user = _row_to_user(row)
-        except (ValueError, TypeError, ValidationError) as exc:
+        except (ValueError, TypeError, KeyError, ValidationError) as exc:
             msg = f"Failed to deserialize user {user_id!r}"
             logger.exception(
                 PERSISTENCE_USER_FETCH_FAILED, user_id=user_id, error=str(exc)
@@ -172,7 +172,7 @@ class PostgresUserRepository:
             return None
         try:
             return _row_to_user(row)
-        except (ValueError, TypeError, ValidationError) as exc:
+        except (ValueError, TypeError, KeyError, ValidationError) as exc:
             msg = f"Failed to deserialize user {username!r}"
             logger.exception(
                 PERSISTENCE_USER_FETCH_FAILED, username=username, error=str(exc)
@@ -197,7 +197,7 @@ class PostgresUserRepository:
             raise QueryError(msg) from exc
         try:
             users = tuple(_row_to_user(row) for row in rows)
-        except (ValueError, TypeError, ValidationError) as exc:
+        except (ValueError, TypeError, KeyError, ValidationError) as exc:
             msg = "Failed to deserialize users"
             logger.exception(PERSISTENCE_USER_LIST_FAILED, error=str(exc))
             raise QueryError(msg) from exc
@@ -330,7 +330,7 @@ class PostgresApiKeyRepository:
             return None
         try:
             key = _row_to_api_key(row)
-        except (ValueError, TypeError, ValidationError) as exc:
+        except (ValueError, TypeError, KeyError, ValidationError) as exc:
             msg = f"Failed to deserialize API key {key_id!r}"
             logger.exception(
                 PERSISTENCE_API_KEY_FETCH_FAILED, key_id=key_id, error=str(exc)
@@ -358,7 +358,7 @@ class PostgresApiKeyRepository:
             return None
         try:
             return _row_to_api_key(row)
-        except (ValueError, TypeError, ValidationError) as exc:
+        except (ValueError, TypeError, KeyError, ValidationError) as exc:
             msg = "Failed to deserialize API key by hash"
             logger.exception(PERSISTENCE_API_KEY_FETCH_FAILED, error=str(exc))
             raise QueryError(msg) from exc
@@ -383,7 +383,7 @@ class PostgresApiKeyRepository:
             raise QueryError(msg) from exc
         try:
             keys = tuple(_row_to_api_key(row) for row in rows)
-        except (ValueError, TypeError, ValidationError) as exc:
+        except (ValueError, TypeError, KeyError, ValidationError) as exc:
             msg = f"Failed to deserialize API keys for user {user_id!r}"
             logger.exception(
                 PERSISTENCE_API_KEY_LIST_FAILED, user_id=user_id, error=str(exc)
