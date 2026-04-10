@@ -457,14 +457,22 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                     error=str(exc),
                 )
                 raise QueryError(msg) from exc
+            if not isinstance(inputs, list) or not isinstance(outputs, list):
+                msg = f"I/O fields are not lists in subworkflow {sub_id!r}"
+                logger.warning(
+                    PERSISTENCE_SUBWORKFLOW_LIST_FAILED,
+                    subworkflow_id=sub_id,
+                    error=msg,
+                )
+                raise QueryError(msg)
             summaries.append(
                 SubworkflowSummary(
                     subworkflow_id=sub_id,
                     latest_version=str(latest["semver"]),
                     name=str(latest["name"]),
                     description=str(latest["description"]),
-                    input_count=len(inputs) if isinstance(inputs, list) else 0,
-                    output_count=len(outputs) if isinstance(outputs, list) else 0,
+                    input_count=len(inputs),
+                    output_count=len(outputs),
                     version_count=len(versions),
                 ),
             )

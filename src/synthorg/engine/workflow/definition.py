@@ -243,7 +243,7 @@ class WorkflowDefinition(BaseModel):
     @classmethod
     def _validate_semver(cls, value: str) -> str:
         """Reject non-strict semver (must be MAJOR.MINOR.PATCH)."""
-        if not re.fullmatch(r"\d+\.\d+\.\d+", value):
+        if not re.fullmatch(r"(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)", value):
             msg = (
                 f"Invalid version {value!r}: must be strict"
                 f" MAJOR.MINOR.PATCH (e.g. '1.0.0')"

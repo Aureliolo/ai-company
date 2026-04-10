@@ -3,8 +3,8 @@
 # 100), squash the oldest (count - KEEP) migrations into a checkpoint baseline
 # while keeping the newest KEEP (default 50) as individual files.
 #
-# This preserves the upgrade path for users on older versions -- their applied
-# migrations still exist as individual files above the checkpoint.
+# This preserves the upgrade path: the oldest (count - KEEP) files are replaced
+# by a single checkpoint baseline; only the newest KEEP files remain on disk.
 #
 # Run manually during the release process:
 #   bash scripts/squash_migrations.sh
@@ -37,9 +37,11 @@ if [ ! -d "$MIGRATION_DIR" ]; then
     exit 1
 fi
 
-mapfile -t ALL_MIGRATIONS < <(
-    find "$MIGRATION_DIR" -maxdepth 1 -name '*.sql' -exec basename {} \; | sort
-)
+ALL_MIGRATIONS=()
+for f in "$MIGRATION_DIR"/*.sql; do
+    [ -f "$f" ] && ALL_MIGRATIONS+=("$(basename "$f")")
+done
+IFS=$'\n' ALL_MIGRATIONS=($(printf '%s\n' "${ALL_MIGRATIONS[@]}" | sort)); unset IFS
 count=${#ALL_MIGRATIONS[@]}
 echo "Migration count: $count (threshold: $THRESHOLD, keep newest: $KEEP)"
 
