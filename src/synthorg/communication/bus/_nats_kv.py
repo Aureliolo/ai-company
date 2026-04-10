@@ -122,8 +122,13 @@ async def fetch_kv_entry(
 def decode_kv_channel(
     channel_name: str,
     entry: Any,
-) -> Channel | None:
-    """Decode a KV entry into a Channel, logging parse failures."""
+) -> Channel:
+    """Decode a KV entry into a Channel.
+
+    Raises:
+        BusStreamError: If the entry contains invalid JSON, fails
+            schema validation, or has a mismatched channel name.
+    """
     try:
         data = json.loads(entry.value.decode("utf-8"))
         channel = Channel.model_validate(data)
@@ -133,24 +138,26 @@ def decode_kv_channel(
             channel=channel_name,
             error=str(exc),
         )
-        return None
+        msg = f"Corrupt KV entry for channel {channel_name!r}: {exc}"
+        raise BusStreamError(msg, context={"channel": channel_name}) from exc
     except ValueError as exc:
         logger.warning(
             COMM_BUS_KV_READ_FAILED,
             channel=channel_name,
             error=str(exc),
         )
-        return None
+        msg = f"Invalid KV data for channel {channel_name!r}: {exc}"
+        raise BusStreamError(msg, context={"channel": channel_name}) from exc
     if channel.name != channel_name:
+        mismatch = (
+            f"KV entry name mismatch: expected {channel_name!r}, got {channel.name!r}"
+        )
         logger.warning(
             COMM_BUS_KV_READ_FAILED,
             channel=channel_name,
-            error=(
-                f"KV entry name mismatch: expected {channel_name!r}, "
-                f"got {channel.name!r}"
-            ),
+            error=mismatch,
         )
-        return None
+        raise BusStreamError(mismatch, context={"channel": channel_name})
     return channel
 
 
@@ -197,7 +204,9 @@ async def scan_kv_channels(state: _NatsState) -> list[Channel]:
     for (_, decoded_name), entry in zip(decoded_keys, entries, strict=True):
         if entry is None:
             continue
-        ch = decode_kv_channel(decoded_name, entry)
-        if ch is not None:
-            channels.append(ch)
+        try:
+            ch = decode_kv_channel(decoded_name, entry)
+        except BusStreamError:
+            continue  # Already logged inside decode_kv_channel.
+        channels.append(ch)
     return channels
