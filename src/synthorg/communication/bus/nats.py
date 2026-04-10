@@ -784,24 +784,25 @@ class JetStreamMessageBus:
             channel = self._channels[channel_name]
             self._known_agents.add(subscriber_id)
 
+            key = (channel_name, subscriber_id)
+            if key not in self._subscriptions:
+                # Create the durable consumer BEFORE mutating the
+                # subscriber list so a consumer-creation failure does
+                # not leave a ghost subscriber in the cache/KV that
+                # no consumer backs.
+                await self._create_pull_consumer(
+                    channel_name,
+                    subscriber_id,
+                    channel,
+                )
+
             if subscriber_id not in channel.subscribers:
                 new_subs = (*channel.subscribers, subscriber_id)
                 updated = channel.model_copy(
                     update={"subscribers": new_subs},
                 )
                 self._channels[channel_name] = updated
-                # KV write inside the lock serializes persistence with
-                # the in-memory mutation so concurrent subscribe/unsubscribe
-                # calls cannot persist out-of-order snapshots.
                 await self._write_channel_to_kv(updated)
-
-            key = (channel_name, subscriber_id)
-            if key not in self._subscriptions:
-                await self._create_pull_consumer(
-                    channel_name,
-                    subscriber_id,
-                    self._channels[channel_name],
-                )
 
         logger.info(
             COMM_SUBSCRIPTION_CREATED,
@@ -1244,13 +1245,39 @@ class JetStreamMessageBus:
                     msg,
                     context={"channel": channel.name},
                 )
+        # Check the distributed KV store so a peer process that
+        # already created this channel is detected before we overwrite
+        # its definition with our local copy.
+        kv_existing = await self._load_channel_from_kv(channel.name)
+        if kv_existing is not None:
+            async with self._lock:
+                if channel.name not in self._channels:
+                    self._channels[channel.name] = kv_existing
+            logger.warning(
+                COMM_CHANNEL_ALREADY_EXISTS,
+                channel=channel.name,
+                source="kv",
+            )
+            msg = f"Channel already exists (peer-created): {channel.name}"
+            raise ChannelAlreadyExistsError(
+                msg,
+                context={"channel": channel.name},
+            )
+        async with self._lock:
+            # Re-check local cache after the KV round-trip in case a
+            # concurrent local call created the channel while we were
+            # checking KV.
+            if channel.name in self._channels:
+                logger.warning(
+                    COMM_CHANNEL_ALREADY_EXISTS,
+                    channel=channel.name,
+                )
+                msg = f"Channel already exists: {channel.name}"
+                raise ChannelAlreadyExistsError(
+                    msg,
+                    context={"channel": channel.name},
+                )
             self._channels[channel.name] = channel
-            # Persist every non-ephemeral channel type to the KV bucket
-            # so peer processes can resolve it via ``_resolve_channel_or_raise``.
-            # Previously only DIRECT channels were persisted, which
-            # meant TOPIC/BROADCAST channels created through this API
-            # were invisible to subscribers running in a different
-            # process.
             await self._write_channel_to_kv(channel)
         logger.info(
             COMM_CHANNEL_CREATED,
