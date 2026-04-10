@@ -208,11 +208,12 @@ async def scan_kv_channels(state: _NatsState) -> list[Channel]:
 
     entries = await asyncio.gather(
         *(fetch_kv_entry(state, name) for _, name in decoded_keys),
+        return_exceptions=True,
     )
     channels: list[Channel] = []
     for (_, decoded_name), entry in zip(decoded_keys, entries, strict=True):
-        if entry is None:
-            continue
+        if isinstance(entry, Exception) or entry is None:
+            continue  # Transport/decode errors already logged inside helpers.
         try:
             ch = decode_kv_channel(decoded_name, entry)
         except BusStreamError:
