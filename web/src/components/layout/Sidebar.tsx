@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useLocation } from 'react-router'
 import {
+  Activity,
   Bell,
   BookOpen,
   Command,
@@ -8,6 +9,7 @@ import {
   DollarSign,
   FolderKanban,
   GitBranch,
+  Inbox,
   KanbanSquare,
   LayoutDashboard,
   LogOut,
@@ -19,6 +21,7 @@ import {
   Shapes,
   ShieldCheck,
   Sparkles,
+  UserCheck,
   Users,
   Video,
   Workflow,
@@ -237,6 +240,9 @@ function SidebarNav({ collapsed }: { collapsed: boolean }) {
           <SidebarNavItem to={ROUTES.PROVIDERS} icon={Cpu} label="Providers" collapsed={collapsed} />
           <SidebarNavItem to={ROUTES.ONTOLOGY} icon={Shapes} label="Ontology" collapsed={collapsed} />
           <SidebarNavItem to={ROUTES.DOCUMENTATION} icon={BookOpen} label="Docs" collapsed={collapsed} external />
+          <SidebarNavItem to={ROUTES.CLIENTS} icon={UserCheck} label="Clients" collapsed={collapsed} />
+          <SidebarNavItem to={ROUTES.REQUEST_QUEUE} icon={Inbox} label="Request Queue" collapsed={collapsed} />
+          <SidebarNavItem to={ROUTES.SIMULATION_DASHBOARD} icon={Activity} label="Simulations" collapsed={collapsed} />
           <SidebarNavItem to={ROUTES.SETTINGS_FINE_TUNING} icon={Sparkles} label="Fine-Tuning" collapsed={collapsed} />
           <SidebarNavItem to={ROUTES.SETTINGS} icon={Settings} label="Settings" collapsed={collapsed} />
         </div>

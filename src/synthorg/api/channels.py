@@ -30,6 +30,10 @@ CHANNEL_ARTIFACTS: Final[str] = "artifacts"
 CHANNEL_PROJECTS: Final[str] = "projects"
 CHANNEL_COMPANY: Final[str] = "company"
 CHANNEL_DEPARTMENTS: Final[str] = "departments"
+CHANNEL_CLIENTS: Final[str] = "clients"
+CHANNEL_REQUESTS: Final[str] = "requests"
+CHANNEL_SIMULATIONS: Final[str] = "simulations"
+CHANNEL_REVIEWS: Final[str] = "reviews"
 
 CHANNEL_USER_PREFIX: Final[str] = "user:"
 
@@ -45,6 +49,10 @@ ALL_CHANNELS: Final[tuple[str, ...]] = (
     CHANNEL_PROJECTS,
     CHANNEL_COMPANY,
     CHANNEL_DEPARTMENTS,
+    CHANNEL_CLIENTS,
+    CHANNEL_REQUESTS,
+    CHANNEL_SIMULATIONS,
+    CHANNEL_REVIEWS,
 )
 
 # Channels whose events contain sensitive cost/budget data.

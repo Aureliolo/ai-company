@@ -1,0 +1,135 @@
+import { useEffect, useState } from 'react'
+import { AlertTriangle, Inbox } from 'lucide-react'
+
+import {
+  listRequests,
+  type ClientRequest,
+  type RequestStatus,
+} from '@/api/endpoints/clients'
+import { EmptyState } from '@/components/ui/empty-state'
+import { SectionCard } from '@/components/ui/section-card'
+import { SkeletonCard } from '@/components/ui/skeleton'
+import { createLogger } from '@/lib/logger'
+
+const log = createLogger('RequestQueuePage')
+
+const STATUS_ORDER: readonly RequestStatus[] = [
+  'submitted',
+  'triaging',
+  'scoping',
+  'approved',
+  'task_created',
+  'cancelled',
+]
+
+const STATUS_LABELS: Record<RequestStatus, string> = {
+  submitted: 'Submitted',
+  triaging: 'Triaging',
+  scoping: 'Scoping',
+  approved: 'Approved',
+  task_created: 'Task created',
+  cancelled: 'Cancelled',
+}
+
+/**
+ * Lightweight Kanban-style view of the client request lifecycle.
+ *
+ * Groups stored ``ClientRequest``s by status so operators can watch
+ * the independent request state machine (SUBMITTED → TRIAGING → ...
+ * → TASK_CREATED | CANCELLED) at a glance.
+ */
+export default function RequestQueuePage() {
+  const [requests, setRequests] = useState<readonly ClientRequest[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    const load = async () => {
+      try {
+        const result = await listRequests({ limit: 200 })
+        setRequests(result.data)
+        setError(null)
+      } catch (err) {
+        log.error('list_requests_failed', err)
+        setError('Failed to load request queue.')
+      } finally {
+        setLoading(false)
+      }
+    }
+    void load()
+  }, [])
+
+  if (loading && requests.length === 0) {
+    return (
+      <div className="space-y-section-gap">
+        <h1 className="text-lg font-semibold text-foreground">Request Queue</h1>
+        <div className="grid grid-cols-1 gap-grid-gap md:grid-cols-3">
+          <SkeletonCard />
+          <SkeletonCard />
+          <SkeletonCard />
+        </div>
+      </div>
+    )
+  }
+
+  const grouped = STATUS_ORDER.map((status) => ({
+    status,
+    entries: requests.filter((r) => r.status === status),
+  }))
+
+  return (
+    <div className="space-y-section-gap">
+      <div className="flex items-center justify-between">
+        <h1 className="text-lg font-semibold text-foreground">Request Queue</h1>
+        <span className="text-sm text-muted-foreground">
+          {requests.length} total
+        </span>
+      </div>
+
+      {error && (
+        <div
+          role="alert"
+          aria-live="assertive"
+          className="flex items-center gap-2 rounded-lg border border-danger/30 bg-danger/5 p-card text-sm text-danger"
+        >
+          <AlertTriangle className="size-4 shrink-0" />
+          {error}
+        </div>
+      )}
+
+      {requests.length === 0 ? (
+        <EmptyState
+          icon={Inbox}
+          title="No requests yet"
+          description="Submit a client request via POST /requests to start exercising the intake pipeline."
+        />
+      ) : (
+        <div className="grid grid-cols-1 gap-grid-gap md:grid-cols-2 xl:grid-cols-3">
+          {grouped.map(({ status, entries }) => (
+            <SectionCard key={status} title={STATUS_LABELS[status]} icon={Inbox}>
+              {entries.length === 0 ? (
+                <p className="text-sm text-text-secondary">No entries.</p>
+              ) : (
+                <ul className="space-y-2">
+                  {entries.map((request) => (
+                    <li
+                      key={request.request_id}
+                      className="rounded-md border border-border bg-card-hover p-card text-sm"
+                    >
+                      <div className="font-medium text-foreground">
+                        {request.requirement.title}
+                      </div>
+                      <div className="text-xs text-text-secondary">
+                        {request.client_id} · {request.request_id.slice(0, 8)}
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </SectionCard>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}

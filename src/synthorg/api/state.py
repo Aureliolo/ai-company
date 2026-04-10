@@ -20,6 +20,7 @@ from synthorg.budget.coordination_store import (
     CoordinationMetricsStore,  # noqa: TC001
 )
 from synthorg.budget.tracker import CostTracker  # noqa: TC001
+from synthorg.client.simulation_state import ClientSimulationState  # noqa: TC001
 from synthorg.communication.bus_protocol import MessageBus  # noqa: TC001
 from synthorg.communication.delegation.record_store import (
     DelegationRecordStore,  # noqa: TC001
@@ -104,6 +105,7 @@ class AppState:
         "_auth_service",
         "_backup_service",
         "_ceremony_scheduler",
+        "_client_simulation_state",
         "_config_resolver",
         "_coordination_metrics_store",
         "_coordinator",
@@ -237,6 +239,7 @@ class AppState:
             else None
         )
         self._review_gate_service: ReviewGateService | None = None
+        self._client_simulation_state: ClientSimulationState | None = None
         self._approval_timeout_scheduler: ApprovalTimeoutScheduler | None = None
         self._session_store: SessionStore | None = None
         self._lockout_store: LockoutStore | None = None
@@ -452,6 +455,38 @@ class AppState:
             raise RuntimeError(msg)
         self._review_gate_service = service
         logger.info(API_APP_STARTUP, note="Review gate service configured")
+
+    @property
+    def has_client_simulation_state(self) -> bool:
+        """Check whether client simulation state is configured."""
+        return self._client_simulation_state is not None
+
+    @property
+    def client_simulation_state(self) -> ClientSimulationState:
+        """Return client simulation state or raise 503."""
+        return self._require_service(
+            self._client_simulation_state,
+            "client_simulation_state",
+        )
+
+    def set_client_simulation_state(
+        self,
+        state: ClientSimulationState,
+    ) -> None:
+        """Attach the client simulation runtime state.
+
+        Args:
+            state: Fully configured ``ClientSimulationState``.
+
+        Raises:
+            RuntimeError: If already configured.
+        """
+        if self._client_simulation_state is not None:
+            msg = "Client simulation state already configured"
+            logger.error(API_APP_STARTUP, error=msg)
+            raise RuntimeError(msg)
+        self._client_simulation_state = state
+        logger.info(API_APP_STARTUP, note="Client simulation state configured")
 
     @property
     def approval_timeout_scheduler(self) -> ApprovalTimeoutScheduler | None:

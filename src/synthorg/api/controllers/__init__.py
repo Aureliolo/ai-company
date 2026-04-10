@@ -18,6 +18,7 @@ from synthorg.api.controllers.budget_config_versions import (
 from synthorg.api.controllers.ceremony_policy import (
     CeremonyPolicyController,
 )
+from synthorg.api.controllers.clients import ClientController
 from synthorg.api.controllers.collaboration import CollaborationController
 from synthorg.api.controllers.company import CompanyController
 from synthorg.api.controllers.company_versions import (
@@ -44,12 +45,15 @@ from synthorg.api.controllers.projects import ProjectController
 from synthorg.api.controllers.providers import ProviderController
 from synthorg.api.controllers.quality import QualityController
 from synthorg.api.controllers.reports import ReportsController
+from synthorg.api.controllers.requests import RequestController
+from synthorg.api.controllers.reviews import ReviewController
 from synthorg.api.controllers.role_versions import RoleVersionController
 from synthorg.api.controllers.settings import SettingsController
 from synthorg.api.controllers.setup import SetupController
 from synthorg.api.controllers.setup_personality import (
     SetupPersonalityController,
 )
+from synthorg.api.controllers.simulations import SimulationController
 from synthorg.api.controllers.tasks import TaskController
 from synthorg.api.controllers.teams import TeamController
 from synthorg.api.controllers.template_packs import TemplatePackController
@@ -105,6 +109,10 @@ ALL_CONTROLLERS: tuple[type[Controller], ...] = (
     ReportsController,
     WorkflowExecutionController,
     OntologyController,
+    ClientController,
+    RequestController,
+    SimulationController,
+    ReviewController,
 )
 
 __all__ = [
@@ -121,6 +129,7 @@ __all__ = [
     "BudgetConfigVersionController",
     "BudgetController",
     "CeremonyPolicyController",
+    "ClientController",
     "CollaborationController",
     "CompanyController",
     "CompanyVersionController",
@@ -140,10 +149,13 @@ __all__ = [
     "ProviderController",
     "QualityController",
     "ReportsController",
+    "RequestController",
+    "ReviewController",
     "RoleVersionController",
     "SettingsController",
     "SetupController",
     "SetupPersonalityController",
+    "SimulationController",
     "TaskController",
     "TeamController",
     "TemplatePackController",
