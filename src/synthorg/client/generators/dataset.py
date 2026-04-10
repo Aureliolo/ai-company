@@ -49,6 +49,7 @@ class DatasetGenerator:
         path = Path(dataset_path)
         if not path.exists():
             msg = f"Dataset file not found: {path}"
+            logger.warning(msg, path=str(path))
             raise FileNotFoundError(msg)
         suffix = path.suffix.lower()
         if suffix == ".csv":
