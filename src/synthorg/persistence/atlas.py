@@ -9,8 +9,10 @@ import asyncio
 import importlib.resources
 import json
 import shutil
+import urllib.parse
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath, PureWindowsPath
+from typing import Literal
 
 from synthorg.observability import get_logger
 from synthorg.observability.events.persistence import (
@@ -18,11 +20,14 @@ from synthorg.observability.events.persistence import (
     PERSISTENCE_MIGRATION_FAILED,
     PERSISTENCE_MIGRATION_STARTED,
 )
+from synthorg.persistence.config import PostgresConfig  # noqa: TC001
 from synthorg.persistence.errors import MigrationError
 
 logger = get_logger(__name__)
 
 _ATLAS_BIN = "atlas"
+
+BackendName = Literal["sqlite", "postgres"]
 
 
 def _redact_url(url: str) -> str:
@@ -112,7 +117,43 @@ def to_sqlite_url(path: str) -> str:
     return f"sqlite://{posix_str}"
 
 
-def copy_revisions(dest: Path) -> str:
+def to_postgres_url(config: PostgresConfig) -> str:
+    """Build an Atlas-compatible ``postgres://`` URL from a ``PostgresConfig``.
+
+    Unwraps ``SecretStr`` credentials via ``get_secret_value`` and
+    URL-encodes user, password, and database so special characters
+    (``@``, ``/``, ``:``, spaces, non-ASCII) do not corrupt the
+    connection string.  Appends ``sslmode`` and ``application_name``
+    as query parameters.
+
+    Args:
+        config: Postgres configuration model.
+
+    Returns:
+        A ``postgres://user:password@host:port/database`` URL with
+        ``sslmode`` and ``application_name`` query parameters.
+    """
+    user = urllib.parse.quote(config.username, safe="")
+    password = urllib.parse.quote(config.password.get_secret_value(), safe="")
+    database = urllib.parse.quote(config.database, safe="")
+    query = urllib.parse.urlencode(
+        {
+            "sslmode": config.ssl_mode,
+            "application_name": config.application_name,
+        }
+    )
+    return (
+        f"postgres://{user}:{password}@{config.host}:{config.port}/{database}?{query}"
+    )
+
+
+_REVISIONS_PACKAGE: dict[BackendName, str] = {
+    "sqlite": "synthorg.persistence.sqlite.revisions",
+    "postgres": "synthorg.persistence.postgres.revisions",
+}
+
+
+def copy_revisions(dest: Path, *, backend: BackendName = "sqlite") -> str:
     """Copy the revisions directory to *dest* and return its ``file://`` URL.
 
     Creates an isolated copy of the migration files so that parallel
@@ -121,6 +162,9 @@ def copy_revisions(dest: Path) -> str:
 
     Args:
         dest: Destination directory (e.g. ``tmp_path / "revisions"``).
+        backend: Which backend's revisions to copy (``"sqlite"`` or
+            ``"postgres"``).  Defaults to ``"sqlite"`` for backward
+            compatibility.
 
     Returns:
         A ``file://`` URL pointing to the copy.
@@ -129,9 +173,7 @@ def copy_revisions(dest: Path) -> str:
         MigrationError: If the copy fails (permissions, disk space,
             destination already exists).
     """
-    src_ref = importlib.resources.files(
-        "synthorg.persistence.sqlite.revisions",
-    )
+    src_ref = importlib.resources.files(_REVISIONS_PACKAGE[backend])
     try:
         shutil.copytree(str(src_ref), str(dest))
     except (OSError, shutil.Error) as exc:
@@ -141,11 +183,14 @@ def copy_revisions(dest: Path) -> str:
     return _path_to_file_url(str(dest))
 
 
-def _revisions_dir() -> str:
+def _revisions_dir_for(backend: BackendName) -> str:
     """Return a ``file://`` URL pointing to the revisions directory.
 
     Uses ``importlib.resources`` to locate the ``revisions`` package
     inside the installed ``synthorg`` distribution.
+
+    Args:
+        backend: Which backend's revisions to resolve.
 
     Returns:
         A ``file://`` URL suitable for Atlas ``--dir``.
@@ -153,16 +198,25 @@ def _revisions_dir() -> str:
     Raises:
         MigrationError: If the revisions directory cannot be located.
     """
+    pkg = _REVISIONS_PACKAGE[backend]
     try:
-        ref = importlib.resources.files(
-            "synthorg.persistence.sqlite.revisions",
-        )
+        ref = importlib.resources.files(pkg)
         path = str(ref)
     except (ModuleNotFoundError, TypeError) as exc:
-        msg = "Cannot locate migration revisions package"
+        msg = f"Cannot locate migration revisions package: {pkg}"
         logger.exception(PERSISTENCE_MIGRATION_FAILED, error=str(exc))
         raise MigrationError(msg) from exc
     return _path_to_file_url(path)
+
+
+def _revisions_dir() -> str:
+    """Return the SQLite revisions URL (backward-compatibility alias)."""
+    return _revisions_dir_for("sqlite")
+
+
+def _revisions_dir_postgres() -> str:
+    """Return the Postgres revisions URL."""
+    return _revisions_dir_for("postgres")
 
 
 def _require_atlas() -> str:
@@ -187,6 +241,7 @@ async def _run_atlas(
     db_url: str | None = None,
     revisions_url: str | None = None,
     skip_lock: bool = False,
+    backend: BackendName = "sqlite",
 ) -> tuple[str, str]:
     """Run an Atlas CLI command and return (stdout, stderr).
 
@@ -194,10 +249,13 @@ async def _run_atlas(
         *args: Atlas subcommand and flags.
         db_url: Optional ``--url`` value for the target database.
         revisions_url: Override for the ``--dir`` revisions URL.
-            When ``None``, the installed package location is used.
+            When ``None``, the installed package location for the
+            selected *backend* is used.
         skip_lock: If ``True``, append ``--skip-lock`` to disable
             Atlas directory locking.  Use only in test fixtures
             where each worker has an isolated revisions copy.
+        backend: Which backend's revisions directory to use when
+            *revisions_url* is not provided.
 
     Returns:
         Tuple of (stdout, stderr) as decoded strings.
@@ -206,7 +264,7 @@ async def _run_atlas(
         MigrationError: If the command exits with a non-zero code.
     """
     atlas_bin = _require_atlas()
-    rev_url = revisions_url or _revisions_dir()
+    rev_url = revisions_url or _revisions_dir_for(backend)
 
     cmd: list[str] = [
         atlas_bin,
@@ -285,6 +343,7 @@ async def migrate_apply(
     *,
     revisions_url: str | None = None,
     skip_lock: bool = False,
+    backend: BackendName = "sqlite",
 ) -> MigrateResult:
     """Apply pending migrations to the target database.
 
@@ -292,16 +351,21 @@ async def migrate_apply(
 
     Args:
         db_url: Atlas-format database URL
-            (e.g. ``"sqlite://C:/path/to/db.sqlite"``).
+            (e.g. ``"sqlite://C:/path/to/db.sqlite"`` or
+            ``"postgres://user:pw@host/db"``).
         revisions_url: Optional override for the ``--dir`` URL.
             Useful for parallel test isolation -- pass a copy of
             the revisions directory per worker to avoid directory
-            lock contention.
+            lock contention.  When provided, *backend* is ignored
+            for revisions resolution.
         skip_lock: If ``True``, pass ``--skip-lock`` to Atlas.
             Use only in test fixtures where each worker has an
             isolated revisions copy.  Defaults to ``False`` so
             production multi-process deployments are protected
             by Atlas's directory lock.
+        backend: Which backend's installed revisions directory to
+            use when *revisions_url* is not supplied.  Defaults to
+            ``"sqlite"`` for backward compatibility.
 
     Returns:
         A ``MigrateResult`` with the number of applied migrations
@@ -310,7 +374,11 @@ async def migrate_apply(
     Raises:
         MigrationError: If the migration fails or Atlas is unavailable.
     """
-    logger.info(PERSISTENCE_MIGRATION_STARTED, db_url=_redact_url(db_url))
+    logger.info(
+        PERSISTENCE_MIGRATION_STARTED,
+        db_url=_redact_url(db_url),
+        backend=backend,
+    )
 
     stdout, _ = await _run_atlas(
         "migrate",
@@ -320,6 +388,7 @@ async def migrate_apply(
         db_url=db_url,
         revisions_url=revisions_url,
         skip_lock=skip_lock,
+        backend=backend,
     )
 
     applied_count = 0
@@ -355,7 +424,11 @@ async def migrate_apply(
     )
 
 
-async def migrate_status(db_url: str) -> MigrateStatus:
+async def migrate_status(
+    db_url: str,
+    *,
+    backend: BackendName = "sqlite",
+) -> MigrateStatus:
     """Check the migration status of a database.
 
     Invokes ``atlas migrate status`` to report applied and pending
@@ -363,6 +436,7 @@ async def migrate_status(db_url: str) -> MigrateStatus:
 
     Args:
         db_url: Atlas-format database URL.
+        backend: Which backend's revisions directory to consult.
 
     Returns:
         A ``MigrateStatus`` with current version and pending count.
@@ -376,6 +450,7 @@ async def migrate_status(db_url: str) -> MigrateStatus:
         "--format",
         "{{ json . }}",
         db_url=db_url,
+        backend=backend,
     )
 
     current_version = ""
@@ -402,7 +477,12 @@ async def migrate_status(db_url: str) -> MigrateStatus:
     )
 
 
-async def migrate_apply_baseline(db_url: str, version: str) -> None:
+async def migrate_apply_baseline(
+    db_url: str,
+    version: str,
+    *,
+    backend: BackendName = "sqlite",
+) -> None:
     """Mark a database as already at a specific migration version.
 
     Used for existing databases that already have the schema but no
@@ -413,6 +493,7 @@ async def migrate_apply_baseline(db_url: str, version: str) -> None:
         db_url: Atlas-format database URL.
         version: Migration version to mark as applied
             (e.g. ``"20260409170223"``).
+        backend: Which backend's revisions directory to consult.
 
     Raises:
         MigrationError: If the baseline marking fails.
@@ -421,6 +502,7 @@ async def migrate_apply_baseline(db_url: str, version: str) -> None:
         PERSISTENCE_MIGRATION_STARTED,
         db_url=_redact_url(db_url),
         baseline=version,
+        backend=backend,
     )
 
     await _run_atlas(
@@ -429,6 +511,7 @@ async def migrate_apply_baseline(db_url: str, version: str) -> None:
         "--baseline",
         version,
         db_url=db_url,
+        backend=backend,
     )
 
     logger.info(
@@ -437,7 +520,12 @@ async def migrate_apply_baseline(db_url: str, version: str) -> None:
     )
 
 
-async def migrate_rollback(db_url: str, *, version: str) -> None:
+async def migrate_rollback(
+    db_url: str,
+    *,
+    version: str,
+    backend: BackendName = "sqlite",
+) -> None:
     """Roll back the database to a specific migration version.
 
     Invokes ``atlas migrate down`` to revert migrations applied
@@ -446,6 +534,7 @@ async def migrate_rollback(db_url: str, *, version: str) -> None:
     Args:
         db_url: Atlas-format database URL.
         version: Target version to roll back to.
+        backend: Which backend's revisions directory to consult.
 
     Raises:
         MigrationError: If the rollback fails.
@@ -454,6 +543,7 @@ async def migrate_rollback(db_url: str, *, version: str) -> None:
         PERSISTENCE_MIGRATION_STARTED,
         db_url=_redact_url(db_url),
         rollback_target=version,
+        backend=backend,
     )
 
     await _run_atlas(
@@ -462,6 +552,7 @@ async def migrate_rollback(db_url: str, *, version: str) -> None:
         "--to-version",
         version,
         db_url=db_url,
+        backend=backend,
     )
 
     logger.info(
