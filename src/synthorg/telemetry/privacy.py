@@ -11,7 +11,13 @@ from types import MappingProxyType
 from typing import TYPE_CHECKING
 
 from synthorg.observability import get_logger
-from synthorg.observability.events.telemetry import TELEMETRY_PRIVACY_VIOLATION
+from synthorg.observability.events.telemetry import (
+    TELEMETRY_EVENT_DEPLOYMENT_HEARTBEAT,
+    TELEMETRY_EVENT_DEPLOYMENT_SESSION_SUMMARY,
+    TELEMETRY_EVENT_DEPLOYMENT_SHUTDOWN,
+    TELEMETRY_EVENT_DEPLOYMENT_STARTUP,
+    TELEMETRY_PRIVACY_VIOLATION,
+)
 
 if TYPE_CHECKING:
     from synthorg.telemetry.protocol import TelemetryEvent
@@ -37,16 +43,16 @@ _FORBIDDEN_KEY_PATTERNS: tuple[re.Pattern[str], ...] = (
 
 _ALLOWED_EVENT_TYPES: frozenset[str] = frozenset(
     {
-        "deployment.heartbeat",
-        "deployment.session_summary",
-        "deployment.startup",
-        "deployment.shutdown",
+        TELEMETRY_EVENT_DEPLOYMENT_HEARTBEAT,
+        TELEMETRY_EVENT_DEPLOYMENT_SESSION_SUMMARY,
+        TELEMETRY_EVENT_DEPLOYMENT_STARTUP,
+        TELEMETRY_EVENT_DEPLOYMENT_SHUTDOWN,
     }
 )
 
 _ALLOWED_PROPERTIES: MappingProxyType[str, frozenset[str]] = MappingProxyType(
     {
-        "deployment.heartbeat": frozenset(
+        TELEMETRY_EVENT_DEPLOYMENT_HEARTBEAT: frozenset(
             {
                 "agent_count",
                 "department_count",
@@ -58,7 +64,7 @@ _ALLOWED_PROPERTIES: MappingProxyType[str, frozenset[str]] = MappingProxyType(
                 "uptime_hours",
             }
         ),
-        "deployment.session_summary": frozenset(
+        TELEMETRY_EVENT_DEPLOYMENT_SESSION_SUMMARY: frozenset(
             {
                 "tasks_created",
                 "tasks_completed",
@@ -79,7 +85,7 @@ _ALLOWED_PROPERTIES: MappingProxyType[str, frozenset[str]] = MappingProxyType(
                 "uptime_hours",
             }
         ),
-        "deployment.startup": frozenset(
+        TELEMETRY_EVENT_DEPLOYMENT_STARTUP: frozenset(
             {
                 "agent_count",
                 "department_count",
@@ -88,7 +94,7 @@ _ALLOWED_PROPERTIES: MappingProxyType[str, frozenset[str]] = MappingProxyType(
                 "memory_backend",
             }
         ),
-        "deployment.shutdown": frozenset(
+        TELEMETRY_EVENT_DEPLOYMENT_SHUTDOWN: frozenset(
             {
                 "uptime_hours",
                 "graceful",

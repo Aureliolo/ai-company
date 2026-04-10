@@ -15,6 +15,10 @@ from synthorg.observability import get_logger
 from synthorg.observability.events.telemetry import (
     TELEMETRY_DISABLED,
     TELEMETRY_ENABLED,
+    TELEMETRY_EVENT_DEPLOYMENT_HEARTBEAT,
+    TELEMETRY_EVENT_DEPLOYMENT_SESSION_SUMMARY,
+    TELEMETRY_EVENT_DEPLOYMENT_SHUTDOWN,
+    TELEMETRY_EVENT_DEPLOYMENT_STARTUP,
     TELEMETRY_HEARTBEAT_SENT,
     TELEMETRY_REPORT_FAILED,
     TELEMETRY_SESSION_SUMMARY_SENT,
@@ -101,11 +105,17 @@ class TelemetryCollector:
         session_summary_snapshot_provider: SessionSummarySnapshotProvider | None = None,
     ) -> None:
         # Env var overrides config file (documented priority).
-        env_val = os.environ.get("SYNTHORG_TELEMETRY", "").lower()
+        env_val = os.environ.get("SYNTHORG_TELEMETRY", "").strip().lower()
         if env_val in ("true", "1", "yes"):
             config = config.model_copy(update={"enabled": True})
         elif env_val in ("false", "0", "no"):
             config = config.model_copy(update={"enabled": False})
+        elif env_val:
+            logger.warning(
+                TELEMETRY_REPORT_FAILED,
+                detail="invalid_env_value",
+                error_code="SYNTHORG_TELEMETRY_INVALID",
+            )
 
         self._config = config
         self._data_dir = data_dir
@@ -116,6 +126,7 @@ class TelemetryCollector:
         self._heartbeat_task: asyncio.Task[None] | None = None
         self._heartbeat_snapshot_provider = heartbeat_snapshot_provider
         self._session_summary_snapshot_provider = session_summary_snapshot_provider
+        self._lifecycle_lock = asyncio.Lock()
 
         if config.enabled:
             # Persist deployment ID only after consent is given.
@@ -141,37 +152,73 @@ class TelemetryCollector:
     async def start(self) -> None:
         """Start the periodic heartbeat if telemetry is enabled.
 
-        Idempotent: returns early if a heartbeat task is already
-        running, so duplicate calls do not spawn concurrent loops.
+        Idempotent and safe under concurrent callers: serialised by
+        a lifecycle lock so the guard check, startup event, and
+        heartbeat task creation happen atomically.
         """
-        if not self._config.enabled:
-            return
-        if self._heartbeat_task is not None and not self._heartbeat_task.done():
-            return
-        await self._send_startup_event()
-        self._heartbeat_task = asyncio.create_task(
-            self._heartbeat_loop(),
-            name="telemetry-heartbeat",
-        )
+        async with self._lifecycle_lock:
+            if not self._config.enabled:
+                return
+            if self._heartbeat_task is not None and not self._heartbeat_task.done():
+                return
+            await self._send_startup_event()
+            self._heartbeat_task = asyncio.create_task(
+                self._heartbeat_loop(),
+                name="telemetry-heartbeat",
+            )
 
     async def shutdown(self) -> None:
-        """Cancel heartbeat, send session summary, shut down reporter."""
-        if self._heartbeat_task is not None:
-            self._heartbeat_task.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await self._heartbeat_task
-            self._heartbeat_task = None
+        """Cancel heartbeat, send session summary, shut down reporter.
 
-        if self._config.enabled:
-            params = (
-                self._session_summary_snapshot_provider()
-                if self._session_summary_snapshot_provider is not None
-                else None
-            )
-            await self.send_session_summary(params)
-            await self._send_shutdown_event()
+        Each step is wrapped in its own try/except so a failure in
+        one stage never aborts the rest of the cleanup sequence.
+        Serialised with ``start()`` via the lifecycle lock.
+        """
+        async with self._lifecycle_lock:
+            if self._heartbeat_task is not None:
+                self._heartbeat_task.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await self._heartbeat_task
+                self._heartbeat_task = None
 
-        await self._reporter.shutdown()
+            if self._config.enabled:
+                params: _SessionSummaryParams | None = None
+                if self._session_summary_snapshot_provider is not None:
+                    try:
+                        params = self._session_summary_snapshot_provider()
+                    except Exception as exc:
+                        logger.warning(
+                            TELEMETRY_REPORT_FAILED,
+                            detail="session_summary_snapshot_failed",
+                            error_type=type(exc).__name__,
+                        )
+
+                try:
+                    await self.send_session_summary(params)
+                except Exception as exc:
+                    logger.warning(
+                        TELEMETRY_REPORT_FAILED,
+                        detail="send_session_summary_failed",
+                        error_type=type(exc).__name__,
+                    )
+
+                try:
+                    await self._send_shutdown_event()
+                except Exception as exc:
+                    logger.warning(
+                        TELEMETRY_REPORT_FAILED,
+                        detail="send_shutdown_event_failed",
+                        error_type=type(exc).__name__,
+                    )
+
+            try:
+                await self._reporter.shutdown()
+            except Exception as exc:
+                logger.warning(
+                    TELEMETRY_REPORT_FAILED,
+                    detail="reporter_shutdown_failed",
+                    error_type=type(exc).__name__,
+                )
 
     async def send_heartbeat(
         self,
@@ -184,7 +231,7 @@ class TelemetryCollector:
         uptime = self._uptime_hours()
 
         event = self._build_event(
-            "deployment.heartbeat",
+            TELEMETRY_EVENT_DEPLOYMENT_HEARTBEAT,
             agent_count=p.agent_count,
             department_count=p.department_count,
             team_count=p.team_count,
@@ -208,7 +255,7 @@ class TelemetryCollector:
         uptime = self._uptime_hours()
 
         event = self._build_event(
-            "deployment.session_summary",
+            TELEMETRY_EVENT_DEPLOYMENT_SESSION_SUMMARY,
             tasks_created=p.tasks_created,
             tasks_completed=p.tasks_completed,
             tasks_failed=p.tasks_failed,
@@ -294,7 +341,7 @@ class TelemetryCollector:
     async def _send_startup_event(self) -> None:
         """Send an initial deployment.startup event."""
         event = self._build_event(
-            "deployment.startup",
+            TELEMETRY_EVENT_DEPLOYMENT_STARTUP,
             agent_count=0,
             department_count=0,
             template_name="",
@@ -306,7 +353,7 @@ class TelemetryCollector:
     async def _send_shutdown_event(self) -> None:
         """Send a deployment.shutdown event with uptime."""
         event = self._build_event(
-            "deployment.shutdown",
+            TELEMETRY_EVENT_DEPLOYMENT_SHUTDOWN,
             uptime_hours=round(self._uptime_hours(), 2),
             graceful=True,
         )
