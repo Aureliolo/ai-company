@@ -1,0 +1,294 @@
+"""Task claim data model and JetStream work-queue client.
+
+A :class:`TaskClaim` is the message body enqueued by the dispatcher
+and consumed by workers. The claim identifies the task plus enough
+provenance for workers to transition it correctly.
+
+The :class:`JetStreamTaskQueue` wraps the raw ``nats-py`` JetStream
+API behind a small ``publish_claim`` / ``next_claim`` / ``ack`` /
+``nack`` surface that both the dispatcher and worker use.
+"""
+
+from datetime import UTC, datetime
+from enum import StrEnum
+from typing import TYPE_CHECKING, Any
+
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
+
+from synthorg.communication.bus.errors import (
+    BusConnectionError,
+    BusStreamError,
+)
+from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.observability import get_logger
+from synthorg.workers.config import QueueConfig  # noqa: TC001
+
+if TYPE_CHECKING:
+    from synthorg.communication.config import NatsConfig
+
+logger = get_logger(__name__)
+
+
+class TaskClaimStatus(StrEnum):
+    """Terminal worker outcome communicated back via HTTP + ack/nack."""
+
+    SUCCESS = "success"
+    FAILED = "failed"
+    RETRY = "retry"
+
+
+class TaskClaim(BaseModel):
+    """Work item enqueued by the dispatcher, consumed by a worker.
+
+    Attributes:
+        task_id: ID of the task to execute.
+        project_id: Project the task belongs to (for correlation).
+        previous_status: Task status before the transition that made
+            it ready to run.
+        new_status: The status that caused the dispatch (typically
+            ``READY`` or equivalent).
+        dispatched_at: When the dispatcher enqueued this claim.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+
+    task_id: NotBlankStr = Field(description="Task identifier")
+    project_id: NotBlankStr | None = Field(
+        default=None,
+        description="Project identifier for correlation",
+    )
+    previous_status: str | None = Field(
+        default=None,
+        description="Task status before the triggering transition",
+    )
+    new_status: NotBlankStr = Field(
+        description="Task status that triggered the dispatch",
+    )
+    dispatched_at: AwareDatetime = Field(
+        default_factory=lambda: datetime.now(UTC),
+        description="When the dispatcher enqueued the claim",
+    )
+
+
+class JetStreamTaskQueue:
+    """NATS JetStream work-queue client for distributed task claims.
+
+    Creates a ``WorkQueuePolicy`` stream that holds claim messages
+    exclusively (not shared with the message bus stream). Workers pull
+    from a single durable consumer (configurable per deployment) and
+    manually ack or nack each claim.
+
+    Args:
+        queue_config: Queue config (stream name, subjects, ack wait,
+            max deliver).
+        nats_config: Shared NATS connection settings (URL, creds,
+            reconnect timing).
+        durable_name: Durable consumer name used by workers. Defaults
+            to ``"synthorg_workers"``.
+    """
+
+    def __init__(
+        self,
+        *,
+        queue_config: QueueConfig,
+        nats_config: NatsConfig,
+        durable_name: str = "synthorg_workers",
+    ) -> None:
+        try:
+            import nats  # noqa: F401,PLC0415
+        except ImportError as exc:
+            msg = (
+                "nats-py is required for the distributed task queue. "
+                "Install with 'pip install synthorg[distributed]'."
+            )
+            raise ImportError(msg) from exc
+        self._queue_config = queue_config
+        self._nats_config = nats_config
+        self._durable_name = durable_name
+        self._client: Any = None
+        self._js: Any = None
+        self._sub: Any = None
+        self._running = False
+
+    @property
+    def is_running(self) -> bool:
+        """Whether the queue client is connected."""
+        return self._running
+
+    async def start(self) -> None:
+        """Connect to NATS and ensure the work-queue stream exists."""
+        await self._connect()
+        await self._ensure_stream()
+        await self._ensure_consumer()
+        self._running = True
+
+    async def stop(self) -> None:
+        """Close the NATS connection. Idempotent."""
+        if not self._running:
+            return
+        self._running = False
+        if self._sub is not None:
+            try:
+                await self._sub.unsubscribe()
+            except Exception:
+                logger.exception(
+                    "workers.task_queue.unsubscribe_failed",
+                )
+            self._sub = None
+        if self._client is not None:
+            try:
+                await self._client.drain()
+            except Exception:
+                logger.exception(
+                    "workers.task_queue.drain_failed",
+                )
+            self._client = None
+            self._js = None
+
+    async def _connect(self) -> None:
+        """Open the NATS connection, translating failures to domain errors."""
+        import nats  # noqa: PLC0415
+        from nats.errors import NoServersError  # noqa: PLC0415
+
+        try:
+            self._client = await nats.connect(
+                servers=[self._nats_config.url],
+                reconnect_time_wait=self._nats_config.reconnect_time_wait_seconds,
+                max_reconnect_attempts=self._nats_config.max_reconnect_attempts,
+                connect_timeout=self._nats_config.connect_timeout_seconds,
+                user_credentials=self._nats_config.credentials_path,
+            )
+        except (TimeoutError, NoServersError, OSError) as exc:
+            msg = (
+                f"Failed to connect to NATS at {self._nats_config.url} for "
+                f"task queue: {exc}"
+            )
+            raise BusConnectionError(
+                msg,
+                context={"url": self._nats_config.url},
+            ) from exc
+        self._js = self._client.jetstream()
+
+    async def _ensure_stream(self) -> None:
+        """Create the work-queue stream if it does not already exist."""
+        from nats.errors import Error as NatsError  # noqa: PLC0415
+        from nats.js.api import (  # noqa: PLC0415
+            RetentionPolicy,
+            StorageType,
+            StreamConfig,
+        )
+        from nats.js.errors import NotFoundError  # noqa: PLC0415
+
+        if self._js is None:
+            msg = "JetStream context not initialized"
+            raise BusStreamError(msg)
+
+        stream_config = StreamConfig(
+            name=self._queue_config.stream_name,
+            subjects=[
+                f"{self._queue_config.ready_subject_prefix}.>",
+                f"{self._queue_config.dead_subject_prefix}.>",
+            ],
+            retention=RetentionPolicy.WORK_QUEUE,
+            storage=StorageType.FILE,
+        )
+        try:
+            try:
+                await self._js.stream_info(self._queue_config.stream_name)
+            except NotFoundError:
+                await self._js.add_stream(stream_config)
+            else:
+                await self._js.update_stream(stream_config)
+        except NatsError as exc:
+            msg = (
+                f"Failed to set up task queue stream "
+                f"{self._queue_config.stream_name}: {exc}"
+            )
+            raise BusStreamError(
+                msg,
+                context={"stream": self._queue_config.stream_name},
+            ) from exc
+
+    async def _ensure_consumer(self) -> None:
+        """Create the shared durable pull consumer for all workers."""
+        from nats.errors import Error as NatsError  # noqa: PLC0415
+
+        if self._js is None:
+            msg = "JetStream context not initialized"
+            raise BusStreamError(msg)
+
+        subject = f"{self._queue_config.ready_subject_prefix}.>"
+        try:
+            self._sub = await self._js.pull_subscribe(
+                subject=subject,
+                durable=self._durable_name,
+                stream=self._queue_config.stream_name,
+            )
+        except NatsError as exc:
+            msg = f"Failed to create task queue consumer {self._durable_name}: {exc}"
+            raise BusStreamError(
+                msg,
+                context={
+                    "stream": self._queue_config.stream_name,
+                    "consumer": self._durable_name,
+                },
+            ) from exc
+
+    async def publish_claim(self, claim: TaskClaim) -> None:
+        """Enqueue a claim for workers to pull.
+
+        Args:
+            claim: The task claim to enqueue.
+        """
+        if self._js is None:
+            msg = "Task queue is not running"
+            raise BusStreamError(msg)
+        subject = f"{self._queue_config.ready_subject_prefix}.{claim.task_id}"
+        payload = claim.model_dump_json().encode("utf-8")
+        await self._js.publish(subject, payload)
+
+    async def next_claim(
+        self,
+        timeout: float,  # noqa: ASYNC109
+    ) -> tuple[TaskClaim, Any] | None:
+        """Fetch the next claim from the work queue.
+
+        Returns a ``(claim, raw_message)`` tuple or ``None`` on
+        timeout. The raw message must be passed to :meth:`ack` or
+        :meth:`nack` when the worker finishes.
+        """
+        from nats.errors import TimeoutError as NatsTimeoutError  # noqa: PLC0415
+
+        if self._sub is None:
+            msg = "Task queue is not running"
+            raise BusStreamError(msg)
+        try:
+            msgs = await self._sub.fetch(batch=1, timeout=timeout)
+        except NatsTimeoutError:
+            return None
+        if not msgs:
+            return None
+        raw = msgs[0]
+        try:
+            claim = TaskClaim.model_validate_json(raw.data.decode("utf-8"))
+        except ValueError:
+            # Malformed claim: terminally ack so it is not redelivered.
+            try:
+                await raw.ack()
+            except Exception:
+                logger.exception("workers.task_queue.ack_malformed_failed")
+            return None
+        return claim, raw
+
+    @staticmethod
+    async def ack(raw: Any) -> None:
+        """Acknowledge successful processing of a claim."""
+        await raw.ack()
+
+    @staticmethod
+    async def nack(raw: Any, delay_seconds: float = 0.0) -> None:
+        """Negative-ack a claim, triggering redelivery after the delay."""
+        if delay_seconds > 0:
+            await raw.nak(delay=delay_seconds)
+        else:
+            await raw.nak()

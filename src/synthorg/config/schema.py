@@ -54,6 +54,7 @@ from synthorg.tools.mcp.config import MCPConfig
 from synthorg.tools.sandbox.sandboxing_config import SandboxingConfig
 from synthorg.tools.terminal.config import TerminalConfig  # noqa: TC001
 from synthorg.tools.web.config import WebToolsConfig  # noqa: TC001
+from synthorg.workers.config import QueueConfig
 
 logger = get_logger(__name__)
 
@@ -739,6 +740,10 @@ class RootConfig(BaseModel):
         default_factory=TaskEngineConfig,
         description="Task engine configuration",
     )
+    queue: QueueConfig = Field(
+        default_factory=QueueConfig,
+        description="Distributed task queue configuration (opt-in)",
+    )
     coordination: CoordinationSectionConfig = Field(
         default_factory=CoordinationSectionConfig,
         description="Multi-agent coordination configuration",
@@ -818,6 +823,33 @@ class RootConfig(BaseModel):
         if len(names) != len(set(names)):
             dupes = sorted(n for n, c in Counter(names).items() if c > 1)
             msg = f"Duplicate department names: {dupes}"
+            logger.warning(
+                CONFIG_VALIDATION_FAILED,
+                model="RootConfig",
+                error=msg,
+            )
+            raise ValueError(msg)
+        return self
+
+    @model_validator(mode="after")
+    def _validate_queue_requires_distributed_bus(self) -> Self:
+        """Ensure ``queue.enabled`` requires a distributed bus backend.
+
+        The distributed task queue publishes claims to JetStream, so
+        the in-process bus is insufficient. This cross-model check
+        fails fast at config load rather than at worker start.
+        """
+        from synthorg.communication.enums import MessageBusBackend  # noqa: PLC0415
+
+        if (
+            self.queue.enabled
+            and self.communication.message_bus.backend == MessageBusBackend.INTERNAL
+        ):
+            msg = (
+                "queue.enabled requires communication.message_bus.backend to "
+                "be a distributed backend (not 'internal'). Set backend to "
+                "'nats' or disable the queue."
+            )
             logger.warning(
                 CONFIG_VALIDATION_FAILED,
                 model="RootConfig",

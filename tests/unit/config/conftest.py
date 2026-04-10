@@ -35,6 +35,7 @@ from synthorg.security.config import SecurityConfig
 from synthorg.security.trust.config import TrustConfig
 from synthorg.tools.mcp.config import MCPConfig
 from synthorg.tools.sandbox.sandboxing_config import SandboxingConfig
+from synthorg.workers.config import QueueConfig
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -111,6 +112,11 @@ class RootConfigFactory(ModelFactory[RootConfig]):
     design_tools = None
     communication_tools = None
     analytics_tools = None
+    # Fixed to the default (disabled) because the cross-model
+    # validator on RootConfig rejects queue.enabled=True with an
+    # internal bus, and polyfactory cannot coordinate the two
+    # sub-configs automatically.
+    queue = QueueConfig()
 
 
 # ── Sample YAML strings ──────────────────────────────────────────

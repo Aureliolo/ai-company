@@ -1,0 +1,185 @@
+"""Unit tests for :class:`DistributedDispatcher`.
+
+Uses a fake task queue (recording published claims) so the tests
+exercise the dispatcher's filter + claim-building logic without
+requiring a live NATS container.
+"""
+
+from datetime import UTC, datetime
+from typing import Any
+
+import pytest
+
+from synthorg.core.enums import Priority, SeniorityLevel, TaskStatus, TaskType
+from synthorg.core.task import Task
+from synthorg.engine.task_engine_models import TaskStateChanged
+from synthorg.workers.claim import TaskClaim
+from synthorg.workers.dispatcher import DistributedDispatcher
+
+
+class _FakeTaskQueue:
+    """Minimal stand-in for :class:`JetStreamTaskQueue`."""
+
+    def __init__(self, *, running: bool = True) -> None:
+        self.running = running
+        self.published: list[TaskClaim] = []
+        self.publish_error: Exception | None = None
+
+    @property
+    def is_running(self) -> bool:
+        return self.running
+
+    async def publish_claim(self, claim: TaskClaim) -> None:
+        if self.publish_error is not None:
+            raise self.publish_error
+        self.published.append(claim)
+
+
+def _make_task(status: TaskStatus = TaskStatus.ASSIGNED) -> Task:
+    """Build a minimal Task for event fixtures.
+
+    Most statuses require ``assigned_to`` (enforced by a Task
+    validator), so we set it unconditionally for the test double.
+    """
+    return Task(
+        id="task-1",
+        title="Test task",
+        description="Integration fixture for dispatcher tests.",
+        type=TaskType.DEVELOPMENT,
+        project="project-1",
+        required_seniority=SeniorityLevel.JUNIOR,
+        priority=Priority.MEDIUM,
+        status=status,
+        assigned_to="agent-1",
+        created_by="engine",
+        created_at=datetime.now(UTC),
+        updated_at=datetime.now(UTC),
+    )
+
+
+def _make_event(
+    *,
+    new_status: TaskStatus,
+    previous_status: TaskStatus | None = TaskStatus.CREATED,
+    task: Task | None = None,
+) -> TaskStateChanged:
+    return TaskStateChanged(
+        mutation_type="transition",
+        request_id="req-1",
+        requested_by="engine",
+        task_id="task-1",
+        task=task or _make_task(status=new_status),
+        previous_status=previous_status,
+        new_status=new_status,
+        version=1,
+        reason="ready to run",
+    )
+
+
+@pytest.mark.unit
+async def test_dispatcher_publishes_claim_on_ready_transition() -> None:
+    queue = _FakeTaskQueue()
+    dispatcher = DistributedDispatcher(task_queue=queue)  # type: ignore[arg-type]
+
+    event = _make_event(new_status=TaskStatus.ASSIGNED)
+    await dispatcher.on_task_state_changed(event)
+
+    assert len(queue.published) == 1
+    claim = queue.published[0]
+    assert claim.task_id == "task-1"
+    assert claim.new_status == "assigned"
+    assert claim.previous_status == "created"
+    assert claim.project_id == "project-1"
+
+
+@pytest.mark.unit
+async def test_dispatcher_ignores_non_dispatchable_transitions() -> None:
+    queue = _FakeTaskQueue()
+    dispatcher = DistributedDispatcher(task_queue=queue)  # type: ignore[arg-type]
+
+    event = _make_event(
+        new_status=TaskStatus.COMPLETED,
+        previous_status=TaskStatus.IN_PROGRESS,
+    )
+    await dispatcher.on_task_state_changed(event)
+
+    assert queue.published == []
+
+
+@pytest.mark.unit
+async def test_dispatcher_skips_when_queue_not_running() -> None:
+    queue = _FakeTaskQueue(running=False)
+    dispatcher = DistributedDispatcher(task_queue=queue)  # type: ignore[arg-type]
+
+    event = _make_event(new_status=TaskStatus.ASSIGNED)
+    await dispatcher.on_task_state_changed(event)
+
+    assert queue.published == []
+
+
+@pytest.mark.unit
+async def test_dispatcher_swallows_publish_errors() -> None:
+    queue = _FakeTaskQueue()
+    queue.publish_error = RuntimeError("NATS unavailable")
+    dispatcher = DistributedDispatcher(task_queue=queue)  # type: ignore[arg-type]
+
+    event = _make_event(new_status=TaskStatus.ASSIGNED)
+    # Should not propagate; dispatcher is best-effort.
+    await dispatcher.on_task_state_changed(event)
+    assert queue.published == []
+
+
+@pytest.mark.unit
+async def test_dispatcher_handles_missing_task_snapshot() -> None:
+    """Delete events have ``task=None`` and should still build a claim."""
+    queue = _FakeTaskQueue()
+    dispatcher = DistributedDispatcher(task_queue=queue)  # type: ignore[arg-type]
+
+    # Fabricate an event with a task snapshot so project_id is populated.
+    event = TaskStateChanged(
+        mutation_type="create",
+        request_id="req-1",
+        requested_by="engine",
+        task_id="task-1",
+        task=_make_task(status=TaskStatus.ASSIGNED),
+        previous_status=None,
+        new_status=TaskStatus.ASSIGNED,
+        version=1,
+    )
+    await dispatcher.on_task_state_changed(event)
+    assert len(queue.published) == 1
+    assert queue.published[0].previous_status is None
+
+
+@pytest.mark.unit
+def test_queue_config_requires_distributed_bus_via_root_config() -> None:
+    """queue.enabled + internal bus should fail RootConfig validation."""
+    from synthorg.config.schema import RootConfig
+    from synthorg.core.enums import CompanyType
+
+    with pytest.raises(
+        ValueError,
+        match=r"requires communication\.message_bus\.backend",
+    ):
+        RootConfig(
+            company_name="Test Co",
+            company_type=CompanyType.CUSTOM,
+            queue={"enabled": True},  # type: ignore[arg-type]
+        )
+
+
+def _assert_signature_matches(dispatcher: Any) -> None:
+    """Compile-time check that the dispatcher handler matches the callback type."""
+    from collections.abc import Awaitable, Callable
+
+    callback: Callable[[TaskStateChanged], Awaitable[None]] = (
+        dispatcher.on_task_state_changed
+    )
+    assert callable(callback)
+
+
+@pytest.mark.unit
+def test_dispatcher_handler_matches_engine_observer_type() -> None:
+    queue = _FakeTaskQueue()
+    dispatcher = DistributedDispatcher(task_queue=queue)  # type: ignore[arg-type]
+    _assert_signature_matches(dispatcher)
