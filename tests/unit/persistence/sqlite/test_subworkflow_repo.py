@@ -446,3 +446,256 @@ class TestFindParents:
         # None means "any version"
         refs_any = await repo.find_parents("sub-quarterly-close", None)
         assert len(refs_any) == 1
+
+    async def test_find_parents_returns_parent_type_workflow_definition(
+        self,
+        repo: SQLiteSubworkflowRepository,
+        migrated_db: aiosqlite.Connection,
+    ) -> None:
+        """Parents from workflow_definitions have parent_type='workflow_definition'."""
+        parent_nodes = [
+            {
+                "id": "start-1",
+                "type": "start",
+                "label": "Start",
+                "position_x": 0.0,
+                "position_y": 0.0,
+                "config": {},
+            },
+            {
+                "id": "sub-node-1",
+                "type": "subworkflow",
+                "label": "Child",
+                "position_x": 100.0,
+                "position_y": 100.0,
+                "config": {
+                    "subworkflow_id": "sub-quarterly-close",
+                    "version": "1.0.0",
+                    "input_bindings": {},
+                    "output_bindings": {},
+                },
+            },
+            {
+                "id": "end-1",
+                "type": "end",
+                "label": "End",
+                "position_x": 200.0,
+                "position_y": 200.0,
+                "config": {},
+            },
+        ]
+        await migrated_db.execute(
+            """INSERT INTO workflow_definitions
+               (id, name, description, workflow_type, version, inputs, outputs,
+                is_subworkflow, nodes, edges, created_by, created_at, updated_at,
+                revision)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                "parent-wf",
+                "Parent WF",
+                "",
+                "sequential_pipeline",
+                "1.0.0",
+                "[]",
+                "[]",
+                0,
+                json.dumps(parent_nodes),
+                "[]",
+                "test-user",
+                _DEFAULT_TS.isoformat(),
+                _DEFAULT_TS.isoformat(),
+                1,
+            ),
+        )
+        await migrated_db.commit()
+
+        refs = await repo.find_parents("sub-quarterly-close", "1.0.0")
+        assert len(refs) == 1
+        assert refs[0].parent_type == "workflow_definition"
+
+    async def test_find_parents_scans_subworkflows_table(
+        self,
+        repo: SQLiteSubworkflowRepository,
+        migrated_db: aiosqlite.Connection,
+    ) -> None:
+        """A subworkflow referencing another subworkflow is discovered."""
+        # Insert a parent subworkflow that references child sub-quarterly-close
+        parent_sub_nodes = [
+            {
+                "id": "start-1",
+                "type": "start",
+                "label": "Start",
+                "position_x": 0.0,
+                "position_y": 0.0,
+                "config": {},
+            },
+            {
+                "id": "sub-node-nested",
+                "type": "subworkflow",
+                "label": "Nested Child",
+                "position_x": 100.0,
+                "position_y": 100.0,
+                "config": {
+                    "subworkflow_id": "sub-quarterly-close",
+                    "version": "1.0.0",
+                    "input_bindings": {},
+                    "output_bindings": {},
+                },
+            },
+            {
+                "id": "end-1",
+                "type": "end",
+                "label": "End",
+                "position_x": 200.0,
+                "position_y": 200.0,
+                "config": {},
+            },
+        ]
+        await migrated_db.execute(
+            """INSERT INTO subworkflows
+               (subworkflow_id, semver, name, description, workflow_type,
+                inputs, outputs, nodes, edges, created_by, created_at,
+                updated_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                "sub-parent-wrapper",
+                "1.0.0",
+                "Parent Wrapper",
+                "",
+                "sequential_pipeline",
+                "[]",
+                "[]",
+                json.dumps(parent_sub_nodes),
+                "[]",
+                "test-user",
+                _DEFAULT_TS.isoformat(),
+                _DEFAULT_TS.isoformat(),
+            ),
+        )
+        await migrated_db.commit()
+
+        refs = await repo.find_parents("sub-quarterly-close", "1.0.0")
+        assert len(refs) == 1
+        ref = refs[0]
+        assert ref.parent_id == "sub-parent-wrapper"
+        assert ref.parent_name == "Parent Wrapper"
+        assert ref.pinned_version == "1.0.0"
+        assert ref.node_id == "sub-node-nested"
+        assert ref.parent_type == "subworkflow"
+
+    async def test_find_parents_merges_both_tables(
+        self,
+        repo: SQLiteSubworkflowRepository,
+        migrated_db: aiosqlite.Connection,
+    ) -> None:
+        """Parents from both tables are returned together."""
+        # Insert a workflow_definition parent
+        wf_nodes = [
+            {
+                "id": "start-1",
+                "type": "start",
+                "label": "S",
+                "position_x": 0.0,
+                "position_y": 0.0,
+                "config": {},
+            },
+            {
+                "id": "sub-1",
+                "type": "subworkflow",
+                "label": "C",
+                "position_x": 1.0,
+                "position_y": 1.0,
+                "config": {
+                    "subworkflow_id": "sub-quarterly-close",
+                    "version": "1.0.0",
+                },
+            },
+            {
+                "id": "end-1",
+                "type": "end",
+                "label": "E",
+                "position_x": 2.0,
+                "position_y": 2.0,
+                "config": {},
+            },
+        ]
+        await migrated_db.execute(
+            """INSERT INTO workflow_definitions
+               (id, name, description, workflow_type, version, inputs, outputs,
+                is_subworkflow, nodes, edges, created_by, created_at, updated_at,
+                revision)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                "wf-parent",
+                "WF Parent",
+                "",
+                "sequential_pipeline",
+                "1.0.0",
+                "[]",
+                "[]",
+                0,
+                json.dumps(wf_nodes),
+                "[]",
+                "test-user",
+                _DEFAULT_TS.isoformat(),
+                _DEFAULT_TS.isoformat(),
+                1,
+            ),
+        )
+        # Insert a subworkflow parent
+        sub_nodes = [
+            {
+                "id": "start-1",
+                "type": "start",
+                "label": "S",
+                "position_x": 0.0,
+                "position_y": 0.0,
+                "config": {},
+            },
+            {
+                "id": "sub-2",
+                "type": "subworkflow",
+                "label": "C",
+                "position_x": 1.0,
+                "position_y": 1.0,
+                "config": {
+                    "subworkflow_id": "sub-quarterly-close",
+                    "version": "1.0.0",
+                },
+            },
+            {
+                "id": "end-1",
+                "type": "end",
+                "label": "E",
+                "position_x": 2.0,
+                "position_y": 2.0,
+                "config": {},
+            },
+        ]
+        await migrated_db.execute(
+            """INSERT INTO subworkflows
+               (subworkflow_id, semver, name, description, workflow_type,
+                inputs, outputs, nodes, edges, created_by, created_at,
+                updated_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                "sub-outer",
+                "2.0.0",
+                "Outer Sub",
+                "",
+                "sequential_pipeline",
+                "[]",
+                "[]",
+                json.dumps(sub_nodes),
+                "[]",
+                "test-user",
+                _DEFAULT_TS.isoformat(),
+                _DEFAULT_TS.isoformat(),
+            ),
+        )
+        await migrated_db.commit()
+
+        refs = await repo.find_parents("sub-quarterly-close", "1.0.0")
+        assert len(refs) == 2
+        types = {r.parent_type for r in refs}
+        assert types == {"workflow_definition", "subworkflow"}

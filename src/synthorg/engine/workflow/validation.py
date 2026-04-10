@@ -342,21 +342,22 @@ def validate_workflow(
 
 def _extract_subworkflow_config(
     node_config: object,
-) -> tuple[str, str, dict[str, object], dict[str, object]] | None:
+) -> tuple[str, str | None, dict[str, object], dict[str, object]] | None:
     """Unpack subworkflow node config into ``(id, version, ib, ob)``.
 
-    Returns ``None`` when any required field is missing or malformed.
-    ``ib`` / ``ob`` are always plain dicts even if the config supplied
-    ``None`` or a non-dict value (to keep downstream handling simple).
+    Returns ``None`` when ``subworkflow_id`` is missing or malformed
+    (the node is not a valid subworkflow reference at all).  When
+    ``version`` is blank or missing, returns it as ``None`` so
+    callers can emit ``SUBWORKFLOW_VERSION_UNPINNED``.
     """
     if not isinstance(node_config, dict):
         return None
     subworkflow_id = node_config.get("subworkflow_id")
-    version = node_config.get("version")
     if not isinstance(subworkflow_id, str) or not subworkflow_id.strip():
         return None
+    version = node_config.get("version")
     if not isinstance(version, str) or not version.strip():
-        return None
+        version = None
     ib = node_config.get("input_bindings") or {}
     ob = node_config.get("output_bindings") or {}
     if not isinstance(ib, dict):
@@ -558,6 +559,19 @@ async def validate_subworkflow_io(
             continue
         subworkflow_id, version, ib, ob = parsed
 
+        if version is None:
+            errors.append(
+                WorkflowValidationError(
+                    code=ValidationErrorCode.SUBWORKFLOW_VERSION_UNPINNED,
+                    message=(
+                        f"Subworkflow node {node.id!r} references "
+                        f"{subworkflow_id!r} without a pinned version"
+                    ),
+                    node_id=node.id,
+                ),
+            )
+            continue
+
         try:
             child = await registry.get(subworkflow_id, version)
         except SubworkflowNotFoundError:
@@ -649,7 +663,10 @@ async def validate_subworkflow_graph(
                 parsed = _extract_subworkflow_config(dict(child_node.config))
                 if parsed is None:
                     continue
-                child_sub_id, child_version, _ib, _ob = parsed
+                child_sub_id, child_version, _, _ = parsed
+                if child_version is None:
+                    # Unpinned -- skip cycle check (no concrete version).
+                    continue
                 child_key = (child_sub_id, child_version)
 
                 try:

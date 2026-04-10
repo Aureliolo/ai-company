@@ -170,12 +170,22 @@ WHERE workflow_definitions.revision = excluded.revision - 1""",
                     definition.revision,
                 ),
             )
-            if cursor.rowcount == 0 and definition.revision > 1:
+            if cursor.rowcount == 0:
+                # Zero rows affected means the ON CONFLICT WHERE clause
+                # did not match -- the existing row has a different
+                # revision than expected.
+                check = await self._db.execute(
+                    "SELECT revision FROM workflow_definitions WHERE id = ?",
+                    (definition.id,),
+                )
+                existing = await check.fetchone()
                 await self._db.rollback()
+                current = existing["revision"] if existing else "N/A"
                 msg = (
                     f"Version conflict saving workflow definition"
-                    f" {definition.id!r}: expected revision"
-                    f" {definition.revision - 1}, not found"
+                    f" {definition.id!r}: current revision is"
+                    f" {current}, incoming revision is"
+                    f" {definition.revision}"
                 )
                 logger.warning(
                     PERSISTENCE_WORKFLOW_DEF_SAVE_FAILED,

@@ -8,7 +8,7 @@ semver row.  Parent workflows pin a specific version in their
 ``SUBWORKFLOW`` node configs; deleting a pinned version is rejected.
 """
 
-from typing import Protocol, runtime_checkable
+from typing import Literal, Protocol, runtime_checkable
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -51,6 +51,8 @@ class ParentReference(BaseModel):
         parent_name: Display name of the parent.
         pinned_version: Semver of the subworkflow the parent has pinned.
         node_id: Node ID within the parent graph holding the reference.
+        parent_type: Whether the parent is a top-level workflow
+            definition or another subworkflow.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
@@ -59,6 +61,10 @@ class ParentReference(BaseModel):
     parent_name: NotBlankStr = Field(description="Parent workflow name")
     pinned_version: NotBlankStr = Field(description="Pinned semver")
     node_id: NotBlankStr = Field(description="Referencing node ID")
+    parent_type: Literal["workflow_definition", "subworkflow"] = Field(
+        default="workflow_definition",
+        description="Whether the parent is a workflow definition or subworkflow",
+    )
 
 
 @runtime_checkable
@@ -153,6 +159,30 @@ class SubworkflowRepository(Protocol):
 
         Returns:
             ``True`` if a row was deleted, ``False`` if not found.
+        """
+        ...
+
+    async def delete_if_unreferenced(
+        self,
+        subworkflow_id: NotBlankStr,
+        version: NotBlankStr,
+    ) -> tuple[bool, tuple[ParentReference, ...]]:
+        """Atomically delete a subworkflow version only if no parents pin it.
+
+        The check-and-delete runs inside a single transaction to
+        eliminate the TOCTOU race between ``find_parents`` and
+        ``delete``.
+
+        Args:
+            subworkflow_id: The subworkflow identifier.
+            version: The semver string.
+
+        Returns:
+            ``(True, ())`` when the version was deleted.
+            ``(False, parents)`` when parents still reference it.
+
+        Raises:
+            PersistenceError: If the operation fails.
         """
         ...
 

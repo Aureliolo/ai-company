@@ -150,6 +150,17 @@ class FakeSubworkflowRepository(SubworkflowRepository):
             return True
         return False
 
+    async def delete_if_unreferenced(
+        self,
+        subworkflow_id: str,
+        version: str,
+    ) -> tuple[bool, tuple[ParentReference, ...]]:
+        parents = await self.find_parents(subworkflow_id, version)
+        if parents:
+            return False, parents
+        deleted = await self.delete(subworkflow_id, version)
+        return deleted, ()
+
     async def find_parents(
         self,
         subworkflow_id: str,

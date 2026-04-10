@@ -190,6 +190,31 @@ class TestSQLiteWorkflowDefinitionRepository:
         assert result.revision == 1
         assert result.name == "Test Workflow"
 
+    async def test_save_rejects_duplicate_revision_1(
+        self,
+        repo: SQLiteWorkflowDefinitionRepository,
+    ) -> None:
+        """Saving revision=1 twice must raise VersionConflictError.
+
+        Regression test: previously the ``definition.revision > 1``
+        guard silently treated this as success.
+        """
+        defn_v1 = _make_definition(revision=1)
+        await repo.save(defn_v1)
+
+        # Re-save with revision=1 should conflict (existing is also 1)
+        defn_v1_again = _make_definition(
+            name="Duplicate",
+            revision=1,
+        )
+        with pytest.raises(VersionConflictError, match="Version conflict"):
+            await repo.save(defn_v1_again)
+
+        # Original should be unchanged
+        result = await repo.get("wf-001")
+        assert result is not None
+        assert result.name == "Test Workflow"
+
     async def test_get_not_found(
         self,
         repo: SQLiteWorkflowDefinitionRepository,

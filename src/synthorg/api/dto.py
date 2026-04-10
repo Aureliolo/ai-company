@@ -5,6 +5,7 @@ Request DTOs define write-operation payloads (separate from domain
 models because they omit server-generated fields).
 """
 
+import re
 from datetime import datetime
 from typing import Literal, Self
 
@@ -27,6 +28,7 @@ from synthorg.core.enums import (
     TaskStatus,
     TaskType,
     WorkflowType,
+    WorkflowValueType,
 )
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.core.validation import is_valid_action_type
@@ -591,6 +593,37 @@ from synthorg.api.dto_providers import (  # noqa: E402
 
 # ── Workflow definition DTOs ────────────────────────────────────
 
+_SEMVER_RE = re.compile(
+    r"^\d+\.\d+\.\d+(-[a-zA-Z0-9.]+)?(\+[a-zA-Z0-9.]+)?$",
+)
+
+
+class WorkflowIODeclarationRequest(BaseModel):
+    """Typed input/output declaration for workflow creation/update.
+
+    Field names mirror ``WorkflowIODeclaration`` so that
+    ``model_validate`` pass-through works without renaming.
+
+    Attributes:
+        name: Identifier for this input or output.
+        type: The declared data type.
+        required: Whether this declaration is mandatory.
+        default: Default when not required (must be None when required).
+        description: Human-readable description.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+
+    name: NotBlankStr = Field(max_length=128, description="Declaration name")
+    type: WorkflowValueType = Field(description="Declared data type")
+    required: bool = Field(default=True, description="Whether mandatory")
+    default: object = Field(default=None, description="Default value")
+    description: str = Field(
+        default="",
+        max_length=1024,
+        description="Human-readable description",
+    )
+
 
 class CreateWorkflowDefinitionRequest(BaseModel):
     """Payload for creating a new workflow definition.
@@ -613,12 +646,12 @@ class CreateWorkflowDefinitionRequest(BaseModel):
         max_length=64,
         description="Semver version string",
     )
-    inputs: tuple[dict[str, object], ...] = Field(
+    inputs: tuple[WorkflowIODeclarationRequest, ...] = Field(
         default=(),
         max_length=100,
         description="Typed input declarations",
     )
-    outputs: tuple[dict[str, object], ...] = Field(
+    outputs: tuple[WorkflowIODeclarationRequest, ...] = Field(
         default=(),
         max_length=100,
         description="Typed output declarations",
@@ -635,6 +668,14 @@ class CreateWorkflowDefinitionRequest(BaseModel):
         max_length=1000,
         description="Workflow edges",
     )
+
+    @field_validator("version")
+    @classmethod
+    def _validate_semver(cls, v: str) -> str:
+        if not _SEMVER_RE.match(v):
+            msg = f"Invalid semver: {v!r} (expected MAJOR.MINOR.PATCH)"
+            raise ValueError(msg)
+        return v
 
 
 class UpdateWorkflowDefinitionRequest(BaseModel):
@@ -665,14 +706,23 @@ class UpdateWorkflowDefinitionRequest(BaseModel):
         max_length=64,
         description="Semver string override",
     )
-    inputs: tuple[dict[str, object], ...] | None = Field(
+    inputs: tuple[WorkflowIODeclarationRequest, ...] | None = Field(
         default=None,
         max_length=100,
     )
-    outputs: tuple[dict[str, object], ...] | None = Field(
+    outputs: tuple[WorkflowIODeclarationRequest, ...] | None = Field(
         default=None,
         max_length=100,
     )
+
+    @field_validator("version")
+    @classmethod
+    def _validate_semver(cls, v: str | None) -> str | None:
+        if v is not None and not _SEMVER_RE.match(v):
+            msg = f"Invalid semver: {v!r} (expected MAJOR.MINOR.PATCH)"
+            raise ValueError(msg)
+        return v
+
     is_subworkflow: bool | None = None
     nodes: tuple[dict[str, object], ...] | None = Field(
         default=None,

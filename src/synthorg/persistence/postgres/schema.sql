@@ -370,6 +370,35 @@ CREATE INDEX idx_wd_workflow_type
 CREATE INDEX idx_wd_updated_at
     ON workflow_definitions(updated_at DESC);
 
+-- ── Subworkflows ─────────────────────────────────────────────
+
+CREATE TABLE subworkflows (
+    subworkflow_id TEXT NOT NULL CHECK(length(subworkflow_id) > 0),
+    semver TEXT NOT NULL CHECK(length(semver) > 0),
+    name TEXT NOT NULL CHECK(length(name) > 0),
+    description TEXT NOT NULL DEFAULT '',
+    workflow_type TEXT NOT NULL CHECK(workflow_type IN (
+        'sequential_pipeline', 'parallel_execution', 'kanban', 'agile_kanban'
+    )),
+    inputs JSONB NOT NULL DEFAULT '[]'::jsonb,
+    outputs JSONB NOT NULL DEFAULT '[]'::jsonb,
+    nodes JSONB NOT NULL,
+    edges JSONB NOT NULL,
+    created_by TEXT NOT NULL CHECK(length(created_by) > 0),
+    created_at TIMESTAMPTZ NOT NULL,
+    updated_at TIMESTAMPTZ NOT NULL,
+    PRIMARY KEY (subworkflow_id, semver)
+);
+
+CREATE INDEX idx_subworkflows_id
+    ON subworkflows(subworkflow_id);
+
+CREATE INDEX idx_subworkflows_created_at
+    ON subworkflows(created_at DESC);
+
+CREATE INDEX idx_subworkflows_updated_at
+    ON subworkflows(updated_at DESC);
+
 -- ── Workflow execution instances ─────────────────────────────
 
 CREATE TABLE workflow_executions (
