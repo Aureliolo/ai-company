@@ -11,6 +11,7 @@ Covers:
 """
 
 from datetime import UTC, datetime
+from typing import Any
 
 import pytest
 
@@ -162,7 +163,7 @@ class _FakeTaskEngine:
     def __init__(self) -> None:
         self.created: list[str] = []
 
-    async def create_task(self, data, requested_by):
+    async def create_task(self, data: Any, requested_by: str) -> Task:
         task_id = f"task-{len(self.created)}"
         self.created.append(task_id)
         return Task(
