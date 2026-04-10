@@ -6,6 +6,7 @@ import os
 import platform
 import sys
 import uuid
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
@@ -65,6 +66,10 @@ class _SessionSummaryParams:
     delegations_executed: int = 0
 
 
+HeartbeatSnapshotProvider = Callable[[], _HeartbeatParams]
+SessionSummarySnapshotProvider = Callable[[], _SessionSummaryParams]
+
+
 class TelemetryCollector:
     """Gathers curated metrics and sends via the reporter.
 
@@ -79,12 +84,21 @@ class TelemetryCollector:
     Args:
         config: Telemetry configuration.
         data_dir: Directory to persist the anonymous deployment ID.
+        heartbeat_snapshot_provider: Optional callable returning the
+            current ``_HeartbeatParams`` snapshot.  Used by the
+            internal heartbeat loop so emitted events contain real
+            runtime metrics instead of zero defaults.
+        session_summary_snapshot_provider: Optional callable returning
+            the current ``_SessionSummaryParams`` snapshot.  Used by
+            ``shutdown()`` to emit aggregated session metrics.
     """
 
     def __init__(
         self,
         config: TelemetryConfig,
         data_dir: Path,
+        heartbeat_snapshot_provider: HeartbeatSnapshotProvider | None = None,
+        session_summary_snapshot_provider: SessionSummarySnapshotProvider | None = None,
     ) -> None:
         # Env var overrides config file (documented priority).
         env_val = os.environ.get("SYNTHORG_TELEMETRY", "").lower()
@@ -100,6 +114,8 @@ class TelemetryCollector:
         self._deployment_id: str | None = None
         self._started_at = datetime.now(UTC)
         self._heartbeat_task: asyncio.Task[None] | None = None
+        self._heartbeat_snapshot_provider = heartbeat_snapshot_provider
+        self._session_summary_snapshot_provider = session_summary_snapshot_provider
 
         if config.enabled:
             # Persist deployment ID only after consent is given.
@@ -147,7 +163,12 @@ class TelemetryCollector:
             self._heartbeat_task = None
 
         if self._config.enabled:
-            await self.send_session_summary()
+            params = (
+                self._session_summary_snapshot_provider()
+                if self._session_summary_snapshot_provider is not None
+                else None
+            )
+            await self.send_session_summary(params)
             await self._send_shutdown_event()
 
         await self._reporter.shutdown()
@@ -252,7 +273,8 @@ class TelemetryCollector:
                 TELEMETRY_REPORT_FAILED,
                 event_type=event.event_type,
                 detail="privacy_violation",
-                error_msg=str(exc),
+                error_type=type(exc).__name__,
+                error_code="PRIVACY_VIOLATION",
             )
             return False
 
@@ -301,7 +323,12 @@ class TelemetryCollector:
         while True:
             try:
                 await asyncio.sleep(interval)
-                await self.send_heartbeat()
+                params = (
+                    self._heartbeat_snapshot_provider()
+                    if self._heartbeat_snapshot_provider is not None
+                    else None
+                )
+                await self.send_heartbeat(params)
             except asyncio.CancelledError:
                 raise
             except Exception as exc:
