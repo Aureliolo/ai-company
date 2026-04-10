@@ -714,7 +714,7 @@ class JetStreamMessageBus:
         """Decode a KV entry into a Channel, logging parse failures."""
         try:
             data = json.loads(entry.value.decode("utf-8"))
-            return Channel.model_validate(data)
+            channel = Channel.model_validate(data)
         except json.JSONDecodeError as exc:
             logger.warning(
                 COMM_BUS_KV_READ_FAILED,
@@ -729,6 +729,17 @@ class JetStreamMessageBus:
                 error=str(exc),
             )
             return None
+        if channel.name != channel_name:
+            logger.warning(
+                COMM_BUS_KV_READ_FAILED,
+                channel=channel_name,
+                error=(
+                    f"KV entry name mismatch: expected {channel_name!r}, "
+                    f"got {channel.name!r}"
+                ),
+            )
+            return None
+        return channel
 
     async def subscribe(
         self,
@@ -1322,7 +1333,16 @@ class JetStreamMessageBus:
             return []
         channels: list[Channel] = []
         for key in keys:
-            decoded_name = _decode_token(key)
+            try:
+                decoded_name = _decode_token(key)
+            except Exception as exc:
+                logger.warning(
+                    COMM_BUS_KV_READ_FAILED,
+                    channel=key,
+                    error=str(exc),
+                    phase="decode_token",
+                )
+                continue
             entry = await self._fetch_kv_entry(decoded_name)
             if entry is None:
                 continue
