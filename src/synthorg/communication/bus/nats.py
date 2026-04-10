@@ -178,12 +178,28 @@ def _raise_not_subscribed(
 
 
 async def _cancel_if_pending(task: asyncio.Task[Any]) -> None:
-    """Cancel a task and swallow its cancellation exception."""
+    """Cancel a task, await completion, and suppress the expected CancelledError.
+
+    Any exception other than ``CancelledError`` is logged at WARNING
+    and re-raised so the caller can decide whether recovery is
+    possible. The previous ``contextlib.suppress(Exception)`` masked
+    genuine errors like transport failures during in-flight fetches.
+    """
     if task.done():
         return
     task.cancel()
-    with contextlib.suppress(asyncio.CancelledError, Exception):
+    try:
         await task
+    except asyncio.CancelledError:
+        pass
+    except Exception:
+        logger.warning(
+            COMM_BUS_RECEIVE_ERROR,
+            phase="cancel_pending_task",
+            task_repr=repr(task),
+            exc_info=True,
+        )
+        raise
 
 
 def _encode_token(name: str) -> str:
@@ -492,6 +508,11 @@ class JetStreamMessageBus:
     async def publish(self, message: Message) -> None:
         """Publish a message to its channel via the JetStream stream.
 
+        Uses ``_resolve_channel_or_raise`` so a publisher in a
+        different process than the channel creator can publish without
+        calling ``get_channel()`` first, matching the multi-process
+        contract already established for subscribe/receive/history.
+
         Args:
             message: The message to publish.
 
@@ -501,11 +522,9 @@ class JetStreamMessageBus:
         """
         async with self._lock:
             self._require_running()
-            channel_name = message.channel
-            if channel_name not in self._channels:
-                _raise_channel_not_found(channel_name)
-            channel = self._channels[channel_name]
-            subject = self._subject_for_channel(channel)
+        channel_name = message.channel
+        channel = await self._resolve_channel_or_raise(channel_name)
+        subject = self._subject_for_channel(channel)
 
         payload = self._serialize_message(message)
         await self._publish_with_ack(subject, payload)
@@ -831,8 +850,17 @@ class JetStreamMessageBus:
             sub = self._subscriptions.pop(key, None)
 
         if sub is not None:
-            with contextlib.suppress(Exception):
+            try:
                 await sub.unsubscribe()
+            except Exception:
+                logger.warning(
+                    COMM_SUBSCRIPTION_REMOVED,
+                    channel=channel_name,
+                    subscriber=subscriber_id,
+                    backend="nats",
+                    phase="unsubscribe_consumer_failed",
+                    exc_info=True,
+                )
 
         # Persist the removed subscriber outside the lock so peer
         # processes stop routing to this subscriber_id on the next
@@ -903,15 +931,21 @@ class JetStreamMessageBus:
                 subscriber_id=subscriber_id,
             )
             if msgs is None:
-                # Shutdown or internal error; exit the loop.
                 return None
-            if msgs:
-                return await self._build_envelope(
-                    msgs,
-                    channel_name=channel_name,
-                    subscriber_id=subscriber_id,
-                )
-            # Empty fetch: the server had nothing for us. Loop again.
+            if not msgs:
+                continue
+            envelope = await self._build_envelope(
+                msgs,
+                channel_name=channel_name,
+                subscriber_id=subscriber_id,
+            )
+            # _build_envelope returns None when the fetched message was
+            # oversized, malformed, or couldn't be acked. Those
+            # conditions are per-message -- the next message in the
+            # stream may be perfectly valid, so keep waiting instead of
+            # returning None and ending the caller's receive loop.
+            if envelope is not None:
+                return envelope
 
     async def _receive_with_timeout(
         self,
@@ -934,13 +968,16 @@ class JetStreamMessageBus:
             )
             if msgs is None:
                 return None
-            if msgs:
-                return await self._build_envelope(
-                    msgs,
-                    channel_name=channel_name,
-                    subscriber_id=subscriber_id,
-                )
             remaining -= poll
+            if not msgs:
+                continue
+            envelope = await self._build_envelope(
+                msgs,
+                channel_name=channel_name,
+                subscriber_id=subscriber_id,
+            )
+            if envelope is not None:
+                return envelope
         return None
 
     async def _resolve_consumer(

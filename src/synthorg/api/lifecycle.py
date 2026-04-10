@@ -56,12 +56,16 @@ async def _try_stop(
     coro: Awaitable[None],
     event: str,
     error_msg: str,
-) -> None:
+) -> bool:
     """Await *coro* inside a safe try/except, logging failures.
 
     ``MemoryError`` and ``RecursionError`` are re-raised immediately;
     all other exceptions are logged and swallowed so that sibling
     shutdown steps can still run.
+
+    Returns ``True`` when *coro* completes without raising, ``False``
+    when an exception was swallowed. Callers use this to guard
+    "stopped" log lines so they only fire on actual success.
     """
     try:
         await coro
@@ -69,9 +73,11 @@ async def _try_stop(
         raise
     except Exception:
         logger.exception(event, error=error_msg)
+        return False
+    return True
 
 
-async def _cleanup_on_failure(  # noqa: PLR0913
+async def _cleanup_on_failure(  # noqa: PLR0913, C901
     *,
     persistence: PersistenceBackend | None,
     started_persistence: bool,
@@ -123,16 +129,17 @@ async def _cleanup_on_failure(  # noqa: PLR0913
             service="distributed_task_queue",
             phase="stopping_on_cleanup",
         )
-        await _try_stop(
+        ok = await _try_stop(
             distributed_task_queue.stop(),
             API_APP_STARTUP,
             "Cleanup: failed to stop distributed task queue",
         )
-        logger.info(
-            API_APP_STARTUP,
-            service="distributed_task_queue",
-            phase="stopped_on_cleanup",
-        )
+        if ok:
+            logger.info(
+                API_APP_STARTUP,
+                service="distributed_task_queue",
+                phase="stopped_on_cleanup",
+            )
     if started_settings_dispatcher and settings_dispatcher is not None:
         await _try_stop(
             settings_dispatcher.stop(),
@@ -470,16 +477,17 @@ async def _safe_shutdown(  # noqa: PLR0913, PLR0912, C901
             service="distributed_task_queue",
             phase="stopping",
         )
-        await _try_stop(
+        ok = await _try_stop(
             distributed_task_queue.stop(),
             API_APP_SHUTDOWN,
             "Failed to stop distributed task queue",
         )
-        logger.info(
-            API_APP_SHUTDOWN,
-            service="distributed_task_queue",
-            phase="stopped",
-        )
+        if ok:
+            logger.info(
+                API_APP_SHUTDOWN,
+                service="distributed_task_queue",
+                phase="stopped",
+            )
     if performance_tracker is not None:
         await _try_stop(
             performance_tracker.aclose(),
