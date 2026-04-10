@@ -37,7 +37,7 @@ requires = ["hatchling==1.29.0"]
 build-backend = "hatchling.build"
 
 [project.optional-dependencies]
-fine-tune = ["torch==2.11.0", "sentence-transformers==5.3.0"]
+fine-tune = ["torch==2.11.0", "sentence-transformers==5.4.0"]
 telemetry = ["logfire==4.31.1"]
 
 [tool.hatch.version]
@@ -74,7 +74,7 @@ dev = [
     "pre-commit==4.5.1",
     "pip-audit==2.10.0",
     "pre-commit-uv==4.2.1",
-    "ruff==0.15.9",
+    "ruff==0.15.10",
     "types-pyyaml==6.0.12.20260408",
     "bandit==1.9.4",
     {include-group = "test"},
