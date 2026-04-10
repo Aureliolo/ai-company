@@ -297,12 +297,13 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         query: NotBlankStr,
     ) -> tuple[SubworkflowSummary, ...]:
         """Return summaries matching a name or description substring."""
-        pattern = f"%{query}%"
+        escaped = query.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        pattern = f"%{escaped}%"
         try:
             cursor = await self._db.execute(
                 f"SELECT {_SUBWORKFLOW_SELECT} FROM subworkflows "  # noqa: S608
-                "WHERE name LIKE ? COLLATE NOCASE "
-                "OR description LIKE ? COLLATE NOCASE",
+                "WHERE name LIKE ? ESCAPE '\\' COLLATE NOCASE "
+                "OR description LIKE ? ESCAPE '\\' COLLATE NOCASE",
                 (pattern, pattern),
             )
             rows = await cursor.fetchall()

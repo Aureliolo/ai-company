@@ -8,6 +8,7 @@ upstream task dependencies from the graph edges.
 
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from types import MappingProxyType
 from typing import TYPE_CHECKING
 from uuid import uuid4
 
@@ -570,7 +571,7 @@ class WorkflowExecutionService:
             output_bindings = {}
 
         next_depth = frame.depth + 1
-        if next_depth > self._max_subworkflow_depth:
+        if next_depth >= self._max_subworkflow_depth:
             logger.error(
                 WORKFLOW_EXEC_SUBWORKFLOW_DEPTH_EXCEEDED,
                 execution_id=execution_id,
@@ -605,7 +606,7 @@ class WorkflowExecutionService:
         child_frame = ExecutionFrame(
             workflow_id=child_definition.id,
             workflow_version=child_definition.version,
-            variables=resolved_inputs,
+            variables=MappingProxyType(resolved_inputs),
             parent_frame=frame,
             depth=next_depth,
         )

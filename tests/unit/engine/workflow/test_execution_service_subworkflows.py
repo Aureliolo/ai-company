@@ -375,7 +375,7 @@ class TestSubworkflowExecution:
                 activated_by="ceo",
             )
         assert exc_info.value.max_depth == 1
-        assert exc_info.value.depth == 2
+        assert exc_info.value.depth == 1
 
     async def test_two_level_nesting_under_default_depth(
         self,

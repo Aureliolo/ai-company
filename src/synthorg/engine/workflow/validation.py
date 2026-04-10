@@ -63,6 +63,7 @@ class ValidationErrorCode(StrEnum):
     SUBWORKFLOW_NOT_FOUND = "subworkflow_not_found"
     SUBWORKFLOW_INPUT_MISSING = "subworkflow_input_missing"
     SUBWORKFLOW_INPUT_UNKNOWN = "subworkflow_input_unknown"
+    SUBWORKFLOW_INPUT_TYPE_MISMATCH = "subworkflow_input_type_mismatch"
     SUBWORKFLOW_OUTPUT_UNKNOWN = "subworkflow_output_unknown"
     SUBWORKFLOW_OUTPUT_TYPE_MISMATCH = "subworkflow_output_type_mismatch"
     SUBWORKFLOW_CYCLE_DETECTED = "subworkflow_cycle_detected"
@@ -395,6 +396,62 @@ def _is_deferred_expression(value: object) -> bool:
     return isinstance(value, str) and value.startswith(("@parent.", "@child."))
 
 
+def _check_bindings_against_declarations(  # noqa: PLR0913
+    *,
+    node_id: str,
+    ref_label: str,
+    bindings: dict[str, object],
+    declarations: tuple[WorkflowIODeclaration, ...],
+    direction: str,
+    missing_code: ValidationErrorCode,
+    unknown_code: ValidationErrorCode,
+    type_code: ValidationErrorCode,
+) -> list[WorkflowValidationError]:
+    """Validate binding keys/literals against a set of declarations."""
+    errors: list[WorkflowValidationError] = [
+        WorkflowValidationError(
+            code=missing_code,
+            message=(
+                f"Subworkflow node {node_id!r} missing required "
+                f"{direction} {d.name!r} for {ref_label}"
+            ),
+            node_id=node_id,
+        )
+        for d in declarations
+        if d.required and d.name not in bindings
+    ]
+    by_name = {d.name: d for d in declarations}
+    for name, value in bindings.items():
+        if name not in by_name:
+            errors.append(
+                WorkflowValidationError(
+                    code=unknown_code,
+                    message=(
+                        f"Subworkflow node {node_id!r} binds unknown "
+                        f"{direction} {name!r} for {ref_label}"
+                    ),
+                    node_id=node_id,
+                ),
+            )
+            continue
+        decl = by_name[name]
+        if _is_deferred_expression(value):
+            continue
+        if not _literal_matches_type(value, decl.type):
+            errors.append(
+                WorkflowValidationError(
+                    code=type_code,
+                    message=(
+                        f"Subworkflow node {node_id!r} binds {direction} "
+                        f"{name!r} with literal incompatible with "
+                        f"declared type {decl.type.value}"
+                    ),
+                    node_id=node_id,
+                ),
+            )
+    return errors
+
+
 def _check_subworkflow_io_for_node(  # noqa: PLR0913
     *,
     node_id: str,
@@ -406,80 +463,29 @@ def _check_subworkflow_io_for_node(  # noqa: PLR0913
     child_outputs: tuple[WorkflowIODeclaration, ...],
 ) -> list[WorkflowValidationError]:
     """Check a single SUBWORKFLOW node's bindings against child I/O."""
-    errors: list[WorkflowValidationError] = [
-        WorkflowValidationError(
-            code=ValidationErrorCode.SUBWORKFLOW_INPUT_MISSING,
-            message=(
-                f"Subworkflow node {node_id!r} missing required "
-                f"input {required.name!r} for "
-                f"{subworkflow_id!r}@{version!r}"
-            ),
+    ref_label = f"{subworkflow_id!r}@{version!r}"
+    errors = _check_bindings_against_declarations(
+        node_id=node_id,
+        ref_label=ref_label,
+        bindings=input_bindings,
+        declarations=child_inputs,
+        direction="input",
+        missing_code=ValidationErrorCode.SUBWORKFLOW_INPUT_MISSING,
+        unknown_code=ValidationErrorCode.SUBWORKFLOW_INPUT_UNKNOWN,
+        type_code=ValidationErrorCode.SUBWORKFLOW_INPUT_TYPE_MISMATCH,
+    )
+    errors.extend(
+        _check_bindings_against_declarations(
             node_id=node_id,
-        )
-        for required in child_inputs
-        if required.required and required.name not in input_bindings
-    ]
-    input_by_name = {d.name: d for d in child_inputs}
-    output_by_name = {d.name: d for d in child_outputs}
-
-    for name, value in input_bindings.items():
-        if name not in input_by_name:
-            errors.append(
-                WorkflowValidationError(
-                    code=ValidationErrorCode.SUBWORKFLOW_INPUT_UNKNOWN,
-                    message=(
-                        f"Subworkflow node {node_id!r} binds unknown input "
-                        f"{name!r} for {subworkflow_id!r}@{version!r}"
-                    ),
-                    node_id=node_id,
-                ),
-            )
-            continue
-        decl = input_by_name[name]
-        if _is_deferred_expression(value):
-            continue
-        if not _literal_matches_type(value, decl.type):
-            errors.append(
-                WorkflowValidationError(
-                    code=ValidationErrorCode.SUBWORKFLOW_OUTPUT_TYPE_MISMATCH,
-                    message=(
-                        f"Subworkflow node {node_id!r} binds input "
-                        f"{name!r} with literal incompatible with "
-                        f"declared type {decl.type.value}"
-                    ),
-                    node_id=node_id,
-                ),
-            )
-
-    for name, value in output_bindings.items():
-        if name not in output_by_name:
-            errors.append(
-                WorkflowValidationError(
-                    code=ValidationErrorCode.SUBWORKFLOW_OUTPUT_UNKNOWN,
-                    message=(
-                        f"Subworkflow node {node_id!r} binds unknown "
-                        f"output {name!r} for {subworkflow_id!r}@{version!r}"
-                    ),
-                    node_id=node_id,
-                ),
-            )
-            continue
-        decl = output_by_name[name]
-        if _is_deferred_expression(value):
-            continue
-        if not _literal_matches_type(value, decl.type):
-            errors.append(
-                WorkflowValidationError(
-                    code=ValidationErrorCode.SUBWORKFLOW_OUTPUT_TYPE_MISMATCH,
-                    message=(
-                        f"Subworkflow node {node_id!r} binds output "
-                        f"{name!r} with literal incompatible with "
-                        f"declared type {decl.type.value}"
-                    ),
-                    node_id=node_id,
-                ),
-            )
-
+            ref_label=ref_label,
+            bindings=output_bindings,
+            declarations=child_outputs,
+            direction="output",
+            missing_code=ValidationErrorCode.SUBWORKFLOW_INPUT_MISSING,
+            unknown_code=ValidationErrorCode.SUBWORKFLOW_OUTPUT_UNKNOWN,
+            type_code=ValidationErrorCode.SUBWORKFLOW_OUTPUT_TYPE_MISMATCH,
+        ),
+    )
     return errors
 
 

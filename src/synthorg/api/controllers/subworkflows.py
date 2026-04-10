@@ -237,9 +237,13 @@ class SubworkflowController(Controller):
                 updated_at=now,
             )
         except (ValueError, ValidationError) as exc:
+            logger.warning(
+                "workflow.subworkflow.invalid_request",
+                error=str(exc),
+            )
             return Response(
                 content=ApiResponse[WorkflowDefinition](
-                    error=f"Invalid subworkflow definition: {exc}",
+                    error="Invalid subworkflow definition",
                 ),
                 status_code=422,
             )
