@@ -42,5 +42,5 @@ def build_identity_store(
             registry=registry,
             versioning=versioning,
         )
-    msg = f"Unknown identity store type: {config.type!r}"
+    msg = f"Unknown identity store type: {config.type!r}"  # type: ignore[unreachable]
     raise ValueError(msg)

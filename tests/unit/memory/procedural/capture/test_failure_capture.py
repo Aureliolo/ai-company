@@ -20,17 +20,17 @@ class TestFailureCaptureStrategy:
     """Tests for FailureCaptureStrategy."""
 
     @pytest.fixture
-    def proposer(self):
+    def proposer(self) -> AsyncMock:
         """Mock proposer."""
         return AsyncMock()
 
     @pytest.fixture
-    def memory_backend(self):
+    def memory_backend(self) -> AsyncMock:
         """Mock memory backend."""
         return AsyncMock()
 
     @pytest.fixture
-    def config(self):
+    def config(self) -> ProceduralMemoryConfig:
         """Config for the proposer."""
         return ProceduralMemoryConfig(
             enabled=True,
@@ -41,12 +41,16 @@ class TestFailureCaptureStrategy:
         )
 
     @pytest.fixture
-    def strategy(self, proposer, config):
+    def strategy(
+        self,
+        proposer: AsyncMock,
+        config: ProceduralMemoryConfig,
+    ) -> FailureCaptureStrategy:
         """Create a FailureCaptureStrategy."""
         return FailureCaptureStrategy(proposer=proposer, config=config)
 
     @pytest.fixture
-    def execution_result(self):
+    def execution_result(self) -> MagicMock:
         """Mock execution result."""
         result = MagicMock(spec=ExecutionResult)
         result.turns = []
@@ -54,7 +58,7 @@ class TestFailureCaptureStrategy:
         return result
 
     @pytest.fixture
-    def recovery_result(self):
+    def recovery_result(self) -> MagicMock:
         """Mock recovery result."""
         result = MagicMock(spec=RecoveryResult)
         result.error_message = "Test error message"
@@ -73,16 +77,16 @@ class TestFailureCaptureStrategy:
         result.can_reassign = False
         return result
 
-    async def test_name_property(self, strategy):
+    async def test_name_property(self, strategy: FailureCaptureStrategy) -> None:
         """Test that name property returns expected value."""
         assert strategy.name == "failure"
 
     async def test_capture_returns_none_when_no_recovery(
         self,
-        strategy,
-        execution_result,
-        memory_backend,
-    ):
+        strategy: FailureCaptureStrategy,
+        execution_result: MagicMock,
+        memory_backend: AsyncMock,
+    ) -> None:
         """Test that capture returns None when recovery_result is None."""
         result = await strategy.capture(
             execution_result=execution_result,
@@ -95,12 +99,12 @@ class TestFailureCaptureStrategy:
 
     async def test_capture_delegates_to_proposer_on_recovery(
         self,
-        strategy,
-        proposer,
-        execution_result,
-        recovery_result,
-        memory_backend,
-    ):
+        strategy: FailureCaptureStrategy,
+        proposer: AsyncMock,
+        execution_result: MagicMock,
+        recovery_result: MagicMock,
+        memory_backend: AsyncMock,
+    ) -> None:
         """Test that capture delegates to the existing pipeline when recovery exists."""
         proposal = ProceduralMemoryProposal(
             discovery="Test discovery",
@@ -133,12 +137,12 @@ class TestFailureCaptureStrategy:
 
     async def test_capture_returns_none_when_proposer_returns_none(
         self,
-        strategy,
-        proposer,
-        execution_result,
-        recovery_result,
-        memory_backend,
-    ):
+        strategy: FailureCaptureStrategy,
+        proposer: AsyncMock,
+        execution_result: MagicMock,
+        recovery_result: MagicMock,
+        memory_backend: AsyncMock,
+    ) -> None:
         """Test that capture returns None when proposer returns None."""
         proposer.propose = AsyncMock(return_value=None)
 

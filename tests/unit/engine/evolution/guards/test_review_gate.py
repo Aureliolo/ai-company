@@ -16,14 +16,14 @@ class TestReviewGateGuard:
     """Tests for ReviewGateGuard."""
 
     @pytest.fixture
-    def guard(self):
+    def guard(self) -> ReviewGateGuard:
         """Create a ReviewGateGuard with default config."""
         return ReviewGateGuard(
             require_review_for=(AdaptationAxis.IDENTITY,),
         )
 
     @pytest.fixture
-    def identity_proposal(self):
+    def identity_proposal(self) -> AdaptationProposal:
         """Create an IDENTITY adaptation proposal."""
         agent_id: NotBlankStr = "agent-001"
         return AdaptationProposal(
@@ -36,7 +36,7 @@ class TestReviewGateGuard:
         )
 
     @pytest.fixture
-    def strategy_proposal(self):
+    def strategy_proposal(self) -> AdaptationProposal:
         """Create a STRATEGY_SELECTION adaptation proposal."""
         agent_id: NotBlankStr = "agent-001"
         return AdaptationProposal(
@@ -49,13 +49,15 @@ class TestReviewGateGuard:
         )
 
     @pytest.mark.asyncio
-    async def test_name_property(self, guard):
+    async def test_name_property(self, guard: ReviewGateGuard) -> None:
         """Test that the name property is non-blank."""
         assert len(guard.name) > 0
         assert "ReviewGateGuard" in guard.name
 
     @pytest.mark.asyncio
-    async def test_evaluate_identity_requires_review(self, guard, identity_proposal):
+    async def test_evaluate_identity_requires_review(
+        self, guard: ReviewGateGuard, identity_proposal: AdaptationProposal
+    ) -> None:
         """Test that IDENTITY adaptations are rejected (require review)."""
         decision = await guard.evaluate(identity_proposal)
         assert decision.approved is False
@@ -63,14 +65,16 @@ class TestReviewGateGuard:
         assert decision.proposal_id == identity_proposal.id
 
     @pytest.mark.asyncio
-    async def test_evaluate_strategy_auto_approved(self, guard, strategy_proposal):
+    async def test_evaluate_strategy_auto_approved(
+        self, guard: ReviewGateGuard, strategy_proposal: AdaptationProposal
+    ) -> None:
         """Test that STRATEGY_SELECTION adaptations are auto-approved."""
         decision = await guard.evaluate(strategy_proposal)
         assert decision.approved is True
         assert decision.proposal_id == strategy_proposal.id
 
     @pytest.mark.asyncio
-    async def test_evaluate_prompt_auto_approved(self, guard):
+    async def test_evaluate_prompt_auto_approved(self, guard: ReviewGateGuard) -> None:
         """Test that PROMPT_TEMPLATE adaptations are auto-approved."""
         prompt_proposal = AdaptationProposal(
             agent_id="agent-001",
@@ -84,7 +88,7 @@ class TestReviewGateGuard:
         assert decision.approved is True
 
     @pytest.mark.asyncio
-    async def test_evaluate_multiple_require_review(self):
+    async def test_evaluate_multiple_require_review(self) -> None:
         """Test ReviewGateGuard that requires review for multiple axes."""
         guard = ReviewGateGuard(
             require_review_for=(
@@ -127,7 +131,7 @@ class TestReviewGateGuard:
         assert decision_prompt.approved is True
 
     @pytest.mark.asyncio
-    async def test_evaluate_empty_require_review(self):
+    async def test_evaluate_empty_require_review(self) -> None:
         """Test ReviewGateGuard that doesn't require review for any axis."""
         guard = ReviewGateGuard(require_review_for=())
 

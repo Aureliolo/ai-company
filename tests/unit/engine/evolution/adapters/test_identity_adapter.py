@@ -24,7 +24,7 @@ class TestIdentityAdapter:
     """Tests for IdentityAdapter."""
 
     @pytest.fixture
-    def mock_identity_store(self):
+    def mock_identity_store(self) -> AsyncMock:
         """Create a mock IdentityVersionStore."""
         store = AsyncMock()
         store.get_current = AsyncMock()
@@ -32,7 +32,7 @@ class TestIdentityAdapter:
         return store
 
     @pytest.fixture
-    def sample_identity(self):
+    def sample_identity(self) -> AgentIdentity:
         """Create a sample AgentIdentity."""
         return AgentIdentity(
             name="Alice",
@@ -48,17 +48,17 @@ class TestIdentityAdapter:
         )
 
     @pytest.fixture
-    def adapter(self, mock_identity_store):
+    def adapter(self, mock_identity_store: AsyncMock) -> IdentityAdapter:
         """Create an IdentityAdapter with the mock store."""
         return IdentityAdapter(identity_store=mock_identity_store)
 
     @pytest.mark.asyncio
-    async def test_axis_property(self, adapter):
+    async def test_axis_property(self, adapter: IdentityAdapter) -> None:
         """Test that the axis property returns IDENTITY."""
         assert adapter.axis == AdaptationAxis.IDENTITY
 
     @pytest.mark.asyncio
-    async def test_name_property(self, adapter):
+    async def test_name_property(self, adapter: IdentityAdapter) -> None:
         """Test that the name property is non-blank."""
         assert len(adapter.name) > 0
         assert adapter.name == "IdentityAdapter"
@@ -66,10 +66,10 @@ class TestIdentityAdapter:
     @pytest.mark.asyncio
     async def test_apply_success(
         self,
-        adapter,
-        mock_identity_store,
-        sample_identity,
-    ):
+        adapter: IdentityAdapter,
+        mock_identity_store: AsyncMock,
+        sample_identity: AgentIdentity,
+    ) -> None:
         """Test successful identity adaptation."""
         agent_id: NotBlankStr = "agent-001"
         mock_identity_store.get_current.return_value = sample_identity
@@ -98,10 +98,10 @@ class TestIdentityAdapter:
     @pytest.mark.asyncio
     async def test_apply_with_empty_changes(
         self,
-        adapter,
-        mock_identity_store,
-        sample_identity,
-    ):
+        adapter: IdentityAdapter,
+        mock_identity_store: AsyncMock,
+        sample_identity: AgentIdentity,
+    ) -> None:
         """Test adaptation with empty changes dict."""
         agent_id: NotBlankStr = "agent-001"
         mock_identity_store.get_current.return_value = sample_identity
@@ -122,9 +122,9 @@ class TestIdentityAdapter:
     @pytest.mark.asyncio
     async def test_apply_agent_not_found(
         self,
-        adapter,
-        mock_identity_store,
-    ):
+        adapter: IdentityAdapter,
+        mock_identity_store: AsyncMock,
+    ) -> None:
         """Test when agent is not found in the store."""
         agent_id: NotBlankStr = "nonexistent"
         mock_identity_store.get_current.return_value = None
@@ -144,10 +144,10 @@ class TestIdentityAdapter:
     @pytest.mark.asyncio
     async def test_apply_store_error(
         self,
-        adapter,
-        mock_identity_store,
-        sample_identity,
-    ):
+        adapter: IdentityAdapter,
+        mock_identity_store: AsyncMock,
+        sample_identity: AgentIdentity,
+    ) -> None:
         """Test when store.put() raises an exception."""
         agent_id: NotBlankStr = "agent-001"
         mock_identity_store.get_current.return_value = sample_identity

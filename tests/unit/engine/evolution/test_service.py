@@ -1,6 +1,7 @@
 """Tests for EvolutionService orchestration."""
 
 from datetime import date
+from typing import cast
 from unittest.mock import AsyncMock, MagicMock, PropertyMock
 from uuid import uuid4
 
@@ -18,6 +19,7 @@ from synthorg.engine.evolution.models import (
     AdaptationProposal,
     AdaptationSource,
 )
+from synthorg.engine.evolution.protocols import AdaptationAdapter
 from synthorg.engine.evolution.service import EvolutionService
 
 _AGENT_ID = str(uuid4())
@@ -116,7 +118,7 @@ def _make_service(
         tracker=tracker,
         proposer=proposer,
         guard=guard,
-        adapters=adapters,
+        adapters=cast(dict[AdaptationAxis, AdaptationAdapter], adapters),
         config=config,
     )
 
@@ -240,9 +242,11 @@ class TestEvolutionServiceEvolve:
             guard_approves=True,
         )
         # Make adapter raise.
-        service._adapters[
-            AdaptationAxis.PROMPT_TEMPLATE
-        ].apply.side_effect = RuntimeError("boom")
+        adapter_mock = cast(
+            AsyncMock,
+            service._adapters[AdaptationAxis.PROMPT_TEMPLATE],
+        )
+        adapter_mock.apply.side_effect = RuntimeError("boom")
 
         events = await service.evolve(agent_id=_AGENT_ID)
         assert len(events) == 1
@@ -251,7 +255,8 @@ class TestEvolutionServiceEvolve:
     @pytest.mark.unit
     async def test_context_build_failure_returns_empty(self) -> None:
         service = _make_service()
-        service._identity_store.get_current = AsyncMock(
+        identity_store_mock = cast(AsyncMock, service._identity_store)
+        identity_store_mock.get_current = AsyncMock(
             return_value=None,
         )
         events = await service.evolve(agent_id=_AGENT_ID)

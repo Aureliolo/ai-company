@@ -18,12 +18,12 @@ class TestShadowEvaluationGuard:
     """Tests for ShadowEvaluationGuard."""
 
     @pytest.fixture
-    def guard(self):
+    def guard(self) -> ShadowEvaluationGuard:
         """Create a ShadowEvaluationGuard."""
         return ShadowEvaluationGuard()
 
     @pytest.fixture
-    def proposal(self):
+    def proposal(self) -> AdaptationProposal:
         """Create a sample adaptation proposal."""
         agent_id: NotBlankStr = "agent-001"
         return AdaptationProposal(
@@ -36,13 +36,17 @@ class TestShadowEvaluationGuard:
         )
 
     @pytest.mark.asyncio
-    async def test_name_property(self, guard):
+    async def test_name_property(self, guard: ShadowEvaluationGuard) -> None:
         """Test that the name property is non-blank."""
         assert len(guard.name) > 0
         assert "ShadowEvaluationGuard" in guard.name
 
     @pytest.mark.asyncio
-    async def test_evaluate_always_approves(self, guard, proposal):
+    async def test_evaluate_always_approves(
+        self,
+        guard: ShadowEvaluationGuard,
+        proposal: AdaptationProposal,
+    ) -> None:
         """Test that evaluate() always approves with placeholder message."""
         decision = await guard.evaluate(proposal)
         assert decision.approved is True
@@ -53,7 +57,7 @@ class TestShadowEvaluationGuard:
         )
 
     @pytest.mark.asyncio
-    async def test_evaluate_identity_axis(self, guard):
+    async def test_evaluate_identity_axis(self, guard: ShadowEvaluationGuard) -> None:
         """Test evaluate() on IDENTITY axis."""
         proposal = AdaptationProposal(
             agent_id="agent-001",
@@ -67,7 +71,7 @@ class TestShadowEvaluationGuard:
         assert decision.approved is True
 
     @pytest.mark.asyncio
-    async def test_evaluate_strategy_axis(self, guard):
+    async def test_evaluate_strategy_axis(self, guard: ShadowEvaluationGuard) -> None:
         """Test evaluate() on STRATEGY_SELECTION axis."""
         proposal = AdaptationProposal(
             agent_id="agent-001",
@@ -81,7 +85,7 @@ class TestShadowEvaluationGuard:
         assert decision.approved is True
 
     @pytest.mark.asyncio
-    async def test_evaluate_prompt_axis(self, guard):
+    async def test_evaluate_prompt_axis(self, guard: ShadowEvaluationGuard) -> None:
         """Test evaluate() on PROMPT_TEMPLATE axis."""
         proposal = AdaptationProposal(
             agent_id="agent-001",
@@ -95,7 +99,10 @@ class TestShadowEvaluationGuard:
         assert decision.approved is True
 
     @pytest.mark.asyncio
-    async def test_evaluate_multiple_proposals(self, guard):
+    async def test_evaluate_multiple_proposals(
+        self,
+        guard: ShadowEvaluationGuard,
+    ) -> None:
         """Test evaluate() on multiple proposals always approves."""
         proposals = [
             AdaptationProposal(

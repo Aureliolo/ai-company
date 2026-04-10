@@ -16,12 +16,12 @@ class TestRollbackGuard:
     """Tests for RollbackGuard."""
 
     @pytest.fixture
-    def guard(self):
+    def guard(self) -> RollbackGuard:
         """Create a RollbackGuard with default config."""
         return RollbackGuard(window_tasks=20, regression_threshold=0.1)
 
     @pytest.fixture
-    def proposal(self):
+    def proposal(self) -> AdaptationProposal:
         """Create a sample adaptation proposal."""
         agent_id: NotBlankStr = "agent-001"
         return AdaptationProposal(
@@ -34,20 +34,22 @@ class TestRollbackGuard:
         )
 
     @pytest.mark.asyncio
-    async def test_name_property(self, guard):
+    async def test_name_property(self, guard: RollbackGuard) -> None:
         """Test that the name property is non-blank."""
         assert len(guard.name) > 0
         assert "RollbackGuard" in guard.name
 
     @pytest.mark.asyncio
-    async def test_evaluate_always_approves(self, guard, proposal):
+    async def test_evaluate_always_approves(
+        self, guard: RollbackGuard, proposal: AdaptationProposal
+    ) -> None:
         """Test that evaluate() always approves (pre-adaptation check)."""
         decision = await guard.evaluate(proposal)
         assert decision.approved is True
         assert decision.proposal_id == proposal.id
 
     @pytest.mark.asyncio
-    async def test_check_regression_no_regression(self, guard):
+    async def test_check_regression_no_regression(self, guard: RollbackGuard) -> None:
         """Test that no regression is detected when quality improves."""
         agent_id: NotBlankStr = "agent-001"
         baseline_quality = 0.75
@@ -61,7 +63,9 @@ class TestRollbackGuard:
         assert has_regression is False
 
     @pytest.mark.asyncio
-    async def test_check_regression_detects_regression(self, guard):
+    async def test_check_regression_detects_regression(
+        self, guard: RollbackGuard
+    ) -> None:
         """Test that regression is detected when quality drops."""
         agent_id: NotBlankStr = "agent-001"
         baseline_quality = 0.75
@@ -75,7 +79,7 @@ class TestRollbackGuard:
         assert has_regression is True
 
     @pytest.mark.asyncio
-    async def test_check_regression_at_threshold(self, guard):
+    async def test_check_regression_at_threshold(self, guard: RollbackGuard) -> None:
         """Test regression detection at the exact threshold."""
         agent_id: NotBlankStr = "agent-001"
         baseline_quality = 0.75
@@ -89,7 +93,9 @@ class TestRollbackGuard:
         assert has_regression is True
 
     @pytest.mark.asyncio
-    async def test_check_regression_just_under_threshold(self, guard):
+    async def test_check_regression_just_under_threshold(
+        self, guard: RollbackGuard
+    ) -> None:
         """Test no regression when just under the threshold."""
         agent_id: NotBlankStr = "agent-001"
         baseline_quality = 0.75
@@ -103,7 +109,9 @@ class TestRollbackGuard:
         assert has_regression is False
 
     @pytest.mark.asyncio
-    async def test_check_regression_tracks_baselines(self, guard):
+    async def test_check_regression_tracks_baselines(
+        self, guard: RollbackGuard
+    ) -> None:
         """Test that guard tracks baselines per agent."""
         agent_1_baseline = 0.75
         agent_1_current = 0.82
@@ -126,7 +134,7 @@ class TestRollbackGuard:
         assert regression_2 is True
 
     @pytest.mark.asyncio
-    async def test_check_regression_custom_threshold(self):
+    async def test_check_regression_custom_threshold(self) -> None:
         """Test RollbackGuard with custom regression threshold."""
         guard = RollbackGuard(window_tasks=20, regression_threshold=0.05)
 
@@ -142,7 +150,7 @@ class TestRollbackGuard:
         assert has_regression is True
 
     @pytest.mark.asyncio
-    async def test_check_regression_zero_quality(self, guard):
+    async def test_check_regression_zero_quality(self, guard: RollbackGuard) -> None:
         """Test regression detection with zero quality values."""
         agent_id: NotBlankStr = "agent-001"
         baseline_quality = 0.0
@@ -156,7 +164,7 @@ class TestRollbackGuard:
         assert has_regression is False
 
     @pytest.mark.asyncio
-    async def test_check_regression_high_quality(self, guard):
+    async def test_check_regression_high_quality(self, guard: RollbackGuard) -> None:
         """Test regression detection with high quality values."""
         agent_id: NotBlankStr = "agent-001"
         baseline_quality = 0.95
@@ -170,7 +178,7 @@ class TestRollbackGuard:
         assert has_regression is True
 
     @pytest.mark.asyncio
-    async def test_evaluate_multiple_proposals(self, guard):
+    async def test_evaluate_multiple_proposals(self, guard: RollbackGuard) -> None:
         """Test evaluate() on multiple proposals always approves."""
         proposals = [
             AdaptationProposal(

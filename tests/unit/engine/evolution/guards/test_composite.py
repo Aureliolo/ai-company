@@ -19,12 +19,12 @@ class TestCompositeGuard:
     """Tests for CompositeGuard."""
 
     @pytest.fixture
-    def mock_guard_approve(self):
+    def mock_guard_approve(self) -> AsyncMock:
         """Create a mock guard that always approves."""
         guard = AsyncMock()
         guard.name = "MockGuardApprove"
 
-        async def evaluate(proposal):
+        async def evaluate(proposal: AdaptationProposal) -> AdaptationDecision:
             return AdaptationDecision(
                 proposal_id=proposal.id,
                 approved=True,
@@ -36,12 +36,12 @@ class TestCompositeGuard:
         return guard
 
     @pytest.fixture
-    def mock_guard_reject(self):
+    def mock_guard_reject(self) -> AsyncMock:
         """Create a mock guard that always rejects."""
         guard = AsyncMock()
         guard.name = "MockGuardReject"
 
-        async def evaluate(proposal):
+        async def evaluate(proposal: AdaptationProposal) -> AdaptationDecision:
             return AdaptationDecision(
                 proposal_id=proposal.id,
                 approved=False,
@@ -53,7 +53,7 @@ class TestCompositeGuard:
         return guard
 
     @pytest.fixture
-    def proposal(self):
+    def proposal(self) -> AdaptationProposal:
         """Create a sample adaptation proposal."""
         agent_id: NotBlankStr = "agent-001"
         return AdaptationProposal(
@@ -66,18 +66,20 @@ class TestCompositeGuard:
         )
 
     @pytest.mark.asyncio
-    async def test_name_property(self, mock_guard_approve):
+    async def test_name_property(self, mock_guard_approve: AsyncMock) -> None:
         """Test that the name property is non-blank."""
         composite = CompositeGuard(guards=(mock_guard_approve,))
         assert len(composite.name) > 0
         assert "CompositeGuard" in composite.name
 
     @pytest.mark.asyncio
-    async def test_evaluate_all_approve(self, mock_guard_approve, proposal):
+    async def test_evaluate_all_approve(
+        self, mock_guard_approve: AsyncMock, proposal: AdaptationProposal
+    ) -> None:
         """Test that composite approves when all guards approve."""
         guard1 = AsyncMock()
 
-        async def evaluate1(p):
+        async def evaluate1(p: AdaptationProposal) -> AdaptationDecision:
             return AdaptationDecision(
                 proposal_id=p.id,
                 approved=True,
@@ -89,7 +91,7 @@ class TestCompositeGuard:
 
         guard2 = AsyncMock()
 
-        async def evaluate2(p):
+        async def evaluate2(p: AdaptationProposal) -> AdaptationDecision:
             return AdaptationDecision(
                 proposal_id=p.id,
                 approved=True,
@@ -108,10 +110,10 @@ class TestCompositeGuard:
     @pytest.mark.asyncio
     async def test_evaluate_one_rejects(
         self,
-        mock_guard_approve,
-        mock_guard_reject,
-        proposal,
-    ):
+        mock_guard_approve: AsyncMock,
+        mock_guard_reject: AsyncMock,
+        proposal: AdaptationProposal,
+    ) -> None:
         """Test that composite rejects if any guard rejects."""
         composite = CompositeGuard(
             guards=(
@@ -125,11 +127,13 @@ class TestCompositeGuard:
         assert decision.guard_name == "MockGuardReject"
 
     @pytest.mark.asyncio
-    async def test_evaluate_short_circuit_on_reject(self, proposal):
+    async def test_evaluate_short_circuit_on_reject(
+        self, proposal: AdaptationProposal
+    ) -> None:
         """Test that composite short-circuits on first rejection."""
         guard1 = AsyncMock()
 
-        async def evaluate1(p):
+        async def evaluate1(p: AdaptationProposal) -> AdaptationDecision:
             return AdaptationDecision(
                 proposal_id=p.id,
                 approved=True,
@@ -141,7 +145,7 @@ class TestCompositeGuard:
 
         guard2 = AsyncMock()
 
-        async def evaluate2(p):
+        async def evaluate2(p: AdaptationProposal) -> AdaptationDecision:
             return AdaptationDecision(
                 proposal_id=p.id,
                 approved=False,
@@ -153,7 +157,7 @@ class TestCompositeGuard:
 
         guard3 = AsyncMock()
 
-        async def evaluate3(p):
+        async def evaluate3(p: AdaptationProposal) -> None:
             msg = "Should not be called"
             raise AssertionError(msg)
 
@@ -166,7 +170,9 @@ class TestCompositeGuard:
         assert decision.guard_name == "Guard2"
 
     @pytest.mark.asyncio
-    async def test_evaluate_single_guard(self, mock_guard_approve, proposal):
+    async def test_evaluate_single_guard(
+        self, mock_guard_approve: AsyncMock, proposal: AdaptationProposal
+    ) -> None:
         """Test composite with a single guard."""
         composite = CompositeGuard(guards=(mock_guard_approve,))
         decision = await composite.evaluate(proposal)
@@ -174,13 +180,15 @@ class TestCompositeGuard:
         assert decision.approved is True
 
     @pytest.mark.asyncio
-    async def test_evaluate_many_guards(self, proposal):
+    async def test_evaluate_many_guards(self, proposal: AdaptationProposal) -> None:
         """Test composite with many guards that all approve."""
-        guards = []
+        guards: list[AsyncMock] = []
         for i in range(5):
             guard = AsyncMock()
 
-            async def evaluate(p, guard_id=i):
+            async def evaluate(
+                p: AdaptationProposal, guard_id: int = i
+            ) -> AdaptationDecision:
                 return AdaptationDecision(
                     proposal_id=p.id,
                     approved=True,
@@ -197,7 +205,7 @@ class TestCompositeGuard:
         assert decision.approved is True
 
     @pytest.mark.asyncio
-    async def test_evaluate_empty_guards(self, proposal):
+    async def test_evaluate_empty_guards(self, proposal: AdaptationProposal) -> None:
         """Test composite with no guards (should approve)."""
         composite = CompositeGuard(guards=())
         decision = await composite.evaluate(proposal)
@@ -207,13 +215,13 @@ class TestCompositeGuard:
     @pytest.mark.asyncio
     async def test_evaluate_rejection_reason_preserved(
         self,
-        mock_guard_approve,
-        proposal,
-    ):
+        mock_guard_approve: AsyncMock,
+        proposal: AdaptationProposal,
+    ) -> None:
         """Test that rejection reason is preserved."""
         guard_reject = AsyncMock()
 
-        async def evaluate(p):
+        async def evaluate(p: AdaptationProposal) -> AdaptationDecision:
             return AdaptationDecision(
                 proposal_id=p.id,
                 approved=False,

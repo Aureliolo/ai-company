@@ -39,5 +39,5 @@ def build_propagation_strategy(
         return DepartmentScopedPropagation(
             max_targets=config.max_propagation_targets,
         )
-    msg = f"Unknown propagation strategy type: {config.type}"
+    msg = f"Unknown propagation strategy type: {config.type}"  # type: ignore[unreachable]
     raise ValueError(msg)

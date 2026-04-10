@@ -18,12 +18,12 @@ class TestRateLimitGuard:
     """Tests for RateLimitGuard."""
 
     @pytest.fixture
-    def guard(self):
+    def guard(self) -> RateLimitGuard:
         """Create a RateLimitGuard with default limits."""
         return RateLimitGuard(max_per_day=3)
 
     @pytest.fixture
-    def proposal(self):
+    def proposal(self) -> AdaptationProposal:
         """Create a sample adaptation proposal."""
         agent_id: NotBlankStr = "agent-001"
         return AdaptationProposal(
@@ -36,20 +36,28 @@ class TestRateLimitGuard:
         )
 
     @pytest.mark.asyncio
-    async def test_name_property(self, guard):
+    async def test_name_property(self, guard: RateLimitGuard) -> None:
         """Test that the name property is non-blank."""
         assert len(guard.name) > 0
         assert "RateLimitGuard" in guard.name
 
     @pytest.mark.asyncio
-    async def test_evaluate_first_adaptation_approved(self, guard, proposal):
+    async def test_evaluate_first_adaptation_approved(
+        self,
+        guard: RateLimitGuard,
+        proposal: AdaptationProposal,
+    ) -> None:
         """Test that the first adaptation is approved."""
         decision = await guard.evaluate(proposal)
         assert decision.approved is True
         assert decision.proposal_id == proposal.id
 
     @pytest.mark.asyncio
-    async def test_evaluate_within_limit(self, guard, proposal):
+    async def test_evaluate_within_limit(
+        self,
+        guard: RateLimitGuard,
+        proposal: AdaptationProposal,
+    ) -> None:
         """Test multiple adaptations within the daily limit."""
         now = datetime.now(UTC)
 
@@ -81,7 +89,11 @@ class TestRateLimitGuard:
         assert decision3.approved is True
 
     @pytest.mark.asyncio
-    async def test_evaluate_exceeds_limit(self, guard, proposal):
+    async def test_evaluate_exceeds_limit(
+        self,
+        guard: RateLimitGuard,
+        proposal: AdaptationProposal,
+    ) -> None:
         """Test that adaptations exceeding the daily limit are rejected."""
         now = datetime.now(UTC)
 
@@ -112,7 +124,7 @@ class TestRateLimitGuard:
         assert "rate" in decision4.reason.lower() or "limit" in decision4.reason.lower()
 
     @pytest.mark.asyncio
-    async def test_evaluate_different_agents(self, guard):
+    async def test_evaluate_different_agents(self, guard: RateLimitGuard) -> None:
         """Test that rate limits are per-agent."""
         now = datetime.now(UTC)
 
@@ -142,7 +154,7 @@ class TestRateLimitGuard:
         assert decision2.approved is True
 
     @pytest.mark.asyncio
-    async def test_evaluate_cleanup_old_timestamps(self, guard):
+    async def test_evaluate_cleanup_old_timestamps(self, guard: RateLimitGuard) -> None:
         """Test that timestamps older than 24h are cleaned up."""
         now = datetime.now(UTC)
         old_time = now - timedelta(days=2)
@@ -206,7 +218,7 @@ class TestRateLimitGuard:
         assert decision4.approved is False
 
     @pytest.mark.asyncio
-    async def test_evaluate_custom_max_per_day(self):
+    async def test_evaluate_custom_max_per_day(self) -> None:
         """Test RateLimitGuard with custom max_per_day."""
         guard = RateLimitGuard(max_per_day=1)
         now = datetime.now(UTC)

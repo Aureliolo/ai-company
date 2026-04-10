@@ -19,9 +19,9 @@ class TestAdaptationAxis:
 
     @pytest.mark.unit
     def test_values(self) -> None:
-        assert AdaptationAxis.IDENTITY == "identity"
-        assert AdaptationAxis.STRATEGY_SELECTION == "strategy_selection"
-        assert AdaptationAxis.PROMPT_TEMPLATE == "prompt_template"
+        assert AdaptationAxis.IDENTITY.value == "identity"
+        assert AdaptationAxis.STRATEGY_SELECTION.value == "strategy_selection"
+        assert AdaptationAxis.PROMPT_TEMPLATE.value == "prompt_template"
 
     @pytest.mark.unit
     def test_all_values_present(self) -> None:
@@ -33,10 +33,10 @@ class TestAdaptationSource:
 
     @pytest.mark.unit
     def test_values(self) -> None:
-        assert AdaptationSource.FAILURE == "failure"
-        assert AdaptationSource.SUCCESS == "success"
-        assert AdaptationSource.INFLECTION == "inflection"
-        assert AdaptationSource.SCHEDULED == "scheduled"
+        assert AdaptationSource.FAILURE.value == "failure"
+        assert AdaptationSource.SUCCESS.value == "success"
+        assert AdaptationSource.INFLECTION.value == "inflection"
+        assert AdaptationSource.SCHEDULED.value == "scheduled"
 
 
 class TestAdaptationProposal:

@@ -15,7 +15,7 @@ class TestHybridCaptureStrategy:
     """Tests for HybridCaptureStrategy."""
 
     @pytest.fixture
-    def failure_strategy(self):
+    def failure_strategy(self) -> MagicMock:
         """Mock failure capture strategy."""
         strategy = MagicMock()
         strategy.name = "failure"
@@ -23,7 +23,7 @@ class TestHybridCaptureStrategy:
         return strategy
 
     @pytest.fixture
-    def success_strategy(self):
+    def success_strategy(self) -> MagicMock:
         """Mock success capture strategy."""
         strategy = MagicMock()
         strategy.name = "success"
@@ -31,7 +31,11 @@ class TestHybridCaptureStrategy:
         return strategy
 
     @pytest.fixture
-    def hybrid_strategy(self, failure_strategy, success_strategy):
+    def hybrid_strategy(
+        self,
+        failure_strategy: MagicMock,
+        success_strategy: MagicMock,
+    ) -> HybridCaptureStrategy:
         """Create a HybridCaptureStrategy."""
         return HybridCaptureStrategy(
             failure_strategy=failure_strategy,
@@ -39,12 +43,12 @@ class TestHybridCaptureStrategy:
         )
 
     @pytest.fixture
-    def memory_backend(self):
+    def memory_backend(self) -> AsyncMock:
         """Mock memory backend."""
         return AsyncMock()
 
     @pytest.fixture
-    def execution_result_success(self):
+    def execution_result_success(self) -> MagicMock:
         """Mock execution result with success termination."""
         result = MagicMock(spec=ExecutionResult)
         result.turns = []
@@ -52,7 +56,7 @@ class TestHybridCaptureStrategy:
         return result
 
     @pytest.fixture
-    def execution_result_failure(self):
+    def execution_result_failure(self) -> MagicMock:
         """Mock execution result with failure termination."""
         result = MagicMock(spec=ExecutionResult)
         result.turns = []
@@ -60,23 +64,23 @@ class TestHybridCaptureStrategy:
         return result
 
     @pytest.fixture
-    def recovery_result(self):
+    def recovery_result(self) -> MagicMock:
         """Mock recovery result."""
         return MagicMock(spec=RecoveryResult)
 
-    async def test_name_property(self, hybrid_strategy):
+    async def test_name_property(self, hybrid_strategy: HybridCaptureStrategy) -> None:
         """Test that name property returns expected value."""
         assert hybrid_strategy.name == "hybrid"
 
     async def test_delegates_to_failure_strategy_on_recovery(  # noqa: PLR0913
         self,
-        hybrid_strategy,
-        failure_strategy,
-        success_strategy,
-        execution_result_failure,
-        recovery_result,
-        memory_backend,
-    ):
+        hybrid_strategy: HybridCaptureStrategy,
+        failure_strategy: MagicMock,
+        success_strategy: MagicMock,
+        execution_result_failure: MagicMock,
+        recovery_result: MagicMock,
+        memory_backend: AsyncMock,
+    ) -> None:
         """Test hybrid delegates to failure strategy when recovery exists."""
         memory_id = NotBlankStr("mem-failure")
         failure_strategy.capture.return_value = memory_id
@@ -95,12 +99,12 @@ class TestHybridCaptureStrategy:
 
     async def test_delegates_to_success_strategy_on_success_without_recovery(
         self,
-        hybrid_strategy,
-        failure_strategy,
-        success_strategy,
-        execution_result_success,
-        memory_backend,
-    ):
+        hybrid_strategy: HybridCaptureStrategy,
+        failure_strategy: MagicMock,
+        success_strategy: MagicMock,
+        execution_result_success: MagicMock,
+        memory_backend: AsyncMock,
+    ) -> None:
         """Test hybrid delegates to success strategy on success."""
         memory_id = NotBlankStr("mem-success")
         success_strategy.capture.return_value = memory_id
@@ -119,12 +123,12 @@ class TestHybridCaptureStrategy:
 
     async def test_returns_none_when_both_strategies_return_none(
         self,
-        hybrid_strategy,
-        failure_strategy,
-        success_strategy,
-        execution_result_success,
-        memory_backend,
-    ):
+        hybrid_strategy: HybridCaptureStrategy,
+        failure_strategy: MagicMock,
+        success_strategy: MagicMock,
+        execution_result_success: MagicMock,
+        memory_backend: AsyncMock,
+    ) -> None:
         """Test that hybrid returns None when delegated strategy returns None."""
         success_strategy.capture.return_value = None
 

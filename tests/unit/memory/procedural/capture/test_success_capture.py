@@ -19,17 +19,17 @@ class TestSuccessCaptureStrategy:
     """Tests for SuccessCaptureStrategy."""
 
     @pytest.fixture
-    def success_proposer(self):
+    def success_proposer(self) -> AsyncMock:
         """Mock success proposer."""
         return AsyncMock()
 
     @pytest.fixture
-    def memory_backend(self):
+    def memory_backend(self) -> AsyncMock:
         """Mock memory backend."""
         return AsyncMock()
 
     @pytest.fixture
-    def config(self):
+    def config(self) -> ProceduralMemoryConfig:
         """Config for the success proposer."""
         return ProceduralMemoryConfig(
             enabled=True,
@@ -40,7 +40,11 @@ class TestSuccessCaptureStrategy:
         )
 
     @pytest.fixture
-    def strategy(self, success_proposer, config):
+    def strategy(
+        self,
+        success_proposer: AsyncMock,
+        config: ProceduralMemoryConfig,
+    ) -> SuccessCaptureStrategy:
         """Create a SuccessCaptureStrategy."""
         return SuccessCaptureStrategy(
             proposer=success_proposer,
@@ -49,7 +53,7 @@ class TestSuccessCaptureStrategy:
         )
 
     @pytest.fixture
-    def execution_result_success(self):
+    def execution_result_success(self) -> MagicMock:
         """Mock execution result with success termination."""
         result = MagicMock(spec=ExecutionResult)
         result.turns = []
@@ -57,7 +61,7 @@ class TestSuccessCaptureStrategy:
         return result
 
     @pytest.fixture
-    def execution_result_failure(self):
+    def execution_result_failure(self) -> MagicMock:
         """Mock execution result with failure termination."""
         result = MagicMock(spec=ExecutionResult)
         result.turns = []
@@ -65,23 +69,23 @@ class TestSuccessCaptureStrategy:
         return result
 
     @pytest.fixture
-    def recovery_result(self):
+    def recovery_result(self) -> MagicMock:
         """Mock recovery result."""
         result = MagicMock(spec=RecoveryResult)
         result.error_message = "Test error"
         return result
 
-    async def test_name_property(self, strategy):
+    async def test_name_property(self, strategy: SuccessCaptureStrategy) -> None:
         """Test that name property returns expected value."""
         assert strategy.name == "success"
 
     async def test_capture_returns_none_on_failure(
         self,
-        strategy,
-        execution_result_failure,
-        memory_backend,
-        recovery_result,
-    ):
+        strategy: SuccessCaptureStrategy,
+        execution_result_failure: MagicMock,
+        memory_backend: AsyncMock,
+        recovery_result: MagicMock,
+    ) -> None:
         """Test that capture returns None when execution fails."""
         result = await strategy.capture(
             execution_result=execution_result_failure,
@@ -94,11 +98,11 @@ class TestSuccessCaptureStrategy:
 
     async def test_capture_returns_none_on_success_with_low_quality(
         self,
-        strategy,
-        success_proposer,
-        execution_result_success,
-        memory_backend,
-    ):
+        strategy: SuccessCaptureStrategy,
+        success_proposer: AsyncMock,
+        execution_result_success: MagicMock,
+        memory_backend: AsyncMock,
+    ) -> None:
         """Test that capture returns None when quality is below threshold."""
         # Quality score too low (below min_quality_score=8.0)
         proposal = ProceduralMemoryProposal(
@@ -124,11 +128,11 @@ class TestSuccessCaptureStrategy:
 
     async def test_capture_stores_on_success_with_high_quality(
         self,
-        strategy,
-        success_proposer,
-        execution_result_success,
-        memory_backend,
-    ):
+        strategy: SuccessCaptureStrategy,
+        success_proposer: AsyncMock,
+        execution_result_success: MagicMock,
+        memory_backend: AsyncMock,
+    ) -> None:
         """Test that capture stores memory when success and quality is high."""
         proposal = ProceduralMemoryProposal(
             discovery="Test discovery",
@@ -155,11 +159,11 @@ class TestSuccessCaptureStrategy:
 
     async def test_capture_stores_with_success_derived_tag(
         self,
-        strategy,
-        success_proposer,
-        execution_result_success,
-        memory_backend,
-    ):
+        strategy: SuccessCaptureStrategy,
+        success_proposer: AsyncMock,
+        execution_result_success: MagicMock,
+        memory_backend: AsyncMock,
+    ) -> None:
         """Test that success-derived tag is added to stored memory."""
         proposal = ProceduralMemoryProposal(
             discovery="Test discovery",
@@ -189,11 +193,11 @@ class TestSuccessCaptureStrategy:
 
     async def test_capture_returns_none_when_proposer_returns_none(
         self,
-        strategy,
-        success_proposer,
-        execution_result_success,
-        memory_backend,
-    ):
+        strategy: SuccessCaptureStrategy,
+        success_proposer: AsyncMock,
+        execution_result_success: MagicMock,
+        memory_backend: AsyncMock,
+    ) -> None:
         """Test that capture returns None when proposer returns None."""
         success_proposer.propose = AsyncMock(return_value=None)
 

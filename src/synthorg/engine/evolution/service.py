@@ -281,7 +281,7 @@ class EvolutionService:
             return adapter_cfg.strategy_selection
         if axis == AdaptationAxis.PROMPT_TEMPLATE:
             return adapter_cfg.prompt_template
-        return False  # pragma: no cover
+        return False  # type: ignore[unreachable]  # pragma: no cover
 
     async def _build_context(
         self,

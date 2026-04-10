@@ -20,24 +20,24 @@ class TestPromptTemplateAdapter:
     """Tests for PromptTemplateAdapter."""
 
     @pytest.fixture
-    def mock_memory_backend(self):
+    def mock_memory_backend(self) -> AsyncMock:
         """Create a mock MemoryBackend."""
         backend = AsyncMock()
         backend.store = AsyncMock(return_value="memory-id-001")
         return backend
 
     @pytest.fixture
-    def adapter(self, mock_memory_backend):
+    def adapter(self, mock_memory_backend: AsyncMock) -> PromptTemplateAdapter:
         """Create a PromptTemplateAdapter with the mock backend."""
         return PromptTemplateAdapter(memory_backend=mock_memory_backend)
 
     @pytest.mark.asyncio
-    async def test_axis_property(self, adapter):
+    async def test_axis_property(self, adapter: PromptTemplateAdapter) -> None:
         """Test that the axis property returns PROMPT_TEMPLATE."""
         assert adapter.axis == AdaptationAxis.PROMPT_TEMPLATE
 
     @pytest.mark.asyncio
-    async def test_name_property(self, adapter):
+    async def test_name_property(self, adapter: PromptTemplateAdapter) -> None:
         """Test that the name property is non-blank."""
         assert len(adapter.name) > 0
         assert adapter.name == "PromptTemplateAdapter"
@@ -45,9 +45,9 @@ class TestPromptTemplateAdapter:
     @pytest.mark.asyncio
     async def test_apply_success(
         self,
-        adapter,
-        mock_memory_backend,
-    ):
+        adapter: PromptTemplateAdapter,
+        mock_memory_backend: AsyncMock,
+    ) -> None:
         """Test successful prompt template adaptation."""
         agent_id: NotBlankStr = "agent-001"
 
@@ -79,9 +79,9 @@ class TestPromptTemplateAdapter:
     @pytest.mark.asyncio
     async def test_apply_with_complex_changes(
         self,
-        adapter,
-        mock_memory_backend,
-    ):
+        adapter: PromptTemplateAdapter,
+        mock_memory_backend: AsyncMock,
+    ) -> None:
         """Test prompt template with complex changes dict."""
         agent_id: NotBlankStr = "agent-002"
 
@@ -109,9 +109,9 @@ class TestPromptTemplateAdapter:
     @pytest.mark.asyncio
     async def test_apply_empty_changes(
         self,
-        adapter,
-        mock_memory_backend,
-    ):
+        adapter: PromptTemplateAdapter,
+        mock_memory_backend: AsyncMock,
+    ) -> None:
         """Test prompt template with empty changes."""
         agent_id: NotBlankStr = "agent-003"
 
@@ -131,9 +131,9 @@ class TestPromptTemplateAdapter:
     @pytest.mark.asyncio
     async def test_apply_store_error(
         self,
-        adapter,
-        mock_memory_backend,
-    ):
+        adapter: PromptTemplateAdapter,
+        mock_memory_backend: AsyncMock,
+    ) -> None:
         """Test when store() raises an exception."""
         agent_id: NotBlankStr = "agent-001"
         mock_memory_backend.store.side_effect = RuntimeError("Store failed")
@@ -153,9 +153,9 @@ class TestPromptTemplateAdapter:
     @pytest.mark.asyncio
     async def test_apply_tags_include_prompt_injection(
         self,
-        adapter,
-        mock_memory_backend,
-    ):
+        adapter: PromptTemplateAdapter,
+        mock_memory_backend: AsyncMock,
+    ) -> None:
         """Test that memory is tagged with evolution-prompt-injection."""
         agent_id: NotBlankStr = "agent-004"
 

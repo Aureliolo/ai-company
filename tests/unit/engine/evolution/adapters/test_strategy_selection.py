@@ -22,24 +22,24 @@ class TestStrategySelectionAdapter:
     """Tests for StrategySelectionAdapter."""
 
     @pytest.fixture
-    def mock_memory_backend(self):
+    def mock_memory_backend(self) -> AsyncMock:
         """Create a mock MemoryBackend."""
         backend = AsyncMock()
         backend.store = AsyncMock(return_value="memory-id-001")
         return backend
 
     @pytest.fixture
-    def adapter(self, mock_memory_backend):
+    def adapter(self, mock_memory_backend: AsyncMock) -> StrategySelectionAdapter:
         """Create a StrategySelectionAdapter with the mock backend."""
         return StrategySelectionAdapter(memory_backend=mock_memory_backend)
 
     @pytest.mark.asyncio
-    async def test_axis_property(self, adapter):
+    async def test_axis_property(self, adapter: StrategySelectionAdapter) -> None:
         """Test that the axis property returns STRATEGY_SELECTION."""
         assert adapter.axis == AdaptationAxis.STRATEGY_SELECTION
 
     @pytest.mark.asyncio
-    async def test_name_property(self, adapter):
+    async def test_name_property(self, adapter: StrategySelectionAdapter) -> None:
         """Test that the name property is non-blank."""
         assert len(adapter.name) > 0
         assert adapter.name == "StrategySelectionAdapter"
@@ -47,9 +47,9 @@ class TestStrategySelectionAdapter:
     @pytest.mark.asyncio
     async def test_apply_success(
         self,
-        adapter,
-        mock_memory_backend,
-    ):
+        adapter: StrategySelectionAdapter,
+        mock_memory_backend: AsyncMock,
+    ) -> None:
         """Test successful strategy selection adaptation."""
         agent_id: NotBlankStr = "agent-001"
 
@@ -81,9 +81,9 @@ class TestStrategySelectionAdapter:
     @pytest.mark.asyncio
     async def test_apply_empty_changes(
         self,
-        adapter,
-        mock_memory_backend,
-    ):
+        adapter: StrategySelectionAdapter,
+        mock_memory_backend: AsyncMock,
+    ) -> None:
         """Test strategy selection with empty changes."""
         agent_id: NotBlankStr = "agent-002"
 
@@ -105,9 +105,9 @@ class TestStrategySelectionAdapter:
     @pytest.mark.asyncio
     async def test_apply_store_error(
         self,
-        adapter,
-        mock_memory_backend,
-    ):
+        adapter: StrategySelectionAdapter,
+        mock_memory_backend: AsyncMock,
+    ) -> None:
         """Test when store() raises an exception."""
         agent_id: NotBlankStr = "agent-001"
         mock_memory_backend.store.side_effect = RuntimeError("Store failed")
@@ -127,9 +127,9 @@ class TestStrategySelectionAdapter:
     @pytest.mark.asyncio
     async def test_apply_tags_include_evolution_strategy(
         self,
-        adapter,
-        mock_memory_backend,
-    ):
+        adapter: StrategySelectionAdapter,
+        mock_memory_backend: AsyncMock,
+    ) -> None:
         """Test that memory is tagged with evolution-strategy."""
         agent_id: NotBlankStr = "agent-003"
 

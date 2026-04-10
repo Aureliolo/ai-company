@@ -35,5 +35,5 @@ def build_pruning_strategy(config: PruningConfig) -> PruningStrategy:
         ttl = TtlPruningStrategy(max_age_days=config.max_age_days)
         pareto = ParetoPruningStrategy(max_entries=config.max_entries)
         return HybridPruningStrategy(ttl_strategy=ttl, pareto_strategy=pareto)
-    msg = f"Unknown pruning strategy type: {config.type}"
+    msg = f"Unknown pruning strategy type: {config.type}"  # type: ignore[unreachable]
     raise ValueError(msg)
