@@ -1,7 +1,6 @@
 """In-memory fake workflow repositories for API unit tests."""
 
 import copy
-import json
 from typing import TYPE_CHECKING
 
 from packaging.version import InvalidVersion, Version
@@ -329,5 +328,4 @@ class FakeSubworkflowRepository:
                         node_id=node.id,
                     ),
                 )
-        _ = json  # keep import live for future JSON-scan helpers
         return tuple(references)

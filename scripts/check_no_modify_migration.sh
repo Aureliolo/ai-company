@@ -17,7 +17,7 @@ fi
 REVISIONS_DIR="src/synthorg/persistence/sqlite/revisions"
 
 mapfile -t MODIFIED < <(
-    git diff --cached --name-only --diff-filter=M -- "$REVISIONS_DIR/*.sql" 2>/dev/null || true
+    git diff --cached --name-only --diff-filter=MR -- "$REVISIONS_DIR/*.sql" 2>/dev/null || true
 )
 
 if [ "${#MODIFIED[@]}" -gt 0 ] && [ -n "${MODIFIED[0]}" ]; then
