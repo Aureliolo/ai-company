@@ -186,6 +186,8 @@ class PostgresSsrfViolationRepository:
             msg = f"Failed to list SSRF violations: {exc}"
             logger.exception(
                 PERSISTENCE_SSRF_VIOLATION_QUERY_FAILED,
+                status=status.value if status is not None else None,
+                limit=limit,
                 error=msg,
             )
             raise QueryError(msg) from exc
