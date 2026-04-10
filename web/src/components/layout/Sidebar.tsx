@@ -24,6 +24,7 @@ import {
   UserCheck,
   Users,
   Video,
+  Layers,
   Workflow,
   X,
 } from 'lucide-react'
@@ -234,6 +235,7 @@ function SidebarNav({ collapsed }: { collapsed: boolean }) {
           <SidebarNavItem to={ROUTES.AGENTS} icon={Users} label="Agents" collapsed={collapsed} />
           <SidebarNavItem to={ROUTES.PROJECTS} icon={FolderKanban} label="Projects" collapsed={collapsed} />
           <SidebarNavItem to={ROUTES.WORKFLOWS} icon={Workflow} label="Workflows" collapsed={collapsed} />
+          <SidebarNavItem to={ROUTES.SUBWORKFLOWS} icon={Layers} label="Subworkflows" collapsed={collapsed} />
           <SidebarNavItem to={ROUTES.ARTIFACTS} icon={Package} label="Artifacts" collapsed={collapsed} />
           <SidebarNavItem to={ROUTES.MESSAGES} icon={MessageSquare} label="Messages" collapsed={collapsed} badge={0} />
           <SidebarNavItem to={ROUTES.MEETINGS} icon={Video} label="Meetings" collapsed={collapsed} />
