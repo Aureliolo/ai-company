@@ -70,9 +70,10 @@ async def fake_message_bus() -> AsyncGenerator[FakeMessageBus]:
 
 def _install_sim_state(app_state: AppState) -> ClientSimulationState:
     """Attach a minimal simulation state to the running app."""
-    state = ClientSimulationState()
-    state.intake_engine = IntakeEngine(strategy=_AcceptingStrategy())
-    state.review_pipeline = ReviewPipeline(stages=(InternalReviewStage(),))
+    state = ClientSimulationState(
+        intake_engine=IntakeEngine(strategy=_AcceptingStrategy()),
+        review_pipeline=ReviewPipeline(stages=(InternalReviewStage(),)),
+    )
     app_state.set_client_simulation_state(state)
     return state
 

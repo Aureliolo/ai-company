@@ -114,7 +114,6 @@ class TestSimulationRunnerBasic:
             await runner.run(
                 sim_config=SimulationConfig(project_id="proj-1"),
                 clients=(),
-                generator=ProceduralGenerator(seed=1),
             )
 
 

@@ -91,9 +91,10 @@ def e2e_client(
         auth_service=auth_service,
     )
     app_state: AppState = app.state.app_state
-    state = ClientSimulationState()
-    state.intake_engine = IntakeEngine(strategy=_AcceptingStrategy())
-    state.review_pipeline = ReviewPipeline(stages=(InternalReviewStage(),))
+    state = ClientSimulationState(
+        intake_engine=IntakeEngine(strategy=_AcceptingStrategy()),
+        review_pipeline=ReviewPipeline(stages=(InternalReviewStage(),)),
+    )
     app_state.set_client_simulation_state(state)
     with TestClient(app) as client:
         yield client
