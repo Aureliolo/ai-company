@@ -1,5 +1,47 @@
 # Changelog
 
+## [0.6.6](https://github.com/Aureliolo/synthorg/compare/v0.6.5...v0.6.6) (2026-04-10)
+
+
+### Features
+
+* add agent pruning/dropout service ([#1126](https://github.com/Aureliolo/synthorg/issues/1126)) ([#1190](https://github.com/Aureliolo/synthorg/issues/1190)) ([0f216e8](https://github.com/Aureliolo/synthorg/commit/0f216e843b048623aa9840afa8f0449baace42f7))
+* client simulation contracts and TaskStatus extension ([#1195](https://github.com/Aureliolo/synthorg/issues/1195)) ([56975c9](https://github.com/Aureliolo/synthorg/commit/56975c9cadec6c73e84d0951cf6c7a74d8bc0f82)), closes [#1169](https://github.com/Aureliolo/synthorg/issues/1169) [#1161](https://github.com/Aureliolo/synthorg/issues/1161)
+* client simulation strategies, API, dashboard, and production integration ([#1219](https://github.com/Aureliolo/synthorg/issues/1219)) ([ae489a4](https://github.com/Aureliolo/synthorg/commit/ae489a4eb53f8ee11470c911ef96e758527a74f8)), closes [#1170](https://github.com/Aureliolo/synthorg/issues/1170) [#1171](https://github.com/Aureliolo/synthorg/issues/1171)
+* distributed runtime -- NATS JetStream bus backend + task queue ([#1214](https://github.com/Aureliolo/synthorg/issues/1214)) ([2c62703](https://github.com/Aureliolo/synthorg/commit/2c627034fccc04b1e3e35fdeb08e56b73976c871))
+* ontology integration layer, REST API, and dashboard ([#1166](https://github.com/Aureliolo/synthorg/issues/1166), [#1167](https://github.com/Aureliolo/synthorg/issues/1167)) ([#1197](https://github.com/Aureliolo/synthorg/issues/1197)) ([c96de07](https://github.com/Aureliolo/synthorg/commit/c96de0778f2ab9de99b1d11b3f8b23daaad6a304))
+* opt-in anonymous product telemetry via pluggable backend ([#1200](https://github.com/Aureliolo/synthorg/issues/1200)) ([92997bc](https://github.com/Aureliolo/synthorg/commit/92997bce2239fc72641b5a4737d039c166ed996b)), closes [#1199](https://github.com/Aureliolo/synthorg/issues/1199)
+* Parts-based message model + trendslop mitigation phase 2 ([#1196](https://github.com/Aureliolo/synthorg/issues/1196)) ([a5578e4](https://github.com/Aureliolo/synthorg/commit/a5578e45bdbcc3d284dfa1bc67df4bc3a6044b80)), closes [#1160](https://github.com/Aureliolo/synthorg/issues/1160) [#1158](https://github.com/Aureliolo/synthorg/issues/1158)
+* postgres persistence backend ([#1215](https://github.com/Aureliolo/synthorg/issues/1215)) ([7fc849b](https://github.com/Aureliolo/synthorg/commit/7fc849bd1d78308d51931255db6839108aa9ef38))
+* semantic ontology core subsystem -- models, protocol, backend, config, bootstrap ([#1192](https://github.com/Aureliolo/synthorg/issues/1192)) ([b331e4a](https://github.com/Aureliolo/synthorg/commit/b331e4a9b3971e9fb2374b31ade612f19af2c541)), closes [#1165](https://github.com/Aureliolo/synthorg/issues/1165)
+* subworkflows -- nestable reusable workflow components ([#1012](https://github.com/Aureliolo/synthorg/issues/1012)) ([#1220](https://github.com/Aureliolo/synthorg/issues/1220)) ([ef1a41a](https://github.com/Aureliolo/synthorg/commit/ef1a41a99b599fef8da1c27c11e7ac2adf2a53a2))
+* trendslop mitigation phase 1 -- strategy module core models, config, and prompt integration ([#1191](https://github.com/Aureliolo/synthorg/issues/1191)) ([4b83358](https://github.com/Aureliolo/synthorg/commit/4b833582bef6d70b2048d2d10bc39bcd53b08d4c)), closes [#1157](https://github.com/Aureliolo/synthorg/issues/1157)
+
+
+### Bug Fixes
+
+* block python pre-release tags in dependabot ignore rules ([#1209](https://github.com/Aureliolo/synthorg/issues/1209)) ([2b4b520](https://github.com/Aureliolo/synthorg/commit/2b4b52055ff1cce553027af08611b9bdc2661b8d))
+
+
+### Documentation
+
+* A2A gateway spec, skill enrichment, DelegationGuard gaps ([#1189](https://github.com/Aureliolo/synthorg/issues/1189)) ([408d6c7](https://github.com/Aureliolo/synthorg/commit/408d6c7b9892caa75b8d0fbf90be7aff78c677a4)), closes [#1159](https://github.com/Aureliolo/synthorg/issues/1159) [#1162](https://github.com/Aureliolo/synthorg/issues/1162) [#1163](https://github.com/Aureliolo/synthorg/issues/1163)
+
+
+### CI/CD
+
+* bump actions/github-script from 8.0.0 to 9.0.0 in the all group ([#1207](https://github.com/Aureliolo/synthorg/issues/1207)) ([8998b6d](https://github.com/Aureliolo/synthorg/commit/8998b6d452784d0bad9f6e760289d02f53edbb8b))
+* bump wrangler from 4.81.0 to 4.81.1 in /.github in the all group ([#1205](https://github.com/Aureliolo/synthorg/issues/1205)) ([6aa4aba](https://github.com/Aureliolo/synthorg/commit/6aa4aba2085bb65ef46be996638ae373147bff85))
+
+
+### Maintenance
+
+* adopt Atlas declarative schema migrations with automatic squashing ([#1198](https://github.com/Aureliolo/synthorg/issues/1198)) ([a4f96b1](https://github.com/Aureliolo/synthorg/commit/a4f96b1c0e8fa28718cee1c21b4d5f90f9e9ddf1)), closes [#1194](https://github.com/Aureliolo/synthorg/issues/1194)
+* bump https://github.com/astral-sh/ruff-pre-commit from v0.15.9 to 0.15.10 in the all group ([#1204](https://github.com/Aureliolo/synthorg/issues/1204)) ([6d65e0d](https://github.com/Aureliolo/synthorg/commit/6d65e0d5b42327d323d8537fccb9e6e1e22108c0))
+* bump the all group in /web with 2 updates ([#1187](https://github.com/Aureliolo/synthorg/issues/1187)) ([617d375](https://github.com/Aureliolo/synthorg/commit/617d375455c8e57ccd0336e2837727322cc5cb6d))
+* bump the all group in /web with 2 updates ([#1206](https://github.com/Aureliolo/synthorg/issues/1206)) ([0f7ddf2](https://github.com/Aureliolo/synthorg/commit/0f7ddf2928eb2b79e3ec7b66d5035af62de70349))
+* bump vitest from 4.1.3 to 4.1.4 in /site in the all group ([#1186](https://github.com/Aureliolo/synthorg/issues/1186)) ([5929bbc](https://github.com/Aureliolo/synthorg/commit/5929bbc58ddf04c0306f653f8f3afc7b9b302f80))
+
 ## [0.6.5](https://github.com/Aureliolo/synthorg/compare/v0.6.4...v0.6.5) (2026-04-09)
 
 
