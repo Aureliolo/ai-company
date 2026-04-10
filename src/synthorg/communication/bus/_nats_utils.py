@@ -1,9 +1,8 @@
 """Pure utility functions and constants for the NATS bus submodules.
 
 All functions in this module are free of NATS state -- they operate on
-primitive values or asyncio tasks. Higher-level submodules import from
-here; the public ``nats.py`` facade re-exports ``redact_url`` under
-its legacy ``_redact_url`` name for ``workers/claim.py``.
+primitive values or asyncio tasks. Imported directly by higher-level
+submodules and by external code such as ``workers/claim.py``.
 """
 
 import asyncio
