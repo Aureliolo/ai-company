@@ -156,7 +156,11 @@ class DistributedDispatcher:
                 return False
             else:
                 return True
-        return False
+        # Unreachable: the loop always returns on success or on the
+        # final failure branch. Mypy infers this correctly so no guard
+        # is needed.
+        msg = "_publish_with_retry exited the retry loop without returning"
+        raise AssertionError(msg)
 
     @staticmethod
     def _is_dispatchable(event: TaskStateChanged) -> bool:

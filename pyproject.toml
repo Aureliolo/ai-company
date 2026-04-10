@@ -275,6 +275,17 @@ filterwarnings = [
     "error",
     "ignore:Core Pydantic V1 functionality:UserWarning",
     "ignore:Exception in thread.*_connection_worker_thread:pytest.PytestUnhandledThreadExceptionWarning",
+    # nats-py 2.14.0 (latest) calls the deprecated
+    # ``asyncio.iscoroutinefunction`` inside ``nats/aio/client.py:476``
+    # during ``connect()``, which Python 3.14 promotes to a
+    # ``DeprecationWarning``. Upstream has no plan and no issue for 3.14
+    # support (checked 2026-04-10): PyPI classifiers top out at 3.13 and
+    # ``main`` still has the call. Tracked for follow-up in
+    # https://github.com/Aureliolo/synthorg/issues/1217 (evaluate
+    # migrating to ``nats-core`` or filing an upstream patch). Filter is
+    # scoped to ``nats.aio.client`` so every other DeprecationWarning in
+    # the codebase still surfaces as an error.
+    "ignore::DeprecationWarning:nats.aio.client",
 ]
 
 # ---------------------------------------------------------------------------

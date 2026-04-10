@@ -118,10 +118,20 @@ async def _cleanup_on_failure(  # noqa: PLR0913
             "Cleanup: failed to stop task engine",
         )
     if started_distributed_task_queue and distributed_task_queue is not None:
+        logger.info(
+            API_APP_STARTUP,
+            service="distributed_task_queue",
+            phase="stopping_on_cleanup",
+        )
         await _try_stop(
             distributed_task_queue.stop(),
             API_APP_STARTUP,
             "Cleanup: failed to stop distributed task queue",
+        )
+        logger.info(
+            API_APP_STARTUP,
+            service="distributed_task_queue",
+            phase="stopped_on_cleanup",
         )
     if started_settings_dispatcher and settings_dispatcher is not None:
         await _try_stop(
@@ -305,6 +315,11 @@ async def _safe_startup(  # noqa: PLR0913, PLR0912, PLR0915, C901
                 )
                 raise
             started_distributed_task_queue = True
+            logger.info(
+                API_APP_STARTUP,
+                service="distributed_task_queue",
+                phase="started",
+            )
         if bridge is not None:
             try:
                 await bridge.start()
@@ -450,10 +465,20 @@ async def _safe_shutdown(  # noqa: PLR0913, PLR0912, C901
             "Failed to stop task engine",
         )
     if distributed_task_queue is not None:
+        logger.info(
+            API_APP_SHUTDOWN,
+            service="distributed_task_queue",
+            phase="stopping",
+        )
         await _try_stop(
             distributed_task_queue.stop(),
             API_APP_SHUTDOWN,
             "Failed to stop distributed task queue",
+        )
+        logger.info(
+            API_APP_SHUTDOWN,
+            service="distributed_task_queue",
+            phase="stopped",
         )
     if performance_tracker is not None:
         await _try_stop(

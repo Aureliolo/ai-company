@@ -387,14 +387,18 @@ class AppState:
         structured logs.
         """
         previous = self._distributed_task_queue
-        if previous is None and task_queue is not None:
-            transition = "attached"
-        elif previous is not None and task_queue is None:
-            transition = "detached"
-        elif previous is not None and task_queue is not None:
-            transition = "replaced"
-        else:
+        # Identity check first: assigning the same instance is a noop
+        # even when both sides are non-None, so callers that re-set
+        # the queue during idempotent rewire paths don't see a
+        # misleading "replaced" transition in logs.
+        if previous is task_queue:
             transition = "noop"
+        elif previous is None:
+            transition = "attached"
+        elif task_queue is None:
+            transition = "detached"
+        else:
+            transition = "replaced"
         self._distributed_task_queue = task_queue
         logger.info(
             API_APP_STARTUP,

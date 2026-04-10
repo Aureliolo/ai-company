@@ -102,6 +102,17 @@ single malformed publisher from exhausting worker memory during
 deserialization.
 """
 
+_RECEIVE_POLL_WINDOW_SECONDS: Final[float] = 60.0
+"""Maximum seconds a single JetStream fetch waits before looping.
+
+``receive()`` uses this value as the upper bound on a single
+``_fetch_with_shutdown`` call. A ``timeout=None`` caller loops over
+these polls until a message arrives or the bus shuts down; a
+bounded ``timeout`` decrements the remaining budget by this window
+each iteration. Keeps per-fetch server-side state bounded while
+still matching the in-memory bus's "block indefinitely" contract.
+"""
+
 _CONSUMER_ACK_WAIT_MULTIPLIER: Final[float] = 6.0
 """Multiplier on ``publish_ack_wait_seconds`` for per-subscriber consumer ack_wait.
 
@@ -708,6 +719,7 @@ class JetStreamMessageBus:
         # Resolve through the shared KV-backed resolver so multi-process
         # subscribers can see channels registered by another process.
         await self._resolve_channel_or_raise(channel_name)
+        updated_channel: Channel | None = None
         async with self._lock:
             self._require_running()
             channel = self._channels[channel_name]
@@ -715,9 +727,10 @@ class JetStreamMessageBus:
 
             if subscriber_id not in channel.subscribers:
                 new_subs = (*channel.subscribers, subscriber_id)
-                self._channels[channel_name] = channel.model_copy(
+                updated_channel = channel.model_copy(
                     update={"subscribers": new_subs},
                 )
+                self._channels[channel_name] = updated_channel
 
             key = (channel_name, subscriber_id)
             if key not in self._subscriptions:
@@ -726,6 +739,15 @@ class JetStreamMessageBus:
                     subscriber_id,
                     self._channels[channel_name],
                 )
+
+        # Persist the updated subscriber list to JetStream KV so peer
+        # processes see the new membership instead of stale cached
+        # state. Done outside the lock because ``_write_channel_to_kv``
+        # awaits on a network round-trip; the in-memory cache already
+        # holds the new value so concurrent readers see the update
+        # immediately and the KV write is a best-effort replication.
+        if updated_channel is not None:
+            await self._write_channel_to_kv(updated_channel)
 
         logger.info(
             COMM_SUBSCRIPTION_CREATED,
@@ -792,6 +814,7 @@ class JetStreamMessageBus:
             MessageBusNotRunningError: If not running.
             NotSubscribedError: If not currently subscribed.
         """
+        updated_channel: Channel | None = None
         async with self._lock:
             self._require_running()
             if channel_name not in self._channels:
@@ -800,15 +823,22 @@ class JetStreamMessageBus:
             if subscriber_id not in channel.subscribers:
                 _raise_not_subscribed(channel_name, subscriber_id)
             new_subs = tuple(s for s in channel.subscribers if s != subscriber_id)
-            self._channels[channel_name] = channel.model_copy(
+            updated_channel = channel.model_copy(
                 update={"subscribers": new_subs},
             )
+            self._channels[channel_name] = updated_channel
             key = (channel_name, subscriber_id)
             sub = self._subscriptions.pop(key, None)
 
         if sub is not None:
             with contextlib.suppress(Exception):
                 await sub.unsubscribe()
+
+        # Persist the removed subscriber outside the lock so peer
+        # processes stop routing to this subscriber_id on the next
+        # cache miss, mirroring the subscribe() KV-write path.
+        if updated_channel is not None:
+            await self._write_channel_to_kv(updated_channel)
 
         logger.info(
             COMM_SUBSCRIPTION_REMOVED,
@@ -829,8 +859,10 @@ class JetStreamMessageBus:
         Args:
             channel_name: Channel to receive from.
             subscriber_id: Agent ID.
-            timeout: Seconds to wait. ``None`` uses an effectively
-                unbounded wait (60s per fetch call).
+            timeout: Seconds to wait for a message. ``None`` means
+                "block indefinitely until a message arrives or the bus
+                is shut down", matching the in-memory bus contract;
+                a positive value caps the total wait.
 
         Returns:
             A delivery envelope, or ``None`` on timeout or shutdown.
@@ -842,18 +874,74 @@ class JetStreamMessageBus:
                 (for TOPIC and DIRECT channels).
         """
         sub = await self._resolve_consumer(channel_name, subscriber_id)
-        effective_timeout = timeout if timeout is not None else 60.0
-        msgs = await self._fetch_with_shutdown(
-            sub,
-            effective_timeout,
-            channel_name=channel_name,
-            subscriber_id=subscriber_id,
+        # A single 60s fetch would return ``None`` the moment the
+        # server reports "no messages", which violates the "block
+        # until shutdown" semantics when the caller passed
+        # ``timeout=None``. Loop the fetch in that case so an empty
+        # poll becomes a retry rather than a premature ``None``; the
+        # shutdown event still wins via ``_fetch_with_shutdown``.
+        if timeout is None:
+            return await self._receive_blocking(channel_name, subscriber_id, sub)
+        return await self._receive_with_timeout(
+            channel_name, subscriber_id, sub, timeout
         )
-        return await self._build_envelope(
-            msgs,
-            channel_name=channel_name,
-            subscriber_id=subscriber_id,
-        )
+
+    async def _receive_blocking(
+        self,
+        channel_name: str,
+        subscriber_id: str,
+        sub: Any,
+    ) -> DeliveryEnvelope | None:
+        """Block on a fetch loop until a message arrives or the bus stops."""
+        while True:
+            if self._shutdown_event.is_set():
+                return None
+            msgs = await self._fetch_with_shutdown(
+                sub,
+                _RECEIVE_POLL_WINDOW_SECONDS,
+                channel_name=channel_name,
+                subscriber_id=subscriber_id,
+            )
+            if msgs is None:
+                # Shutdown or internal error; exit the loop.
+                return None
+            if msgs:
+                return await self._build_envelope(
+                    msgs,
+                    channel_name=channel_name,
+                    subscriber_id=subscriber_id,
+                )
+            # Empty fetch: the server had nothing for us. Loop again.
+
+    async def _receive_with_timeout(
+        self,
+        channel_name: str,
+        subscriber_id: str,
+        sub: Any,
+        timeout: float,  # noqa: ASYNC109
+    ) -> DeliveryEnvelope | None:
+        """Wait up to ``timeout`` seconds across one or more fetch polls."""
+        remaining = timeout
+        while remaining > 0.0:
+            if self._shutdown_event.is_set():
+                return None
+            poll = min(remaining, _RECEIVE_POLL_WINDOW_SECONDS)
+            msgs = await self._fetch_with_shutdown(
+                sub,
+                poll,
+                channel_name=channel_name,
+                subscriber_id=subscriber_id,
+            )
+            if msgs is None:
+                return None
+            if msgs:
+                return await self._build_envelope(
+                    msgs,
+                    channel_name=channel_name,
+                    subscriber_id=subscriber_id,
+                )
+            remaining -= poll
+        return None
 
     async def _resolve_consumer(
         self,
@@ -1080,8 +1168,13 @@ class JetStreamMessageBus:
                     context={"channel": channel.name},
                 )
             self._channels[channel.name] = channel
-            if channel.type == ChannelType.DIRECT:
-                await self._write_channel_to_kv(channel)
+            # Persist every non-ephemeral channel type to the KV bucket
+            # so peer processes can resolve it via ``_resolve_channel_or_raise``.
+            # Previously only DIRECT channels were persisted, which
+            # meant TOPIC/BROADCAST channels created through this API
+            # were invisible to subscribers running in a different
+            # process.
+            await self._write_channel_to_kv(channel)
         logger.info(
             COMM_CHANNEL_CREATED,
             channel=channel.name,
