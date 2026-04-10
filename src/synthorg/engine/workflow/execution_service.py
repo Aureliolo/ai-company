@@ -879,6 +879,12 @@ class WorkflowExecutionService:
             refreshed = await self._execution_repo.get(execution.id)
             if refreshed is None:
                 return
+            if refreshed.status in {
+                WorkflowExecutionStatus.COMPLETED,
+                WorkflowExecutionStatus.FAILED,
+                WorkflowExecutionStatus.CANCELLED,
+            }:
+                return
             if event.new_status in {TaskStatus.FAILED, TaskStatus.CANCELLED}:
                 await self._handle_task_failed(refreshed, event)
             else:

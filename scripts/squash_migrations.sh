@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# Partial migration squash: at 100+ migrations, squash the oldest 50 into a
-# checkpoint baseline while keeping the newest 50 as individual files.
+# Partial migration squash: when migration count exceeds THRESHOLD (default
+# 100), squash the oldest half into a checkpoint baseline while keeping the
+# newest KEEP (default 50) as individual files.
 #
 # This preserves the upgrade path for users on older versions -- their applied
 # migrations still exist as individual files above the checkpoint.
@@ -21,6 +22,15 @@ fi
 MIGRATION_DIR="src/synthorg/persistence/sqlite/revisions"
 THRESHOLD="${SQUASH_THRESHOLD:-100}"
 KEEP="${SQUASH_KEEP:-50}"
+
+if ! [[ "$THRESHOLD" =~ ^[0-9]+$ ]]; then
+    echo "Error: SQUASH_THRESHOLD must be a positive integer, got '$THRESHOLD'" >&2
+    exit 1
+fi
+if ! [[ "$KEEP" =~ ^[0-9]+$ ]]; then
+    echo "Error: SQUASH_KEEP must be a positive integer, got '$KEEP'" >&2
+    exit 1
+fi
 
 if [ ! -d "$MIGRATION_DIR" ]; then
     echo "Error: Migration directory not found: $MIGRATION_DIR"

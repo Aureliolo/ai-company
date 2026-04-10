@@ -402,9 +402,10 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                     continue
                 if node.get("type") != WorkflowNodeType.SUBWORKFLOW.value:
                     continue
-                config = node.get("config") or {}
+                config = node.get("config")
                 if not isinstance(config, dict):
-                    continue
+                    msg = f"Malformed SUBWORKFLOW config in workflow {parent_id!r}"
+                    raise QueryError(msg)
                 if config.get("subworkflow_id") != subworkflow_id:
                     continue
                 pinned = str(config.get("version") or "")
@@ -412,7 +413,11 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                     continue
                 node_id = node.get("id")
                 if not isinstance(node_id, str) or not pinned:
-                    continue
+                    msg = (
+                        f"Malformed SUBWORKFLOW node in"
+                        f" workflow {parent_id!r}: missing id or version"
+                    )
+                    raise QueryError(msg)
                 references.append(
                     ParentReference(
                         parent_id=parent_id,

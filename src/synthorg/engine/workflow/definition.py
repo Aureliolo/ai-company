@@ -9,6 +9,7 @@ for Kanban/Sprint settings).
 """
 
 import json
+import math
 from collections import Counter
 from collections.abc import Mapping  # noqa: TC003
 from datetime import UTC, datetime
@@ -42,7 +43,7 @@ def _check_default_type(name: str, default: object, vtype: WorkflowValueType) ->
     """Validate that *default* is compatible with *vtype*."""
     if vtype is WorkflowValueType.JSON:
         try:
-            json.dumps(default)
+            json.dumps(default, allow_nan=False)
         except (TypeError, ValueError) as exc:
             msg = f"Declaration {name!r}: JSON default is not serializable"
             raise TypeError(msg) from exc
@@ -60,6 +61,13 @@ def _check_default_type(name: str, default: object, vtype: WorkflowValueType) ->
             f"Declaration {name!r}: default must be"
             f" {vtype.value}, got {type(default).__name__}"
         )
+        raise TypeError(msg)
+    if (
+        vtype is WorkflowValueType.FLOAT
+        and isinstance(default, (int, float))
+        and not math.isfinite(default)
+    ):
+        msg = f"Declaration {name!r}: FLOAT default must be finite"
         raise TypeError(msg)
 
 
