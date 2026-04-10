@@ -65,7 +65,6 @@ class TestContinuousMode:
                 requirements_per_client=1,
             ),
             clients=(_make_client(),),
-            generator=ProceduralGenerator(seed=1),
         )
         assert results == []
 
@@ -91,7 +90,6 @@ class TestContinuousMode:
                     requirements_per_client=1,
                 ),
                 clients=(_make_client(),),
-                generator=ProceduralGenerator(seed=1),
             )
 
         _, results = await asyncio.gather(stopper(), starter())

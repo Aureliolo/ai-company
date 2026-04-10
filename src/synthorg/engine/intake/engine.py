@@ -120,7 +120,9 @@ class IntakeEngine:
         request: ClientRequest,
         result: IntakeResult,
     ) -> tuple[ClientRequest, IntakeResult]:
-        assert result.task_id is not None  # noqa: S101
+        if result.task_id is None:
+            msg = "Accepted intake result missing task_id"
+            raise ValueError(msg)
         approved = request.with_status(RequestStatus.APPROVED)
         logger.info(
             CLIENT_REQUEST_APPROVED,

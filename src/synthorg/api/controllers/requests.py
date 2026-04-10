@@ -92,7 +92,7 @@ class RequestController(Controller):
         sim_state = app_state.client_simulation_state
         all_requests = await sim_state.request_store.list_all()
         if status is not None:
-            all_requests = tuple(r for r in all_requests if r.status is status)
+            all_requests = tuple(r for r in all_requests if r.status == status)
         page, meta = paginate(all_requests, offset=offset, limit=limit)
         return PaginatedResponse(data=page, pagination=meta)
 
@@ -187,8 +187,11 @@ class RequestController(Controller):
                 },
             )
         walked = stored
-        if walked.status is RequestStatus.SUBMITTED:
-            walked = walked.with_status(RequestStatus.TRIAGING)
+        if walked.status == RequestStatus.SUBMITTED:
+            walked = walked.with_status(
+                RequestStatus.TRIAGING,
+                metadata=metadata,
+            )
         scoped = walked.with_status(
             RequestStatus.SCOPING,
             metadata=metadata,

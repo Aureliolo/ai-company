@@ -38,7 +38,6 @@ class StageDecisionPayload(BaseModel):
         default=None,
         description="Rationale for the decision",
     )
-    decided_by: NotBlankStr = Field(description="User making the decision")
 
 
 class StageDecisionResult(BaseModel):
@@ -92,7 +91,7 @@ class ReviewController(Controller):
             raise ServiceUnavailableError(msg)
         try:
             task = await app_state.task_engine.get_task(task_id)
-        except Exception as exc:
+        except (KeyError, ValueError) as exc:
             logger.warning(REVIEW_TASK_LOOKUP_FAILED, task_id=task_id)
             msg = f"Task {task_id!r} not found"
             raise NotFoundError(msg) from exc
@@ -136,7 +135,7 @@ class ReviewController(Controller):
             raise ServiceUnavailableError(msg)
         try:
             task = await app_state.task_engine.get_task(task_id)
-        except Exception as exc:
+        except (KeyError, ValueError) as exc:
             logger.warning(REVIEW_TASK_LOOKUP_FAILED, task_id=task_id)
             msg = f"Task {task_id!r} not found"
             raise NotFoundError(msg) from exc
@@ -147,14 +146,19 @@ class ReviewController(Controller):
         if stage is None:
             msg = f"Stage {stage_name!r} not found in pipeline"
             raise ConflictError(msg)
-        decided_reason = data.reason or f"Manual decision by {data.decided_by}"
+        decided_by = getattr(
+            request.scope.get("user"),
+            "id",
+            "system",
+        )
+        decided_reason = data.reason or f"Manual decision by {decided_by}"
         stage_result = ReviewStageResult(
             stage_name=stage_name,
             verdict=data.verdict,
             reason=decided_reason,
             duration_ms=0,
             metadata={
-                "decided_by": data.decided_by,
+                "decided_by": decided_by,
                 "manual_override": True,
                 "decided_at": datetime.now(UTC).isoformat(),
             },
@@ -170,7 +174,7 @@ class ReviewController(Controller):
             task_id=task_id,
             stage_name=stage_name,
             verdict=data.verdict.value,
-            decided_by=data.decided_by,
+            decided_by=decided_by,
         )
         publish_ws_event(
             request,
@@ -180,7 +184,7 @@ class ReviewController(Controller):
                 "task_id": task_id,
                 "stage_name": stage_name,
                 "verdict": data.verdict.value,
-                "decided_by": data.decided_by,
+                "decided_by": decided_by,
             },
         )
         return ApiResponse(

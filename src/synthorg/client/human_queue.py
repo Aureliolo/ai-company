@@ -248,12 +248,12 @@ class InMemoryHumanInputQueue:
         """
         async with self._lock:
             future = self._requirement_futures.get(ticket_id)
+            if future is None:
+                msg = f"Unknown requirement ticket: {ticket_id!r}"
+                raise KeyError(msg)
             self._pending_requirements.pop(ticket_id, None)
-        if future is None:
-            msg = f"Unknown requirement ticket: {ticket_id!r}"
-            raise KeyError(msg)
-        if not future.done():
-            future.set_result(result)
+            if not future.done():
+                future.set_result(result)
 
     async def resolve_review(
         self,
@@ -263,12 +263,12 @@ class InMemoryHumanInputQueue:
         """Resolve a pending review with the supplied feedback."""
         async with self._lock:
             future = self._review_futures.get(ticket_id)
+            if future is None:
+                msg = f"Unknown review ticket: {ticket_id!r}"
+                raise KeyError(msg)
             self._pending_reviews.pop(ticket_id, None)
-        if future is None:
-            msg = f"Unknown review ticket: {ticket_id!r}"
-            raise KeyError(msg)
-        if not future.done():
-            future.set_result(feedback)
+            if not future.done():
+                future.set_result(feedback)
 
     async def list_pending_requirements(
         self,

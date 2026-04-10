@@ -32,6 +32,9 @@ from synthorg.observability.events.approval_gate import (
     APPROVAL_GATE_TASK_NOT_FOUND,
     APPROVAL_GATE_TASK_UNASSIGNED,
 )
+from synthorg.observability.events.review_pipeline import (
+    APPROVAL_GATE_PIPELINE_ALL_SKIPPED,
+)
 from synthorg.observability.events.versioning import VERSION_FETCH_FAILED
 from synthorg.persistence.errors import DuplicateRecordError, QueryError
 
@@ -127,34 +130,11 @@ class ReviewGateService:
 
         On approve: IN_REVIEW -> COMPLETED.
         On reject: IN_REVIEW -> IN_PROGRESS (rework).
-
-        The self-review check runs a second time here as defense in
-        depth.  This is a full DB round-trip through the task engine,
-        not a cached pass-through -- the service intentionally does
-        not trust that the caller ran the preflight, because the
-        preflight is an HTTP-layer optimization and this method is
-        the authoritative boundary.
-
-        Args:
-            task_id: The task under review.
-            requested_by: Agent that requested the review (for logging).
-            approved: True for approve, False for reject/rework.
-            decided_by: Agent that made the decision.
-            reason: Optional rationale, required-free text.
-            approval_id: Optional foreign key to the approval item that
-                triggered this decision -- persisted on the
-                ``DecisionRecord`` for cross-referencing audit trails.
-
-        The ``DecisionRecord`` will include a ``charter_version`` key in
-        its metadata when the executing agent has a versioned identity on
-        record.  If the version lookup fails with a ``QueryError``, the
-        metadata will contain ``{"charter_version_lookup_failed": True}``
-        instead, so the failure is surfaced without blocking the decision.
+        Self-review check runs again as defense in depth.
 
         Raises:
             TaskNotFoundError: If the task cannot be found.
-            SelfReviewError: If the decider is the task's original
-                executing agent.
+            SelfReviewError: If the decider is the task executor.
         """
         task = await self.check_can_decide(task_id=task_id, decided_by=decided_by)
 
@@ -273,7 +253,7 @@ class ReviewGateService:
             )
         if result.final_verdict is ReviewVerdict.SKIP:
             logger.warning(
-                "approval_gate.pipeline_all_skipped",
+                APPROVAL_GATE_PIPELINE_ALL_SKIPPED,
                 task_id=result.task_id,
                 decided_by=decided_by,
             )

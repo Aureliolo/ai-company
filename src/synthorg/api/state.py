@@ -82,18 +82,8 @@ logger = get_logger(__name__)
 class AppState:
     """Typed application state container.
 
-    All service fields accept ``None`` at construction time for
-    dev/test mode.  Property accessors raise
-    ``ServiceUnavailableError`` (HTTP 503) when the service is not
-    configured, producing a clear error instead of an opaque
-    ``AttributeError``.
-
-    Attributes:
-        config: Root company configuration.
-        approval_store: In-memory approval queue store.
-        startup_time: ``time.monotonic()`` snapshot at app creation.
-        ticket_store: In-memory one-time WebSocket ticket store
-            (always available, no ``_require_service`` guard needed).
+    Service fields accept ``None`` for dev/test mode. Property
+    accessors raise ``ServiceUnavailableError`` (503) when missing.
     """
 
     __slots__ = (
@@ -207,8 +197,33 @@ class AppState:
         self._delegation_record_store = delegation_record_store
         self._prometheus_collector: PrometheusCollector | None = None
         self._fine_tune_orchestrator: FineTuneOrchestrator | None = None
+        self._init_derived_services(
+            settings_service=settings_service,
+            config=config,
+            persistence=persistence,
+        )
+        self._review_gate_service: ReviewGateService | None = None
+        self._client_simulation_state: ClientSimulationState | None = None
+        self._approval_timeout_scheduler: ApprovalTimeoutScheduler | None = None
+        self._session_store: SessionStore | None = None
+        self._lockout_store: LockoutStore | None = None
+        self._ticket_store = WsTicketStore()
+        self._user_presence = UserPresence()
+        self.startup_time = startup_time
+
+    def _init_derived_services(
+        self,
+        *,
+        settings_service: SettingsService | None,
+        config: RootConfig,
+        persistence: PersistenceBackend | None,
+    ) -> None:
+        """Build services that depend on other injected services."""
         self._config_resolver: ConfigResolver | None = (
-            ConfigResolver(settings_service=settings_service, config=config)
+            ConfigResolver(
+                settings_service=settings_service,
+                config=config,
+            )
             if settings_service is not None
             else None
         )
@@ -238,25 +253,18 @@ class AppState:
             if settings_service is not None and self._config_resolver is not None
             else None
         )
-        self._review_gate_service: ReviewGateService | None = None
-        self._client_simulation_state: ClientSimulationState | None = None
-        self._approval_timeout_scheduler: ApprovalTimeoutScheduler | None = None
-        self._session_store: SessionStore | None = None
-        self._lockout_store: LockoutStore | None = None
-        self._ticket_store = WsTicketStore()
-        self._user_presence = UserPresence()
-        self.startup_time = startup_time
+
+    def _set_once(self, attr: str, value: object, label: str) -> None:
+        """Set a private attribute once; raise if already configured."""
+        if getattr(self, attr) is not None:
+            msg = f"{label} already configured"
+            logger.error(API_APP_STARTUP, error=msg)
+            raise RuntimeError(msg)
+        setattr(self, attr, value)
+        logger.info(API_APP_STARTUP, note=f"{label} configured")
 
     def _require_service[T](self, service: T | None, name: str) -> T:
-        """Return *service* or raise 503 if not configured.
-
-        Args:
-            service: Service instance (``None`` when not configured).
-            name: Service name for logging and error message.
-
-        Raises:
-            ServiceUnavailableError: If *service* is ``None``.
-        """
+        """Return *service* or raise 503 if not configured."""
         if service is None:
             logger.warning(API_SERVICE_UNAVAILABLE, service=name)
             msg = f"{name.replace('_', ' ').title()} not configured"
@@ -290,20 +298,8 @@ class AppState:
         self,
         collector: PrometheusCollector,
     ) -> None:
-        """Set the Prometheus collector (deferred initialisation).
-
-        Args:
-            collector: Fully configured Prometheus collector.
-
-        Raises:
-            RuntimeError: If the collector was already configured.
-        """
-        if self._prometheus_collector is not None:
-            msg = "Prometheus collector already configured"
-            logger.error(API_APP_STARTUP, error=msg)
-            raise RuntimeError(msg)
-        self._prometheus_collector = collector
-        logger.info(API_APP_STARTUP, note="Prometheus collector configured")
+        """Attach the Prometheus collector (once-only)."""
+        self._set_once("_prometheus_collector", collector, "Prometheus collector")
 
     @property
     def has_artifact_storage(self) -> bool:
@@ -351,23 +347,8 @@ class AppState:
         return self._task_engine is not None
 
     def set_task_engine(self, engine: TaskEngine) -> None:
-        """Set the task engine (deferred initialisation).
-
-        Supports late binding when the task engine is created after
-        ``AppState`` construction.
-
-        Args:
-            engine: Fully configured task engine.
-
-        Raises:
-            RuntimeError: If the task engine was already configured.
-        """
-        if self._task_engine is not None:
-            msg = "Task engine already configured"
-            logger.error(API_APP_STARTUP, error=msg)
-            raise RuntimeError(msg)
-        self._task_engine = engine
-        logger.info(API_APP_STARTUP, note="Task engine configured")
+        """Attach the task engine (once-only)."""
+        self._set_once("_task_engine", engine, "Task engine")
 
     @property
     def distributed_task_queue(self) -> JetStreamTaskQueue | None:
@@ -441,20 +422,8 @@ class AppState:
         return self._review_gate_service
 
     def set_review_gate_service(self, service: ReviewGateService) -> None:
-        """Set the review gate service (deferred initialisation).
-
-        Args:
-            service: Configured review gate service.
-
-        Raises:
-            RuntimeError: If the review gate service was already configured.
-        """
-        if self._review_gate_service is not None:
-            msg = "Review gate service already configured"
-            logger.error(API_APP_STARTUP, error=msg)
-            raise RuntimeError(msg)
-        self._review_gate_service = service
-        logger.info(API_APP_STARTUP, note="Review gate service configured")
+        """Attach the review gate service (once-only)."""
+        self._set_once("_review_gate_service", service, "Review gate service")
 
     @property
     def has_client_simulation_state(self) -> bool:
@@ -473,20 +442,12 @@ class AppState:
         self,
         state: ClientSimulationState,
     ) -> None:
-        """Attach the client simulation runtime state.
-
-        Args:
-            state: Fully configured ``ClientSimulationState``.
-
-        Raises:
-            RuntimeError: If already configured.
-        """
-        if self._client_simulation_state is not None:
-            msg = "Client simulation state already configured"
-            logger.error(API_APP_STARTUP, error=msg)
-            raise RuntimeError(msg)
-        self._client_simulation_state = state
-        logger.info(API_APP_STARTUP, note="Client simulation state configured")
+        """Attach the client simulation runtime state (once-only)."""
+        self._set_once(
+            "_client_simulation_state",
+            state,
+            "Client simulation state",
+        )
 
     @property
     def approval_timeout_scheduler(self) -> ApprovalTimeoutScheduler | None:
@@ -497,20 +458,12 @@ class AppState:
         self,
         scheduler: ApprovalTimeoutScheduler,
     ) -> None:
-        """Set the approval timeout scheduler (deferred initialisation).
-
-        Args:
-            scheduler: Configured scheduler instance.
-
-        Raises:
-            RuntimeError: If the scheduler was already configured.
-        """
-        if self._approval_timeout_scheduler is not None:
-            msg = "Approval timeout scheduler already configured"
-            logger.error(API_APP_STARTUP, error=msg)
-            raise RuntimeError(msg)
-        self._approval_timeout_scheduler = scheduler
-        logger.info(API_APP_STARTUP, note="Approval timeout scheduler configured")
+        """Attach the approval timeout scheduler (once-only)."""
+        self._set_once(
+            "_approval_timeout_scheduler",
+            scheduler,
+            "Approval timeout scheduler",
+        )
 
     @property
     def coordinator(self) -> MultiAgentCoordinator:
@@ -603,22 +556,11 @@ class AppState:
         self,
         orchestrator: FineTuneOrchestrator,
     ) -> None:
-        """Set the fine-tune orchestrator (lifecycle wiring).
-
-        Args:
-            orchestrator: Fully configured fine-tune orchestrator.
-
-        Raises:
-            RuntimeError: If the orchestrator was already configured.
-        """
-        if self._fine_tune_orchestrator is not None:
-            msg = "Fine-tune orchestrator already configured"
-            logger.error(API_APP_STARTUP, error=msg)
-            raise RuntimeError(msg)
-        self._fine_tune_orchestrator = orchestrator
-        logger.info(
-            API_APP_STARTUP,
-            note="Fine-tune orchestrator configured",
+        """Attach the fine-tune orchestrator (once-only)."""
+        self._set_once(
+            "_fine_tune_orchestrator",
+            orchestrator,
+            "Fine-tune orchestrator",
         )
 
     @property
@@ -720,23 +662,8 @@ class AppState:
         )
 
     def set_session_store(self, store: SessionStore) -> None:
-        """Set the session store (deferred initialisation).
-
-        Args:
-            store: Configured session store.
-
-        Raises:
-            RuntimeError: If the session store has already been set.
-        """
-        if self._session_store is not None:
-            msg = "session_store is already configured"
-            logger.error(API_APP_STARTUP, error=msg)
-            raise RuntimeError(msg)
-        self._session_store = store
-        logger.info(
-            API_APP_STARTUP,
-            note="Session store configured",
-        )
+        """Attach the session store (once-only)."""
+        self._set_once("_session_store", store, "Session store")
 
     @property
     def has_lockout_store(self) -> bool:
@@ -752,23 +679,8 @@ class AppState:
         )
 
     def set_lockout_store(self, store: LockoutStore) -> None:
-        """Set the lockout store (deferred initialisation).
-
-        Args:
-            store: Configured lockout store.
-
-        Raises:
-            RuntimeError: If the lockout store has already been set.
-        """
-        if self._lockout_store is not None:
-            msg = "lockout_store is already configured"
-            logger.error(API_APP_STARTUP, error=msg)
-            raise RuntimeError(msg)
-        self._lockout_store = store
-        logger.info(
-            API_APP_STARTUP,
-            note="Lockout store configured",
-        )
+        """Attach the lockout store (once-only)."""
+        self._set_once("_lockout_store", store, "Lockout store")
 
     @property
     def user_presence(self) -> UserPresence:
@@ -776,22 +688,8 @@ class AppState:
         return self._user_presence
 
     def set_auth_service(self, service: AuthService) -> None:
-        """Set the auth service (deferred initialisation).
-
-        Called once during startup after the JWT secret is resolved.
-
-        Args:
-            service: Fully configured auth service.
-
-        Raises:
-            RuntimeError: If the auth service was already configured.
-        """
-        if self._auth_service is not None:
-            msg = "Auth service already configured"
-            logger.error(API_APP_STARTUP, error=msg)
-            raise RuntimeError(msg)
-        self._auth_service = service
-        logger.info(API_APP_STARTUP, note="Auth service configured")
+        """Attach the auth service (once-only)."""
+        self._set_once("_auth_service", service, "Auth service")
 
     # ── Swappable provider services (hot-reload) ─────────────────
 
@@ -875,58 +773,30 @@ class AppState:
         return self._ontology_sync_service
 
     def set_drift_report_store(self, store: DriftReportStore) -> None:
-        """Set the drift report store (deferred initialisation).
-
-        Args:
-            store: Configured drift report store.
-
-        Raises:
-            RuntimeError: If the store was already configured.
-        """
-        if self._drift_report_store is not None:
-            msg = "Drift report store already configured"
-            logger.error(API_APP_STARTUP, error=msg)
-            raise RuntimeError(msg)
-        self._drift_report_store = store
-        logger.info(API_APP_STARTUP, note="Drift report store configured")
+        """Attach the drift report store (once-only)."""
+        self._set_once("_drift_report_store", store, "Drift report store")
 
     def set_drift_detection_service(
         self,
         service: DriftDetectionService,
     ) -> None:
-        """Set the drift detection service (deferred initialisation).
-
-        Args:
-            service: Configured drift detection service.
-
-        Raises:
-            RuntimeError: If the service was already configured.
-        """
-        if self._drift_detection_service is not None:
-            msg = "Drift detection service already configured"
-            logger.error(API_APP_STARTUP, error=msg)
-            raise RuntimeError(msg)
-        self._drift_detection_service = service
-        logger.info(API_APP_STARTUP, note="Drift detection service configured")
+        """Attach the drift detection service (once-only)."""
+        self._set_once(
+            "_drift_detection_service",
+            service,
+            "Drift detection service",
+        )
 
     def set_ontology_sync_service(
         self,
         service: OntologyOrgMemorySync,
     ) -> None:
-        """Set the ontology sync service (deferred initialisation).
-
-        Args:
-            service: Configured ontology sync service.
-
-        Raises:
-            RuntimeError: If the service was already configured.
-        """
-        if self._ontology_sync_service is not None:
-            msg = "Ontology sync service already configured"
-            logger.error(API_APP_STARTUP, error=msg)
-            raise RuntimeError(msg)
-        self._ontology_sync_service = service
-        logger.info(API_APP_STARTUP, note="Ontology sync service configured")
+        """Attach the ontology sync service (once-only)."""
+        self._set_once(
+            "_ontology_sync_service",
+            service,
+            "Ontology sync service",
+        )
 
     @property
     def has_model_router(self) -> bool:
@@ -973,74 +843,14 @@ class AppState:
         return self._require_service(self._backup_service, "backup_service")
 
     def set_backup_service(self, service: BackupService) -> None:
-        """Set the backup service (deferred initialisation).
-
-        Supports late binding when the backup service is created
-        after ``AppState`` construction.
-
-        Args:
-            service: Fully configured backup service.
-
-        Raises:
-            RuntimeError: If the backup service was already configured.
-        """
-        if self._backup_service is not None:
-            msg = "Backup service already configured"
-            logger.error(API_APP_STARTUP, error=msg)
-            raise RuntimeError(msg)
-        self._backup_service = service
-        logger.info(API_APP_STARTUP, note="Backup service configured")
+        """Attach the backup service (once-only)."""
+        self._set_once("_backup_service", service, "Backup service")
 
     def set_settings_service(self, settings_service: SettingsService) -> None:
-        """Set settings service and create ConfigResolver + ProviderManagement.
-
-        Called by the auto-wire Phase 2 in ``on_startup`` after
-        persistence connects and migrations complete.  Also creates
-        ``ConfigResolver`` and ``ProviderManagementService`` which
-        depend on the settings service.
-
-        Args:
-            settings_service: Fully configured settings service.
-
-        Raises:
-            RuntimeError: If the settings service was already configured.
-        """
-        if self._settings_service is not None:
-            msg = "Settings service already configured"
-            logger.error(API_APP_STARTUP, error=msg)
-            raise RuntimeError(msg)
-        # Construct into locals first, then assign all at once to ensure
-        # atomicity -- a failure in ProviderManagementService construction
-        # won't leave AppState with a partial set of services.
-        resolver = ConfigResolver(
+        """Set settings service and rebuild derived services."""
+        self._set_once("_settings_service", settings_service, "Settings service")
+        self._init_derived_services(
             settings_service=settings_service,
             config=self.config,
-        )
-        management = ProviderManagementService(
-            settings_service=settings_service,
-            config_resolver=resolver,
-            app_state=self,
-            config=self.config,
-        )
-        org_mutations = OrgMutationService(
-            settings_service=settings_service,
-            config_resolver=resolver,
-            budget_config_versions=(
-                self._persistence.budget_config_versions
-                if self._persistence is not None
-                else None
-            ),
-            company_versions=(
-                self._persistence.company_versions
-                if self._persistence is not None
-                else None
-            ),
-        )
-        self._settings_service = settings_service
-        self._config_resolver = resolver
-        self._provider_management = management
-        self._org_mutation_service = org_mutations
-        logger.debug(
-            API_APP_STARTUP,
-            note="Created ConfigResolver, ProviderManagement, OrgMutationService",
+            persistence=self._persistence,
         )

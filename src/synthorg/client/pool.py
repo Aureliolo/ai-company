@@ -97,6 +97,9 @@ class ClientPool:
     async def reactivate(self, client_id: str) -> ClientProfile:
         """Re-enable a previously deactivated client.
 
+        Idempotent -- reactivating an already-active client is a
+        no-op that returns the existing profile.
+
         Raises:
             KeyError: If the client id is not known.
         """
@@ -108,7 +111,11 @@ class ClientPool:
             return self._profiles[client_id]
 
     async def is_active(self, client_id: str) -> bool:
-        """Return whether the client is currently active."""
+        """Return whether the client is currently active.
+
+        Raises:
+            KeyError: If the client id is not known.
+        """
         async with self._lock:
             if client_id not in self._profiles:
                 msg = f"Client {client_id!r} not found"
@@ -116,7 +123,11 @@ class ClientPool:
             return self._active.get(client_id, True)
 
     async def get_profile(self, client_id: str) -> ClientProfile:
-        """Return the stored profile for ``client_id``."""
+        """Return the stored profile for ``client_id``.
+
+        Raises:
+            KeyError: If the client id is not known.
+        """
         async with self._lock:
             if client_id not in self._profiles:
                 msg = f"Client {client_id!r} not found"
@@ -266,10 +277,12 @@ class WeightedRandomStrategy:
             if not available:
                 break
             pick = self._rng.choices(available, weights=available_weights, k=1)[0]
-            index = available.index(pick)
-            chosen.append(pick)
-            available.pop(index)
-            available_weights.pop(index)
+            for i, client in enumerate(available):
+                if client is pick:
+                    chosen.append(pick)
+                    available.pop(i)
+                    available_weights.pop(i)
+                    break
         return tuple(chosen)
 
 

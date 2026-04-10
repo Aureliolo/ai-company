@@ -17,12 +17,12 @@ from synthorg.client.models import (
 from synthorg.client.protocols import (
     ClientInterface,  # noqa: TC001
     ReportStrategy,  # noqa: TC001
-    RequirementGenerator,  # noqa: TC001
 )
 from synthorg.engine.intake.engine import IntakeEngine  # noqa: TC001
 from synthorg.engine.intake.models import IntakeResult  # noqa: TC001
 from synthorg.observability import get_logger
 from synthorg.observability.events.client import (
+    CLIENT_FEEDBACK_SINK_FAILED,
     CLIENT_REQUEST_SUBMITTED,
     CLIENT_REQUIREMENT_GENERATED,
     CLIENT_REVIEW_COMPLETED,
@@ -77,15 +77,12 @@ class SimulationRunner:
         *,
         sim_config: SimulationConfig,
         clients: tuple[ClientInterface, ...],
-        generator: RequirementGenerator,
     ) -> tuple[SimulationMetrics, dict[str, Any] | None]:
         """Execute the full simulation loop.
 
         Args:
             sim_config: Per-run simulation configuration.
             clients: Tuple of clients participating in every round.
-            generator: Requirement generator used for each client
-                each round.
 
         Returns:
             Tuple of aggregated :class:`SimulationMetrics` and an
@@ -111,7 +108,6 @@ class SimulationRunner:
                 round_index=round_index,
                 sim_config=sim_config,
                 clients=clients,
-                generator=generator,
             )
             metrics.accumulate(round_metrics)
             logger.info(
@@ -143,7 +139,6 @@ class SimulationRunner:
         round_index: int,
         sim_config: SimulationConfig,
         clients: tuple[ClientInterface, ...],
-        generator: RequirementGenerator,
     ) -> dict[str, Any]:
         participants = clients[: sim_config.clients_per_round]
         context = self._build_generation_context(
@@ -152,7 +147,6 @@ class SimulationRunner:
 
         requirements = await self._gather_requirements(
             participants=participants,
-            generator=generator,
             context=context,
         )
         intake_results = await self._run_intake_batch(
@@ -180,7 +174,6 @@ class SimulationRunner:
         self,
         *,
         participants: tuple[ClientInterface, ...],
-        generator: RequirementGenerator,
         context: GenerationContext,
     ) -> list[tuple[ClientInterface, TaskRequirement]]:
         async with asyncio.TaskGroup() as group:
@@ -188,7 +181,6 @@ class SimulationRunner:
                 group.create_task(
                     self._submit_one(
                         client=client,
-                        generator=generator,
                         context=context,
                     ),
                 )
@@ -211,10 +203,8 @@ class SimulationRunner:
         self,
         *,
         client: ClientInterface,
-        generator: RequirementGenerator,
         context: GenerationContext,
     ) -> TaskRequirement | None:
-        del generator  # Client owns generator injection
         return await client.submit_requirement(context)
 
     async def _run_intake_batch(
@@ -307,7 +297,15 @@ class SimulationRunner:
                 accepted=feedback.accepted,
             )
             if self._feedback_sink is not None:
-                await self._feedback_sink(feedback)
+                try:
+                    await self._feedback_sink(feedback)
+                except Exception:
+                    logger.exception(
+                        CLIENT_FEEDBACK_SINK_FAILED,
+                        client_id=client_id,
+                        task_id=result.task_id,
+                        accepted=feedback.accepted,
+                    )
             return feedback.accepted
 
     @staticmethod

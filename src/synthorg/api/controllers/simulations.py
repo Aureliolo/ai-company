@@ -1,6 +1,7 @@
 """Simulation run lifecycle endpoints at /simulations."""
 
 import asyncio
+import contextlib
 from datetime import UTC, datetime
 from typing import Any
 
@@ -16,7 +17,6 @@ from synthorg.api.pagination import PaginationLimit, PaginationOffset, paginate
 from synthorg.api.state import AppState  # noqa: TC001
 from synthorg.api.ws_models import WsEventType
 from synthorg.client.config import SimulationRunnerConfig
-from synthorg.client.generators.procedural import ProceduralGenerator
 from synthorg.client.models import (
     SimulationConfig,  # noqa: TC001
     SimulationMetrics,  # noqa: TC001
@@ -25,6 +25,7 @@ from synthorg.client.report.detailed import DetailedReport
 from synthorg.client.report.summary import SummaryReport
 from synthorg.client.runner import SimulationRunner
 from synthorg.client.store import SimulationRecord
+from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.observability import get_logger
 from synthorg.observability.events.client import (
     SIMULATION_RUN_CANCELLED,
@@ -47,11 +48,11 @@ class SimulationStatusResponse(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
-    simulation_id: str
-    status: str
+    simulation_id: NotBlankStr
+    status: NotBlankStr
     config: SimulationConfig
     metrics: SimulationMetrics
-    progress: float
+    progress: float = Field(ge=0.0, le=1.0)
     started_at: AwareDatetime | None = None
     completed_at: AwareDatetime | None = None
     error: str | None = None
@@ -97,19 +98,21 @@ async def _run_in_background(
     """Execute a simulation run and update the store with results."""
     sim_state = app_state.client_simulation_state
     if sim_state.intake_engine is None:
-        await sim_state.simulation_store.update_status(
-            record.simulation_id,
-            status="failed",
-            error="Intake engine not configured",
-        )
+        with contextlib.suppress(ValueError):
+            await sim_state.simulation_store.update_status(
+                record.simulation_id,
+                status="failed",
+                error="Intake engine not configured",
+            )
         return
     clients = await sim_state.pool.list_clients()
     if not clients:
-        await sim_state.simulation_store.update_status(
-            record.simulation_id,
-            status="failed",
-            error="No clients in pool",
-        )
+        with contextlib.suppress(ValueError):
+            await sim_state.simulation_store.update_status(
+                record.simulation_id,
+                status="failed",
+                error="No clients in pool",
+            )
         return
     runner = SimulationRunner(
         config=SimulationRunnerConfig(
@@ -124,7 +127,6 @@ async def _run_in_background(
         metrics, _ = await runner.run(
             sim_config=record.config,
             clients=clients,
-            generator=ProceduralGenerator(seed=1),
         )
     except asyncio.CancelledError:
         logger.info(
@@ -143,11 +145,12 @@ async def _run_in_background(
             error_type=type(exc).__name__,
             error=str(exc),
         )
-        await sim_state.simulation_store.update_status(
-            record.simulation_id,
-            status="failed",
-            error=f"{type(exc).__name__}: {exc}",
-        )
+        with contextlib.suppress(ValueError):
+            await sim_state.simulation_store.update_status(
+                record.simulation_id,
+                status="failed",
+                error="Simulation configuration error",
+            )
         return
     except Exception as exc:
         logger.exception(
@@ -155,11 +158,12 @@ async def _run_in_background(
             simulation_id=record.simulation_id,
             error_type=type(exc).__name__,
         )
-        await sim_state.simulation_store.update_status(
-            record.simulation_id,
-            status="failed",
-            error=f"{type(exc).__name__}: {exc}",
-        )
+        with contextlib.suppress(ValueError):
+            await sim_state.simulation_store.update_status(
+                record.simulation_id,
+                status="failed",
+                error="Simulation failed unexpectedly",
+            )
         return
     await sim_state.simulation_store.update_status(
         record.simulation_id,
@@ -233,15 +237,6 @@ class SimulationController(Controller):
         async def runner_task() -> None:
             try:
                 await _run_in_background(app_state=app_state, record=record)
-                final = await sim_state.simulation_store.get(
-                    record.simulation_id,
-                )
-                event = (
-                    WsEventType.SIMULATION_COMPLETED
-                    if final.status == "completed"
-                    else WsEventType.SIMULATION_CANCELLED
-                )
-                _publish_event(request, event, final)
             except asyncio.CancelledError:
                 logger.info(
                     SIMULATION_RUN_CANCELLED,
@@ -258,16 +253,32 @@ class SimulationController(Controller):
                     await sim_state.simulation_store.update_status(
                         record.simulation_id,
                         status="failed",
-                        error=f"{type(exc).__name__}: {exc}",
+                        error="Simulation failed unexpectedly",
                     )
-                except Exception:
+                except ValueError, KeyError:
                     logger.exception(
                         SIMULATION_RUN_FAILED,
                         simulation_id=record.simulation_id,
                         stage="final_status_write",
                     )
+            try:
+                final = await sim_state.simulation_store.get(
+                    record.simulation_id,
+                )
+            except KeyError:
+                return
+            event_map = {
+                "completed": WsEventType.SIMULATION_COMPLETED,
+                "cancelled": WsEventType.SIMULATION_CANCELLED,
+                "failed": WsEventType.SIMULATION_FAILED,
+            }
+            event = event_map.get(final.status)
+            if event is not None:
+                _publish_event(request, event, final)
 
-        asyncio.create_task(runner_task())  # noqa: RUF006
+        task = asyncio.create_task(runner_task())
+        sim_state.background_tasks.add(task)
+        task.add_done_callback(sim_state.background_tasks.discard)
         return ApiResponse(data=_to_response(record))
 
     @post("/{simulation_id:str}/cancel", guards=[require_write_access])
@@ -297,10 +308,13 @@ class SimulationController(Controller):
         if record.status in {"completed", "cancelled", "failed"}:
             msg = f"Simulation already {record.status}"
             raise ConflictError(msg)
-        updated = await sim_state.simulation_store.update_status(
-            simulation_id,
-            status="cancelled",
-        )
+        try:
+            updated = await sim_state.simulation_store.update_status(
+                simulation_id,
+                status="cancelled",
+            )
+        except ValueError as exc:
+            raise ConflictError(str(exc)) from exc
         _publish_event(request, WsEventType.SIMULATION_CANCELLED, updated)
         return ApiResponse(data=_to_response(updated))
 

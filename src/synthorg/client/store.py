@@ -171,9 +171,15 @@ class SimulationStore:
                 updates["progress"] = progress
             if error is not None:
                 updates["error"] = error
+            if existing.status in _TERMINAL_STATUSES:
+                msg = (
+                    f"Simulation {simulation_id!r} already in "
+                    f"terminal status {existing.status!r}"
+                )
+                raise ValueError(msg)
             if status == "running" and existing.started_at is None:
                 updates["started_at"] = datetime.now(UTC)
-            if status in _TERMINAL_STATUSES:
+            if status in _TERMINAL_STATUSES and existing.completed_at is None:
                 updates["completed_at"] = datetime.now(UTC)
             updated = existing.model_copy(update=updates)
             self._runs[simulation_id] = updated

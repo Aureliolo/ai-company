@@ -7,7 +7,7 @@ import { useWebSocketStore } from '@/stores/websocket'
 const log = createLogger('useClientsData')
 
 /**
- * Loads the paginated client list and subscribes to WS updates.
+ * Loads the paginated client list.
  *
  * Returns the current client snapshot plus connection state so the
  * consumer can surface loading, error, and stale-feed banners.
@@ -25,10 +25,11 @@ export function useClientsData(): {
   const wsConnected = useWebSocketStore((s) => s.connected)
 
   const reload = useCallback(async () => {
+    setLoading(true)
+    setError(null)
     try {
       const result = await listClients({ limit: 100 })
       setClients(result.data)
-      setError(null)
     } catch (err) {
       log.error('list_clients_failed', err)
       setError('Failed to load clients. Retry shortly.')

@@ -50,7 +50,7 @@ class TemplateGenerator:
 
         Raises:
             FileNotFoundError: If ``template_path`` does not exist.
-            ValueError: If the file content is not a JSON array.
+            TypeError: If the file content is not a JSON array.
         """
         path = Path(template_path)
         if not path.exists():

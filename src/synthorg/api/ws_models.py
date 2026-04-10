@@ -97,6 +97,7 @@ class WsEventType(StrEnum):
     SIMULATION_PAUSED = "simulation.paused"
     SIMULATION_CANCELLED = "simulation.cancelled"
     SIMULATION_COMPLETED = "simulation.completed"
+    SIMULATION_FAILED = "simulation.failed"
 
     REVIEW_STAGE_COMPLETED = "review.stage_completed"
     REVIEW_STAGE_DECIDED = "review.stage_decided"

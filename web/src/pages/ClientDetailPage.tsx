@@ -30,6 +30,7 @@ export default function ClientDetailPage() {
   )
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [satisfactionError, setSatisfactionError] = useState<string | null>(null)
 
   useEffect(() => {
     if (!clientId) {
@@ -45,6 +46,7 @@ export default function ClientDetailPage() {
           getClient(clientId),
           getClientSatisfaction(clientId).catch((err) => {
             log.warn('get_client_satisfaction_failed', err)
+            setSatisfactionError('Failed to load satisfaction history.')
             return null
           }),
         ])
@@ -132,6 +134,16 @@ export default function ClientDetailPage() {
         </dl>
       </SectionCard>
       <SectionCard title="Satisfaction" icon={Smile}>
+        {satisfactionError && (
+          <div
+            role="alert"
+            aria-live="assertive"
+            className="mb-card flex items-center gap-2 rounded-md border border-danger/30 bg-danger/5 p-card text-sm text-danger"
+          >
+            <AlertTriangle className="size-4 shrink-0" />
+            {satisfactionError}
+          </div>
+        )}
         {satisfaction && satisfaction.total_reviews > 0 ? (
           <div className="space-y-section-gap">
             <div className="grid grid-cols-1 gap-grid-gap md:grid-cols-3">

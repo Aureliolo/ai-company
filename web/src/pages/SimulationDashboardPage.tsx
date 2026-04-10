@@ -65,6 +65,7 @@ export default function SimulationDashboardPage() {
     try {
       const fetched = await getSimulationReport(simulationId, 'summary')
       setReport(fetched)
+      setError(null)
     } catch (err) {
       log.error('get_simulation_report_failed', err)
       setError('Failed to load simulation report.')
@@ -158,6 +159,9 @@ export default function SimulationDashboardPage() {
                       {run.status}
                     </span>
                   </div>
+                  {run.status === 'failed' && run.error && (
+                    <p className="text-xs text-danger">{run.error}</p>
+                  )}
                   <div className="flex flex-wrap gap-2">
                     <Button
                       size="sm"

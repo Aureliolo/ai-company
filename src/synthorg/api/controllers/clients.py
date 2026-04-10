@@ -216,15 +216,7 @@ class ClientController(Controller):
             msg = f"Client {client_id!r} not found"
             raise NotFoundError(msg) from exc
 
-        updates: dict[str, object] = {}
-        if data.name is not None:
-            updates["name"] = data.name
-        if data.persona is not None:
-            updates["persona"] = data.persona
-        if data.expertise_domains is not None:
-            updates["expertise_domains"] = data.expertise_domains
-        if data.strictness_level is not None:
-            updates["strictness_level"] = data.strictness_level
+        updates = data.model_dump(exclude_none=True)
         updated = current.model_copy(update=updates)
         new_client = _build_default_client(updated)
         await sim_state.pool.add(profile=updated, client=new_client)

@@ -46,6 +46,7 @@ export default function RequestQueuePage() {
   const [requests, setRequests] = useState<readonly ClientRequest[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [pending, setPending] = useState<Record<string, boolean>>({})
 
   const refresh = useCallback(async () => {
     try {
@@ -66,41 +67,53 @@ export default function RequestQueuePage() {
 
   const handleScope = useCallback(
     async (requestId: string) => {
+      if (pending[requestId]) return
+      setPending((prev) => ({ ...prev, [requestId]: true }))
       try {
         await scopeRequest(requestId, { notes: 'Scoped from dashboard' })
         await refresh()
       } catch (err) {
         log.error('scope_request_failed', err)
         setError('Failed to scope request.')
+      } finally {
+        setPending((prev) => ({ ...prev, [requestId]: false }))
       }
     },
-    [refresh],
+    [refresh, pending],
   )
 
   const handleApprove = useCallback(
     async (requestId: string) => {
+      if (pending[requestId]) return
+      setPending((prev) => ({ ...prev, [requestId]: true }))
       try {
         await approveRequest(requestId)
         await refresh()
       } catch (err) {
         log.error('approve_request_failed', err)
         setError('Failed to approve request.')
+      } finally {
+        setPending((prev) => ({ ...prev, [requestId]: false }))
       }
     },
-    [refresh],
+    [refresh, pending],
   )
 
   const handleReject = useCallback(
     async (requestId: string) => {
+      if (pending[requestId]) return
+      setPending((prev) => ({ ...prev, [requestId]: true }))
       try {
         await rejectRequest(requestId, 'Rejected from dashboard')
         await refresh()
       } catch (err) {
         log.error('reject_request_failed', err)
         setError('Failed to reject request.')
+      } finally {
+        setPending((prev) => ({ ...prev, [requestId]: false }))
       }
     },
-    [refresh],
+    [refresh, pending],
   )
 
   if (loading && requests.length === 0) {

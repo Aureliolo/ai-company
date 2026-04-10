@@ -1,5 +1,7 @@
 """Per-criterion checklist feedback strategy."""
 
+import re
+
 from synthorg.client.models import ClientFeedback, ReviewContext
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.observability import get_logger
@@ -39,7 +41,10 @@ class CriteriaCheckFeedback:
         unmet = tuple(
             criterion
             for criterion in context.acceptance_criteria
-            if criterion.lower() not in deliverable_lower
+            if not re.search(
+                r"\b" + re.escape(criterion.lower()) + r"\b",
+                deliverable_lower,
+            )
         )
         accepted = not unmet
 

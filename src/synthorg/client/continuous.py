@@ -1,7 +1,6 @@
 """Continuous (always-on) simulation mode."""
 
 import asyncio
-from typing import Any
 
 from synthorg.client.config import ContinuousModeConfig  # noqa: TC001
 from synthorg.client.models import (
@@ -10,7 +9,6 @@ from synthorg.client.models import (
 )
 from synthorg.client.protocols import (
     ClientInterface,  # noqa: TC001
-    RequirementGenerator,  # noqa: TC001
 )
 from synthorg.client.runner import SimulationRunner  # noqa: TC001
 from synthorg.observability import get_logger
@@ -45,8 +43,9 @@ class ContinuousMode:
         self._config = config
         self._runner = runner
         self._stop_event = asyncio.Event()
-        self._in_flight: set[asyncio.Task[Any]] = set()
+        self._lock = asyncio.Lock()
         self._runs_completed = 0
+        self._running = False
 
     @property
     def runs_completed(self) -> int:
@@ -58,14 +57,12 @@ class ContinuousMode:
         *,
         sim_config: SimulationConfig,
         clients: tuple[ClientInterface, ...],
-        generator: RequirementGenerator,
     ) -> list[SimulationMetrics]:
         """Run simulations on an interval until ``stop`` is called.
 
         Args:
             sim_config: Simulation configuration used on every run.
             clients: Clients participating in every run.
-            generator: Requirement generator for every run.
 
         Returns:
             Ordered list of per-run :class:`SimulationMetrics`.
@@ -73,26 +70,34 @@ class ContinuousMode:
         if not self._config.enabled:
             logger.debug(CONTINUOUS_MODE_DISABLED)
             return []
+        async with self._lock:
+            if self._running:
+                msg = "ContinuousMode is already running"
+                raise RuntimeError(msg)
+            self._running = True
         self._stop_event.clear()
         self._runs_completed = 0
         semaphore = asyncio.Semaphore(max(1, self._config.max_concurrent_requests))
         results: list[SimulationMetrics] = []
-        while not self._stop_event.is_set():
-            async with semaphore:
-                metrics, _ = await self._runner.run(
-                    sim_config=sim_config,
-                    clients=clients,
-                    generator=generator,
-                )
-            results.append(metrics)
-            self._runs_completed += 1
-            try:
-                await asyncio.wait_for(
-                    self._stop_event.wait(),
-                    timeout=self._config.request_interval_sec,
-                )
-            except TimeoutError:
-                continue
+        try:
+            while not self._stop_event.is_set():
+                async with semaphore:
+                    metrics, _ = await self._runner.run(
+                        sim_config=sim_config,
+                        clients=clients,
+                    )
+                results.append(metrics)
+                self._runs_completed += 1
+                try:
+                    await asyncio.wait_for(
+                        self._stop_event.wait(),
+                        timeout=self._config.request_interval_sec,
+                    )
+                except TimeoutError:
+                    continue
+        finally:
+            async with self._lock:
+                self._running = False
         return results
 
     def stop(self) -> None:

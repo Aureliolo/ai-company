@@ -47,31 +47,25 @@ export default function ReviewPipelinePage() {
   const [pipeline, setPipeline] = useState<PipelineResult | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [actionError, setActionError] = useState<string | null>(null)
   const [decisionNotice, setDecisionNotice] = useState<string | null>(null)
 
   const handleDecide = useCallback(
     async (stageName: string, verdict: StageVerdict) => {
       if (!taskId) return
+      setActionError(null)
       try {
         const result = await decideReviewStage(taskId, stageName, {
           verdict,
-          decided_by: 'dashboard-operator',
           reason: `Manual ${verdict} from dashboard`,
         })
         setDecisionNotice(
           `Recorded ${verdict.toUpperCase()} for ${stageName}`,
         )
-        setPipeline((prev) =>
-          prev
-            ? {
-                ...prev,
-                final_verdict: result.pipeline_result.final_verdict,
-              }
-            : prev,
-        )
+        setPipeline(result.pipeline_result)
       } catch (err) {
         log.error('decide_stage_failed', err)
-        setError('Failed to record stage decision.')
+        setActionError('Failed to record stage decision.')
       }
     },
     [taskId],
@@ -85,20 +79,29 @@ export default function ReviewPipelinePage() {
       }, 0)
       return () => clearTimeout(timer)
     }
+    let cancelled = false
     const load = async () => {
+      setLoading(true)
+      setPipeline(null)
+      setError(null)
+      setDecisionNotice(null)
+      setActionError(null)
       try {
         const result = await getReviewPipeline(taskId)
+        if (cancelled) return
         setPipeline(result)
-        setError(null)
       } catch (err) {
+        if (cancelled) return
         log.error('get_review_pipeline_failed', err)
         setError('Failed to load review pipeline for this task.')
       } finally {
-        setLoading(false)
+        if (!cancelled) setLoading(false)
       }
     }
     void load()
-    return undefined
+    return () => {
+      cancelled = true
+    }
   }, [taskId])
 
   if (loading) {
@@ -152,6 +155,15 @@ export default function ReviewPipelinePage() {
       </SectionCard>
 
       <SectionCard title="Stage breakdown" icon={ShieldCheck}>
+        {actionError && (
+          <div
+            role="alert"
+            aria-live="assertive"
+            className="mb-card rounded-md border border-danger/30 bg-danger/5 p-card text-sm text-danger"
+          >
+            {actionError}
+          </div>
+        )}
         {decisionNotice && (
           <div
             role="status"

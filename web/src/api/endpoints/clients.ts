@@ -14,9 +14,9 @@ export interface ClientProfile {
 export interface TaskRequirement {
   title: string
   description: string
-  task_type?: string
-  priority?: string
-  estimated_complexity?: string
+  task_type: string
+  priority: string
+  estimated_complexity: string
   acceptance_criteria?: readonly string[]
 }
 
@@ -314,7 +314,6 @@ export type StageVerdict = 'pass' | 'fail' | 'skip'
 export interface StageDecisionBody {
   verdict: StageVerdict
   reason?: string
-  decided_by: string
 }
 
 export interface StageDecisionResult {
@@ -336,7 +335,6 @@ export async function decideReviewStage(
   const trimmedReason = data.reason?.trim()
   const payload: StageDecisionBody = {
     verdict: data.verdict,
-    decided_by: data.decided_by,
     ...(trimmedReason ? { reason: trimmedReason } : {}),
   }
   const response = await apiClient.post<ApiResponse<StageDecisionResult>>(

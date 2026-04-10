@@ -102,15 +102,25 @@ class AgentIntake:
                 request_id=request.request_id,
                 reason=reason,
             )
-        if not decision.get("accepted", False):
+        accepted = decision.get("accepted")
+        if not isinstance(accepted, bool):
+            logger.warning(
+                INTAKE_AGENT_PARSE_FAILED,
+                request_id=request.request_id,
+            )
+            return IntakeResult.rejected_result(
+                request_id=request.request_id,
+                reason="intake agent returned malformed 'accepted' field",
+            )
+        if not accepted:
             reason = str(decision.get("reason") or "intake agent rejected request")
             return IntakeResult.rejected_result(
                 request_id=request.request_id,
                 reason=reason,
             )
 
-        refined = self._refine_requirement(request.requirement, decision)
         try:
+            refined = self._refine_requirement(request.requirement, decision)
             data = self._build_task_data(refined)
         except ValidationError:
             logger.warning(
@@ -179,12 +189,14 @@ class AgentIntake:
         refined_description = decision.get("refined_description")
         if not refined_title and not refined_description:
             return original
-        return original.model_copy(
-            update={
+        payload = original.model_dump()
+        payload.update(
+            {
                 "title": refined_title or original.title,
-                "description": refined_description or original.description,
+                "description": (refined_description or original.description),
             },
         )
+        return type(original).model_validate(payload)
 
     def _build_task_data(self, requirement: TaskRequirement) -> CreateTaskData:
         return CreateTaskData(

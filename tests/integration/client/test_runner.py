@@ -85,7 +85,6 @@ class TestSimulationRunnerBasic:
                 requirements_per_client=1,
             ),
             clients=clients,
-            generator=ProceduralGenerator(seed=1),
         )
         assert metrics.total_requirements == 6
         assert metrics.total_tasks_created <= 6
@@ -104,7 +103,6 @@ class TestSimulationRunnerBasic:
                 requirements_per_client=1,
             ),
             clients=(_make_client(client_id="c1"),),
-            generator=ProceduralGenerator(seed=1),
         )
         assert metrics.total_requirements == 1
         assert report is None
@@ -147,7 +145,6 @@ class TestSimulationRunnerEdgeCases:
                 requirements_per_client=1,
             ),
             clients=(declining,),
-            generator=ProceduralGenerator(seed=1),
         )
         assert metrics.total_requirements == 0
         assert metrics.total_tasks_created == 0
@@ -165,7 +162,6 @@ class TestSimulationRunnerEdgeCases:
                 _make_client(client_id="c1"),
                 _make_client(client_id="c2"),
             ),
-            generator=ProceduralGenerator(seed=1),
         )
         assert metrics.total_requirements == 2
         assert metrics.total_tasks_created == 0
@@ -186,7 +182,6 @@ class TestRunnerRoundSnapshots:
                 requirements_per_client=1,
             ),
             clients=(_make_client(client_id="c1"),),
-            generator=ProceduralGenerator(seed=1),
         )
         assert len(metrics.round_metrics) == 3
         for snapshot in metrics.round_metrics:
