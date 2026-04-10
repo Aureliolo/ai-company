@@ -340,12 +340,16 @@ CREATE TABLE workflow_definitions (
     workflow_type TEXT NOT NULL CHECK(workflow_type IN (
         'sequential_pipeline', 'parallel_execution', 'kanban', 'agile_kanban'
     )),
+    version TEXT NOT NULL DEFAULT '1.0.0' CHECK(length(version) > 0),
+    inputs TEXT NOT NULL DEFAULT '[]',
+    outputs TEXT NOT NULL DEFAULT '[]',
+    is_subworkflow INTEGER NOT NULL DEFAULT 0 CHECK(is_subworkflow IN (0, 1)),
     nodes TEXT NOT NULL,
     edges TEXT NOT NULL,
     created_by TEXT NOT NULL CHECK(length(created_by) > 0),
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
-    version INTEGER NOT NULL DEFAULT 1 CHECK(version >= 1)
+    revision INTEGER NOT NULL DEFAULT 1 CHECK(revision >= 1)
 );
 
 CREATE INDEX idx_wd_workflow_type
@@ -354,12 +358,40 @@ CREATE INDEX idx_wd_workflow_type
 CREATE INDEX idx_wd_updated_at
     ON workflow_definitions(updated_at DESC);
 
+CREATE INDEX idx_wd_is_subworkflow
+    ON workflow_definitions(is_subworkflow);
+
+-- ── Subworkflow registry (versioned reusable workflow components) ─
+
+CREATE TABLE subworkflows (
+    subworkflow_id TEXT NOT NULL CHECK(length(subworkflow_id) > 0),
+    semver TEXT NOT NULL CHECK(length(semver) > 0),
+    name TEXT NOT NULL CHECK(length(name) > 0),
+    description TEXT NOT NULL DEFAULT '',
+    workflow_type TEXT NOT NULL CHECK(workflow_type IN (
+        'sequential_pipeline', 'parallel_execution', 'kanban', 'agile_kanban'
+    )),
+    inputs TEXT NOT NULL DEFAULT '[]',
+    outputs TEXT NOT NULL DEFAULT '[]',
+    nodes TEXT NOT NULL,
+    edges TEXT NOT NULL,
+    created_by TEXT NOT NULL CHECK(length(created_by) > 0),
+    created_at TEXT NOT NULL,
+    PRIMARY KEY (subworkflow_id, semver)
+);
+
+CREATE INDEX idx_subworkflows_id
+    ON subworkflows(subworkflow_id);
+
+CREATE INDEX idx_subworkflows_created_at
+    ON subworkflows(created_at DESC);
+
 -- ── Workflow execution instances ─────────────────────────────
 
 CREATE TABLE workflow_executions (
     id TEXT PRIMARY KEY NOT NULL CHECK(length(id) > 0),
     definition_id TEXT NOT NULL CHECK(length(definition_id) > 0),
-    definition_version INTEGER NOT NULL CHECK(definition_version >= 1),
+    definition_revision INTEGER NOT NULL CHECK(definition_revision >= 1),
     status TEXT NOT NULL CHECK(status IN (
         'pending', 'running', 'completed', 'failed', 'cancelled'
     )),

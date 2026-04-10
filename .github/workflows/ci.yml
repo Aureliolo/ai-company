@@ -86,6 +86,26 @@ jobs:
       - name: Validate migration checksums
         run: atlas migrate validate --dir "file://src/synthorg/persistence/sqlite/revisions" --dev-url "sqlite://file?mode=memory"
 
+      - name: Enforce at most one new migration per PR
+        if: github.event_name == 'pull_request'
+        run: |
+          git fetch origin ${{ github.base_ref }} --depth=1
+          base_ref="origin/${{ github.base_ref }}"
+          mapfile -t new_migs < <(
+            git diff --name-only --diff-filter=A "$base_ref"...HEAD -- \
+              'src/synthorg/persistence/sqlite/revisions/*.sql'
+          )
+          count=${#new_migs[@]}
+          if [ "$count" -gt 1 ]; then
+            echo "::error::PR adds $count new Atlas migration files; policy allows at most 1."
+            printf '  - %s\n' "${new_migs[@]}" >&2
+            echo "" >&2
+            echo "Consolidate into a single migration: delete all in-progress migrations" >&2
+            echo "and regenerate with 'atlas migrate diff --env sqlite <name>'." >&2
+            exit 1
+          fi
+          echo "OK: PR adds $count new migration(s) (limit 1)."
+
       - name: Drift detection
         run: |
           diff_output=$(atlas schema diff --env ci \

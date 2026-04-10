@@ -627,9 +627,13 @@ class UpdateWorkflowDefinitionRequest(BaseModel):
         name: New name.
         description: New description.
         workflow_type: New workflow type.
+        version: New semver version string.
+        inputs: New typed input contract.
+        outputs: New typed output contract.
+        is_subworkflow: New publishing flag.
         nodes: New nodes.
         edges: New edges.
-        expected_version: Optimistic concurrency guard.
+        expected_revision: Optimistic concurrency guard.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
@@ -637,6 +641,20 @@ class UpdateWorkflowDefinitionRequest(BaseModel):
     name: NotBlankStr | None = Field(default=None, max_length=256)
     description: str | None = Field(default=None, max_length=4096)
     workflow_type: WorkflowType | None = None
+    version: NotBlankStr | None = Field(
+        default=None,
+        max_length=64,
+        description="Semver string override",
+    )
+    inputs: tuple[dict[str, object], ...] | None = Field(
+        default=None,
+        max_length=64,
+    )
+    outputs: tuple[dict[str, object], ...] | None = Field(
+        default=None,
+        max_length=64,
+    )
+    is_subworkflow: bool | None = None
     nodes: tuple[dict[str, object], ...] | None = Field(
         default=None,
         max_length=500,
@@ -645,10 +663,10 @@ class UpdateWorkflowDefinitionRequest(BaseModel):
         default=None,
         max_length=1000,
     )
-    expected_version: int | None = Field(
+    expected_revision: int | None = Field(
         default=None,
         ge=1,
-        description="Optimistic concurrency guard",
+        description="Optimistic concurrency guard (revision counter)",
     )
 
 
@@ -733,25 +751,19 @@ class RollbackWorkflowRequest(BaseModel):
     """Request body for rolling back a workflow to a previous version.
 
     Attributes:
-        target_version: Version number to restore content from.
-        expected_version: Current version for optimistic concurrency.
+        target_version: Snapshot version number to restore content from
+            (monotonic counter in the workflow_definition_versions table).
+        expected_revision: Current definition revision for optimistic
+            concurrency on the live workflow_definitions row.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
-    target_version: int = Field(ge=1, description="Version to rollback to")
-    expected_version: int = Field(
+    target_version: int = Field(ge=1, description="Snapshot version to rollback to")
+    expected_revision: int = Field(
         ge=1,
-        description="Optimistic concurrency guard",
+        description="Optimistic concurrency guard on the definition revision",
     )
-
-    @model_validator(mode="after")
-    def _validate_version_order(self) -> Self:
-        """Reject rollback where target >= expected."""
-        if self.target_version >= self.expected_version:
-            msg = "target_version must be less than expected_version"
-            raise ValueError(msg)
-        return self
 
 
 __all__ = [

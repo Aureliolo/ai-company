@@ -6,7 +6,9 @@ and maps TASK nodes to concrete ``Task`` instances created
 via the ``TaskEngine``.
 """
 
+from collections.abc import Mapping  # noqa: TC003
 from datetime import UTC, datetime
+from types import MappingProxyType
 from typing import ClassVar, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -17,6 +19,57 @@ from synthorg.core.enums import (
     WorkflowNodeType,
 )
 from synthorg.core.types import NotBlankStr  # noqa: TC001
+
+
+class ExecutionFrame(BaseModel):
+    """A scoped variable frame for subworkflow call/return execution.
+
+    The activation-time graph walker pushes a new frame whenever it
+    resolves a ``SUBWORKFLOW`` node and pops it when the child graph
+    completes.  Each frame owns a private ``variables`` mapping --
+    children cannot read parent variables outside declared inputs
+    because the walker receives a new frame-scoped context map.
+
+    Attributes:
+        workflow_id: ID of the workflow whose graph is being walked.
+        workflow_version: Semver version string of the workflow.
+        variables: Frame-local variable map (resolved inputs, defaults,
+            and walk-time computed values).
+        parent_frame: Immediate caller frame, ``None`` for the root.
+        depth: Nesting depth (root frame is ``0``).
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+
+    workflow_id: NotBlankStr = Field(description="Workflow definition ID")
+    workflow_version: NotBlankStr = Field(description="Semver version")
+    variables: Mapping[str, object] = Field(
+        default_factory=lambda: MappingProxyType({}),
+        description="Frame-local variables",
+    )
+    parent_frame: ExecutionFrame | None = Field(
+        default=None,
+        description="Caller frame (None for root)",
+    )
+    depth: int = Field(default=0, ge=0, description="Nesting depth")
+
+    @model_validator(mode="after")
+    def _validate_depth_matches_parent(self) -> Self:
+        """Ensure ``depth == parent.depth + 1`` (root frame has depth 0)."""
+        if self.parent_frame is None:
+            if self.depth != 0:
+                msg = f"Root frame must have depth=0, got {self.depth}"
+                raise ValueError(msg)
+        elif self.depth != self.parent_frame.depth + 1:
+            msg = (
+                f"Frame depth {self.depth} does not match "
+                f"parent depth + 1 ({self.parent_frame.depth + 1})"
+            )
+            raise ValueError(msg)
+        return self
+
+
+ExecutionFrame.model_rebuild()
 
 
 class WorkflowNodeExecution(BaseModel):
@@ -94,8 +147,8 @@ class WorkflowExecution(BaseModel):
     Attributes:
         id: Unique execution identifier (``"wfexec-{uuid12}"``).
         definition_id: Source ``WorkflowDefinition`` ID.
-        definition_version: Snapshot of the definition's version
-            at activation time.
+        definition_revision: Snapshot of the definition's optimistic
+            concurrency counter at activation time.
         status: Overall execution lifecycle status.
         node_executions: Per-node execution state.
         activated_by: Identity of the user who triggered activation.
@@ -111,9 +164,9 @@ class WorkflowExecution(BaseModel):
 
     id: NotBlankStr = Field(description="Unique execution ID")
     definition_id: NotBlankStr = Field(description="Source definition ID")
-    definition_version: int = Field(
+    definition_revision: int = Field(
         ge=1,
-        description="Definition version at activation time",
+        description="Definition revision (optimistic concurrency) at activation time",
     )
     status: WorkflowExecutionStatus = Field(
         default=WorkflowExecutionStatus.PENDING,

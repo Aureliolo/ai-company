@@ -86,4 +86,20 @@ export const NODE_CONFIG_SCHEMAS: Record<WorkflowNodeType, readonly ConfigField[
   parallel_join: [
     { key: 'join_strategy', label: 'Join Strategy', type: 'select', options: JOIN_STRATEGY_OPTIONS },
   ],
+  subworkflow: [
+    {
+      key: 'subworkflow_id',
+      label: 'Subworkflow ID',
+      type: 'text',
+      required: true,
+      placeholder: 'sub-...',
+    },
+    {
+      key: 'version',
+      label: 'Pinned version',
+      type: 'text',
+      required: true,
+      placeholder: 'e.g. 1.0.0',
+    },
+  ],
 }

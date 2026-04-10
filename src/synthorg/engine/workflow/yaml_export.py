@@ -72,6 +72,21 @@ def _add_assignment_fields(
             step[_ASSIGNMENT_STEP_MAP[key]] = config[key]
 
 
+def _add_subworkflow_fields(
+    step: dict[str, Any],
+    config: dict[str, Any],
+) -> None:
+    """Copy subworkflow reference fields into the step dict."""
+    if "subworkflow_id" in config:
+        step["subworkflow_id"] = config["subworkflow_id"]
+    if "version" in config:
+        step["version"] = config["version"]
+    if config.get("input_bindings"):
+        step["input_bindings"] = dict(config["input_bindings"])
+    if config.get("output_bindings"):
+        step["output_bindings"] = dict(config["output_bindings"])
+
+
 def _build_step(
     node_id: str,
     node_type: WorkflowNodeType,
@@ -97,6 +112,8 @@ def _build_step(
             step["max_concurrency"] = config["max_concurrency"]
     elif node_type == WorkflowNodeType.PARALLEL_JOIN:
         step["join_strategy"] = config.get("join_strategy", "all")
+    elif node_type == WorkflowNodeType.SUBWORKFLOW:
+        _add_subworkflow_fields(step, config)
 
     depends_on = [nid for nid in incoming_node_ids if nid != node_id]
     if depends_on:
@@ -110,16 +127,20 @@ def _assemble_document(
     steps: list[dict[str, Any]],
 ) -> dict[str, Any]:
     """Assemble the top-level YAML document structure."""
-    doc: dict[str, Any] = {
-        "workflow_definition": {
-            "name": definition.name,
-            "workflow_type": definition.workflow_type.value,
-            "steps": steps,
-        },
+    body: dict[str, Any] = {
+        "name": definition.name,
+        "workflow_type": definition.workflow_type.value,
+        "version": definition.version,
+        "is_subworkflow": definition.is_subworkflow,
     }
     if definition.description:
-        doc["workflow_definition"]["description"] = definition.description
-    return doc
+        body["description"] = definition.description
+    if definition.inputs:
+        body["inputs"] = [i.model_dump(mode="json") for i in definition.inputs]
+    if definition.outputs:
+        body["outputs"] = [o.model_dump(mode="json") for o in definition.outputs]
+    body["steps"] = steps
+    return {"workflow_definition": body}
 
 
 def _generate_steps(

@@ -126,12 +126,12 @@ async def _fetch_rollback_target(
             status_code=404,
         )
 
-    if data.expected_version != existing.version:
+    if data.expected_revision != existing.revision:
         logger.warning(
             WORKFLOW_DEF_VERSION_CONFLICT,
             definition_id=workflow_id,
-            expected=data.expected_version,
-            actual=existing.version,
+            expected=data.expected_revision,
+            actual=existing.revision,
         )
         return Response(
             content=ApiResponse[WorkflowDefinition](
@@ -184,7 +184,7 @@ def _build_rolled_back_definition(
             "created_by": existing.created_by,
             "created_at": existing.created_at,
             "updated_at": now,
-            "version": existing.version + 1,
+            "revision": existing.revision + 1,
         },
         deep=True,
     )
@@ -373,13 +373,13 @@ class WorkflowVersionController(Controller):
             logger.exception(
                 WORKFLOW_VERSION_SNAPSHOT_FAILED,
                 definition_id=rolled_back.id,
-                version=rolled_back.version,
+                revision=rolled_back.revision,
             )
         logger.info(
             WORKFLOW_DEF_ROLLED_BACK,
             definition_id=workflow_id,
             target_version=data.target_version,
-            new_version=rolled_back.version,
+            new_revision=rolled_back.revision,
         )
         return Response(
             content=ApiResponse[WorkflowDefinition](data=rolled_back),

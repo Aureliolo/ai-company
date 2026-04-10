@@ -62,11 +62,11 @@ def _create_workflow(
 def _update_workflow(
     test_client: TestClient[Any],
     wf_id: str,
-    expected_version: int,
+    expected_revision: int,
     **fields: object,
 ) -> dict[str, Any]:
     """PATCH a workflow and return response data."""
-    payload: dict[str, object] = {"expected_version": expected_version}
+    payload: dict[str, object] = {"expected_revision": expected_revision}
     payload.update(fields)
     resp = test_client.patch(
         f"/api/v1/workflows/{wf_id}",
@@ -262,10 +262,10 @@ class TestRollback:
         # 2. Update it to name "Updated" (auto-creates v2).
         _update_workflow(test_client, wf_id, 1, name="Updated")
 
-        # 3. POST rollback to v1.
+        # 3. POST rollback to v1 (definition revision is now 2).
         resp = test_client.post(
             f"/api/v1/workflows/{wf_id}/rollback",
-            json={"target_version": 1, "expected_version": 2},
+            json={"target_version": 1, "expected_revision": 2},
             headers=make_auth_headers("ceo"),
         )
         assert resp.status_code == 200
@@ -284,34 +284,20 @@ class TestRollback:
         assert versions[0]["snapshot"]["name"] == "Original"
 
     @pytest.mark.unit
-    def test_rollback_version_conflict(self, test_client: TestClient[Any]) -> None:
+    def test_rollback_revision_conflict(self, test_client: TestClient[Any]) -> None:
         wf = _create_workflow(test_client)
         resp = test_client.post(
             f"/api/v1/workflows/{wf['id']}/rollback",
-            json={"target_version": 1, "expected_version": 99},
+            json={"target_version": 1, "expected_revision": 99},
             headers=make_auth_headers("ceo"),
         )
         assert resp.status_code == 409
 
     @pytest.mark.unit
-    def test_rollback_target_gte_expected_returns_400(
-        self,
-        test_client: TestClient[Any],
-    ) -> None:
-        """Rollback is rejected when target_version >= expected_version."""
-        wf = _create_workflow(test_client)
-        resp = test_client.post(
-            f"/api/v1/workflows/{wf['id']}/rollback",
-            json={"target_version": 5, "expected_version": 3},
-            headers=make_auth_headers("ceo"),
-        )
-        assert resp.status_code == 400
-
-    @pytest.mark.unit
     def test_rollback_definition_not_found(self, test_client: TestClient[Any]) -> None:
         resp = test_client.post(
             "/api/v1/workflows/wfdef-nonexistent/rollback",
-            json={"target_version": 1, "expected_version": 2},
+            json={"target_version": 1, "expected_revision": 2},
             headers=make_auth_headers("ceo"),
         )
         assert resp.status_code == 404

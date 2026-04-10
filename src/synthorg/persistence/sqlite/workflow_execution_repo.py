@@ -43,7 +43,7 @@ from synthorg.persistence.errors import (
 logger = get_logger(__name__)
 
 _SELECT_COLUMNS = """\
-id, definition_id, definition_version, status, node_executions,
+id, definition_id, definition_revision, status, node_executions,
 activated_by, project, created_at, updated_at, completed_at,
 error, version"""
 
@@ -179,7 +179,7 @@ class SQLiteWorkflowExecutionRepository:
         return (
             execution.id,
             execution.definition_id,
-            execution.definition_version,
+            execution.definition_revision,
             execution.status.value,
             node_json,
             execution.activated_by,
@@ -198,7 +198,7 @@ class SQLiteWorkflowExecutionRepository:
             cursor = await self._db.execute(
                 """\
 INSERT INTO workflow_executions
-    (id, definition_id, definition_version, status, node_executions,
+    (id, definition_id, definition_revision, status, node_executions,
      activated_by, project, created_at, updated_at, completed_at,
      error, version)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
@@ -250,7 +250,7 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             cursor = await self._db.execute(
                 """\
 UPDATE workflow_executions SET
-    definition_id=?, definition_version=?, status=?,
+    definition_id=?, definition_revision=?, status=?,
     node_executions=?, activated_by=?, project=?,
     created_at=?, updated_at=?, completed_at=?,
     error=?, version=?

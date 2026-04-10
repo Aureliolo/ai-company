@@ -48,6 +48,9 @@ export function WorkflowCard({ workflow, onDelete, onDuplicate }: WorkflowCardPr
             <span>v{workflow.version}</span>
             <span>Updated {formatRelativeTime(workflow.updated_at)}</span>
           </div>
+          {workflow.is_subworkflow && (
+            <div className="text-xs text-accent">Subworkflow</div>
+          )}
         </Link>
 
         <Menu.Root>

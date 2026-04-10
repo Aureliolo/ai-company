@@ -13,10 +13,57 @@ from collections.abc import Mapping  # noqa: TC003
 from datetime import UTC, datetime
 from typing import Self
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from packaging.version import InvalidVersion, Version
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from synthorg.core.enums import WorkflowEdgeType, WorkflowNodeType, WorkflowType
+from synthorg.core.enums import (
+    WorkflowEdgeType,
+    WorkflowNodeType,
+    WorkflowType,
+    WorkflowValueType,
+)
 from synthorg.core.types import NotBlankStr  # noqa: TC001
+
+_DEFAULT_SEMVER = "1.0.0"
+
+
+class WorkflowIODeclaration(BaseModel):
+    """A typed input or output declaration for a workflow definition.
+
+    Subworkflows use these declarations as their contract: parents must
+    provide matching inputs, and the parent scope receives outputs
+    projected from the child frame's variables.
+
+    Attributes:
+        name: Identifier used by parent bindings and child expressions.
+        type: The value kind (see :class:`WorkflowValueType`).
+        required: Whether the caller must provide this input.
+            Always ``True`` for outputs.
+        default: Optional default value when ``required`` is ``False``.
+        description: Free-text description for the UI.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+
+    name: NotBlankStr = Field(description="Identifier")
+    type: WorkflowValueType = Field(description="Typed value kind")
+    required: bool = Field(default=True, description="Whether a value is mandatory")
+    default: object | None = Field(
+        default=None,
+        description="Default value when not required",
+    )
+    description: str = Field(default="", description="Human-readable description")
+
+    @model_validator(mode="after")
+    def _validate_default_compatible(self) -> Self:
+        """Reject defaults on required declarations or on unknown value kinds."""
+        if self.required and self.default is not None:
+            msg = (
+                f"Declaration {self.name!r}: required declarations "
+                f"must not carry a default value"
+            )
+            raise ValueError(msg)
+        return self
 
 
 class WorkflowNode(BaseModel):
@@ -82,12 +129,20 @@ class WorkflowDefinition(BaseModel):
         name: Human-readable workflow name.
         description: Optional detailed description.
         workflow_type: The execution topology this workflow targets.
+        version: Semver string (``MAJOR.MINOR.PATCH``) identifying this
+            revision for subworkflow pinning and publication.
+        inputs: Typed input contract (used when this definition is
+            referenced as a subworkflow).
+        outputs: Typed output contract (used when this definition is
+            referenced as a subworkflow).
+        is_subworkflow: Whether this definition is published to the
+            subworkflow registry.
         nodes: All nodes in the workflow graph.
         edges: All edges connecting the nodes.
         created_by: Identity of the creator.
         created_at: Creation timestamp (UTC).
         updated_at: Last update timestamp (UTC).
-        version: Optimistic concurrency version counter.
+        revision: Optimistic concurrency counter (monotonic integer).
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
@@ -98,6 +153,22 @@ class WorkflowDefinition(BaseModel):
     workflow_type: WorkflowType = Field(
         default=WorkflowType.SEQUENTIAL_PIPELINE,
         description="Target execution topology",
+    )
+    version: NotBlankStr = Field(
+        default=_DEFAULT_SEMVER,
+        description="Semver version string (MAJOR.MINOR.PATCH)",
+    )
+    inputs: tuple[WorkflowIODeclaration, ...] = Field(
+        default=(),
+        description="Typed input contract (subworkflow-facing)",
+    )
+    outputs: tuple[WorkflowIODeclaration, ...] = Field(
+        default=(),
+        description="Typed output contract (subworkflow-facing)",
+    )
+    is_subworkflow: bool = Field(
+        default=False,
+        description="Whether this definition is published to the registry",
     )
     nodes: tuple[WorkflowNode, ...] = Field(
         default=(),
@@ -116,7 +187,38 @@ class WorkflowDefinition(BaseModel):
         default_factory=lambda: datetime.now(UTC),
         description="Last update timestamp (UTC)",
     )
-    version: int = Field(default=1, ge=1, description="Optimistic concurrency version")
+    revision: int = Field(
+        default=1,
+        ge=1,
+        description="Optimistic concurrency counter",
+    )
+
+    @field_validator("version")
+    @classmethod
+    def _validate_semver(cls, value: str) -> str:
+        """Reject invalid semver strings via :mod:`packaging`."""
+        try:
+            Version(value)
+        except InvalidVersion as exc:
+            msg = f"Invalid version string {value!r}: {exc}"
+            raise ValueError(msg) from exc
+        return value
+
+    @model_validator(mode="after")
+    def _validate_unique_io_names(self) -> Self:
+        """Reject duplicate input or output names within the same scope."""
+        input_names = tuple(decl.name for decl in self.inputs)
+        if len(input_names) != len(set(input_names)):
+            dupes = sorted(v for v, c in Counter(input_names).items() if c > 1)
+            msg = f"Duplicate input declaration names: {dupes}"
+            raise ValueError(msg)
+
+        output_names = tuple(decl.name for decl in self.outputs)
+        if len(output_names) != len(set(output_names)):
+            dupes = sorted(v for v, c in Counter(output_names).items() if c > 1)
+            msg = f"Duplicate output declaration names: {dupes}"
+            raise ValueError(msg)
+        return self
 
     @model_validator(mode="after")
     def _validate_unique_ids(self) -> Self:

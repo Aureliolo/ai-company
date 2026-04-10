@@ -48,6 +48,9 @@ from synthorg.persistence.risk_override_repo import (
 from synthorg.persistence.ssrf_violation_repo import (
     SsrfViolationRepository,  # noqa: TC001
 )
+from synthorg.persistence.subworkflow_repo import (
+    SubworkflowRepository,  # noqa: TC001
+)
 from synthorg.persistence.version_repo import (
     VersionRepository,  # noqa: TC001
 )
@@ -258,6 +261,11 @@ class PersistenceBackend(Protocol):
     @property
     def workflow_executions(self) -> WorkflowExecutionRepository:
         """Repository for workflow execution persistence."""
+        ...
+
+    @property
+    def subworkflows(self) -> SubworkflowRepository:
+        """Repository for versioned subworkflow persistence."""
         ...
 
     @property

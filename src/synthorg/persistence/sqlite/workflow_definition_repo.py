@@ -15,6 +15,7 @@ from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.engine.workflow.definition import (
     WorkflowDefinition,
     WorkflowEdge,
+    WorkflowIODeclaration,
     WorkflowNode,
 )
 from synthorg.observability import get_logger
@@ -34,8 +35,8 @@ from synthorg.persistence.errors import QueryError, VersionConflictError
 logger = get_logger(__name__)
 
 _SELECT_COLUMNS = """\
-id, name, description, workflow_type, nodes, edges,
-created_by, created_at, updated_at, version"""
+id, name, description, workflow_type, version, inputs, outputs,
+is_subworkflow, nodes, edges, created_by, created_at, updated_at, revision"""
 
 
 def _parse_row_timestamps(data: dict[str, object]) -> None:
@@ -72,6 +73,13 @@ def _deserialize_row(
         data["edges"] = tuple(
             WorkflowEdge.model_validate(e) for e in json.loads(data["edges"])
         )
+        data["inputs"] = tuple(
+            WorkflowIODeclaration.model_validate(i) for i in json.loads(data["inputs"])
+        )
+        data["outputs"] = tuple(
+            WorkflowIODeclaration.model_validate(o) for o in json.loads(data["outputs"])
+        )
+        data["is_subworkflow"] = bool(data["is_subworkflow"])
         _parse_row_timestamps(data)
         return WorkflowDefinition.model_validate(data)
     except (ValueError, ValidationError, json.JSONDecodeError, KeyError) as exc:
@@ -118,41 +126,56 @@ class SQLiteWorkflowDefinitionRepository:
         edges_json = json.dumps(
             [e.model_dump(mode="json") for e in definition.edges],
         )
+        inputs_json = json.dumps(
+            [i.model_dump(mode="json") for i in definition.inputs],
+        )
+        outputs_json = json.dumps(
+            [o.model_dump(mode="json") for o in definition.outputs],
+        )
         try:
             cursor = await self._db.execute(
                 """\
 INSERT INTO workflow_definitions
-    (id, name, description, workflow_type, nodes, edges,
-     created_by, created_at, updated_at, version)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    (id, name, description, workflow_type, version, inputs, outputs,
+     is_subworkflow, nodes, edges, created_by, created_at, updated_at,
+     revision)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT(id) DO UPDATE SET
     name=excluded.name,
     description=excluded.description,
     workflow_type=excluded.workflow_type,
+    version=excluded.version,
+    inputs=excluded.inputs,
+    outputs=excluded.outputs,
+    is_subworkflow=excluded.is_subworkflow,
     nodes=excluded.nodes,
     edges=excluded.edges,
     updated_at=excluded.updated_at,
-    version=excluded.version
-WHERE workflow_definitions.version = excluded.version - 1""",
+    revision=excluded.revision
+WHERE workflow_definitions.revision = excluded.revision - 1""",
                 (
                     definition.id,
                     definition.name,
                     definition.description,
                     definition.workflow_type.value,
+                    definition.version,
+                    inputs_json,
+                    outputs_json,
+                    1 if definition.is_subworkflow else 0,
                     nodes_json,
                     edges_json,
                     definition.created_by,
                     definition.created_at.astimezone(UTC).isoformat(),
                     definition.updated_at.astimezone(UTC).isoformat(),
-                    definition.version,
+                    definition.revision,
                 ),
             )
-            if cursor.rowcount == 0 and definition.version > 1:
+            if cursor.rowcount == 0 and definition.revision > 1:
                 await self._db.rollback()
                 msg = (
                     f"Version conflict saving workflow definition"
-                    f" {definition.id!r}: expected version"
-                    f" {definition.version - 1}, not found"
+                    f" {definition.id!r}: expected revision"
+                    f" {definition.revision - 1}, not found"
                 )
                 logger.warning(
                     PERSISTENCE_WORKFLOW_DEF_SAVE_FAILED,

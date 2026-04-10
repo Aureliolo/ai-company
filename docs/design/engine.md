@@ -214,6 +214,7 @@ A **WorkflowDefinition** is a design-time blueprint -- a visual directed graph t
 | `conditional` | Boolean branch (true/false outgoing edges) |
 | `parallel_split` | Fan-out to 2+ parallel branches |
 | `parallel_join` | Fan-in with configurable join strategy (all/any) |
+| `subworkflow` | Invokes a versioned reusable workflow component from the subworkflow registry with typed input/output contracts (see [Subworkflows](#subworkflows) below). |
 
 ### Edge Types (`WorkflowEdgeType`)
 
@@ -302,6 +303,83 @@ nodes/edges). Optimistic concurrency via version counter.
 | GET | `/by-definition/{workflow_id}` | List executions for a definition |
 | GET | `/{execution_id}` | Get a specific execution |
 | POST | `/{execution_id}/cancel` | Cancel an execution |
+
+### Subworkflows
+
+Subworkflows are reusable workflow definitions published to a dedicated
+registry keyed by `(subworkflow_id, semver)` and invoked from a parent
+workflow via the `SUBWORKFLOW` node type. They exist alongside live
+workflow definitions -- any `WorkflowDefinition` with
+`is_subworkflow = True` is registered into the versioned `subworkflows`
+table and becomes referenceable.
+
+**Typed I/O contracts.** Every subworkflow declares typed `inputs` and
+`outputs` via `WorkflowIODeclaration` (name, `WorkflowValueType`,
+required, optional default, description). A parent `SUBWORKFLOW` node
+provides `input_bindings` and `output_bindings` in its config:
+literal values or dotted-path expressions prefixed with `@parent.`
+(resolved from the caller's frame) or `@child.` (used on the output
+side to project child-frame variables back into parent scope).
+
+**Explicit version pinning.** Parent references always pin a specific
+`version` string. Updating a subworkflow publishes a new row with a
+new semver; existing parents continue to resolve the old version
+until an explicit re-pin. Semver ordering uses
+`packaging.version.Version` so `1.10.0` correctly compares greater
+than `1.9.0`.
+
+**Runtime call/return with a frame stack.** `WorkflowExecutionService`
+walks each workflow graph inside an `ExecutionFrame` whose
+`variables` mapping is private to that frame. When the walker hits a
+`SUBWORKFLOW` node it resolves the pinned child, evaluates input
+bindings against the parent frame, pushes a new frame, recursively
+walks the child graph with qualified node IDs
+(`{parent_node_id}::{child_node_id}`) in the shared accumulator,
+projects declared outputs back into the parent scope, and pops. The
+executor records a `SUBWORKFLOW_COMPLETED` `WorkflowNodeExecutionStatus`
+on the parent node.
+
+**Variable scoping** is enforced because each frame holds its own
+`variables` dict. Child conditional expressions only see declared
+inputs and values projected onto the child's own scope -- they
+cannot read undeclared parent keys.
+
+**Static cycle detection.** `validate_subworkflow_graph()` performs a
+DFS across the `(id, version)` reference graph at save time via the
+registry, rejecting any back-edge with a
+`SUBWORKFLOW_CYCLE_DETECTED` validation error. This runs in addition
+to `validate_subworkflow_io()` which enforces the parent's bindings
+against the child's declared contract (missing required inputs,
+unknown input or output keys, literal type mismatches). Dotted-path
+expressions are deferred to runtime for evaluation.
+
+**Runtime depth limit.** `WorkflowConfig.max_subworkflow_depth`
+(default `16`) is enforced during the recursive walk; overflow raises
+`SubworkflowDepthExceededError` with a bounded error payload.
+
+**Delete protection.** The `SubworkflowRegistry.delete` service layer
+rejects deleting a `(id, version)` coordinate when any parent
+workflow still pins it (via the `find_parents` JSON scan of the
+`workflow_definitions` table).
+
+**Persistence.** Subworkflows live in a dedicated `subworkflows` table
+with composite primary key `(subworkflow_id, semver)`; every live
+parent stays in `workflow_definitions` as before. The rename of the
+definition's optimistic concurrency counter from `version: int` to
+`revision: int` makes room for `version: NotBlankStr` semver on
+every workflow definition (defaulting to `"1.0.0"`).
+
+**API endpoints** (`/subworkflows` controller):
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/` | List unique subworkflows (latest version per id) |
+| GET | `/search?q=` | Substring search over name and description |
+| GET | `/{id}/versions` | List semver strings newest first |
+| GET | `/{id}/versions/{version}` | Fetch a specific version |
+| GET | `/{id}/versions/{version}/parents` | List parent references |
+| POST | `/` | Publish a new subworkflow version |
+| DELETE | `/{id}/versions/{version}` | Delete a version (rejected when pinned) |
 
 ---
 

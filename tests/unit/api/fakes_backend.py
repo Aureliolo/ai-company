@@ -35,6 +35,7 @@ from tests.unit.api.fakes import (
     FakeUserRepository,
 )
 from tests.unit.api.fakes_workflow import (
+    FakeSubworkflowRepository,
     FakeWorkflowDefinitionRepository,
     FakeWorkflowExecutionRepository,
     FakeWorkflowVersionRepository,
@@ -232,6 +233,9 @@ class FakePersistenceBackend:
         self._workflow_definitions = FakeWorkflowDefinitionRepository()
         self._workflow_executions = FakeWorkflowExecutionRepository()
         self._workflow_versions = FakeWorkflowVersionRepository()
+        self._subworkflows = FakeSubworkflowRepository(
+            definition_repo=self._workflow_definitions,
+        )
         self._identity_versions = FakeVersionRepository()
         self._evaluation_config_versions = FakeVersionRepository()
         self._budget_config_versions = FakeVersionRepository()
@@ -363,6 +367,10 @@ class FakePersistenceBackend:
     @property
     def workflow_executions(self) -> FakeWorkflowExecutionRepository:
         return self._workflow_executions
+
+    @property
+    def subworkflows(self) -> FakeSubworkflowRepository:
+        return self._subworkflows
 
     @property
     def workflow_versions(self) -> FakeWorkflowVersionRepository:

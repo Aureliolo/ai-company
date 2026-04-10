@@ -327,7 +327,7 @@ export const useWorkflowEditorStore = create<WorkflowEditorState>()((set, get) =
           type: ((e.data as Record<string, unknown>)?.edgeType as string) ?? 'sequential',
           label: (e.label as string) ?? null,
         })),
-        expected_version: definition.version,
+        expected_revision: definition.revision,
       })
       set({ definition: updatedDef, saving: false, dirty: false, validationResult: null })
     } catch (err) {
@@ -685,7 +685,7 @@ export const useWorkflowEditorStore = create<WorkflowEditorState>()((set, get) =
     try {
       const updated = await rollbackWorkflow(defn.id, {
         target_version: targetVersion,
-        expected_version: defn.version,
+        expected_revision: defn.revision,
       })
       // Hydrate editor state immediately from the rollback response
       // so the UI reflects the rolled-back version even if the

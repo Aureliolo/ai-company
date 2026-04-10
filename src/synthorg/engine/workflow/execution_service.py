@@ -6,6 +6,7 @@ order, creating concrete tasks for TASK nodes, and wiring
 upstream task dependencies from the graph edges.
 """
 
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 from uuid import uuid4
@@ -18,6 +19,7 @@ from synthorg.core.enums import (
     WorkflowNodeType,
 )
 from synthorg.engine.errors import (
+    SubworkflowDepthExceededError,
     WorkflowDefinitionInvalidError,
     WorkflowExecutionError,
     WorkflowExecutionNotFoundError,
@@ -28,6 +30,7 @@ from synthorg.engine.workflow.execution_activation_helpers import (
     process_task_node,
 )
 from synthorg.engine.workflow.execution_models import (
+    ExecutionFrame,
     WorkflowExecution,
     WorkflowNodeExecution,
 )
@@ -35,6 +38,11 @@ from synthorg.engine.workflow.graph_utils import (
     build_adjacency_maps,
     topological_sort,
 )
+from synthorg.engine.workflow.subworkflow_binding import (
+    project_output_bindings,
+    resolve_input_bindings,
+)
+from synthorg.engine.workflow.subworkflow_registry import MAX_WORKFLOW_DEPTH
 from synthorg.engine.workflow.validation import validate_workflow
 from synthorg.observability import get_logger
 from synthorg.observability.events.workflow_execution import (
@@ -49,6 +57,10 @@ from synthorg.observability.events.workflow_execution import (
     WORKFLOW_EXEC_NODE_TASK_COMPLETED,
     WORKFLOW_EXEC_NODE_TASK_FAILED,
     WORKFLOW_EXEC_NOT_FOUND,
+    WORKFLOW_EXEC_SUBWORKFLOW_DEPTH_EXCEEDED,
+    WORKFLOW_EXEC_SUBWORKFLOW_FRAME_POPPED,
+    WORKFLOW_EXEC_SUBWORKFLOW_FRAME_PUSHED,
+    WORKFLOW_EXEC_SUBWORKFLOW_NODE_COMPLETED,
 )
 
 if TYPE_CHECKING:
@@ -60,12 +72,41 @@ if TYPE_CHECKING:
         WorkflowDefinition,
         WorkflowNode,
     )
+    from synthorg.engine.workflow.subworkflow_registry import (
+        SubworkflowRegistry,
+    )
     from synthorg.persistence.workflow_definition_repo import (
         WorkflowDefinitionRepository,
     )
     from synthorg.persistence.workflow_execution_repo import (
         WorkflowExecutionRepository,
     )
+
+
+_QUALIFIED_ID_SEPARATOR = "::"
+
+
+def _qualify_id(prefix: str, node_id: str) -> str:
+    """Build a qualified node ID ``{prefix}::{node_id}`` or return *node_id*.
+
+    When *prefix* is empty the node ID is returned unchanged so that
+    top-level graphs keep their existing unqualified IDs.
+    """
+    if not prefix:
+        return node_id
+    return f"{prefix}{_QUALIFIED_ID_SEPARATOR}{node_id}"
+
+
+@dataclass
+class _WalkState:
+    """Mutable accumulators shared across all frames in a single activation."""
+
+    node_exec_map: dict[str, WorkflowNodeExecution] = field(
+        default_factory=dict,
+    )
+    node_task_ids: dict[str, str] = field(default_factory=dict)
+    ordered_keys: list[str] = field(default_factory=list)
+
 
 logger = get_logger(__name__)
 
@@ -93,10 +134,14 @@ class WorkflowExecutionService:
         definition_repo: WorkflowDefinitionRepository,
         execution_repo: WorkflowExecutionRepository,
         task_engine: TaskEngine,
+        subworkflow_registry: SubworkflowRegistry | None = None,
+        max_subworkflow_depth: int = MAX_WORKFLOW_DEPTH,
     ) -> None:
         self._definition_repo = definition_repo
         self._execution_repo = execution_repo
         self._task_engine = task_engine
+        self._subworkflow_registry = subworkflow_registry
+        self._max_subworkflow_depth = max_subworkflow_depth
 
     async def activate(
         self,
@@ -133,34 +178,30 @@ class WorkflowExecutionService:
         # 1. Load and validate
         definition = await self._load_and_validate(definition_id)
 
-        # 2. Build graph structures
-        adjacency, reverse_adj, outgoing = build_adjacency_maps(
-            definition,
-        )
-        node_map = {n.id: n for n in definition.nodes}
-        sorted_ids = topological_sort(
-            [n.id for n in definition.nodes],
-            adjacency,
-        )
-
-        # 3. Walk nodes in topological order
+        # 2. Walk nodes in topological order, starting from the root frame.
         execution_id = f"wfexec-{uuid4().hex[:12]}"
         now = datetime.now(UTC)
-        node_exec_map, node_task_ids = await self._walk_nodes(
-            sorted_ids=sorted_ids,
-            node_map=node_map,
-            adjacency=adjacency,
-            reverse_adj=reverse_adj,
-            outgoing=outgoing,
-            ctx=ctx,
+        state = _WalkState()
+        root_frame = ExecutionFrame(
+            workflow_id=definition.id,
+            workflow_version=definition.version,
+            variables=ctx,
+            parent_frame=None,
+            depth=0,
+        )
+        await self._walk_frame(
+            definition=definition,
+            frame=root_frame,
+            qualifier_prefix="",
+            state=state,
             execution_id=execution_id,
             project=project,
             activated_by=activated_by,
         )
 
-        # 4. Build and persist execution
+        # 3. Build and persist execution
         # If no tasks were created, the workflow is immediately complete
-        if node_task_ids:
+        if state.node_task_ids:
             status = WorkflowExecutionStatus.RUNNING
             completed_at = None
         else:
@@ -170,9 +211,11 @@ class WorkflowExecutionService:
         execution = WorkflowExecution(
             id=execution_id,
             definition_id=definition.id,
-            definition_version=definition.version,
+            definition_revision=definition.revision,
             status=status,
-            node_executions=tuple(node_exec_map[n.id] for n in definition.nodes),
+            node_executions=tuple(
+                state.node_exec_map[key] for key in state.ordered_keys
+            ),
             activated_by=activated_by,
             project=project,
             created_at=now,
@@ -185,7 +228,7 @@ class WorkflowExecutionService:
             WORKFLOW_EXEC_ACTIVATED,
             execution_id=execution_id,
             definition_id=definition.id,
-            task_count=len(node_task_ids),
+            task_count=len(state.node_task_ids),
         )
 
         return execution
@@ -222,81 +265,130 @@ class WorkflowExecutionService:
 
         return definition
 
-    async def _walk_nodes(  # noqa: PLR0913
+    async def _walk_frame(  # noqa: PLR0913
         self,
         *,
-        sorted_ids: list[str],
-        node_map: dict[str, WorkflowNode],
-        adjacency: dict[str, list[str]],
-        reverse_adj: dict[str, list[str]],
-        outgoing: dict[str, list[tuple[str, WorkflowEdgeType]]],
-        ctx: dict[str, object],
+        definition: WorkflowDefinition,
+        frame: ExecutionFrame,
+        qualifier_prefix: str,
+        state: _WalkState,
         execution_id: str,
         project: str,
         activated_by: str,
-    ) -> tuple[dict[str, WorkflowNodeExecution], dict[str, str]]:
-        """Walk the graph in topological order, processing each node.
+    ) -> dict[str, object]:
+        """Walk one workflow graph inside a scoped execution frame.
+
+        Walks *definition* in topological order, mutating *state*
+        in place.  On hitting a SUBWORKFLOW node, recursively walks
+        the referenced child definition inside a new frame whose
+        variables are scoped to the declared inputs only.
+
+        Node execution entries are stored under qualified keys so
+        that nested graphs never collide with the parent.  The root
+        frame uses no prefix and keeps existing unqualified IDs.
 
         Returns:
-            A 2-tuple of (node_exec_map, node_task_ids).
+            The frame's final mutable variable map.  Callers (parent
+            frames invoking a subworkflow) use this to project outputs
+            back into their own scope.
         """
-        node_exec_map: dict[str, WorkflowNodeExecution] = {}
-        node_task_ids: dict[str, str] = {}
+        adjacency, reverse_adj, outgoing = build_adjacency_maps(definition)
+        node_map = {n.id: n for n in definition.nodes}
+        sorted_ids = topological_sort(
+            [n.id for n in definition.nodes],
+            adjacency,
+        )
+
+        # Frame-local task-ID map: upstream lookups must not cross frames.
+        frame_node_task_ids: dict[str, str] = {}
         skipped_nodes: set[str] = set()
         pending_assignments: dict[str, str] = {}
+        # The child graph's condition evaluator sees only the frame's
+        # variable map -- parent keys cannot leak in.  This dict is
+        # mutated in place as subworkflow outputs project values
+        # back into the caller's scope during the walk.
+        frame_ctx: dict[str, object] = dict(frame.variables)
 
         for nid in sorted_ids:
+            qualified = _qualify_id(qualifier_prefix, nid)
+            node = node_map[nid]
+
             if nid in skipped_nodes:
-                node_exec_map[nid] = WorkflowNodeExecution(
-                    node_id=nid,
-                    node_type=node_map[nid].type,
-                    status=WorkflowNodeExecutionStatus.SKIPPED,
-                    skipped_reason="Conditional branch not taken",
+                self._record_node(
+                    state,
+                    qualified,
+                    WorkflowNodeExecution(
+                        node_id=qualified,
+                        node_type=node.type,
+                        status=WorkflowNodeExecutionStatus.SKIPPED,
+                        skipped_reason="Conditional branch not taken",
+                    ),
                 )
                 logger.debug(
                     WORKFLOW_EXEC_NODE_SKIPPED,
                     execution_id=execution_id,
-                    node_id=nid,
+                    node_id=qualified,
                 )
                 continue
 
-            node = node_map[nid]
-            node_exec_map[nid] = await self._process_node(
+            node_execution = await self._process_node_in_frame(
                 nid=nid,
+                qualified_id=qualified,
                 node=node,
                 adjacency=adjacency,
                 reverse_adj=reverse_adj,
                 outgoing=outgoing,
-                ctx=ctx,
+                frame=frame,
+                frame_ctx=frame_ctx,
                 execution_id=execution_id,
                 project=project,
                 activated_by=activated_by,
                 node_map=node_map,
-                node_task_ids=node_task_ids,
+                frame_node_task_ids=frame_node_task_ids,
+                qualifier_prefix=qualifier_prefix,
+                state=state,
                 skipped_nodes=skipped_nodes,
                 pending_assignments=pending_assignments,
             )
+            self._record_node(state, qualified, node_execution)
 
-        return node_exec_map, node_task_ids
+        return frame_ctx
 
-    async def _process_node(  # noqa: PLR0913
+    def _record_node(
+        self,
+        state: _WalkState,
+        qualified_id: str,
+        node_execution: WorkflowNodeExecution,
+    ) -> None:
+        """Store a processed node execution in *state* preserving order."""
+        if qualified_id not in state.node_exec_map:
+            state.ordered_keys.append(qualified_id)
+        state.node_exec_map[qualified_id] = node_execution
+        if node_execution.task_id is not None:
+            state.node_task_ids[qualified_id] = node_execution.task_id
+
+    async def _process_node_in_frame(  # noqa: PLR0913
         self,
         *,
         nid: str,
+        qualified_id: str,
         node: WorkflowNode,
         adjacency: dict[str, list[str]],
         reverse_adj: dict[str, list[str]],
         outgoing: dict[str, list[tuple[str, WorkflowEdgeType]]],
-        ctx: dict[str, object],
+        frame: ExecutionFrame,
+        frame_ctx: dict[str, object],
         execution_id: str,
         project: str,
         activated_by: str,
         node_map: dict[str, WorkflowNode],
-        node_task_ids: dict[str, str],
+        frame_node_task_ids: dict[str, str],
+        qualifier_prefix: str,
+        state: _WalkState,
         skipped_nodes: set[str],
         pending_assignments: dict[str, str],
     ) -> WorkflowNodeExecution:
-        """Dispatch a single node to the appropriate handler."""
+        """Dispatch a single node in the context of *frame*."""
         if node.type in {
             WorkflowNodeType.START,
             WorkflowNodeType.END,
@@ -306,11 +398,11 @@ class WorkflowExecutionService:
             logger.debug(
                 WORKFLOW_EXEC_NODE_COMPLETED,
                 execution_id=execution_id,
-                node_id=nid,
+                node_id=qualified_id,
                 node_type=node.type.value,
             )
             return WorkflowNodeExecution(
-                node_id=nid,
+                node_id=qualified_id,
                 node_type=node.type,
                 status=WorkflowNodeExecutionStatus.COMPLETED,
             )
@@ -329,30 +421,47 @@ class WorkflowExecutionService:
                 logger.warning(
                     WORKFLOW_EXEC_NODE_COMPLETED,
                     execution_id=execution_id,
-                    node_id=nid,
+                    node_id=qualified_id,
                     note="AGENT_ASSIGNMENT node has no agent_name",
                 )
             logger.debug(
                 WORKFLOW_EXEC_NODE_COMPLETED,
                 execution_id=execution_id,
-                node_id=nid,
+                node_id=qualified_id,
                 node_type=node.type.value,
             )
             return WorkflowNodeExecution(
-                node_id=nid,
+                node_id=qualified_id,
                 node_type=node.type,
                 status=WorkflowNodeExecutionStatus.COMPLETED,
             )
 
         if node.type is WorkflowNodeType.CONDITIONAL:
-            return process_conditional_node(
+            conditional_execution = process_conditional_node(
                 nid,
                 node,
-                ctx,
+                frame_ctx,
                 outgoing,
                 adjacency,
                 skipped_nodes,
                 execution_id,
+            )
+            # Rewrite node_id to the qualified form so persistence is stable.
+            return conditional_execution.model_copy(
+                update={"node_id": qualified_id},
+            )
+
+        if node.type is WorkflowNodeType.SUBWORKFLOW:
+            return await self._process_subworkflow_node(
+                nid=nid,
+                qualified_id=qualified_id,
+                node=node,
+                frame=frame,
+                frame_ctx=frame_ctx,
+                state=state,
+                execution_id=execution_id,
+                project=project,
+                activated_by=activated_by,
             )
 
         if node.type is not WorkflowNodeType.TASK:
@@ -360,24 +469,196 @@ class WorkflowExecutionService:
             logger.error(
                 WORKFLOW_EXEC_NODE_COMPLETED,
                 execution_id=execution_id,
-                node_id=nid,
+                node_id=qualified_id,
                 node_type=node.type.value,
                 error=msg,
             )
             raise WorkflowExecutionError(msg)
 
-        return await process_task_node(
+        return await self._process_task_node_in_frame(
+            nid=nid,
+            qualified_id=qualified_id,
+            node=node,
+            reverse_adj=reverse_adj,
+            node_map=node_map,
+            frame_node_task_ids=frame_node_task_ids,
+            qualifier_prefix=qualifier_prefix,
+            state=state,
+            skipped_nodes=skipped_nodes,
+            pending_assignments=pending_assignments,
+            project=project,
+            activated_by=activated_by,
+            execution_id=execution_id,
+        )
+
+    async def _process_task_node_in_frame(  # noqa: PLR0913
+        self,
+        *,
+        nid: str,
+        qualified_id: str,
+        node: WorkflowNode,
+        reverse_adj: dict[str, list[str]],
+        node_map: dict[str, WorkflowNode],
+        frame_node_task_ids: dict[str, str],
+        qualifier_prefix: str,  # noqa: ARG002
+        state: _WalkState,  # noqa: ARG002
+        skipped_nodes: set[str],
+        pending_assignments: dict[str, str],
+        project: str,
+        activated_by: str,
+        execution_id: str,
+    ) -> WorkflowNodeExecution:
+        """Create a task for a TASK node and store it under the qualified key.
+
+        Upstream dependency lookup is frame-local: it walks only this
+        graph's reverse adjacency, which guarantees that a task inside
+        a subworkflow does not silently depend on a parent task outside
+        its declared inputs.
+        """
+        node_execution = await process_task_node(
             nid,
             node,
             reverse_adj=reverse_adj,
             node_map=node_map,
-            node_task_ids=node_task_ids,
+            node_task_ids=frame_node_task_ids,
             skipped_nodes=skipped_nodes,
             pending_assignments=pending_assignments,
             project=project,
             activated_by=activated_by,
             task_engine=self._task_engine,
             execution_id=execution_id,
+        )
+        # Rewrite node_id with the frame qualifier for persistence.
+        return node_execution.model_copy(update={"node_id": qualified_id})
+
+    async def _process_subworkflow_node(  # noqa: PLR0913
+        self,
+        *,
+        nid: str,
+        qualified_id: str,
+        node: WorkflowNode,
+        frame: ExecutionFrame,
+        frame_ctx: dict[str, object],
+        state: _WalkState,
+        execution_id: str,
+        project: str,
+        activated_by: str,
+    ) -> WorkflowNodeExecution:
+        """Resolve a subworkflow node and walk the child graph in a new frame."""
+        if self._subworkflow_registry is None:
+            msg = (
+                f"Workflow definition contains a SUBWORKFLOW node {nid!r} "
+                "but no SubworkflowRegistry is configured on "
+                "WorkflowExecutionService"
+            )
+            raise WorkflowExecutionError(msg)
+
+        config = dict(node.config)
+        subworkflow_id = config.get("subworkflow_id")
+        version = config.get("version")
+        input_bindings = config.get("input_bindings") or {}
+        output_bindings = config.get("output_bindings") or {}
+        if not isinstance(subworkflow_id, str) or not subworkflow_id.strip():
+            msg = f"SUBWORKFLOW node {nid!r} is missing subworkflow_id in config"
+            raise WorkflowExecutionError(msg)
+        if not isinstance(version, str) or not version.strip():
+            msg = f"SUBWORKFLOW node {nid!r} is missing version pin in config"
+            raise WorkflowExecutionError(msg)
+        if not isinstance(input_bindings, dict):
+            input_bindings = {}
+        if not isinstance(output_bindings, dict):
+            output_bindings = {}
+
+        next_depth = frame.depth + 1
+        if next_depth > self._max_subworkflow_depth:
+            logger.error(
+                WORKFLOW_EXEC_SUBWORKFLOW_DEPTH_EXCEEDED,
+                execution_id=execution_id,
+                node_id=qualified_id,
+                depth=next_depth,
+                max_depth=self._max_subworkflow_depth,
+            )
+            msg = (
+                f"Subworkflow depth {next_depth} exceeds maximum "
+                f"{self._max_subworkflow_depth}"
+            )
+            raise SubworkflowDepthExceededError(
+                msg,
+                depth=next_depth,
+                max_depth=self._max_subworkflow_depth,
+            )
+
+        child_definition = await self._subworkflow_registry.get(
+            subworkflow_id,
+            version,
+        )
+
+        # Resolve input bindings against the parent frame's current
+        # variable map (which may include values projected from earlier
+        # subworkflow calls), producing the child frame's private
+        # variable map.
+        resolved_inputs = resolve_input_bindings(
+            input_bindings,
+            frame_ctx,
+            child_definition.inputs,
+        )
+        child_frame = ExecutionFrame(
+            workflow_id=child_definition.id,
+            workflow_version=child_definition.version,
+            variables=resolved_inputs,
+            parent_frame=frame,
+            depth=next_depth,
+        )
+        logger.info(
+            WORKFLOW_EXEC_SUBWORKFLOW_FRAME_PUSHED,
+            execution_id=execution_id,
+            node_id=qualified_id,
+            subworkflow_id=subworkflow_id,
+            version=version,
+            depth=next_depth,
+        )
+
+        # Recurse into the child graph.  Child node IDs are qualified
+        # with the parent's subworkflow node ID to keep the flat
+        # accumulator unique across frame boundaries.
+        child_prefix = qualified_id
+        child_final_vars = await self._walk_frame(
+            definition=child_definition,
+            frame=child_frame,
+            qualifier_prefix=child_prefix,
+            state=state,
+            execution_id=execution_id,
+            project=project,
+            activated_by=activated_by,
+        )
+
+        # Project outputs back into the parent frame's mutable variable
+        # map.  Downstream nodes in the parent graph will see the new
+        # values via their own reads of frame_ctx.
+        projected = project_output_bindings(
+            output_bindings,
+            child_final_vars,
+            child_definition.outputs,
+        )
+        frame_ctx.update(projected)
+
+        logger.info(
+            WORKFLOW_EXEC_SUBWORKFLOW_FRAME_POPPED,
+            execution_id=execution_id,
+            node_id=qualified_id,
+            subworkflow_id=subworkflow_id,
+            version=version,
+            depth=next_depth,
+        )
+        logger.debug(
+            WORKFLOW_EXEC_SUBWORKFLOW_NODE_COMPLETED,
+            execution_id=execution_id,
+            node_id=qualified_id,
+        )
+        return WorkflowNodeExecution(
+            node_id=qualified_id,
+            node_type=WorkflowNodeType.SUBWORKFLOW,
+            status=WorkflowNodeExecutionStatus.SUBWORKFLOW_COMPLETED,
         )
 
     async def get_execution(

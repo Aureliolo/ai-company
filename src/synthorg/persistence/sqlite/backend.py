@@ -83,6 +83,9 @@ from synthorg.persistence.sqlite.settings_repo import (
 from synthorg.persistence.sqlite.ssrf_violation_repo import (
     SQLiteSsrfViolationRepository,
 )
+from synthorg.persistence.sqlite.subworkflow_repo import (
+    SQLiteSubworkflowRepository,
+)
 from synthorg.persistence.sqlite.user_repo import (
     SQLiteApiKeyRepository,
     SQLiteUserRepository,
@@ -144,6 +147,7 @@ class SQLitePersistenceBackend:
         self._custom_presets: SQLitePersonalityPresetRepository | None = None
         self._workflow_definitions: SQLiteWorkflowDefinitionRepository | None = None
         self._workflow_executions: SQLiteWorkflowExecutionRepository | None = None
+        self._subworkflows: SQLiteSubworkflowRepository | None = None
         self._workflow_versions: SQLiteVersionRepository[WorkflowDefinition] | None = (
             None
         )
@@ -186,6 +190,7 @@ class SQLitePersistenceBackend:
         self._custom_presets = None
         self._workflow_definitions = None
         self._workflow_executions = None
+        self._subworkflows = None
         self._workflow_versions = None
         self._identity_versions = None
         self._evaluation_config_versions = None
@@ -281,6 +286,7 @@ class SQLitePersistenceBackend:
         self._custom_presets = SQLitePersonalityPresetRepository(self._db)
         self._workflow_definitions = SQLiteWorkflowDefinitionRepository(self._db)
         self._workflow_executions = SQLiteWorkflowExecutionRepository(self._db)
+        self._subworkflows = SQLiteSubworkflowRepository(self._db)
 
         def _ver_repo[T: BaseModel](
             table: str,
@@ -651,6 +657,18 @@ class SQLitePersistenceBackend:
         return self._require_connected(
             self._workflow_executions,
             "workflow_executions",
+        )
+
+    @property
+    def subworkflows(self) -> SQLiteSubworkflowRepository:
+        """Repository for versioned subworkflow persistence.
+
+        Raises:
+            PersistenceConnectionError: If not connected.
+        """
+        return self._require_connected(
+            self._subworkflows,
+            "subworkflows",
         )
 
     @property

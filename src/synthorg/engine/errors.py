@@ -209,6 +209,72 @@ class WorkflowExecutionNotFoundError(WorkflowExecutionError):
     """Raised when a workflow execution instance is not found."""
 
 
+class SubworkflowNotFoundError(WorkflowExecutionError):
+    """Raised when a referenced subworkflow version cannot be resolved.
+
+    Attributes:
+        subworkflow_id: The subworkflow identifier.
+        version: The semver pin that failed to resolve.
+    """
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        subworkflow_id: NotBlankStr,
+        version: NotBlankStr,
+    ) -> None:
+        super().__init__(message)
+        self.subworkflow_id = subworkflow_id
+        self.version = version
+
+
+class SubworkflowCycleError(WorkflowExecutionError):
+    """Raised when the subworkflow reference graph contains a cycle.
+
+    Attributes:
+        cycle_path: Ordered ``(subworkflow_id, version)`` tuples that
+            participate in the cycle.
+    """
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        cycle_path: tuple[tuple[str, str], ...],
+    ) -> None:
+        super().__init__(message)
+        self.cycle_path = cycle_path
+
+
+class SubworkflowDepthExceededError(WorkflowExecutionError):
+    """Raised when runtime subworkflow nesting exceeds the configured limit.
+
+    Attributes:
+        depth: The depth at which the limit was exceeded.
+        max_depth: The configured maximum.
+    """
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        depth: int,
+        max_depth: int,
+    ) -> None:
+        super().__init__(message)
+        self.depth = depth
+        self.max_depth = max_depth
+
+
+class SubworkflowIOError(WorkflowExecutionError):
+    """Raised when subworkflow input or output binding is invalid.
+
+    Covers missing required inputs, unknown inputs, unknown outputs,
+    type mismatches, and invalid binding expressions.
+    """
+
+
 class SelfReviewError(EngineError):
     """Raised when an agent attempts to review their own work.
 

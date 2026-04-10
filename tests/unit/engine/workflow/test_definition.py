@@ -162,7 +162,8 @@ class TestWorkflowDefinition:
         wf = _minimal_definition()
         assert wf.id == "wf-1"
         assert wf.name == "Test Workflow"
-        assert wf.version == 1
+        assert wf.revision == 1
+        assert wf.version == "1.0.0"
         assert len(wf.nodes) == 3
         assert len(wf.edges) == 2
 
@@ -182,9 +183,9 @@ class TestWorkflowDefinition:
         assert wf.description == ""
 
     @pytest.mark.unit
-    def test_version_minimum(self) -> None:
+    def test_revision_minimum(self) -> None:
         with pytest.raises(ValidationError, match="greater than or equal to 1"):
-            _minimal_definition(version=0)
+            _minimal_definition(revision=0)
 
     @pytest.mark.unit
     def test_frozen(self) -> None:

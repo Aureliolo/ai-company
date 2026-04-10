@@ -27,7 +27,7 @@ class TestUpdateNodeStatus:
         exe = WorkflowExecution(
             id="wfexec-test",
             definition_id="wf-1",
-            definition_version=1,
+            definition_revision=1,
             status=WorkflowExecutionStatus.RUNNING,
             node_executions=(
                 WorkflowNodeExecution(
@@ -56,7 +56,7 @@ class TestUpdateNodeStatus:
         exe = WorkflowExecution(
             id="wfexec-test",
             definition_id="wf-1",
-            definition_version=1,
+            definition_revision=1,
             status=WorkflowExecutionStatus.RUNNING,
             node_executions=(
                 WorkflowNodeExecution(
@@ -89,7 +89,7 @@ class TestUpdateNodeStatus:
         exe = WorkflowExecution(
             id="wfexec-test",
             definition_id="wf-1",
-            definition_version=1,
+            definition_revision=1,
             status=WorkflowExecutionStatus.RUNNING,
             node_executions=(
                 WorkflowNodeExecution(
@@ -121,7 +121,7 @@ class TestAllTasksCompleted:
         exe = WorkflowExecution(
             id="wfexec-test",
             definition_id="wf-1",
-            definition_version=1,
+            definition_revision=1,
             status=WorkflowExecutionStatus.RUNNING,
             node_executions=(
                 WorkflowNodeExecution(
@@ -151,7 +151,7 @@ class TestAllTasksCompleted:
         exe = WorkflowExecution(
             id="wfexec-test",
             definition_id="wf-1",
-            definition_version=1,
+            definition_revision=1,
             status=WorkflowExecutionStatus.RUNNING,
             node_executions=(
                 WorkflowNodeExecution(
@@ -177,7 +177,7 @@ class TestAllTasksCompleted:
         exe = WorkflowExecution(
             id="wfexec-test",
             definition_id="wf-1",
-            definition_version=1,
+            definition_revision=1,
             status=WorkflowExecutionStatus.RUNNING,
             node_executions=(
                 WorkflowNodeExecution(
@@ -203,7 +203,7 @@ class TestAllTasksCompleted:
         exe = WorkflowExecution(
             id="wfexec-test",
             definition_id="wf-1",
-            definition_version=1,
+            definition_revision=1,
             status=WorkflowExecutionStatus.RUNNING,
             node_executions=(
                 WorkflowNodeExecution(
@@ -230,7 +230,7 @@ class TestAllTasksCompleted:
         exe = WorkflowExecution(
             id="wfexec-test",
             definition_id="wf-1",
-            definition_version=1,
+            definition_revision=1,
             status=WorkflowExecutionStatus.RUNNING,
             node_executions=(
                 WorkflowNodeExecution(
