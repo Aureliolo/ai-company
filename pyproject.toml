@@ -39,6 +39,9 @@ build-backend = "hatchling.build"
 [project.optional-dependencies]
 fine-tune = ["torch==2.11.0", "sentence-transformers==5.4.0"]
 telemetry = ["logfire==4.31.1"]
+# Distributed runtime: first distributed MessageBus backend + task queue workers.
+# Opt in with `pip install synthorg[distributed]`. See docs/design/distributed-runtime.md.
+distributed = ["nats-py==2.12.0"]
 
 [tool.hatch.version]
 path = "src/synthorg/__init__.py"
@@ -58,6 +61,11 @@ test = [
     "polyfactory==3.3.0",
     "respx==0.23.1",
     "hypothesis==6.151.12",
+    # Distributed runtime: dev envs always have these so mypy can type-check
+    # bus/nats.py and workers/ without needing the optional extra installed.
+    # Runtime users opt in via `pip install synthorg[distributed]`.
+    "nats-py==2.12.0",
+    "testcontainers==4.13.0",
 ]
 docs = [
     "zensical==0.0.32",

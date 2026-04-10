@@ -1,0 +1,65 @@
+"""Message bus backend package.
+
+Exposes the concrete backends and a :func:`build_message_bus` factory
+that picks the right implementation based on
+``MessageBusConfig.backend``. Callers that need a specific backend
+can import it directly.
+
+See ``docs/design/distributed-runtime.md`` for the overall design.
+"""
+
+from synthorg.communication.bus.memory import InMemoryMessageBus
+from synthorg.communication.bus_protocol import MessageBus
+from synthorg.communication.config import MessageBusConfig  # noqa: TC001
+from synthorg.communication.enums import MessageBusBackend
+
+__all__ = (
+    "InMemoryMessageBus",
+    "MessageBus",
+    "build_message_bus",
+)
+
+
+def build_message_bus(config: MessageBusConfig) -> MessageBus:
+    """Build the concrete ``MessageBus`` for the given configuration.
+
+    The factory pattern-matches on ``config.backend`` and returns the
+    matching implementation. Optional dependencies for distributed
+    backends are imported lazily so a default (internal) deployment
+    does not need them installed.
+
+    Args:
+        config: Message bus configuration.
+
+    Returns:
+        A concrete ``MessageBus`` instance (not started).
+
+    Raises:
+        ValueError: If ``config.backend`` names an implementation
+            that is documented but not yet implemented (Redis,
+            RabbitMQ, Kafka).
+        ImportError: If the selected backend requires an optional
+            dependency that is not installed (e.g. ``nats-py`` for
+            the NATS backend).
+    """
+    match config.backend:
+        case MessageBusBackend.INTERNAL:
+            return InMemoryMessageBus(config=config)
+        case MessageBusBackend.NATS:
+            from synthorg.communication.bus.nats import (  # noqa: PLC0415
+                JetStreamMessageBus,
+            )
+
+            return JetStreamMessageBus(config=config)
+        case (
+            MessageBusBackend.REDIS
+            | MessageBusBackend.RABBITMQ
+            | MessageBusBackend.KAFKA
+        ):
+            msg = (
+                f"MessageBus backend '{config.backend.value}' is documented "
+                f"as a future backend but not yet implemented. See "
+                f"docs/design/distributed-runtime.md. Supported backends: "
+                f"'internal', 'nats'."
+            )
+            raise ValueError(msg)

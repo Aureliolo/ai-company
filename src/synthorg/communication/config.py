@@ -48,6 +48,66 @@ class MessageRetentionConfig(BaseModel):
     )
 
 
+class NatsConfig(BaseModel):
+    """NATS JetStream backend configuration.
+
+    Only applicable when ``MessageBusConfig.backend == NATS``. See
+    ``docs/design/distributed-runtime.md`` for stream layout and
+    subject naming.
+
+    Attributes:
+        url: NATS server URL (e.g. ``nats://localhost:4222``).
+        credentials_path: Optional path to a credentials file for
+            secured clusters (creds file or jwt+seed).
+        stream_name_prefix: Prefix for JetStream stream names. The
+            bus stream is ``<prefix>_BUS`` and the KV bucket for
+            dynamic channels is ``<prefix>_BUS_CHANNELS``.
+        connect_timeout_seconds: Seconds to wait for the initial
+            connection before raising.
+        reconnect_time_wait_seconds: Seconds between reconnect
+            attempts.
+        max_reconnect_attempts: Maximum reconnect attempts before
+            giving up (``-1`` for unlimited).
+        publish_ack_wait_seconds: Seconds to wait for a JetStream
+            publish ack before considering the publish failed.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+
+    url: NotBlankStr = Field(
+        default="nats://localhost:4222",
+        description="NATS server URL",
+    )
+    credentials_path: str | None = Field(
+        default=None,
+        description="Optional credentials file path",
+    )
+    stream_name_prefix: NotBlankStr = Field(
+        default="SYNTHORG",
+        description="Prefix for JetStream stream names",
+    )
+    connect_timeout_seconds: float = Field(
+        default=5.0,
+        gt=0,
+        description="Initial connect timeout",
+    )
+    reconnect_time_wait_seconds: float = Field(
+        default=2.0,
+        gt=0,
+        description="Seconds between reconnect attempts",
+    )
+    max_reconnect_attempts: int = Field(
+        default=-1,
+        ge=-1,
+        description="Max reconnect attempts (-1 = unlimited)",
+    )
+    publish_ack_wait_seconds: float = Field(
+        default=5.0,
+        gt=0,
+        description="JetStream publish ack wait",
+    )
+
+
 class MessageBusConfig(BaseModel):
     """Message bus backend configuration.
 
@@ -57,6 +117,8 @@ class MessageBusConfig(BaseModel):
         backend: Transport backend to use.
         channels: Pre-defined channel names.
         retention: Message retention settings.
+        nats: NATS-specific configuration (required when
+            ``backend == NATS``, ignored otherwise).
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
@@ -73,11 +135,23 @@ class MessageBusConfig(BaseModel):
         default_factory=MessageRetentionConfig,
         description="Message retention settings",
     )
+    nats: NatsConfig | None = Field(
+        default=None,
+        description="NATS-specific configuration (required when backend=nats)",
+    )
 
     @model_validator(mode="after")
     def _validate_channels(self) -> Self:
         """Ensure channel names are unique."""
         validate_unique_strings(self.channels, "channels")
+        return self
+
+    @model_validator(mode="after")
+    def _validate_backend_config(self) -> Self:
+        """Ensure backend-specific config is provided when required."""
+        if self.backend == MessageBusBackend.NATS and self.nats is None:
+            msg = "message_bus.nats must be provided when message_bus.backend is 'nats'"
+            raise ValueError(msg)
         return self
 
 

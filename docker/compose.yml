@@ -47,6 +47,50 @@ services:
           pids: 256
     logging: *logging
 
+  # NATS JetStream service for the distributed message bus + task queue.
+  # Opt in with `docker compose --profile distributed up`. See
+  # docs/design/distributed-runtime.md for the migration path and config.
+  #
+  # Host port layout (kept contiguous with the other services):
+  #   3000  web
+  #   3001  backend
+  #   3002  reserved for the future database backend (parallel work)
+  #   3003  NATS client (this service) -> container 4222
+  #
+  # Monitoring (container 8222) is intentionally NOT mapped to a host
+  # port.  Use `docker compose exec nats wget -qO- localhost:8222/varz`
+  # or a compose override file if you need external access.
+  nats:
+    image: nats:2.10-alpine
+    profiles: ["distributed"]
+    command: ["-js", "-sd", "/data", "-m", "8222"]
+    ports:
+      - "${NATS_CLIENT_PORT:-3003}:4222"
+    volumes:
+      - synthorg-nats-data:/data
+    user: "1000:1000"
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    read_only: true
+    tmpfs:
+      - /tmp:noexec,nosuid,nodev,size=16m
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+          cpus: "0.5"
+          pids: 64
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8222/healthz"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+    logging: *logging
+
   web:
     build:
       context: ..
@@ -81,3 +125,4 @@ networks:
 
 volumes:
   synthorg-data:
+  synthorg-nats-data:

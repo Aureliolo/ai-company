@@ -209,22 +209,23 @@ def _wire_task_engine(
 def _auto_wire_message_bus(
     effective_config: RootConfig,
 ) -> MessageBus:
-    """Create an InMemoryMessageBus with API channels merged in.
+    """Create the configured MessageBus with API channels merged in.
 
-    The default ``MessageBusConfig`` channels are organizational
-    (``#all-hands``, ``#engineering``, etc.).  The API bridge needs
-    additional channels defined in ``ALL_CHANNELS`` (see
-    ``synthorg.api.channels``) to forward events to WebSocket clients.
+    Dispatches to the correct backend via ``build_message_bus`` based
+    on ``communication.message_bus.backend``. The default
+    ``MessageBusConfig`` channels are organizational (``#all-hands``,
+    ``#engineering``, etc.). The API bridge needs additional channels
+    defined in ``ALL_CHANNELS`` (see ``synthorg.api.channels``) to
+    forward events to WebSocket clients, so they are merged in here
+    before the factory runs.
 
     Args:
         effective_config: Root company configuration.
 
     Returns:
-        A configured ``InMemoryMessageBus`` instance.
+        A configured ``MessageBus`` instance (not started).
     """
-    from synthorg.communication.bus_memory import (  # noqa: PLC0415
-        InMemoryMessageBus,
-    )
+    from synthorg.communication.bus import build_message_bus  # noqa: PLC0415
 
     try:
         bus_config = effective_config.communication.message_bus
@@ -233,14 +234,18 @@ def _auto_wire_message_bus(
             bus_config = bus_config.model_copy(
                 update={"channels": (*bus_config.channels, *extra)},
             )
-        bus = InMemoryMessageBus(config=bus_config)
+        bus = build_message_bus(bus_config)
     except Exception:
         logger.exception(
             API_APP_STARTUP,
             error="Failed to auto-wire message bus",
         )
         raise
-    logger.info(API_SERVICE_AUTO_WIRED, service="message_bus")
+    logger.info(
+        API_SERVICE_AUTO_WIRED,
+        service="message_bus",
+        backend=bus_config.backend.value,
+    )
     return bus
 
 

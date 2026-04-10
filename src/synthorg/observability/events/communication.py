@@ -8,6 +8,11 @@ COMM_BUS_STOPPED: Final[str] = "communication.bus.stopped"
 COMM_BUS_ALREADY_RUNNING: Final[str] = "communication.bus.already_running"
 COMM_BUS_NOT_RUNNING: Final[str] = "communication.bus.not_running"
 
+# Bus connection lifecycle (distributed backends only)
+COMM_BUS_CONNECTED: Final[str] = "communication.bus.connected"
+COMM_BUS_RECONNECTING: Final[str] = "communication.bus.reconnecting"
+COMM_BUS_DISCONNECTED: Final[str] = "communication.bus.disconnected"
+
 # Channel management
 COMM_CHANNEL_CREATED: Final[str] = "communication.channel.created"
 COMM_CHANNEL_NOT_FOUND: Final[str] = "communication.channel.not_found"

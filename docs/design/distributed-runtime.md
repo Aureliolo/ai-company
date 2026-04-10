@@ -232,7 +232,7 @@ communication:
   message_bus:
     backend: nats          # opt in, default was "internal"
     nats:
-      url: nats://localhost:4222
+      url: nats://localhost:3003    # host port for docker-compose profile; use nats://nats:4222 when the backend runs inside docker
       credentials_path: null    # optional, for secured clusters
       stream_name_prefix: SYNTHORG
       reconnect_time_wait: 2    # seconds
@@ -322,7 +322,7 @@ Once NATS is running, operators can inspect bus state without a Python interpret
 - `nats stream info SYNTHORG_BUS` -- message counts, subject cardinality, retention policy
 - `nats consumer ls SYNTHORG_BUS` -- per-(channel, subscriber) durable consumers with pending / delivered / ack-pending counts
 - `nats sub 'synthorg.bus.channel.>'` -- tail messages across all bus channels in real time
-- `http://localhost:8222/` -- NATS monitoring HTTP endpoint, exposes Prometheus-compatible metrics
+- `docker compose exec nats wget -qO- localhost:8222/varz` -- NATS monitoring HTTP endpoint, exposes Prometheus-compatible metrics (not mapped to a host port by default; use a compose override if external access is needed)
 
 ---
 
