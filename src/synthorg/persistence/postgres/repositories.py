@@ -153,7 +153,7 @@ class PostgresTaskRepository:
                 PERSISTENCE_TASK_SAVE_FAILED, task_id=task.id, error=str(exc)
             )
             raise QueryError(msg) from exc
-        logger.debug(PERSISTENCE_TASK_SAVED, task_id=task.id)
+        logger.info(PERSISTENCE_TASK_SAVED, task_id=task.id)
 
     _TASK_COLUMNS = (
         "id, title, description, type, priority, project, created_by, "
@@ -260,7 +260,7 @@ class PostgresTaskRepository:
                 PERSISTENCE_TASK_DELETE_FAILED, task_id=task_id, error=str(exc)
             )
             raise QueryError(msg) from exc
-        logger.debug(PERSISTENCE_TASK_DELETED, task_id=task_id, deleted=deleted)
+        logger.info(PERSISTENCE_TASK_DELETED, task_id=task_id, deleted=deleted)
         return deleted
 
 
@@ -479,7 +479,7 @@ class PostgresMessageRepository:
                 error=str(exc),
             )
             raise QueryError(msg) from exc
-        logger.debug(PERSISTENCE_MESSAGE_SAVED, message_id=msg_id)
+        logger.info(PERSISTENCE_MESSAGE_SAVED, message_id=msg_id)
 
     def _row_to_message(self, row: dict[str, Any]) -> Message:
         """Reconstruct a Message from a Postgres dict_row."""
@@ -511,8 +511,10 @@ class PostgresMessageRepository:
         limit: int | None = None,
     ) -> tuple[Message, ...]:
         """Retrieve message history for a channel, newest first."""
-        if limit is not None and limit < 1:
-            msg = f"limit must be a positive integer, got {limit}"
+        if limit is not None and (
+            not isinstance(limit, int) or isinstance(limit, bool) or limit < 1
+        ):
+            msg = f"limit must be a positive integer, got {limit!r}"
             logger.warning(
                 PERSISTENCE_MESSAGE_HISTORY_FAILED,
                 channel=channel,

@@ -231,7 +231,7 @@ class PostgresProjectCostAggregateRepository:
             )
             raise QueryError(msg) from exc
 
-        logger.debug(
+        logger.info(
             PERSISTENCE_PROJECT_COST_AGG_INCREMENTED,
             project_id=project_id,
             cost_delta=cost,

@@ -17,6 +17,7 @@ from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.observability import get_logger
 from synthorg.observability.events.persistence import (
     PERSISTENCE_RISK_OVERRIDE_QUERY_FAILED,
+    PERSISTENCE_RISK_OVERRIDE_REVOKE_FAILED,
     PERSISTENCE_RISK_OVERRIDE_REVOKED,
     PERSISTENCE_RISK_OVERRIDE_SAVE_FAILED,
     PERSISTENCE_RISK_OVERRIDE_SAVED,
@@ -216,7 +217,8 @@ class PostgresRiskOverrideRepository:
         except psycopg.Error as exc:
             msg = f"Failed to revoke risk override: {exc}"
             logger.exception(
-                PERSISTENCE_RISK_OVERRIDE_SAVE_FAILED,
+                PERSISTENCE_RISK_OVERRIDE_REVOKE_FAILED,
+                override_id=override_id,
                 error=msg,
             )
             raise QueryError(msg) from exc

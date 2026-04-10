@@ -76,7 +76,7 @@ ON CONFLICT(execution_id) DO UPDATE SET
             )
             raise QueryError(msg) from exc
 
-        logger.debug(
+        logger.info(
             PERSISTENCE_HEARTBEAT_SAVED,
             execution_id=heartbeat.execution_id,
         )
@@ -169,7 +169,7 @@ ON CONFLICT(execution_id) DO UPDATE SET
             raise QueryError(msg) from exc
 
         if deleted:
-            logger.debug(
+            logger.info(
                 PERSISTENCE_HEARTBEAT_DELETED,
                 execution_id=execution_id,
             )

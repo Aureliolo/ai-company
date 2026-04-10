@@ -336,6 +336,9 @@ PERSISTENCE_RISK_OVERRIDE_SAVE_FAILED: Final[str] = (
     "persistence.risk_override.save_failed"
 )
 PERSISTENCE_RISK_OVERRIDE_REVOKED: Final[str] = "persistence.risk_override.revoked"
+PERSISTENCE_RISK_OVERRIDE_REVOKE_FAILED: Final[str] = (
+    "persistence.risk_override.revoke_failed"
+)
 PERSISTENCE_RISK_OVERRIDE_QUERIED: Final[str] = "persistence.risk_override.queried"
 PERSISTENCE_RISK_OVERRIDE_QUERY_FAILED: Final[str] = (
     "persistence.risk_override.query_failed"

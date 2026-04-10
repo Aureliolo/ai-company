@@ -130,7 +130,7 @@ ON CONFLICT(id) DO UPDATE SET
             )
             return None
 
-        return self._row_to_model(dict(row))
+        return self._row_to_model(row)
 
     async def get_by_approval(self, approval_id: NotBlankStr) -> ParkedContext | None:
         """Retrieve a parked context by approval ID."""
@@ -158,7 +158,7 @@ ON CONFLICT(id) DO UPDATE SET
         if row is None:
             return None
 
-        return self._row_to_model(dict(row))
+        return self._row_to_model(row)
 
     async def get_by_agent(self, agent_id: NotBlankStr) -> tuple[ParkedContext, ...]:
         """Retrieve all parked contexts for an agent."""
@@ -184,7 +184,7 @@ ON CONFLICT(id) DO UPDATE SET
             )
             raise QueryError(msg) from exc
 
-        results = tuple(self._row_to_model(dict(row)) for row in rows)
+        results = tuple(self._row_to_model(row) for row in rows)
 
         logger.debug(
             PERSISTENCE_PARKED_CONTEXT_QUERIED,

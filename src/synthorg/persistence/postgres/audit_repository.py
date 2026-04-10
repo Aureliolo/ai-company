@@ -112,7 +112,7 @@ INSERT INTO audit_entries (
                 error=str(exc),
             )
             raise QueryError(msg) from exc
-        logger.debug(
+        logger.info(
             PERSISTENCE_AUDIT_ENTRY_SAVED,
             entry_id=entry.id,
             agent_id=entry.agent_id,

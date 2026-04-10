@@ -101,6 +101,7 @@ class PostgresSsrfViolationRepository:
             msg = f"Failed to save SSRF violation: {exc}"
             logger.exception(
                 PERSISTENCE_SSRF_VIOLATION_SAVE_FAILED,
+                violation_id=violation.id,
                 error=msg,
             )
             raise QueryError(msg) from exc
