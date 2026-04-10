@@ -1,9 +1,11 @@
 """Client simulation module for SynthOrg.
 
-Provides the contracts (models, protocols, configs) for simulating
-external clients that submit requirements and review deliverables.
+Provides the contracts (models, protocols, configs) and concrete
+strategy implementations for simulating external clients that
+submit requirements and review deliverables.
 """
 
+from synthorg.client.ai_client import AIClient
 from synthorg.client.config import (
     ClientPoolConfig,
     ClientSimulationConfig,
@@ -11,6 +13,19 @@ from synthorg.client.config import (
     FeedbackConfig,
     RequirementGeneratorConfig,
     SimulationRunnerConfig,
+)
+from synthorg.client.continuous import ContinuousMode
+from synthorg.client.human_client import HumanClient
+from synthorg.client.human_queue import (
+    HumanInputQueue,
+    InMemoryHumanInputQueue,
+    PendingRequirement,
+    PendingReview,
+)
+from synthorg.client.hybrid_client import (
+    HybridClient,
+    HybridRouter,
+    default_router,
 )
 from synthorg.client.models import (
     ClientFeedback,
@@ -33,8 +48,10 @@ from synthorg.client.protocols import (
     ReportStrategy,
     RequirementGenerator,
 )
+from synthorg.client.runner import SimulationRunner
 
 __all__ = [
+    "AIClient",
     "ClientFeedback",
     "ClientInterface",
     "ClientPoolConfig",
@@ -42,11 +59,19 @@ __all__ = [
     "ClientProfile",
     "ClientRequest",
     "ClientSimulationConfig",
+    "ContinuousMode",
     "ContinuousModeConfig",
     "EntryPointStrategy",
     "FeedbackConfig",
     "FeedbackStrategy",
     "GenerationContext",
+    "HumanClient",
+    "HumanInputQueue",
+    "HybridClient",
+    "HybridRouter",
+    "InMemoryHumanInputQueue",
+    "PendingRequirement",
+    "PendingReview",
     "PoolConstraints",
     "ReportStrategy",
     "RequestStatus",
@@ -55,7 +80,9 @@ __all__ = [
     "ReviewContext",
     "SimulationConfig",
     "SimulationMetrics",
+    "SimulationRunner",
     "SimulationRunnerConfig",
     "TaskRequirement",
+    "default_router",
     "validate_request_transition",
 ]

@@ -81,6 +81,28 @@ class WsEventType(StrEnum):
     MEMORY_FINE_TUNE_COMPLETED = "memory.fine_tune.completed"
     MEMORY_FINE_TUNE_FAILED = "memory.fine_tune.failed"
 
+    CLIENT_CREATED = "client.created"
+    CLIENT_UPDATED = "client.updated"
+    CLIENT_DEACTIVATED = "client.deactivated"
+    CLIENT_DELETED = "client.deleted"
+
+    REQUEST_SUBMITTED = "request.submitted"
+    REQUEST_SCOPED = "request.scoped"
+    REQUEST_APPROVED = "request.approved"
+    REQUEST_REJECTED = "request.rejected"
+    REQUEST_STATUS_CHANGED = "request.status_changed"
+
+    SIMULATION_STARTED = "simulation.started"
+    SIMULATION_RUNNING = "simulation.running"
+    SIMULATION_PAUSED = "simulation.paused"
+    SIMULATION_CANCELLED = "simulation.cancelled"
+    SIMULATION_COMPLETED = "simulation.completed"
+    SIMULATION_FAILED = "simulation.failed"
+
+    REVIEW_STAGE_COMPLETED = "review.stage_completed"
+    REVIEW_STAGE_DECIDED = "review.stage_decided"
+    REVIEW_PIPELINE_COMPLETED = "review.pipeline_completed"
+
 
 class WsEvent(BaseModel):
     """A real-time event pushed over WebSocket.

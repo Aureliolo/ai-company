@@ -36,6 +36,11 @@ export const ROUTES = {
   SETTINGS_CEREMONY_POLICY: '/settings/coordination/ceremony-policy',
   SETTINGS_FINE_TUNING: '/settings/memory/fine-tuning',
   DOCUMENTATION: '/docs/',
+  CLIENTS: '/clients',
+  CLIENT_DETAIL: '/clients/:clientId',
+  REQUEST_QUEUE: '/clients/requests',
+  SIMULATION_DASHBOARD: '/clients/simulations',
+  REVIEW_PIPELINE_VIEW: '/clients/reviews/:taskId',
 } as const
 
 /** Routes accessible without authentication. */

@@ -499,6 +499,10 @@ Every backend controller has a home in the page structure. No orphans.
 | ArtifactController | Artifacts page (list, detail, content preview, download) |
 | WorkflowController | Workflows, Workflow Editor |
 | WorkflowVersionController | Workflows, Workflow Editor |
+| ClientController | Client List, Client Detail |
+| RequestController | Request Queue |
+| SimulationController | Simulation Dashboard |
+| ReviewController | Review Pipeline |
 
 ---
 

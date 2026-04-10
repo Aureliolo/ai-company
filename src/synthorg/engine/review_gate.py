@@ -20,6 +20,7 @@ from typing import TYPE_CHECKING
 
 from synthorg.core.enums import DecisionOutcome, TaskStatus
 from synthorg.engine.errors import SelfReviewError, TaskNotFoundError
+from synthorg.engine.review.models import PipelineResult, ReviewVerdict
 from synthorg.engine.task_sync import sync_to_task_engine
 from synthorg.observability import get_logger
 from synthorg.observability.events.approval_gate import (
@@ -31,11 +32,15 @@ from synthorg.observability.events.approval_gate import (
     APPROVAL_GATE_TASK_NOT_FOUND,
     APPROVAL_GATE_TASK_UNASSIGNED,
 )
+from synthorg.observability.events.review_pipeline import (
+    APPROVAL_GATE_PIPELINE_ALL_SKIPPED,
+)
 from synthorg.observability.events.versioning import VERSION_FETCH_FAILED
 from synthorg.persistence.errors import DuplicateRecordError, QueryError
 
 if TYPE_CHECKING:
     from synthorg.core.task import Task
+    from synthorg.engine.review.pipeline import ReviewPipeline
     from synthorg.engine.task_engine import TaskEngine
     from synthorg.persistence.protocol import PersistenceBackend
 
@@ -125,34 +130,11 @@ class ReviewGateService:
 
         On approve: IN_REVIEW -> COMPLETED.
         On reject: IN_REVIEW -> IN_PROGRESS (rework).
-
-        The self-review check runs a second time here as defense in
-        depth.  This is a full DB round-trip through the task engine,
-        not a cached pass-through -- the service intentionally does
-        not trust that the caller ran the preflight, because the
-        preflight is an HTTP-layer optimization and this method is
-        the authoritative boundary.
-
-        Args:
-            task_id: The task under review.
-            requested_by: Agent that requested the review (for logging).
-            approved: True for approve, False for reject/rework.
-            decided_by: Agent that made the decision.
-            reason: Optional rationale, required-free text.
-            approval_id: Optional foreign key to the approval item that
-                triggered this decision -- persisted on the
-                ``DecisionRecord`` for cross-referencing audit trails.
-
-        The ``DecisionRecord`` will include a ``charter_version`` key in
-        its metadata when the executing agent has a versioned identity on
-        record.  If the version lookup fails with a ``QueryError``, the
-        metadata will contain ``{"charter_version_lookup_failed": True}``
-        instead, so the failure is surfaced without blocking the decision.
+        Self-review check runs again as defense in depth.
 
         Raises:
             TaskNotFoundError: If the task cannot be found.
-            SelfReviewError: If the decider is the task's original
-                executing agent.
+            SelfReviewError: If the decider is the task executor.
         """
         task = await self.check_can_decide(task_id=task_id, decided_by=decided_by)
 
@@ -175,19 +157,169 @@ class ReviewGateService:
                 transition_reason += f": {normalized_reason}"
             event = APPROVAL_GATE_REVIEW_REWORK
 
-        await sync_to_task_engine(
-            self._task_engine,
-            target_status=target,
-            task_id=task_id,
-            agent_id="review-gate-service",
-            reason=transition_reason,
+        await self._apply_decision(
+            task=task,
+            target=target,
+            transition_reason=transition_reason,
+            event=event,
+            decided_by=decided_by,
+            requested_by=requested_by,
+            approved=approved,
+            approval_id=approval_id,
+            normalized_reason=normalized_reason,
         )
 
-        # Log the state transition AFTER sync_to_task_engine succeeds so
-        # audit logs reflect actual transitions, not intended ones.
+    async def run_pipeline(
+        self,
+        *,
+        task_id: str,
+        pipeline: ReviewPipeline,
+        decided_by: str,
+        requested_by: str,
+        approval_id: str | None = None,
+    ) -> PipelineResult:
+        """Drive a review pipeline and apply its final verdict.
+
+        This is the pipeline-driven entry point. It runs the
+        self-review preflight, executes every stage in
+        ``pipeline``, maps the aggregated :class:`ReviewVerdict` to
+        the same task-engine transition and decision-record flow
+        used by :meth:`complete_review`, and returns the
+        :class:`PipelineResult` so callers can surface stage
+        details to the UI.
+
+        Args:
+            task_id: The task under review.
+            pipeline: Review pipeline to execute.
+            decided_by: Identity attributed to the decision (the
+                pipeline's operator or the invoking agent).
+            requested_by: Agent that requested the review.
+            approval_id: Optional foreign key to an approval item.
+
+        Returns:
+            The :class:`PipelineResult` produced by the pipeline
+            (irrespective of the final verdict).
+
+        Raises:
+            TaskNotFoundError: If the task cannot be found.
+            SelfReviewError: If the decider is the task's executor.
+        """
+        task = await self.check_can_decide(
+            task_id=task_id,
+            decided_by=decided_by,
+        )
+        result = await pipeline.run(task)
+        target, transition_reason, event, approved = self._map_pipeline_verdict(
+            result, decided_by
+        )
+        await self._apply_decision(
+            task=task,
+            target=target,
+            transition_reason=transition_reason,
+            event=event,
+            decided_by=decided_by,
+            requested_by=requested_by,
+            approved=approved,
+            approval_id=approval_id,
+            normalized_reason=transition_reason,
+        )
+        return result
+
+    @staticmethod
+    def _map_pipeline_verdict(
+        result: PipelineResult,
+        decided_by: str,
+    ) -> tuple[TaskStatus, str, str, bool]:
+        """Translate a pipeline result into the transition inputs."""
+        if result.final_verdict is ReviewVerdict.FAIL:
+            failing = next(
+                (
+                    stage
+                    for stage in result.stage_results
+                    if stage.verdict is ReviewVerdict.FAIL
+                ),
+                None,
+            )
+            detail = (
+                failing.reason
+                if failing and failing.reason
+                else "pipeline reported failure"
+            )
+            return (
+                TaskStatus.IN_PROGRESS,
+                f"Pipeline rejected review by {decided_by}: {detail}",
+                APPROVAL_GATE_REVIEW_REWORK,
+                False,
+            )
+        if result.final_verdict is ReviewVerdict.SKIP:
+            logger.warning(
+                APPROVAL_GATE_PIPELINE_ALL_SKIPPED,
+                task_id=result.task_id,
+                decided_by=decided_by,
+            )
+            stages = ", ".join(stage.stage_name for stage in result.stage_results)
+            reason = f"Pipeline all-skipped ({stages or 'no stages'})"
+            return (
+                TaskStatus.COMPLETED,
+                reason,
+                APPROVAL_GATE_REVIEW_COMPLETED,
+                True,
+            )
+        stages = ", ".join(stage.stage_name for stage in result.stage_results)
+        reason = (
+            f"Pipeline passed ({stages})"
+            if stages
+            else "Pipeline passed (no stages configured)"
+        )
+        return (
+            TaskStatus.COMPLETED,
+            reason,
+            APPROVAL_GATE_REVIEW_COMPLETED,
+            True,
+        )
+
+    async def _apply_decision(  # noqa: PLR0913
+        self,
+        *,
+        task: Task,
+        target: TaskStatus,
+        transition_reason: str,
+        event: str,
+        decided_by: str,
+        requested_by: str,
+        approved: bool,
+        approval_id: str | None,
+        normalized_reason: str | None,
+    ) -> None:
+        """Run the transition + log + decision-record side effects.
+
+        Shared by :meth:`complete_review` (human-driven) and
+        :meth:`run_pipeline` (pipeline-driven). Behavior is
+        preserved byte-for-byte: ``sync_to_task_engine`` runs
+        first, then the audit log entry, then the drop-box
+        append.
+        """
+        try:
+            await sync_to_task_engine(
+                self._task_engine,
+                target_status=target,
+                task_id=task.id,
+                agent_id="review-gate-service",
+                reason=transition_reason,
+            )
+        except Exception:
+            logger.exception(
+                APPROVAL_GATE_REVIEW_REWORK,
+                task_id=task.id,
+                decided_by=decided_by,
+                target_status=target.value,
+                stage="sync_to_task_engine",
+            )
+            raise
+
         logger.info(
             event,
-            task_id=task_id,
+            task_id=task.id,
             requested_by=requested_by,
             decided_by=decided_by,
             target_status=target.value,

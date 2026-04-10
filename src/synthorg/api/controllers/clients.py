@@ -1,0 +1,301 @@
+"""Client simulation CRUD endpoints at /clients."""
+
+from datetime import UTC, datetime
+from typing import Any
+
+from litestar import Controller, Request, delete, get, patch, post
+from litestar.datastructures import State  # noqa: TC002
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
+
+from synthorg.api.channels import CHANNEL_CLIENTS, publish_ws_event
+from synthorg.api.dto import ApiResponse, PaginatedResponse
+from synthorg.api.errors import ConflictError, NotFoundError
+from synthorg.api.guards import require_read_access, require_write_access
+from synthorg.api.pagination import PaginationLimit, PaginationOffset, paginate
+from synthorg.api.state import AppState  # noqa: TC001
+from synthorg.api.ws_models import WsEventType
+from synthorg.client.ai_client import AIClient
+from synthorg.client.feedback.scored import ScoredFeedback
+from synthorg.client.generators.procedural import ProceduralGenerator
+from synthorg.client.models import ClientProfile
+from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.observability import get_logger
+from synthorg.observability.events.api import API_RESOURCE_NOT_FOUND
+
+logger = get_logger(__name__)
+
+
+class CreateClientRequest(BaseModel):
+    """Request payload for creating a client."""
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+
+    client_id: NotBlankStr = Field(description="Unique client identifier")
+    name: NotBlankStr = Field(description="Human-readable name")
+    persona: NotBlankStr = Field(description="Persona description")
+    expertise_domains: tuple[NotBlankStr, ...] = Field(default=())
+    strictness_level: float = Field(default=0.5, ge=0.0, le=1.0)
+
+
+class UpdateClientRequest(BaseModel):
+    """Request payload for updating a client."""
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+
+    name: NotBlankStr | None = Field(default=None)
+    persona: NotBlankStr | None = Field(default=None)
+    expertise_domains: tuple[NotBlankStr, ...] | None = Field(default=None)
+    strictness_level: float | None = Field(default=None, ge=0.0, le=1.0)
+
+
+class SatisfactionPoint(BaseModel):
+    """A single satisfaction-history data point for a client."""
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+
+    feedback_id: NotBlankStr = Field(description="Feedback identifier")
+    task_id: NotBlankStr = Field(description="Reviewed task id")
+    accepted: bool = Field(description="Whether the task was accepted")
+    score: float = Field(
+        description="Derived satisfaction score (0.0-1.0)",
+        ge=0.0,
+        le=1.0,
+    )
+    created_at: AwareDatetime = Field(description="Feedback timestamp")
+
+
+class SatisfactionHistory(BaseModel):
+    """Aggregated satisfaction response for a client."""
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+
+    client_id: NotBlankStr = Field(description="Client identifier")
+    total_reviews: int = Field(ge=0)
+    acceptance_rate: float = Field(ge=0.0, le=1.0)
+    average_score: float = Field(ge=0.0, le=1.0)
+    history: tuple[SatisfactionPoint, ...] = Field(default=())
+
+
+def _score_from_feedback(
+    scores: dict[str, float] | None,
+    *,
+    accepted: bool,
+) -> float:
+    """Derive a single 0.0-1.0 score from a feedback record."""
+    if scores:
+        values = tuple(scores.values())
+        if values:
+            return sum(values) / len(values)
+    return 1.0 if accepted else 0.0
+
+
+def _build_default_client(profile: ClientProfile) -> AIClient:
+    """Construct a default AI client backing for a profile."""
+    return AIClient(
+        profile=profile,
+        generator=ProceduralGenerator(seed=abs(hash(profile.client_id)) & 0xFFFF),
+        feedback=ScoredFeedback(
+            client_id=profile.client_id,
+            passing_score=0.5,
+            strictness_multiplier=max(0.1, profile.strictness_level * 2),
+        ),
+    )
+
+
+def _publish_client_event(
+    request: Request[Any, Any, Any],
+    event_type: WsEventType,
+    profile: ClientProfile,
+) -> None:
+    """Best-effort publish a client lifecycle event."""
+    publish_ws_event(
+        request,
+        event_type,
+        CHANNEL_CLIENTS,
+        {
+            "client_id": profile.client_id,
+            "name": profile.name,
+            "strictness_level": profile.strictness_level,
+        },
+    )
+
+
+class ClientController(Controller):
+    """Client simulation CRUD endpoints."""
+
+    path = "/clients"
+    tags = ("clients",)
+    guards = [require_read_access]  # noqa: RUF012
+
+    @get()
+    async def list_clients(
+        self,
+        state: State,
+        offset: PaginationOffset = 0,
+        limit: PaginationLimit = 50,
+    ) -> PaginatedResponse[ClientProfile]:
+        """List all configured clients (paginated)."""
+        app_state: AppState = state.app_state
+        sim_state = app_state.client_simulation_state
+        profiles = await sim_state.pool.list_profiles()
+        page, meta = paginate(profiles, offset=offset, limit=limit)
+        return PaginatedResponse(data=page, pagination=meta)
+
+    @get("/{client_id:str}")
+    async def get_client(
+        self,
+        state: State,
+        client_id: str,
+    ) -> ApiResponse[ClientProfile]:
+        """Return a single client profile by id.
+
+        Raises:
+            NotFoundError: If the client is not known.
+        """
+        app_state: AppState = state.app_state
+        sim_state = app_state.client_simulation_state
+        try:
+            profile = await sim_state.pool.get_profile(client_id)
+        except KeyError as exc:
+            logger.warning(
+                API_RESOURCE_NOT_FOUND,
+                resource="client",
+                client_id=client_id,
+            )
+            msg = f"Client {client_id!r} not found"
+            raise NotFoundError(msg) from exc
+        return ApiResponse(data=profile)
+
+    @post("/", guards=[require_write_access], status_code=201)
+    async def create_client(
+        self,
+        request: Request[Any, Any, Any],
+        state: State,
+        data: CreateClientRequest,
+    ) -> ApiResponse[ClientProfile]:
+        """Create a new client with a default AI backing.
+
+        Raises:
+            ConflictError: If the client id already exists.
+        """
+        app_state: AppState = state.app_state
+        sim_state = app_state.client_simulation_state
+        if await sim_state.pool.has_profile(data.client_id):
+            msg = f"Client {data.client_id!r} already exists"
+            raise ConflictError(msg)
+        profile = ClientProfile(
+            client_id=data.client_id,
+            name=data.name,
+            persona=data.persona,
+            expertise_domains=data.expertise_domains,
+            strictness_level=data.strictness_level,
+        )
+        client = _build_default_client(profile)
+        await sim_state.pool.add(profile=profile, client=client)
+        _publish_client_event(request, WsEventType.CLIENT_CREATED, profile)
+        return ApiResponse(data=profile)
+
+    @patch("/{client_id:str}", guards=[require_write_access])
+    async def update_client(
+        self,
+        request: Request[Any, Any, Any],
+        state: State,
+        client_id: str,
+        data: UpdateClientRequest,
+    ) -> ApiResponse[ClientProfile]:
+        """Update fields on an existing client profile.
+
+        Raises:
+            NotFoundError: If the client is not known.
+        """
+        app_state: AppState = state.app_state
+        sim_state = app_state.client_simulation_state
+        try:
+            current = await sim_state.pool.get_profile(client_id)
+        except KeyError as exc:
+            msg = f"Client {client_id!r} not found"
+            raise NotFoundError(msg) from exc
+
+        updates = data.model_dump(exclude_none=True)
+        updated = current.model_copy(update=updates)
+        new_client = _build_default_client(updated)
+        await sim_state.pool.add(profile=updated, client=new_client)
+        _publish_client_event(request, WsEventType.CLIENT_UPDATED, updated)
+        return ApiResponse(data=updated)
+
+    @delete("/{client_id:str}", guards=[require_write_access])
+    async def deactivate_client(
+        self,
+        request: Request[Any, Any, Any],
+        state: State,
+        client_id: str,
+    ) -> None:
+        """Deactivate a client without removing historical data.
+
+        Keeps the profile and feedback history queryable via
+        ``GET /clients/{id}/satisfaction`` but excludes the client
+        from list responses and future simulation runs.
+
+        Raises:
+            NotFoundError: If the client is not known.
+        """
+        app_state: AppState = state.app_state
+        sim_state = app_state.client_simulation_state
+        try:
+            profile = await sim_state.pool.deactivate(client_id)
+        except KeyError as exc:
+            msg = f"Client {client_id!r} not found"
+            raise NotFoundError(msg) from exc
+        _publish_client_event(request, WsEventType.CLIENT_DEACTIVATED, profile)
+
+    @get("/{client_id:str}/satisfaction")
+    async def get_satisfaction(
+        self,
+        state: State,
+        client_id: str,
+    ) -> ApiResponse[SatisfactionHistory]:
+        """Return the full satisfaction history for a client.
+
+        Raises:
+            NotFoundError: If the client is not known.
+        """
+        app_state: AppState = state.app_state
+        sim_state = app_state.client_simulation_state
+        try:
+            await sim_state.pool.get_profile(client_id)
+        except KeyError as exc:
+            msg = f"Client {client_id!r} not found"
+            raise NotFoundError(msg) from exc
+        entries = await sim_state.feedback_store.list_for_client(client_id)
+        points = tuple(
+            SatisfactionPoint(
+                feedback_id=entry.feedback_id,
+                task_id=entry.task_id,
+                accepted=entry.accepted,
+                score=_score_from_feedback(
+                    entry.scores,
+                    accepted=entry.accepted,
+                ),
+                created_at=_as_aware(entry.created_at),
+            )
+            for entry in entries
+        )
+        total = len(points)
+        acceptance_rate = sum(1 for p in points if p.accepted) / total if total else 0.0
+        average_score = sum(p.score for p in points) / total if total else 0.0
+        return ApiResponse(
+            data=SatisfactionHistory(
+                client_id=client_id,
+                total_reviews=total,
+                acceptance_rate=acceptance_rate,
+                average_score=average_score,
+                history=points,
+            ),
+        )
+
+
+def _as_aware(value: datetime) -> datetime:
+    """Ensure a datetime is tz-aware for the API response model."""
+    if value.tzinfo is None:
+        return value.replace(tzinfo=UTC)
+    return value

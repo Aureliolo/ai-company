@@ -29,6 +29,13 @@ const ArtifactDetailPage = lazy(() => import('@/pages/ArtifactDetailPage'))
 const WorkflowsPage = lazy(() => import('@/pages/WorkflowsPage'))
 const WorkflowEditorPage = lazy(() => import('@/pages/WorkflowEditorPage'))
 const FineTuningPage = lazy(() => import('@/pages/FineTuningPage'))
+const ClientListPage = lazy(() => import('@/pages/ClientListPage'))
+const ClientDetailPage = lazy(() => import('@/pages/ClientDetailPage'))
+const RequestQueuePage = lazy(() => import('@/pages/RequestQueuePage'))
+const SimulationDashboardPage = lazy(
+  () => import('@/pages/SimulationDashboardPage'),
+)
+const ReviewPipelinePage = lazy(() => import('@/pages/ReviewPipelinePage'))
 const SettingsPage = lazy(() => import('@/pages/SettingsPage'))
 const SettingsNamespacePage = lazy(() => import('@/pages/SettingsNamespacePage'))
 const SettingsSinksPage = lazy(() => import('@/pages/SettingsSinksPage'))
@@ -121,6 +128,11 @@ export const router = createBrowserRouter([
               { path: 'artifacts/:artifactId', element: <ArtifactDetailPage /> },
               { path: 'workflows', element: <WorkflowsPage /> },
               { path: 'workflows/editor', element: <WorkflowEditorPage /> },
+              { path: 'clients', element: <ClientListPage /> },
+              { path: 'clients/requests', element: <RequestQueuePage /> },
+              { path: 'clients/simulations', element: <SimulationDashboardPage /> },
+              { path: 'clients/reviews/:taskId', element: <ReviewPipelinePage /> },
+              { path: 'clients/:clientId', element: <ClientDetailPage /> },
               { path: ROUTES.SETTINGS_FINE_TUNING.slice(1), element: <FineTuningPage /> },
               { path: 'settings', element: <SettingsPage /> },
               { path: 'settings/observability/sinks', element: <SettingsSinksPage /> },

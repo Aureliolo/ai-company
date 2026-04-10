@@ -48,7 +48,7 @@ class LogfireReporter:
 
     def __init__(self, token: str | None = None) -> None:
         try:
-            import logfire as _logfire  # noqa: PLC0415
+            import logfire as _logfire  # type: ignore[import-not-found]  # noqa: PLC0415
         except ImportError as exc:
             msg = (
                 "logfire package not installed. "

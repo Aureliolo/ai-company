@@ -87,6 +87,8 @@ curl http://localhost:3001/api/v1/health
 
 **[Tools & MCP](https://synthorg.io/docs/guides/mcp-tools/)** -- Built-in tools (file system, git, sandbox, code runner) plus MCP bridge for external tools. Layered sandboxing with subprocess and Docker backends. SSRF prevention with configurable allowlists.
 
+**[Client Simulation](https://synthorg.io/docs/design/client-simulation/)** -- Synthetic workload generation with AI, human, and hybrid clients. 5 requirement generators (template, LLM, dataset, procedural, hybrid), 4 feedback strategies (binary, scored, criteria-check, adversarial), multi-stage review pipeline, intake engine with lifecycle management, and batch simulation runner with configurable concurrency.
+
 **[Web Dashboard](https://synthorg.io/docs/design/page-structure/)** -- React 19 + shadcn/ui dashboard with org chart, task board, agent detail, budget tracking, provider management, workflow editor, ceremony policy settings, and setup wizard. Real-time WebSocket updates.
 
 **[Notifications](https://synthorg.io/docs/design/operations/#notifications)** -- Pluggable notification sinks (console, ntfy, Slack, email) with severity filtering. Approval gates, budget thresholds, and timeout escalations emit alerts through a fan-out dispatcher.
