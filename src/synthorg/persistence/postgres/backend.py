@@ -195,14 +195,18 @@ class PostgresPersistenceBackend:
 
         Called by the pool for every new connection it creates.  Sets
         ``statement_timeout`` to the configured limit so runaway
-        queries are killed server-side.
+        queries are killed server-side.  ``SET`` opens an implicit
+        transaction in Postgres, so we commit before returning the
+        connection to the pool -- psycopg's configure callback
+        contract requires the connection be idle on return.
         """
         if self._config.statement_timeout_ms > 0:
             await conn.execute(
-                sql.SQL("SET statement_timeout = {}").format(
+                sql.SQL("SET SESSION statement_timeout = {}").format(
                     sql.Literal(self._config.statement_timeout_ms)
                 )
             )
+            await conn.commit()
 
     async def connect(self) -> None:
         """Open the pool and instantiate repositories."""

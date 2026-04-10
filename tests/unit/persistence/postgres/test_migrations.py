@@ -1,6 +1,6 @@
 """Unit tests for Postgres Atlas URL helpers and revisions resolution."""
 
-import asyncio as asyncio_module
+import subprocess
 import urllib.parse
 
 import pytest
@@ -270,38 +270,25 @@ class TestMigrateBackendKwarg:
         with backend='sqlite' and no explicit revisions_url."""
         captured: dict[str, object] = {}
 
-        async def fake_subprocess(*args: str, **_kwargs: object) -> object:
-            captured["cmd"] = args
+        def fake_run(cmd: list[str], **_kwargs: object) -> object:
+            captured["cmd"] = cmd
 
-            class _Proc:
+            class _Result:
                 returncode = 0
+                stdout = b"[]"
+                stderr = b""
 
-                async def communicate(self) -> tuple[bytes, bytes]:
-                    return (b"[]", b"")
-
-                def kill(self) -> None:
-                    pass
-
-                async def wait(self) -> None:
-                    pass
-
-            return _Proc()
+            return _Result()
 
         monkeypatch.setattr(atlas, "_require_atlas", lambda: "atlas")
-        monkeypatch.setattr(
-            asyncio_module,
-            "create_subprocess_exec",
-            fake_subprocess,
-        )
+        monkeypatch.setattr(subprocess, "run", fake_run)
 
         await atlas._run_atlas("migrate", "status", backend="sqlite")
 
         cmd = captured["cmd"]
-        assert isinstance(cmd, tuple)
-        # Find the --dir value and check the revisions package name.
-        cmd_list = list(cmd)
-        dir_idx = cmd_list.index("--dir")
-        rev_url = str(cmd_list[dir_idx + 1])
+        assert isinstance(cmd, list)
+        dir_idx = cmd.index("--dir")
+        rev_url = str(cmd[dir_idx + 1])
         assert "sqlite/revisions" in rev_url or "sqlite\\revisions" in rev_url
         assert "postgres/revisions" not in rev_url
         assert "postgres\\revisions" not in rev_url
@@ -314,37 +301,25 @@ class TestMigrateBackendKwarg:
         with backend='postgres' and no explicit revisions_url."""
         captured: dict[str, object] = {}
 
-        async def fake_subprocess(*args: str, **_kwargs: object) -> object:
-            captured["cmd"] = args
+        def fake_run(cmd: list[str], **_kwargs: object) -> object:
+            captured["cmd"] = cmd
 
-            class _Proc:
+            class _Result:
                 returncode = 0
+                stdout = b"[]"
+                stderr = b""
 
-                async def communicate(self) -> tuple[bytes, bytes]:
-                    return (b"[]", b"")
-
-                def kill(self) -> None:
-                    pass
-
-                async def wait(self) -> None:
-                    pass
-
-            return _Proc()
+            return _Result()
 
         monkeypatch.setattr(atlas, "_require_atlas", lambda: "atlas")
-        monkeypatch.setattr(
-            asyncio_module,
-            "create_subprocess_exec",
-            fake_subprocess,
-        )
+        monkeypatch.setattr(subprocess, "run", fake_run)
 
         await atlas._run_atlas("migrate", "status", backend="postgres")
 
         cmd = captured["cmd"]
-        assert isinstance(cmd, tuple)
-        cmd_list = list(cmd)
-        dir_idx = cmd_list.index("--dir")
-        rev_url = str(cmd_list[dir_idx + 1])
+        assert isinstance(cmd, list)
+        dir_idx = cmd.index("--dir")
+        rev_url = str(cmd[dir_idx + 1])
         assert "postgres/revisions" in rev_url or "postgres\\revisions" in rev_url
         assert "sqlite/revisions" not in rev_url
         assert "sqlite\\revisions" not in rev_url

@@ -9,6 +9,7 @@ import asyncio
 import importlib.resources
 import json
 import shutil
+import subprocess
 import urllib.parse
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath, PureWindowsPath
@@ -294,43 +295,33 @@ async def _run_atlas(
         command=" ".join(safe_cmd),
     )
 
+    # Execute via blocking subprocess in a thread so we stay compatible
+    # with any asyncio event loop.  Windows SelectorEventLoop (required
+    # by psycopg async mode) does not implement create_subprocess_exec;
+    # ProactorEventLoop (the Windows default) does not work with
+    # psycopg.  asyncio.to_thread side-steps the split.
     try:
-        proc = await asyncio.create_subprocess_exec(
-            *cmd,
-            stdin=asyncio.subprocess.DEVNULL,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
+        result = await asyncio.to_thread(
+            subprocess.run,
+            cmd,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=False,
         )
     except OSError as exc:
         msg = f"Failed to start Atlas process: {exc}"
         logger.exception(PERSISTENCE_MIGRATION_FAILED, error=msg)
         raise MigrationError(msg) from exc
 
-    try:
-        stdout_bytes, stderr_bytes = await proc.communicate()
-    except asyncio.CancelledError:
-        proc.kill()
-        await proc.wait()
-        logger.warning(
-            PERSISTENCE_MIGRATION_FAILED,
-            note="Atlas process killed due to cancellation",
-        )
-        raise
-    except OSError as exc:
-        proc.kill()
-        await proc.wait()
-        msg = f"Atlas process communication failed: {exc}"
-        logger.exception(PERSISTENCE_MIGRATION_FAILED, error=msg)
-        raise MigrationError(msg) from exc
+    stdout = result.stdout.decode()
+    stderr = result.stderr.decode()
 
-    stdout = stdout_bytes.decode()
-    stderr = stderr_bytes.decode()
-
-    if proc.returncode != 0:
-        msg = f"Atlas command failed (exit {proc.returncode}): {stderr}"
+    if result.returncode != 0:
+        msg = f"Atlas command failed (exit {result.returncode}): {stderr}"
         logger.error(
             PERSISTENCE_MIGRATION_FAILED,
-            exit_code=proc.returncode,
+            exit_code=result.returncode,
             stderr=stderr,
         )
         raise MigrationError(msg)
