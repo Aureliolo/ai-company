@@ -38,6 +38,7 @@ class InflectionTrigger:
 
     @property
     def name(self) -> str:
+        """Trigger name."""
         return "inflection"
 
     async def emit(
@@ -55,7 +56,7 @@ class InflectionTrigger:
         self,
         *,
         agent_id: NotBlankStr,
-        context: EvolutionContext,
+        context: EvolutionContext,  # noqa: ARG002
     ) -> bool:
         """Trigger if there are pending inflections for the agent."""
         key = str(agent_id)

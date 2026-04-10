@@ -63,7 +63,7 @@ class EvolutionService:
         config: Evolution configuration.
     """
 
-    def __init__(
+    def __init__(  # noqa: PLR0913
         self,
         *,
         identity_store: IdentityVersionStore,
@@ -155,7 +155,7 @@ class EvolutionService:
         )
         return tuple(events)
 
-    async def _process_proposal(
+    async def _process_proposal(  # noqa: C901
         self,
         agent_id: NotBlankStr,
         proposal: AdaptationProposal,

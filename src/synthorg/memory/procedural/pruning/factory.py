@@ -1,14 +1,18 @@
 """Factory for building pruning strategies from configuration."""
 
-from synthorg.memory.procedural.pruning.config import PruningConfig
+from typing import TYPE_CHECKING
+
 from synthorg.memory.procedural.pruning.hybrid_strategy import (
     HybridPruningStrategy,
 )
 from synthorg.memory.procedural.pruning.pareto_strategy import (
     ParetoPruningStrategy,
 )
-from synthorg.memory.procedural.pruning.protocol import PruningStrategy
 from synthorg.memory.procedural.pruning.ttl_strategy import TtlPruningStrategy
+
+if TYPE_CHECKING:
+    from synthorg.memory.procedural.pruning.config import PruningConfig
+    from synthorg.memory.procedural.pruning.protocol import PruningStrategy
 
 
 def build_pruning_strategy(config: PruningConfig) -> PruningStrategy:

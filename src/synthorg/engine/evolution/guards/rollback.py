@@ -1,11 +1,15 @@
 """RollbackGuard -- monitors post-adaptation performance for regression."""
 
-from synthorg.core.types import NotBlankStr
+from typing import TYPE_CHECKING
+
 from synthorg.engine.evolution.models import AdaptationDecision, AdaptationProposal
 from synthorg.observability import get_logger
 from synthorg.observability.events.evolution import (
     EVOLUTION_ROLLBACK_TRIGGERED,
 )
+
+if TYPE_CHECKING:
+    from synthorg.core.types import NotBlankStr
 
 logger = get_logger(__name__)
 

@@ -60,11 +60,15 @@ class RateLimitGuard:
                 count=len(recent_timestamps),
                 limit=self._max_per_day,
             )
+            msg = (
+                f"Rate limit exceeded: {len(recent_timestamps)}/"
+                f"{self._max_per_day} adaptations in the last 24 hours"
+            )
             return AdaptationDecision(
                 proposal_id=proposal.id,
                 approved=False,
                 guard_name=self.name,
-                reason=f"Rate limit exceeded: {len(recent_timestamps)}/{self._max_per_day} adaptations in the last 24 hours",
+                reason=msg,
             )
 
         recent_timestamps.append(proposal_time)

@@ -5,9 +5,8 @@ Memory entries are not shared across agents.
 
 from typing import TYPE_CHECKING
 
-from synthorg.core.types import NotBlankStr
-
 if TYPE_CHECKING:
+    from synthorg.core.types import NotBlankStr
     from synthorg.hr.registry import AgentRegistryService
     from synthorg.memory.models import MemoryEntry
     from synthorg.memory.protocol import MemoryBackend
@@ -28,10 +27,10 @@ class NoPropagation:
     async def propagate(
         self,
         *,
-        source_agent_id: NotBlankStr,
-        memory_entry: MemoryEntry,
-        registry: AgentRegistryService,
-        memory_backend: MemoryBackend,
+        source_agent_id: NotBlankStr,  # noqa: ARG002
+        memory_entry: MemoryEntry,  # noqa: ARG002
+        registry: AgentRegistryService,  # noqa: ARG002
+        memory_backend: MemoryBackend,  # noqa: ARG002
     ) -> int:
         """No-op propagation (baseline).
 

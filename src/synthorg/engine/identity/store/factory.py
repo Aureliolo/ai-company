@@ -3,11 +3,11 @@
 from typing import TYPE_CHECKING
 
 from synthorg.engine.identity.store.append_only import AppendOnlyIdentityStore
-from synthorg.engine.identity.store.config import IdentityStoreConfig
 from synthorg.engine.identity.store.copy_on_write import CopyOnWriteIdentityStore
 
 if TYPE_CHECKING:
     from synthorg.core.agent import AgentIdentity
+    from synthorg.engine.identity.store.config import IdentityStoreConfig
     from synthorg.engine.identity.store.protocol import IdentityVersionStore
     from synthorg.hr.registry import AgentRegistryService
     from synthorg.versioning.service import VersioningService

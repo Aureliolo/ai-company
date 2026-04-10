@@ -7,19 +7,23 @@ separate LLM call.
 Never proposes identity axis (too risky for self-report).
 """
 
+from typing import TYPE_CHECKING
+
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.evolution.models import (
     AdaptationAxis,
     AdaptationProposal,
     AdaptationSource,
 )
-from synthorg.engine.evolution.protocols import EvolutionContext
 from synthorg.observability import get_logger
 from synthorg.observability.events.evolution import (
     EVOLUTION_PROPOSER_ANALYZE,
     EVOLUTION_PROPOSER_INIT,
 )
 from synthorg.providers.protocol import CompletionProvider  # noqa: TC001
+
+if TYPE_CHECKING:
+    from synthorg.engine.evolution.protocols import EvolutionContext
 
 logger = get_logger(__name__)
 

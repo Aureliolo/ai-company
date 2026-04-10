@@ -2,13 +2,16 @@
 
 from typing import TYPE_CHECKING
 
-from synthorg.engine.evolution.config import EvolutionConfig
-from synthorg.engine.evolution.models import AdaptationAxis
+from synthorg.engine.evolution.models import (
+    AdaptationAxis,
+    AdaptationProposal,  # used by _NoOpProposer
+)
 from synthorg.engine.identity.store.factory import build_identity_store
 from synthorg.observability import get_logger
 
 if TYPE_CHECKING:
     from synthorg.core.agent import AgentIdentity
+    from synthorg.engine.evolution.config import EvolutionConfig
     from synthorg.engine.evolution.protocols import (
         AdaptationAdapter,
         AdaptationGuard,
@@ -60,7 +63,7 @@ def build_evolution_service(  # noqa: PLR0913
         versioning=versioning,
     )
 
-    trigger = _build_trigger(config, tracker=tracker)
+    _build_trigger(config, tracker=tracker)
     proposer = _build_proposer(config, provider=provider)
     guard = _build_guard(config, identity_store=identity_store)
     adapters = _build_adapters(
@@ -187,7 +190,7 @@ def _build_proposer(
 def _build_guard(
     config: EvolutionConfig,
     *,
-    identity_store: IdentityVersionStore,
+    identity_store: IdentityVersionStore,  # noqa: ARG001
 ) -> AdaptationGuard:
     """Build guard from config."""
     guards: list[AdaptationGuard] = []
@@ -282,3 +285,20 @@ def _build_adapters(
         )
 
     return adapters
+
+
+class _NoOpProposer:
+    """Proposer returning no proposals when no LLM provider is available."""
+
+    @property
+    def name(self) -> str:
+        return "noop"
+
+    async def propose(
+        self,
+        *,
+        agent_id: str,  # noqa: ARG002
+        context: object,  # noqa: ARG002
+    ) -> tuple[AdaptationProposal, ...]:
+        """Return empty -- no LLM provider to generate proposals."""
+        return ()

@@ -35,13 +35,14 @@ class PerTaskTrigger:
 
     @property
     def name(self) -> str:
+        """Trigger name."""
         return "per_task"
 
     async def should_trigger(
         self,
         *,
         agent_id: NotBlankStr,
-        context: EvolutionContext,
+        context: EvolutionContext,  # noqa: ARG002
     ) -> bool:
         """Always triggers if enough tasks have elapsed."""
         key = str(agent_id)

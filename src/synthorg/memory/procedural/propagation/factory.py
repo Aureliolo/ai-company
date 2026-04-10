@@ -1,16 +1,20 @@
 """Factory for building propagation strategies from configuration."""
 
-from synthorg.memory.procedural.propagation.config import PropagationConfig
+from typing import TYPE_CHECKING
+
 from synthorg.memory.procedural.propagation.department_scoped import (
     DepartmentScopedPropagation,
 )
 from synthorg.memory.procedural.propagation.no_propagation import (
     NoPropagation,
 )
-from synthorg.memory.procedural.propagation.protocol import PropagationStrategy
 from synthorg.memory.procedural.propagation.role_scoped import (
     RoleScopedPropagation,
 )
+
+if TYPE_CHECKING:
+    from synthorg.memory.procedural.propagation.config import PropagationConfig
+    from synthorg.memory.procedural.propagation.protocol import PropagationStrategy
 
 
 def build_propagation_strategy(

@@ -6,10 +6,9 @@ robust memory management.
 
 from typing import TYPE_CHECKING
 
-from synthorg.core.types import NotBlankStr
-from synthorg.memory.models import MemoryEntry
-
 if TYPE_CHECKING:
+    from synthorg.core.types import NotBlankStr
+    from synthorg.memory.models import MemoryEntry
     from synthorg.memory.procedural.pruning.protocol import PruningStrategy
 
 

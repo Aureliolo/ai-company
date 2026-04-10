@@ -759,6 +759,50 @@ analyses the failure.
 `_post_execution_pipeline`. It is non-critical: failures are logged at WARNING
 and never block the execution result.
 
+### Capture Strategies
+
+The capture system is extended beyond failure-only via pluggable ``CaptureStrategy``
+implementations in ``memory/procedural/capture/``:
+
+| Strategy | When it fires | Output |
+|----------|--------------|--------|
+| ``FailureCaptureStrategy`` | ``recovery_result is not None`` | Wraps existing proposer pipeline |
+| ``SuccessCaptureStrategy`` | Successful completion with quality above threshold | ``"success-derived"`` tagged memory |
+| ``HybridCaptureStrategy`` | Both failure and success paths | Delegates based on outcome |
+
+``SuccessMemoryProposer`` (``memory/procedural/success_proposer.py``) provides a lighter
+LLM analysis for successful executions, focusing on reusable strategies rather than
+failure lessons.
+
+Configuration via ``CaptureConfig``: ``type`` discriminator (``"failure"``/``"success"``/
+``"hybrid"``), ``min_quality_score`` (default 8.0), ``success_quality_percentile`` (default
+75.0).
+
+### Pruning Strategies
+
+Procedural memory pruning is handled by pluggable ``PruningStrategy`` implementations
+in ``memory/procedural/pruning/``:
+
+| Strategy | Method |
+|----------|--------|
+| ``TtlPruningStrategy`` | Remove entries older than ``max_age_days`` (default 90) |
+| ``ParetoPruningStrategy`` | Multi-dimensional Pareto frontier (relevance + recency) down to ``max_entries`` |
+| ``HybridPruningStrategy`` | TTL first (remove expired), then Pareto on remaining |
+
+### Cross-Agent Propagation
+
+Procedural memories can be propagated across agents via pluggable ``PropagationStrategy``
+implementations in ``memory/procedural/propagation/``:
+
+| Strategy | Scope | Tag |
+|----------|-------|-----|
+| ``NoPropagation`` | Agent-local only (safe default) | -- |
+| ``RoleScopedPropagation`` | Agents with same role | ``"propagated:{source_agent_id}"`` |
+| ``DepartmentScopedPropagation`` | Agents in same department | ``"propagated:{source_agent_id}"`` |
+
+All propagation strategies respect ``max_propagation_targets`` (default 10) and exclude
+the source agent.
+
 ---
 
 ## Memory Injection Strategies

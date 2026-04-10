@@ -1,13 +1,17 @@
 """IdentityAdapter -- applies identity mutations via IdentityVersionStore."""
 
-from synthorg.core.types import NotBlankStr
+from typing import TYPE_CHECKING
+
 from synthorg.engine.evolution.models import (
     AdaptationAxis,
     AdaptationProposal,
 )
-from synthorg.engine.identity.store.protocol import IdentityVersionStore
 from synthorg.observability import get_logger
 from synthorg.observability.events.evolution import EVOLUTION_ADAPTATION_FAILED
+
+if TYPE_CHECKING:
+    from synthorg.core.types import NotBlankStr
+    from synthorg.engine.identity.store.protocol import IdentityVersionStore
 
 logger = get_logger(__name__)
 
@@ -59,7 +63,7 @@ class IdentityAdapter:
             current_identity = await self._identity_store.get_current(agent_id)
             if current_identity is None:
                 msg = f"Agent {agent_id} not found in identity store"
-                raise ValueError(msg)
+                raise ValueError(msg)  # noqa: TRY301
 
             evolved_identity = current_identity.model_copy(
                 update=proposal.changes,

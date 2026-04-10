@@ -1,15 +1,20 @@
 """StrategySelectionAdapter -- stores strategy preferences as procedural memory."""
 
+import json
+from typing import TYPE_CHECKING
+
 from synthorg.core.enums import MemoryCategory
-from synthorg.core.types import NotBlankStr
 from synthorg.engine.evolution.models import (
     AdaptationAxis,
     AdaptationProposal,
 )
 from synthorg.memory.models import MemoryMetadata, MemoryStoreRequest
-from synthorg.memory.protocol import MemoryBackend
 from synthorg.observability import get_logger
 from synthorg.observability.events.evolution import EVOLUTION_ADAPTATION_FAILED
+
+if TYPE_CHECKING:
+    from synthorg.core.types import NotBlankStr
+    from synthorg.memory.protocol import MemoryBackend
 
 logger = get_logger(__name__)
 
@@ -59,8 +64,6 @@ class StrategySelectionAdapter:
         try:
             content_parts = [proposal.description]
             if proposal.changes:
-                import json
-
                 content_parts.append(
                     "Changes: " + json.dumps(proposal.changes, indent=2),
                 )

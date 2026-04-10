@@ -40,13 +40,14 @@ class BatchedTrigger:
 
     @property
     def name(self) -> str:
+        """Trigger name."""
         return "batched"
 
     async def should_trigger(
         self,
         *,
         agent_id: NotBlankStr,
-        context: EvolutionContext,
+        context: EvolutionContext,  # noqa: ARG002
     ) -> bool:
         """Trigger if the interval has elapsed since last run."""
         key = str(agent_id)

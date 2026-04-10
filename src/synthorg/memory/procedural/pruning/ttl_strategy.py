@@ -4,9 +4,11 @@ Removes procedural memory entries that have exceeded a maximum age.
 """
 
 from datetime import UTC, datetime
+from typing import TYPE_CHECKING
 
-from synthorg.core.types import NotBlankStr
-from synthorg.memory.models import MemoryEntry
+if TYPE_CHECKING:
+    from synthorg.core.types import NotBlankStr
+    from synthorg.memory.models import MemoryEntry
 
 
 class TtlPruningStrategy:
@@ -32,7 +34,7 @@ class TtlPruningStrategy:
     async def prune(
         self,
         *,
-        agent_id: NotBlankStr,
+        agent_id: NotBlankStr,  # noqa: ARG002
         entries: tuple[MemoryEntry, ...],
     ) -> tuple[str, ...]:
         """Identify entries exceeding max age for removal.

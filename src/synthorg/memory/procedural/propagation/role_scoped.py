@@ -5,13 +5,16 @@ Shares memory with agents of the same role.
 
 from typing import TYPE_CHECKING
 
-from synthorg.core.types import NotBlankStr
 from synthorg.memory.models import MemoryStoreRequest
+from synthorg.observability import get_logger
 
 if TYPE_CHECKING:
+    from synthorg.core.types import NotBlankStr
     from synthorg.hr.registry import AgentRegistryService
     from synthorg.memory.models import MemoryEntry
     from synthorg.memory.protocol import MemoryBackend
+
+logger = get_logger(__name__)
 
 
 class RoleScopedPropagation:
@@ -79,7 +82,7 @@ class RoleScopedPropagation:
             try:
                 # Create propagation tag
                 tag = f"propagated:{source_agent_id}"
-                tags = memory_entry.metadata.tags + (tag,)
+                tags = (*memory_entry.metadata.tags, tag)
 
                 # Store copy with propagation tag
                 store_request = MemoryStoreRequest(
@@ -93,8 +96,12 @@ class RoleScopedPropagation:
                 )
                 await memory_backend.store(str(target.id), store_request)
                 count += 1
-            except Exception:
-                # Continue on individual failures
-                pass
+            except Exception as exc:
+                logger.warning(
+                    "memory.propagation.target_failed",
+                    target_id=str(target.id),
+                    source_id=str(source_agent_id),
+                    error=str(exc),
+                )
 
         return count

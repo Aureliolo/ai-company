@@ -4,8 +4,11 @@ Removes entries that are dominated on multiple dimensions (relevance,
 recency). Entries on the Pareto frontier are preserved.
 """
 
-from synthorg.core.types import NotBlankStr
-from synthorg.memory.models import MemoryEntry
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from synthorg.core.types import NotBlankStr
+    from synthorg.memory.models import MemoryEntry
 
 
 class ParetoPruningStrategy:
@@ -38,7 +41,7 @@ class ParetoPruningStrategy:
     async def prune(
         self,
         *,
-        agent_id: NotBlankStr,
+        agent_id: NotBlankStr,  # noqa: ARG002
         entries: tuple[MemoryEntry, ...],
     ) -> tuple[str, ...]:
         """Identify dominated entries for removal via Pareto frontier.
@@ -95,10 +98,13 @@ class ParetoPruningStrategy:
                 frontier_rec = self._get_recency_score(frontier_entry, entries)
 
                 # Domination: strictly better on both dimensions
-                if frontier_rel >= candidate_rel and frontier_rec >= candidate_rec:
-                    if frontier_rel > candidate_rel or frontier_rec > candidate_rec:
-                        is_dominated = True
-                        break
+                if (
+                    frontier_rel >= candidate_rel
+                    and frontier_rec >= candidate_rec
+                    and (frontier_rel > candidate_rel or frontier_rec > candidate_rec)
+                ):
+                    is_dominated = True
+                    break
 
             if not is_dominated:
                 # Remove any frontier members dominated by candidate

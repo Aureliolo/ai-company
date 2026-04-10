@@ -42,6 +42,7 @@ class CompositeTrigger:
 
     @property
     def name(self) -> str:
+        """Trigger name."""
         names = ", ".join(t.name for t in self._triggers)
         return f"composite({names})"
 

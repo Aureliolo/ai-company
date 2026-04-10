@@ -7,15 +7,13 @@ the agent being evolved does NOT propose its own changes.
 
 import json
 import re
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from pydantic import ValidationError
 
-from synthorg.core.types import NotBlankStr
 from synthorg.engine.evolution.models import (
     AdaptationProposal,
 )
-from synthorg.engine.evolution.protocols import EvolutionContext
 from synthorg.observability import get_logger
 from synthorg.observability.events.evolution import (
     EVOLUTION_PROPOSER_ANALYZE,
@@ -25,6 +23,10 @@ from synthorg.observability.events.evolution import (
 from synthorg.providers.enums import MessageRole
 from synthorg.providers.models import ChatMessage, CompletionConfig
 from synthorg.providers.protocol import CompletionProvider  # noqa: TC001
+
+if TYPE_CHECKING:
+    from synthorg.core.types import NotBlankStr
+    from synthorg.engine.evolution.protocols import EvolutionContext
 
 logger = get_logger(__name__)
 

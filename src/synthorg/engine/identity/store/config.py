@@ -18,7 +18,7 @@ class IdentityStoreConfig(BaseModel):
 
     type: Literal["append_only", "copy_on_write"] = Field(
         default="append_only",
-        description="Store type: append_only (audit trail) or copy_on_write (cheaper rollback)",
+        description="Store type: append_only (audit) or copy_on_write (rollback)",
     )
     max_versions_per_agent: int | None = Field(
         default=None,

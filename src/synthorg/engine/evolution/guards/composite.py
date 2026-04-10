@@ -1,7 +1,11 @@
 """CompositeGuard -- chains multiple guards (ALL must approve)."""
 
+from typing import TYPE_CHECKING
+
 from synthorg.engine.evolution.models import AdaptationDecision, AdaptationProposal
-from synthorg.engine.evolution.protocols import AdaptationGuard
+
+if TYPE_CHECKING:
+    from synthorg.engine.evolution.protocols import AdaptationGuard
 
 
 class CompositeGuard:

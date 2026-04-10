@@ -17,7 +17,7 @@ from pydantic import (
     model_validator,
 )
 
-from synthorg.core.types import NotBlankStr
+from synthorg.core.types import NotBlankStr  # noqa: TC001
 
 
 class AdaptationAxis(StrEnum):

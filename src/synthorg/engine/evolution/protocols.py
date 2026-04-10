@@ -4,24 +4,22 @@ Defines the four pluggable strategy interfaces (trigger, proposer,
 guard, adapter) and the context model passed through the pipeline.
 """
 
-from typing import TYPE_CHECKING, Protocol, runtime_checkable
+from typing import Protocol, runtime_checkable
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
 
+from synthorg.core.agent import AgentIdentity  # noqa: TC001
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.engine.evolution.models import (
     AdaptationAxis,  # noqa: TC001
     AdaptationDecision,  # noqa: TC001
     AdaptationProposal,  # noqa: TC001
 )
-
-if TYPE_CHECKING:
-    from synthorg.core.agent import AgentIdentity
-    from synthorg.hr.performance.models import (
-        AgentPerformanceSnapshot,
-        TaskMetricRecord,
-    )
-    from synthorg.memory.models import MemoryEntry
+from synthorg.hr.performance.models import (  # noqa: TC001
+    AgentPerformanceSnapshot,
+    TaskMetricRecord,
+)
+from synthorg.memory.models import MemoryEntry  # noqa: TC001
 
 
 class EvolutionContext(BaseModel):
@@ -182,11 +180,5 @@ class AdaptationAdapter(Protocol):
 
 
 # Rebuild EvolutionContext model with forward references resolved at runtime.
-from synthorg.core.agent import AgentIdentity  # noqa: E402
-from synthorg.hr.performance.models import (  # noqa: E402
-    AgentPerformanceSnapshot,
-    TaskMetricRecord,
-)
-from synthorg.memory.models import MemoryEntry  # noqa: E402
 
 EvolutionContext.model_rebuild()

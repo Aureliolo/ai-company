@@ -603,6 +603,119 @@ Agents can move between seniority levels based on performance:
 
 ---
 
+## Agent Evolution
+
+Agents improve over time through a pluggable evolution pipeline that closes the loop
+between execution outcomes, learned knowledge, and agent behavior. The system follows
+the [EvoSkill](https://arxiv.org/abs/2603.02766) three-agent separation principle:
+the executing agent does not propose its own identity changes -- a separate analyzer
+does.
+
+### Architecture
+
+```text
+Trigger --> Build Context --> Proposer --> Guards --> Adapter.apply
+  |              |               |            |           |
+  |              |               |            |           +-- IdentityAdapter
+  |              |               |            |           +-- StrategySelectionAdapter
+  |              |               |            |           +-- PromptTemplateAdapter
+  |              |               |            |
+  |              |               |            +-- RateLimitGuard
+  |              |               |            +-- ReviewGateGuard
+  |              |               |            +-- RollbackGuard
+  |              |               |            +-- CompositeGuard
+  |              |               |
+  |              |               +-- SeparateAnalyzerProposer
+  |              |               +-- SelfReportProposer
+  |              |               +-- CompositeProposer
+  |              |
+  |              +-- EvolutionContext (identity, performance, memories)
+  |
+  +-- BatchedTrigger (cron-like)
+  +-- InflectionTrigger (performance trend changes)
+  +-- PerTaskTrigger (post-execution)
+  +-- CompositeTrigger (OR-combines)
+```
+
+The pipeline is orchestrated by ``EvolutionService`` in ``engine/evolution/service.py``.
+
+### Pluggable Axes
+
+Every bullet is a strategy behind a ``@runtime_checkable Protocol``:
+
+- **Triggers** (``engine/evolution/triggers/``): ``BatchedTrigger``, ``InflectionTrigger``,
+  ``PerTaskTrigger``, ``CompositeTrigger``
+- **Proposers** (``engine/evolution/proposers/``): ``SeparateAnalyzerProposer`` (EvoSkill
+  strict), ``SelfReportProposer`` (heuristic), ``CompositeProposer`` (routes by outcome)
+- **Adapters** (``engine/evolution/adapters/``): ``IdentityAdapter`` (identity mutation via
+  version store), ``StrategySelectionAdapter`` (preference memory), ``PromptTemplateAdapter``
+  (prompt injection)
+- **Guards** (``engine/evolution/guards/``): ``RateLimitGuard``, ``ReviewGateGuard``,
+  ``RollbackGuard``, ``ShadowEvaluationGuard`` (stub), ``CompositeGuard`` (chains ALL)
+
+### Identity Version Store
+
+``engine/identity/store/`` provides versioned identity storage with rollback:
+
+- **``IdentityVersionStore``** protocol: ``put``, ``get_current``, ``get_version``,
+  ``list_versions``, ``set_current`` (rollback)
+- **``AppendOnlyIdentityStore``**: Every mutation appends a new version (full audit trail).
+  ``set_current`` writes a new version pointing to the restored content.
+- **``CopyOnWriteIdentityStore``**: Maintains a separate version pointer. ``set_current``
+  only updates the pointer (cheaper, but loses rollback audit trail).
+
+Both wrap ``AgentRegistryService`` + ``VersioningService[AgentIdentity]``.
+``AgentRegistryService.evolve_identity()`` bypasses the ``_UPDATABLE_FIELDS`` allowlist
+for evolution-approved changes.
+
+### Performance Inflection Events
+
+``PerformanceTracker`` emits ``PerformanceInflection`` events via an ``InflectionSink``
+protocol when a metric's trend direction changes (e.g., stable to declining).
+``InflectionTrigger`` implements ``InflectionSink`` and queues events for the evolution
+service.
+
+### Safe Defaults
+
+| Axis | Default | Rationale |
+|------|---------|-----------|
+| Triggers | batched (daily) + inflection | Low cost, reactive |
+| Proposer | composite (analyzer for failures, self-report for success) | EvoSkill separation |
+| Adapters | prompt_template ON, strategy_selection ON, identity OFF | Identity is highest risk |
+| Guards | review_gate + rollback + rate_limit ON; shadow OFF | Safety first |
+| Identity store | append_only | Audit trail by default |
+| Propagation | none | Opt-in per org |
+
+### Configuration
+
+```yaml
+evolution:
+  enabled: true
+  triggers:
+    types: [batched, inflection]
+    batched_interval_seconds: 86400
+  proposer:
+    type: composite
+    model: example-small-001
+    temperature: 0.3
+  adapters:
+    identity: false
+    strategy_selection: true
+    prompt_template: true
+  guards:
+    review_gate: true
+    rollback: true
+    rollback_window_tasks: 20
+    rollback_regression_threshold: 0.1
+    rate_limit: true
+    rate_limit_per_day: 3
+    shadow_evaluation: false
+  identity_store:
+    type: append_only
+```
+
+---
+
 ## Five-Pillar Evaluation Framework
 
 Performance data is also evaluated through a structured five-pillar framework
