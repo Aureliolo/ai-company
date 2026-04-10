@@ -127,9 +127,10 @@ class PostgresSsrfViolationRepository:
                 )
                 row = await cur.fetchone()
         except psycopg.Error as exc:
-            msg = f"Failed to get SSRF violation: {exc}"
+            msg = f"Failed to get SSRF violation {violation_id!r}: {exc}"
             logger.exception(
                 PERSISTENCE_SSRF_VIOLATION_QUERY_FAILED,
+                violation_id=violation_id,
                 error=msg,
             )
             raise QueryError(msg) from exc
@@ -250,9 +251,10 @@ class PostgresSsrfViolationRepository:
                 updated = cur.rowcount > 0
                 await conn.commit()
         except psycopg.Error as exc:
-            msg = f"Failed to update SSRF violation status: {exc}"
+            msg = f"Failed to update SSRF violation {violation_id!r} status: {exc}"
             logger.exception(
                 PERSISTENCE_SSRF_VIOLATION_SAVE_FAILED,
+                violation_id=violation_id,
                 error=msg,
             )
             raise QueryError(msg) from exc

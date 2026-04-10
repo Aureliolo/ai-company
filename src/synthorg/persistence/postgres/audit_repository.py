@@ -286,7 +286,7 @@ INSERT INTO audit_entries (
             else:
                 parsed = row
             return AuditEntry.model_validate(parsed)
-        except (ValidationError, KeyError, TypeError) as exc:
+        except (ValidationError, KeyError, TypeError, json.JSONDecodeError) as exc:
             msg = f"Failed to deserialize audit entry {row.get('id')!r}"
             logger.exception(
                 PERSISTENCE_AUDIT_ENTRY_DESERIALIZE_FAILED,

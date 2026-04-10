@@ -208,6 +208,11 @@ class PostgresProjectCostAggregateRepository:
                 )
                 row = await cur.fetchone()
                 if row is None:  # pragma: no cover -- defensive
+                    logger.error(
+                        PERSISTENCE_PROJECT_COST_AGG_INCREMENT_FAILED,
+                        project_id=project_id,
+                        error="RETURNING clause produced no row after upsert",
+                    )
                     await conn.rollback()
                     msg = f"Aggregate for {project_id!r} missing after upsert"
                     raise QueryError(msg)
