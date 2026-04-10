@@ -95,7 +95,7 @@ def _make_workflow_execution(
     defaults: dict[str, object] = {
         "id": execution_id,
         "definition_id": definition_id,
-        "definition_version": 1,
+        "definition_revision": 1,
         "status": WorkflowExecutionStatus.RUNNING,
         "node_executions": (
             WorkflowNodeExecution(

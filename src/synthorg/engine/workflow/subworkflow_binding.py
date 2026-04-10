@@ -30,9 +30,12 @@ from typing import TYPE_CHECKING
 
 from synthorg.core.enums import WorkflowValueType
 from synthorg.engine.errors import SubworkflowIOError
+from synthorg.observability import get_logger
 
 if TYPE_CHECKING:
     from synthorg.engine.workflow.definition import WorkflowIODeclaration
+
+logger = get_logger(__name__)
 
 _PARENT_PREFIX = "@parent."
 _CHILD_PREFIX = "@child."
@@ -86,6 +89,11 @@ def _resolve_expression(
             raise SubworkflowIOError(msg)
         path = expression[len(_CHILD_PREFIX) :]
         return _lookup_path(child_vars, path)
+    if expression.startswith("@"):
+        msg = (
+            f"Unsupported binding prefix in {expression!r}; use '@parent.' or '@child.'"
+        )
+        raise SubworkflowIOError(msg)
     return expression
 
 

@@ -41,7 +41,11 @@ ALL_MIGRATIONS=()
 for f in "$MIGRATION_DIR"/*.sql; do
     [ -f "$f" ] && ALL_MIGRATIONS+=("$(basename "$f")")
 done
-IFS=$'\n' ALL_MIGRATIONS=($(printf '%s\n' "${ALL_MIGRATIONS[@]}" | sort)); unset IFS
+sorted=()
+while IFS= read -r line; do
+    sorted+=("$line")
+done < <(printf '%s\n' "${ALL_MIGRATIONS[@]}" | sort)
+ALL_MIGRATIONS=("${sorted[@]}")
 count=${#ALL_MIGRATIONS[@]}
 echo "Migration count: $count (threshold: $THRESHOLD, keep newest: $KEEP)"
 

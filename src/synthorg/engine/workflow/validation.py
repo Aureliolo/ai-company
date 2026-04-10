@@ -392,9 +392,15 @@ def _literal_matches_type(
     return True
 
 
-def _is_deferred_expression(value: object) -> bool:
-    """Return ``True`` when *value* is a lookup that defers to runtime."""
-    return isinstance(value, str) and value.startswith(("@parent.", "@child."))
+def _is_deferred_expression(value: object, *, direction: str = "") -> bool:
+    """Return ``True`` when *value* is a valid deferred lookup for *direction*."""
+    if not isinstance(value, str):
+        return False
+    if direction == "input":
+        return value.startswith("@parent.")
+    if direction == "output":
+        return value.startswith("@child.")
+    return value.startswith(("@parent.", "@child."))
 
 
 def _check_bindings_against_declarations(  # noqa: PLR0913
@@ -436,7 +442,7 @@ def _check_bindings_against_declarations(  # noqa: PLR0913
             )
             continue
         decl = by_name[name]
-        if _is_deferred_expression(value):
+        if _is_deferred_expression(value, direction=direction):
             continue
         if not _literal_matches_type(value, decl.type):
             errors.append(
