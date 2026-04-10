@@ -91,9 +91,14 @@ async def subscribe(
 
     # Store results under lock; KV write deferred to outside the lock.
     updated_channel = None
+    cleanup_sub = None
     async with state.lock:
-        if sub is not None and key not in state.subscriptions:
-            state.subscriptions[key] = sub
+        if sub is not None:
+            if key not in state.subscriptions:
+                state.subscriptions[key] = sub
+            else:
+                # Another coroutine won the race -- discard our sub.
+                cleanup_sub = sub
 
         channel = state.channels[channel_name]
         if subscriber_id not in channel.subscribers:
@@ -102,6 +107,18 @@ async def subscribe(
                 update={"subscribers": new_subs},
             )
             state.channels[channel_name] = updated_channel
+
+    if cleanup_sub is not None:
+        try:
+            await cleanup_sub.unsubscribe()
+        except Exception:
+            logger.warning(
+                COMM_SUBSCRIPTION_REMOVED,
+                channel=channel_name,
+                subscriber=subscriber_id,
+                phase="cleanup_duplicate_consumer",
+                exc_info=True,
+            )
 
     if updated_channel is not None:
         await write_channel_to_kv(state, updated_channel)

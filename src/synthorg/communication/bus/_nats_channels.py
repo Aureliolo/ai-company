@@ -9,7 +9,6 @@ from synthorg.communication.bus._nats_kv import (
     create_channel_in_kv,
     load_channel_from_kv,
     scan_kv_channels,
-    write_channel_to_kv,
 )
 from synthorg.communication.bus._nats_state import _NatsState  # noqa: TC001
 from synthorg.communication.bus._nats_utils import (
@@ -55,12 +54,16 @@ def durable_name(channel_name: str, subscriber_id: str) -> str:
     return f"{encode_token(channel_name)}__{encode_token(subscriber_id)}"
 
 
-async def ensure_direct_channel(
+def prepare_direct_channel(
     state: _NatsState,
     channel_name: str,
     pair: tuple[str, str],
-) -> None:
-    """Create DIRECT channel locally and in KV bucket if needed.
+) -> Channel | None:
+    """Compute the DIRECT channel state change under ``state.lock``.
+
+    Updates ``state.channels`` in-place and returns the channel to
+    persist to KV, or ``None`` if no KV write is needed. The caller
+    must perform the KV write outside the lock.
 
     Args:
         state: Shared bus state.
@@ -77,16 +80,15 @@ async def ensure_direct_channel(
             updated = current.model_copy(
                 update={"subscribers": new_subs},
             )
-            await write_channel_to_kv(state, updated)
             state.channels[channel_name] = updated
-        return
+            return updated
+        return None
 
     ch = Channel(
         name=channel_name,
         type=ChannelType.DIRECT,
         subscribers=pair,
     )
-    await write_channel_to_kv(state, ch)
     state.channels[channel_name] = ch
     logger.info(
         COMM_CHANNEL_CREATED,
@@ -94,6 +96,7 @@ async def ensure_direct_channel(
         type=str(ChannelType.DIRECT),
         backend="nats",
     )
+    return ch
 
 
 async def create_channel(state: _NatsState, ch: Channel) -> Channel:

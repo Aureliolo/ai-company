@@ -39,7 +39,8 @@ async def create_channel_in_kv(
     )
 
     if state.kv is None:
-        return
+        msg = "KV store unavailable -- cannot create channel"
+        raise BusStreamError(msg, context={"channel": channel.name})
     key = encode_token(channel.name)
     value = channel.model_dump_json().encode("utf-8")
     try:

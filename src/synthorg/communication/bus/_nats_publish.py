@@ -10,10 +10,11 @@ from synthorg.communication.bus._nats_channels import (
     direct_subject as _direct_subject,
 )
 from synthorg.communication.bus._nats_channels import (
-    ensure_direct_channel,
+    prepare_direct_channel,
     resolve_channel_or_raise,
     subject_for_channel,
 )
+from synthorg.communication.bus._nats_kv import write_channel_to_kv
 from synthorg.communication.bus._nats_state import _NatsState  # noqa: TC001
 from synthorg.communication.bus._nats_utils import (
     DM_SEPARATOR,
@@ -111,9 +112,12 @@ async def send_direct(
 
     async with state.lock:
         require_running(state)
-        await ensure_direct_channel(state, channel_name, pair)
+        kv_channel = prepare_direct_channel(state, channel_name, pair)
         state.known_agents.add(sender)
         state.known_agents.add(recipient)
+
+    if kv_channel is not None:
+        await write_channel_to_kv(state, kv_channel)
 
     prefix = state.nats_config.stream_name_prefix
     subject = _direct_subject(prefix, channel_name)
