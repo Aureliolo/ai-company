@@ -47,7 +47,18 @@ class TestTelemetryCollector:
     def test_deployment_id_read_error_generates_new(self, tmp_path: Path) -> None:
         """OSError on read falls back to generating a new ID."""
         config = TelemetryConfig(enabled=True, backend=TelemetryBackend.NOOP)
-        with patch.object(Path, "exists", side_effect=OSError("permission denied")):
+        deployment_file = tmp_path / "telemetry_id"
+        original_exists = Path.exists
+        read_error = OSError("permission denied")
+
+        def exists_side_effect(self: Path) -> bool:
+            if self == deployment_file:
+                raise read_error
+            return original_exists(self)
+
+        with patch.object(
+            Path, "exists", autospec=True, side_effect=exists_side_effect
+        ):
             collector = TelemetryCollector(config=config, data_dir=tmp_path)
             assert collector.deployment_id is not None
             assert len(collector.deployment_id) == 36  # UUID4 with hyphens: 8-4-4-4-12
@@ -55,7 +66,20 @@ class TestTelemetryCollector:
     def test_deployment_id_write_error_still_returns(self, tmp_path: Path) -> None:
         """OSError on write still returns the generated ID."""
         config = TelemetryConfig(enabled=True, backend=TelemetryBackend.NOOP)
-        with patch.object(Path, "write_text", side_effect=OSError("disk full")):
+        deployment_file = tmp_path / "telemetry_id"
+        original_write_text = Path.write_text
+        write_error = OSError("disk full")
+
+        def write_text_side_effect(
+            self: Path, data: str, encoding: str | None = None, **kwargs: object
+        ) -> int:
+            if self == deployment_file:
+                raise write_error
+            return original_write_text(self, data, encoding=encoding, **kwargs)  # type: ignore[arg-type]
+
+        with patch.object(
+            Path, "write_text", autospec=True, side_effect=write_text_side_effect
+        ):
             collector = TelemetryCollector(config=config, data_dir=tmp_path)
             assert collector.deployment_id is not None
             assert len(collector.deployment_id) == 36  # UUID4 with hyphens: 8-4-4-4-12

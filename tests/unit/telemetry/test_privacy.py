@@ -124,14 +124,14 @@ class TestPrivacyScrubber:
         """Even if somehow added to the allowlist, forbidden
         patterns are caught.
         """
+        from types import MappingProxyType
+
         from synthorg.telemetry import privacy
 
         original = privacy._ALLOWED_PROPERTIES["deployment.heartbeat"]
-        monkeypatch.setitem(
-            privacy._ALLOWED_PROPERTIES,
-            "deployment.heartbeat",
-            original | {bad_key},
-        )
+        patched = dict(privacy._ALLOWED_PROPERTIES)
+        patched["deployment.heartbeat"] = original | {bad_key}
+        monkeypatch.setattr(privacy, "_ALLOWED_PROPERTIES", MappingProxyType(patched))
         event_with_bad = _make_event("deployment.heartbeat", **{bad_key: "value"})
         with pytest.raises(PrivacyViolationError, match="Forbidden pattern"):
             self.scrubber.validate(event_with_bad)

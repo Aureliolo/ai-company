@@ -7,6 +7,7 @@ scrubber blocks it.
 """
 
 import re
+from types import MappingProxyType
 from typing import TYPE_CHECKING
 
 from synthorg.observability import get_logger
@@ -43,56 +44,58 @@ _ALLOWED_EVENT_TYPES: frozenset[str] = frozenset(
     }
 )
 
-_ALLOWED_PROPERTIES: dict[str, frozenset[str]] = {
-    "deployment.heartbeat": frozenset(
-        {
-            "agent_count",
-            "department_count",
-            "team_count",
-            "template_name",
-            "persistence_backend",
-            "memory_backend",
-            "features_enabled",
-            "uptime_hours",
-        }
-    ),
-    "deployment.session_summary": frozenset(
-        {
-            "tasks_created",
-            "tasks_completed",
-            "tasks_failed",
-            "error_rate_limit",
-            "error_timeout",
-            "error_connection",
-            "error_internal",
-            "error_validation",
-            "error_other",
-            "provider_count",
-            "topology_hierarchical",
-            "topology_parallel",
-            "topology_sequential",
-            "topology_auto",
-            "meetings_held",
-            "delegations_executed",
-            "uptime_hours",
-        }
-    ),
-    "deployment.startup": frozenset(
-        {
-            "agent_count",
-            "department_count",
-            "template_name",
-            "persistence_backend",
-            "memory_backend",
-        }
-    ),
-    "deployment.shutdown": frozenset(
-        {
-            "uptime_hours",
-            "graceful",
-        }
-    ),
-}
+_ALLOWED_PROPERTIES: MappingProxyType[str, frozenset[str]] = MappingProxyType(
+    {
+        "deployment.heartbeat": frozenset(
+            {
+                "agent_count",
+                "department_count",
+                "team_count",
+                "template_name",
+                "persistence_backend",
+                "memory_backend",
+                "features_enabled",
+                "uptime_hours",
+            }
+        ),
+        "deployment.session_summary": frozenset(
+            {
+                "tasks_created",
+                "tasks_completed",
+                "tasks_failed",
+                "error_rate_limit",
+                "error_timeout",
+                "error_connection",
+                "error_internal",
+                "error_validation",
+                "error_other",
+                "provider_count",
+                "topology_hierarchical",
+                "topology_parallel",
+                "topology_sequential",
+                "topology_auto",
+                "meetings_held",
+                "delegations_executed",
+                "uptime_hours",
+            }
+        ),
+        "deployment.startup": frozenset(
+            {
+                "agent_count",
+                "department_count",
+                "template_name",
+                "persistence_backend",
+                "memory_backend",
+            }
+        ),
+        "deployment.shutdown": frozenset(
+            {
+                "uptime_hours",
+                "graceful",
+            }
+        ),
+    }
+)
 
 
 class PrivacyViolationError(Exception):

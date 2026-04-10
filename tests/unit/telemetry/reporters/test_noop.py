@@ -15,7 +15,6 @@ class TestNoopReporter:
     def test_is_telemetry_reporter(self) -> None:
         assert isinstance(NoopReporter(), TelemetryReporter)
 
-    @pytest.mark.asyncio
     async def test_report(self) -> None:
         reporter = NoopReporter()
         event = TelemetryEvent(
@@ -28,10 +27,8 @@ class TestNoopReporter:
         )
         await reporter.report(event)
 
-    @pytest.mark.asyncio
     async def test_flush(self) -> None:
         await NoopReporter().flush()
 
-    @pytest.mark.asyncio
     async def test_shutdown(self) -> None:
         await NoopReporter().shutdown()

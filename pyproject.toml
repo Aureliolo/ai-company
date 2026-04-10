@@ -219,7 +219,7 @@ module = "defusedxml.*"
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
-module = "logfire.*"
+module = ["logfire", "logfire.*"]
 ignore_missing_imports = true
 
 [tool.pydantic-mypy]

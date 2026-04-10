@@ -63,6 +63,7 @@ class LogfireReporter:
 
         self._logfire = _logfire
 
+        has_custom_token = token is not None or os.environ.get(_TOKEN_ENV) is not None
         resolved_token = token or os.environ.get(_TOKEN_ENV) or _DEFAULT_TOKEN
 
         try:
@@ -83,7 +84,7 @@ class LogfireReporter:
         logger.info(
             TELEMETRY_REPORTER_INITIALIZED,
             backend="logfire",
-            has_token=resolved_token is not None,
+            has_custom_token=has_custom_token,
         )
 
     async def report(self, event: TelemetryEvent) -> None:

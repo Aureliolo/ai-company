@@ -256,7 +256,7 @@ class TelemetryCollector:
                 TELEMETRY_REPORT_FAILED,
                 event_type=event.event_type,
                 error_type=type(exc).__name__,
-                error_msg=type(exc).__name__,
+                error_msg=str(exc),
             )
             return False
 
