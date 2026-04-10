@@ -86,6 +86,28 @@ jobs:
       - name: Validate migration checksums
         run: atlas migrate validate --dir "file://src/synthorg/persistence/sqlite/revisions" --dev-url "sqlite://file?mode=memory"
 
+      - name: Enforce at most one new migration per PR
+        if: github.event_name == 'pull_request'
+        env:
+          GH_BASE_REF: ${{ github.base_ref }}
+        run: |
+          git fetch origin "$GH_BASE_REF" --depth=1
+          base_ref="origin/$GH_BASE_REF"
+          mapfile -t new_migs < <(
+            git diff --name-only --diff-filter=A "$base_ref"...HEAD -- \
+              'src/synthorg/persistence/sqlite/revisions/*.sql'
+          )
+          count=${#new_migs[@]}
+          if [ "$count" -gt 1 ]; then
+            echo "::error::PR adds $count new Atlas migration files; policy allows at most 1."
+            printf '  - %s\n' "${new_migs[@]}" >&2
+            echo "" >&2
+            echo "Consolidate into a single migration: delete all in-progress migrations" >&2
+            echo "and regenerate with 'atlas migrate diff --env sqlite <name>'." >&2
+            exit 1
+          fi
+          echo "OK: PR adds $count new migration(s) (limit 1)."
+
       - name: Drift detection
         run: |
           diff_output=$(atlas schema diff --env ci \
@@ -173,7 +195,7 @@ jobs:
 
       - name: Upload test results
         if: ${{ !cancelled() }}
-        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
         with:
           name: test-results-${{ matrix.python-version }}
           path: junit.xml
@@ -374,7 +396,7 @@ jobs:
           NODE_OPTIONS: "--max-old-space-size=4096 --report-on-fatalerror --report-directory=."
       - name: Upload Node.js crash report
         if: failure()
-        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
         with:
           name: storybook-crash-report
           path: web/report.*.json

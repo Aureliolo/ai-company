@@ -3,8 +3,14 @@
 import copy
 from typing import TYPE_CHECKING
 
-from synthorg.core.enums import WorkflowExecutionStatus
+from packaging.version import InvalidVersion, Version
+
+from synthorg.core.enums import WorkflowExecutionStatus, WorkflowNodeType
 from synthorg.persistence.errors import DuplicateRecordError, VersionConflictError
+from synthorg.persistence.subworkflow_repo import (
+    ParentReference,
+    SubworkflowSummary,
+)
 
 if TYPE_CHECKING:
     from synthorg.core.enums import WorkflowType
@@ -196,3 +202,130 @@ class FakeWorkflowVersionRepository:
         for k in to_delete:
             del self._versions[k]
         return len(to_delete)
+
+
+def _semver_key(value: str) -> Version:
+    try:
+        return Version(value)
+    except InvalidVersion:
+        return Version("0.0.0")
+
+
+class FakeSubworkflowRepository:
+    """In-memory subworkflow repository for tests.
+
+    Implements the ``SubworkflowRepository`` protocol with an internal
+    ``dict`` keyed on ``(subworkflow_id, semver)``.  ``find_parents``
+    scans a companion ``FakeWorkflowDefinitionRepository`` instance so
+    tests that create parents via ``/workflows`` see the references.
+    """
+
+    def __init__(
+        self,
+        definition_repo: FakeWorkflowDefinitionRepository | None = None,
+    ) -> None:
+        self._rows: dict[tuple[str, str], WorkflowDefinition] = {}
+        self._definition_repo = definition_repo
+
+    async def save(self, definition: WorkflowDefinition) -> None:
+        key = (definition.id, definition.version)
+        if key in self._rows:
+            msg = (
+                f"Subworkflow {definition.id!r} version "
+                f"{definition.version!r} already exists"
+            )
+            raise DuplicateRecordError(msg)
+        self._rows[key] = copy.deepcopy(definition)
+
+    async def get(
+        self,
+        subworkflow_id: NotBlankStr,
+        version: NotBlankStr,
+    ) -> WorkflowDefinition | None:
+        stored = self._rows.get((subworkflow_id, version))
+        return copy.deepcopy(stored) if stored is not None else None
+
+    async def list_versions(
+        self,
+        subworkflow_id: NotBlankStr,
+    ) -> tuple[str, ...]:
+        versions = [v for (sid, v) in self._rows if sid == subworkflow_id]
+        versions.sort(key=_semver_key, reverse=True)
+        return tuple(versions)
+
+    async def list_summaries(self) -> tuple[SubworkflowSummary, ...]:
+        grouped: dict[str, list[WorkflowDefinition]] = {}
+        for definition in self._rows.values():
+            grouped.setdefault(definition.id, []).append(definition)
+        summaries: list[SubworkflowSummary] = []
+        for sub_id, items in grouped.items():
+            items.sort(key=lambda d: _semver_key(d.version), reverse=True)
+            latest = items[0]
+            summaries.append(
+                SubworkflowSummary(
+                    subworkflow_id=sub_id,
+                    latest_version=latest.version,
+                    name=latest.name,
+                    description=latest.description,
+                    input_count=len(latest.inputs),
+                    output_count=len(latest.outputs),
+                    version_count=len(items),
+                ),
+            )
+        summaries.sort(key=lambda s: s.subworkflow_id)
+        return tuple(summaries)
+
+    async def search(
+        self,
+        query: NotBlankStr,
+    ) -> tuple[SubworkflowSummary, ...]:
+        q = query.lower()
+        summaries = await self.list_summaries()
+        return tuple(
+            s
+            for s in summaries
+            if q in s.name.lower() or q in (s.description or "").lower()
+        )
+
+    async def delete(
+        self,
+        subworkflow_id: NotBlankStr,
+        version: NotBlankStr,
+    ) -> bool:
+        key = (subworkflow_id, version)
+        if key in self._rows:
+            del self._rows[key]
+            return True
+        return False
+
+    async def find_parents(
+        self,
+        subworkflow_id: NotBlankStr,
+        version: NotBlankStr | None = None,
+    ) -> tuple[ParentReference, ...]:
+        if self._definition_repo is None:
+            return ()
+        references: list[ParentReference] = []
+        for definition in self._definition_repo._definitions.values():
+            if definition.is_subworkflow:
+                continue
+            for node in definition.nodes:
+                if node.type is not WorkflowNodeType.SUBWORKFLOW:
+                    continue
+                config = dict(node.config)
+                if config.get("subworkflow_id") != subworkflow_id:
+                    continue
+                pinned = str(config.get("version") or "")
+                if version is not None and pinned != version:
+                    continue
+                if not pinned:
+                    continue
+                references.append(
+                    ParentReference(
+                        parent_id=definition.id,
+                        parent_name=definition.name,
+                        pinned_version=pinned,
+                        node_id=node.id,
+                    ),
+                )
+        return tuple(references)

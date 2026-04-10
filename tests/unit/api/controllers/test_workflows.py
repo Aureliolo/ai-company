@@ -224,7 +224,9 @@ class TestWorkflowController:
         assert data["id"].startswith("wfdef-")
         assert data["name"] == "new-workflow"
         assert data["workflow_type"] == "sequential_pipeline"
-        assert data["version"] == 1
+        assert data["revision"] == 1
+        assert data["version"] == "1.0.0"
+        assert data["is_subworkflow"] is False
         assert len(data["nodes"]) == 3
         assert len(data["edges"]) == 2
 
@@ -276,7 +278,7 @@ class TestWorkflowController:
         assert body["success"] is True
         assert body["data"]["name"] == "updated-name"
         assert body["data"]["description"] == "new desc"
-        assert body["data"]["version"] == 2
+        assert body["data"]["revision"] == 2
 
     def test_update_workflow_not_found(self, test_client: TestClient[Any]) -> None:
         resp = test_client.patch(
@@ -289,7 +291,7 @@ class TestWorkflowController:
         assert body["success"] is False
         assert "not found" in body["error"].lower()
 
-    def test_update_workflow_version_conflict(
+    def test_update_workflow_revision_conflict(
         self, test_client: TestClient[Any]
     ) -> None:
         created = _create_workflow(test_client)
@@ -297,7 +299,7 @@ class TestWorkflowController:
 
         resp = test_client.patch(
             f"/api/v1/workflows/{wf_id}",
-            json={"name": "conflict-name", "expected_version": 999},
+            json={"name": "conflict-name", "expected_revision": 999},
             headers=make_auth_headers("ceo"),
         )
         assert resp.status_code == 409
@@ -305,7 +307,7 @@ class TestWorkflowController:
         assert body["success"] is False
         assert "version conflict" in body["error"].lower()
 
-    def test_update_workflow_with_correct_expected_version(
+    def test_update_workflow_with_correct_expected_revision(
         self, test_client: TestClient[Any]
     ) -> None:
         created = _create_workflow(test_client)
@@ -315,12 +317,12 @@ class TestWorkflowController:
             f"/api/v1/workflows/{wf_id}",
             json={
                 "name": "versioned-update",
-                "expected_version": 1,
+                "expected_revision": 1,
             },
             headers=make_auth_headers("ceo"),
         )
         assert resp.status_code == 200
-        assert resp.json()["data"]["version"] == 2
+        assert resp.json()["data"]["revision"] == 2
 
     # ── Delete ───────────────────────────────────────────────────
 

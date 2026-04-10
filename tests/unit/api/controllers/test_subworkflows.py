@@ -1,0 +1,197 @@
+"""Tests for the subworkflow API controller."""
+
+from typing import Any
+
+import pytest
+from litestar.testing import TestClient
+
+from tests.unit.api.conftest import make_auth_headers
+
+_SUB_ID = "sub-finance-close"
+
+
+def _sub_payload(
+    *,
+    subworkflow_id: str | None = _SUB_ID,
+    version: str = "1.0.0",
+    name: str = "Finance Close",
+) -> dict[str, Any]:
+    return {
+        "subworkflow_id": subworkflow_id,
+        "version": version,
+        "name": name,
+        "description": "Finance close subworkflow",
+        "workflow_type": "sequential_pipeline",
+        "inputs": [
+            {"name": "quarter", "type": "string", "required": True},
+        ],
+        "outputs": [
+            {"name": "report", "type": "string", "required": True},
+        ],
+        "nodes": [
+            {
+                "id": "start",
+                "type": "start",
+                "label": "Start",
+                "config": {},
+            },
+            {
+                "id": "task-close",
+                "type": "task",
+                "label": "Close",
+                "config": {"title": "Close", "task_type": "admin"},
+            },
+            {
+                "id": "end",
+                "type": "end",
+                "label": "End",
+                "config": {},
+            },
+        ],
+        "edges": [
+            {
+                "id": "e1",
+                "source_node_id": "start",
+                "target_node_id": "task-close",
+                "type": "sequential",
+            },
+            {
+                "id": "e2",
+                "source_node_id": "task-close",
+                "target_node_id": "end",
+                "type": "sequential",
+            },
+        ],
+    }
+
+
+def _create_subworkflow(
+    test_client: TestClient[Any],
+    payload: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    body = payload or _sub_payload()
+    resp = test_client.post(
+        "/api/v1/subworkflows",
+        json=body,
+        headers=make_auth_headers("ceo"),
+    )
+    assert resp.status_code == 201, resp.text
+    result: dict[str, Any] = resp.json()["data"]
+    return result
+
+
+@pytest.mark.unit
+class TestSubworkflowCrud:
+    def test_create_and_list(self, test_client: TestClient[Any]) -> None:
+        _create_subworkflow(test_client)
+
+        resp = test_client.get(
+            "/api/v1/subworkflows",
+            headers=make_auth_headers("ceo"),
+        )
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["success"] is True
+        items = body["data"]
+        assert len(items) == 1
+        assert items[0]["subworkflow_id"] == _SUB_ID
+        assert items[0]["latest_version"] == "1.0.0"
+        assert items[0]["input_count"] == 1
+        assert items[0]["output_count"] == 1
+
+    def test_list_versions_semver_descending(
+        self,
+        test_client: TestClient[Any],
+    ) -> None:
+        _create_subworkflow(test_client, _sub_payload(version="1.0.0"))
+        _create_subworkflow(test_client, _sub_payload(version="1.9.0"))
+        _create_subworkflow(test_client, _sub_payload(version="1.10.0"))
+
+        resp = test_client.get(
+            f"/api/v1/subworkflows/{_SUB_ID}/versions",
+            headers=make_auth_headers("ceo"),
+        )
+        assert resp.status_code == 200
+        versions = resp.json()["data"]
+        assert versions == ["1.10.0", "1.9.0", "1.0.0"]
+
+    def test_get_version_missing_returns_404(
+        self,
+        test_client: TestClient[Any],
+    ) -> None:
+        resp = test_client.get(
+            "/api/v1/subworkflows/sub-nope/versions/1.0.0",
+            headers=make_auth_headers("ceo"),
+        )
+        assert resp.status_code == 404
+
+    def test_get_version_round_trip(
+        self,
+        test_client: TestClient[Any],
+    ) -> None:
+        _create_subworkflow(test_client)
+        resp = test_client.get(
+            f"/api/v1/subworkflows/{_SUB_ID}/versions/1.0.0",
+            headers=make_auth_headers("ceo"),
+        )
+        assert resp.status_code == 200
+        data = resp.json()["data"]
+        assert data["id"] == _SUB_ID
+        assert data["version"] == "1.0.0"
+        assert data["is_subworkflow"] is True
+
+    def test_delete_version(
+        self,
+        test_client: TestClient[Any],
+    ) -> None:
+        _create_subworkflow(test_client, _sub_payload(version="1.0.0"))
+        _create_subworkflow(test_client, _sub_payload(version="2.0.0"))
+
+        resp = test_client.delete(
+            f"/api/v1/subworkflows/{_SUB_ID}/versions/1.0.0",
+            headers=make_auth_headers("ceo"),
+        )
+        assert resp.status_code == 200
+
+        versions_resp = test_client.get(
+            f"/api/v1/subworkflows/{_SUB_ID}/versions",
+            headers=make_auth_headers("ceo"),
+        )
+        assert versions_resp.json()["data"] == ["2.0.0"]
+
+    def test_create_rejects_non_subworkflow_flag_bypass(
+        self,
+        test_client: TestClient[Any],
+    ) -> None:
+        """The controller always registers with is_subworkflow=True."""
+        _create_subworkflow(test_client)
+        resp = test_client.get(
+            f"/api/v1/subworkflows/{_SUB_ID}/versions/1.0.0",
+            headers=make_auth_headers("ceo"),
+        )
+        assert resp.json()["data"]["is_subworkflow"] is True
+
+    def test_duplicate_version_returns_409(
+        self,
+        test_client: TestClient[Any],
+    ) -> None:
+        _create_subworkflow(test_client)
+        resp = test_client.post(
+            "/api/v1/subworkflows",
+            json=_sub_payload(),
+            headers=make_auth_headers("ceo"),
+        )
+        assert resp.status_code == 409
+
+    def test_find_parents_endpoint(
+        self,
+        test_client: TestClient[Any],
+    ) -> None:
+        _create_subworkflow(test_client)
+        resp = test_client.get(
+            f"/api/v1/subworkflows/{_SUB_ID}/versions/1.0.0/parents",
+            headers=make_auth_headers("ceo"),
+        )
+        assert resp.status_code == 200
+        parents = resp.json()["data"]
+        assert parents == []

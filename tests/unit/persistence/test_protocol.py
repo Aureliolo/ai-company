@@ -553,6 +553,13 @@ class _FakeBackend:
         return _FakeWorkflowExecutionRepository()
 
     @property
+    def subworkflows(self) -> object:
+        # ``PersistenceBackend`` is ``@runtime_checkable``, which only
+        # verifies that the attribute exists -- returning a bare
+        # ``object()`` is enough for the isinstance conformance check.
+        return object()
+
+    @property
     def workflow_versions(self) -> object:
         # ``PersistenceBackend`` is ``@runtime_checkable``, which only
         # verifies that the ``workflow_versions`` attribute exists --

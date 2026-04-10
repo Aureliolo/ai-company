@@ -8,6 +8,21 @@
             "type": "command",
             "command": "bash scripts/check_push_rebased.sh",
             "timeout": 15000
+          },
+          {
+            "type": "command",
+            "command": "bash scripts/check_no_atlas_rehash.sh",
+            "timeout": 5000
+          }
+        ]
+      },
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash scripts/check_no_edit_migration.sh",
+            "timeout": 5000
           }
         ]
       }

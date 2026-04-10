@@ -58,3 +58,25 @@ WORKFLOW_EXEC_CANCELLED: Final[str] = "workflow.execution.cancelled"
 
 WORKFLOW_EXEC_PERSISTENCE_FAILED: Final[str] = "workflow.execution.persistence_failed"
 """Persistence operation failed during workflow execution."""
+
+# -- Subworkflow runtime events ----------------------------------------------
+
+WORKFLOW_EXEC_SUBWORKFLOW_FRAME_PUSHED: Final[str] = (
+    "workflow.execution.subworkflow.frame_pushed"
+)
+"""Subworkflow frame pushed onto the execution stack."""
+
+WORKFLOW_EXEC_SUBWORKFLOW_FRAME_POPPED: Final[str] = (
+    "workflow.execution.subworkflow.frame_popped"
+)
+"""Subworkflow frame popped after child graph completed."""
+
+WORKFLOW_EXEC_SUBWORKFLOW_DEPTH_EXCEEDED: Final[str] = (
+    "workflow.execution.subworkflow.depth_exceeded"
+)
+"""Runtime subworkflow nesting depth exceeded the configured limit."""
+
+WORKFLOW_EXEC_SUBWORKFLOW_NODE_COMPLETED: Final[str] = (
+    "workflow.execution.subworkflow.node_completed"
+)
+"""A SUBWORKFLOW node finished walking its child graph."""

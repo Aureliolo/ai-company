@@ -98,6 +98,8 @@ def _deserialize_row(
         data["node_executions"] = _deserialize_node_executions(
             data.get("node_executions") or [],
         )
+        if "definition_version" in data:
+            data["definition_revision"] = data.pop("definition_version")
         return WorkflowExecution.model_validate(data)
     except (
         TypeError,
@@ -162,7 +164,7 @@ class PostgresWorkflowExecutionRepository:
         return (
             execution.id,
             execution.definition_id,
-            execution.definition_version,
+            execution.definition_revision,
             execution.status.value,
             node_jsonb,
             execution.activated_by,
@@ -182,7 +184,8 @@ class PostgresWorkflowExecutionRepository:
                 await cur.execute(
                     """
                     INSERT INTO workflow_executions
-                        (id, definition_id, definition_version, status, node_executions,
+                        (id, definition_id, definition_version, status,
+                         node_executions,
                          activated_by, project, created_at, updated_at, completed_at,
                          error, version)
                     VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)

@@ -61,3 +61,23 @@ WORKFLOW_DEF_ROLLED_BACK: Final[str] = "workflow.definition.rolled_back"
 
 WORKFLOW_DEF_DIFF_COMPUTED: Final[str] = "workflow.definition.diff_computed"
 """Diff computed between two workflow definition versions."""
+
+# -- Subworkflow registry events ---------------------------------------------
+
+SUBWORKFLOW_REGISTERED: Final[str] = "workflow.subworkflow.registered"
+"""A new subworkflow version was published to the registry."""
+
+SUBWORKFLOW_RESOLVED: Final[str] = "workflow.subworkflow.resolved"
+"""A subworkflow reference was resolved against the registry."""
+
+SUBWORKFLOW_DELETED: Final[str] = "workflow.subworkflow.deleted"
+"""A subworkflow version was deleted from the registry."""
+
+SUBWORKFLOW_CYCLE_DETECTED: Final[str] = "workflow.subworkflow.cycle_detected"
+"""Static cycle detection rejected a subworkflow reference graph."""
+
+SUBWORKFLOW_IO_INVALID: Final[str] = "workflow.subworkflow.io_invalid"
+"""Save-time I/O validation rejected a subworkflow reference."""
+
+SUBWORKFLOW_INVALID_REQUEST: Final[str] = "workflow.subworkflow.invalid_request"
+"""API request to create or update a subworkflow was invalid."""

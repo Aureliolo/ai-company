@@ -336,6 +336,24 @@ class WorkflowNodeType(StrEnum):
     CONDITIONAL = "conditional"
     PARALLEL_SPLIT = "parallel_split"
     PARALLEL_JOIN = "parallel_join"
+    SUBWORKFLOW = "subworkflow"
+
+
+class WorkflowValueType(StrEnum):
+    """Typed value kinds for workflow I/O declarations.
+
+    Used by :class:`WorkflowIODeclaration` to enforce typed contracts
+    on subworkflow inputs and outputs at save time and at runtime.
+    """
+
+    STRING = "string"
+    INTEGER = "integer"
+    FLOAT = "float"
+    BOOLEAN = "boolean"
+    DATETIME = "datetime"
+    JSON = "json"
+    TASK_REF = "task_ref"
+    AGENT_REF = "agent_ref"
 
 
 class WorkflowEdgeType(StrEnum):
@@ -378,6 +396,7 @@ class WorkflowNodeExecutionStatus(StrEnum):
     TASK_COMPLETED = "task_completed"
     TASK_FAILED = "task_failed"
     COMPLETED = "completed"
+    SUBWORKFLOW_COMPLETED = "subworkflow_completed"
 
 
 class ArtifactType(StrEnum):

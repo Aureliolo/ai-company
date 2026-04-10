@@ -26,7 +26,7 @@ export function VersionCard({ v, definition, saving, onCompare, onRestore }: Ver
           </span>
           <span className="text-sm text-foreground">{v.snapshot.name}</span>
         </div>
-        {v.version === definition?.version && (
+        {v.version === definition?.revision && (
           <span className="text-xs text-success">Current</span>
         )}
       </div>
@@ -42,7 +42,7 @@ export function VersionCard({ v, definition, saving, onCompare, onRestore }: Ver
           variant="ghost"
           size="sm"
           onClick={() => onCompare(v)}
-          disabled={v.version === definition?.version}
+          disabled={v.version === definition?.revision}
           title="Compare with current"
         >
           <GitCompare className="size-3.5" />
@@ -52,7 +52,7 @@ export function VersionCard({ v, definition, saving, onCompare, onRestore }: Ver
           variant="ghost"
           size="sm"
           onClick={() => onRestore(v.version)}
-          disabled={v.version === definition?.version || saving}
+          disabled={v.version === definition?.revision || saving}
           title="Restore this version"
         >
           <RotateCcw className="size-3.5" />
@@ -82,7 +82,7 @@ export function VersionHistoryPanel({ open, onClose }: VersionHistoryPanelProps)
 
   function handleCompare(version: WorkflowDefinitionVersionSummary) {
     if (!definition) return
-    loadDiff(version.version, definition.version)
+    loadDiff(version.version, definition.revision)
   }
 
   function handleRestore(version: number) {
@@ -91,8 +91,11 @@ export function VersionHistoryPanel({ open, onClose }: VersionHistoryPanelProps)
 
   async function confirmRestore() {
     if (restoreTarget === null) return
-    await rollback(restoreTarget)
-    setRestoreTarget(null)
+    try {
+      await rollback(restoreTarget)
+    } finally {
+      setRestoreTarget(null)
+    }
   }
 
   return (
@@ -105,7 +108,7 @@ export function VersionHistoryPanel({ open, onClose }: VersionHistoryPanelProps)
       >
         <div className="flex flex-col gap-section-gap">
           {versionsLoading && versions.length === 0 && (
-            <div className="flex flex-col gap-2">
+            <div className="flex flex-col gap-grid-gap">
               {Array.from({ length: 3 }, (_, i) => (
                 <Skeleton key={i} className="h-16 rounded-lg" />
               ))}

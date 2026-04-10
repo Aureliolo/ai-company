@@ -2,7 +2,7 @@ ci:
   autoupdate_schedule: never
   autofix_prs: true
   autofix_commit_msg: "style: auto-fix pre-commit hooks"
-  skip: [commitizen, gitleaks, hadolint-docker, no-em-dashes, no-redundant-timeout, mypy, pytest-unit, golangci-lint, go-vet, go-test, eslint-web, check-push-rebased]
+  skip: [commitizen, gitleaks, hadolint-docker, no-em-dashes, no-redundant-timeout, mypy, pytest-unit, golangci-lint, go-vet, go-test, eslint-web, check-push-rebased, check-single-migration-per-pr, check-no-modify-migration]
 
 default_install_hook_types: [pre-commit, commit-msg, pre-push]
 
@@ -17,6 +17,24 @@ repos:
         always_run: true
         pass_filenames: false
         stages: [pre-push]
+        types: []
+      - id: check-single-migration-per-pr
+        name: enforce at most one new Atlas migration per PR
+        entry: bash
+        args: ["scripts/check_single_migration_per_pr.sh"]
+        language: system
+        always_run: true
+        pass_filenames: false
+        stages: [pre-commit, pre-push]
+        types: []
+      - id: check-no-modify-migration
+        name: block modification of existing migration files
+        entry: bash
+        args: ["scripts/check_no_modify_migration.sh"]
+        language: system
+        always_run: true
+        pass_filenames: false
+        stages: [pre-commit]
         types: []
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v6.0.0

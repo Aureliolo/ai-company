@@ -8,15 +8,114 @@ This is distinct from ``WorkflowConfig`` (runtime operational config
 for Kanban/Sprint settings).
 """
 
+import json
+import math
+import re
 from collections import Counter
 from collections.abc import Mapping  # noqa: TC003
 from datetime import UTC, datetime
 from typing import Self
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from synthorg.core.enums import WorkflowEdgeType, WorkflowNodeType, WorkflowType
+from synthorg.core.enums import (
+    WorkflowEdgeType,
+    WorkflowNodeType,
+    WorkflowType,
+    WorkflowValueType,
+)
 from synthorg.core.types import NotBlankStr  # noqa: TC001
+
+_DEFAULT_SEMVER = "1.0.0"
+
+_VALUE_TYPE_CHECKS: dict[WorkflowValueType, type | tuple[type, ...]] = {
+    WorkflowValueType.STRING: str,
+    WorkflowValueType.INTEGER: int,
+    WorkflowValueType.FLOAT: (int, float),
+    WorkflowValueType.BOOLEAN: bool,
+    WorkflowValueType.DATETIME: (datetime, str),
+    WorkflowValueType.TASK_REF: str,
+    WorkflowValueType.AGENT_REF: str,
+}
+
+
+def _check_default_type(name: str, default: object, vtype: WorkflowValueType) -> None:
+    """Validate that *default* is compatible with *vtype*."""
+    if vtype is WorkflowValueType.JSON:
+        try:
+            json.dumps(default, allow_nan=False)
+        except (TypeError, ValueError) as exc:
+            msg = f"Declaration {name!r}: JSON default is not serializable"
+            raise TypeError(msg) from exc
+        return
+    expected = _VALUE_TYPE_CHECKS.get(vtype)
+    if expected is None:
+        return
+    if vtype in (WorkflowValueType.INTEGER, WorkflowValueType.FLOAT) and isinstance(
+        default, bool
+    ):
+        msg = f"Declaration {name!r}: default must be {vtype.value}, got bool"
+        raise TypeError(msg)
+    if not isinstance(default, expected):
+        msg = (
+            f"Declaration {name!r}: default must be"
+            f" {vtype.value}, got {type(default).__name__}"
+        )
+        raise TypeError(msg)
+    if vtype is WorkflowValueType.DATETIME and isinstance(default, str):
+        try:
+            datetime.fromisoformat(default)
+        except ValueError as exc:
+            msg = f"Declaration {name!r}: DATETIME default is not valid ISO-8601"
+            raise TypeError(msg) from exc
+    if (
+        vtype is WorkflowValueType.FLOAT
+        and isinstance(default, (int, float))
+        and not math.isfinite(default)
+    ):
+        msg = f"Declaration {name!r}: FLOAT default must be finite"
+        raise TypeError(msg)
+
+
+class WorkflowIODeclaration(BaseModel):
+    """A typed input or output declaration for a workflow definition.
+
+    Subworkflows use these declarations as their contract: parents must
+    provide matching inputs, and the parent scope receives outputs
+    projected from the child frame's variables.
+
+    Attributes:
+        name: Identifier used by parent bindings and child expressions.
+        type: The value kind (see :class:`WorkflowValueType`).
+        required: Whether the caller must provide this input.
+            Always ``True`` for outputs.
+        default: Optional default value when ``required`` is ``False``.
+        description: Free-text description for the UI.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+
+    name: NotBlankStr = Field(description="Identifier")
+    type: WorkflowValueType = Field(description="Typed value kind")
+    required: bool = Field(default=True, description="Whether a value is mandatory")
+    default: object | None = Field(
+        default=None,
+        description="Default value when not required",
+    )
+    description: str = Field(default="", description="Human-readable description")
+
+    @model_validator(mode="after")
+    def _validate_default_compatible(self) -> Self:
+        """Reject defaults on required declarations and type-check defaults."""
+        if self.required and self.default is not None:
+            msg = (
+                f"Declaration {self.name!r}: required declarations "
+                f"must not carry a default value"
+            )
+            raise ValueError(msg)
+        if self.default is not None:
+            _check_default_type(self.name, self.default, self.type)
+        return self
 
 
 class WorkflowNode(BaseModel):
@@ -82,12 +181,20 @@ class WorkflowDefinition(BaseModel):
         name: Human-readable workflow name.
         description: Optional detailed description.
         workflow_type: The execution topology this workflow targets.
+        version: Semver string (``MAJOR.MINOR.PATCH``) identifying this
+            revision for subworkflow pinning and publication.
+        inputs: Typed input contract (used when this definition is
+            referenced as a subworkflow).
+        outputs: Typed output contract (used when this definition is
+            referenced as a subworkflow).
+        is_subworkflow: Whether this definition is published to the
+            subworkflow registry.
         nodes: All nodes in the workflow graph.
         edges: All edges connecting the nodes.
         created_by: Identity of the creator.
         created_at: Creation timestamp (UTC).
         updated_at: Last update timestamp (UTC).
-        version: Optimistic concurrency version counter.
+        revision: Optimistic concurrency counter (monotonic integer).
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
@@ -98,6 +205,22 @@ class WorkflowDefinition(BaseModel):
     workflow_type: WorkflowType = Field(
         default=WorkflowType.SEQUENTIAL_PIPELINE,
         description="Target execution topology",
+    )
+    version: NotBlankStr = Field(
+        default=_DEFAULT_SEMVER,
+        description="Semver version string (MAJOR.MINOR.PATCH)",
+    )
+    inputs: tuple[WorkflowIODeclaration, ...] = Field(
+        default=(),
+        description="Typed input contract (subworkflow-facing)",
+    )
+    outputs: tuple[WorkflowIODeclaration, ...] = Field(
+        default=(),
+        description="Typed output contract (subworkflow-facing)",
+    )
+    is_subworkflow: bool = Field(
+        default=False,
+        description="Whether this definition is published to the registry",
     )
     nodes: tuple[WorkflowNode, ...] = Field(
         default=(),
@@ -116,7 +239,51 @@ class WorkflowDefinition(BaseModel):
         default_factory=lambda: datetime.now(UTC),
         description="Last update timestamp (UTC)",
     )
-    version: int = Field(default=1, ge=1, description="Optimistic concurrency version")
+    revision: int = Field(
+        default=1,
+        ge=1,
+        description="Optimistic concurrency counter",
+    )
+
+    @field_validator("version")
+    @classmethod
+    def _validate_semver(cls, value: str) -> str:
+        """Reject non-strict semver (must be MAJOR.MINOR.PATCH)."""
+        if not re.fullmatch(r"(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)", value):
+            msg = (
+                f"Invalid version {value!r}: must be strict"
+                f" MAJOR.MINOR.PATCH (e.g. '1.0.0')"
+            )
+            raise ValueError(msg)
+        return value
+
+    @model_validator(mode="after")
+    def _validate_outputs_required(self) -> Self:
+        """Ensure all output declarations are required."""
+        for decl in self.outputs:
+            if not decl.required:
+                msg = (
+                    f"Output declaration {decl.name!r} must be"
+                    f" required (optional outputs are not supported)"
+                )
+                raise ValueError(msg)
+        return self
+
+    @model_validator(mode="after")
+    def _validate_unique_io_names(self) -> Self:
+        """Reject duplicate input or output names within the same scope."""
+        input_names = tuple(decl.name for decl in self.inputs)
+        if len(input_names) != len(set(input_names)):
+            dupes = sorted(v for v, c in Counter(input_names).items() if c > 1)
+            msg = f"Duplicate input declaration names: {dupes}"
+            raise ValueError(msg)
+
+        output_names = tuple(decl.name for decl in self.outputs)
+        if len(output_names) != len(set(output_names)):
+            dupes = sorted(v for v, c in Counter(output_names).items() if c > 1)
+            msg = f"Duplicate output declaration names: {dupes}"
+            raise ValueError(msg)
+        return self
 
     @model_validator(mode="after")
     def _validate_unique_ids(self) -> Self:

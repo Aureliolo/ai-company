@@ -38,10 +38,15 @@ from synthorg.engine.workflow.blueprint_models import BlueprintData  # noqa: TC0
 from synthorg.engine.workflow.definition import (
     WorkflowDefinition,
     WorkflowEdge,
+    WorkflowIODeclaration,
     WorkflowNode,
 )
+from synthorg.engine.workflow.subworkflow_registry import SubworkflowRegistry
 from synthorg.engine.workflow.validation import (
+    WorkflowValidationError,
     WorkflowValidationResult,
+    validate_subworkflow_graph,
+    validate_subworkflow_io,
 )
 from synthorg.engine.workflow.validation import (
     validate_workflow as run_workflow_validation,
@@ -86,7 +91,24 @@ def _wf_versioning(state: State) -> VersioningService[WorkflowDefinition]:
 logger = get_logger(__name__)
 
 
-def _build_update_fields(
+async def _run_subworkflow_validation(
+    definition: WorkflowDefinition,
+    state: State,
+) -> tuple[WorkflowValidationError, ...]:
+    """Run save-time subworkflow I/O + cycle validation.
+
+    Returns the combined tuple of validation errors; empty when
+    the definition is subworkflow-clean.  Never raises for individual
+    validation errors -- those are returned as structured errors so
+    callers can map to 400 responses.
+    """
+    registry = SubworkflowRegistry(state.app_state.persistence.subworkflows)
+    io_result = await validate_subworkflow_io(definition, registry)
+    graph_result = await validate_subworkflow_graph(definition, registry)
+    return tuple(io_result.errors) + tuple(graph_result.errors)
+
+
+def _build_update_fields(  # noqa: C901, PLR0912
     data: UpdateWorkflowDefinitionRequest,
 ) -> dict[str, object] | Response[ApiResponse[WorkflowDefinition]]:
     """Build the update dict from the request, or return error."""
@@ -97,6 +119,44 @@ def _build_update_fields(
         updates["description"] = data.description
     if data.workflow_type is not None:
         updates["workflow_type"] = data.workflow_type
+    if data.version is not None:
+        updates["version"] = data.version
+    if data.is_subworkflow is not None:
+        updates["is_subworkflow"] = data.is_subworkflow
+    if data.inputs is not None:
+        try:
+            updates["inputs"] = tuple(
+                WorkflowIODeclaration.model_validate(i) for i in data.inputs
+            )
+        except (ValueError, ValidationError) as exc:
+            logger.warning(
+                WORKFLOW_DEF_INVALID_REQUEST,
+                field="inputs",
+                error=str(exc),
+            )
+            return Response(
+                content=ApiResponse[WorkflowDefinition](
+                    error="Invalid 'inputs' field in request.",
+                ),
+                status_code=422,
+            )
+    if data.outputs is not None:
+        try:
+            updates["outputs"] = tuple(
+                WorkflowIODeclaration.model_validate(o) for o in data.outputs
+            )
+        except (ValueError, ValidationError) as exc:
+            logger.warning(
+                WORKFLOW_DEF_INVALID_REQUEST,
+                field="outputs",
+                error=str(exc),
+            )
+            return Response(
+                content=ApiResponse[WorkflowDefinition](
+                    error="Invalid 'outputs' field in request.",
+                ),
+                status_code=422,
+            )
     if data.nodes is not None:
         try:
             updates["nodes"] = tuple(WorkflowNode.model_validate(n) for n in data.nodes)
@@ -201,7 +261,7 @@ def _apply_update(
 ) -> WorkflowDefinition | Response[ApiResponse[WorkflowDefinition]]:
     """Merge update fields into an existing definition and validate.
 
-    Builds the update dict, bumps the version, and validates the merged
+    Builds the update dict, bumps the revision, and validates the merged
     model. Returns the updated definition on success or an error
     ``Response`` on validation failure or field-level errors.
 
@@ -216,7 +276,7 @@ def _apply_update(
     if isinstance(result, Response):
         return result
     updates = result
-    updates["version"] = existing.version + 1
+    updates["revision"] = existing.revision + 1
 
     try:
         merged = existing.model_dump() | updates
@@ -237,15 +297,15 @@ def _apply_update(
 async def _fetch_existing_for_update(
     repo: WorkflowDefinitionRepository,
     workflow_id: str,
-    expected_version: int | None,
+    expected_revision: int | None,
 ) -> WorkflowDefinition | Response[ApiResponse[WorkflowDefinition]]:
-    """Fetch a definition and check for version conflicts before update.
+    """Fetch a definition and check for revision conflicts before update.
 
     Args:
         repo: The workflow definition repository.
         workflow_id: The workflow definition ID.
-        expected_version: Client-supplied expected version (``None`` to
-            skip the optimistic concurrency check).
+        expected_revision: Client-supplied expected revision (``None``
+            to skip the optimistic concurrency check).
 
     Returns:
         The existing ``WorkflowDefinition``, or a ``Response`` error.
@@ -263,12 +323,12 @@ async def _fetch_existing_for_update(
             status_code=404,
         )
 
-    if expected_version is not None and expected_version != existing.version:
+    if expected_revision is not None and expected_revision != existing.revision:
         logger.warning(
             WORKFLOW_DEF_VERSION_CONFLICT,
             definition_id=workflow_id,
-            expected=expected_version,
-            actual=existing.version,
+            expected=expected_revision,
+            actual=existing.revision,
         )
         return Response(
             content=ApiResponse[WorkflowDefinition](
@@ -439,7 +499,7 @@ class WorkflowController(Controller):
             logger.exception(
                 WORKFLOW_VERSION_SNAPSHOT_FAILED,
                 definition_id=definition.id,
-                version=definition.version,
+                revision=definition.revision,
             )
 
         logger.info(
@@ -489,11 +549,19 @@ class WorkflowController(Controller):
         try:
             nodes = tuple(WorkflowNode.model_validate(n) for n in data.nodes)
             edges = tuple(WorkflowEdge.model_validate(e) for e in data.edges)
+            inputs = tuple(WorkflowIODeclaration.model_validate(i) for i in data.inputs)
+            outputs = tuple(
+                WorkflowIODeclaration.model_validate(o) for o in data.outputs
+            )
             definition = WorkflowDefinition(
                 id=f"wfdef-{uuid.uuid4().hex[:12]}",
                 name=data.name,
                 description=data.description,
                 workflow_type=data.workflow_type,
+                version=data.version,
+                inputs=inputs,
+                outputs=outputs,
+                is_subworkflow=data.is_subworkflow,
                 nodes=nodes,
                 edges=edges,
                 created_by=creator,
@@ -507,7 +575,21 @@ class WorkflowController(Controller):
             )
             return Response(
                 content=ApiResponse[WorkflowDefinition](
-                    error=f"Invalid workflow definition: {exc}",
+                    error="Invalid workflow definition.",
+                ),
+                status_code=422,
+            )
+
+        subworkflow_errors = await _run_subworkflow_validation(definition, state)
+        if subworkflow_errors:
+            messages = "; ".join(e.message for e in subworkflow_errors)
+            logger.warning(
+                WORKFLOW_DEF_INVALID_REQUEST,
+                error=messages,
+            )
+            return Response(
+                content=ApiResponse[WorkflowDefinition](
+                    error="Subworkflow validation failed.",
                 ),
                 status_code=422,
             )
@@ -526,7 +608,7 @@ class WorkflowController(Controller):
             logger.exception(
                 WORKFLOW_VERSION_SNAPSHOT_FAILED,
                 definition_id=definition.id,
-                version=definition.version,
+                revision=definition.revision,
             )
 
         logger.info(WORKFLOW_DEF_CREATED, definition_id=definition.id)
@@ -549,7 +631,7 @@ class WorkflowController(Controller):
         fetch_result = await _fetch_existing_for_update(
             repo,
             workflow_id,
-            data.expected_version,
+            data.expected_revision,
         )
         if isinstance(fetch_result, Response):
             return fetch_result
@@ -559,6 +641,20 @@ class WorkflowController(Controller):
         if isinstance(update_result, Response):
             return update_result
         updated = update_result
+
+        subworkflow_errors = await _run_subworkflow_validation(updated, state)
+        if subworkflow_errors:
+            messages = "; ".join(e.message for e in subworkflow_errors)
+            logger.warning(
+                WORKFLOW_DEF_INVALID_REQUEST,
+                error=messages,
+            )
+            return Response(
+                content=ApiResponse[WorkflowDefinition](
+                    error="Subworkflow validation failed.",
+                ),
+                status_code=422,
+            )
 
         try:
             await repo.save(updated)
@@ -570,7 +666,7 @@ class WorkflowController(Controller):
             )
             return Response(
                 content=ApiResponse[WorkflowDefinition](
-                    error=f"Version conflict: {exc}",
+                    error="Version conflict: definition was modified concurrently.",
                 ),
                 status_code=409,
             )
@@ -587,7 +683,7 @@ class WorkflowController(Controller):
             logger.exception(
                 WORKFLOW_VERSION_SNAPSHOT_FAILED,
                 definition_id=updated.id,
-                version=updated.version,
+                revision=updated.revision,
             )
         logger.info(WORKFLOW_DEF_UPDATED, definition_id=updated.id)
 

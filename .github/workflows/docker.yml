@@ -161,7 +161,7 @@ jobs:
 
       - name: Upload Trivy report (backend)
         if: always()
-        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
         with:
           name: trivy-backend-report
           path: trivy-backend.json
@@ -255,7 +255,7 @@ jobs:
 
       - name: Upload SBOM artifact
         if: github.event_name != 'pull_request'
-        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
         with:
           name: sbom-backend
           path: sbom-backend.cdx.json
@@ -367,7 +367,7 @@ jobs:
 
       - name: Upload Trivy report (web)
         if: always()
-        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
         with:
           name: trivy-web-report
           path: trivy-web.json
@@ -458,7 +458,7 @@ jobs:
 
       - name: Upload SBOM artifact
         if: github.event_name != 'pull_request'
-        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
         with:
           name: sbom-web
           path: sbom-web.cdx.json
@@ -570,7 +570,7 @@ jobs:
 
       - name: Upload Trivy report (sandbox)
         if: always()
-        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
         with:
           name: trivy-sandbox-report
           path: trivy-sandbox.json
@@ -661,7 +661,7 @@ jobs:
 
       - name: Upload SBOM artifact
         if: github.event_name != 'pull_request'
-        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
         with:
           name: sbom-sandbox
           path: sbom-sandbox.cdx.json

@@ -101,7 +101,7 @@ def _make_execution(**overrides: object) -> WorkflowExecution:
     defaults: dict[str, object] = {
         "id": "wfexec-test001",
         "definition_id": "wfdef-abc123",
-        "definition_version": 1,
+        "definition_revision": 1,
         "activated_by": "test-user",
         "project": "test-project",
         "created_at": now,
@@ -119,7 +119,7 @@ class TestWorkflowExecution:
         exe = _make_execution()
         assert exe.id == "wfexec-test001"
         assert exe.definition_id == "wfdef-abc123"
-        assert exe.definition_version == 1
+        assert exe.definition_revision == 1
         assert exe.status is WorkflowExecutionStatus.PENDING
         assert exe.node_executions == ()
         assert exe.activated_by == "test-user"
@@ -206,9 +206,9 @@ class TestWorkflowExecution:
             _make_execution(version=0)
 
     @pytest.mark.unit
-    def test_definition_version_must_be_ge_1(self) -> None:
-        with pytest.raises(ValidationError, match="definition_version"):
-            _make_execution(definition_version=0)
+    def test_definition_revision_must_be_ge_1(self) -> None:
+        with pytest.raises(ValidationError, match="definition_revision"):
+            _make_execution(definition_revision=0)
 
     @pytest.mark.unit
     def test_nan_rejected_in_version(self) -> None:
@@ -216,9 +216,9 @@ class TestWorkflowExecution:
             _make_execution(version=math.nan)
 
     @pytest.mark.unit
-    def test_nan_rejected_in_definition_version(self) -> None:
+    def test_nan_rejected_in_definition_revision(self) -> None:
         with pytest.raises(ValidationError):
-            _make_execution(definition_version=math.nan)
+            _make_execution(definition_revision=math.nan)
 
 
 # ── Negative cross-field validator tests ─────────────────────────

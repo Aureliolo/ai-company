@@ -1652,6 +1652,7 @@ export type WorkflowNodeType =
   | 'conditional'
   | 'parallel_split'
   | 'parallel_join'
+  | 'subworkflow'
 
 export type WorkflowEdgeType =
   | 'sequential'
@@ -1676,17 +1677,41 @@ export interface WorkflowEdgeData {
   readonly label: string | null
 }
 
+// ── Workflow I/O declarations (subworkflow contracts) ───────
+
+export type WorkflowValueType =
+  | 'string'
+  | 'integer'
+  | 'float'
+  | 'boolean'
+  | 'datetime'
+  | 'json'
+  | 'task_ref'
+  | 'agent_ref'
+
+export interface WorkflowIODeclaration {
+  readonly name: string
+  readonly type: WorkflowValueType
+  readonly required: boolean
+  readonly default: unknown
+  readonly description: string
+}
+
 export interface WorkflowDefinition {
   readonly id: string
   readonly name: string
   readonly description: string
   readonly workflow_type: string
+  readonly version: string
+  readonly inputs: readonly WorkflowIODeclaration[]
+  readonly outputs: readonly WorkflowIODeclaration[]
+  readonly is_subworkflow: boolean
   readonly nodes: readonly WorkflowNodeData[]
   readonly edges: readonly WorkflowEdgeData[]
   readonly created_by: string
   readonly created_at: string
   readonly updated_at: string
-  readonly version: number
+  readonly revision: number
 }
 
 export interface CreateWorkflowDefinitionRequest {
@@ -1701,9 +1726,44 @@ export interface UpdateWorkflowDefinitionRequest {
   readonly name?: string
   readonly description?: string
   readonly workflow_type?: string
+  readonly version?: string
+  readonly inputs?: readonly Record<string, unknown>[]
+  readonly outputs?: readonly Record<string, unknown>[]
+  readonly is_subworkflow?: boolean
   readonly nodes?: readonly Record<string, unknown>[]
   readonly edges?: readonly Record<string, unknown>[]
-  readonly expected_version?: number
+  readonly expected_revision?: number
+}
+
+// ── Subworkflow Registry ─────────────────────────────────────
+
+export interface SubworkflowSummary {
+  readonly subworkflow_id: string
+  readonly latest_version: string
+  readonly name: string
+  readonly description: string
+  readonly input_count: number
+  readonly output_count: number
+  readonly version_count: number
+}
+
+export interface ParentReference {
+  readonly parent_id: string
+  readonly parent_name: string
+  readonly pinned_version: string
+  readonly node_id: string
+}
+
+export interface CreateSubworkflowRequest {
+  readonly subworkflow_id?: string
+  readonly version?: string
+  readonly name: string
+  readonly description?: string
+  readonly workflow_type: string
+  readonly inputs?: readonly Record<string, unknown>[]
+  readonly outputs?: readonly Record<string, unknown>[]
+  readonly nodes: readonly Record<string, unknown>[]
+  readonly edges: readonly Record<string, unknown>[]
 }
 
 export interface WorkflowValidationError {
@@ -1734,6 +1794,7 @@ export type WorkflowNodeExecutionStatus =
   | 'task_completed'
   | 'task_failed'
   | 'completed'
+  | 'subworkflow_completed'
 
 export interface WorkflowNodeExecution {
   readonly node_id: string
@@ -1746,7 +1807,7 @@ export interface WorkflowNodeExecution {
 export interface WorkflowExecution {
   readonly id: string
   readonly definition_id: string
-  readonly definition_version: number
+  readonly definition_revision: number
   readonly status: WorkflowExecutionStatus
   readonly node_executions: readonly WorkflowNodeExecution[]
   readonly activated_by: string
@@ -1849,7 +1910,7 @@ export interface WorkflowDiff {
 
 export interface RollbackWorkflowRequest {
   readonly target_version: number
-  readonly expected_version: number
+  readonly expected_revision: number
 }
 
 // ── Ceremony Policy ──────────────────────────────────────────

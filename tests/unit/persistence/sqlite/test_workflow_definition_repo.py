@@ -93,7 +93,7 @@ def _make_definition(  # noqa: PLR0913
     created_by: str = "test-user",
     created_at: datetime = _DEFAULT_TS,
     updated_at: datetime = _DEFAULT_TS,
-    version: int = 1,
+    revision: int = 1,
     node_prefix: str = "n",
 ) -> WorkflowDefinition:
     """Build a complete ``WorkflowDefinition`` for testing."""
@@ -107,7 +107,7 @@ def _make_definition(  # noqa: PLR0913
         created_by=created_by,
         created_at=created_at,
         updated_at=updated_at,
-        version=version,
+        revision=revision,
     )
 
 
@@ -128,6 +128,7 @@ class TestSQLiteWorkflowDefinitionRepository:
         assert result.description == defn.description
         assert result.workflow_type == defn.workflow_type
         assert result.created_by == defn.created_by
+        assert result.revision == defn.revision
         assert result.version == defn.version
         assert len(result.nodes) == len(defn.nodes)
         assert len(result.edges) == len(defn.edges)
@@ -149,7 +150,7 @@ class TestSQLiteWorkflowDefinitionRepository:
         self,
         repo: SQLiteWorkflowDefinitionRepository,
     ) -> None:
-        defn_v1 = _make_definition(version=1)
+        defn_v1 = _make_definition(revision=1)
         await repo.save(defn_v1)
 
         defn_v2 = _make_definition(
@@ -157,7 +158,7 @@ class TestSQLiteWorkflowDefinitionRepository:
             description="Updated description",
             workflow_type=WorkflowType.PARALLEL_EXECUTION,
             updated_at=datetime(2026, 4, 2, 8, 0, 0, tzinfo=UTC),
-            version=2,
+            revision=2,
         )
         await repo.save(defn_v2)
 
@@ -166,27 +167,27 @@ class TestSQLiteWorkflowDefinitionRepository:
         assert result.name == "Updated Workflow"
         assert result.description == "Updated description"
         assert result.workflow_type == WorkflowType.PARALLEL_EXECUTION
-        assert result.version == 2
+        assert result.revision == 2
 
-    async def test_save_rejects_on_version_mismatch(
+    async def test_save_rejects_on_revision_mismatch(
         self,
         repo: SQLiteWorkflowDefinitionRepository,
     ) -> None:
-        defn_v1 = _make_definition(version=1)
+        defn_v1 = _make_definition(revision=1)
         await repo.save(defn_v1)
 
-        # Attempt to save version 3 (skipping 2) -- should raise
+        # Attempt to save revision 3 (skipping 2) -- should raise
         defn_v3 = _make_definition(
-            name="Skipped version",
-            version=3,
+            name="Skipped revision",
+            revision=3,
         )
         with pytest.raises(VersionConflictError, match="Version conflict"):
             await repo.save(defn_v3)
 
-        # Original version 1 should still be stored
+        # Original revision 1 should still be stored
         result = await repo.get("wf-001")
         assert result is not None
-        assert result.version == 1
+        assert result.revision == 1
         assert result.name == "Test Workflow"
 
     async def test_get_not_found(

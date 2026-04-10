@@ -128,6 +128,7 @@ if TYPE_CHECKING:
     )
     from synthorg.persistence.risk_override_repo import RiskOverrideRepository
     from synthorg.persistence.ssrf_violation_repo import SsrfViolationRepository
+    from synthorg.persistence.subworkflow_repo import SubworkflowRepository
     from synthorg.persistence.version_repo import VersionRepository
     from synthorg.persistence.workflow_definition_repo import (
         WorkflowDefinitionRepository,
@@ -203,6 +204,7 @@ class PostgresPersistenceBackend:
         self._custom_presets: PersonalityPresetRepository | None = None
         self._workflow_definitions: WorkflowDefinitionRepository | None = None
         self._workflow_executions: WorkflowExecutionRepository | None = None
+        self._subworkflows: SubworkflowRepository | None = None
         self._workflow_versions: VersionRepository[WorkflowDefinition] | None = None
         self._identity_versions: VersionRepository[AgentIdentity] | None = None
         self._evaluation_config_versions: VersionRepository[EvaluationConfig] | None = (
@@ -241,6 +243,7 @@ class PostgresPersistenceBackend:
         self._custom_presets = None
         self._workflow_definitions = None
         self._workflow_executions = None
+        self._subworkflows = None
         self._workflow_versions = None
         self._identity_versions = None
         self._evaluation_config_versions = None
@@ -661,6 +664,11 @@ class PostgresPersistenceBackend:
     def workflow_executions(self) -> WorkflowExecutionRepository:
         """Repository for workflow execution persistence."""
         return self._require_connected(self._workflow_executions, "workflow_executions")
+
+    @property
+    def subworkflows(self) -> SubworkflowRepository:
+        """Repository for subworkflow registry persistence."""
+        return self._require_connected(self._subworkflows, "subworkflows")
 
     @property
     def workflow_versions(self) -> VersionRepository[WorkflowDefinition]:

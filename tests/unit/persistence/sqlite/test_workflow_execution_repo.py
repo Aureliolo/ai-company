@@ -36,7 +36,7 @@ def _make_execution(
     defaults: dict[str, object] = {
         "id": execution_id,
         "definition_id": "wfdef-abc123",
-        "definition_version": 1,
+        "definition_revision": 1,
         "status": WorkflowExecutionStatus.RUNNING,
         "node_executions": (
             WorkflowNodeExecution(
@@ -75,7 +75,7 @@ class TestSaveAndGet:
         assert loaded is not None
         assert loaded.id == exe.id
         assert loaded.definition_id == exe.definition_id
-        assert loaded.definition_version == 1
+        assert loaded.definition_revision == 1
         assert loaded.status is WorkflowExecutionStatus.RUNNING
         assert loaded.activated_by == "test-user"
         assert loaded.project == "test-project"
