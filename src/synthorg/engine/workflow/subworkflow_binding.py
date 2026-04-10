@@ -72,8 +72,9 @@ def _resolve_expression(
 ) -> object:
     """Resolve a single binding expression to a concrete value.
 
-    String expressions starting with ``@parent.`` or ``@child.`` are
-    dotted-path lookups; everything else is a literal.
+    ``@parent.<path>`` and ``@child.<path>`` are dotted-path lookups.
+    Non-string values and strings not starting with ``@`` are literals.
+    Any other ``@``-prefixed string raises ``SubworkflowIOError``.
     """
     if not isinstance(expression, str):
         return expression

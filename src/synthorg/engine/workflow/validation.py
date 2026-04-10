@@ -444,6 +444,18 @@ def _check_bindings_against_declarations(  # noqa: PLR0913
         decl = by_name[name]
         if _is_deferred_expression(value, direction=direction):
             continue
+        if isinstance(value, str) and value.startswith("@"):
+            errors.append(
+                WorkflowValidationError(
+                    code=type_code,
+                    message=(
+                        f"Subworkflow node {node_id!r} binds {direction} "
+                        f"{name!r} with unsupported expression {value!r}"
+                    ),
+                    node_id=node_id,
+                ),
+            )
+            continue
         if not _literal_matches_type(value, decl.type):
             errors.append(
                 WorkflowValidationError(

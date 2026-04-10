@@ -49,7 +49,7 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 _SELECT_COLUMNS = """\
-id, definition_id, definition_revision, status, node_executions,
+id, definition_id, definition_version, status, node_executions,
 activated_by, project, created_at, updated_at, completed_at,
 error, version"""
 
@@ -98,6 +98,8 @@ def _deserialize_row(
         data["node_executions"] = _deserialize_node_executions(
             data.get("node_executions") or [],
         )
+        if "definition_version" in data:
+            data["definition_revision"] = data.pop("definition_version")
         return WorkflowExecution.model_validate(data)
     except (
         TypeError,
@@ -182,7 +184,7 @@ class PostgresWorkflowExecutionRepository:
                 await cur.execute(
                     """
                     INSERT INTO workflow_executions
-                        (id, definition_id, definition_revision, status,
+                        (id, definition_id, definition_version, status,
                          node_executions,
                          activated_by, project, created_at, updated_at, completed_at,
                          error, version)
@@ -217,7 +219,7 @@ class PostgresWorkflowExecutionRepository:
                 await cur.execute(
                     """
                     UPDATE workflow_executions SET
-                        definition_id=%s, definition_revision=%s, status=%s,
+                        definition_id=%s, definition_version=%s, status=%s,
                         node_executions=%s, activated_by=%s, project=%s,
                         created_at=%s, updated_at=%s, completed_at=%s,
                         error=%s, version=%s

@@ -41,7 +41,7 @@ logger = get_logger(__name__)
 
 _SELECT_COLUMNS = """\
 id, name, description, workflow_type, nodes, edges,
-created_by, created_at, updated_at, revision"""
+created_by, created_at, updated_at, version"""
 
 
 def _deserialize_row(
@@ -73,6 +73,9 @@ def _deserialize_row(
         data["edges"] = tuple(
             WorkflowEdge.model_validate(e) for e in (data.get("edges") or [])
         )
+        if "version" in data and isinstance(data["version"], int):
+            data["revision"] = data.pop("version")
+            data.setdefault("version", "1.0.0")
         return WorkflowDefinition.model_validate(data)
     except (ValueError, ValidationError, KeyError, TypeError) as exc:
         msg = f"Failed to deserialize workflow definition {context_id!r}"
@@ -137,8 +140,8 @@ class PostgresWorkflowDefinitionRepository:
                         """
                         UPDATE workflow_definitions SET
                             name=%s, description=%s, workflow_type=%s,
-                            nodes=%s, edges=%s, updated_at=%s, revision=%s
-                        WHERE id = %s AND revision = %s
+                            nodes=%s, edges=%s, updated_at=%s, version=%s
+                        WHERE id = %s AND version = %s
                         """,
                         (
                             definition.name,
@@ -160,7 +163,7 @@ class PostgresWorkflowDefinitionRepository:
                         INSERT INTO workflow_definitions
                             (id, name, description, workflow_type, nodes,
                              edges, created_by, created_at, updated_at,
-                             revision)
+                             version)
                         VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                         ON CONFLICT(id) DO NOTHING
                         """,
