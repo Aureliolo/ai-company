@@ -16,9 +16,10 @@ fi
 
 REVISIONS_DIR="src/synthorg/persistence/sqlite/revisions"
 
-mapfile -t MODIFIED < <(
-    git diff --cached --name-only --diff-filter=MR -- "$REVISIONS_DIR/*.sql" 2>/dev/null || true
-)
+MODIFIED=()
+while IFS= read -r line; do
+    [ -n "$line" ] && MODIFIED+=("$line")
+done < <(git diff --cached --name-only --diff-filter=MR -- "$REVISIONS_DIR/*.sql" 2>/dev/null || true)
 
 if [ "${#MODIFIED[@]}" -gt 0 ] && [ -n "${MODIFIED[0]}" ]; then
     echo "" >&2

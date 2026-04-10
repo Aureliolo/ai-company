@@ -39,11 +39,11 @@ if ! git show-ref --verify --quiet refs/remotes/origin/main; then
     fi
 fi
 
-# Find all .sql files under revisions/ that exist on HEAD.
+# Find all .sql files under revisions/ (staged + committed).
 HEAD_FILES=()
 while IFS= read -r line; do
     HEAD_FILES+=("$line")
-done < <(git ls-tree -r --name-only HEAD -- "$REVISIONS_DIR" | grep -E '\.sql$' || true)
+done < <(git ls-files --cached -- "$REVISIONS_DIR/*.sql" 2>/dev/null || true)
 
 # For each file on HEAD, check whether it exists on origin/main. If it does
 # not, it is a new migration added by this PR.
