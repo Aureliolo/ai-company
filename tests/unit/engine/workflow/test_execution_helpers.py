@@ -7,13 +7,13 @@ from synthorg.core.enums import (
     WorkflowNodeExecutionStatus,
     WorkflowNodeType,
 )
+from synthorg.engine.workflow.execution_lifecycle import (
+    _all_tasks_completed,
+    _update_node_status,
+)
 from synthorg.engine.workflow.execution_models import (
     WorkflowExecution,
     WorkflowNodeExecution,
-)
-from synthorg.engine.workflow.execution_service import (
-    _all_tasks_completed,
-    _update_node_status,
 )
 
 # -- _update_node_status helper tests ----------------------------------------

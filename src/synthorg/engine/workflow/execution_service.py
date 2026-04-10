@@ -13,7 +13,6 @@ from typing import TYPE_CHECKING
 from uuid import uuid4
 
 from synthorg.core.enums import (
-    TaskStatus,
     WorkflowEdgeType,
     WorkflowExecutionStatus,
     WorkflowNodeExecutionStatus,
@@ -25,6 +24,7 @@ from synthorg.engine.errors import (
     WorkflowExecutionError,
     WorkflowExecutionNotFoundError,
 )
+from synthorg.engine.workflow import execution_lifecycle as lifecycle
 from synthorg.engine.workflow.execution_activation_helpers import (
     find_downstream_task_ids,
     process_conditional_node,
@@ -48,22 +48,15 @@ from synthorg.engine.workflow.validation import validate_workflow
 from synthorg.observability import get_logger
 from synthorg.observability.events.workflow_execution import (
     WORKFLOW_EXEC_ACTIVATED,
-    WORKFLOW_EXEC_CANCELLED,
-    WORKFLOW_EXEC_COMPLETED,
-    WORKFLOW_EXEC_FAILED,
     WORKFLOW_EXEC_INVALID_DEFINITION,
-    WORKFLOW_EXEC_INVALID_STATUS,
     WORKFLOW_EXEC_NODE_COMPLETED,
     WORKFLOW_EXEC_NODE_SKIPPED,
-    WORKFLOW_EXEC_NODE_TASK_COMPLETED,
-    WORKFLOW_EXEC_NODE_TASK_FAILED,
     WORKFLOW_EXEC_NOT_FOUND,
     WORKFLOW_EXEC_SUBWORKFLOW_DEPTH_EXCEEDED,
     WORKFLOW_EXEC_SUBWORKFLOW_FRAME_POPPED,
     WORKFLOW_EXEC_SUBWORKFLOW_FRAME_PUSHED,
     WORKFLOW_EXEC_SUBWORKFLOW_NODE_COMPLETED,
 )
-from synthorg.persistence.errors import VersionConflictError
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -112,9 +105,45 @@ class _WalkState:
 
 logger = get_logger(__name__)
 
-_TERMINAL_TASK_STATUSES = frozenset(
-    {TaskStatus.COMPLETED, TaskStatus.FAILED, TaskStatus.CANCELLED},
-)
+
+def _collect_terminal_task_ids(
+    child_definition: WorkflowDefinition,
+    child_prefix: str,
+    state: _WalkState,
+) -> str | tuple[str, ...]:
+    """Collect task IDs from a child graph's terminal TASK nodes.
+
+    A terminal TASK node is one whose only successors are END nodes
+    or that has no successors at all.  The result is stored in the
+    parent frame's ``frame_node_task_ids`` so downstream parent TASK
+    nodes receive these as dependencies.
+
+    Returns a single task ID string when there is exactly one
+    terminal task, or a tuple for multiple.  Returns an empty tuple
+    when no terminal tasks exist (e.g. the child graph had no TASK
+    nodes).
+    """
+    adjacency, _, _ = build_adjacency_maps(child_definition)
+    node_map = {n.id: n for n in child_definition.nodes}
+    terminal_task_ids: list[str] = []
+    for node in child_definition.nodes:
+        if node.type is not WorkflowNodeType.TASK:
+            continue
+        qualified = _qualify_id(child_prefix, node.id)
+        task_id = state.node_task_ids.get(qualified)
+        if task_id is None:
+            continue
+        # Check if this TASK node is terminal: all successors are
+        # END or no successors at all.
+        successors = adjacency.get(node.id, [])
+        if (
+            all(node_map[s].type is WorkflowNodeType.END for s in successors)
+            or not successors
+        ):
+            terminal_task_ids.append(task_id)
+    if len(terminal_task_ids) == 1:
+        return terminal_task_ids[0]
+    return tuple(terminal_task_ids)
 
 
 class WorkflowExecutionService:
@@ -302,7 +331,8 @@ class WorkflowExecutionService:
         )
 
         # Frame-local task-ID map: upstream lookups must not cross frames.
-        frame_node_task_ids: dict[str, str] = {}
+        # SUBWORKFLOW nodes may store a tuple of terminal task IDs.
+        frame_node_task_ids: dict[str, str | tuple[str, ...]] = {}
         skipped_nodes: set[str] = set()
         pending_assignments: dict[str, str] = {}
         # The child graph's condition evaluator sees only the frame's
@@ -384,7 +414,7 @@ class WorkflowExecutionService:
         project: str,
         activated_by: str,
         node_map: dict[str, WorkflowNode],
-        frame_node_task_ids: dict[str, str],
+        frame_node_task_ids: dict[str, str | tuple[str, ...]],
         qualifier_prefix: str,
         state: _WalkState,
         skipped_nodes: set[str],
@@ -460,6 +490,7 @@ class WorkflowExecutionService:
                 node=node,
                 frame=frame,
                 frame_ctx=frame_ctx,
+                frame_node_task_ids=frame_node_task_ids,
                 state=state,
                 execution_id=execution_id,
                 project=project,
@@ -501,7 +532,7 @@ class WorkflowExecutionService:
         node: WorkflowNode,
         reverse_adj: dict[str, list[str]],
         node_map: dict[str, WorkflowNode],
-        frame_node_task_ids: dict[str, str],
+        frame_node_task_ids: dict[str, str | tuple[str, ...]],
         qualifier_prefix: str,  # noqa: ARG002
         state: _WalkState,  # noqa: ARG002
         skipped_nodes: set[str],
@@ -541,6 +572,7 @@ class WorkflowExecutionService:
         node: WorkflowNode,
         frame: ExecutionFrame,
         frame_ctx: dict[str, object],
+        frame_node_task_ids: dict[str, str | tuple[str, ...]],
         state: _WalkState,
         execution_id: str,
         project: str,
@@ -653,6 +685,17 @@ class WorkflowExecutionService:
         )
         frame_ctx.update(projected)
 
+        # Record the child's terminal task IDs so that downstream
+        # TASK nodes in the parent frame depend on the subworkflow's
+        # final tasks (rather than having no dependency link at all).
+        terminal_ids = _collect_terminal_task_ids(
+            child_definition,
+            child_prefix,
+            state,
+        )
+        if terminal_ids:
+            frame_node_task_ids[nid] = terminal_ids
+
         logger.info(
             WORKFLOW_EXEC_SUBWORKFLOW_FRAME_POPPED,
             execution_id=execution_id,
@@ -676,29 +719,21 @@ class WorkflowExecutionService:
         self,
         execution_id: str,
     ) -> WorkflowExecution | None:
-        """Retrieve a workflow execution by ID.
-
-        Args:
-            execution_id: The execution identifier.
-
-        Returns:
-            The execution, or ``None`` if not found.
-        """
-        return await self._execution_repo.get(execution_id)
+        """Retrieve a workflow execution by ID."""
+        return await lifecycle.get_execution(
+            self._execution_repo,
+            execution_id,
+        )
 
     async def list_executions(
         self,
         definition_id: str,
     ) -> tuple[WorkflowExecution, ...]:
-        """List executions for a workflow definition.
-
-        Args:
-            definition_id: The source definition identifier.
-
-        Returns:
-            Matching executions as a tuple.
-        """
-        return await self._execution_repo.list_by_definition(definition_id)
+        """List executions for a workflow definition."""
+        return await lifecycle.list_executions(
+            self._execution_repo,
+            definition_id,
+        )
 
     async def cancel_execution(
         self,
@@ -706,98 +741,22 @@ class WorkflowExecutionService:
         *,
         cancelled_by: str,
     ) -> WorkflowExecution:
-        """Cancel a workflow execution.
-
-        Args:
-            execution_id: The execution identifier.
-            cancelled_by: Identity of the user cancelling.
-
-        Returns:
-            The updated execution in CANCELLED status.
-
-        Raises:
-            WorkflowExecutionNotFoundError: If not found.
-            WorkflowExecutionError: If execution is already terminal.
-        """
-        execution = await self._execution_repo.get(execution_id)
-        if execution is None:
-            logger.warning(
-                WORKFLOW_EXEC_NOT_FOUND,
-                execution_id=execution_id,
-            )
-            msg = f"Workflow execution {execution_id!r} not found"
-            raise WorkflowExecutionNotFoundError(msg)
-
-        terminal_statuses = {
-            WorkflowExecutionStatus.COMPLETED,
-            WorkflowExecutionStatus.FAILED,
-            WorkflowExecutionStatus.CANCELLED,
-        }
-        if execution.status in terminal_statuses:
-            msg = (
-                f"Cannot cancel execution {execution_id!r}"
-                f" in terminal status {execution.status.value!r}"
-            )
-            logger.warning(
-                WORKFLOW_EXEC_CANCELLED,
-                execution_id=execution_id,
-                error=msg,
-            )
-            raise WorkflowExecutionError(msg)
-
-        now = datetime.now(UTC)
-        cancelled = execution.model_copy(
-            update={
-                "status": WorkflowExecutionStatus.CANCELLED,
-                "updated_at": now,
-                "completed_at": now,
-                "version": execution.version + 1,
-            }
-        )
-        await self._execution_repo.save(cancelled)
-
-        logger.info(
-            WORKFLOW_EXEC_CANCELLED,
-            execution_id=execution_id,
+        """Cancel a workflow execution."""
+        return await lifecycle.cancel_execution(
+            self._execution_repo,
+            execution_id,
             cancelled_by=cancelled_by,
         )
-
-        return cancelled
-
-    # -- Lifecycle transitions ---------------------------------------------
 
     async def complete_execution(
         self,
         execution_id: str,
     ) -> WorkflowExecution:
-        """Transition a running execution to COMPLETED.
-
-        Args:
-            execution_id: The execution identifier.
-
-        Returns:
-            The updated execution in COMPLETED status.
-
-        Raises:
-            WorkflowExecutionNotFoundError: If not found.
-            WorkflowExecutionError: If execution is not RUNNING.
-        """
-        execution = await self._load_running(execution_id)
-        now = datetime.now(UTC)
-        completed = execution.model_copy(
-            update={
-                "status": WorkflowExecutionStatus.COMPLETED,
-                "updated_at": now,
-                "completed_at": now,
-                "version": execution.version + 1,
-            },
+        """Transition a running execution to COMPLETED."""
+        return await lifecycle.complete_execution(
+            self._execution_repo,
+            execution_id,
         )
-        await self._execution_repo.save(completed)
-        logger.info(
-            WORKFLOW_EXEC_COMPLETED,
-            execution_id=execution_id,
-        )
-        return completed
 
     async def fail_execution(
         self,
@@ -805,275 +764,19 @@ class WorkflowExecutionService:
         *,
         error: str,
     ) -> WorkflowExecution:
-        """Transition a running execution to FAILED.
-
-        Args:
-            execution_id: The execution identifier.
-            error: Error message describing the failure.
-
-        Returns:
-            The updated execution in FAILED status.
-
-        Raises:
-            WorkflowExecutionNotFoundError: If not found.
-            WorkflowExecutionError: If execution is not RUNNING.
-        """
-        execution = await self._load_running(execution_id)
-        now = datetime.now(UTC)
-        failed = execution.model_copy(
-            update={
-                "status": WorkflowExecutionStatus.FAILED,
-                "error": error,
-                "updated_at": now,
-                "completed_at": now,
-                "version": execution.version + 1,
-            },
-        )
-        await self._execution_repo.save(failed)
-        logger.info(
-            WORKFLOW_EXEC_FAILED,
-            execution_id=execution_id,
+        """Transition a running execution to FAILED."""
+        return await lifecycle.fail_execution(
+            self._execution_repo,
+            execution_id,
             error=error,
         )
-        return failed
 
     async def handle_task_state_changed(
         self,
         event: TaskStateChanged,
     ) -> None:
-        """React to a task state change from the TaskEngine.
-
-        Correlates the task to a running workflow execution and
-        transitions the execution to COMPLETED or FAILED as
-        appropriate.  Task cancellations are treated as failures
-        at the workflow level.  Silently ignores events for tasks
-        not belonging to any running execution.
-
-        Node status update and execution-level transition are
-        combined into a single save to avoid version conflicts.
-
-        Args:
-            event: The task state change event.
-        """
-        if event.mutation_type != "transition":
-            return
-        if event.new_status not in _TERMINAL_TASK_STATUSES:
-            return
-
-        execution = await self._find_execution_by_task(event.task_id)
-        if execution is None:
-            return
-
-        try:
-            if event.new_status in {TaskStatus.FAILED, TaskStatus.CANCELLED}:
-                await self._handle_task_failed(execution, event)
-            else:
-                await self._handle_task_completed(execution, event)
-        except VersionConflictError:
-            retry_event = (
-                WORKFLOW_EXEC_NODE_TASK_FAILED
-                if event.new_status in {TaskStatus.FAILED, TaskStatus.CANCELLED}
-                else WORKFLOW_EXEC_NODE_TASK_COMPLETED
-            )
-            logger.warning(
-                retry_event,
-                execution_id=execution.id,
-                task_id=event.task_id,
-                error="Concurrent modification; re-fetching execution",
-            )
-            refreshed = await self._execution_repo.get(execution.id)
-            if refreshed is None:
-                return
-            if refreshed.status in {
-                WorkflowExecutionStatus.COMPLETED,
-                WorkflowExecutionStatus.FAILED,
-                WorkflowExecutionStatus.CANCELLED,
-            }:
-                return
-            if event.new_status in {TaskStatus.FAILED, TaskStatus.CANCELLED}:
-                await self._handle_task_failed(refreshed, event)
-            else:
-                await self._handle_task_completed(refreshed, event)
-
-    async def _handle_task_failed(
-        self,
-        execution: WorkflowExecution,
-        event: TaskStateChanged,
-    ) -> None:
-        """Handle a task failure or cancellation event.
-
-        Updates the node to TASK_FAILED and transitions the
-        execution to FAILED in a single repository save.
-        """
-        updated = _update_node_status(
-            execution,
-            event.task_id,
-            WorkflowNodeExecutionStatus.TASK_FAILED,
+        """React to a task state change from the TaskEngine."""
+        await lifecycle.handle_task_state_changed(
+            self._execution_repo,
+            event,
         )
-        now = datetime.now(UTC)
-        verb = "cancelled" if event.new_status is TaskStatus.CANCELLED else "failed"
-        error_msg = f"Task {event.task_id} {verb}"
-        # Combine node update + execution terminal status in one save
-        # (version already bumped by _update_node_status)
-        failed = updated.model_copy(
-            update={
-                "status": WorkflowExecutionStatus.FAILED,
-                "error": error_msg,
-                "updated_at": now,
-                "completed_at": now,
-            },
-        )
-        await self._execution_repo.save(failed)
-        logger.info(
-            WORKFLOW_EXEC_NODE_TASK_FAILED,
-            execution_id=execution.id,
-            task_id=event.task_id,
-        )
-        logger.info(
-            WORKFLOW_EXEC_FAILED,
-            execution_id=execution.id,
-            error=error_msg,
-        )
-
-    async def _handle_task_completed(
-        self,
-        execution: WorkflowExecution,
-        event: TaskStateChanged,
-    ) -> None:
-        """Handle a task completion event.
-
-        Updates the node to TASK_COMPLETED. If all task nodes are
-        now complete, transitions the execution to COMPLETED in
-        a single save.
-        """
-        updated = _update_node_status(
-            execution,
-            event.task_id,
-            WorkflowNodeExecutionStatus.TASK_COMPLETED,
-        )
-        logger.info(
-            WORKFLOW_EXEC_NODE_TASK_COMPLETED,
-            execution_id=execution.id,
-            task_id=event.task_id,
-        )
-        if _all_tasks_completed(updated):
-            now = datetime.now(UTC)
-            # Combine node update + execution terminal status in one save
-            # (version already bumped by _update_node_status)
-            completed = updated.model_copy(
-                update={
-                    "status": WorkflowExecutionStatus.COMPLETED,
-                    "updated_at": now,
-                    "completed_at": now,
-                },
-            )
-            await self._execution_repo.save(completed)
-            logger.info(
-                WORKFLOW_EXEC_COMPLETED,
-                execution_id=execution.id,
-            )
-        else:
-            await self._execution_repo.save(updated)
-
-    # -- Private helpers ---------------------------------------------------
-
-    async def _load_running(
-        self,
-        execution_id: str,
-    ) -> WorkflowExecution:
-        """Load an execution and validate it is RUNNING.
-
-        Raises:
-            WorkflowExecutionNotFoundError: If not found.
-            WorkflowExecutionError: If not in RUNNING status.
-        """
-        execution = await self._execution_repo.get(execution_id)
-        if execution is None:
-            logger.warning(
-                WORKFLOW_EXEC_NOT_FOUND,
-                execution_id=execution_id,
-            )
-            msg = f"Workflow execution {execution_id!r} not found"
-            raise WorkflowExecutionNotFoundError(msg)
-
-        if execution.status is not WorkflowExecutionStatus.RUNNING:
-            msg = (
-                f"Cannot transition execution {execution_id!r}"
-                f" in status {execution.status.value!r}"
-                " (expected 'running')"
-            )
-            logger.warning(
-                WORKFLOW_EXEC_INVALID_STATUS,
-                execution_id=execution_id,
-                current_status=execution.status.value,
-                error=msg,
-            )
-            raise WorkflowExecutionError(msg)
-
-        return execution
-
-    async def _find_execution_by_task(
-        self,
-        task_id: str,
-    ) -> WorkflowExecution | None:
-        """Find a RUNNING execution containing a node with the task ID."""
-        return await self._execution_repo.find_by_task_id(task_id)
-
-
-def _update_node_status(
-    execution: WorkflowExecution,
-    task_id: str,
-    new_status: WorkflowNodeExecutionStatus,
-) -> WorkflowExecution:
-    """Return a copy with one node's status updated.
-
-    Args:
-        execution: The source execution (not mutated).
-        task_id: Task ID of the node to update.
-        new_status: New status for the matching node.
-
-    Returns:
-        A new ``WorkflowExecution`` with the updated node and
-        bumped ``version`` / ``updated_at``.
-
-    Raises:
-        ValueError: If no node matches the given task_id.
-    """
-    found = False
-    updated_nodes: list[WorkflowNodeExecution] = []
-    for ne in execution.node_executions:
-        if ne.task_id == task_id:
-            updated_nodes.append(ne.model_copy(update={"status": new_status}))
-            found = True
-        else:
-            updated_nodes.append(ne)
-
-    if not found:
-        msg = f"task_id {task_id!r} not found in execution {execution.id!r}"
-        logger.warning(
-            WORKFLOW_EXEC_NOT_FOUND,
-            execution_id=execution.id,
-            task_id=task_id,
-            error=msg,
-        )
-        raise ValueError(msg)
-
-    return execution.model_copy(
-        update={
-            "node_executions": tuple(updated_nodes),
-            "updated_at": datetime.now(UTC),
-            "version": execution.version + 1,
-        },
-    )
-
-
-def _all_tasks_completed(execution: WorkflowExecution) -> bool:
-    """Check if all non-skipped TASK nodes have completed."""
-    for ne in execution.node_executions:
-        if ne.node_type is not WorkflowNodeType.TASK:
-            continue
-        if ne.status is WorkflowNodeExecutionStatus.SKIPPED:
-            continue
-        if ne.status is not WorkflowNodeExecutionStatus.TASK_COMPLETED:
-            return False
-    return True

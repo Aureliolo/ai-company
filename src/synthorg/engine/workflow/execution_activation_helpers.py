@@ -79,20 +79,33 @@ def find_downstream_task_ids(
     return result
 
 
+def _flatten_task_ids(
+    value: str | tuple[str, ...],
+    out: list[str],
+) -> None:
+    """Append task ID(s) from a node_task_ids entry to *out*."""
+    if isinstance(value, str):
+        out.append(value)
+    else:
+        out.extend(value)
+
+
 def find_upstream_task_ids(
     node_id: str,
     reverse_adj: dict[str, list[str]],
     node_map: dict[str, WorkflowNode],
-    node_task_ids: dict[str, str],
+    node_task_ids: dict[str, str | tuple[str, ...]],
     skipped: set[str],
 ) -> tuple[str, ...]:
-    """Walk backwards to find the nearest upstream TASK node task IDs.
+    """Walk backwards to find the nearest upstream TASK/SUBWORKFLOW IDs.
 
     Skips through control nodes (START, END, AGENT_ASSIGNMENT,
     CONDITIONAL, PARALLEL_SPLIT, PARALLEL_JOIN) to find the actual
-    TASK predecessors.  Skipped nodes are excluded entirely.
-    TASK nodes that have not yet produced a task ID (not in
-    ``node_task_ids``) are also excluded.
+    TASK and SUBWORKFLOW predecessors.  Skipped nodes are excluded.
+    TASK and SUBWORKFLOW nodes that have not yet produced a task ID
+    (not in ``node_task_ids``) are also excluded.  SUBWORKFLOW
+    entries may contain a tuple of terminal task IDs from the child
+    graph.
     """
     result: list[str] = []
     visited: set[str] = set()
@@ -104,8 +117,15 @@ def find_upstream_task_ids(
             continue
         visited.add(pred_id)
         pred_node = node_map[pred_id]
-        if pred_node.type is WorkflowNodeType.TASK and pred_id in node_task_ids:
-            result.append(node_task_ids[pred_id])
+        if (
+            pred_node.type
+            in {
+                WorkflowNodeType.TASK,
+                WorkflowNodeType.SUBWORKFLOW,
+            }
+            and pred_id in node_task_ids
+        ):
+            _flatten_task_ids(node_task_ids[pred_id], result)
         elif pred_node.type in CONTROL_NODE_TYPES:
             # Keep walking backwards through control nodes
             queue.extend(reverse_adj.get(pred_id, []))
@@ -304,7 +324,7 @@ async def process_task_node(  # noqa: PLR0913
     *,
     reverse_adj: dict[str, list[str]],
     node_map: dict[str, WorkflowNode],
-    node_task_ids: dict[str, str],
+    node_task_ids: dict[str, str | tuple[str, ...]],
     skipped_nodes: set[str],
     pending_assignments: dict[str, str],
     project: str,

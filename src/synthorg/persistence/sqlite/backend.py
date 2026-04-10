@@ -122,51 +122,9 @@ class SQLitePersistenceBackend:
         # single aiosqlite connection.  Repositories that perform
         # INSERT/UPDATE/DELETE + commit sequences should acquire this
         # lock around their critical section so one repo's rollback
-        # cannot wipe another repo's in-flight changes.  Currently
-        # injected into SQLiteDecisionRepository (the primary
-        # audit-integrity-critical writer); broader rollout to other
-        # repositories is tracked as a follow-up.
+        # cannot wipe another repo's in-flight changes.
         self._shared_write_lock = asyncio.Lock()
-        self._db: aiosqlite.Connection | None = None
-        self._artifacts: SQLiteArtifactRepository | None = None
-        self._projects: SQLiteProjectRepository | None = None
-        self._tasks: SQLiteTaskRepository | None = None
-        self._cost_records: SQLiteCostRecordRepository | None = None
-        self._messages: SQLiteMessageRepository | None = None
-        self._lifecycle_events: SQLiteLifecycleEventRepository | None = None
-        self._task_metrics: SQLiteTaskMetricRepository | None = None
-        self._collaboration_metrics: SQLiteCollaborationMetricRepository | None = None
-        self._parked_contexts: SQLiteParkedContextRepository | None = None
-        self._audit_entries: SQLiteAuditRepository | None = None
-        self._users: SQLiteUserRepository | None = None
-        self._api_keys: SQLiteApiKeyRepository | None = None
-        self._checkpoints: SQLiteCheckpointRepository | None = None
-        self._heartbeats: SQLiteHeartbeatRepository | None = None
-        self._agent_states: SQLiteAgentStateRepository | None = None
-        self._settings: SQLiteSettingsRepository | None = None
-        self._custom_presets: SQLitePersonalityPresetRepository | None = None
-        self._workflow_definitions: SQLiteWorkflowDefinitionRepository | None = None
-        self._workflow_executions: SQLiteWorkflowExecutionRepository | None = None
-        self._subworkflows: SQLiteSubworkflowRepository | None = None
-        self._workflow_versions: SQLiteVersionRepository[WorkflowDefinition] | None = (
-            None
-        )
-        self._identity_versions: SQLiteVersionRepository[AgentIdentity] | None = None
-        self._evaluation_config_versions: (
-            SQLiteVersionRepository[EvaluationConfig] | None
-        ) = None
-        self._budget_config_versions: SQLiteVersionRepository[BudgetConfig] | None = (
-            None
-        )
-        self._company_versions: SQLiteVersionRepository[Company] | None = None
-        self._role_versions: SQLiteVersionRepository[Role] | None = None
-        self._decision_records: SQLiteDecisionRepository | None = None
-        self._risk_overrides: SQLiteRiskOverrideRepository | None = None
-        self._ssrf_violations: SQLiteSsrfViolationRepository | None = None
-        self._circuit_breaker_state: SQLiteCircuitBreakerStateRepository | None = None
-        self._project_cost_aggregates: SQLiteProjectCostAggregateRepository | None = (
-            None
-        )
+        self._clear_state()
 
     def _clear_state(self) -> None:
         """Reset connection and repository references to ``None``."""

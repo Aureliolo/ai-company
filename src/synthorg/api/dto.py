@@ -5,9 +5,8 @@ Request DTOs define write-operation payloads (separate from domain
 models because they omit server-generated fields).
 """
 
-import re
 from datetime import datetime
-from typing import Literal, Self
+from typing import Self
 
 from pydantic import (
     BaseModel,
@@ -27,8 +26,6 @@ from synthorg.core.enums import (
     Priority,
     TaskStatus,
     TaskType,
-    WorkflowType,
-    WorkflowValueType,
 )
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.core.validation import is_valid_action_type
@@ -591,249 +588,16 @@ from synthorg.api.dto_providers import (  # noqa: E402
     to_provider_response,
 )
 
-# ── Workflow definition DTOs ────────────────────────────────────
-
-_SEMVER_RE = re.compile(
-    r"^\d+\.\d+\.\d+(-[a-zA-Z0-9.]+)?(\+[a-zA-Z0-9.]+)?$",
+# ── Workflow definition DTOs (extracted to dto_workflow.py) ────
+from synthorg.api.dto_workflow import (  # noqa: E402
+    ActivateWorkflowRequest,
+    BlueprintInfoResponse,
+    CreateFromBlueprintRequest,
+    CreateWorkflowDefinitionRequest,
+    RollbackWorkflowRequest,
+    UpdateWorkflowDefinitionRequest,
+    WorkflowIODeclarationRequest,
 )
-
-
-class WorkflowIODeclarationRequest(BaseModel):
-    """Typed input/output declaration for workflow creation/update.
-
-    Field names mirror ``WorkflowIODeclaration`` so that
-    ``model_validate`` pass-through works without renaming.
-
-    Attributes:
-        name: Identifier for this input or output.
-        type: The declared data type.
-        required: Whether this declaration is mandatory.
-        default: Default when not required (must be None when required).
-        description: Human-readable description.
-    """
-
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
-
-    name: NotBlankStr = Field(max_length=128, description="Declaration name")
-    type: WorkflowValueType = Field(description="Declared data type")
-    required: bool = Field(default=True, description="Whether mandatory")
-    default: object = Field(default=None, description="Default value")
-    description: str = Field(
-        default="",
-        max_length=1024,
-        description="Human-readable description",
-    )
-
-
-class CreateWorkflowDefinitionRequest(BaseModel):
-    """Payload for creating a new workflow definition.
-
-    Attributes:
-        name: Workflow name.
-        description: Optional description.
-        workflow_type: Target execution topology.
-        nodes: Nodes in the workflow graph (serialized as dicts).
-        edges: Edges connecting nodes (serialized as dicts).
-    """
-
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
-
-    name: NotBlankStr = Field(max_length=256, description="Workflow name")
-    description: str = Field(default="", max_length=4096, description="Description")
-    workflow_type: WorkflowType = Field(description="Target execution topology")
-    version: str = Field(
-        default="1.0.0",
-        max_length=64,
-        description="Semver version string",
-    )
-    inputs: tuple[WorkflowIODeclarationRequest, ...] = Field(
-        default=(),
-        max_length=100,
-        description="Typed input declarations",
-    )
-    outputs: tuple[WorkflowIODeclarationRequest, ...] = Field(
-        default=(),
-        max_length=100,
-        description="Typed output declarations",
-    )
-    is_subworkflow: bool = Field(
-        default=False,
-        description="Whether this definition is a reusable subworkflow",
-    )
-    nodes: tuple[dict[str, object], ...] = Field(
-        max_length=500,
-        description="Workflow nodes",
-    )
-    edges: tuple[dict[str, object], ...] = Field(
-        max_length=1000,
-        description="Workflow edges",
-    )
-
-    @field_validator("version")
-    @classmethod
-    def _validate_semver(cls, v: str) -> str:
-        if not _SEMVER_RE.match(v):
-            msg = f"Invalid semver: {v!r} (expected MAJOR.MINOR.PATCH)"
-            raise ValueError(msg)
-        return v
-
-
-class UpdateWorkflowDefinitionRequest(BaseModel):
-    """Payload for updating an existing workflow definition.
-
-    All fields are optional -- only provided fields are updated.
-
-    Attributes:
-        name: New name.
-        description: New description.
-        workflow_type: New workflow type.
-        version: New semver version string.
-        inputs: New typed input contract.
-        outputs: New typed output contract.
-        is_subworkflow: New publishing flag.
-        nodes: New nodes.
-        edges: New edges.
-        expected_revision: Optimistic concurrency guard.
-    """
-
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
-
-    name: NotBlankStr | None = Field(default=None, max_length=256)
-    description: str | None = Field(default=None, max_length=4096)
-    workflow_type: WorkflowType | None = None
-    version: NotBlankStr | None = Field(
-        default=None,
-        max_length=64,
-        description="Semver string override",
-    )
-    inputs: tuple[WorkflowIODeclarationRequest, ...] | None = Field(
-        default=None,
-        max_length=100,
-    )
-    outputs: tuple[WorkflowIODeclarationRequest, ...] | None = Field(
-        default=None,
-        max_length=100,
-    )
-
-    @field_validator("version")
-    @classmethod
-    def _validate_semver(cls, v: str | None) -> str | None:
-        if v is not None and not _SEMVER_RE.match(v):
-            msg = f"Invalid semver: {v!r} (expected MAJOR.MINOR.PATCH)"
-            raise ValueError(msg)
-        return v
-
-    is_subworkflow: bool | None = None
-    nodes: tuple[dict[str, object], ...] | None = Field(
-        default=None,
-        max_length=500,
-    )
-    edges: tuple[dict[str, object], ...] | None = Field(
-        default=None,
-        max_length=1000,
-    )
-    expected_revision: int | None = Field(
-        default=None,
-        ge=1,
-        description="Optimistic concurrency guard (revision counter)",
-    )
-
-
-class ActivateWorkflowRequest(BaseModel):
-    """Request body for activating a workflow definition.
-
-    Attributes:
-        project: Project ID for all created tasks.
-        context: Runtime context for condition expression evaluation.
-    """
-
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
-
-    project: NotBlankStr = Field(
-        description="Project ID for created tasks",
-    )
-    context: dict[str, str | int | float | bool | None] = Field(
-        default_factory=dict,
-        max_length=64,
-        description="Runtime context for condition evaluation",
-    )
-
-
-class BlueprintInfoResponse(BaseModel):
-    """Response body for a single workflow blueprint entry.
-
-    Attributes:
-        name: Blueprint identifier.
-        display_name: Human-readable name.
-        description: Short description.
-        source: Origin of the blueprint.
-        tags: Categorization tags.
-        workflow_type: Target execution topology.
-        node_count: Number of nodes in the graph.
-        edge_count: Number of edges in the graph.
-    """
-
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
-
-    name: NotBlankStr = Field(description="Blueprint identifier")
-    display_name: NotBlankStr = Field(description="Human-readable name")
-    description: str = Field(default="", description="Short description")
-    source: Literal["builtin", "user"] = Field(
-        description="Origin: builtin or user",
-    )
-    tags: tuple[NotBlankStr, ...] = Field(default=(), description="Tags")
-    workflow_type: WorkflowType = Field(
-        description="Target workflow type",
-    )
-    node_count: int = Field(ge=0, description="Number of nodes")
-    edge_count: int = Field(ge=0, description="Number of edges")
-
-
-class CreateFromBlueprintRequest(BaseModel):
-    """Request body for creating a workflow from a blueprint.
-
-    Attributes:
-        blueprint_name: Name of the blueprint to instantiate.
-        name: Optional name override (defaults to blueprint display_name).
-        description: Optional description override.
-    """
-
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
-
-    blueprint_name: NotBlankStr = Field(
-        max_length=128,
-        description="Blueprint to instantiate",
-    )
-    name: NotBlankStr | None = Field(
-        default=None,
-        max_length=256,
-        description="Workflow name override",
-    )
-    description: str | None = Field(
-        default=None,
-        max_length=4096,
-        description="Description override",
-    )
-
-
-class RollbackWorkflowRequest(BaseModel):
-    """Request body for rolling back a workflow to a previous version.
-
-    Attributes:
-        target_version: Snapshot version number to restore content from
-            (monotonic counter in the workflow_definition_versions table).
-        expected_revision: Current definition revision for optimistic
-            concurrency on the live workflow_definitions row.
-    """
-
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
-
-    target_version: int = Field(ge=1, description="Snapshot version to rollback to")
-    expected_revision: int = Field(
-        ge=1,
-        description="Optimistic concurrency guard on the definition revision",
-    )
-
 
 __all__ = [
     "ActivateWorkflowRequest",
@@ -868,5 +632,6 @@ __all__ = [
     "UpdateProviderRequest",
     "UpdateTaskRequest",
     "UpdateWorkflowDefinitionRequest",
+    "WorkflowIODeclarationRequest",
     "to_provider_response",
 ]
