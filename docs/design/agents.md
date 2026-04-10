@@ -698,6 +698,7 @@ evolution:
     type: composite
     model: example-small-001
     temperature: 0.3
+    max_tokens: 2000
   adapters:
     identity: false
     strategy_selection: true
@@ -710,6 +711,15 @@ evolution:
     rate_limit: true
     rate_limit_per_day: 3
     shadow_evaluation: false
+  memory:
+    capture:
+      type: hybrid           # failure | success | hybrid
+      min_quality_score: 8.0
+    pruning:
+      type: ttl              # ttl | pareto | hybrid
+      max_age_days: 90
+    propagation:
+      type: none             # none | role_scoped | department_scoped
   identity_store:
     type: append_only
 ```
