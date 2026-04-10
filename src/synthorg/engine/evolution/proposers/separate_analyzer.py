@@ -101,8 +101,8 @@ def _build_user_message(
         Formatted user message string.
     """
     identity_str = (
-        f"Name: {context.identity.name}, Version: "
-        f"{context.identity.version}, Role: {context.identity.role}"
+        f"Name: {context.identity.name}, Level: "
+        f"{context.identity.level}, Role: {context.identity.role}"
     )
 
     perf_str = "No performance data"

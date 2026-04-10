@@ -25,7 +25,7 @@ if TYPE_CHECKING:
     from synthorg.hr.performance.tracker import PerformanceTracker
     from synthorg.hr.registry import AgentRegistryService
     from synthorg.memory.protocol import MemoryBackend
-    from synthorg.providers.protocol import BaseCompletionProvider
+    from synthorg.providers.protocol import CompletionProvider
     from synthorg.versioning.service import VersioningService
 
 logger = get_logger(__name__)
@@ -38,7 +38,7 @@ def build_evolution_service(  # noqa: PLR0913
     versioning: VersioningService[AgentIdentity],
     tracker: PerformanceTracker,
     memory_backend: MemoryBackend | None = None,
-    provider: BaseCompletionProvider | None = None,
+    provider: CompletionProvider | None = None,
 ) -> EvolutionService:
     """Build a fully wired ``EvolutionService`` from configuration.
 
@@ -135,7 +135,7 @@ def _build_trigger(
 def _build_proposer(
     config: EvolutionConfig,
     *,
-    provider: BaseCompletionProvider | None,
+    provider: CompletionProvider | None,
 ) -> AdaptationProposer:
     """Build proposer from config."""
     from synthorg.engine.evolution.proposers.self_report import (  # noqa: PLC0415

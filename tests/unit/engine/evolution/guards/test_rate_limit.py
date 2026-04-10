@@ -116,15 +116,6 @@ class TestRateLimitGuard:
         """Test that rate limits are per-agent."""
         now = datetime.now(UTC)
 
-        agent1_proposal = AdaptationProposal(
-            agent_id="agent-001",
-            axis=AdaptationAxis.IDENTITY,
-            description="Agent 1 adaptation",
-            changes={},
-            confidence=0.9,
-            source=AdaptationSource.SUCCESS,
-        )
-
         for i in range(3):
             p = AdaptationProposal(
                 agent_id="agent-001",

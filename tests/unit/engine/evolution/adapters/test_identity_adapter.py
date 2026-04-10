@@ -138,7 +138,7 @@ class TestIdentityAdapter:
             source=AdaptationSource.FAILURE,
         )
 
-        with pytest.raises(Exception):
+        with pytest.raises(ValueError, match="not found"):
             await adapter.apply(proposal, agent_id)
 
     @pytest.mark.asyncio

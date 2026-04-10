@@ -84,7 +84,7 @@ class ParetoPruningStrategy:
         Returns:
             Entries on the Pareto frontier.
         """
-        frontier = []
+        frontier: list[MemoryEntry] = []
 
         for candidate in entries:
             # Get candidate scores

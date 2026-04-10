@@ -52,7 +52,6 @@ class TestCopyOnWritePut:
     @pytest.mark.unit
     async def test_put_updates_pointer(self) -> None:
         identity = _make_identity()
-        snapshot = _make_snapshot(identity)
 
         registry = AgentRegistryService()
         await registry.register(identity)

@@ -267,7 +267,7 @@ class TestCompositeProposer:
             recent_procedural_memories=(),
         )
 
-        proposals = await composite_proposer.propose(
+        await composite_proposer.propose(
             agent_id=context.agent_id,
             context=context,
         )

@@ -50,10 +50,9 @@ class TestSeparateAnalyzerProposer:
         """Create a mock agent identity."""
         identity = MagicMock(spec=AgentIdentity)
         identity.name = NotBlankStr("test-agent")
-        identity.version = 1
+        identity.level = "junior"
         identity.role = "test_role"
         identity.autonomy_level = None
-        identity.seniority = "junior"
         return identity
 
     @pytest.fixture

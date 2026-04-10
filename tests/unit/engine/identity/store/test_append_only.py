@@ -58,7 +58,6 @@ class TestAppendOnlyPut:
     @pytest.mark.unit
     async def test_put_registers_and_snapshots(self) -> None:
         identity = _make_identity()
-        snapshot = _make_snapshot(identity)
 
         registry = AgentRegistryService()
         await registry.register(identity)

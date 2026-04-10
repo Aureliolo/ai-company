@@ -162,12 +162,12 @@ class TestPerformanceInflectionModel:
             new_direction=TrendDirection.IMPROVING,
             slope=0.05,
         )
-        with pytest.raises(Exception):  # noqa: PT011
+        with pytest.raises(ValueError, match="frozen"):
             inflection.slope = 0.1  # type: ignore[misc]
 
     @pytest.mark.unit
     def test_nan_slope_rejected(self) -> None:
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match="finite"):
             PerformanceInflection(
                 agent_id="agent-1",
                 metric_name="quality_score",

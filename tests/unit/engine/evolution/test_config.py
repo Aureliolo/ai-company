@@ -32,7 +32,7 @@ class TestEvolutionConfigDefaults:
     @pytest.mark.unit
     def test_frozen(self) -> None:
         config = EvolutionConfig()
-        with pytest.raises(Exception):  # noqa: PT011
+        with pytest.raises(ValueError, match="frozen"):
             config.enabled = False  # type: ignore[misc]
 
 
@@ -47,7 +47,7 @@ class TestTriggerConfig:
 
     @pytest.mark.unit
     def test_interval_must_be_positive(self) -> None:
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match="greater"):
             TriggerConfig(batched_interval_seconds=0)
 
 
@@ -63,7 +63,7 @@ class TestProposerConfig:
 
     @pytest.mark.unit
     def test_temperature_bounds(self) -> None:
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match="less than or equal"):
             ProposerConfig(temperature=2.5)
 
 
@@ -90,10 +90,10 @@ class TestGuardConfig:
 
     @pytest.mark.unit
     def test_threshold_bounds(self) -> None:
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match="less than or equal"):
             GuardConfig(rollback_regression_threshold=1.5)
 
     @pytest.mark.unit
     def test_rate_limit_must_be_positive(self) -> None:
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match="greater"):
             GuardConfig(rate_limit_per_day=0)

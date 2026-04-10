@@ -154,7 +154,8 @@ class TestCompositeGuard:
         guard3 = AsyncMock()
 
         async def evaluate3(p):
-            raise AssertionError("Should not be called")
+            msg = "Should not be called"
+            raise AssertionError(msg)
 
         guard3.evaluate = evaluate3
 

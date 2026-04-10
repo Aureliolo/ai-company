@@ -66,7 +66,7 @@ class TestAdaptationProposal:
             confidence=0.9,
             source=AdaptationSource.FAILURE,
         )
-        with pytest.raises(Exception):  # noqa: PT011
+        with pytest.raises(ValueError, match="frozen"):
             p.confidence = 0.5  # type: ignore[misc]
 
     @pytest.mark.unit
@@ -90,7 +90,7 @@ class TestAdaptationProposal:
 
     @pytest.mark.unit
     def test_blank_agent_id_rejected(self) -> None:
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match="whitespace"):
             AdaptationProposal(
                 agent_id="   ",
                 axis=AdaptationAxis.IDENTITY,
@@ -113,7 +113,7 @@ class TestAdaptationProposal:
 
     @pytest.mark.unit
     def test_nan_rejected(self) -> None:
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match="finite"):
             AdaptationProposal(
                 agent_id="agent-1",
                 axis=AdaptationAxis.IDENTITY,

@@ -169,7 +169,7 @@ class TestHybridPruningStrategy:
         entry2 = MagicMock()
         entry2.id = "mem-low-relevance"
 
-        result = await strategy.prune(
+        await strategy.prune(
             agent_id="test-agent-1",
             entries=(entry1, entry2),
         )

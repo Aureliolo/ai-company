@@ -60,11 +60,11 @@ class TestIdentityStoreConfig:
 
     @pytest.mark.unit
     def test_max_versions_must_be_positive(self) -> None:
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match="greater than or equal"):
             IdentityStoreConfig(max_versions_per_agent=0)
 
     @pytest.mark.unit
     def test_frozen(self) -> None:
         config = IdentityStoreConfig()
-        with pytest.raises(Exception):  # noqa: PT011
+        with pytest.raises(Exception, match="frozen"):
             config.type = "copy_on_write"  # type: ignore[misc]

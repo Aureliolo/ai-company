@@ -68,7 +68,9 @@ class DepartmentScopedPropagation:
         )
 
         # Filter out source agent
-        target_agents = [a for a in target_agents if str(a.id) != str(source_agent.id)]
+        target_agents = tuple(
+            a for a in target_agents if str(a.id) != str(source_agent.id)
+        )
 
         # Limit to max_targets
         target_agents = target_agents[: self.max_targets]

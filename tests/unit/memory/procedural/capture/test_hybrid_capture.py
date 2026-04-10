@@ -68,7 +68,7 @@ class TestHybridCaptureStrategy:
         """Test that name property returns expected value."""
         assert hybrid_strategy.name == "hybrid"
 
-    async def test_delegates_to_failure_strategy_on_recovery(
+    async def test_delegates_to_failure_strategy_on_recovery(  # noqa: PLR0913
         self,
         hybrid_strategy,
         failure_strategy,
@@ -77,7 +77,7 @@ class TestHybridCaptureStrategy:
         recovery_result,
         memory_backend,
     ):
-        """Test that hybrid delegates to failure strategy when recovery exists."""
+        """Test hybrid delegates to failure strategy when recovery exists."""
         memory_id = NotBlankStr("mem-failure")
         failure_strategy.capture.return_value = memory_id
 
@@ -101,7 +101,7 @@ class TestHybridCaptureStrategy:
         execution_result_success,
         memory_backend,
     ):
-        """Test that hybrid delegates to success strategy on success without recovery."""
+        """Test hybrid delegates to success strategy on success."""
         memory_id = NotBlankStr("mem-success")
         success_strategy.capture.return_value = memory_id
 

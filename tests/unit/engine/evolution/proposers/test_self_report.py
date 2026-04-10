@@ -26,8 +26,7 @@ class TestSelfReportProposer:
     @pytest.fixture
     def mock_provider(self) -> AsyncMock:
         """Create a mock completion provider."""
-        provider = AsyncMock()
-        return provider
+        return AsyncMock()
 
     @pytest.fixture
     def proposer(self, mock_provider: AsyncMock) -> SelfReportProposer:

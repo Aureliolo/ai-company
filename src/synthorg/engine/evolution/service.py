@@ -323,9 +323,9 @@ class EvolutionService:
                 result = await self._memory_backend.retrieve(
                     agent_id,
                     MemoryQuery(
-                        query="procedural evolution context",
-                        category=MemoryCategory.PROCEDURAL,
-                        max_results=10,
+                        text="procedural evolution context",
+                        categories=frozenset([MemoryCategory.PROCEDURAL]),
+                        limit=10,
                     ),
                 )
                 memories = result
