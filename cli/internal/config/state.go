@@ -27,6 +27,7 @@ type State struct {
 	PersistenceBackend string            `json:"persistence_backend"`
 	MemoryBackend      string            `json:"memory_backend"`
 	BusBackend         string            `json:"bus_backend"`
+	NatsClientPort     int               `json:"nats_client_port,omitempty"`
 	AutoCleanup        bool              `json:"auto_cleanup"`
 	VerifiedDigests    map[string]string `json:"verified_digests,omitempty"`
 
@@ -50,6 +51,10 @@ type State struct {
 // DefaultState returns a State with sensible defaults for the interactive init
 // wizard. Note: Load applies a more conservative fallback (sandbox disabled)
 // when no config file exists.
+//
+// Host port layout (contiguous with existing services):
+//
+//	3000 web / 3001 backend / 3002 reserved for future DB backend / 3003 NATS client.
 func DefaultState() State {
 	return State{
 		DataDir:            DataDir(),
@@ -62,6 +67,7 @@ func DefaultState() State {
 		PersistenceBackend: "sqlite",
 		MemoryBackend:      "mem0",
 		BusBackend:         "internal",
+		NatsClientPort:     3003,
 	}
 }
 
@@ -228,6 +234,9 @@ func (s State) validate() error {
 	}
 	if s.BusBackend != "" && !IsValidBusBackend(s.BusBackend) {
 		return fmt.Errorf("invalid bus_backend %q: must be one of %s", s.BusBackend, sortedKeys(validBusBackends))
+	}
+	if s.NatsClientPort != 0 && (s.NatsClientPort < 1 || s.NatsClientPort > 65535) {
+		return fmt.Errorf("invalid nats_client_port %d: must be 1-65535", s.NatsClientPort)
 	}
 	if s.Channel != "" && !IsValidChannel(s.Channel) {
 		return fmt.Errorf("invalid channel %q: must be one of %s", s.Channel, sortedKeys(validChannels))

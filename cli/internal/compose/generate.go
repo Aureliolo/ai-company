@@ -55,12 +55,16 @@ func ParamsFromState(s config.State) Params {
 	if busBackend == "" {
 		busBackend = "internal"
 	}
+	natsPort := s.NatsClientPort
+	if natsPort == 0 {
+		natsPort = 3003
+	}
 	return Params{
 		CLIVersion:         version.Version,
 		ImageTag:           s.ImageTag,
 		BackendPort:        s.BackendPort,
 		WebPort:            s.WebPort,
-		NatsClientPort:     3003,
+		NatsClientPort:     natsPort,
 		LogLevel:           s.LogLevel,
 		JWTSecret:          s.JWTSecret,
 		SettingsKey:        s.SettingsKey,

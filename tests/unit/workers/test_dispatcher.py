@@ -126,12 +126,11 @@ async def test_dispatcher_swallows_publish_errors() -> None:
 
 
 @pytest.mark.unit
-async def test_dispatcher_handles_missing_task_snapshot() -> None:
-    """Delete events have ``task=None`` and should still build a claim."""
+async def test_dispatcher_builds_claim_with_task_snapshot() -> None:
+    """Transitions that carry a task snapshot populate ``project_id``."""
     queue = _FakeTaskQueue()
     dispatcher = DistributedDispatcher(task_queue=queue)  # type: ignore[arg-type]
 
-    # Fabricate an event with a task snapshot so project_id is populated.
     event = TaskStateChanged(
         mutation_type="create",
         request_id="req-1",
@@ -143,8 +142,37 @@ async def test_dispatcher_handles_missing_task_snapshot() -> None:
         version=1,
     )
     await dispatcher.on_task_state_changed(event)
+
     assert len(queue.published) == 1
     assert queue.published[0].previous_status is None
+    assert queue.published[0].project_id == "project-1"
+
+
+@pytest.mark.unit
+async def test_dispatcher_builds_claim_without_task_snapshot() -> None:
+    """Events with ``task=None`` still build a claim; ``project_id`` is None."""
+    queue = _FakeTaskQueue()
+    dispatcher = DistributedDispatcher(task_queue=queue)  # type: ignore[arg-type]
+
+    event = TaskStateChanged(
+        mutation_type="transition",
+        request_id="req-1",
+        requested_by="engine",
+        task_id="task-1",
+        task=None,
+        previous_status=TaskStatus.CREATED,
+        new_status=TaskStatus.ASSIGNED,
+        version=1,
+        reason="ready to run",
+    )
+    await dispatcher.on_task_state_changed(event)
+
+    assert len(queue.published) == 1
+    claim = queue.published[0]
+    assert claim.task_id == "task-1"
+    assert claim.project_id is None
+    assert claim.previous_status == "created"
+    assert claim.new_status == "assigned"
 
 
 @pytest.mark.unit

@@ -19,6 +19,10 @@ import sys
 
 from synthorg.communication.config import NatsConfig
 from synthorg.observability import get_logger
+from synthorg.observability.events.workers import (
+    WORKERS_MAIN_INVALID_WORKER_COUNT,
+    WORKERS_MAIN_PLACEHOLDER_EXECUTOR_INVOKED,
+)
 from synthorg.workers.claim import JetStreamTaskQueue, TaskClaim, TaskClaimStatus
 from synthorg.workers.config import QueueConfig
 from synthorg.workers.worker import run_worker_pool
@@ -34,7 +38,7 @@ async def _placeholder_executor(claim: TaskClaim) -> TaskClaimStatus:
     path end-to-end (engine -> NATS -> worker -> ack).
     """
     logger.info(
-        "workers.main.placeholder_executor_invoked",
+        WORKERS_MAIN_PLACEHOLDER_EXECUTOR_INVOKED,
         task_id=claim.task_id,
         new_status=claim.new_status,
     )
@@ -70,7 +74,7 @@ async def _async_main(argv: list[str]) -> int:
     args = _build_parser().parse_args(argv)
     if args.workers <= 0:
         logger.error(
-            "workers.main.invalid_worker_count",
+            WORKERS_MAIN_INVALID_WORKER_COUNT,
             workers=args.workers,
         )
         return 2

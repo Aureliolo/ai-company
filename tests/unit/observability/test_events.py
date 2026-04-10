@@ -234,6 +234,7 @@ class TestEventConstants:
             "template",
             "timeout",
             "tool",
+            "workers",
             "workflow",
             "workflow_definition",
             "workflow_execution",

@@ -15,6 +15,11 @@ reacts to successful mutations and publishes the enqueue signal.
 from typing import TYPE_CHECKING
 
 from synthorg.observability import get_logger
+from synthorg.observability.events.workers import (
+    WORKERS_DISPATCHER_CLAIM_ENQUEUED,
+    WORKERS_DISPATCHER_PUBLISH_FAILED,
+    WORKERS_DISPATCHER_QUEUE_NOT_RUNNING,
+)
 from synthorg.workers.claim import TaskClaim
 
 if TYPE_CHECKING:
@@ -68,7 +73,7 @@ class DistributedDispatcher:
 
         if not self._task_queue.is_running:
             logger.warning(
-                "workers.dispatcher.queue_not_running",
+                WORKERS_DISPATCHER_QUEUE_NOT_RUNNING,
                 task_id=event.task_id,
             )
             return
@@ -78,12 +83,12 @@ class DistributedDispatcher:
             await self._task_queue.publish_claim(claim)
         except Exception:
             logger.exception(
-                "workers.dispatcher.publish_failed",
+                WORKERS_DISPATCHER_PUBLISH_FAILED,
                 task_id=event.task_id,
             )
             return
         logger.info(
-            "workers.dispatcher.claim_enqueued",
+            WORKERS_DISPATCHER_CLAIM_ENQUEUED,
             task_id=event.task_id,
             new_status=claim.new_status,
         )

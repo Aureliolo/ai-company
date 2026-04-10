@@ -21,6 +21,14 @@ from collections.abc import Awaitable, Callable
 from typing import Any
 
 from synthorg.observability import get_logger
+from synthorg.observability.events.workers import (
+    WORKERS_CLAIM_RECEIVED,
+    WORKERS_EXECUTOR_FAILED,
+    WORKERS_FINALIZE_FAILED,
+    WORKERS_POOL_STARTED,
+    WORKERS_WORKER_STARTED,
+    WORKERS_WORKER_STOPPED,
+)
 from synthorg.workers.claim import (
     JetStreamTaskQueue,
     TaskClaim,
@@ -83,14 +91,14 @@ class Worker:
             raise RuntimeError(msg)
         self._running = True
         self._stop_event.clear()
-        logger.info("workers.worker.started", worker_id=self._worker_id)
+        logger.info(WORKERS_WORKER_STARTED, worker_id=self._worker_id)
 
         try:
             while not self._stop_event.is_set():
                 await self._run_once()
         finally:
             self._running = False
-            logger.info("workers.worker.stopped", worker_id=self._worker_id)
+            logger.info(WORKERS_WORKER_STOPPED, worker_id=self._worker_id)
 
     async def stop(self) -> None:
         """Signal the claim loop to exit after the current claim."""
@@ -110,7 +118,7 @@ class Worker:
     async def _execute_claim(self, claim: TaskClaim) -> TaskClaimStatus:
         """Invoke the executor, translating exceptions into RETRY."""
         logger.info(
-            "workers.worker.claim_received",
+            WORKERS_CLAIM_RECEIVED,
             worker_id=self._worker_id,
             task_id=claim.task_id,
         )
@@ -118,7 +126,7 @@ class Worker:
             return await self._executor(claim)
         except Exception:
             logger.exception(
-                "workers.worker.executor_failed",
+                WORKERS_EXECUTOR_FAILED,
                 worker_id=self._worker_id,
                 task_id=claim.task_id,
             )
@@ -138,7 +146,7 @@ class Worker:
                 await JetStreamTaskQueue.nack(raw)
         except Exception:
             logger.exception(
-                "workers.worker.finalize_failed",
+                WORKERS_FINALIZE_FAILED,
                 worker_id=self._worker_id,
                 status=str(status),
             )
@@ -168,7 +176,7 @@ async def run_worker_pool(
         for i in range(worker_count)
     ]
     logger.info(
-        "workers.pool.started",
+        WORKERS_POOL_STARTED,
         worker_count=worker_count,
     )
     try:

@@ -37,6 +37,7 @@ if TYPE_CHECKING:
     from synthorg.api.state import AppState
     from synthorg.backup.service import BackupService
     from synthorg.communication.bus_protocol import MessageBus
+    from synthorg.communication.config import NatsConfig
     from synthorg.communication.meeting.participant import (
         ParticipantResolver,
     )
@@ -50,6 +51,7 @@ if TYPE_CHECKING:
     from synthorg.persistence.protocol import PersistenceBackend
     from synthorg.settings.dispatcher import SettingsChangeDispatcher
     from synthorg.settings.service import SettingsService
+    from synthorg.workers.config import QueueConfig
 
 logger = get_logger(__name__)
 
@@ -130,7 +132,12 @@ def auto_wire_phase1(  # noqa: PLR0913
         provider_registry = _wire_provider_registry(effective_config)
 
     if task_engine is None and persistence is not None:
-        task_engine = _wire_task_engine(persistence, message_bus)
+        task_engine = _wire_task_engine(
+            persistence,
+            message_bus,
+            queue_config=effective_config.queue,
+            nats_config=effective_config.communication.message_bus.nats,
+        )
 
     if provider_health_tracker is None:
         provider_health_tracker = ProviderHealthTracker()
@@ -189,8 +196,18 @@ def _wire_provider_registry(
 def _wire_task_engine(
     persistence: PersistenceBackend,
     message_bus: MessageBus | None,
+    queue_config: QueueConfig | None = None,
+    nats_config: NatsConfig | None = None,
 ) -> TaskEngine:
-    """Create a TaskEngine from persistence and optional bus."""
+    """Create a TaskEngine from persistence and optional bus.
+
+    When ``queue_config.enabled`` is true, also create a
+    :class:`JetStreamTaskQueue` and register a
+    :class:`DistributedDispatcher` observer so task state changes are
+    published to the distributed work queue. The task queue is NOT
+    started here (its async start() is called during the engine's
+    lifecycle hook); the dispatcher registration is synchronous.
+    """
     try:
         engine = TaskEngine(
             persistence=persistence,
@@ -202,8 +219,70 @@ def _wire_task_engine(
             error="Failed to auto-wire task engine",
         )
         raise
+
+    if queue_config is not None and queue_config.enabled:
+        if nats_config is None:
+            logger.warning(
+                API_APP_STARTUP,
+                note=(
+                    "queue.enabled is true but nats config is missing; "
+                    "distributed dispatcher will not be registered"
+                ),
+            )
+        else:
+            _register_distributed_dispatcher(engine, queue_config, nats_config)
+
     logger.info(API_SERVICE_AUTO_WIRED, service="task_engine")
     return engine
+
+
+def _register_distributed_dispatcher(
+    engine: TaskEngine,
+    queue_config: QueueConfig,
+    nats_config: NatsConfig,
+) -> None:
+    """Register the distributed dispatcher observer on the task engine.
+
+    Creates a :class:`JetStreamTaskQueue` (not started) and a
+    :class:`DistributedDispatcher` observer. Registration is
+    idempotent and best-effort: any failure here is logged but does
+    not abort startup, because the in-process path remains viable.
+    """
+    try:
+        from synthorg.workers.claim import (  # noqa: PLC0415
+            JetStreamTaskQueue,
+        )
+        from synthorg.workers.dispatcher import (  # noqa: PLC0415
+            DistributedDispatcher,
+        )
+    except ImportError:
+        logger.warning(
+            API_APP_STARTUP,
+            note=(
+                "queue.enabled is true but 'synthorg[distributed]' is not "
+                "installed; distributed dispatcher will not be registered"
+            ),
+        )
+        return
+
+    try:
+        task_queue = JetStreamTaskQueue(
+            queue_config=queue_config,
+            nats_config=nats_config,
+        )
+        dispatcher = DistributedDispatcher(task_queue=task_queue)
+        engine.register_observer(dispatcher.on_task_state_changed)
+    except Exception:
+        logger.exception(
+            API_APP_STARTUP,
+            error="Failed to register distributed dispatcher",
+        )
+        return
+
+    logger.info(
+        API_SERVICE_AUTO_WIRED,
+        service="distributed_dispatcher",
+    )
 
 
 def _auto_wire_message_bus(

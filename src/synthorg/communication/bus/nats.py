@@ -26,7 +26,8 @@ import base64
 import contextlib
 import json
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Any, NoReturn
+from typing import TYPE_CHECKING, Any, Final, NoReturn
+from urllib.parse import urlparse
 
 from synthorg.communication.bus.errors import (
     BusConnectionError,
@@ -55,10 +56,16 @@ from synthorg.observability.events.communication import (
     COMM_BUS_ALREADY_RUNNING,
     COMM_BUS_CONNECTED,
     COMM_BUS_DISCONNECTED,
+    COMM_BUS_KV_READ_FAILED,
+    COMM_BUS_KV_WRITE_FAILED,
+    COMM_BUS_MESSAGE_DESERIALIZE_FAILED,
+    COMM_BUS_MESSAGE_TOO_LARGE,
     COMM_BUS_NOT_RUNNING,
+    COMM_BUS_RECEIVE_ERROR,
     COMM_BUS_RECONNECTING,
     COMM_BUS_STARTED,
     COMM_BUS_STOPPED,
+    COMM_BUS_STREAM_SCAN_FAILED,
     COMM_CHANNEL_ALREADY_EXISTS,
     COMM_CHANNEL_CREATED,
     COMM_CHANNEL_NOT_FOUND,
@@ -85,6 +92,38 @@ _DM_SEPARATOR = ":"
 
 _SUBJECT_CHANNEL_PREFIX = "channel"
 _SUBJECT_DIRECT_PREFIX = "direct"
+
+_MAX_BUS_PAYLOAD_BYTES: Final[int] = 4 * 1024 * 1024
+"""Maximum bus message payload size (4 MB) accepted from JetStream.
+
+Messages include parts that can carry text/data blobs, so the limit
+is higher than the task-claim limit but still bounded to prevent a
+single malformed publisher from exhausting worker memory during
+deserialization.
+"""
+
+
+def _redact_url(url: str) -> str:
+    """Strip credentials from a NATS URL for safe logging.
+
+    ``nats://user:pass@host:port`` -> ``nats://***@host:port``.
+    Non-URL strings pass through unchanged (best effort).
+    """
+    try:
+        parsed = urlparse(url)
+    except ValueError:
+        return url
+    if not parsed.hostname:
+        return url
+    authority = parsed.hostname
+    if parsed.port is not None:
+        authority = f"{authority}:{parsed.port}"
+    has_creds = parsed.username is not None or parsed.password is not None
+    if has_creds:
+        authority = f"***@{authority}"
+    scheme = parsed.scheme or "nats"
+    rest = parsed.path or ""
+    return f"{scheme}://{authority}{rest}"
 
 
 def _raise_channel_not_found(channel_name: str) -> NoReturn:
@@ -258,15 +297,16 @@ class JetStreamMessageBus:
                 error_cb=on_error,
             )
         except (TimeoutError, NoServersError, OSError) as exc:
-            msg = f"Failed to connect to NATS at {self._nats_config.url}: {exc}"
-            logger.exception(COMM_BUS_DISCONNECTED, error=msg)
+            redacted = _redact_url(self._nats_config.url)
+            msg = f"Failed to connect to NATS at {redacted}: {exc}"
+            logger.exception(COMM_BUS_DISCONNECTED, error=msg, url=redacted)
             raise BusConnectionError(
                 msg,
-                context={"url": self._nats_config.url},
+                context={"url": redacted},
             ) from exc
 
         self._js = self._client.jetstream()
-        logger.info(COMM_BUS_CONNECTED, url=self._nats_config.url)
+        logger.info(COMM_BUS_CONNECTED, url=_redact_url(self._nats_config.url))
 
     async def _ensure_stream(self) -> None:
         """Create the bus stream if it does not already exist."""
@@ -534,24 +574,66 @@ class JetStreamMessageBus:
             return
         key = _encode_token(channel.name)
         value = channel.model_dump_json().encode("utf-8")
-        with contextlib.suppress(Exception):
+        try:
             await self._kv.put(key, value)
+        except Exception as exc:
+            logger.warning(
+                COMM_BUS_KV_WRITE_FAILED,
+                channel=channel.name,
+                error=str(exc),
+            )
 
     async def _load_channel_from_kv(self, channel_name: str) -> Channel | None:
         """Load a Channel definition from the KV bucket, if present."""
+        entry = await self._fetch_kv_entry(channel_name)
+        if entry is None:
+            return None
+        return self._decode_kv_channel(channel_name, entry)
+
+    async def _fetch_kv_entry(self, channel_name: str) -> Any | None:
+        """Fetch a raw KV entry, logging transport errors and returning None."""
+        from nats.js.errors import KeyNotFoundError  # noqa: PLC0415
+
         if self._kv is None:
             return None
         key = _encode_token(channel_name)
         try:
             entry = await self._kv.get(key)
-        except Exception:
+        except KeyNotFoundError:
+            return None
+        except Exception as exc:
+            logger.warning(
+                COMM_BUS_KV_READ_FAILED,
+                channel=channel_name,
+                error=str(exc),
+            )
             return None
         if entry is None or entry.value is None:
             return None
+        return entry
+
+    def _decode_kv_channel(
+        self,
+        channel_name: str,
+        entry: Any,
+    ) -> Channel | None:
+        """Decode a KV entry into a Channel, logging parse failures."""
         try:
             data = json.loads(entry.value.decode("utf-8"))
             return Channel.model_validate(data)
-        except json.JSONDecodeError, ValueError:
+        except json.JSONDecodeError as exc:
+            logger.warning(
+                COMM_BUS_KV_READ_FAILED,
+                channel=channel_name,
+                error=str(exc),
+            )
+            return None
+        except ValueError as exc:
+            logger.warning(
+                COMM_BUS_KV_READ_FAILED,
+                channel=channel_name,
+                error=str(exc),
+            )
             return None
 
     async def subscribe(
@@ -616,17 +698,30 @@ class JetStreamMessageBus:
     ) -> None:
         """Create a durable pull consumer for (channel, subscriber).
 
-        Must be called under ``self._lock``.
+        Must be called under ``self._lock``. Passes an explicit
+        :class:`ConsumerConfig` so the ack deadline and max-deliver
+        semantics documented in the Distributed Runtime design page
+        are applied consistently rather than relying on JetStream
+        server defaults.
         """
+        from nats.js.api import ConsumerConfig  # noqa: PLC0415
+
         if self._js is None:
             msg = "JetStream context not initialized"
             raise BusStreamError(msg)
         subject = self._subject_for_channel(channel)
         durable = self._durable_name(channel_name, subscriber_id)
+        consumer_config = ConsumerConfig(
+            durable_name=durable,
+            ack_wait=self._nats_config.publish_ack_wait_seconds * 6.0,
+            max_deliver=1,
+            filter_subject=subject,
+        )
         sub = await self._js.pull_subscribe(
             subject=subject,
             durable=durable,
             stream=self._stream_name,
+            config=consumer_config,
         )
         self._subscriptions[(channel_name, subscriber_id)] = sub
 
@@ -763,6 +858,7 @@ class JetStreamMessageBus:
             self._shutdown_event.wait(),
         )
         self._in_flight_fetches.add(fetch_task)
+        self._in_flight_fetches.add(shutdown_task)
 
         try:
             done, _ = await asyncio.wait(
@@ -775,6 +871,7 @@ class JetStreamMessageBus:
             raise
         finally:
             self._in_flight_fetches.discard(fetch_task)
+            self._in_flight_fetches.discard(shutdown_task)
 
         await _cancel_if_pending(fetch_task)
         await _cancel_if_pending(shutdown_task)
@@ -793,7 +890,7 @@ class JetStreamMessageBus:
             return None
         except Exception:
             logger.exception(
-                COMM_RECEIVE_SHUTDOWN,
+                COMM_BUS_RECEIVE_ERROR,
                 channel=channel_name,
                 subscriber=subscriber_id,
             )
@@ -812,9 +909,28 @@ class JetStreamMessageBus:
             return None
 
         msg = msgs[0]
+        if len(msg.data) > _MAX_BUS_PAYLOAD_BYTES:
+            logger.warning(
+                COMM_BUS_MESSAGE_TOO_LARGE,
+                channel=channel_name,
+                subscriber=subscriber_id,
+                size=len(msg.data),
+                limit=_MAX_BUS_PAYLOAD_BYTES,
+            )
+            with contextlib.suppress(Exception):
+                await msg.ack()
+            return None
+
         try:
             parsed = self._deserialize_message(msg.data)
-        except ValueError:
+        except ValueError as exc:
+            logger.warning(
+                COMM_BUS_MESSAGE_DESERIALIZE_FAILED,
+                channel=channel_name,
+                subscriber=subscriber_id,
+                size=len(msg.data),
+                error=str(exc),
+            )
             with contextlib.suppress(Exception):
                 await msg.ack()
             return None
@@ -1019,7 +1135,13 @@ class JetStreamMessageBus:
             return await js.get_msg(self._stream_name, seq=seq)
         except NotFoundError:
             return None
-        except Exception:
+        except Exception as exc:
+            logger.warning(
+                COMM_BUS_STREAM_SCAN_FAILED,
+                stream=self._stream_name,
+                seq=seq,
+                error=str(exc),
+            )
             return None
 
     def _try_parse_matching(

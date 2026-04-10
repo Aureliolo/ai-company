@@ -12,6 +12,14 @@ COMM_BUS_NOT_RUNNING: Final[str] = "communication.bus.not_running"
 COMM_BUS_CONNECTED: Final[str] = "communication.bus.connected"
 COMM_BUS_RECONNECTING: Final[str] = "communication.bus.reconnecting"
 COMM_BUS_DISCONNECTED: Final[str] = "communication.bus.disconnected"
+COMM_BUS_RECEIVE_ERROR: Final[str] = "communication.bus.receive_error"
+COMM_BUS_KV_READ_FAILED: Final[str] = "communication.bus.kv_read_failed"
+COMM_BUS_KV_WRITE_FAILED: Final[str] = "communication.bus.kv_write_failed"
+COMM_BUS_STREAM_SCAN_FAILED: Final[str] = "communication.bus.stream_scan_failed"
+COMM_BUS_MESSAGE_DESERIALIZE_FAILED: Final[str] = (
+    "communication.bus.message_deserialize_failed"
+)
+COMM_BUS_MESSAGE_TOO_LARGE: Final[str] = "communication.bus.message_too_large"
 
 # Channel management
 COMM_CHANNEL_CREATED: Final[str] = "communication.channel.created"

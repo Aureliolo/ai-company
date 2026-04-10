@@ -3,9 +3,11 @@ package cmd
 import (
 	"context"
 	"fmt"
+	"net/url"
 	"os"
 	"os/exec"
 	"strconv"
+	"strings"
 
 	"github.com/Aureliolo/synthorg/cli/internal/ui"
 	"github.com/spf13/cobra"
@@ -62,6 +64,12 @@ func runWorkerStart(cmd *cobra.Command, _ []string) error {
 	if workerStartCount <= 0 {
 		return fmt.Errorf("--workers must be > 0, got %d", workerStartCount)
 	}
+	if err := validateNatsURL(workerStartNatsURL); err != nil {
+		return err
+	}
+	if err := validateContainerName(workerStartContainer); err != nil {
+		return err
+	}
 
 	container := workerStartContainer
 	if container == "" {
@@ -81,12 +89,86 @@ func runWorkerStart(cmd *cobra.Command, _ []string) error {
 	}
 
 	out.KeyValue("Workers", strconv.Itoa(workerStartCount))
-	out.KeyValue("NATS URL", workerStartNatsURL)
+	out.KeyValue("NATS URL", redactNatsURL(workerStartNatsURL))
 	out.KeyValue("Stream prefix", workerStartStreamPrefix)
 	out.KeyValue("Container", container)
 	out.HintNextStep("Press Ctrl+C to stop workers.")
 
 	return execDocker(cmd.Context(), args)
+}
+
+// validateNatsURL rejects obviously malformed URLs before we pass them
+// to docker exec. nats-py does its own validation at connection time,
+// but catching a typo up front gives a better error message and
+// avoids wasted container startup.
+func validateNatsURL(raw string) error {
+	if raw == "" {
+		return fmt.Errorf("--nats-url must not be empty")
+	}
+	parsed, err := url.Parse(raw)
+	if err != nil {
+		return fmt.Errorf("invalid --nats-url %q: %w", redactNatsURL(raw), err)
+	}
+	switch parsed.Scheme {
+	case "nats", "tls", "nats+tls":
+		// ok
+	default:
+		return fmt.Errorf(
+			"invalid --nats-url scheme %q: must be nats://, tls://, or nats+tls://",
+			parsed.Scheme,
+		)
+	}
+	if parsed.Host == "" {
+		return fmt.Errorf("invalid --nats-url %q: missing host", redactNatsURL(raw))
+	}
+	return nil
+}
+
+// validateContainerName rejects container names that would fail
+// docker's own parsing before we shell out. Docker allows
+// alphanumerics, underscores, hyphens, and periods; anything else is
+// a user error.
+func validateContainerName(name string) error {
+	if name == "" {
+		// Empty means "use default" -- validated later.
+		return nil
+	}
+	for _, r := range name {
+		ok := (r >= 'a' && r <= 'z') ||
+			(r >= 'A' && r <= 'Z') ||
+			(r >= '0' && r <= '9') ||
+			r == '_' || r == '-' || r == '.'
+		if !ok {
+			return fmt.Errorf(
+				"invalid --container %q: must match [a-zA-Z0-9_.-]",
+				name,
+			)
+		}
+	}
+	return nil
+}
+
+// redactNatsURL strips credentials from a NATS URL so the caller can
+// log it safely. nats://user:pass@host:port becomes nats://***@host:port.
+// Non-URL strings pass through so the user still sees something useful
+// in error messages.
+func redactNatsURL(raw string) string {
+	parsed, err := url.Parse(raw)
+	if err != nil || parsed.Host == "" {
+		return raw
+	}
+	if parsed.User == nil {
+		return raw
+	}
+	scheme := parsed.Scheme
+	if scheme == "" {
+		scheme = "nats"
+	}
+	rest := parsed.Path
+	if parsed.RawQuery != "" {
+		rest += "?" + parsed.RawQuery
+	}
+	return strings.TrimRight(fmt.Sprintf("%s://***@%s%s", scheme, parsed.Host, rest), "/")
 }
 
 // execDocker runs `docker <args...>` and streams output to the parent

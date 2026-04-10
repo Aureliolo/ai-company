@@ -230,6 +230,10 @@ ignore_missing_imports = true
 module = ["logfire", "logfire.*"]
 ignore_missing_imports = true
 
+[[tool.mypy.overrides]]
+module = "testcontainers.*"
+ignore_missing_imports = true
+
 [tool.pydantic-mypy]
 init_forbid_extra = true
 init_typed = true

@@ -233,9 +233,9 @@ communication:
     backend: nats          # opt in, default was "internal"
     nats:
       url: nats://localhost:3003    # host port for docker-compose profile; use nats://nats:4222 when the backend runs inside docker
-      credentials_path: null    # optional, for secured clusters
+      credentials_path: null              # optional, for secured clusters
       stream_name_prefix: SYNTHORG
-      reconnect_time_wait: 2    # seconds
+      reconnect_time_wait_seconds: 2.0    # gap between reconnect attempts
     channels:
       - "#all-hands"
       - "#engineering"

@@ -11,7 +11,7 @@ API behind a small ``publish_claim`` / ``next_claim`` / ``ack`` /
 
 from datetime import UTC, datetime
 from enum import StrEnum
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Final
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
 
@@ -21,12 +21,26 @@ from synthorg.communication.bus.errors import (
 )
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.observability import get_logger
+from synthorg.observability.events.workers import (
+    WORKERS_TASK_QUEUE_ACK_MALFORMED_FAILED,
+    WORKERS_TASK_QUEUE_CLAIM_PARSE_FAILED,
+    WORKERS_TASK_QUEUE_DRAIN_FAILED,
+    WORKERS_TASK_QUEUE_UNSUBSCRIBE_FAILED,
+)
 from synthorg.workers.config import QueueConfig  # noqa: TC001
 
 if TYPE_CHECKING:
     from synthorg.communication.config import NatsConfig
 
 logger = get_logger(__name__)
+
+_MAX_CLAIM_PAYLOAD_BYTES: Final[int] = 1 * 1024 * 1024
+"""Maximum claim payload size (1 MB) accepted from the work queue.
+
+Claims are small JSON envelopes; anything larger is either a protocol
+mismatch or a DoS vector. Reject before invoking Pydantic validation
+to prevent memory exhaustion on malformed claims.
+"""
 
 
 class TaskClaimStatus(StrEnum):
@@ -131,17 +145,13 @@ class JetStreamTaskQueue:
             try:
                 await self._sub.unsubscribe()
             except Exception:
-                logger.exception(
-                    "workers.task_queue.unsubscribe_failed",
-                )
+                logger.exception(WORKERS_TASK_QUEUE_UNSUBSCRIBE_FAILED)
             self._sub = None
         if self._client is not None:
             try:
                 await self._client.drain()
             except Exception:
-                logger.exception(
-                    "workers.task_queue.drain_failed",
-                )
+                logger.exception(WORKERS_TASK_QUEUE_DRAIN_FAILED)
             self._client = None
             self._js = None
 
@@ -210,19 +220,32 @@ class JetStreamTaskQueue:
             ) from exc
 
     async def _ensure_consumer(self) -> None:
-        """Create the shared durable pull consumer for all workers."""
+        """Create the shared durable pull consumer for all workers.
+
+        Passes ``ack_wait`` and ``max_deliver`` from
+        :class:`QueueConfig` so redelivery and dead-letter routing
+        behave as documented in the Distributed Runtime design page.
+        """
         from nats.errors import Error as NatsError  # noqa: PLC0415
+        from nats.js.api import ConsumerConfig  # noqa: PLC0415
 
         if self._js is None:
             msg = "JetStream context not initialized"
             raise BusStreamError(msg)
 
         subject = f"{self._queue_config.ready_subject_prefix}.>"
+        consumer_config = ConsumerConfig(
+            durable_name=self._durable_name,
+            ack_wait=float(self._queue_config.ack_wait_seconds),
+            max_deliver=self._queue_config.max_deliver,
+            filter_subject=subject,
+        )
         try:
             self._sub = await self._js.pull_subscribe(
                 subject=subject,
                 durable=self._durable_name,
                 stream=self._queue_config.stream_name,
+                config=consumer_config,
             )
         except NatsError as exc:
             msg = f"Failed to create task queue consumer {self._durable_name}: {exc}"
@@ -269,14 +292,31 @@ class JetStreamTaskQueue:
         if not msgs:
             return None
         raw = msgs[0]
+        if len(raw.data) > _MAX_CLAIM_PAYLOAD_BYTES:
+            logger.warning(
+                WORKERS_TASK_QUEUE_CLAIM_PARSE_FAILED,
+                reason="payload_too_large",
+                size=len(raw.data),
+                limit=_MAX_CLAIM_PAYLOAD_BYTES,
+            )
+            try:
+                await raw.ack()
+            except Exception:
+                logger.exception(WORKERS_TASK_QUEUE_ACK_MALFORMED_FAILED)
+            return None
         try:
             claim = TaskClaim.model_validate_json(raw.data.decode("utf-8"))
         except ValueError:
             # Malformed claim: terminally ack so it is not redelivered.
+            logger.warning(
+                WORKERS_TASK_QUEUE_CLAIM_PARSE_FAILED,
+                reason="validation_failed",
+                size=len(raw.data),
+            )
             try:
                 await raw.ack()
             except Exception:
-                logger.exception("workers.task_queue.ack_malformed_failed")
+                logger.exception(WORKERS_TASK_QUEUE_ACK_MALFORMED_FAILED)
             return None
         return claim, raw
 
