@@ -22,13 +22,25 @@ synthorg[distributed]``). Importing this module raises
 """
 
 import asyncio
-import base64
 import json
 import time
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Any, Final, NoReturn
-from urllib.parse import urlparse
+from typing import TYPE_CHECKING, Any
 
+from synthorg.communication.bus._nats_utils import (
+    CONSUMER_ACK_WAIT_MULTIPLIER,
+    DM_SEPARATOR,
+    MAX_BUS_PAYLOAD_BYTES,
+    RECEIVE_POLL_WINDOW_SECONDS,
+    SUBJECT_CHANNEL_TOKEN,
+    SUBJECT_DIRECT_TOKEN,
+    cancel_if_pending,
+    decode_token,
+    encode_token,
+    raise_channel_not_found,
+    raise_not_subscribed,
+    redact_url,
+)
 from synthorg.communication.bus.errors import (
     BusConnectionError,
     BusStreamError,
@@ -41,10 +53,8 @@ from synthorg.communication.config import (  # noqa: TC001
 from synthorg.communication.enums import ChannelType
 from synthorg.communication.errors import (
     ChannelAlreadyExistsError,
-    ChannelNotFoundError,
     MessageBusAlreadyRunningError,
     MessageBusNotRunningError,
-    NotSubscribedError,
 )
 from synthorg.communication.message import Message
 from synthorg.communication.subscription import (
@@ -68,7 +78,6 @@ from synthorg.observability.events.communication import (
     COMM_BUS_STREAM_SCAN_FAILED,
     COMM_CHANNEL_ALREADY_EXISTS,
     COMM_CHANNEL_CREATED,
-    COMM_CHANNEL_NOT_FOUND,
     COMM_DIRECT_SENT,
     COMM_HISTORY_QUERIED,
     COMM_MESSAGE_DELIVERED,
@@ -76,7 +85,6 @@ from synthorg.observability.events.communication import (
     COMM_RECEIVE_SHUTDOWN,
     COMM_SEND_DIRECT_INVALID,
     COMM_SUBSCRIPTION_CREATED,
-    COMM_SUBSCRIPTION_NOT_FOUND,
     COMM_SUBSCRIPTION_REMOVED,
 )
 
@@ -86,140 +94,6 @@ if TYPE_CHECKING:
     from nats.js.kv import KeyValue
 
 logger = get_logger(__name__)
-
-_DM_SEPARATOR = ":"
-"""Separator used in deterministic direct-channel names (matches in-memory)."""
-
-_SUBJECT_CHANNEL_TOKEN: Final[str] = "channel"  # noqa: S105
-_SUBJECT_DIRECT_TOKEN: Final[str] = "direct"  # noqa: S105
-
-_MAX_BUS_PAYLOAD_BYTES: Final[int] = 4 * 1024 * 1024
-"""Maximum bus message payload size (4 MB) accepted from JetStream.
-
-Messages include parts that can carry text/data blobs, so the limit
-is higher than the task-claim limit but still bounded to prevent a
-single malformed publisher from exhausting worker memory during
-deserialization.
-"""
-
-_RECEIVE_POLL_WINDOW_SECONDS: Final[float] = 60.0
-"""Maximum seconds a single JetStream fetch waits before looping.
-
-``receive()`` uses this value as the upper bound on a single
-``_fetch_with_shutdown`` call. A ``timeout=None`` caller loops over
-these polls until a message arrives or the bus shuts down; a
-bounded ``timeout`` decrements the remaining budget by this window
-each iteration. Keeps per-fetch server-side state bounded while
-still matching the in-memory bus's "block indefinitely" contract.
-"""
-
-_CONSUMER_ACK_WAIT_MULTIPLIER: Final[float] = 6.0
-"""Multiplier on ``publish_ack_wait_seconds`` for per-subscriber consumer ack_wait.
-
-A subscriber's durable pull consumer gets an ack deadline that is
-several times longer than the publisher's ack wait: publish acks are a
-server-side fire-and-forget acknowledgement, while the subscriber's
-ack deadline must span receive + application processing + the
-possibility of redelivery before being considered in-flight. The 6x
-factor mirrors typical JetStream guidance for interactive workloads
-and is surfaced here as a named constant so tests and operators can
-reason about it without grepping for a raw literal.
-"""
-
-
-def _redact_url(url: str) -> str:
-    """Strip credentials from a NATS URL for safe logging.
-
-    ``nats://user:pass@host:port`` -> ``nats://***@host:port``.
-    Non-URL strings pass through unchanged (best effort).
-    """
-    try:
-        parsed = urlparse(url)
-    except ValueError:
-        return url
-    if not parsed.hostname:
-        return url
-    authority = parsed.hostname
-    if parsed.port is not None:
-        authority = f"{authority}:{parsed.port}"
-    has_creds = parsed.username is not None or parsed.password is not None
-    if has_creds:
-        authority = f"***@{authority}"
-    scheme = parsed.scheme or "nats"
-    rest = parsed.path or ""
-    return f"{scheme}://{authority}{rest}"
-
-
-def _raise_channel_not_found(channel_name: str) -> NoReturn:
-    """Log and raise :class:`ChannelNotFoundError`."""
-    logger.warning(COMM_CHANNEL_NOT_FOUND, channel=channel_name)
-    msg = f"Channel not found: {channel_name}"
-    raise ChannelNotFoundError(msg, context={"channel": channel_name})
-
-
-def _raise_not_subscribed(
-    channel_name: str,
-    subscriber_id: str,
-) -> NoReturn:
-    """Log and raise :class:`NotSubscribedError`."""
-    logger.warning(
-        COMM_SUBSCRIPTION_NOT_FOUND,
-        channel=channel_name,
-        subscriber=subscriber_id,
-    )
-    msg = f"Not subscribed to {channel_name}"
-    raise NotSubscribedError(
-        msg,
-        context={
-            "channel": channel_name,
-            "subscriber": subscriber_id,
-        },
-    )
-
-
-async def _cancel_if_pending(task: asyncio.Task[Any]) -> None:
-    """Cancel a task, await completion, and suppress the expected CancelledError.
-
-    Any exception other than ``CancelledError`` is logged at WARNING
-    and re-raised so the caller can decide whether recovery is
-    possible. The previous ``contextlib.suppress(Exception)`` masked
-    genuine errors like transport failures during in-flight fetches.
-    """
-    if task.done():
-        return
-    task.cancel()
-    try:
-        await task
-    except asyncio.CancelledError:
-        pass
-    except Exception:
-        logger.warning(
-            COMM_BUS_RECEIVE_ERROR,
-            phase="cancel_pending_task",
-            task_repr=repr(task),
-            exc_info=True,
-        )
-        raise
-
-
-def _encode_token(name: str) -> str:
-    """Encode an arbitrary string into a NATS-subject-safe token.
-
-    JetStream subject tokens may contain alphanumerics, ``-``, and
-    ``_`` but not ``#``, ``@``, ``:``, ``.`` or other separators used
-    in SynthOrg channel names. Base32 (lowercase, no padding) gives a
-    deterministic, collision-free, case-insensitive encoding using
-    only safe characters.
-    """
-    raw = name.encode("utf-8")
-    return base64.b32encode(raw).decode("ascii").rstrip("=").lower()
-
-
-def _decode_token(token: str) -> str:
-    """Reverse of :func:`_encode_token`."""
-    padding = "=" * ((-len(token)) % 8)
-    raw = base64.b32decode((token.upper() + padding).encode("ascii"))
-    return raw.decode("utf-8")
 
 
 class JetStreamMessageBus:
@@ -370,7 +244,7 @@ class JetStreamMessageBus:
                 error_cb=on_error,
             )
         except (TimeoutError, NoServersError, OSError) as exc:
-            redacted = _redact_url(self._nats_config.url)
+            redacted = redact_url(self._nats_config.url)
             msg = f"Failed to connect to NATS at {redacted}: {exc}"
             logger.exception(COMM_BUS_DISCONNECTED, error=msg, url=redacted)
             raise BusConnectionError(
@@ -379,7 +253,7 @@ class JetStreamMessageBus:
             ) from exc
 
         self._js = self._client.jetstream()
-        logger.info(COMM_BUS_CONNECTED, url=_redact_url(self._nats_config.url))
+        logger.info(COMM_BUS_CONNECTED, url=redact_url(self._nats_config.url))
 
     async def _ensure_stream(self) -> None:
         """Create the bus stream if it does not already exist."""
@@ -399,8 +273,8 @@ class JetStreamMessageBus:
         stream_config = StreamConfig(
             name=self._stream_name,
             subjects=[
-                f"{pfx}.bus.{_SUBJECT_CHANNEL_TOKEN}.>",
-                f"{pfx}.bus.{_SUBJECT_DIRECT_TOKEN}.>",
+                f"{pfx}.bus.{SUBJECT_CHANNEL_TOKEN}.>",
+                f"{pfx}.bus.{SUBJECT_DIRECT_TOKEN}.>",
             ],
             retention=RetentionPolicy.LIMITS,
             max_msgs_per_subject=(self._config.retention.max_messages_per_channel),
@@ -517,12 +391,12 @@ class JetStreamMessageBus:
     def _channel_subject(self, channel_name: str) -> str:
         """Compute the stream subject for a TOPIC/BROADCAST channel."""
         pfx = self._nats_config.stream_name_prefix.lower()
-        return f"{pfx}.bus.{_SUBJECT_CHANNEL_TOKEN}.{_encode_token(channel_name)}"
+        return f"{pfx}.bus.{SUBJECT_CHANNEL_TOKEN}.{encode_token(channel_name)}"
 
     def _direct_subject(self, channel_name: str) -> str:
         """Compute the stream subject for a DIRECT channel."""
         pfx = self._nats_config.stream_name_prefix.lower()
-        return f"{pfx}.bus.{_SUBJECT_DIRECT_TOKEN}.{_encode_token(channel_name)}"
+        return f"{pfx}.bus.{SUBJECT_DIRECT_TOKEN}.{encode_token(channel_name)}"
 
     def _subject_for_channel(self, channel: Channel) -> str:
         """Pick the correct subject based on channel type."""
@@ -533,7 +407,7 @@ class JetStreamMessageBus:
     @staticmethod
     def _durable_name(channel_name: str, subscriber_id: str) -> str:
         """Compute a safe durable consumer name."""
-        return f"{_encode_token(channel_name)}__{_encode_token(subscriber_id)}"
+        return f"{encode_token(channel_name)}__{encode_token(subscriber_id)}"
 
     async def publish(self, message: Message) -> None:
         """Publish a message to its channel via the JetStream stream.
@@ -610,10 +484,10 @@ class JetStreamMessageBus:
             logger.warning(COMM_SEND_DIRECT_INVALID, error=msg)
             raise ValueError(msg)
         for agent_id in (sender, recipient):
-            if _DM_SEPARATOR in agent_id:
+            if DM_SEPARATOR in agent_id:
                 msg = (
                     f"Agent ID {agent_id!r} contains the reserved "
-                    f"separator character {_DM_SEPARATOR!r}"
+                    f"separator character {DM_SEPARATOR!r}"
                 )
                 logger.warning(COMM_SEND_DIRECT_INVALID, error=msg)
                 raise ValueError(msg)
@@ -678,7 +552,7 @@ class JetStreamMessageBus:
         """Persist a Channel definition to the KV bucket."""
         if self._kv is None:
             return
-        key = _encode_token(channel.name)
+        key = encode_token(channel.name)
         value = channel.model_dump_json().encode("utf-8")
         try:
             await self._kv.put(key, value)
@@ -702,7 +576,7 @@ class JetStreamMessageBus:
 
         if self._kv is None:
             return None
-        key = _encode_token(channel_name)
+        key = encode_token(channel_name)
         try:
             entry = await self._kv.get(key)
         except KeyNotFoundError:
@@ -841,7 +715,7 @@ class JetStreamMessageBus:
             durable_name=durable,
             ack_wait=(
                 self._nats_config.publish_ack_wait_seconds
-                * _CONSUMER_ACK_WAIT_MULTIPLIER
+                * CONSUMER_ACK_WAIT_MULTIPLIER
             ),
             max_deliver=1,
             filter_subject=subject,
@@ -872,10 +746,10 @@ class JetStreamMessageBus:
         async with self._lock:
             self._require_running()
             if channel_name not in self._channels:
-                _raise_not_subscribed(channel_name, subscriber_id)
+                raise_not_subscribed(channel_name, subscriber_id)
             channel = self._channels[channel_name]
             if subscriber_id not in channel.subscribers:
-                _raise_not_subscribed(channel_name, subscriber_id)
+                raise_not_subscribed(channel_name, subscriber_id)
             new_subs = tuple(s for s in channel.subscribers if s != subscriber_id)
             updated = channel.model_copy(
                 update={"subscribers": new_subs},
@@ -956,7 +830,7 @@ class JetStreamMessageBus:
                 return None
             msgs = await self._fetch_with_shutdown(
                 sub,
-                _RECEIVE_POLL_WINDOW_SECONDS,
+                RECEIVE_POLL_WINDOW_SECONDS,
                 channel_name=channel_name,
                 subscriber_id=subscriber_id,
             )
@@ -1000,7 +874,7 @@ class JetStreamMessageBus:
                 return None
             if self._shutdown_event.is_set():
                 return None
-            poll = min(remaining, _RECEIVE_POLL_WINDOW_SECONDS)
+            poll = min(remaining, RECEIVE_POLL_WINDOW_SECONDS)
             msgs = await self._fetch_with_shutdown(
                 sub,
                 poll,
@@ -1042,7 +916,7 @@ class JetStreamMessageBus:
                 channel.type != ChannelType.BROADCAST
                 and subscriber_id not in channel.subscribers
             ):
-                _raise_not_subscribed(channel_name, subscriber_id)
+                raise_not_subscribed(channel_name, subscriber_id)
             key = (channel_name, subscriber_id)
             sub = self._subscriptions.get(key)
             if sub is None:
@@ -1093,8 +967,8 @@ class JetStreamMessageBus:
             self._in_flight_fetches.discard(fetch_task)
             self._in_flight_fetches.discard(shutdown_task)
 
-        await _cancel_if_pending(fetch_task)
-        await _cancel_if_pending(shutdown_task)
+        await cancel_if_pending(fetch_task)
+        await cancel_if_pending(shutdown_task)
 
         if shutdown_task in done and fetch_task not in done:
             logger.debug(
@@ -1157,13 +1031,13 @@ class JetStreamMessageBus:
             return None
 
         msg = msgs[0]
-        if len(msg.data) > _MAX_BUS_PAYLOAD_BYTES:
+        if len(msg.data) > MAX_BUS_PAYLOAD_BYTES:
             logger.warning(
                 COMM_BUS_MESSAGE_TOO_LARGE,
                 channel=channel_name,
                 subscriber=subscriber_id,
                 size=len(msg.data),
-                limit=_MAX_BUS_PAYLOAD_BYTES,
+                limit=MAX_BUS_PAYLOAD_BYTES,
             )
             # Ack the oversized payload so JetStream does not
             # redeliver it. Even if the ack fails we have already
@@ -1319,7 +1193,7 @@ class JetStreamMessageBus:
 
         loaded = await self._load_channel_from_kv(channel_name)
         if loaded is None:
-            _raise_channel_not_found(channel_name)
+            raise_channel_not_found(channel_name)
 
         async with self._lock:
             existing = self._channels.get(channel_name)
@@ -1363,7 +1237,7 @@ class JetStreamMessageBus:
         channels: list[Channel] = []
         for key in keys:
             try:
-                decoded_name = _decode_token(key)
+                decoded_name = decode_token(key)
             except Exception as exc:
                 logger.warning(
                     COMM_BUS_KV_READ_FAILED,

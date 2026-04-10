@@ -1,0 +1,70 @@
+"""Shared mutable state for the JetStream message bus submodules.
+
+Each submodule receives a ``_NatsState`` instance rather than the
+full ``JetStreamMessageBus`` class, which avoids circular imports
+and makes the data dependencies between modules explicit.
+"""
+
+import asyncio
+from dataclasses import dataclass, field
+from typing import TYPE_CHECKING, Any
+
+from synthorg.communication.channel import Channel  # noqa: TC001
+from synthorg.communication.config import (  # noqa: TC001
+    MessageBusConfig,
+    NatsConfig,
+)
+
+if TYPE_CHECKING:
+    from nats.aio.client import Client as NatsClient
+    from nats.js import JetStreamContext
+    from nats.js.kv import KeyValue
+
+
+@dataclass
+class _NatsState:
+    """Internal mutable state shared across JetStream bus submodules.
+
+    Created by :func:`create_state` and owned by
+    ``JetStreamMessageBus``. Submodule functions accept this as their
+    first parameter instead of the facade class.
+    """
+
+    config: MessageBusConfig
+    nats_config: NatsConfig
+
+    # Derived names (computed once at creation).
+    stream_name: str
+    kv_bucket_name: str
+
+    # NATS primitives (``None`` until connected).
+    client: NatsClient | None = None
+    js: JetStreamContext | None = None
+    kv: KeyValue | None = None
+
+    # Runtime state.
+    channels: dict[str, Channel] = field(default_factory=dict)
+    subscriptions: dict[tuple[str, str], Any] = field(default_factory=dict)
+    known_agents: set[str] = field(default_factory=set)
+    in_flight_fetches: set[asyncio.Task[Any]] = field(default_factory=set)
+    lock: asyncio.Lock = field(default_factory=asyncio.Lock)
+    shutdown_event: asyncio.Event = field(default_factory=asyncio.Event)
+    running: bool = False
+
+
+def create_state(config: MessageBusConfig) -> _NatsState:
+    """Build a ``_NatsState`` from validated bus configuration.
+
+    The caller (``JetStreamMessageBus.__init__``) must ensure
+    ``config.nats`` is not ``None`` before calling this function.
+    """
+    nats_config = config.nats
+    if nats_config is None:  # pragma: no cover -- caller validates
+        msg = "config.nats must not be None"
+        raise ValueError(msg)
+    return _NatsState(
+        config=config,
+        nats_config=nats_config,
+        stream_name=f"{nats_config.stream_name_prefix}_BUS",
+        kv_bucket_name=f"{nats_config.stream_name_prefix}_BUS_CHANNELS",
+    )

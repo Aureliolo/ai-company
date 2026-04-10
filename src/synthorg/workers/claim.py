@@ -15,11 +15,11 @@ from typing import TYPE_CHECKING, Any, Final
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
 
+from synthorg.communication.bus._nats_utils import redact_url
 from synthorg.communication.bus.errors import (
     BusConnectionError,
     BusStreamError,
 )
-from synthorg.communication.bus.nats import _redact_url
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.observability import get_logger
 from synthorg.observability.events.workers import (
@@ -212,7 +212,7 @@ class JetStreamTaskQueue:
                 user_credentials=self._nats_config.credentials_path,
             )
         except (TimeoutError, NoServersError, OSError) as exc:
-            safe_url = _redact_url(self._nats_config.url)
+            safe_url = redact_url(self._nats_config.url)
             msg = f"Failed to connect to NATS at {safe_url} for task queue: {exc}"
             raise BusConnectionError(
                 msg,
