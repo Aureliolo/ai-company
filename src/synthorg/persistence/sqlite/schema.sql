@@ -418,6 +418,9 @@ CREATE INDEX idx_wfe_updated_at
 CREATE INDEX idx_wfe_definition_updated
     ON workflow_executions(definition_id, updated_at DESC);
 
+CREATE INDEX idx_wfe_definition_revision
+    ON workflow_executions(definition_id, definition_revision);
+
 CREATE INDEX idx_wfe_status_updated
     ON workflow_executions(status, updated_at DESC);
 

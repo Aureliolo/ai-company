@@ -88,9 +88,11 @@ jobs:
 
       - name: Enforce at most one new migration per PR
         if: github.event_name == 'pull_request'
+        env:
+          GH_BASE_REF: ${{ github.base_ref }}
         run: |
-          git fetch origin "${{ github.base_ref }}" --depth=1
-          base_ref="origin/${{ github.base_ref }}"
+          git fetch origin "$GH_BASE_REF" --depth=1
+          base_ref="origin/$GH_BASE_REF"
           mapfile -t new_migs < <(
             git diff --name-only --diff-filter=A "$base_ref"...HEAD -- \
               'src/synthorg/persistence/sqlite/revisions/*.sql'
