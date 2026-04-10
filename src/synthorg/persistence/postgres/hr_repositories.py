@@ -91,7 +91,7 @@ class PostgresLifecycleEventRepository:
                 error=str(exc),
             )
             raise QueryError(msg) from exc
-        logger.debug(
+        logger.info(
             PERSISTENCE_LIFECYCLE_EVENT_SAVED,
             event_id=str(event.id),
         )
@@ -223,7 +223,7 @@ class PostgresTaskMetricRepository:
                 error=str(exc),
             )
             raise QueryError(msg) from exc
-        logger.debug(
+        logger.info(
             PERSISTENCE_TASK_METRIC_SAVED,
             metric_id=str(record.id),
         )
@@ -337,7 +337,7 @@ class PostgresCollaborationMetricRepository:
                 error=str(exc),
             )
             raise QueryError(msg) from exc
-        logger.debug(
+        logger.info(
             PERSISTENCE_COLLAB_METRIC_SAVED,
             metric_id=str(record.id),
         )

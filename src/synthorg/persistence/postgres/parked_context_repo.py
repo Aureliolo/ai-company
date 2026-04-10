@@ -86,7 +86,7 @@ ON CONFLICT(id) DO UPDATE SET
             )
             raise QueryError(msg) from exc
 
-        logger.debug(
+        logger.info(
             PERSISTENCE_PARKED_CONTEXT_SAVED,
             parked_id=context.id,
             agent_id=context.agent_id,
@@ -205,7 +205,7 @@ ON CONFLICT(id) DO UPDATE SET
             raise QueryError(msg) from exc
 
         if deleted:
-            logger.debug(
+            logger.info(
                 PERSISTENCE_PARKED_CONTEXT_DELETED,
                 parked_id=parked_id,
             )

@@ -76,6 +76,14 @@ ON CONFLICT(id) DO UPDATE SET
                     data,
                 )
                 await conn.commit()
+        except json.JSONDecodeError as exc:
+            msg = f"Invalid JSON in context_json for checkpoint {checkpoint.id!r}"
+            logger.exception(
+                PERSISTENCE_CHECKPOINT_SAVE_FAILED,
+                checkpoint_id=checkpoint.id,
+                error=str(exc),
+            )
+            raise QueryError(msg) from exc
         except psycopg.Error as exc:
             msg = f"Failed to save checkpoint {checkpoint.id!r}"
             logger.exception(
@@ -85,7 +93,7 @@ ON CONFLICT(id) DO UPDATE SET
             )
             raise QueryError(msg) from exc
 
-        logger.debug(
+        logger.info(
             PERSISTENCE_CHECKPOINT_SAVED,
             checkpoint_id=checkpoint.id,
             execution_id=checkpoint.execution_id,

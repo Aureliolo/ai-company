@@ -211,12 +211,13 @@ async def backend(
         try:
             yield pg_backend
         finally:
-            with contextlib.suppress(Exception):
+            try:
                 await pg_backend.disconnect()
-            # Always drop the per-test database even if disconnect
-            # fails, otherwise the shared container accumulates
-            # orphaned databases over the session.
-            await _drop_postgres_database(container, db_name)
+            finally:
+                # Always drop the per-test database even if disconnect
+                # fails, otherwise the shared container accumulates
+                # orphaned databases over the session.
+                await _drop_postgres_database(container, db_name)
     else:  # pragma: no cover - defensive
         msg = f"Unknown conformance backend: {backend_name}"
         raise ValueError(msg)

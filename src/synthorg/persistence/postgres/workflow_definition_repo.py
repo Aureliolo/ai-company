@@ -112,6 +112,18 @@ class PostgresWorkflowDefinitionRepository:
             QueryError: If the database operation fails.
             VersionConflictError: If optimistic concurrency check fails.
         """
+        if definition.version < 1:
+            msg = (
+                f"Workflow definition version must be >= 1, got"
+                f" {definition.version} for {definition.id!r}"
+            )
+            logger.warning(
+                PERSISTENCE_WORKFLOW_DEF_SAVE_FAILED,
+                definition_id=definition.id,
+                error=msg,
+            )
+            raise ValueError(msg)
+
         nodes_jsonb = Jsonb([n.model_dump(mode="json") for n in definition.nodes])
         edges_jsonb = Jsonb([e.model_dump(mode="json") for e in definition.edges])
         try:

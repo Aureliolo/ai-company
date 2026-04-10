@@ -35,10 +35,15 @@ _COLS = (
 
 
 def _ensure_utc(dt: datetime) -> datetime:
-    """Attach UTC if the parsed datetime is naive."""
+    """Normalize a datetime to UTC.
+
+    Naive datetimes get UTC attached.  Aware datetimes with non-UTC
+    offsets are converted so all repository reads return UTC
+    timestamps regardless of what the server session returned.
+    """
     if dt.tzinfo is None:
         return dt.replace(tzinfo=UTC)
-    return dt
+    return dt.astimezone(UTC)
 
 
 class PostgresRiskOverrideRepository:
@@ -88,6 +93,11 @@ class PostgresRiskOverrideRepository:
                 await conn.commit()
         except psycopg.errors.UniqueViolation as exc:
             msg = f"Risk override {override.id!r} already exists"
+            logger.warning(
+                PERSISTENCE_RISK_OVERRIDE_SAVE_FAILED,
+                override_id=override.id,
+                error=msg,
+            )
             raise DuplicateRecordError(msg) from exc
         except psycopg.Error as exc:
             msg = f"Failed to save risk override: {exc}"
@@ -97,7 +107,7 @@ class PostgresRiskOverrideRepository:
             )
             raise QueryError(msg) from exc
         else:
-            logger.debug(
+            logger.info(
                 PERSISTENCE_RISK_OVERRIDE_SAVED,
                 id=override.id,
             )

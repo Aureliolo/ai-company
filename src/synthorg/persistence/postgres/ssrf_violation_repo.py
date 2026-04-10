@@ -33,10 +33,14 @@ _COLS = (
 
 
 def _ensure_utc(dt: datetime) -> datetime:
-    """Attach UTC if the parsed datetime is naive."""
+    """Normalize a datetime to UTC.
+
+    Naive datetimes get UTC attached.  Aware datetimes with non-UTC
+    offsets are converted so repository reads always return UTC.
+    """
     if dt.tzinfo is None:
         return dt.replace(tzinfo=UTC)
-    return dt
+    return dt.astimezone(UTC)
 
 
 class PostgresSsrfViolationRepository:
