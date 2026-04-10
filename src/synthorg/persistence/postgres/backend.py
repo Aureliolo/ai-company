@@ -39,6 +39,10 @@ from synthorg.persistence import atlas
 from synthorg.persistence.config import PostgresConfig  # noqa: TC001
 from synthorg.persistence.errors import PersistenceConnectionError
 from synthorg.persistence.postgres.settings_repo import PostgresSettingsRepository
+from synthorg.persistence.postgres.user_repo import (
+    PostgresApiKeyRepository,
+    PostgresUserRepository,
+)
 
 if TYPE_CHECKING:
     from synthorg.budget.config import BudgetConfig
@@ -290,6 +294,8 @@ class PostgresPersistenceBackend:
         """
         assert self._pool is not None  # noqa: S101
         self._settings = PostgresSettingsRepository(self._pool)
+        self._users = PostgresUserRepository(self._pool)
+        self._api_keys = PostgresApiKeyRepository(self._pool)
 
     def get_db(self) -> AsyncConnectionPool:
         """Return the shared connection pool.
