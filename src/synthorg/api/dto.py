@@ -667,11 +667,11 @@ class UpdateWorkflowDefinitionRequest(BaseModel):
     )
     inputs: tuple[dict[str, object], ...] | None = Field(
         default=None,
-        max_length=64,
+        max_length=100,
     )
     outputs: tuple[dict[str, object], ...] | None = Field(
         default=None,
-        max_length=64,
+        max_length=100,
     )
     is_subworkflow: bool | None = None
     nodes: tuple[dict[str, object], ...] | None = Field(

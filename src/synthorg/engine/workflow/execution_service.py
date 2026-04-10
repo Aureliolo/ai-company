@@ -567,12 +567,20 @@ class WorkflowExecutionService:
             msg = f"SUBWORKFLOW node {nid!r} is missing version pin in config"
             raise WorkflowExecutionError(msg)
         if not isinstance(input_bindings, dict):
-            input_bindings = {}
+            msg = (
+                f"SUBWORKFLOW node {nid!r} input_bindings must be"
+                f" a dict, got {type(input_bindings).__name__}"
+            )
+            raise WorkflowExecutionError(msg)
         if not isinstance(output_bindings, dict):
-            output_bindings = {}
+            msg = (
+                f"SUBWORKFLOW node {nid!r} output_bindings must be"
+                f" a dict, got {type(output_bindings).__name__}"
+            )
+            raise WorkflowExecutionError(msg)
 
         next_depth = frame.depth + 1
-        if next_depth >= self._max_subworkflow_depth:
+        if next_depth > self._max_subworkflow_depth:
             logger.error(
                 WORKFLOW_EXEC_SUBWORKFLOW_DEPTH_EXCEEDED,
                 execution_id=execution_id,

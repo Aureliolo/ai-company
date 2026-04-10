@@ -54,8 +54,6 @@ class ExecutionFrame(BaseModel):
     def _freeze_variables(
         cls, value: Mapping[str, object]
     ) -> MappingProxyType[str, object]:
-        if isinstance(value, MappingProxyType):
-            return value
         return MappingProxyType(deepcopy(dict(value)))
 
     parent_frame: ExecutionFrame | None = Field(

@@ -331,6 +331,7 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             )
             await self._db.commit()
         except sqlite3.Error as exc:
+            await self._db.rollback()
             msg = f"Failed to delete subworkflow {subworkflow_id!r}@{version!r}"
             logger.exception(
                 PERSISTENCE_SUBWORKFLOW_DELETE_FAILED,
@@ -381,19 +382,21 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             try:
                 nodes = json.loads(row["nodes"])
             except json.JSONDecodeError:
+                msg = f"Corrupted nodes JSON in workflow {parent_id!r}"
                 logger.warning(
                     PERSISTENCE_SUBWORKFLOW_LIST_FAILED,
                     parent_id=parent_id,
-                    error="Corrupted nodes JSON in workflow definition",
+                    error=msg,
                 )
-                continue
+                raise QueryError(msg) from None
             if not isinstance(nodes, list):
+                msg = f"nodes field is not a list in workflow {parent_id!r}"
                 logger.warning(
                     PERSISTENCE_SUBWORKFLOW_LIST_FAILED,
                     parent_id=parent_id,
-                    error="nodes field is not a list",
+                    error=msg,
                 )
-                continue
+                raise QueryError(msg)
             for node in nodes:
                 if not isinstance(node, dict):
                     continue

@@ -89,7 +89,7 @@ def _resolve_expression(
     return expression
 
 
-def _validate_value_type(  # noqa: C901, PLR0911
+def _validate_value_type(  # noqa: C901, PLR0911, PLR0912
     name: str,
     value: object,
     expected: WorkflowValueType,
@@ -121,6 +121,16 @@ def _validate_value_type(  # noqa: C901, PLR0911
             raise SubworkflowIOError(msg)
         return
     if expected is WorkflowValueType.DATETIME:
+        if isinstance(value, str):
+            try:
+                datetime.fromisoformat(value)
+            except ValueError:
+                msg = (
+                    f"Declaration {name!r} expects DATETIME"
+                    f" (ISO-8601 string or datetime), got {value!r}"
+                )
+                raise SubworkflowIOError(msg) from None
+            return
         if not isinstance(value, datetime):
             msg = f"Declaration {name!r} expects DATETIME, got {type(value).__name__}"
             raise SubworkflowIOError(msg)

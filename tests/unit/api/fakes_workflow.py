@@ -283,7 +283,9 @@ class FakeSubworkflowRepository:
         q = query.lower()
         summaries = await self.list_summaries()
         return tuple(
-            s for s in summaries if q in s.name.lower() or q in s.description.lower()
+            s
+            for s in summaries
+            if q in s.name.lower() or q in (s.description or "").lower()
         )
 
     async def delete(

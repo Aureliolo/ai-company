@@ -8,6 +8,7 @@ This is distinct from ``WorkflowConfig`` (runtime operational config
 for Kanban/Sprint settings).
 """
 
+import json
 from collections import Counter
 from collections.abc import Mapping  # noqa: TC003
 from datetime import UTC, datetime
@@ -40,13 +41,20 @@ _VALUE_TYPE_CHECKS: dict[WorkflowValueType, type | tuple[type, ...]] = {
 def _check_default_type(name: str, default: object, vtype: WorkflowValueType) -> None:
     """Validate that *default* is compatible with *vtype*."""
     if vtype is WorkflowValueType.JSON:
+        try:
+            json.dumps(default)
+        except (TypeError, ValueError) as exc:
+            msg = f"Declaration {name!r}: JSON default is not serializable"
+            raise TypeError(msg) from exc
         return
     expected = _VALUE_TYPE_CHECKS.get(vtype)
     if expected is None:
         return
-    if vtype is WorkflowValueType.INTEGER and isinstance(default, bool):
-        msg = f"Declaration {name!r}: default must be INTEGER, got bool"
-        raise ValueError(msg)
+    if vtype in (WorkflowValueType.INTEGER, WorkflowValueType.FLOAT) and isinstance(
+        default, bool
+    ):
+        msg = f"Declaration {name!r}: default must be {vtype.value}, got bool"
+        raise TypeError(msg)
     if not isinstance(default, expected):
         msg = (
             f"Declaration {name!r}: default must be"

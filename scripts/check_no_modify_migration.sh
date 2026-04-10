@@ -28,8 +28,8 @@ if [ "${#MODIFIED[@]}" -gt 0 ] && [ -n "${MODIFIED[0]}" ]; then
         echo "  Modified: $f" >&2
     done
     echo "" >&2
-    echo "To fix:" >&2
-    echo "  1. Delete the migration: rm $f" >&2
+    echo "To fix (for each file above):" >&2
+    echo "  1. Delete the migration: rm <migration>.sql" >&2
     echo "  2. Remove its line from atlas.sum" >&2
     echo "  3. Regenerate: atlas migrate diff --env sqlite <name>" >&2
     echo "" >&2

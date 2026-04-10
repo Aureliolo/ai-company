@@ -18,7 +18,7 @@ fi
 
 REVISIONS_DIR="src/synthorg/persistence/sqlite/revisions"
 
-if [[ "$FILE_PATH" == *"$REVISIONS_DIR"*.sql ]]; then
+if [[ "$FILE_PATH" == */"$REVISIONS_DIR/"*.sql || "$FILE_PATH" == "$REVISIONS_DIR/"*.sql ]]; then
     REASON="Do not manually edit migration files. Edit schema.sql and regenerate: atlas migrate diff --env sqlite <name>"
     cat <<ENDJSON
 {
