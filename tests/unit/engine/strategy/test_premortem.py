@@ -279,6 +279,33 @@ class TestDefaultPremortemExecutor:
         assert sum(allocations.values()) == 1501
 
     @pytest.mark.unit
+    async def test_token_budget_smaller_than_participants(self) -> None:
+        """When token_budget < participants, only first N agents are called."""
+        executor = DefaultPremortemExecutor()
+        config = PremortemConfig(participants=PremortemParticipation.ALL)
+
+        allocations: dict[str, int] = {}
+
+        async def tracking_caller(
+            agent_id: str, prompt: str, tokens: int
+        ) -> AgentResponse:
+            allocations[agent_id] = tokens
+            return AgentResponse(agent_id=agent_id, content="response")
+
+        await executor.execute(
+            synthesis_text="Test decision",
+            participant_ids=("agent_1", "agent_2", "agent_3", "agent_4"),
+            agent_caller=tracking_caller,
+            config=config,
+            token_budget=2,
+        )
+
+        # base == 0 path: only first token_budget (2) agents called, 1 token each
+        assert len(allocations) == 2
+        assert allocations == {"agent_1": 1, "agent_2": 1}
+        assert sum(allocations.values()) == 2
+
+    @pytest.mark.unit
     async def test_prompt_contains_decision_summary(self) -> None:
         """Prompt includes the synthesis text."""
         executor = DefaultPremortemExecutor()
@@ -352,8 +379,9 @@ class TestDefaultPremortemExecutor:
             token_budget=1000,
         )
 
-        # Should extract at least one failure mode
+        # Should extract at least one failure mode containing the keyword
         assert len(output.failure_modes) > 0
+        assert any("database" in fm.description.lower() for fm in output.failure_modes)
 
     @pytest.mark.unit
     async def test_parses_assumption_responses(self) -> None:
@@ -377,8 +405,9 @@ class TestDefaultPremortemExecutor:
             token_budget=1000,
         )
 
-        # Should extract at least one assumption
+        # Should extract at least one assumption containing the keyword
         assert len(output.assumptions) > 0
+        assert any("adopt" in a.lower() for a in output.assumptions)
 
     @pytest.mark.unit
     async def test_multiple_responses_aggregated(self) -> None:
