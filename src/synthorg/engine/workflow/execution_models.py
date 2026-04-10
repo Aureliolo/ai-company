@@ -51,7 +51,9 @@ class ExecutionFrame(BaseModel):
 
     @field_validator("variables", mode="before")
     @classmethod
-    def _freeze_variables(cls, value: Mapping[str, object]) -> MappingProxyType:
+    def _freeze_variables(
+        cls, value: Mapping[str, object]
+    ) -> MappingProxyType[str, object]:
         if isinstance(value, MappingProxyType):
             return value
         return MappingProxyType(deepcopy(dict(value)))
