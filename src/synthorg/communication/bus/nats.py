@@ -23,8 +23,8 @@ synthorg[distributed]``). Importing this module raises
 
 import asyncio
 import base64
-import contextlib
 import json
+import time
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any, Final, NoReturn
 from urllib.parse import urlparse
@@ -90,8 +90,8 @@ logger = get_logger(__name__)
 _DM_SEPARATOR = ":"
 """Separator used in deterministic direct-channel names (matches in-memory)."""
 
-_SUBJECT_CHANNEL_PREFIX = "channel"
-_SUBJECT_DIRECT_PREFIX = "direct"
+_SUBJECT_CHANNEL_TOKEN: Final[str] = "channel"  # noqa: S105
+_SUBJECT_DIRECT_TOKEN: Final[str] = "direct"  # noqa: S105
 
 _MAX_BUS_PAYLOAD_BYTES: Final[int] = 4 * 1024 * 1024
 """Maximum bus message payload size (4 MB) accepted from JetStream.
@@ -395,11 +395,12 @@ class JetStreamMessageBus:
             msg = "JetStream context not initialized"
             raise BusStreamError(msg)
 
+        pfx = self._nats_config.stream_name_prefix.lower()
         stream_config = StreamConfig(
             name=self._stream_name,
             subjects=[
-                f"synthorg.bus.{_SUBJECT_CHANNEL_PREFIX}.>",
-                f"synthorg.bus.{_SUBJECT_DIRECT_PREFIX}.>",
+                f"{pfx}.bus.{_SUBJECT_CHANNEL_TOKEN}.>",
+                f"{pfx}.bus.{_SUBJECT_DIRECT_TOKEN}.>",
             ],
             retention=RetentionPolicy.LIMITS,
             max_msgs_per_subject=(self._config.retention.max_messages_per_channel),
@@ -463,14 +464,31 @@ class JetStreamMessageBus:
             )
         self._in_flight_fetches.clear()
 
-        for sub in self._subscriptions.values():
-            with contextlib.suppress(Exception):
+        for key, sub in self._subscriptions.items():
+            try:
                 await sub.unsubscribe()
+            except asyncio.CancelledError:
+                pass
+            except Exception:
+                logger.warning(
+                    COMM_BUS_DISCONNECTED,
+                    phase="stop_unsubscribe",
+                    subscription=str(key),
+                    exc_info=True,
+                )
         self._subscriptions.clear()
 
         if self._client is not None:
-            with contextlib.suppress(Exception):
+            try:
                 await self._client.drain()
+            except asyncio.CancelledError:
+                pass
+            except Exception:
+                logger.warning(
+                    COMM_BUS_DISCONNECTED,
+                    phase="stop_drain",
+                    exc_info=True,
+                )
             self._client = None
             self._js = None
             self._kv = None
@@ -484,15 +502,15 @@ class JetStreamMessageBus:
             msg = "Message bus is not running"
             raise MessageBusNotRunningError(msg)
 
-    @staticmethod
-    def _channel_subject(channel_name: str) -> str:
+    def _channel_subject(self, channel_name: str) -> str:
         """Compute the stream subject for a TOPIC/BROADCAST channel."""
-        return f"synthorg.bus.{_SUBJECT_CHANNEL_PREFIX}.{_encode_token(channel_name)}"
+        pfx = self._nats_config.stream_name_prefix.lower()
+        return f"{pfx}.bus.{_SUBJECT_CHANNEL_TOKEN}.{_encode_token(channel_name)}"
 
-    @staticmethod
-    def _direct_subject(channel_name: str) -> str:
+    def _direct_subject(self, channel_name: str) -> str:
         """Compute the stream subject for a DIRECT channel."""
-        return f"synthorg.bus.{_SUBJECT_DIRECT_PREFIX}.{_encode_token(channel_name)}"
+        pfx = self._nats_config.stream_name_prefix.lower()
+        return f"{pfx}.bus.{_SUBJECT_DIRECT_TOKEN}.{_encode_token(channel_name)}"
 
     def _subject_for_channel(self, channel: Channel) -> str:
         """Pick the correct subject based on channel type."""
@@ -954,9 +972,20 @@ class JetStreamMessageBus:
         sub: Any,
         timeout: float,  # noqa: ASYNC109
     ) -> DeliveryEnvelope | None:
-        """Wait up to ``timeout`` seconds across one or more fetch polls."""
-        remaining = timeout
-        while remaining > 0.0:
+        """Wait up to ``timeout`` seconds across one or more fetch polls.
+
+        Uses an absolute ``time.monotonic()`` deadline so the budget
+        reflects real elapsed time. Subtracting the poll window from
+        a running counter would double-count when a fetch returns
+        before the window expires or when ``_build_envelope`` drops a
+        message (the dropped-message path doesn't consume wall time
+        proportional to the poll window).
+        """
+        deadline = time.monotonic() + timeout
+        while True:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0.0:
+                return None
             if self._shutdown_event.is_set():
                 return None
             poll = min(remaining, _RECEIVE_POLL_WINDOW_SECONDS)
@@ -968,7 +997,6 @@ class JetStreamMessageBus:
             )
             if msgs is None:
                 return None
-            remaining -= poll
             if not msgs:
                 continue
             envelope = await self._build_envelope(
@@ -978,7 +1006,6 @@ class JetStreamMessageBus:
             )
             if envelope is not None:
                 return envelope
-        return None
 
     async def _resolve_consumer(
         self,
@@ -1262,13 +1289,47 @@ class JetStreamMessageBus:
             return loaded
 
     async def list_channels(self) -> tuple[Channel, ...]:
-        """List all channels.
+        """List all channels, including those created by peer processes.
+
+        Merges KV-stored channels with the local cache so callers get
+        a complete view of the bus regardless of which process created
+        each channel. KV read errors are logged and treated as
+        non-fatal so the caller still gets the local cache.
 
         Returns:
-            All registered channels.
+            All registered channels (local + KV-discovered).
         """
+        kv_channels = await self._scan_kv_channels()
         async with self._lock:
+            for ch in kv_channels:
+                if ch.name not in self._channels:
+                    self._channels[ch.name] = ch
             return tuple(self._channels.values())
+
+    async def _scan_kv_channels(self) -> list[Channel]:
+        """Scan the KV bucket for all persisted channels."""
+        if self._kv is None:
+            return []
+        try:
+            keys = await self._kv.keys()
+        except Exception as exc:
+            logger.warning(
+                COMM_BUS_KV_READ_FAILED,
+                channel="*",
+                error=str(exc),
+                phase="list_channels_scan",
+            )
+            return []
+        channels: list[Channel] = []
+        for key in keys:
+            decoded_name = _decode_token(key)
+            entry = await self._fetch_kv_entry(decoded_name)
+            if entry is None:
+                continue
+            ch = self._decode_kv_channel(decoded_name, entry)
+            if ch is not None:
+                channels.append(ch)
+        return channels
 
     async def get_channel_history(
         self,
@@ -1462,4 +1523,11 @@ class JetStreamMessageBus:
         try:
             return self._deserialize_message(raw.data)
         except ValueError:
+            logger.warning(
+                COMM_BUS_MESSAGE_DESERIALIZE_FAILED,
+                subject=subject,
+                size=len(raw.data),
+                phase="history_scan",
+                exc_info=True,
+            )
             return None

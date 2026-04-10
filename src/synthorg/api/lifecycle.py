@@ -123,6 +123,18 @@ async def _cleanup_on_failure(  # noqa: PLR0913, C901
             API_APP_STARTUP,
             "Cleanup: failed to stop task engine",
         )
+    if started_settings_dispatcher and settings_dispatcher is not None:
+        await _try_stop(
+            settings_dispatcher.stop(),
+            API_APP_STARTUP,
+            "Cleanup: failed to stop settings dispatcher",
+        )
+    if started_bridge and bridge is not None:
+        await _try_stop(
+            bridge.stop(),
+            API_APP_STARTUP,
+            "Cleanup: failed to stop message bus bridge",
+        )
     if started_distributed_task_queue and distributed_task_queue is not None:
         logger.info(
             API_APP_STARTUP,
@@ -140,18 +152,6 @@ async def _cleanup_on_failure(  # noqa: PLR0913, C901
                 service="distributed_task_queue",
                 phase="stopped_on_cleanup",
             )
-    if started_settings_dispatcher and settings_dispatcher is not None:
-        await _try_stop(
-            settings_dispatcher.stop(),
-            API_APP_STARTUP,
-            "Cleanup: failed to stop settings dispatcher",
-        )
-    if started_bridge and bridge is not None:
-        await _try_stop(
-            bridge.stop(),
-            API_APP_STARTUP,
-            "Cleanup: failed to stop message bus bridge",
-        )
     if started_bus and message_bus is not None:
         await _try_stop(
             message_bus.stop(),
@@ -471,23 +471,6 @@ async def _safe_shutdown(  # noqa: PLR0913, PLR0912, C901
             API_APP_SHUTDOWN,
             "Failed to stop task engine",
         )
-    if distributed_task_queue is not None:
-        logger.info(
-            API_APP_SHUTDOWN,
-            service="distributed_task_queue",
-            phase="stopping",
-        )
-        ok = await _try_stop(
-            distributed_task_queue.stop(),
-            API_APP_SHUTDOWN,
-            "Failed to stop distributed task queue",
-        )
-        if ok:
-            logger.info(
-                API_APP_SHUTDOWN,
-                service="distributed_task_queue",
-                phase="stopped",
-            )
     if performance_tracker is not None:
         await _try_stop(
             performance_tracker.aclose(),
@@ -495,7 +478,6 @@ async def _safe_shutdown(  # noqa: PLR0913, PLR0912, C901
             "Failed to close performance tracker",
         )
     if backup_service is not None:
-        # Create shutdown backup before stopping the backup scheduler
         if backup_service.on_shutdown:
             try:
                 await backup_service.create_backup(
@@ -526,6 +508,27 @@ async def _safe_shutdown(  # noqa: PLR0913, PLR0912, C901
             API_APP_SHUTDOWN,
             "Failed to stop message bus bridge",
         )
+    # Distributed task queue stops after bridge but before the bus so
+    # the NATS connection it shares is still alive during drain. This
+    # mirrors the exact inverse of the startup order: bus -> queue ->
+    # bridge -> ... -> task_engine.
+    if distributed_task_queue is not None:
+        logger.info(
+            API_APP_SHUTDOWN,
+            service="distributed_task_queue",
+            phase="stopping",
+        )
+        ok = await _try_stop(
+            distributed_task_queue.stop(),
+            API_APP_SHUTDOWN,
+            "Failed to stop distributed task queue",
+        )
+        if ok:
+            logger.info(
+                API_APP_SHUTDOWN,
+                service="distributed_task_queue",
+                phase="stopped",
+            )
     if message_bus is not None:
         await _try_stop(
             message_bus.stop(),
