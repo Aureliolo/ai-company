@@ -415,6 +415,12 @@ class JetStreamMessageBus:
                 await self._js.update_stream(stream_config)
         except NatsError as exc:
             msg = f"Failed to set up stream {self._stream_name}: {exc}"
+            logger.warning(
+                COMM_BUS_STREAM_SCAN_FAILED,
+                stream=self._stream_name,
+                error=str(exc),
+                phase="ensure_stream",
+            )
             raise BusStreamError(
                 msg,
                 context={"stream": self._stream_name},
@@ -438,6 +444,12 @@ class JetStreamMessageBus:
                 )
         except NatsError as exc:
             msg = f"Failed to set up KV bucket {self._kv_bucket_name}: {exc}"
+            logger.warning(
+                COMM_BUS_KV_READ_FAILED,
+                channel="*",
+                error=str(exc),
+                phase="ensure_kv_bucket",
+            )
             raise BusStreamError(
                 msg,
                 context={"bucket": self._kv_bucket_name},
@@ -767,7 +779,6 @@ class JetStreamMessageBus:
         # Resolve through the shared KV-backed resolver so multi-process
         # subscribers can see channels registered by another process.
         await self._resolve_channel_or_raise(channel_name)
-        updated_channel: Channel | None = None
         async with self._lock:
             self._require_running()
             channel = self._channels[channel_name]
@@ -775,10 +786,14 @@ class JetStreamMessageBus:
 
             if subscriber_id not in channel.subscribers:
                 new_subs = (*channel.subscribers, subscriber_id)
-                updated_channel = channel.model_copy(
+                updated = channel.model_copy(
                     update={"subscribers": new_subs},
                 )
-                self._channels[channel_name] = updated_channel
+                self._channels[channel_name] = updated
+                # KV write inside the lock serializes persistence with
+                # the in-memory mutation so concurrent subscribe/unsubscribe
+                # calls cannot persist out-of-order snapshots.
+                await self._write_channel_to_kv(updated)
 
             key = (channel_name, subscriber_id)
             if key not in self._subscriptions:
@@ -787,15 +802,6 @@ class JetStreamMessageBus:
                     subscriber_id,
                     self._channels[channel_name],
                 )
-
-        # Persist the updated subscriber list to JetStream KV so peer
-        # processes see the new membership instead of stale cached
-        # state. Done outside the lock because ``_write_channel_to_kv``
-        # awaits on a network round-trip; the in-memory cache already
-        # holds the new value so concurrent readers see the update
-        # immediately and the KV write is a best-effort replication.
-        if updated_channel is not None:
-            await self._write_channel_to_kv(updated_channel)
 
         logger.info(
             COMM_SUBSCRIPTION_CREATED,
@@ -862,7 +868,6 @@ class JetStreamMessageBus:
             MessageBusNotRunningError: If not running.
             NotSubscribedError: If not currently subscribed.
         """
-        updated_channel: Channel | None = None
         async with self._lock:
             self._require_running()
             if channel_name not in self._channels:
@@ -871,10 +876,11 @@ class JetStreamMessageBus:
             if subscriber_id not in channel.subscribers:
                 _raise_not_subscribed(channel_name, subscriber_id)
             new_subs = tuple(s for s in channel.subscribers if s != subscriber_id)
-            updated_channel = channel.model_copy(
+            updated = channel.model_copy(
                 update={"subscribers": new_subs},
             )
-            self._channels[channel_name] = updated_channel
+            self._channels[channel_name] = updated
+            await self._write_channel_to_kv(updated)
             key = (channel_name, subscriber_id)
             sub = self._subscriptions.pop(key, None)
 
@@ -890,12 +896,6 @@ class JetStreamMessageBus:
                     phase="unsubscribe_consumer_failed",
                     exc_info=True,
                 )
-
-        # Persist the removed subscriber outside the lock so peer
-        # processes stop routing to this subscriber_id on the next
-        # cache miss, mirroring the subscribe() KV-write path.
-        if updated_channel is not None:
-            await self._write_channel_to_kv(updated_channel)
 
         logger.info(
             COMM_SUBSCRIPTION_REMOVED,
@@ -1105,7 +1105,9 @@ class JetStreamMessageBus:
 
         try:
             result: list[Any] = fetch_task.result()
-        except NatsTimeoutError, asyncio.CancelledError:
+        except NatsTimeoutError:
+            return []
+        except asyncio.CancelledError:
             return None
         except Exception:
             logger.exception(
