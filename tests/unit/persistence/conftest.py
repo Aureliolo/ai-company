@@ -4,7 +4,7 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 from synthorg.communication.enums import MessagePriority, MessageType
-from synthorg.communication.message import Message, MessageMetadata
+from synthorg.communication.message import Message, MessageMetadata, TextPart
 from synthorg.core.enums import Priority, TaskStatus, TaskType
 from synthorg.core.task import Task
 
@@ -71,7 +71,7 @@ def make_message(  # noqa: PLR0913
         "from": sender,
         "to": to,
         "channel": channel,
-        "content": content,
+        "parts": (TextPart(text=content),),
         "type": msg_type,
         "priority": priority,
         "timestamp": timestamp or datetime(2026, 3, 1, 12, 0, 0, tzinfo=UTC),

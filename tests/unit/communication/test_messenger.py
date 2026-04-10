@@ -12,7 +12,7 @@ from synthorg.communication.enums import (
     MessageType,
 )
 from synthorg.communication.errors import ChannelNotFoundError
-from synthorg.communication.message import Message
+from synthorg.communication.message import Message, TextPart
 from synthorg.communication.messenger import AgentMessenger
 from synthorg.communication.subscription import Subscription
 
@@ -196,6 +196,27 @@ class TestSendMessage:
                 content="hello",
                 message_type=MessageType.TASK_UPDATE,
             )
+
+    @pytest.mark.unit
+    async def test_send_message_with_parts(self) -> None:
+        """send_message accepts explicit parts tuple."""
+        bus = _make_mock_bus()
+        messenger = AgentMessenger(
+            agent_id="agent-a",
+            agent_name="Agent A",
+            bus=bus,
+        )
+
+        msg = await messenger.send_message(
+            to="agent-b",
+            channel="#eng",
+            parts=(TextPart(text="via parts"),),
+            message_type=MessageType.TASK_UPDATE,
+        )
+
+        assert msg.text == "via parts"
+        assert len(msg.parts) == 1
+        bus.publish.assert_awaited_once()
 
 
 class TestSendDirect:
@@ -422,7 +443,7 @@ class TestHandlerDelegation:
             to="agent-a",
             type=MessageType.TASK_UPDATE,
             channel="#eng",
-            content="test",
+            parts=(TextPart(text="test"),),
         )
 
         result = await messenger.dispatch_message(msg)
@@ -448,7 +469,7 @@ class TestHandlerDelegation:
             to="agent-a",
             type=MessageType.TASK_UPDATE,
             channel="#eng",
-            content="test",
+            parts=(TextPart(text="test"),),
         )
 
         result = await messenger.dispatch_message(msg)
@@ -480,7 +501,7 @@ class TestHandlerDelegation:
             to="agent-a",
             type=MessageType.TASK_UPDATE,
             channel="#eng",
-            content="test",
+            parts=(TextPart(text="test"),),
         )
         result = await messenger.dispatch_message(msg)
         assert result.handlers_matched == 1

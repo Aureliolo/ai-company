@@ -61,5 +61,8 @@ MEETING_TASKS_CAPPED: Final[str] = "meeting.task.capped"
 # Auto-wiring
 MEETING_STUB_AGENT_CALLER: Final[str] = "meeting.auto_wire.stub_agent_caller"
 
+# Strategy integration
+MEETING_LENS_ASSIGNMENT_FAILED: Final[str] = "meeting.strategy.lens_assignment_failed"
+
 # API-level meeting events
 MEETING_NOT_FOUND: Final[str] = "meeting.api.not_found"

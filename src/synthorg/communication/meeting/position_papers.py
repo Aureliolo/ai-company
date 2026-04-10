@@ -7,13 +7,17 @@ bias and no quadratic context growth.
 """
 
 import asyncio
+from collections.abc import Mapping  # noqa: TC003
 from datetime import UTC, datetime
 
 from synthorg.communication.meeting._parsing import (
     parse_action_items,
     parse_decisions,
 )
-from synthorg.communication.meeting._prompts import build_agenda_prompt
+from synthorg.communication.meeting._prompts import (
+    build_agenda_prompt,
+    inject_lens_perspective,
+)
 from synthorg.communication.meeting._token_tracker import TokenTracker
 from synthorg.communication.meeting.config import PositionPapersConfig  # noqa: TC001
 from synthorg.communication.meeting.enums import (
@@ -108,6 +112,7 @@ class PositionPapersProtocol:
         participant_ids: tuple[str, ...],
         agent_caller: AgentCaller,
         token_budget: int,
+        lens_assignments: Mapping[str, str] | None = None,
     ) -> MeetingMinutes:
         """Execute the position-papers meeting protocol.
 
@@ -118,6 +123,7 @@ class PositionPapersProtocol:
             participant_ids: IDs of participating agents.
             agent_caller: Callback to invoke agents.
             token_budget: Maximum tokens for the meeting.
+            lens_assignments: Optional lens assignments per participant.
 
         Returns:
             Complete meeting minutes.
@@ -138,6 +144,7 @@ class PositionPapersProtocol:
             participant_ids=participant_ids,
             agent_caller=agent_caller,
             tracker=tracker,
+            lens_assignments=lens_assignments,
         )
 
         synthesis_contribution = await self._run_synthesis(
@@ -191,7 +198,7 @@ class PositionPapersProtocol:
             ended_at=ended_at,
         )
 
-    async def _collect_position_papers(
+    async def _collect_position_papers(  # noqa: PLR0913
         self,
         *,
         meeting_id: str,
@@ -199,6 +206,7 @@ class PositionPapersProtocol:
         participant_ids: tuple[str, ...],
         agent_caller: AgentCaller,
         tracker: TokenTracker,
+        lens_assignments: Mapping[str, str] | None = None,
     ) -> tuple[list[tuple[str, str]], list[MeetingContribution]]:
         """Collect position papers from all participants in parallel.
 
@@ -208,6 +216,7 @@ class PositionPapersProtocol:
             participant_ids: IDs of participating agents.
             agent_caller: Callback to invoke agents.
             tracker: Token budget tracker.
+            lens_assignments: Optional lens assignments for participants.
 
         Returns:
             Tuple of (papers, contributions) in deterministic order.
@@ -236,6 +245,11 @@ class PositionPapersProtocol:
             budget_slice: int,
         ) -> None:
             prompt = _build_position_prompt(agenda_text, participant_id)
+            prompt = inject_lens_perspective(
+                prompt,
+                participant_id,
+                lens_assignments,
+            )
             max_tokens = min(
                 self._config.max_tokens_per_position,
                 budget_slice,

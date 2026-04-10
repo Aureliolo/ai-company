@@ -1,17 +1,24 @@
-"""Tests for the Attachment, MessageMetadata, and Message domain models."""
+"""Tests for the Part, MessageMetadata, and Message domain models."""
 
 from datetime import UTC, datetime
+from types import MappingProxyType
 from uuid import UUID
 
 import pytest
 from pydantic import ValidationError
 
 from synthorg.communication.enums import (
-    AttachmentType,
     MessagePriority,
     MessageType,
 )
-from synthorg.communication.message import Attachment, Message, MessageMetadata
+from synthorg.communication.message import (
+    DataPart,
+    FilePart,
+    Message,
+    MessageMetadata,
+    TextPart,
+    UriPart,
+)
 
 # ── Helpers ──────────────────────────────────────────────────────
 
@@ -21,7 +28,7 @@ _MESSAGE_KWARGS: dict[str, object] = {
     "to": "engineering",
     "type": MessageType.TASK_UPDATE,
     "channel": "#backend",
-    "content": "PR ready for review.",
+    "parts": (TextPart(text="PR ready for review."),),
 }
 
 
@@ -31,51 +38,189 @@ def _make_message(**overrides: object) -> Message:
     return Message(**kwargs)  # type: ignore[arg-type]
 
 
-# ── Attachment ──────────────────────────────────────────────────
+# ── TextPart ─────────────────────────────────────────────────────
 
 
 @pytest.mark.unit
-class TestAttachment:
+class TestTextPart:
     def test_construction(self) -> None:
-        att = Attachment(type=AttachmentType.ARTIFACT, ref="pr-42")
-        assert att.type is AttachmentType.ARTIFACT
-        assert att.ref == "pr-42"
+        part = TextPart(text="Hello, world!")
+        assert part.type == "text"
+        assert part.text == "Hello, world!"
 
-    def test_empty_ref_rejected(self) -> None:
+    def test_empty_text_rejected(self) -> None:
         with pytest.raises(ValidationError):
-            Attachment(type=AttachmentType.FILE, ref="")
+            TextPart(text="")
 
-    def test_whitespace_ref_rejected(self) -> None:
+    def test_whitespace_text_rejected(self) -> None:
         with pytest.raises(ValidationError, match="whitespace-only"):
-            Attachment(type=AttachmentType.FILE, ref="   ")
+            TextPart(text="   ")
 
     def test_frozen(self) -> None:
-        att = Attachment(type=AttachmentType.LINK, ref="https://example.com")
+        part = TextPart(text="Original")
         with pytest.raises(ValidationError):
-            att.ref = "other"  # type: ignore[misc]
+            part.text = "Modified"  # type: ignore[misc]
 
     def test_json_roundtrip(self) -> None:
-        att = Attachment(type=AttachmentType.ARTIFACT, ref="pr-42")
-        restored = Attachment.model_validate_json(att.model_dump_json())
-        assert restored == att
+        part = TextPart(text="Hello")
+        restored = TextPart.model_validate_json(part.model_dump_json())
+        assert restored == part
 
     def test_model_dump(self) -> None:
-        att = Attachment(type=AttachmentType.ARTIFACT, ref="pr-42")
-        dumped = att.model_dump()
-        assert dumped["type"] == "artifact"
-        assert dumped["ref"] == "pr-42"
-
-    def test_factory(self) -> None:
-        from tests.unit.communication.conftest import AttachmentFactory
-
-        att = AttachmentFactory.build()
-        assert isinstance(att, Attachment)
+        part = TextPart(text="Content")
+        dumped = part.model_dump()
+        assert dumped["type"] == "text"
+        assert dumped["text"] == "Content"
 
     def test_model_copy(self) -> None:
-        original = Attachment(type=AttachmentType.FILE, ref="readme.md")
-        updated = original.model_copy(update={"ref": "changelog.md"})
-        assert updated.ref == "changelog.md"
-        assert original.ref == "readme.md"
+        original = TextPart(text="Original")
+        updated = original.model_copy(update={"text": "Updated"})
+        assert updated.text == "Updated"
+        assert original.text == "Original"
+
+
+# ── DataPart ─────────────────────────────────────────────────────
+
+
+@pytest.mark.unit
+class TestDataPart:
+    def test_construction(self) -> None:
+        data = {"key": "value", "count": 42}
+        part = DataPart(data=data)  # type: ignore[arg-type]
+        assert part.type == "data"
+        assert isinstance(part.data, MappingProxyType)
+        assert part.data["key"] == "value"
+        assert part.data["count"] == 42
+
+    def test_frozen(self) -> None:
+        part = DataPart(data={"key": "value"})  # type: ignore[arg-type]
+        with pytest.raises(ValidationError):
+            part.data = {}  # type: ignore[misc,assignment]
+
+    def test_data_deep_copied(self) -> None:
+        original_dict = {"key": "value"}
+        part = DataPart(data=original_dict)  # type: ignore[arg-type]
+        original_dict["key"] = "modified"
+        assert part.data["key"] == "value"
+
+    def test_data_recursively_frozen(self) -> None:
+        data = {
+            "nested": {"inner": "value"},
+            "list": [1, 2, 3],
+        }
+        part = DataPart(data=data)  # type: ignore[arg-type]
+        assert isinstance(part.data["nested"], MappingProxyType)
+        assert isinstance(part.data["list"], tuple)
+
+    def test_json_roundtrip(self) -> None:
+        part = DataPart(data={"key": "value", "num": 123})  # type: ignore[arg-type]
+        restored = DataPart.model_validate_json(part.model_dump_json())
+        assert restored.data["key"] == "value"
+        assert restored.data["num"] == 123
+
+    def test_model_copy(self) -> None:
+        original = DataPart(data={"key": "value"})  # type: ignore[arg-type]
+        updated = original.model_copy(update={"data": {"key": "new"}})
+        assert updated.data["key"] == "new"
+        assert original.data["key"] == "value"
+
+
+# ── FilePart ─────────────────────────────────────────────────────
+
+
+@pytest.mark.unit
+class TestFilePart:
+    def test_construction_with_mime_type(self) -> None:
+        part = FilePart(uri="/path/to/file.pdf", mime_type="application/pdf")
+        assert part.type == "file"
+        assert part.uri == "/path/to/file.pdf"
+        assert part.mime_type == "application/pdf"
+
+    def test_construction_without_mime_type(self) -> None:
+        part = FilePart(uri="/path/to/file.txt")
+        assert part.type == "file"
+        assert part.uri == "/path/to/file.txt"
+        assert part.mime_type is None
+
+    def test_empty_uri_rejected(self) -> None:
+        with pytest.raises(ValidationError):
+            FilePart(uri="", mime_type="text/plain")
+
+    def test_whitespace_uri_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="whitespace-only"):
+            FilePart(uri="   ", mime_type="text/plain")
+
+    def test_empty_mime_type_rejected(self) -> None:
+        with pytest.raises(ValidationError):
+            FilePart(uri="/file.txt", mime_type="")
+
+    def test_whitespace_mime_type_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="whitespace-only"):
+            FilePart(uri="/file.txt", mime_type="   ")
+
+    def test_frozen(self) -> None:
+        part = FilePart(uri="/file.txt", mime_type="text/plain")
+        with pytest.raises(ValidationError):
+            part.uri = "/other.txt"  # type: ignore[misc]
+
+    def test_json_roundtrip(self) -> None:
+        part = FilePart(uri="/file.pdf", mime_type="application/pdf")
+        restored = FilePart.model_validate_json(part.model_dump_json())
+        assert restored == part
+
+    def test_model_dump(self) -> None:
+        part = FilePart(uri="/file.txt", mime_type="text/plain")
+        dumped = part.model_dump()
+        assert dumped["type"] == "file"
+        assert dumped["uri"] == "/file.txt"
+        assert dumped["mime_type"] == "text/plain"
+
+    def test_model_copy(self) -> None:
+        original = FilePart(uri="/file.txt", mime_type="text/plain")
+        updated = original.model_copy(update={"uri": "/other.txt"})
+        assert updated.uri == "/other.txt"
+        assert original.uri == "/file.txt"
+
+
+# ── UriPart ──────────────────────────────────────────────────────
+
+
+@pytest.mark.unit
+class TestUriPart:
+    def test_construction(self) -> None:
+        part = UriPart(uri="https://example.com/page")
+        assert part.type == "uri"
+        assert part.uri == "https://example.com/page"
+
+    def test_empty_uri_rejected(self) -> None:
+        with pytest.raises(ValidationError):
+            UriPart(uri="")
+
+    def test_whitespace_uri_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="whitespace-only"):
+            UriPart(uri="   ")
+
+    def test_frozen(self) -> None:
+        part = UriPart(uri="https://example.com")
+        with pytest.raises(ValidationError):
+            part.uri = "https://other.com"  # type: ignore[misc]
+
+    def test_json_roundtrip(self) -> None:
+        part = UriPart(uri="https://example.com")
+        restored = UriPart.model_validate_json(part.model_dump_json())
+        assert restored == part
+
+    def test_model_dump(self) -> None:
+        part = UriPart(uri="https://example.com")
+        dumped = part.model_dump()
+        assert dumped["type"] == "uri"
+        assert dumped["uri"] == "https://example.com"
+
+    def test_model_copy(self) -> None:
+        original = UriPart(uri="https://example.com")
+        updated = original.model_copy(update={"uri": "https://other.com"})
+        assert updated.uri == "https://other.com"
+        assert original.uri == "https://example.com"
 
 
 # ── MessageMetadata ─────────────────────────────────────────────
@@ -183,7 +328,7 @@ class TestMessageMetadataSerialization:
         assert isinstance(meta, MessageMetadata)
 
 
-# ── Message ─────────────────────────────────────────────────────
+# ── Message ──────────────────────────────────────────────────────
 
 
 @pytest.mark.unit
@@ -195,17 +340,15 @@ class TestMessageConstruction:
         assert msg.to == "engineering"
         assert msg.type is MessageType.TASK_UPDATE
         assert msg.channel == "#backend"
-        assert msg.content == "PR ready for review."
+        assert msg.text == "PR ready for review."
 
     def test_default_values(self) -> None:
         msg = _make_message()
         assert msg.priority is MessagePriority.NORMAL
-        assert msg.attachments == ()
         assert isinstance(msg.metadata, MessageMetadata)
 
     def test_all_fields_set(self) -> None:
         meta = MessageMetadata(task_id="task-1")
-        att = Attachment(type=AttachmentType.ARTIFACT, ref="pr-42")
         msg = Message(
             timestamp=datetime(2026, 2, 27, 10, 30, tzinfo=UTC),
             sender="sarah_chen",
@@ -213,13 +356,89 @@ class TestMessageConstruction:
             type=MessageType.REVIEW_REQUEST,
             priority=MessagePriority.HIGH,
             channel="#code-review",
-            content="Please review PR-42.",
-            attachments=(att,),
+            parts=(TextPart(text="Please review PR-42."),),
             metadata=meta,
         )
         assert msg.priority is MessagePriority.HIGH
-        assert len(msg.attachments) == 1
+        assert len(msg.parts) == 1
         assert msg.metadata.task_id == "task-1"
+
+    def test_multiple_parts(self) -> None:
+        msg = Message(
+            timestamp=datetime(2026, 2, 27, 10, 30, tzinfo=UTC),
+            sender="alice",
+            to="bob",
+            type=MessageType.TASK_UPDATE,
+            channel="#general",
+            parts=(
+                TextPart(text="Status update:"),
+                DataPart(data={"status": "complete", "progress": 100}),  # type: ignore[arg-type]
+                UriPart(uri="https://example.com/report"),
+            ),
+        )
+        assert len(msg.parts) == 3
+        assert isinstance(msg.parts[0], TextPart)
+        assert isinstance(msg.parts[1], DataPart)
+        assert isinstance(msg.parts[2], UriPart)
+
+
+@pytest.mark.unit
+class TestMessageTextComputedField:
+    def test_text_from_first_text_part(self) -> None:
+        msg = Message(
+            timestamp=datetime(2026, 2, 27, 10, 30, tzinfo=UTC),
+            sender="alice",
+            to="bob",
+            type=MessageType.TASK_UPDATE,
+            channel="#general",
+            parts=(
+                TextPart(text="Primary message"),
+                DataPart(data={"key": "value"}),  # type: ignore[arg-type]
+            ),
+        )
+        assert msg.text == "Primary message"
+
+    def test_text_empty_when_no_text_part(self) -> None:
+        msg = Message(
+            timestamp=datetime(2026, 2, 27, 10, 30, tzinfo=UTC),
+            sender="alice",
+            to="bob",
+            type=MessageType.TASK_UPDATE,
+            channel="#general",
+            parts=(
+                DataPart(data={"key": "value"}),  # type: ignore[arg-type]
+                UriPart(uri="https://example.com"),
+            ),
+        )
+        assert msg.text == ""
+
+    def test_text_skips_non_text_parts(self) -> None:
+        msg = Message(
+            timestamp=datetime(2026, 2, 27, 10, 30, tzinfo=UTC),
+            sender="alice",
+            to="bob",
+            type=MessageType.TASK_UPDATE,
+            channel="#general",
+            parts=(
+                UriPart(uri="https://example.com"),
+                TextPart(text="Secondary text"),
+            ),
+        )
+        assert msg.text == "Secondary text"
+
+
+@pytest.mark.unit
+class TestMessagePartsValidation:
+    def test_empty_parts_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="too_short"):
+            Message(
+                timestamp=datetime(2026, 2, 27, 10, 30, tzinfo=UTC),
+                sender="alice",
+                to="bob",
+                type=MessageType.TASK_UPDATE,
+                channel="#general",
+                parts=(),
+            )
 
 
 @pytest.mark.unit
@@ -240,7 +459,7 @@ class TestMessageAlias:
             "to": "engineering",
             "type": "task_update",
             "channel": "#backend",
-            "content": "Hello.",
+            "parts": [{"type": "text", "text": "Hello."}],
         }
         msg = Message.model_validate(data)
         assert msg.sender == "sarah_chen"
@@ -253,7 +472,7 @@ class TestMessageAlias:
             "to": "engineering",
             "type": "task_update",
             "channel": "#backend",
-            "content": "Hello.",
+            "parts": [{"type": "text", "text": "Hello."}],
         }
         msg = Message.model_validate(data)
         assert msg.sender == "sarah_chen"
@@ -310,34 +529,27 @@ class TestMessageStringValidation:
         with pytest.raises(ValidationError, match="whitespace-only"):
             _make_message(channel="   ")
 
-    def test_empty_content_rejected(self) -> None:
-        with pytest.raises(ValidationError):
-            _make_message(content="")
-
-    def test_whitespace_content_rejected(self) -> None:
-        with pytest.raises(ValidationError, match="whitespace-only"):
-            _make_message(content="   ")
-
 
 @pytest.mark.unit
 class TestMessageImmutability:
     def test_frozen(self) -> None:
         msg = _make_message()
         with pytest.raises(ValidationError):
-            msg.content = "new"  # type: ignore[misc]
+            msg.parts = (TextPart(text="new"),)  # type: ignore[misc]
 
     def test_model_copy(self) -> None:
         original = _make_message()
-        updated = original.model_copy(update={"content": "Updated content."})
-        assert updated.content == "Updated content."
-        assert original.content == "PR ready for review."
+        updated = original.model_copy(
+            update={"parts": (TextPart(text="Updated content."),)}
+        )
+        assert updated.text == "Updated content."
+        assert original.text == "PR ready for review."
 
 
 @pytest.mark.unit
 class TestMessageSerialization:
-    def test_json_roundtrip(self) -> None:
+    def test_json_roundtrip_with_text_part(self) -> None:
         msg = _make_message(
-            attachments=(Attachment(type=AttachmentType.ARTIFACT, ref="pr-42"),),
             metadata=MessageMetadata(task_id="task-1"),
         )
         json_str = msg.model_dump_json()
@@ -345,8 +557,52 @@ class TestMessageSerialization:
         assert restored.id == msg.id
         assert restored.sender == msg.sender
         assert restored.type is msg.type
-        assert restored.attachments == msg.attachments
+        assert restored.text == msg.text
         assert restored.metadata == msg.metadata
+
+    def test_json_roundtrip_with_multiple_parts(self) -> None:
+        msg = Message(
+            timestamp=datetime(2026, 2, 27, 10, 30, tzinfo=UTC),
+            sender="alice",
+            to="bob",
+            type=MessageType.TASK_UPDATE,
+            channel="#general",
+            parts=(
+                TextPart(text="Status:"),
+                DataPart(data={"status": "done"}),  # type: ignore[arg-type]
+                FilePart(uri="/report.pdf", mime_type="application/pdf"),
+            ),
+            metadata=MessageMetadata(task_id="task-1"),
+        )
+        json_str = msg.model_dump_json()
+        restored = Message.model_validate_json(json_str)
+        assert restored.id == msg.id
+        assert len(restored.parts) == 3
+        assert isinstance(restored.parts[0], TextPart)
+        assert isinstance(restored.parts[1], DataPart)
+        assert isinstance(restored.parts[2], FilePart)
+
+    def test_parts_discriminator_roundtrip(self) -> None:
+        """Verify that the 'type' discriminator correctly routes deserialization."""
+        msg = Message(
+            timestamp=datetime(2026, 2, 27, 10, 30, tzinfo=UTC),
+            sender="alice",
+            to="bob",
+            type=MessageType.TASK_UPDATE,
+            channel="#general",
+            parts=(
+                TextPart(text="Text"),
+                DataPart(data={"k": "v"}),  # type: ignore[arg-type]
+                FilePart(uri="/file.txt"),
+                UriPart(uri="https://example.com"),
+            ),
+        )
+        dumped = msg.model_dump()
+        restored = Message.model_validate(dumped)
+        assert isinstance(restored.parts[0], TextPart)
+        assert isinstance(restored.parts[1], DataPart)
+        assert isinstance(restored.parts[2], FilePart)
+        assert isinstance(restored.parts[3], UriPart)
 
     def test_model_dump_enum_values(self) -> None:
         msg = _make_message()
@@ -372,11 +628,7 @@ class TestMessageFixtures:
         assert sample_message.sender == "sarah_chen"
         assert sample_message.to == "engineering"
         assert sample_message.type is MessageType.TASK_UPDATE
-        assert len(sample_message.attachments) == 1
-
-    def test_sample_attachment(self, sample_attachment: Attachment) -> None:
-        assert sample_attachment.type is AttachmentType.ARTIFACT
-        assert sample_attachment.ref == "pr-42"
+        assert len(sample_message.parts) >= 1
 
     def test_sample_metadata(self, sample_metadata: MessageMetadata) -> None:
         assert sample_metadata.task_id == "task-123"

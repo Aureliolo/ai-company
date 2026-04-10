@@ -8,6 +8,7 @@ from action items, and records audit trail entries.
 from collections import Counter
 from collections.abc import Mapping  # noqa: TC003
 from types import MappingProxyType
+from typing import Any
 from uuid import uuid4
 
 from synthorg.communication.meeting.config import MeetingProtocolConfig  # noqa: TC001
@@ -36,6 +37,7 @@ from synthorg.observability.events.meeting import (
     MEETING_BUDGET_EXHAUSTED,
     MEETING_COMPLETED,
     MEETING_FAILED,
+    MEETING_LENS_ASSIGNMENT_FAILED,
     MEETING_PROTOCOL_NOT_FOUND,
     MEETING_STARTED,
     MEETING_TASK_CREATED,
@@ -82,8 +84,10 @@ class MeetingOrchestrator:
 
     __slots__ = (
         "_agent_caller",
+        "_lens_assigner",
         "_protocol_registry",
         "_records",
+        "_strategy_config",
         "_task_creator",
     )
 
@@ -93,12 +97,16 @@ class MeetingOrchestrator:
         protocol_registry: Mapping[MeetingProtocolType, MeetingProtocol],
         agent_caller: AgentCaller,
         task_creator: TaskCreator | None = None,
+        strategy_config: Any = None,  # typed as Any to avoid circular import
+        lens_assigner: Any = None,  # typed as Any to avoid circular import
     ) -> None:
         self._protocol_registry: MappingProxyType[
             MeetingProtocolType, MeetingProtocol
         ] = MappingProxyType(dict(protocol_registry))
         self._agent_caller = agent_caller
         self._task_creator = task_creator
+        self._strategy_config = strategy_config
+        self._lens_assigner = lens_assigner
         self._records: list[MeetingRecord] = []
 
     async def run_meeting(  # noqa: PLR0913
@@ -159,6 +167,9 @@ class MeetingOrchestrator:
             token_budget=token_budget,
         )
 
+        # Lens assignment (optional, when strategy config is present)
+        lens_assignments = self._compute_lens_assignments(participant_ids)
+
         result = await self._execute_protocol(
             protocol,
             meeting_id,
@@ -167,6 +178,7 @@ class MeetingOrchestrator:
             leader_id,
             participant_ids,
             token_budget,
+            lens_assignments=lens_assignments,
         )
 
         if isinstance(result, MeetingRecord):
@@ -198,6 +210,8 @@ class MeetingOrchestrator:
         leader_id: str,
         participant_ids: tuple[str, ...],
         token_budget: int,
+        *,
+        lens_assignments: Mapping[str, str] | None = None,
     ) -> MeetingMinutes | MeetingRecord:
         """Run the protocol, catching errors as failure records.
 
@@ -219,6 +233,7 @@ class MeetingOrchestrator:
                 participant_ids=participant_ids,
                 agent_caller=self._agent_caller,
                 token_budget=token_budget,
+                lens_assignments=lens_assignments,
             )
         except MeetingBudgetExhaustedError as exc:
             return self._make_failure_record(
@@ -371,6 +386,50 @@ class MeetingOrchestrator:
                 failed_count=failures,
                 total_count=total,
             )
+
+    def _compute_lens_assignments(
+        self,
+        participant_ids: tuple[str, ...],
+    ) -> dict[str, str] | None:
+        """Compute lens assignments for participants.
+
+        Returns ``None`` when no lens assigner is configured.
+        """
+        if self._lens_assigner is None or self._strategy_config is None:
+            return None
+        try:
+            lenses = self._strategy_config.default_lenses
+            result: dict[str, str] = self._lens_assigner.assign(
+                participant_ids,
+                lenses,
+            )
+        except Exception:
+            logger.warning(
+                MEETING_LENS_ASSIGNMENT_FAILED,
+                error="Lens assignment failed, proceeding without lenses",
+                exc_info=True,
+            )
+            return None
+
+        # Validate the returned mapping: keys must match participant_ids,
+        # values must be non-empty strings.
+        expected_ids = set(participant_ids)
+        if not isinstance(result, dict) or set(result.keys()) != expected_ids:
+            logger.warning(
+                MEETING_LENS_ASSIGNMENT_FAILED,
+                error="Lens assigner returned mapping with mismatched keys",
+                expected_count=len(expected_ids),
+                actual_count=len(result) if isinstance(result, dict) else -1,
+            )
+            return None
+        if not all(isinstance(v, str) and v for v in result.values()):
+            logger.warning(
+                MEETING_LENS_ASSIGNMENT_FAILED,
+                error="Lens assigner returned non-string or empty lens value",
+            )
+            return None
+
+        return dict(result)
 
     def _validate_inputs(
         self,

@@ -105,7 +105,20 @@ class MessageBusBridge:
         for task in self._tasks:
             task.cancel()
         if self._tasks:
-            await asyncio.gather(*self._tasks, return_exceptions=True)
+            results = await asyncio.gather(
+                *self._tasks,
+                return_exceptions=True,
+            )
+            for result in results:
+                if isinstance(result, asyncio.CancelledError):
+                    continue
+                if isinstance(result, BaseException):
+                    logger.warning(
+                        API_APP_SHUTDOWN,
+                        component="bus_bridge",
+                        error=str(result),
+                        exc_info=result,
+                    )
         self._tasks.clear()
         self._running = False
 
@@ -165,7 +178,8 @@ class MessageBusBridge:
             "message_id": str(message.id),
             "sender": message.sender,
             "to": message.to,
-            "content": message.content,
+            "content": message.text,
+            "parts": [p.model_dump(mode="json") for p in message.parts],
         }
         return WsEvent(
             event_type=WsEventType.MESSAGE_SENT,

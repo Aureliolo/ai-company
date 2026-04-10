@@ -46,7 +46,7 @@ def _snapshot_content(bus: FakeMessageBus, index: int = 0) -> str:
     mypy would otherwise reject.
     """
     msg = bus.published[index]
-    return msg.content  # type: ignore[attr-defined,no-any-return]
+    return msg.text  # type: ignore[attr-defined,no-any-return]
 
 
 # ── FIFO ordering guarantee ─────────────────────────────────

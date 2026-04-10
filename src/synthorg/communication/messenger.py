@@ -9,7 +9,7 @@ from synthorg.communication.handler import (  # noqa: TC001
     MessageHandler,
     MessageHandlerFunc,
 )
-from synthorg.communication.message import Message
+from synthorg.communication.message import Message, Part, TextPart
 from synthorg.communication.subscription import (  # noqa: TC001
     DeliveryEnvelope,
     Subscription,
@@ -45,6 +45,41 @@ def _direct_channel_name(agent_a: str, agent_b: str) -> str:
     """
     pair = sorted([agent_a, agent_b])
     return f"{_DIRECT_CHANNEL_PREFIX}{pair[0]}:{pair[1]}"
+
+
+def _resolve_parts(
+    content: str | None,
+    parts: tuple[Part, ...] | None,
+) -> tuple[Part, ...]:
+    """Resolve ``content`` / ``parts`` into a validated parts tuple.
+
+    Exactly one of *content* or *parts* must be provided.
+
+    Args:
+        content: Plain text (auto-wrapped as a single ``TextPart``).
+        parts: Explicit parts tuple.
+
+    Returns:
+        A non-empty parts tuple.
+
+    Raises:
+        ValueError: If neither or both arguments are provided.
+    """
+    if content is not None and parts is not None:
+        msg = "Provide either 'content' or 'parts', not both"
+        raise ValueError(msg)
+    if content is not None:
+        if not content.strip():
+            msg = "content must not be blank"
+            raise ValueError(msg)
+        return (TextPart(text=content),)
+    if parts is not None:
+        if not parts:
+            msg = "parts must not be empty"
+            raise ValueError(msg)
+        return parts
+    msg = "Either 'content' or 'parts' must be provided"
+    raise ValueError(msg)
 
 
 class AgentMessenger:
@@ -99,23 +134,27 @@ class AgentMessenger:
             agent_name=agent_name,
         )
 
-    async def send_message(
+    async def send_message(  # noqa: PLR0913
         self,
         *,
         to: str,
         channel: str,
-        content: str,
+        content: str | None = None,
+        parts: tuple[Part, ...] | None = None,
         message_type: MessageType,
         priority: MessagePriority = MessagePriority.NORMAL,
     ) -> Message:
         """Send a message to a channel.
 
-        Auto-fills sender, timestamp, and message ID.
+        Auto-fills sender, timestamp, and message ID.  Provide either
+        *content* (auto-wrapped as a ``TextPart``) or *parts* for rich
+        multi-part messages.
 
         Args:
             to: Recipient agent or channel identifier.
             channel: Channel to publish through.
-            content: Message body text.
+            content: Message body text (auto-wrapped as TextPart).
+            parts: Explicit message parts (mutually exclusive with content).
             message_type: Message type classification.
             priority: Message priority level.
 
@@ -123,9 +162,11 @@ class AgentMessenger:
             The constructed and published message.
 
         Raises:
+            ValueError: If neither or both content/parts are provided.
             ChannelNotFoundError: If the channel does not exist.
             MessageBusNotRunningError: If the bus is not running.
         """
+        resolved = _resolve_parts(content, parts)
         msg = Message(
             timestamp=datetime.now(UTC),
             sender=self._agent_id,
@@ -133,7 +174,7 @@ class AgentMessenger:
             type=message_type,
             priority=priority,
             channel=channel,
-            content=content,
+            parts=resolved,
         )
         await self._bus.publish(msg)
         logger.info(
@@ -149,7 +190,8 @@ class AgentMessenger:
         self,
         *,
         to: str,
-        content: str,
+        content: str | None = None,
+        parts: tuple[Part, ...] | None = None,
         message_type: MessageType,
         priority: MessagePriority = MessagePriority.NORMAL,
     ) -> Message:
@@ -161,7 +203,8 @@ class AgentMessenger:
 
         Args:
             to: Recipient agent ID.
-            content: Message body text.
+            content: Message body text (auto-wrapped as TextPart).
+            parts: Explicit message parts (mutually exclusive with content).
             message_type: Message type classification.
             priority: Message priority level.
 
@@ -169,8 +212,10 @@ class AgentMessenger:
             The constructed and sent message.
 
         Raises:
+            ValueError: If neither or both content/parts are provided.
             MessageBusNotRunningError: If the bus is not running.
         """
+        resolved = _resolve_parts(content, parts)
         channel = _direct_channel_name(self._agent_id, to)
         msg = Message(
             timestamp=datetime.now(UTC),
@@ -179,7 +224,7 @@ class AgentMessenger:
             type=message_type,
             priority=priority,
             channel=channel,
-            content=content,
+            parts=resolved,
         )
         await self._bus.send_direct(msg, recipient=to)
         logger.info(
@@ -194,7 +239,8 @@ class AgentMessenger:
     async def broadcast(
         self,
         *,
-        content: str,
+        content: str | None = None,
+        parts: tuple[Part, ...] | None = None,
         message_type: MessageType,
         priority: MessagePriority = MessagePriority.NORMAL,
         channel: str = "#all-hands",
@@ -206,7 +252,8 @@ class AgentMessenger:
         channel of type :attr:`ChannelType.BROADCAST`.
 
         Args:
-            content: Message body text.
+            content: Message body text (auto-wrapped as TextPart).
+            parts: Explicit message parts (mutually exclusive with content).
             message_type: Message type classification.
             priority: Message priority level.
             channel: Channel name (default ``"#all-hands"``).
@@ -215,9 +262,11 @@ class AgentMessenger:
             The constructed and published message.
 
         Raises:
+            ValueError: If neither or both content/parts are provided.
             ChannelNotFoundError: If the channel does not exist.
             MessageBusNotRunningError: If the bus is not running.
         """
+        resolved = _resolve_parts(content, parts)
         msg = Message(
             timestamp=datetime.now(UTC),
             sender=self._agent_id,
@@ -225,7 +274,7 @@ class AgentMessenger:
             type=message_type,
             priority=priority,
             channel=channel,
-            content=content,
+            parts=resolved,
         )
         await self._bus.publish(msg)
         logger.info(

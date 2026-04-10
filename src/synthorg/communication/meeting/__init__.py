@@ -14,6 +14,14 @@ from synthorg.communication.meeting.config import (
     RoundRobinConfig,
     StructuredPhasesConfig,
 )
+from synthorg.communication.meeting.conflict_detection import (
+    AutoDetector,
+    EmbeddingSimilarityDetector,
+    HybridDetector,
+    KeywordConflictDetector,
+    LlmJudgeDetector,
+    StructuredComparisonDetector,
+)
 from synthorg.communication.meeting.enums import (
     MeetingPhase,
     MeetingProtocolType,
@@ -57,7 +65,6 @@ from synthorg.communication.meeting.protocol import (
 from synthorg.communication.meeting.round_robin import RoundRobinProtocol
 from synthorg.communication.meeting.scheduler import MeetingScheduler
 from synthorg.communication.meeting.structured_phases import (
-    KeywordConflictDetector,
     StructuredPhasesProtocol,
 )
 
@@ -65,8 +72,12 @@ __all__ = [
     "ActionItem",
     "AgentCaller",
     "AgentResponse",
+    "AutoDetector",
     "ConflictDetector",
+    "EmbeddingSimilarityDetector",
+    "HybridDetector",
     "KeywordConflictDetector",
+    "LlmJudgeDetector",
     "MeetingAgenda",
     "MeetingAgendaItem",
     "MeetingAgentError",
@@ -95,6 +106,7 @@ __all__ = [
     "RoundRobinConfig",
     "RoundRobinProtocol",
     "SchedulerAlreadyRunningError",
+    "StructuredComparisonDetector",
     "StructuredPhasesConfig",
     "StructuredPhasesProtocol",
     "TaskCreator",

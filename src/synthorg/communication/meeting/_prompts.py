@@ -1,9 +1,14 @@
 """Shared prompt builders for meeting protocol implementations."""
 
+from collections.abc import Mapping  # noqa: TC003
 from typing import TYPE_CHECKING
+
+from synthorg.observability import get_logger
 
 if TYPE_CHECKING:
     from synthorg.communication.meeting.models import MeetingAgenda
+
+logger = get_logger(__name__)
 
 
 def build_agenda_prompt(agenda: MeetingAgenda) -> str:
@@ -28,3 +33,33 @@ def build_agenda_prompt(agenda: MeetingAgenda) -> str:
                 entry += f" (presenter: {item.presenter_id})"
             parts.append(entry)
     return "\n".join(parts)
+
+
+def inject_lens_perspective(
+    prompt: str,
+    agent_id: str,
+    lens_assignments: Mapping[str, str] | None,
+) -> str:
+    """Append lens perspective instructions to a prompt.
+
+    If the agent has a lens assignment, the lens name is appended
+    as a perspective instruction.  Otherwise the prompt is returned
+    unchanged.
+
+    Args:
+        prompt: The base prompt text.
+        agent_id: The agent to look up in assignments.
+        lens_assignments: Optional mapping of agent ID to lens name.
+
+    Returns:
+        The prompt, optionally extended with lens instructions.
+    """
+    if not lens_assignments or agent_id not in lens_assignments:
+        return prompt
+    lens_name = lens_assignments[agent_id]
+    return (
+        f"{prompt}\n\n"
+        f"[Strategic Lens: {lens_name}]\n"
+        f"Adopt the {lens_name} perspective in your analysis. "
+        f"Evaluate the agenda items through this specific lens."
+    )

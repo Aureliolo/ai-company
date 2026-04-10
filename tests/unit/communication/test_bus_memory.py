@@ -23,7 +23,7 @@ from synthorg.communication.errors import (
     MessageBusNotRunningError,
     NotSubscribedError,
 )
-from synthorg.communication.message import Message
+from synthorg.communication.message import Message, TextPart
 
 
 def _make_message(
@@ -40,7 +40,7 @@ def _make_message(
         to=to,
         type=MessageType.TASK_UPDATE,
         channel=channel,
-        content=content,
+        parts=(TextPart(text=content),),
     )
 
 
@@ -328,7 +328,7 @@ class TestPublishReceive:
         await bus.publish(msg)
         envelope = await bus.receive("#general", "agent-a", timeout=1.0)
         assert envelope is not None
-        assert envelope.message.content == "test content"
+        assert envelope.message.text == "test content"
         assert envelope.channel_name == "#general"
 
     @pytest.mark.unit
@@ -354,7 +354,7 @@ class TestPublishReceive:
                 timeout=1.0,
             )
             assert envelope is not None
-            assert envelope.message.content == f"msg-{i}"
+            assert envelope.message.text == f"msg-{i}"
 
     @pytest.mark.unit
     async def test_fan_out_to_multiple_subscribers(self) -> None:
@@ -390,7 +390,7 @@ class TestPublishReceive:
         async def receiver() -> None:
             envelope = await bus.receive("#general", "agent-a")
             assert envelope is not None
-            received.append(envelope.message.content)
+            received.append(envelope.message.text)
 
         async def publisher() -> None:
             await asyncio.sleep(0)
@@ -491,9 +491,9 @@ class TestRetention:
         history = await bus.get_channel_history("#general")
         assert len(history) == 3
         # Only the last 3 should remain
-        assert history[0].content == "msg-2"
-        assert history[1].content == "msg-3"
-        assert history[2].content == "msg-4"
+        assert history[0].text == "msg-2"
+        assert history[1].text == "msg-3"
+        assert history[2].text == "msg-4"
 
 
 # ── History ───────────────────────────────────────────────────────
@@ -530,8 +530,8 @@ class TestHistory:
         history = await bus.get_channel_history("#general", limit=2)
         assert len(history) == 2
         # Should return the most recent 2
-        assert history[0].content == "msg-3"
-        assert history[1].content == "msg-4"
+        assert history[0].text == "msg-3"
+        assert history[1].text == "msg-4"
 
     @pytest.mark.unit
     async def test_history_empty_channel(self) -> None:
@@ -556,7 +556,7 @@ class TestHistory:
         await bus.send_direct(msg, recipient="agent-b")
         history = await bus.get_channel_history("@agent-a:agent-b")
         assert len(history) == 1
-        assert history[0].content == "dm-1"
+        assert history[0].text == "dm-1"
 
 
 # ── Concurrency ───────────────────────────────────────────────────
@@ -589,7 +589,7 @@ class TestConcurrency:
                     timeout=2.0,
                 )
                 if env is not None:
-                    received.append(env.message.content)
+                    received.append(env.message.text)
             return received
 
         async with asyncio.TaskGroup() as tg:
@@ -626,7 +626,7 @@ class TestConcurrency:
                     timeout=2.0,
                 )
                 if env is not None:
-                    received.append(env.message.content)
+                    received.append(env.message.text)
             return received
 
         async with asyncio.TaskGroup() as tg:
@@ -791,7 +791,7 @@ class TestIdleSummary:
         )
         envelope = await bus.receive("#general", "agent-a", timeout=0.5)
         assert envelope is not None
-        assert envelope.message.content == "hello"
+        assert envelope.message.text == "hello"
 
     async def test_idle_state_reset_on_restart(
         self,

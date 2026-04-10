@@ -51,7 +51,6 @@ from synthorg.communication.delegation import (
 )
 from synthorg.communication.dispatcher import DispatchResult, MessageDispatcher
 from synthorg.communication.enums import (
-    AttachmentType,
     ChannelType,
     CommunicationPattern,
     ConflictResolutionStrategy,
@@ -126,7 +125,15 @@ from synthorg.communication.meeting import (
     StructuredPhasesProtocol,
     TaskCreator,
 )
-from synthorg.communication.message import Attachment, Message, MessageMetadata
+from synthorg.communication.message import (
+    DataPart,
+    FilePart,
+    Message,
+    MessageMetadata,
+    Part,
+    TextPart,
+    UriPart,
+)
 from synthorg.communication.messenger import AgentMessenger
 from synthorg.communication.subscription import DeliveryEnvelope, Subscription
 
@@ -135,8 +142,6 @@ __all__ = [
     "AgentCaller",
     "AgentMessenger",
     "AgentResponse",
-    "Attachment",
-    "AttachmentType",
     "AuthorityCheckResult",
     "AuthorityResolver",
     "AuthorityValidator",
@@ -162,6 +167,7 @@ __all__ = [
     "ConflictResolver",
     "ConflictStrategyError",
     "ConflictType",
+    "DataPart",
     "DebateConfig",
     "DebateResolver",
     "DelegationAncestryError",
@@ -182,6 +188,7 @@ __all__ = [
     "DeliveryEnvelope",
     "DispatchResult",
     "DissentRecord",
+    "FilePart",
     "FunctionHandler",
     "GuardCheckOutcome",
     "HandlerRegistration",
@@ -228,6 +235,7 @@ __all__ = [
     "MessageRetentionConfig",
     "MessageType",
     "NotSubscribedError",
+    "Part",
     "PositionPapersConfig",
     "PositionPapersProtocol",
     "RateLimitConfig",
@@ -237,6 +245,8 @@ __all__ = [
     "StructuredPhasesProtocol",
     "Subscription",
     "TaskCreator",
+    "TextPart",
+    "UriPart",
     "check_ancestry",
     "check_delegation_depth",
 ]

@@ -174,9 +174,14 @@ strategy:
 
 ## Decision Records
 
+`DecisionRecord` includes three optional strategy metadata fields.
+All are nullable and default to `None` (or `()` for tuples) -- they
+are only populated when the strategy module is active during the
+meeting that produces the decision.
+
 ### RiskCard
 
-Per-decision risk metadata:
+Per-decision risk metadata (populated by premortem phase):
 - `decision_type`: Type of decision
 - `reversibility`: easily_reversible / moderate / locked_in
 - `blast_radius`: individual / team / department / company_wide
@@ -192,7 +197,7 @@ Calibrated confidence for a recommendation:
 
 ### LensAttribution
 
-Which lens produced which insight:
+Which lens produced which insight (tuple, one per participant):
 - `lens`: Lens name
 - `insight`: Lens-specific insight
 - `weight`: Influence on final recommendation
