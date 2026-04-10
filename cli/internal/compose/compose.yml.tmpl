@@ -15,6 +15,10 @@ services:
       SYNTHORG_MEMORY_DIR: "/data/memory"
       SYNTHORG_PERSISTENCE_BACKEND: {{yamlStr .PersistenceBackend}}
       SYNTHORG_MEMORY_BACKEND: {{yamlStr .MemoryBackend}}
+      SYNTHORG_BUS_BACKEND: {{yamlStr .BusBackend}}
+{{- if distributedEnabled}}
+      SYNTHORG_NATS_URL: "nats://nats:4222"
+{{- end}}
       SYNTHORG_LOG_DIR: "/data/logs"
       MEM0_TELEMETRY: "false"
       SYNTHORG_TELEMETRY: "{{if .TelemetryOptIn}}true{{else}}false{{end}}"
@@ -77,6 +81,46 @@ services:
       options:
         max-size: "10m"
         max-file: "3"
+{{- if distributedEnabled}}
+
+  # NATS JetStream service (distributed runtime).
+  # Port layout: 3000 web / 3001 backend / 3002 reserved for DB / 3003 NATS client.
+  # Monitoring endpoint (8222) is intentionally not mapped; use
+  # `docker compose exec nats wget -qO- localhost:8222/varz` if needed.
+  nats:
+    image: nats:2.10-alpine
+    command: ["-js", "-sd", "/data", "-m", "8222"]
+    ports:
+      - "{{.NatsClientPort}}:4222"
+    volumes:
+      - synthorg-nats-data:/data
+    user: "1000:1000"
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    read_only: true
+    tmpfs:
+      - /tmp:noexec,nosuid,nodev,size=16m
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+          cpus: "0.5"
+          pids: 64
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8222/healthz"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+{{- end}}
 {{- if .Sandbox}}
 
   sandbox:
@@ -114,3 +158,6 @@ networks:
 
 volumes:
   synthorg-data:
+{{- if distributedEnabled}}
+  synthorg-nats-data:
+{{- end}}

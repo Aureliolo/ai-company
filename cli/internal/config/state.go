@@ -26,6 +26,7 @@ type State struct {
 	SettingsKey        string            `json:"settings_key,omitempty"`
 	PersistenceBackend string            `json:"persistence_backend"`
 	MemoryBackend      string            `json:"memory_backend"`
+	BusBackend         string            `json:"bus_backend"`
 	AutoCleanup        bool              `json:"auto_cleanup"`
 	VerifiedDigests    map[string]string `json:"verified_digests,omitempty"`
 
@@ -60,6 +61,7 @@ func DefaultState() State {
 		LogLevel:           "info",
 		PersistenceBackend: "sqlite",
 		MemoryBackend:      "mem0",
+		BusBackend:         "internal",
 	}
 }
 
@@ -120,6 +122,7 @@ func Load(dataDir string) (State, error) {
 
 var validPersistenceBackends = map[string]bool{"sqlite": true}
 var validMemoryBackends = map[string]bool{"mem0": true}
+var validBusBackends = map[string]bool{"internal": true, "nats": true}
 var validChannels = map[string]bool{"stable": true, "dev": true}
 var validLogLevels = map[string]bool{"debug": true, "info": true, "warn": true, "error": true}
 var validColorModes = map[string]bool{"always": true, "auto": true, "never": true}
@@ -171,11 +174,19 @@ func IsValidMemoryBackend(name string) bool {
 	return validMemoryBackends[name]
 }
 
+// IsValidBusBackend reports whether name is a known message bus backend.
+func IsValidBusBackend(name string) bool {
+	return validBusBackends[name]
+}
+
 // PersistenceBackendNames returns the allowed persistence backend names.
 func PersistenceBackendNames() string { return sortedKeys(validPersistenceBackends) }
 
 // MemoryBackendNames returns the allowed memory backend names.
 func MemoryBackendNames() string { return sortedKeys(validMemoryBackends) }
+
+// BusBackendNames returns the allowed bus backend names.
+func BusBackendNames() string { return sortedKeys(validBusBackends) }
 
 // IsValidColorMode reports whether name is a known color mode.
 func IsValidColorMode(name string) bool { return validColorModes[name] }
@@ -214,6 +225,9 @@ func (s State) validate() error {
 	}
 	if !IsValidMemoryBackend(s.MemoryBackend) {
 		return fmt.Errorf("invalid memory_backend %q: must be one of %s", s.MemoryBackend, sortedKeys(validMemoryBackends))
+	}
+	if s.BusBackend != "" && !IsValidBusBackend(s.BusBackend) {
+		return fmt.Errorf("invalid bus_backend %q: must be one of %s", s.BusBackend, sortedKeys(validBusBackends))
 	}
 	if s.Channel != "" && !IsValidChannel(s.Channel) {
 		return fmt.Errorf("invalid channel %q: must be one of %s", s.Channel, sortedKeys(validChannels))

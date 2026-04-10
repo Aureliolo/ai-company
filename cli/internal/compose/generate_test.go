@@ -19,6 +19,7 @@ func TestGenerateDefault(t *testing.T) {
 		LogLevel:           "info",
 		PersistenceBackend: "sqlite",
 		MemoryBackend:      "mem0",
+		BusBackend:         "internal",
 	}
 	out, err := Generate(p)
 	if err != nil {
@@ -70,6 +71,7 @@ func TestGenerateCustomPorts(t *testing.T) {
 		SettingsKey:        "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
 		PersistenceBackend: "sqlite",
 		MemoryBackend:      "mem0",
+		BusBackend:         "internal",
 	}
 	out, err := Generate(p)
 	if err != nil {
@@ -100,6 +102,7 @@ func TestGenerateWithSandbox(t *testing.T) {
 		DockerSock:         "/var/run/docker.sock",
 		PersistenceBackend: "sqlite",
 		MemoryBackend:      "mem0",
+		BusBackend:         "internal",
 	}
 	out, err := Generate(p)
 	if err != nil {
@@ -129,6 +132,7 @@ func TestGenerateWithDigestPins(t *testing.T) {
 		LogLevel:           "info",
 		PersistenceBackend: "sqlite",
 		MemoryBackend:      "mem0",
+		BusBackend:         "internal",
 		DigestPins: map[string]string{
 			"backend": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
 			"web":     "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
@@ -167,6 +171,7 @@ func TestGenerateWithDigestPinsAndSandbox(t *testing.T) {
 		DockerSock:         "/var/run/docker.sock",
 		PersistenceBackend: "sqlite",
 		MemoryBackend:      "mem0",
+		BusBackend:         "internal",
 		DigestPins: map[string]string{
 			"backend": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
 			"web":     "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
@@ -194,6 +199,7 @@ func TestGenerateNilDigestPinsFallsBackToTag(t *testing.T) {
 		LogLevel:           "info",
 		PersistenceBackend: "sqlite",
 		MemoryBackend:      "mem0",
+		BusBackend:         "internal",
 		DigestPins:         nil,
 	}
 	out, err := Generate(p)
@@ -216,6 +222,7 @@ func TestGenerateHardeningPresent(t *testing.T) {
 		LogLevel:           "info",
 		PersistenceBackend: "sqlite",
 		MemoryBackend:      "mem0",
+		BusBackend:         "internal",
 	}
 	out, err := Generate(p)
 	if err != nil {
@@ -251,6 +258,7 @@ func TestParamsFromState(t *testing.T) {
 		DockerSock:         "/var/run/docker.sock",
 		PersistenceBackend: "sqlite",
 		MemoryBackend:      "mem0",
+		BusBackend:         "internal",
 	}
 	p := ParamsFromState(s)
 

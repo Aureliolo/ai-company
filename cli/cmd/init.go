@@ -25,6 +25,7 @@ var (
 	initImageTag    string
 	initChannel     string
 	initLogLevel    string
+	initBusBackend  string
 )
 
 var initCmd = &cobra.Command{
@@ -46,6 +47,7 @@ func init() {
 	initCmd.Flags().StringVar(&initImageTag, "image-tag", "", "container image tag")
 	initCmd.Flags().StringVar(&initChannel, "channel", "", "update channel (\"stable\" or \"dev\")")
 	initCmd.Flags().StringVar(&initLogLevel, "log-level", "", "log level (\"debug\", \"info\", \"warn\", \"error\")")
+	initCmd.Flags().StringVar(&initBusBackend, "bus-backend", "", "message bus backend (\"internal\" or \"nats\"; defaults to \"internal\")")
 	initCmd.GroupID = "core"
 	rootCmd.AddCommand(initCmd)
 }
@@ -75,7 +77,7 @@ func runInit(cmd *cobra.Command, _ []string) error {
 	case isInteractive():
 		out.Logo(version.Version)
 		var err error
-		answers, err = runSetupFormWithOverrides(opts.DataDir)
+		answers, err = runSetupFormWithOverrides(cmd, opts.DataDir)
 		if err != nil {
 			return err
 		}
@@ -192,6 +194,7 @@ type setupAnswers struct {
 	logLevel           string
 	persistenceBackend string
 	memoryBackend      string
+	busBackend         string
 	channel            string // optional override (empty = default "stable")
 	imageTag           string // optional override (empty = use CLI version)
 	telemetryOptIn     bool
@@ -221,6 +224,9 @@ func validateInitFlags() error {
 	if initChannel != "" && !config.IsValidChannel(initChannel) {
 		return fmt.Errorf("invalid --channel %q: must be one of %s", initChannel, config.ChannelNames())
 	}
+	if initBusBackend != "" && !config.IsValidBusBackend(initBusBackend) {
+		return fmt.Errorf("invalid --bus-backend %q: must be one of %s", initBusBackend, config.BusBackendNames())
+	}
 	return nil
 }
 
@@ -244,11 +250,18 @@ func applyFlagOverrides(a *setupAnswers) {
 	if initImageTag != "" {
 		a.imageTag = initImageTag
 	}
+	if initBusBackend != "" {
+		a.busBackend = initBusBackend
+	}
 }
 
 // buildAnswersFromFlags constructs setupAnswers from CLI flags for non-interactive mode.
 func buildAnswersFromFlags(dataDir string) setupAnswers {
 	defaults := config.DefaultState()
+	busBackend := initBusBackend
+	if busBackend == "" {
+		busBackend = defaults.BusBackend
+	}
 	a := setupAnswers{
 		dir:                dataDir,
 		backendPortStr:     strconv.Itoa(initBackendPort),
@@ -258,6 +271,7 @@ func buildAnswersFromFlags(dataDir string) setupAnswers {
 		logLevel:           initLogLevel,
 		persistenceBackend: defaults.PersistenceBackend,
 		memoryBackend:      defaults.MemoryBackend,
+		busBackend:         busBackend,
 		channel:            initChannel,
 		imageTag:           initImageTag,
 	}
@@ -266,7 +280,7 @@ func buildAnswersFromFlags(dataDir string) setupAnswers {
 
 // runSetupFormWithOverrides runs the interactive form with any CLI flag values
 // pre-filled as defaults.
-func runSetupFormWithOverrides(resolvedDataDir string) (setupAnswers, error) {
+func runSetupFormWithOverrides(cmd *cobra.Command, resolvedDataDir string) (setupAnswers, error) {
 	defaults := config.DefaultState()
 	dir := defaults.DataDir
 	if resolvedDataDir != "" {
@@ -281,6 +295,7 @@ func runSetupFormWithOverrides(resolvedDataDir string) (setupAnswers, error) {
 		logLevel:           defaults.LogLevel,
 		persistenceBackend: defaults.PersistenceBackend,
 		memoryBackend:      defaults.MemoryBackend,
+		busBackend:         defaults.BusBackend,
 	}
 
 	applyFlagOverrides(&a)
@@ -319,7 +334,39 @@ func runSetupFormWithOverrides(resolvedDataDir string) (setupAnswers, error) {
 	if err := form.Run(); err != nil {
 		return a, err
 	}
+
+	// Show the bus backend picker after the main form when it was not
+	// provided via flag. Separate from the main form so the caller can
+	// see the full trade-off card for each backend without cluttering
+	// the port/sandbox flow above.
+	if initBusBackend == "" {
+		picked, err := pickBusBackend(cmd)
+		if err != nil {
+			return a, err
+		}
+		a.busBackend = picked
+	}
+
 	return a, nil
+}
+
+// pickBusBackend runs the interactive bus backend picker (or returns
+// the default when --yes / non-TTY / --bus-backend is set).
+func pickBusBackend(cmd *cobra.Command) (string, error) {
+	opts := GetGlobalOpts(cmd.Context())
+	cfg := ui.PickOneConfig{
+		Yes:    opts.Yes,
+		Quiet:  opts.Quiet,
+		Plain:  opts.Plain,
+		Stdin:  cmd.InOrStdin(),
+		Stdout: cmd.OutOrStdout(),
+	}
+	return ui.PickOne(
+		"Message bus backend",
+		"The in-process queue is faster and has zero setup. NATS JetStream adds a container but survives crashes and supports multi-process workers. See docs/design/distributed-runtime.md for the full trade-off.",
+		ui.BusBackends,
+		cfg,
+	)
 }
 
 func buildState(a setupAnswers) (config.State, error) {
@@ -355,6 +402,10 @@ func buildState(a setupAnswers) (config.State, error) {
 		channel = a.channel
 	}
 
+	busBackend := a.busBackend
+	if busBackend == "" {
+		busBackend = "internal"
+	}
 	return config.State{
 		DataDir:            dir,
 		ImageTag:           imageTag,
@@ -368,6 +419,7 @@ func buildState(a setupAnswers) (config.State, error) {
 		SettingsKey:        settingsKey,
 		PersistenceBackend: a.persistenceBackend,
 		MemoryBackend:      a.memoryBackend,
+		BusBackend:         busBackend,
 		TelemetryOptIn:     a.telemetryOptIn,
 	}, nil
 }

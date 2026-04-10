@@ -36,6 +36,7 @@ type Params struct {
 	ImageTag           string
 	BackendPort        int
 	WebPort            int
+	NatsClientPort     int
 	LogLevel           string
 	JWTSecret          string
 	SettingsKey        string
@@ -43,17 +44,23 @@ type Params struct {
 	DockerSock         string
 	PersistenceBackend string
 	MemoryBackend      string
+	BusBackend         string
 	TelemetryOptIn     bool
 	DigestPins         map[string]string // image name suffix → digest (e.g. "backend" → "sha256:abc...")
 }
 
 // ParamsFromState creates Params from a persisted State.
 func ParamsFromState(s config.State) Params {
+	busBackend := s.BusBackend
+	if busBackend == "" {
+		busBackend = "internal"
+	}
 	return Params{
 		CLIVersion:         version.Version,
 		ImageTag:           s.ImageTag,
 		BackendPort:        s.BackendPort,
 		WebPort:            s.WebPort,
+		NatsClientPort:     3003,
 		LogLevel:           s.LogLevel,
 		JWTSecret:          s.JWTSecret,
 		SettingsKey:        s.SettingsKey,
@@ -61,8 +68,15 @@ func ParamsFromState(s config.State) Params {
 		DockerSock:         s.DockerSock,
 		PersistenceBackend: s.PersistenceBackend,
 		MemoryBackend:      s.MemoryBackend,
+		BusBackend:         busBackend,
 		TelemetryOptIn:     s.TelemetryOptIn,
 	}
+}
+
+// DistributedEnabled reports whether the distributed runtime profile is
+// active (currently: bus_backend is anything other than "internal").
+func (p Params) DistributedEnabled() bool {
+	return p.BusBackend != "" && p.BusBackend != "internal"
 }
 
 // Generate renders the compose template with the given parameters.
@@ -73,8 +87,9 @@ func Generate(p Params) ([]byte, error) {
 	}
 
 	funcMap := template.FuncMap{
-		"yamlStr":   yamlStr,
-		"digestPin": digestPin(p.DigestPins),
+		"yamlStr":            yamlStr,
+		"digestPin":          digestPin(p.DigestPins),
+		"distributedEnabled": p.DistributedEnabled,
 	}
 
 	tmpl, err := template.New("compose").Funcs(funcMap).Parse(composeTmpl)
@@ -118,6 +133,12 @@ func validateParams(p Params) error {
 	}
 	if !config.IsValidMemoryBackend(p.MemoryBackend) {
 		return fmt.Errorf("invalid memory backend %q: must be one of %s", p.MemoryBackend, config.MemoryBackendNames())
+	}
+	if p.BusBackend != "" && !config.IsValidBusBackend(p.BusBackend) {
+		return fmt.Errorf("invalid bus backend %q: must be one of %s", p.BusBackend, config.BusBackendNames())
+	}
+	if p.DistributedEnabled() && (p.NatsClientPort < 1 || p.NatsClientPort > 65535) {
+		return fmt.Errorf("invalid nats client port %d: must be 1-65535", p.NatsClientPort)
 	}
 	// Cross-validate secrets: if one is set, both must be set.
 	// Both-empty is valid for development/testing (template omits env vars).
