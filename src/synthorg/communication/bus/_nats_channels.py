@@ -16,6 +16,7 @@ from synthorg.communication.bus._nats_utils import (
     SUBJECT_DIRECT_TOKEN,
     encode_token,
     raise_channel_not_found,
+    require_running,
 )
 from synthorg.communication.channel import Channel
 from synthorg.communication.enums import ChannelType
@@ -60,6 +61,11 @@ async def ensure_direct_channel(
 ) -> None:
     """Create DIRECT channel locally and in KV bucket if needed.
 
+    Args:
+        state: Shared bus state.
+        channel_name: Deterministic direct-channel name (``@a:b``).
+        pair: Sorted tuple of the two participant agent IDs.
+
     Must be called under ``state.lock``.
     """
     if channel_name in state.channels:
@@ -67,10 +73,11 @@ async def ensure_direct_channel(
         pair_set = set(pair)
         if not pair_set.issubset(set(current.subscribers)):
             new_subs = tuple(sorted(set(current.subscribers) | pair_set))
-            state.channels[channel_name] = current.model_copy(
+            updated = current.model_copy(
                 update={"subscribers": new_subs},
             )
-            await write_channel_to_kv(state, state.channels[channel_name])
+            await write_channel_to_kv(state, updated)
+            state.channels[channel_name] = updated
         return
 
     ch = Channel(
@@ -78,8 +85,8 @@ async def ensure_direct_channel(
         type=ChannelType.DIRECT,
         subscribers=pair,
     )
-    state.channels[channel_name] = ch
     await write_channel_to_kv(state, ch)
+    state.channels[channel_name] = ch
     logger.info(
         COMM_CHANNEL_CREATED,
         channel=channel_name,
@@ -91,11 +98,18 @@ async def ensure_direct_channel(
 async def create_channel(state: _NatsState, ch: Channel) -> Channel:
     """Create a new channel.
 
+    Uses an optimistic check-then-act pattern: local cache, then KV
+    bucket, then local cache again. Two processes creating the same
+    channel concurrently may both succeed at the KV write (last-write
+    wins). A future improvement could use KV CAS/revision checks for
+    cross-process atomicity.
+
     Raises:
         MessageBusNotRunningError: If not running.
         ChannelAlreadyExistsError: If the channel already exists.
     """
     async with state.lock:
+        require_running(state)
         if ch.name in state.channels:
             logger.warning(
                 COMM_CHANNEL_ALREADY_EXISTS,
@@ -122,6 +136,7 @@ async def create_channel(state: _NatsState, ch: Channel) -> Channel:
             context={"channel": ch.name},
         )
     async with state.lock:
+        require_running(state)
         if ch.name in state.channels:
             logger.warning(
                 COMM_CHANNEL_ALREADY_EXISTS,
@@ -132,8 +147,8 @@ async def create_channel(state: _NatsState, ch: Channel) -> Channel:
                 msg,
                 context={"channel": ch.name},
             )
-        state.channels[ch.name] = ch
         await write_channel_to_kv(state, ch)
+        state.channels[ch.name] = ch
     logger.info(
         COMM_CHANNEL_CREATED,
         channel=ch.name,

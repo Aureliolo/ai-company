@@ -15,7 +15,11 @@ from synthorg.communication.bus._nats_channels import (
     subject_for_channel,
 )
 from synthorg.communication.bus._nats_state import _NatsState  # noqa: TC001
-from synthorg.communication.bus._nats_utils import DM_SEPARATOR, require_running
+from synthorg.communication.bus._nats_utils import (
+    DM_SEPARATOR,
+    MAX_BUS_PAYLOAD_BYTES,
+    require_running,
+)
 from synthorg.communication.errors import MessageBusNotRunningError
 from synthorg.communication.message import Message
 from synthorg.observability import get_logger
@@ -63,6 +67,13 @@ async def publish(state: _NatsState, message: Message) -> None:
     subject = subject_for_channel(prefix, channel)
 
     payload = serialize_message(message)
+    if len(payload) > MAX_BUS_PAYLOAD_BYTES:
+        msg = (
+            f"Serialized message exceeds bus payload limit: "
+            f"{len(payload)} > {MAX_BUS_PAYLOAD_BYTES}"
+        )
+        logger.warning(COMM_SEND_DIRECT_INVALID, error=msg, channel=channel_name)
+        raise ValueError(msg)
     await publish_with_ack(state, subject, payload)
 
     logger.info(
@@ -107,6 +118,13 @@ async def send_direct(
     prefix = state.nats_config.stream_name_prefix
     subject = _direct_subject(prefix, channel_name)
     payload = serialize_message(message)
+    if len(payload) > MAX_BUS_PAYLOAD_BYTES:
+        msg = (
+            f"Serialized direct message exceeds bus payload limit: "
+            f"{len(payload)} > {MAX_BUS_PAYLOAD_BYTES}"
+        )
+        logger.warning(COMM_SEND_DIRECT_INVALID, error=msg, channel=channel_name)
+        raise ValueError(msg)
     await publish_with_ack(state, subject, payload)
 
     logger.info(

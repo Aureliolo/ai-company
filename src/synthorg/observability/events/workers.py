@@ -30,6 +30,7 @@ WORKERS_DISPATCHER_PUBLISH_EXHAUSTED: Final[str] = (
 WORKERS_DISPATCHER_CLAIM_ENQUEUED: Final[str] = "workers.dispatcher.claim_enqueued"
 
 # Task queue client
+WORKERS_TASK_QUEUE_CONNECT_FAILED: Final[str] = "workers.task_queue.connect_failed"
 WORKERS_TASK_QUEUE_UNSUBSCRIBE_FAILED: Final[str] = (
     "workers.task_queue.unsubscribe_failed"
 )

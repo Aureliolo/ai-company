@@ -8,6 +8,7 @@ can import it directly.
 See ``docs/design/distributed-runtime.md`` for the overall design.
 """
 
+from synthorg.communication.bus._nats_utils import redact_url
 from synthorg.communication.bus.memory import InMemoryMessageBus
 from synthorg.communication.bus_protocol import MessageBus
 from synthorg.communication.config import MessageBusConfig  # noqa: TC001
@@ -21,6 +22,7 @@ __all__ = (
     "InMemoryMessageBus",
     "MessageBus",
     "build_message_bus",
+    "redact_url",
 )
 
 

@@ -13,6 +13,7 @@ from synthorg.communication.bus._nats_channels import (
 )
 from synthorg.communication.bus._nats_publish import deserialize_message
 from synthorg.communication.bus._nats_state import _NatsState  # noqa: TC001
+from synthorg.communication.bus.errors import BusStreamError
 from synthorg.communication.message import Message  # noqa: TC001
 from synthorg.observability import get_logger
 from synthorg.observability.events.communication import (
@@ -58,7 +59,10 @@ async def create_history_scan_consumer(
             phase="subscribe",
             error=str(exc),
         )
-        return None
+        msg = f"History scan consumer creation failed for {subject}: {exc}"
+        raise BusStreamError(
+            msg, context={"stream": stream_name, "subject": subject}
+        ) from exc
 
 
 async def collect_history_batches(
@@ -83,7 +87,10 @@ async def collect_history_batches(
                 phase="fetch",
                 error=str(exc),
             )
-            return parsed_messages
+            msg = f"History batch fetch failed for {subject}: {exc}"
+            raise BusStreamError(
+                msg, context={"stream": stream_name, "subject": subject}
+            ) from exc
         if not batch:
             return parsed_messages
         for raw in batch:

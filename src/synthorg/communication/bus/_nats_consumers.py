@@ -36,10 +36,11 @@ async def create_pull_consumer(
     channel_name: str,
     subscriber_id: str,
     channel: Channel,
-) -> None:
+) -> Any:
     """Create a durable pull consumer for (channel, subscriber).
 
-    Must be called under ``state.lock``.
+    Returns the subscription object. Does NOT acquire ``state.lock``
+    so callers can perform the network I/O outside the lock.
     """
     from nats.js.api import ConsumerConfig  # noqa: PLC0415
 
@@ -57,13 +58,12 @@ async def create_pull_consumer(
         max_deliver=1,
         filter_subject=subject,
     )
-    sub = await state.js.pull_subscribe(
+    return await state.js.pull_subscribe(
         subject=subject,
         durable=durable,
         stream=state.stream_name,
         config=consumer_config,
     )
-    state.subscriptions[(channel_name, subscriber_id)] = sub
 
 
 async def subscribe(
@@ -75,27 +75,33 @@ async def subscribe(
     async with state.lock:
         require_running(state)
     await resolve_channel_or_raise(state, channel_name)
+
+    # Snapshot state under lock, then release for network I/O.
     async with state.lock:
         require_running(state)
         channel = state.channels[channel_name]
         state.known_agents.add(subscriber_id)
-
         key = (channel_name, subscriber_id)
-        if key not in state.subscriptions:
-            await create_pull_consumer(
-                state,
-                channel_name,
-                subscriber_id,
-                channel,
-            )
+        needs_consumer = key not in state.subscriptions
 
+    # Network I/O outside the lock so other bus operations are not blocked.
+    sub = None
+    if needs_consumer:
+        sub = await create_pull_consumer(state, channel_name, subscriber_id, channel)
+
+    # Store results under lock.
+    async with state.lock:
+        if sub is not None and key not in state.subscriptions:
+            state.subscriptions[key] = sub
+
+        channel = state.channels[channel_name]
         if subscriber_id not in channel.subscribers:
             new_subs = (*channel.subscribers, subscriber_id)
             updated = channel.model_copy(
                 update={"subscribers": new_subs},
             )
-            state.channels[channel_name] = updated
             await write_channel_to_kv(state, updated)
+            state.channels[channel_name] = updated
 
     logger.info(
         COMM_SUBSCRIPTION_CREATED,

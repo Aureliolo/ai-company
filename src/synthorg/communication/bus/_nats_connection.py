@@ -189,7 +189,7 @@ async def stop(state: _NatsState) -> None:
         )
     state.in_flight_fetches.clear()
 
-    for key, sub in state.subscriptions.items():
+    for key, sub in list(state.subscriptions.items()):
         try:
             await sub.unsubscribe()
         except asyncio.CancelledError:

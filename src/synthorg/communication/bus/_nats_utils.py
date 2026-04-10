@@ -1,8 +1,12 @@
-"""Pure utility functions and constants for the NATS bus submodules.
+"""Utility functions and constants for the NATS bus submodules.
 
-All functions in this module are free of NATS state -- they operate on
-primitive values or asyncio tasks. Imported directly by higher-level
-submodules and by external code such as ``workers/claim.py``.
+Most functions in this module are pure (encoding, URL redaction,
+task cancellation) and operate on primitive values or asyncio tasks.
+The exception is :func:`require_running`, which accepts a
+``_NatsState`` instance to validate bus liveness.
+
+``redact_url`` is re-exported via ``synthorg.communication.bus`` for
+use by external code such as ``workers/claim.py``.
 """
 
 import asyncio

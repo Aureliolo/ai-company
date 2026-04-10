@@ -4,11 +4,13 @@ Handles reading, writing, and scanning the KV bucket that stores
 channel definitions so they are discoverable across processes.
 """
 
+import asyncio
 import json
 from typing import Any
 
 from synthorg.communication.bus._nats_state import _NatsState  # noqa: TC001
 from synthorg.communication.bus._nats_utils import decode_token, encode_token
+from synthorg.communication.bus.errors import BusStreamError
 from synthorg.communication.channel import Channel
 from synthorg.observability import get_logger
 from synthorg.observability.events.communication import (
@@ -66,7 +68,8 @@ async def fetch_kv_entry(
             channel=channel_name,
             error=str(exc),
         )
-        return None
+        msg = f"KV transport error for channel {channel_name!r}: {exc}"
+        raise BusStreamError(msg, context={"channel": channel_name}) from exc
     if entry is None or entry.value is None:
         return None
     return entry
@@ -108,7 +111,11 @@ def decode_kv_channel(
 
 
 async def scan_kv_channels(state: _NatsState) -> list[Channel]:
-    """Scan the KV bucket for all persisted channels."""
+    """Scan the KV bucket for all persisted channels.
+
+    Raises:
+        BusStreamError: If the KV bucket cannot be listed.
+    """
     if state.kv is None:
         return []
     try:
@@ -120,11 +127,13 @@ async def scan_kv_channels(state: _NatsState) -> list[Channel]:
             error=str(exc),
             phase="list_channels_scan",
         )
-        return []
-    channels: list[Channel] = []
+        msg = f"KV scan failed: {exc}"
+        raise BusStreamError(msg, context={"phase": "list_channels_scan"}) from exc
+
+    decoded_keys: list[tuple[str, str]] = []
     for key in keys:
         try:
-            decoded_name = decode_token(key)
+            decoded_keys.append((key, decode_token(key)))
         except Exception as exc:
             logger.warning(
                 COMM_BUS_KV_READ_FAILED,
@@ -132,9 +141,14 @@ async def scan_kv_channels(state: _NatsState) -> list[Channel]:
                 error=str(exc),
                 phase="decode_token",
             )
-            continue
-        entry = await fetch_kv_entry(state, decoded_name)
-        if entry is None:
+
+    entries = await asyncio.gather(
+        *(fetch_kv_entry(state, name) for _, name in decoded_keys),
+        return_exceptions=True,
+    )
+    channels: list[Channel] = []
+    for (_, decoded_name), entry in zip(decoded_keys, entries, strict=True):
+        if isinstance(entry, Exception) or entry is None:
             continue
         ch = decode_kv_channel(decoded_name, entry)
         if ch is not None:

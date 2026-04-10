@@ -2,9 +2,8 @@
 
 These helpers are pure functions (subject encoding, URL redaction,
 task cancellation) that can be exercised without a live NATS
-connection. Importing the module requires ``nats-py`` to be
-installed, so these tests assume the ``distributed`` extra is
-present in the dev/test environment.
+connection. The ``_nats_utils`` module does not import ``nats-py``
+at runtime, so these tests work without the ``distributed`` extra.
 """
 
 import asyncio
@@ -73,7 +72,7 @@ class TestEncodeToken:
 
 
 class TestRedactUrl:
-    """``_redact_url`` strips credentials before logging a NATS URL."""
+    """``redact_url`` strips credentials before logging a NATS URL."""
 
     @pytest.mark.unit
     def test_passthrough_without_credentials(self) -> None:
@@ -103,7 +102,7 @@ class TestRedactUrl:
 
 
 class TestCancelIfPending:
-    """``_cancel_if_pending`` cancels a task and swallows cancellation."""
+    """``cancel_if_pending`` cancels a task and swallows cancellation."""
 
     @pytest.mark.unit
     async def test_noop_on_completed_task(self) -> None:
