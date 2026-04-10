@@ -1,10 +1,14 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { Activity, AlertTriangle } from 'lucide-react'
 
 import {
+  cancelSimulation,
+  getSimulationReport,
   listSimulations,
+  type SimulationReport,
   type SimulationStatus,
 } from '@/api/endpoints/clients'
+import { Button } from '@/components/ui/button'
 import { EmptyState } from '@/components/ui/empty-state'
 import { MetricCard } from '@/components/ui/metric-card'
 import { SectionCard } from '@/components/ui/section-card'
@@ -25,21 +29,46 @@ export default function SimulationDashboardPage() {
   const [runs, setRuns] = useState<readonly SimulationStatus[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [report, setReport] = useState<SimulationReport | null>(null)
+
+  const refresh = useCallback(async () => {
+    try {
+      const result = await listSimulations({ limit: 100 })
+      setRuns(result.data)
+      setError(null)
+    } catch (err) {
+      log.error('list_simulations_failed', err)
+      setError('Failed to load simulation runs.')
+    } finally {
+      setLoading(false)
+    }
+  }, [])
 
   useEffect(() => {
-    const load = async () => {
+    void refresh()
+  }, [refresh])
+
+  const handleCancel = useCallback(
+    async (simulationId: string) => {
       try {
-        const result = await listSimulations({ limit: 100 })
-        setRuns(result.data)
-        setError(null)
+        await cancelSimulation(simulationId)
+        await refresh()
       } catch (err) {
-        log.error('list_simulations_failed', err)
-        setError('Failed to load simulation runs.')
-      } finally {
-        setLoading(false)
+        log.error('cancel_simulation_failed', err)
+        setError('Failed to cancel simulation.')
       }
+    },
+    [refresh],
+  )
+
+  const handleShowReport = useCallback(async (simulationId: string) => {
+    try {
+      const fetched = await getSimulationReport(simulationId, 'summary')
+      setReport(fetched)
+    } catch (err) {
+      log.error('get_simulation_report_failed', err)
+      setError('Failed to load simulation report.')
     }
-    void load()
   }, [])
 
   if (loading && runs.length === 0) {
@@ -104,29 +133,64 @@ export default function SimulationDashboardPage() {
       ) : (
         <SectionCard title="Recent runs" icon={Activity}>
           <ul className="space-y-2">
-            {runs.map((run) => (
-              <li
-                key={run.simulation_id}
-                className="flex items-center justify-between rounded-md border border-border bg-card-hover p-card text-sm"
-              >
-                <div>
-                  <div className="font-medium text-foreground">
-                    {run.simulation_id}
-                  </div>
-                  <div className="text-xs text-text-secondary">
-                    {run.config.project_id} ·{' '}
-                    {run.config.rounds} round(s)
-                  </div>
-                </div>
-                <span
-                  className="rounded-full border border-border px-2 py-1 text-xs text-foreground"
-                  aria-label={`Status: ${run.status}`}
+            {runs.map((run) => {
+              const terminal = ['completed', 'cancelled', 'failed'].includes(
+                run.status,
+              )
+              return (
+                <li
+                  key={run.simulation_id}
+                  className="space-y-2 rounded-md border border-border bg-card-hover p-card text-sm"
                 >
-                  {run.status}
-                </span>
-              </li>
-            ))}
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <div className="font-medium text-foreground">
+                        {run.simulation_id}
+                      </div>
+                      <div className="text-xs text-text-secondary">
+                        {run.config.project_id} · {run.config.rounds} round(s)
+                      </div>
+                    </div>
+                    <span
+                      className="rounded-full border border-border px-2 py-1 text-xs text-foreground"
+                      aria-label={`Status: ${run.status}`}
+                    >
+                      {run.status}
+                    </span>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => void handleShowReport(run.simulation_id)}
+                    >
+                      Report
+                    </Button>
+                    {!terminal && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => void handleCancel(run.simulation_id)}
+                      >
+                        Cancel
+                      </Button>
+                    )}
+                  </div>
+                </li>
+              )
+            })}
           </ul>
+        </SectionCard>
+      )}
+
+      {report && (
+        <SectionCard
+          title={`Report: ${report.simulation_id}`}
+          icon={Activity}
+        >
+          <pre className="overflow-auto rounded-md border border-border bg-card-hover p-card text-xs text-foreground">
+            {JSON.stringify(report, null, 2)}
+          </pre>
         </SectionCard>
       )}
     </div>

@@ -41,6 +41,19 @@ class RejectionPayload(BaseModel):
     reason: NotBlankStr = Field(description="Reason for rejection")
 
 
+class ScopingPayload(BaseModel):
+    """Payload carrying scoping notes and an optional refined requirement."""
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+
+    notes: NotBlankStr = Field(description="Scoping notes from the reviewer")
+    refined_title: NotBlankStr | None = Field(default=None)
+    refined_description: NotBlankStr | None = Field(default=None)
+    refined_acceptance_criteria: tuple[NotBlankStr, ...] | None = Field(
+        default=None,
+    )
+
+
 def _publish(
     request: Request[Any, Any, Any],
     event_type: WsEventType,
@@ -122,14 +135,24 @@ class RequestController(Controller):
         _publish(request, WsEventType.REQUEST_SUBMITTED, client_request)
         return ApiResponse(data=client_request)
 
-    @post("/{request_id:str}/approve", guards=[require_write_access])
-    async def approve_request(
+    @post("/{request_id:str}/scope", guards=[require_write_access])
+    async def scope_request(
         self,
         request: Request[Any, Any, Any],
         state: State,
         request_id: str,
+        data: ScopingPayload,
     ) -> ApiResponse[ClientRequest]:
-        """Walk the request through full intake processing."""
+        """Walk a request into SCOPING status with scoping notes.
+
+        Accepts requests in ``SUBMITTED`` (walked through
+        ``TRIAGING``) or ``TRIAGING`` state. Rejects any other
+        source status with a 409.
+
+        Raises:
+            NotFoundError: If the request is not known.
+            ConflictError: If the request is not in a scopable state.
+        """
         app_state: AppState = state.app_state
         sim_state = app_state.client_simulation_state
         try:
@@ -137,7 +160,70 @@ class RequestController(Controller):
         except KeyError as exc:
             msg = f"Request {request_id!r} not found"
             raise NotFoundError(msg) from exc
-        if stored.status is not RequestStatus.SUBMITTED:
+        if stored.status not in {RequestStatus.SUBMITTED, RequestStatus.TRIAGING}:
+            msg = (
+                f"Request {request_id!r} cannot be scoped from "
+                f"status {stored.status.value!r}"
+            )
+            raise ConflictError(msg)
+        metadata = dict(stored.metadata)
+        metadata["scoping_notes"] = data.notes
+        requirement = stored.requirement
+        overrides: dict[str, Any] = {}
+        if (
+            data.refined_title is not None
+            or data.refined_description is not None
+            or data.refined_acceptance_criteria is not None
+        ):
+            overrides["requirement"] = requirement.model_copy(
+                update={
+                    k: v
+                    for k, v in {
+                        "title": data.refined_title,
+                        "description": data.refined_description,
+                        "acceptance_criteria": data.refined_acceptance_criteria,
+                    }.items()
+                    if v is not None
+                },
+            )
+        walked = stored
+        if walked.status is RequestStatus.SUBMITTED:
+            walked = walked.with_status(RequestStatus.TRIAGING)
+        scoped = walked.with_status(
+            RequestStatus.SCOPING,
+            metadata=metadata,
+            **overrides,
+        )
+        await sim_state.request_store.save(scoped)
+        _publish(request, WsEventType.REQUEST_SCOPED, scoped)
+        return ApiResponse(data=scoped)
+
+    @post("/{request_id:str}/approve", guards=[require_write_access])
+    async def approve_request(
+        self,
+        request: Request[Any, Any, Any],
+        state: State,
+        request_id: str,
+    ) -> ApiResponse[ClientRequest]:
+        """Walk a request into the ``TASK_CREATED`` terminal state.
+
+        Accepts requests in ``SUBMITTED`` (runs the full intake
+        engine) or ``SCOPING`` (finalizes after a prior manual
+        scope call). Any other status produces a 409.
+
+        Raises:
+            NotFoundError: If the request is not known.
+            ConflictError: If the request cannot be approved from
+                its current state or no intake engine is configured.
+        """
+        app_state: AppState = state.app_state
+        sim_state = app_state.client_simulation_state
+        try:
+            stored = await sim_state.request_store.get(request_id)
+        except KeyError as exc:
+            msg = f"Request {request_id!r} not found"
+            raise NotFoundError(msg) from exc
+        if stored.status not in {RequestStatus.SUBMITTED, RequestStatus.SCOPING}:
             msg = (
                 f"Request {request_id!r} cannot be approved from "
                 f"status {stored.status.value!r}"
@@ -146,7 +232,10 @@ class RequestController(Controller):
         if sim_state.intake_engine is None:
             msg = "Intake engine not configured"
             raise ConflictError(msg)
-        final, _ = await sim_state.intake_engine.process(stored)
+        if stored.status is RequestStatus.SUBMITTED:
+            final, _ = await sim_state.intake_engine.process(stored)
+        else:
+            final, _ = await sim_state.intake_engine.finalize_scoped(stored)
         await sim_state.request_store.save(final)
         _publish(request, WsEventType.REQUEST_APPROVED, final)
         return ApiResponse(data=final)

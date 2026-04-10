@@ -5,11 +5,45 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 
 from synthorg.client.models import (
+    ClientFeedback,
     ClientRequest,
     SimulationConfig,
     SimulationMetrics,
 )
 from synthorg.core.types import NotBlankStr  # noqa: TC001
+
+
+class FeedbackStore:
+    """Thread-safe in-memory store for :class:`ClientFeedback`.
+
+    Indexed by ``client_id`` so ``/clients/{id}/satisfaction`` can
+    return the full review history for a single client without
+    scanning every entry.
+    """
+
+    def __init__(self) -> None:
+        """Initialize an empty store."""
+        self._lock = asyncio.Lock()
+        self._by_client: dict[str, list[ClientFeedback]] = {}
+
+    async def record(self, feedback: ClientFeedback) -> None:
+        """Append a feedback entry for its client."""
+        async with self._lock:
+            bucket = self._by_client.setdefault(feedback.client_id, [])
+            bucket.append(feedback)
+
+    async def list_for_client(
+        self,
+        client_id: str,
+    ) -> tuple[ClientFeedback, ...]:
+        """Return all feedback entries recorded for a client."""
+        async with self._lock:
+            return tuple(self._by_client.get(client_id, ()))
+
+    async def clear(self, client_id: str) -> None:
+        """Remove all feedback entries for a client (no-op if absent)."""
+        async with self._lock:
+            self._by_client.pop(client_id, None)
 
 
 class RequestStore:
@@ -117,6 +151,6 @@ class SimulationStore:
                 record.error = error
             if status == "running" and record.started_at is None:
                 record.started_at = datetime.now(UTC)
-            if status in {"completed", "stopped", "failed"}:
+            if status in {"completed", "cancelled", "failed"}:
                 record.completed_at = datetime.now(UTC)
             return record

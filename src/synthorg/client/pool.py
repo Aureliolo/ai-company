@@ -27,6 +27,7 @@ class ClientPool:
         self._lock = asyncio.Lock()
         self._clients: dict[str, ClientInterface] = {}
         self._profiles: dict[str, ClientProfile] = {}
+        self._active: dict[str, bool] = {}
 
     async def add(
         self,
@@ -43,6 +44,7 @@ class ClientPool:
         async with self._lock:
             self._profiles[profile.client_id] = profile
             self._clients[profile.client_id] = client
+            self._active.setdefault(profile.client_id, True)
 
     async def remove(self, client_id: str) -> ClientProfile:
         """Remove a client by id and return its profile.
@@ -56,7 +58,47 @@ class ClientPool:
                 raise KeyError(msg)
             profile = self._profiles.pop(client_id)
             self._clients.pop(client_id, None)
+            self._active.pop(client_id, None)
             return profile
+
+    async def deactivate(self, client_id: str) -> ClientProfile:
+        """Mark a client inactive without removing it from the pool.
+
+        Inactive clients remain visible to ``get_profile`` but are
+        excluded from ``list_clients`` and ``list_profiles`` so the
+        runner and review stages stop selecting them. Idempotent --
+        deactivating an already-inactive client is a no-op.
+
+        Raises:
+            KeyError: If the client id is not known.
+        """
+        async with self._lock:
+            if client_id not in self._profiles:
+                msg = f"Client {client_id!r} not found"
+                raise KeyError(msg)
+            self._active[client_id] = False
+            return self._profiles[client_id]
+
+    async def reactivate(self, client_id: str) -> ClientProfile:
+        """Re-enable a previously deactivated client.
+
+        Raises:
+            KeyError: If the client id is not known.
+        """
+        async with self._lock:
+            if client_id not in self._profiles:
+                msg = f"Client {client_id!r} not found"
+                raise KeyError(msg)
+            self._active[client_id] = True
+            return self._profiles[client_id]
+
+    async def is_active(self, client_id: str) -> bool:
+        """Return whether the client is currently active."""
+        async with self._lock:
+            if client_id not in self._profiles:
+                msg = f"Client {client_id!r} not found"
+                raise KeyError(msg)
+            return self._active.get(client_id, True)
 
     async def get_profile(self, client_id: str) -> ClientProfile:
         """Return the stored profile for ``client_id``."""
@@ -66,20 +108,44 @@ class ClientPool:
                 raise KeyError(msg)
             return self._profiles[client_id]
 
-    async def list_profiles(self) -> tuple[ClientProfile, ...]:
-        """Return a snapshot tuple of all stored profiles."""
+    async def list_profiles(
+        self,
+        *,
+        include_inactive: bool = False,
+    ) -> tuple[ClientProfile, ...]:
+        """Return a snapshot tuple of stored profiles.
+
+        Args:
+            include_inactive: Include deactivated profiles. Defaults
+                to excluding them so list endpoints show the "live"
+                pool by default.
+        """
         async with self._lock:
-            return tuple(self._profiles.values())
+            if include_inactive:
+                return tuple(self._profiles.values())
+            return tuple(
+                profile
+                for cid, profile in self._profiles.items()
+                if self._active.get(cid, True)
+            )
 
     async def list_clients(self) -> tuple[ClientInterface, ...]:
-        """Return a snapshot tuple of all client instances."""
+        """Return active client instances only.
+
+        Inactive clients are excluded so the simulation runner and
+        review stages never select a deactivated persona.
+        """
         async with self._lock:
-            return tuple(self._clients.values())
+            return tuple(
+                client
+                for cid, client in self._clients.items()
+                if self._active.get(cid, True)
+            )
 
     async def size(self) -> int:
-        """Return the number of clients in the pool."""
+        """Return the number of active clients in the pool."""
         async with self._lock:
-            return len(self._clients)
+            return sum(1 for cid in self._clients if self._active.get(cid, True))
 
 
 def _client_profile(client: ClientInterface) -> ClientProfile | None:

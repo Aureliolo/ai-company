@@ -143,6 +143,31 @@ export async function deleteClient(clientId: string): Promise<void> {
   await apiClient.delete(`/clients/${encodeURIComponent(clientId)}`)
 }
 
+export interface SatisfactionPoint {
+  feedback_id: string
+  task_id: string
+  accepted: boolean
+  score: number
+  created_at: string
+}
+
+export interface SatisfactionHistory {
+  client_id: string
+  total_reviews: number
+  acceptance_rate: number
+  average_score: number
+  history: readonly SatisfactionPoint[]
+}
+
+export async function getClientSatisfaction(
+  clientId: string,
+): Promise<SatisfactionHistory> {
+  const response = await apiClient.get<ApiResponse<SatisfactionHistory>>(
+    `/clients/${encodeURIComponent(clientId)}/satisfaction`,
+  )
+  return unwrap(response)
+}
+
 // ── Requests ────────────────────────────────────────────────────
 
 export interface SubmitRequestBody {
@@ -195,6 +220,24 @@ export async function rejectRequest(
   return unwrap(response)
 }
 
+export interface ScopeRequestBody {
+  notes: string
+  refined_title?: string
+  refined_description?: string
+  refined_acceptance_criteria?: readonly string[]
+}
+
+export async function scopeRequest(
+  requestId: string,
+  data: ScopeRequestBody,
+): Promise<ClientRequest> {
+  const response = await apiClient.post<ApiResponse<ClientRequest>>(
+    `/requests/${encodeURIComponent(requestId)}/scope`,
+    data,
+  )
+  return unwrap(response)
+}
+
 // ── Simulations ─────────────────────────────────────────────────
 
 export async function listSimulations(
@@ -226,11 +269,31 @@ export async function startSimulation(
   return unwrap(response)
 }
 
-export async function stopSimulation(
+export async function cancelSimulation(
   simulationId: string,
 ): Promise<SimulationStatus> {
   const response = await apiClient.post<ApiResponse<SimulationStatus>>(
-    `/simulations/${encodeURIComponent(simulationId)}/stop`,
+    `/simulations/${encodeURIComponent(simulationId)}/cancel`,
+  )
+  return unwrap(response)
+}
+
+export interface SimulationReport {
+  format: string
+  simulation_id: string
+  status: string
+  totals: Record<string, number>
+  rates: Record<string, number>
+  [key: string]: unknown
+}
+
+export async function getSimulationReport(
+  simulationId: string,
+  fmt: 'summary' | 'detailed' = 'summary',
+): Promise<SimulationReport> {
+  const response = await apiClient.get<ApiResponse<SimulationReport>>(
+    `/simulations/${encodeURIComponent(simulationId)}/report`,
+    { params: { fmt } },
   )
   return unwrap(response)
 }
@@ -242,6 +305,35 @@ export async function getReviewPipeline(
 ): Promise<PipelineResult> {
   const response = await apiClient.get<ApiResponse<PipelineResult>>(
     `/reviews/${encodeURIComponent(taskId)}/pipeline`,
+  )
+  return unwrap(response)
+}
+
+export type StageVerdict = 'pass' | 'fail' | 'skip'
+
+export interface StageDecisionBody {
+  verdict: StageVerdict
+  reason?: string
+  decided_by: string
+}
+
+export interface StageDecisionResult {
+  task_id: string
+  stage_name: string
+  stage_result: ReviewStageResult
+  pipeline_result: PipelineResult
+}
+
+export async function decideReviewStage(
+  taskId: string,
+  stageName: string,
+  data: StageDecisionBody,
+): Promise<StageDecisionResult> {
+  const response = await apiClient.post<ApiResponse<StageDecisionResult>>(
+    `/reviews/${encodeURIComponent(taskId)}/stages/${encodeURIComponent(
+      stageName,
+    )}/decide`,
+    data,
   )
   return unwrap(response)
 }

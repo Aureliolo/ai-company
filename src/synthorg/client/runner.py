@@ -1,10 +1,12 @@
 """Batch simulation runner."""
 
 import asyncio
+from collections.abc import Awaitable, Callable
 from typing import Any
 
 from synthorg.client.config import SimulationRunnerConfig  # noqa: TC001
 from synthorg.client.models import (
+    ClientFeedback,
     ClientRequest,
     GenerationContext,
     ReviewContext,
@@ -30,6 +32,8 @@ from synthorg.observability.events.client import (
     SIMULATION_RUN_STARTED,
 )
 
+FeedbackSink = Callable[[ClientFeedback], Awaitable[None]]
+
 logger = get_logger(__name__)
 
 
@@ -49,6 +53,7 @@ class SimulationRunner:
         config: SimulationRunnerConfig,
         intake_engine: IntakeEngine,
         report_strategy: ReportStrategy | None = None,
+        feedback_sink: FeedbackSink | None = None,
     ) -> None:
         """Initialize the simulation runner.
 
@@ -57,10 +62,15 @@ class SimulationRunner:
             intake_engine: Intake engine processing each request.
             report_strategy: Optional report strategy for
                 producing a final report dict.
+            feedback_sink: Optional async callback invoked for every
+                :class:`ClientFeedback` emitted during review --
+                used by the API layer to populate the per-client
+                satisfaction history.
         """
         self._config = config
         self._intake_engine = intake_engine
         self._report_strategy = report_strategy
+        self._feedback_sink = feedback_sink
 
     async def run(
         self,
@@ -296,6 +306,8 @@ class SimulationRunner:
                 task_id=result.task_id,
                 accepted=feedback.accepted,
             )
+            if self._feedback_sink is not None:
+                await self._feedback_sink(feedback)
             return feedback.accepted
 
     @staticmethod

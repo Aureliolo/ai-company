@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useParams } from 'react-router'
 import {
   AlertTriangle,
@@ -9,10 +9,13 @@ import {
 } from 'lucide-react'
 
 import {
+  decideReviewStage,
   getReviewPipeline,
   type PipelineResult,
   type ReviewStageResult,
+  type StageVerdict,
 } from '@/api/endpoints/clients'
+import { Button } from '@/components/ui/button'
 import { SectionCard } from '@/components/ui/section-card'
 import { SkeletonCard } from '@/components/ui/skeleton'
 import { createLogger } from '@/lib/logger'
@@ -44,6 +47,35 @@ export default function ReviewPipelinePage() {
   const [pipeline, setPipeline] = useState<PipelineResult | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [decisionNotice, setDecisionNotice] = useState<string | null>(null)
+
+  const handleDecide = useCallback(
+    async (stageName: string, verdict: StageVerdict) => {
+      if (!taskId) return
+      try {
+        const result = await decideReviewStage(taskId, stageName, {
+          verdict,
+          decided_by: 'dashboard-operator',
+          reason: `Manual ${verdict} from dashboard`,
+        })
+        setDecisionNotice(
+          `Recorded ${verdict.toUpperCase()} for ${stageName}`,
+        )
+        setPipeline((prev) =>
+          prev
+            ? {
+                ...prev,
+                final_verdict: result.pipeline_result.final_verdict,
+              }
+            : prev,
+        )
+      } catch (err) {
+        log.error('decide_stage_failed', err)
+        setError('Failed to record stage decision.')
+      }
+    },
+    [taskId],
+  )
 
   useEffect(() => {
     if (!taskId) {
@@ -120,6 +152,15 @@ export default function ReviewPipelinePage() {
       </SectionCard>
 
       <SectionCard title="Stage breakdown" icon={ShieldCheck}>
+        {decisionNotice && (
+          <div
+            role="status"
+            aria-live="polite"
+            className="mb-card rounded-md border border-success/30 bg-success/5 p-card text-sm text-success"
+          >
+            {decisionNotice}
+          </div>
+        )}
         <ul className="space-y-3">
           {pipeline.stage_results.map((stage) => (
             <li
@@ -138,6 +179,22 @@ export default function ReviewPipelinePage() {
               {stage.reason && (
                 <p className="mt-2 text-text-secondary">{stage.reason}</p>
               )}
+              <div className="mt-2 flex flex-wrap gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => void handleDecide(stage.stage_name, 'pass')}
+                >
+                  Override pass
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => void handleDecide(stage.stage_name, 'fail')}
+                >
+                  Override fail
+                </Button>
+              </div>
             </li>
           ))}
         </ul>

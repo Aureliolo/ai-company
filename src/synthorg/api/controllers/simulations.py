@@ -21,6 +21,8 @@ from synthorg.client.models import (
     SimulationConfig,  # noqa: TC001
     SimulationMetrics,  # noqa: TC001
 )
+from synthorg.client.report.detailed import DetailedReport
+from synthorg.client.report.summary import SummaryReport
 from synthorg.client.runner import SimulationRunner
 from synthorg.client.store import SimulationRecord
 from synthorg.observability import get_logger
@@ -112,6 +114,7 @@ async def _run_in_background(
             review_timeout_sec=30.0,
         ),
         intake_engine=sim_state.intake_engine,
+        feedback_sink=sim_state.feedback_store.record,
     )
     try:
         metrics, _ = await runner.run(
@@ -205,24 +208,29 @@ class SimulationController(Controller):
             event = (
                 WsEventType.SIMULATION_COMPLETED
                 if final.status == "completed"
-                else WsEventType.SIMULATION_STOPPED
+                else WsEventType.SIMULATION_CANCELLED
             )
             _publish_event(request, event, final)
 
         asyncio.create_task(runner_task())  # noqa: RUF006
         return ApiResponse(data=_to_response(record))
 
-    @post("/{simulation_id:str}/stop", guards=[require_write_access])
-    async def stop_simulation(
+    @post("/{simulation_id:str}/cancel", guards=[require_write_access])
+    async def cancel_simulation(
         self,
         request: Request[Any, Any, Any],
         state: State,
         simulation_id: str,
     ) -> ApiResponse[SimulationStatusResponse]:
-        """Mark a simulation run as stopped.
+        """Mark a simulation run as cancelled.
 
-        The in-memory runner does not support cooperative cancellation
-        yet, so this is a soft stop that flips the status flag.
+        The in-memory runner does not support cooperative
+        cancellation yet, so this is a soft cancel that flips the
+        status flag. Already-terminal runs produce a 409.
+
+        Raises:
+            NotFoundError: If the simulation id is not known.
+            ConflictError: If the run is already in a terminal state.
         """
         app_state: AppState = state.app_state
         sim_state = app_state.client_simulation_state
@@ -231,12 +239,49 @@ class SimulationController(Controller):
         except KeyError as exc:
             msg = f"Simulation {simulation_id!r} not found"
             raise NotFoundError(msg) from exc
-        if record.status in {"completed", "stopped", "failed"}:
+        if record.status in {"completed", "cancelled", "failed"}:
             msg = f"Simulation already {record.status}"
             raise ConflictError(msg)
         updated = await sim_state.simulation_store.update_status(
             simulation_id,
-            status="stopped",
+            status="cancelled",
         )
-        _publish_event(request, WsEventType.SIMULATION_STOPPED, updated)
+        _publish_event(request, WsEventType.SIMULATION_CANCELLED, updated)
         return ApiResponse(data=_to_response(updated))
+
+    @get("/{simulation_id:str}/report")
+    async def get_report(
+        self,
+        state: State,
+        simulation_id: str,
+        fmt: str = "summary",
+    ) -> ApiResponse[dict[str, Any]]:
+        """Return a generated report for a simulation run.
+
+        Args:
+            state: Injected app state.
+            simulation_id: Id of the run to report on.
+            fmt: Report format -- ``summary`` (default) or
+                ``detailed``.
+
+        Raises:
+            NotFoundError: If the simulation id is not known.
+            ConflictError: If ``fmt`` is not a supported format.
+        """
+        app_state: AppState = state.app_state
+        sim_state = app_state.client_simulation_state
+        try:
+            record = await sim_state.simulation_store.get(simulation_id)
+        except KeyError as exc:
+            msg = f"Simulation {simulation_id!r} not found"
+            raise NotFoundError(msg) from exc
+        if fmt == "summary":
+            payload = await SummaryReport().generate_report(record.metrics)
+        elif fmt == "detailed":
+            payload = await DetailedReport().generate_report(record.metrics)
+        else:
+            msg = f"Unsupported report format: {fmt!r}"
+            raise ConflictError(msg)
+        payload["simulation_id"] = record.simulation_id
+        payload["status"] = record.status
+        return ApiResponse(data=payload)

@@ -44,6 +44,11 @@ class ReviewPipeline:
         self._stages = stages
 
     @property
+    def stages(self) -> tuple[ReviewStage, ...]:
+        """Return the configured stages in execution order."""
+        return self._stages
+
+    @property
     def stage_names(self) -> tuple[str, ...]:
         """Return the ordered names of the configured stages."""
         return tuple(stage.name for stage in self._stages)

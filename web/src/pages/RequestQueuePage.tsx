@@ -1,11 +1,15 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { AlertTriangle, Inbox } from 'lucide-react'
 
 import {
+  approveRequest,
   listRequests,
+  rejectRequest,
+  scopeRequest,
   type ClientRequest,
   type RequestStatus,
 } from '@/api/endpoints/clients'
+import { Button } from '@/components/ui/button'
 import { EmptyState } from '@/components/ui/empty-state'
 import { SectionCard } from '@/components/ui/section-card'
 import { SkeletonCard } from '@/components/ui/skeleton'
@@ -43,21 +47,61 @@ export default function RequestQueuePage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
-  useEffect(() => {
-    const load = async () => {
-      try {
-        const result = await listRequests({ limit: 200 })
-        setRequests(result.data)
-        setError(null)
-      } catch (err) {
-        log.error('list_requests_failed', err)
-        setError('Failed to load request queue.')
-      } finally {
-        setLoading(false)
-      }
+  const refresh = useCallback(async () => {
+    try {
+      const result = await listRequests({ limit: 200 })
+      setRequests(result.data)
+      setError(null)
+    } catch (err) {
+      log.error('list_requests_failed', err)
+      setError('Failed to load request queue.')
+    } finally {
+      setLoading(false)
     }
-    void load()
   }, [])
+
+  useEffect(() => {
+    void refresh()
+  }, [refresh])
+
+  const handleScope = useCallback(
+    async (requestId: string) => {
+      try {
+        await scopeRequest(requestId, { notes: 'Scoped from dashboard' })
+        await refresh()
+      } catch (err) {
+        log.error('scope_request_failed', err)
+        setError('Failed to scope request.')
+      }
+    },
+    [refresh],
+  )
+
+  const handleApprove = useCallback(
+    async (requestId: string) => {
+      try {
+        await approveRequest(requestId)
+        await refresh()
+      } catch (err) {
+        log.error('approve_request_failed', err)
+        setError('Failed to approve request.')
+      }
+    },
+    [refresh],
+  )
+
+  const handleReject = useCallback(
+    async (requestId: string) => {
+      try {
+        await rejectRequest(requestId, 'Rejected from dashboard')
+        await refresh()
+      } catch (err) {
+        log.error('reject_request_failed', err)
+        setError('Failed to reject request.')
+      }
+    },
+    [refresh],
+  )
 
   if (loading && requests.length === 0) {
     return (
@@ -114,7 +158,7 @@ export default function RequestQueuePage() {
                   {entries.map((request) => (
                     <li
                       key={request.request_id}
-                      className="rounded-md border border-border bg-card-hover p-card text-sm"
+                      className="space-y-2 rounded-md border border-border bg-card-hover p-card text-sm"
                     >
                       <div className="font-medium text-foreground">
                         {request.requirement.title}
@@ -122,6 +166,35 @@ export default function RequestQueuePage() {
                       <div className="text-xs text-text-secondary">
                         {request.client_id} · {request.request_id.slice(0, 8)}
                       </div>
+                      {(request.status === 'submitted' ||
+                        request.status === 'triaging' ||
+                        request.status === 'scoping') && (
+                        <div className="flex flex-wrap gap-2 pt-1">
+                          {(request.status === 'submitted' ||
+                            request.status === 'triaging') && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => void handleScope(request.request_id)}
+                            >
+                              Scope
+                            </Button>
+                          )}
+                          <Button
+                            size="sm"
+                            onClick={() => void handleApprove(request.request_id)}
+                          >
+                            Approve
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => void handleReject(request.request_id)}
+                          >
+                            Reject
+                          </Button>
+                        </div>
+                      )}
                     </li>
                   ))}
                 </ul>

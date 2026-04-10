@@ -1,8 +1,14 @@
 import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router'
-import { AlertTriangle, ArrowLeft, Users } from 'lucide-react'
+import { AlertTriangle, ArrowLeft, Smile, Users } from 'lucide-react'
 
-import { getClient, type ClientProfile } from '@/api/endpoints/clients'
+import {
+  getClient,
+  getClientSatisfaction,
+  type ClientProfile,
+  type SatisfactionHistory,
+} from '@/api/endpoints/clients'
+import { MetricCard } from '@/components/ui/metric-card'
 import { SectionCard } from '@/components/ui/section-card'
 import { SkeletonCard } from '@/components/ui/skeleton'
 import { createLogger } from '@/lib/logger'
@@ -20,6 +26,9 @@ const log = createLogger('ClientDetailPage')
 export default function ClientDetailPage() {
   const { clientId } = useParams<{ clientId: string }>()
   const [client, setClient] = useState<ClientProfile | null>(null)
+  const [satisfaction, setSatisfaction] = useState<SatisfactionHistory | null>(
+    null,
+  )
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -33,8 +42,15 @@ export default function ClientDetailPage() {
     }
     const load = async () => {
       try {
-        const profile = await getClient(clientId)
+        const [profile, history] = await Promise.all([
+          getClient(clientId),
+          getClientSatisfaction(clientId).catch((err) => {
+            log.warn('get_client_satisfaction_failed', err)
+            return null
+          }),
+        ])
         setClient(profile)
+        setSatisfaction(history)
         setError(null)
       } catch (err) {
         log.error('get_client_failed', err)
@@ -115,6 +131,48 @@ export default function ClientDetailPage() {
             </dd>
           </div>
         </dl>
+      </SectionCard>
+      <SectionCard title="Satisfaction" icon={Smile}>
+        {satisfaction && satisfaction.total_reviews > 0 ? (
+          <div className="space-y-section-gap">
+            <div className="grid grid-cols-1 gap-grid-gap md:grid-cols-3">
+              <MetricCard
+                label="Reviews"
+                value={satisfaction.total_reviews.toString()}
+              />
+              <MetricCard
+                label="Acceptance"
+                value={`${Math.round(satisfaction.acceptance_rate * 100)}%`}
+              />
+              <MetricCard
+                label="Avg score"
+                value={satisfaction.average_score.toFixed(2)}
+              />
+            </div>
+            <ul className="space-y-2">
+              {satisfaction.history.slice(0, 10).map((point) => (
+                <li
+                  key={point.feedback_id}
+                  className="flex items-center justify-between rounded-md border border-border bg-card-hover p-card text-sm"
+                >
+                  <span className="text-foreground">{point.task_id}</span>
+                  <span
+                    className={
+                      point.accepted ? 'text-success' : 'text-danger'
+                    }
+                  >
+                    {point.accepted ? 'accepted' : 'rejected'} ·{' '}
+                    {point.score.toFixed(2)}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : (
+          <p className="text-sm text-text-secondary">
+            No reviews recorded yet. Run a simulation to populate history.
+          </p>
+        )}
       </SectionCard>
     </div>
   )

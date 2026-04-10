@@ -88,6 +88,33 @@ class IntakeEngine:
             return self._finalize_accepted(scoping, result)
         return self._finalize_rejected(scoping, result)
 
+    async def finalize_scoped(
+        self,
+        request: ClientRequest,
+    ) -> tuple[ClientRequest, IntakeResult]:
+        """Finalize an already-scoped request via the strategy.
+
+        Used by manual scope flows that want to run triage +
+        scoping synchronously via ``POST /requests/{id}/scope`` and
+        then separately approve via ``POST /requests/{id}/approve``.
+
+        Args:
+            request: A client request already in SCOPING status.
+
+        Raises:
+            ValueError: If ``request.status`` is not ``SCOPING``.
+        """
+        if request.status is not RequestStatus.SCOPING:
+            msg = (
+                "IntakeEngine.finalize_scoped requires SCOPING request, "
+                f"got {request.status.value!r}"
+            )
+            raise ValueError(msg)
+        result = await self._strategy.process(request)
+        if result.accepted:
+            return self._finalize_accepted(request, result)
+        return self._finalize_rejected(request, result)
+
     @staticmethod
     def _finalize_accepted(
         request: ClientRequest,
