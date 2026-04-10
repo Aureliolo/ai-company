@@ -32,4 +32,6 @@ fi
 
 echo "Squashing migrations..."
 atlas migrate squash --env sqlite
-echo "Done. Review the result and commit."
+echo ""
+echo "Done. Review the result, then commit with:"
+echo "  SYNTHORG_MIGRATION_SQUASH=1 git commit -m 'chore: squash migrations'"

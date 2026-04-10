@@ -1,0 +1,35 @@
+#!/usr/bin/env bash
+# PreToolUse hook: block Edit/Write on Atlas migration files.
+# Migrations must be generated from schema.sql via `atlas migrate diff`,
+# not hand-edited.
+#
+# Exit behavior:
+#   - Non-migration files: exit 0 (allow)
+#   - Migration files: print JSON with reason, exit 2
+
+set -euo pipefail
+
+if ! FILE_PATH=$(jq -r '.tool_input.file_path // ""' 2>/dev/null); then
+    exit 0
+fi
+if [[ -z "$FILE_PATH" ]]; then
+    exit 0
+fi
+
+REVISIONS_DIR="src/synthorg/persistence/sqlite/revisions"
+
+if [[ "$FILE_PATH" == *"$REVISIONS_DIR"*.sql ]]; then
+    REASON="Do not manually edit migration files. Edit schema.sql and regenerate: atlas migrate diff --env sqlite <name>"
+    cat <<ENDJSON
+{
+  "hookSpecificOutput": {
+    "hookEventName": "PreToolUse",
+    "permissionDecision": "deny",
+    "permissionDecisionReason": "$REASON"
+  }
+}
+ENDJSON
+    exit 2
+fi
+
+exit 0
