@@ -15,6 +15,12 @@ from synthorg.telemetry.config import TelemetryBackend, TelemetryConfig
 from synthorg.telemetry.protocol import TelemetryEvent
 
 
+@pytest.fixture(autouse=True)
+def clear_synthorg_telemetry(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Ensure SYNTHORG_TELEMETRY is unset so tests are deterministic."""
+    monkeypatch.delenv("SYNTHORG_TELEMETRY", raising=False)
+
+
 @pytest.mark.unit
 class TestTelemetryCollector:
     """TelemetryCollector unit tests."""

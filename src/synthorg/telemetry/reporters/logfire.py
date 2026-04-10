@@ -98,6 +98,7 @@ class LogfireReporter:
             await asyncio.to_thread(
                 self._logfire.info,
                 event.event_type,
+                event_timestamp=event.timestamp,
                 deployment_id=event.deployment_id,
                 synthorg_version=event.synthorg_version,
                 python_version=event.python_version,

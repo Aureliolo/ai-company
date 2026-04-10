@@ -123,8 +123,14 @@ class TelemetryCollector:
         return self._config.enabled
 
     async def start(self) -> None:
-        """Start the periodic heartbeat if telemetry is enabled."""
+        """Start the periodic heartbeat if telemetry is enabled.
+
+        Idempotent: returns early if a heartbeat task is already
+        running, so duplicate calls do not spawn concurrent loops.
+        """
         if not self._config.enabled:
+            return
+        if self._heartbeat_task is not None and not self._heartbeat_task.done():
             return
         await self._send_startup_event()
         self._heartbeat_task = asyncio.create_task(
@@ -141,6 +147,7 @@ class TelemetryCollector:
             self._heartbeat_task = None
 
         if self._config.enabled:
+            await self.send_session_summary()
             await self._send_shutdown_event()
 
         await self._reporter.shutdown()
@@ -256,7 +263,7 @@ class TelemetryCollector:
                 TELEMETRY_REPORT_FAILED,
                 event_type=event.event_type,
                 error_type=type(exc).__name__,
-                error_msg=str(exc),
+                error_code="REPORTER_BACKEND_FAILURE",
             )
             return False
 
