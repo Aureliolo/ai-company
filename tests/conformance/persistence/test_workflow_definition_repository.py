@@ -72,7 +72,7 @@ def _make_workflow_definition(
         "created_by": "admin",
         "created_at": datetime.now(UTC),
         "updated_at": datetime.now(UTC),
-        "version": 1,
+        "revision": 1,
     }
     defaults.update(overrides)
     return WorkflowDefinition.model_validate(defaults)

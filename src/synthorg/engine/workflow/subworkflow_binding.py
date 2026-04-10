@@ -31,6 +31,7 @@ from typing import TYPE_CHECKING
 from synthorg.core.enums import WorkflowValueType
 from synthorg.engine.errors import SubworkflowIOError
 from synthorg.observability import get_logger
+from synthorg.observability.events.workflow_definition import SUBWORKFLOW_IO_INVALID
 
 if TYPE_CHECKING:
     from synthorg.engine.workflow.definition import WorkflowIODeclaration
@@ -185,6 +186,7 @@ def resolve_input_bindings(
             f"Unknown input bindings: {sorted(unknown)}; "
             f"declared inputs are {sorted(declaration_by_name)}"
         )
+        logger.warning(SUBWORKFLOW_IO_INVALID, error=msg)
         raise SubworkflowIOError(msg)
 
     resolved: dict[str, object] = {}
@@ -198,12 +200,14 @@ def resolve_input_bindings(
                 )
             except KeyError as exc:
                 msg = f"Cannot resolve input binding {decl.name!r}: {exc}"
+                logger.warning(SUBWORKFLOW_IO_INVALID, error=msg)
                 raise SubworkflowIOError(msg) from exc
             _validate_value_type(decl.name, value, decl.type)
             resolved[decl.name] = copy.deepcopy(value)
             continue
         if decl.required:
             msg = f"Missing required input {decl.name!r}"
+            logger.warning(SUBWORKFLOW_IO_INVALID, error=msg)
             raise SubworkflowIOError(msg)
         if decl.default is not None:
             _validate_value_type(decl.name, decl.default, decl.type)
@@ -247,6 +251,7 @@ def project_output_bindings(
             f"Unknown output bindings: {sorted(unknown)}; "
             f"declared outputs are {sorted(declaration_by_name)}"
         )
+        logger.warning(SUBWORKFLOW_IO_INVALID, error=msg)
         raise SubworkflowIOError(msg)
 
     caller_vars = parent_vars if parent_vars is not None else {}
@@ -262,12 +267,14 @@ def project_output_bindings(
                 )
             except KeyError as exc:
                 msg = f"Cannot resolve output binding {decl.name!r}: {exc}"
+                logger.warning(SUBWORKFLOW_IO_INVALID, error=msg)
                 raise SubworkflowIOError(msg) from exc
             _validate_value_type(decl.name, value, decl.type)
             projected[decl.name] = copy.deepcopy(value)
             continue
         if decl.required:
             msg = f"Missing required output binding for {decl.name!r}"
+            logger.warning(SUBWORKFLOW_IO_INVALID, error=msg)
             raise SubworkflowIOError(msg)
         if decl.default is not None:
             _validate_value_type(decl.name, decl.default, decl.type)

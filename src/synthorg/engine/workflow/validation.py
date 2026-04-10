@@ -399,7 +399,7 @@ def _is_deferred_expression(value: object, *, direction: str = "") -> bool:
     if direction == "input":
         return value.startswith("@parent.")
     if direction == "output":
-        return value.startswith("@child.")
+        return value.startswith(("@child.", "@parent."))
     return value.startswith(("@parent.", "@child."))
 
 
