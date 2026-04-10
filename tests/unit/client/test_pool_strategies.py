@@ -167,8 +167,8 @@ class TestWeightedRandomStrategy:
             constraints,
         )
         assert len(first) == 2
-        ids_a = [getattr(c, "profile", c).client_id for c in first]
-        ids_b = [getattr(c, "profile", c).client_id for c in second]
+        ids_a = [c.profile.client_id for c in first]  # type: ignore[union-attr]
+        ids_b = [c.profile.client_id for c in second]  # type: ignore[union-attr]
         assert ids_a == ids_b
 
     async def test_empty_pool_returns_empty(self) -> None:

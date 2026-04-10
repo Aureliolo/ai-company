@@ -82,12 +82,10 @@ class HybridClient:
         context: GenerationContext | ReviewContext,
     ) -> AIClient | HumanClient:
         route = self._router(self._profile, context)
-        if route == "human":
-            return self._human
-        if route == "ai":
-            return self._ai
-        msg = f"Unsupported route {route!r} from hybrid router"
-        raise ValueError(msg)
+        if route not in {"ai", "human"}:
+            msg = f"Unsupported route {route!r} from hybrid router"
+            raise ValueError(msg)
+        return self._human if route == "human" else self._ai
 
     async def submit_requirement(
         self,
