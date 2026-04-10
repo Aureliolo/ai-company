@@ -5,6 +5,7 @@ from uuid import uuid4
 
 import pytest
 
+from synthorg.budget.call_category import LLMCallCategory
 from synthorg.core.enums import TaskStatus
 from synthorg.persistence.protocol import PersistenceBackend
 from tests.unit.persistence.conftest import make_message, make_task
@@ -81,7 +82,7 @@ class TestCostRecordRepository:
             output_tokens=50,
             cost_usd=0.05,
             timestamp=datetime(2026, 4, 10, 12, tzinfo=UTC),
-            call_category="productive",
+            call_category=LLMCallCategory.PRODUCTIVE,
         )
         await backend.cost_records.save(record)
 
@@ -106,7 +107,7 @@ class TestCostRecordRepository:
                     output_tokens=10,
                     cost_usd=cost,
                     timestamp=datetime(2026, 4, 10, 12, tzinfo=UTC),
-                    call_category="productive",
+                    call_category=LLMCallCategory.PRODUCTIVE,
                 )
             )
 

@@ -21,8 +21,15 @@ import psycopg
 from psycopg import sql
 from psycopg.rows import dict_row
 from psycopg_pool import AsyncConnectionPool
+from pydantic import BaseModel
 
+from synthorg.budget.config import BudgetConfig
+from synthorg.core.agent import AgentIdentity
+from synthorg.core.company import Company
+from synthorg.core.role import Role
 from synthorg.core.types import NotBlankStr
+from synthorg.engine.workflow.definition import WorkflowDefinition
+from synthorg.hr.evaluation.config import EvaluationConfig
 from synthorg.observability import get_logger
 from synthorg.observability.events.persistence import (
     PERSISTENCE_BACKEND_ALREADY_CONNECTED,
@@ -38,25 +45,61 @@ from synthorg.observability.events.persistence import (
 from synthorg.persistence import atlas
 from synthorg.persistence.config import PostgresConfig  # noqa: TC001
 from synthorg.persistence.errors import PersistenceConnectionError
+from synthorg.persistence.postgres.agent_state_repo import (
+    PostgresAgentStateRepository,
+)
+from synthorg.persistence.postgres.artifact_repo import PostgresArtifactRepository
+from synthorg.persistence.postgres.audit_repository import PostgresAuditRepository
+from synthorg.persistence.postgres.checkpoint_repo import (
+    PostgresCheckpointRepository,
+)
+from synthorg.persistence.postgres.circuit_breaker_repo import (
+    PostgresCircuitBreakerStateRepository,
+)
+from synthorg.persistence.postgres.decision_repo import PostgresDecisionRepository
+from synthorg.persistence.postgres.heartbeat_repo import (
+    PostgresHeartbeatRepository,
+)
+from synthorg.persistence.postgres.hr_repositories import (
+    PostgresCollaborationMetricRepository,
+    PostgresLifecycleEventRepository,
+    PostgresTaskMetricRepository,
+)
+from synthorg.persistence.postgres.parked_context_repo import (
+    PostgresParkedContextRepository,
+)
+from synthorg.persistence.postgres.preset_repo import (
+    PostgresPersonalityPresetRepository,
+)
+from synthorg.persistence.postgres.project_cost_aggregate_repo import (
+    PostgresProjectCostAggregateRepository,
+)
 from synthorg.persistence.postgres.project_repo import PostgresProjectRepository
 from synthorg.persistence.postgres.repositories import (
     PostgresCostRecordRepository,
     PostgresMessageRepository,
     PostgresTaskRepository,
 )
+from synthorg.persistence.postgres.risk_override_repo import (
+    PostgresRiskOverrideRepository,
+)
 from synthorg.persistence.postgres.settings_repo import PostgresSettingsRepository
+from synthorg.persistence.postgres.ssrf_violation_repo import (
+    PostgresSsrfViolationRepository,
+)
 from synthorg.persistence.postgres.user_repo import (
     PostgresApiKeyRepository,
     PostgresUserRepository,
 )
+from synthorg.persistence.postgres.version_repo import PostgresVersionRepository
+from synthorg.persistence.postgres.workflow_definition_repo import (
+    PostgresWorkflowDefinitionRepository,
+)
+from synthorg.persistence.postgres.workflow_execution_repo import (
+    PostgresWorkflowExecutionRepository,
+)
 
 if TYPE_CHECKING:
-    from synthorg.budget.config import BudgetConfig
-    from synthorg.core.agent import AgentIdentity
-    from synthorg.core.company import Company
-    from synthorg.core.role import Role
-    from synthorg.engine.workflow.definition import WorkflowDefinition
-    from synthorg.hr.evaluation.config import EvaluationConfig
     from synthorg.hr.persistence_protocol import (
         CollaborationMetricRepository,
         LifecycleEventRepository,
@@ -290,22 +333,71 @@ class PostgresPersistenceBackend:
         raise PersistenceConnectionError(msg) from exc
 
     def _create_repositories(self) -> None:
-        """Instantiate all repository objects from the active pool.
-
-        Each Phase 3 port wires one concrete Postgres repository
-        here.  Repositories not yet ported stay ``None`` and the
-        corresponding property accessor raises
-        ``PersistenceConnectionError`` with an 'not yet implemented'
-        message until the port lands.
-        """
+        """Instantiate all repository objects from the active pool."""
         assert self._pool is not None  # noqa: S101
-        self._settings = PostgresSettingsRepository(self._pool)
-        self._users = PostgresUserRepository(self._pool)
-        self._api_keys = PostgresApiKeyRepository(self._pool)
-        self._tasks = PostgresTaskRepository(self._pool)
-        self._cost_records = PostgresCostRecordRepository(self._pool)
-        self._messages = PostgresMessageRepository(self._pool)
-        self._projects = PostgresProjectRepository(self._pool)
+        pool = self._pool
+
+        # Core domain repositories.
+        self._artifacts = PostgresArtifactRepository(pool)
+        self._projects = PostgresProjectRepository(pool)
+        self._tasks = PostgresTaskRepository(pool)
+        self._cost_records = PostgresCostRecordRepository(pool)
+        self._messages = PostgresMessageRepository(pool)
+
+        # HR repositories.
+        self._lifecycle_events = PostgresLifecycleEventRepository(pool)
+        self._task_metrics = PostgresTaskMetricRepository(pool)
+        self._collaboration_metrics = PostgresCollaborationMetricRepository(pool)
+
+        # Operational + security repositories.
+        self._parked_contexts = PostgresParkedContextRepository(pool)
+        self._audit_entries = PostgresAuditRepository(pool)
+        self._users = PostgresUserRepository(pool)
+        self._api_keys = PostgresApiKeyRepository(pool)
+        self._checkpoints = PostgresCheckpointRepository(pool)
+        self._heartbeats = PostgresHeartbeatRepository(pool)
+        self._agent_states = PostgresAgentStateRepository(pool)
+        self._settings = PostgresSettingsRepository(pool)
+        self._custom_presets = PostgresPersonalityPresetRepository(pool)
+
+        # Workflow repositories.
+        self._workflow_definitions = PostgresWorkflowDefinitionRepository(pool)
+        self._workflow_executions = PostgresWorkflowExecutionRepository(pool)
+
+        # Generic version repositories (one per versioned entity type).
+        def _ver_repo[T: BaseModel](
+            table: str,
+            model_cls: type[T],
+        ) -> PostgresVersionRepository[T]:
+            def _deserialize(d: object) -> T:
+                return model_cls.model_validate(d)
+
+            return PostgresVersionRepository(
+                pool=pool,
+                table_name=NotBlankStr(table),
+                serialize_snapshot=lambda m: m.model_dump(mode="json"),
+                deserialize_snapshot=_deserialize,
+            )
+
+        self._workflow_versions = _ver_repo(
+            "workflow_definition_versions", WorkflowDefinition
+        )
+        self._identity_versions = _ver_repo("agent_identity_versions", AgentIdentity)
+        self._evaluation_config_versions = _ver_repo(
+            "evaluation_config_versions", EvaluationConfig
+        )
+        self._budget_config_versions = _ver_repo("budget_config_versions", BudgetConfig)
+        self._company_versions = _ver_repo("company_versions", Company)
+        self._role_versions = _ver_repo("role_versions", Role)
+
+        # Append-only / security repositories.  Postgres per-connection
+        # transactions handle isolation without the SQLite shared
+        # write_lock workaround.
+        self._decision_records = PostgresDecisionRepository(pool)
+        self._risk_overrides = PostgresRiskOverrideRepository(pool)
+        self._ssrf_violations = PostgresSsrfViolationRepository(pool)
+        self._circuit_breaker_state = PostgresCircuitBreakerStateRepository(pool)
+        self._project_cost_aggregates = PostgresProjectCostAggregateRepository(pool)
 
     def get_db(self) -> AsyncConnectionPool:
         """Return the shared connection pool.
