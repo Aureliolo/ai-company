@@ -15,4 +15,10 @@ If you see a checksum mismatch after rebase:
 2. If schema actually changed, create a **new migration**: `atlas migrate diff --env sqlite <name>`
 3. Never modify or rehash an existing migration that has been released
 
-Pre-alpha exception: if genuinely needed during development, ask the user first.
+**Pre-alpha exception** -- the `block` action stops the command before it runs. If you genuinely need to rehash during development:
+
+1. Ask the user first and get explicit approval in the current session
+2. Temporarily disable this rule by setting `enabled: false` in this file's frontmatter, run the command, then re-enable immediately
+3. Document the reason in the commit message (e.g., "chore: rehash atlas checksums after CRLF normalization fix")
+
+Never silently bypass the hook. Post-release this rule becomes mandatory -- no overrides.

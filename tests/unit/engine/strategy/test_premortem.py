@@ -247,6 +247,7 @@ class TestDefaultPremortemExecutor:
         )
 
         # Each of 3 agents should get 1500 // 3 = 500 tokens
+        assert len(token_allocations) == 3
         assert all(t == 500 for t in token_allocations)
 
     @pytest.mark.unit
@@ -255,12 +256,13 @@ class TestDefaultPremortemExecutor:
         executor = DefaultPremortemExecutor()
         config = PremortemConfig(participants=PremortemParticipation.ALL)
 
-        token_allocations: list[int] = []
+        # Track by agent_id so assertions don't depend on TaskGroup run order.
+        allocations: dict[str, int] = {}
 
         async def tracking_caller(
             agent_id: str, prompt: str, tokens: int
         ) -> AgentResponse:
-            token_allocations.append(tokens)
+            allocations[agent_id] = tokens
             return AgentResponse(agent_id=agent_id, content="response")
 
         await executor.execute(
@@ -271,9 +273,10 @@ class TestDefaultPremortemExecutor:
             token_budget=1501,
         )
 
-        # 1501 // 3 = 500 base, remainder 1 -> first agent gets 501
-        assert sorted(token_allocations, reverse=True) == [501, 500, 500]
-        assert sum(token_allocations) == 1501
+        # 1501 // 3 = 500 base, remainder 1 -> first agent (agent_1) gets 501
+        assert len(allocations) == 3
+        assert allocations == {"agent_1": 501, "agent_2": 500, "agent_3": 500}
+        assert sum(allocations.values()) == 1501
 
     @pytest.mark.unit
     async def test_prompt_contains_decision_summary(self) -> None:

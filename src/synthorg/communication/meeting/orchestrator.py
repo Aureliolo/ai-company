@@ -410,8 +410,26 @@ class MeetingOrchestrator:
                 exc_info=True,
             )
             return None
-        else:
-            return dict(result)
+
+        # Validate the returned mapping: keys must match participant_ids,
+        # values must be non-empty strings.
+        expected_ids = set(participant_ids)
+        if not isinstance(result, dict) or set(result.keys()) != expected_ids:
+            logger.warning(
+                MEETING_LENS_ASSIGNMENT_FAILED,
+                error="Lens assigner returned mapping with mismatched keys",
+                expected_count=len(expected_ids),
+                actual_count=len(result) if isinstance(result, dict) else -1,
+            )
+            return None
+        if not all(isinstance(v, str) and v for v in result.values()):
+            logger.warning(
+                MEETING_LENS_ASSIGNMENT_FAILED,
+                error="Lens assigner returned non-string or empty lens value",
+            )
+            return None
+
+        return dict(result)
 
     def _validate_inputs(
         self,

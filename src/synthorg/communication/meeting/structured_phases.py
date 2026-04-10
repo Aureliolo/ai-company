@@ -7,11 +7,8 @@ meetings.
 """
 
 import asyncio
+from collections.abc import Mapping  # noqa: TC003
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING
-
-if TYPE_CHECKING:
-    from collections.abc import Mapping
 
 from synthorg.communication.meeting._parsing import (
     parse_action_items,

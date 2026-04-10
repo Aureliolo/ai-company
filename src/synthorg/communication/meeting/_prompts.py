@@ -1,12 +1,11 @@
 """Shared prompt builders for meeting protocol implementations."""
 
+from collections.abc import Mapping  # noqa: TC003
 from typing import TYPE_CHECKING
 
 from synthorg.observability import get_logger
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
-
     from synthorg.communication.meeting.models import MeetingAgenda
 
 logger = get_logger(__name__)
