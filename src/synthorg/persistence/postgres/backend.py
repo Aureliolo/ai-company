@@ -38,6 +38,7 @@ from synthorg.observability.events.persistence import (
 from synthorg.persistence import atlas
 from synthorg.persistence.config import PostgresConfig  # noqa: TC001
 from synthorg.persistence.errors import PersistenceConnectionError
+from synthorg.persistence.postgres.settings_repo import PostgresSettingsRepository
 
 if TYPE_CHECKING:
     from synthorg.budget.config import BudgetConfig
@@ -281,14 +282,14 @@ class PostgresPersistenceBackend:
     def _create_repositories(self) -> None:
         """Instantiate all repository objects from the active pool.
 
-        Phase 2 stub: every repository stays ``None`` until Phase 3
-        ports wire in concrete Postgres implementations.  The property
-        accessors therefore raise ``PersistenceConnectionError`` as if
-        the backend were disconnected, which is honest for an
-        unimplemented repository.
+        Each Phase 3 port wires one concrete Postgres repository
+        here.  Repositories not yet ported stay ``None`` and the
+        corresponding property accessor raises
+        ``PersistenceConnectionError`` with an 'not yet implemented'
+        message until the port lands.
         """
         assert self._pool is not None  # noqa: S101
-        # Phase 3 replaces this stub with real repository construction.
+        self._settings = PostgresSettingsRepository(self._pool)
 
     def get_db(self) -> AsyncConnectionPool:
         """Return the shared connection pool.
