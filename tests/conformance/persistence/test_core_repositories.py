@@ -1,0 +1,164 @@
+"""Parametrized conformance tests for Task, CostRecord, and Message."""
+
+from datetime import UTC, datetime
+from uuid import uuid4
+
+import pytest
+
+from synthorg.core.enums import TaskStatus
+from synthorg.persistence.protocol import PersistenceBackend
+from tests.unit.persistence.conftest import make_message, make_task
+
+
+@pytest.mark.integration
+class TestTaskRepository:
+    async def test_save_and_get(self, backend: PersistenceBackend) -> None:
+        task = make_task(task_id="t1", title="First task")
+        await backend.tasks.save(task)
+        fetched = await backend.tasks.get("t1")
+        assert fetched is not None
+        assert fetched.id == "t1"
+        assert fetched.title == "First task"
+
+    async def test_get_missing_returns_none(self, backend: PersistenceBackend) -> None:
+        assert await backend.tasks.get("missing") is None
+
+    async def test_upsert_updates_existing(self, backend: PersistenceBackend) -> None:
+        task = make_task(task_id="t2", title="Original")
+        await backend.tasks.save(task)
+        updated = task.model_copy(update={"title": "Updated"})
+        await backend.tasks.save(updated)
+        fetched = await backend.tasks.get("t2")
+        assert fetched is not None
+        assert fetched.title == "Updated"
+
+    async def test_list_all(self, backend: PersistenceBackend) -> None:
+        await backend.tasks.save(make_task(task_id="t1"))
+        await backend.tasks.save(make_task(task_id="t2"))
+        tasks = await backend.tasks.list_tasks()
+        assert len(tasks) == 2
+
+    async def test_list_filter_by_project(self, backend: PersistenceBackend) -> None:
+        await backend.tasks.save(make_task(task_id="t1", project="proj_a"))
+        await backend.tasks.save(make_task(task_id="t2", project="proj_b"))
+        tasks = await backend.tasks.list_tasks(project="proj_a")
+        assert len(tasks) == 1
+        assert tasks[0].id == "t1"
+
+    async def test_list_filter_by_status(self, backend: PersistenceBackend) -> None:
+        await backend.tasks.save(make_task(task_id="t1", status=TaskStatus.CREATED))
+        await backend.tasks.save(make_task(task_id="t2", status=TaskStatus.IN_PROGRESS))
+        tasks = await backend.tasks.list_tasks(status=TaskStatus.CREATED)
+        assert len(tasks) == 1
+        assert tasks[0].id == "t1"
+
+    async def test_delete_returns_true(self, backend: PersistenceBackend) -> None:
+        await backend.tasks.save(make_task(task_id="t1"))
+        assert await backend.tasks.delete("t1") is True
+        assert await backend.tasks.get("t1") is None
+
+    async def test_delete_returns_false_when_missing(
+        self, backend: PersistenceBackend
+    ) -> None:
+        assert await backend.tasks.delete("missing") is False
+
+
+@pytest.mark.integration
+class TestCostRecordRepository:
+    async def test_save_and_query(self, backend: PersistenceBackend) -> None:
+        # Cost records reference tasks; create a task first.
+        task = make_task(task_id="t1")
+        await backend.tasks.save(task)
+
+        from synthorg.budget.cost_record import CostRecord
+
+        record = CostRecord(
+            agent_id="agent_1",
+            task_id="t1",
+            provider="test-provider",
+            model="test-small-001",
+            input_tokens=100,
+            output_tokens=50,
+            cost_usd=0.05,
+            timestamp=datetime(2026, 4, 10, 12, tzinfo=UTC),
+            call_category="productive",
+        )
+        await backend.cost_records.save(record)
+
+        results = await backend.cost_records.query(agent_id="agent_1")
+        assert len(results) == 1
+        assert results[0].cost_usd == 0.05
+
+    async def test_aggregate_sum(self, backend: PersistenceBackend) -> None:
+        task = make_task(task_id="t1")
+        await backend.tasks.save(task)
+
+        from synthorg.budget.cost_record import CostRecord
+
+        for cost in (0.1, 0.2, 0.3):
+            await backend.cost_records.save(
+                CostRecord(
+                    agent_id="agent_1",
+                    task_id="t1",
+                    provider="test-provider",
+                    model="test-small-001",
+                    input_tokens=10,
+                    output_tokens=10,
+                    cost_usd=cost,
+                    timestamp=datetime(2026, 4, 10, 12, tzinfo=UTC),
+                    call_category="productive",
+                )
+            )
+
+        total = await backend.cost_records.aggregate(agent_id="agent_1")
+        assert abs(total - 0.6) < 1e-9
+
+    async def test_aggregate_empty_returns_zero(
+        self, backend: PersistenceBackend
+    ) -> None:
+        assert await backend.cost_records.aggregate(agent_id="agent_1") == 0.0
+
+
+@pytest.mark.integration
+class TestMessageRepository:
+    async def test_save_and_get_history(self, backend: PersistenceBackend) -> None:
+        msg = make_message(msg_id=uuid4(), channel="chan1", content="hello")
+        await backend.messages.save(msg)
+        history = await backend.messages.get_history("chan1")
+        assert len(history) == 1
+
+    async def test_get_history_newest_first(self, backend: PersistenceBackend) -> None:
+        for i in range(3):
+            await backend.messages.save(
+                make_message(
+                    msg_id=uuid4(),
+                    channel="chan1",
+                    timestamp=datetime(2026, 4, 10, 12, i, tzinfo=UTC),
+                    content=f"msg {i}",
+                )
+            )
+        history = await backend.messages.get_history("chan1")
+        assert len(history) == 3
+        # Newest first
+        assert history[0].timestamp > history[1].timestamp
+        assert history[1].timestamp > history[2].timestamp
+
+    async def test_get_history_limit(self, backend: PersistenceBackend) -> None:
+        for i in range(5):
+            await backend.messages.save(
+                make_message(
+                    msg_id=uuid4(),
+                    channel="chan1",
+                    timestamp=datetime(2026, 4, 10, 12, i, tzinfo=UTC),
+                )
+            )
+        history = await backend.messages.get_history("chan1", limit=2)
+        assert len(history) == 2
+
+    async def test_get_history_filters_by_channel(
+        self, backend: PersistenceBackend
+    ) -> None:
+        await backend.messages.save(make_message(msg_id=uuid4(), channel="chan1"))
+        await backend.messages.save(make_message(msg_id=uuid4(), channel="chan2"))
+        assert len(await backend.messages.get_history("chan1")) == 1
+        assert len(await backend.messages.get_history("chan2")) == 1

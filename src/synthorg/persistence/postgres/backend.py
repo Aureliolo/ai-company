@@ -38,6 +38,11 @@ from synthorg.observability.events.persistence import (
 from synthorg.persistence import atlas
 from synthorg.persistence.config import PostgresConfig  # noqa: TC001
 from synthorg.persistence.errors import PersistenceConnectionError
+from synthorg.persistence.postgres.repositories import (
+    PostgresCostRecordRepository,
+    PostgresMessageRepository,
+    PostgresTaskRepository,
+)
 from synthorg.persistence.postgres.settings_repo import PostgresSettingsRepository
 from synthorg.persistence.postgres.user_repo import (
     PostgresApiKeyRepository,
@@ -296,6 +301,9 @@ class PostgresPersistenceBackend:
         self._settings = PostgresSettingsRepository(self._pool)
         self._users = PostgresUserRepository(self._pool)
         self._api_keys = PostgresApiKeyRepository(self._pool)
+        self._tasks = PostgresTaskRepository(self._pool)
+        self._cost_records = PostgresCostRecordRepository(self._pool)
+        self._messages = PostgresMessageRepository(self._pool)
 
     def get_db(self) -> AsyncConnectionPool:
         """Return the shared connection pool.
