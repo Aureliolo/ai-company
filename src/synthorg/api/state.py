@@ -197,6 +197,9 @@ class AppState:
         self._delegation_record_store = delegation_record_store
         self._prometheus_collector: PrometheusCollector | None = None
         self._fine_tune_orchestrator: FineTuneOrchestrator | None = None
+        self._config_resolver: ConfigResolver | None = None
+        self._provider_management: ProviderManagementService | None = None
+        self._org_mutation_service: OrgMutationService | None = None
         self._init_derived_services(
             settings_service=settings_service,
             config=config,
@@ -218,41 +221,36 @@ class AppState:
         config: RootConfig,
         persistence: PersistenceBackend | None,
     ) -> None:
-        """Build services that depend on other injected services."""
-        self._config_resolver: ConfigResolver | None = (
-            ConfigResolver(
-                settings_service=settings_service,
-                config=config,
-            )
-            if settings_service is not None
-            else None
+        """Build services that depend on other injected services.
+
+        Constructs into locals first, then assigns atomically so a
+        failure in any constructor leaves AppState unchanged.
+        """
+        if settings_service is None:
+            return
+        resolver = ConfigResolver(
+            settings_service=settings_service,
+            config=config,
         )
-        self._provider_management: ProviderManagementService | None = (
-            ProviderManagementService(
-                settings_service=settings_service,
-                config_resolver=self._config_resolver,
-                app_state=self,
-                config=config,
-            )
-            if settings_service is not None and self._config_resolver is not None
-            else None
+        management = ProviderManagementService(
+            settings_service=settings_service,
+            config_resolver=resolver,
+            app_state=self,
+            config=config,
         )
-        self._org_mutation_service: OrgMutationService | None = (
-            OrgMutationService(
-                settings_service=settings_service,
-                config_resolver=self._config_resolver,
-                budget_config_versions=(
-                    persistence.budget_config_versions
-                    if persistence is not None
-                    else None
-                ),
-                company_versions=(
-                    persistence.company_versions if persistence is not None else None
-                ),
-            )
-            if settings_service is not None and self._config_resolver is not None
-            else None
+        org_mutations = OrgMutationService(
+            settings_service=settings_service,
+            config_resolver=resolver,
+            budget_config_versions=(
+                persistence.budget_config_versions if persistence is not None else None
+            ),
+            company_versions=(
+                persistence.company_versions if persistence is not None else None
+            ),
         )
+        self._config_resolver = resolver
+        self._provider_management = management
+        self._org_mutation_service = org_mutations
 
     def _set_once(self, attr: str, value: object, label: str) -> None:
         """Set a private attribute once; raise if already configured."""

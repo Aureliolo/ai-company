@@ -168,6 +168,13 @@ class DatasetGenerator:
                     continue
                 if isinstance(parsed, dict):
                     rows.append(parsed)
+                else:
+                    logger.warning(
+                        CLIENT_REQUIREMENT_GENERATED,
+                        strategy="dataset",
+                        skipped_line=lineno,
+                        value_type=type(parsed).__name__,
+                    )
         return tuple(rows)
 
     @staticmethod

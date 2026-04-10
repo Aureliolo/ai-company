@@ -1,6 +1,7 @@
 """Continuous (always-on) simulation mode."""
 
 import asyncio
+from collections import deque
 
 from synthorg.client.config import ContinuousModeConfig  # noqa: TC001
 from synthorg.client.models import (
@@ -77,7 +78,8 @@ class ContinuousMode:
             self._stop_event.clear()
             self._runs_completed = 0
         semaphore = asyncio.Semaphore(max(1, self._config.max_concurrent_requests))
-        results: list[SimulationMetrics] = []
+        max_history = max(1, self._config.max_concurrent_requests * 100)
+        results: deque[SimulationMetrics] = deque(maxlen=max_history)
         try:
             while not self._stop_event.is_set():
                 async with semaphore:
@@ -97,7 +99,7 @@ class ContinuousMode:
         finally:
             async with self._lock:
                 self._running = False
-        return results
+        return list(results)
 
     def stop(self) -> None:
         """Signal continuous mode to stop after the current run."""
