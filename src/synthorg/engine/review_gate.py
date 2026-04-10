@@ -20,6 +20,7 @@ from typing import TYPE_CHECKING
 
 from synthorg.core.enums import DecisionOutcome, TaskStatus
 from synthorg.engine.errors import SelfReviewError, TaskNotFoundError
+from synthorg.engine.review.models import PipelineResult, ReviewVerdict
 from synthorg.engine.task_sync import sync_to_task_engine
 from synthorg.observability import get_logger
 from synthorg.observability.events.approval_gate import (
@@ -36,6 +37,7 @@ from synthorg.persistence.errors import DuplicateRecordError, QueryError
 
 if TYPE_CHECKING:
     from synthorg.core.task import Task
+    from synthorg.engine.review.pipeline import ReviewPipeline
     from synthorg.engine.task_engine import TaskEngine
     from synthorg.persistence.protocol import PersistenceBackend
 
@@ -175,10 +177,144 @@ class ReviewGateService:
                 transition_reason += f": {normalized_reason}"
             event = APPROVAL_GATE_REVIEW_REWORK
 
+        await self._apply_decision(
+            task=task,
+            target=target,
+            transition_reason=transition_reason,
+            event=event,
+            decided_by=decided_by,
+            requested_by=requested_by,
+            approved=approved,
+            approval_id=approval_id,
+            normalized_reason=normalized_reason,
+        )
+
+    async def run_pipeline(
+        self,
+        *,
+        task_id: str,
+        pipeline: ReviewPipeline,
+        decided_by: str,
+        requested_by: str,
+        approval_id: str | None = None,
+    ) -> PipelineResult:
+        """Drive a review pipeline and apply its final verdict.
+
+        This is the pipeline-driven entry point. It runs the
+        self-review preflight, executes every stage in
+        ``pipeline``, maps the aggregated :class:`ReviewVerdict` to
+        the same task-engine transition and decision-record flow
+        used by :meth:`complete_review`, and returns the
+        :class:`PipelineResult` so callers can surface stage
+        details to the UI.
+
+        Args:
+            task_id: The task under review.
+            pipeline: Review pipeline to execute.
+            decided_by: Identity attributed to the decision (the
+                pipeline's operator or the invoking agent).
+            requested_by: Agent that requested the review.
+            approval_id: Optional foreign key to an approval item.
+
+        Returns:
+            The :class:`PipelineResult` produced by the pipeline
+            (irrespective of the final verdict).
+
+        Raises:
+            TaskNotFoundError: If the task cannot be found.
+            SelfReviewError: If the decider is the task's executor.
+        """
+        task = await self.check_can_decide(
+            task_id=task_id,
+            decided_by=decided_by,
+        )
+        result = await pipeline.run(task)
+        target, transition_reason, event, approved = self._map_pipeline_verdict(
+            result, decided_by
+        )
+        await self._apply_decision(
+            task=task,
+            target=target,
+            transition_reason=transition_reason,
+            event=event,
+            decided_by=decided_by,
+            requested_by=requested_by,
+            approved=approved,
+            approval_id=approval_id,
+            normalized_reason=transition_reason,
+        )
+        return result
+
+    @staticmethod
+    def _map_pipeline_verdict(
+        result: PipelineResult,
+        decided_by: str,
+    ) -> tuple[TaskStatus, str, str, bool]:
+        """Translate a pipeline result into the transition inputs."""
+        if result.final_verdict is ReviewVerdict.FAIL:
+            failing = next(
+                (
+                    stage
+                    for stage in result.stage_results
+                    if stage.verdict is ReviewVerdict.FAIL
+                ),
+                None,
+            )
+            detail = (
+                failing.reason
+                if failing and failing.reason
+                else "pipeline reported failure"
+            )
+            return (
+                TaskStatus.IN_PROGRESS,
+                f"Pipeline rejected review by {decided_by}: {detail}",
+                APPROVAL_GATE_REVIEW_REWORK,
+                False,
+            )
+        if result.final_verdict is ReviewVerdict.SKIP:
+            logger.warning(
+                "approval_gate.pipeline_all_skipped",
+                task_id=result.task_id,
+                decided_by=decided_by,
+            )
+        stages = ", ".join(stage.stage_name for stage in result.stage_results)
+        reason = (
+            f"Pipeline passed ({stages})"
+            if stages
+            else "Pipeline passed (no stages configured)"
+        )
+        return (
+            TaskStatus.COMPLETED,
+            reason,
+            APPROVAL_GATE_REVIEW_COMPLETED,
+            True,
+        )
+
+    async def _apply_decision(  # noqa: PLR0913
+        self,
+        *,
+        task: Task,
+        target: TaskStatus,
+        transition_reason: str,
+        event: str,
+        decided_by: str,
+        requested_by: str,
+        approved: bool,
+        approval_id: str | None,
+        normalized_reason: str | None,
+    ) -> None:
+        """Run the transition + log + decision-record side effects.
+
+        Shared by :meth:`complete_review` (human-driven) and
+        :meth:`run_pipeline` (pipeline-driven). Behavior is
+        preserved byte-for-byte: ``sync_to_task_engine`` runs
+        first, then the audit log entry, then the drop-box
+        append.
+        """
         await sync_to_task_engine(
             self._task_engine,
             target_status=target,
-            task_id=task_id,
+            task_id=task.id,
             agent_id="review-gate-service",
             reason=transition_reason,
         )
@@ -187,7 +323,7 @@ class ReviewGateService:
         # audit logs reflect actual transitions, not intended ones.
         logger.info(
             event,
-            task_id=task_id,
+            task_id=task.id,
             requested_by=requested_by,
             decided_by=decided_by,
             target_status=target.value,

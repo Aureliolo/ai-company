@@ -1,0 +1,99 @@
+"""Continuous (always-on) simulation mode."""
+
+import asyncio
+from typing import Any
+
+from synthorg.client.config import ContinuousModeConfig  # noqa: TC001
+from synthorg.client.models import (
+    SimulationConfig,  # noqa: TC001
+    SimulationMetrics,  # noqa: TC001
+)
+from synthorg.client.protocols import (
+    ClientInterface,  # noqa: TC001
+    RequirementGenerator,  # noqa: TC001
+)
+from synthorg.client.runner import SimulationRunner  # noqa: TC001
+from synthorg.observability import get_logger
+
+logger = get_logger(__name__)
+
+
+class ContinuousMode:
+    """Long-running wrapper around :class:`SimulationRunner`.
+
+    Dispatches one simulation run per interval until the injected
+    shutdown event is set. Concurrency between runs is bounded by
+    the continuous-mode configuration: at most one run is in
+    flight per invocation of :meth:`start`, but overlapping runs
+    can be achieved by starting multiple tasks if needed.
+    """
+
+    def __init__(
+        self,
+        *,
+        config: ContinuousModeConfig,
+        runner: SimulationRunner,
+    ) -> None:
+        """Initialize continuous mode.
+
+        Args:
+            config: Continuous-mode configuration (interval,
+                concurrency).
+            runner: Underlying simulation runner.
+        """
+        self._config = config
+        self._runner = runner
+        self._stop_event = asyncio.Event()
+        self._in_flight: set[asyncio.Task[Any]] = set()
+        self._runs_completed = 0
+
+    @property
+    def runs_completed(self) -> int:
+        """Number of runs completed since the last ``start`` call."""
+        return self._runs_completed
+
+    async def start(
+        self,
+        *,
+        sim_config: SimulationConfig,
+        clients: tuple[ClientInterface, ...],
+        generator: RequirementGenerator,
+    ) -> list[SimulationMetrics]:
+        """Run simulations on an interval until ``stop`` is called.
+
+        Args:
+            sim_config: Simulation configuration used on every run.
+            clients: Clients participating in every run.
+            generator: Requirement generator for every run.
+
+        Returns:
+            Ordered list of per-run :class:`SimulationMetrics`.
+        """
+        if not self._config.enabled:
+            logger.debug("continuous.mode.disabled")
+            return []
+        self._stop_event.clear()
+        self._runs_completed = 0
+        semaphore = asyncio.Semaphore(max(1, self._config.max_concurrent_requests))
+        results: list[SimulationMetrics] = []
+        while not self._stop_event.is_set():
+            async with semaphore:
+                metrics, _ = await self._runner.run(
+                    sim_config=sim_config,
+                    clients=clients,
+                    generator=generator,
+                )
+            results.append(metrics)
+            self._runs_completed += 1
+            try:
+                await asyncio.wait_for(
+                    self._stop_event.wait(),
+                    timeout=self._config.request_interval_sec,
+                )
+            except TimeoutError:
+                continue
+        return results
+
+    def stop(self) -> None:
+        """Signal continuous mode to stop after the current run."""
+        self._stop_event.set()
