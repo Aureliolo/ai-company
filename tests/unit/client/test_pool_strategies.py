@@ -156,11 +156,20 @@ class TestRoundRobinStrategy:
 @pytest.mark.unit
 class TestWeightedRandomStrategy:
     async def test_seeded_deterministic(self) -> None:
-        strategy = WeightedRandomStrategy(seed=42)
         clients = tuple(_client(f"c{i}", strictness=0.1 * (i + 1)) for i in range(5))
         constraints = PoolConstraints(max_clients=2)
-        result = await strategy.select_clients(clients, constraints)
-        assert len(result) == 2
+        first = await WeightedRandomStrategy(seed=42).select_clients(
+            clients,
+            constraints,
+        )
+        second = await WeightedRandomStrategy(seed=42).select_clients(
+            clients,
+            constraints,
+        )
+        assert len(first) == 2
+        ids_a = [getattr(c, "profile", c).client_id for c in first]
+        ids_b = [getattr(c, "profile", c).client_id for c in second]
+        assert ids_a == ids_b
 
     async def test_empty_pool_returns_empty(self) -> None:
         strategy = WeightedRandomStrategy(seed=0)

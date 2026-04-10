@@ -73,7 +73,16 @@ class ReviewPipeline:
         stage_results: list[ReviewStageResult] = []
         final_verdict = ReviewVerdict.PASS
         for stage in self._stages:
-            result = await stage.execute(task)
+            try:
+                result = await stage.execute(task)
+            except Exception:
+                logger.exception(
+                    REVIEW_PIPELINE_STAGE_COMPLETED,
+                    task_id=task.id,
+                    stage_name=getattr(stage, "name", type(stage).__name__),
+                    verdict="error",
+                )
+                raise
             stage_results.append(result)
             logger.info(
                 REVIEW_PIPELINE_STAGE_COMPLETED,

@@ -1,7 +1,5 @@
 """Integration tests for SimulationRunner."""
 
-from typing import Any
-
 import pytest
 
 from synthorg.client import (
@@ -187,6 +185,3 @@ class TestRunnerRoundSnapshots:
             # Each round has a stable "round_number" key.
             assert isinstance(snapshot, dict)
             assert "round_number" in snapshot
-
-
-_unused: Any = None

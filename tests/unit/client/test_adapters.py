@@ -47,10 +47,12 @@ class TestProjectAdapter:
 
     async def test_preserves_existing_metadata(self) -> None:
         req = _request(metadata={"key": "val"})
+        original_meta = dict(req.metadata)
         adapter = ProjectAdapter(project_id="proj-2")
         result = await adapter.route(req)
         assert result.metadata["key"] == "val"
         assert result.metadata["project_id"] == "proj-2"
+        assert dict(req.metadata) == original_meta
 
 
 @pytest.mark.unit

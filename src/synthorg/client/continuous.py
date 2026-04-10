@@ -75,8 +75,8 @@ class ContinuousMode:
                 msg = "ContinuousMode is already running"
                 raise RuntimeError(msg)
             self._running = True
-        self._stop_event.clear()
-        self._runs_completed = 0
+            self._stop_event.clear()
+            self._runs_completed = 0
         semaphore = asyncio.Semaphore(max(1, self._config.max_concurrent_requests))
         results: list[SimulationMetrics] = []
         try:

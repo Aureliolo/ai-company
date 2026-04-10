@@ -7,7 +7,7 @@ from synthorg.client.models import (
     GenerationContext,
     TaskRequirement,
 )
-from synthorg.core.enums import Priority, TaskType
+from synthorg.core.enums import Complexity, Priority, TaskType
 from synthorg.observability import get_logger
 from synthorg.observability.events.client import CLIENT_REQUIREMENT_GENERATED
 
@@ -110,7 +110,7 @@ class ProceduralGenerator:
     def _build_requirement(
         rng: random.Random,
         context: GenerationContext,
-        allowed: tuple[object, ...],
+        allowed: tuple[Complexity, ...],
         index: int,
     ) -> TaskRequirement:
         title_tpl = rng.choice(_TITLE_TEMPLATES)
@@ -124,6 +124,6 @@ class ProceduralGenerator:
             description=description,
             task_type=rng.choice(_TASK_TYPES),
             priority=rng.choice(_PRIORITIES),
-            estimated_complexity=rng.choice(allowed),  # type: ignore[arg-type]
+            estimated_complexity=rng.choice(allowed),
             acceptance_criteria=criteria,
         )

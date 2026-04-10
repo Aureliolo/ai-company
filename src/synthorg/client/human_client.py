@@ -1,5 +1,7 @@
 """Human-in-the-loop client implementation."""
 
+import math
+
 from synthorg.client.human_queue import HumanInputQueue  # noqa: TC001
 from synthorg.client.models import (
     ClientFeedback,
@@ -46,8 +48,8 @@ class HumanClient:
         Raises:
             ValueError: If ``timeout`` is not positive.
         """
-        if timeout <= 0:
-            msg = f"timeout must be > 0, got {timeout}"
+        if not math.isfinite(timeout) or timeout <= 0:
+            msg = f"timeout must be a finite positive number, got {timeout}"
             raise ValueError(msg)
         self._profile = profile
         self._queue = queue

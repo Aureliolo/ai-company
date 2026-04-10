@@ -77,10 +77,19 @@ class AgentIntake:
     async def process(self, request: ClientRequest) -> IntakeResult:
         """Invoke the triage agent and create a task on acceptance."""
         messages = self._build_prompt(request.requirement)
-        response = await self._provider.complete(
-            messages=messages,
-            model=self._model,
-        )
+        try:
+            response = await self._provider.complete(
+                messages=messages,
+                model=self._model,
+            )
+        except Exception:
+            logger.exception(
+                INTAKE_AGENT_PARSE_FAILED,
+                request_id=request.request_id,
+                client_id=request.client_id,
+                stage="provider_call",
+            )
+            raise
         content = response.content
         if not content:
             logger.warning(

@@ -90,7 +90,7 @@ export default function ClientListPage() {
                   </p>
                 )}
                 <Link
-                  to={ROUTES.CLIENT_DETAIL.replace(':clientId', client.client_id)}
+                  to={ROUTES.CLIENT_DETAIL.replace(':clientId', encodeURIComponent(client.client_id))}
                   className="inline-block pt-2 text-accent hover:underline"
                 >
                   View details →

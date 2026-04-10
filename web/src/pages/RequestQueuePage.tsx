@@ -188,6 +188,7 @@ export default function RequestQueuePage() {
                             <Button
                               size="sm"
                               variant="outline"
+                              disabled={!!pending[request.request_id]}
                               onClick={() => void handleScope(request.request_id)}
                             >
                               Scope
@@ -195,6 +196,7 @@ export default function RequestQueuePage() {
                           )}
                           <Button
                             size="sm"
+                            disabled={!!pending[request.request_id]}
                             onClick={() => void handleApprove(request.request_id)}
                           >
                             Approve
@@ -202,6 +204,7 @@ export default function RequestQueuePage() {
                           <Button
                             size="sm"
                             variant="outline"
+                            disabled={!!pending[request.request_id]}
                             onClick={() => void handleReject(request.request_id)}
                           >
                             Reject

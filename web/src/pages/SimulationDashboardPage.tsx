@@ -62,6 +62,7 @@ export default function SimulationDashboardPage() {
   )
 
   const handleShowReport = useCallback(async (simulationId: string) => {
+    setReport(null)
     try {
       const fetched = await getSimulationReport(simulationId, 'summary')
       setReport(fetched)

@@ -257,6 +257,14 @@ class ReviewGateService:
                 task_id=result.task_id,
                 decided_by=decided_by,
             )
+            stages = ", ".join(stage.stage_name for stage in result.stage_results)
+            reason = f"Pipeline all-skipped ({stages or 'no stages'})"
+            return (
+                TaskStatus.COMPLETED,
+                reason,
+                APPROVAL_GATE_REVIEW_COMPLETED,
+                True,
+            )
         stages = ", ".join(stage.stage_name for stage in result.stage_results)
         reason = (
             f"Pipeline passed ({stages})"
@@ -291,16 +299,24 @@ class ReviewGateService:
         first, then the audit log entry, then the drop-box
         append.
         """
-        await sync_to_task_engine(
-            self._task_engine,
-            target_status=target,
-            task_id=task.id,
-            agent_id="review-gate-service",
-            reason=transition_reason,
-        )
+        try:
+            await sync_to_task_engine(
+                self._task_engine,
+                target_status=target,
+                task_id=task.id,
+                agent_id="review-gate-service",
+                reason=transition_reason,
+            )
+        except Exception:
+            logger.exception(
+                APPROVAL_GATE_REVIEW_REWORK,
+                task_id=task.id,
+                decided_by=decided_by,
+                target_status=target.value,
+                stage="sync_to_task_engine",
+            )
+            raise
 
-        # Log the state transition AFTER sync_to_task_engine succeeds so
-        # audit logs reflect actual transitions, not intended ones.
         logger.info(
             event,
             task_id=task.id,

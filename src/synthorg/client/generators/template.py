@@ -60,7 +60,8 @@ class TemplateGenerator:
         if not isinstance(raw, list):
             msg = f"Template file must contain a JSON array, got {type(raw).__name__}"
             raise TypeError(msg)
-        self._templates: tuple[dict[str, Any], ...] = tuple(raw)
+        valid = [entry for entry in raw if isinstance(entry, dict)]
+        self._templates: tuple[dict[str, Any], ...] = tuple(valid)
         self._rng = (
             random.Random(seed)  # noqa: S311
             if seed is not None

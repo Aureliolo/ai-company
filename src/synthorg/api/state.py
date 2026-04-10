@@ -848,9 +848,14 @@ class AppState:
 
     def set_settings_service(self, settings_service: SettingsService) -> None:
         """Set settings service and rebuild derived services."""
-        self._set_once("_settings_service", settings_service, "Settings service")
+        if self._settings_service is not None:
+            msg = "Settings service already configured"
+            logger.error(API_APP_STARTUP, error=msg)
+            raise RuntimeError(msg)
         self._init_derived_services(
             settings_service=settings_service,
             config=self.config,
             persistence=self._persistence,
         )
+        self._settings_service = settings_service
+        logger.info(API_APP_STARTUP, note="Settings service configured")
