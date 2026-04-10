@@ -42,9 +42,11 @@ class AdversarialFeedback:
         """
         if min_length <= 0:
             msg = f"min_length must be > 0, got {min_length}"
+            logger.warning(msg, client_id=client_id)
             raise ValueError(msg)
         if min_words <= 0:
             msg = f"min_words must be > 0, got {min_words}"
+            logger.warning(msg, client_id=client_id)
             raise ValueError(msg)
         self._client_id = client_id
         self._min_length = min_length

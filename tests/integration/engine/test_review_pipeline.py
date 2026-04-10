@@ -6,7 +6,6 @@ from synthorg.client import (
     AIClient,
     ClientInterface,
     ClientProfile,
-    GenerationContext,
     PoolConstraints,
 )
 from synthorg.client.feedback import BinaryFeedback
@@ -321,7 +320,3 @@ class TestFullPipelineWithClientStage:
             "internal",
             "client",
         ]
-
-
-# Keep GenerationContext import to appease linters via a no-op usage.
-_ = GenerationContext

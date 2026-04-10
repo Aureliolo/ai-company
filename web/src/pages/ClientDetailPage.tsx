@@ -40,7 +40,13 @@ export default function ClientDetailPage() {
       }, 0)
       return () => clearTimeout(timer)
     }
+    let cancelled = false
     const load = async () => {
+      setLoading(true)
+      setClient(null)
+      setSatisfaction(null)
+      setError(null)
+      setSatisfactionError(null)
       try {
         const [profile, history] = await Promise.all([
           getClient(clientId),
@@ -50,18 +56,21 @@ export default function ClientDetailPage() {
             return null
           }),
         ])
+        if (cancelled) return
         setClient(profile)
         setSatisfaction(history)
-        setError(null)
       } catch (err) {
+        if (cancelled) return
         log.error('get_client_failed', err)
         setError('Failed to load client. It may have been removed.')
       } finally {
-        setLoading(false)
+        if (!cancelled) setLoading(false)
       }
     }
     void load()
-    return undefined
+    return () => {
+      cancelled = true
+    }
   }, [clientId])
 
   if (loading) {

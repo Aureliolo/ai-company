@@ -226,14 +226,6 @@ module = "litestar.*"
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
-module = "defusedxml.*"
-ignore_missing_imports = true
-
-[[tool.mypy.overrides]]
-module = ["logfire", "logfire.*"]
-ignore_missing_imports = true
-
-[[tool.mypy.overrides]]
 module = "testcontainers.*"
 ignore_missing_imports = true
 

@@ -1,6 +1,7 @@
 """LLM-backed requirement generator."""
 
 import json
+from collections.abc import Sequence
 from typing import Any
 
 from pydantic import ValidationError
@@ -150,7 +151,18 @@ class LLMGenerator:
             estimated_complexity=Complexity(
                 item.get("estimated_complexity", "medium"),
             ),
-            acceptance_criteria=tuple(
-                item.get("acceptance_criteria", ()),
+            acceptance_criteria=_normalize_criteria(
+                item.get("acceptance_criteria"),
             ),
         )
+
+
+def _normalize_criteria(raw: object) -> tuple[str, ...]:
+    """Coerce acceptance_criteria to a string tuple."""
+    if raw is None:
+        return ()
+    if isinstance(raw, str):
+        return (raw,)
+    if isinstance(raw, Sequence):
+        return tuple(str(c) for c in raw)
+    return ()

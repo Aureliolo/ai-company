@@ -77,13 +77,24 @@ class HybridClient:
         """Expose the client profile for pool/selector consumption."""
         return self._profile
 
+    def _resolve_delegate(
+        self,
+        context: GenerationContext | ReviewContext,
+    ) -> AIClient | HumanClient:
+        route = self._router(self._profile, context)
+        if route == "human":
+            return self._human
+        if route == "ai":
+            return self._ai
+        msg = f"Unsupported route {route!r} from hybrid router"
+        raise ValueError(msg)
+
     async def submit_requirement(
         self,
         context: GenerationContext,
     ) -> TaskRequirement | None:
         """Route submission through AI or human per the router."""
-        route = self._router(self._profile, context)
-        delegate = self._human if route == "human" else self._ai
+        delegate = self._resolve_delegate(context)
         return await delegate.submit_requirement(context)
 
     async def review_deliverable(
@@ -91,6 +102,5 @@ class HybridClient:
         context: ReviewContext,
     ) -> ClientFeedback:
         """Route review through AI or human per the router."""
-        route = self._router(self._profile, context)
-        delegate = self._human if route == "human" else self._ai
+        delegate = self._resolve_delegate(context)
         return await delegate.review_deliverable(context)

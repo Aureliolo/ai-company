@@ -64,7 +64,12 @@ class TestRequirementQueue:
             await asyncio.sleep(0)
             await queue.resolve_requirement(ticket, _requirement("A"))
 
-        await asyncio.gather(queue.await_requirement(ticket, timeout=1.0), resolver())
+        result, _ = await asyncio.gather(
+            queue.await_requirement(ticket, timeout=1.0),
+            resolver(),
+        )
+        assert result is not None
+        assert result.title == "A"
 
     async def test_await_returns_resolved_value(self) -> None:
         queue = InMemoryHumanInputQueue()

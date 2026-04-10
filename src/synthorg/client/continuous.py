@@ -20,11 +20,10 @@ logger = get_logger(__name__)
 class ContinuousMode:
     """Long-running wrapper around :class:`SimulationRunner`.
 
-    Dispatches one simulation run per interval until the injected
-    shutdown event is set. Concurrency between runs is bounded by
-    the continuous-mode configuration: at most one run is in
-    flight per invocation of :meth:`start`, but overlapping runs
-    can be achieved by starting multiple tasks if needed.
+    Dispatches one simulation run per interval until :meth:`stop`
+    is called. Only one run may be active per instance --
+    :meth:`start` raises ``RuntimeError`` if already running.
+    Use separate instances for concurrent simulation loops.
     """
 
     def __init__(

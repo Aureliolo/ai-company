@@ -64,8 +64,17 @@ class AIClient:
         signalling that this client declines to participate.
         """
         single = context.model_copy(update={"count": 1})
-        produced = await self._generator.generate(single)
-        logger.debug(
+        try:
+            produced = await self._generator.generate(single)
+        except Exception:
+            logger.exception(
+                CLIENT_REQUEST_SUBMITTED,
+                client_id=self._profile.client_id,
+                domain=context.domain,
+                stage="generate",
+            )
+            raise
+        logger.info(
             CLIENT_REQUEST_SUBMITTED,
             client_id=self._profile.client_id,
             domain=context.domain,
@@ -81,10 +90,19 @@ class AIClient:
         context: ReviewContext,
     ) -> ClientFeedback:
         """Delegate review to the injected feedback strategy."""
-        logger.debug(
+        logger.info(
             CLIENT_REVIEW_STARTED,
             client_id=self._profile.client_id,
             task_id=context.task_id,
             kind="ai",
         )
-        return await self._feedback.evaluate(context)
+        try:
+            return await self._feedback.evaluate(context)
+        except Exception:
+            logger.exception(
+                CLIENT_REVIEW_STARTED,
+                client_id=self._profile.client_id,
+                task_id=context.task_id,
+                stage="evaluate",
+            )
+            raise

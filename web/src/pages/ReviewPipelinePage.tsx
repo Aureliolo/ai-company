@@ -49,10 +49,12 @@ export default function ReviewPipelinePage() {
   const [error, setError] = useState<string | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
   const [decisionNotice, setDecisionNotice] = useState<string | null>(null)
+  const [submitting, setSubmitting] = useState(false)
 
   const handleDecide = useCallback(
     async (stageName: string, verdict: StageVerdict) => {
-      if (!taskId) return
+      if (!taskId || submitting) return
+      setSubmitting(true)
       setActionError(null)
       try {
         const result = await decideReviewStage(taskId, stageName, {
@@ -66,9 +68,11 @@ export default function ReviewPipelinePage() {
       } catch (err) {
         log.error('decide_stage_failed', err)
         setActionError('Failed to record stage decision.')
+      } finally {
+        setSubmitting(false)
       }
     },
-    [taskId],
+    [taskId, submitting],
   )
 
   useEffect(() => {
@@ -195,6 +199,7 @@ export default function ReviewPipelinePage() {
                 <Button
                   size="sm"
                   variant="outline"
+                  disabled={submitting}
                   onClick={() => void handleDecide(stage.stage_name, 'pass')}
                 >
                   Override pass
@@ -202,6 +207,7 @@ export default function ReviewPipelinePage() {
                 <Button
                   size="sm"
                   variant="outline"
+                  disabled={submitting}
                   onClick={() => void handleDecide(stage.stage_name, 'fail')}
                 >
                   Override fail

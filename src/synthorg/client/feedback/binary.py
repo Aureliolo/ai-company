@@ -1,5 +1,7 @@
 """Binary accept/reject feedback strategy."""
 
+import math
+
 from synthorg.client.models import ClientFeedback, ReviewContext
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.observability import get_logger
@@ -37,8 +39,11 @@ class BinaryFeedback:
         Raises:
             ValueError: If ``strictness_multiplier`` is not positive.
         """
-        if strictness_multiplier <= 0:
-            msg = f"strictness_multiplier must be > 0, got {strictness_multiplier}"
+        if not math.isfinite(strictness_multiplier) or strictness_multiplier <= 0:
+            msg = (
+                "strictness_multiplier must be a finite positive "
+                f"number, got {strictness_multiplier}"
+            )
             raise ValueError(msg)
         self._client_id = client_id
         self._strictness_multiplier = strictness_multiplier
