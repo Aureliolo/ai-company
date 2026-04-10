@@ -5,9 +5,9 @@ backend-specific settings.
 """
 
 from pathlib import PurePosixPath, PureWindowsPath
-from typing import ClassVar, Self
+from typing import ClassVar, Literal, Self
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, SecretStr, model_validator
 
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.observability import get_logger
@@ -68,19 +68,127 @@ class SQLiteConfig(BaseModel):
         return self
 
 
-class PersistenceConfig(BaseModel):
-    """Top-level persistence configuration.
+PostgresSslMode = Literal[
+    "disable",
+    "allow",
+    "prefer",
+    "require",
+    "verify-ca",
+    "verify-full",
+]
+
+
+class PostgresConfig(BaseModel):
+    """Postgres-specific persistence configuration.
+
+    Credentials are carried as ``SecretStr`` so they are redacted from
+    logs, ``repr`` output, and Pydantic serialization unless
+    explicitly unwrapped via ``get_secret_value()``.
 
     Attributes:
-        backend: Backend name -- currently only ``"sqlite"`` is
-            implemented.
-        sqlite: SQLite-specific settings (used when
-            ``backend="sqlite"``).
+        host: Database host.
+        port: Database port (default 5432).
+        database: Database name.
+        username: Database username.
+        password: Database password (redacted in logs).
+        ssl_mode: libpq SSL mode.  Default ``"require"`` refuses
+            plaintext connections; production deployments with
+            managed certificates should use ``"verify-full"``.
+        pool_min_size: Minimum pooled connections (warmed on connect).
+        pool_max_size: Maximum pooled connections; must be
+            ``>= pool_min_size``.
+        pool_timeout_seconds: Seconds to wait for a pool checkout
+            before raising.
+        application_name: libpq ``application_name`` session parameter
+            (appears in ``pg_stat_activity``).
+        statement_timeout_ms: Postgres ``statement_timeout`` session
+            parameter; 0 disables.  Default 30 seconds matches the
+            pytest global timeout.
+        connect_timeout_seconds: Seconds to wait for an initial
+            connection attempt before raising.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
-    _VALID_BACKENDS: ClassVar[frozenset[str]] = frozenset({"sqlite"})
+    host: NotBlankStr = Field(
+        default="localhost",
+        description="Database host",
+    )
+    port: int = Field(
+        default=5432,
+        ge=1,
+        le=65535,
+        description="Database port",
+    )
+    database: NotBlankStr = Field(description="Database name")
+    username: NotBlankStr = Field(description="Database username")
+    password: SecretStr = Field(description="Database password")
+    ssl_mode: PostgresSslMode = Field(
+        default="require",
+        description="libpq SSL mode",
+    )
+    pool_min_size: int = Field(
+        default=1,
+        ge=1,
+        description="Minimum pooled connections",
+    )
+    pool_max_size: int = Field(
+        default=10,
+        ge=1,
+        description="Maximum pooled connections",
+    )
+    pool_timeout_seconds: float = Field(
+        default=30.0,
+        gt=0.0,
+        description="Pool checkout timeout in seconds",
+    )
+    application_name: NotBlankStr = Field(
+        default="synthorg",
+        description="libpq application_name session parameter",
+    )
+    statement_timeout_ms: int = Field(
+        default=30_000,
+        ge=0,
+        description="Postgres statement_timeout session param in ms (0 disables)",
+    )
+    connect_timeout_seconds: float = Field(
+        default=10.0,
+        gt=0.0,
+        description="Initial connection timeout in seconds",
+    )
+
+    @model_validator(mode="after")
+    def _validate_pool_sizes(self) -> Self:
+        """Ensure ``pool_max_size`` is not smaller than ``pool_min_size``."""
+        if self.pool_max_size < self.pool_min_size:
+            msg = (
+                f"pool_max_size ({self.pool_max_size}) must be >= "
+                f"pool_min_size ({self.pool_min_size})"
+            )
+            logger.warning(
+                CONFIG_VALIDATION_FAILED,
+                field="pool_max_size",
+                value=self.pool_max_size,
+                reason=msg,
+            )
+            raise ValueError(msg)
+        return self
+
+
+class PersistenceConfig(BaseModel):
+    """Top-level persistence configuration.
+
+    Attributes:
+        backend: Backend name.  One of ``"sqlite"`` or ``"postgres"``.
+        sqlite: SQLite-specific settings (used when
+            ``backend="sqlite"``).
+        postgres: Postgres-specific settings (required when
+            ``backend="postgres"``).
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+
+    _VALID_BACKENDS: ClassVar[frozenset[str]] = frozenset({"sqlite", "postgres"})
 
     backend: NotBlankStr = Field(
         default="sqlite",
@@ -90,10 +198,14 @@ class PersistenceConfig(BaseModel):
         default_factory=SQLiteConfig,
         description="SQLite-specific settings",
     )
+    postgres: PostgresConfig | None = Field(
+        default=None,
+        description="Postgres-specific settings (required when backend=postgres)",
+    )
 
     @model_validator(mode="after")
     def _validate_backend_name(self) -> Self:
-        """Ensure backend is a known persistence backend."""
+        """Ensure backend is known and backend-specific config is present."""
         if self.backend not in self._VALID_BACKENDS:
             msg = (
                 f"Unknown persistence backend {self.backend!r}. "
@@ -103,6 +215,18 @@ class PersistenceConfig(BaseModel):
                 CONFIG_VALIDATION_FAILED,
                 field="backend",
                 value=self.backend,
+                reason=msg,
+            )
+            raise ValueError(msg)
+        if self.backend == "postgres" and self.postgres is None:
+            msg = (
+                "backend='postgres' requires a PostgresConfig to be provided "
+                "via the 'postgres' field"
+            )
+            logger.warning(
+                CONFIG_VALIDATION_FAILED,
+                field="postgres",
+                value=None,
                 reason=msg,
             )
             raise ValueError(msg)

@@ -1,14 +1,29 @@
 """Tests for persistence backend factory."""
 
+import sys
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
+from pydantic import SecretStr
 
-from synthorg.persistence.config import PersistenceConfig, SQLiteConfig
+from synthorg.persistence.config import (
+    PersistenceConfig,
+    PostgresConfig,
+    SQLiteConfig,
+)
 from synthorg.persistence.errors import PersistenceConnectionError
 from synthorg.persistence.factory import create_backend
 from synthorg.persistence.protocol import PersistenceBackend
 from synthorg.persistence.sqlite.backend import SQLitePersistenceBackend
+
+
+def _minimal_postgres_config() -> PostgresConfig:
+    return PostgresConfig(
+        database="synthorg",
+        username="postgres",
+        password=SecretStr("s3cret"),
+    )
 
 
 @pytest.mark.unit
@@ -40,24 +55,94 @@ class TestCreateBackend:
     def test_unknown_backend_raises(self) -> None:
         """Bypass validation via model_copy to test the factory guard."""
         config = PersistenceConfig()
-        bad_config = config.model_copy(update={"backend": "postgres"})
+        bad_config = config.model_copy(update={"backend": "cassandra"})
         with pytest.raises(
             PersistenceConnectionError,
             match="Unknown persistence backend",
         ):
             create_backend(bad_config)
 
+    def test_postgres_backend_dispatches_to_postgres_class(self) -> None:
+        """The factory routes backend='postgres' to PostgresPersistenceBackend.
+
+        The Phase 0 stub raises NotImplementedError from its constructor,
+        which proves the dispatch happened without requiring the full
+        implementation.
+        """
+        config = PersistenceConfig(
+            backend="postgres",
+            postgres=_minimal_postgres_config(),
+        )
+        with pytest.raises(
+            NotImplementedError,
+            match="lifecycle not yet implemented",
+        ):
+            create_backend(config)
+
+    def test_postgres_backend_missing_config_raises(self) -> None:
+        """Factory guard catches missing postgres config after model_copy bypass."""
+        config = PersistenceConfig(
+            backend="postgres",
+            postgres=_minimal_postgres_config(),
+        )
+        bad_config = config.model_copy(update={"postgres": None})
+        with pytest.raises(
+            PersistenceConnectionError,
+            match="requires a PostgresConfig",
+        ):
+            create_backend(bad_config)
+
+    def test_postgres_backend_missing_extra_raises(self) -> None:
+        """Simulate the 'postgres' optional extra not being installed."""
+        config = PersistenceConfig(
+            backend="postgres",
+            postgres=_minimal_postgres_config(),
+        )
+        # Remove the already-imported postgres backend module so the
+        # deferred import inside create_backend raises ImportError.
+        with patch.dict(sys.modules, {}, clear=False):
+            sys.modules.pop("synthorg.persistence.postgres.backend", None)
+            sys.modules.pop("synthorg.persistence.postgres", None)
+            sys.modules["synthorg.persistence.postgres"] = None  # type: ignore[assignment]
+            with pytest.raises(
+                PersistenceConnectionError,
+                match="requires the 'postgres' extra",
+            ):
+                create_backend(config)
+
     async def test_multi_tenancy_separate_databases(
         self,
         tmp_path: Path,
     ) -> None:
-        """Each company config creates an isolated backend instance."""
-        config_a = PersistenceConfig(
-            sqlite=SQLiteConfig(path=str(tmp_path / "company-a.db")),
+        """Each company config creates an isolated backend instance.
+
+        Migrations are applied via ``atlas.migrate_apply`` against a
+        per-test copy of the revisions directory with ``skip_lock=True``
+        (the same pattern used by the session-scoped template fixture)
+        so concurrent xdist workers do not contend on the shared
+        ``src/synthorg/persistence/sqlite/revisions`` directory lock.
+        """
+        from synthorg.persistence import atlas
+
+        path_a = str(tmp_path / "company-a.db")
+        path_b = str(tmp_path / "company-b.db")
+
+        # Apply migrations against an isolated per-test revisions copy
+        # to avoid cross-worker Atlas lock contention.
+        rev_url = atlas.copy_revisions(tmp_path / "revisions")
+        await atlas.migrate_apply(
+            atlas.to_sqlite_url(path_a),
+            revisions_url=rev_url,
+            skip_lock=True,
         )
-        config_b = PersistenceConfig(
-            sqlite=SQLiteConfig(path=str(tmp_path / "company-b.db")),
+        await atlas.migrate_apply(
+            atlas.to_sqlite_url(path_b),
+            revisions_url=rev_url,
+            skip_lock=True,
         )
+
+        config_a = PersistenceConfig(sqlite=SQLiteConfig(path=path_a))
+        config_b = PersistenceConfig(sqlite=SQLiteConfig(path=path_b))
 
         backend_a = create_backend(config_a)
         backend_b = create_backend(config_b)
@@ -65,11 +150,9 @@ class TestCreateBackend:
         # They are separate instances
         assert backend_a is not backend_b
 
-        # Each can connect and operate independently
+        # Each can connect against its already-migrated database
         await backend_a.connect()
-        await backend_a.migrate()
         await backend_b.connect()
-        await backend_b.migrate()
 
         # Verify isolation -- data in one doesn't affect the other
         from tests.unit.persistence.conftest import make_task
