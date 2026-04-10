@@ -111,6 +111,23 @@ All significant design and architecture decisions, organized by domain. Each ent
 | D26 | Adopt append-only writes + MVCC-style snapshot reads for `SharedKnowledgeStore`; personal memories stay sequential | Append-only provides audit trail ("what was the state before date X?"), rollback, and safe concurrent writes. MVCC snapshot reads are consistent with no locking overhead. Personal memories have no cross-agent contention so sequential writes are sufficient. Protocol extension (future PR): add `get_operation_log(fact_id)` and `snapshot_at(timestamp)` to `SharedKnowledgeStore` | CRDT (conflict-free but ~20% space overhead and resurfaces deleted facts on node divergence), event sourcing (good audit properties but requires snapshot compaction strategy), pessimistic locking (high contention under load, tail latency spikes) |
 | D27 | RL consolidation not recommended for MVP; revisit at 10k+ agent deployments | Reward function is multi-objective (readability, retrieval accuracy, synthesis fidelity, token cost) and unsolved without ~1000 annotated sessions. Failure mode is data loss -- RL model drift silently deletes memories; LLM degrades gracefully. At current scale (50--500 agents) training infra cost exceeds token savings by ~12 months. DPO fine-tuning on LLM preference data is the viable intermediate step if cost becomes a concern | Pure RL policy training (reward design is open research problem), behavioral cloning only (low gain over current LLM approach), threshold-based consolidation triggers (no quality improvement, only cost saving) |
 
+## NATS Client Library (2026-04-10)
+
+**Decision:** Stay on `nats-py` (pinned `==2.14.0`). File upstream PR to replace deprecated `asyncio.iscoroutinefunction` with `inspect.iscoroutinefunction`. Maintain scoped `filterwarnings` as workaround until upstream fix lands.
+
+**Context:** PR #1214 (distributed runtime) introduced `nats-py==2.14.0` for the JetStream message bus and task queue. Python 3.14 CI fails because `nats-py` calls `asyncio.iscoroutinefunction` in `nats/aio/client.py:476` -- deprecated in Python 3.14, slated for removal in 3.16. Upstream (`nats-io/nats.py`) has no open issue or fix in progress; classifiers top out at Python 3.13. A separate library, `nats-core`, was evaluated as a potential replacement.
+
+| Candidate | Why chosen / rejected |
+|-----------|----------------------|
+| **nats-py** (stay) | Only Python NATS client with JetStream support (streams, KV store, durable pull consumers, work-queue retention). Official `nats-io` project, Apache 2.0, asyncio-native. The `asyncio.iscoroutinefunction` deprecation is a one-line fix (`inspect.iscoroutinefunction` is a drop-in replacement, backward-compatible to Python 3.5+). All SynthOrg distributed features depend on JetStream primitives |
+| nats-core v0.1.0 | Lean, zero-dependency client (63x faster for core ops). **Does not support JetStream, KV store, pull consumers, or durable consumers** -- only core pub/sub, request/reply, and queue groups. Migration would require rewriting the entire message bus and task queue, losing persistence, durability, history, and KV-backed channel discovery. Also v0.1.0 with no API stability commitment |
+
+**Eliminated:** No other Python NATS clients exist. Custom JetStream client over raw NATS protocol was not considered (substantial effort, no ecosystem benefit).
+
+**SynthOrg JetStream usage** (verified in `bus/nats.py` and `workers/claim.py`): `SYNTHORG_BUS` stream (LimitsPolicy), `SYNTHORG_TASKS` stream (WorkQueuePolicy), `SYNTHORG_BUS_CHANNELS` KV bucket, durable pull consumers with `ConsumerConfig`, stream management (`stream_info`/`add_stream`/`update_stream`), history scanning with ephemeral consumers (`DeliverPolicy.ALL`/`AckPolicy.NONE`), connection lifecycle callbacks.
+
+**Mitigation plan:** (1) File upstream PR with the one-line `inspect.iscoroutinefunction` fix. (2) Keep scoped `filterwarnings` in `pyproject.toml` as workaround. (3) If upstream is unresponsive after 60 days, maintain a local monkey-patch in `bus/_nats_compat.py`. (4) Monitor `nats-core` for future JetStream support.
+
 ## Overarching Pattern
 
 Nearly every decision follows the same architecture: a pluggable protocol interface with one initial implementation shipped, and alternative strategies documented for future extension. This is consistent with the project's protocol-driven design philosophy.
