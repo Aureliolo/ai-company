@@ -91,8 +91,11 @@ export function VersionHistoryPanel({ open, onClose }: VersionHistoryPanelProps)
 
   async function confirmRestore() {
     if (restoreTarget === null) return
-    await rollback(restoreTarget)
-    setRestoreTarget(null)
+    try {
+      await rollback(restoreTarget)
+    } finally {
+      setRestoreTarget(null)
+    }
   }
 
   return (
@@ -105,7 +108,7 @@ export function VersionHistoryPanel({ open, onClose }: VersionHistoryPanelProps)
       >
         <div className="flex flex-col gap-section-gap">
           {versionsLoading && versions.length === 0 && (
-            <div className="flex flex-col gap-2">
+            <div className="flex flex-col gap-grid-gap">
               {Array.from({ length: 3 }, (_, i) => (
                 <Skeleton key={i} className="h-16 rounded-lg" />
               ))}

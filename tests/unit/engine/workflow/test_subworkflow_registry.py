@@ -86,7 +86,7 @@ class FakeSubworkflowRepository(SubworkflowRepository):
 
     def __init__(self) -> None:
         self._rows: dict[tuple[str, str], WorkflowDefinition] = {}
-        self._parents: list[ParentReference] = []
+        self._parents: dict[str, list[ParentReference]] = {}
 
     async def save(self, definition: WorkflowDefinition) -> None:
         key = (definition.id, definition.version)
@@ -156,13 +156,15 @@ class FakeSubworkflowRepository(SubworkflowRepository):
         version: str | None = None,
     ) -> tuple[ParentReference, ...]:
         matching = [
-            p for p in self._parents if version is None or p.pinned_version == version
+            p
+            for p in self._parents.get(subworkflow_id, [])
+            if version is None or p.pinned_version == version
         ]
         return tuple(matching)
 
-    def add_parent(self, parent: ParentReference) -> None:
+    def add_parent(self, subworkflow_id: str, parent: ParentReference) -> None:
         """Test helper to inject a parent reference."""
-        self._parents.append(parent)
+        self._parents.setdefault(subworkflow_id, []).append(parent)
 
 
 @pytest.fixture
@@ -259,6 +261,7 @@ class TestDeleteProtection:
         fake_repo = registry._repo
         assert isinstance(fake_repo, FakeSubworkflowRepository)
         fake_repo.add_parent(
+            "sub-finance-close",
             ParentReference(
                 parent_id="parent-1",
                 parent_name="Parent Workflow",

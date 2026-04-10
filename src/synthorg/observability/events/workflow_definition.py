@@ -78,3 +78,6 @@ SUBWORKFLOW_CYCLE_DETECTED: Final[str] = "workflow.subworkflow.cycle_detected"
 
 SUBWORKFLOW_IO_INVALID: Final[str] = "workflow.subworkflow.io_invalid"
 """Save-time I/O validation rejected a subworkflow reference."""
+
+SUBWORKFLOW_INVALID_REQUEST: Final[str] = "workflow.subworkflow.invalid_request"
+"""API request to create or update a subworkflow was invalid."""

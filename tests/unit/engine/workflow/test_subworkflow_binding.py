@@ -258,3 +258,83 @@ class TestProjectOutputBindings:
                 child_vars={},
                 declarations=decls,
             )
+
+    @pytest.mark.unit
+    def test_parent_pass_through_binding(self) -> None:
+        decls = (
+            WorkflowIODeclaration(
+                name="context",
+                type=WorkflowValueType.STRING,
+            ),
+        )
+        projected = project_output_bindings(
+            bindings={"context": "@parent.env"},
+            child_vars={},
+            declarations=decls,
+            parent_vars={"env": "production"},
+        )
+        assert projected == {"context": "production"}
+
+
+class TestBooleanAndAgentRefTypes:
+    """Cover BOOLEAN and AGENT_REF type validation paths."""
+
+    @pytest.mark.unit
+    def test_boolean_input_accepted(self) -> None:
+        decls = (WorkflowIODeclaration(name="flag", type=WorkflowValueType.BOOLEAN),)
+        resolved = resolve_input_bindings(
+            bindings={"flag": True},
+            parent_vars={},
+            declarations=decls,
+        )
+        assert resolved["flag"] is True
+
+    @pytest.mark.unit
+    def test_boolean_rejects_int(self) -> None:
+        decls = (WorkflowIODeclaration(name="flag", type=WorkflowValueType.BOOLEAN),)
+        with pytest.raises(SubworkflowIOError, match="expects BOOLEAN"):
+            resolve_input_bindings(
+                bindings={"flag": 1},
+                parent_vars={},
+                declarations=decls,
+            )
+
+    @pytest.mark.unit
+    def test_agent_ref_accepted(self) -> None:
+        decls = (WorkflowIODeclaration(name="agent", type=WorkflowValueType.AGENT_REF),)
+        resolved = resolve_input_bindings(
+            bindings={"agent": "agent-001"},
+            parent_vars={},
+            declarations=decls,
+        )
+        assert resolved["agent"] == "agent-001"
+
+    @pytest.mark.unit
+    def test_agent_ref_rejects_blank(self) -> None:
+        decls = (WorkflowIODeclaration(name="agent", type=WorkflowValueType.AGENT_REF),)
+        with pytest.raises(SubworkflowIOError, match="expects AGENT_REF"):
+            resolve_input_bindings(
+                bindings={"agent": "   "},
+                parent_vars={},
+                declarations=decls,
+            )
+
+    @pytest.mark.unit
+    def test_boolean_output_accepted(self) -> None:
+        decls = (WorkflowIODeclaration(name="ok", type=WorkflowValueType.BOOLEAN),)
+        projected = project_output_bindings(
+            bindings={"ok": "@child.success"},
+            child_vars={"success": False},
+            declarations=decls,
+        )
+        assert projected["ok"] is False
+
+    @pytest.mark.unit
+    def test_agent_ref_output_accepted(self) -> None:
+        decls = (WorkflowIODeclaration(name="agent", type=WorkflowValueType.AGENT_REF),)
+        projected = project_output_bindings(
+            bindings={"agent": "@child.assigned"},
+            child_vars={"assigned": "agent-002"},
+            declarations=decls,
+        )
+        assert projected["agent"] == "agent-002"

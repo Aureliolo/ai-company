@@ -7,11 +7,12 @@ via the ``TaskEngine``.
 """
 
 from collections.abc import Mapping  # noqa: TC003
+from copy import deepcopy
 from datetime import UTC, datetime
 from types import MappingProxyType
 from typing import ClassVar, Self
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from synthorg.core.enums import (
     WorkflowExecutionStatus,
@@ -47,6 +48,14 @@ class ExecutionFrame(BaseModel):
         default_factory=lambda: MappingProxyType({}),
         description="Frame-local variables",
     )
+
+    @field_validator("variables", mode="before")
+    @classmethod
+    def _freeze_variables(cls, value: Mapping[str, object]) -> MappingProxyType:
+        if isinstance(value, MappingProxyType):
+            return value
+        return MappingProxyType(deepcopy(dict(value)))
+
     parent_frame: ExecutionFrame | None = Field(
         default=None,
         description="Caller frame (None for root)",

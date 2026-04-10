@@ -101,5 +101,17 @@ export const NODE_CONFIG_SCHEMAS: Record<WorkflowNodeType, readonly ConfigField[
       required: true,
       placeholder: 'e.g. 1.0.0',
     },
+    {
+      key: 'input_bindings',
+      label: 'Input Bindings (JSON)',
+      type: 'text',
+      placeholder: '{"quarter": "@parent.current_quarter"}',
+    },
+    {
+      key: 'output_bindings',
+      label: 'Output Bindings (JSON)',
+      type: 'text',
+      placeholder: '{"report": "@child.closing_report"}',
+    },
   ],
 }

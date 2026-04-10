@@ -33,6 +33,9 @@ from synthorg.engine.workflow.definition import (
 )
 from synthorg.engine.workflow.subworkflow_registry import SubworkflowRegistry
 from synthorg.observability import get_logger
+from synthorg.observability.events.workflow_definition import (
+    SUBWORKFLOW_INVALID_REQUEST,
+)
 from synthorg.persistence.errors import DuplicateRecordError
 from synthorg.persistence.subworkflow_repo import (
     ParentReference,
@@ -238,7 +241,7 @@ class SubworkflowController(Controller):
             )
         except (ValueError, ValidationError) as exc:
             logger.warning(
-                "workflow.subworkflow.invalid_request",
+                SUBWORKFLOW_INVALID_REQUEST,
                 error=str(exc),
             )
             return Response(
@@ -252,13 +255,19 @@ class SubworkflowController(Controller):
         try:
             await registry.register(definition)
         except SubworkflowIOError as exc:
+            logger.warning(SUBWORKFLOW_INVALID_REQUEST, error=str(exc))
             return Response(
-                content=ApiResponse[WorkflowDefinition](error=str(exc)),
+                content=ApiResponse[WorkflowDefinition](
+                    error="Subworkflow I/O validation failed.",
+                ),
                 status_code=422,
             )
         except DuplicateRecordError as exc:
+            logger.warning(SUBWORKFLOW_INVALID_REQUEST, error=str(exc))
             return Response(
-                content=ApiResponse[WorkflowDefinition](error=str(exc)),
+                content=ApiResponse[WorkflowDefinition](
+                    error="A subworkflow with this ID and version already exists.",
+                ),
                 status_code=409,
             )
 
@@ -290,13 +299,18 @@ class SubworkflowController(Controller):
         try:
             await registry.delete(subworkflow_id, version)
         except SubworkflowIOError as exc:
+            logger.warning(SUBWORKFLOW_INVALID_REQUEST, error=str(exc))
             return Response(
-                content=ApiResponse[None](error=str(exc)),
+                content=ApiResponse[None](
+                    error="Cannot delete: version is still referenced.",
+                ),
                 status_code=409,
             )
-        except SubworkflowNotFoundError as exc:
+        except SubworkflowNotFoundError:
             return Response(
-                content=ApiResponse[None](error=str(exc)),
+                content=ApiResponse[None](
+                    error="Subworkflow version not found.",
+                ),
                 status_code=404,
             )
         return Response(content=ApiResponse[None]())

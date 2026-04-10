@@ -64,6 +64,7 @@ class ValidationErrorCode(StrEnum):
     SUBWORKFLOW_INPUT_MISSING = "subworkflow_input_missing"
     SUBWORKFLOW_INPUT_UNKNOWN = "subworkflow_input_unknown"
     SUBWORKFLOW_INPUT_TYPE_MISMATCH = "subworkflow_input_type_mismatch"
+    SUBWORKFLOW_OUTPUT_MISSING = "subworkflow_output_missing"
     SUBWORKFLOW_OUTPUT_UNKNOWN = "subworkflow_output_unknown"
     SUBWORKFLOW_OUTPUT_TYPE_MISMATCH = "subworkflow_output_type_mismatch"
     SUBWORKFLOW_CYCLE_DETECTED = "subworkflow_cycle_detected"
@@ -481,7 +482,7 @@ def _check_subworkflow_io_for_node(  # noqa: PLR0913
             bindings=output_bindings,
             declarations=child_outputs,
             direction="output",
-            missing_code=ValidationErrorCode.SUBWORKFLOW_INPUT_MISSING,
+            missing_code=ValidationErrorCode.SUBWORKFLOW_OUTPUT_MISSING,
             unknown_code=ValidationErrorCode.SUBWORKFLOW_OUTPUT_UNKNOWN,
             type_code=ValidationErrorCode.SUBWORKFLOW_OUTPUT_TYPE_MISMATCH,
         ),

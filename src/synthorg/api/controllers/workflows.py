@@ -136,7 +136,7 @@ def _build_update_fields(  # noqa: C901, PLR0912
             )
             return Response(
                 content=ApiResponse[WorkflowDefinition](
-                    error=f"Invalid inputs: {exc}",
+                    error="Invalid 'inputs' field in request.",
                 ),
                 status_code=422,
             )
@@ -153,7 +153,7 @@ def _build_update_fields(  # noqa: C901, PLR0912
             )
             return Response(
                 content=ApiResponse[WorkflowDefinition](
-                    error=f"Invalid outputs: {exc}",
+                    error="Invalid 'outputs' field in request.",
                 ),
                 status_code=422,
             )
@@ -549,11 +549,19 @@ class WorkflowController(Controller):
         try:
             nodes = tuple(WorkflowNode.model_validate(n) for n in data.nodes)
             edges = tuple(WorkflowEdge.model_validate(e) for e in data.edges)
+            inputs = tuple(WorkflowIODeclaration.model_validate(i) for i in data.inputs)
+            outputs = tuple(
+                WorkflowIODeclaration.model_validate(o) for o in data.outputs
+            )
             definition = WorkflowDefinition(
                 id=f"wfdef-{uuid.uuid4().hex[:12]}",
                 name=data.name,
                 description=data.description,
                 workflow_type=data.workflow_type,
+                version=data.version,
+                inputs=inputs,
+                outputs=outputs,
+                is_subworkflow=data.is_subworkflow,
                 nodes=nodes,
                 edges=edges,
                 created_by=creator,
@@ -567,7 +575,7 @@ class WorkflowController(Controller):
             )
             return Response(
                 content=ApiResponse[WorkflowDefinition](
-                    error=f"Invalid workflow definition: {exc}",
+                    error="Invalid workflow definition.",
                 ),
                 status_code=422,
             )
@@ -581,7 +589,7 @@ class WorkflowController(Controller):
             )
             return Response(
                 content=ApiResponse[WorkflowDefinition](
-                    error=f"Subworkflow validation failed: {messages}",
+                    error="Subworkflow validation failed.",
                 ),
                 status_code=422,
             )
@@ -634,6 +642,20 @@ class WorkflowController(Controller):
             return update_result
         updated = update_result
 
+        subworkflow_errors = await _run_subworkflow_validation(updated, state)
+        if subworkflow_errors:
+            messages = "; ".join(e.message for e in subworkflow_errors)
+            logger.warning(
+                WORKFLOW_DEF_INVALID_REQUEST,
+                error=messages,
+            )
+            return Response(
+                content=ApiResponse[WorkflowDefinition](
+                    error="Subworkflow validation failed.",
+                ),
+                status_code=422,
+            )
+
         try:
             await repo.save(updated)
         except VersionConflictError as exc:
@@ -644,7 +666,7 @@ class WorkflowController(Controller):
             )
             return Response(
                 content=ApiResponse[WorkflowDefinition](
-                    error=f"Version conflict: {exc}",
+                    error="Version conflict: definition was modified concurrently.",
                 ),
                 status_code=409,
             )

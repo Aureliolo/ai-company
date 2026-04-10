@@ -23,6 +23,7 @@ Binding expression language (minimal, deliberately):
     - ``@child``  -- the child frame's variables (used in output bindings)
 """
 
+import copy
 from collections.abc import Mapping
 from datetime import datetime
 from typing import TYPE_CHECKING
@@ -180,14 +181,14 @@ def resolve_input_bindings(
                 msg = f"Cannot resolve input binding {decl.name!r}: {exc}"
                 raise SubworkflowIOError(msg) from exc
             _validate_value_type(decl.name, value, decl.type)
-            resolved[decl.name] = value
+            resolved[decl.name] = copy.deepcopy(value)
             continue
         if decl.required:
             msg = f"Missing required input {decl.name!r}"
             raise SubworkflowIOError(msg)
         if decl.default is not None:
             _validate_value_type(decl.name, decl.default, decl.type)
-            resolved[decl.name] = decl.default
+            resolved[decl.name] = copy.deepcopy(decl.default)
     return resolved
 
 
@@ -195,6 +196,8 @@ def project_output_bindings(
     bindings: Mapping[str, object],
     child_vars: Mapping[str, object],
     declarations: tuple[WorkflowIODeclaration, ...],
+    *,
+    parent_vars: Mapping[str, object] | None = None,
 ) -> dict[str, object]:
     """Project a subworkflow's outputs into the caller's scope.
 
@@ -206,6 +209,8 @@ def project_output_bindings(
             of the child's output declarations for type validation.
         child_vars: The child frame's final variable map.
         declarations: The child's declared output contract.
+        parent_vars: The calling frame's variable map, required for
+            ``@parent.*`` pass-through bindings.
 
     Returns:
         A new ``dict`` containing values to merge into the caller's
@@ -225,6 +230,7 @@ def project_output_bindings(
         )
         raise SubworkflowIOError(msg)
 
+    caller_vars = parent_vars if parent_vars is not None else {}
     projected: dict[str, object] = {}
     for decl in declarations:
         if decl.name in bindings:
@@ -232,21 +238,21 @@ def project_output_bindings(
             try:
                 value = _resolve_expression(
                     expression,
-                    parent_vars={},
+                    parent_vars=caller_vars,
                     child_vars=child_vars,
                 )
             except KeyError as exc:
                 msg = f"Cannot resolve output binding {decl.name!r}: {exc}"
                 raise SubworkflowIOError(msg) from exc
             _validate_value_type(decl.name, value, decl.type)
-            projected[decl.name] = value
+            projected[decl.name] = copy.deepcopy(value)
             continue
         if decl.required:
             msg = f"Missing required output binding for {decl.name!r}"
             raise SubworkflowIOError(msg)
         if decl.default is not None:
             _validate_value_type(decl.name, decl.default, decl.type)
-            projected[decl.name] = decl.default
+            projected[decl.name] = copy.deepcopy(decl.default)
     return projected
 
 

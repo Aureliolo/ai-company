@@ -31,10 +31,12 @@ fi
 
 REVISIONS_DIR="src/synthorg/persistence/sqlite/revisions"
 
-# Fail closed if origin/main cannot be fetched -- we cannot verify otherwise.
-if ! git fetch origin main --quiet 2>/dev/null; then
-    echo "check_single_migration_per_pr: failed to fetch origin/main; cannot verify migration count." >&2
-    exit 1
+# Use existing origin/main ref when available; only fetch as a fallback.
+if ! git show-ref --verify --quiet refs/remotes/origin/main; then
+    if ! git fetch origin main --quiet 2>/dev/null; then
+        echo "check_single_migration_per_pr: origin/main is unavailable; skipping local check." >&2
+        exit 0
+    fi
 fi
 
 # Find all .sql files under revisions/ that exist on HEAD.

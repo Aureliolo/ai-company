@@ -354,17 +354,15 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         subworkflow_id: NotBlankStr,
         version: NotBlankStr | None = None,
     ) -> tuple[ParentReference, ...]:
-        """Return parent workflow definitions referencing a subworkflow.
+        """Return workflow definitions referencing a subworkflow.
 
-        Performs a JSON scan over ``workflow_definitions.nodes``,
-        filtering rows whose ``is_subworkflow`` flag is ``0`` (live
-        parents, not nested subworkflows) and whose nodes array contains
-        a SUBWORKFLOW entry matching the coordinate.
+        Performs a JSON scan over all ``workflow_definitions.nodes``
+        (both top-level workflows and nested subworkflows) whose nodes
+        array contains a SUBWORKFLOW entry matching the coordinate.
         """
         try:
             cursor = await self._db.execute(
-                "SELECT id, name, nodes FROM workflow_definitions "
-                "WHERE is_subworkflow = 0",
+                "SELECT id, name, nodes FROM workflow_definitions",
             )
             rows = await cursor.fetchall()
         except sqlite3.Error as exc:
@@ -383,8 +381,18 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             try:
                 nodes = json.loads(row["nodes"])
             except json.JSONDecodeError:
+                logger.warning(
+                    PERSISTENCE_SUBWORKFLOW_LIST_FAILED,
+                    parent_id=parent_id,
+                    error="Corrupted nodes JSON in workflow definition",
+                )
                 continue
             if not isinstance(nodes, list):
+                logger.warning(
+                    PERSISTENCE_SUBWORKFLOW_LIST_FAILED,
+                    parent_id=parent_id,
+                    error="nodes field is not a list",
+                )
                 continue
             for node in nodes:
                 if not isinstance(node, dict):
@@ -434,6 +442,11 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 inputs = json.loads(latest["inputs"])
                 outputs = json.loads(latest["outputs"])
             except json.JSONDecodeError:
+                logger.warning(
+                    PERSISTENCE_SUBWORKFLOW_LIST_FAILED,
+                    subworkflow_id=sub_id,
+                    error="Corrupted I/O JSON in subworkflow",
+                )
                 inputs = []
                 outputs = []
             summaries.append(

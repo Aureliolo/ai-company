@@ -608,6 +608,25 @@ class CreateWorkflowDefinitionRequest(BaseModel):
     name: NotBlankStr = Field(max_length=256, description="Workflow name")
     description: str = Field(default="", max_length=4096, description="Description")
     workflow_type: WorkflowType = Field(description="Target execution topology")
+    version: str = Field(
+        default="1.0.0",
+        max_length=64,
+        description="Semver version string",
+    )
+    inputs: tuple[dict[str, object], ...] = Field(
+        default=(),
+        max_length=100,
+        description="Typed input declarations",
+    )
+    outputs: tuple[dict[str, object], ...] = Field(
+        default=(),
+        max_length=100,
+        description="Typed output declarations",
+    )
+    is_subworkflow: bool = Field(
+        default=False,
+        description="Whether this definition is a reusable subworkflow",
+    )
     nodes: tuple[dict[str, object], ...] = Field(
         max_length=500,
         description="Workflow nodes",

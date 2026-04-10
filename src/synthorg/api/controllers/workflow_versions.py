@@ -181,6 +181,7 @@ def _build_rolled_back_definition(
     return target.snapshot.model_copy(
         update={
             "id": existing.id,
+            "version": existing.version,
             "created_by": existing.created_by,
             "created_at": existing.created_at,
             "updated_at": now,

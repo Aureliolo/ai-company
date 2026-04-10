@@ -228,6 +228,33 @@ class TestListSummariesAndSearch:
         assert len(results) == 1
         assert results[0].subworkflow_id == "sub-quarterly-close"
 
+    async def test_search_escapes_like_wildcards(
+        self,
+        repo: SQLiteSubworkflowRepository,
+    ) -> None:
+        await repo.save(
+            _make_subworkflow(
+                subworkflow_id="sub-percent-literal",
+                name="50% Complete Workflow",
+                description="Uses percent sign",
+            ),
+        )
+        await repo.save(
+            _make_subworkflow(
+                subworkflow_id="sub-underscore-literal",
+                name="step_1 setup",
+                description="Uses underscore",
+            ),
+        )
+
+        results = await repo.search("50%")
+        assert len(results) == 1
+        assert results[0].subworkflow_id == "sub-percent-literal"
+
+        results = await repo.search("step_1")
+        assert len(results) == 1
+        assert results[0].subworkflow_id == "sub-underscore-literal"
+
 
 @pytest.mark.unit
 class TestDelete:

@@ -63,6 +63,7 @@ from synthorg.observability.events.workflow_execution import (
     WORKFLOW_EXEC_SUBWORKFLOW_FRAME_PUSHED,
     WORKFLOW_EXEC_SUBWORKFLOW_NODE_COMPLETED,
 )
+from synthorg.persistence.errors import VersionConflictError
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -640,6 +641,7 @@ class WorkflowExecutionService:
             output_bindings,
             child_final_vars,
             child_definition.outputs,
+            parent_vars=frame_ctx,
         )
         frame_ctx.update(projected)
 
@@ -854,10 +856,25 @@ class WorkflowExecutionService:
         if execution is None:
             return
 
-        if event.new_status in {TaskStatus.FAILED, TaskStatus.CANCELLED}:
-            await self._handle_task_failed(execution, event)
-        else:
-            await self._handle_task_completed(execution, event)
+        try:
+            if event.new_status in {TaskStatus.FAILED, TaskStatus.CANCELLED}:
+                await self._handle_task_failed(execution, event)
+            else:
+                await self._handle_task_completed(execution, event)
+        except VersionConflictError:
+            logger.warning(
+                WORKFLOW_EXEC_NODE_TASK_COMPLETED,
+                execution_id=execution.id,
+                task_id=event.task_id,
+                error="Concurrent modification; re-fetching execution",
+            )
+            refreshed = await self._execution_repo.get(execution.id)
+            if refreshed is None:
+                return
+            if event.new_status in {TaskStatus.FAILED, TaskStatus.CANCELLED}:
+                await self._handle_task_failed(refreshed, event)
+            else:
+                await self._handle_task_completed(refreshed, event)
 
     async def _handle_task_failed(
         self,

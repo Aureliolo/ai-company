@@ -26,6 +26,34 @@ from synthorg.core.types import NotBlankStr  # noqa: TC001
 
 _DEFAULT_SEMVER = "1.0.0"
 
+_VALUE_TYPE_CHECKS: dict[WorkflowValueType, type | tuple[type, ...]] = {
+    WorkflowValueType.STRING: str,
+    WorkflowValueType.INTEGER: int,
+    WorkflowValueType.FLOAT: (int, float),
+    WorkflowValueType.BOOLEAN: bool,
+    WorkflowValueType.DATETIME: datetime,
+    WorkflowValueType.TASK_REF: str,
+    WorkflowValueType.AGENT_REF: str,
+}
+
+
+def _check_default_type(name: str, default: object, vtype: WorkflowValueType) -> None:
+    """Validate that *default* is compatible with *vtype*."""
+    if vtype is WorkflowValueType.JSON:
+        return
+    expected = _VALUE_TYPE_CHECKS.get(vtype)
+    if expected is None:
+        return
+    if vtype is WorkflowValueType.INTEGER and isinstance(default, bool):
+        msg = f"Declaration {name!r}: default must be INTEGER, got bool"
+        raise ValueError(msg)
+    if not isinstance(default, expected):
+        msg = (
+            f"Declaration {name!r}: default must be"
+            f" {vtype.value}, got {type(default).__name__}"
+        )
+        raise TypeError(msg)
+
 
 class WorkflowIODeclaration(BaseModel):
     """A typed input or output declaration for a workflow definition.
@@ -56,13 +84,15 @@ class WorkflowIODeclaration(BaseModel):
 
     @model_validator(mode="after")
     def _validate_default_compatible(self) -> Self:
-        """Reject defaults on required declarations or on unknown value kinds."""
+        """Reject defaults on required declarations and type-check defaults."""
         if self.required and self.default is not None:
             msg = (
                 f"Declaration {self.name!r}: required declarations "
                 f"must not carry a default value"
             )
             raise ValueError(msg)
+        if self.default is not None:
+            _check_default_type(self.name, self.default, self.type)
         return self
 
 

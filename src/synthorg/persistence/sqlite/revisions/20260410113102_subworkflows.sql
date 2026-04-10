@@ -28,7 +28,7 @@ CREATE TABLE `new_workflow_definitions` (
   CHECK (revision >= 1)
 );
 -- Copy rows from old table "workflow_definitions" to new temporary table "new_workflow_definitions"
-INSERT INTO `new_workflow_definitions` (`id`, `name`, `description`, `workflow_type`, `version`, `nodes`, `edges`, `created_by`, `created_at`, `updated_at`) SELECT `id`, `name`, `description`, `workflow_type`, IFNULL(`version`, '1.0.0') AS `version`, `nodes`, `edges`, `created_by`, `created_at`, `updated_at` FROM `workflow_definitions`;
+INSERT INTO `new_workflow_definitions` (`id`, `name`, `description`, `workflow_type`, `version`, `nodes`, `edges`, `created_by`, `created_at`, `updated_at`, `revision`) SELECT `id`, `name`, `description`, `workflow_type`, '1.0.0', `nodes`, `edges`, `created_by`, `created_at`, `updated_at`, IFNULL(`version`, 1) FROM `workflow_definitions`;
 -- Drop "workflow_definitions" table after copying rows
 DROP TABLE `workflow_definitions`;
 -- Rename temporary table "new_workflow_definitions" to "workflow_definitions"
@@ -66,7 +66,7 @@ CREATE TABLE `new_workflow_executions` (
   CHECK (version >= 1)
 );
 -- Copy rows from old table "workflow_executions" to new temporary table "new_workflow_executions"
-INSERT INTO `new_workflow_executions` (`id`, `definition_id`, `status`, `node_executions`, `activated_by`, `project`, `created_at`, `updated_at`, `completed_at`, `error`, `version`) SELECT `id`, `definition_id`, `status`, `node_executions`, `activated_by`, `project`, `created_at`, `updated_at`, `completed_at`, `error`, `version` FROM `workflow_executions`;
+INSERT INTO `new_workflow_executions` (`id`, `definition_id`, `definition_revision`, `status`, `node_executions`, `activated_by`, `project`, `created_at`, `updated_at`, `completed_at`, `error`, `version`) SELECT `id`, `definition_id`, IFNULL(`definition_version`, 1), `status`, `node_executions`, `activated_by`, `project`, `created_at`, `updated_at`, `completed_at`, `error`, `version` FROM `workflow_executions`;
 -- Drop "workflow_executions" table after copying rows
 DROP TABLE `workflow_executions`;
 -- Rename temporary table "new_workflow_executions" to "workflow_executions"
@@ -79,6 +79,8 @@ CREATE INDEX `idx_wfe_status` ON `workflow_executions` (`status`);
 CREATE INDEX `idx_wfe_updated_at` ON `workflow_executions` (`updated_at` DESC);
 -- Create index "idx_wfe_definition_updated" to table: "workflow_executions"
 CREATE INDEX `idx_wfe_definition_updated` ON `workflow_executions` (`definition_id`, `updated_at` DESC);
+-- Create index "idx_wfe_definition_revision" to table: "workflow_executions"
+CREATE INDEX `idx_wfe_definition_revision` ON `workflow_executions` (`definition_id`, `definition_revision`);
 -- Create index "idx_wfe_status_updated" to table: "workflow_executions"
 CREATE INDEX `idx_wfe_status_updated` ON `workflow_executions` (`status`, `updated_at` DESC);
 -- Create index "idx_wfe_project" to table: "workflow_executions"
