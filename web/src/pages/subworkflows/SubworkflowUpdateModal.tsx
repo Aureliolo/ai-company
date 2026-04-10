@@ -71,7 +71,7 @@ export function SubworkflowUpdateModal({
   return (
     <Dialog.Root open={open} onOpenChange={handleOpenChange}>
       <Dialog.Portal>
-        <Dialog.Backdrop className="fixed inset-0 z-40 bg-black/40" />
+        <Dialog.Backdrop className="fixed inset-0 z-50 bg-background/80 backdrop-blur-sm transition-opacity data-[closed]:opacity-0 data-[starting-style]:opacity-0" />
         <Dialog.Popup className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <div className="w-full max-w-md rounded-lg border border-border bg-card shadow-xl">
             <div className="flex items-center justify-between border-b border-border p-card">
