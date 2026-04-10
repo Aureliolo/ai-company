@@ -165,7 +165,7 @@ updates:
     ignore:
       - dependency-name: chainguard/python
       - dependency-name: python
-        versions: [">=3.15"]
+        versions: ["3.15.*", "3.16.*"]
     labels:
       - dependencies
       - type:chore
@@ -187,7 +187,7 @@ updates:
       - Aureliolo
     ignore:
       - dependency-name: python
-        versions: [">=3.15"]
+        versions: ["3.15.*", "3.16.*"]
     labels:
       - dependencies
       - type:chore
@@ -209,7 +209,7 @@ updates:
       - Aureliolo
     ignore:
       - dependency-name: python
-        versions: [">=3.15"]
+        versions: ["3.15.*", "3.16.*"]
     labels:
       - dependencies
       - type:chore
