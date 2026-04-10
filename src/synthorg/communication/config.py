@@ -2,8 +2,9 @@
 
 from collections import Counter
 from typing import Literal, Self
+from urllib.parse import urlparse
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from synthorg.communication.conflict_resolution.config import (
     ConflictResolutionConfig,
@@ -18,6 +19,14 @@ from synthorg.core.types import (
     NotBlankStr,
     validate_unique_strings,
 )
+
+_VALID_NATS_URL_SCHEMES: frozenset[str] = frozenset({"nats", "tls", "nats+tls"})
+"""NATS URL schemes accepted at config load.
+
+Matches the Go CLI's ``validateNatsURL`` allow-list in
+``cli/cmd/worker_start.go`` so the config and the CLI enforce the
+same rule at their respective system boundaries.
+"""
 
 # Default channels from the Communication design page.
 _DEFAULT_CHANNELS: tuple[str, ...] = (
@@ -78,6 +87,35 @@ class NatsConfig(BaseModel):
         default="nats://localhost:4222",
         description="NATS server URL",
     )
+
+    @field_validator("url")
+    @classmethod
+    def _validate_url(cls, value: str) -> str:
+        """Reject bad NATS URLs at config load instead of first connect.
+
+        The in-process NATS client accepts "anything non-empty" and only
+        fails later when it tries to dial the server, which leads to
+        confusing errors downstream. Parse the URL here and require a
+        recognised scheme plus a non-empty host so misconfiguration
+        surfaces immediately at config load.
+        """
+        try:
+            parsed = urlparse(value)
+        except ValueError as exc:
+            msg = f"invalid NATS url {value!r}: {exc}"
+            raise ValueError(msg) from exc
+        if parsed.scheme.lower() not in _VALID_NATS_URL_SCHEMES:
+            schemes = ", ".join(sorted(_VALID_NATS_URL_SCHEMES))
+            msg = (
+                f"invalid NATS url {value!r}: scheme must be one of {schemes}; "
+                f"got {parsed.scheme!r}"
+            )
+            raise ValueError(msg)
+        if not parsed.hostname:
+            msg = f"invalid NATS url {value!r}: missing host"
+            raise ValueError(msg)
+        return value
+
     credentials_path: str | None = Field(
         default=None,
         description="Optional credentials file path",

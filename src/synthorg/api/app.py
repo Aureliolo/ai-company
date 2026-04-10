@@ -606,6 +606,7 @@ def _build_lifecycle(  # noqa: PLR0913, PLR0915, C901
                     message_bus,
                     persistence,
                     performance_tracker=app_state._performance_tracker,  # noqa: SLF001
+                    distributed_task_queue=app_state.distributed_task_queue,
                 )
                 raise
         await _maybe_bootstrap_agents(app_state)
@@ -649,6 +650,7 @@ def _build_lifecycle(  # noqa: PLR0913, PLR0915, C901
             message_bus,
             persistence,
             performance_tracker=app_state._performance_tracker,  # noqa: SLF001
+            distributed_task_queue=app_state.distributed_task_queue,
         )
         if app_state.has_notification_dispatcher:
             await _try_stop(
@@ -972,6 +974,7 @@ def create_app(  # noqa: C901, PLR0913, PLR0915
     task_engine = phase1.task_engine
     provider_registry = phase1.provider_registry
     provider_health_tracker = phase1.provider_health_tracker
+    distributed_task_queue = phase1.distributed_task_queue
 
     # ── Meeting auto-wire: orchestrator + scheduler (Phase 1 level) ──
     meeting_wire = auto_wire_meetings(
@@ -1043,6 +1046,8 @@ def create_app(  # noqa: C901, PLR0913, PLR0915
         coordination_metrics_store=coordination_metrics_store,
         startup_time=time.monotonic(),
     )
+    if distributed_task_queue is not None:
+        app_state.set_distributed_task_queue(distributed_task_queue)
 
     bridge = (
         MessageBusBridge(message_bus, channels_plugin)

@@ -18,7 +18,7 @@ follow-up PR).
 import asyncio
 import contextlib
 from collections.abc import Awaitable, Callable
-from typing import Any
+from typing import Any, Final
 
 from synthorg.observability import get_logger
 from synthorg.observability.events.workers import (
@@ -37,6 +37,14 @@ from synthorg.workers.claim import (
 from synthorg.workers.config import QueueConfig  # noqa: TC001
 
 logger = get_logger(__name__)
+
+_MAX_FETCH_POLL_SECONDS: Final[float] = 1.0
+"""Maximum seconds :meth:`Worker._run_once` waits inside a single ``next_claim`` call.
+
+Keeps ``stop()`` responsive: even with a 300s ack deadline, the claim
+loop wakes up at least once per second to check ``_stop_event`` rather
+than blocking for the full ``ack_wait`` window.
+"""
 
 
 TaskExecutor = Callable[[TaskClaim], Awaitable[TaskClaimStatus]]
@@ -105,9 +113,17 @@ class Worker:
         self._stop_event.set()
 
     async def _run_once(self) -> None:
-        """Fetch and process a single claim."""
+        """Fetch and process a single claim.
+
+        Uses a short fetch timeout (:data:`_MAX_FETCH_POLL_SECONDS`)
+        instead of the full ``ack_wait`` window so ``stop()`` is not
+        blocked behind an idle JetStream fetch for the entire ack
+        deadline. The loop's outer ``while not self._stop_event.is_set()``
+        handles the stop signal; this method just returns eagerly on
+        an empty fetch so the loop can observe it.
+        """
         claim_and_raw = await self._task_queue.next_claim(
-            timeout=float(self._queue_config.ack_wait_seconds) / 2.0,
+            timeout=_MAX_FETCH_POLL_SECONDS,
         )
         if claim_and_raw is None:
             return
@@ -137,7 +153,15 @@ class Worker:
         raw: Any,
         status: TaskClaimStatus,
     ) -> None:
-        """Ack or nack the JetStream message based on outcome."""
+        """Ack or nack the JetStream message based on outcome.
+
+        A finalize failure is fatal: the executor may already have
+        transitioned the task via HTTP, so swallowing the exception
+        would let JetStream redeliver the same claim and cause the
+        executor to run a second time. Log with context and re-raise
+        so the outer ``run()`` loop exits and the worker process is
+        restarted by the pool (or by an orchestrator).
+        """
         terminal = {TaskClaimStatus.SUCCESS, TaskClaimStatus.FAILED}
         try:
             if status in terminal:
@@ -150,6 +174,7 @@ class Worker:
                 worker_id=self._worker_id,
                 status=str(status),
             )
+            raise
 
 
 async def run_worker_pool(

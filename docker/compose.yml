@@ -29,6 +29,13 @@ services:
       # Bridge SYNTHORG_* to uvicorn's native env vars (exec form CMD, no shell)
       UVICORN_HOST: "${SYNTHORG_HOST:-0.0.0.0}"
       UVICORN_PORT: "${SYNTHORG_PORT:-3001}"
+      # Message bus backend. Default is the in-process bus; override
+      # with `SYNTHORG_BUS_BACKEND=nats` to route through the NATS
+      # service when `--profile distributed` is active. The value is
+      # always set so enabling the profile alone is enough to flip the
+      # backend without also editing config files.
+      SYNTHORG_BUS_BACKEND: "${SYNTHORG_BUS_BACKEND:-internal}"
+      SYNTHORG_NATS_URL: "${SYNTHORG_NATS_URL:-nats://nats:4222}"
     user: "65532:65532"
     # CIS Docker Benchmark v1.6.0 hardening (5.3, 5.12, 5.25, 5.28)
     security_opt:
@@ -63,7 +70,11 @@ services:
   nats:
     image: nats:2.10-alpine
     profiles: ["distributed"]
-    command: ["-js", "-sd", "/data", "-m", "8222"]
+    # `--max_payload 4MB` aligns the server cap with
+    # `_MAX_BUS_PAYLOAD_BYTES` in `src/synthorg/communication/bus/nats.py`
+    # so client-side accepted sizes actually publish instead of being
+    # rejected by the default 1MB server limit.
+    command: ["-js", "-sd", "/data", "-m", "8222", "--max_payload", "4MB"]
     ports:
       - "${NATS_CLIENT_PORT:-3003}:4222"
     volumes:

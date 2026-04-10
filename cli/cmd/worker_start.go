@@ -53,7 +53,7 @@ func init() {
 	workerStartCmd.Flags().StringVar(&workerStartStreamPrefix, "stream-prefix", defaultStreamPfx,
 		"JetStream stream name prefix")
 	workerStartCmd.Flags().StringVar(&workerStartContainer, "container", "",
-		"backend container name (default: discover from compose)")
+		"backend container name (default: synthorg-backend)")
 	workerCmd.AddCommand(workerStartCmd)
 }
 
@@ -76,6 +76,12 @@ func runWorkerStart(cmd *cobra.Command, _ []string) error {
 		container = "synthorg-backend"
 	}
 
+	// Pass the NATS URL via env only. Putting `--nats-url <value>` into
+	// the command argv would expose `nats://user:pass@host` to anyone
+	// reading the docker process list even though the log output is
+	// redacted, so the Python entry point reads `SYNTHORG_NATS_URL` and
+	// the stream prefix from the environment instead. Worker count stays
+	// on both surfaces so operators still see it in the banner.
 	args := []string{
 		"exec",
 		"-e", "SYNTHORG_NATS_URL=" + workerStartNatsURL,
@@ -84,8 +90,6 @@ func runWorkerStart(cmd *cobra.Command, _ []string) error {
 		container,
 		"python", "-m", "synthorg.workers",
 		"--workers", strconv.Itoa(workerStartCount),
-		"--nats-url", workerStartNatsURL,
-		"--stream-prefix", workerStartStreamPrefix,
 	}
 
 	out.KeyValue("Workers", strconv.Itoa(workerStartCount))

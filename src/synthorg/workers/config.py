@@ -8,9 +8,53 @@ distributed (not ``internal``).
 
 from typing import Self
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from synthorg.core.types import NotBlankStr  # noqa: TC001
+
+_NATS_FORBIDDEN_CHARS: frozenset[str] = frozenset({"*", ">", " ", "\t", "\n", "\r"})
+"""Characters rejected in JetStream stream and subject tokens.
+
+`*` and `>` are NATS wildcards that would match unrelated subjects.
+Whitespace characters are not legal inside a token and lead to
+hard-to-diagnose subscribe/publish failures at runtime.
+"""
+
+
+def _reject_nats_tokens(value: str, field_name: str) -> str:
+    """Reject values that JetStream stream/subject configs cannot accept.
+
+    Applied both to stream names (no dots, no wildcards) and to subject
+    prefixes (dot-separated, non-empty tokens, no wildcards). Raises
+    ``ValueError`` with a concrete diagnostic so config load fails fast
+    at the system boundary instead of at ``pull_subscribe`` time.
+    """
+    stripped = value.strip()
+    if stripped != value:
+        msg = f"{field_name} must not contain leading or trailing whitespace"
+        raise ValueError(msg)
+    for ch in _NATS_FORBIDDEN_CHARS:
+        if ch in value:
+            msg = (
+                f"{field_name}={value!r} contains the forbidden character {ch!r}; "
+                "NATS wildcards (`*`, `>`) and whitespace are not allowed in "
+                "stream names or subject tokens"
+            )
+            raise ValueError(msg)
+    return value
+
+
+def _reject_nats_subject(value: str, field_name: str) -> str:
+    """Validate a dot-separated NATS subject prefix."""
+    _reject_nats_tokens(value, field_name)
+    tokens = value.split(".")
+    if any(token == "" for token in tokens):
+        msg = (
+            f"{field_name}={value!r} contains an empty token; NATS subject "
+            "prefixes must be non-empty dot-separated tokens"
+        )
+        raise ValueError(msg)
+    return value
 
 
 class QueueConfig(BaseModel):
@@ -82,6 +126,36 @@ class QueueConfig(BaseModel):
         default=None,
         description="Backend HTTP API URL for task transitions",
     )
+
+    @field_validator("stream_name")
+    @classmethod
+    def _validate_stream_name(cls, value: str) -> str:
+        """Reject wildcards, whitespace and dots inside the stream name.
+
+        JetStream stream names are a single token (no dots), so reuse
+        the shared token validator but additionally reject ``.`` to
+        prevent config drift between "stream name" and "subject prefix".
+        """
+        _reject_nats_tokens(value, "stream_name")
+        if "." in value:
+            msg = (
+                f"stream_name={value!r} must not contain '.'; stream names are "
+                "single tokens"
+            )
+            raise ValueError(msg)
+        return value
+
+    @field_validator("ready_subject_prefix")
+    @classmethod
+    def _validate_ready_subject_prefix(cls, value: str) -> str:
+        """Reject wildcards/whitespace/empty tokens in the ready subject."""
+        return _reject_nats_subject(value, "ready_subject_prefix")
+
+    @field_validator("dead_subject_prefix")
+    @classmethod
+    def _validate_dead_subject_prefix(cls, value: str) -> str:
+        """Reject wildcards/whitespace/empty tokens in the dead-letter subject."""
+        return _reject_nats_subject(value, "dead_subject_prefix")
 
     @model_validator(mode="after")
     def _validate_subjects(self) -> Self:

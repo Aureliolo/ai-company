@@ -64,6 +64,8 @@ async def _cleanup_on_failure(  # noqa: PLR0913
     started_settings_dispatcher: bool = False,
     task_engine: TaskEngine | None = None,
     started_task_engine: bool = False,
+    distributed_task_queue: object | None = None,
+    started_distributed_task_queue: bool = False,
     meeting_scheduler: MeetingScheduler | None = None,
     started_meeting_scheduler: bool = False,
     backup_service: BackupService | None = None,
@@ -95,6 +97,12 @@ async def _cleanup_on_failure(  # noqa: PLR0913
             task_engine.stop(),
             API_APP_STARTUP,
             "Cleanup: failed to stop task engine",
+        )
+    if started_distributed_task_queue and distributed_task_queue is not None:
+        await _try_stop(
+            distributed_task_queue.stop(),  # type: ignore[attr-defined]
+            API_APP_STARTUP,
+            "Cleanup: failed to stop distributed task queue",
         )
     if started_settings_dispatcher and settings_dispatcher is not None:
         await _try_stop(
@@ -186,9 +194,11 @@ async def _safe_startup(  # noqa: PLR0913, PLR0912, PLR0915, C901
     started_persistence = False
     started_settings_dispatcher = False
     started_task_engine = False
+    started_distributed_task_queue = False
     started_meeting_scheduler = False
     started_backup_service = False
     started_approval_timeout_scheduler = False
+    distributed_task_queue = app_state.distributed_task_queue
     try:
         if persistence is not None:
             try:
@@ -266,6 +276,16 @@ async def _safe_startup(  # noqa: PLR0913, PLR0912, PLR0915, C901
                 )
                 raise
             started_bus = True
+        if distributed_task_queue is not None:
+            try:
+                await distributed_task_queue.start()
+            except Exception:
+                logger.exception(
+                    API_APP_STARTUP,
+                    error="Failed to start distributed task queue",
+                )
+                raise
+            started_distributed_task_queue = True
         if bridge is not None:
             try:
                 await bridge.start()
@@ -357,6 +377,8 @@ async def _safe_startup(  # noqa: PLR0913, PLR0912, PLR0915, C901
             started_settings_dispatcher=started_settings_dispatcher,
             task_engine=task_engine,
             started_task_engine=started_task_engine,
+            distributed_task_queue=distributed_task_queue,
+            started_distributed_task_queue=started_distributed_task_queue,
             meeting_scheduler=meeting_scheduler,
             started_meeting_scheduler=started_meeting_scheduler,
             backup_service=backup_service,
@@ -367,7 +389,7 @@ async def _safe_startup(  # noqa: PLR0913, PLR0912, PLR0915, C901
         raise
 
 
-async def _safe_shutdown(  # noqa: PLR0913, C901
+async def _safe_shutdown(  # noqa: PLR0913, PLR0912, C901
     task_engine: TaskEngine | None,
     meeting_scheduler: MeetingScheduler | None,
     backup_service: BackupService | None,
@@ -377,14 +399,17 @@ async def _safe_shutdown(  # noqa: PLR0913, C901
     message_bus: MessageBus | None,
     persistence: PersistenceBackend | None,
     performance_tracker: PerformanceTracker | None = None,
+    distributed_task_queue: object | None = None,
 ) -> None:
     """Stop services in reverse startup order.
 
     Approval timeout scheduler first, then meeting scheduler
     (depends on orchestrator), then task engine so it can drain queued
     mutations and publish final snapshots through the still-running
-    bridge.  Performance tracker closes after task engine (sampling
-    is triggered by task events).  Backup runs before persistence
+    bridge. The distributed task queue stops after the engine so
+    in-flight observer callbacks can still publish their final claims.
+    Performance tracker closes after task engine (sampling is
+    triggered by task events). Backup runs before persistence
     disconnect so shutdown backup can still access the DB.
     """
     if approval_timeout_scheduler is not None:
@@ -404,6 +429,12 @@ async def _safe_shutdown(  # noqa: PLR0913, C901
             task_engine.stop(),
             API_APP_SHUTDOWN,
             "Failed to stop task engine",
+        )
+    if distributed_task_queue is not None:
+        await _try_stop(
+            distributed_task_queue.stop(),  # type: ignore[attr-defined]
+            API_APP_SHUTDOWN,
+            "Failed to stop distributed task queue",
         )
     if performance_tracker is not None:
         await _try_stop(

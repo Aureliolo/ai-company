@@ -82,9 +82,19 @@ class TestDequeHistoryAccessor:
         assert isinstance(accessor, HistoryAccessor)
 
     @pytest.mark.unit
-    async def test_missing_channel_returns_empty(self) -> None:
+    async def test_missing_channel_raises(self) -> None:
+        """Missing channels must raise ChannelNotFoundError.
+
+        Returning an empty tuple would conflate "channel does not
+        exist" with "channel exists but has no messages", breaking the
+        ``MessageBus.get_channel_history`` protocol contract for any
+        backend that delegates directly to this accessor.
+        """
+        from synthorg.communication.errors import ChannelNotFoundError
+
         accessor = DequeHistoryAccessor(histories={})
-        assert await accessor.get_history("#nonexistent") == ()
+        with pytest.raises(ChannelNotFoundError):
+            await accessor.get_history("#nonexistent")
 
     @pytest.mark.unit
     async def test_returns_chronological_slice(self) -> None:

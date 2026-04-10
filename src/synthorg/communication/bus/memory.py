@@ -119,6 +119,11 @@ class InMemoryMessageBus:
     async def start(self) -> None:
         """Start the bus and create pre-configured channels.
 
+        Reinitialises all mutable runtime containers so a restart
+        (``start()`` after ``stop()``) produces a fresh state instead
+        of leaking stale subscriptions, queued deliveries, or history
+        from the previous run.
+
         Raises:
             MessageBusAlreadyRunningError: If already running.
         """
@@ -127,6 +132,11 @@ class InMemoryMessageBus:
                 msg = "Message bus is already running"
                 logger.warning(COMM_BUS_ALREADY_RUNNING)
                 raise MessageBusAlreadyRunningError(msg)
+            self._channels.clear()
+            self._queues.clear()
+            self._history.clear()
+            self._known_agents.clear()
+            self._waiters.clear()
             self._running = True
             self._shutdown_event.clear()
             self._idle_poll_count = 0

@@ -73,8 +73,6 @@ def test_jetstream_constructor_requires_nats_config() -> None:
     The MessageBusConfig validator usually catches this first, but
     the direct-constructor path is still defensive against misuse.
     """
-    import dataclasses
-
     # Bypass the validator by constructing with model_construct (skips
     # validation) so we can exercise the constructor's own check.
     bare = MessageBusConfig.model_construct(
@@ -84,6 +82,3 @@ def test_jetstream_constructor_requires_nats_config() -> None:
     )
     with pytest.raises(ValueError, match=r"requires config\.nats"):
         JetStreamMessageBus(config=bare)
-
-    # Keep `dataclasses` referenced so ruff does not flag the import.
-    _ = dataclasses.Field

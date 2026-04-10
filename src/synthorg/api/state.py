@@ -5,6 +5,8 @@ Holds typed references to core services, injected into
 ``request.app.state``.
 """
 
+from typing import TYPE_CHECKING
+
 from synthorg.api.approval_store import ApprovalStore  # noqa: TC001
 from synthorg.api.auth.lockout_store import LockoutStore  # noqa: TC001
 from synthorg.api.auth.presence import UserPresence
@@ -67,6 +69,12 @@ from synthorg.settings.resolver import ConfigResolver
 from synthorg.settings.service import SettingsService  # noqa: TC001
 from synthorg.tools.invocation_tracker import ToolInvocationTracker  # noqa: TC001
 
+if TYPE_CHECKING:
+    # Imported under TYPE_CHECKING so the optional ``synthorg[distributed]``
+    # extra is not required at runtime for deployments that do not use the
+    # distributed task queue.
+    from synthorg.workers.claim import JetStreamTaskQueue
+
 logger = get_logger(__name__)
 
 
@@ -101,6 +109,7 @@ class AppState:
         "_coordinator",
         "_cost_tracker",
         "_delegation_record_store",
+        "_distributed_task_queue",
         "_drift_detection_service",
         "_drift_report_store",
         "_fine_tune_orchestrator",
@@ -180,6 +189,7 @@ class AppState:
         self._cost_tracker = cost_tracker
         self._auth_service = auth_service
         self._task_engine = task_engine
+        self._distributed_task_queue: JetStreamTaskQueue | None = None
         self._coordinator = coordinator
         self._agent_registry = agent_registry
         self._performance_tracker = performance_tracker
@@ -355,6 +365,24 @@ class AppState:
             raise RuntimeError(msg)
         self._task_engine = engine
         logger.info(API_APP_STARTUP, note="Task engine configured")
+
+    @property
+    def distributed_task_queue(self) -> JetStreamTaskQueue | None:
+        """Return the distributed task queue, or ``None`` when not wired."""
+        return self._distributed_task_queue
+
+    def set_distributed_task_queue(
+        self,
+        task_queue: JetStreamTaskQueue | None,
+    ) -> None:
+        """Attach the distributed task queue so the lifecycle can manage it.
+
+        Only set when ``queue.enabled`` is true and the ``synthorg[distributed]``
+        extra is installed. The lifecycle starts and stops the queue
+        alongside the other async services so the dispatcher observer
+        sees a connected client before any task state changes fire.
+        """
+        self._distributed_task_queue = task_queue
 
     @property
     def meeting_orchestrator(self) -> MeetingOrchestrator:

@@ -133,6 +133,11 @@ class ConflictResolutionConfigFactory(ModelFactory[ConflictResolutionConfig]):
 
 class CommunicationConfigFactory(ModelFactory[CommunicationConfig]):
     __model__ = CommunicationConfig
+    # Use the pinned MessageBusConfigFactory so polyfactory doesn't
+    # synthesize a random NatsConfig for the optional `nats` sub-block.
+    # NatsConfig.url now enforces a scheme allow-list at config load and
+    # polyfactory's random string generator picks values that fail it.
+    message_bus = MessageBusConfigFactory
     meetings = MeetingsConfigFactory
     loop_prevention = LoopPreventionConfigFactory
     conflict_resolution = ConflictResolutionConfigFactory

@@ -43,7 +43,8 @@ Phase 1: Local Single-Process (current)
 
 Phase 2: Local Multi-Process (v0.7-v0.8)
   -- External message bus, production DB, sandboxed execution, 10-30 agents
-  -- See the Distributed Runtime design page for the NATS JetStream backend and distributed task queue
+  -- See the [Distributed Runtime](../design/distributed-runtime.md) page for
+     the NATS JetStream backend and distributed task queue
 
 Phase 3: Network/Server (v0.8+)
   -- Full API with multi-user auth, distributed agents, 30-100 agents

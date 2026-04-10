@@ -243,6 +243,10 @@ class JetStreamMessageBus:
     async def start(self) -> None:
         """Connect to NATS, create the stream, and register pre-configured channels.
 
+        If stream/KV setup fails after ``_connect()`` succeeds, drain
+        the partially-initialised client before the exception
+        propagates so the caller does not leak a live NATS connection.
+
         Raises:
             MessageBusAlreadyRunningError: If already running.
             BusConnectionError: If connection to NATS fails.
@@ -254,9 +258,13 @@ class JetStreamMessageBus:
                 logger.warning(COMM_BUS_ALREADY_RUNNING)
                 raise MessageBusAlreadyRunningError(msg)
 
-            await self._connect()
-            await self._ensure_stream()
-            await self._ensure_kv_bucket()
+            try:
+                await self._connect()
+                await self._ensure_stream()
+                await self._ensure_kv_bucket()
+            except BaseException:
+                await self._drain_partial_client()
+                raise
 
             for name in self._config.channels:
                 ch = Channel(name=name, type=ChannelType.TOPIC)
@@ -270,6 +278,31 @@ class JetStreamMessageBus:
             channels_created=len(self._config.channels),
             backend="nats",
         )
+
+    async def _drain_partial_client(self) -> None:
+        """Drain a connected NATS client after a failed ``start()``.
+
+        Called from ``start()`` when the stream or KV bucket setup
+        raises. Silently swallows drain errors because a drain failure
+        cannot be surfaced to the caller -- the original setup
+        exception takes precedence -- and the process is about to
+        unwind anyway.
+        """
+        client = self._client
+        if client is None:
+            return
+        try:
+            await client.drain()
+        except Exception as exc:
+            logger.warning(
+                COMM_BUS_DISCONNECTED,
+                phase="drain_partial",
+                error=str(exc),
+            )
+        finally:
+            self._client = None
+            self._js = None
+            self._kv = None
 
     async def _connect(self) -> None:
         """Establish the NATS connection."""
@@ -659,8 +692,11 @@ class JetStreamMessageBus:
         """
         async with self._lock:
             self._require_running()
-            if channel_name not in self._channels:
-                _raise_channel_not_found(channel_name)
+        # Resolve through the shared KV-backed resolver so multi-process
+        # subscribers can see channels registered by another process.
+        await self._resolve_channel_or_raise(channel_name)
+        async with self._lock:
+            self._require_running()
             channel = self._channels[channel_name]
             self._known_agents.add(subscriber_id)
 
@@ -811,12 +847,16 @@ class JetStreamMessageBus:
         """Validate preconditions and return the durable pull consumer.
 
         Creates the consumer lazily for BROADCAST subscribers that
-        have not called ``subscribe()`` explicitly.
+        have not called ``subscribe()`` explicitly. Resolves the
+        channel through ``_resolve_channel_or_raise`` so a receiver
+        in a different process than the publisher can still pull
+        messages without first calling ``get_channel()``.
         """
         async with self._lock:
             self._require_running()
-            if channel_name not in self._channels:
-                _raise_channel_not_found(channel_name)
+        await self._resolve_channel_or_raise(channel_name)
+        async with self._lock:
+            self._require_running()
             channel = self._channels[channel_name]
             if (
                 channel.type != ChannelType.BROADCAST
@@ -897,6 +937,32 @@ class JetStreamMessageBus:
             return None
         return result
 
+    async def _try_ack(
+        self,
+        msg: Any,
+        *,
+        channel_name: str,
+        subscriber_id: str,
+    ) -> bool:
+        """Attempt to ack a fetched JetStream message.
+
+        Returns ``True`` on success, ``False`` on failure. Failures
+        are logged with context so the caller can return ``None``
+        instead of handing the message to the application and letting
+        JetStream redeliver it under the same durable consumer.
+        """
+        try:
+            await msg.ack()
+        except Exception:
+            logger.exception(
+                COMM_BUS_RECEIVE_ERROR,
+                channel=channel_name,
+                subscriber=subscriber_id,
+                phase="ack",
+            )
+            return False
+        return True
+
     async def _build_envelope(
         self,
         msgs: list[Any] | None,
@@ -917,8 +983,16 @@ class JetStreamMessageBus:
                 size=len(msg.data),
                 limit=_MAX_BUS_PAYLOAD_BYTES,
             )
-            with contextlib.suppress(Exception):
-                await msg.ack()
+            # Ack the oversized payload so JetStream does not
+            # redeliver it. Even if the ack fails we have already
+            # decided not to surface the message, so swallowing the
+            # error here is safe -- the worker sees the same outcome
+            # either way.
+            await self._try_ack(
+                msg,
+                channel_name=channel_name,
+                subscriber_id=subscriber_id,
+            )
             return None
 
         try:
@@ -931,12 +1005,24 @@ class JetStreamMessageBus:
                 size=len(msg.data),
                 error=str(exc),
             )
-            with contextlib.suppress(Exception):
-                await msg.ack()
+            # Same reasoning as the oversized branch: the message is
+            # unusable regardless of whether ack succeeds.
+            await self._try_ack(
+                msg,
+                channel_name=channel_name,
+                subscriber_id=subscriber_id,
+            )
             return None
 
-        with contextlib.suppress(Exception):
-            await msg.ack()
+        if not await self._try_ack(
+            msg,
+            channel_name=channel_name,
+            subscriber_id=subscriber_id,
+        ):
+            # Returning the envelope after a failed ack would let
+            # JetStream redeliver this exact message and cause the
+            # caller to process it twice. Drop it instead.
+            return None
 
         envelope = DeliveryEnvelope(
             message=parsed,
@@ -1000,18 +1086,34 @@ class JetStreamMessageBus:
         Raises:
             ChannelNotFoundError: If the channel does not exist.
         """
+        return await self._resolve_channel_or_raise(channel_name)
+
+    async def _resolve_channel_or_raise(self, channel_name: str) -> Channel:
+        """Return a Channel from the local cache or the JetStream KV.
+
+        Shared by ``get_channel``, ``subscribe``, ``receive`` and
+        ``get_channel_history`` so a second process can observe
+        channels created by another process on the same stream
+        without having to call ``get_channel()`` first. The KV lookup
+        happens outside the lock to avoid blocking other bus
+        operations during the round-trip; the result is inserted
+        under the lock to keep the cache consistent.
+        """
         async with self._lock:
-            if channel_name in self._channels:
-                return self._channels[channel_name]
+            cached = self._channels.get(channel_name)
+        if cached is not None:
+            return cached
 
         loaded = await self._load_channel_from_kv(channel_name)
         if loaded is None:
             _raise_channel_not_found(channel_name)
 
         async with self._lock:
-            if channel_name not in self._channels:
-                self._channels[channel_name] = loaded
-        return loaded
+            existing = self._channels.get(channel_name)
+            if existing is not None:
+                return existing
+            self._channels[channel_name] = loaded
+            return loaded
 
     async def list_channels(self) -> tuple[Channel, ...]:
         """List all channels.
@@ -1031,7 +1133,9 @@ class JetStreamMessageBus:
         """Get message history for a channel.
 
         Queries JetStream for the most recent messages on the
-        channel's subject.
+        channel's subject. Uses ``_resolve_channel_or_raise`` so
+        callers in a different process than the publisher can still
+        inspect history without having to call ``get_channel()`` first.
 
         Args:
             channel_name: Channel to query.
@@ -1046,10 +1150,8 @@ class JetStreamMessageBus:
         Raises:
             ChannelNotFoundError: If the channel does not exist.
         """
+        channel = await self._resolve_channel_or_raise(channel_name)
         async with self._lock:
-            if channel_name not in self._channels:
-                _raise_channel_not_found(channel_name)
-            channel = self._channels[channel_name]
             subject = self._subject_for_channel(channel)
             js = self._js
 
@@ -1091,58 +1193,117 @@ class JetStreamMessageBus:
         subject: str,
         max_to_return: int,
     ) -> list[Message]:
-        """Scan the bus stream backwards for messages on a subject.
+        """Collect the most recent messages on a subject, oldest-first.
 
-        Walks from ``last_seq`` down to ``first_seq`` and collects
-        up to ``max_to_return`` messages whose subject matches.
-        Returns messages in chronological (ascending seq) order.
+        Uses an ephemeral pull consumer with ``filter_subject`` so the
+        NATS server does the subject filtering server-side and the
+        client fetches in batches instead of walking the stream one
+        sequence at a time. Retention is bounded by
+        ``max_messages_per_channel``, so fetching every match for a
+        single subject and slicing the tail is cheap and correct.
+
+        Falls back to an empty list on any transport error so the
+        history API degrades gracefully rather than propagating a
+        backend exception to the caller.
         """
-        from nats.js.errors import NotFoundError  # noqa: PLC0415
-
         if js is None:
             return []
 
+        psub = await self._create_history_scan_consumer(js, subject)
+        if psub is None:
+            return []
+
         try:
-            info = await js.stream_info(self._stream_name)
-        except NotFoundError:
-            return []
+            parsed_messages = await self._collect_history_batches(psub, subject)
+        finally:
+            await self._unsubscribe_history_consumer(psub, subject)
 
-        last_seq = info.state.last_seq
-        first_seq = info.state.first_seq
-        if last_seq == 0:
-            return []
+        if len(parsed_messages) <= max_to_return:
+            return parsed_messages
+        return parsed_messages[-max_to_return:]
 
-        collected: list[tuple[int, Message]] = []
-        seq = last_seq
-        while seq >= first_seq and len(collected) < max_to_return:
-            raw = await self._try_get_stream_msg(js, seq)
-            if raw is None:
-                seq -= 1
-                continue
-            parsed = self._try_parse_matching(raw, subject)
-            if parsed is not None:
-                collected.append((seq, parsed))
-            seq -= 1
-
-        collected.sort(key=lambda item: item[0])
-        return [m for _, m in collected]
-
-    async def _try_get_stream_msg(self, js: Any, seq: int) -> Any | None:
-        """Fetch a single stream message by sequence, returning None on miss."""
+    async def _create_history_scan_consumer(
+        self,
+        js: Any,
+        subject: str,
+    ) -> Any | None:
+        """Create the ephemeral pull consumer used by history scans."""
+        from nats.js.api import (  # noqa: PLC0415
+            AckPolicy,
+            ConsumerConfig,
+            DeliverPolicy,
+        )
         from nats.js.errors import NotFoundError  # noqa: PLC0415
 
+        consumer_config = ConsumerConfig(
+            deliver_policy=DeliverPolicy.ALL,
+            ack_policy=AckPolicy.NONE,
+            filter_subject=subject,
+        )
         try:
-            return await js.get_msg(self._stream_name, seq=seq)
+            return await js.pull_subscribe(
+                subject=subject,
+                stream=self._stream_name,
+                config=consumer_config,
+            )
         except NotFoundError:
             return None
         except Exception as exc:
             logger.warning(
                 COMM_BUS_STREAM_SCAN_FAILED,
                 stream=self._stream_name,
-                seq=seq,
+                subject=subject,
+                phase="subscribe",
                 error=str(exc),
             )
             return None
+
+    async def _collect_history_batches(
+        self,
+        psub: Any,
+        subject: str,
+    ) -> list[Message]:
+        """Drain the history consumer into a list, stopping on idle timeout."""
+        from nats.errors import TimeoutError as NatsTimeoutError  # noqa: PLC0415
+
+        parsed_messages: list[Message] = []
+        while True:
+            try:
+                batch = await psub.fetch(batch=100, timeout=0.5)
+            except NatsTimeoutError:
+                return parsed_messages
+            except Exception as exc:
+                logger.warning(
+                    COMM_BUS_STREAM_SCAN_FAILED,
+                    stream=self._stream_name,
+                    subject=subject,
+                    phase="fetch",
+                    error=str(exc),
+                )
+                return parsed_messages
+            if not batch:
+                return parsed_messages
+            for raw in batch:
+                parsed = self._try_parse_matching(raw, subject)
+                if parsed is not None:
+                    parsed_messages.append(parsed)
+
+    async def _unsubscribe_history_consumer(
+        self,
+        psub: Any,
+        subject: str,
+    ) -> None:
+        """Best-effort teardown for an ephemeral history consumer."""
+        try:
+            await psub.unsubscribe()
+        except Exception as exc:
+            logger.warning(
+                COMM_BUS_STREAM_SCAN_FAILED,
+                stream=self._stream_name,
+                subject=subject,
+                phase="unsubscribe",
+                error=str(exc),
+            )
 
     def _try_parse_matching(
         self,

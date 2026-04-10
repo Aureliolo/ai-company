@@ -5,8 +5,6 @@ exercise the dispatcher's filter + claim-building logic without
 requiring a live NATS container.
 """
 
-from typing import Any
-
 import pytest
 
 from synthorg.core.enums import Priority, TaskStatus, TaskType
@@ -103,6 +101,27 @@ async def test_dispatcher_ignores_non_dispatchable_transitions() -> None:
 
 
 @pytest.mark.unit
+async def test_dispatcher_ignores_idempotent_assigned_updates() -> None:
+    """Re-emitting an event whose task is already assigned must not re-dispatch.
+
+    Without a ``previous_status != new_status`` guard the dispatcher
+    would double-enqueue whenever a downstream observer replays a
+    ``TaskStateChanged`` event (e.g. metadata edit on an already-
+    assigned task). Regression guard for PR #1214 review feedback.
+    """
+    queue = _FakeTaskQueue()
+    dispatcher = DistributedDispatcher(task_queue=queue)  # type: ignore[arg-type]
+
+    event = _make_event(
+        new_status=TaskStatus.ASSIGNED,
+        previous_status=TaskStatus.ASSIGNED,
+    )
+    await dispatcher.on_task_state_changed(event)
+
+    assert queue.published == []
+
+
+@pytest.mark.unit
 async def test_dispatcher_skips_when_queue_not_running() -> None:
     queue = _FakeTaskQueue(running=False)
     dispatcher = DistributedDispatcher(task_queue=queue)  # type: ignore[arg-type]
@@ -192,7 +211,7 @@ def test_queue_config_requires_distributed_bus_via_root_config() -> None:
         )
 
 
-def _assert_signature_matches(dispatcher: Any) -> None:
+def _assert_signature_matches(dispatcher: DistributedDispatcher) -> None:
     """Compile-time check that the dispatcher handler matches the callback type."""
     from collections.abc import Awaitable, Callable
 

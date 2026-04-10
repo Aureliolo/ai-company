@@ -833,22 +833,39 @@ class RootConfig(BaseModel):
 
     @model_validator(mode="after")
     def _validate_queue_requires_distributed_bus(self) -> Self:
-        """Ensure ``queue.enabled`` requires a distributed bus backend.
+        """Ensure ``queue.enabled`` requires an implemented distributed backend.
 
-        The distributed task queue publishes claims to JetStream, so
-        the in-process bus is insufficient. This cross-model check
-        fails fast at config load rather than at worker start.
+        The distributed task queue currently publishes claims through
+        the JetStream work-queue client. ``MessageBusBackend`` also
+        lists ``REDIS`` / ``RABBITMQ`` / ``KAFKA`` as future backends
+        that are documented but not yet implemented, so pairing them
+        with ``queue.enabled`` would pass this check and then silently
+        no-op at auto-wire time. Require ``backend == NATS`` explicitly
+        so config load fails fast when the selected transport cannot
+        actually drive the queue, and additionally require a non-null
+        ``nats`` sub-block so the worker has something to connect to.
         """
         from synthorg.communication.enums import MessageBusBackend  # noqa: PLC0415
 
-        if (
-            self.queue.enabled
-            and self.communication.message_bus.backend == MessageBusBackend.INTERNAL
-        ):
+        if not self.queue.enabled:
+            return self
+        backend = self.communication.message_bus.backend
+        if backend != MessageBusBackend.NATS:
             msg = (
-                "queue.enabled requires communication.message_bus.backend to "
-                "be a distributed backend (not 'internal'). Set backend to "
-                "'nats' or disable the queue."
+                "queue.enabled requires communication.message_bus.backend=='nats'; "
+                f"got {backend.value!r}. Redis, RabbitMQ and Kafka are documented "
+                "as future transports but do not yet have a task-queue client."
+            )
+            logger.warning(
+                CONFIG_VALIDATION_FAILED,
+                model="RootConfig",
+                error=msg,
+            )
+            raise ValueError(msg)
+        if self.communication.message_bus.nats is None:
+            msg = (
+                "queue.enabled requires communication.message_bus.nats to be set "
+                "so the worker has a server URL and credentials to connect to."
             )
             logger.warning(
                 CONFIG_VALIDATION_FAILED,

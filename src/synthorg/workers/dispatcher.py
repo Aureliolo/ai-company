@@ -95,17 +95,28 @@ class DistributedDispatcher:
 
     @staticmethod
     def _is_dispatchable(event: TaskStateChanged) -> bool:
-        """Return True if the event should produce a worker claim."""
+        """Return True if the event is a transition *into* a dispatchable status.
+
+        Only fires when the task actually moves into one of the
+        dispatchable statuses. Events that leave an already-assigned
+        task in ``assigned`` (e.g., metadata edits, observer replays)
+        are ignored so the same claim is never enqueued twice.
+        """
         if event.new_status is None:
             return False
-        status_value = str(event.new_status.value)
-        return status_value.lower() in _DISPATCHABLE_TRANSITIONS
+        new_value = str(event.new_status.value).lower()
+        if new_value not in _DISPATCHABLE_TRANSITIONS:
+            return False
+        if event.previous_status is None:
+            return True
+        previous_value = str(event.previous_status.value).lower()
+        return previous_value != new_value
 
     @staticmethod
     def _build_claim(event: TaskStateChanged) -> TaskClaim:
         """Build a :class:`TaskClaim` from a state-change event."""
         project_id: str | None = None
-        if event.task is not None:
+        if event.task is not None and event.task.project is not None:
             project_id = str(event.task.project)
         previous = None
         if event.previous_status is not None:

@@ -275,6 +275,10 @@ filterwarnings = [
     "error",
     "ignore:Core Pydantic V1 functionality:UserWarning",
     "ignore:Exception in thread.*_connection_worker_thread:pytest.PytestUnhandledThreadExceptionWarning",
+    # testcontainers 4.13 registers a deprecated @wait_container_is_ready
+    # decorator at import time; we can't control the library's own migration
+    # schedule and the warning would otherwise fail every NATS integration test.
+    "ignore:The @wait_container_is_ready decorator is deprecated:DeprecationWarning:testcontainers.core.waiting_utils",
 ]
 
 # ---------------------------------------------------------------------------

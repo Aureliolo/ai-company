@@ -63,3 +63,17 @@ def build_message_bus(config: MessageBusConfig) -> MessageBus:
                 f"'internal', 'nats'."
             )
             raise ValueError(msg)
+        case _:
+            # Defensive catch-all: any future MessageBusBackend member
+            # that is not wired up above should fail loudly at startup
+            # rather than silently skipping auto-wire. Mypy sees this
+            # branch as unreachable because the preceding cases exhaust
+            # the enum, but the catch-all intentionally guards against
+            # forgetting to update this factory when a new member is
+            # added to MessageBusBackend.
+            msg = (  # type: ignore[unreachable]
+                f"Unknown MessageBus backend {config.backend!r}. "
+                "The factory has not been updated for this enum member; "
+                "add a new case to build_message_bus()."
+            )
+            raise ValueError(msg)

@@ -103,6 +103,13 @@ type PickOneConfig struct {
 // under the list as muted guidance. Each option's label, summary, pros
 // and cons are rendered as the option description.
 //
+// When cfg.Stdin or cfg.Stdout are set the form uses them instead of
+// the default os.Stdin/os.Stdout; tests and wrappers can use this to
+// capture output or feed scripted input. When cfg.Plain is true the
+// form renders with huh's Base16 theme so output remains legible on
+// terminals that do not handle ANSI styling (ASCII-only sessions,
+// CI log panes, non-Unicode consoles).
+//
 // Returns an error if huh fails to render or if options is empty.
 func PickOne[T any](
 	title string,
@@ -129,6 +136,15 @@ func PickOne[T any](
 		Value(&selected)
 
 	form := huh.NewForm(huh.NewGroup(selectField))
+	if cfg.Plain {
+		form = form.WithTheme(huh.ThemeBase16())
+	}
+	if cfg.Stdout != nil {
+		form = form.WithOutput(cfg.Stdout)
+	}
+	if cfg.Stdin != nil {
+		form = form.WithInput(cfg.Stdin)
+	}
 	if err := form.Run(); err != nil {
 		return zero, fmt.Errorf("running picker: %w", err)
 	}

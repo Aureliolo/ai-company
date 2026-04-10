@@ -51,6 +51,7 @@ if TYPE_CHECKING:
     from synthorg.persistence.protocol import PersistenceBackend
     from synthorg.settings.dispatcher import SettingsChangeDispatcher
     from synthorg.settings.service import SettingsService
+    from synthorg.workers.claim import JetStreamTaskQueue
     from synthorg.workers.config import QueueConfig
 
 logger = get_logger(__name__)
@@ -64,6 +65,7 @@ class Phase1Result(NamedTuple):
     task_engine: TaskEngine | None
     provider_registry: ProviderRegistry | None
     provider_health_tracker: ProviderHealthTracker | None
+    distributed_task_queue: JetStreamTaskQueue | None
 
 
 class MeetingWireResult(NamedTuple):
@@ -122,6 +124,8 @@ def auto_wire_phase1(  # noqa: PLR0913
     Returns:
         A ``Phase1Result`` with all (possibly auto-wired) services.
     """
+    distributed_task_queue: JetStreamTaskQueue | None = None
+
     if message_bus is None:
         message_bus = _auto_wire_message_bus(effective_config)
 
@@ -132,7 +136,7 @@ def auto_wire_phase1(  # noqa: PLR0913
         provider_registry = _wire_provider_registry(effective_config)
 
     if task_engine is None and persistence is not None:
-        task_engine = _wire_task_engine(
+        task_engine, distributed_task_queue = _wire_task_engine(
             persistence,
             message_bus,
             queue_config=effective_config.queue,
@@ -160,6 +164,7 @@ def auto_wire_phase1(  # noqa: PLR0913
         task_engine=task_engine,
         provider_registry=provider_registry,
         provider_health_tracker=provider_health_tracker,
+        distributed_task_queue=distributed_task_queue,
     )
 
 
@@ -198,15 +203,24 @@ def _wire_task_engine(
     message_bus: MessageBus | None,
     queue_config: QueueConfig | None = None,
     nats_config: NatsConfig | None = None,
-) -> TaskEngine:
+) -> tuple[TaskEngine, JetStreamTaskQueue | None]:
     """Create a TaskEngine from persistence and optional bus.
 
     When ``queue_config.enabled`` is true, also create a
     :class:`JetStreamTaskQueue` and register a
     :class:`DistributedDispatcher` observer so task state changes are
-    published to the distributed work queue. The task queue is NOT
-    started here (its async start() is called during the engine's
-    lifecycle hook); the dispatcher registration is synchronous.
+    published to the distributed work queue. The caller owns the
+    returned task queue's async lifecycle: it must be ``start()``ed
+    before any observer events fire and ``stop()``ped during shutdown
+    to avoid leaked NATS connections. The dispatcher registration
+    itself is synchronous.
+
+    Returns:
+        A ``(task_engine, task_queue)`` tuple. ``task_queue`` is
+        non-``None`` only when ``queue_config.enabled`` is true, the
+        ``nats_config`` is present, and ``synthorg[distributed]`` is
+        installed; otherwise it is ``None`` and the in-process path is
+        used.
     """
     try:
         engine = TaskEngine(
@@ -220,6 +234,7 @@ def _wire_task_engine(
         )
         raise
 
+    task_queue: JetStreamTaskQueue | None = None
     if queue_config is not None and queue_config.enabled:
         if nats_config is None:
             logger.warning(
@@ -230,23 +245,32 @@ def _wire_task_engine(
                 ),
             )
         else:
-            _register_distributed_dispatcher(engine, queue_config, nats_config)
+            task_queue = _register_distributed_dispatcher(
+                engine,
+                queue_config,
+                nats_config,
+            )
 
     logger.info(API_SERVICE_AUTO_WIRED, service="task_engine")
-    return engine
+    return engine, task_queue
 
 
 def _register_distributed_dispatcher(
     engine: TaskEngine,
     queue_config: QueueConfig,
     nats_config: NatsConfig,
-) -> None:
+) -> JetStreamTaskQueue | None:
     """Register the distributed dispatcher observer on the task engine.
 
     Creates a :class:`JetStreamTaskQueue` (not started) and a
     :class:`DistributedDispatcher` observer. Registration is
     idempotent and best-effort: any failure here is logged but does
     not abort startup, because the in-process path remains viable.
+
+    Returns the constructed queue so the caller can drive its async
+    ``start()``/``stop()`` lifecycle; returns ``None`` when the
+    optional ``synthorg[distributed]`` dependency is missing or
+    construction itself fails.
     """
     try:
         from synthorg.workers.claim import (  # noqa: PLC0415
@@ -263,7 +287,7 @@ def _register_distributed_dispatcher(
                 "installed; distributed dispatcher will not be registered"
             ),
         )
-        return
+        return None
 
     try:
         task_queue = JetStreamTaskQueue(
@@ -277,12 +301,13 @@ def _register_distributed_dispatcher(
             API_APP_STARTUP,
             error="Failed to register distributed dispatcher",
         )
-        return
+        return None
 
     logger.info(
         API_SERVICE_AUTO_WIRED,
         service="distributed_dispatcher",
     )
+    return task_queue
 
 
 def _auto_wire_message_bus(

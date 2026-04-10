@@ -14,6 +14,8 @@ full bus instance).
 
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
+from synthorg.communication.errors import ChannelNotFoundError
+
 if TYPE_CHECKING:
     from collections import deque
     from collections.abc import Mapping
@@ -30,6 +32,11 @@ class HistoryAccessor(Protocol):
     ``MessageBus.get_channel_history``: ``None`` returns all stored
     messages, ``<= 0`` returns an empty tuple, and positive values
     return at most the last ``limit`` messages.
+
+    Implementations must raise :class:`ChannelNotFoundError` when the
+    channel does not exist so backends that delegate directly to the
+    accessor still satisfy the ``MessageBus.get_channel_history``
+    contract (empty history and missing channel are distinguishable).
     """
 
     async def get_history(
@@ -62,10 +69,18 @@ class DequeHistoryAccessor:
         *,
         limit: int | None = None,
     ) -> tuple[Message, ...]:
-        """Return slice of the channel's deque in chronological order."""
+        """Return slice of the channel's deque in chronological order.
+
+        Raises:
+            ChannelNotFoundError: If *channel_name* has no bucket in
+                the backing histories mapping. Returning an empty
+                tuple would conflate a missing channel with an empty
+                history, which violates the ``MessageBus`` protocol.
+        """
         bucket = self._histories.get(channel_name)
         if bucket is None:
-            return ()
+            msg = f"Channel not found: {channel_name}"
+            raise ChannelNotFoundError(msg, context={"channel": channel_name})
         messages = list(bucket)
         return _apply_limit(messages, limit)
 

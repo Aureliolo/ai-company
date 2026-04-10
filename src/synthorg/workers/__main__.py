@@ -45,6 +45,10 @@ async def _placeholder_executor(claim: TaskClaim) -> TaskClaimStatus:
     return TaskClaimStatus.SUCCESS
 
 
+_DEFAULT_WORKER_COUNT = 4
+"""Fallback worker count when neither --workers nor env var is set."""
+
+
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="synthorg.workers",
@@ -53,8 +57,11 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--workers",
         type=int,
-        default=int(os.environ.get("SYNTHORG_WORKER_COUNT", "4")),
-        help="Number of concurrent workers in this process (default: 4).",
+        default=None,
+        help=(
+            "Number of concurrent workers in this process "
+            f"(default: env SYNTHORG_WORKER_COUNT or {_DEFAULT_WORKER_COUNT})."
+        ),
     )
     parser.add_argument(
         "--nats-url",
@@ -69,15 +76,37 @@ def _build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _resolve_worker_count(explicit: int | None) -> int | None:
+    """Resolve the effective worker count from flag + env var.
+
+    Precedence: explicit ``--workers`` > ``SYNTHORG_WORKER_COUNT`` env var
+    > :data:`_DEFAULT_WORKER_COUNT`. Returns ``None`` when the env var
+    exists but is not a valid integer so the caller can surface a
+    structured usage error instead of crashing in argparse.
+    """
+    if explicit is not None:
+        return explicit
+    env_value = os.environ.get("SYNTHORG_WORKER_COUNT")
+    if env_value is None:
+        return _DEFAULT_WORKER_COUNT
+    try:
+        return int(env_value)
+    except ValueError:
+        return None
+
+
 async def _async_main(argv: list[str]) -> int:
     """Parse arguments, start the queue, and run the worker pool."""
     args = _build_parser().parse_args(argv)
-    if args.workers <= 0:
+    resolved = _resolve_worker_count(args.workers)
+    if resolved is None or resolved <= 0:
         logger.error(
             WORKERS_MAIN_INVALID_WORKER_COUNT,
-            workers=args.workers,
+            workers=resolved,
+            env_value=os.environ.get("SYNTHORG_WORKER_COUNT"),
         )
         return 2
+    args.workers = resolved
 
     queue_config = QueueConfig(enabled=True, workers=args.workers)
     nats_config = NatsConfig(
@@ -104,7 +133,8 @@ async def _async_main(argv: list[str]) -> int:
 
 def main(argv: list[str] | None = None) -> int:
     """Synchronous entry point that delegates to the asyncio runner."""
-    return asyncio.run(_async_main(argv or sys.argv[1:]))
+    effective = sys.argv[1:] if argv is None else argv
+    return asyncio.run(_async_main(effective))
 
 
 if __name__ == "__main__":

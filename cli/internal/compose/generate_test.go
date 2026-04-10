@@ -289,6 +289,9 @@ func TestParamsFromState(t *testing.T) {
 	if p.SettingsKey != "settings-key" {
 		t.Errorf("SettingsKey = %q, want settings-key", p.SettingsKey)
 	}
+	if p.BusBackend != "internal" {
+		t.Errorf("BusBackend = %q, want internal", p.BusBackend)
+	}
 }
 
 func assertContains(t *testing.T, s, substr string) {

@@ -23,19 +23,29 @@ class TestEncodeToken:
     """Round-trip base32 encoding of channel/subscriber names."""
 
     @pytest.mark.unit
-    def test_round_trip_simple(self) -> None:
-        for original in ("#general", "#engineering", "agent-1"):
-            assert _decode_token(_encode_token(original)) == original
+    @pytest.mark.parametrize(
+        "original",
+        [
+            "#general",
+            "#engineering",
+            "agent-1",
+        ],
+    )
+    def test_round_trip_simple(self, original: str) -> None:
+        assert _decode_token(_encode_token(original)) == original
 
     @pytest.mark.unit
-    def test_round_trip_with_special_characters(self) -> None:
-        for original in (
+    @pytest.mark.parametrize(
+        "original",
+        [
             "@agent-a:agent-b",
             "#code-review",
             "agent-1.instance.2",
             "channel with spaces",
-        ):
-            assert _decode_token(_encode_token(original)) == original
+        ],
+    )
+    def test_round_trip_with_special_characters(self, original: str) -> None:
+        assert _decode_token(_encode_token(original)) == original
 
     @pytest.mark.unit
     def test_encoding_is_deterministic(self) -> None:

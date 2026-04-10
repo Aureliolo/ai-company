@@ -19,6 +19,7 @@ from synthorg.communication.bus.errors import (
     BusConnectionError,
     BusStreamError,
 )
+from synthorg.communication.bus.nats import _redact_url
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.observability import get_logger
 from synthorg.observability.events.workers import (
@@ -130,17 +131,59 @@ class JetStreamTaskQueue:
         return self._running
 
     async def start(self) -> None:
-        """Connect to NATS and ensure the work-queue stream exists."""
-        await self._connect()
-        await self._ensure_stream()
-        await self._ensure_consumer()
+        """Connect to NATS and ensure the work-queue stream exists.
+
+        Raises:
+            RuntimeError: If ``start()`` is called while the queue is
+                already running. Reconnecting would leak the existing
+                client/subscription and attach multiple listeners to
+                the same durable consumer.
+            BusConnectionError: If the NATS connection cannot be
+                established.
+            BusStreamError: If stream/consumer setup fails after the
+                connection is established. The partially-initialized
+                client is drained before the exception propagates.
+        """
+        if self._running:
+            msg = "JetStreamTaskQueue.start() called while already running"
+            raise RuntimeError(msg)
+        try:
+            await self._connect()
+            await self._ensure_stream()
+            await self._ensure_consumer()
+        except BaseException:
+            # Stream or consumer creation failed (or we were cancelled).
+            # Drop the partially-initialized client so the caller does
+            # not leak a live connection; re-raise so the error
+            # surfaces at the call site.
+            await self._drain_partial()
+            raise
         self._running = True
 
     async def stop(self) -> None:
-        """Close the NATS connection. Idempotent."""
-        if not self._running:
-            return
+        """Close the NATS connection. Idempotent.
+
+        Drains the NATS client whenever one is present, even if
+        ``_running`` was never flipped to ``True`` (e.g., when
+        ``start()`` raised after ``_connect()`` succeeded).
+        """
         self._running = False
+        if self._sub is not None:
+            try:
+                await self._sub.unsubscribe()
+            except Exception:
+                logger.exception(WORKERS_TASK_QUEUE_UNSUBSCRIBE_FAILED)
+            self._sub = None
+        if self._client is not None:
+            try:
+                await self._client.drain()
+            except Exception:
+                logger.exception(WORKERS_TASK_QUEUE_DRAIN_FAILED)
+            self._client = None
+            self._js = None
+
+    async def _drain_partial(self) -> None:
+        """Tear down any half-initialised connection/consumer after a failed start."""
         if self._sub is not None:
             try:
                 await self._sub.unsubscribe()
@@ -169,13 +212,11 @@ class JetStreamTaskQueue:
                 user_credentials=self._nats_config.credentials_path,
             )
         except (TimeoutError, NoServersError, OSError) as exc:
-            msg = (
-                f"Failed to connect to NATS at {self._nats_config.url} for "
-                f"task queue: {exc}"
-            )
+            safe_url = _redact_url(self._nats_config.url)
+            msg = f"Failed to connect to NATS at {safe_url} for task queue: {exc}"
             raise BusConnectionError(
                 msg,
-                context={"url": self._nats_config.url},
+                context={"url": safe_url},
             ) from exc
         self._js = self._client.jetstream()
 
