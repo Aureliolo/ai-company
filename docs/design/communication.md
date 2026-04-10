@@ -346,6 +346,9 @@ All metadata fields are nullable except `extra`, which is always present (defaul
         allow_skip_level: false    # can a junior message the CEO directly?
     ```
 
+!!! info "Distributed bus backends"
+    The `backend` field switches between the in-process `internal` default and opt-in distributed backends. NATS JetStream is the first distributed backend; Redis Streams, RabbitMQ, and Kafka are documented alternatives for future implementation. See the [Distributed Runtime design](distributed-runtime.md) for the transport evaluation, stream layout, and migration path.
+
 ---
 
 ## Loop Prevention

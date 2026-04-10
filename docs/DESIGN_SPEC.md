@@ -14,6 +14,7 @@ The design specification has been split into focused documentation pages for bet
 | [Agents & HR](design/agents.md) | Agent System, HR | Agent identity, roles, hiring, performance, evaluation, promotions |
 | [Organization & Templates](design/organization.md) | Company Structure, Templates | Company types, hierarchy, departments, template system |
 | [Communication](design/communication.md) | Communication Architecture | Message bus, delegation, conflict resolution, meetings |
+| [Distributed Runtime](design/distributed-runtime.md) | Transport Evaluation, Bus Backend, Task Queue, Migration | Pluggable distributed backend design, NATS JetStream first implementation, distributed task queue hook into TaskEngine |
 | [Task & Workflow Engine](design/engine.md) | Task Engine | Task lifecycle, execution loops, routing, recovery, shutdown, workflow definitions, blueprints, versioning, workflow execution |
 | [Memory & Persistence](design/memory.md) | Memory & Persistence | Memory types, backends, retrieval, operational data |
 | [Multi-Agent Memory Consistency](design/memory-consistency.md) | Consistency Model | Append-only writes, MVCC snapshot reads, conflict handling, deployment rollout |

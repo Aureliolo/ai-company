@@ -110,6 +110,7 @@ nav:
       - Organization: design/organization.md
       - Communication: design/communication.md
       - Engine: design/engine.md
+      - Distributed Runtime: design/distributed-runtime.md
       - Memory: design/memory.md
       - Operations: design/operations.md
       - Brand Identity & UX: design/brand-and-ux.md
