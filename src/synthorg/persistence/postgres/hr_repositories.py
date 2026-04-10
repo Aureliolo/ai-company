@@ -147,6 +147,10 @@ FROM lifecycle_events"""
             # error (or worse, a silently-wrong result).
             if not isinstance(limit, int) or isinstance(limit, bool) or limit < 1:
                 msg = f"limit must be a positive integer, got {limit!r}"
+                logger.warning(
+                    PERSISTENCE_LIFECYCLE_EVENT_LIST_FAILED,
+                    error=msg,
+                )
                 raise QueryError(msg)
             sql += " LIMIT %s"
             params.append(limit)

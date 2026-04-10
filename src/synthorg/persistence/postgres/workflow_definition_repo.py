@@ -116,48 +116,56 @@ class PostgresWorkflowDefinitionRepository:
         edges_jsonb = Jsonb([e.model_dump(mode="json") for e in definition.edges])
         try:
             async with self._pool.connection() as conn, conn.cursor() as cur:
-                await cur.execute(
-                    """
-                    INSERT INTO workflow_definitions
-                        (id, name, description, workflow_type, nodes, edges,
-                         created_by, created_at, updated_at, version)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                    ON CONFLICT(id) DO UPDATE SET
-                        name=EXCLUDED.name,
-                        description=EXCLUDED.description,
-                        workflow_type=EXCLUDED.workflow_type,
-                        nodes=EXCLUDED.nodes,
-                        edges=EXCLUDED.edges,
-                        updated_at=EXCLUDED.updated_at,
-                        version=EXCLUDED.version
-                    WHERE workflow_definitions.version = EXCLUDED.version - 1
-                    """,
-                    (
-                        definition.id,
-                        definition.name,
-                        definition.description,
-                        definition.workflow_type.value,
-                        nodes_jsonb,
-                        edges_jsonb,
-                        definition.created_by,
-                        definition.created_at,
-                        definition.updated_at,
-                        definition.version,
-                    ),
-                )
+                if definition.version > 1:
+                    # Update path: optimistic concurrency via WHERE
+                    # version = incoming_version - 1.  If no row exists
+                    # at all this is also a version conflict (you can't
+                    # "update" a non-existent definition).
+                    await cur.execute(
+                        """
+                        UPDATE workflow_definitions SET
+                            name=%s, description=%s, workflow_type=%s,
+                            nodes=%s, edges=%s, updated_at=%s, version=%s
+                        WHERE id = %s AND version = %s
+                        """,
+                        (
+                            definition.name,
+                            definition.description,
+                            definition.workflow_type.value,
+                            nodes_jsonb,
+                            edges_jsonb,
+                            definition.updated_at,
+                            definition.version,
+                            definition.id,
+                            definition.version - 1,
+                        ),
+                    )
+                else:
+                    # Create path: version == 1.  ON CONFLICT DO NOTHING
+                    # so a duplicate create attempt sets rowcount to 0.
+                    await cur.execute(
+                        """
+                        INSERT INTO workflow_definitions
+                            (id, name, description, workflow_type, nodes,
+                             edges, created_by, created_at, updated_at,
+                             version)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                        ON CONFLICT(id) DO NOTHING
+                        """,
+                        (
+                            definition.id,
+                            definition.name,
+                            definition.description,
+                            definition.workflow_type.value,
+                            nodes_jsonb,
+                            edges_jsonb,
+                            definition.created_by,
+                            definition.created_at,
+                            definition.updated_at,
+                            definition.version,
+                        ),
+                    )
                 if cur.rowcount == 0:
-                    # rowcount == 0 means the upsert was a no-op.  That
-                    # happens in two distinct cases which must both be
-                    # rejected (otherwise callers silently "succeed"
-                    # against a stale row):
-                    #   - version > 1: the optimistic concurrency WHERE
-                    #     clause did not match -> concurrent writer won
-                    #     the race -> VersionConflictError.
-                    #   - version == 1: a row with this id already
-                    #     exists and the WHERE clause on the UPDATE
-                    #     branch rejected the overwrite -> duplicate
-                    #     create attempt -> VersionConflictError so the
-                    #     caller knows to re-fetch + bump the version.
                     if definition.version > 1:
                         msg = (
                             f"Version conflict saving workflow definition"

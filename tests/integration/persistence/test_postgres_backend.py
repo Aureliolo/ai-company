@@ -162,12 +162,16 @@ class TestPoolExhaustion:
             try:
                 await backend.migrate()
 
+                results: list[bool] = []
+
                 async def run_query() -> None:
-                    await backend.health_check()
+                    results.append(await backend.health_check())
 
                 async with asyncio.TaskGroup() as tg:
                     for _ in range(10):
                         tg.create_task(run_query())
+
+                assert all(results), f"some health checks failed: {results}"
             finally:
                 await backend.disconnect()
         finally:

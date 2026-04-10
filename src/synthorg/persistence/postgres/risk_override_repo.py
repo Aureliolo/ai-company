@@ -59,7 +59,7 @@ class PostgresRiskOverrideRepository:
 
         Raises:
             DuplicateRecordError: If an override with the same ID exists.
-            PersistenceError: If the save fails.
+            QueryError: If the save fails.
         """
         created_at_utc = override.created_at.astimezone(UTC)
         expires_at_utc = override.expires_at.astimezone(UTC)
@@ -127,7 +127,16 @@ class PostgresRiskOverrideRepository:
 
         if row is None:
             return None
-        return _row_to_override(row)
+        try:
+            return _row_to_override(row)
+        except (ValueError, ValidationError) as exc:
+            msg = f"Failed to deserialize risk override {override_id!r}"
+            logger.exception(
+                PERSISTENCE_RISK_OVERRIDE_QUERY_FAILED,
+                override_id=override_id,
+                error=str(exc),
+            )
+            raise QueryError(msg) from exc
 
     async def list_active(self) -> tuple[RiskTierOverride, ...]:
         """Return all active (non-expired, non-revoked) overrides."""

@@ -193,10 +193,18 @@ ON CONFLICT(id) DO UPDATE SET
     def _row_to_model(self, row: dict[str, object]) -> Checkpoint:
         """Convert a database row to a ``Checkpoint`` model.
 
+        ``context_json`` comes back from Postgres JSONB as a Python
+        dict/list, but the ``Checkpoint`` model defines the field as
+        ``str`` (pre-serialized JSON). Re-serialize before validation
+        so the round-trip is lossless.
+
         Raises:
             QueryError: If the row cannot be deserialized.
         """
         try:
+            raw = row.get("context_json")
+            if raw is not None and not isinstance(raw, str):
+                row["context_json"] = json.dumps(raw)
             return Checkpoint.model_validate(row)
         except ValidationError as exc:
             msg = f"Failed to deserialize checkpoint {row.get('id')!r}"

@@ -214,10 +214,18 @@ ON CONFLICT(id) DO UPDATE SET
     def _row_to_model(self, row: dict[str, object]) -> ParkedContext:
         """Convert a database row to a ``ParkedContext`` model.
 
+        ``context_json`` comes back from Postgres JSONB as a Python
+        dict/list, but the ``ParkedContext`` model defines the field
+        as ``str`` (pre-serialized JSON). Re-serialize before
+        validation so the round-trip is lossless.
+
         Raises:
             QueryError: If the row cannot be deserialized.
         """
         try:
+            raw = row.get("context_json")
+            if raw is not None and not isinstance(raw, str):
+                row["context_json"] = json.dumps(raw)
             return ParkedContext.model_validate(row)
         except (ValidationError, ValueError) as exc:
             msg = f"Failed to deserialize parked context {row.get('id')!r}"

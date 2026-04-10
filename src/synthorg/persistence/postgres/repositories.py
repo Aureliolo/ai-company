@@ -513,6 +513,11 @@ class PostgresMessageRepository:
         """Retrieve message history for a channel, newest first."""
         if limit is not None and limit < 1:
             msg = f"limit must be a positive integer, got {limit}"
+            logger.warning(
+                PERSISTENCE_MESSAGE_HISTORY_FAILED,
+                channel=channel,
+                error=msg,
+            )
             raise QueryError(msg)
         sql = (
             'SELECT id, timestamp, sender, "to", type, priority, '
