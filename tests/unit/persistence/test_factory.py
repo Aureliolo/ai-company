@@ -65,19 +65,20 @@ class TestCreateBackend:
     def test_postgres_backend_dispatches_to_postgres_class(self) -> None:
         """The factory routes backend='postgres' to PostgresPersistenceBackend.
 
-        The Phase 0 stub raises NotImplementedError from its constructor,
-        which proves the dispatch happened without requiring the full
-        implementation.
+        Construction must not open a pool -- that happens on connect().
         """
+        from synthorg.persistence.postgres.backend import (
+            PostgresPersistenceBackend,
+        )
+
         config = PersistenceConfig(
             backend="postgres",
             postgres=_minimal_postgres_config(),
         )
-        with pytest.raises(
-            NotImplementedError,
-            match="lifecycle not yet implemented",
-        ):
-            create_backend(config)
+        backend = create_backend(config)
+        assert isinstance(backend, PostgresPersistenceBackend)
+        assert backend.backend_name == "postgres"
+        assert backend.is_connected is False
 
     def test_postgres_backend_missing_config_raises(self) -> None:
         """Factory guard catches missing postgres config after model_copy bypass."""
