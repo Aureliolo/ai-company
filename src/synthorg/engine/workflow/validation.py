@@ -9,6 +9,7 @@ contract compatibility).
 """
 
 from collections import defaultdict, deque
+from datetime import datetime
 from enum import StrEnum
 from typing import TYPE_CHECKING
 
@@ -365,7 +366,7 @@ def _extract_subworkflow_config(
     return subworkflow_id, version, ib, ob
 
 
-def _literal_matches_type(
+def _literal_matches_type(  # noqa: C901, PLR0911
     value: object,
     value_type: WorkflowValueType,
 ) -> bool:
@@ -388,7 +389,18 @@ def _literal_matches_type(
         WorkflowValueType.AGENT_REF,
     ):
         return isinstance(value, str) and bool(value.strip())
-    # JSON and DATETIME are permissive at save time.
+    if value_type is WorkflowValueType.DATETIME:
+        if isinstance(value, datetime):
+            return True
+        if isinstance(value, str):
+            try:
+                datetime.fromisoformat(value)
+            except ValueError:
+                return False
+            else:
+                return True
+        return False
+    # JSON is permissive at save time.
     return True
 
 

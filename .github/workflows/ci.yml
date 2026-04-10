@@ -195,7 +195,7 @@ jobs:
 
       - name: Upload test results
         if: ${{ !cancelled() }}
-        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
         with:
           name: test-results-${{ matrix.python-version }}
           path: junit.xml
@@ -396,7 +396,7 @@ jobs:
           NODE_OPTIONS: "--max-old-space-size=4096 --report-on-fatalerror --report-directory=."
       - name: Upload Node.js crash report
         if: failure()
-        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
         with:
           name: storybook-crash-report
           path: web/report.*.json
