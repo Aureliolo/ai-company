@@ -1,0 +1,221 @@
+"""NATS connection lifecycle and JetStream infrastructure setup.
+
+Handles: connect, drain, stream creation, KV bucket creation, and
+graceful stop (cancel in-flight fetches, unsubscribe consumers, drain
+the client).
+"""
+
+import asyncio
+
+from synthorg.communication.bus._nats_state import _NatsState  # noqa: TC001
+from synthorg.communication.bus._nats_utils import (
+    SUBJECT_CHANNEL_TOKEN,
+    SUBJECT_DIRECT_TOKEN,
+    redact_url,
+)
+from synthorg.communication.bus.errors import (
+    BusConnectionError,
+    BusStreamError,
+)
+from synthorg.observability import get_logger
+from synthorg.observability.events.communication import (
+    COMM_BUS_CONNECTED,
+    COMM_BUS_DISCONNECTED,
+    COMM_BUS_KV_READ_FAILED,
+    COMM_BUS_RECONNECTING,
+    COMM_BUS_STOPPED,
+    COMM_BUS_STREAM_SCAN_FAILED,
+)
+
+logger = get_logger(__name__)
+
+
+async def connect(state: _NatsState) -> None:
+    """Establish the NATS connection, setting ``state.client`` and ``state.js``."""
+    import nats  # noqa: PLC0415
+    from nats.errors import NoServersError  # noqa: PLC0415
+
+    async def on_disconnected() -> None:
+        logger.warning(COMM_BUS_DISCONNECTED)
+
+    async def on_reconnected() -> None:
+        logger.info(COMM_BUS_CONNECTED, reconnect=True)
+
+    async def on_error(exc: Exception) -> None:
+        logger.warning(COMM_BUS_RECONNECTING, error=str(exc))
+
+    try:
+        state.client = await nats.connect(
+            servers=[state.nats_config.url],
+            reconnect_time_wait=state.nats_config.reconnect_time_wait_seconds,
+            max_reconnect_attempts=state.nats_config.max_reconnect_attempts,
+            connect_timeout=state.nats_config.connect_timeout_seconds,
+            user_credentials=state.nats_config.credentials_path,
+            disconnected_cb=on_disconnected,
+            reconnected_cb=on_reconnected,
+            error_cb=on_error,
+        )
+    except (TimeoutError, NoServersError, OSError) as exc:
+        redacted = redact_url(state.nats_config.url)
+        msg = f"Failed to connect to NATS at {redacted}: {exc}"
+        logger.exception(COMM_BUS_DISCONNECTED, error=msg, url=redacted)
+        raise BusConnectionError(
+            msg,
+            context={"url": redacted},
+        ) from exc
+
+    state.js = state.client.jetstream()
+    logger.info(COMM_BUS_CONNECTED, url=redact_url(state.nats_config.url))
+
+
+async def drain_partial_client(state: _NatsState) -> None:
+    """Drain a connected NATS client after a failed ``start()``.
+
+    Silently swallows drain errors because a drain failure cannot be
+    surfaced to the caller -- the original setup exception takes
+    precedence.
+    """
+    client = state.client
+    if client is None:
+        return
+    try:
+        await client.drain()
+    except Exception as exc:
+        logger.warning(
+            COMM_BUS_DISCONNECTED,
+            phase="drain_partial",
+            error=str(exc),
+        )
+    finally:
+        state.client = None
+        state.js = None
+        state.kv = None
+
+
+async def ensure_stream(state: _NatsState) -> None:
+    """Create the bus stream if it does not already exist."""
+    from nats.errors import Error as NatsError  # noqa: PLC0415
+    from nats.js.api import (  # noqa: PLC0415
+        RetentionPolicy,
+        StorageType,
+        StreamConfig,
+    )
+    from nats.js.errors import NotFoundError  # noqa: PLC0415
+
+    if state.js is None:
+        msg = "JetStream context not initialized"
+        raise BusStreamError(msg)
+
+    pfx = state.nats_config.stream_name_prefix.lower()
+    stream_config = StreamConfig(
+        name=state.stream_name,
+        subjects=[
+            f"{pfx}.bus.{SUBJECT_CHANNEL_TOKEN}.>",
+            f"{pfx}.bus.{SUBJECT_DIRECT_TOKEN}.>",
+        ],
+        retention=RetentionPolicy.LIMITS,
+        max_msgs_per_subject=(state.config.retention.max_messages_per_channel),
+        storage=StorageType.FILE,
+    )
+    try:
+        try:
+            await state.js.stream_info(state.stream_name)
+        except NotFoundError:
+            await state.js.add_stream(stream_config)
+        else:
+            await state.js.update_stream(stream_config)
+    except NatsError as exc:
+        msg = f"Failed to set up stream {state.stream_name}: {exc}"
+        logger.warning(
+            COMM_BUS_STREAM_SCAN_FAILED,
+            stream=state.stream_name,
+            error=str(exc),
+            phase="ensure_stream",
+        )
+        raise BusStreamError(
+            msg,
+            context={"stream": state.stream_name},
+        ) from exc
+
+
+async def ensure_kv_bucket(state: _NatsState) -> None:
+    """Create the KV bucket for dynamic channel registration."""
+    from nats.errors import Error as NatsError  # noqa: PLC0415
+    from nats.js.errors import BucketNotFoundError  # noqa: PLC0415
+
+    if state.js is None:
+        msg = "JetStream context not initialized"
+        raise BusStreamError(msg)
+
+    try:
+        try:
+            state.kv = await state.js.key_value(state.kv_bucket_name)
+        except BucketNotFoundError:
+            state.kv = await state.js.create_key_value(
+                bucket=state.kv_bucket_name,
+            )
+    except NatsError as exc:
+        msg = f"Failed to set up KV bucket {state.kv_bucket_name}: {exc}"
+        logger.warning(
+            COMM_BUS_KV_READ_FAILED,
+            channel="*",
+            error=str(exc),
+            phase="ensure_kv_bucket",
+        )
+        raise BusStreamError(
+            msg,
+            context={"bucket": state.kv_bucket_name},
+        ) from exc
+
+
+async def stop(state: _NatsState) -> None:
+    """Stop the bus gracefully. Idempotent.
+
+    Cancels outstanding ``receive()`` calls and closes the
+    underlying NATS connection.
+    """
+    async with state.lock:
+        if not state.running:
+            return
+        state.running = False
+    state.shutdown_event.set()
+
+    for task in list(state.in_flight_fetches):
+        task.cancel()
+    if state.in_flight_fetches:
+        await asyncio.gather(
+            *state.in_flight_fetches,
+            return_exceptions=True,
+        )
+    state.in_flight_fetches.clear()
+
+    for key, sub in list(state.subscriptions.items()):
+        try:
+            await sub.unsubscribe()
+        except asyncio.CancelledError:
+            pass
+        except Exception:
+            logger.warning(
+                COMM_BUS_DISCONNECTED,
+                phase="stop_unsubscribe",
+                subscription=str(key),
+                exc_info=True,
+            )
+    state.subscriptions.clear()
+
+    if state.client is not None:
+        try:
+            await state.client.drain()
+        except asyncio.CancelledError:
+            pass
+        except Exception:
+            logger.warning(
+                COMM_BUS_DISCONNECTED,
+                phase="stop_drain",
+                exc_info=True,
+            )
+        state.client = None
+        state.js = None
+        state.kv = None
+
+    logger.info(COMM_BUS_STOPPED, backend="nats")

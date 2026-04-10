@@ -92,6 +92,10 @@ NATS JetStream wins on three dimensions that matter most for a first distributed
 
 The trade-off is that `docs/architecture/tech-stack.md` does not currently mention NATS; it lists Redis as the planned backend. This design adds NATS alongside the existing Redis-planned note rather than replacing it. Redis, RabbitMQ, and Kafka remain valid future backends under the same pluggable factory, and the CLI picker registry is designed so that adding any of them later is one struct literal plus one Python class, not a UI rewrite.
 
+#### NATS client library (2026-04-10)
+
+The project stays on `nats-py==2.14.0`. An alternative client (`nats-core` v0.1.0) was evaluated and rejected because it lacks JetStream, KV store, and durable consumer support -- all primitives this design depends on. A scoped `filterwarnings` entry in `pyproject.toml` suppresses the `asyncio.iscoroutinefunction` deprecation warning from `nats-py` on Python 3.14 until an upstream fix lands. See [docs/architecture/decisions.md](../architecture/decisions.md) for the full decision record and mitigation plan.
+
 ---
 
 ## Bus Backend Design
