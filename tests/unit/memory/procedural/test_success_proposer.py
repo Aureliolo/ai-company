@@ -18,12 +18,12 @@ class TestSuccessMemoryProposer:
     """Tests for SuccessMemoryProposer."""
 
     @pytest.fixture
-    def provider(self):
+    def provider(self) -> AsyncMock:
         """Mock completion provider."""
         return AsyncMock()
 
     @pytest.fixture
-    def config(self):
+    def config(self) -> ProceduralMemoryConfig:
         """Config for the proposer."""
         return ProceduralMemoryConfig(
             enabled=True,
@@ -34,18 +34,30 @@ class TestSuccessMemoryProposer:
         )
 
     @pytest.fixture
-    def proposer(self, provider, config):
+    def proposer(
+        self,
+        provider: AsyncMock,
+        config: ProceduralMemoryConfig,
+    ) -> SuccessMemoryProposer:
         """Create a SuccessMemoryProposer."""
         return SuccessMemoryProposer(provider=provider, config=config)
 
-    async def test_initialization(self, proposer, config):
+    async def test_initialization(
+        self,
+        proposer: SuccessMemoryProposer,
+        config: ProceduralMemoryConfig,
+    ) -> None:
         """Test that proposer initializes with correct settings."""
         assert proposer._provider is not None
         assert proposer._config == config
         assert proposer._completion_config.temperature == 0.2
         assert proposer._completion_config.max_tokens == 1500
 
-    async def test_propose_returns_proposal_on_success(self, proposer, provider):
+    async def test_propose_returns_proposal_on_success(
+        self,
+        proposer: SuccessMemoryProposer,
+        provider: AsyncMock,
+    ) -> None:
         """Test that propose returns a valid proposal on successful LLM call."""
         json_response = (
             '{"discovery": "Test discovery", '
@@ -71,7 +83,11 @@ class TestSuccessMemoryProposer:
         assert proposal.confidence == 0.85
         provider.complete.assert_called_once()
 
-    async def test_propose_returns_none_on_low_confidence(self, proposer, provider):
+    async def test_propose_returns_none_on_low_confidence(
+        self,
+        proposer: SuccessMemoryProposer,
+        provider: AsyncMock,
+    ) -> None:
         """Test that propose returns None when confidence is below threshold."""
         json_response = (
             '{"discovery": "Test discovery", '
@@ -94,7 +110,11 @@ class TestSuccessMemoryProposer:
         assert proposal is None
         provider.complete.assert_called_once()
 
-    async def test_propose_returns_none_on_malformed_json(self, proposer, provider):
+    async def test_propose_returns_none_on_malformed_json(
+        self,
+        proposer: SuccessMemoryProposer,
+        provider: AsyncMock,
+    ) -> None:
         """Test that propose returns None on malformed JSON."""
         response = MagicMock(spec=CompletionResponse)
         response.content = "not valid json"
@@ -108,7 +128,11 @@ class TestSuccessMemoryProposer:
 
         assert proposal is None
 
-    async def test_propose_returns_none_on_empty_response(self, proposer, provider):
+    async def test_propose_returns_none_on_empty_response(
+        self,
+        proposer: SuccessMemoryProposer,
+        provider: AsyncMock,
+    ) -> None:
         """Test that propose returns None on empty response."""
         response = MagicMock(spec=CompletionResponse)
         response.content = ""
@@ -124,9 +148,9 @@ class TestSuccessMemoryProposer:
 
     async def test_propose_returns_none_on_validation_error(
         self,
-        proposer,
-        provider,
-    ):
+        proposer: SuccessMemoryProposer,
+        provider: AsyncMock,
+    ) -> None:
         """Test that propose returns None when proposal validation fails."""
         # Missing required fields
         json_response = '{"discovery": "Test discovery"}'
@@ -142,7 +166,11 @@ class TestSuccessMemoryProposer:
 
         assert proposal is None
 
-    async def test_propose_propagates_non_retryable_error(self, proposer, provider):
+    async def test_propose_propagates_non_retryable_error(
+        self,
+        proposer: SuccessMemoryProposer,
+        provider: AsyncMock,
+    ) -> None:
         """Test that non-retryable provider errors propagate."""
         error = ProviderError("Invalid API key")
         error.is_retryable = False
@@ -155,7 +183,11 @@ class TestSuccessMemoryProposer:
         with pytest.raises(ProviderError):
             await proposer.propose(execution_result)
 
-    async def test_propose_returns_none_on_retryable_error(self, proposer, provider):
+    async def test_propose_returns_none_on_retryable_error(
+        self,
+        proposer: SuccessMemoryProposer,
+        provider: AsyncMock,
+    ) -> None:
         """Test that retryable provider errors return None."""
         error = ProviderError("Rate limited")
         error.is_retryable = True
@@ -169,7 +201,11 @@ class TestSuccessMemoryProposer:
 
         assert proposal is None
 
-    async def test_propose_handles_markdown_fenced_json(self, proposer, provider):
+    async def test_propose_handles_markdown_fenced_json(
+        self,
+        proposer: SuccessMemoryProposer,
+        provider: AsyncMock,
+    ) -> None:
         """Test that propose handles JSON in markdown fences."""
         json_response = (
             "```json\n"
@@ -194,7 +230,11 @@ class TestSuccessMemoryProposer:
         assert proposal is not None
         assert proposal.confidence == 0.9
 
-    async def test_propose_with_execution_steps(self, proposer, provider):
+    async def test_propose_with_execution_steps(
+        self,
+        proposer: SuccessMemoryProposer,
+        provider: AsyncMock,
+    ) -> None:
         """Test that propose correctly parses execution_steps."""
         json_response = (
             '{"discovery": "Test discovery", '
