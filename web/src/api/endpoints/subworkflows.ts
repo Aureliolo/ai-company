@@ -1,0 +1,74 @@
+import { apiClient, unwrap, unwrapVoid } from '../client'
+import type {
+  ApiResponse,
+  CreateSubworkflowRequest,
+  ParentReference,
+  SubworkflowSummary,
+  WorkflowDefinition,
+} from '../types'
+
+export async function listSubworkflows(): Promise<readonly SubworkflowSummary[]> {
+  const response = await apiClient.get<ApiResponse<readonly SubworkflowSummary[]>>(
+    '/subworkflows',
+  )
+  return unwrap(response)
+}
+
+export async function searchSubworkflows(
+  query: string,
+): Promise<readonly SubworkflowSummary[]> {
+  const response = await apiClient.get<ApiResponse<readonly SubworkflowSummary[]>>(
+    '/subworkflows/search',
+    { params: { q: query } },
+  )
+  return unwrap(response)
+}
+
+export async function listVersions(
+  subworkflowId: string,
+): Promise<readonly string[]> {
+  const response = await apiClient.get<ApiResponse<readonly string[]>>(
+    `/subworkflows/${encodeURIComponent(subworkflowId)}/versions`,
+  )
+  return unwrap(response)
+}
+
+export async function getVersion(
+  subworkflowId: string,
+  version: string,
+): Promise<WorkflowDefinition> {
+  const response = await apiClient.get<ApiResponse<WorkflowDefinition>>(
+    `/subworkflows/${encodeURIComponent(subworkflowId)}/versions/${encodeURIComponent(version)}`,
+  )
+  return unwrap(response)
+}
+
+export async function listParents(
+  subworkflowId: string,
+  version?: string,
+): Promise<readonly ParentReference[]> {
+  const response = await apiClient.get<ApiResponse<readonly ParentReference[]>>(
+    `/subworkflows/${encodeURIComponent(subworkflowId)}/versions/${encodeURIComponent(version ?? '')}/parents`,
+  )
+  return unwrap(response)
+}
+
+export async function createSubworkflow(
+  data: CreateSubworkflowRequest,
+): Promise<WorkflowDefinition> {
+  const response = await apiClient.post<ApiResponse<WorkflowDefinition>>(
+    '/subworkflows',
+    data,
+  )
+  return unwrap(response)
+}
+
+export async function deleteSubworkflow(
+  subworkflowId: string,
+  version: string,
+): Promise<void> {
+  const response = await apiClient.delete<ApiResponse<null>>(
+    `/subworkflows/${encodeURIComponent(subworkflowId)}/versions/${encodeURIComponent(version)}`,
+  )
+  unwrapVoid(response)
+}

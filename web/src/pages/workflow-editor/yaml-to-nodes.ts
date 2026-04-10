@@ -52,6 +52,7 @@ const VALID_TYPES = new Set([
   'conditional',
   'parallel_split',
   'parallel_join',
+  'subworkflow',
 ])
 
 const AUTO_LAYOUT_X = 250

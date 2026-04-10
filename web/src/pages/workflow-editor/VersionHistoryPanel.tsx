@@ -6,17 +6,18 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { useWorkflowEditorStore } from '@/stores/workflow-editor'
 import { useState } from 'react'
 import { formatRelativeTime } from '@/utils/format'
-import type { WorkflowDefinition, WorkflowDefinitionVersionSummary } from '@/api/types'
+import type { WorkflowDefinitionVersionSummary } from '@/api/types'
 
 export interface VersionCardProps {
   v: WorkflowDefinitionVersionSummary
-  definition: WorkflowDefinition | null
+  currentVersion: number | null
   saving: boolean
   onCompare: (version: WorkflowDefinitionVersionSummary) => void
   onRestore: (version: number) => void
 }
 
-export function VersionCard({ v, definition, saving, onCompare, onRestore }: VersionCardProps) {
+export function VersionCard({ v, currentVersion, saving, onCompare, onRestore }: VersionCardProps) {
+  const isCurrent = v.version === currentVersion
   return (
     <div className="flex flex-col gap-1.5 rounded-lg border border-border p-card">
       <div className="flex items-center justify-between">
@@ -26,7 +27,7 @@ export function VersionCard({ v, definition, saving, onCompare, onRestore }: Ver
           </span>
           <span className="text-sm text-foreground">{v.snapshot.name}</span>
         </div>
-        {v.version === definition?.revision && (
+        {isCurrent && (
           <span className="text-xs text-success">Current</span>
         )}
       </div>
@@ -42,7 +43,7 @@ export function VersionCard({ v, definition, saving, onCompare, onRestore }: Ver
           variant="ghost"
           size="sm"
           onClick={() => onCompare(v)}
-          disabled={v.version === definition?.revision}
+          disabled={isCurrent}
           title="Compare with current"
         >
           <GitCompare className="size-3.5" />
@@ -52,7 +53,7 @@ export function VersionCard({ v, definition, saving, onCompare, onRestore }: Ver
           variant="ghost"
           size="sm"
           onClick={() => onRestore(v.version)}
-          disabled={v.version === definition?.revision || saving}
+          disabled={isCurrent || saving}
           title="Restore this version"
         >
           <RotateCcw className="size-3.5" />
@@ -72,7 +73,6 @@ export function VersionHistoryPanel({ open, onClose }: VersionHistoryPanelProps)
   const versions = useWorkflowEditorStore((s) => s.versions)
   const versionsLoading = useWorkflowEditorStore((s) => s.versionsLoading)
   const versionsHasMore = useWorkflowEditorStore((s) => s.versionsHasMore)
-  const definition = useWorkflowEditorStore((s) => s.definition)
   const loadDiff = useWorkflowEditorStore((s) => s.loadDiff)
   const rollback = useWorkflowEditorStore((s) => s.rollback)
   const loadMoreVersions = useWorkflowEditorStore((s) => s.loadMoreVersions)
@@ -80,9 +80,13 @@ export function VersionHistoryPanel({ open, onClose }: VersionHistoryPanelProps)
 
   const [restoreTarget, setRestoreTarget] = useState<number | null>(null)
 
+  // Derive current version from loaded summaries (sorted newest-first)
+  // instead of comparing against definition.revision (optimistic counter).
+  const currentVersion = versions[0]?.version ?? null
+
   function handleCompare(version: WorkflowDefinitionVersionSummary) {
-    if (!definition) return
-    loadDiff(version.version, definition.revision)
+    if (currentVersion === null) return
+    loadDiff(version.version, currentVersion)
   }
 
   function handleRestore(version: number) {
@@ -125,7 +129,7 @@ export function VersionHistoryPanel({ open, onClose }: VersionHistoryPanelProps)
             <VersionCard
               key={v.version}
               v={v}
-              definition={definition}
+              currentVersion={currentVersion}
               saving={saving}
               onCompare={handleCompare}
               onRestore={handleRestore}
