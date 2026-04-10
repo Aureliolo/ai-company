@@ -115,6 +115,12 @@ ON CONFLICT(id) DO UPDATE SET
         """
         if execution_id is None and task_id is None:
             msg = "At least one of execution_id or task_id is required"
+            logger.warning(
+                PERSISTENCE_CHECKPOINT_QUERY_FAILED,
+                execution_id=execution_id,
+                task_id=task_id,
+                error=msg,
+            )
             raise ValueError(msg)
 
         conditions: list[str] = []
@@ -191,7 +197,7 @@ ON CONFLICT(id) DO UPDATE SET
             raise QueryError(msg) from exc
 
         if count > 0:
-            logger.debug(
+            logger.info(
                 PERSISTENCE_CHECKPOINT_DELETED,
                 execution_id=execution_id,
                 count=count,

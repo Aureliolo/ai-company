@@ -122,7 +122,7 @@ class PostgresWorkflowDefinitionRepository:
                 definition_id=definition.id,
                 error=msg,
             )
-            raise ValueError(msg)
+            raise QueryError(msg)
 
         nodes_jsonb = Jsonb([n.model_dump(mode="json") for n in definition.nodes])
         edges_jsonb = Jsonb([e.model_dump(mode="json") for e in definition.edges])

@@ -77,6 +77,14 @@ ON CONFLICT(id) DO UPDATE SET
                     data,
                 )
                 await conn.commit()
+        except json.JSONDecodeError as exc:
+            msg = f"Invalid JSON in context_json for parked context {context.id!r}"
+            logger.exception(
+                PERSISTENCE_PARKED_CONTEXT_SAVE_FAILED,
+                parked_id=context.id,
+                error=str(exc),
+            )
+            raise QueryError(msg) from exc
         except psycopg.Error as exc:
             msg = f"Failed to save parked context {context.id!r}"
             logger.exception(

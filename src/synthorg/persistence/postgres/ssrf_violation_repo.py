@@ -17,6 +17,7 @@ from synthorg.observability.events.persistence import (
     PERSISTENCE_SSRF_VIOLATION_QUERY_FAILED,
     PERSISTENCE_SSRF_VIOLATION_SAVE_FAILED,
     PERSISTENCE_SSRF_VIOLATION_SAVED,
+    PERSISTENCE_SSRF_VIOLATION_STATUS_UPDATED,
 )
 from synthorg.persistence.errors import DuplicateRecordError, QueryError
 from synthorg.security.ssrf_violation import SsrfViolation, SsrfViolationStatus
@@ -90,6 +91,11 @@ class PostgresSsrfViolationRepository:
                 await conn.commit()
         except psycopg.errors.UniqueViolation as exc:
             msg = f"SSRF violation {violation.id!r} already exists"
+            logger.warning(
+                PERSISTENCE_SSRF_VIOLATION_SAVE_FAILED,
+                violation_id=violation.id,
+                error=msg,
+            )
             raise DuplicateRecordError(msg) from exc
         except psycopg.Error as exc:
             msg = f"Failed to save SSRF violation: {exc}"
@@ -99,7 +105,7 @@ class PostgresSsrfViolationRepository:
             )
             raise QueryError(msg) from exc
         else:
-            logger.debug(
+            logger.info(
                 PERSISTENCE_SSRF_VIOLATION_SAVED,
                 id=violation.id,
             )
@@ -149,6 +155,11 @@ class PostgresSsrfViolationRepository:
         """List violations, optionally filtered by status."""
         if limit <= 0:
             msg = "limit must be positive"
+            logger.warning(
+                PERSISTENCE_SSRF_VIOLATION_QUERY_FAILED,
+                error=msg,
+                limit=limit,
+            )
             raise ValueError(msg)
 
         try:
@@ -213,6 +224,12 @@ class PostgresSsrfViolationRepository:
         """
         if status == SsrfViolationStatus.PENDING:
             msg = "Cannot transition a violation back to PENDING"
+            logger.warning(
+                PERSISTENCE_SSRF_VIOLATION_SAVE_FAILED,
+                violation_id=violation_id,
+                error=msg,
+                requested_status=status.value,
+            )
             raise ValueError(msg)
 
         resolved_at_utc = resolved_at.astimezone(UTC)
@@ -239,6 +256,13 @@ class PostgresSsrfViolationRepository:
             )
             raise QueryError(msg) from exc
 
+        if updated:
+            logger.info(
+                PERSISTENCE_SSRF_VIOLATION_STATUS_UPDATED,
+                violation_id=violation_id,
+                status=status.value,
+                resolved_by=resolved_by,
+            )
         return updated
 
 

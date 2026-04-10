@@ -17,6 +17,7 @@ from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.observability import get_logger
 from synthorg.observability.events.persistence import (
     PERSISTENCE_RISK_OVERRIDE_QUERY_FAILED,
+    PERSISTENCE_RISK_OVERRIDE_REVOKED,
     PERSISTENCE_RISK_OVERRIDE_SAVE_FAILED,
     PERSISTENCE_RISK_OVERRIDE_SAVED,
 )
@@ -220,6 +221,12 @@ class PostgresRiskOverrideRepository:
             )
             raise QueryError(msg) from exc
 
+        if revoked:
+            logger.info(
+                PERSISTENCE_RISK_OVERRIDE_REVOKED,
+                override_id=override_id,
+                revoked_by=revoked_by,
+            )
         return revoked
 
 
