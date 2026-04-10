@@ -34,43 +34,47 @@ def _make_message(content: str) -> Message:
 class TestApplyLimit:
     """Limit-handling rules for MessageBus.get_channel_history()."""
 
-    @pytest.mark.unit
-    def test_none_limit_returns_all(self) -> None:
-        messages = [_make_message(f"m{i}") for i in range(3)]
-        assert _apply_limit(messages, None) == tuple(messages)
+    @staticmethod
+    def _labels(result: tuple[Message, ...]) -> list[str]:
+        """Return the text payloads of each message for easy comparison."""
+        out: list[str] = []
+        for msg in result:
+            first = msg.parts[0]
+            text = getattr(first, "text", None)
+            if text is None:
+                pytest.fail(f"unexpected part type: {type(first)!r}")
+            out.append(text)
+        return out
 
     @pytest.mark.unit
-    def test_zero_limit_returns_empty(self) -> None:
-        messages = [_make_message(f"m{i}") for i in range(3)]
-        assert _apply_limit(messages, 0) == ()
-
-    @pytest.mark.unit
-    def test_negative_limit_returns_empty(self) -> None:
-        messages = [_make_message(f"m{i}") for i in range(3)]
-        assert _apply_limit(messages, -5) == ()
-
-    @pytest.mark.unit
-    def test_limit_exceeds_length_returns_all(self) -> None:
-        messages = [_make_message(f"m{i}") for i in range(3)]
-        assert _apply_limit(messages, 100) == tuple(messages)
-
-    @pytest.mark.unit
-    def test_limit_equals_length_returns_all(self) -> None:
-        messages = [_make_message(f"m{i}") for i in range(3)]
-        assert _apply_limit(messages, 3) == tuple(messages)
-
-    @pytest.mark.unit
-    def test_limit_less_than_length_returns_last_n(self) -> None:
-        messages = [_make_message(f"m{i}") for i in range(5)]
-        result = _apply_limit(messages, 2)
-        assert len(result) == 2
-        assert result[0].parts[0].text == "m3"  # type: ignore[union-attr]
-        assert result[1].parts[0].text == "m4"  # type: ignore[union-attr]
-
-    @pytest.mark.unit
-    def test_empty_input(self) -> None:
-        assert _apply_limit([], None) == ()
-        assert _apply_limit([], 5) == ()
+    @pytest.mark.parametrize(
+        ("input_count", "limit", "expected_labels"),
+        [
+            # limit=None returns everything
+            (3, None, ["m0", "m1", "m2"]),
+            # limit=0 / negative -> empty tuple
+            (3, 0, []),
+            (3, -5, []),
+            # limit >= length -> everything
+            (3, 100, ["m0", "m1", "m2"]),
+            (3, 3, ["m0", "m1", "m2"]),
+            # limit < length -> last N in chronological order
+            (5, 2, ["m3", "m4"]),
+            (5, 4, ["m1", "m2", "m3", "m4"]),
+            # empty input for both None and positive limit
+            (0, None, []),
+            (0, 5, []),
+        ],
+    )
+    def test_apply_limit_various(
+        self,
+        input_count: int,
+        limit: int | None,
+        expected_labels: list[str],
+    ) -> None:
+        messages = [_make_message(f"m{i}") for i in range(input_count)]
+        result = _apply_limit(messages, limit)
+        assert self._labels(result) == expected_labels
 
 
 class TestDequeHistoryAccessor:

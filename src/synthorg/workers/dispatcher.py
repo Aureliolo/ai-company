@@ -12,12 +12,15 @@ through the normal ``TaskEngine`` mutation queue. The dispatcher only
 reacts to successful mutations and publishes the enqueue signal.
 """
 
-from typing import TYPE_CHECKING
+import asyncio
+from typing import TYPE_CHECKING, Final
 
 from synthorg.observability import get_logger
 from synthorg.observability.events.workers import (
     WORKERS_DISPATCHER_CLAIM_ENQUEUED,
+    WORKERS_DISPATCHER_PUBLISH_EXHAUSTED,
     WORKERS_DISPATCHER_PUBLISH_FAILED,
+    WORKERS_DISPATCHER_PUBLISH_RETRYING,
     WORKERS_DISPATCHER_QUEUE_NOT_RUNNING,
 )
 from synthorg.workers.claim import TaskClaim
@@ -44,6 +47,24 @@ so it is deliberately omitted.
 
 Values are matched case-insensitively against ``TaskStatus.value``.
 """
+
+_PUBLISH_MAX_ATTEMPTS: Final[int] = 3
+"""Max publish attempts per claim before giving up.
+
+A transient NATS hiccup (reconnect, brief server unavailability)
+should not orphan a task in ``ASSIGNED`` status. We retry publishes
+up to this many times before logging an exhaustion event and
+returning. The dispatcher cannot roll the task back itself without
+breaking the single-writer invariant -- workers are the only
+component allowed to transition tasks through the HTTP API -- so
+once retries are exhausted we emit a structured error that
+operators can observe and act on. Tasks left in ``ASSIGNED`` will
+eventually be picked up again the next time the engine replays
+observer events (e.g., on engine restart).
+"""
+
+_PUBLISH_BACKOFF_BASE_SECONDS: Final[float] = 0.1
+"""Base delay for exponential backoff between publish retries."""
 
 
 class DistributedDispatcher:
@@ -79,19 +100,63 @@ class DistributedDispatcher:
             return
 
         claim = self._build_claim(event)
-        try:
-            await self._task_queue.publish_claim(claim)
-        except Exception:
-            logger.exception(
-                WORKERS_DISPATCHER_PUBLISH_FAILED,
-                task_id=event.task_id,
-            )
+        if not await self._publish_with_retry(claim, event.task_id):
             return
         logger.info(
             WORKERS_DISPATCHER_CLAIM_ENQUEUED,
             task_id=event.task_id,
             new_status=claim.new_status,
         )
+
+    async def _publish_with_retry(
+        self,
+        claim: TaskClaim,
+        task_id: str,
+    ) -> bool:
+        """Publish a claim with bounded exponential backoff.
+
+        Returns ``True`` on success and ``False`` once retries are
+        exhausted. A failed publish can orphan a task in ``ASSIGNED``
+        because the dispatcher is a passive observer and cannot roll
+        task state back itself (workers are the only writers via the
+        HTTP API). Retries cover transient NATS hiccups; persistent
+        failures surface via ``WORKERS_DISPATCHER_PUBLISH_EXHAUSTED``
+        so operators can re-drive the task through an engine replay.
+        """
+        for attempt in range(1, _PUBLISH_MAX_ATTEMPTS + 1):
+            try:
+                await self._task_queue.publish_claim(claim)
+            except Exception:
+                if attempt < _PUBLISH_MAX_ATTEMPTS:
+                    delay = _PUBLISH_BACKOFF_BASE_SECONDS * (2 ** (attempt - 1))
+                    logger.warning(
+                        WORKERS_DISPATCHER_PUBLISH_RETRYING,
+                        task_id=task_id,
+                        attempt=attempt,
+                        max_attempts=_PUBLISH_MAX_ATTEMPTS,
+                        backoff_seconds=delay,
+                        exc_info=True,
+                    )
+                    await asyncio.sleep(delay)
+                    continue
+                # Preserve the original, less-severe event on the
+                # final failure so downstream monitoring that still
+                # filters on WORKERS_DISPATCHER_PUBLISH_FAILED does
+                # not silently stop seeing these failures, and also
+                # emit the new exhausted event with the attempt count.
+                logger.exception(
+                    WORKERS_DISPATCHER_PUBLISH_FAILED,
+                    task_id=task_id,
+                )
+                logger.error(  # noqa: TRY400
+                    WORKERS_DISPATCHER_PUBLISH_EXHAUSTED,
+                    task_id=task_id,
+                    attempts=_PUBLISH_MAX_ATTEMPTS,
+                )
+                return False
+            else:
+                return True
+        return False
 
     @staticmethod
     def _is_dispatchable(event: TaskStateChanged) -> bool:

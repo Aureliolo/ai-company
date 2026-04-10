@@ -5,7 +5,7 @@ failure), ``_safe_shutdown`` (graceful ordered teardown), and their
 supporting helpers.
 """
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Protocol
 
 from synthorg.api.auth.secret import resolve_jwt_secret
 from synthorg.api.auth.service import AuthService
@@ -31,6 +31,25 @@ if TYPE_CHECKING:
     from synthorg.settings.dispatcher import SettingsChangeDispatcher
 
 logger = get_logger(__name__)
+
+
+class _AsyncStartStop(Protocol):
+    """Minimal async lifecycle Protocol used by the distributed task queue hook.
+
+    The concrete type is ``synthorg.workers.claim.JetStreamTaskQueue``, but
+    importing that here would force the optional ``synthorg[distributed]``
+    extra to be installed even for deployments that never use the queue.
+    A structural Protocol with ``start()``/``stop()`` gives the lifecycle
+    helpers a real shape without the hard dependency.
+    """
+
+    async def start(self) -> None:
+        """Open the connection / initialise resources."""
+        ...
+
+    async def stop(self) -> None:
+        """Tear down the connection / release resources."""
+        ...
 
 
 async def _try_stop(
@@ -64,7 +83,7 @@ async def _cleanup_on_failure(  # noqa: PLR0913
     started_settings_dispatcher: bool = False,
     task_engine: TaskEngine | None = None,
     started_task_engine: bool = False,
-    distributed_task_queue: object | None = None,
+    distributed_task_queue: _AsyncStartStop | None = None,
     started_distributed_task_queue: bool = False,
     meeting_scheduler: MeetingScheduler | None = None,
     started_meeting_scheduler: bool = False,
@@ -100,7 +119,7 @@ async def _cleanup_on_failure(  # noqa: PLR0913
         )
     if started_distributed_task_queue and distributed_task_queue is not None:
         await _try_stop(
-            distributed_task_queue.stop(),  # type: ignore[attr-defined]
+            distributed_task_queue.stop(),
             API_APP_STARTUP,
             "Cleanup: failed to stop distributed task queue",
         )
@@ -399,7 +418,7 @@ async def _safe_shutdown(  # noqa: PLR0913, PLR0912, C901
     message_bus: MessageBus | None,
     persistence: PersistenceBackend | None,
     performance_tracker: PerformanceTracker | None = None,
-    distributed_task_queue: object | None = None,
+    distributed_task_queue: _AsyncStartStop | None = None,
 ) -> None:
     """Stop services in reverse startup order.
 
@@ -432,7 +451,7 @@ async def _safe_shutdown(  # noqa: PLR0913, PLR0912, C901
         )
     if distributed_task_queue is not None:
         await _try_stop(
-            distributed_task_queue.stop(),  # type: ignore[attr-defined]
+            distributed_task_queue.stop(),
             API_APP_SHUTDOWN,
             "Failed to stop distributed task queue",
         )

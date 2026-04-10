@@ -12,6 +12,10 @@ from synthorg.communication.bus.memory import InMemoryMessageBus
 from synthorg.communication.bus_protocol import MessageBus
 from synthorg.communication.config import MessageBusConfig  # noqa: TC001
 from synthorg.communication.enums import MessageBusBackend
+from synthorg.observability import get_logger
+from synthorg.observability.events.config import CONFIG_VALIDATION_FAILED
+
+logger = get_logger(__name__)
 
 __all__ = (
     "InMemoryMessageBus",
@@ -62,6 +66,12 @@ def build_message_bus(config: MessageBusConfig) -> MessageBus:
                 f"docs/design/distributed-runtime.md. Supported backends: "
                 f"'internal', 'nats'."
             )
+            logger.error(
+                CONFIG_VALIDATION_FAILED,
+                model="MessageBusConfig",
+                backend=config.backend.value,
+                reason="future_backend_not_implemented",
+            )
             raise ValueError(msg)
         case _:
             # Defensive catch-all: any future MessageBusBackend member
@@ -75,5 +85,11 @@ def build_message_bus(config: MessageBusConfig) -> MessageBus:
                 f"Unknown MessageBus backend {config.backend!r}. "
                 "The factory has not been updated for this enum member; "
                 "add a new case to build_message_bus()."
+            )
+            logger.error(
+                CONFIG_VALIDATION_FAILED,
+                model="MessageBusConfig",
+                backend=repr(config.backend),
+                reason="unknown_backend_factory_not_updated",
             )
             raise ValueError(msg)

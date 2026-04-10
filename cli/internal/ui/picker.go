@@ -178,14 +178,30 @@ func OptionIDs[T any](options []Option[T]) []string {
 	return ids
 }
 
-// pickDefault finds the first option marked Default and returns its
-// Value and index. If no option is marked Default, the first option
-// wins.
+// pickDefault returns the default option's Value and index.
+//
+// The documented contract in the Option.Default field comment is:
+// "Exactly one option in a registry should set Default=true. If zero
+// or multiple are marked, PickOne falls back to the first option."
+//
+// This function enforces that contract. Returning early on the first
+// Default=true would silently pick one of several equally-marked
+// entries, which hides registry mistakes instead of making them
+// deterministic. Count the matches first, then either return the
+// unique default or fall back to index 0.
 func pickDefault[T any](options []Option[T]) (T, int) {
+	defaultCount := 0
+	defaultIdx := 0
 	for i := range options {
 		if options[i].Default {
-			return options[i].Value, i
+			defaultCount++
+			if defaultCount == 1 {
+				defaultIdx = i
+			}
 		}
+	}
+	if defaultCount == 1 {
+		return options[defaultIdx].Value, defaultIdx
 	}
 	return options[0].Value, 0
 }

@@ -606,6 +606,8 @@ class RootConfig(BaseModel):
         performance: Performance tracking configuration (quality judge,
             CI/LLM weights, trend thresholds).
         task_engine: Task engine configuration.
+        queue: Distributed task queue configuration (opt-in, requires
+            a distributed bus backend such as NATS).
         coordination: Multi-agent coordination configuration.
         strategy: Strategy and trendslop mitigation configuration.
         git_clone: Git clone SSRF prevention network policy.

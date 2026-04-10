@@ -29,11 +29,12 @@ services:
       # Bridge SYNTHORG_* to uvicorn's native env vars (exec form CMD, no shell)
       UVICORN_HOST: "${SYNTHORG_HOST:-0.0.0.0}"
       UVICORN_PORT: "${SYNTHORG_PORT:-3001}"
-      # Message bus backend. Default is the in-process bus; override
-      # with `SYNTHORG_BUS_BACKEND=nats` to route through the NATS
-      # service when `--profile distributed` is active. The value is
-      # always set so enabling the profile alone is enough to flip the
-      # backend without also editing config files.
+      # Message bus backend. Default is the in-process bus. To route
+      # through the NATS JetStream service also apply the overlay file
+      # docker/compose.distributed.yml, which sets
+      # `SYNTHORG_BUS_BACKEND=nats` and wires `depends_on` -- compose
+      # profiles alone only control which services start, not how
+      # already-defined services are configured.
       SYNTHORG_BUS_BACKEND: "${SYNTHORG_BUS_BACKEND:-internal}"
       SYNTHORG_NATS_URL: "${SYNTHORG_NATS_URL:-nats://nats:4222}"
     user: "65532:65532"

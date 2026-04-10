@@ -1,7 +1,7 @@
 """Communication configuration models (see Communication design page)."""
 
 from collections import Counter
-from typing import Literal, Self
+from typing import Final, Literal, Self
 from urllib.parse import urlparse
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -27,6 +27,10 @@ Matches the Go CLI's ``validateNatsURL`` allow-list in
 ``cli/cmd/worker_start.go`` so the config and the CLI enforce the
 same rule at their respective system boundaries.
 """
+
+_MIN_TCP_PORT: Final[int] = 1
+_MAX_TCP_PORT: Final[int] = 65535
+"""Legal TCP port range applied to ``NatsConfig.url`` at load time."""
 
 # Default channels from the Communication design page.
 _DEFAULT_CHANNELS: tuple[str, ...] = (
@@ -96,7 +100,8 @@ class NatsConfig(BaseModel):
         The in-process NATS client accepts "anything non-empty" and only
         fails later when it tries to dial the server, which leads to
         confusing errors downstream. Parse the URL here and require a
-        recognised scheme plus a non-empty host so misconfiguration
+        recognised scheme, a non-empty host, and (if a port is present)
+        a numeric port inside the legal TCP range so misconfiguration
         surfaces immediately at config load.
         """
         try:
@@ -113,6 +118,21 @@ class NatsConfig(BaseModel):
             raise ValueError(msg)
         if not parsed.hostname:
             msg = f"invalid NATS url {value!r}: missing host"
+            raise ValueError(msg)
+        # parsed.port raises ValueError for a non-numeric or negative
+        # port; re-wrap with a contextual message. When no port is
+        # present parsed.port returns None, which is fine (the client
+        # uses the NATS default).
+        try:
+            port = parsed.port
+        except ValueError as exc:
+            msg = f"invalid NATS url {value!r}: non-numeric port in netloc"
+            raise ValueError(msg) from exc
+        if port is not None and not (_MIN_TCP_PORT <= port <= _MAX_TCP_PORT):
+            msg = (
+                f"invalid NATS url {value!r}: port {port} out of range "
+                f"(must be {_MIN_TCP_PORT}-{_MAX_TCP_PORT})"
+            )
             raise ValueError(msg)
         return value
 

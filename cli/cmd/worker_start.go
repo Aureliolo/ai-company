@@ -76,21 +76,29 @@ func runWorkerStart(cmd *cobra.Command, _ []string) error {
 		container = "synthorg-backend"
 	}
 
-	// Pass the NATS URL via env only. Putting `--nats-url <value>` into
-	// the command argv would expose `nats://user:pass@host` to anyone
-	// reading the docker process list even though the log output is
-	// redacted, so the Python entry point reads `SYNTHORG_NATS_URL` and
-	// the stream prefix from the environment instead. Worker count stays
-	// on both surfaces so operators still see it in the banner.
+	// Pass the NATS URL via env only, and pass env values via the
+	// docker process environment rather than argv. Putting
+	// `--nats-url <value>` into the CLI argv or `-e KEY=value` pairs
+	// into the docker exec argv would expose `nats://user:pass@host`
+	// (and the stream prefix + worker count) to anyone reading the
+	// docker process list even though the log output is redacted.
+	// `docker exec -e KEY <container>` tells docker to forward the
+	// variable from the parent process environment without putting
+	// its value on the command line.
 	args := []string{
 		"exec",
-		"-e", "SYNTHORG_NATS_URL=" + workerStartNatsURL,
-		"-e", "SYNTHORG_NATS_STREAM_PREFIX=" + workerStartStreamPrefix,
-		"-e", "SYNTHORG_WORKER_COUNT=" + strconv.Itoa(workerStartCount),
+		"-e", "SYNTHORG_NATS_URL",
+		"-e", "SYNTHORG_NATS_STREAM_PREFIX",
+		"-e", "SYNTHORG_WORKER_COUNT",
 		container,
 		"python", "-m", "synthorg.workers",
 		"--workers", strconv.Itoa(workerStartCount),
 	}
+	env := append(os.Environ(),
+		"SYNTHORG_NATS_URL="+workerStartNatsURL,
+		"SYNTHORG_NATS_STREAM_PREFIX="+workerStartStreamPrefix,
+		"SYNTHORG_WORKER_COUNT="+strconv.Itoa(workerStartCount),
+	)
 
 	out.KeyValue("Workers", strconv.Itoa(workerStartCount))
 	out.KeyValue("NATS URL", redactNatsURL(workerStartNatsURL))
@@ -98,13 +106,20 @@ func runWorkerStart(cmd *cobra.Command, _ []string) error {
 	out.KeyValue("Container", container)
 	out.HintNextStep("Press Ctrl+C to stop workers.")
 
-	return execDocker(cmd.Context(), args)
+	return execDocker(cmd.Context(), args, env)
 }
 
 // validateNatsURL rejects obviously malformed URLs before we pass them
 // to docker exec. nats-py does its own validation at connection time,
 // but catching a typo up front gives a better error message and
 // avoids wasted container startup.
+//
+// Hostname presence is checked with url.URL.Hostname() rather than the
+// raw Host field so a value like `nats://:4222` (port only, no host)
+// is rejected instead of being silently accepted because Host contains
+// a non-empty string. If a port is present we also validate that it
+// parses as an integer inside the legal TCP range, which url.Parse
+// does not enforce by itself.
 func validateNatsURL(raw string) error {
 	if raw == "" {
 		return fmt.Errorf("--nats-url must not be empty")
@@ -122,8 +137,23 @@ func validateNatsURL(raw string) error {
 			parsed.Scheme,
 		)
 	}
-	if parsed.Host == "" {
+	if parsed.Hostname() == "" {
 		return fmt.Errorf("invalid --nats-url %q: missing host", redactNatsURL(raw))
+	}
+	if rawPort := parsed.Port(); rawPort != "" {
+		port, err := strconv.Atoi(rawPort)
+		if err != nil {
+			return fmt.Errorf(
+				"invalid --nats-url %q: non-numeric port %q",
+				redactNatsURL(raw), rawPort,
+			)
+		}
+		if port < 1 || port > 65535 {
+			return fmt.Errorf(
+				"invalid --nats-url %q: port %d out of range (must be 1-65535)",
+				redactNatsURL(raw), port,
+			)
+		}
 	}
 	return nil
 }
@@ -177,12 +207,18 @@ func redactNatsURL(raw string) string {
 
 // execDocker runs `docker <args...>` and streams output to the parent
 // process. Factored out so worker_start_test.go can override it in
-// unit tests.
-var execDocker = func(ctx context.Context, args []string) error {
+// unit tests. The env argument is the complete environment the child
+// docker process should run with (typically `os.Environ()` merged with
+// the secrets `docker exec -e NAME` should forward into the target
+// container); passing env values via the process environment instead
+// of the argv prevents them from leaking through `docker ps` / the
+// host process list.
+var execDocker = func(ctx context.Context, args []string, env []string) error {
 	//nolint:gosec // args are constructed from validated flags above.
 	dockerCmd := exec.CommandContext(ctx, "docker", args...)
 	dockerCmd.Stdout = os.Stdout
 	dockerCmd.Stderr = os.Stderr
 	dockerCmd.Stdin = os.Stdin
+	dockerCmd.Env = env
 	return dockerCmd.Run()
 }

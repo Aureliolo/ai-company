@@ -318,7 +318,7 @@ All metadata fields are nullable except `extra`, which is always present (defaul
     communication:
       default_pattern: "hybrid"
       message_bus:
-        backend: "internal"        # internal, nats, redis, rabbitmq, kafka
+        backend: "internal"        # implemented: internal, nats -- planned: redis, rabbitmq, kafka
         channels:
           - "#all-hands"
           - "#engineering"

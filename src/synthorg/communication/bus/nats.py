@@ -102,6 +102,19 @@ single malformed publisher from exhausting worker memory during
 deserialization.
 """
 
+_CONSUMER_ACK_WAIT_MULTIPLIER: Final[float] = 6.0
+"""Multiplier on ``publish_ack_wait_seconds`` for per-subscriber consumer ack_wait.
+
+A subscriber's durable pull consumer gets an ack deadline that is
+several times longer than the publisher's ack wait: publish acks are a
+server-side fire-and-forget acknowledgement, while the subscriber's
+ack deadline must span receive + application processing + the
+possibility of redelivery before being considered in-flight. The 6x
+factor mirrors typical JetStream guidance for interactive workloads
+and is surfaced here as a named constant so tests and operators can
+reason about it without grepping for a raw literal.
+"""
+
 
 def _redact_url(url: str) -> str:
     """Strip credentials from a NATS URL for safe logging.
@@ -749,7 +762,10 @@ class JetStreamMessageBus:
         durable = self._durable_name(channel_name, subscriber_id)
         consumer_config = ConsumerConfig(
             durable_name=durable,
-            ack_wait=self._nats_config.publish_ack_wait_seconds * 6.0,
+            ack_wait=(
+                self._nats_config.publish_ack_wait_seconds
+                * _CONSUMER_ACK_WAIT_MULTIPLIER
+            ),
             max_deliver=1,
             filter_subject=subject,
         )

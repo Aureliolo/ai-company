@@ -90,6 +90,45 @@ func TestPickDefaultFallsBackToFirstWhenNoneMarked(t *testing.T) {
 	}
 }
 
+func TestPickDefaultFallsBackToFirstWhenMultipleMarked(t *testing.T) {
+	// Documented behavior: "If zero or multiple are marked, PickOne
+	// falls back to the first option." A registry that accidentally
+	// marks two options as Default=true must not silently pick
+	// whichever one scanning encounters first -- that would hide
+	// registry mistakes.
+	t.Parallel()
+	opts := []Option[string]{
+		{ID: "a", Label: "A", Value: "a"},
+		{ID: "b", Label: "B", Value: "b", Default: true},
+		{ID: "c", Label: "C", Value: "c", Default: true},
+	}
+	cfg := PickOneConfig{Yes: true}
+	got, err := PickOne("Test", "help", opts, cfg)
+	if err != nil {
+		t.Fatalf("PickOne returned error: %v", err)
+	}
+	if got != "a" {
+		t.Errorf("expected first option %q, got %q", "a", got)
+	}
+}
+
+func TestPickDefaultHonoursUniqueDefault(t *testing.T) {
+	t.Parallel()
+	opts := []Option[string]{
+		{ID: "a", Label: "A", Value: "a"},
+		{ID: "b", Label: "B", Value: "b", Default: true},
+		{ID: "c", Label: "C", Value: "c"},
+	}
+	cfg := PickOneConfig{Yes: true}
+	got, err := PickOne("Test", "help", opts, cfg)
+	if err != nil {
+		t.Fatalf("PickOne returned error: %v", err)
+	}
+	if got != "b" {
+		t.Errorf("expected unique default %q, got %q", "b", got)
+	}
+}
+
 func TestFindOptionByID(t *testing.T) {
 	t.Parallel()
 	got := FindOption(pickerTestOptions, "beta")

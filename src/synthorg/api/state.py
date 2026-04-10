@@ -381,8 +381,26 @@ class AppState:
         extra is installed. The lifecycle starts and stops the queue
         alongside the other async services so the dispatcher observer
         sees a connected client before any task state changes fire.
+
+        Logs the transition (attach/detach/replace) at INFO so the
+        lifecycle state of ``_distributed_task_queue`` is observable in
+        structured logs.
         """
+        previous = self._distributed_task_queue
+        if previous is None and task_queue is not None:
+            transition = "attached"
+        elif previous is not None and task_queue is None:
+            transition = "detached"
+        elif previous is not None and task_queue is not None:
+            transition = "replaced"
+        else:
+            transition = "noop"
         self._distributed_task_queue = task_queue
+        logger.info(
+            API_APP_STARTUP,
+            service="distributed_task_queue",
+            transition=transition,
+        )
 
     @property
     def meeting_orchestrator(self) -> MeetingOrchestrator:

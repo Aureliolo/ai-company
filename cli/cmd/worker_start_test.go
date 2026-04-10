@@ -17,10 +17,16 @@ func TestValidateNatsURL(t *testing.T) {
 		{name: "tls scheme", url: "tls://nats-prod:4222", wantErr: false},
 		{name: "nats+tls scheme", url: "nats+tls://nats-prod:4222", wantErr: false},
 		{name: "with credentials", url: "nats://user:pass@host:4222", wantErr: false},
+		{name: "no port is fine", url: "nats://localhost", wantErr: false},
 		{name: "empty", url: "", wantErr: true},
 		{name: "no scheme", url: "localhost:4222", wantErr: true},
 		{name: "wrong scheme", url: "http://host:4222", wantErr: true},
 		{name: "no host", url: "nats://", wantErr: true},
+		// Regression: url.Parse accepts "nats://:4222" with Host = ":4222"
+		// so the old `parsed.Host == ""` check missed it.
+		{name: "port without host rejected", url: "nats://:4222", wantErr: true},
+		{name: "port zero rejected", url: "nats://localhost:0", wantErr: true},
+		{name: "port over 65535 rejected", url: "nats://localhost:70000", wantErr: true},
 	}
 
 	for _, tc := range cases {

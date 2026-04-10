@@ -1,0 +1,25 @@
+# Overlay for the distributed runtime profile.
+#
+# Merge this on top of docker/compose.yml to actually flip the backend
+# service onto the NATS JetStream bus when `--profile distributed` is
+# active. Compose profiles alone only control which services start --
+# they do not change how already-defined services are configured, so
+# this overlay has to exist as a separate file users apply explicitly:
+#
+#   docker compose \
+#     -f docker/compose.yml \
+#     -f docker/compose.distributed.yml \
+#     --profile distributed up
+#
+# Without this overlay, `--profile distributed` still starts the `nats`
+# container, but `SYNTHORG_BUS_BACKEND` stays at its default of
+# `internal` and the backend never publishes to JetStream.
+
+services:
+  backend:
+    environment:
+      SYNTHORG_BUS_BACKEND: "nats"
+      SYNTHORG_NATS_URL: "${SYNTHORG_NATS_URL:-nats://nats:4222}"
+    depends_on:
+      nats:
+        condition: service_healthy

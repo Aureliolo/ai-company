@@ -23,6 +23,10 @@ WORKERS_DISPATCHER_QUEUE_NOT_RUNNING: Final[str] = (
     "workers.dispatcher.queue_not_running"
 )
 WORKERS_DISPATCHER_PUBLISH_FAILED: Final[str] = "workers.dispatcher.publish_failed"
+WORKERS_DISPATCHER_PUBLISH_RETRYING: Final[str] = "workers.dispatcher.publish_retrying"
+WORKERS_DISPATCHER_PUBLISH_EXHAUSTED: Final[str] = (
+    "workers.dispatcher.publish_exhausted"
+)
 WORKERS_DISPATCHER_CLAIM_ENQUEUED: Final[str] = "workers.dispatcher.claim_enqueued"
 
 # Task queue client

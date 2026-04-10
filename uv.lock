@@ -1687,9 +1687,12 @@ wheels = [
 
 [[package]]
 name = "nats-py"
-version = "2.12.0"
+version = "2.14.0"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/71/c5/2564d917503fe8d68fe630c74bf6b678fbc15c01b58f2565894761010f57/nats_py-2.12.0.tar.gz", hash = "sha256:2981ca4b63b8266c855573fa7871b1be741f1889fd429ee657e5ffc0971a38a1", size = 119821, upload-time = "2025-10-31T05:27:31.247Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/c3/f8/b956c4621ba88748ed707c52e69f95b7a50c8914e750edca59a5bef84a76/nats_py-2.14.0.tar.gz", hash = "sha256:4ed02cb8e3b55c68074a063aa2687087115d805d1513297da90cb2068fb07bed", size = 120751, upload-time = "2026-02-23T22:44:58.988Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/f9/39/0e87753df1072254bac190b33ed34b264f28f6aa9bea0f01b7e818071756/nats_py-2.14.0-py3-none-any.whl", hash = "sha256:4116f5d2233ce16e63c3d5538fa40a5e207f75fcf42a741773929ddf1e29d19d", size = 82259, upload-time = "2026-02-23T22:45:00.152Z" },
+]
 
 [[package]]
 name = "networkx"
@@ -3094,7 +3097,7 @@ requires-dist = [
     { name = "mcp", specifier = "==1.27.0" },
     { name = "mem0ai", specifier = "==1.0.11" },
     { name = "mmh3", specifier = "==5.2.1" },
-    { name = "nats-py", marker = "extra == 'distributed'", specifier = "==2.12.0" },
+    { name = "nats-py", marker = "extra == 'distributed'", specifier = "==2.14.0" },
     { name = "pydantic", specifier = "==2.12.5" },
     { name = "pyjwt", extras = ["crypto"], specifier = "==2.12.1" },
     { name = "pyyaml", specifier = "==6.0.3" },
@@ -3113,7 +3116,7 @@ dev = [
     { name = "hypothesis", specifier = "==6.151.12" },
     { name = "mkdocstrings", extras = ["python"], specifier = "==1.0.3" },
     { name = "mypy", specifier = "==1.20.0" },
-    { name = "nats-py", specifier = "==2.12.0" },
+    { name = "nats-py", specifier = "==2.14.0" },
     { name = "pip-audit", specifier = "==2.10.0" },
     { name = "polyfactory", specifier = "==3.3.0" },
     { name = "pre-commit", specifier = "==4.5.1" },
@@ -3126,7 +3129,7 @@ dev = [
     { name = "pytest-xdist", specifier = "==3.8.0" },
     { name = "respx", specifier = "==0.23.1" },
     { name = "ruff", specifier = "==0.15.10" },
-    { name = "testcontainers", specifier = "==4.13.0" },
+    { name = "testcontainers", specifier = "==4.14.2" },
     { name = "types-pyyaml", specifier = "==6.0.12.20260408" },
     { name = "zensical", specifier = "==0.0.32" },
 ]
@@ -3138,7 +3141,7 @@ docs = [
 ]
 test = [
     { name = "hypothesis", specifier = "==6.151.12" },
-    { name = "nats-py", specifier = "==2.12.0" },
+    { name = "nats-py", specifier = "==2.14.0" },
     { name = "polyfactory", specifier = "==3.3.0" },
     { name = "pytest", specifier = "==9.0.3" },
     { name = "pytest-asyncio", specifier = "==1.3.0" },
@@ -3147,7 +3150,7 @@ test = [
     { name = "pytest-timeout", specifier = "==2.4.0" },
     { name = "pytest-xdist", specifier = "==3.8.0" },
     { name = "respx", specifier = "==0.23.1" },
-    { name = "testcontainers", specifier = "==4.13.0" },
+    { name = "testcontainers", specifier = "==4.14.2" },
 ]
 
 [[package]]
@@ -3161,7 +3164,7 @@ wheels = [
 
 [[package]]
 name = "testcontainers"
-version = "4.13.0"
+version = "4.14.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "docker" },
@@ -3170,9 +3173,9 @@ dependencies = [
     { name = "urllib3" },
     { name = "wrapt" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/d7/e5/807161552b8bf7072d63a21d5fd3c7df54e29420e325d50b9001571fcbb6/testcontainers-4.13.0.tar.gz", hash = "sha256:ee2bc39324eeeeb710be779208ae070c8373fa9058861859203f536844b0f412", size = 77824, upload-time = "2025-09-09T13:23:49.976Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/ca/ac/a597c3a0e02b26cbed6dd07df68be1e57684766fd1c381dee9b170a99690/testcontainers-4.14.2.tar.gz", hash = "sha256:1340ccf16fe3acd9389a6c9e1d9ab21d9fe99a8afdf8165f89c3e69c1967d239", size = 166841, upload-time = "2026-03-18T05:19:16.696Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/12/a2/ec749772b9d0fcc659b1722858f463a9cbfc7e29aca374123fb87e87fc1d/testcontainers-4.13.0-py3-none-any.whl", hash = "sha256:784292e0a3f3a4588fbbf5d6649adda81fea5fd61ad3dc73f50a7a903904aade", size = 123838, upload-time = "2025-09-09T13:23:48.375Z" },
+    { url = "https://files.pythonhosted.org/packages/13/2d/26b8b30067d94339afee62c3edc9b803a6eb9332f521ba77d8aaab5de873/testcontainers-4.14.2-py3-none-any.whl", hash = "sha256:0d0522c3cd8f8d9627cda41f7a6b51b639fa57bdc492923c045117933c668d68", size = 125712, upload-time = "2026-03-18T05:19:15.29Z" },
 ]
 
 [[package]]

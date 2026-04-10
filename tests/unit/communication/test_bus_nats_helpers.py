@@ -118,21 +118,31 @@ class TestCancelIfPending:
 
     @pytest.mark.unit
     async def test_cancels_pending_task(self) -> None:
+        started = asyncio.Event()
+
         async def wait_forever() -> None:
+            started.set()
             await asyncio.Event().wait()
 
         task = asyncio.create_task(wait_forever())
-        await asyncio.sleep(0)  # let the task start
+        # Deterministic handshake instead of asyncio.sleep(0): block
+        # until the coroutine has actually started its forever-wait,
+        # so the cancel is guaranteed to race a pending task rather
+        # than one that is still queued in the event loop.
+        await started.wait()
         await _cancel_if_pending(task)
         assert task.cancelled()
 
     @pytest.mark.unit
     async def test_does_not_reraise_cancellation(self) -> None:
+        started = asyncio.Event()
+
         async def wait_forever() -> None:
+            started.set()
             await asyncio.Event().wait()
 
         task = asyncio.create_task(wait_forever())
-        await asyncio.sleep(0)
+        await started.wait()
         # Should not raise.
         await _cancel_if_pending(task)
         assert task.cancelled()

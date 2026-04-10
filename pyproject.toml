@@ -41,7 +41,7 @@ fine-tune = ["torch==2.11.0", "sentence-transformers==5.4.0"]
 telemetry = ["logfire==4.31.1"]
 # Distributed runtime: first distributed MessageBus backend + task queue workers.
 # Opt in with `pip install synthorg[distributed]`. See docs/design/distributed-runtime.md.
-distributed = ["nats-py==2.12.0"]
+distributed = ["nats-py==2.14.0"]
 
 [tool.hatch.version]
 path = "src/synthorg/__init__.py"
@@ -64,8 +64,8 @@ test = [
     # Distributed runtime: dev envs always have these so mypy can type-check
     # bus/nats.py and workers/ without needing the optional extra installed.
     # Runtime users opt in via `pip install synthorg[distributed]`.
-    "nats-py==2.12.0",
-    "testcontainers==4.13.0",
+    "nats-py==2.14.0",
+    "testcontainers==4.14.2",
 ]
 docs = [
     "zensical==0.0.32",
@@ -275,10 +275,6 @@ filterwarnings = [
     "error",
     "ignore:Core Pydantic V1 functionality:UserWarning",
     "ignore:Exception in thread.*_connection_worker_thread:pytest.PytestUnhandledThreadExceptionWarning",
-    # testcontainers 4.13 registers a deprecated @wait_container_is_ready
-    # decorator at import time; we can't control the library's own migration
-    # schedule and the warning would otherwise fail every NATS integration test.
-    "ignore:The @wait_container_is_ready decorator is deprecated:DeprecationWarning:testcontainers.core.waiting_utils",
 ]
 
 # ---------------------------------------------------------------------------
