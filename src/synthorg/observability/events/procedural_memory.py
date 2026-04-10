@@ -59,3 +59,6 @@ PROCEDURAL_MEMORY_SKILL_MD: Final[str] = "procedural_memory.skill_md.written"
 
 PROCEDURAL_MEMORY_PROPOSER_INIT: Final[str] = "procedural_memory.proposer.init"
 """ProceduralMemoryProposer constructed with configuration."""
+
+PROCEDURAL_PRUNING_UNKNOWN_TYPE: Final[str] = "procedural_pruning.unknown_type"
+"""Unknown pruning strategy type in factory configuration."""

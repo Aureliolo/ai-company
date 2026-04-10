@@ -61,9 +61,8 @@ class InflectionTrigger:
         """Trigger if there are pending inflections for the agent."""
         key = str(agent_id)
         async with self._lock:
-            pending = self._pending.get(key, [])
+            pending = self._pending.pop(key, [])
             if pending:
-                self._pending[key] = []
                 logger.debug(
                     EVOLUTION_TRIGGER_REQUESTED,
                     agent_id=key,

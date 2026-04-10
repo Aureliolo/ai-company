@@ -34,7 +34,7 @@ class RoleScopedPropagation:
         Args:
             max_targets: Maximum target agents (default 10).
         """
-        self.max_targets = max_targets
+        self.max_targets = max(1, max_targets)
 
     @property
     def name(self) -> str:

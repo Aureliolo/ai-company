@@ -6,7 +6,7 @@ performance metric's trend direction changes, and the
 """
 
 from datetime import UTC, datetime
-from typing import Protocol, runtime_checkable
+from typing import Protocol, Self, runtime_checkable
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
 
@@ -43,7 +43,7 @@ class PerformanceInflection(BaseModel):
     )
 
     @model_validator(mode="after")
-    def _validate_direction_change(self):  # type: ignore[no-untyped-def]
+    def _validate_direction_change(self) -> Self:
         """Ensure old_direction and new_direction are different."""
         if self.old_direction == self.new_direction:
             msg = "old_direction and new_direction must be different"

@@ -6,6 +6,10 @@ from synthorg.engine.evolution.models import (
     AdaptationProposal,
 )
 from synthorg.observability import get_logger
+from synthorg.observability.events.evolution import (
+    EVOLUTION_REVIEW_GATE_APPROVED,
+    EVOLUTION_REVIEW_GATE_REJECTED,
+)
 
 logger = get_logger(__name__)
 
@@ -48,7 +52,7 @@ class ReviewGateGuard:
         """
         if proposal.axis in self._require_review_for:
             logger.debug(
-                "evolution.review_gate.reject",
+                EVOLUTION_REVIEW_GATE_REJECTED,
                 proposal_id=str(proposal.id),
                 axis=proposal.axis.value,
             )
@@ -60,7 +64,7 @@ class ReviewGateGuard:
             )
 
         logger.debug(
-            "evolution.review_gate.auto_approve",
+            EVOLUTION_REVIEW_GATE_APPROVED,
             proposal_id=str(proposal.id),
             axis=proposal.axis.value,
         )

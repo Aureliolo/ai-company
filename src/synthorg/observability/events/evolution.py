@@ -28,10 +28,12 @@ EVOLUTION_PROPOSER_ROUTE: Final[str] = "evolution.proposer.route"
 
 EVOLUTION_GUARDS_PASSED: Final[str] = "evolution.guards.passed"
 EVOLUTION_GUARDS_REJECTED: Final[str] = "evolution.guards.rejected"
+EVOLUTION_REVIEW_GATE_APPROVED: Final[str] = "evolution.review_gate.approved"
+EVOLUTION_REVIEW_GATE_REJECTED: Final[str] = "evolution.review_gate.rejected"
 
 # ── Adaptation events ───────────────────────────────────────────
 
-EVOLUTION_ADAPTED: Final[str] = "evolution.adapted"
+EVOLUTION_ADAPTED: Final[str] = "evolution.adaptation.applied"
 EVOLUTION_ADAPTATION_FAILED: Final[str] = "evolution.adaptation.failed"
 
 # ── Rollback events ─────────────────────────────────────────────
@@ -41,7 +43,7 @@ EVOLUTION_ROLLBACK_FAILED: Final[str] = "evolution.rollback.failed"
 
 # ── Rate limiting ───────────────────────────────────────────────
 
-EVOLUTION_RATE_LIMITED: Final[str] = "evolution.rate_limited"
+EVOLUTION_RATE_LIMITED: Final[str] = "evolution.rate_limit.exceeded"
 
 # ── Service-level events ────────────────────────────────────────
 
@@ -50,3 +52,7 @@ EVOLUTION_SERVICE_COMPLETE: Final[str] = "evolution.service.complete"
 EVOLUTION_CONTEXT_BUILD_FAILED: Final[str] = "evolution.context.build_failed"
 EVOLUTION_CONTEXT_SNAPSHOT_FAILED: Final[str] = "evolution.context.snapshot_failed"
 EVOLUTION_CONTEXT_MEMORY_FAILED: Final[str] = "evolution.context.memory_failed"
+
+# ── Factory/config errors ──────────────────────────────────────
+
+EVOLUTION_INVALID_STORE_TYPE: Final[str] = "evolution.store.invalid_type"

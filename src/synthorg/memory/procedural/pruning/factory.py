@@ -10,6 +10,9 @@ from synthorg.memory.procedural.pruning.pareto_strategy import (
 )
 from synthorg.memory.procedural.pruning.ttl_strategy import TtlPruningStrategy
 from synthorg.observability import get_logger
+from synthorg.observability.events.procedural_memory import (
+    PROCEDURAL_PRUNING_UNKNOWN_TYPE,
+)
 
 if TYPE_CHECKING:
     from synthorg.memory.procedural.pruning.config import PruningConfig
@@ -39,5 +42,5 @@ def build_pruning_strategy(config: PruningConfig) -> PruningStrategy:
         pareto = ParetoPruningStrategy(max_entries=config.max_entries)
         return HybridPruningStrategy(ttl_strategy=ttl, pareto_strategy=pareto)
     msg = f"Unknown pruning strategy type: {config.type}"  # type: ignore[unreachable]
-    logger.warning("pruning_strategy.unknown_type", type=config.type)
+    logger.warning(PROCEDURAL_PRUNING_UNKNOWN_TYPE, type=config.type)
     raise ValueError(msg)

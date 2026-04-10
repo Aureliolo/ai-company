@@ -313,9 +313,15 @@ class EvolutionService:
             raise
         except asyncio.CancelledError:
             raise
-        except Exception:
-            # Adapter already logged the failure via EVOLUTION_ADAPTATION_FAILED.
-            # Do not re-log here to avoid duplication.
+        except Exception as exc:
+            # Adapter should log via EVOLUTION_ADAPTATION_FAILED.
+            # Defensive fallback in case adapter omits it.
+            logger.debug(
+                EVOLUTION_ADAPTATION_FAILED,
+                agent_id=str(agent_id),
+                error=str(exc),
+                source="service_fallback",
+            )
             return False
         else:
             return True

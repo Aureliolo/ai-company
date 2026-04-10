@@ -146,12 +146,12 @@ class CopyOnWriteIdentityStore:
             raise ValueError(msg)
 
         restored = snapshot.snapshot
-        await self._registry.evolve_identity(
-            agent_id,
-            restored,
-            evolution_rationale=f"rollback to version {version}",
-        )
         async with self._version_lock:
+            await self._registry.evolve_identity(
+                agent_id,
+                restored,
+                evolution_rationale=f"rollback to version {version}",
+            )
             self._current_version[key] = version
         logger.info(
             EVOLUTION_ROLLBACK_TRIGGERED,

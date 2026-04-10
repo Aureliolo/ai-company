@@ -53,8 +53,8 @@ class PerTaskTrigger:
             self._tasks_since_evolution[key] = count
 
             if count >= self._min_tasks:
-                self._tasks_since_evolution[key] = 0
-                logger.debug(
+                del self._tasks_since_evolution[key]
+                logger.info(
                     EVOLUTION_TRIGGER_REQUESTED,
                     agent_id=key,
                     trigger="per_task",

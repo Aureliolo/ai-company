@@ -231,7 +231,8 @@ def _build_guard(
         guards.append(ShadowEvaluationGuard())
 
     if not guards:
-        # No guards enabled -- auto-approve everything.
+        # Safe fallback: auto-approves all proposals when no guards configured.
+        # ShadowEvaluationGuard is a stub that always approves.
         from synthorg.engine.evolution.guards.shadow_evaluation import (  # noqa: PLC0415
             ShadowEvaluationGuard,
         )

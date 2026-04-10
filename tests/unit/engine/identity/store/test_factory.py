@@ -3,6 +3,7 @@
 from unittest.mock import AsyncMock
 
 import pytest
+from pydantic import ValidationError
 
 from synthorg.engine.identity.store.append_only import AppendOnlyIdentityStore
 from synthorg.engine.identity.store.config import IdentityStoreConfig
@@ -66,5 +67,5 @@ class TestIdentityStoreConfig:
     @pytest.mark.unit
     def test_frozen(self) -> None:
         config = IdentityStoreConfig()
-        with pytest.raises(Exception, match="frozen"):
+        with pytest.raises(ValidationError):
             config.type = "copy_on_write"  # type: ignore[misc]

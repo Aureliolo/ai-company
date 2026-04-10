@@ -193,8 +193,10 @@ class TestParetoPruningStrategy:
             agent_id="test-agent-1",
             entries=tuple(entries),
         )
-        # At least one entry should be pruned
-        assert len(result) >= 1
+        # 3 entries with same relevance: mem-0 dominates on recency,
+        # frontier = [mem-0], so mem-1 and mem-2 are pruned
+        assert len(result) == 2
+        assert set(result) == {"mem-1", "mem-2"}
 
     @pytest.mark.unit
     async def test_dominated_entries_pruned(self) -> None:
