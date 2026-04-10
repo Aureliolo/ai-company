@@ -92,7 +92,7 @@ class IdentityVersionStore(Protocol):
             agent_id: Agent to look up.
 
         Returns:
-            Tuple of version snapshots, oldest first.
+            Tuple of version snapshots, newest first.
         """
         ...
 

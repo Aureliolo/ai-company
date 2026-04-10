@@ -53,6 +53,24 @@ _JSON_FENCE_PATTERN = re.compile(
 )
 
 
+def _extract_json_block(text: str) -> str | None:
+    """Extract JSON content from markdown fence or plain text.
+
+    Tries to strip markdown fences; falls back to plain text.
+
+    Args:
+        text: Response text from LLM.
+
+    Returns:
+        Candidate JSON string or None if empty.
+    """
+    stripped = text.strip()
+    if not stripped:
+        return None
+    match = _JSON_FENCE_PATTERN.search(stripped)
+    return match.group(1).strip() if match else stripped
+
+
 def _extract_json(text: str) -> dict[str, Any] | None:
     """Extract a JSON object from LLM response text.
 
@@ -65,13 +83,9 @@ def _extract_json(text: str) -> dict[str, Any] | None:
     Returns:
         Parsed dict or None if extraction fails.
     """
-    stripped = text.strip()
-    if not stripped:
+    candidate = _extract_json_block(text)
+    if candidate is None:
         return None
-
-    # Try stripping markdown fences first.
-    match = _JSON_FENCE_PATTERN.search(stripped)
-    candidate = match.group(1).strip() if match else stripped
 
     try:
         parsed = json.loads(candidate)
@@ -86,6 +100,39 @@ def _extract_json(text: str) -> dict[str, Any] | None:
     if not isinstance(parsed, dict):
         return None
     return parsed
+
+
+def _validate_proposals_list(
+    data: dict[str, Any],
+    agent_id: NotBlankStr,
+) -> list[Any] | None:
+    """Validate that data has a "proposals" key with a list value.
+
+    Args:
+        data: Parsed JSON dict.
+        agent_id: Agent identifier for logging.
+
+    Returns:
+        The proposals list or None if validation fails.
+    """
+    proposals_data = data.get("proposals")
+    if proposals_data is None:
+        logger.warning(
+            EVOLUTION_PROPOSER_PARSE_ERROR,
+            agent_id=str(agent_id),
+            reason="missing_proposals_key",
+        )
+        return None
+
+    if not isinstance(proposals_data, list):
+        logger.warning(
+            EVOLUTION_PROPOSER_PARSE_ERROR,
+            agent_id=str(agent_id),
+            reason="proposals_not_list",
+        )
+        return None
+
+    return proposals_data
 
 
 def _build_user_message(
@@ -114,6 +161,10 @@ def _build_user_message(
             f"{context.performance_snapshot.overall_collaboration_score}"
         )
 
+    # TODO: Pass actual task/memory content instead of just counts.
+    # Currently the LLM only sees the count of recent tasks and procedural
+    # memories, not their actual content. This is a limitation that should be
+    # addressed in a follow-up feature to provide richer context for proposals.
     tasks_str = (
         f"{len(context.recent_task_results)} recent tasks"
         if context.recent_task_results
@@ -216,6 +267,7 @@ class SeparateAnalyzerProposer:
                 agent_id=str(agent_id),
                 error=f"{type(exc).__name__}: {exc}",
                 reason="provider_error_retryable",
+                is_retryable=True,
                 exc_info=True,
             )
             return ()
@@ -225,6 +277,7 @@ class SeparateAnalyzerProposer:
                 agent_id=str(agent_id),
                 error=f"{type(exc).__name__}: {exc}",
                 reason="provider_error",
+                is_retryable=False,
                 exc_info=True,
             )
             return ()
@@ -262,23 +315,26 @@ class SeparateAnalyzerProposer:
             )
             return ()
 
-        proposals_data = data.get("proposals")
+        proposals_data = _validate_proposals_list(data, agent_id)
         if proposals_data is None:
-            logger.warning(
-                EVOLUTION_PROPOSER_PARSE_ERROR,
-                agent_id=str(agent_id),
-                reason="missing_proposals_key",
-            )
             return ()
 
-        if not isinstance(proposals_data, list):
-            logger.warning(
-                EVOLUTION_PROPOSER_PARSE_ERROR,
-                agent_id=str(agent_id),
-                reason="proposals_not_list",
-            )
-            return ()
+        return self._validate_and_build_proposals(proposals_data, agent_id)
 
+    def _validate_and_build_proposals(
+        self,
+        proposals_data: list[Any],
+        agent_id: NotBlankStr,
+    ) -> tuple[AdaptationProposal, ...]:
+        """Validate and build AdaptationProposal objects from parsed data.
+
+        Args:
+            proposals_data: List of proposal dicts from LLM response.
+            agent_id: Agent identifier for proposal context.
+
+        Returns:
+            Tuple of validated proposals (skips invalid ones).
+        """
         proposals: list[AdaptationProposal] = []
         for idx, item in enumerate(proposals_data):
             try:

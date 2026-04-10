@@ -179,7 +179,7 @@ class TestRoleScopedPropagation:
         )
 
         # Should be limited to max_targets
-        assert result <= 2
+        assert result == 2
 
     @pytest.mark.unit
     async def test_propagate_adds_propagation_tag(self) -> None:
@@ -215,8 +215,12 @@ class TestRoleScopedPropagation:
             memory_backend=backend,
         )
 
-        # Verify backend.store was called
+        # Verify backend.store was called with propagation tag
         assert backend.store.called
+        call_args = backend.store.call_args
+        stored_request = call_args[0][1]  # Second positional arg (request)
+        tag_values = stored_request.metadata.tags
+        assert any("propagated:" in t for t in tag_values)
         assert result == 1
 
     @pytest.mark.unit

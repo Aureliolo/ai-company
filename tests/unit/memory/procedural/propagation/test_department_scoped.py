@@ -172,7 +172,7 @@ class TestDepartmentScopedPropagation:
         )
 
         # Should be limited to max_targets
-        assert result <= 2
+        assert result == 2
 
     @pytest.mark.unit
     async def test_no_other_agents_in_department_returns_zero(self) -> None:

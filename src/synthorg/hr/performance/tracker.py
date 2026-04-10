@@ -389,46 +389,64 @@ class PerformanceTracker:
         for window in windows:
             if window.data_point_count < self._config.min_data_points:
                 continue
-
-            # Filter records to this window's time boundary.
-            window_label = str(window.window_size)
-            match = re.match(r"^(\d+)d$", window_label)
-            if match:
-                days = int(match.group(1))
-                cutoff = now - timedelta(days=days)
-                window_records = tuple(r for r in records if r.completed_at >= cutoff)
-            else:
-                logger.warning(
-                    PERF_WINDOW_INSUFFICIENT_DATA,
-                    window=window_label,
-                    warning="unparseable_window_label",
-                )
+            window_records = self._filter_records_to_window(records, window, now)
+            if window_records is None:
                 continue
+            trends.extend(self._detect_metric_trends(window_records, window))
+        return trends
 
-            # Quality score trend.
-            quality_values = tuple(
-                (r.completed_at, r.quality_score)
-                for r in window_records
-                if r.quality_score is not None
+    def _filter_records_to_window(
+        self,
+        records: tuple[TaskMetricRecord, ...],
+        window: WindowMetrics,
+        now: AwareDatetime,
+    ) -> tuple[TaskMetricRecord, ...] | None:
+        """Filter records to a window's time boundary.
+
+        Returns None if the window label is unparseable.
+        """
+        window_label = str(window.window_size)
+        match = re.match(r"^(\d+)d$", window_label)
+        if not match:
+            logger.warning(
+                PERF_WINDOW_INSUFFICIENT_DATA,
+                window=window_label,
+                warning="unparseable_window_label",
             )
-            if quality_values:
-                trends.append(
-                    self._trend_strategy.detect(
-                        metric_name=NotBlankStr("quality_score"),
-                        values=quality_values,
-                        window_size=window.window_size,
-                    )
+            return None
+        days = int(match.group(1))
+        cutoff = now - timedelta(days=days)
+        return tuple(r for r in records if r.completed_at >= cutoff)
+
+    def _detect_metric_trends(
+        self,
+        window_records: tuple[TaskMetricRecord, ...],
+        window: WindowMetrics,
+    ) -> list[TrendResult]:
+        """Detect quality and cost trends for window records."""
+        trends: list[TrendResult] = []
+        quality_values = tuple(
+            (r.completed_at, r.quality_score)
+            for r in window_records
+            if r.quality_score is not None
+        )
+        if quality_values:
+            trends.append(
+                self._trend_strategy.detect(
+                    metric_name=NotBlankStr("quality_score"),
+                    values=quality_values,
+                    window_size=window.window_size,
                 )
-            # Cost trend.
-            cost_values = tuple((r.completed_at, r.cost_usd) for r in window_records)
-            if cost_values:
-                trends.append(
-                    self._trend_strategy.detect(
-                        metric_name=NotBlankStr("cost_usd"),
-                        values=cost_values,
-                        window_size=window.window_size,
-                    )
+            )
+        cost_values = tuple((r.completed_at, r.cost_usd) for r in window_records)
+        if cost_values:
+            trends.append(
+                self._trend_strategy.detect(
+                    metric_name=NotBlankStr("cost_usd"),
+                    values=cost_values,
+                    window_size=window.window_size,
                 )
+            )
         return trends
 
     def get_task_metrics(
@@ -501,6 +519,26 @@ class PerformanceTracker:
     def sampler(self) -> LlmCalibrationSampler | None:
         """Return the LLM calibration sampler, if configured."""
         return self._sampler
+
+    @property
+    def inflection_sink(self) -> InflectionSink | None:
+        """Return the inflection sink, if configured."""
+        return self._inflection_sink
+
+    @inflection_sink.setter
+    def inflection_sink(self, value: InflectionSink | None) -> None:
+        """Set the inflection sink.
+
+        Args:
+            value: The inflection sink to assign.
+
+        Raises:
+            ValueError: If an inflection sink is already configured.
+        """
+        if self._inflection_sink is not None and value is not None:
+            msg = "Inflection sink is already configured"
+            raise ValueError(msg)
+        self._inflection_sink = value
 
     def _schedule_sampling(
         self,
@@ -613,10 +651,13 @@ class PerformanceTracker:
                     str(trend.metric_name),
                     str(trend.window_size),
                 )
+                # Atomically read old direction and update cache (TOCTOU fix).
                 async with self._metrics_lock:
                     old_direction = self._trend_direction_cache.get(
                         cache_key,
                     )
+                    self._trend_direction_cache[cache_key] = trend.direction
+                # Emit outside lock to allow concurrent inflections.
                 if old_direction is not None and old_direction != trend.direction:
                     inflection = PerformanceInflection(
                         agent_id=agent_id,
@@ -635,8 +676,6 @@ class PerformanceTracker:
                         new=trend.direction.value,
                     )
                     await sink.emit(inflection)
-                async with self._metrics_lock:
-                    self._trend_direction_cache[cache_key] = trend.direction
         except MemoryError, RecursionError:
             raise
         except asyncio.CancelledError:

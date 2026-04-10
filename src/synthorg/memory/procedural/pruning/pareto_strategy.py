@@ -65,6 +65,15 @@ class ParetoPruningStrategy:
 
         # Build Pareto frontier
         frontier = self._compute_pareto_frontier(entries)
+
+        # If frontier itself exceeds max_entries, keep only most recent
+        if len(frontier) > self.max_entries:
+            frontier = sorted(
+                frontier,
+                key=lambda e: e.created_at,
+                reverse=True,
+            )[: self.max_entries]
+
         frontier_ids = {str(e.id) for e in frontier}
 
         # Return non-frontier entry IDs

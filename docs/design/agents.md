@@ -623,6 +623,7 @@ Trigger --> Build Context --> Proposer --> Guards --> Adapter.apply
   |              |               |            +-- RateLimitGuard
   |              |               |            +-- ReviewGateGuard
   |              |               |            +-- RollbackGuard
+  |              |               |            +-- ShadowEvaluationGuard
   |              |               |            +-- CompositeGuard
   |              |               |
   |              |               +-- SeparateAnalyzerProposer
@@ -673,7 +674,8 @@ for evolution-approved changes.
 ``PerformanceTracker`` emits ``PerformanceInflection`` events via an ``InflectionSink``
 protocol when a metric's trend direction changes (e.g., stable to declining).
 ``InflectionTrigger`` implements ``InflectionSink`` and queues events for the evolution
-service.
+service. The ``inflection`` trigger requires ``InflectionSink`` wiring, which is handled
+automatically by the ``EvolutionService`` factory.
 
 ### Safe Defaults
 

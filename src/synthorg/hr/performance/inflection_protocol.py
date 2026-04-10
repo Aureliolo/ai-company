@@ -5,9 +5,10 @@ performance metric's trend direction changes, and the
 ``InflectionSink`` protocol for consumers of these events.
 """
 
+from datetime import UTC, datetime
 from typing import Protocol, runtime_checkable
 
-from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.hr.enums import TrendDirection  # noqa: TC001
@@ -38,10 +39,16 @@ class PerformanceInflection(BaseModel):
     new_direction: TrendDirection
     slope: float
     detected_at: AwareDatetime = Field(
-        default_factory=lambda: __import__("datetime").datetime.now(
-            __import__("datetime").UTC,
-        ),
+        default_factory=lambda: datetime.now(UTC),
     )
+
+    @model_validator(mode="after")
+    def _validate_direction_change(self):  # type: ignore[no-untyped-def]
+        """Ensure old_direction and new_direction are different."""
+        if self.old_direction == self.new_direction:
+            msg = "old_direction and new_direction must be different"
+            raise ValueError(msg)
+        return self
 
 
 @runtime_checkable

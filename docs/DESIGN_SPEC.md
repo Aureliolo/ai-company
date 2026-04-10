@@ -11,7 +11,7 @@ The design specification has been split into focused documentation pages for bet
 | Page | Sections | Description |
 |------|----------|-------------|
 | [Design Overview](design/index.md) | Vision, Core Concepts | What SynthOrg is, design principles, glossary |
-| [Agents & HR](design/agents.md) | Agent System, HR | Agent identity, roles, hiring, performance, evaluation, promotions |
+| [Agents & HR](design/agents.md) | Agent System, HR | Agent identity, roles, hiring, performance, evaluation, promotions, evolution |
 | [Organization & Templates](design/organization.md) | Company Structure, Templates | Company types, hierarchy, departments, template system |
 | [Communication](design/communication.md) | Communication Architecture | Message bus, delegation, conflict resolution, meetings |
 | [Distributed Runtime](design/distributed-runtime.md) | Transport Evaluation, Bus Backend, Task Queue, Migration | Pluggable distributed backend design, NATS JetStream first implementation, distributed task queue hook into TaskEngine |

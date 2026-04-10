@@ -1,22 +1,18 @@
 """StrategySelectionAdapter -- stores strategy preferences as procedural memory."""
 
-import json
 from typing import TYPE_CHECKING
 
-from synthorg.core.enums import MemoryCategory
+from synthorg.engine.evolution.adapters._memory_store import (
+    store_proposal_as_memory,
+)
 from synthorg.engine.evolution.models import (
     AdaptationAxis,
     AdaptationProposal,
 )
-from synthorg.memory.models import MemoryMetadata, MemoryStoreRequest
-from synthorg.observability import get_logger
-from synthorg.observability.events.evolution import EVOLUTION_ADAPTATION_FAILED
 
 if TYPE_CHECKING:
     from synthorg.core.types import NotBlankStr
     from synthorg.memory.protocol import MemoryBackend
-
-logger = get_logger(__name__)
 
 
 class StrategySelectionAdapter:
@@ -61,32 +57,9 @@ class StrategySelectionAdapter:
         Raises:
             Exception: If the memory store operation fails.
         """
-        try:
-            content_parts = [proposal.description]
-            if proposal.changes:
-                content_parts.append(
-                    "Changes: " + json.dumps(proposal.changes, indent=2),
-                )
-            content: NotBlankStr = "\n".join(content_parts)
-
-            request = MemoryStoreRequest(
-                category=MemoryCategory.PROCEDURAL,
-                namespace="default",
-                content=content,
-                metadata=MemoryMetadata(
-                    source=str(proposal.id),
-                    confidence=proposal.confidence,
-                    tags=("evolution-strategy",),
-                ),
-            )
-
-            await self._memory_backend.store(agent_id, request)
-        except Exception as exc:
-            logger.warning(
-                EVOLUTION_ADAPTATION_FAILED,
-                agent_id=agent_id,
-                proposal_id=str(proposal.id),
-                axis=proposal.axis.value,
-                error=str(exc),
-            )
-            raise
+        await store_proposal_as_memory(
+            self._memory_backend,
+            proposal,
+            agent_id,
+            "evolution-strategy",
+        )

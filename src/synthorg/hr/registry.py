@@ -306,18 +306,38 @@ class AgentRegistryService:
             current = self._agents.get(key)
             if current is None:
                 msg = f"Agent {agent_id!r} not found in registry"
+                logger.warning(
+                    HR_REGISTRY_IDENTITY_EVOLVED,
+                    agent_id=key,
+                    error=msg,
+                )
                 raise AgentNotFoundError(msg)
             if str(evolved_identity.id) != str(current.id):
                 msg = (
                     f"evolved_identity.id {evolved_identity.id} "
                     f"does not match current id {current.id}"
                 )
+                logger.warning(
+                    HR_REGISTRY_IDENTITY_EVOLVED,
+                    agent_id=key,
+                    error=msg,
+                )
                 raise ValueError(msg)
             if str(evolved_identity.name) != str(current.name):
                 msg = "name cannot be changed during evolution"
+                logger.warning(
+                    HR_REGISTRY_IDENTITY_EVOLVED,
+                    agent_id=key,
+                    error=msg,
+                )
                 raise ValueError(msg)
             if str(evolved_identity.department) != str(current.department):
                 msg = "department cannot be changed during evolution"
+                logger.warning(
+                    HR_REGISTRY_IDENTITY_EVOLVED,
+                    agent_id=key,
+                    error=msg,
+                )
                 raise ValueError(msg)
             self._agents[key] = evolved_identity
 

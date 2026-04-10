@@ -70,8 +70,10 @@ class TestInflectionDetection:
             )
         await tracker.get_snapshot("agent-1")
 
-        # Allow background tasks to complete.
-        await asyncio.sleep(0.05)
+        # Wait for background tasks to complete.
+        tasks = list(tracker._background_tasks)
+        if tasks:
+            await asyncio.gather(*tasks)
 
         # First snapshot seeds cache -- no direction change yet.
         sink.emit.assert_not_called()

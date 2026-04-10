@@ -75,6 +75,7 @@ def _make_service(
     guard_approves: bool = True,
     config: EvolutionConfig | None = None,
     identity_store: AsyncMock | None = None,
+    extra_adapters: dict[AdaptationAxis, object] | None = None,
 ) -> EvolutionService:
     """Build an EvolutionService with mocked dependencies."""
     if config is None:
@@ -108,10 +109,12 @@ def _make_service(
     )
     adapter.apply = AsyncMock()
 
-    adapters = {
+    adapters: dict[AdaptationAxis, object] = {
         AdaptationAxis.PROMPT_TEMPLATE: adapter,
         AdaptationAxis.STRATEGY_SELECTION: adapter,
     }
+    if extra_adapters:
+        adapters.update(extra_adapters)
 
     return EvolutionService(
         identity_store=store,
@@ -205,16 +208,18 @@ class TestEvolutionServiceEvolve:
             side_effect=[(snap_v1,), (snap_v2,)],
         )
 
+        adapter = AsyncMock()
+        adapter.apply = AsyncMock()
+        type(adapter).axis = PropertyMock(
+            return_value=AdaptationAxis.IDENTITY,
+        )
         service = _make_service(
             proposals=(proposal,),
             guard_approves=True,
             config=config,
             identity_store=store,
+            extra_adapters={AdaptationAxis.IDENTITY: adapter},
         )
-        # Add identity adapter.
-        adapter = AsyncMock()
-        adapter.apply = AsyncMock()
-        service._adapters[AdaptationAxis.IDENTITY] = adapter
 
         events = await service.evolve(agent_id=_AGENT_ID)
         assert len(events) == 1

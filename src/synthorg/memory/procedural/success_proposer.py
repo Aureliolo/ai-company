@@ -86,14 +86,15 @@ def _build_user_message(execution_result: Any) -> str:
 
     Uses structural delimiters to prevent format confusion.
     """
-    tools_str = (
-        ", ".join(execution_result.tools_used)
-        if execution_result.tools_used
-        else "none"
-    )
+    # Collect all unique tools used across all turns
+    all_tools = set()
+    for turn in execution_result.turns:
+        all_tools.update(turn.tool_calls_made)
+    tools_str = ", ".join(sorted(all_tools)) if all_tools else "none"
+
     return (
         "[BEGIN SUCCESS CONTEXT]\n"
-        f"Turns completed: {execution_result.turn_count}\n"
+        f"Turns completed: {len(execution_result.turns)}\n"
         f"Tools used: {tools_str}\n"
         f"Outcome: SUCCESSFUL\n"
         "[END SUCCESS CONTEXT]"
@@ -171,6 +172,7 @@ class SuccessMemoryProposer:
                 PROCEDURAL_MEMORY_SKIPPED,
                 error=str(exc),
                 reason="retryable_provider_error",
+                is_retryable=True,
                 exc_info=True,
             )
             return None
@@ -179,6 +181,7 @@ class SuccessMemoryProposer:
                 PROCEDURAL_MEMORY_SKIPPED,
                 error=f"{type(exc).__name__}: {exc}",
                 reason="unexpected_error",
+                is_retryable=False,
                 exc_info=True,
             )
             return None

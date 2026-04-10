@@ -47,6 +47,11 @@ class ReviewGateGuard:
             Rejection if review is required, approval otherwise.
         """
         if proposal.axis in self._require_review_for:
+            logger.debug(
+                "evolution.review_gate.reject",
+                proposal_id=str(proposal.id),
+                axis=proposal.axis.value,
+            )
             return AdaptationDecision(
                 proposal_id=proposal.id,
                 approved=False,
@@ -54,6 +59,11 @@ class ReviewGateGuard:
                 reason=f"Requires human approval for {proposal.axis.value} adaptations",
             )
 
+        logger.debug(
+            "evolution.review_gate.auto_approve",
+            proposal_id=str(proposal.id),
+            axis=proposal.axis.value,
+        )
         return AdaptationDecision(
             proposal_id=proposal.id,
             approved=True,

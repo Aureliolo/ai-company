@@ -115,8 +115,8 @@ def _build_trigger(
             trigger = InflectionTrigger()
             # Wire the trigger as the tracker's inflection sink
             # if the tracker doesn't already have one.
-            if tracker._inflection_sink is None:  # noqa: SLF001
-                tracker._inflection_sink = trigger  # noqa: SLF001
+            if tracker.inflection_sink is None:
+                tracker.inflection_sink = trigger
             triggers.append(trigger)
         elif trigger_type == "per_task":
             triggers.append(

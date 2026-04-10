@@ -7,6 +7,9 @@ from typing import TYPE_CHECKING
 
 from synthorg.memory.models import MemoryStoreRequest
 from synthorg.observability import get_logger
+from synthorg.observability.events.procedural_memory import (
+    PROCEDURAL_PROPAGATION_TARGET_FAILED,
+)
 
 if TYPE_CHECKING:
     from synthorg.core.types import NotBlankStr
@@ -98,10 +101,11 @@ class RoleScopedPropagation:
                 count += 1
             except Exception as exc:
                 logger.warning(
-                    "memory.propagation.target_failed",
+                    PROCEDURAL_PROPAGATION_TARGET_FAILED,
                     target_id=str(target.id),
                     source_id=str(source_agent_id),
                     error=str(exc),
+                    exc_info=True,
                 )
 
         return count

@@ -162,6 +162,59 @@ class VersioningService[T: BaseModel]:
         # Second collision (extremely unlikely). Return persisted state.
         return await self._repo.get_latest_version(entity_id)
 
+    async def force_snapshot(
+        self,
+        entity_id: str,
+        snapshot: T,
+        saved_by: str,
+    ) -> VersionSnapshot[T]:
+        """Persist a snapshot regardless of content change.
+
+        Unlike ``snapshot_if_changed``, this always creates a new version
+        even if the content is identical to the latest version. Useful for
+        audit trails (e.g., recording rollbacks when content is unchanged).
+
+        Args:
+            entity_id: String primary key of the entity being versioned.
+            snapshot: The current entity state to snapshot.
+            saved_by: Identifier of the actor triggering the snapshot.
+
+        Returns:
+            The newly created :class:`VersionSnapshot`.
+
+        Raises:
+            PersistenceError: If the repository operation fails.
+        """
+        frozen = copy.deepcopy(snapshot)
+        content_hash = compute_content_hash(frozen)
+        latest = await self._repo.get_latest_version(entity_id)
+
+        version = self._build_snapshot(
+            entity_id,
+            latest,
+            content_hash,
+            frozen,
+            saved_by,
+        )
+        inserted = await self._repo.save_version(version)
+        if not inserted:
+            return (
+                await self._resolve_conflict(
+                    entity_id,
+                    content_hash,
+                    frozen,
+                    saved_by,
+                )
+                or version
+            )
+        logger.info(
+            VERSION_SAVED,
+            entity_id=entity_id,
+            version=version.version,
+            saved_by=saved_by,
+        )
+        return version
+
     async def get_latest(
         self,
         entity_id: str,

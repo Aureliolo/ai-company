@@ -80,4 +80,5 @@ def build_capture_strategy(
         f"Unknown capture strategy type: {strategy_type}. "
         'Must be "failure", "success", or "hybrid".'
     )
+    logger.warning("capture_strategy.unknown_type", type=strategy_type)
     raise ValueError(msg)

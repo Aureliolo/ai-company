@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING
 
 from synthorg.engine.identity.store.append_only import AppendOnlyIdentityStore
 from synthorg.engine.identity.store.copy_on_write import CopyOnWriteIdentityStore
+from synthorg.observability import get_logger
 
 if TYPE_CHECKING:
     from synthorg.core.agent import AgentIdentity
@@ -11,6 +12,8 @@ if TYPE_CHECKING:
     from synthorg.engine.identity.store.protocol import IdentityVersionStore
     from synthorg.hr.registry import AgentRegistryService
     from synthorg.versioning.service import VersioningService
+
+logger = get_logger(__name__)
 
 
 def build_identity_store(
@@ -43,4 +46,5 @@ def build_identity_store(
             versioning=versioning,
         )
     msg = f"Unknown identity store type: {config.type!r}"  # type: ignore[unreachable]
+    logger.warning("Invalid identity store type", store_type=config.type)
     raise ValueError(msg)

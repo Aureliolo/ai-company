@@ -36,6 +36,11 @@ class CompositeTrigger:
         triggers: tuple[EvolutionTrigger, ...],
     ) -> None:
         if not triggers:
+            logger.warning(
+                EVOLUTION_TRIGGER_REQUESTED,
+                trigger="composite",
+                error="empty_triggers",
+            )
             msg = "CompositeTrigger requires at least one sub-trigger"
             raise ValueError(msg)
         self._triggers = triggers

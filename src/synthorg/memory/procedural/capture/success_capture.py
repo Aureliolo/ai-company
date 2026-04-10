@@ -19,6 +19,11 @@ from synthorg.memory.procedural.success_proposer import (
 )
 from synthorg.memory.protocol import MemoryBackend  # noqa: TC001
 from synthorg.observability import get_logger
+from synthorg.observability.events.procedural_memory import (
+    PROCEDURAL_CAPTURE_QUALITY_BELOW_THRESHOLD,
+    PROCEDURAL_CAPTURE_STORE_FAILED,
+    PROCEDURAL_CAPTURE_STORED,
+)
 
 logger = get_logger(__name__)
 
@@ -94,7 +99,7 @@ class SuccessCaptureStrategy:
         quality_score = proposal.confidence * 10.0
         if quality_score < self._min_quality_score:
             logger.info(
-                "success_memory.quality_below_threshold",
+                PROCEDURAL_CAPTURE_QUALITY_BELOW_THRESHOLD,
                 quality=quality_score,
                 min_quality=self._min_quality_score,
                 confidence=proposal.confidence,
@@ -116,7 +121,7 @@ class SuccessCaptureStrategy:
         try:
             memory_id = await memory_backend.store(agent_id, request)
             logger.info(
-                "success_memory.stored",
+                PROCEDURAL_CAPTURE_STORED,
                 memory_id=memory_id,
                 quality=quality_score,
                 confidence=proposal.confidence,
@@ -125,7 +130,7 @@ class SuccessCaptureStrategy:
             raise
         except Exception as exc:
             logger.warning(
-                "success_memory.store_failed",
+                PROCEDURAL_CAPTURE_STORE_FAILED,
                 error=f"{type(exc).__name__}: {exc}",
                 exc_info=True,
             )

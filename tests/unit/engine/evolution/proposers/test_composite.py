@@ -151,14 +151,14 @@ class TestCompositeProposer:
         mock_success_proposer.propose.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_propose_merges_proposals_dedup_by_axis(
+    async def test_propose_routes_to_failure_on_low_quality(
         self,
         composite_proposer: CompositeProposer,
         mock_failure_proposer: AsyncMock,
         mock_success_proposer: AsyncMock,
         mock_identity: AgentIdentity,
     ) -> None:
-        """Test that proposals are merged and deduplicated by axis."""
+        """Test that composite proposer routes to failure path on low quality."""
         failure_proposal1 = AdaptationProposal(
             agent_id=NotBlankStr("test-agent"),
             axis=AdaptationAxis.PROMPT_TEMPLATE,
@@ -173,19 +173,12 @@ class TestCompositeProposer:
             confidence=0.7,
             source=AdaptationSource.FAILURE,
         )
-        success_proposal = AdaptationProposal(
-            agent_id=NotBlankStr("test-agent"),
-            axis=AdaptationAxis.STRATEGY_SELECTION,
-            description=NotBlankStr("success proposal"),
-            confidence=0.8,
-            source=AdaptationSource.SUCCESS,
-        )
 
         mock_failure_proposer.propose.return_value = (
             failure_proposal1,
             failure_proposal2,
         )
-        mock_success_proposer.propose.return_value = (success_proposal,)
+        mock_success_proposer.propose.return_value = ()
 
         snapshot = MagicMock(spec=AgentPerformanceSnapshot)
         snapshot.overall_quality_score = 3.0
@@ -204,10 +197,11 @@ class TestCompositeProposer:
             context=context,
         )
 
-        # Should have 2 proposals: failure and success proposer results
-        # They shouldn't be truly merged if using strict failure path
-        # but the intent is to test the mechanism
-        assert len(proposals) >= 2
+        # Should route to failure proposer and return its proposals
+        assert len(proposals) == 2
+        assert all(p.source == AdaptationSource.FAILURE for p in proposals)
+        # Success proposer should not be called
+        mock_success_proposer.propose.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_propose_empty_from_both(

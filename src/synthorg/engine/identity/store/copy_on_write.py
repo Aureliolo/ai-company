@@ -60,25 +60,26 @@ class CopyOnWriteIdentityStore:
         saved_by: NotBlankStr,
     ) -> VersionSnapshot[AgentIdentity]:
         """Store a new identity version and update the pointer."""
-        await self._registry.evolve_identity(
-            agent_id,
-            identity,
-            evolution_rationale=str(saved_by),
-        )
-        snapshot = await self._versioning.snapshot_if_changed(
-            str(agent_id),
-            identity,
-            str(saved_by),
-        )
+        key = str(agent_id)
         async with self._version_lock:
+            await self._registry.evolve_identity(
+                agent_id,
+                identity,
+                evolution_rationale=str(saved_by),
+            )
+            snapshot = await self._versioning.snapshot_if_changed(
+                key,
+                identity,
+                str(saved_by),
+            )
             if snapshot is not None:
-                self._current_version[str(agent_id)] = snapshot.version
+                self._current_version[key] = snapshot.version
                 return snapshot
-            latest = await self._versioning.get_latest(str(agent_id))
+            latest = await self._versioning.get_latest(key)
             if latest is None:  # pragma: no cover
                 msg = f"No version found for agent {agent_id!r} after put"
                 raise RuntimeError(msg)
-            self._current_version[str(agent_id)] = latest.version
+            self._current_version[key] = latest.version
             return latest
 
     async def get_current(
@@ -93,10 +94,10 @@ class CopyOnWriteIdentityStore:
         key = str(agent_id)
         async with self._version_lock:
             version = self._current_version.get(key)
-        if version is not None:
-            snapshot = await self._repo.get_version(key, version)
-            if snapshot is not None:
-                return snapshot.snapshot
+            if version is not None:
+                snapshot = await self._repo.get_version(key, version)
+                if snapshot is not None:
+                    return snapshot.snapshot
         return await self._registry.get(agent_id)
 
     async def get_version(

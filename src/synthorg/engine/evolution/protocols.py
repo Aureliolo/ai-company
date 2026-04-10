@@ -4,6 +4,7 @@ Defines the four pluggable strategy interfaces (trigger, proposer,
 guard, adapter) and the context model passed through the pipeline.
 """
 
+from datetime import UTC, datetime
 from typing import Protocol, runtime_checkable
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
@@ -20,6 +21,11 @@ from synthorg.hr.performance.models import (  # noqa: TC001
     TaskMetricRecord,
 )
 from synthorg.memory.models import MemoryEntry  # noqa: TC001
+
+
+def _default_triggered_at() -> AwareDatetime:
+    """Return current time in UTC."""
+    return datetime.now(UTC)
 
 
 class EvolutionContext(BaseModel):
@@ -47,9 +53,7 @@ class EvolutionContext(BaseModel):
     recent_task_results: tuple[TaskMetricRecord, ...] = ()
     recent_procedural_memories: tuple[MemoryEntry, ...] = ()
     triggered_at: AwareDatetime = Field(
-        default_factory=lambda: __import__("datetime").datetime.now(
-            __import__("datetime").UTC,
-        ),
+        default_factory=_default_triggered_at,
     )
 
 

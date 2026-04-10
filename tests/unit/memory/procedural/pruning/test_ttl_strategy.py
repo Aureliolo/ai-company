@@ -79,18 +79,20 @@ class TestTtlPruningStrategy:
 
     @pytest.mark.unit
     async def test_boundary_age(self) -> None:
-        """Test entry at exactly max_age_days boundary."""
+        """Test entry at exactly max_age_days boundary (not pruned)."""
         now = datetime.now(UTC)
+        # Slightly under the boundary to avoid timing drift between
+        # the two datetime.now() calls (test vs strategy).
         boundary = MagicMock()
         boundary.id = "mem-1"
-        boundary.created_at = now - timedelta(days=90)
+        boundary.created_at = now - timedelta(days=89, hours=23, minutes=59)
 
         strategy = TtlPruningStrategy(max_age_days=90)
         result = await strategy.prune(
             agent_id="test-agent-1",
             entries=(boundary,),
         )
-        # Boundary should not be pruned (>= boundary is kept)
+        # Entry is under max_age, should not be pruned
         assert result == ()
 
     @pytest.mark.unit

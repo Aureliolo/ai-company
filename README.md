@@ -77,6 +77,8 @@ curl http://localhost:3001/api/v1/health
 
 **[Agent Orchestration](https://synthorg.io/docs/design/engine/)** -- Task decomposition, 6 routing strategies, execution loops (ReAct, Plan-and-Execute, Hybrid, auto-selection by complexity), crash recovery with checkpoint resume, multi-agent coordination, and multi-project support with project-scoped teams and isolated budgets.
 
+**[Agent Evolution](https://synthorg.io/docs/design/agents/)** -- Continuous identity evolution based on performance trends with pluggable triggers (batched, inflection, per-task), proposers (EvoSkill, heuristic, composite), and guards (rollback, review, shadow evaluation).
+
 **[Budget & Cost Management](https://synthorg.io/docs/design/operations/)** -- Per-agent and per-project cost limits with hierarchical cascading, auto-downgrade to cheaper models at task boundaries, spending reports, budget forecasting, and anomaly detection.
 
 **[Security & Trust](https://synthorg.io/docs/security/)** -- SecOps agent with fail-closed rule engine, progressive trust (4 strategies), configurable autonomy levels (4 tiers), approval gates, LLM fallback evaluator, and audit logging. Container images are cosign-signed with [SLSA L3](https://slsa.dev) provenance.

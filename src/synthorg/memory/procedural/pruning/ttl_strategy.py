@@ -52,10 +52,11 @@ class TtlPruningStrategy:
         """
         now = datetime.now(UTC)
         to_remove = []
+        max_age_seconds = self.max_age_days * 86400
 
         for entry in entries:
-            age_days = (now - entry.created_at).days
-            if age_days > self.max_age_days:
+            age_seconds = (now - entry.created_at).total_seconds()
+            if age_seconds > max_age_seconds:
                 to_remove.append(str(entry.id))
 
         return tuple(to_remove)

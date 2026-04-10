@@ -2,6 +2,7 @@
 
 from synthorg.engine.evolution.models import AdaptationDecision, AdaptationProposal
 from synthorg.observability import get_logger
+from synthorg.observability.events.evolution import EVOLUTION_GUARDS_PASSED
 
 logger = get_logger(__name__)
 
@@ -33,9 +34,15 @@ class ShadowEvaluationGuard:
         Returns:
             Always approves with a placeholder reason.
         """
-        return AdaptationDecision(
+        decision = AdaptationDecision(
             proposal_id=proposal.id,
             approved=True,
             guard_name=self.name,
             reason="Shadow evaluation not yet implemented; auto-approved",
         )
+        logger.info(
+            EVOLUTION_GUARDS_PASSED,
+            proposal_id=str(proposal.id),
+            guard_name=self.name,
+        )
+        return decision

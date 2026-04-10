@@ -4,6 +4,7 @@ Fires when enough time has passed since the last evolution run
 for an agent. Default interval is one day (86400 seconds).
 """
 
+import asyncio
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
@@ -37,6 +38,7 @@ class BatchedTrigger:
     ) -> None:
         self._interval = max(1, interval_seconds)
         self._last_run: dict[str, datetime] = {}
+        self._lock = asyncio.Lock()
 
     @property
     def name(self) -> str:
@@ -52,28 +54,29 @@ class BatchedTrigger:
         """Trigger if the interval has elapsed since last run."""
         key = str(agent_id)
         now = datetime.now(UTC)
-        last = self._last_run.get(key)
+        async with self._lock:
+            last = self._last_run.get(key)
 
-        if last is not None:
-            elapsed = (now - last).total_seconds()
-            if elapsed < self._interval:
-                logger.debug(
-                    EVOLUTION_TRIGGER_SKIPPED,
-                    agent_id=key,
-                    trigger="batched",
-                    reason="interval_not_elapsed",
-                    elapsed_seconds=int(elapsed),
-                    interval_seconds=self._interval,
-                )
-                return False
+            if last is not None:
+                elapsed = (now - last).total_seconds()
+                if elapsed < self._interval:
+                    logger.debug(
+                        EVOLUTION_TRIGGER_SKIPPED,
+                        agent_id=key,
+                        trigger="batched",
+                        reason="interval_not_elapsed",
+                        elapsed_seconds=int(elapsed),
+                        interval_seconds=self._interval,
+                    )
+                    return False
 
-        self._last_run[key] = now
-        logger.debug(
-            EVOLUTION_TRIGGER_REQUESTED,
-            agent_id=key,
-            trigger="batched",
-        )
-        return True
+            self._last_run[key] = now
+            logger.debug(
+                EVOLUTION_TRIGGER_REQUESTED,
+                agent_id=key,
+                trigger="batched",
+            )
+            return True
 
     def record_run(self, agent_id: str) -> None:
         """Record that an evolution run completed for an agent."""

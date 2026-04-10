@@ -12,8 +12,9 @@ from synthorg.memory.procedural.success_proposer import SuccessMemoryProposer
 from synthorg.providers.errors import ProviderError
 from synthorg.providers.models import CompletionResponse
 
+pytestmark = pytest.mark.unit
 
-@pytest.mark.unit
+
 class TestSuccessMemoryProposer:
     """Tests for SuccessMemoryProposer."""
 

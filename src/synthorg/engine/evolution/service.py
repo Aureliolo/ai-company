@@ -4,6 +4,8 @@ Trigger -> build context -> proposer -> guards -> adapter.apply.
 """
 
 import asyncio
+import copy
+from types import MappingProxyType
 from typing import TYPE_CHECKING
 
 from synthorg.engine.evolution.models import (
@@ -40,6 +42,7 @@ if TYPE_CHECKING:
     from synthorg.engine.identity.store.protocol import (
         IdentityVersionStore,
     )
+    from synthorg.hr.performance.models import AgentPerformanceSnapshot
     from synthorg.hr.performance.tracker import PerformanceTracker
     from synthorg.memory.models import MemoryEntry
     from synthorg.memory.protocol import MemoryBackend
@@ -85,7 +88,7 @@ class EvolutionService:
         self._trigger = trigger
         self._proposer = proposer
         self._guard = guard
-        self._adapters = adapters
+        self._adapters = MappingProxyType(copy.deepcopy(adapters))
         self._memory_backend = memory_backend
         self._config = config
 
@@ -176,7 +179,7 @@ class EvolutionService:
         )
         return tuple(events)
 
-    async def _process_proposal(  # noqa: C901
+    async def _process_proposal(
         self,
         agent_id: NotBlankStr,
         proposal: AdaptationProposal,
@@ -221,15 +224,8 @@ class EvolutionService:
             axis=proposal.axis.value,
         )
 
-        # Get version before adaptation (for identity changes).
-        version_before: int | None = None
-        version_after: int | None = None
-        if proposal.axis == AdaptationAxis.IDENTITY:
-            versions = await self._identity_store.list_versions(
-                agent_id,
-            )
-            if versions:
-                version_before = versions[0].version
+        # Get version before adaptation.
+        version_before = await self._get_version_before(agent_id, proposal)
 
         # Apply the adaptation.
         adapter = self._adapters.get(proposal.axis)
@@ -247,20 +243,13 @@ class EvolutionService:
                 applied=False,
             )
 
-        try:
-            await adapter.apply(proposal, agent_id)
-        except MemoryError, RecursionError:
-            raise
-        except asyncio.CancelledError:
-            raise
-        except Exception as exc:
-            logger.warning(
-                EVOLUTION_ADAPTATION_FAILED,
-                agent_id=str(agent_id),
-                axis=proposal.axis.value,
-                error=f"{type(exc).__name__}: {exc}",
-                exc_info=True,
-            )
+        # Try to apply the adaptation.
+        success = await self._apply_adaptation(
+            agent_id,
+            proposal,
+            adapter,
+        )
+        if not success:
             return EvolutionEvent(
                 agent_id=agent_id,
                 proposal=proposal,
@@ -269,12 +258,7 @@ class EvolutionService:
             )
 
         # Get version after adaptation.
-        if proposal.axis == AdaptationAxis.IDENTITY:
-            versions = await self._identity_store.list_versions(
-                agent_id,
-            )
-            if versions:
-                version_after = versions[0].version
+        version_after = await self._get_version_after(agent_id, proposal)
 
         logger.info(
             EVOLUTION_ADAPTED,
@@ -304,6 +288,50 @@ class EvolutionService:
             return adapter_cfg.prompt_template
         return False  # type: ignore[unreachable]  # pragma: no cover
 
+    async def _get_version_before(
+        self,
+        agent_id: NotBlankStr,
+        proposal: AdaptationProposal,
+    ) -> int | None:
+        """Get identity version before adaptation (for identity axis only)."""
+        if proposal.axis != AdaptationAxis.IDENTITY:
+            return None
+
+        versions = await self._identity_store.list_versions(agent_id)
+        return versions[0].version if versions else None
+
+    async def _apply_adaptation(
+        self,
+        agent_id: NotBlankStr,
+        proposal: AdaptationProposal,
+        adapter: AdaptationAdapter,
+    ) -> bool:
+        """Apply the adaptation. Return True on success, False on failure."""
+        try:
+            await adapter.apply(proposal, agent_id)
+        except MemoryError, RecursionError:
+            raise
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            # Adapter already logged the failure via EVOLUTION_ADAPTATION_FAILED.
+            # Do not re-log here to avoid duplication.
+            return False
+        else:
+            return True
+
+    async def _get_version_after(
+        self,
+        agent_id: NotBlankStr,
+        proposal: AdaptationProposal,
+    ) -> int | None:
+        """Get identity version after adaptation (for identity axis only)."""
+        if proposal.axis != AdaptationAxis.IDENTITY:
+            return None
+
+        versions = await self._identity_store.list_versions(agent_id)
+        return versions[0].version if versions else None
+
     async def _build_context(
         self,
         agent_id: NotBlankStr,
@@ -318,55 +346,14 @@ class EvolutionService:
             msg = f"Agent {agent_id!r} not found in identity store"
             raise ValueError(msg)
 
-        # Get performance snapshot (best-effort).
-        snapshot = None
-        try:
-            snapshot = await self._tracker.get_snapshot(agent_id)
-        except MemoryError, RecursionError:
-            raise
-        except Exception as exc:
-            logger.warning(
-                EVOLUTION_CONTEXT_SNAPSHOT_FAILED,
-                agent_id=str(agent_id),
-                error=f"{type(exc).__name__}: {exc}",
-                exc_info=True,
-            )
+        # Fetch performance snapshot.
+        snapshot = await self._fetch_performance_snapshot(agent_id)
 
-        # Get recent procedural memories (best-effort).
-        memories: tuple[MemoryEntry, ...] = ()
-        if self._memory_backend is not None:
-            try:
-                from synthorg.core.enums import (  # noqa: PLC0415
-                    MemoryCategory,
-                )
-                from synthorg.memory.models import (  # noqa: PLC0415
-                    MemoryQuery,
-                )
+        # Fetch procedural memories.
+        memories = await self._fetch_procedural_memories(agent_id)
 
-                result = await self._memory_backend.retrieve(
-                    agent_id,
-                    MemoryQuery(
-                        text="procedural evolution context",
-                        categories=frozenset([MemoryCategory.PROCEDURAL]),
-                        limit=10,
-                    ),
-                )
-                memories = result
-            except MemoryError, RecursionError:
-                raise
-            except Exception as exc:
-                logger.warning(
-                    EVOLUTION_CONTEXT_MEMORY_FAILED,
-                    agent_id=str(agent_id),
-                    error=f"{type(exc).__name__}: {exc}",
-                    exc_info=True,
-                )
-
-        # Get recent task metrics.
-        task_results = self._tracker.get_task_metrics(
-            agent_id=agent_id,
-        )
-        # Limit to most recent 20.
+        # Get recent task metrics (limit to most recent 20).
+        task_results = self._tracker.get_task_metrics(agent_id=agent_id)
         recent_tasks = task_results[-20:] if task_results else ()
 
         return EvolutionContext(
@@ -376,3 +363,56 @@ class EvolutionService:
             recent_task_results=tuple(recent_tasks),
             recent_procedural_memories=memories,
         )
+
+    async def _fetch_performance_snapshot(
+        self,
+        agent_id: NotBlankStr,
+    ) -> AgentPerformanceSnapshot | None:
+        """Fetch performance snapshot (best-effort)."""
+        try:
+            return await self._tracker.get_snapshot(agent_id)
+        except MemoryError, RecursionError:
+            raise
+        except Exception as exc:
+            logger.warning(
+                EVOLUTION_CONTEXT_SNAPSHOT_FAILED,
+                agent_id=str(agent_id),
+                error=f"{type(exc).__name__}: {exc}",
+                exc_info=True,
+            )
+            return None
+
+    async def _fetch_procedural_memories(
+        self,
+        agent_id: NotBlankStr,
+    ) -> tuple[MemoryEntry, ...]:
+        """Fetch procedural memories (best-effort)."""
+        if self._memory_backend is None:
+            return ()
+
+        try:
+            from synthorg.core.enums import (  # noqa: PLC0415
+                MemoryCategory,
+            )
+            from synthorg.memory.models import (  # noqa: PLC0415
+                MemoryQuery,
+            )
+
+            return await self._memory_backend.retrieve(
+                agent_id,
+                MemoryQuery(
+                    text="procedural evolution context",
+                    categories=frozenset([MemoryCategory.PROCEDURAL]),
+                    limit=10,
+                ),
+            )
+        except MemoryError, RecursionError:
+            raise
+        except Exception as exc:
+            logger.warning(
+                EVOLUTION_CONTEXT_MEMORY_FAILED,
+                agent_id=str(agent_id),
+                error=f"{type(exc).__name__}: {exc}",
+                exc_info=True,
+            )
+            return ()

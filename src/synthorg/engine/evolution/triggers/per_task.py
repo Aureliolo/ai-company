@@ -5,6 +5,7 @@ most expensive trigger mode as it runs the evolution pipeline
 on every task completion.
 """
 
+import asyncio
 from typing import TYPE_CHECKING
 
 from synthorg.observability import get_logger
@@ -32,6 +33,7 @@ class PerTaskTrigger:
     def __init__(self, *, min_tasks_since_last: int = 1) -> None:
         self._min_tasks = max(1, min_tasks_since_last)
         self._tasks_since_evolution: dict[str, int] = {}
+        self._lock = asyncio.Lock()
 
     @property
     def name(self) -> str:
@@ -46,16 +48,17 @@ class PerTaskTrigger:
     ) -> bool:
         """Always triggers if enough tasks have elapsed."""
         key = str(agent_id)
-        count = self._tasks_since_evolution.get(key, 0) + 1
-        self._tasks_since_evolution[key] = count
+        async with self._lock:
+            count = self._tasks_since_evolution.get(key, 0) + 1
+            self._tasks_since_evolution[key] = count
 
-        if count >= self._min_tasks:
-            self._tasks_since_evolution[key] = 0
-            logger.debug(
-                EVOLUTION_TRIGGER_REQUESTED,
-                agent_id=key,
-                trigger="per_task",
-                tasks_elapsed=count,
-            )
-            return True
-        return False
+            if count >= self._min_tasks:
+                self._tasks_since_evolution[key] = 0
+                logger.debug(
+                    EVOLUTION_TRIGGER_REQUESTED,
+                    agent_id=key,
+                    trigger="per_task",
+                    tasks_elapsed=count,
+                )
+                return True
+            return False

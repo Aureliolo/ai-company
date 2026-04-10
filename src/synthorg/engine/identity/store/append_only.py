@@ -76,24 +76,24 @@ class AppendOnlyIdentityStore:
             AgentNotFoundError: If agent does not exist.
             PersistenceError: If versioning fails.
         """
-        await self._registry.evolve_identity(
-            agent_id,
-            identity,
-            evolution_rationale=str(saved_by),
-        )
         snapshot = await self._versioning.snapshot_if_changed(
             str(agent_id),
             identity,
             str(saved_by),
         )
-        if snapshot is not None:
-            return snapshot
-        # Content unchanged -- return latest existing version.
-        latest = await self._versioning.get_latest(str(agent_id))
-        if latest is None:  # pragma: no cover -- should not happen
-            msg = f"No version found for agent {agent_id!r} after put"
-            raise RuntimeError(msg)
-        return latest
+        if snapshot is None:
+            # Content unchanged -- get latest existing version.
+            latest = await self._versioning.get_latest(str(agent_id))
+            if latest is None:  # pragma: no cover -- should not happen
+                msg = f"No version found for agent {agent_id!r} after put"
+                raise RuntimeError(msg)
+            snapshot = latest
+        await self._registry.evolve_identity(
+            agent_id,
+            identity,
+            evolution_rationale=str(saved_by),
+        )
+        return snapshot
 
     async def get_current(
         self,
@@ -158,8 +158,9 @@ class AppendOnlyIdentityStore:
             agent_id=str(agent_id),
             restored_version=version,
         )
-        # Append a new version recording the rollback.
-        await self._versioning.snapshot_if_changed(
+        # Force a new version recording the rollback, even if content is
+        # already in registry (ensures audit trail is complete).
+        await self._versioning.force_snapshot(
             str(agent_id),
             restored,
             f"rollback:v{version}",

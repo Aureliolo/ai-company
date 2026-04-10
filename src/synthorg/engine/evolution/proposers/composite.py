@@ -1,7 +1,7 @@
 """Composite proposer that routes between failure and success paths.
 
 Routes to failure proposer on declining quality trends, success proposer
-otherwise. Merges proposals from both paths with deduplication by axis.
+otherwise. Returns proposals from the selected path without merging.
 """
 
 from typing import TYPE_CHECKING
