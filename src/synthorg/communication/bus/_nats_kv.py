@@ -40,6 +40,11 @@ async def create_channel_in_kv(
 
     if state.kv is None:
         msg = "KV store unavailable -- cannot create channel"
+        logger.error(
+            COMM_BUS_KV_WRITE_FAILED,
+            channel=channel.name,
+            error=msg,
+        )
         raise BusStreamError(msg, context={"channel": channel.name})
     key = encode_token(channel.name)
     value = channel.model_dump_json().encode("utf-8")
@@ -96,7 +101,11 @@ async def fetch_kv_entry(
     state: _NatsState,
     channel_name: str,
 ) -> Any | None:
-    """Fetch a raw KV entry, logging transport errors and returning None."""
+    """Fetch a raw KV entry.
+
+    Returns ``None`` for ``KeyNotFoundError`` (genuine miss).
+    Raises ``BusStreamError`` on transport/connection errors.
+    """
     from nats.js.errors import KeyNotFoundError  # noqa: PLC0415
 
     if state.kv is None:
