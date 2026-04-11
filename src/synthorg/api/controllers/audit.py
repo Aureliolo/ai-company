@@ -3,8 +3,8 @@
 Exposes ``GET /security/audit`` for querying the security
 evaluation audit trail with filtering and pagination.
 
-JSONB-native queries (containment, key existence, path extraction)
-are available when the Postgres persistence backend is active.
+JSONB-native queries (containment, key existence) are available
+when the Postgres persistence backend is active.
 """
 
 import json
@@ -29,10 +29,7 @@ from synthorg.observability.events.api import (
     API_AUDIT_QUERIED,
     API_VALIDATION_FAILED,
 )
-from synthorg.persistence.jsonb_capability import (
-    JsonbQueryCapability,
-    validate_jsonb_path,
-)
+from synthorg.persistence.jsonb_capability import JsonbQueryCapability
 from synthorg.security.models import AuditEntry
 
 logger = get_logger(__name__)
@@ -63,18 +60,17 @@ class AuditController(Controller):
         limit: PaginationLimit = 50,
         jsonb_contains: Annotated[str, Parameter(max_length=2048)] | None = None,
         jsonb_key_exists: Annotated[str, Parameter(max_length=256)] | None = None,
-        jsonb_path: Annotated[str, Parameter(max_length=128)] | None = None,
-        jsonb_value: Annotated[str, Parameter(max_length=512)] | None = None,
     ) -> PaginatedResponse[AuditEntry]:
         """Query audit entries with optional filters.
 
         All filters are AND-combined.  Results are newest-first.
 
-        JSONB filters (``jsonb_contains``, ``jsonb_key_exists``,
-        ``jsonb_path`` + ``jsonb_value``) query the
-        ``matched_rules`` column and require a Postgres backend.
-        Returns 422 if JSONB params are used with a non-Postgres
-        backend.
+        JSONB filters (``jsonb_contains``, ``jsonb_key_exists``)
+        query the ``matched_rules`` column and require a Postgres
+        backend.  Returns 422 if JSONB params are used with a
+        non-Postgres backend.  When both JSONB and standard filters
+        are provided, JSONB results are post-filtered by standard
+        criteria.
 
         Args:
             state: Application state with audit_log service.
@@ -90,32 +86,31 @@ class AuditController(Controller):
                 ``matched_rules`` (Postgres only).
             jsonb_key_exists: Top-level key for ``?`` existence on
                 ``matched_rules`` (Postgres only).
-            jsonb_path: Dot-separated path for ``->>`` extraction
-                on ``matched_rules`` (requires ``jsonb_value``).
-            jsonb_value: Expected value at ``jsonb_path``.
 
         Returns:
             Paginated audit entries.
 
         Raises:
-            ClientException: If *since* > *until*, JSONB params on
-                non-Postgres backend, or invalid JSONB path.
+            ClientException: If *since* > *until* or JSONB params
+                on non-Postgres backend.
         """
         self._validate_timestamps(since, until)
 
-        has_jsonb = any((jsonb_contains, jsonb_key_exists, jsonb_path))
+        has_jsonb = any((jsonb_contains, jsonb_key_exists))
 
         if has_jsonb:
             return await self._jsonb_query(
                 state=state,
+                agent_id=agent_id,
+                tool_name=tool_name,
+                action_type=action_type,
+                verdict=verdict,
                 since=since,
                 until=until,
                 offset=offset,
                 limit=limit,
                 jsonb_contains=jsonb_contains,
                 jsonb_key_exists=jsonb_key_exists,
-                jsonb_path=jsonb_path,
-                jsonb_value=jsonb_value,
             )
 
         app_state = state.app_state
@@ -173,20 +168,31 @@ class AuditController(Controller):
     async def _jsonb_query(  # noqa: PLR0913
         *,
         state: State,
+        agent_id: str | None,
+        tool_name: str | None,
+        action_type: str | None,
+        verdict: str | None,
         since: datetime | None,
         until: datetime | None,
         offset: int,
         limit: int,
         jsonb_contains: str | None,
         jsonb_key_exists: str | None,
-        jsonb_path: str | None,
-        jsonb_value: str | None,
     ) -> PaginatedResponse[AuditEntry]:
-        """Delegate JSONB-native queries to the persistence backend."""
+        """Delegate JSONB-native queries to the persistence backend.
+
+        Standard filters (agent_id, tool_name, etc.) are applied as
+        post-filters on the JSONB result set so all filters remain
+        AND-combined.
+        """
         app_state = state.app_state
         repo = app_state.persistence.audit_entries
 
         if not isinstance(repo, JsonbQueryCapability):
+            logger.warning(
+                API_VALIDATION_FAILED,
+                reason="jsonb_query_unsupported_backend",
+            )
             raise ClientException(
                 status_code=422,
                 detail="JSONB queries require the Postgres backend",
@@ -198,20 +204,24 @@ class AuditController(Controller):
             try:
                 value = json.loads(jsonb_contains)
             except json.JSONDecodeError as exc:
-                # Truncate the offending input so sensitive payloads
-                # aren't logged in full, but give operators enough
-                # context to debug parse failures.
                 preview = jsonb_contains[:256]
                 logger.warning(
                     API_VALIDATION_FAILED,
                     reason="invalid_jsonb_contains_json",
                     input_length=len(jsonb_contains),
                     input_preview=preview,
-                    error=str(exc),
                 )
                 raise ClientException(
-                    detail=f"Invalid JSON in jsonb_contains: {exc}",
+                    detail="Invalid JSON in jsonb_contains parameter",
                 ) from exc
+            if not isinstance(value, (list, dict)):
+                logger.warning(
+                    API_VALIDATION_FAILED,
+                    reason="jsonb_contains_not_collection",
+                )
+                raise ClientException(
+                    detail=("jsonb_contains must be a JSON array or object"),
+                )
             entries, total = await repo.query_jsonb_contains(
                 column,
                 value,
@@ -229,39 +239,59 @@ class AuditController(Controller):
                 limit=limit,
                 offset=offset,
             )
-        elif jsonb_path is not None:
-            if jsonb_value is None:
-                raise ClientException(
-                    detail="jsonb_path requires jsonb_value",
-                )
-            try:
-                validate_jsonb_path(jsonb_path)
-            except ValueError as exc:
-                raise ClientException(
-                    detail=str(exc),
-                ) from exc
-            entries, total = await repo.query_jsonb_path_equals(
-                column,
-                jsonb_path,
-                jsonb_value,
-                since=since,
-                until=until,
-                limit=limit,
-                offset=offset,
-            )
         else:
-            msg = "No JSONB filter provided"
-            raise ClientException(detail=msg)
+            logger.warning(
+                API_VALIDATION_FAILED,
+                reason="no_jsonb_filter",
+            )
+            raise ClientException(detail="No JSONB filter provided")
 
-        meta = PaginationMeta(total=total, offset=offset, limit=limit)
+        filtered = _apply_standard_filters(
+            entries,
+            agent_id=agent_id,
+            tool_name=tool_name,
+            action_type=action_type,
+            verdict=verdict,
+        )
+        filtered_total = max(total - (len(entries) - len(filtered)), 0)
+        meta = PaginationMeta(
+            total=filtered_total,
+            offset=offset,
+            limit=limit,
+        )
         logger.info(
             API_AUDIT_QUERIED,
-            total=total,
+            total=meta.total,
             offset=offset,
             limit=limit,
             jsonb_query=True,
         )
         return PaginatedResponse[AuditEntry](
-            data=entries,
+            data=filtered,
             pagination=meta,
         )
+
+
+def _apply_standard_filters(
+    entries: tuple[AuditEntry, ...],
+    *,
+    agent_id: str | None,
+    tool_name: str | None,
+    action_type: str | None,
+    verdict: str | None,
+) -> tuple[AuditEntry, ...]:
+    """Post-filter JSONB results by standard audit criteria."""
+    if not any((agent_id, tool_name, action_type, verdict)):
+        return entries
+    result: list[AuditEntry] = []
+    for e in entries:
+        if agent_id is not None and e.agent_id != agent_id:
+            continue
+        if tool_name is not None and e.tool_name != tool_name:
+            continue
+        if action_type is not None and e.action_type != action_type:
+            continue
+        if verdict is not None and e.verdict != verdict:
+            continue
+        result.append(e)
+    return tuple(result)

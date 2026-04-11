@@ -5,6 +5,7 @@ import (
 	"bytes"
 	_ "embed"
 	"fmt"
+	"net/url"
 	"regexp"
 	"strings"
 	"text/template"
@@ -104,6 +105,7 @@ func Generate(p Params) ([]byte, error) {
 		"digestPin":          digestPin(p.DigestPins),
 		"distributedEnabled": p.DistributedEnabled,
 		"postgresEnabled":    p.PostgresEnabled,
+		"urlQueryEscape":     url.QueryEscape,
 	}
 
 	tmpl, err := template.New("compose").Funcs(funcMap).Parse(composeTmpl)

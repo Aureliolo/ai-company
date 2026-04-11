@@ -30,7 +30,6 @@ from synthorg.api.errors import (
 from synthorg.config.schema import AgentConfig
 from synthorg.core.company import Company, Department
 from synthorg.core.enums import SeniorityLevel
-from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import (
     API_AGENT_CREATED,
@@ -164,20 +163,14 @@ class OrgMutationService:
         self,
         namespace: str,
         key: str,
-    ) -> tuple[str | None, str | None]:
+    ) -> tuple[str, str]:
         """Read a setting value and its ``updated_at`` for CAS.
 
         Returns:
-            ``(value, updated_at)`` tuple, or ``(None, None)``
-            if the setting has no DB override.
+            ``(value, updated_at)`` tuple, or ``("", "")`` if
+            the setting has no DB override.
         """
-        result = await self._settings._repository.get(  # noqa: SLF001
-            NotBlankStr(namespace),
-            NotBlankStr(key),
-        )
-        if result is None:
-            return None, None
-        return result
+        return await self._settings.get_versioned(namespace, key)
 
     async def _read_departments(self) -> tuple[Department, ...]:
         return await self._resolver.get_departments()
@@ -344,45 +337,86 @@ class OrgMutationService:
         Returns:
             Tuple of (updated fields dict, new ETag for full snapshot).
         """
-        if if_match:
-            cur_etag = await self._company_snapshot_etag()
-            check_if_match(if_match, cur_etag, "company")
+        for attempt in range(_MAX_CAS_ATTEMPTS):
+            try:
+                if if_match:
+                    cur_etag = await self._company_snapshot_etag()
+                    check_if_match(if_match, cur_etag, "company")
 
+                updated = await self._apply_company_scalars(data)
+                new_etag = await self._company_snapshot_etag()
+                if "budget_monthly" in updated:
+                    await self._snapshot_budget_config(saved_by=saved_by)
+                await self._snapshot_company(saved_by=saved_by)
+                break
+            except VersionConflictError:
+                if attempt == _MAX_CAS_ATTEMPTS - 1:
+                    logger.warning(
+                        API_CONCURRENCY_CONFLICT,
+                        resource="org_mutation",
+                        attempts=_MAX_CAS_ATTEMPTS,
+                    )
+                    raise
+                logger.debug(
+                    API_CONCURRENCY_CONFLICT,
+                    resource="org_mutation",
+                    attempt=attempt + 1,
+                    max_attempts=_MAX_CAS_ATTEMPTS,
+                )
+                continue
+        logger.info(API_COMPANY_UPDATED, fields=list(updated.keys()))
+        return updated, new_etag
+
+    async def _apply_company_scalars(
+        self,
+        data: UpdateCompanyRequest,
+    ) -> dict[str, Any]:
+        """Write each company scalar with CAS protection."""
         updated: dict[str, Any] = {}
         if data.company_name is not None:
-            await self._settings.set(
+            await self._set_versioned(
                 "company",
                 "company_name",
                 data.company_name,
             )
             updated["company_name"] = data.company_name
         if data.autonomy_level is not None:
-            await self._settings.set(
+            await self._set_versioned(
                 "company",
                 "autonomy_level",
                 data.autonomy_level.value,
             )
             updated["autonomy_level"] = data.autonomy_level.value
         if data.budget_monthly is not None:
-            await self._settings.set(
+            await self._set_versioned(
                 "company",
                 "total_monthly",
                 str(data.budget_monthly),
             )
             updated["budget_monthly"] = data.budget_monthly
         if data.communication_pattern is not None:
-            await self._settings.set(
+            await self._set_versioned(
                 "company",
                 "communication_pattern",
                 data.communication_pattern,
             )
             updated["communication_pattern"] = data.communication_pattern
-        new_etag = await self._company_snapshot_etag()
-        if "budget_monthly" in updated:
-            await self._snapshot_budget_config(saved_by=saved_by)
-        await self._snapshot_company(saved_by=saved_by)
-        logger.info(API_COMPANY_UPDATED, fields=list(updated.keys()))
-        return updated, new_etag
+        return updated
+
+    async def _set_versioned(
+        self,
+        namespace: str,
+        key: str,
+        value: str,
+    ) -> None:
+        """Read version then write with CAS in one step."""
+        _, version = await self._read_setting_versioned(namespace, key)
+        await self._settings.set(
+            namespace,
+            key,
+            value,
+            expected_updated_at=version,
+        )
 
     # ── Departments ───────────────────────────────────────────
 
@@ -689,11 +723,14 @@ class OrgMutationService:
     async def create_agent(
         self,
         data: CreateAgentOrgRequest,
+        *,
+        saved_by: str = "api",
     ) -> AgentConfig:
         """Create a new agent in the org config.
 
         Args:
             data: Agent creation request.
+            saved_by: Actor identity for version snapshot attribution.
 
         Returns:
             The created AgentConfig model.
@@ -747,6 +784,7 @@ class OrgMutationService:
                     new_agents,
                     expected_updated_at=version,
                 )
+                await self._snapshot_company(saved_by=saved_by)
                 break
             except VersionConflictError:
                 if attempt == _MAX_CAS_ATTEMPTS - 1:
@@ -826,6 +864,7 @@ class OrgMutationService:
         data: UpdateAgentOrgRequest,
         *,
         if_match: str | None = None,
+        saved_by: str = "api",
     ) -> AgentConfig:
         """Update an existing agent.
 
@@ -833,6 +872,7 @@ class OrgMutationService:
             name: Current agent name.
             data: Partial update request.
             if_match: If-Match header value for optimistic concurrency.
+            saved_by: Actor identity for version snapshot attribution.
 
         Returns:
             The updated AgentConfig model.
@@ -884,6 +924,7 @@ class OrgMutationService:
                     new_agents,
                     expected_updated_at=version,
                 )
+                await self._snapshot_company(saved_by=saved_by)
                 break
             except VersionConflictError:
                 if attempt == _MAX_CAS_ATTEMPTS - 1:
@@ -908,11 +949,12 @@ class OrgMutationService:
         )
         return updated
 
-    async def delete_agent(self, name: str) -> None:
+    async def delete_agent(self, name: str, *, saved_by: str = "api") -> None:
         """Delete an agent from the org config.
 
         Args:
             name: Agent name to delete.
+            saved_by: Actor identity for version snapshot attribution.
 
         Raises:
             NotFoundError: If the agent does not exist.
@@ -956,6 +998,7 @@ class OrgMutationService:
                     new_agents,
                     expected_updated_at=version,
                 )
+                await self._snapshot_company(saved_by=saved_by)
                 break
             except VersionConflictError:
                 if attempt == _MAX_CAS_ATTEMPTS - 1:
@@ -979,12 +1022,15 @@ class OrgMutationService:
         self,
         dept_name: str,
         data: ReorderAgentsRequest,
+        *,
+        saved_by: str = "api",
     ) -> tuple[AgentConfig, ...]:
         """Reorder agents within a department.
 
         Args:
             dept_name: Department name.
             data: Ordered list of agent names.
+            saved_by: Actor identity for version snapshot attribution.
 
         Returns:
             The reordered agents belonging to the department.
@@ -1042,6 +1088,7 @@ class OrgMutationService:
                     tuple(new_agents),
                     expected_updated_at=version,
                 )
+                await self._snapshot_company(saved_by=saved_by)
                 break
             except VersionConflictError:
                 if attempt == _MAX_CAS_ATTEMPTS - 1:

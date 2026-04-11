@@ -464,6 +464,26 @@ class SettingsService:
         self._cache = {k: v for k, v in self._cache.items() if k != cache_key}
         logger.debug(SETTINGS_CACHE_INVALIDATED, namespace=namespace, key=key)
 
+    async def get_versioned(
+        self,
+        namespace: str,
+        key: str,
+    ) -> tuple[str, str]:
+        """Read a raw setting value and its ``updated_at`` for CAS.
+
+        Returns:
+            ``(value, updated_at)`` tuple, or ``("", "")`` if the
+            setting has no DB override (the empty-string sentinel
+            enables CAS on first writes).
+        """
+        result = await self._repository.get(
+            NotBlankStr(namespace),
+            NotBlankStr(key),
+        )
+        if result is None:
+            return "", ""
+        return result
+
     async def set(
         self,
         namespace: str,

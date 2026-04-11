@@ -161,31 +161,29 @@ func runStatusOnce(cmd *cobra.Command, state config.State, opts *GlobalOpts) err
 // printPostgresVolumeInfo reports the size of the synthorg-pgdata named
 // volume when the Postgres persistence backend is active.
 func printPostgresVolumeInfo(ctx context.Context, out *ui.UI, info docker.Info) {
-	// docker system df -v prints volumes in a section; filter to synthorg-pgdata.
-	sizeOut, err := docker.RunCmd(
+	_, err := docker.RunCmd(
 		ctx, info.DockerPath,
 		"volume", "inspect", "synthorg-pgdata",
 		"--format", "{{.Mountpoint}}",
 	)
-	if err != nil || strings.TrimSpace(sizeOut) == "" {
+	if err != nil {
 		out.KeyValue("Postgres volume", "synthorg-pgdata (not created yet)")
 		return
 	}
-	// Query the volume size via `docker system df -v` and parse the volumes section.
 	dfOut, dfErr := docker.RunCmd(
 		ctx, info.DockerPath,
 		"system", "df", "-v", "--format", "{{json .Volumes}}",
 	)
 	if dfErr != nil {
-		out.KeyValue("Postgres volume", "synthorg-pgdata")
+		out.KeyValue("Postgres volume", "synthorg-pgdata (size unavailable)")
 		return
 	}
 	var volumes []struct {
 		Name string `json:"Name"`
 		Size string `json:"Size"`
 	}
-	if json.Unmarshal([]byte(dfOut), &volumes) != nil {
-		out.KeyValue("Postgres volume", "synthorg-pgdata")
+	if unmarshalErr := json.Unmarshal([]byte(dfOut), &volumes); unmarshalErr != nil {
+		out.KeyValue("Postgres volume", "synthorg-pgdata (size unavailable)")
 		return
 	}
 	for _, v := range volumes {

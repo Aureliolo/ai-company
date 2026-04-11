@@ -668,7 +668,10 @@ class FakeSettingsRepository:
     ) -> bool:
         if expected_updated_at is not None:
             current = self._store.get((namespace, key))
-            if current is None or current[1] != expected_updated_at:
+            if current is None:
+                if expected_updated_at != "":
+                    return False
+            elif current[1] != expected_updated_at:
                 return False
         self._store = {
             **self._store,

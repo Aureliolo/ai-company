@@ -43,30 +43,6 @@ class TestJsonbCapabilityFallback:
         )
         assert resp.status_code == 422
 
-    def test_jsonb_path_returns_422(
-        self,
-        test_client: TestClient[Any],
-    ) -> None:
-        resp = test_client.get(
-            _BASE,
-            params={"jsonb_path": "source", "jsonb_value": "firewall"},
-            headers=_HEADERS,
-        )
-        assert resp.status_code == 422
-
-    def test_jsonb_path_without_value_returns_400(
-        self,
-        test_client: TestClient[Any],
-    ) -> None:
-        """jsonb_path requires jsonb_value."""
-        resp = test_client.get(
-            _BASE,
-            params={"jsonb_path": "source"},
-            headers=_HEADERS,
-        )
-        # 422 (Postgres check) fires before the path/value validation
-        assert resp.status_code == 422
-
     def test_no_jsonb_params_works(
         self,
         test_client: TestClient[Any],
@@ -80,53 +56,35 @@ class TestJsonbCapabilityFallback:
 class TestJsonbPathValidation:
     """Path expression validation (independent of backend)."""
 
-    def test_valid_simple_path(self) -> None:
+    @pytest.mark.parametrize(
+        "path",
+        ["source", "metadata.actor", "a.b.c.d.e"],
+        ids=["simple", "nested", "max-depth"],
+    )
+    def test_valid_paths(self, path: str) -> None:
         from synthorg.persistence.jsonb_capability import validate_jsonb_path
 
-        validate_jsonb_path("source")
+        validate_jsonb_path(path)
 
-    def test_valid_nested_path(self) -> None:
+    @pytest.mark.parametrize(
+        ("path", "match"),
+        [
+            ("'; DROP TABLE audit_entries; --", "Invalid JSONB path"),
+            ('key"value', "Invalid JSONB path"),
+            ("a.b.c.d.e.f", "Invalid JSONB path"),
+            (".leading", "Invalid JSONB path"),
+            ("key with spaces", "Invalid JSONB path"),
+        ],
+        ids=["sql-injection", "quotes", "too-deep", "leading-dot", "spaces"],
+    )
+    def test_rejects_invalid_paths(self, path: str, match: str) -> None:
         from synthorg.persistence.jsonb_capability import validate_jsonb_path
 
-        validate_jsonb_path("metadata.actor")
-
-    def test_valid_deep_path(self) -> None:
-        from synthorg.persistence.jsonb_capability import validate_jsonb_path
-
-        validate_jsonb_path("a.b.c.d.e")
-
-    def test_rejects_sql_injection(self) -> None:
-        from synthorg.persistence.jsonb_capability import validate_jsonb_path
-
-        with pytest.raises(ValueError, match="Invalid JSONB path"):
-            validate_jsonb_path("'; DROP TABLE audit_entries; --")
-
-    def test_rejects_quotes(self) -> None:
-        from synthorg.persistence.jsonb_capability import validate_jsonb_path
-
-        with pytest.raises(ValueError, match="Invalid JSONB path"):
-            validate_jsonb_path('key"value')
-
-    def test_rejects_too_deep(self) -> None:
-        from synthorg.persistence.jsonb_capability import validate_jsonb_path
-
-        with pytest.raises(ValueError, match="Invalid JSONB path"):
-            validate_jsonb_path("a.b.c.d.e.f")
+        with pytest.raises(ValueError, match=match):
+            validate_jsonb_path(path)
 
     def test_rejects_empty(self) -> None:
         from synthorg.persistence.jsonb_capability import validate_jsonb_path
 
         with pytest.raises(ValueError, match="must be 1-128"):
             validate_jsonb_path("")
-
-    def test_rejects_leading_dot(self) -> None:
-        from synthorg.persistence.jsonb_capability import validate_jsonb_path
-
-        with pytest.raises(ValueError, match="Invalid JSONB path"):
-            validate_jsonb_path(".leading")
-
-    def test_rejects_spaces(self) -> None:
-        from synthorg.persistence.jsonb_capability import validate_jsonb_path
-
-        with pytest.raises(ValueError, match="Invalid JSONB path"):
-            validate_jsonb_path("key with spaces")

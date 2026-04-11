@@ -377,8 +377,8 @@ INSERT INTO audit_entries (
         column: str,
         value: dict[str, Any] | list[Any],
         *,
-        since: Any | None = None,
-        until: Any | None = None,
+        since: datetime | None = None,
+        until: datetime | None = None,
         limit: int = 100,
         offset: int = 0,
     ) -> tuple[tuple[AuditEntry, ...], int]:
@@ -402,8 +402,8 @@ INSERT INTO audit_entries (
         column: str,
         key: str,
         *,
-        since: Any | None = None,
-        until: Any | None = None,
+        since: datetime | None = None,
+        until: datetime | None = None,
         limit: int = 100,
         offset: int = 0,
     ) -> tuple[tuple[AuditEntry, ...], int]:
@@ -428,8 +428,8 @@ INSERT INTO audit_entries (
         path: str,
         value: str,
         *,
-        since: Any | None = None,
-        until: Any | None = None,
+        since: datetime | None = None,
+        until: datetime | None = None,
         limit: int = 100,
         offset: int = 0,
     ) -> tuple[tuple[AuditEntry, ...], int]:

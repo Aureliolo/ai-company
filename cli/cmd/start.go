@@ -179,7 +179,7 @@ func startDetached(ctx context.Context, info docker.Info, safeDir string, state 
 		}
 		sp.Success("Backend healthy")
 		if state.PersistenceBackend == "postgres" {
-			out.Step("Postgres migrations applied by backend on startup")
+			out.Step("Postgres migrations checked/applied during backend startup")
 		}
 	} else {
 		out.Step("Health check skipped (--no-wait)")
@@ -220,7 +220,7 @@ func pullStartAndWait(ctx context.Context, info docker.Info, safeDir string, sta
 	}
 	sp.Success("Backend healthy")
 	if state.PersistenceBackend == "postgres" {
-		out.Step("Postgres migrations applied by backend on startup")
+		out.Step("Postgres migrations checked/applied during backend startup")
 	}
 	return nil
 }

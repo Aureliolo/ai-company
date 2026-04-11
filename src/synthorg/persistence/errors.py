@@ -46,7 +46,7 @@ class ConstraintViolationError(QueryError):
 
     def __init__(self, message: str, *, constraint: str) -> None:
         super().__init__(message)
-        self.constraint = constraint
+        self.constraint: str = constraint
 
 
 class VersionConflictError(QueryError):
