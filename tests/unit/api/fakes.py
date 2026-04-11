@@ -4,7 +4,7 @@ import asyncio
 from datetime import datetime
 from typing import Any
 
-from synthorg.api.auth.models import ApiKey, User
+from synthorg.api.auth.models import ApiKey, OrgRole, User
 from synthorg.api.auth.system_user import is_system_user
 from synthorg.api.guards import HumanRole
 from synthorg.budget.cost_record import CostRecord
@@ -293,12 +293,59 @@ from tests.unit.api.fakes_decisions import (  # noqa: E402
 
 
 class FakeUserRepository:
-    """In-memory user repository for tests."""
+    """In-memory user repository for tests.
+
+    Enforces the same constraints as the real DB:
+    - Unique username
+    - At most one CEO (unique partial index)
+    - At least one CEO (trigger on role change)
+    - At least one owner (trigger on org_roles change)
+    """
 
     def __init__(self) -> None:
         self._users: dict[str, User] = {}
 
     async def save(self, user: User) -> None:
+        existing = self._users.get(user.id)
+        # Username uniqueness
+        for u in self._users.values():
+            if u.username == user.username and u.id != user.id:
+                msg = "UNIQUE constraint failed: users.username"
+                raise QueryError(msg)
+        # CEO uniqueness (partial unique index on role='ceo')
+        if user.role == HumanRole.CEO:
+            for u in self._users.values():
+                if u.role == HumanRole.CEO and u.id != user.id:
+                    msg = "UNIQUE constraint failed: idx_single_ceo"
+                    raise QueryError(msg)
+        # Last-CEO trigger: prevent demoting the only CEO
+        if (
+            existing is not None
+            and existing.role == HumanRole.CEO
+            and user.role != HumanRole.CEO
+        ):
+            other_ceos = sum(
+                1
+                for u in self._users.values()
+                if u.role == HumanRole.CEO and u.id != user.id
+            )
+            if other_ceos == 0:
+                msg = "Cannot remove the last CEO"
+                raise QueryError(msg)
+        # Last-owner trigger: prevent removing the last owner
+        if (
+            existing is not None
+            and OrgRole.OWNER in existing.org_roles
+            and OrgRole.OWNER not in user.org_roles
+        ):
+            other_owners = sum(
+                1
+                for u in self._users.values()
+                if u.id != user.id and OrgRole.OWNER in u.org_roles
+            )
+            if other_owners == 0:
+                msg = "Cannot remove the last owner"
+                raise QueryError(msg)
         self._users[user.id] = user
 
     async def get(self, user_id: str) -> User | None:

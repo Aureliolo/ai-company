@@ -187,6 +187,28 @@ CREATE TABLE users (
 CREATE INDEX idx_users_role ON users(role);
 CREATE UNIQUE INDEX idx_single_ceo ON users(role) WHERE role = 'ceo';
 
+-- Prevent removing the last CEO via role change.
+CREATE TRIGGER enforce_ceo_minimum
+BEFORE UPDATE OF role ON users
+WHEN OLD.role = 'ceo' AND NEW.role != 'ceo'
+BEGIN
+    SELECT RAISE(ABORT, 'Cannot remove the last CEO')
+    WHERE (SELECT COUNT(*) FROM users WHERE role = 'ceo' AND id != OLD.id) = 0;
+END;
+
+-- Prevent removing the last owner via org_roles change.
+CREATE TRIGGER enforce_owner_minimum
+BEFORE UPDATE OF org_roles ON users
+WHEN EXISTS (SELECT 1 FROM json_each(OLD.org_roles) WHERE value = 'owner')
+  AND NOT EXISTS (SELECT 1 FROM json_each(NEW.org_roles) WHERE value = 'owner')
+BEGIN
+    SELECT RAISE(ABORT, 'Cannot remove the last owner')
+    WHERE (
+        SELECT COUNT(*) FROM users u, json_each(u.org_roles) je
+        WHERE u.id != OLD.id AND je.value = 'owner'
+    ) = 0;
+END;
+
 -- ── API keys ──────────────────────────────────────────────────
 CREATE TABLE api_keys (
     id TEXT NOT NULL PRIMARY KEY,

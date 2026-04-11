@@ -203,6 +203,45 @@ CREATE TABLE users (
 CREATE INDEX idx_users_role ON users(role);
 CREATE UNIQUE INDEX idx_single_ceo ON users(role) WHERE role = 'ceo';
 
+-- Prevent removing the last CEO via role change.
+CREATE FUNCTION enforce_ceo_minimum() RETURNS TRIGGER AS $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM users WHERE role = 'ceo') THEN
+        RAISE EXCEPTION 'Cannot remove the last CEO'
+            USING ERRCODE = '23514';
+    END IF;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE CONSTRAINT TRIGGER trg_enforce_ceo_minimum
+    AFTER UPDATE OF role ON users
+    DEFERRABLE INITIALLY DEFERRED
+    FOR EACH ROW
+    WHEN (OLD.role = 'ceo' AND NEW.role != 'ceo')
+    EXECUTE FUNCTION enforce_ceo_minimum();
+
+-- Prevent removing the last owner via org_roles change.
+CREATE FUNCTION enforce_owner_minimum() RETURNS TRIGGER AS $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM users WHERE org_roles @> '["owner"]'::jsonb
+    ) THEN
+        RAISE EXCEPTION 'Cannot remove the last owner'
+            USING ERRCODE = '23514';
+    END IF;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE CONSTRAINT TRIGGER trg_enforce_owner_minimum
+    AFTER UPDATE OF org_roles ON users
+    DEFERRABLE INITIALLY DEFERRED
+    FOR EACH ROW
+    WHEN (OLD.org_roles @> '["owner"]'::jsonb
+          AND NOT NEW.org_roles @> '["owner"]'::jsonb)
+    EXECUTE FUNCTION enforce_owner_minimum();
+
 -- ── API keys ──────────────────────────────────────────────────
 CREATE TABLE api_keys (
     id TEXT NOT NULL PRIMARY KEY,

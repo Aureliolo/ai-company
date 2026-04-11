@@ -46,6 +46,8 @@ type Params struct {
 	MemoryBackend      string
 	BusBackend         string
 	TelemetryOptIn     bool
+	PostgresPort       int
+	PostgresPassword   string
 	DigestPins         map[string]string // image name suffix → digest (e.g. "backend" → "sha256:abc...")
 }
 
@@ -74,7 +76,14 @@ func ParamsFromState(s config.State) Params {
 		MemoryBackend:      s.MemoryBackend,
 		BusBackend:         busBackend,
 		TelemetryOptIn:     s.TelemetryOptIn,
+		PostgresPort:       s.PostgresPort,
+		PostgresPassword:   s.PostgresPassword,
 	}
+}
+
+// PostgresEnabled reports whether the Postgres persistence backend is active.
+func (p Params) PostgresEnabled() bool {
+	return p.PersistenceBackend == "postgres"
 }
 
 // DistributedEnabled reports whether the distributed runtime profile is
@@ -94,6 +103,7 @@ func Generate(p Params) ([]byte, error) {
 		"yamlStr":            yamlStr,
 		"digestPin":          digestPin(p.DigestPins),
 		"distributedEnabled": p.DistributedEnabled,
+		"postgresEnabled":    p.PostgresEnabled,
 	}
 
 	tmpl, err := template.New("compose").Funcs(funcMap).Parse(composeTmpl)
@@ -143,6 +153,20 @@ func validateParams(p Params) error {
 	}
 	if p.DistributedEnabled() && (p.NatsClientPort < 1 || p.NatsClientPort > 65535) {
 		return fmt.Errorf("invalid nats client port %d: must be 1-65535", p.NatsClientPort)
+	}
+	if p.PostgresEnabled() {
+		if p.PostgresPort < 1 || p.PostgresPort > 65535 {
+			return fmt.Errorf("invalid postgres port %d: must be 1-65535", p.PostgresPort)
+		}
+		if p.PostgresPort == p.BackendPort || p.PostgresPort == p.WebPort {
+			return fmt.Errorf("postgres port %d collides with another service port", p.PostgresPort)
+		}
+		if strings.TrimSpace(p.PostgresPassword) == "" {
+			return fmt.Errorf("postgres password is required when persistence backend is postgres")
+		}
+		if len(p.PostgresPassword) < 32 {
+			return fmt.Errorf("postgres password must be >= 32 characters, got %d", len(p.PostgresPassword))
+		}
 	}
 	// Cross-validate secrets: if one is set, both must be set.
 	// Both-empty is valid for development/testing (template omits env vars).

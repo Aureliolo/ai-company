@@ -2,7 +2,7 @@
 
 import json
 from datetime import UTC
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import psycopg
 from psycopg.rows import dict_row
@@ -18,6 +18,7 @@ from synthorg.observability.events.persistence import (
     PERSISTENCE_AUDIT_ENTRY_SAVED,
 )
 from synthorg.persistence.errors import DuplicateRecordError, QueryError
+from synthorg.persistence.jsonb_capability import validate_jsonb_path
 from synthorg.security.models import AuditEntry
 
 if TYPE_CHECKING:
@@ -294,3 +295,167 @@ INSERT INTO audit_entries (
                 error=str(exc),
             )
             raise QueryError(msg) from exc
+
+    # ── JsonbQueryCapability implementation ────────────────────
+
+    _ALLOWED_JSONB_COLS: frozenset[str] = frozenset({"matched_rules"})
+
+    def _check_jsonb_column(self, column: str) -> None:
+        """Reject unknown column names to prevent SQL injection."""
+        if column not in self._ALLOWED_JSONB_COLS:
+            msg = (
+                f"JSONB column {column!r} not allowed; "
+                f"must be one of {sorted(self._ALLOWED_JSONB_COLS)}"
+            )
+            raise ValueError(msg)
+
+    def _build_time_clause(
+        self,
+        since: Any | None,
+        until: Any | None,
+    ) -> tuple[list[str], list[object]]:
+        """Build timestamp filter conditions."""
+        conditions: list[str] = []
+        params: list[object] = []
+        if since is not None:
+            conditions.append("timestamp >= %s")
+            params.append(since.astimezone(UTC))
+        if until is not None:
+            conditions.append("timestamp <= %s")
+            params.append(until.astimezone(UTC))
+        return conditions, params
+
+    async def _jsonb_query(  # noqa: PLR0913
+        self,
+        extra_condition: str,
+        extra_params: list[object],
+        *,
+        since: Any | None,
+        until: Any | None,
+        limit: int,
+        offset: int,
+    ) -> tuple[tuple[AuditEntry, ...], int]:
+        """Execute a JSONB query with time filters and pagination."""
+        time_conds, time_params = self._build_time_clause(since, until)
+        all_conds = [extra_condition, *time_conds]
+        all_params = [*extra_params, *time_params]
+
+        where = f" WHERE {' AND '.join(all_conds)}"
+        count_sql = f"SELECT COUNT(*) FROM audit_entries{where}"  # noqa: S608
+        data_sql = (
+            f"SELECT {_COLS} FROM audit_entries{where} "  # noqa: S608
+            "ORDER BY timestamp DESC LIMIT %s OFFSET %s"
+        )
+
+        try:
+            async with (
+                self._pool.connection() as conn,
+                conn.cursor(row_factory=dict_row) as cur,
+            ):
+                await cur.execute(count_sql, all_params)
+                count_row = await cur.fetchone()
+                total = int(count_row["count"]) if count_row else 0
+
+                await cur.execute(
+                    data_sql,
+                    [*all_params, limit, offset],
+                )
+                rows = await cur.fetchall()
+        except psycopg.Error as exc:
+            msg = "JSONB query failed on audit_entries"
+            logger.exception(
+                PERSISTENCE_AUDIT_ENTRY_QUERY_FAILED,
+                error=str(exc),
+            )
+            raise QueryError(msg) from exc
+
+        entries = tuple(self._row_to_entry(row) for row in rows)
+        return entries, total
+
+    async def query_jsonb_contains(  # noqa: PLR0913
+        self,
+        column: str,
+        value: dict[str, Any] | list[Any],
+        *,
+        since: Any | None = None,
+        until: Any | None = None,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> tuple[tuple[AuditEntry, ...], int]:
+        """Query audit entries where *column* contains *value*.
+
+        Uses the ``@>`` containment operator (GIN-indexed).
+        """
+        self._check_jsonb_column(column)
+        condition = f"{column} @> %s::jsonb"
+        return await self._jsonb_query(
+            condition,
+            [Jsonb(value)],
+            since=since,
+            until=until,
+            limit=limit,
+            offset=offset,
+        )
+
+    async def query_jsonb_key_exists(  # noqa: PLR0913
+        self,
+        column: str,
+        key: str,
+        *,
+        since: Any | None = None,
+        until: Any | None = None,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> tuple[tuple[AuditEntry, ...], int]:
+        """Query audit entries where *column* has a top-level *key*.
+
+        Uses the ``?`` existence operator (GIN-indexed).
+        """
+        self._check_jsonb_column(column)
+        condition = f"{column} ? %s"
+        return await self._jsonb_query(
+            condition,
+            [key],
+            since=since,
+            until=until,
+            limit=limit,
+            offset=offset,
+        )
+
+    async def query_jsonb_path_equals(  # noqa: PLR0913
+        self,
+        column: str,
+        path: str,
+        value: str,
+        *,
+        since: Any | None = None,
+        until: Any | None = None,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> tuple[tuple[AuditEntry, ...], int]:
+        """Query audit entries where *column* path extracts to *value*.
+
+        Uses the ``->>`` extraction operator.  The path is validated
+        before use.
+        """
+        self._check_jsonb_column(column)
+        validate_jsonb_path(path)
+        parts = path.split(".")
+        if len(parts) == 1:
+            condition = f"{column} ->> %s = %s"
+            params: list[object] = [parts[0], value]
+        else:
+            chain = column
+            for _segment in parts[:-1]:
+                chain += " -> %s"
+            chain += " ->> %s = %s"
+            params = [*parts, value]
+            condition = chain
+        return await self._jsonb_query(
+            condition,
+            params,
+            since=since,
+            until=until,
+            limit=limit,
+            offset=offset,
+        )
