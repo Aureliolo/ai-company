@@ -63,6 +63,7 @@ class HealthProberService:
         self._unhealthy_threshold = unhealthy_threshold
         self._degraded_threshold = degraded_threshold
         self._failure_counts: dict[str, int] = {}
+        self._failure_lock = asyncio.Lock()
         self._task: asyncio.Task[None] | None = None
 
     async def start(self) -> None:
@@ -115,22 +116,34 @@ class HealthProberService:
         """Probe a single connection and update its health."""
         checker = _CHECK_REGISTRY.get(connection_type)
         if checker is None:
+            logger.debug(
+                HEALTH_CHECK_FAILED,
+                connection_name=name,
+                error="no health checker registered for type",
+                connection_type=str(connection_type),
+            )
             return
 
         conn = await self._catalog.get(name)
         if conn is None:
+            logger.debug(
+                HEALTH_CHECK_FAILED,
+                connection_name=name,
+                error="connection vanished between list and get",
+            )
             return
 
         report = await checker.check(conn)
         old_status = conn.health_status
         now = datetime.now(UTC)
 
-        if report.status == ConnectionStatus.HEALTHY:
-            self._failure_counts.pop(name, None)
-            new_status = ConnectionStatus.HEALTHY
-        else:
-            count = self._failure_counts.get(name, 0) + 1
-            self._failure_counts[name] = count
+        async with self._failure_lock:
+            if report.status == ConnectionStatus.HEALTHY:
+                self._failure_counts.pop(name, None)
+                new_status = ConnectionStatus.HEALTHY
+            else:
+                count = self._failure_counts.get(name, 0) + 1
+                self._failure_counts[name] = count
             if count >= self._unhealthy_threshold:
                 new_status = ConnectionStatus.UNHEALTHY
             elif count >= self._degraded_threshold:

@@ -119,8 +119,16 @@ class WebhookEventBridge:
             return
         strategy, sprint = await self._scheduler.get_active_info()
         if strategy is None or sprint is None:
+            logger.debug(
+                WEBHOOK_BRIDGE_EVENT_FORWARDED,
+                reason="no active sprint or strategy",
+            )
             return
         if not isinstance(strategy, ExternalTriggerStrategy):
+            logger.debug(
+                WEBHOOK_BRIDGE_EVENT_FORWARDED,
+                reason="active strategy is not ExternalTriggerStrategy",
+            )
             return
 
         for part in message.parts:

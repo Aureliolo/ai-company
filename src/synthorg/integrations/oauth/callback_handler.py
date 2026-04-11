@@ -61,6 +61,18 @@ async def handle_oauth_callback(
         msg = "Invalid or expired OAuth state token"
         raise InvalidStateError(msg)
 
+    from datetime import UTC, datetime  # noqa: PLC0415
+
+    if oauth_state.expires_at < datetime.now(UTC):
+        await state_repo.delete(state_param)
+        logger.warning(
+            OAUTH_STATE_INVALID,
+            state=state_param[:8] + "...",
+            reason="expired",
+        )
+        msg = "OAuth state token expired"
+        raise InvalidStateError(msg)
+
     await state_repo.delete(state_param)
 
     conn = await catalog.get_or_raise(oauth_state.connection_name)

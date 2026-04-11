@@ -35,7 +35,9 @@ class GitHubHealthCheck:
                 resp = await client.get(
                     url,
                     headers={
-                        "Authorization": "Bearer placeholder",
+                        "Authorization": (
+                            f"Bearer {connection.metadata.get('token', '')}"
+                        ),
                         "Accept": "application/vnd.github+json",
                     },
                 )

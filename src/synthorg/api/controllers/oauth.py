@@ -56,6 +56,15 @@ class OAuthController(Controller):
 
         flow = AuthorizationCodeFlow()
         config = state["app_state"].config.integrations.oauth
+        if not config.redirect_uri_base:
+            from litestar.exceptions import (  # noqa: PLC0415
+                ValidationException,
+            )
+
+            msg = "oauth.redirect_uri_base must be configured to initiate OAuth flows"
+            raise ValidationException(msg)
+
+        redirect_uri = config.redirect_uri_base + "/api/v1/oauth/callback"
 
         auth_url, oauth_state = await flow.start_flow(
             auth_url=credentials.get("auth_url", ""),
@@ -63,11 +72,7 @@ class OAuthController(Controller):
             client_id=credentials.get("client_id", ""),
             client_secret=credentials.get("client_secret", ""),
             scopes=tuple(data.get("scopes", [])),
-            redirect_uri=(
-                config.redirect_uri_base + "/api/v1/oauth/callback"
-                if config.redirect_uri_base
-                else data.get("redirect_uri", "")
-            ),
+            redirect_uri=redirect_uri,
         )
 
         # Persist the OAuth state

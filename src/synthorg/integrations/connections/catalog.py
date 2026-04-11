@@ -5,6 +5,7 @@ lookup, credential resolution, and health status management.
 """
 
 import asyncio
+import copy
 import json
 from datetime import UTC, datetime
 from uuid import uuid4
@@ -280,4 +281,4 @@ class ConnectionCatalog:
                 data = json.loads(raw.decode("utf-8"))
                 if isinstance(data, dict):
                     merged.update(data)
-        return merged
+        return copy.deepcopy(merged)

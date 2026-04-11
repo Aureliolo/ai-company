@@ -56,6 +56,7 @@ class SharedRateLimitCoordinator:
         self._connection_name = connection_name
         self._max_rpm = max_rpm
         self._window: deque[float] = deque()
+        self._window_lock = asyncio.Lock()
         self._task: asyncio.Task[None] | None = None
         self._subscriber_id = f"{_SUBSCRIBER_PREFIX}{connection_name}"
         self._started = False
@@ -116,17 +117,18 @@ class SharedRateLimitCoordinator:
         if not self._started:
             await self.start()
 
-        now = time.monotonic()
-        self._evict_old(now)
+        async with self._window_lock:
+            now = time.monotonic()
+            self._evict_old(now)
 
-        if len(self._window) >= self._max_rpm:
-            msg = (
-                f"Rate limit exceeded for connection "
-                f"'{self._connection_name}' ({self._max_rpm} rpm)"
-            )
-            raise ConnectionRateLimitError(msg)
+            if len(self._window) >= self._max_rpm:
+                msg = (
+                    f"Rate limit exceeded for connection "
+                    f"'{self._connection_name}' ({self._max_rpm} rpm)"
+                )
+                raise ConnectionRateLimitError(msg)
 
-        self._window.append(now)
+            self._window.append(now)
         await self._publish_acquire()
 
     def _evict_old(self, now: float) -> None:
@@ -160,8 +162,13 @@ class SharedRateLimitCoordinator:
                 RATE_LIMIT_ACQUIRE_PUBLISHED,
                 connection_name=self._connection_name,
             )
-        except Exception:  # noqa: S110
-            pass
+        except Exception:
+            logger.warning(
+                RATE_LIMIT_ACQUIRE_PUBLISHED,
+                connection_name=self._connection_name,
+                error="bus publish failed, falling back to local-only",
+                exc_info=True,
+            )
 
     async def _poll_loop(self) -> None:
         """Poll the coordination channel for acquire events."""
@@ -174,13 +181,13 @@ class SharedRateLimitCoordinator:
                 )
                 if envelope is None:
                     continue
-                self._ingest(envelope.message)
+                await self._ingest(envelope.message)
             except asyncio.CancelledError:
                 break
             except Exception:
                 await asyncio.sleep(1.0)
 
-    def _ingest(self, message: object) -> None:
+    async def _ingest(self, message: object) -> None:
         """Update local window from a remote acquire event."""
         from synthorg.communication.message import (  # noqa: PLC0415
             Message as Msg,
@@ -196,8 +203,9 @@ class SharedRateLimitCoordinator:
                 continue
             ts = data.get("timestamp")
             if isinstance(ts, int | float):
-                self._window.append(float(ts))
-                self._evict_old(time.monotonic())
+                async with self._window_lock:
+                    self._window.append(float(ts))
+                    self._evict_old(time.monotonic())
 
 
 _coordinator_factory: Callable[[str], SharedRateLimitCoordinator] | None = None

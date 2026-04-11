@@ -211,6 +211,13 @@ Queue: Hiring Queue
     Budget enforcement, security, progressive trust, autonomy levels, and approval
     workflows.
 
+-   [**Integrations**](integrations.md)
+
+    ---
+
+    External service connection catalog, OAuth 2.1, webhooks, health checks, rate
+    limiting, MCP catalog, and tunnel.
+
 -   [**Brand Identity & UX**](brand-and-ux.md)
 
     ---
