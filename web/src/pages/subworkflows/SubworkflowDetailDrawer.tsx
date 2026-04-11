@@ -69,7 +69,7 @@ export function SubworkflowDetailDrawer({
   }, [open, subworkflow, addToast])
 
   const handleDelete = useCallback(async () => {
-    if (!subworkflow) return
+    if (!subworkflow || loading || parents.length > 0) return
     setDeleting(true)
     try {
       await useSubworkflowsStore
@@ -90,7 +90,7 @@ export function SubworkflowDetailDrawer({
     } finally {
       setDeleting(false)
     }
-  }, [subworkflow, addToast, onClose])
+  }, [subworkflow, loading, parents, addToast, onClose])
 
   if (!subworkflow) return null
 

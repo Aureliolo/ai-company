@@ -199,7 +199,7 @@ No WebSocket subscription -- workflow definitions are persisted via REST and do 
 Registry listing of reusable subworkflow components. Card grid with search, I/O signature summary (input count / output count), version count, and latest version badge. Click opens a detail drawer showing version history, parent references, and delete action (blocked when parents pin the version).
 
 **API endpoints**: `GET /subworkflows`, `GET /subworkflows/search?q=`, `GET /subworkflows/{id}/versions`, `GET /subworkflows/{id}/versions/{version}`, `GET /subworkflows/{id}/versions/{version}/parents`, `POST /subworkflows`, `DELETE /subworkflows/{id}/versions/{version}`
-**WS channels**: (polling, 30s)
+**WS channels**: (none -- refreshes via polling, 30s)
 
 #### Settings (`/settings`)
 
@@ -426,6 +426,7 @@ Single WebSocket connection per session, established after login. Each page subs
 | **Artifacts** (detail) | `artifacts` | Artifact changes for selected artifact |
 | **Providers** | (none) | N/A -- polling via TanStack Query |
 | **Workflows** (list) | (none) | N/A |
+| **Subworkflows** | (none) | N/A -- refreshes via polling (30s) |
 | **Workflow Editor** | (none) | N/A -- REST API only, no real-time collaboration |
 | **Settings** | `system` | Restart-required notifications |
 | **Notifications panel** | `system`, `approvals`, `budget` | System errors, new approvals, budget alerts |

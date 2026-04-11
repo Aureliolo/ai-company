@@ -35,6 +35,16 @@ def _validate_default_type(
     if expected is None:
         # JSON, TASK_REF, AGENT_REF -- accept any JSON-serializable value.
         return
+    # bool subclasses int -- reject booleans for integer/float.
+    if isinstance(default, bool) and declared_type in (
+        WorkflowValueType.INTEGER,
+        WorkflowValueType.FLOAT,
+    ):
+        msg = (
+            f"Declaration {name!r}: default value {default!r} is not "
+            f"compatible with type {declared_type.value!r}"
+        )
+        raise TypeError(msg)
     if not isinstance(default, expected):
         msg = (
             f"Declaration {name!r}: default value {default!r} is not "

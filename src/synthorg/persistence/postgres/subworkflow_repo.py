@@ -4,6 +4,7 @@ Postgres-native port of ``synthorg.persistence.sqlite.subworkflow_repo``.
 Uses JSONB for node/edge/IO columns and TIMESTAMPTZ for timestamps.
 """
 
+import hashlib
 from collections.abc import Iterable  # noqa: TC003
 from typing import TYPE_CHECKING, Any, Literal
 
@@ -109,15 +110,23 @@ def _extract_references(  # noqa: PLR0913, C901
     *,
     parent_type: Literal["workflow_definition", "subworkflow"],
     id_column: str,
+    version_column: str | None = None,
     references: list[ParentReference],
 ) -> None:
     """Scan rows for SUBWORKFLOW nodes matching the coordinate."""
     for row in rows:
         parent_id = str(row[id_column])
         parent_name = str(row["name"])
+        parent_ver = str(row[version_column]) if version_column else None
         nodes = row.get("nodes") or []
         if not isinstance(nodes, list):
             msg = f"nodes field is not a list in {parent_type} {parent_id!r}"
+            logger.warning(
+                PERSISTENCE_SUBWORKFLOW_LIST_FAILED,
+                parent_id=parent_id,
+                parent_type=parent_type,
+                error=msg,
+            )
             raise QueryError(msg)
         for node in nodes:
             if not isinstance(node, dict):
@@ -127,6 +136,12 @@ def _extract_references(  # noqa: PLR0913, C901
             config = node.get("config")
             if not isinstance(config, dict):
                 msg = f"Malformed SUBWORKFLOW config in {parent_type} {parent_id!r}"
+                logger.warning(
+                    PERSISTENCE_SUBWORKFLOW_LIST_FAILED,
+                    parent_id=parent_id,
+                    parent_type=parent_type,
+                    error=msg,
+                )
                 raise QueryError(msg)
             if config.get("subworkflow_id") != subworkflow_id:
                 continue
@@ -142,6 +157,12 @@ def _extract_references(  # noqa: PLR0913, C901
                     f"Malformed SUBWORKFLOW node in"
                     f" {parent_type} {parent_id!r}: missing id"
                 )
+                logger.warning(
+                    PERSISTENCE_SUBWORKFLOW_LIST_FAILED,
+                    parent_id=parent_id,
+                    parent_type=parent_type,
+                    error=msg,
+                )
                 raise QueryError(msg)
             references.append(
                 ParentReference(
@@ -150,6 +171,7 @@ def _extract_references(  # noqa: PLR0913, C901
                     pinned_version=pinned,
                     node_id=node_id,
                     parent_type=parent_type,
+                    parent_version=parent_ver,
                 ),
             )
 
@@ -389,7 +411,15 @@ VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
                 self._pool.connection() as conn,
                 conn.transaction(),
             ):
-                lock_key = hash((subworkflow_id, version)) & 0x7FFFFFFF
+                lock_key = (
+                    int.from_bytes(
+                        hashlib.sha256(f"{subworkflow_id}:{version}".encode()).digest()[
+                            :4
+                        ],
+                        "big",
+                    )
+                    & 0x7FFFFFFF
+                )
                 await conn.execute(
                     "SELECT pg_advisory_xact_lock(%s)",
                     (lock_key,),
@@ -477,7 +507,7 @@ VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
         # Scan subworkflows table for nested references.
         async with conn.cursor(row_factory=dict_row) as cur:
             await cur.execute(
-                "SELECT subworkflow_id, name, nodes FROM subworkflows",
+                "SELECT subworkflow_id, name, semver, nodes FROM subworkflows",
             )
             sub_rows = await cur.fetchall()
         _extract_references(
@@ -486,6 +516,7 @@ VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
             version,
             parent_type="subworkflow",
             id_column="subworkflow_id",
+            version_column="semver",
             references=references,
         )
 

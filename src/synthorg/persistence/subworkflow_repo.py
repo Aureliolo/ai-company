@@ -64,6 +64,10 @@ class ParentReference(BaseModel):
     parent_type: Literal["workflow_definition", "subworkflow"] = Field(
         description="Whether the parent is a workflow definition or subworkflow",
     )
+    parent_version: NotBlankStr | None = Field(
+        default=None,
+        description="Parent's semver when parent_type is subworkflow",
+    )
 
 
 @runtime_checkable

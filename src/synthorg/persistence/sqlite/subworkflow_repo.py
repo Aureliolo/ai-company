@@ -118,6 +118,7 @@ def _extract_references(  # noqa: C901, PLR0913
     *,
     parent_type: Literal["workflow_definition", "subworkflow"],
     id_column: str,
+    version_column: str | None = None,
     references: list[ParentReference],
 ) -> None:
     """Scan rows for SUBWORKFLOW nodes referencing the given coordinate.
@@ -128,6 +129,7 @@ def _extract_references(  # noqa: C901, PLR0913
     for row in rows:
         parent_id = str(row[id_column])
         parent_name = str(row["name"])
+        parent_ver = str(row[version_column]) if version_column else None
         try:
             nodes = json.loads(row["nodes"])
         except json.JSONDecodeError:
@@ -154,6 +156,12 @@ def _extract_references(  # noqa: C901, PLR0913
             config = node.get("config")
             if not isinstance(config, dict):
                 msg = f"Malformed SUBWORKFLOW config in {parent_type} {parent_id!r}"
+                logger.warning(
+                    PERSISTENCE_SUBWORKFLOW_LIST_FAILED,
+                    parent_id=parent_id,
+                    parent_type=parent_type,
+                    error=msg,
+                )
                 raise QueryError(msg)
             if config.get("subworkflow_id") != subworkflow_id:
                 continue
@@ -169,6 +177,12 @@ def _extract_references(  # noqa: C901, PLR0913
                     f"Malformed SUBWORKFLOW node in"
                     f" {parent_type} {parent_id!r}: missing id"
                 )
+                logger.warning(
+                    PERSISTENCE_SUBWORKFLOW_LIST_FAILED,
+                    parent_id=parent_id,
+                    parent_type=parent_type,
+                    error=msg,
+                )
                 raise QueryError(msg)
             references.append(
                 ParentReference(
@@ -177,6 +191,7 @@ def _extract_references(  # noqa: C901, PLR0913
                     pinned_version=pinned,
                     node_id=node_id,
                     parent_type=parent_type,
+                    parent_version=parent_ver,
                 ),
             )
 
@@ -526,7 +541,7 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
 
         # Scan subworkflows table for nested references.
         sub_rows = await self._fetch_parent_rows(
-            "SELECT subworkflow_id, name, nodes FROM subworkflows",
+            "SELECT subworkflow_id, name, semver, nodes FROM subworkflows",
             subworkflow_id,
         )
         _extract_references(
@@ -535,6 +550,7 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             version,
             parent_type="subworkflow",
             id_column="subworkflow_id",
+            version_column="semver",
             references=references,
         )
 
