@@ -100,8 +100,8 @@ if [ "$NEW_COUNT" -gt 1 ]; then
     echo "To fix: restore atlas.sum from the base branch, delete all PR" >&2
     echo "migration files, then regenerate a single consolidated migration:" >&2
     echo "" >&2
-    echo "  1. git restore --source=$BASE -- $REVISIONS_DIR/atlas.sum" >&2
-    echo "  2. rm $REVISIONS_DIR/<all_pr_migration_files>.sql" >&2
+    echo "  1. git restore --source='$BASE' -- '$REVISIONS_DIR/atlas.sum'" >&2
+    echo "  2. rm '$REVISIONS_DIR/<all_pr_migration_files>.sql'" >&2
     echo "  3. atlas migrate diff --env sqlite <name>" >&2
     echo "" >&2
     echo "Do NOT manually edit atlas.sum -- always restore from the base branch." >&2

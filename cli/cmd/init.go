@@ -135,16 +135,7 @@ func handleReinit(cmd *cobra.Command, state *config.State, opts *GlobalOpts) (bo
 		if oldState.SettingsKey != "" {
 			state.SettingsKey = oldState.SettingsKey
 		}
-		if state.PersistenceBackend == "postgres" {
-			if oldState.PostgresPassword != "" {
-				state.PostgresPassword = oldState.PostgresPassword
-			}
-			// Only reuse the persisted port when the user did NOT pass
-			// --postgres-port on this invocation; an explicit flag must win.
-			if oldState.PostgresPort != 0 && !cmd.Flags().Changed("postgres-port") {
-				state.PostgresPort = oldState.PostgresPort
-			}
-		}
+		preservePostgresFromOldState(cmd, state, oldState)
 		return true, nil
 	}
 	if !isInteractive() {
@@ -161,17 +152,46 @@ func handleReinit(cmd *cobra.Command, state *config.State, opts *GlobalOpts) (bo
 	if *kept != "" {
 		state.SettingsKey = *kept
 	}
-	if state.PersistenceBackend == "postgres" {
-		if oldState.PostgresPassword != "" {
-			state.PostgresPassword = oldState.PostgresPassword
-		}
-		// Only reuse the persisted port when the user did NOT pass
-		// --postgres-port on this invocation; an explicit flag must win.
-		if oldState.PostgresPort != 0 && !cmd.Flags().Changed("postgres-port") {
-			state.PostgresPort = oldState.PostgresPort
-		}
-	}
+	preservePostgresFromOldState(cmd, state, oldState)
 	return true, nil
+}
+
+// preservePostgresFromOldState carries forward Postgres password and port
+// across a re-init. The decision is gated on the PERSISTED backend, not the
+// new state's backend, so that omitting --persistence-backend on an existing
+// Postgres deployment keeps the old settings. Explicit flags always win:
+//
+//   - If the user passed --persistence-backend with a non-postgres value,
+//     the new backend takes effect and Postgres fields are cleared.
+//   - If the user did not pass --persistence-backend, the new state inherits
+//     the persisted backend (and its Postgres settings) when the old config
+//     was already Postgres.
+//   - --postgres-port is always honored when explicitly set, otherwise the
+//     persisted port is carried over.
+func preservePostgresFromOldState(
+	cmd *cobra.Command,
+	state *config.State,
+	oldState config.State,
+) {
+	backendFlagSet := cmd.Flags().Changed("persistence-backend")
+	// If the user didn't change the backend and the old one was postgres,
+	// inherit the old backend so the rest of the block applies.
+	if !backendFlagSet && oldState.PersistenceBackend == "postgres" {
+		state.PersistenceBackend = "postgres"
+	}
+	if state.PersistenceBackend != "postgres" {
+		// Not a postgres deployment (either user switched away, or this
+		// install was never postgres) -- clear any leaked postgres fields.
+		state.PostgresPassword = ""
+		state.PostgresPort = 0
+		return
+	}
+	if oldState.PostgresPassword != "" {
+		state.PostgresPassword = oldState.PostgresPassword
+	}
+	if oldState.PostgresPort != 0 && !cmd.Flags().Changed("postgres-port") {
+		state.PostgresPort = oldState.PostgresPort
+	}
 }
 
 // confirmReinit prompts the user to confirm overwriting existing config.
@@ -493,6 +513,22 @@ func buildState(a setupAnswers) (config.State, error) {
 		postgresPort = a.postgresPort
 		if postgresPort == 0 {
 			postgresPort = config.DefaultState().PostgresPort
+		}
+		// Validate the RESOLVED port against backend/web ports. The CLI-flag
+		// check in validateInitFlags only fires when --postgres-port is
+		// explicit; the default 3002 can still collide if the user set
+		// --backend-port 3002 (or similar).
+		if postgresPort == backendPort {
+			return config.State{}, fmt.Errorf(
+				"postgres port %d conflicts with backend port %d",
+				postgresPort, backendPort,
+			)
+		}
+		if postgresPort == webPort {
+			return config.State{}, fmt.Errorf(
+				"postgres port %d conflicts with web port %d",
+				postgresPort, webPort,
+			)
 		}
 		pw, err := compose.GeneratePassword(32)
 		if err != nil {
