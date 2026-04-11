@@ -49,7 +49,7 @@ func TestGeneratePasswordURLSafe(t *testing.T) {
 func TestGeneratePasswordRejectsShort(t *testing.T) {
 	_, err := GeneratePassword(8)
 	if err == nil {
-		t.Error("expected error for length < 16")
+		t.Fatal("expected error for length < 16")
 	}
 	if !strings.Contains(err.Error(), "must be >= 16") {
 		t.Errorf("unexpected error message: %v", err)

@@ -153,8 +153,13 @@ func validateParams(p Params) error {
 	if p.BusBackend != "" && !config.IsValidBusBackend(p.BusBackend) {
 		return fmt.Errorf("invalid bus backend %q: must be one of %s", p.BusBackend, config.BusBackendNames())
 	}
-	if p.DistributedEnabled() && (p.NatsClientPort < 1 || p.NatsClientPort > 65535) {
-		return fmt.Errorf("invalid nats client port %d: must be 1-65535", p.NatsClientPort)
+	if p.DistributedEnabled() {
+		if p.NatsClientPort < 1 || p.NatsClientPort > 65535 {
+			return fmt.Errorf("invalid nats client port %d: must be 1-65535", p.NatsClientPort)
+		}
+		if p.NatsClientPort == p.BackendPort || p.NatsClientPort == p.WebPort {
+			return fmt.Errorf("nats client port %d collides with another service port", p.NatsClientPort)
+		}
 	}
 	if p.PostgresEnabled() {
 		if p.PostgresPort < 1 || p.PostgresPort > 65535 {

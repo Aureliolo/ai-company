@@ -98,7 +98,7 @@ Settable keys: `auto_apply_compose`, `auto_cleanup`, `auto_pull`, `auto_restart`
 
 | Command | Flags |
 |---------|-------|
-| `init` | `--backend-port`, `--web-port`, `--sandbox`, `--image-tag`, `--channel`, `--log-level`, `--bus-backend`, `--persistence-backend`, `--postgres-port` (all required flags = non-interactive mode) |
+| `init` | `--backend-port`, `--web-port`, `--sandbox`, `--log-level` (required for non-interactive mode); optional: `--image-tag`, `--channel`, `--bus-backend`, `--persistence-backend`, `--postgres-port` |
 | `start` | `--no-wait`, `--timeout`, `--no-pull`, `--dry-run`, `--no-detach`, `--no-verify` |
 | `stop` | `--timeout`/`-t`, `--volumes` |
 | `status` | `--watch`/`-w`, `--interval`, `--wide`, `--no-trunc`, `--services`, `--check` |

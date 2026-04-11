@@ -303,6 +303,12 @@ INSERT INTO audit_entries (
     def _check_jsonb_column(self, column: str) -> None:
         """Reject unknown column names to prevent SQL injection."""
         if column not in self._ALLOWED_JSONB_COLS:
+            logger.warning(
+                PERSISTENCE_AUDIT_ENTRY_QUERY_FAILED,
+                reason="jsonb_column_rejected",
+                column=column,
+                allowed=sorted(self._ALLOWED_JSONB_COLS),
+            )
             msg = (
                 f"JSONB column {column!r} not allowed; "
                 f"must be one of {sorted(self._ALLOWED_JSONB_COLS)}"

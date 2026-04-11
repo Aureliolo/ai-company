@@ -260,12 +260,12 @@ class TestCASRetry:
 
         persistence.settings.get = intercepting_get  # type: ignore[method-assign]
         try:
-            # This should fail on first CAS attempt but succeed on retry
             dept = await service.update_department(
                 "Engineering",
                 UpdateDepartmentRequest(head="bob"),
             )
             assert dept.head == "bob"
+            assert call_count >= 2, f"Expected retry (>= 2 reads), got {call_count}"
         finally:
             persistence.settings.get = original_get  # type: ignore[method-assign]
 

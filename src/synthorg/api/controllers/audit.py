@@ -198,6 +198,16 @@ class AuditController(Controller):
                 detail="JSONB queries require the Postgres backend",
             )
 
+        if jsonb_contains is not None and jsonb_key_exists is not None:
+            logger.warning(
+                API_VALIDATION_FAILED,
+                reason="multiple_jsonb_predicates",
+            )
+            raise ClientException(
+                status_code=422,
+                detail="Provide only one of jsonb_contains or jsonb_key_exists",
+            )
+
         column = "matched_rules"
 
         if jsonb_contains is not None:
@@ -220,24 +230,24 @@ class AuditController(Controller):
                     reason="jsonb_contains_not_collection",
                 )
                 raise ClientException(
-                    detail=("jsonb_contains must be a JSON array or object"),
+                    detail="jsonb_contains must be a JSON array or object",
                 )
-            entries, total = await repo.query_jsonb_contains(
+            entries, _ = await repo.query_jsonb_contains(
                 column,
                 value,
                 since=since,
                 until=until,
-                limit=limit,
-                offset=offset,
+                limit=_MAX_AUDIT_QUERY,
+                offset=0,
             )
         elif jsonb_key_exists is not None:
-            entries, total = await repo.query_jsonb_key_exists(
+            entries, _ = await repo.query_jsonb_key_exists(
                 column,
                 jsonb_key_exists,
                 since=since,
                 until=until,
-                limit=limit,
-                offset=offset,
+                limit=_MAX_AUDIT_QUERY,
+                offset=0,
             )
         else:
             logger.warning(
@@ -253,9 +263,9 @@ class AuditController(Controller):
             action_type=action_type,
             verdict=verdict,
         )
-        filtered_total = max(total - (len(entries) - len(filtered)), 0)
+        page = filtered[offset : offset + limit]
         meta = PaginationMeta(
-            total=filtered_total,
+            total=len(filtered),
             offset=offset,
             limit=limit,
         )
@@ -267,7 +277,7 @@ class AuditController(Controller):
             jsonb_query=True,
         )
         return PaginatedResponse[AuditEntry](
-            data=filtered,
+            data=page,
             pagination=meta,
         )
 

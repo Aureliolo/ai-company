@@ -403,6 +403,7 @@ ON CONFLICT(id) DO UPDATE SET
                     PERSISTENCE_USER_DELETE_FAILED,
                     user_id=user_id,
                     constraint=constraint,
+                    exc_info=True,
                 )
                 raise ConstraintViolationError(
                     msg,

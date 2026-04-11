@@ -383,7 +383,35 @@ class FakeUserRepository:
         if is_system_user(user_id):
             msg = "System user cannot be deleted"
             raise QueryError(msg)
-        return self._users.pop(user_id, None) is not None
+        user = self._users.get(user_id)
+        if user is None:
+            return False
+        if user.role == HumanRole.CEO:
+            other_ceos = sum(
+                1
+                for u in self._users.values()
+                if u.role == HumanRole.CEO and u.id != user_id
+            )
+            if other_ceos == 0:
+                msg = "Cannot remove the last CEO"
+                raise ConstraintViolationError(
+                    msg,
+                    constraint="enforce_ceo_minimum",
+                )
+        if OrgRole.OWNER in user.org_roles:
+            other_owners = sum(
+                1
+                for u in self._users.values()
+                if u.id != user_id and OrgRole.OWNER in u.org_roles
+            )
+            if other_owners == 0:
+                msg = "Cannot remove the last owner"
+                raise ConstraintViolationError(
+                    msg,
+                    constraint="enforce_owner_minimum",
+                )
+        del self._users[user_id]
+        return True
 
 
 class FakeApiKeyRepository:

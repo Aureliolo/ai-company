@@ -262,6 +262,14 @@ func (s State) validate() error {
 	if s.Hints != "" && !IsValidHintsMode(s.Hints) {
 		return fmt.Errorf("invalid hints %q: must be one of %s", s.Hints, HintsModeNames())
 	}
+	if s.PersistenceBackend == "postgres" {
+		if s.PostgresPort < 1 || s.PostgresPort > 65535 {
+			return fmt.Errorf("invalid postgres_port %d: must be 1-65535", s.PostgresPort)
+		}
+		if strings.TrimSpace(s.PostgresPassword) == "" {
+			return fmt.Errorf("postgres_password is required when persistence_backend is postgres")
+		}
+	}
 	for name, digest := range s.VerifiedDigests {
 		if !isValidDigestFormat(digest) {
 			return fmt.Errorf("invalid verified_digests[%q]: %q is not a valid sha256 digest", name, digest)

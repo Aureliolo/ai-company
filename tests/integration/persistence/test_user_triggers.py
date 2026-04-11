@@ -106,7 +106,7 @@ class TestLastCEOTrigger:
             await on_disk_backend.users.save(demoted)
         assert exc_info.value.constraint == "enforce_ceo_minimum"
 
-    async def test_can_demote_ceo_when_another_exists_sqlite(
+    async def test_updating_non_ceo_does_not_trigger_ceo_guard_sqlite(
         self,
         on_disk_backend: SQLitePersistenceBackend,
     ) -> None:
