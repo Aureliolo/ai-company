@@ -66,14 +66,15 @@ if [ "$NEW_COUNT" -gt 1 ]; then
         echo "  - $f" >&2
     done
     echo "" >&2
+    BASE="${BASE_BRANCH:-${GITHUB_BASE_REF:-origin/main}}"
     echo "To fix: restore atlas.sum from the base branch, delete all PR" >&2
     echo "migration files, then regenerate a single consolidated migration:" >&2
     echo "" >&2
-    echo "  1. git show origin/main:$REVISIONS_DIR/atlas.sum > $REVISIONS_DIR/atlas.sum" >&2
+    echo "  1. git restore --source=$BASE -- $REVISIONS_DIR/atlas.sum" >&2
     echo "  2. rm $REVISIONS_DIR/<all_pr_migration_files>.sql" >&2
     echo "  3. atlas migrate diff --env sqlite <name>" >&2
     echo "" >&2
-    echo "Do NOT manually edit atlas.sum lines -- always restore from the base branch." >&2
+    echo "Do NOT manually edit atlas.sum -- always restore from the base branch." >&2
     exit 2
 fi
 

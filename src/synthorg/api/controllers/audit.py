@@ -96,7 +96,7 @@ class AuditController(Controller):
         """
         self._validate_timestamps(since, until)
 
-        has_jsonb = any((jsonb_contains, jsonb_key_exists))
+        has_jsonb = any(p is not None for p in (jsonb_contains, jsonb_key_exists))
 
         if has_jsonb:
             return await self._jsonb_query(

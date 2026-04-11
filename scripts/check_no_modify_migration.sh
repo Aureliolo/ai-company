@@ -29,12 +29,13 @@ if [ "${#MODIFIED[@]}" -gt 0 ] && [ -n "${MODIFIED[0]}" ]; then
         echo "  Modified: $f" >&2
     done
     echo "" >&2
+    BASE="${BASE_BRANCH:-${GITHUB_BASE_REF:-origin/main}}"
     echo "To fix: restore atlas.sum from the base branch and regenerate:" >&2
-    echo "  1. git show origin/main:$REVISIONS_DIR/atlas.sum > $REVISIONS_DIR/atlas.sum" >&2
+    echo "  1. git restore --source=$BASE -- $REVISIONS_DIR/atlas.sum" >&2
     echo "  2. Delete all PR migration files: rm $REVISIONS_DIR/<migration>.sql" >&2
     echo "  3. Regenerate: atlas migrate diff --env sqlite <name>" >&2
     echo "" >&2
-    echo "Do NOT manually edit atlas.sum lines -- always restore from the base branch." >&2
+    echo "Do NOT manually edit atlas.sum -- always restore from the base branch." >&2
     echo "" >&2
     exit 1
 fi

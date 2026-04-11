@@ -14,6 +14,9 @@ import re
 from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
 from synthorg.observability import get_logger
+from synthorg.observability.events.persistence import (
+    PERSISTENCE_JSONB_PATH_INVALID,
+)
 
 if TYPE_CHECKING:
     from datetime import datetime
@@ -38,9 +41,21 @@ def validate_jsonb_path(path: str) -> None:
         ValueError: If the path is invalid or potentially unsafe.
     """
     if not path or len(path) > _MAX_PATH_LENGTH:
+        logger.warning(
+            PERSISTENCE_JSONB_PATH_INVALID,
+            reason="length_out_of_range",
+            path_length=len(path),
+            max_length=_MAX_PATH_LENGTH,
+        )
         msg = f"JSONB path must be 1-{_MAX_PATH_LENGTH} characters, got {len(path)}"
         raise ValueError(msg)
     if not _PATH_PATTERN.match(path):
+        logger.warning(
+            PERSISTENCE_JSONB_PATH_INVALID,
+            reason="pattern_mismatch",
+            path_preview=path[:64],
+            path_length=len(path),
+        )
         msg = (
             f"Invalid JSONB path {path!r}: must be dot-separated "
             "alphanumeric/underscore segments (max depth 5)"

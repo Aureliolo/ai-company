@@ -356,7 +356,24 @@ class UserController(Controller):
             logger.warning(API_RESOURCE_CONFLICT, reason=msg)
             raise ConflictError(msg)
 
-        deleted = await app_state.persistence.users.delete(user_id)
+        try:
+            deleted = await app_state.persistence.users.delete(user_id)
+        except ConstraintViolationError as exc:
+            if exc.constraint == LAST_OWNER_TRIGGER:
+                msg = "Cannot delete the last owner"
+            elif exc.constraint == LAST_CEO_TRIGGER:
+                msg = "Cannot delete the last CEO"
+            else:
+                logger.error(
+                    API_USER_SAVE_FAILED,
+                    user_id=user_id,
+                    intent="delete_user",
+                    constraint=exc.constraint,
+                    exc_info=True,
+                )
+                raise
+            logger.warning(API_RESOURCE_CONFLICT, reason=msg)
+            raise ConflictError(msg) from exc
         if not deleted:
             msg = f"User not found: {user_id}"
             logger.warning(API_RESOURCE_NOT_FOUND, reason=msg)

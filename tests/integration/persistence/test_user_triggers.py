@@ -228,3 +228,76 @@ class TestLastOwnerTrigger:
         assert len(successes) == 1, f"Expected exactly 1 success, got {results}"
         assert len(failures) == 1
         assert failures[0] == "enforce_owner_minimum"
+
+
+@pytest.mark.integration
+class TestDeleteTriggers:
+    """DELETE-time invariants for CEO/owner minimums."""
+
+    async def test_delete_last_ceo_rejected_sqlite(
+        self,
+        on_disk_backend: SQLitePersistenceBackend,
+    ) -> None:
+        ceo = _make_user(user_id="ceo-only", username="ceo", role=HumanRole.CEO)
+        await on_disk_backend.users.save(ceo)
+
+        with pytest.raises(ConstraintViolationError) as exc_info:
+            await on_disk_backend.users.delete("ceo-only")
+        assert exc_info.value.constraint == "enforce_ceo_minimum"
+
+    async def test_delete_last_owner_rejected_sqlite(
+        self,
+        on_disk_backend: SQLitePersistenceBackend,
+    ) -> None:
+        # Need a CEO to satisfy the CEO-minimum invariant.
+        ceo = _make_user(user_id="ceo-1", username="ceo1", role=HumanRole.CEO)
+        owner = _make_user(
+            user_id="owner-1",
+            username="owner1",
+            org_roles=(OrgRole.OWNER,),
+        )
+        await on_disk_backend.users.save(ceo)
+        await on_disk_backend.users.save(owner)
+
+        with pytest.raises(ConstraintViolationError) as exc_info:
+            await on_disk_backend.users.delete("owner-1")
+        assert exc_info.value.constraint == "enforce_owner_minimum"
+
+    async def test_concurrent_owner_delete_one_fails_sqlite(
+        self,
+        on_disk_backend: SQLitePersistenceBackend,
+    ) -> None:
+        """Two owners, concurrent deletes -- exactly one succeeds."""
+        ceo = _make_user(user_id="ceo-1", username="ceo1", role=HumanRole.CEO)
+        owner1 = _make_user(
+            user_id="owner-1",
+            username="owner1",
+            org_roles=(OrgRole.OWNER,),
+        )
+        owner2 = _make_user(
+            user_id="owner-2",
+            username="owner2",
+            org_roles=(OrgRole.OWNER,),
+        )
+        await on_disk_backend.users.save(ceo)
+        await on_disk_backend.users.save(owner1)
+        await on_disk_backend.users.save(owner2)
+
+        results: list[bool | str] = []
+
+        async def try_delete(user_id: str) -> None:
+            try:
+                await on_disk_backend.users.delete(user_id)
+                results.append(True)
+            except ConstraintViolationError as exc:
+                results.append(exc.constraint)
+
+        async with asyncio.TaskGroup() as tg:
+            tg.create_task(try_delete("owner-1"))
+            tg.create_task(try_delete("owner-2"))
+
+        successes = [r for r in results if r is True]
+        failures = [r for r in results if r is not True]
+        assert len(successes) == 1, f"Expected exactly 1 success, got {results}"
+        assert len(failures) == 1
+        assert failures[0] == "enforce_owner_minimum"

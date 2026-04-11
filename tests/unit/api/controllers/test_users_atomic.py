@@ -163,3 +163,11 @@ class TestOwnerRevocationConstraint:
             headers=_CEO_HEADERS,
         )
         assert resp.status_code == 409
+
+    # NOTE: The DELETE trigger enforcement (users.delete raising
+    # ConstraintViolationError with the enforce_owner_minimum token)
+    # is covered by tests/integration/persistence/test_user_triggers.py
+    # in the TestDeleteTriggers class. A controller-level unit test
+    # here would duplicate that coverage, and consecutive requests
+    # against Litestar's TestClient on Windows + Python 3.14 are
+    # hitting an event-loop cleanup race that hangs the test.
