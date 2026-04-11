@@ -257,6 +257,7 @@ class TestEventConstants:
             "risk_budget",
             "quality",
             "health",
+            "integrations",
             "trajectory",
             "call_classification",
             "coordination_metrics",

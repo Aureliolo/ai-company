@@ -5,7 +5,7 @@ signatures, and publishes to the message bus.
 """
 
 import json
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 from litestar import Controller, Request, Response, get, post
 from litestar.datastructures import State  # noqa: TC002
@@ -13,6 +13,7 @@ from litestar.params import Parameter
 
 from synthorg.api.dto import ApiResponse
 from synthorg.api.guards import require_read_access
+from synthorg.integrations.connections.models import WebhookReceipt  # noqa: TC001
 from synthorg.integrations.webhooks.event_bus_bridge import (
     publish_webhook_event,
 )
@@ -24,9 +25,6 @@ from synthorg.observability.events.integrations import (
     WEBHOOK_RECEIVED,
     WEBHOOK_REJECTED,
 )
-
-if TYPE_CHECKING:
-    from synthorg.integrations.connections.models import WebhookReceipt
 
 logger = get_logger(__name__)
 

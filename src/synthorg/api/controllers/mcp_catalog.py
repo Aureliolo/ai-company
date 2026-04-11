@@ -3,19 +3,15 @@
 Browse and install MCP servers from the bundled catalog.
 """
 
-from typing import TYPE_CHECKING
-
 from litestar import Controller, get
 from litestar.datastructures import State  # noqa: TC002
 from litestar.params import Parameter
 
 from synthorg.api.dto import ApiResponse
 from synthorg.api.guards import require_read_access
+from synthorg.integrations.connections.models import CatalogEntry  # noqa: TC001
 from synthorg.integrations.errors import CatalogEntryNotFoundError
 from synthorg.observability import get_logger
-
-if TYPE_CHECKING:
-    from synthorg.integrations.connections.models import CatalogEntry
 
 logger = get_logger(__name__)
 

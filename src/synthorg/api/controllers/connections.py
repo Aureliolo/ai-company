@@ -5,7 +5,7 @@ including on-demand health checks.
 """
 
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 from litestar import Controller, delete, get, patch, post
 from litestar.datastructures import State  # noqa: TC002
@@ -15,17 +15,15 @@ from synthorg.api.dto import ApiResponse
 from synthorg.api.errors import NotFoundError
 from synthorg.api.guards import require_read_access, require_write_access
 from synthorg.integrations.connections.catalog import _UNSET
+from synthorg.integrations.connections.models import (
+    Connection,
+    HealthReport,
+)
 from synthorg.integrations.errors import (
     ConnectionNotFoundError,
     DuplicateConnectionError,
 )
 from synthorg.observability import get_logger
-
-if TYPE_CHECKING:
-    from synthorg.integrations.connections.models import (
-        Connection,
-        HealthReport,
-    )
 
 logger = get_logger(__name__)
 
@@ -130,6 +128,7 @@ class ConnectionsController(Controller):
         "/{name:str}",
         guards=[require_write_access],
         summary="Delete a connection",
+        status_code=200,
     )
     async def delete_connection(
         self,
@@ -155,9 +154,6 @@ class ConnectionsController(Controller):
         name: str,
     ) -> ApiResponse[HealthReport]:
         """Run an on-demand health check for a connection."""
-        from synthorg.integrations.connections.models import (  # noqa: PLC0415
-            HealthReport,
-        )
         from synthorg.integrations.health.prober import (  # noqa: PLC0415
             _CHECK_REGISTRY,
         )

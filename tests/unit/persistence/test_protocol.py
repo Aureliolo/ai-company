@@ -601,6 +601,22 @@ class _FakeBackend:
     def circuit_breaker_state(self) -> Any:
         return object()
 
+    @property
+    def connections(self) -> Any:
+        return object()
+
+    @property
+    def connection_secrets(self) -> Any:
+        return object()
+
+    @property
+    def oauth_states(self) -> Any:
+        return object()
+
+    @property
+    def webhook_receipts(self) -> Any:
+        return object()
+
     async def get_setting(self, key: str) -> str | None:
         return None
 
