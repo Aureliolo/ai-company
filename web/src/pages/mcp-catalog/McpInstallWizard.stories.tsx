@@ -34,6 +34,7 @@ const meta = {
       useConnectionsStore.setState({
         connections: [
           {
+            id: 'conn-primary-github',
             name: 'primary-github',
             connection_type: 'github',
             auth_method: 'bearer_token',

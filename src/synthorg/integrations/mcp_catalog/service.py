@@ -68,6 +68,14 @@ class CatalogService:
         self,
         catalog_path: Path | None = None,
     ) -> None:
+        """Initialize the catalog service.
+
+        Args:
+            catalog_path: Override for the bundled catalog JSON file.
+                Defaults to the packaged ``bundled.json`` shipped
+                alongside this module. Tests pass a temporary path
+                to exercise edge cases without shipping fixtures.
+        """
         self._path = catalog_path or _BUNDLED_PATH
         self._entries: tuple[CatalogEntry, ...] = ()
         self._loaded = False

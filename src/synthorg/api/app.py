@@ -144,6 +144,9 @@ if TYPE_CHECKING:
 
     from synthorg.api.auth.config import AuthConfig
     from synthorg.api.config import ApiConfig
+    from synthorg.integrations.mcp_catalog.installations import (
+        McpInstallationRepository,
+    )
     from synthorg.settings.service import SettingsService
     from synthorg.settings.subscriber import SettingsSubscriber
 
@@ -1097,7 +1100,7 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
     tunnel_provider = None
     webhook_event_bridge = None
     mcp_catalog_service = None
-    mcp_installations_repo: object | None = None
+    mcp_installations_repo: McpInstallationRepository | None = None
 
     # Bundled MCP catalog is stateless (loads static JSON) and has no
     # runtime dependencies, so it is wired unconditionally.
@@ -1135,6 +1138,19 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
             if callable(get_db_fn):
                 try:
                     sqlite_db = get_db_fn()
+                except MemoryError, RecursionError:
+                    raise
+                except AttributeError, TypeError, RuntimeError:
+                    # Structural/shape errors in the persistence object
+                    # are real bugs, not transient failures. Log at
+                    # error level so they surface on dashboards, then
+                    # fall back to the in-memory repo so the app still
+                    # starts in degraded mode.
+                    logger.error(
+                        API_APP_STARTUP,
+                        error="get_db() misconfigured for mcp_installations_repo",
+                        exc_info=True,
+                    )
                 except Exception:
                     logger.warning(
                         API_APP_STARTUP,
@@ -1352,7 +1368,7 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
         tunnel_provider=tunnel_provider,
         webhook_event_bridge=webhook_event_bridge,
         mcp_catalog_service=mcp_catalog_service,
-        mcp_installations_repo=mcp_installations_repo,  # type: ignore[arg-type]
+        mcp_installations_repo=mcp_installations_repo,
         startup_time=time.monotonic(),
     )
     if distributed_task_queue is not None:

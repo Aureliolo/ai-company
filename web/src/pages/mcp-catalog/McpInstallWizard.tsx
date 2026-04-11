@@ -140,7 +140,7 @@ function PickConnectionStep({
           onChange={(value) => onSelect(value || null)}
         />
       ) : (
-        <p className="rounded-md bg-surface p-3 text-xs text-text-muted">
+        <p className="rounded-md bg-surface p-card text-xs text-text-muted">
           No eligible connections found. Create one first.
         </p>
       )}

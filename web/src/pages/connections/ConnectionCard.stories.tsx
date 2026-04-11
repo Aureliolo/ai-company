@@ -4,6 +4,7 @@ import type { Connection, HealthReport } from '@/api/types'
 import { ConnectionCard } from './ConnectionCard'
 
 const baseConnection: Connection = {
+  id: 'conn-primary-github',
   name: 'primary-github',
   connection_type: 'github',
   auth_method: 'bearer_token',

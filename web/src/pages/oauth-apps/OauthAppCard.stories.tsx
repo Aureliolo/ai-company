@@ -5,6 +5,7 @@ import { connectionsList } from '@/mocks/handlers/integrations'
 import { OauthAppCard } from './OauthAppCard'
 
 const baseConnection: Connection = {
+  id: 'conn-gh-oauth-app',
   name: 'gh-oauth-app',
   connection_type: 'oauth_app',
   auth_method: 'oauth2',

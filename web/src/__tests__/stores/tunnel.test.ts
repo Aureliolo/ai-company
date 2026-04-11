@@ -31,6 +31,15 @@ describe('useTunnelStore', () => {
     expect(useTunnelStore.getState().phase).toBe('stopped')
   })
 
+  it('transitions to error phase when the status fetch fails', async () => {
+    vi.mocked(getTunnelStatus).mockRejectedValue(new Error('fetch boom'))
+    await useTunnelStore.getState().fetchStatus()
+    const state = useTunnelStore.getState()
+    expect(state.phase).toBe('error')
+    expect(state.error).toBe('fetch boom')
+    expect(state.publicUrl).toBeNull()
+  })
+
   it('start transitions enabling -> on on success', async () => {
     vi.mocked(startTunnel).mockResolvedValue({
       public_url: 'https://new.ngrok.io',
