@@ -101,8 +101,12 @@ class NgrokAdapter:
             from pyngrok import ngrok  # noqa: PLC0415
 
             await asyncio.to_thread(ngrok.disconnect, self._public_url)
-        except Exception:
-            logger.exception(TUNNEL_ERROR, error="failed to disconnect")
+        except Exception as exc:
+            logger.exception(
+                TUNNEL_ERROR,
+                error=f"failed to disconnect: {exc}",
+                exc_type=type(exc).__name__,
+            )
         self._tunnel = None
         self._public_url = None
         logger.info(TUNNEL_STOPPED)

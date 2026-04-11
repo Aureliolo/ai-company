@@ -55,9 +55,22 @@ class CatalogService:
             return
         try:
             raw = json.loads(self._path.read_text(encoding="utf-8"))
+            # Guard root/entry shapes so a malformed file like ``[]``
+            # or ``{"servers": ["oops"]}`` surfaces through the same
+            # logged failure path instead of escaping as an unlogged
+            # ``AttributeError`` on the ``raw.get`` / ``s.get`` calls.
+            if not isinstance(raw, dict):
+                msg = "bundled catalog root must be a JSON object"
+                raise TypeError(msg)  # noqa: TRY301
             servers = raw.get("servers", [])
+            if not isinstance(servers, list):
+                msg = "bundled catalog 'servers' must be a list"
+                raise TypeError(msg)  # noqa: TRY301
             entries = []
             for s in servers:
+                if not isinstance(s, dict):
+                    msg = "bundled catalog entry must be a JSON object"
+                    raise TypeError(msg)  # noqa: TRY301
                 conn_type = s.get("required_connection_type")
                 entries.append(
                     CatalogEntry(
@@ -83,11 +96,13 @@ class CatalogService:
                 error="failed to load bundled catalog",
             )
             raise
-        except ValueError, TypeError:
-            # Catches ``ConnectionType(conn_type)`` enum rejection
-            # and ``CatalogEntry(...)`` Pydantic validation errors so
-            # a malformed bundled entry surfaces as a logged failure
-            # instead of escaping silently.
+        except ValueError, TypeError, AttributeError:
+            # Catches ``ConnectionType(conn_type)`` enum rejection,
+            # the shape-guard TypeErrors above, ``CatalogEntry``
+            # Pydantic validation errors, and any residual
+            # ``AttributeError`` from an unexpected payload shape
+            # (belt-and-braces) so malformed bundled entries always
+            # surface as a logged failure instead of escaping silently.
             logger.exception(
                 MCP_SERVER_INSTALL_FAILED,
                 error="bundled catalog entry failed model validation",

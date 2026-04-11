@@ -120,6 +120,43 @@ class DeviceFlow:
             msg = f"Device code request failed: {exc}"
             raise TokenExchangeFailedError(msg) from exc
 
+        # Validate the response shape before indexing / coercing:
+        # ``resp.json()`` can return a list or scalar which would
+        # otherwise blow up with ``AttributeError`` or ``KeyError``
+        # on the next line, bypassing the flow's error contract.
+        if not isinstance(data, dict):
+            logger.warning(
+                OAUTH_TOKEN_EXCHANGE_FAILED,
+                error="device code response is not a JSON object",
+                response_type=type(data).__name__,
+            )
+            msg = f"Device code response is not a JSON object: {type(data).__name__}"
+            raise TokenExchangeFailedError(msg)
+        required = ("device_code", "user_code", "verification_uri")
+        missing = [
+            key
+            for key in required
+            if not isinstance(data.get(key), str) or not data.get(key)
+        ]
+        if missing:
+            logger.warning(
+                OAUTH_TOKEN_EXCHANGE_FAILED,
+                error="device code response missing required fields",
+                missing=missing,
+            )
+            msg = f"Device code response missing required fields: {missing}"
+            raise TokenExchangeFailedError(msg)
+        try:
+            interval_value = int(data.get("interval", 5))
+            expires_in_value = int(data.get("expires_in", 600))
+        except (TypeError, ValueError) as exc:
+            logger.warning(
+                OAUTH_TOKEN_EXCHANGE_FAILED,
+                error="device code response has non-numeric interval/expires_in",
+            )
+            msg = "Device code response has non-numeric interval/expires_in"
+            raise TokenExchangeFailedError(msg) from exc
+
         # user_code is an active credential -- do not log it at
         # INFO. Only the verification URI is safe to surface.
         logger.info(
@@ -133,11 +170,11 @@ class DeviceFlow:
             verification_uri_complete=str(
                 data.get("verification_uri_complete", ""),
             ),
-            interval=int(data.get("interval", 5)),
-            expires_in=int(data.get("expires_in", 600)),
+            interval=interval_value,
+            expires_in=expires_in_value,
         )
 
-    async def poll_for_token(
+    async def poll_for_token(  # noqa: C901
         self,
         *,
         token_url: str,
@@ -178,6 +215,7 @@ class DeviceFlow:
             try:
                 async with httpx.AsyncClient(timeout=30) as client:
                     resp = await client.post(token_url, data=payload)
+                    status_code = resp.status_code
                     data = resp.json()
             except (httpx.HTTPError, json.JSONDecodeError) as exc:
                 logger.exception(
@@ -186,6 +224,18 @@ class DeviceFlow:
                 )
                 msg = f"Device flow polling failed: {exc}"
                 raise TokenExchangeFailedError(msg) from exc
+
+            if not isinstance(data, dict):
+                logger.warning(
+                    OAUTH_TOKEN_EXCHANGE_FAILED,
+                    error="device token response is not a JSON object",
+                    status_code=status_code,
+                    response_type=type(data).__name__,
+                )
+                msg = (
+                    f"Device token response is not a JSON object: {type(data).__name__}"
+                )
+                raise TokenExchangeFailedError(msg)
 
             error = data.get("error")
             if error == "authorization_pending":
@@ -218,6 +268,31 @@ class DeviceFlow:
                     expires_at=expires_at,
                     scope_granted=str(data.get("scope", "")),
                 )
+            # Fail fast: a non-success status with no recognized
+            # RFC 8628 error code means the authorization server
+            # returned an unexpected shape. Keep polling until the
+            # deadline would silently paper over the problem.
+            if status_code >= 400:  # noqa: PLR2004
+                logger.warning(
+                    OAUTH_TOKEN_EXCHANGE_FAILED,
+                    error="device token endpoint returned unexpected error",
+                    status_code=status_code,
+                )
+                msg = (
+                    "Device flow token endpoint returned "
+                    f"HTTP {status_code} with no RFC 8628 error field"
+                )
+                raise TokenExchangeFailedError(msg)
+            logger.warning(
+                OAUTH_TOKEN_EXCHANGE_FAILED,
+                error="device token endpoint returned unexpected shape",
+                status_code=status_code,
+            )
+            msg = (
+                "Device flow token endpoint returned an unexpected "
+                "response with neither error nor access_token"
+            )
+            raise TokenExchangeFailedError(msg)
 
         logger.warning(
             OAUTH_DEVICE_FLOW_TIMEOUT,

@@ -15,6 +15,9 @@ from synthorg.integrations.webhooks.verifiers.slack_signing import (
     SlackSigningVerifier,
 )
 from synthorg.observability import get_logger
+from synthorg.observability.events.integrations import (
+    WEBHOOK_VERIFIER_UNSUPPORTED_TYPE,
+)
 
 logger = get_logger(__name__)
 
@@ -45,7 +48,7 @@ def get_verifier(connection_type: ConnectionType) -> SignatureVerifier:
     verifier_cls = _VERIFIER_FACTORIES.get(connection_type)
     if verifier_cls is None:
         logger.error(
-            "integrations.webhook.unsupported_verifier",
+            WEBHOOK_VERIFIER_UNSUPPORTED_TYPE,
             connection_type=connection_type.value,
         )
         msg = (

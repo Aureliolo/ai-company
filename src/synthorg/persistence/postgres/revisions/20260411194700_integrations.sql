@@ -5,7 +5,9 @@ CREATE TABLE "connection_secrets" (
   "key_version" integer NOT NULL DEFAULT 1,
   "created_at" timestamptz NOT NULL,
   "rotated_at" timestamptz NULL,
-  PRIMARY KEY ("secret_id")
+  PRIMARY KEY ("secret_id"),
+  CONSTRAINT "connection_secrets_key_version_check" CHECK (key_version >= 1),
+  CONSTRAINT "connection_secrets_secret_id_check" CHECK (length(secret_id) > 0)
 );
 -- Create "connections" table
 CREATE TABLE "connections" (

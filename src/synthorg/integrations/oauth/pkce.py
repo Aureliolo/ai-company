@@ -104,14 +104,20 @@ def decrypt_pkce_verifier(ciphertext: str) -> str:
     cipher = _get_cipher()
     try:
         plaintext = cipher.decrypt(ciphertext.encode("ascii"))
-    except InvalidToken as exc:
+    except (InvalidToken, UnicodeEncodeError, UnicodeDecodeError) as exc:
+        # Corrupted persisted data can fail in multiple ways:
+        # ``InvalidToken`` (tamper / wrong key) or a Unicode error
+        # (non-ASCII bytes stored in the pkce_verifier column).
+        # Translate all of them into a structured
+        # ``PKCEValidationError`` so the controller layer returns
+        # a 400 instead of leaking as an unhandled 500.
         from synthorg.observability.events.integrations import (  # noqa: PLC0415
             OAUTH_PKCE_VALIDATION_FAILED,
         )
 
         logger.warning(
             OAUTH_PKCE_VALIDATION_FAILED,
-            error="verifier decrypt failed (tamper or wrong key)",
+            error=f"verifier decrypt failed: {type(exc).__name__}",
         )
         msg = "Failed to decrypt stored PKCE verifier"
         raise PKCEValidationError(msg) from exc

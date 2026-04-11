@@ -112,6 +112,14 @@ class PersistenceBackend(Protocol):
         ssrf_violations: Repository for SsrfViolation persistence.
         circuit_breaker_state: Repository for circuit breaker state
             persistence.
+        connections: Repository for external service connection
+            persistence.
+        connection_secrets: Repository for encrypted connection secret
+            persistence.
+        oauth_states: Repository for transient OAuth authorization
+            state persistence.
+        webhook_receipts: Repository for webhook receipt log
+            persistence.
     """
 
     async def connect(self) -> None:

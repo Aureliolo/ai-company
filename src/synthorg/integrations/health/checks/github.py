@@ -2,6 +2,7 @@
 
 import time
 from datetime import UTC, datetime
+from urllib.parse import urlparse
 
 import httpx
 
@@ -22,6 +23,41 @@ logger = get_logger(__name__)
 _DEFAULT_API_URL = "https://api.github.com"
 _TIMEOUT = 10.0
 _HTTP_OK = 200
+
+# Allow-list of hostnames the GitHub health check will send a bearer
+# token to. Prevents token exfiltration when a malicious operator
+# points ``connection.base_url`` at a hostile endpoint. The default
+# list covers github.com (cloud) plus the generic ``ghe.``/``github.``
+# Enterprise prefixes we expect customers to use. Override by adding
+# specific hostnames through config, not by disabling the check.
+_ALLOWED_HOST_SUFFIXES: tuple[str, ...] = (
+    "api.github.com",
+    ".github.com",
+    ".ghe.com",
+)
+
+
+def _is_allowed_github_host(api_url: str) -> bool:
+    """Return ``True`` iff ``api_url`` targets a trusted GitHub host.
+
+    Rejects non-HTTPS schemes, empty hostnames, and hostnames that do
+    not match an entry in ``_ALLOWED_HOST_SUFFIXES``. A credentialed
+    bearer token must never leave the process for a host that failed
+    this check.
+    """
+    try:
+        parsed = urlparse(api_url)
+    except ValueError:
+        return False
+    if parsed.scheme != "https":
+        return False
+    host = (parsed.hostname or "").lower()
+    if not host:
+        return False
+    return any(
+        host == suffix.lstrip(".") or host.endswith(suffix)
+        for suffix in _ALLOWED_HOST_SUFFIXES
+    )
 
 
 class GitHubHealthCheck:
@@ -66,6 +102,25 @@ class GitHubHealthCheck:
             )
 
         api_url = connection.base_url or _DEFAULT_API_URL
+        if not _is_allowed_github_host(api_url):
+            # Fail closed: a custom ``base_url`` pointing at a non-
+            # GitHub host would otherwise have the bearer token
+            # exfiltrated to that host on the next request.
+            logger.warning(
+                HEALTH_CHECK_FAILED,
+                connection_name=connection.name,
+                error="base_url not in GitHub allow-list; refusing to send token",
+                api_url=api_url,
+            )
+            return HealthReport(
+                connection_name=connection.name,
+                status=ConnectionStatus.UNHEALTHY,
+                error_detail=(
+                    "GitHub connection base_url is not a trusted "
+                    "GitHub host; token not sent"
+                ),
+                checked_at=now,
+            )
         url = f"{api_url}/user"
         start = time.monotonic()
         try:

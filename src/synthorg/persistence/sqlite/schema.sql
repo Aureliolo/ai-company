@@ -793,9 +793,9 @@ CREATE INDEX idx_edv_content_hash
 
 -- ── Connection secrets ───────────────────────────────────────
 CREATE TABLE connection_secrets (
-    secret_id TEXT NOT NULL PRIMARY KEY,
+    secret_id TEXT NOT NULL PRIMARY KEY CHECK(length(secret_id) > 0),
     encrypted_value BLOB NOT NULL,
-    key_version INTEGER NOT NULL DEFAULT 1,
+    key_version INTEGER NOT NULL DEFAULT 1 CHECK(key_version >= 1),
     created_at TEXT NOT NULL,
     rotated_at TEXT
 );

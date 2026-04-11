@@ -112,7 +112,14 @@ class SharedRateLimitCoordinator:
             )
 
     async def stop(self) -> None:
-        """Cancel polling and unsubscribe."""
+        """Cancel polling and unsubscribe.
+
+        On unsubscribe failure, the started/distributed flags are
+        left untouched and the exception propagates. Flipping them
+        to ``False`` on a failed unsubscribe would let a later
+        ``start()`` reuse the same subscriber id against a live
+        ghost subscription and corrupt the coordination window.
+        """
         async with self._lifecycle_lock:
             if self._task is not None:
                 self._task.cancel()
@@ -129,9 +136,14 @@ class SharedRateLimitCoordinator:
                     RATE_LIMIT_COORDINATOR_STOPPED,
                     connection_name=self._connection_name,
                     subscriber_id=self._subscriber_id,
-                    error="unsubscribe failed (swallowing on shutdown)",
+                    error=(
+                        "unsubscribe failed -- coordinator remains "
+                        "in partial-stop state; resolve the bus "
+                        "issue before calling stop() again"
+                    ),
                     exc_info=True,
                 )
+                raise
             self._started = False
             self._distributed = False
             logger.debug(
@@ -226,14 +238,26 @@ class SharedRateLimitCoordinator:
             except asyncio.CancelledError:
                 break
             except Exception:
+                # A receive/ingest failure means this worker is no
+                # longer seeing remote acquires. Flip ``_distributed``
+                # to ``False`` so ``acquire()`` stops assuming the
+                # global window is synchronized -- otherwise we would
+                # keep issuing requests under a fraction of the
+                # global cap and silently under-enforce the shared
+                # limit. Exiting the loop here also stops burning
+                # a second retry on every poll timeout.
+                self._distributed = False
                 logger.warning(
                     RATE_LIMIT_COORDINATOR_STARTED,
                     connection_name=self._connection_name,
                     subscriber_id=self._subscriber_id,
-                    error="poll loop error, retrying after 1s",
+                    error=(
+                        "poll loop error; falling back to local-only "
+                        "coordination and exiting poll loop"
+                    ),
                     exc_info=True,
                 )
-                await asyncio.sleep(1.0)
+                return
 
     async def _ingest(self, message: object) -> None:
         """Update local window from a remote acquire event."""

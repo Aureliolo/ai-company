@@ -24,8 +24,11 @@ class OAuthAppAuthenticator:
 
     Required fields: ``client_id``, ``client_secret``,
     ``auth_url``, ``token_url``. Optional fields: ``scopes``.
-    URL fields must have an http/https scheme and a non-empty
-    hostname.
+    URL fields must use HTTPS with a non-empty hostname; plain
+    HTTP is only permitted for loopback hosts (``localhost``,
+    ``127.0.0.1``, ``::1``) so local OAuth mock servers still
+    work in dev without exposing real deployments to cleartext
+    client_secret / authorization_code / access_token transport.
     """
 
     @property

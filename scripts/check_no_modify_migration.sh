@@ -43,8 +43,16 @@ for dir in "${REVISIONS_DIRS[@]}"; do
     while IFS= read -r line; do
         [ -n "$line" ] && MODIFIED+=("$line")
     done < <(
+        # DMR: catch deletes and renames of already-merged migrations
+        # in addition to in-place modifications. Plain M would miss a
+        # destructive `rm` or `git mv` of a migration that already
+        # exists on origin/main. --find-renames still detects a
+        # content-preserving delete+re-add within the branch as a
+        # rename, so PR-local regeneration remains allowed because
+        # the file content (and therefore the net diff) is unchanged
+        # against the merge-base tree.
         git diff-tree -r --no-commit-id --name-only \
-            --diff-filter=M --find-renames \
+            --diff-filter=DMR --find-renames \
             "$BASE" "$STAGED_TREE" -- "$dir/*.sql" 2>/dev/null || true
     )
 done
@@ -62,22 +70,18 @@ for f in "${MODIFIED[@]}"; do
     echo "  Modified vs origin/main: $f" >&2
 done
 echo "" >&2
-# Normalize BASE the same way as check_single_migration_per_pr.sh so
-# the echoed git restore command emits a valid remote-tracking ref.
-BASE_RAW="${BASE_BRANCH:-${GITHUB_BASE_REF:-origin/main}}"
-case "$BASE_RAW" in
-    refs/remotes/*) BASE_REF="${BASE_RAW#refs/remotes/}" ;;
-    refs/heads/*)   BASE_REF="origin/${BASE_RAW#refs/heads/}" ;;
-    refs/*)         BASE_REF="origin/${BASE_RAW#refs/}" ;;
-    origin/*)       BASE_REF="$BASE_RAW" ;;
-    *)              BASE_REF="origin/$BASE_RAW" ;;
-esac
 echo "If you are mid-PR regenerating a migration your own branch added," >&2
 echo "this check will already pass (the file is not on origin/main yet)." >&2
 echo "" >&2
 echo "To recover an accidentally-edited already-merged migration:" >&2
+# Restore from the merge-base commit hash directly, not from a
+# moving remote-tracking ref. If origin/main has advanced past the
+# branch point, restoring from origin/main can pull in unrelated
+# atlas.sum changes that were never part of the merge-base this
+# hook evaluated, which would produce a different failure on the
+# very next run.
 for dir in "${REVISIONS_DIRS[@]}"; do
-    echo "  git restore --source='$BASE_REF' -- '$dir/atlas.sum'" >&2
+    echo "  git restore --source='$BASE' -- '$dir/atlas.sum'" >&2
 done
 echo "  Delete any PR-local migration files you added, then regenerate:" >&2
 echo "    atlas migrate diff --env sqlite <name>" >&2

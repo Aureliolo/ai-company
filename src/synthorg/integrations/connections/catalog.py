@@ -325,6 +325,19 @@ class ConnectionCatalog:
                 or cannot be decoded.
         """
         conn = await self.get_or_raise(name)
+        return await self._resolve_credentials_for(conn)
+
+    async def _resolve_credentials_for(
+        self,
+        conn: Connection,
+    ) -> dict[str, str]:
+        """Decrypt and merge credentials for a pre-loaded ``Connection``.
+
+        Extracted from :meth:`get_credentials` so callers that have
+        already loaded the connection under a lock can reuse the
+        merge logic without hitting the cache a second time.
+        """
+        name = conn.name
         merged: dict[str, str] = {}
         for ref in conn.secret_refs:
             raw = await self._secret_backend.retrieve(ref.secret_id)
@@ -400,12 +413,18 @@ class ConnectionCatalog:
         """
         lock = await self._lock_for(name)
         async with lock:
-            existing = await self.get_credentials(name)
+            # Load the connection once and share it across the
+            # credential merge + persist paths. The previous
+            # implementation called ``get_credentials`` (which
+            # itself loads the connection) followed by
+            # ``get_or_raise``, performing two redundant cache hits
+            # plus the secret-backend lookup under the same lock.
+            conn = await self.get_or_raise(name)
+            existing = await self._resolve_credentials_for(conn)
             merged = dict(existing)
             merged["access_token"] = access_token
             if refresh_token is not None:
                 merged["refresh_token"] = refresh_token
-            conn = await self.get_or_raise(name)
             new_secret_id: str | None = None
             if not conn.secret_refs:
                 # No existing secret ref -- create a fresh one.

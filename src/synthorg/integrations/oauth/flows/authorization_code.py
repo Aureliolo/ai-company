@@ -232,6 +232,16 @@ class AuthorizationCodeFlow:
         if refresh and isinstance(refresh, str):
             refresh_raw = refresh
 
+        # Validate ``token_type`` and ``scope`` before coercing with
+        # ``str()``. A malformed ``{"token_type": 123}`` or
+        # ``{"scope": ["a", "b"]}`` would otherwise silently land
+        # as the string ``"123"`` or ``"['a', 'b']"`` and mask the
+        # upstream protocol error.
+        token_type_raw = data.get("token_type", "Bearer")
+        token_type = token_type_raw if isinstance(token_type_raw, str) else "Bearer"
+        scope_raw = data.get("scope", "")
+        scope = scope_raw if isinstance(scope_raw, str) else ""
+
         event = (
             OAUTH_TOKEN_EXCHANGED if operation == "exchange" else OAUTH_TOKEN_REFRESHED
         )
@@ -240,7 +250,7 @@ class AuthorizationCodeFlow:
         return OAuthToken(
             access_token=access_token,
             refresh_token=refresh_raw,
-            token_type=str(data.get("token_type", "Bearer")),
+            token_type=token_type,
             expires_at=expires_at,
-            scope_granted=str(data.get("scope", "")),
+            scope_granted=scope,
         )

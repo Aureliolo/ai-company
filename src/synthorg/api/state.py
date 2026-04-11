@@ -143,6 +143,7 @@ class AppState:
         "_tunnel_provider",
         "_user_presence",
         "_webhook_event_bridge",
+        "_webhook_replay_protector",
         "approval_store",
         "config",
         "startup_time",
@@ -221,6 +222,7 @@ class AppState:
         self._health_prober_service = health_prober_service
         self._tunnel_provider = tunnel_provider
         self._webhook_event_bridge = webhook_event_bridge
+        self._webhook_replay_protector: object | None = None
         self._mcp_catalog_service = mcp_catalog_service
         self._prometheus_collector: PrometheusCollector | None = None
         self._fine_tune_orchestrator: FineTuneOrchestrator | None = None

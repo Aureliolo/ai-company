@@ -47,7 +47,7 @@ from synthorg.api.channels import (
     CHANNEL_MEETINGS,
     create_channels_plugin,
 )
-from synthorg.api.controllers import BASE_CONTROLLERS, INTEGRATION_CONTROLLERS
+from synthorg.api.controllers import BASE_CONTROLLERS
 from synthorg.api.controllers.ws import ws_handler
 from synthorg.api.exception_handlers import EXCEPTION_HANDLERS
 from synthorg.api.lifecycle import (
@@ -1123,11 +1123,30 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
             # file as ``connections`` -- otherwise a diverging
             # SYNTHORG_DB_PATH can orphan connection_secrets in a
             # separate file or fail outright.
+            #
+            # Resolution order:
+            #   1. ``resolved_db_path`` -- populated when persistence
+            #      was auto-wired from ``SYNTHORG_DB_PATH``.
+            #   2. Injected persistence's SQLite config path --
+            #      picked up when ``create_app()`` was handed an
+            #      already-built ``SQLitePersistenceBackend``.
+            #   3. ``SYNTHORG_DB_PATH`` env var as a last resort.
+            secret_db_path: str | None
             if resolved_db_path is not None:
-                secret_db_path: str | None = str(resolved_db_path)
+                secret_db_path = str(resolved_db_path)
             else:
-                env_db_path = (os.environ.get("SYNTHORG_DB_PATH") or "").strip()
-                secret_db_path = env_db_path or None
+                secret_db_path = None
+                injected_cfg = getattr(persistence, "_config", None)
+                injected_path = getattr(injected_cfg, "path", None)
+                if (
+                    isinstance(injected_path, str)
+                    and injected_path
+                    and injected_path != ":memory:"
+                ):
+                    secret_db_path = injected_path
+                else:
+                    env_db_path = (os.environ.get("SYNTHORG_DB_PATH") or "").strip()
+                    secret_db_path = env_db_path or None
             secret_backend = create_secret_backend(
                 effective_config.integrations.secret_backend,
                 db_path=secret_db_path,
@@ -1270,26 +1289,78 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
     # integrations subsystem is disabled, so unit tests that do not
     # exercise integration endpoints pay no registration cost.
     #
-    # Also skip when the backing ``connection_catalog`` failed to
-    # auto-wire (the try/except above is intentionally non-fatal):
-    # exposing OAuth/webhook/health/tunnel routes without the catalog
-    # would crash handlers with ``AttributeError`` on every request
-    # instead of returning a clean 404 for the missing endpoint.
-    integration_routes_enabled = (
-        effective_config.integrations.enabled and connection_catalog is not None
-    )
-    integration_controllers: tuple[type[Controller], ...] = (
-        INTEGRATION_CONTROLLERS if integration_routes_enabled else ()
-    )
-    if effective_config.integrations.enabled and connection_catalog is None:
-        logger.warning(
-            API_APP_STARTUP,
-            note=(
-                "Integrations enabled in config but connection_catalog "
-                "auto-wire failed; skipping integration route "
-                "registration"
+    # When enabled, gate each controller by its own collaborators
+    # instead of a single boolean. ``MCPCatalogController`` only
+    # needs ``mcp_catalog_service``; ``WebhooksController`` needs a
+    # bus; ``TunnelController`` needs ``tunnel_provider``. A single
+    # global gate either under-exposes controllers that are ready
+    # or over-exposes ones whose dependencies failed to auto-wire.
+    integration_controllers: tuple[type[Controller], ...] = ()
+    if effective_config.integrations.enabled:
+        from synthorg.api.controllers.connections import (  # noqa: PLC0415
+            ConnectionsController,
+        )
+        from synthorg.api.controllers.integration_health import (  # noqa: PLC0415
+            IntegrationHealthController,
+        )
+        from synthorg.api.controllers.mcp_catalog import (  # noqa: PLC0415
+            MCPCatalogController,
+        )
+        from synthorg.api.controllers.oauth import OAuthController  # noqa: PLC0415
+        from synthorg.api.controllers.tunnel import (  # noqa: PLC0415
+            TunnelController,
+        )
+        from synthorg.api.controllers.webhooks import (  # noqa: PLC0415
+            WebhooksController,
+        )
+
+        controller_readiness: tuple[
+            tuple[type[Controller], tuple[tuple[str, object], ...]], ...
+        ] = (
+            (
+                ConnectionsController,
+                (("connection_catalog", connection_catalog),),
+            ),
+            (
+                IntegrationHealthController,
+                (("connection_catalog", connection_catalog),),
+            ),
+            (
+                OAuthController,
+                (
+                    ("connection_catalog", connection_catalog),
+                    ("persistence", persistence),
+                ),
+            ),
+            (
+                WebhooksController,
+                (
+                    ("connection_catalog", connection_catalog),
+                    ("message_bus", message_bus),
+                ),
+            ),
+            (
+                MCPCatalogController,
+                (("mcp_catalog_service", mcp_catalog_service),),
+            ),
+            (
+                TunnelController,
+                (("tunnel_provider", tunnel_provider),),
             ),
         )
+        ready: list[type[Controller]] = []
+        for controller_cls, deps in controller_readiness:
+            missing = [name for name, value in deps if value is None]
+            if missing:
+                logger.warning(
+                    API_APP_STARTUP,
+                    note="skipping integration controller (missing deps)",
+                    controller=controller_cls.__name__,
+                    missing=missing,
+                )
+                continue
+            ready.append(controller_cls)
+        integration_controllers = tuple(ready)
     api_router = Router(
         path=api_config.api_prefix,
         route_handlers=[

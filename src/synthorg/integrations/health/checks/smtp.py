@@ -57,8 +57,26 @@ class SmtpHealthCheck:
     def _sync_check(self, connection: Connection) -> HealthReport:
         """Synchronous SMTP EHLO check (run in thread)."""
         start = time.monotonic()
-        host = connection.metadata.get("host", "localhost")
-        port = int(connection.metadata.get("port", "25"))
+        # Explicitly validate the host/port metadata so malformed
+        # config (``port=None``, ``port=[]``, etc.) raises a
+        # ``ValueError`` the outer handler already translates into
+        # an ``UNHEALTHY`` report, instead of leaking as ``TypeError``
+        # out of ``int(...)``.
+        host_raw = connection.metadata.get("host", "localhost")
+        if not isinstance(host_raw, str) or not host_raw.strip():
+            msg = "Invalid SMTP host metadata"
+            raise ValueError(msg)
+        host = host_raw.strip()
+
+        port_raw = connection.metadata.get("port", "25")
+        try:
+            port = int(port_raw)
+        except (TypeError, ValueError) as exc:
+            msg = "Invalid SMTP port metadata"
+            raise ValueError(msg) from exc
+        if not 1 <= port <= 65535:  # noqa: PLR2004
+            msg = "SMTP port out of range (must be 1..65535)"
+            raise ValueError(msg)
         try:
             with smtplib.SMTP(host, port, timeout=_TIMEOUT) as smtp:
                 code, _ = smtp.ehlo()

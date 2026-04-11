@@ -69,7 +69,15 @@ class WebhookEventBridge:
             logger.info(WEBHOOK_BRIDGE_STARTED)
 
     async def stop(self) -> None:
-        """Cancel the polling task and unsubscribe."""
+        """Cancel the polling task and unsubscribe.
+
+        If ``unsubscribe`` fails, the task reference is left in
+        place and the exception propagates so the caller knows
+        the bridge is in a partial-stop state. Clearing ``_task``
+        on a failed unsubscribe would let a later ``start()``
+        register a duplicate subscriber id against a live ghost
+        subscription.
+        """
         async with self._lifecycle_lock:
             if self._task is None:
                 return
@@ -86,9 +94,14 @@ class WebhookEventBridge:
                     WEBHOOK_BRIDGE_STOPPED,
                     subscriber_id=_SUBSCRIBER_ID,
                     channel=WEBHOOK_CHANNEL.name,
-                    error="unsubscribe failed (swallowing on shutdown)",
+                    error=(
+                        "unsubscribe failed -- bridge remains in "
+                        "partial-stop state; call stop() again after "
+                        "the bus recovers"
+                    ),
                     exc_info=True,
                 )
+                raise
             self._task = None
             logger.info(WEBHOOK_BRIDGE_STOPPED)
 
@@ -117,10 +130,12 @@ class WebhookEventBridge:
                     )
                     # Unsubscribe before clearing the task reference
                     # so a later ``start()`` can register a fresh
-                    # subscription. Leaving the stale subscriber id
-                    # attached would let the bus queue deliveries
-                    # that never get consumed, and ``start()`` would
-                    # then fail with a duplicate-subscriber error.
+                    # subscription. If unsubscribe fails we leave
+                    # ``_task`` set so the bridge stays in a
+                    # partial-stop state -- a subsequent ``start()``
+                    # will skip re-registration (the ``_task is not
+                    # None`` guard) and the stale subscription has
+                    # to be recovered externally before another run.
                     try:
                         await self._bus.unsubscribe(
                             WEBHOOK_CHANNEL.name,
@@ -133,11 +148,12 @@ class WebhookEventBridge:
                             channel=WEBHOOK_CHANNEL.name,
                             error=(
                                 "unsubscribe failed after max "
-                                "consecutive errors; state may need "
-                                "manual reset before restart"
+                                "consecutive errors; leaving bridge "
+                                "in partial-stop state"
                             ),
                             exc_info=True,
                         )
+                        return
                     self._task = None
                     return
                 logger.warning(

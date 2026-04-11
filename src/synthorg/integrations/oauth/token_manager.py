@@ -100,16 +100,42 @@ class OAuthTokenManager:
         for conn in all_connections:
             if conn.auth_method != AuthMethod.OAUTH2:
                 continue
-            # Token expiry is tracked via connection metadata
-            expiry_str = conn.metadata.get("token_expires_at", "")
-            if not expiry_str:
+            # Token expiry is tracked via connection metadata, which
+            # is externally editable. Guard everything that could
+            # escape as a ``TypeError`` (non-string value) or
+            # comparison failure (naive datetime) so a single bad
+            # connection does not abort the sweep and skip every
+            # later OAuth connection.
+            expiry_raw = conn.metadata.get("token_expires_at")
+            if not isinstance(expiry_raw, str) or not expiry_raw.strip():
                 continue
             try:
-                expiry = datetime.fromisoformat(expiry_str)
-            except ValueError:
+                expiry = datetime.fromisoformat(expiry_raw.strip())
+            except TypeError, ValueError:
+                logger.warning(
+                    OAUTH_TOKEN_REFRESH_FAILED,
+                    connection_name=conn.name,
+                    error="malformed token_expires_at metadata",
+                    value=expiry_raw,
+                )
+                continue
+            # Coerce naive datetimes to UTC so the comparison below
+            # cannot raise with a mixed tz/non-tz operands.
+            if expiry.tzinfo is None:
+                expiry = expiry.replace(tzinfo=UTC)
+
+            try:
+                is_expired = expiry <= now
+                is_in_window = expiry <= threshold
+            except TypeError:
+                logger.warning(
+                    OAUTH_TOKEN_REFRESH_FAILED,
+                    connection_name=conn.name,
+                    error="token_expires_at comparison failed",
+                )
                 continue
 
-            if expiry <= now:
+            if is_expired:
                 logger.warning(
                     OAUTH_TOKEN_EXPIRED,
                     connection_name=conn.name,
@@ -119,7 +145,7 @@ class OAuthTokenManager:
                     status=ConnectionStatus.DEGRADED,
                     checked_at=now,
                 )
-            elif expiry <= threshold:
+            elif is_in_window:
                 await self._refresh_one(conn, now)
 
     async def _refresh_one(self, conn: Connection, now: datetime) -> None:
@@ -186,17 +212,51 @@ class OAuthTokenManager:
                 connection_name=conn.name,
                 reason="refresh returned no access_token",
             )
+            # Treat an empty refresh result as a failure path so
+            # the connection's health flips to ``DEGRADED`` and an
+            # operator notices it, instead of silently returning
+            # and leaving the old expired token in place.
+            await self._catalog.update_health(
+                conn.name,
+                status=ConnectionStatus.DEGRADED,
+                checked_at=now,
+            )
             return
 
-        await self._catalog.store_oauth_tokens(
-            conn.name,
-            access_token=refreshed.access_token,
-            refresh_token=refreshed.refresh_token,
-        )
-        if refreshed.expires_at is not None:
-            meta_updates = dict(conn.metadata)
-            meta_updates["token_expires_at"] = refreshed.expires_at.isoformat()
-            await self._catalog.update(conn.name, metadata=meta_updates)
+        try:
+            await self._catalog.store_oauth_tokens(
+                conn.name,
+                access_token=refreshed.access_token,
+                refresh_token=refreshed.refresh_token,
+            )
+            if refreshed.expires_at is not None:
+                meta_updates = dict(conn.metadata)
+                meta_updates["token_expires_at"] = refreshed.expires_at.isoformat()
+                await self._catalog.update(conn.name, metadata=meta_updates)
+        except Exception:
+            # A write failure after a successful refresh leaves the
+            # connection state inconsistent. Swallow the exception
+            # so the sweep continues with the next connection, but
+            # flip health to ``DEGRADED`` and log the failure with
+            # the exception chain.
+            logger.exception(
+                OAUTH_TOKEN_REFRESH_FAILED,
+                connection_name=conn.name,
+                error="failed to persist refreshed tokens",
+            )
+            try:
+                await self._catalog.update_health(
+                    conn.name,
+                    status=ConnectionStatus.DEGRADED,
+                    checked_at=now,
+                )
+            except Exception:
+                logger.exception(
+                    OAUTH_TOKEN_REFRESH_FAILED,
+                    connection_name=conn.name,
+                    error="update_health failed after persistence failure",
+                )
+            return
 
         logger.info(
             OAUTH_TOKEN_REFRESHED,

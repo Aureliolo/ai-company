@@ -73,7 +73,16 @@ class OAuthController(Controller):
             msg = "oauth.redirect_uri_base must be configured to initiate OAuth flows"
             raise ApiValidationError(msg)
 
-        redirect_uri = config.redirect_uri_base + "/api/v1/oauth/callback"
+        # Build the callback URL from the configured API prefix so
+        # deployments on a non-default prefix do not hand the OAuth
+        # provider a URL this app never actually serves.
+        api_prefix = state["app_state"].config.api.api_prefix
+        redirect_uri = (
+            config.redirect_uri_base.rstrip("/")
+            + "/"
+            + api_prefix.strip("/")
+            + "/oauth/callback"
+        )
 
         auth_url, oauth_state = await flow.start_flow(
             auth_url=credentials.get("auth_url", ""),

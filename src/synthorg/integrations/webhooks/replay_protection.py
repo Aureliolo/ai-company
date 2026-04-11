@@ -4,6 +4,7 @@ Prevents replay attacks by tracking nonces and validating
 timestamps within a configurable window.
 """
 
+import math
 from collections import OrderedDict
 from collections.abc import Callable  # noqa: TC003
 
@@ -52,6 +53,17 @@ class ReplayProtector:
         max_entries: int = _DEFAULT_MAX_ENTRIES,
         clock: Callable[[], float] = _default_clock,
     ) -> None:
+        # Validate up-front so a config typo cannot silently disable
+        # replay protection. ``max_entries <= 0`` would evict every
+        # accepted nonce immediately; ``window_seconds <= 0`` would
+        # collapse the freshness window and accept replays outside
+        # any time bound.
+        if window_seconds <= 0:
+            msg = "window_seconds must be > 0"
+            raise ValueError(msg)
+        if max_entries <= 0:
+            msg = "max_entries must be > 0"
+            raise ValueError(msg)
         self._window = window_seconds
         self._max_entries = max_entries
         self._seen: OrderedDict[str, float] = OrderedDict()
@@ -84,6 +96,17 @@ class ReplayProtector:
             logger.warning(
                 WEBHOOK_REPLAY_DETECTED,
                 reason="no freshness signal (nonce and timestamp both missing)",
+            )
+            return False
+
+        # ``float("nan")`` would bypass the window check because
+        # ``abs(now - nan) > window`` evaluates to ``False``. Reject
+        # any non-finite timestamp up-front so a malformed header
+        # cannot silently pass freshness validation.
+        if timestamp is not None and not math.isfinite(timestamp):
+            logger.warning(
+                WEBHOOK_REPLAY_DETECTED,
+                reason="non-finite timestamp",
             )
             return False
 

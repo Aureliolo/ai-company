@@ -91,6 +91,10 @@ class ConnectionsController(Controller):
         if not isinstance(name, str) or not name.strip():
             msg = "Field 'name' is required and must be a non-empty string"
             raise ApiValidationError(msg)
+        # Persist the canonical trimmed form so "  github  " and
+        # "github" cannot become two distinct identities and so the
+        # /{name} routes consistently address the stored row.
+        name = name.strip()
 
         connection_type_raw = data.get("connection_type")
         if not isinstance(connection_type_raw, str) or not connection_type_raw:
@@ -146,13 +150,33 @@ class ConnectionsController(Controller):
         data: dict[str, Any],
     ) -> ApiResponse[Connection]:
         """Update mutable fields of a connection."""
+        # Validate PATCH field types at the boundary so malformed
+        # payloads surface as a structured 400 instead of failing
+        # inside the catalog / Pydantic model layer.
+        if "base_url" in data:
+            base_url_value = data["base_url"]
+            if base_url_value is not None and not isinstance(base_url_value, str):
+                msg = "Field 'base_url' must be a string or null"
+                raise ApiValidationError(msg)
+        metadata = data.get("metadata")
+        if metadata is not None and not isinstance(metadata, dict):
+            msg = "Field 'metadata' must be an object if provided"
+            raise ApiValidationError(msg)
+        health_check_enabled = data.get("health_check_enabled")
+        if health_check_enabled is not None and not isinstance(
+            health_check_enabled,
+            bool,
+        ):
+            msg = "Field 'health_check_enabled' must be a boolean if provided"
+            raise ApiValidationError(msg)
+
         catalog = state["app_state"].connection_catalog
         try:
             conn = await catalog.update(
                 name,
                 base_url=data.get("base_url", _UNSET),
-                metadata=data.get("metadata"),
-                health_check_enabled=data.get("health_check_enabled"),
+                metadata=metadata,
+                health_check_enabled=health_check_enabled,
             )
         except ConnectionNotFoundError as exc:
             raise NotFoundError(str(exc)) from exc

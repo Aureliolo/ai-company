@@ -106,6 +106,12 @@ class SlackHealthCheck:
 
         elapsed = (time.monotonic() - start) * 1000
         if resp.is_error:
+            logger.warning(
+                HEALTH_CHECK_FAILED,
+                connection_name=connection.name,
+                error="Slack HTTP error",
+                status_code=resp.status_code,
+            )
             return HealthReport(
                 connection_name=connection.name,
                 status=ConnectionStatus.UNHEALTHY,
@@ -128,6 +134,25 @@ class SlackHealthCheck:
                 error_detail="invalid JSON from Slack",
                 checked_at=datetime.now(UTC),
             )
+        # ``resp.json()`` returns whatever the payload parses as -- a
+        # scalar or a list will not raise ``ValueError`` but will
+        # blow up on the next ``data.get("ok")`` call. Guard the
+        # shape explicitly so a malformed 2xx response stays a
+        # structured health failure.
+        if not isinstance(data, dict):
+            logger.warning(
+                HEALTH_CHECK_FAILED,
+                connection_name=connection.name,
+                error="Slack auth.test returned non-object JSON",
+                response_type=type(data).__name__,
+            )
+            return HealthReport(
+                connection_name=connection.name,
+                status=ConnectionStatus.UNHEALTHY,
+                latency_ms=elapsed,
+                error_detail="Slack auth.test returned non-object JSON",
+                checked_at=datetime.now(UTC),
+            )
         if data.get("ok"):
             logger.info(
                 HEALTH_CHECK_PASSED,
@@ -140,10 +165,17 @@ class SlackHealthCheck:
                 latency_ms=elapsed,
                 checked_at=datetime.now(UTC),
             )
+        slack_error = data.get("error", "unknown")
+        logger.warning(
+            HEALTH_CHECK_FAILED,
+            connection_name=connection.name,
+            error="Slack auth.test returned ok=false",
+            slack_error=slack_error,
+        )
         return HealthReport(
             connection_name=connection.name,
             status=ConnectionStatus.UNHEALTHY,
             latency_ms=elapsed,
-            error_detail=f"Slack auth.test: {data.get('error', 'unknown')}",
+            error_detail=f"Slack auth.test: {slack_error}",
             checked_at=datetime.now(UTC),
         )

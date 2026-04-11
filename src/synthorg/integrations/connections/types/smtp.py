@@ -38,12 +38,33 @@ class SmtpAuthenticator:
             )
             msg = "SMTP connection requires a 'host' field"
             raise InvalidConnectionAuthError(msg)
-        username = credentials.get("username", "")
-        password = credentials.get("password", "")
+        # Pull raw values as ``object`` so the runtime isinstance
+        # checks below are meaningful to mypy. The ``dict[str, str]``
+        # annotation on the protocol describes the *intended* shape;
+        # users can still hand us non-strings at runtime and the
+        # validator has to reject them instead of trusting the
+        # declared type.
+        raw_username: object = credentials.get("username", "")
+        raw_password: object = credentials.get("password", "")
+        # Reject non-string values outright instead of silently
+        # normalizing them to "" below -- that could let a non-string
+        # username pair with a real-string password (or vice versa)
+        # slip past the "both or neither" check.
+        if ("username" in credentials and not isinstance(raw_username, str)) or (
+            "password" in credentials and not isinstance(raw_password, str)
+        ):
+            logger.warning(
+                CONNECTION_VALIDATION_FAILED,
+                connection_type=ConnectionType.SMTP.value,
+                field="username/password",
+                error="non-string value",
+            )
+            msg = "SMTP 'username' and 'password' must be strings when provided"
+            raise InvalidConnectionAuthError(msg)
         # Normalize whitespace so pure-whitespace values do not look
         # valid to ``bool()``.
-        username_s = username.strip() if isinstance(username, str) else ""
-        password_s = password.strip() if isinstance(password, str) else ""
+        username_s = raw_username.strip() if isinstance(raw_username, str) else ""
+        password_s = raw_password.strip() if isinstance(raw_password, str) else ""
         if bool(username_s) != bool(password_s):
             logger.warning(
                 CONNECTION_VALIDATION_FAILED,

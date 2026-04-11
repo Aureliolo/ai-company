@@ -139,6 +139,17 @@ class EncryptedSqliteSecretBackend:
             )
             msg = f"Failed to decrypt secret {secret_id}"
             raise SecretRetrievalError(msg) from exc
+        except Exception as exc:
+            # Catch-all so any residual decrypt failure (malformed
+            # row data, driver bug, etc.) still surfaces through
+            # the secret-backend contract instead of leaking raw.
+            logger.exception(
+                SECRET_RETRIEVAL_FAILED,
+                secret_id=secret_id,
+                error=f"decrypt failed: {type(exc).__name__}",
+            )
+            msg = f"Failed to decrypt secret {secret_id}"
+            raise SecretRetrievalError(msg) from exc
 
     async def delete(self, secret_id: str) -> bool:
         """Delete a secret."""

@@ -34,7 +34,26 @@ from synthorg.observability.events.integrations import (
 
 logger = get_logger(__name__)
 
-_replay_protector = ReplayProtector(window_seconds=300, max_entries=10_000)
+
+def _get_replay_protector(state: State) -> ReplayProtector:
+    """Return (and lazily build) a config-driven ``ReplayProtector``.
+
+    The protector instance is cached on ``app_state`` so the nonce
+    cache persists across requests, but is constructed from
+    ``integrations.webhooks.replay_window_seconds`` at first use
+    instead of being frozen at module-import time. That way runtime
+    config overrides actually change receiver behaviour.
+    """
+    app_state = state["app_state"]
+    cached = getattr(app_state, "_webhook_replay_protector", None)
+    if cached is None:
+        cfg = app_state.config.integrations.webhooks
+        cached = ReplayProtector(
+            window_seconds=cfg.replay_window_seconds,
+            max_entries=10_000,
+        )
+        app_state._webhook_replay_protector = cached  # noqa: SLF001
+    return cached
 
 
 class WebhooksController(Controller):
@@ -48,7 +67,7 @@ class WebhooksController(Controller):
         summary="Receive a webhook event",
         status_code=202,
     )
-    async def receive_webhook(
+    async def receive_webhook(  # noqa: C901, PLR0915
         self,
         state: State,
         request: Request[Any, Any, Any],
@@ -78,7 +97,54 @@ class WebhooksController(Controller):
             event_type=event_type,
         )
 
+        # Enforce ``integrations.webhooks.max_payload_bytes`` before
+        # buffering. ``request.body()`` pulls the full payload into
+        # memory, so a missing cap lets an attacker DoS the process
+        # with oversized posts even when the app-wide 50 MB default
+        # still applies.
+        webhook_cfg = state["app_state"].config.integrations.webhooks
+        max_payload = webhook_cfg.max_payload_bytes
+        content_length_header = request.headers.get(
+            "content-length",
+        ) or request.headers.get("Content-Length")
+        if content_length_header:
+            try:
+                content_length = int(content_length_header)
+            except ValueError:
+                logger.warning(
+                    WEBHOOK_REJECTED,
+                    connection_name=connection_name,
+                    reason="malformed content-length header",
+                )
+                msg = "Malformed Content-Length header"
+                raise ApiValidationError(msg) from None
+            if content_length > max_payload:
+                logger.warning(
+                    WEBHOOK_REJECTED,
+                    connection_name=connection_name,
+                    reason="content-length exceeds max_payload_bytes",
+                    content_length=content_length,
+                    max_payload=max_payload,
+                )
+                msg = (
+                    f"Webhook payload exceeds configured "
+                    f"max_payload_bytes ({max_payload})"
+                )
+                raise ApiValidationError(msg)
+
         body = await request.body()
+        if len(body) > max_payload:
+            logger.warning(
+                WEBHOOK_REJECTED,
+                connection_name=connection_name,
+                reason="body exceeds max_payload_bytes",
+                body_length=len(body),
+                max_payload=max_payload,
+            )
+            msg = (
+                f"Webhook payload exceeds configured max_payload_bytes ({max_payload})"
+            )
+            raise ApiValidationError(msg)
         headers = {k.lower(): v for k, v in request.headers.items()}
 
         # Signature verification -- fail closed when secret missing.
@@ -131,7 +197,8 @@ class WebhooksController(Controller):
                 msg = "Malformed x-timestamp header"
                 raise ApiValidationError(msg) from None
 
-        if not _replay_protector.check(nonce=nonce, timestamp=timestamp):
+        replay_protector = _get_replay_protector(state)
+        if not replay_protector.check(nonce=nonce, timestamp=timestamp):
             logger.warning(
                 WEBHOOK_REJECTED,
                 connection_name=connection_name,

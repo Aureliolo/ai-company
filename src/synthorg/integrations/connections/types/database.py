@@ -30,13 +30,17 @@ class DatabaseAuthenticator:
         credentials: dict[str, str],
     ) -> None:
         """Validate credential fields."""
-        dialect = credentials.get("dialect", "").strip()
+        # Type-guard every field before calling ``.strip()`` so a
+        # non-string payload surfaces as a structured
+        # ``InvalidConnectionAuthError`` instead of ``AttributeError``.
+        raw_dialect = credentials.get("dialect")
+        dialect = raw_dialect.strip() if isinstance(raw_dialect, str) else ""
         if not dialect:
             logger.warning(
                 CONNECTION_VALIDATION_FAILED,
                 connection_type=ConnectionType.DATABASE.value,
                 field="dialect",
-                error="missing or blank",
+                error="missing, non-string, or blank",
             )
             msg = "Database connection requires a 'dialect' field"
             raise InvalidConnectionAuthError(msg)
@@ -51,24 +55,26 @@ class DatabaseAuthenticator:
             )
             msg = f"Unknown dialect '{dialect}'; supported: {sorted(_VALID_DIALECTS)}"
             raise InvalidConnectionAuthError(msg)
-        if dialect != "sqlite" and (
-            "host" not in credentials or not credentials["host"].strip()
-        ):
+        raw_host = credentials.get("host")
+        host = raw_host.strip() if isinstance(raw_host, str) else ""
+        if dialect != "sqlite" and not host:
             logger.warning(
                 CONNECTION_VALIDATION_FAILED,
                 connection_type=ConnectionType.DATABASE.value,
                 field="host",
-                error="missing or blank",
+                error="missing, non-string, or blank",
                 dialect=dialect,
             )
             msg = f"Database dialect '{dialect}' requires a 'host' field"
             raise InvalidConnectionAuthError(msg)
-        if "database" not in credentials or not credentials["database"].strip():
+        raw_database = credentials.get("database")
+        database = raw_database.strip() if isinstance(raw_database, str) else ""
+        if not database:
             logger.warning(
                 CONNECTION_VALIDATION_FAILED,
                 connection_type=ConnectionType.DATABASE.value,
                 field="database",
-                error="missing or blank",
+                error="missing, non-string, or blank",
             )
             msg = "Database connection requires a 'database' field"
             raise InvalidConnectionAuthError(msg)

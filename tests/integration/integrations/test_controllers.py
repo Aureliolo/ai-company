@@ -134,12 +134,16 @@ class TestWebhooksController:
         catalog.get = AsyncMock(return_value=_make_conn())
         catalog.get_credentials = AsyncMock(return_value={})
 
-        state = {
-            "app_state": MagicMock(
-                connection_catalog=catalog,
-                message_bus=MagicMock(),
-            ),
-        }
+        app_state = MagicMock(
+            connection_catalog=catalog,
+            message_bus=MagicMock(),
+        )
+        # Pin concrete ints on the config so the body-size guard
+        # can compare against real values instead of MagicMock-vs-int.
+        app_state.config.integrations.webhooks.max_payload_bytes = 1_000_000
+        app_state.config.integrations.webhooks.replay_window_seconds = 300
+        app_state._webhook_replay_protector = None
+        state = {"app_state": app_state}
 
         request = MagicMock()
         request.body = AsyncMock(return_value=b"{}")
@@ -174,12 +178,14 @@ class TestWebhooksController:
             return_value={"signing_secret": "supersecret"},
         )
 
-        state = {
-            "app_state": MagicMock(
-                connection_catalog=catalog,
-                message_bus=MagicMock(),
-            ),
-        }
+        app_state = MagicMock(
+            connection_catalog=catalog,
+            message_bus=MagicMock(),
+        )
+        app_state.config.integrations.webhooks.max_payload_bytes = 1_000_000
+        app_state.config.integrations.webhooks.replay_window_seconds = 300
+        app_state._webhook_replay_protector = None
+        state = {"app_state": app_state}
 
         body = b'{"hello":1}'
         secret = "supersecret"
@@ -330,6 +336,7 @@ class TestControllerHttpLayer:
         """Construct a minimal Litestar app + test client for smoke tests."""
         from litestar import Litestar
         from litestar.datastructures import State
+        from litestar.middleware import ASGIMiddleware
 
         from synthorg.api.controllers import (
             ConnectionsController,
@@ -338,6 +345,35 @@ class TestControllerHttpLayer:
         from synthorg.api.exception_handlers import EXCEPTION_HANDLERS
 
         app_state_stub = MagicMock(connection_catalog=catalog)
+
+        class _TestUser:
+            role = "ceo"
+            id = "test-user"
+            username = "test"
+            must_change_password = False
+
+        class _InjectUserMiddleware(ASGIMiddleware):
+            """Stuff a fake CEO user into scope so guards allow.
+
+            ``require_read_access`` reads ``scope["user"].role``. The
+            real auth middleware stack is intentionally not wired in
+            these smoke tests (they verify routing, DI, and error
+            translation, not auth), so we inject a minimal
+            ``_TestUser`` here instead of spinning up the full auth
+            pipeline.
+            """
+
+            async def handle(
+                self,
+                scope: Any,
+                receive: Any,
+                send: Any,
+                next_app: Any,
+            ) -> None:
+                if scope["type"] == "http":
+                    scope["user"] = _TestUser()
+                await next_app(scope, receive, send)
+
         # Each controller already declares its own ``path`` (e.g.
         # ``/api/v1/connections``), so mount them directly instead
         # of wrapping in another ``Router`` -- otherwise the prefix
@@ -348,6 +384,7 @@ class TestControllerHttpLayer:
                 IntegrationHealthController,
             ],
             state=State({"app_state": app_state_stub}),
+            middleware=[_InjectUserMiddleware()],
             exception_handlers=dict(EXCEPTION_HANDLERS),  # type: ignore[arg-type]
         )
         return TestClient(app)
@@ -358,10 +395,15 @@ class TestControllerHttpLayer:
         client = self._build_client(catalog)
         with client as http:
             resp = http.get("/api/v1/connections")
-        # The full HTTP stack must return a structured envelope or a
-        # guard rejection. The middleware must not swallow the route
-        # into a 500.
-        assert resp.status_code in {200, 401, 403}
+        # The full HTTP stack must return an exact 200 with the
+        # connection list serialized through the ApiResponse
+        # envelope. Any other status would be a regression in
+        # routing, DI, or serialization.
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["success"] is True
+        assert len(body["data"]) == 1
+        assert body["data"][0]["name"] == "c1"
 
     async def test_unknown_connection_returns_404(self) -> None:
         from synthorg.integrations.errors import ConnectionNotFoundError
@@ -373,5 +415,10 @@ class TestControllerHttpLayer:
         client = self._build_client(catalog)
         with client as http:
             resp = http.get("/api/v1/integrations/health/missing")
-        # Expect a structured 404 via RFC 9457 translation, not a 500.
-        assert resp.status_code in {401, 403, 404}
+        # Expect a structured 404 via RFC 9457 translation -- the
+        # ``NotFoundError`` raised by the handler must be mapped
+        # to the right status and serialized through the error
+        # middleware, not leaked as a 500.
+        assert resp.status_code == 404
+        body = resp.json()
+        assert "missing" in body.get("detail", body.get("error", "")).lower()

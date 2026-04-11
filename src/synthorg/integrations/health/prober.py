@@ -162,7 +162,18 @@ class HealthProberService:
             )
             return
 
-        conn = await self._catalog.get(name)
+        # Wrap the catalog load in its own try/except so a transient
+        # backend error cannot cancel sibling probes through a shared
+        # ``TaskGroup``.
+        try:
+            conn = await self._catalog.get(name)
+        except Exception:
+            logger.exception(
+                HEALTH_CHECK_FAILED,
+                connection_name=name,
+                error="catalog.get failed",
+            )
+            return
         if conn is None:
             logger.debug(
                 HEALTH_CHECK_FAILED,
@@ -214,8 +225,17 @@ class HealthProberService:
                 new_status=new_status,
             )
 
-        await self._catalog.update_health(
-            name,
-            status=new_status,
-            checked_at=now,
-        )
+        # Same principle: an error inside ``update_health`` must not
+        # cancel sibling TaskGroup probes either.
+        try:
+            await self._catalog.update_health(
+                name,
+                status=new_status,
+                checked_at=now,
+            )
+        except Exception:
+            logger.exception(
+                HEALTH_CHECK_FAILED,
+                connection_name=name,
+                error="catalog.update_health failed",
+            )

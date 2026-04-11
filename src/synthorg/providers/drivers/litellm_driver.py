@@ -176,7 +176,12 @@ class LiteLLMDriver(BaseCompletionProvider):
         )
 
         now = time.monotonic()
-        if (
+        # Never serve cached OAuth credentials -- the token manager
+        # can rotate them at any moment and a stale bearer token
+        # would just fail auth on the next request with no way for
+        # the driver to recover. Always go back to the catalog and
+        # pick up the current access token.
+        if self._config.auth_type is not AuthType.OAUTH and (
             self._resolved_credentials is not None
             and self._credentials_cached_at is not None
             and (now - self._credentials_cached_at) < _CREDENTIAL_CACHE_TTL
@@ -395,19 +400,28 @@ class LiteLLMDriver(BaseCompletionProvider):
                 if key is not None:
                     kwargs["api_key"] = key
             case AuthType.CUSTOM_HEADER:
-                if self._config.custom_header_name and self._config.custom_header_value:
-                    kwargs["extra_headers"] = {
-                        self._config.custom_header_name: (
-                            self._config.custom_header_value
-                        ),
-                    }
+                # Prefer catalog-resolved credentials so a
+                # ``connection_name`` provider can ship the header
+                # without duplicating it in config. Fall back to the
+                # embedded fields for the legacy, catalog-less path.
+                header_name = resolved.get("custom_header_name") if resolved else None
+                if header_name is None:
+                    header_name = self._config.custom_header_name
+                header_value = resolved.get("custom_header_value") if resolved else None
+                if header_value is None:
+                    header_value = self._config.custom_header_value
+                if header_name and header_value:
+                    kwargs["extra_headers"] = {header_name: header_value}
             case AuthType.SUBSCRIPTION:
                 # Pass as api_key -- the correct kwarg for LiteLLM
                 # authentication.  Do NOT use "auth_token" -- it is
                 # not a litellm.completion() parameter and is silently
                 # discarded.
-                if self._config.subscription_token is not None:
-                    kwargs["api_key"] = self._config.subscription_token
+                token = resolved.get("subscription_token") if resolved else None
+                if token is None:
+                    token = self._config.subscription_token
+                if token is not None:
+                    kwargs["api_key"] = token
             case AuthType.NONE:
                 pass
 

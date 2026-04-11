@@ -55,7 +55,12 @@ class _SpyExternalTriggerStrategy(ExternalTriggerStrategy):
 
 
 class _SpyCeremonyScheduler:
-    """Stand-in for ``CeremonyScheduler`` returning a fixed strategy/sprint."""
+    """Stand-in for ``CeremonyScheduler`` returning a fixed strategy/sprint.
+
+    Exposes a ``processed`` ``asyncio.Event`` that tests can await to
+    deterministically wait for the bridge to consume a message without
+    resorting to ``asyncio.sleep``-based polling.
+    """
 
     def __init__(
         self,
@@ -64,10 +69,17 @@ class _SpyCeremonyScheduler:
     ) -> None:
         self._strategy = strategy
         self._sprint = sprint
+        self.processed: asyncio.Event = asyncio.Event()
 
     async def get_active_info(
         self,
     ) -> tuple[object | None, object | None]:
+        # ``get_active_info`` is the bridge's first contact with the
+        # scheduler on every delivery. Signalling here means the test
+        # can wait on a message actually reaching the forwarding
+        # path, even when the strategy is ``None`` and no further
+        # work runs.
+        self.processed.set()
         return self._strategy, self._sprint
 
 
@@ -129,8 +141,11 @@ class TestWebhookFullPath:
                 event_type="test",
                 payload={},
             )
-            # Give the bridge a chance to process.
-            await asyncio.sleep(0.3)
+            # Wait deterministically for the bridge to hand the
+            # message to the scheduler -- ``get_active_info`` sets
+            # ``processed`` when the message arrives, no matter
+            # whether the strategy is None or a real spy.
+            await asyncio.wait_for(scheduler.processed.wait(), timeout=2.0)
         finally:
             await bridge.stop()
         # No crash is the success condition -- bridge must not raise
