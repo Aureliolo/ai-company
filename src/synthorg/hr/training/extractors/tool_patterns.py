@@ -4,6 +4,7 @@ Queries the tool invocation tracker for usage history from source
 agents, aggregates by tool name, and produces summary items.
 """
 
+import asyncio
 from collections import defaultdict
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
@@ -11,12 +12,14 @@ from typing import TYPE_CHECKING
 from synthorg.hr.training.models import ContentType, TrainingItem
 from synthorg.observability import get_logger
 from synthorg.observability.events.training import (
+    HR_TRAINING_EXTRACTION_FAILED,
     HR_TRAINING_ITEMS_EXTRACTED,
 )
 
 if TYPE_CHECKING:
     from synthorg.core.enums import SeniorityLevel
     from synthorg.core.types import NotBlankStr
+    from synthorg.tools.invocation_record import ToolInvocationRecord
     from synthorg.tools.invocation_tracker import ToolInvocationTracker
 
 logger = get_logger(__name__)
@@ -33,7 +36,7 @@ class ToolPatternExtractor:
 
     Args:
         tracker: Tool invocation tracker.
-        lookback_days: Number of days to look back.
+        lookback_days: Number of days to look back (must be positive).
     """
 
     def __init__(
@@ -42,6 +45,9 @@ class ToolPatternExtractor:
         tracker: ToolInvocationTracker,
         lookback_days: int = _DEFAULT_LOOKBACK_DAYS,
     ) -> None:
+        if lookback_days <= 0:
+            msg = f"lookback_days must be a positive integer, got {lookback_days}"
+            raise ValueError(msg)
         self._tracker = tracker
         self._lookback_days = lookback_days
 
@@ -57,7 +63,7 @@ class ToolPatternExtractor:
         new_agent_role: NotBlankStr,  # noqa: ARG002
         new_agent_level: SeniorityLevel,  # noqa: ARG002
     ) -> tuple[TrainingItem, ...]:
-        """Extract tool usage patterns from source agents.
+        """Extract tool usage patterns from source agents in parallel.
 
         Args:
             source_agent_ids: Senior agents to extract from.
@@ -73,18 +79,21 @@ class ToolPatternExtractor:
         now = datetime.now(UTC)
         start = now - timedelta(days=self._lookback_days)
 
-        # Aggregate across all source agents.
+        # Fetch records for each agent concurrently.
+        async with asyncio.TaskGroup() as tg:
+            tasks = [
+                tg.create_task(self._fetch_for_agent(agent_id, start, now))
+                for agent_id in source_agent_ids
+            ]
+
+        # Aggregate across all source agents after retrieval completes.
         tool_stats: dict[str, dict[str, int]] = defaultdict(
             lambda: {"total": 0, "success": 0},
         )
         source_agents_by_tool: dict[str, set[str]] = defaultdict(set)
 
-        for agent_id in source_agent_ids:
-            records = await self._tracker.get_records(
-                agent_id=str(agent_id),
-                start=start,
-                end=now,
-            )
+        for task in tasks:
+            agent_id, records = task.result()
             for record in records:
                 tool_name = str(record.tool_name)
                 tool_stats[tool_name]["total"] += 1
@@ -107,11 +116,14 @@ class ToolPatternExtractor:
                 f"Used by {len(agents)} senior agent(s)"
             )
 
+            # Deterministic source_agent_id: lexicographically smallest
+            # contributing agent so the same aggregate maps to the same
+            # provenance across runs.
+            representative = sorted(agents)[0]
+
             items.append(
                 TrainingItem(
-                    source_agent_id=str(
-                        next(iter(agents)),
-                    ),
+                    source_agent_id=representative,
                     content_type=ContentType.TOOL_PATTERNS,
                     content=content,
                     created_at=datetime.now(UTC),
@@ -125,3 +137,26 @@ class ToolPatternExtractor:
             item_count=len(items),
         )
         return tuple(items)
+
+    async def _fetch_for_agent(
+        self,
+        agent_id: NotBlankStr,
+        start: datetime,
+        end: datetime,
+    ) -> tuple[NotBlankStr, tuple[ToolInvocationRecord, ...]]:
+        """Fetch invocation records for a single agent with error logging."""
+        try:
+            records = await self._tracker.get_records(
+                agent_id=str(agent_id),
+                start=start,
+                end=end,
+            )
+        except Exception as exc:
+            logger.exception(
+                HR_TRAINING_EXTRACTION_FAILED,
+                content_type="tool_patterns",
+                agent_id=str(agent_id),
+                error=str(exc),
+            )
+            raise
+        return agent_id, tuple(records)

@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING
 
 from synthorg.observability import get_logger
 from synthorg.observability.events.training import (
-    HR_TRAINING_EXTRACTION_STARTED,
+    HR_TRAINING_SELECTION_COMPLETE,
 )
 
 if TYPE_CHECKING:
@@ -28,7 +28,7 @@ class CompositeSelector:
 
     Args:
         selectors: Child selectors.
-        weights: Per-selector weights (for future use).
+        weights: Per-selector weights (must match selectors length).
     """
 
     def __init__(
@@ -37,6 +37,13 @@ class CompositeSelector:
         selectors: tuple[SourceSelector, ...],
         weights: tuple[float, ...],
     ) -> None:
+        if len(selectors) != len(weights):
+            msg = (
+                f"CompositeSelector requires matching selectors/weights "
+                f"lengths, got selectors={len(selectors)}, "
+                f"weights={len(weights)}"
+            )
+            raise ValueError(msg)
         self._selectors = selectors
         self._weights = weights
 
@@ -50,12 +57,14 @@ class CompositeSelector:
         *,
         new_agent_role: NotBlankStr,
         new_agent_level: SeniorityLevel,
+        new_agent_department: NotBlankStr | None = None,
     ) -> tuple[NotBlankStr, ...]:
         """Run all child selectors and merge results.
 
         Args:
             new_agent_role: Role of the new hire.
             new_agent_level: Seniority level.
+            new_agent_department: Department of the new hire.
 
         Returns:
             Deduplicated merged agent IDs.
@@ -70,6 +79,7 @@ class CompositeSelector:
             ids = await selector.select(
                 new_agent_role=new_agent_role,
                 new_agent_level=new_agent_level,
+                new_agent_department=new_agent_department,
             )
             for agent_id in ids:
                 str_id = str(agent_id)
@@ -78,7 +88,7 @@ class CompositeSelector:
                     result.append(str_id)
 
         logger.debug(
-            HR_TRAINING_EXTRACTION_STARTED,
+            HR_TRAINING_SELECTION_COMPLETE,
             selector="composite",
             child_count=len(self._selectors),
             total_selected=len(result),

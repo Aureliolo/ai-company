@@ -113,7 +113,7 @@ class TrainingGuardDecision(BaseModel):
     guard_name: NotBlankStr = Field(
         description="Name of the guard",
     )
-    rejection_reasons: tuple[str, ...] = Field(
+    rejection_reasons: tuple[NotBlankStr, ...] = Field(
         default=(),
         description="Per-item rejection reasons",
     )
@@ -149,6 +149,7 @@ class TrainingPlan(BaseModel):
         new_agent_id: Target agent being trained.
         new_agent_role: Role of the new hire.
         new_agent_level: Seniority level of the new hire.
+        new_agent_department: Department of the new hire (optional).
         source_selector_type: Source selector strategy name.
         enabled_content_types: Which extractors to run.
         curation_strategy_type: Curation strategy name.
@@ -175,6 +176,10 @@ class TrainingPlan(BaseModel):
     )
     new_agent_level: SeniorityLevel = Field(
         description="Seniority level of the new hire",
+    )
+    new_agent_department: NotBlankStr | None = Field(
+        default=None,
+        description="Department of the new hire (for department-scoped selectors)",
     )
     source_selector_type: NotBlankStr = Field(
         default="role_top_performers",
@@ -251,6 +256,32 @@ class TrainingPlan(BaseModel):
         return self
 
 
+class TrainingApprovalHandle(BaseModel):
+    """A pending review-gate approval created during guard evaluation.
+
+    Carries the information needed to resume a plan once the
+    reviewer approves or rejects the associated items.
+
+    Attributes:
+        approval_item_id: ApprovalStore item ID.
+        content_type: Content type the approval covers.
+        item_count: Number of items blocked by the gate.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+
+    approval_item_id: NotBlankStr = Field(
+        description="ApprovalStore item ID",
+    )
+    content_type: ContentType = Field(
+        description="Content type the approval covers",
+    )
+    item_count: int = Field(
+        ge=0,
+        description="Number of items blocked by the gate",
+    )
+
+
 class TrainingResult(BaseModel):
     """Outcome of a training plan execution.
 
@@ -265,7 +296,9 @@ class TrainingResult(BaseModel):
         items_after_curation: Per-content-type post-curation counts.
         items_after_guards: Per-content-type post-guard counts.
         items_stored: Per-content-type stored counts.
-        approval_item_id: ApprovalStore item ID if review gate triggered.
+        approval_item_id: First ApprovalStore item ID if review gate triggered.
+        pending_approvals: All review-gate approvals created during evaluation.
+        review_pending: True when the review gate blocked seeding (any content type).
         errors: Guard rejections, store failures, etc.
         started_at: Pipeline start timestamp.
         completed_at: Pipeline completion timestamp.
@@ -305,7 +338,15 @@ class TrainingResult(BaseModel):
     )
     approval_item_id: NotBlankStr | None = Field(
         default=None,
-        description="ApprovalStore item ID if review gate triggered",
+        description="First ApprovalStore item ID if review gate triggered",
+    )
+    pending_approvals: tuple[TrainingApprovalHandle, ...] = Field(
+        default=(),
+        description="All review-gate approvals created during evaluation",
+    )
+    review_pending: bool = Field(
+        default=False,
+        description="True when the review gate blocked seeding for any content type",
     )
     errors: tuple[str, ...] = Field(
         default=(),
@@ -327,4 +368,36 @@ class TrainingResult(BaseModel):
                 f">= started_at ({self.started_at})"
             )
             raise ValueError(msg)
+        return self
+
+    @model_validator(mode="after")
+    def _validate_pipeline_consistency(self) -> Self:
+        """Ensure counts decrease monotonically down the pipeline.
+
+        For every content type represented in any stage, the counts
+        must obey ``stored <= after_guards <= after_curation <= extracted``.
+        """
+        stages = (
+            ("extracted", self.items_extracted),
+            ("after_curation", self.items_after_curation),
+            ("after_guards", self.items_after_guards),
+            ("stored", self.items_stored),
+        )
+        counts: dict[ContentType, dict[str, int]] = {}
+        for stage_name, stage_counts in stages:
+            for content_type, count in stage_counts:
+                counts.setdefault(content_type, {})[stage_name] = count
+
+        for content_type, per_stage in counts.items():
+            extracted = per_stage.get("extracted", 0)
+            after_curation = per_stage.get("after_curation", extracted)
+            after_guards = per_stage.get("after_guards", after_curation)
+            stored = per_stage.get("stored", after_guards)
+            if not (stored <= after_guards <= after_curation <= extracted):
+                msg = (
+                    f"Pipeline counts non-monotonic for {content_type.value}: "
+                    f"extracted={extracted} -> curation={after_curation} -> "
+                    f"guards={after_guards} -> stored={stored}"
+                )
+                raise ValueError(msg)
         return self

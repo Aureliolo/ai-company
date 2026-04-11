@@ -12,39 +12,63 @@
  * - Result summary shows post-training metrics
  */
 
-import { useState } from 'react'
+import type { ReactNode } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 
 import { GraduationCap } from 'lucide-react'
 
 import { SectionCard } from '@/components/ui/section-card'
 import { StatPill } from '@/components/ui/stat-pill'
 import { Button } from '@/components/ui/button'
+import { InputField } from '@/components/ui/input-field'
 import { ToggleField } from '@/components/ui/toggle-field'
 import { TagInput } from '@/components/ui/tag-input'
 import { cn } from '@/lib/utils'
 import { createLogger } from '@/lib/logger'
-import type { TrainingPlanResponse, TrainingResultResponse } from '@/api/endpoints/training'
+import { sanitizeForLog } from '@/utils/logging'
+import type {
+  TrainingPlanResponse,
+  TrainingResultResponse,
+} from '@/api/endpoints/training'
 
 const log = createLogger('training-panel')
 
 // -- Types -----------------------------------------------------------
 
+/** Content types supported by the training pipeline. */
+const TRAINING_CONTENT_TYPES = [
+  'procedural',
+  'semantic',
+  'tool_patterns',
+] as const
+
+type TrainingContentType = (typeof TRAINING_CONTENT_TYPES)[number]
+
+interface CustomCap {
+  contentType: TrainingContentType
+  cap: number
+}
+
+interface CreatePlanOverrides {
+  override_sources: string[]
+  content_types?: string[]
+  custom_caps?: Record<string, number>
+  skip_training: boolean
+  require_review: boolean
+}
+
 interface TrainingPanelProps {
   agentName: string
   plan?: TrainingPlanResponse | null
   result?: TrainingResultResponse | null
-  onCreatePlan?: (overrides: {
-    override_sources: string[]
-    skip_training: boolean
-    require_review: boolean
-  }) => void
+  onCreatePlan?: (overrides: CreatePlanOverrides) => void
   onExecute?: () => void
   className?: string
 }
 
 // -- Content type labels ---------------------------------------------
 
-const CONTENT_TYPE_LABELS: Record<string, string> = {
+const CONTENT_TYPE_LABELS: Record<TrainingContentType, string> = {
   procedural: 'Procedural Memories',
   semantic: 'Semantic Knowledge',
   tool_patterns: 'Tool Patterns',
@@ -61,23 +85,76 @@ export function TrainingPanel({
   className,
 }: TrainingPanelProps) {
   const [overrideSources, setOverrideSources] = useState<string[]>([])
+  const [enabledContentTypes, setEnabledContentTypes] = useState<
+    Set<TrainingContentType>
+  >(() => new Set(TRAINING_CONTENT_TYPES))
+  const [customCaps, setCustomCaps] = useState<CustomCap[]>([])
   const [skipTraining, setSkipTraining] = useState(false)
   const [requireReview, setRequireReview] = useState(true)
 
+  const toggleContentType = useCallback((ct: TrainingContentType) => {
+    setEnabledContentTypes((prev) => {
+      const next = new Set(prev)
+      if (next.has(ct)) {
+        next.delete(ct)
+      } else {
+        next.add(ct)
+      }
+      return next
+    })
+  }, [])
+
+  const updateCap = useCallback(
+    (ct: TrainingContentType, value: string) => {
+      const parsed = Number.parseInt(value, 10)
+      setCustomCaps((prev) => {
+        const filtered = prev.filter((entry) => entry.contentType !== ct)
+        if (!Number.isFinite(parsed) || parsed <= 0) {
+          return filtered
+        }
+        return [...filtered, { contentType: ct, cap: parsed }]
+      })
+    },
+    [],
+  )
+
+  const capsByType = useMemo(() => {
+    const map = new Map<TrainingContentType, number>()
+    for (const entry of customCaps) {
+      map.set(entry.contentType, entry.cap)
+    }
+    return map
+  }, [customCaps])
+
   const handleCreatePlan = () => {
-    log.debug('Creating training plan', { agentName })
+    log.debug('Creating training plan', {
+      agentName: sanitizeForLog(agentName),
+      sourceCount: overrideSources.length,
+      contentTypes: Array.from(enabledContentTypes),
+    })
+    const contentTypes = Array.from(enabledContentTypes)
+    const customCapsPayload = customCaps.length
+      ? Object.fromEntries(
+          customCaps.map(({ contentType, cap }) => [contentType, cap]),
+        )
+      : undefined
+
     onCreatePlan?.({
       override_sources: overrideSources,
+      content_types: contentTypes.length > 0 ? contentTypes : undefined,
+      custom_caps: customCapsPayload,
       skip_training: skipTraining,
       require_review: requireReview,
     })
   }
 
+  const canCreatePlan = skipTraining || enabledContentTypes.size > 0
+
   return (
     <SectionCard
       title="Training Mode"
       icon={GraduationCap}
-      className={cn('', className)}
+      className={cn(className)}
     >
       {/* Status display */}
       {plan && (
@@ -89,9 +166,7 @@ export function TrainingPanel({
       )}
 
       {/* Result summary */}
-      {result && (
-        <TrainingResultSummary result={result} />
-      )}
+      {result && <TrainingResultSummary result={result} />}
 
       {/* Configuration (when no plan exists) */}
       {!plan && (
@@ -105,6 +180,41 @@ export function TrainingPanel({
               onChange={setOverrideSources}
               placeholder="Enter agent IDs..."
             />
+          </div>
+
+          <div>
+            <span className="mb-1 block text-sm font-medium text-foreground">
+              Content Types
+            </span>
+            <div className="space-y-2">
+              {TRAINING_CONTENT_TYPES.map((ct) => (
+                <ToggleField
+                  key={ct}
+                  label={CONTENT_TYPE_LABELS[ct]}
+                  checked={enabledContentTypes.has(ct)}
+                  onChange={() => toggleContentType(ct)}
+                />
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <span className="mb-1 block text-sm font-medium text-foreground">
+              Volume Caps (blank = default)
+            </span>
+            <div className="space-y-2">
+              {TRAINING_CONTENT_TYPES.map((ct) => (
+                <InputField
+                  key={ct}
+                  label={CONTENT_TYPE_LABELS[ct]}
+                  type="number"
+                  min={1}
+                  value={capsByType.get(ct)?.toString() ?? ''}
+                  onChange={(event) => updateCap(ct, event.target.value)}
+                  placeholder="Use default"
+                />
+              ))}
+            </div>
           </div>
 
           <ToggleField
@@ -121,7 +231,7 @@ export function TrainingPanel({
             onChange={setRequireReview}
           />
 
-          <Button onClick={handleCreatePlan}>
+          <Button onClick={handleCreatePlan} disabled={!canCreatePlan}>
             Create Training Plan
           </Button>
         </div>
@@ -143,7 +253,7 @@ function TrainingResultSummary({
   result,
 }: {
   result: TrainingResultResponse
-}) {
+}): ReactNode {
   const totalExtracted = result.items_extracted.reduce(
     (sum, [, count]) => sum + count,
     0,
@@ -156,10 +266,7 @@ function TrainingResultSummary({
   return (
     <div className="space-y-card">
       <div className="flex flex-wrap gap-grid-gap">
-        <StatPill
-          label="Sources"
-          value={result.source_agents_used.length}
-        />
+        <StatPill label="Sources" value={result.source_agents_used.length} />
         <StatPill label="Extracted" value={totalExtracted} />
         <StatPill label="Stored" value={totalStored} />
         {result.errors.length > 0 && (
@@ -178,7 +285,8 @@ function TrainingResultSummary({
             className="flex items-center justify-between text-sm"
           >
             <span className="text-muted-foreground">
-              {CONTENT_TYPE_LABELS[contentType] ?? contentType}
+              {CONTENT_TYPE_LABELS[contentType as TrainingContentType] ??
+                contentType}
             </span>
             <span className="font-mono text-foreground">{count}</span>
           </div>
@@ -192,10 +300,7 @@ function TrainingResultSummary({
             Rejection Reasons
           </h4>
           {result.errors.map((error) => (
-            <p
-              key={error}
-              className="text-xs text-muted-foreground"
-            >
+            <p key={error} className="text-xs text-muted-foreground">
               {error}
             </p>
           ))}

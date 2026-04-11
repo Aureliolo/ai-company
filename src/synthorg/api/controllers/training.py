@@ -4,7 +4,9 @@ Provides endpoints for creating, executing, previewing, and
 querying training plans for agent onboarding.
 """
 
+import asyncio
 from datetime import UTC, datetime
+from typing import TYPE_CHECKING
 
 from litestar import Controller, get, post, put
 from litestar.status_codes import HTTP_200_OK
@@ -16,11 +18,16 @@ from synthorg.api.dto_training import (
     TrainingResultResponse,
     UpdateTrainingOverridesRequest,
 )
-from synthorg.api.errors import ApiValidationError, NotFoundError
+from synthorg.api.errors import (
+    ApiValidationError,
+    NotFoundError,
+    ServiceUnavailableError,
+)
 from synthorg.api.guards import require_org_mutation, require_read_access
 from synthorg.api.path_params import PathName  # noqa: TC001
 from synthorg.api.state import AppState  # noqa: TC001
 from synthorg.core.agent import AgentIdentity  # noqa: TC001
+from synthorg.core.types import NotBlankStr
 from synthorg.hr.training.models import (
     ContentType,
     TrainingPlan,
@@ -34,12 +41,77 @@ from synthorg.observability.events.training import (
     HR_TRAINING_PLAN_CREATED,
 )
 
+if TYPE_CHECKING:
+    from collections.abc import Mapping
+
 logger = get_logger(__name__)
 
-# In-memory training plan/result stores (will be replaced with
-# persistence in a future issue).
-_training_plans: dict[str, TrainingPlan] = {}
-_training_results: dict[str, TrainingResultResponse] = {}
+
+class _TrainingPlanStore:
+    """Async-safe in-memory store for training plans and results.
+
+    This is a placeholder until training plan persistence lands
+    (tracked as a follow-up).  It is ``asyncio``-safe within a
+    single process; multi-worker deployments will need a real
+    persistence backend exposed via ``AppState``.
+    """
+
+    def __init__(self) -> None:
+        self._plans: dict[str, TrainingPlan] = {}
+        self._results: dict[str, TrainingResultResponse] = {}
+        self._lock = asyncio.Lock()
+
+    async def save_plan(self, plan: TrainingPlan) -> None:
+        """Persist a training plan by id."""
+        async with self._lock:
+            self._plans[str(plan.id)] = plan
+
+    async def get_plan(self, plan_id: str) -> TrainingPlan | None:
+        """Fetch a training plan by id."""
+        async with self._lock:
+            return self._plans.get(plan_id)
+
+    async def latest_pending_plan(self, agent_id: str) -> TrainingPlan | None:
+        """Return the most recently created PENDING plan for an agent."""
+        from synthorg.hr.training.models import TrainingPlanStatus  # noqa: PLC0415
+
+        async with self._lock:
+            pending = [
+                plan
+                for plan in self._plans.values()
+                if str(plan.new_agent_id) == agent_id
+                and plan.status == TrainingPlanStatus.PENDING
+            ]
+        if not pending:
+            return None
+        return max(pending, key=lambda p: p.created_at)
+
+    async def snapshot_plans(self) -> Mapping[str, TrainingPlan]:
+        """Return a read-only snapshot of all plans."""
+        async with self._lock:
+            return dict(self._plans)
+
+    async def save_result(
+        self,
+        agent_id: str,
+        result: TrainingResultResponse,
+    ) -> None:
+        """Persist the latest training result for an agent."""
+        async with self._lock:
+            self._results[agent_id] = result
+
+    async def get_result(
+        self,
+        agent_id: str,
+    ) -> TrainingResultResponse | None:
+        """Fetch the latest training result for an agent."""
+        async with self._lock:
+            return self._results.get(agent_id)
+
+
+# Process-local store singleton. Will be replaced with persistence
+# in a follow-up issue (see CodeRabbit #1232 review).
+_store = _TrainingPlanStore()
 
 
 async def _resolve_agent(
@@ -49,12 +121,12 @@ async def _resolve_agent(
     """Resolve agent name to identity, raising NotFoundError."""
     identity = await app_state.agent_registry.get_by_name(agent_name)
     if identity is None:
-        msg = "Agent not found"
         logger.warning(
             API_RESOURCE_NOT_FOUND,
             resource="agent",
             name=str(agent_name),
         )
+        msg = "Agent not found"
         raise NotFoundError(msg)
     return identity
 
@@ -75,22 +147,55 @@ def _parse_content_types(
 
 def _parse_custom_caps(
     raw: dict[str, int] | None,
+    *,
+    defaults: tuple[tuple[ContentType, int], ...],
 ) -> tuple[tuple[ContentType, int], ...] | None:
-    """Parse custom caps dict, validating keys and values."""
+    """Parse custom caps and merge with defaults for any unspecified types.
+
+    Args:
+        raw: Raw caps dict from the request, keyed by content type
+            value (e.g. ``"procedural"``).  May be ``None`` when no
+            override is supplied.
+        defaults: The fallback caps for any content type not present
+            in ``raw`` -- typically the plan's default volume caps.
+
+    Returns:
+        A merged caps tuple covering every known content type, or
+        ``None`` when ``raw`` was not provided.
+    """
     if not raw:
         return None
     try:
-        caps = tuple((ContentType(k), v) for k, v in raw.items())
+        overrides = {ContentType(k): v for k, v in raw.items()}
     except ValueError as exc:
         msg = f"Invalid content type in caps: {exc}"
         logger.warning(API_REQUEST_ERROR, error=msg)
         raise ApiValidationError(msg) from exc
 
-    for ct, cap in caps:
+    for ct, cap in overrides.items():
         if cap <= 0:
             msg = f"Cap for {ct.value} must be positive, got {cap}"
+            logger.warning(API_REQUEST_ERROR, error=msg)
             raise ApiValidationError(msg)
-    return caps
+
+    merged: dict[ContentType, int] = dict(defaults)
+    merged.update(overrides)
+    return tuple(merged.items())
+
+
+def _coerce_override_sources(
+    raw: tuple[str, ...],
+) -> tuple[NotBlankStr, ...]:
+    """Validate override_sources as non-blank identifier strings."""
+    coerced: list[NotBlankStr] = []
+    for raw_id in raw:
+        stripped = raw_id.strip()
+        if not stripped:
+            msg = "override_sources entries must be non-blank"
+            logger.warning(API_REQUEST_ERROR, error=msg)
+            raise ApiValidationError(msg)
+        coerced.append(NotBlankStr(stripped))
+    return tuple(coerced)
 
 
 class TrainingController(Controller):
@@ -109,26 +214,47 @@ class TrainingController(Controller):
         agent_name: PathName,
         data: CreateTrainingPlanRequest,
     ) -> ApiResponse[TrainingPlanResponse]:
-        """Create a training plan for an agent."""
+        """Create a training plan for the specified agent.
+
+        Args:
+            app_state: Litestar application state.
+            agent_name: Agent identifier from the URL path.
+            data: Request body (content types, caps, overrides, flags).
+
+        Returns:
+            ``ApiResponse`` wrapping the created plan response DTO.
+
+        Raises:
+            ApiValidationError: If the request contains invalid
+                content types, caps, or override sources.
+            NotFoundError: If the agent name does not resolve.
+        """
         identity = await _resolve_agent(app_state, agent_name)
         enabled_types = _parse_content_types(data.content_types)
+        override_sources = _coerce_override_sources(data.override_sources)
 
         plan_kwargs: dict[str, object] = {
             "new_agent_id": str(identity.id),
             "new_agent_role": str(identity.role),
             "new_agent_level": identity.level,
-            "override_sources": data.override_sources,
+            "new_agent_department": str(identity.department),
+            "override_sources": override_sources,
             "enabled_content_types": enabled_types,
             "skip_training": data.skip_training,
             "require_review": data.require_review,
             "created_at": datetime.now(UTC),
         }
-        caps = _parse_custom_caps(data.custom_caps)
+
+        # Use TrainingPlan's default caps for the merge baseline so
+        # omitted content types remain capped at the documented default
+        # instead of becoming unlimited.
+        default_caps = TrainingPlan.model_fields["volume_caps"].default
+        caps = _parse_custom_caps(data.custom_caps, defaults=default_caps)
         if caps is not None:
             plan_kwargs["volume_caps"] = caps
 
         plan = TrainingPlan(**plan_kwargs)  # type: ignore[arg-type]
-        _training_plans[str(plan.id)] = plan
+        await _store.save_plan(plan)
 
         logger.info(
             HR_TRAINING_PLAN_CREATED,
@@ -148,20 +274,36 @@ class TrainingController(Controller):
         app_state: AppState,
         agent_name: PathName,
     ) -> ApiResponse[TrainingResultResponse]:
-        """Execute the latest pending training plan."""
+        """Execute the latest pending training plan.
+
+        Args:
+            app_state: Litestar application state.
+            agent_name: Agent identifier from the URL path.
+
+        Raises:
+            NotFoundError: If no pending plan exists for the agent.
+            ServiceUnavailableError: If the training service is not
+                yet wired into ``AppState`` for this deployment.
+        """
         identity = await _resolve_agent(app_state, agent_name)
         agent_id = str(identity.id)
 
-        plan = _find_latest_plan(agent_id)
+        plan = await _store.latest_pending_plan(agent_id)
         if plan is None:
+            logger.warning(
+                API_RESOURCE_NOT_FOUND,
+                resource="training_plan",
+                agent_id=agent_id,
+            )
             msg = "No pending training plan found"
             raise NotFoundError(msg)
 
-        # Placeholder: service wiring requires TrainingService
-        # in AppState (tracked for future issue).
-        msg = "Training execution not yet wired to service layer"
-        logger.warning(API_REQUEST_ERROR, error=msg)
-        raise NotFoundError(msg)
+        # TrainingService is not yet exposed on AppState (tracked in
+        # a follow-up issue). Return 503 so callers can distinguish
+        # "agent exists but service unavailable" from "resource missing".
+        msg = "Training execution service is not yet wired for this deployment"
+        logger.warning(API_REQUEST_ERROR, error=msg, plan_id=str(plan.id))
+        raise ServiceUnavailableError(msg)
 
     @get(
         "/result",
@@ -173,17 +315,26 @@ class TrainingController(Controller):
         app_state: AppState,
         agent_name: PathName,
     ) -> ApiResponse[TrainingResultResponse]:
-        """Get the latest training result."""
+        """Get the latest training result for an agent.
+
+        Args:
+            app_state: Litestar application state.
+            agent_name: Agent identifier from the URL path.
+
+        Raises:
+            NotFoundError: If no result is stored for the agent.
+        """
         identity = await _resolve_agent(app_state, agent_name)
         agent_id = str(identity.id)
 
-        result = _training_results.get(agent_id)
+        result = await _store.get_result(agent_id)
         if result is None:
-            msg = "No training result found"
             logger.warning(
                 API_RESOURCE_NOT_FOUND,
                 resource="training_result",
+                agent_id=agent_id,
             )
+            msg = "No training result found"
             raise NotFoundError(msg)
 
         return ApiResponse(data=result)
@@ -198,19 +349,33 @@ class TrainingController(Controller):
         app_state: AppState,
         agent_name: PathName,
     ) -> ApiResponse[TrainingResultResponse]:
-        """Preview a training plan (dry run)."""
+        """Preview a training plan (dry run).
+
+        Args:
+            app_state: Litestar application state.
+            agent_name: Agent identifier from the URL path.
+
+        Raises:
+            NotFoundError: If no pending plan exists for the agent.
+            ServiceUnavailableError: If the training service is not
+                yet wired into ``AppState`` for this deployment.
+        """
         identity = await _resolve_agent(app_state, agent_name)
         agent_id = str(identity.id)
 
-        plan = _find_latest_plan(agent_id)
+        plan = await _store.latest_pending_plan(agent_id)
         if plan is None:
+            logger.warning(
+                API_RESOURCE_NOT_FOUND,
+                resource="training_plan",
+                agent_id=agent_id,
+            )
             msg = "No pending training plan found"
             raise NotFoundError(msg)
 
-        # Placeholder: service wiring requires TrainingService.
-        msg = "Training preview not yet wired to service layer"
-        logger.warning(API_REQUEST_ERROR, error=msg)
-        raise NotFoundError(msg)
+        msg = "Training preview service is not yet wired for this deployment"
+        logger.warning(API_REQUEST_ERROR, error=msg, plan_id=str(plan.id))
+        raise ServiceUnavailableError(msg)
 
     @put(
         "/plan/{plan_id:str}/overrides",
@@ -224,43 +389,57 @@ class TrainingController(Controller):
         plan_id: str,
         data: UpdateTrainingOverridesRequest,
     ) -> ApiResponse[TrainingPlanResponse]:
-        """Update training plan overrides."""
+        """Update training plan overrides.
+
+        Args:
+            app_state: Litestar application state.
+            agent_name: Agent identifier from the URL path.
+            plan_id: Training plan id from the URL path.
+            data: Request body with optional override updates.
+
+        Returns:
+            ``ApiResponse`` wrapping the updated plan response.
+
+        Raises:
+            NotFoundError: If the plan or agent cannot be resolved.
+            ApiValidationError: If the request contains invalid caps
+                or override source ids.
+        """
         identity = await _resolve_agent(app_state, agent_name)
 
-        plan = _training_plans.get(plan_id)
+        plan = await _store.get_plan(plan_id)
         if plan is None:
-            msg = "Training plan not found"
             logger.warning(
                 API_RESOURCE_NOT_FOUND,
                 resource="training_plan",
                 plan_id=plan_id,
             )
+            msg = "Training plan not found"
             raise NotFoundError(msg)
 
-        # Verify plan belongs to the resolved agent.
         if str(plan.new_agent_id) != str(identity.id):
+            logger.warning(
+                API_RESOURCE_NOT_FOUND,
+                resource="training_plan",
+                plan_id=plan_id,
+                reason="wrong_owner",
+            )
             msg = "Training plan does not belong to this agent"
             raise NotFoundError(msg)
 
         updates: dict[str, object] = {}
         if data.override_sources is not None:
-            updates["override_sources"] = data.override_sources
-        caps = _parse_custom_caps(data.custom_caps)
+            updates["override_sources"] = _coerce_override_sources(
+                data.override_sources,
+            )
+        caps = _parse_custom_caps(data.custom_caps, defaults=plan.volume_caps)
         if caps is not None:
             updates["volume_caps"] = caps
 
         updated = plan.model_copy(update=updates)
-        _training_plans[plan_id] = updated
+        await _store.save_plan(updated)
 
         return ApiResponse(data=_plan_to_response(updated))
-
-
-def _find_latest_plan(agent_id: str) -> TrainingPlan | None:
-    """Find the latest pending training plan for an agent."""
-    for plan in reversed(_training_plans.values()):
-        if str(plan.new_agent_id) == agent_id:
-            return plan
-    return None
 
 
 def _plan_to_response(plan: TrainingPlan) -> TrainingPlanResponse:
@@ -270,7 +449,9 @@ def _plan_to_response(plan: TrainingPlan) -> TrainingPlanResponse:
         new_agent_id=plan.new_agent_id,
         new_agent_role=plan.new_agent_role,
         source_selector_type=plan.source_selector_type,
-        enabled_content_types=tuple(ct.value for ct in plan.enabled_content_types),
+        enabled_content_types=tuple(
+            sorted(ct.value for ct in plan.enabled_content_types),
+        ),
         curation_strategy_type=plan.curation_strategy_type,
         volume_caps=tuple((ct.value, cap) for ct, cap in plan.volume_caps),
         override_sources=plan.override_sources,

@@ -7,7 +7,8 @@
  * Visual testing checkpoints:
  * - Modal opens with list of pending training items
  * - Approve button calls onApprove callback
- * - Reject button calls onReject callback
+ * - Reject button (Cancel) calls onReject callback
+ * - Dismissals via Escape / backdrop DO NOT trigger onReject
  * - Empty state when no items pending
  */
 
@@ -15,6 +16,7 @@ import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { StatPill } from '@/components/ui/stat-pill'
 import { cn } from '@/lib/utils'
 import { createLogger } from '@/lib/logger'
+import { sanitizeForLog } from '@/utils/logging'
 
 const log = createLogger('training-review-modal')
 
@@ -60,21 +62,29 @@ export function TrainingReviewModal({
   const totalItems = items.reduce((sum, item) => sum + item.item_count, 0)
 
   const handleApprove = () => {
-    log.debug('Approving training plan', { planId, approvalId })
+    log.debug('Approving training plan', {
+      planId: sanitizeForLog(planId),
+      approvalId: sanitizeForLog(approvalId),
+    })
     return onApprove()
   }
 
   return (
     <ConfirmDialog
       open={open}
-      onOpenChange={(nextOpen) => {
-        if (!nextOpen) onReject?.()
-        onOpenChange(nextOpen)
-      }}
+      onOpenChange={onOpenChange}
       onConfirm={handleApprove}
+      onCancel={() => {
+        log.debug('Rejecting training plan', {
+          planId: sanitizeForLog(planId),
+          approvalId: sanitizeForLog(approvalId),
+        })
+        onReject?.()
+      }}
       title="Review Training Plan"
       confirmLabel="Approve"
       cancelLabel="Reject"
+      variant="destructive"
       loading={loading}
     >
       <div className="space-y-card">

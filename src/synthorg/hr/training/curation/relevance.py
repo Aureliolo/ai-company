@@ -1,7 +1,8 @@
 """Relevance score curation strategy.
 
-Non-LLM curation that scores items by content length (as a proxy
-for richness), recency, and diversity, then returns the top K.
+Non-LLM curation that scores items by content richness (length as
+a proxy), source diversity, and a deterministic SHA-256 hash
+tie-breaker, then returns the top K.
 """
 
 import hashlib
@@ -24,7 +25,10 @@ _DEFAULT_TOP_K = 50
 # Scoring weights.
 _CONTENT_RICHNESS_WEIGHT = 0.4
 _DIVERSITY_WEIGHT = 0.3
-_RECENCY_WEIGHT = 0.3
+# Deterministic SHA-256 tie-breaker weight (not actual recency).
+# Named for clarity: the score is a hash-derived stable ordering,
+# not a timestamp signal.
+_TIEBREAKER_WEIGHT = 0.3
 
 
 class RelevanceScoreCuration:
@@ -96,7 +100,7 @@ class RelevanceScoreCuration:
             score = (
                 _CONTENT_RICHNESS_WEIGHT * richness
                 + _DIVERSITY_WEIGHT * diversity
-                + _RECENCY_WEIGHT * hash_score
+                + _TIEBREAKER_WEIGHT * hash_score
             )
             score = min(max(score, 0.0), 1.0)
 

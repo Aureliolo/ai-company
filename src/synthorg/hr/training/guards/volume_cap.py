@@ -53,6 +53,14 @@ class VolumeCapGuard:
             Decision with truncated items if over cap.
         """
         if not items:
+            logger.info(
+                HR_TRAINING_VOLUME_CAP_ENFORCED,
+                plan_id=str(plan.id),
+                content_type=content_type.value,
+                cap="none",
+                input_count=0,
+                rejected_count=0,
+            )
             return TrainingGuardDecision(
                 approved_items=(),
                 rejected_count=0,
@@ -60,15 +68,16 @@ class VolumeCapGuard:
             )
 
         # Find cap for this content type.
-        cap = None
+        cap: int | None = None
         for ct, limit in plan.volume_caps:
             if ct == content_type:
                 cap = limit
                 break
 
         if cap is None:
-            logger.debug(
+            logger.info(
                 HR_TRAINING_VOLUME_CAP_ENFORCED,
+                plan_id=str(plan.id),
                 content_type=content_type.value,
                 cap="none",
                 input_count=len(items),
@@ -83,17 +92,22 @@ class VolumeCapGuard:
         approved = items[:cap]
         rejected_count = max(0, len(items) - cap)
 
-        if rejected_count > 0:
-            logger.debug(
-                HR_TRAINING_VOLUME_CAP_ENFORCED,
-                content_type=content_type.value,
-                cap=cap,
-                input_count=len(items),
-                rejected_count=rejected_count,
-            )
+        logger.info(
+            HR_TRAINING_VOLUME_CAP_ENFORCED,
+            plan_id=str(plan.id),
+            content_type=content_type.value,
+            cap=cap,
+            input_count=len(items),
+            rejected_count=rejected_count,
+        )
 
+        rejection_reasons = tuple(
+            f"volume_cap={cap}: item dropped for {content_type.value}"
+            for _ in range(rejected_count)
+        )
         return TrainingGuardDecision(
             approved_items=approved,
             rejected_count=rejected_count,
             guard_name="volume_cap",
+            rejection_reasons=rejection_reasons,
         )

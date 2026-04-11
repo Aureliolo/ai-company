@@ -5,8 +5,10 @@ import type { ApiResponse } from '../types'
 
 export type ContentType = 'procedural' | 'semantic' | 'tool_patterns'
 
+export type TrainingPlanStatus = 'pending' | 'executed' | 'failed'
+
 export interface TrainingPlanRequest {
-  override_sources?: string[]
+  override_sources: string[]
   content_types?: ContentType[]
   custom_caps?: Partial<Record<ContentType, number>>
   skip_training?: boolean
@@ -24,7 +26,7 @@ export interface TrainingPlanResponse {
   override_sources: string[]
   skip_training: boolean
   require_review: boolean
-  status: 'pending' | 'executed' | 'failed'
+  status: TrainingPlanStatus
   created_at: string
   executed_at: string | null
 }
@@ -39,6 +41,7 @@ export interface TrainingResultResponse {
   items_after_guards: Array<[ContentType, number]>
   items_stored: Array<[ContentType, number]>
   approval_item_id: string | null
+  review_pending: boolean
   errors: string[]
   started_at: string
   completed_at: string

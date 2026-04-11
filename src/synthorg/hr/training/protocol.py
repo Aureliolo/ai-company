@@ -65,12 +65,15 @@ class SourceSelector(Protocol):
         *,
         new_agent_role: NotBlankStr,
         new_agent_level: SeniorityLevel,
+        new_agent_department: NotBlankStr | None = None,
     ) -> tuple[NotBlankStr, ...]:
         """Select source agent IDs for training.
 
         Args:
             new_agent_role: Role of the new hire.
             new_agent_level: Seniority level of the new hire.
+            new_agent_department: Department of the new hire. Required
+                for department-scoped selectors; optional otherwise.
 
         Returns:
             Ordered tuple of selected agent IDs.

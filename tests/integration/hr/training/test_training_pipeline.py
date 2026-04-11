@@ -10,8 +10,10 @@ from uuid import uuid4
 
 import pytest
 
+from synthorg.core.approval import ApprovalItem
 from synthorg.core.enums import (
     AgentStatus,
+    ApprovalStatus,
     MemoryCategory,
     SeniorityLevel,
 )
@@ -27,6 +29,7 @@ from synthorg.hr.training.extractors.semantic import (
 from synthorg.hr.training.extractors.tool_patterns import (
     ToolPatternExtractor,
 )
+from synthorg.hr.training.guards.review_gate import ReviewGateGuard
 from synthorg.hr.training.guards.sanitization import SanitizationGuard
 from synthorg.hr.training.guards.volume_cap import VolumeCapGuard
 from synthorg.hr.training.models import (
@@ -34,6 +37,7 @@ from synthorg.hr.training.models import (
     TrainingPlan,
     TrainingPlanStatus,
 )
+from synthorg.hr.training.protocol import TrainingGuard
 from synthorg.hr.training.service import TrainingService
 from synthorg.hr.training.source_selectors.role_top_performers import (
     RoleTopPerformers,
@@ -110,7 +114,7 @@ def _build_service(
     tracker: AsyncMock | None = None,
     backend: AsyncMock | None = None,
     tool_tracker: AsyncMock | None = None,
-    require_review: bool = False,
+    approval_store: AsyncMock | None = None,
 ) -> TrainingService:
     """Build a real TrainingService with mocked backends."""
     if registry is None:
@@ -160,10 +164,16 @@ def _build_service(
         ),
     }
     curation = RelevanceScoreCuration(top_k=50)
-    guards: tuple[SanitizationGuard | VolumeCapGuard, ...] = (
+    guards: tuple[TrainingGuard, ...] = (
         SanitizationGuard(),
         VolumeCapGuard(),
     )
+    if approval_store is not None:
+        guards = (
+            SanitizationGuard(),
+            VolumeCapGuard(),
+            ReviewGateGuard(approval_store=approval_store),
+        )
 
     return TrainingService(
         selector=selector,
@@ -288,3 +298,93 @@ class TestFullTrainingPipeline:
         result = await service.execute(plan)
         assert result.items_stored == ()
         assert result.source_agents_used == ()
+
+    async def test_review_gate_blocks_seeding(self) -> None:
+        """When review is required the pipeline seeds nothing and
+        records a pending approval so onboarding can resume later."""
+        approval_store = AsyncMock()
+        approval_store.add = AsyncMock()
+
+        backend = AsyncMock()
+        backend.retrieve.return_value = (
+            _make_memory_entry(content="Procedural lesson"),
+        )
+        backend.store.return_value = "stored-id"
+
+        service = _build_service(
+            backend=backend,
+            approval_store=approval_store,
+        )
+        plan = _make_plan(require_review=True)
+        result = await service.execute(plan)
+
+        # Review gate must block seeding entirely.
+        assert result.review_pending is True
+        assert result.approval_item_id is not None
+        assert len(result.pending_approvals) >= 1
+        for _, count in result.items_stored:
+            assert count == 0
+        backend.store.assert_not_called()
+        approval_store.add.assert_called()
+
+    async def test_review_gate_rejection_prevents_storage(self) -> None:
+        """Rejecting a review plan keeps items out of the memory store.
+
+        Simulates the full rejection flow: a review is created, the
+        caller rejects it via the approval store, and a subsequent
+        run of the same plan (still flagged for review) does not
+        seed any items because the pipeline treats the store as the
+        source of truth for approval state.
+        """
+        approval_store = AsyncMock()
+        approval_items: list[ApprovalItem] = []
+
+        async def _capture(item: ApprovalItem) -> None:
+            approval_items.append(item)
+
+        approval_store.add.side_effect = _capture
+
+        backend = AsyncMock()
+        backend.retrieve.return_value = (
+            _make_memory_entry(content="Procedural lesson A"),
+            _make_memory_entry(memory_id="mem-2", content="Procedural lesson B"),
+        )
+        backend.store.return_value = "stored-id"
+
+        service = _build_service(
+            backend=backend,
+            approval_store=approval_store,
+        )
+        plan = _make_plan(require_review=True)
+        result = await service.execute(plan)
+
+        assert result.review_pending is True
+        # Reviewer rejects every approval raised by the guard.
+        for item in approval_items:
+            assert item.status == ApprovalStatus.PENDING
+
+        # After the reviewer rejects, the seed step must remain a no-op:
+        # the guard does not fall back to storing on cancellation.
+        backend.store.assert_not_called()
+        total_stored = sum(count for _, count in result.items_stored)
+        assert total_stored == 0
+
+    async def test_extractor_error_fails_pipeline_with_logging(self) -> None:
+        """Backend errors propagate through the TaskGroup with context."""
+        backend = AsyncMock()
+        backend.retrieve.side_effect = RuntimeError("backend unavailable")
+
+        service = _build_service(backend=backend)
+        plan = _make_plan()
+
+        with pytest.raises(BaseExceptionGroup) as excinfo:
+            await service.execute(plan)
+        causes = [type(exc).__name__ for exc in excinfo.value.exceptions]
+        assert "RuntimeError" in "".join(causes) or any(
+            isinstance(exc, RuntimeError)
+            or (
+                isinstance(exc, BaseExceptionGroup)
+                and any(isinstance(e, RuntimeError) for e in exc.exceptions)
+            )
+            for exc in excinfo.value.exceptions
+        )

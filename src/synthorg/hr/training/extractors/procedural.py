@@ -4,6 +4,7 @@ Queries the memory backend for procedural-category entries from
 source agents and converts them to training items.
 """
 
+import asyncio
 from typing import TYPE_CHECKING
 
 from synthorg.core.enums import MemoryCategory
@@ -11,12 +12,14 @@ from synthorg.hr.training.models import ContentType, TrainingItem
 from synthorg.memory.models import MemoryQuery
 from synthorg.observability import get_logger
 from synthorg.observability.events.training import (
+    HR_TRAINING_EXTRACTION_FAILED,
     HR_TRAINING_ITEMS_EXTRACTED,
 )
 
 if TYPE_CHECKING:
     from synthorg.core.enums import SeniorityLevel
     from synthorg.core.types import NotBlankStr
+    from synthorg.memory.models import MemoryEntry
     from synthorg.memory.protocol import MemoryBackend
 
 logger = get_logger(__name__)
@@ -50,7 +53,7 @@ class ProceduralMemoryExtractor:
         new_agent_role: NotBlankStr,  # noqa: ARG002
         new_agent_level: SeniorityLevel,  # noqa: ARG002
     ) -> tuple[TrainingItem, ...]:
-        """Extract procedural memories from source agents.
+        """Extract procedural memories from source agents in parallel.
 
         Args:
             source_agent_ids: Senior agents to extract from.
@@ -63,14 +66,20 @@ class ProceduralMemoryExtractor:
         if not source_agent_ids:
             return ()
 
-        items: list[TrainingItem] = []
         query = MemoryQuery(
             categories=frozenset({MemoryCategory.PROCEDURAL}),
             limit=_MAX_ENTRIES_PER_AGENT,
         )
 
-        for agent_id in source_agent_ids:
-            entries = await self._backend.retrieve(agent_id, query)
+        async with asyncio.TaskGroup() as tg:
+            tasks = [
+                tg.create_task(self._retrieve_for_agent(agent_id, query))
+                for agent_id in source_agent_ids
+            ]
+
+        items: list[TrainingItem] = []
+        for task in tasks:
+            agent_id, entries = task.result()
             items.extend(
                 TrainingItem(
                     source_agent_id=str(agent_id),
@@ -90,3 +99,21 @@ class ProceduralMemoryExtractor:
             item_count=len(items),
         )
         return tuple(items)
+
+    async def _retrieve_for_agent(
+        self,
+        agent_id: NotBlankStr,
+        query: MemoryQuery,
+    ) -> tuple[NotBlankStr, tuple[MemoryEntry, ...]]:
+        """Retrieve procedural entries for a single agent with error logging."""
+        try:
+            entries = await self._backend.retrieve(agent_id, query)
+        except Exception as exc:
+            logger.exception(
+                HR_TRAINING_EXTRACTION_FAILED,
+                content_type="procedural",
+                agent_id=str(agent_id),
+                error=str(exc),
+            )
+            raise
+        return agent_id, tuple(entries)

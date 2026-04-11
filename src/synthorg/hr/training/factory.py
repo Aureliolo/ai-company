@@ -24,6 +24,45 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 
+def _coerce_positive_int(
+    value: object,
+    *,
+    field_name: str,
+    default: int,
+) -> int:
+    """Coerce a config value to a positive int, falling back on invalid input.
+
+    Args:
+        value: The raw value from ``TrainingConfig.*_config``.
+        field_name: Name of the field (for error messages).
+        default: Default value when ``value`` is missing or invalid.
+
+    Returns:
+        The coerced positive integer, or ``default`` on invalid input.
+    """
+    if value is None:
+        return default
+    if isinstance(value, bool):
+        # bool is a subclass of int; reject it explicitly.
+        msg = f"{field_name} must be a positive integer, got bool"
+        raise TypeError(msg)
+    if isinstance(value, int):
+        coerced = value
+    elif isinstance(value, str):
+        try:
+            coerced = int(value)
+        except ValueError as exc:
+            msg = f"{field_name} must be a positive integer, got {value!r}"
+            raise ValueError(msg) from exc
+    else:
+        msg = f"{field_name} must be a positive integer, got {type(value).__name__}"
+        raise TypeError(msg)
+    if coerced <= 0:
+        msg = f"{field_name} must be > 0, got {coerced}"
+        raise ValueError(msg)
+    return coerced
+
+
 def build_training_service(  # noqa: PLR0913
     config: TrainingConfig,
     *,
@@ -78,7 +117,14 @@ def _build_selector(
     tracker: PerformanceTracker,
     registry: AgentRegistryService,
 ) -> SourceSelector:
-    """Build source selector from config."""
+    """Build source selector from config.
+
+    Note:
+        The ``user_curated`` selector type is intentionally not
+        available in config: user-curated sources are passed via
+        ``TrainingPlan.override_sources`` which the service uses
+        directly without routing through a selector.
+    """
     selector_type = str(config.source_selector_type)
 
     if selector_type == "department_diversity":
@@ -91,21 +137,16 @@ def _build_selector(
             tracker=tracker,
         )
 
-    if selector_type == "user_curated":
-        from synthorg.hr.training.source_selectors.user_curated import (  # noqa: PLC0415
-            UserCuratedList,
-        )
-
-        # Agent IDs come from TrainingPlan.override_sources at
-        # execution time, not from static config.
-        return UserCuratedList(registry=registry, agent_ids=())
-
     # Default: role_top_performers.
     from synthorg.hr.training.source_selectors.role_top_performers import (  # noqa: PLC0415
         RoleTopPerformers,
     )
 
-    top_n = int(config.source_selector_config.get("top_n", 3))
+    top_n = _coerce_positive_int(
+        config.source_selector_config.get("top_n"),
+        field_name="source_selector_config.top_n",
+        default=3,
+    )
     return RoleTopPerformers(
         registry=registry,
         tracker=tracker,
@@ -150,7 +191,11 @@ def _build_curation(
 ) -> CurationStrategy:
     """Build curation strategy from config."""
     strategy_type = str(config.curation_strategy_type)
-    top_k = int(config.curation_strategy_config.get("top_k", 50))
+    top_k = _coerce_positive_int(
+        config.curation_strategy_config.get("top_k"),
+        field_name="curation_strategy_config.top_k",
+        default=50,
+    )
 
     if strategy_type == "llm_curated":
         from synthorg.hr.training.curation.llm_curated import (  # noqa: PLC0415

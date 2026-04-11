@@ -199,8 +199,6 @@ class TestDepartmentDiversitySampling:
         ]
         all_agents = same_role + diff_role
         registry = AsyncMock()
-        # list_active is used to infer the department
-        registry.list_active.return_value = tuple(all_agents)
         registry.list_by_department.return_value = tuple(all_agents)
 
         tracker = AsyncMock()
@@ -220,13 +218,27 @@ class TestDepartmentDiversitySampling:
         result = await selector.select(
             new_agent_role="engineer",
             new_agent_level=SeniorityLevel.JUNIOR,
+            new_agent_department="eng",
         )
         assert len(result) == 2
+
+    async def test_returns_empty_when_department_missing(self) -> None:
+        """Selector skips when plan has no new_agent_department."""
+        registry = AsyncMock()
+        selector = DepartmentDiversitySampling(
+            registry=registry,
+            tracker=AsyncMock(),
+        )
+        result = await selector.select(
+            new_agent_role="engineer",
+            new_agent_level=SeniorityLevel.JUNIOR,
+        )
+        assert result == ()
+        registry.list_by_department.assert_not_called()
 
     async def test_returns_empty_when_no_department_agents(self) -> None:
         registry = AsyncMock()
         registry.list_by_department.return_value = ()
-        registry.list_active.return_value = ()
 
         selector = DepartmentDiversitySampling(
             registry=registry,
@@ -235,6 +247,7 @@ class TestDepartmentDiversitySampling:
         result = await selector.select(
             new_agent_role="engineer",
             new_agent_level=SeniorityLevel.JUNIOR,
+            new_agent_department="eng",
         )
         assert result == ()
 

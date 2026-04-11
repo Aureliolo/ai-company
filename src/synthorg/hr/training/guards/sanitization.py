@@ -41,6 +41,9 @@ class SanitizationGuard:
         *,
         max_length: int = _DEFAULT_MAX_LENGTH,
     ) -> None:
+        if max_length <= 0:
+            msg = f"max_length must be a positive integer, got {max_length}"
+            raise ValueError(msg)
         self._max_length = max_length
 
     @property
@@ -80,11 +83,13 @@ class SanitizationGuard:
                 item.content,
                 max_length=self._max_length,
             )
-            if sanitized == "details redacted" or not any(
-                c.isalnum() for c in sanitized
-            ):
+            if sanitized == "details redacted":
                 rejected_reasons.append(
-                    f"Content fully redacted for item {item.id}",
+                    f"Content fully redacted by sanitizer for item {item.id}",
+                )
+            elif not any(c.isalnum() for c in sanitized):
+                rejected_reasons.append(
+                    f"Content lacks alphanumeric content for item {item.id}",
                 )
             else:
                 approved.append(

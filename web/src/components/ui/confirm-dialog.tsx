@@ -20,6 +20,14 @@ export interface ConfirmDialogProps {
   /** Visual variant (default: "default"). "destructive" uses a red confirm button. */
   variant?: 'default' | 'destructive'
   onConfirm: () => void | Promise<void>
+  /**
+   * Optional handler invoked when the user explicitly clicks the
+   * Cancel button. Dismissals via Escape or backdrop click do NOT
+   * trigger this callback -- they only fire ``onOpenChange(false)``.
+   * Use this to distinguish "explicit reject" from "dismiss without
+   * action" at the call site.
+   */
+  onCancel?: () => void
   /** Whether the confirm action is in progress. */
   loading?: boolean
   className?: string
@@ -36,6 +44,7 @@ export function ConfirmDialog({
   cancelLabel = 'Cancel',
   variant = 'default',
   onConfirm,
+  onCancel,
   loading = false,
   className,
   children,
@@ -83,7 +92,11 @@ export function ConfirmDialog({
           <div className="mt-6 flex justify-end gap-3">
             <AlertDialog.Close
               render={
-                <Button variant="outline" disabled={busy}>
+                <Button
+                  variant="outline"
+                  disabled={busy}
+                  onClick={() => onCancel?.()}
+                >
                   {cancelLabel}
                 </Button>
               }

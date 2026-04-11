@@ -4,11 +4,13 @@ Passes through an explicit list of agent IDs provided by the
 user, validating that each agent exists in the registry.
 """
 
+import asyncio
 from typing import TYPE_CHECKING
 
 from synthorg.observability import get_logger
 from synthorg.observability.events.training import (
-    HR_TRAINING_EXTRACTION_STARTED,
+    HR_TRAINING_AGENT_NOT_FOUND,
+    HR_TRAINING_SELECTION_COMPLETE,
 )
 
 if TYPE_CHECKING:
@@ -34,7 +36,7 @@ class UserCuratedList:
         self,
         *,
         registry: AgentRegistryService,
-        agent_ids: tuple[str, ...],
+        agent_ids: tuple[NotBlankStr, ...],
     ) -> None:
         self._registry = registry
         self._agent_ids = agent_ids
@@ -49,12 +51,14 @@ class UserCuratedList:
         *,
         new_agent_role: NotBlankStr,  # noqa: ARG002
         new_agent_level: SeniorityLevel,  # noqa: ARG002
+        new_agent_department: NotBlankStr | None = None,  # noqa: ARG002
     ) -> tuple[NotBlankStr, ...]:
         """Return the user-provided agent IDs, filtering invalid ones.
 
         Args:
             new_agent_role: Role of the new hire (unused).
             new_agent_level: Seniority level (unused).
+            new_agent_department: Department of the new hire (unused).
 
         Returns:
             Validated agent IDs.
@@ -62,17 +66,36 @@ class UserCuratedList:
         if not self._agent_ids:
             return ()
 
-        valid: list[str] = []
-        for agent_id in self._agent_ids:
-            identity = await self._registry.get(agent_id)
-            if identity is not None:
+        async with asyncio.TaskGroup() as tg:
+            tasks = [
+                tg.create_task(self._check_exists(agent_id))
+                for agent_id in self._agent_ids
+            ]
+
+        valid: list[NotBlankStr] = []
+        for task in tasks:
+            agent_id, exists = task.result()
+            if exists:
                 valid.append(agent_id)
             else:
                 logger.warning(
-                    HR_TRAINING_EXTRACTION_STARTED,
+                    HR_TRAINING_AGENT_NOT_FOUND,
                     selector="user_curated",
-                    agent_id=agent_id,
-                    skipped="not_found",
+                    agent_id=str(agent_id),
                 )
 
+        logger.debug(
+            HR_TRAINING_SELECTION_COMPLETE,
+            selector="user_curated",
+            requested=len(self._agent_ids),
+            valid=len(valid),
+        )
         return tuple(valid)
+
+    async def _check_exists(
+        self,
+        agent_id: NotBlankStr,
+    ) -> tuple[NotBlankStr, bool]:
+        """Check whether an agent exists in the registry."""
+        identity = await self._registry.get(agent_id)
+        return agent_id, identity is not None

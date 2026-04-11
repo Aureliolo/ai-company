@@ -19,6 +19,7 @@ from synthorg.hr.training.models import (
 from synthorg.observability import get_logger
 from synthorg.observability.events.training import (
     HR_TRAINING_REVIEW_GATE_CREATED,
+    HR_TRAINING_REVIEW_GATE_FAILED,
 )
 
 if TYPE_CHECKING:
@@ -35,7 +36,9 @@ class ReviewGateGuard:
 
     When ``plan.require_review`` is True, creates an ``ApprovalItem``
     in the ``ApprovalStore`` and blocks all items until approved.
-    When review is not required, passes all items through.
+    The decision's ``rejected_count`` reflects the number of items
+    held for review so downstream accounting stays consistent.
+    When review is not required, passes all items through unchanged.
 
     Args:
         approval_store: Approval store for creating review items.
@@ -97,7 +100,17 @@ class ReviewGateGuard:
             created_at=now,
             expires_at=now + timedelta(hours=_APPROVAL_EXPIRY_HOURS),
         )
-        await self._approval_store.add(approval_item)
+        try:
+            await self._approval_store.add(approval_item)
+        except Exception as exc:
+            logger.exception(
+                HR_TRAINING_REVIEW_GATE_FAILED,
+                plan_id=str(plan.id),
+                content_type=content_type.value,
+                approval_id=approval_id,
+                error=str(exc),
+            )
+            raise
 
         logger.info(
             HR_TRAINING_REVIEW_GATE_CREATED,
@@ -107,9 +120,11 @@ class ReviewGateGuard:
             approval_id=approval_id,
         )
 
+        rejection_reason = f"Held for review in approval item {approval_id}"
         return TrainingGuardDecision(
             approved_items=(),
-            rejected_count=0,
+            rejected_count=len(items),
             guard_name="review_gate",
+            rejection_reasons=tuple(rejection_reason for _ in items),
             approval_item_id=approval_id,
         )
