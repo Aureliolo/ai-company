@@ -5,10 +5,12 @@ from collections.abc import Generator
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
+import argon2
 import pytest
 from litestar import Litestar
 from litestar.testing import TestClient
 
+import synthorg.api.auth.service as _auth_mod
 import synthorg.settings.definitions  # noqa: F401 -- trigger registration
 from synthorg.api.app import create_app
 from synthorg.api.approval_store import ApprovalStore
@@ -49,6 +51,18 @@ from tests.unit.api.fakes import (
 )
 
 __all__ = ["FakeMessageBus", "FakePersistenceBackend"]
+
+# Replace the production argon2 hasher (64 MB memory_cost) with a
+# lightweight one for tests.  With 8 xdist workers each hashing
+# passwords concurrently, the production hasher causes OOM errors
+# (argon2.exceptions.HashingError: Memory allocation error).
+_auth_mod._hasher = argon2.PasswordHasher(
+    time_cost=1,
+    memory_cost=8,  # 8 KiB instead of 64 MiB
+    parallelism=1,
+    hash_len=32,
+    salt_len=16,
+)
 
 # ── Test auth constants ───────────────────────────────────────
 
