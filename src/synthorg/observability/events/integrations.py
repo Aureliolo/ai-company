@@ -85,6 +85,25 @@ TUNNEL_STARTED: Final[str] = "integrations.tunnel.started"
 TUNNEL_STOPPED: Final[str] = "integrations.tunnel.stopped"
 TUNNEL_ERROR: Final[str] = "integrations.tunnel.error"
 
+# -- Webhook bridge ------------------------------------------------------
+
+WEBHOOK_BRIDGE_STARTED: Final[str] = "integrations.webhook_bridge.started"
+WEBHOOK_BRIDGE_STOPPED: Final[str] = "integrations.webhook_bridge.stopped"
+WEBHOOK_BRIDGE_POLL_ERROR: Final[str] = "integrations.webhook_bridge.poll_error"
+WEBHOOK_BRIDGE_EVENT_FORWARDED: Final[str] = (
+    "integrations.webhook_bridge.event_forwarded"
+)
+
+# -- Rate limit coordination ---------------------------------------------
+
+RATE_LIMIT_ACQUIRE_PUBLISHED: Final[str] = "integrations.rate_limit.acquire_published"
+RATE_LIMIT_COORDINATOR_STARTED: Final[str] = (
+    "integrations.rate_limit.coordinator_started"
+)
+RATE_LIMIT_COORDINATOR_STOPPED: Final[str] = (
+    "integrations.rate_limit.coordinator_stopped"
+)
+
 # -- Provider migration --------------------------------------------------
 
 PROVIDER_CONNECTION_RESOLVED: Final[str] = "integrations.provider.connection_resolved"

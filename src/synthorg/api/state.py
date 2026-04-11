@@ -72,6 +72,12 @@ from synthorg.settings.service import SettingsService  # noqa: TC001
 from synthorg.tools.invocation_tracker import ToolInvocationTracker  # noqa: TC001
 
 if TYPE_CHECKING:
+    from synthorg.engine.workflow.webhook_bridge import WebhookEventBridge
+    from synthorg.integrations.connections.catalog import ConnectionCatalog
+    from synthorg.integrations.health.prober import HealthProberService
+    from synthorg.integrations.oauth.token_manager import OAuthTokenManager
+    from synthorg.integrations.tunnel.ngrok_adapter import NgrokAdapter
+
     # Imported under TYPE_CHECKING so the optional ``synthorg[distributed]``
     # extra is not required at runtime for deployments that do not use the
     # distributed task queue.
@@ -98,6 +104,7 @@ class AppState:
         "_ceremony_scheduler",
         "_client_simulation_state",
         "_config_resolver",
+        "_connection_catalog",
         "_coordination_metrics_store",
         "_coordinator",
         "_cost_tracker",
@@ -106,12 +113,14 @@ class AppState:
         "_drift_detection_service",
         "_drift_report_store",
         "_fine_tune_orchestrator",
+        "_health_prober_service",
         "_lockout_store",
         "_meeting_orchestrator",
         "_meeting_scheduler",
         "_message_bus",
         "_model_router",
         "_notification_dispatcher",
+        "_oauth_token_manager",
         "_ontology_service",
         "_ontology_sync_service",
         "_org_mutation_service",
@@ -129,7 +138,9 @@ class AppState:
         "_ticket_store",
         "_tool_invocation_tracker",
         "_trust_service",
+        "_tunnel_provider",
         "_user_presence",
+        "_webhook_event_bridge",
         "approval_store",
         "config",
         "startup_time",
@@ -164,6 +175,11 @@ class AppState:
         audit_log: AuditLog | None = None,
         trust_service: TrustService | None = None,
         coordination_metrics_store: CoordinationMetricsStore | None = None,
+        connection_catalog: ConnectionCatalog | None = None,
+        oauth_token_manager: OAuthTokenManager | None = None,
+        health_prober_service: HealthProberService | None = None,
+        tunnel_provider: NgrokAdapter | None = None,
+        webhook_event_bridge: WebhookEventBridge | None = None,
         startup_time: float = 0.0,
     ) -> None:
         self.config = config
@@ -197,6 +213,11 @@ class AppState:
         self._provider_health_tracker = provider_health_tracker
         self._tool_invocation_tracker = tool_invocation_tracker
         self._delegation_record_store = delegation_record_store
+        self._connection_catalog = connection_catalog
+        self._oauth_token_manager = oauth_token_manager
+        self._health_prober_service = health_prober_service
+        self._tunnel_provider = tunnel_provider
+        self._webhook_event_bridge = webhook_event_bridge
         self._prometheus_collector: PrometheusCollector | None = None
         self._fine_tune_orchestrator: FineTuneOrchestrator | None = None
         self._config_resolver: ConfigResolver | None = None
@@ -855,6 +876,49 @@ class AppState:
     def set_backup_service(self, service: BackupService) -> None:
         """Attach the backup service (once-only)."""
         self._set_once("_backup_service", service, "Backup service")
+
+    # -- Integration services ─────────────────────────────────────
+
+    @property
+    def has_connection_catalog(self) -> bool:
+        """Check whether the connection catalog is configured."""
+        return self._connection_catalog is not None
+
+    @property
+    def connection_catalog(self) -> ConnectionCatalog:
+        """Return connection catalog or raise 503."""
+        return self._require_service(
+            self._connection_catalog,
+            "connection_catalog",
+        )
+
+    @property
+    def has_tunnel_provider(self) -> bool:
+        """Check whether the tunnel provider is configured."""
+        return self._tunnel_provider is not None
+
+    @property
+    def tunnel_provider(self) -> NgrokAdapter:
+        """Return tunnel provider or raise 503."""
+        return self._require_service(
+            self._tunnel_provider,
+            "tunnel_provider",
+        )
+
+    @property
+    def oauth_token_manager(self) -> OAuthTokenManager | None:
+        """Return OAuth token manager, or None if not configured."""
+        return self._oauth_token_manager
+
+    @property
+    def health_prober_service(self) -> HealthProberService | None:
+        """Return health prober service, or None if not configured."""
+        return self._health_prober_service
+
+    @property
+    def webhook_event_bridge(self) -> WebhookEventBridge | None:
+        """Return webhook event bridge, or None if not configured."""
+        return self._webhook_event_bridge
 
     def set_settings_service(self, settings_service: SettingsService) -> None:
         """Set settings service and rebuild derived services."""

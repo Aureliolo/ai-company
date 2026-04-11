@@ -34,6 +34,9 @@ from synthorg.api.controllers.evaluation_config_versions import (
     EvaluationConfigVersionController,
 )
 from synthorg.api.controllers.health import HealthController
+from synthorg.api.controllers.integration_health import (
+    IntegrationHealthController,
+)
 from synthorg.api.controllers.mcp_catalog import MCPCatalogController
 from synthorg.api.controllers.meetings import MeetingController
 from synthorg.api.controllers.memory import MemoryAdminController
@@ -125,6 +128,7 @@ ALL_CONTROLLERS: tuple[type[Controller], ...] = (
     ScalingController,
     TrainingController,
     ConnectionsController,
+    IntegrationHealthController,
     OAuthController,
     WebhooksController,
     MCPCatalogController,

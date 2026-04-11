@@ -4,7 +4,6 @@ CRUD endpoints for the external service connection catalog,
 including on-demand health checks.
 """
 
-from datetime import UTC, datetime
 from typing import Any
 
 from litestar import Controller, delete, get, patch, post
@@ -15,7 +14,7 @@ from synthorg.api.dto import ApiResponse
 from synthorg.api.errors import NotFoundError
 from synthorg.api.guards import require_read_access, require_write_access
 from synthorg.integrations.connections.catalog import _UNSET
-from synthorg.integrations.connections.models import (
+from synthorg.integrations.connections.models import (  # noqa: TC001
     Connection,
     HealthReport,
 )
@@ -154,27 +153,15 @@ class ConnectionsController(Controller):
         name: str,
     ) -> ApiResponse[HealthReport]:
         """Run an on-demand health check for a connection."""
-        from synthorg.integrations.health.prober import (  # noqa: PLC0415
-            _CHECK_REGISTRY,
+        from synthorg.integrations.health.service import (  # noqa: PLC0415
+            check_connection_health,
         )
 
         catalog = state["app_state"].connection_catalog
-        conn = await catalog.get(name)
-        if conn is None:
-            msg = f"Connection '{name}' not found"
-            raise NotFoundError(msg) from None
-
-        checker = _CHECK_REGISTRY.get(conn.connection_type)
-        if checker is None:
-            report = HealthReport(
-                connection_name=conn.name,
-                status=conn.health_status,
-                error_detail="No health checker for this type",
-                checked_at=datetime.now(UTC),
-            )
-            return ApiResponse(data=report)
-
-        report = await checker.check(conn)
+        try:
+            report = await check_connection_health(catalog, name)
+        except ConnectionNotFoundError as exc:
+            raise NotFoundError(str(exc)) from exc
         await catalog.update_health(
             name,
             status=report.status,

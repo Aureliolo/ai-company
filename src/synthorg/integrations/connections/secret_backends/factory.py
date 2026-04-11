@@ -49,5 +49,10 @@ def create_secret_backend(
     if backend_type == "env_var":
         return EnvVarSecretBackend(config=config.env_var)
 
-    msg = f"Unknown secret backend type: {backend_type}"  # type: ignore[unreachable]
+    stub_backends = {"vault", "aws_secrets_manager", "azure_key_vault"}
+    if backend_type in stub_backends:
+        msg = f"{backend_type} secret backend not yet implemented"
+        raise NotImplementedError(msg)
+
+    msg = f"Unknown secret backend type: {backend_type}"
     raise ValueError(msg)

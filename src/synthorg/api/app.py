@@ -98,6 +98,7 @@ from synthorg.observability.events.api import (
     API_APPROVAL_PUBLISH_FAILED,
     API_AUTH_LOCKOUT_CLEANUP,
     API_NETWORK_EXPOSURE_WARNING,
+    API_SERVICE_AUTO_WIRED,
     API_SESSION_CLEANUP,
     API_WS_SEND_FAILED,
     API_WS_TICKET_CLEANUP,
@@ -523,7 +524,7 @@ def _build_lifecycle(  # noqa: PLR0913, PLR0915, C901
                 exc_info=exc,
             )
 
-    async def on_startup() -> None:
+    async def on_startup() -> None:  # noqa: C901, PLR0912, PLR0915
         nonlocal _ticket_cleanup_task, _auto_wired_dispatcher, _health_prober
         logger.info(API_APP_STARTUP, version=__version__)
         await _safe_startup(
@@ -618,6 +619,41 @@ def _build_lifecycle(  # noqa: PLR0913, PLR0915, C901
         _ticket_cleanup_task.add_done_callback(_on_cleanup_task_done)
         _health_prober = await _maybe_start_health_prober(app_state)
 
+        # Start integration background services (non-fatal).
+        if app_state.webhook_event_bridge is not None:
+            try:
+                await app_state.webhook_event_bridge.start()
+            except MemoryError, RecursionError:
+                raise
+            except Exception:
+                logger.warning(
+                    API_APP_STARTUP,
+                    error="Webhook event bridge startup failed (non-fatal)",
+                    exc_info=True,
+                )
+        if app_state.health_prober_service is not None:
+            try:
+                await app_state.health_prober_service.start()
+            except MemoryError, RecursionError:
+                raise
+            except Exception:
+                logger.warning(
+                    API_APP_STARTUP,
+                    error="Integration health prober startup failed (non-fatal)",
+                    exc_info=True,
+                )
+        if app_state.oauth_token_manager is not None:
+            try:
+                await app_state.oauth_token_manager.start()
+            except MemoryError, RecursionError:
+                raise
+            except Exception:
+                logger.warning(
+                    API_APP_STARTUP,
+                    error="OAuth token manager startup failed (non-fatal)",
+                    exc_info=True,
+                )
+
     async def on_shutdown() -> None:
         nonlocal _ticket_cleanup_task, _auto_wired_dispatcher, _health_prober
         if _ticket_cleanup_task is not None:
@@ -633,6 +669,25 @@ def _build_lifecycle(  # noqa: PLR0913, PLR0915, C901
                 "Failed to stop health prober",
             )
             _health_prober = None
+        # Stop integration background services (reverse start order).
+        if app_state.oauth_token_manager is not None:
+            await _try_stop(
+                app_state.oauth_token_manager.stop(),
+                API_APP_SHUTDOWN,
+                "Failed to stop OAuth token manager",
+            )
+        if app_state.health_prober_service is not None:
+            await _try_stop(
+                app_state.health_prober_service.stop(),
+                API_APP_SHUTDOWN,
+                "Failed to stop integration health prober",
+            )
+        if app_state.webhook_event_bridge is not None:
+            await _try_stop(
+                app_state.webhook_event_bridge.stop(),
+                API_APP_SHUTDOWN,
+                "Failed to stop webhook event bridge",
+            )
         if _auto_wired_dispatcher is not None:
             await _try_stop(
                 _auto_wired_dispatcher.stop(),
@@ -843,7 +898,7 @@ def _build_performance_tracker(
     )
 
 
-def create_app(  # noqa: C901, PLR0913, PLR0915
+def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
     *,
     config: RootConfig | None = None,
     persistence: PersistenceBackend | None = None,
@@ -1012,6 +1067,83 @@ def create_app(  # noqa: C901, PLR0913, PLR0915
         effective_config.notifications,
     )
 
+    # -- Integration services auto-wire ──────────────────────────────────
+    connection_catalog = None
+    oauth_token_manager = None
+    health_prober_service = None
+    tunnel_provider = None
+    webhook_event_bridge = None
+
+    if effective_config.integrations.enabled and persistence is not None:
+        try:
+            from synthorg.integrations.connections.catalog import (  # noqa: PLC0415
+                ConnectionCatalog,
+            )
+            from synthorg.integrations.connections.secret_backends.factory import (  # noqa: PLC0415
+                create_secret_backend,
+            )
+            from synthorg.integrations.health.prober import (  # noqa: PLC0415
+                HealthProberService,
+            )
+            from synthorg.integrations.oauth.token_manager import (  # noqa: PLC0415
+                OAuthTokenManager,
+            )
+            from synthorg.integrations.tunnel.ngrok_adapter import (  # noqa: PLC0415
+                NgrokAdapter,
+            )
+
+            db_path = (os.environ.get("SYNTHORG_DB_PATH") or "").strip() or None
+            secret_backend = create_secret_backend(
+                effective_config.integrations.secret_backend,
+                db_path=db_path,
+            )
+            connection_catalog = ConnectionCatalog(
+                repository=persistence.connections,
+                secret_backend=secret_backend,
+            )
+            logger.info(API_SERVICE_AUTO_WIRED, service="connection_catalog")
+
+            health_cfg = effective_config.integrations.health
+            health_prober_service = HealthProberService(
+                catalog=connection_catalog,
+                interval_seconds=health_cfg.check_interval_seconds,
+                unhealthy_threshold=health_cfg.unhealthy_threshold,
+            )
+            logger.info(API_SERVICE_AUTO_WIRED, service="health_prober_service")
+
+            oauth_token_manager = OAuthTokenManager(
+                catalog=connection_catalog,
+                refresh_threshold_seconds=effective_config.integrations.oauth.auto_refresh_threshold_seconds,
+            )
+            logger.info(API_SERVICE_AUTO_WIRED, service="oauth_token_manager")
+
+            tunnel_provider = NgrokAdapter(
+                auth_token_env=effective_config.integrations.tunnel.auth_token_env,
+            )
+            logger.info(API_SERVICE_AUTO_WIRED, service="tunnel_provider")
+
+            if message_bus is not None and ceremony_scheduler is not None:
+                from synthorg.engine.workflow.webhook_bridge import (  # noqa: PLC0415
+                    WebhookEventBridge,
+                )
+
+                webhook_event_bridge = WebhookEventBridge(
+                    bus=message_bus,
+                    ceremony_scheduler=ceremony_scheduler,
+                )
+                logger.info(
+                    API_SERVICE_AUTO_WIRED,
+                    service="webhook_event_bridge",
+                )
+        except MemoryError, RecursionError:
+            raise
+        except Exception:
+            logger.warning(
+                API_APP_STARTUP,
+                error="Integration services auto-wire failed (non-fatal)",
+                exc_info=True,
+            )
+
     # Auto-wire control-plane services when not injected.
     if audit_log is None:
         audit_log = AuditLog()
@@ -1044,6 +1176,11 @@ def create_app(  # noqa: C901, PLR0913, PLR0915
         audit_log=audit_log,
         trust_service=trust_service,
         coordination_metrics_store=coordination_metrics_store,
+        connection_catalog=connection_catalog,
+        oauth_token_manager=oauth_token_manager,
+        health_prober_service=health_prober_service,
+        tunnel_provider=tunnel_provider,
+        webhook_event_bridge=webhook_event_bridge,
         startup_time=time.monotonic(),
     )
     if distributed_task_queue is not None:
