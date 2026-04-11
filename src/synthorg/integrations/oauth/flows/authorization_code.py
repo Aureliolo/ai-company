@@ -195,7 +195,7 @@ class AuthorizationCodeFlow:
             raise TokenRefreshFailedError(str(exc)) from exc
 
     @staticmethod
-    def _parse_token_response(
+    def _parse_token_response(  # noqa: C901, PLR0912
         data: object,
         operation: str,
     ) -> OAuthToken:
@@ -227,20 +227,49 @@ class AuthorizationCodeFlow:
         if isinstance(expires_in, int) and expires_in > 0:
             expires_at = datetime.now(UTC) + timedelta(seconds=expires_in)
 
-        refresh = data.get("refresh_token")
-        refresh_raw: str | None = None
-        if refresh and isinstance(refresh, str):
-            refresh_raw = refresh
+        # Fail fast on malformed optional fields instead of silently
+        # coercing or defaulting them. A token endpoint that sends
+        # ``{"refresh_token": 123}``, ``{"token_type": 123}``, or
+        # ``{"scope": ["a", "b"]}`` is violating the protocol and
+        # the caller needs to know, not see a string-coerced value.
+        if "refresh_token" in data:
+            refresh_value = data.get("refresh_token")
+            if refresh_value is None:
+                refresh_raw: str | None = None
+            elif isinstance(refresh_value, str):
+                refresh_raw = refresh_value or None
+            else:
+                msg = (
+                    f"Token {operation} response has non-string "
+                    f"refresh_token: {type(refresh_value).__name__}"
+                )
+                raise TokenExchangeFailedError(msg)
+        else:
+            refresh_raw = None
 
-        # Validate ``token_type`` and ``scope`` before coercing with
-        # ``str()``. A malformed ``{"token_type": 123}`` or
-        # ``{"scope": ["a", "b"]}`` would otherwise silently land
-        # as the string ``"123"`` or ``"['a', 'b']"`` and mask the
-        # upstream protocol error.
-        token_type_raw = data.get("token_type", "Bearer")
-        token_type = token_type_raw if isinstance(token_type_raw, str) else "Bearer"
-        scope_raw = data.get("scope", "")
-        scope = scope_raw if isinstance(scope_raw, str) else ""
+        if "token_type" in data:
+            token_type_value = data.get("token_type")
+            if not isinstance(token_type_value, str):
+                msg = (
+                    f"Token {operation} response has non-string "
+                    f"token_type: {type(token_type_value).__name__}"
+                )
+                raise TokenExchangeFailedError(msg)
+            token_type = token_type_value
+        else:
+            token_type = "Bearer"  # noqa: S105
+
+        if "scope" in data:
+            scope_value = data.get("scope")
+            if not isinstance(scope_value, str):
+                msg = (
+                    f"Token {operation} response has non-string "
+                    f"scope: {type(scope_value).__name__}"
+                )
+                raise TokenExchangeFailedError(msg)
+            scope = scope_value
+        else:
+            scope = ""
 
         event = (
             OAUTH_TOKEN_EXCHANGED if operation == "exchange" else OAUTH_TOKEN_REFRESHED

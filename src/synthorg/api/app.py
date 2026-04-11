@@ -694,6 +694,23 @@ def _build_lifecycle(  # noqa: PLR0913, PLR0915, C901
                 API_APP_SHUTDOWN,
                 "Failed to stop tunnel provider",
             )
+        # Stop every cached rate-limit coordinator and clear the
+        # module-level factory so background poll tasks and bus
+        # subscriptions cannot outlive the app (matters for
+        # hot-reload / test teardown where ``create_app`` runs
+        # multiple times in the same process).
+        try:
+            from synthorg.integrations.rate_limiting import (  # noqa: PLC0415
+                shared_state as _rate_limit_shared_state,
+            )
+
+            await _rate_limit_shared_state.set_coordinator_factory(None)
+        except Exception:
+            logger.warning(
+                API_APP_SHUTDOWN,
+                error="Failed to stop rate-limit coordinators",
+                exc_info=True,
+            )
         if _auto_wired_dispatcher is not None:
             await _try_stop(
                 _auto_wired_dispatcher.stop(),
@@ -1198,13 +1215,41 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
                 )
 
                 _bus = message_bus
+                _catalog = connection_catalog
 
                 def _make_coordinator(
                     name: str,
                 ) -> SharedRateLimitCoordinator:
+                    # Honour the connection's configured rate
+                    # limiter so each coordinator enforces the
+                    # correct per-connection global budget. Previously
+                    # the default 60 RPM was hard-coded, which
+                    # silently ignored any higher/lower setting on
+                    # the connection row.
+                    max_rpm = 60
+                    try:
+                        conn = _catalog._cache.get(name)  # noqa: SLF001
+                        if (
+                            conn is not None
+                            and conn.rate_limiter is not None
+                            and conn.rate_limiter.max_requests_per_minute > 0
+                        ):
+                            max_rpm = conn.rate_limiter.max_requests_per_minute
+                    except Exception:
+                        logger.warning(
+                            API_SERVICE_AUTO_WIRED,
+                            service="rate_limit_coordinator_factory",
+                            note=(
+                                "could not read rate_limit_rpm from "
+                                "catalog cache; using default"
+                            ),
+                            connection_name=name,
+                            exc_info=True,
+                        )
                     return SharedRateLimitCoordinator(
                         bus=_bus,
                         connection_name=name,
+                        max_rpm=max_rpm,
                     )
 
                 set_coordinator_factory_sync(_make_coordinator)

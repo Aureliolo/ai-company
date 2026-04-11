@@ -4,6 +4,7 @@ Prevents replay attacks by tracking nonces and validating
 timestamps within a configurable window.
 """
 
+import hashlib
 import math
 from collections import OrderedDict
 from collections.abc import Callable  # noqa: TC003
@@ -15,6 +16,23 @@ logger = get_logger(__name__)
 
 _DEFAULT_WINDOW_SECONDS = 300
 _DEFAULT_MAX_ENTRIES = 10_000
+# Attacker-controlled nonces are hashed to a fixed 32-byte digest
+# before being stored in ``_seen`` so the cache's per-entry memory
+# is bounded regardless of how long the incoming header is.
+# Reject nonces larger than ``_MAX_NONCE_CHARS`` outright -- even
+# the hash computation is cheap but O(n), and any legitimate
+# webhook provider ships nonces well under this limit.
+_MAX_NONCE_CHARS = 1024
+
+
+def _fingerprint_nonce(nonce: str) -> str:
+    """Return a fixed-size cache key for a nonce.
+
+    Uses SHA-256 so two different nonces cannot collide in the
+    replay cache, and the stored key size is bounded independent
+    of the attacker-supplied input length.
+    """
+    return hashlib.sha256(nonce.encode("utf-8", errors="replace")).hexdigest()
 
 
 def _default_clock() -> float:
@@ -121,14 +139,32 @@ class ReplayProtector:
         self._evict(now)
 
         if nonce is not None:
-            if nonce in self._seen:
+            # Reject oversized nonces before touching the cache.
+            # An attacker who could send arbitrarily long nonces
+            # would otherwise be able to make each hash computation
+            # increasingly expensive even though the cache entry
+            # itself is fixed-size.
+            if len(nonce) > _MAX_NONCE_CHARS:
+                logger.warning(
+                    WEBHOOK_REPLAY_DETECTED,
+                    reason="nonce exceeds max size",
+                    nonce_length=len(nonce),
+                    max_nonce_chars=_MAX_NONCE_CHARS,
+                )
+                return False
+            # Store a fixed-size SHA-256 digest instead of the raw
+            # attacker-controlled string. Bounds per-entry memory
+            # independent of nonce length and removes any concern
+            # about echoing the nonce back in log output below.
+            key = _fingerprint_nonce(nonce)
+            if key in self._seen:
                 logger.warning(
                     WEBHOOK_REPLAY_DETECTED,
                     reason="duplicate nonce",
-                    nonce=nonce[:16],
+                    nonce_fingerprint=key[:16],
                 )
                 return False
-            self._seen[nonce] = now
+            self._seen[key] = now
             # Bound the store: evict oldest insertion(s) if over limit.
             while len(self._seen) > self._max_entries:
                 self._seen.popitem(last=False)

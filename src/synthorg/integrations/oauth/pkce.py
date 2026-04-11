@@ -104,11 +104,18 @@ def decrypt_pkce_verifier(ciphertext: str) -> str:
     cipher = _get_cipher()
     try:
         plaintext = cipher.decrypt(ciphertext.encode("ascii"))
+        # Decode inside the guarded block so a ``UnicodeDecodeError``
+        # (non-ASCII bytes in a corrupted row) is caught and
+        # translated into ``PKCEValidationError`` along with the
+        # decrypt-side failures. Leaving the decode outside the try
+        # would leak the error as an unhandled 500 instead of a
+        # structured validation failure.
+        return plaintext.decode("ascii")
     except (InvalidToken, UnicodeEncodeError, UnicodeDecodeError) as exc:
         # Corrupted persisted data can fail in multiple ways:
         # ``InvalidToken`` (tamper / wrong key) or a Unicode error
-        # (non-ASCII bytes stored in the pkce_verifier column).
-        # Translate all of them into a structured
+        # (non-ASCII bytes in the pkce_verifier column or its
+        # decoded plaintext). Translate all of them into a structured
         # ``PKCEValidationError`` so the controller layer returns
         # a 400 instead of leaking as an unhandled 500.
         from synthorg.observability.events.integrations import (  # noqa: PLC0415
@@ -121,7 +128,6 @@ def decrypt_pkce_verifier(ciphertext: str) -> str:
         )
         msg = "Failed to decrypt stored PKCE verifier"
         raise PKCEValidationError(msg) from exc
-    return plaintext.decode("ascii")
 
 
 def generate_code_verifier() -> str:

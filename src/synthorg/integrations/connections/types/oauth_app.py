@@ -55,7 +55,12 @@ class OAuthAppAuthenticator:
 
         for url_field in _URL_FIELDS:
             parsed = urlparse(credentials[url_field].strip())
-            if not parsed.netloc:
+            # Check ``parsed.hostname`` rather than ``parsed.netloc`` so
+            # malformed URLs like ``https://:443/token`` (which have a
+            # netloc but no hostname) are rejected instead of slipping
+            # through as "valid".
+            hostname = (parsed.hostname or "").lower()
+            if not hostname:
                 logger.warning(
                     CONNECTION_VALIDATION_FAILED,
                     connection_type=ConnectionType.OAUTH_APP.value,
@@ -64,7 +69,6 @@ class OAuthAppAuthenticator:
                 )
                 msg = f"OAuth app '{url_field}' must have a valid hostname"
                 raise InvalidConnectionAuthError(msg)
-            hostname = (parsed.hostname or "").lower()
             is_loopback_http = parsed.scheme == "http" and hostname in _LOOPBACK_HOSTS
             if parsed.scheme != "https" and not is_loopback_http:
                 logger.warning(

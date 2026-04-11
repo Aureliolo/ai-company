@@ -146,16 +146,38 @@ class DeviceFlow:
             )
             msg = f"Device code response missing required fields: {missing}"
             raise TokenExchangeFailedError(msg)
-        try:
-            interval_value = int(data.get("interval", 5))
-            expires_in_value = int(data.get("expires_in", 600))
-        except (TypeError, ValueError) as exc:
-            logger.warning(
-                OAUTH_TOKEN_EXCHANGE_FAILED,
-                error="device code response has non-numeric interval/expires_in",
-            )
-            msg = "Device code response has non-numeric interval/expires_in"
-            raise TokenExchangeFailedError(msg) from exc
+
+        # Validate numeric fields strictly: plain ``int(...)`` would
+        # quietly accept negatives, zero, and string floats like
+        # ``"5.5"``. The polling loop needs a strictly-positive
+        # integer ``interval`` and a strictly-positive integer
+        # ``expires_in``.
+        def _positive_int(field_name: str, default: int) -> int:
+            raw: object = data.get(field_name, default)
+            if isinstance(raw, bool) or not isinstance(raw, int):
+                msg = (
+                    f"Device code response '{field_name}' must be "
+                    f"a positive integer (got {type(raw).__name__})"
+                )
+                logger.warning(
+                    OAUTH_TOKEN_EXCHANGE_FAILED,
+                    error=msg,
+                )
+                raise TokenExchangeFailedError(msg)
+            if raw <= 0:
+                msg = (
+                    f"Device code response '{field_name}' must be "
+                    f"strictly positive (got {raw})"
+                )
+                logger.warning(
+                    OAUTH_TOKEN_EXCHANGE_FAILED,
+                    error=msg,
+                )
+                raise TokenExchangeFailedError(msg)
+            return raw
+
+        interval_value = _positive_int("interval", 5)
+        expires_in_value = _positive_int("expires_in", 600)
 
         # user_code is an active credential -- do not log it at
         # INFO. Only the verification URI is safe to surface.
@@ -174,7 +196,7 @@ class DeviceFlow:
             expires_in=expires_in_value,
         )
 
-    async def poll_for_token(  # noqa: C901
+    async def poll_for_token(  # noqa: C901, PLR0912, PLR0915
         self,
         *,
         token_url: str,
@@ -249,24 +271,79 @@ class DeviceFlow:
                 msg = f"Device flow error: {error}"
                 raise TokenExchangeFailedError(msg)
 
-            access_token = data.get("access_token", "")
-            if access_token:
+            access_token_raw = data.get("access_token")
+            if access_token_raw is not None and access_token_raw != "":
+                # Enforce types explicitly rather than blindly
+                # coercing with ``str()``. A malformed response that
+                # returns e.g. ``{"access_token": 123}`` should fail
+                # fast so callers get a clear protocol error.
+                if not isinstance(access_token_raw, str):
+                    msg = (
+                        "Device flow token response has non-string "
+                        f"access_token: {type(access_token_raw).__name__}"
+                    )
+                    logger.warning(
+                        OAUTH_TOKEN_EXCHANGE_FAILED,
+                        error=msg,
+                    )
+                    raise TokenExchangeFailedError(msg)
                 logger.info(OAUTH_DEVICE_FLOW_GRANTED)
                 expires_in = data.get("expires_in")
                 expires_at = None
-                if isinstance(expires_in, int) and expires_in > 0:
+                if (
+                    isinstance(expires_in, int)
+                    and not isinstance(
+                        expires_in,
+                        bool,
+                    )
+                    and expires_in > 0
+                ):
                     expires_at = datetime.now(UTC) + timedelta(
                         seconds=expires_in,
                     )
-                refresh = data.get("refresh_token")
+                refresh_raw = data.get("refresh_token")
+                if refresh_raw is None or refresh_raw == "":
+                    refresh_value: str | None = None
+                elif isinstance(refresh_raw, str):
+                    refresh_value = refresh_raw
+                else:
+                    msg = (
+                        "Device flow token response has non-string "
+                        f"refresh_token: {type(refresh_raw).__name__}"
+                    )
+                    logger.warning(
+                        OAUTH_TOKEN_EXCHANGE_FAILED,
+                        error=msg,
+                    )
+                    raise TokenExchangeFailedError(msg)
+                token_type_raw = data.get("token_type", "Bearer")
+                if not isinstance(token_type_raw, str):
+                    msg = (
+                        "Device flow token response has non-string "
+                        f"token_type: {type(token_type_raw).__name__}"
+                    )
+                    logger.warning(
+                        OAUTH_TOKEN_EXCHANGE_FAILED,
+                        error=msg,
+                    )
+                    raise TokenExchangeFailedError(msg)
+                scope_raw = data.get("scope", "")
+                if not isinstance(scope_raw, str):
+                    msg = (
+                        "Device flow token response has non-string "
+                        f"scope: {type(scope_raw).__name__}"
+                    )
+                    logger.warning(
+                        OAUTH_TOKEN_EXCHANGE_FAILED,
+                        error=msg,
+                    )
+                    raise TokenExchangeFailedError(msg)
                 return OAuthToken(
-                    access_token=str(access_token),
-                    refresh_token=(str(refresh) if refresh else None),
-                    token_type=str(
-                        data.get("token_type", "Bearer"),
-                    ),
+                    access_token=access_token_raw,
+                    refresh_token=refresh_value,
+                    token_type=token_type_raw,
                     expires_at=expires_at,
-                    scope_granted=str(data.get("scope", "")),
+                    scope_granted=scope_raw,
                 )
             # Fail fast: a non-success status with no recognized
             # RFC 8628 error code means the authorization server

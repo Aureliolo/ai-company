@@ -16,6 +16,7 @@ from synthorg.integrations.errors import CatalogEntryNotFoundError
 from synthorg.observability import get_logger
 from synthorg.observability.events.integrations import (
     MCP_CATALOG_BROWSED,
+    MCP_CATALOG_ENTRY_NOT_FOUND,
     MCP_SERVER_INSTALL_FAILED,
 )
 
@@ -150,5 +151,10 @@ class CatalogService:
         for entry in self._entries:
             if entry.id == entry_id:
                 return entry
+        logger.warning(
+            MCP_CATALOG_ENTRY_NOT_FOUND,
+            entry_id=entry_id,
+            known_count=len(self._entries),
+        )
         msg = f"Catalog entry '{entry_id}' not found"
         raise CatalogEntryNotFoundError(msg)

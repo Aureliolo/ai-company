@@ -5,7 +5,6 @@ lookup, credential resolution, and health status management.
 """
 
 import asyncio
-import contextlib
 import copy
 import json
 from datetime import UTC, datetime
@@ -155,12 +154,13 @@ class ConnectionCatalog:
                 )
                 raise
 
+            # Build and validate the ``Connection`` model BEFORE
+            # writing to the secret backend. If the model raises
+            # (e.g. ``NotBlankStr`` rejects a value, or ``AuthMethod``
+            # rejects the auth_method string), we would otherwise
+            # leave an orphaned secret behind with no row to clean
+            # it up from.
             secret_id = str(uuid4())
-            await self._secret_backend.store(
-                secret_id,
-                json.dumps(credentials).encode("utf-8"),
-            )
-
             secret_ref = SecretRef(
                 secret_id=NotBlankStr(secret_id),
                 backend=NotBlankStr(self._secret_backend.backend_name),
@@ -177,6 +177,11 @@ class ConnectionCatalog:
                 created_at=now,
                 updated_at=now,
             )
+
+            await self._secret_backend.store(
+                secret_id,
+                json.dumps(credentials).encode("utf-8"),
+            )
             try:
                 await self._repo.save(connection)
             except Exception:
@@ -186,8 +191,19 @@ class ConnectionCatalog:
                     connection_name=name,
                     error="repo save failed, deleting orphaned secret",
                 )
-                with contextlib.suppress(Exception):
+                try:
                     await self._secret_backend.delete(secret_id)
+                except Exception as cleanup_exc:
+                    logger.exception(
+                        CONNECTION_CREATED,
+                        connection_name=name,
+                        secret_id=secret_id,
+                        error=(
+                            "rollback delete failed; manual cleanup "
+                            "required for orphaned secret"
+                        ),
+                        cleanup_exception=str(cleanup_exc),
+                    )
                 raise
             self._invalidate_cache()
             logger.info(
@@ -405,8 +421,11 @@ class ConnectionCatalog:
 
         Merges the tokens into the connection's existing credential
         blob (so token_url, client_id, client_secret etc. remain
-        available) and re-stores the merged blob atomically under
-        the same ``SecretRef``.
+        available) and collapses ``secret_refs`` to a single fresh
+        ``SecretRef`` pointing at the merged payload. Any
+        previously-referenced secrets are deleted from the backend
+        so ``get_credentials`` cannot reintroduce stale keys on
+        the next resolve.
 
         Raises:
             ConnectionNotFoundError: If the connection does not exist.
@@ -425,52 +444,74 @@ class ConnectionCatalog:
             merged["access_token"] = access_token
             if refresh_token is not None:
                 merged["refresh_token"] = refresh_token
-            new_secret_id: str | None = None
-            if not conn.secret_refs:
-                # No existing secret ref -- create a fresh one.
-                secret_id = str(uuid4())
-                await self._secret_backend.store(
-                    secret_id,
-                    json.dumps(merged).encode("utf-8"),
-                )
-                new_secret_id = secret_id
-                ref = SecretRef(
-                    secret_id=NotBlankStr(secret_id),
-                    backend=NotBlankStr(self._secret_backend.backend_name),
-                )
-                updated = conn.model_copy(
-                    update={
-                        "secret_refs": (ref,),
-                        "updated_at": datetime.now(UTC),
-                    }
-                )
-            else:
-                # Re-store into the first existing ref.
-                first_ref = conn.secret_refs[0]
-                await self._secret_backend.store(
-                    first_ref.secret_id,
-                    json.dumps(merged).encode("utf-8"),
-                )
-                updated = conn.model_copy(
-                    update={"updated_at": datetime.now(UTC)},
-                )
+
+            # Always write a single merged secret (new id) and
+            # replace ``secret_refs`` with exactly that one ref.
+            # Writing back into an existing ref would leave any
+            # sibling refs pointing at stale credential slices,
+            # and ``get_credentials`` merges them in order so the
+            # old values could shadow the fresh token on the next
+            # resolve.
+            new_secret_id = str(uuid4())
+            await self._secret_backend.store(
+                new_secret_id,
+                json.dumps(merged).encode("utf-8"),
+            )
+            old_refs = conn.secret_refs
+            ref = SecretRef(
+                secret_id=NotBlankStr(new_secret_id),
+                backend=NotBlankStr(self._secret_backend.backend_name),
+            )
+            updated = conn.model_copy(
+                update={
+                    "secret_refs": (ref,),
+                    "updated_at": datetime.now(UTC),
+                }
+            )
             try:
                 await self._repo.save(updated)
             except Exception:
-                # Compensating cleanup only for the new-secret path --
-                # re-stores into an existing ref have no orphan to clean.
-                if new_secret_id is not None:
+                # Compensating cleanup: delete the freshly-written
+                # secret so we do not leak a bearer token when the
+                # repo row could not record it.
+                logger.exception(
+                    OAUTH_TOKEN_EXCHANGED,
+                    connection_name=name,
+                    error=(
+                        "repo save failed; deleting orphaned OAuth "
+                        "secret to avoid leaking tokens"
+                    ),
+                )
+                try:
+                    await self._secret_backend.delete(new_secret_id)
+                except Exception as cleanup_exc:
                     logger.exception(
                         OAUTH_TOKEN_EXCHANGED,
                         connection_name=name,
+                        secret_id=new_secret_id,
                         error=(
-                            "repo save failed; deleting orphaned OAuth "
-                            "secret to avoid leaking tokens"
+                            "rollback delete failed; manual cleanup "
+                            "required for orphaned OAuth secret"
                         ),
+                        cleanup_exception=str(cleanup_exc),
                     )
-                    with contextlib.suppress(Exception):
-                        await self._secret_backend.delete(new_secret_id)
                 raise
+            # Repo save succeeded -- drop any previously-referenced
+            # secrets from the backend now that the canonical merged
+            # secret is persisted. Best effort: log failures but do
+            # not re-raise so one stale secret does not abort the
+            # whole rotation.
+            for old_ref in old_refs:
+                try:
+                    await self._secret_backend.delete(old_ref.secret_id)
+                except Exception as del_exc:
+                    logger.warning(
+                        OAUTH_TOKEN_EXCHANGED,
+                        connection_name=name,
+                        secret_id=old_ref.secret_id,
+                        error="failed to delete stale secret after rotation",
+                        cleanup_exception=str(del_exc),
+                    )
             self._invalidate_cache()
             logger.info(
                 OAUTH_TOKEN_EXCHANGED,

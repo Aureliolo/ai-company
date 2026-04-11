@@ -59,7 +59,25 @@ class SlackHealthCheck:
                 checked_at=now,
             )
 
-        credentials = await self._catalog.get_credentials(connection.name)
+        # ``get_credentials`` can raise (secret backend outage,
+        # malformed row, etc.). Treat those as an UNHEALTHY result
+        # instead of propagating out of the health check -- a raise
+        # here would cancel any sibling probes running in the same
+        # TaskGroup.
+        try:
+            credentials = await self._catalog.get_credentials(connection.name)
+        except Exception as exc:
+            logger.warning(
+                HEALTH_CHECK_FAILED,
+                connection_name=connection.name,
+                error=f"credential resolution failed: {exc}",
+            )
+            return HealthReport(
+                connection_name=connection.name,
+                status=ConnectionStatus.UNHEALTHY,
+                error_detail=f"credential resolution failed: {exc}",
+                checked_at=now,
+            )
         token = credentials.get("token")
         if not token:
             logger.warning(

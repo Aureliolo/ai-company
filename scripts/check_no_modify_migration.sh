@@ -22,15 +22,46 @@ REVISIONS_DIRS=(
 # origin/main so the check reflects the PR's net effect on main --
 # not intermediate branch state. This lets agents delete + regenerate
 # their own in-flight migrations without bypassing the check.
+#
+# Unusual checkouts (shallow clones, detached CI jobs that never
+# fetch origin/main) cannot evaluate the check. By default we fail
+# CLOSED in that case so the hook cannot be silently bypassed just
+# by running it in a checkout that has no ``origin/main`` to compare
+# against. Set ``ALLOW_NO_REMOTE_CHECK=1`` to opt into the old
+# permissive behaviour (e.g. for a genuinely minimal CI job that
+# verified migrations elsewhere).
 if ! git rev-parse --verify origin/main >/dev/null 2>&1; then
-    # No origin/main available (detached, shallow clone, etc). Fail
-    # open so we do not block legitimate work in unusual checkouts.
-    exit 0
+    if [ "${ALLOW_NO_REMOTE_CHECK:-0}" = "1" ]; then
+        exit 0
+    fi
+    echo "" >&2
+    echo "ERROR: migration hook cannot verify -- 'origin/main' is not" >&2
+    echo "available. git rev-parse --verify origin/main failed." >&2
+    echo "" >&2
+    echo "Fetch the main branch so the hook can evaluate the diff:" >&2
+    echo "  git fetch origin main" >&2
+    echo "" >&2
+    echo "If this is an intentionally minimal environment that" >&2
+    echo "cannot fetch origin/main, set ALLOW_NO_REMOTE_CHECK=1 to" >&2
+    echo "skip the check (documented opt-out)." >&2
+    echo "" >&2
+    exit 1
 fi
 
 BASE="$(git merge-base HEAD origin/main 2>/dev/null || true)"
 if [ -z "$BASE" ]; then
-    exit 0
+    if [ "${ALLOW_NO_REMOTE_CHECK:-0}" = "1" ]; then
+        exit 0
+    fi
+    echo "" >&2
+    echo "ERROR: migration hook cannot verify -- 'git merge-base HEAD" >&2
+    echo "origin/main' returned no common ancestor." >&2
+    echo "" >&2
+    echo "This usually means HEAD and origin/main have diverged" >&2
+    echo "histories. Rebase onto the current main or set" >&2
+    echo "ALLOW_NO_REMOTE_CHECK=1 to skip (documented opt-out)." >&2
+    echo "" >&2
+    exit 1
 fi
 
 # Stage-aware comparison: diff the staged tree against the merge base,
