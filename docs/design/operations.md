@@ -1657,39 +1657,43 @@ and pre-pulls the sandbox image on demand.
 
 ### Images we publish
 
-| Image | Purpose | Base strategy |
-|-------|---------|---------------|
-| `backend` | SynthOrg orchestration engine (Litestar + uvicorn) | apko-composed Wolfi base + thin Dockerfile layering the uv-built venv and source |
-| `web` | React dashboard and built docs, served by Caddy | pure apko composition -- no Dockerfile -- composing Caddy + static site bundle + `Caddyfile` |
-| `sandbox` | Ephemeral agent code execution image spawned on demand by the backend | apko-composed Wolfi base including `busybox`, `git`, `iptables`, and `sandbox-init.sh`; not distroless |
+| Image | Purpose | Current base |
+|-------|---------|--------------|
+| `backend` | SynthOrg orchestration engine (Litestar + uvicorn) | `docker/backend/Dockerfile` layering the uv-built venv on a `cgr.dev/chainguard/python` runtime stage |
+| `web` | React SPA and built docs, served by **nginx** | `docker/web/Dockerfile` running `nginxinc/nginx-unprivileged:1.29.5-alpine` with `web/nginx.conf` + `web/security-headers.conf` |
+| `sandbox` | Ephemeral agent code execution image spawned on demand by the backend | `docker/sandbox/Dockerfile` with `busybox`, `git`, `iptables`, and `sandbox-init.sh`; not distroless |
 
-Each image is signed with **cosign keyless** via GitHub OIDC, attested with **SLSA Level 3
-provenance**, and ships a **CycloneDX SBOM** as an attestation. apko emits the SBOM natively
-for images composed entirely from Wolfi packages; the thin Dockerfile layers contribute a
-uv-produced SBOM fragment merged at publish time.
+Each published image is signed with **cosign keyless** via GitHub OIDC in
+`.github/workflows/docker.yml`, attested with **SLSA Level 3 provenance**, and ships a
+**CycloneDX SBOM** as an attestation. These are already wired up and enforced at start
+time by `cli/internal/verify/verify.go`.
 
-### Base image strategy
+### Planned: apko-composed base images (tracked in #1267)
 
-The backend and sandbox images use a **Hybrid A** pattern: apko composes the base image
-declaratively from exact-versioned Wolfi packages (`python-3.14=3.14.3-r0`, `caddy=X.Y.Z`,
+The following is **planned** work, not the current repository state. No `docker/*/apko.yaml`,
+`.github/workflows/apko-lock.yml`, or `web/Caddyfile` exists in the repo yet; this section
+captures the target architecture so the current Dockerfile layout can be evaluated against it.
+
+The backend and sandbox images will migrate to a **Hybrid A** pattern: apko composes the
+base image declaratively from exact-versioned Wolfi packages (`python-3.14=3.14.3-r0`,
 `git`, `iptables`, and so on), and a ~10-line Dockerfile layers the application on top
-(`FROM apko-base`, `COPY .venv`, `COPY src`, `ENTRYPOINT`). The web image is **pure apko** --
-no Dockerfile -- because Caddy plus the static site bundle is everything it needs.
+(`FROM apko-base`, `COPY .venv`, `COPY src`, `ENTRYPOINT`). The web image will become
+**pure apko** -- no Dockerfile -- composing Caddy plus the static site bundle.
 
 Wolfi is a separate distribution from Alpine. It reuses the `apk` package format but is
 built against **glibc**, not musl, so Python `manylinux` wheels install natively without
 source rebuilds and `uv` runs at full speed. This is the decisive reason Wolfi wins over
 both Alpine and Debian-slim for our workload.
 
-### Reconciliation
+Planned reconciliation once the apko migration lands:
 
 | Mechanism | Target | Cadence |
 |-----------|--------|---------|
 | Dependabot (Docker ecosystem) | Thin Dockerfile `FROM` lines (apko-base digest) | Per-upstream-publish |
-| `apko lock --update` cron (`.github/workflows/apko-lock.yml`) | `docker/*/apko.yaml` lockfiles | Weekly |
+| `apko lock --update` cron (planned `.github/workflows/apko-lock.yml`) | Planned `docker/*/apko.yaml` lockfiles | Weekly |
 
-Dependabot and the `apko lock` cron each bump exactly the layer they are native to.
-There is no second bot (no Renovate) and no custom reconciler.
+Today, only Dependabot reconciles the existing Dockerfile `FROM` lines. The `apko lock`
+cron is future work; there is no second bot (no Renovate) and no custom reconciler.
 
 ### Image verification at launch
 
@@ -1734,13 +1738,14 @@ host boundary.
 
 ### Web server
 
-The web image runs **Caddy** (memory-safe Go, Wolfi-packaged, HTTP/2 + HTTP/3). Caddy
-serves the React SPA at `/` and the built documentation at `/docs`, prefers
-pre-compressed `.gz` siblings produced by the Vite and Zensical build steps, handles
-SPA fallback for client-side routes, and applies the full CSP, HSTS, and
-Permissions-Policy header set defined in `web/Caddyfile`.
+The web image is currently built from `docker/web/Dockerfile` and runs **nginx**
+(`nginxinc/nginx-unprivileged:1.29.5-alpine`). nginx serves the React SPA at `/` and
+the built documentation at `/docs`, handles SPA fallback for client-side routes, and
+applies the CSP, HSTS, and Permissions-Policy headers configured in `web/nginx.conf`
+and `web/security-headers.conf`.
 
-Migration of all three images to this model is tracked in #1267.
+A future migration of the web image to a Caddy-based, pure-apko model is tracked in
+#1267.
 
 ## Performance Tracking Configuration
 

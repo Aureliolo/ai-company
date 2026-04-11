@@ -90,6 +90,13 @@ services:
       SYNTHORG_SETTINGS_KEY: {{yamlStr .SettingsKey}}
 {{- end}}
     user: "65532:65532"
+{{- if and .Sandbox (gt .DockerSockGID 0)}}
+    # Supplementary group matches the host GID owning {{.DockerSock}}, so the
+    # non-root backend user (65532) can read/write the mounted socket without
+    # relaxing host-side permissions.
+    group_add:
+      - "{{.DockerSockGID}}"
+{{- end}}
     # CIS Docker Benchmark v1.6.0 hardening (5.3, 5.12, 5.25, 5.28)
     security_opt:
       - no-new-privileges:true

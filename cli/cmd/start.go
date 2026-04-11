@@ -143,23 +143,12 @@ func startContainers(cmd *cobra.Command, ctx context.Context, state config.State
 		if err := verifyAndPinImages(ctx, cmd, state, safeDir, out, errOut); err != nil {
 			return err
 		}
-		// Reload state to pick up the VerifiedDigests written by
-		// verifyAndPinImages -- the sandbox pre-pull below needs the pinned
-		// reference, not the cached pre-verification state.
-		refreshed, loadErr := config.Load(GetGlobalOpts(ctx).DataDir)
-		if loadErr != nil {
-			return fmt.Errorf("reloading state after verification: %w", loadErr)
-		}
-		state = refreshed
 		out.Blank()
-		if err := pullServicesLive(ctx, info, safeDir, state, out); err != nil {
+		refreshed, err := pullAllImages(ctx, info, safeDir, state, out)
+		if err != nil {
 			return err
 		}
-		if state.Sandbox {
-			if err := pullSandboxImage(ctx, info, state, out); err != nil {
-				return err
-			}
-		}
+		state = refreshed
 	}
 
 	if startNoDetach {
@@ -211,9 +200,32 @@ func startDetached(ctx context.Context, info docker.Info, safeDir string, state 
 	return nil
 }
 
+// pullAllImages pulls the compose services and, when sandbox mode is
+// enabled, pre-pulls the sandbox image. State is reloaded from disk so the
+// caller picks up the VerifiedDigests written by a prior verify step (the
+// sandbox pre-pull needs the pinned reference, not the pre-verification
+// cached state). Returns the refreshed state so callers that still need
+// post-verify fields (e.g. VerifiedDigests) see them.
+func pullAllImages(ctx context.Context, info docker.Info, safeDir string, state config.State, out *ui.UI) (config.State, error) {
+	if err := pullServicesLive(ctx, info, safeDir, state, out); err != nil {
+		return state, err
+	}
+	if !state.Sandbox {
+		return state, nil
+	}
+	refreshed, err := config.Load(GetGlobalOpts(ctx).DataDir)
+	if err != nil {
+		return state, fmt.Errorf("reloading state after verification: %w", err)
+	}
+	if err := pullSandboxImage(ctx, info, refreshed, out); err != nil {
+		return refreshed, err
+	}
+	return refreshed, nil
+}
+
 // pullStartAndWait pulls images, starts containers, and waits for health.
 func pullStartAndWait(ctx context.Context, info docker.Info, safeDir string, state config.State, out, errOut *ui.UI) error {
-	if err := pullServicesLive(ctx, info, safeDir, state, out); err != nil {
+	if _, err := pullAllImages(ctx, info, safeDir, state, out); err != nil {
 		return err
 	}
 
@@ -285,6 +297,8 @@ func pullSandboxImage(ctx context.Context, info docker.Info, state config.State,
 		backoff := sandboxPullRetryDelay << (attempt - 1)
 		select {
 		case <-ctx.Done():
+			sp.Error("Sandbox image pull cancelled")
+			return fmt.Errorf("pulling sandbox image %s: %w", imageRef, ctx.Err())
 		case <-time.After(backoff):
 		}
 	}

@@ -43,6 +43,7 @@ type Params struct {
 	SettingsKey        string
 	Sandbox            bool
 	DockerSock         string
+	DockerSockGID      int // host GID owning DockerSock; 0 skips group_add
 	PersistenceBackend string
 	MemoryBackend      string
 	BusBackend         string
@@ -73,6 +74,7 @@ func ParamsFromState(s config.State) Params {
 		SettingsKey:        s.SettingsKey,
 		Sandbox:            s.Sandbox,
 		DockerSock:         s.DockerSock,
+		DockerSockGID:      s.DockerSockGID,
 		PersistenceBackend: s.PersistenceBackend,
 		MemoryBackend:      s.MemoryBackend,
 		BusBackend:         busBackend,
@@ -143,6 +145,9 @@ func validateParams(p Params) error {
 		}
 		if strings.ContainsAny(p.DockerSock, "\"'`$\n\r{}[]") {
 			return fmt.Errorf("docker socket path %q contains unsafe characters", p.DockerSock)
+		}
+		if p.DockerSockGID < 0 || p.DockerSockGID > 4294967295 {
+			return fmt.Errorf("invalid docker socket gid %d: must be 0-4294967295", p.DockerSockGID)
 		}
 	}
 	if !config.IsValidPersistenceBackend(p.PersistenceBackend) {

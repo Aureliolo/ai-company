@@ -2,8 +2,8 @@ package cmd
 
 import (
 	"context"
+	"errors"
 	"io"
-	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -84,11 +84,7 @@ func TestDockerRunQuiet(t *testing.T) {
 	// Use a cross-platform no-op command (`go version`) as a stand-in for
 	// the docker binary so the test stays hermetic without a real Docker
 	// daemon. info.DockerPath points at any resolvable executable.
-	goBin := "go"
-	if runtime.GOOS == "windows" {
-		goBin = "go"
-	}
-	info := docker.Info{DockerPath: goBin}
+	info := docker.Info{DockerPath: "go"}
 
 	t.Run("command succeeds returns nil", func(t *testing.T) {
 		t.Parallel()
@@ -117,17 +113,17 @@ func TestDockerRunQuiet(t *testing.T) {
 	t.Run("empty DockerPath falls back to PATH lookup", func(t *testing.T) {
 		t.Parallel()
 		ctx := context.Background()
-		// Info with empty DockerPath -- exec should still find `go` on PATH.
+		// Info with empty DockerPath -- the function must fall back to the
+		// literal "docker". We do not assume docker is installed on the
+		// test host, so the expected outcomes are (1) exec.LookPath fails
+		// because no docker binary is present, or (2) docker rejects the
+		// bogus arg with a non-zero exit. Either proves the fallback path
+		// ran; a nil error would indicate the fallback is broken.
 		emptyInfo := docker.Info{DockerPath: ""}
-		// We expect this to run `docker version` via PATH which may fail if
-		// docker isn't installed on the test host. Instead, verify the
-		// function correctly constructs the command by running a bogus
-		// arg that any resolved binary will reject.
 		err := dockerRunQuiet(ctx, emptyInfo, "__this_arg_is_not_valid__")
-		// Either docker isn't on PATH (exec error) or it rejects the arg
-		// (non-zero exit). Both are acceptable -- we only care that the
-		// fallback codepath compiles and runs.
-		_ = err
+		if err == nil {
+			t.Error("expected error from empty DockerPath fallback with bogus arg")
+		}
 	})
 
 	t.Run("cancelled context propagates", func(t *testing.T) {
@@ -136,18 +132,24 @@ func TestDockerRunQuiet(t *testing.T) {
 		cancel()
 		err := dockerRunQuiet(ctx, info, "version")
 		if err == nil {
-			t.Error("expected error when context is already cancelled")
+			t.Fatal("expected error when context is already cancelled")
+		}
+		// exec.CommandContext surfaces cancellation via errors.Is when the
+		// child process is killed before writing output; accept either the
+		// direct ctx.Err() or an exec error string that references the
+		// cancellation.
+		if !errors.Is(err, context.Canceled) && !strings.Contains(err.Error(), "killed") && !strings.Contains(err.Error(), "canceled") {
+			t.Errorf("expected cancellation-related error, got: %v", err)
 		}
 	})
 }
 
 func TestPullSandboxImageRetryBackoff(t *testing.T) {
-	t.Parallel()
-
-	// Override the retry delay to keep the test fast. We don't override
-	// sandboxPullAttempts because that would race with other parallel
-	// tests touching the package-level var -- the default (3) with a
-	// small backoff is fine for asserting the retry behaviour.
+	// Deliberately serial: this test mutates the package-level
+	// sandboxPullRetryDelay, which would race with any other parallel test
+	// in this package that exercises pullSandboxImage. Keeping the test
+	// non-parallel avoids the race without refactoring the retry knobs
+	// into injectable parameters.
 	original := sandboxPullRetryDelay
 	sandboxPullRetryDelay = 5 * time.Millisecond
 	defer func() { sandboxPullRetryDelay = original }()

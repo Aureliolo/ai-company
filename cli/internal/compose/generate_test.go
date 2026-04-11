@@ -135,7 +135,42 @@ func TestGenerateWithSandbox(t *testing.T) {
 		t.Error("compose output must not override healthcheck (defined in Dockerfile)")
 	}
 
+	// DockerSockGID defaults to 0 here, so no group_add block should render.
+	if strings.Contains(yaml, "group_add:") {
+		t.Error("group_add must not render when DockerSockGID is 0")
+	}
+
 	compareGolden(t, "compose_sandbox.yml", out)
+}
+
+func TestGenerateWithSandboxAndDockerSockGID(t *testing.T) {
+	t.Parallel()
+	p := Params{
+		CLIVersion:         "dev",
+		ImageTag:           "latest",
+		BackendPort:        3001,
+		WebPort:            3000,
+		LogLevel:           "info",
+		Sandbox:            true,
+		DockerSock:         "/var/run/docker.sock",
+		DockerSockGID:      999,
+		PersistenceBackend: "sqlite",
+		MemoryBackend:      "mem0",
+		BusBackend:         "internal",
+	}
+	out, err := Generate(p)
+	if err != nil {
+		t.Fatalf("Generate: %v", err)
+	}
+	yaml := string(out)
+
+	// group_add renders with the host docker GID so the non-root backend
+	// user can access the mounted socket.
+	assertContains(t, yaml, "group_add:")
+	assertContains(t, yaml, `- "999"`)
+
+	// Docker socket mount still present.
+	assertContains(t, yaml, "/var/run/docker.sock:/var/run/docker.sock")
 }
 
 func TestGenerateWithDigestPins(t *testing.T) {
