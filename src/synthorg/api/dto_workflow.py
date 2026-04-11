@@ -4,6 +4,7 @@ Extracted from ``dto.py`` to keep file sizes manageable.
 Re-exported via ``dto.__all__`` for backward compatibility.
 """
 
+import json
 import re
 from typing import Literal, Self
 
@@ -31,6 +32,16 @@ def _validate_default_type(
     default: object,
 ) -> None:
     """Reject defaults that are not compatible with the declared type."""
+    try:
+        json.dumps(default, allow_nan=False)
+    except TypeError as exc:
+        msg = (
+            f"Declaration {name!r}: default value {default!r} is not JSON-serializable"
+        )
+        raise TypeError(msg) from exc
+    except ValueError as exc:
+        msg = f"Declaration {name!r}: default value {default!r} contains NaN/Inf"
+        raise TypeError(msg) from exc
     expected = _TYPE_CHECKS.get(declared_type)
     if expected is None:
         # JSON, TASK_REF, AGENT_REF -- accept any JSON-serializable value.

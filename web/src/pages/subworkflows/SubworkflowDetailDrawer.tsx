@@ -32,13 +32,19 @@ export function SubworkflowDetailDrawer({
   const [loading, setLoading] = useState(false)
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
   const [deleting, setDeleting] = useState(false)
+  const detailsKey = subworkflow
+    ? `${subworkflow.subworkflow_id}:${subworkflow.latest_version}`
+    : null
+  const [loadedKey, setLoadedKey] = useState<string | null>(null)
 
   useEffect(() => {
     if (!open || !subworkflow) return
     const subId = subworkflow.subworkflow_id
     const subVersion = subworkflow.latest_version
+    const key = `${subId}:${subVersion}`
     let cancelled = false
     async function load() {
+      setLoadedKey(null)
       setVersions([])
       setParents([])
       setLoading(true)
@@ -50,6 +56,7 @@ export function SubworkflowDetailDrawer({
         if (!cancelled) {
           setVersions(v)
           setParents(p)
+          setLoadedKey(key)
         }
       } catch (err: unknown) {
         if (!cancelled) {
@@ -69,7 +76,7 @@ export function SubworkflowDetailDrawer({
   }, [open, subworkflow, addToast])
 
   const handleDelete = useCallback(async () => {
-    if (!subworkflow || loading || parents.length > 0) return
+    if (!subworkflow || loading || parents.length > 0 || loadedKey !== detailsKey) return
     setDeleting(true)
     try {
       await useSubworkflowsStore
@@ -90,7 +97,7 @@ export function SubworkflowDetailDrawer({
     } finally {
       setDeleting(false)
     }
-  }, [subworkflow, loading, parents, addToast, onClose])
+  }, [subworkflow, loading, parents, loadedKey, detailsKey, addToast, onClose])
 
   if (!subworkflow) return null
 
@@ -172,7 +179,7 @@ export function SubworkflowDetailDrawer({
               variant="destructive"
               size="sm"
               onClick={() => setDeleteConfirmOpen(true)}
-              disabled={loading || parents.length > 0}
+              disabled={loading || parents.length > 0 || loadedKey !== detailsKey}
               title={
                 loading
                   ? 'Checking parent references...'
