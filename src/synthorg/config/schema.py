@@ -141,7 +141,9 @@ class ProviderConfig(BaseModel):
             of the provider name as the model prefix for LiteLLM routing.
             Falls back to the provider name when ``None``.
         auth_type: Authentication type for this provider.
-        api_key: API key (typically injected by secret management).
+        connection_name: Reference to a ConnectionCatalog entry for
+            credential resolution.  Preferred over embedded api_key.
+        api_key: API key (prefer connection_name for new configs).
         subscription_token: Bearer token for subscription-based auth
             (e.g. provider subscription plans).  Encrypted at rest.
         tos_accepted_at: Timestamp when the user accepted the subscription
@@ -191,10 +193,18 @@ class ProviderConfig(BaseModel):
         default=AuthType.API_KEY,
         description="Authentication type",
     )
+    connection_name: NotBlankStr | None = Field(
+        default=None,
+        description=(
+            "Reference to a ConnectionCatalog entry.  When set, "
+            "credentials are resolved from the catalog at runtime "
+            "instead of using embedded api_key / oauth fields."
+        ),
+    )
     api_key: NotBlankStr | None = Field(
         default=None,
         repr=False,
-        description="API key",
+        description="API key (prefer connection_name for new configs)",
     )
     subscription_token: NotBlankStr | None = Field(
         default=None,
