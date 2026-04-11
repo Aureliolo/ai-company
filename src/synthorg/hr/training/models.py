@@ -124,14 +124,20 @@ class TrainingGuardDecision(BaseModel):
 
     @model_validator(mode="after")
     def _validate_rejection_reasons_count(self) -> Self:
-        """Ensure rejection_reasons length matches rejected_count or is empty."""
+        """Ensure rejection_reasons matches rejected_count."""
+        if self.rejected_count > 0 and not self.rejection_reasons:
+            msg = (
+                f"rejection_reasons must be non-empty when "
+                f"rejected_count={self.rejected_count}"
+            )
+            raise ValueError(msg)
         if (
             self.rejection_reasons
             and len(self.rejection_reasons) != self.rejected_count
         ):
             msg = (
                 f"rejection_reasons length ({len(self.rejection_reasons)}) "
-                f"must match rejected_count ({self.rejected_count}) or be empty"
+                f"must match rejected_count ({self.rejected_count})"
             )
             raise ValueError(msg)
         return self
@@ -227,8 +233,13 @@ class TrainingPlan(BaseModel):
 
     @model_validator(mode="after")
     def _validate_volume_caps(self) -> Self:
-        """Ensure all volume cap values are positive."""
+        """Ensure all volume cap values are positive with no duplicate types."""
+        seen: set[ContentType] = set()
         for content_type, cap in self.volume_caps:
+            if content_type in seen:
+                msg = f"Duplicate volume cap for {content_type.value}"
+                raise ValueError(msg)
+            seen.add(content_type)
             if cap <= 0:
                 msg = f"Volume cap for {content_type.value} must be positive, got {cap}"
                 raise ValueError(msg)
@@ -386,6 +397,12 @@ class TrainingResult(BaseModel):
         counts: dict[ContentType, dict[str, int]] = {}
         for stage_name, stage_counts in stages:
             for content_type, count in stage_counts:
+                if count < 0:
+                    msg = (
+                        f"Negative count for {content_type.value} "
+                        f"at stage {stage_name}: {count}"
+                    )
+                    raise ValueError(msg)
                 counts.setdefault(content_type, {})[stage_name] = count
 
         for content_type, per_stage in counts.items():

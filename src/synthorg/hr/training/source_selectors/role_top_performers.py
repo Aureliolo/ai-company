@@ -92,7 +92,12 @@ class RoleTopPerformers:
 
         snapshots = await self._fetch_snapshots(candidates)
         scored: list[tuple[float, str]] = [
-            (snapshot.overall_quality_score or 0.0, str(agent.id))
+            (
+                snapshot.overall_quality_score
+                if snapshot.overall_quality_score is not None
+                else 0.0,
+                str(agent.id),
+            )
             for agent, snapshot in zip(candidates, snapshots, strict=True)
         ]
 

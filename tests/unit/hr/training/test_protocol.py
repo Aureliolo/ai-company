@@ -56,6 +56,7 @@ class _StubSelector:
         *,
         new_agent_role: NotBlankStr,
         new_agent_level: SeniorityLevel,
+        new_agent_department: NotBlankStr | None = None,
     ) -> tuple[NotBlankStr, ...]:
         return ()
 

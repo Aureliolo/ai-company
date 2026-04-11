@@ -301,7 +301,11 @@ class TrainingService:
         """Extract + curate a single content type with error logging."""
         extractor = self._extractors.get(ct)
         if extractor is None:
-            return None
+            msg = (
+                f"No extractor configured for content type "
+                f"{ct.value!r} (plan {plan.id})"
+            )
+            raise RuntimeError(msg)
 
         try:
             items = await extractor.extract(

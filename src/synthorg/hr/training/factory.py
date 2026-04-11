@@ -43,8 +43,8 @@ def _coerce_positive_int(
     if value is None:
         return default
     if isinstance(value, bool):
-        # bool is a subclass of int; reject it explicitly.
         msg = f"{field_name} must be a positive integer, got bool"
+        logger.warning(msg, field_name=field_name, value=value)
         raise TypeError(msg)
     if isinstance(value, int):
         coerced = value
@@ -53,12 +53,15 @@ def _coerce_positive_int(
             coerced = int(value)
         except ValueError as exc:
             msg = f"{field_name} must be a positive integer, got {value!r}"
+            logger.warning(msg, field_name=field_name, value=value)
             raise ValueError(msg) from exc
     else:
         msg = f"{field_name} must be a positive integer, got {type(value).__name__}"
+        logger.warning(msg, field_name=field_name, value_type=type(value).__name__)
         raise TypeError(msg)
     if coerced <= 0:
         msg = f"{field_name} must be > 0, got {coerced}"
+        logger.warning(msg, field_name=field_name, value=coerced)
         raise ValueError(msg)
     return coerced
 

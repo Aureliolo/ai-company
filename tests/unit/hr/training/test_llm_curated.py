@@ -8,6 +8,7 @@ import pytest
 from synthorg.core.enums import SeniorityLevel
 from synthorg.hr.training.curation.llm_curated import LLMCurated
 from synthorg.hr.training.models import ContentType, TrainingItem
+from synthorg.providers.errors import ProviderError
 
 
 def _now() -> datetime:
@@ -80,7 +81,7 @@ class TestLLMCurated:
 
     async def test_provider_error_falls_back(self) -> None:
         provider = AsyncMock()
-        provider.complete.side_effect = ValueError("bad config")
+        provider.complete.side_effect = ProviderError("provider unavailable")
 
         items = tuple(_make_item(content=f"Item {i}") for i in range(5))
         curation = LLMCurated(provider=provider, top_k=3)

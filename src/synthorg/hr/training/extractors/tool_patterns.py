@@ -79,11 +79,14 @@ class ToolPatternExtractor:
         now = datetime.now(UTC)
         start = now - timedelta(days=self._lookback_days)
 
+        # Deduplicate while preserving order to avoid redundant fetches.
+        unique_ids = list(dict.fromkeys(source_agent_ids))
+
         # Fetch records for each agent concurrently.
         async with asyncio.TaskGroup() as tg:
             tasks = [
                 tg.create_task(self._fetch_for_agent(agent_id, start, now))
-                for agent_id in source_agent_ids
+                for agent_id in unique_ids
             ]
 
         # Aggregate across all source agents after retrieval completes.

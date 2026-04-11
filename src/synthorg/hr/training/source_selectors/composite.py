@@ -43,6 +43,7 @@ class CompositeSelector:
                 f"lengths, got selectors={len(selectors)}, "
                 f"weights={len(weights)}"
             )
+            logger.warning(msg)
             raise ValueError(msg)
         self._selectors = selectors
         self._weights = weights
@@ -87,7 +88,7 @@ class CompositeSelector:
                     seen.add(str_id)
                     result.append(agent_id)
 
-        logger.debug(
+        logger.info(
             HR_TRAINING_SELECTION_COMPLETE,
             selector="composite",
             child_count=len(self._selectors),

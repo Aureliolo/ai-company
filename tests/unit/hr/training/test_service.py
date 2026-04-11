@@ -77,10 +77,24 @@ def _make_service(
         selector.select.return_value = ("senior-1",)
 
     if extractors is None:
-        ext = AsyncMock()
-        ext.content_type = ContentType.PROCEDURAL
-        ext.extract.return_value = (_make_item(),)
-        extractors = {ContentType.PROCEDURAL: ext}
+        proc_ext = AsyncMock()
+        proc_ext.content_type = ContentType.PROCEDURAL
+        proc_ext.extract.return_value = (_make_item(),)
+        sem_ext = AsyncMock()
+        sem_ext.content_type = ContentType.SEMANTIC
+        sem_ext.extract.return_value = (
+            _make_item(content="Semantic item", content_type=ContentType.SEMANTIC),
+        )
+        tool_ext = AsyncMock()
+        tool_ext.content_type = ContentType.TOOL_PATTERNS
+        tool_ext.extract.return_value = (
+            _make_item(content="Tool item", content_type=ContentType.TOOL_PATTERNS),
+        )
+        extractors = {
+            ContentType.PROCEDURAL: proc_ext,
+            ContentType.SEMANTIC: sem_ext,
+            ContentType.TOOL_PATTERNS: tool_ext,
+        }
 
     if curation is None:
         curation = AsyncMock()
