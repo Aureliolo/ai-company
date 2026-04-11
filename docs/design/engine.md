@@ -1546,6 +1546,43 @@ the memory subsystem) historical single-agent success rate as inputs.
     agents vs. identical agents), so thresholds should be validated empirically
     once multi-agent execution is implemented.
 
+    The selector is additionally backed by two 2026 results:
+    [arXiv:2603.26993](https://arxiv.org/abs/2603.26993) proves formally that,
+    under a common-evidence regime with no new exogenous signals, any delegated
+    decision network is decision-theoretically dominated by a centralized Bayes
+    decision maker -- which is exactly why the matrix above routes
+    `parallel + structured` tasks to `Centralized`. The paper's boundary case
+    (distributed wins when individual agents access novel, non-shared information)
+    is the condition under which `Decentralized` is the right call rather than a
+    fallback. [arXiv:2604.02460](https://arxiv.org/abs/2604.02460) shows
+    empirically across three model families that under equalized reasoning-token
+    budgets, single-agent systems match or beat multi-agent on multi-hop
+    reasoning tasks -- grounded in the Data Processing Inequality: coordination
+    tokens displace reasoning tokens. This is the formal justification for the
+    `sequential -> SAS` default.
+
+    See [S1 Multi-Agent Architecture Decision](../research/s1-multi-agent-decision.md)
+    for the full mapping, the 15-risk register (#1254), and the constraints that
+    #1250, #1251, and #1253 inherit.
+
+### Coordination Group Size Bounds
+
+Per-task coordination-group size is **not** the same as per-company size. An
+Enterprise Org template with 20-50 agents does not run 20-50-agent coordination
+waves -- it runs small coordination groups drawn from the roster.
+
+| Scope | Bound | Enforcement |
+|-------|-------|-------------|
+| Per-coordination-group (agents in a single `coordination_topology` wave) | **3-4 agents** (default) | `CoordinationConfig.max_agents_per_wave`; override via explicit config flag with justification. Legitimate 5-6 sub-agent decompositions exist in the +57% to +81% parallel regime. |
+| Per-task total team (orchestrator + sub-agents + verifiers) | **~7 agents** | Soft cap -- logged warning above threshold. |
+| Per-meeting participants | **3-5 ideal, 8 hard cap** | Enforced by meeting protocol token budgets and quadratic-growth warnings (see [Meeting Protocol](communication.md#meeting-protocol)). |
+| Per-company / org roster | **No hard bound** | Organizational-simulation fidelity, not per-task reasoning efficiency. |
+
+Source: [Kim et al. 2025](https://arxiv.org/abs/2512.08296) 3-4 per-wave
+empirical cap; paper 1 coalition-formation risk rises with team size
+([arXiv:2603.27771](https://huggingface.co/papers/2603.27771)). See
+[S1 Multi-Agent Architecture Decision §2](../research/s1-multi-agent-decision.md#section-2--team-size-bounds).
+
 ### Multi-Agent Coordination Pipeline
 
 The `MultiAgentCoordinator` orchestrates the end-to-end pipeline that transforms

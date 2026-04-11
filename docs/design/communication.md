@@ -404,6 +404,22 @@ department, or per conflict type.
     - Deterministic, zero extra tokens, fast resolution
     - Dissent records create institutional memory of alternative approaches
 
+    !!! warning "Authority deference risk (paper 1 risk 2.2)"
+        [arXiv:2603.27771](https://huggingface.co/papers/2603.27771) documents a
+        **100% deterministic failure mode** when authority cues are present in
+        multi-agent deliberation: 0/10 errors without an authority cue flip to
+        10/10 errors with the cue, same evidence, same agents. Downstream
+        Auditor / Summarizer roles "lock onto" the authority signal and cease
+        independent checks, and `DissentRecord` preservation alone is only a
+        partial defense because downstream consumers override evidence anyway.
+
+        This strategy is safe for **1-2 downstream agents**. For deliberation
+        stacks with more than two downstream agents, the planned
+        `AuthorityDeferenceGuard` (blind-aggregation mode + mandatory
+        justification when overriding evidence + telemetry) is required. See
+        [S1 Multi-Agent Architecture Decision §3](../research/s1-multi-agent-decision.md#section-3--risk-mitigation-register-15-emergent-risks-from-paper-1)
+        and the constraint on [#1251](https://github.com/Aureliolo/synthorg/issues/1251).
+
 === "Strategy 2: Structured Debate + Judge"
 
     Both agents present arguments (1 round each). A judge -- their shared
@@ -473,6 +489,29 @@ types naturally suit different protocols. All protocols implement a
 `MeetingProtocol` protocol, making the system extensible -- new protocols can be
 registered and selected per meeting type. Cost bounds are enforced by
 `duration_tokens` in the [communication config](#communication-config).
+
+!!! warning "Synthesis risks: majority sway + authority deference"
+    All three protocols below terminate their group discussion in a
+    **synthesis step** that aggregates participant positions into a single
+    decision. [arXiv:2603.27771](https://huggingface.co/papers/2603.27771)
+    documents two distinct synthesis-time failure modes:
+
+    - **Majority sway bias (risk 2.1)**: in a news-summarization experiment with
+      7 fast-retrieval agents (wrong answer) vs. 3 deep-verification agents
+      (accurate evidence), **6/10 runs** synthesized to the majority position
+      despite the minority providing verifiable evidence.
+    - **Authority deference (risk 2.2)**: when any one participant carries an
+      authority marker, downstream synthesis locks onto the authority signal
+      with 10/10 deterministic errors (see the warning on the
+      [Authority + Dissent Log resolver](#conflict-resolution-protocol)).
+
+    The current synthesizer weights positions equally and does not preserve
+    minority-report positions as first-class output. The planned
+    `EvidenceWeightedSynthesizer` (weight by verifiable-evidence density, cap
+    correlated-source clusters, preserve minority reports in an extended
+    `DissentRecord.minority_evidence` field) mitigates both risks. Tracked as
+    a constraint on [#1251](https://github.com/Aureliolo/synthorg/issues/1251). See
+    [S1 Multi-Agent Architecture Decision §3](../research/s1-multi-agent-decision.md#section-3--risk-mitigation-register-15-emergent-risks-from-paper-1).
 
 === "Protocol 1: Round-Robin Transcript"
 
@@ -622,7 +661,9 @@ coordinator to be explicitly provided.
 
 ## Multi-Agent Failure Pattern Guardrails
 
-*Research findings from #690. See also: `docs/research/multi-agent-failure-audit.md`.*
+*Research findings from #690 and #1254. See also:
+[`docs/research/multi-agent-failure-audit.md`](../research/multi-agent-failure-audit.md)
+and [S1 Multi-Agent Architecture Decision](../research/s1-multi-agent-decision.md).*
 
 Empirical data (CIO, 2026) shows swarm topologies fail at 68% vs. 36% for hierarchical
 orchestration. SynthOrg's orchestrated approach is validated, but the same failure modes

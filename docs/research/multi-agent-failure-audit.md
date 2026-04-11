@@ -397,3 +397,42 @@ The two most actionable findings:
 
 All conflict resolution strategies terminate. The HumanEscalationResolver stub (R4) is the
 most immediate functional gap, but it is already tracked as a dependency (#37).
+
+---
+
+## Appendix: 15 emergent risk categories (S1 / #1254)
+
+[arXiv:2603.27771](https://huggingface.co/papers/2603.27771) "Emergent Social
+Intelligence Risks in Generative Multi-Agent Systems" (2026) introduces the
+first systematic taxonomy of 15 collective-level failure modes in multi-agent
+LLM systems -- risks that cannot be reduced to individual agent safety. This
+appendix maps each risk to SynthOrg coverage. Full analysis in
+[S1 Multi-Agent Architecture Decision](s1-multi-agent-decision.md).
+
+| # | Risk | Coverage | Location / Action |
+|---|---|---|---|
+| 1.1 | Tacit collusion | Gap (low priority) | Only relevant for negotiation/client-simulation templates (v0.8+). |
+| 1.2 | Priority monopolization | Partial | `budget/coordination_config.py`; no fee/rotation mechanism yet. |
+| 1.3 | Competitive task avoidance | Partial | Manual / hierarchical strategies safe; `AuctionAssignmentStrategy` vulnerable. |
+| 1.4 | Strategic information withholding | Gap (low priority) | Material only for adversarial A2A federation. Constraint on #1253. |
+| 1.5 | Information asymmetry exploitation | Gap (low priority) | Material only for negotiation templates. |
+| **2.1** | **Majority sway bias** | **Gap (HIGH)** | `EvidenceWeightedSynthesizer`. Paper data: 6/10 fake-news override. Constraint on #1251. |
+| **2.2** | **Authority deference** | **Structural (HIGHEST)** | `AuthorityResolver` is the default. Paper data: 0/10 → 10/10 deterministic errors under authority cue. `AuthorityDeferenceGuard`. Constraint on #1250 + #1251. |
+| 3.1 | Non-convergence without arbitrator | Covered | `ConflictResolver` protocol with arbitrator escalation. |
+| 3.2 | Over-adherence to initial instructions | Partial | `AssumptionViolationSignal` propagation as escalation (not retry). Constraint on #1250. |
+| 3.3 | Architecturally induced clarification failure | Gap (medium) | Pre-decomposition specificity check on `acceptance_criteria`. Constraint on #1251. |
+| 3.4 | Role allocation failure | Covered | Hard role binding, `merge_id` disambiguation. |
+| 3.5 | Role stability under incentive pressure | Covered (by absence) | No inter-agent monetary incentives. Documented risk if reintroduced. |
+| 4.1 | Competitive resource overreach | Covered | `BudgetEnforcer` hard caps. |
+| 4.2 | Steganography | Gap (low priority) | Only if agents face oversight-evasion incentives. |
+| 4.3 | Semantic drift in sequential handoffs | Partial | Content-hash drift detection on `TurnRecord` / `TaskExecution.delegation_chain`. Constraint on #1253. |
+
+**Coverage totals**: 5 fully covered (3.1, 3.4, 3.5, 4.1 + design-by-absence),
+3 partially covered (1.3, 3.2, 4.3), 2 HIGH-priority structural gaps (2.1, 2.2),
+5 LATER/low-priority (1.1, 1.2, 1.4, 1.5, 4.2), 1 medium-priority (3.3).
+
+The two HIGH-priority gaps (2.1 majority sway + 2.2 authority deference) are
+the critical new work S1 surfaces, and both are encoded as constraints on the
+existing R1/R2/R4 RFC issues rather than filed as standalone implementation
+tickets -- each mitigation is a structural hook that the RFCs must design
+around.
