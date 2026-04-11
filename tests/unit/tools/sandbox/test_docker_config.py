@@ -9,10 +9,10 @@ from synthorg.tools.sandbox.policy import NetworkPolicy, SandboxPolicy
 pytestmark = pytest.mark.unit
 
 
-@pytest.fixture(autouse=True)
-def _isolate_sandbox_image_env(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Clear SYNTHORG_SANDBOX_IMAGE so host env never leaks into defaults."""
-    monkeypatch.delenv("SYNTHORG_SANDBOX_IMAGE", raising=False)
+# The autouse fixture `_isolate_sandbox_image_env` lives in conftest.py so
+# every test in this directory starts with a clean SYNTHORG_SANDBOX_IMAGE
+# env var. Tests here that need a specific value still use monkeypatch.setenv
+# explicitly.
 
 
 class TestDockerSandboxConfigDefaults:
