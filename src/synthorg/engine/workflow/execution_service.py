@@ -99,7 +99,7 @@ class _WalkState:
     node_exec_map: dict[str, WorkflowNodeExecution] = field(
         default_factory=dict,
     )
-    node_task_ids: dict[str, str] = field(default_factory=dict)
+    node_task_ids: dict[str, str | tuple[str, ...]] = field(default_factory=dict)
     ordered_keys: list[str] = field(default_factory=list)
 
 
@@ -141,7 +141,7 @@ def _collect_terminal_task_ids(
             continue
         if node.type is WorkflowNodeType.TASK:
             task_id = state.node_task_ids.get(qualified)
-            if task_id is not None:
+            if isinstance(task_id, str):
                 terminal_task_ids.append(task_id)
         else:
             # SUBWORKFLOW entries may contain a tuple of child
