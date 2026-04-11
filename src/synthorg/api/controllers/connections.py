@@ -5,7 +5,7 @@ including on-demand health checks.
 """
 
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from litestar import Controller, delete, get, patch, post
 from litestar.datastructures import State  # noqa: TC002
@@ -14,6 +14,7 @@ from litestar.params import Parameter
 from synthorg.api.dto import ApiResponse
 from synthorg.api.errors import NotFoundError
 from synthorg.api.guards import require_read_access, require_write_access
+from synthorg.integrations.connections.catalog import _UNSET
 from synthorg.integrations.errors import (
     ConnectionNotFoundError,
     DuplicateConnectionError,
@@ -75,7 +76,7 @@ class ConnectionsController(Controller):
     async def create_connection(
         self,
         state: State,
-        data: dict,
+        data: dict[str, Any],
     ) -> ApiResponse[Connection]:
         """Create a new connection."""
         from synthorg.api.errors import ConflictError  # noqa: PLC0415
@@ -110,14 +111,14 @@ class ConnectionsController(Controller):
         self,
         state: State,
         name: str,
-        data: dict,
+        data: dict[str, Any],
     ) -> ApiResponse[Connection]:
         """Update mutable fields of a connection."""
         catalog = state["app_state"].connection_catalog
         try:
             conn = await catalog.update(
                 name,
-                base_url=data.get("base_url", ...),
+                base_url=data.get("base_url", _UNSET),
                 metadata=data.get("metadata"),
                 health_check_enabled=data.get("health_check_enabled"),
             )

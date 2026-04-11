@@ -5,12 +5,11 @@ signatures, and publishes to the message bus.
 """
 
 import json
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
-from litestar import Controller, Response, get, post
+from litestar import Controller, Request, Response, get, post
 from litestar.datastructures import State  # noqa: TC002
 from litestar.params import Parameter
-from litestar.request import Request  # noqa: TC002
 
 from synthorg.api.dto import ApiResponse
 from synthorg.api.guards import require_read_access
@@ -48,10 +47,10 @@ class WebhooksController(Controller):
     async def receive_webhook(
         self,
         state: State,
-        request: Request,
+        request: Request[Any, Any, Any],
         connection_name: str,
         event_type: str,
-    ) -> Response:
+    ) -> Response[dict[str, object]]:
         """Receive and verify a webhook event.
 
         Returns 202 Accepted on success, 401 on signature failure,

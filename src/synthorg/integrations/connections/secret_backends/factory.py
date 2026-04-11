@@ -49,5 +49,5 @@ def create_secret_backend(
     if backend_type == "env_var":
         return EnvVarSecretBackend(config=config.env_var)
 
-    msg = f"Unknown secret backend type: {backend_type}"
+    msg = f"Unknown secret backend type: {backend_type}"  # type: ignore[unreachable]
     raise ValueError(msg)

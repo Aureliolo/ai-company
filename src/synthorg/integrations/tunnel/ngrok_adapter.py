@@ -51,7 +51,7 @@ class NgrokAdapter:
             TunnelError: If ngrok is not installed or fails to start.
         """
         try:
-            from pyngrok import (  # type: ignore[import-untyped]  # noqa: PLC0415
+            from pyngrok import (  # type: ignore[import-not-found]  # noqa: PLC0415
                 conf,
                 ngrok,
             )
@@ -88,7 +88,7 @@ class NgrokAdapter:
         if self._tunnel is None:
             return
         try:
-            from pyngrok import ngrok  # type: ignore[import-untyped]  # noqa: PLC0415
+            from pyngrok import ngrok  # noqa: PLC0415
 
             ngrok.disconnect(self._public_url)
         except Exception:

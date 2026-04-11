@@ -9,11 +9,9 @@ from collections.abc import Callable, Coroutine  # noqa: TC003
 from typing import Any, TypeVar
 
 from synthorg.core.resilience_config import RateLimiterConfig
-from synthorg.integrations.errors import ConnectionRateLimitError
 from synthorg.observability import get_logger
 from synthorg.observability.events.integrations import (
     TOOL_RATE_LIMIT_ACQUIRED,
-    TOOL_RATE_LIMIT_HIT,
 )
 from synthorg.providers.resilience.rate_limiter import RateLimiter
 
@@ -79,15 +77,7 @@ def with_connection_rate_limit(
             if not limiter.is_enabled:
                 return await fn(*args, **kwargs)
 
-            acquired = await limiter.acquire()
-            if not acquired:
-                logger.warning(
-                    TOOL_RATE_LIMIT_HIT,
-                    connection_name=connection_name,
-                )
-                msg = f"Rate limit exceeded for connection '{connection_name}'"
-                raise ConnectionRateLimitError(msg)
-
+            await limiter.acquire()
             logger.debug(
                 TOOL_RATE_LIMIT_ACQUIRED,
                 connection_name=connection_name,

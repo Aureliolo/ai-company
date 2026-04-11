@@ -11,6 +11,7 @@ from uuid import uuid4
 
 from synthorg.core.types import NotBlankStr
 from synthorg.integrations.connections.models import (
+    AuthMethod,
     Connection,
     ConnectionStatus,
     ConnectionType,
@@ -39,6 +40,9 @@ from synthorg.persistence.repositories_integrations import (
 )
 
 logger = get_logger(__name__)
+
+_UNSET = object()
+"""Sentinel value to distinguish 'not provided' from None."""
 
 
 class ConnectionCatalog:
@@ -69,11 +73,11 @@ class ConnectionCatalog:
         if self._cache_valid:
             return
         async with self._cache_lock:
-            if self._cache_valid:
-                return
-            all_conns = await self._repo.list_all()
-            self._cache = {c.name: c for c in all_conns}
-            self._cache_valid = True
+            # Re-check under lock (double-checked locking)
+            if not self._cache_valid:
+                all_conns = await self._repo.list_all()
+                self._cache = {c.name: c for c in all_conns}
+                self._cache_valid = True
 
     def _invalidate_cache(self) -> None:
         self._cache_valid = False
@@ -144,7 +148,7 @@ class ConnectionCatalog:
         connection = Connection(
             name=NotBlankStr(name),
             connection_type=connection_type,
-            auth_method=NotBlankStr(auth_method),
+            auth_method=AuthMethod(auth_method),
             base_url=NotBlankStr(base_url) if base_url else None,
             secret_refs=(secret_ref,),
             health_check_enabled=health_check_enabled,
@@ -198,7 +202,7 @@ class ConnectionCatalog:
         self,
         name: str,
         *,
-        base_url: str | None = ...,  # type: ignore[assignment]
+        base_url: str | None | object = _UNSET,
         metadata: dict[str, str] | None = None,
         health_check_enabled: bool | None = None,
     ) -> Connection:
@@ -209,7 +213,7 @@ class ConnectionCatalog:
         """
         existing = await self.get_or_raise(name)
         updates: dict[str, object] = {"updated_at": datetime.now(UTC)}
-        if base_url is not ...:
+        if base_url is not _UNSET:
             updates["base_url"] = NotBlankStr(base_url) if base_url else None
         if metadata is not None:
             updates["metadata"] = metadata

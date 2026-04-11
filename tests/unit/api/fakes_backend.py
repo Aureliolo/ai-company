@@ -408,6 +408,30 @@ class FakePersistenceBackend:
     def circuit_breaker_state(self) -> FakeCircuitBreakerStateRepository:
         return self._circuit_breaker_state
 
+    @property
+    def connections(self) -> object:
+        """Stub -- not implemented in fake backend."""
+        msg = "FakePersistenceBackend.connections not implemented"
+        raise NotImplementedError(msg)
+
+    @property
+    def connection_secrets(self) -> object:
+        """Stub -- not implemented in fake backend."""
+        msg = "FakePersistenceBackend.connection_secrets not implemented"
+        raise NotImplementedError(msg)
+
+    @property
+    def oauth_states(self) -> object:
+        """Stub -- not implemented in fake backend."""
+        msg = "FakePersistenceBackend.oauth_states not implemented"
+        raise NotImplementedError(msg)
+
+    @property
+    def webhook_receipts(self) -> object:
+        """Stub -- not implemented in fake backend."""
+        msg = "FakePersistenceBackend.webhook_receipts not implemented"
+        raise NotImplementedError(msg)
+
     async def get_setting(self, key: str) -> str | None:
         return self._settings.get(key)
 

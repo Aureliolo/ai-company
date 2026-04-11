@@ -4,6 +4,8 @@ Endpoints for initiating OAuth flows, handling callbacks,
 and checking token status.
 """
 
+from typing import Any
+
 from litestar import Controller, get, post
 from litestar.datastructures import State  # noqa: TC002
 from litestar.params import Parameter
@@ -36,7 +38,7 @@ class OAuthController(Controller):
     async def initiate_flow(
         self,
         state: State,
-        data: dict,
+        data: dict[str, Any],
     ) -> ApiResponse[dict[str, str]]:
         """Initiate an OAuth authorization code flow.
 
@@ -94,7 +96,7 @@ class OAuthController(Controller):
             query="state",
             description="OAuth state token",
         ),
-    ) -> ApiResponse[dict[str, str]]:
+    ) -> ApiResponse[dict[str, Any]]:
         """Handle OAuth provider callback."""
         from synthorg.integrations.oauth.callback_handler import (  # noqa: PLC0415
             handle_oauth_callback,
@@ -125,7 +127,7 @@ class OAuthController(Controller):
         self,
         state: State,
         connection_name: str,
-    ) -> ApiResponse[dict[str, str | bool | None]]:
+    ) -> ApiResponse[dict[str, Any]]:
         """Check the OAuth token status for a connection."""
         catalog = state["app_state"].connection_catalog
         try:

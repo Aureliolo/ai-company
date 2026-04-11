@@ -5,11 +5,12 @@ so that ``ExternalTriggerStrategy`` and other consumers can react.
 """
 
 from datetime import UTC, datetime
+from types import MappingProxyType
 from typing import Any
 
 from synthorg.communication.bus_protocol import MessageBus  # noqa: TC001
 from synthorg.communication.channel import Channel
-from synthorg.communication.enums import ChannelType
+from synthorg.communication.enums import ChannelType, MessageType
 from synthorg.communication.message import DataPart, Message
 from synthorg.observability import get_logger
 from synthorg.observability.events.integrations import (
@@ -38,18 +39,21 @@ async def publish_webhook_event(
         payload: Webhook payload dict.
     """
     message = Message(
+        timestamp=datetime.now(UTC),
         sender="integrations:webhook-receiver",
         to=WEBHOOK_CHANNEL.name,
-        type="webhook_event",
+        type=MessageType.ANNOUNCEMENT,
         channel=WEBHOOK_CHANNEL.name,
         parts=(
             DataPart(
-                data={
-                    "connection_name": connection_name,
-                    "event_type": event_type,
-                    "payload": payload,
-                    "received_at": datetime.now(UTC).isoformat(),
-                },
+                data=MappingProxyType(
+                    {
+                        "connection_name": connection_name,
+                        "event_type": event_type,
+                        "payload": payload,
+                        "received_at": datetime.now(UTC).isoformat(),
+                    }
+                ),
             ),
         ),
     )
