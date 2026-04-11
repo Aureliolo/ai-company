@@ -45,10 +45,10 @@ class TestScalingContextBuilder:
     )
     async def test_source_combination(
         self,
-        workload_source,
-        budget_source,
-        skill_source,
-        expected_lens,
+        workload_source: WorkloadSignalSource | None,
+        budget_source: BudgetSignalSource | None,
+        skill_source: SkillSignalSource | None,
+        expected_lens: tuple[int, int, int],
     ) -> None:
         expected_workload_len, expected_budget_len, expected_skill_len = expected_lens
         builder = ScalingContextBuilder(

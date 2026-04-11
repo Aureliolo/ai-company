@@ -77,6 +77,13 @@ class SignalThresholdTrigger:
             )
             return False
 
+    async def record_run(self) -> None:
+        """Record that an evaluation cycle completed.
+
+        SignalThresholdTrigger has no in-progress state to reset --
+        crossings are consumed by ``should_trigger`` directly.
+        """
+
     async def update_signal(self, signal: ScalingSignal) -> None:
         """Update the tracked signal value and detect crossings.
 

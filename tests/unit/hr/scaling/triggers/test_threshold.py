@@ -50,7 +50,7 @@ class TestSignalThresholdTrigger:
         signal_name: str,
         threshold: float,
         above: bool,
-        values: tuple,
+        values: tuple[float, float],
         expect_trigger: bool,
     ) -> None:
         initial_value, final_value = values

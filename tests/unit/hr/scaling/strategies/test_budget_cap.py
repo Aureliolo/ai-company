@@ -28,7 +28,7 @@ class TestBudgetCapStrategy:
     async def test_threshold_decisions(
         self,
         burn_rate_value: float,
-        expected_action_types: tuple,
+        expected_action_types: tuple[str, ...],
     ) -> None:
         if burn_rate_value >= 90.0:
             strategy = BudgetCapStrategy(safety_margin=0.90)

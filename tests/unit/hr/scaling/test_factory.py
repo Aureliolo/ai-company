@@ -36,8 +36,8 @@ class TestCreateScalingStrategies:
     )
     def test_strategy_creation(
         self,
-        config_tuple,
-        expected_count,
+        config_tuple: tuple[bool, bool, bool, bool],
+        expected_count: int,
     ) -> None:
         skill_gap_enabled, workload_enabled, budget_enabled, perf_enabled = config_tuple
         config = ScalingConfig(
@@ -65,7 +65,7 @@ class TestCreateScalingGuards:
             "creates-composite-with-approval",
         ],
     )
-    def test_guard_creation(self, approval_store) -> None:
+    def test_guard_creation(self, approval_store: str | None) -> None:
         from synthorg.api.approval_store import ApprovalStore
 
         config = ScalingConfig()

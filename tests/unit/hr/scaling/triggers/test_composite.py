@@ -33,8 +33,8 @@ class TestCompositeScalingTrigger:
     async def test_composite_trigger_logic(
         self,
         consume_batched: bool,
-        signal_initial,
-        signal_final,
+        signal_initial: float | None,
+        signal_final: float | None,
         expect_trigger: bool,
     ) -> None:
         batched = BatchedScalingTrigger(interval_seconds=900)
@@ -42,7 +42,7 @@ class TestCompositeScalingTrigger:
             await batched.should_trigger()
 
         threshold = SignalThresholdTrigger(
-            signal_name="utilization",
+            signal_name=NotBlankStr("utilization"),
             threshold=0.85,
         )
         if signal_initial is not None:

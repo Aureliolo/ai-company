@@ -23,11 +23,17 @@ class TestCompositeScalingGuard:
         rate_limit_filter_original = rate_limit.filter
         call_order = []
 
-        async def cooldown_filter_wrapper(decisions):
+        from synthorg.hr.scaling.models import ScalingDecision
+
+        async def cooldown_filter_wrapper(
+            decisions: tuple[ScalingDecision, ...],
+        ) -> tuple[ScalingDecision, ...]:
             call_order.append("cooldown")
             return await cooldown_filter_original(decisions)
 
-        async def rate_limit_filter_wrapper(decisions):
+        async def rate_limit_filter_wrapper(
+            decisions: tuple[ScalingDecision, ...],
+        ) -> tuple[ScalingDecision, ...]:
             call_order.append("rate_limit")
             return await rate_limit_filter_original(decisions)
 

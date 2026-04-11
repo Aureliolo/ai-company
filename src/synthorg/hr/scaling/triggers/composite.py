@@ -39,3 +39,8 @@ class CompositeScalingTrigger:
             if await trigger.should_trigger():
                 return True
         return False
+
+    async def record_run(self) -> None:
+        """Forward record_run to all child triggers."""
+        for trigger in self._triggers:
+            await trigger.record_run()
