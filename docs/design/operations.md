@@ -1649,6 +1649,99 @@ Backup settings live in the `backup` namespace with runtime editability via `Bac
 | `DELETE` | `/api/v1/admin/backups/{id}` | Delete a specific backup |
 | `POST` | `/api/v1/admin/backups/restore` | Restore from backup (requires `confirm=true`) |
 
+## Container Runtime
+
+SynthOrg ships as three container images to `ghcr.io/aureliolo/synthorg-{backend,web,sandbox}`.
+The CLI orchestrates them via Docker Compose, verifies their signatures before starting,
+and pre-pulls the sandbox image on demand.
+
+### Images we publish
+
+| Image | Purpose | Base strategy |
+|-------|---------|---------------|
+| `backend` | SynthOrg orchestration engine (Litestar + uvicorn) | apko-composed Wolfi base + thin Dockerfile layering the uv-built venv and source |
+| `web` | React dashboard and built docs, served by Caddy | pure apko composition -- no Dockerfile -- composing Caddy + static site bundle + `Caddyfile` |
+| `sandbox` | Ephemeral agent code execution image spawned on demand by the backend | apko-composed Wolfi base including `busybox`, `git`, `iptables`, and `sandbox-init.sh`; not distroless |
+
+Each image is signed with **cosign keyless** via GitHub OIDC, attested with **SLSA Level 3
+provenance**, and ships a **CycloneDX SBOM** as an attestation. apko emits the SBOM natively
+for images composed entirely from Wolfi packages; the thin Dockerfile layers contribute a
+uv-produced SBOM fragment merged at publish time.
+
+### Base image strategy
+
+The backend and sandbox images use a **Hybrid A** pattern: apko composes the base image
+declaratively from exact-versioned Wolfi packages (`python-3.14=3.14.3-r0`, `caddy=X.Y.Z`,
+`git`, `iptables`, and so on), and a ~10-line Dockerfile layers the application on top
+(`FROM apko-base`, `COPY .venv`, `COPY src`, `ENTRYPOINT`). The web image is **pure apko** --
+no Dockerfile -- because Caddy plus the static site bundle is everything it needs.
+
+Wolfi is a separate distribution from Alpine. It reuses the `apk` package format but is
+built against **glibc**, not musl, so Python `manylinux` wheels install natively without
+source rebuilds and `uv` runs at full speed. This is the decisive reason Wolfi wins over
+both Alpine and Debian-slim for our workload.
+
+### Reconciliation
+
+| Mechanism | Target | Cadence |
+|-----------|--------|---------|
+| Dependabot (Docker ecosystem) | Thin Dockerfile `FROM` lines (apko-base digest) | Per-upstream-publish |
+| `apko lock --update` cron (`.github/workflows/apko-lock.yml`) | `docker/*/apko.yaml` lockfiles | Weekly |
+
+Dependabot and the `apko lock` cron each bump exactly the layer they are native to.
+There is no second bot (no Renovate) and no custom reconciler.
+
+### Image verification at launch
+
+```mermaid
+flowchart LR
+  A[synthorg start] --> B[Resolve tags to digests]
+  B --> C[Verify cosign signature]
+  C --> D[Verify SLSA provenance]
+  D --> E[Write verified digests to state]
+  E --> F[Regenerate compose.yml with @digest pins]
+  F --> G[docker compose pull backend web]
+  G --> H{Sandbox?}
+  H -- yes --> I[docker pull sandbox digest ref]
+  H -- no --> J[docker compose up -d]
+  I --> J
+  J --> K[Wait for backend healthy]
+```
+
+`synthorg start` runs `cli/internal/verify/verify.go` which resolves each tag to a digest,
+verifies the cosign signature and SLSA provenance, and writes the verified digest into
+`state.VerifiedDigests`. The digest-pinned references are then rendered into `compose.yml`
+so the started containers run exactly the image the CLI verified. `--skip-verify` bypasses
+this for air-gapped environments.
+
+### Sandbox image resolution
+
+When `--sandbox` is enabled, the CLI verifies the sandbox image alongside the others,
+pre-pulls it via `docker pull <digest-ref>` (the sandbox is **not** a compose service --
+the backend spawns ephemeral sandbox containers on demand via `aiodocker`), and passes
+the digest-pinned reference to the backend container as `SYNTHORG_SANDBOX_IMAGE`. The
+backend's `DockerSandboxConfig.image` field reads this env var as its default via a
+Pydantic `default_factory`; explicit YAML under `sandboxing.docker.image` still wins when
+set. This keeps the CLI pin and the backend pin version-locked.
+
+The backend gets `/var/run/docker.sock` mounted **read-write** (it needs `create`,
+`start`, `stop`, and `exec` on the daemon). The sandbox image retains a full shell plus
+`git` and `iptables` because the per-host:port `allowed_hosts` network enforcement in
+`sandbox-init.sh` is a permanent security control. The shell lives inside the blast
+radius of an ephemeral container running with `cap_drop: ALL`, `no-new-privileges`,
+a read-only root filesystem, and the iptables firewall applied at init -- not at the
+host boundary.
+
+### Web server
+
+The web image runs **Caddy** (memory-safe Go, Wolfi-packaged, HTTP/2 + HTTP/3). Caddy
+serves the React SPA at `/` and the built documentation at `/docs`, prefers
+pre-compressed `.gz` siblings produced by the Vite and Zensical build steps, handles
+SPA fallback for client-side routes, and applies the full CSP, HSTS, and
+Permissions-Policy header set defined in `web/Caddyfile`.
+
+Migration of all three images to this model is tracked in #1267.
+
 ## Performance Tracking Configuration
 
 The `performance` namespace in the company YAML configures the performance tracking
