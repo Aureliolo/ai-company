@@ -11,6 +11,7 @@ the correct event_type and payload.
 """
 
 import asyncio
+from collections.abc import Mapping
 from typing import Any
 
 import pytest
@@ -26,19 +27,27 @@ from synthorg.integrations.webhooks.event_bus_bridge import (
 )
 
 
-class _SpyExternalTriggerStrategy(ExternalTriggerStrategy):  # type: ignore[misc]
-    """Minimal spy strategy that records every ``on_external_event`` call."""
+class _SpyExternalTriggerStrategy(ExternalTriggerStrategy):
+    """Real strategy subclass that records ``on_external_event`` calls.
+
+    The parent class uses ``__slots__`` so we extend the slot tuple
+    with ``calls`` to add our own instance attribute without
+    triggering ``AttributeError``.
+    """
+
+    __slots__ = ("calls",)
 
     def __init__(self) -> None:
-        self.calls: list[tuple[object, str, dict[str, Any]]] = []
+        super().__init__()
+        self.calls: list[tuple[object, str, Mapping[str, Any]]] = []
 
     async def on_external_event(
         self,
         sprint: object,
-        event_type: str,
-        payload: dict[str, Any],
+        event_name: str,
+        payload: Mapping[str, Any],
     ) -> None:
-        self.calls.append((sprint, event_type, payload))
+        self.calls.append((sprint, event_name, payload))
 
 
 class _SpyCeremonyScheduler:
@@ -46,7 +55,7 @@ class _SpyCeremonyScheduler:
 
     def __init__(
         self,
-        strategy: _SpyExternalTriggerStrategy | None,
+        strategy: ExternalTriggerStrategy | None,
         sprint: object | None,
     ) -> None:
         self._strategy = strategy

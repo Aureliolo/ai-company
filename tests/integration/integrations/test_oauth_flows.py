@@ -15,7 +15,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from synthorg.core.types import NotBlankStr
 from synthorg.integrations.connections.models import (
+    AuthMethod,
     Connection,
     ConnectionType,
     OAuthState,
@@ -51,9 +53,9 @@ class TestAuthorizationCodeFlow:
     async def test_exchange_code_returns_raw_tokens(self) -> None:
         flow = AuthorizationCodeFlow()
         state = OAuthState(
-            state_token="state-xyz",  # type: ignore[arg-type]
-            connection_name="conn-1",  # type: ignore[arg-type]
-            pkce_verifier="verifier-abc",  # type: ignore[arg-type]
+            state_token=NotBlankStr("state-xyz"),
+            connection_name=NotBlankStr("conn-1"),
+            pkce_verifier=NotBlankStr("verifier-abc"),
             scopes_requested="read",
             redirect_uri="https://app.example.com/cb",
             expires_at=datetime.now(UTC) + timedelta(hours=1),
@@ -130,9 +132,9 @@ class TestCallbackHandler:
     async def test_callback_persists_tokens_via_catalog(self) -> None:
         now = datetime.now(UTC)
         state = OAuthState(
-            state_token="state-1",  # type: ignore[arg-type]
-            connection_name="conn-1",  # type: ignore[arg-type]
-            pkce_verifier="verifier",  # type: ignore[arg-type]
+            state_token=NotBlankStr("state-1"),
+            connection_name=NotBlankStr("conn-1"),
+            pkce_verifier=NotBlankStr("verifier"),
             scopes_requested="read",
             redirect_uri="https://app.example.com/cb",
             created_at=now,
@@ -157,9 +159,9 @@ class TestCallbackHandler:
         catalog = MagicMock()
         catalog.get_or_raise = AsyncMock(
             return_value=Connection(
-                name="conn-1",  # type: ignore[arg-type]
+                name=NotBlankStr("conn-1"),
                 connection_type=ConnectionType.OAUTH_APP,
-                auth_method="oauth2",  # type: ignore[arg-type]
+                auth_method=AuthMethod.OAUTH2,
             ),
         )
         catalog.get_credentials = AsyncMock(
@@ -196,8 +198,8 @@ class TestCallbackHandler:
     async def test_callback_rejects_expired_state(self) -> None:
         past = datetime.now(UTC) - timedelta(hours=2)
         state = OAuthState(
-            state_token="state-expired",  # type: ignore[arg-type]
-            connection_name="conn-1",  # type: ignore[arg-type]
+            state_token=NotBlankStr("state-expired"),
+            connection_name=NotBlankStr("conn-1"),
             created_at=past - timedelta(hours=1),
             expires_at=past,
         )
@@ -216,9 +218,9 @@ class TestCallbackHandler:
     async def test_callback_rejects_missing_credentials(self) -> None:
         now = datetime.now(UTC)
         state = OAuthState(
-            state_token="state-missing",  # type: ignore[arg-type]
-            connection_name="conn-1",  # type: ignore[arg-type]
-            pkce_verifier="verifier",  # type: ignore[arg-type]
+            state_token=NotBlankStr("state-missing"),
+            connection_name=NotBlankStr("conn-1"),
+            pkce_verifier=NotBlankStr("verifier"),
             expires_at=now + timedelta(hours=1),
         )
         state_repo = MagicMock()
@@ -227,9 +229,9 @@ class TestCallbackHandler:
         catalog = MagicMock()
         catalog.get_or_raise = AsyncMock(
             return_value=Connection(
-                name="conn-1",  # type: ignore[arg-type]
+                name=NotBlankStr("conn-1"),
                 connection_type=ConnectionType.OAUTH_APP,
-                auth_method="oauth2",  # type: ignore[arg-type]
+                auth_method=AuthMethod.OAUTH2,
             ),
         )
         catalog.get_credentials = AsyncMock(return_value={})

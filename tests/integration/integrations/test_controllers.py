@@ -24,7 +24,9 @@ from synthorg.api.errors import (
     NotFoundError,
     UnauthorizedError,
 )
+from synthorg.core.types import NotBlankStr
 from synthorg.integrations.connections.models import (
+    AuthMethod,
     Connection,
     ConnectionStatus,
     ConnectionType,
@@ -37,10 +39,10 @@ from synthorg.integrations.errors import (
 
 def _make_conn(name: str = "c1") -> Connection:
     return Connection(
-        name=name,  # type: ignore[arg-type]
+        name=NotBlankStr(name),
         connection_type=ConnectionType.GITHUB,
-        auth_method="api_key",  # type: ignore[arg-type]
-        base_url="https://api.github.com",  # type: ignore[arg-type]
+        auth_method=AuthMethod.API_KEY,
+        base_url=NotBlankStr("https://api.github.com"),
     )
 
 
@@ -54,7 +56,7 @@ class TestConnectionsController:
         state = {"app_state": MagicMock(connection_catalog=catalog)}
 
         ctrl = ConnectionsController(owner=ConnectionsController)  # type: ignore[arg-type]
-        response = await ctrl.list_connections.fn(ctrl, state=state)  # type: ignore[arg-type]
+        response = await ctrl.list_connections.fn(ctrl, state=state)
         assert len(response.data) == 2
 
     async def test_get_missing_raises_not_found(self) -> None:
@@ -66,7 +68,7 @@ class TestConnectionsController:
 
         ctrl = ConnectionsController(owner=ConnectionsController)  # type: ignore[arg-type]
         with pytest.raises(NotFoundError):
-            await ctrl.get_connection.fn(ctrl, state=state, name="missing")  # type: ignore[arg-type]
+            await ctrl.get_connection.fn(ctrl, state=state, name="missing")
 
     async def test_create_validates_missing_name(self) -> None:
         from synthorg.api.controllers.connections import ConnectionsController
@@ -78,7 +80,7 @@ class TestConnectionsController:
         with pytest.raises(ApiValidationError):
             await ctrl.create_connection.fn(
                 ctrl,
-                state=state,  # type: ignore[arg-type]
+                state=state,
                 data={"connection_type": "github"},
             )
 
@@ -92,7 +94,7 @@ class TestConnectionsController:
         with pytest.raises(ApiValidationError):
             await ctrl.create_connection.fn(
                 ctrl,
-                state=state,  # type: ignore[arg-type]
+                state=state,
                 data={"name": "x", "connection_type": "not-a-type"},
             )
 
@@ -109,7 +111,7 @@ class TestConnectionsController:
         with pytest.raises(ConflictError):
             await ctrl.create_connection.fn(
                 ctrl,
-                state=state,  # type: ignore[arg-type]
+                state=state,
                 data={
                     "name": "x",
                     "connection_type": "github",
@@ -142,7 +144,7 @@ class TestWebhooksController:
         with pytest.raises(UnauthorizedError):
             await ctrl.receive_webhook.fn(
                 ctrl,
-                state=state,  # type: ignore[arg-type]
+                state=state,
                 request=request,
                 connection_name="c1",
                 event_type="ping",
@@ -156,10 +158,10 @@ class TestWebhooksController:
 
         # Use generic_http so the generic HMAC verifier kicks in.
         conn = Connection(
-            name="c1",  # type: ignore[arg-type]
+            name=NotBlankStr("c1"),
             connection_type=ConnectionType.GENERIC_HTTP,
-            auth_method="api_key",  # type: ignore[arg-type]
-            base_url="https://example.com",  # type: ignore[arg-type]
+            auth_method=AuthMethod.API_KEY,
+            base_url=NotBlankStr("https://example.com"),
         )
         catalog = MagicMock()
         catalog.get = AsyncMock(return_value=conn)
@@ -188,7 +190,7 @@ class TestWebhooksController:
         with pytest.raises(ApiValidationError):
             await ctrl.receive_webhook.fn(
                 ctrl,
-                state=state,  # type: ignore[arg-type]
+                state=state,
                 request=request,
                 connection_name="c1",
                 event_type="push",
@@ -197,10 +199,14 @@ class TestWebhooksController:
 
 @pytest.mark.integration
 class TestIntegrationHealthController:
-    async def test_aggregate_runs_checks_in_parallel(self) -> None:
+    async def test_aggregate_runs_checks_in_parallel(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
         from synthorg.api.controllers.integration_health import (
             IntegrationHealthController,
         )
+        from synthorg.integrations.health import service as health_service
 
         conn1 = _make_conn("c1")
         conn2 = _make_conn("c2")
@@ -216,24 +222,23 @@ class TestIntegrationHealthController:
             name: str,
         ) -> HealthReport:
             return HealthReport(
-                connection_name=name,  # type: ignore[arg-type]
+                connection_name=NotBlankStr(name),
                 status=ConnectionStatus.HEALTHY,
                 latency_ms=1.0,
                 checked_at=datetime.now(UTC),
             )
 
-        import synthorg.api.controllers.integration_health as mod
+        # Patch the source module so the controller's import reference
+        # picks up the fake. Patching via ``monkeypatch`` guarantees
+        # the original is restored even if the test aborts.
+        monkeypatch.setattr(health_service, "check_connection_health", fake_check)
+        import synthorg.api.controllers.integration_health as controller_mod
 
-        original = mod.check_connection_health
-        mod.check_connection_health = fake_check  # type: ignore[assignment]
-        try:
-            state = {"app_state": MagicMock(connection_catalog=catalog)}
-            ctrl = IntegrationHealthController(  # type: ignore[arg-type]
-                owner=IntegrationHealthController,
-            )
-            response = await ctrl.aggregate_health.fn(ctrl, state=state)  # type: ignore[arg-type]
-        finally:
-            mod.check_connection_health = original  # type: ignore[assignment]
+        monkeypatch.setattr(controller_mod, "check_connection_health", fake_check)
+
+        state = {"app_state": MagicMock(connection_catalog=catalog)}
+        ctrl = IntegrationHealthController(owner=IntegrationHealthController)  # type: ignore[arg-type]
+        response = await ctrl.aggregate_health.fn(ctrl, state=state)
 
         assert len(response.data) == 2
         assert {r.connection_name for r in response.data} == {"c1", "c2"}
@@ -247,7 +252,7 @@ class TestMCPCatalogController:
 
         state = {"app_state": MagicMock(mcp_catalog_service=CatalogService())}
         ctrl = MCPCatalogController(owner=MCPCatalogController)  # type: ignore[arg-type]
-        response = await ctrl.browse_catalog.fn(ctrl, state=state)  # type: ignore[arg-type]
+        response = await ctrl.browse_catalog.fn(ctrl, state=state)
         assert len(response.data) >= 8
 
 
@@ -260,7 +265,7 @@ class TestTunnelController:
         tunnel.start = AsyncMock(return_value="https://tunnel.example.com")
         state = {"app_state": MagicMock(tunnel_provider=tunnel)}
         ctrl = TunnelController(owner=TunnelController)  # type: ignore[arg-type]
-        response = await ctrl.start_tunnel.fn(ctrl, state=state)  # type: ignore[arg-type]
+        response = await ctrl.start_tunnel.fn(ctrl, state=state)
         assert response.data == {"public_url": "https://tunnel.example.com"}
 
     async def test_status_returns_current_url(self) -> None:
@@ -270,7 +275,7 @@ class TestTunnelController:
         tunnel.get_url = AsyncMock(return_value="https://tunnel.example.com")
         state = {"app_state": MagicMock(tunnel_provider=tunnel)}
         ctrl = TunnelController(owner=TunnelController)  # type: ignore[arg-type]
-        response = await ctrl.get_status.fn(ctrl, state=state)  # type: ignore[arg-type]
+        response = await ctrl.get_status.fn(ctrl, state=state)
         assert response.data == {"public_url": "https://tunnel.example.com"}
 
 
@@ -282,7 +287,7 @@ class TestOAuthController:
         ctrl = OAuthController(owner=OAuthController)  # type: ignore[arg-type]
         state = {"app_state": MagicMock()}
         with pytest.raises(ApiValidationError):
-            await ctrl.initiate_flow.fn(ctrl, state=state, data={})  # type: ignore[arg-type]
+            await ctrl.initiate_flow.fn(ctrl, state=state, data={})
 
     async def test_status_returns_false_when_no_token(self) -> None:
         from synthorg.api.controllers.oauth import OAuthController
@@ -294,7 +299,7 @@ class TestOAuthController:
         state = {"app_state": MagicMock(connection_catalog=catalog)}
 
         ctrl = OAuthController(owner=OAuthController)  # type: ignore[arg-type]
-        response = await ctrl.token_status.fn(  # type: ignore[arg-type]
+        response = await ctrl.token_status.fn(
             ctrl,
             state=state,
             connection_name="c1",

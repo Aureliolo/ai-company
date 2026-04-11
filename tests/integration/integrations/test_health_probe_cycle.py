@@ -75,11 +75,14 @@ class _ScriptedChecker:
 
 
 def _make_connection(name: str) -> Connection:
+    from synthorg.core.types import NotBlankStr
+    from synthorg.integrations.connections.models import AuthMethod
+
     return Connection(
-        name=name,  # type: ignore[arg-type]
+        name=NotBlankStr(name),
         connection_type=ConnectionType.GENERIC_HTTP,
-        auth_method="api_key",  # type: ignore[arg-type]
-        base_url="https://example.com",  # type: ignore[arg-type]
+        auth_method=AuthMethod.API_KEY,
+        base_url=NotBlankStr("https://example.com"),
         health_check_enabled=True,
     )
 
@@ -105,7 +108,10 @@ class TestHealthProberRegistry:
 
 @pytest.mark.integration
 class TestHealthProberCycle:
-    async def test_probe_all_updates_status_via_catalog(self) -> None:
+    async def test_probe_all_updates_status_via_catalog(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
         conn = _make_connection("probe-1")
         catalog = _FakeCatalog((conn,))
         svc = HealthProberService(
@@ -122,19 +128,14 @@ class TestHealthProberCycle:
                 ]
             }
         )
-        # Inject the scripted checker into the registry by temporarily
-        # monkey-patching ``prober_mod.get_health_checker``.
-        original = prober_mod.get_health_checker
-        prober_mod.get_health_checker = lambda _: checker  # type: ignore[assignment]
-        try:
-            # First probe: one failure -> DEGRADED.
-            await svc._probe_all()
-            # Second probe: second failure -> UNHEALTHY.
-            await svc._probe_all()
-            # Third probe: healthy -> back to HEALTHY, counter reset.
-            await svc._probe_all()
-        finally:
-            prober_mod.get_health_checker = original  # type: ignore[assignment]
+        monkeypatch.setattr(prober_mod, "get_health_checker", lambda _: checker)
+
+        # First probe: one failure -> DEGRADED.
+        await svc._probe_all()
+        # Second probe: second failure -> UNHEALTHY.
+        await svc._probe_all()
+        # Third probe: healthy -> back to HEALTHY, counter reset.
+        await svc._probe_all()
 
         statuses = [status for _, status in catalog.updates]
         assert statuses == [
@@ -143,7 +144,10 @@ class TestHealthProberCycle:
             ConnectionStatus.HEALTHY,
         ]
 
-    async def test_healthy_probe_does_not_raise_unbound_count(self) -> None:
+    async def test_healthy_probe_does_not_raise_unbound_count(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
         """Regression: HEALTHY path must not access ``count`` undefined."""
         conn = _make_connection("probe-healthy")
         catalog = _FakeCatalog((conn,))
@@ -153,10 +157,6 @@ class TestHealthProberCycle:
             unhealthy_threshold=3,
         )
         checker = _ScriptedChecker({"probe-healthy": [ConnectionStatus.HEALTHY]})
-        original = prober_mod.get_health_checker
-        prober_mod.get_health_checker = lambda _: checker  # type: ignore[assignment]
-        try:
-            await svc._probe_all()
-        finally:
-            prober_mod.get_health_checker = original  # type: ignore[assignment]
+        monkeypatch.setattr(prober_mod, "get_health_checker", lambda _: checker)
+        await svc._probe_all()
         assert catalog.updates == [("probe-healthy", ConnectionStatus.HEALTHY)]
