@@ -1,0 +1,84 @@
+{
+  "servers": [
+    {
+      "id": "github-mcp",
+      "name": "GitHub",
+      "description": "Read and write GitHub repositories, issues, pull requests, and actions",
+      "npm_package": "@modelcontextprotocol/server-github",
+      "required_connection_type": "github",
+      "transport": "stdio",
+      "capabilities": ["repository_access", "issue_management", "pull_requests", "actions"],
+      "tags": ["vcs", "collaboration", "ci"]
+    },
+    {
+      "id": "slack-mcp",
+      "name": "Slack",
+      "description": "Send and receive Slack messages, manage channels and users",
+      "npm_package": "@modelcontextprotocol/server-slack",
+      "required_connection_type": "slack",
+      "transport": "stdio",
+      "capabilities": ["messaging", "channel_management", "user_lookup"],
+      "tags": ["communication", "team"]
+    },
+    {
+      "id": "filesystem-mcp",
+      "name": "Filesystem",
+      "description": "Read, write, and manage files on the local filesystem",
+      "npm_package": "@modelcontextprotocol/server-filesystem",
+      "required_connection_type": null,
+      "transport": "stdio",
+      "capabilities": ["file_read", "file_write", "directory_listing"],
+      "tags": ["filesystem", "local"]
+    },
+    {
+      "id": "postgres-mcp",
+      "name": "PostgreSQL",
+      "description": "Query and manage PostgreSQL databases",
+      "npm_package": "@modelcontextprotocol/server-postgres",
+      "required_connection_type": "database",
+      "transport": "stdio",
+      "capabilities": ["sql_query", "schema_inspect", "data_mutation"],
+      "tags": ["database", "sql"]
+    },
+    {
+      "id": "sqlite-mcp",
+      "name": "SQLite",
+      "description": "Query and manage SQLite databases",
+      "npm_package": "@modelcontextprotocol/server-sqlite",
+      "required_connection_type": "database",
+      "transport": "stdio",
+      "capabilities": ["sql_query", "schema_inspect"],
+      "tags": ["database", "sql", "local"]
+    },
+    {
+      "id": "brave-search-mcp",
+      "name": "Brave Search",
+      "description": "Web and local search via the Brave Search API",
+      "npm_package": "@modelcontextprotocol/server-brave-search",
+      "required_connection_type": "generic_http",
+      "transport": "stdio",
+      "capabilities": ["web_search", "local_search"],
+      "tags": ["search", "web"]
+    },
+    {
+      "id": "puppeteer-mcp",
+      "name": "Puppeteer",
+      "description": "Browser automation for web scraping and testing",
+      "npm_package": "@modelcontextprotocol/server-puppeteer",
+      "required_connection_type": null,
+      "transport": "stdio",
+      "capabilities": ["browser_automation", "screenshot", "navigation"],
+      "tags": ["browser", "automation", "testing"]
+    },
+    {
+      "id": "memory-mcp",
+      "name": "Memory",
+      "description": "Persistent memory and knowledge graph for agents",
+      "npm_package": "@modelcontextprotocol/server-memory",
+      "required_connection_type": null,
+      "transport": "stdio",
+      "capabilities": ["memory_store", "memory_retrieve", "knowledge_graph"],
+      "tags": ["memory", "knowledge"]
+    }
+  ]
+}
