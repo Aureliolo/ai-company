@@ -156,6 +156,30 @@ class PostgresConfig(BaseModel):
         gt=0.0,
         description="Initial connection timeout in seconds",
     )
+    enable_timescaledb: bool = Field(
+        default=False,
+        description=(
+            "Enable TimescaleDB hypertable conversion for "
+            "append-only time-series tables (cost_records, "
+            "audit_entries). Uses Apache-2.0 licensed hypertable "
+            "features only; retention policies and compression "
+            "are Timescale-License features and are not used. "
+            "Requires the timescaledb extension on the Postgres "
+            "server. Not supported on managed Postgres providers "
+            "(AWS RDS, Cloud SQL, Azure Postgres)."
+        ),
+    )
+    cost_records_chunk_interval: NotBlankStr = Field(
+        default="1 day",
+        description=(
+            "Hypertable chunk interval for cost_records. Ignored "
+            "when enable_timescaledb is False."
+        ),
+    )
+    audit_entries_chunk_interval: NotBlankStr = Field(
+        default="1 day",
+        description="Hypertable chunk interval for audit_entries.",
+    )
 
     @model_validator(mode="after")
     def _validate_pool_sizes(self) -> Self:

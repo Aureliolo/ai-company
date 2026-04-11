@@ -42,6 +42,9 @@ from synthorg.observability.events.persistence import (
     PERSISTENCE_BACKEND_DISCONNECTING,
     PERSISTENCE_BACKEND_HEALTH_CHECK,
     PERSISTENCE_BACKEND_NOT_CONNECTED,
+    PERSISTENCE_TIMESCALEDB_HYPERTABLE_CREATED,
+    PERSISTENCE_TIMESCALEDB_SETUP_FAILED,
+    PERSISTENCE_TIMESCALEDB_UNAVAILABLE,
 )
 from synthorg.persistence import atlas
 from synthorg.persistence.config import PostgresConfig  # noqa: TC001
@@ -514,6 +517,12 @@ class PostgresPersistenceBackend:
         schema is in an indeterminate state (partially applied, or
         rolled back by Atlas).  They must reconnect explicitly.
 
+        When ``config.enable_timescaledb`` is true, the Atlas
+        migrations run first, then the hypertable conversion runs as
+        a separate post-migration step against the same pool.  The
+        hypertable conversion is idempotent (``if_not_exists => TRUE``)
+        so repeated runs are safe.
+
         Raises:
             PersistenceConnectionError: If not connected.
             MigrationError: If migration application fails.
@@ -526,6 +535,8 @@ class PostgresPersistenceBackend:
             db_url = atlas.to_postgres_url(self._config)
             try:
                 await atlas.migrate_apply(db_url, backend="postgres")
+                if self._config.enable_timescaledb:
+                    await self._apply_timescaledb_setup()
             except BaseException:
                 pool = self._pool
                 if pool is not None:
@@ -541,6 +552,76 @@ class PostgresPersistenceBackend:
                         )
                 self._clear_state()
                 raise
+
+    async def _apply_timescaledb_setup(self) -> None:
+        """Convert append-only time-series tables to hypertables.
+
+        Gated on ``config.enable_timescaledb``.  Called at the end of
+        ``migrate`` so Atlas has already created the base tables with
+        composite primary keys that include the partitioning column.
+        Uses only Apache-2.0 licensed TimescaleDB features:
+        ``create_hypertable`` is Apache; retention policies and
+        compression are under the Timescale License and are NOT
+        used here.  A missing extension is treated as a warning
+        (not an error) so operators running vanilla Postgres can
+        leave ``enable_timescaledb=True`` in their config without
+        breaking the migration.
+        """
+        assert self._pool is not None  # noqa: S101 -- checked in migrate()
+        try:
+            async with (
+                self._pool.connection() as conn,
+                conn.cursor() as cur,
+            ):
+                await cur.execute(
+                    "SELECT 1 FROM pg_available_extensions WHERE name = 'timescaledb'",
+                )
+                available = await cur.fetchone()
+                if available is None:
+                    logger.warning(
+                        PERSISTENCE_TIMESCALEDB_UNAVAILABLE,
+                        host=self._config.host,
+                    )
+                    await conn.commit()
+                    return
+
+                await cur.execute(
+                    "CREATE EXTENSION IF NOT EXISTS timescaledb",
+                )
+                await cur.execute(
+                    "SELECT create_hypertable("
+                    "'cost_records', 'timestamp', "
+                    "chunk_time_interval => CAST(%s AS INTERVAL), "
+                    "if_not_exists => TRUE, "
+                    "migrate_data => TRUE)",
+                    (self._config.cost_records_chunk_interval,),
+                )
+                logger.info(
+                    PERSISTENCE_TIMESCALEDB_HYPERTABLE_CREATED,
+                    table="cost_records",
+                    chunk_interval=self._config.cost_records_chunk_interval,
+                )
+                await cur.execute(
+                    "SELECT create_hypertable("
+                    "'audit_entries', 'timestamp', "
+                    "chunk_time_interval => CAST(%s AS INTERVAL), "
+                    "if_not_exists => TRUE, "
+                    "migrate_data => TRUE)",
+                    (self._config.audit_entries_chunk_interval,),
+                )
+                logger.info(
+                    PERSISTENCE_TIMESCALEDB_HYPERTABLE_CREATED,
+                    table="audit_entries",
+                    chunk_interval=self._config.audit_entries_chunk_interval,
+                )
+                await conn.commit()
+        except psycopg.Error as exc:
+            logger.exception(
+                PERSISTENCE_TIMESCALEDB_SETUP_FAILED,
+                error=str(exc),
+                error_type=type(exc).__name__,
+            )
+            raise
 
     @property
     def is_connected(self) -> bool:
