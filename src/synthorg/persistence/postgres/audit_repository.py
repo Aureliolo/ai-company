@@ -18,7 +18,6 @@ from synthorg.observability.events.persistence import (
     PERSISTENCE_AUDIT_ENTRY_SAVED,
 )
 from synthorg.persistence.errors import DuplicateRecordError, QueryError
-from synthorg.persistence.jsonb_capability import validate_jsonb_path
 from synthorg.security.models import AuditEntry
 
 if TYPE_CHECKING:
@@ -431,53 +430,6 @@ INSERT INTO audit_entries (
         return await self._jsonb_query(
             condition,
             [key],
-            since=since,
-            until=until,
-            limit=limit,
-            offset=offset,
-        )
-
-    async def query_jsonb_path_equals(  # noqa: PLR0913
-        self,
-        column: str,
-        path: str,
-        value: str,
-        *,
-        since: datetime | None = None,
-        until: datetime | None = None,
-        limit: int = 100,
-        offset: int = 0,
-    ) -> tuple[tuple[AuditEntry, ...], int]:
-        """Query audit entries where *column* path extracts to *value*.
-
-        Uses the ``->>`` extraction operator.  The path is validated
-        before use.
-        """
-        self._check_jsonb_column(column)
-        try:
-            validate_jsonb_path(path)
-        except ValueError:
-            logger.warning(
-                PERSISTENCE_AUDIT_ENTRY_QUERY_FAILED,
-                reason="jsonb_path_invalid",
-                column=column,
-                path=path,
-            )
-            raise
-        parts = path.split(".")
-        if len(parts) == 1:
-            condition = f"{column} ->> %s = %s"
-            params: list[object] = [parts[0], value]
-        else:
-            chain = column
-            for _segment in parts[:-1]:
-                chain += " -> %s"
-            chain += " ->> %s = %s"
-            params = [*parts, value]
-            condition = chain
-        return await self._jsonb_query(
-            condition,
-            params,
             since=since,
             until=until,
             limit=limit,
