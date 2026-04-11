@@ -272,7 +272,7 @@ export function ConnectionFormModal({
                   )}
 
                 {mode === 'edit' && (
-                  <p className="rounded-md bg-surface p-3 text-xs text-text-muted">
+                  <p className="rounded-md bg-surface p-card text-xs text-text-muted">
                     Credentials can only be set at creation time. Delete and
                     recreate the connection to rotate secrets.
                   </p>

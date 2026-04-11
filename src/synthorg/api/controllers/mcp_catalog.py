@@ -24,8 +24,7 @@ from synthorg.integrations.errors import (
 from synthorg.observability import get_logger
 from synthorg.observability.events.integrations import (
     MCP_CATALOG_ENTRY_NOT_FOUND,
-    MCP_SERVER_INSTALLED,
-    MCP_SERVER_UNINSTALLED,
+    MCP_SERVER_UNINSTALL_NOOP,
 )
 
 logger = get_logger(__name__)
@@ -143,13 +142,9 @@ class MCPCatalogController(Controller):
         except InvalidConnectionAuthError as exc:
             raise ApiValidationError(str(exc)) from exc
 
-        logger.info(
-            MCP_SERVER_INSTALLED,
-            catalog_entry_id=result.catalog_entry_id,
-            server_name=result.server_name,
-            connection_name=result.connection_name,
-            tool_count=result.tool_count,
-        )
+        # NB: we intentionally don't re-log ``MCP_SERVER_INSTALLED``
+        # here - the repository's ``save()`` is the canonical audit
+        # point and logs the same event with a ``backend`` tag.
         return ApiResponse(
             data={
                 "status": "installed",
@@ -182,9 +177,13 @@ class MCPCatalogController(Controller):
             entry_id,
             installations_repo=installations_repo,
         )
-        logger.info(
-            MCP_SERVER_UNINSTALLED,
-            catalog_entry_id=entry_id,
-            removed=removed,
-        )
+        if not removed:
+            # The repo-level ``MCP_SERVER_UNINSTALLED`` event is only
+            # emitted when a row was actually deleted. Log a distinct
+            # no-op event so idempotent DELETE calls are still visible
+            # in audit trails without being confused with real removals.
+            logger.info(
+                MCP_SERVER_UNINSTALL_NOOP,
+                catalog_entry_id=entry_id,
+            )
         return ApiResponse(data=None)

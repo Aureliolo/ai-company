@@ -49,7 +49,9 @@ export const useTunnelStore = create<TunnelState>()((set) => ({
         error: null,
       })
     } catch (err) {
-      log.warn('Tunnel status fetch failed:', getErrorMessage(err))
+      const message = getErrorMessage(err)
+      log.warn('Tunnel status fetch failed:', message)
+      set({ phase: 'error', error: message, publicUrl: null })
     }
   },
 

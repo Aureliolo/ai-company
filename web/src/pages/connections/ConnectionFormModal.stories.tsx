@@ -60,6 +60,7 @@ export const EditMode: Story = {
     open: true,
     mode: 'edit',
     connection: {
+      id: 'conn-primary-github',
       name: 'primary-github',
       connection_type: 'github',
       auth_method: 'bearer_token',

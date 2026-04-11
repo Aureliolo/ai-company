@@ -2097,6 +2097,7 @@ export type ConnectionHealthStatus =
   | 'unknown'
 
 export interface Connection {
+  readonly id: string
   readonly name: string
   readonly connection_type: ConnectionType
   readonly auth_method: ConnectionAuthMethod

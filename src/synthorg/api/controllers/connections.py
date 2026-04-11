@@ -31,8 +31,17 @@ from synthorg.integrations.errors import (
 )
 from synthorg.observability import get_logger
 from synthorg.observability.events.integrations import (
+    CONNECTION_SECRET_REVEAL_FAILED,
     CONNECTION_SECRET_REVEALED,
+    SECRET_RETRIEVAL_FAILED,
 )
+
+# Unified error surfaced to clients on any reveal failure. The
+# message is deliberately opaque so callers cannot distinguish
+# "connection missing" from "field missing" from "secret backend
+# unavailable" -- all three would otherwise leak side-channel
+# information about what connections exist and which fields are set.
+_REVEAL_GENERIC_ERROR = "Connection or credential field not found"
 
 logger = get_logger(__name__)
 
@@ -254,14 +263,36 @@ class ConnectionsController(Controller):
         try:
             credentials = await catalog.get_credentials(name)
         except ConnectionNotFoundError as exc:
-            raise NotFoundError(str(exc)) from exc
+            logger.info(
+                CONNECTION_SECRET_REVEAL_FAILED,
+                connection_name=name,
+                field=field,
+                reason="connection_not_found",
+            )
+            raise NotFoundError(_REVEAL_GENERIC_ERROR) from exc
         except SecretRetrievalError as exc:
-            raise NotFoundError(str(exc)) from exc
+            # Secret backend failures are operational errors, not a
+            # "not found" condition -- log at ERROR level so they
+            # show up on the health dashboard instead of getting lost
+            # in the 404 noise.
+            logger.error(
+                SECRET_RETRIEVAL_FAILED,
+                connection_name=name,
+                field=field,
+                error=str(exc),
+                exc_info=True,
+            )
+            raise NotFoundError(_REVEAL_GENERIC_ERROR) from exc
 
         value = credentials.get(field)
         if value is None:
-            msg = f"Credential field '{field}' not set for connection '{name}'"
-            raise NotFoundError(msg)
+            logger.info(
+                CONNECTION_SECRET_REVEAL_FAILED,
+                connection_name=name,
+                field=field,
+                reason="field_not_set",
+            )
+            raise NotFoundError(_REVEAL_GENERIC_ERROR)
         logger.info(
             CONNECTION_SECRET_REVEALED,
             connection_name=name,

@@ -85,11 +85,15 @@ MCP_CATALOG_BROWSED: Final[str] = "integrations.mcp_catalog.browsed"
 MCP_CATALOG_ENTRY_NOT_FOUND: Final[str] = "integrations.mcp_catalog.entry_not_found"
 MCP_SERVER_INSTALLED: Final[str] = "integrations.mcp_catalog.installed"
 MCP_SERVER_UNINSTALLED: Final[str] = "integrations.mcp_catalog.uninstalled"
+MCP_SERVER_UNINSTALL_NOOP: Final[str] = "integrations.mcp_catalog.uninstall_noop"
 MCP_SERVER_INSTALL_FAILED: Final[str] = "integrations.mcp_catalog.install_failed"
 MCP_SERVER_INSTALL_VALIDATION_FAILED: Final[str] = (
     "integrations.mcp_catalog.install_validation_failed"
 )
 CONNECTION_SECRET_REVEALED: Final[str] = "integrations.connection.secret_revealed"  # noqa: S105
+CONNECTION_SECRET_REVEAL_FAILED: Final[str] = (
+    "integrations.connection.secret_reveal_failed"  # noqa: S105
+)
 
 # -- Tunnel --------------------------------------------------------------
 

@@ -13,6 +13,7 @@ const NOW = '2026-04-11T12:00:00Z'
 
 const mockConnections: Connection[] = [
   {
+    id: 'conn-000000000001',
     name: 'primary-github',
     connection_type: 'github',
     auth_method: 'bearer_token',
@@ -25,6 +26,7 @@ const mockConnections: Connection[] = [
     updated_at: NOW,
   },
   {
+    id: 'conn-000000000002',
     name: 'dev-slack',
     connection_type: 'slack',
     auth_method: 'bearer_token',
@@ -37,6 +39,7 @@ const mockConnections: Connection[] = [
     updated_at: NOW,
   },
   {
+    id: 'conn-000000000003',
     name: 'ops-smtp',
     connection_type: 'smtp',
     auth_method: 'basic_auth',
@@ -49,6 +52,7 @@ const mockConnections: Connection[] = [
     updated_at: NOW,
   },
   {
+    id: 'conn-000000000004',
     name: 'reporting-db',
     connection_type: 'database',
     auth_method: 'basic_auth',
@@ -61,6 +65,7 @@ const mockConnections: Connection[] = [
     updated_at: NOW,
   },
   {
+    id: 'conn-000000000005',
     name: 'billing-api',
     connection_type: 'generic_http',
     auth_method: 'api_key',
@@ -73,6 +78,7 @@ const mockConnections: Connection[] = [
     updated_at: NOW,
   },
   {
+    id: 'conn-000000000006',
     name: 'gh-oauth-app',
     connection_type: 'oauth_app',
     auth_method: 'oauth2',
@@ -193,6 +199,7 @@ export const connectionsList = [
       return HttpResponse.json(apiError("Field 'name' is required"), { status: 400 })
     }
     const created: Connection = {
+      id: `conn-${String(body.name)}`,
       name: body.name as string,
       connection_type: (body.connection_type ?? 'github') as Connection['connection_type'],
       auth_method: 'api_key',

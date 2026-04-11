@@ -10,6 +10,7 @@ import { cn } from '@/lib/utils'
 import { useToastStore } from '@/stores/toast'
 import { useTunnelStore } from '@/stores/tunnel'
 import type { TunnelPhase } from '@/stores/tunnel'
+import { getCsrfToken } from '@/utils/csrf'
 
 const log = createLogger('TunnelCard')
 
@@ -34,19 +35,30 @@ export function TunnelCard() {
   const isTransitioning = phase === 'enabling' || phase === 'disabling'
   const status = PHASE_STATUS[phase]
 
-  // Best-effort auto-stop on page unload using sendBeacon so the
-  // request can land after the page has begun tearing down.
+  // Best-effort auto-stop on page unload. We intentionally use
+  // `fetch` + `keepalive: true` (NOT `navigator.sendBeacon`) so
+  // we can attach the `X-CSRF-Token` header that the backend's
+  // write-access guard expects. `sendBeacon` silently strips
+  // custom headers and would be a CSRF bypass on this endpoint.
   useEffect(() => {
     if (!autoStop || !isRunning) return
     const handler = () => {
       try {
-        const beacon = navigator.sendBeacon
-        if (typeof beacon === 'function') {
-          const base = import.meta.env.VITE_API_BASE_URL ?? ''
-          const url = `${base.replace(/\/+$/, '').replace(/\/api\/v1\/?$/, '')}/api/v1/integrations/tunnel/stop`
-          const ok = beacon.call(navigator, url)
-          if (!ok) log.warn('Tunnel auto-stop beacon was rejected by the browser')
+        const base = import.meta.env.VITE_API_BASE_URL ?? ''
+        const url = `${base.replace(/\/+$/, '').replace(/\/api\/v1\/?$/, '')}/api/v1/integrations/tunnel/stop`
+        const csrfToken = getCsrfToken()
+        const headers: Record<string, string> = {
+          'Content-Type': 'application/json',
         }
+        if (csrfToken) headers['X-CSRF-Token'] = csrfToken
+        void fetch(url, {
+          method: 'POST',
+          credentials: 'include',
+          keepalive: true,
+          headers,
+        }).catch((err: unknown) => {
+          log.warn('Tunnel auto-stop fetch rejected', err)
+        })
       } catch (err) {
         log.warn('Tunnel auto-stop failed', err)
       }
@@ -129,7 +141,7 @@ export function TunnelCard() {
 
         {isRunning && (
           <div
-            className="flex items-start gap-2 rounded-md bg-warning/10 p-3 text-xs text-warning"
+            className="flex items-start gap-2 rounded-md bg-warning/10 p-card text-xs text-warning"
             role="alert"
           >
             <AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden />
@@ -141,7 +153,7 @@ export function TunnelCard() {
         )}
 
         {error && !isRunning && (
-          <div className="rounded-md bg-danger/10 p-3 text-xs text-danger">
+          <div className="rounded-md bg-danger/10 p-card text-xs text-danger">
             {error}
           </div>
         )}

@@ -45,7 +45,10 @@ test.describe('Integrations dashboard', () => {
     await expect(page.getByText('GitHub')).toBeVisible()
 
     await page.getByRole('searchbox', { name: /search mcp catalog/i }).fill('github')
-    await expect(page.getByText('Filesystem')).not.toBeVisible()
+    // The catalog store debounces search by 200ms; wait for
+    // Filesystem to actually disappear instead of asserting
+    // immediately (otherwise the test is flaky on fast machines).
+    await page.getByText('Filesystem').waitFor({ state: 'hidden' })
     await expect(page.getByText('GitHub')).toBeVisible()
   })
 

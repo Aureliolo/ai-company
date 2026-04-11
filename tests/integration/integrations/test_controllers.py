@@ -63,6 +63,7 @@ class TestConnectionsController:
         ctrl = ConnectionsController(owner=ConnectionsController)  # type: ignore[arg-type]
         response = await ctrl.list_connections.fn(ctrl, state=state)
         assert len(response.data) == 2
+        catalog.list_all.assert_awaited_once()
 
     async def test_get_missing_raises_not_found(self) -> None:
         from synthorg.api.controllers.connections import ConnectionsController
@@ -153,13 +154,58 @@ class TestConnectionsController:
         state = {"app_state": MagicMock(connection_catalog=catalog)}
 
         ctrl = ConnectionsController(owner=ConnectionsController)  # type: ignore[arg-type]
-        with pytest.raises(NotFoundError):
+        with pytest.raises(NotFoundError) as exc_info:
             await ctrl.reveal_secret.fn(
                 ctrl,
                 state=state,
                 name="gh",
                 field="client_secret",
             )
+        # Error message must not leak the field/connection identity.
+        assert "client_secret" not in str(exc_info.value)
+        assert "gh" not in str(exc_info.value)
+
+    async def test_reveal_secret_connection_not_found_hidden(self) -> None:
+        from synthorg.api.controllers.connections import ConnectionsController
+        from synthorg.integrations.errors import ConnectionNotFoundError
+
+        catalog = MagicMock()
+        catalog.get_credentials = AsyncMock(
+            side_effect=ConnectionNotFoundError("Connection 'gh' not found"),
+        )
+        state = {"app_state": MagicMock(connection_catalog=catalog)}
+
+        ctrl = ConnectionsController(owner=ConnectionsController)  # type: ignore[arg-type]
+        with pytest.raises(NotFoundError) as exc_info:
+            await ctrl.reveal_secret.fn(
+                ctrl,
+                state=state,
+                name="gh",
+                field="client_secret",
+            )
+        # Verify the connection name is not leaked in the public error.
+        assert "gh" not in str(exc_info.value)
+
+    async def test_reveal_secret_backend_error_hidden(self) -> None:
+        from synthorg.api.controllers.connections import ConnectionsController
+        from synthorg.integrations.errors import SecretRetrievalError
+
+        catalog = MagicMock()
+        catalog.get_credentials = AsyncMock(
+            side_effect=SecretRetrievalError("vault timeout"),
+        )
+        state = {"app_state": MagicMock(connection_catalog=catalog)}
+
+        ctrl = ConnectionsController(owner=ConnectionsController)  # type: ignore[arg-type]
+        with pytest.raises(NotFoundError) as exc_info:
+            await ctrl.reveal_secret.fn(
+                ctrl,
+                state=state,
+                name="gh",
+                field="client_secret",
+            )
+        # Backend failure detail must not leak to the client.
+        assert "vault" not in str(exc_info.value).lower()
 
 
 @pytest.mark.integration
@@ -327,9 +373,19 @@ class TestMCPCatalogController:
         assert response.data["status"] == "installed"
         assert response.data["server_name"] == "Filesystem"
         assert response.data["catalog_entry_id"] == "filesystem-mcp"
-        assert response.data["tool_count"] >= 1
+        # tool_count matches filesystem-mcp capabilities:
+        # file_read, file_write, directory_listing.
+        assert response.data["tool_count"] == 3
         stored = await repo.get(NotBlankStr("filesystem-mcp"))
         assert stored is not None
+        # Repeat install must be idempotent -- same row, same response.
+        second = await ctrl.install_entry.fn(
+            ctrl,
+            state=state,
+            data={"catalog_entry_id": "filesystem-mcp"},
+        )
+        assert second.data == response.data
+        assert len(await repo.list_all()) == 1
 
     async def test_install_missing_entry_raises_404(self) -> None:
         from synthorg.api.controllers.mcp_catalog import MCPCatalogController

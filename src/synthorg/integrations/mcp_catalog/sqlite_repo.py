@@ -23,8 +23,15 @@ from synthorg.observability.events.integrations import (
 logger = get_logger(__name__)
 
 
-def _parse_timestamp(raw: str) -> datetime:
-    """Parse a stored ISO-8601 timestamp into a timezone-aware datetime."""
+def _parse_timestamp(raw: str | datetime) -> datetime:
+    """Parse a stored timestamp into a timezone-aware datetime.
+
+    Accepts both ISO-8601 strings (SQLite TEXT columns) and native
+    ``datetime`` objects (Postgres ``TIMESTAMPTZ`` columns). Returns
+    a UTC-localized datetime so downstream code can rely on tzinfo.
+    """
+    if isinstance(raw, datetime):
+        return raw if raw.tzinfo else raw.replace(tzinfo=UTC)
     value = datetime.fromisoformat(raw)
     if value.tzinfo is None:
         return value.replace(tzinfo=UTC)
@@ -35,6 +42,13 @@ class SQLiteMcpInstallationRepository:
     """SQLite implementation of :class:`McpInstallationRepository`."""
 
     def __init__(self, db: aiosqlite.Connection) -> None:
+        """Bind the repository to an open aiosqlite connection.
+
+        Args:
+            db: An aiosqlite connection that is already open. The
+                repository does not own the connection lifecycle -
+                the persistence backend controls connect/disconnect.
+        """
         self._db = db
 
     async def save(self, installation: McpInstallation) -> None:
@@ -65,6 +79,7 @@ class SQLiteMcpInstallationRepository:
             MCP_SERVER_INSTALLED,
             catalog_entry_id=installation.catalog_entry_id,
             connection_name=installation.connection_name,
+            backend="sqlite",
         )
 
     async def get(
@@ -118,25 +133,43 @@ class SQLiteMcpInstallationRepository:
             "DELETE FROM mcp_installations WHERE catalog_entry_id = ?",
             (catalog_entry_id,),
         )
-        await self._db.commit()
+        # Read rowcount before commit: aiosqlite's rowcount is only
+        # guaranteed to reflect the just-executed statement until the
+        # transaction is committed, after which it may be reset by
+        # driver-internal bookkeeping.
         deleted = cursor.rowcount > 0
+        await self._db.commit()
         if deleted:
             logger.info(
                 MCP_SERVER_UNINSTALLED,
                 catalog_entry_id=catalog_entry_id,
+                backend="sqlite",
             )
         return deleted
 
 
 class InMemoryMcpInstallationRepository:
-    """In-memory repository for tests and no-persistence deployments."""
+    """In-memory repository for tests and no-persistence deployments.
+
+    Emits the same observability events as the SQLite implementation
+    so audit logs are consistent regardless of which backend is wired.
+    Rows live only for the lifetime of the running process; the
+    persistence backend is the source of truth for production.
+    """
 
     def __init__(self) -> None:
+        """Initialize the in-memory store."""
         self._store: dict[str, McpInstallation] = {}
 
     async def save(self, installation: McpInstallation) -> None:
         """Upsert an installation (by catalog_entry_id)."""
         self._store[installation.catalog_entry_id] = installation
+        logger.info(
+            MCP_SERVER_INSTALLED,
+            catalog_entry_id=installation.catalog_entry_id,
+            connection_name=installation.connection_name,
+            backend="in_memory",
+        )
 
     async def get(
         self,
@@ -151,4 +184,11 @@ class InMemoryMcpInstallationRepository:
 
     async def delete(self, catalog_entry_id: NotBlankStr) -> bool:
         """Delete by catalog entry id."""
-        return self._store.pop(catalog_entry_id, None) is not None
+        removed = self._store.pop(catalog_entry_id, None) is not None
+        if removed:
+            logger.info(
+                MCP_SERVER_UNINSTALLED,
+                catalog_entry_id=catalog_entry_id,
+                backend="in_memory",
+            )
+        return removed
