@@ -42,7 +42,48 @@ from synthorg.observability.events.persistence import (
     PERSISTENCE_USER_SAVE_FAILED,
     PERSISTENCE_USER_SAVED,
 )
-from synthorg.persistence.errors import QueryError
+from synthorg.persistence.errors import ConstraintViolationError, QueryError
+
+# Stable tokens for constraint violations on the ``users`` table so
+# callers can match on structural constraint names rather than
+# parsing error strings.
+_USERS_USERNAME_UNIQUE = "users.username"
+_IDX_SINGLE_CEO = "idx_single_ceo"
+_LAST_CEO_TRIGGER = "enforce_ceo_minimum"
+_LAST_OWNER_TRIGGER = "enforce_owner_minimum"
+
+
+_PG_CONSTRAINT_MAP: dict[str, str] = {
+    "idx_single_ceo": _IDX_SINGLE_CEO,
+    "users_username_key": _USERS_USERNAME_UNIQUE,
+}
+
+_PG_MESSAGE_MAP: tuple[tuple[str, str], ...] = (
+    ("cannot remove the last ceo", _LAST_CEO_TRIGGER),
+    ("cannot remove the last owner", _LAST_OWNER_TRIGGER),
+    ("users_username_key", _USERS_USERNAME_UNIQUE),
+    ("users.username", _USERS_USERNAME_UNIQUE),
+    ("idx_single_ceo", _IDX_SINGLE_CEO),
+)
+
+
+def _classify_postgres_user_error(exc: psycopg.Error) -> str | None:
+    """Map a psycopg error on the ``users`` table to a stable token.
+
+    Postgres exposes the constraint name via ``exc.diag.constraint_name``
+    for unique/foreign-key violations.  For trigger-raised exceptions
+    the constraint name is usually empty, so we fall back to matching
+    the error message against our known trigger messages.
+    """
+    constraint = getattr(getattr(exc, "diag", None), "constraint_name", "") or ""
+    if constraint in _PG_CONSTRAINT_MAP:
+        return _PG_CONSTRAINT_MAP[constraint]
+    message = str(exc).lower()
+    for token, classified in _PG_MESSAGE_MAP:
+        if token in message:
+            return classified
+    return None
+
 
 if TYPE_CHECKING:
     from psycopg_pool import AsyncConnectionPool
@@ -119,6 +160,12 @@ class PostgresUserRepository:
             logger.exception(
                 PERSISTENCE_USER_SAVE_FAILED, user_id=user.id, error=str(exc)
             )
+            constraint = _classify_postgres_user_error(exc)
+            if constraint is not None:
+                raise ConstraintViolationError(
+                    msg,
+                    constraint=constraint,
+                ) from exc
             raise QueryError(msg) from exc
         logger.info(PERSISTENCE_USER_SAVED, user_id=user.id)
 

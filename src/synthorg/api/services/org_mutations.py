@@ -38,6 +38,7 @@ from synthorg.observability.events.api import (
     API_AGENT_UPDATED,
     API_AGENTS_REORDERED,
     API_COMPANY_UPDATED,
+    API_CONCURRENCY_CONFLICT,
     API_DEPARTMENT_CREATED,
     API_DEPARTMENT_DELETED,
     API_DEPARTMENT_UPDATED,
@@ -435,7 +436,18 @@ class OrgMutationService:
                 break
             except VersionConflictError:
                 if attempt == _MAX_CAS_ATTEMPTS - 1:
+                    logger.warning(
+                        API_CONCURRENCY_CONFLICT,
+                        resource="org_mutation",
+                        attempts=_MAX_CAS_ATTEMPTS,
+                    )
                     raise
+                logger.debug(
+                    API_CONCURRENCY_CONFLICT,
+                    resource="org_mutation",
+                    attempt=attempt + 1,
+                    max_attempts=_MAX_CAS_ATTEMPTS,
+                )
                 continue
 
         logger.info(
@@ -510,7 +522,18 @@ class OrgMutationService:
                 break
             except VersionConflictError:
                 if attempt == _MAX_CAS_ATTEMPTS - 1:
+                    logger.warning(
+                        API_CONCURRENCY_CONFLICT,
+                        resource="org_mutation",
+                        attempts=_MAX_CAS_ATTEMPTS,
+                    )
                     raise
+                logger.debug(
+                    API_CONCURRENCY_CONFLICT,
+                    resource="org_mutation",
+                    attempt=attempt + 1,
+                    max_attempts=_MAX_CAS_ATTEMPTS,
+                )
                 continue
 
         logger.info(
@@ -581,7 +604,18 @@ class OrgMutationService:
                 break
             except VersionConflictError:
                 if attempt == _MAX_CAS_ATTEMPTS - 1:
+                    logger.warning(
+                        API_CONCURRENCY_CONFLICT,
+                        resource="org_mutation",
+                        attempts=_MAX_CAS_ATTEMPTS,
+                    )
                     raise
+                logger.debug(
+                    API_CONCURRENCY_CONFLICT,
+                    resource="org_mutation",
+                    attempt=attempt + 1,
+                    max_attempts=_MAX_CAS_ATTEMPTS,
+                )
                 continue
 
         logger.info(API_DEPARTMENT_DELETED, department=name)
@@ -630,7 +664,18 @@ class OrgMutationService:
                 break
             except VersionConflictError:
                 if attempt == _MAX_CAS_ATTEMPTS - 1:
+                    logger.warning(
+                        API_CONCURRENCY_CONFLICT,
+                        resource="org_mutation",
+                        attempts=_MAX_CAS_ATTEMPTS,
+                    )
                     raise
+                logger.debug(
+                    API_CONCURRENCY_CONFLICT,
+                    resource="org_mutation",
+                    attempt=attempt + 1,
+                    max_attempts=_MAX_CAS_ATTEMPTS,
+                )
                 continue
 
         logger.info(
@@ -705,7 +750,18 @@ class OrgMutationService:
                 break
             except VersionConflictError:
                 if attempt == _MAX_CAS_ATTEMPTS - 1:
+                    logger.warning(
+                        API_CONCURRENCY_CONFLICT,
+                        resource="org_mutation",
+                        attempts=_MAX_CAS_ATTEMPTS,
+                    )
                     raise
+                logger.debug(
+                    API_CONCURRENCY_CONFLICT,
+                    resource="org_mutation",
+                    attempt=attempt + 1,
+                    max_attempts=_MAX_CAS_ATTEMPTS,
+                )
                 continue
 
         logger.info(
@@ -831,7 +887,18 @@ class OrgMutationService:
                 break
             except VersionConflictError:
                 if attempt == _MAX_CAS_ATTEMPTS - 1:
+                    logger.warning(
+                        API_CONCURRENCY_CONFLICT,
+                        resource="org_mutation",
+                        attempts=_MAX_CAS_ATTEMPTS,
+                    )
                     raise
+                logger.debug(
+                    API_CONCURRENCY_CONFLICT,
+                    resource="org_mutation",
+                    attempt=attempt + 1,
+                    max_attempts=_MAX_CAS_ATTEMPTS,
+                )
                 continue
 
         logger.info(
@@ -892,7 +959,18 @@ class OrgMutationService:
                 break
             except VersionConflictError:
                 if attempt == _MAX_CAS_ATTEMPTS - 1:
+                    logger.warning(
+                        API_CONCURRENCY_CONFLICT,
+                        resource="org_mutation",
+                        attempts=_MAX_CAS_ATTEMPTS,
+                    )
                     raise
+                logger.debug(
+                    API_CONCURRENCY_CONFLICT,
+                    resource="org_mutation",
+                    attempt=attempt + 1,
+                    max_attempts=_MAX_CAS_ATTEMPTS,
+                )
                 continue
 
         logger.info(API_AGENT_DELETED, agent=name)
@@ -967,7 +1045,18 @@ class OrgMutationService:
                 break
             except VersionConflictError:
                 if attempt == _MAX_CAS_ATTEMPTS - 1:
+                    logger.warning(
+                        API_CONCURRENCY_CONFLICT,
+                        resource="org_mutation",
+                        attempts=_MAX_CAS_ATTEMPTS,
+                    )
                     raise
+                logger.debug(
+                    API_CONCURRENCY_CONFLICT,
+                    resource="org_mutation",
+                    attempt=attempt + 1,
+                    max_attempts=_MAX_CAS_ATTEMPTS,
+                )
                 continue
 
         logger.info(

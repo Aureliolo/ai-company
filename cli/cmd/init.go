@@ -19,13 +19,15 @@ import (
 )
 
 var (
-	initBackendPort int
-	initWebPort     int
-	initSandbox     string
-	initImageTag    string
-	initChannel     string
-	initLogLevel    string
-	initBusBackend  string
+	initBackendPort        int
+	initWebPort            int
+	initSandbox            string
+	initImageTag           string
+	initChannel            string
+	initLogLevel           string
+	initBusBackend         string
+	initPersistenceBackend string
+	initPostgresPort       int
 )
 
 var initCmd = &cobra.Command{
@@ -48,6 +50,8 @@ func init() {
 	initCmd.Flags().StringVar(&initChannel, "channel", "", "update channel (\"stable\" or \"dev\")")
 	initCmd.Flags().StringVar(&initLogLevel, "log-level", "", "log level (\"debug\", \"info\", \"warn\", \"error\")")
 	initCmd.Flags().StringVar(&initBusBackend, "bus-backend", "", "message bus backend (\"internal\" or \"nats\"; defaults to \"internal\")")
+	initCmd.Flags().StringVar(&initPersistenceBackend, "persistence-backend", "", "persistence backend (\"sqlite\" or \"postgres\"; defaults to \"sqlite\")")
+	initCmd.Flags().IntVar(&initPostgresPort, "postgres-port", 0, "postgres port when --persistence-backend=postgres (1-65535, default 3002)")
 	initCmd.GroupID = "core"
 	rootCmd.AddCommand(initCmd)
 }
@@ -131,6 +135,9 @@ func handleReinit(cmd *cobra.Command, state *config.State, opts *GlobalOpts) (bo
 		if oldState.SettingsKey != "" {
 			state.SettingsKey = oldState.SettingsKey
 		}
+		if oldState.PostgresPassword != "" && state.PersistenceBackend == "postgres" {
+			state.PostgresPassword = oldState.PostgresPassword
+		}
 		return true, nil
 	}
 	if !isInteractive() {
@@ -146,6 +153,9 @@ func handleReinit(cmd *cobra.Command, state *config.State, opts *GlobalOpts) (bo
 	}
 	if *kept != "" {
 		state.SettingsKey = *kept
+	}
+	if oldState.PostgresPassword != "" && state.PersistenceBackend == "postgres" {
+		state.PostgresPassword = oldState.PostgresPassword
 	}
 	return true, nil
 }
@@ -195,6 +205,7 @@ type setupAnswers struct {
 	persistenceBackend string
 	memoryBackend      string
 	busBackend         string
+	postgresPort       int    // 0 = use DefaultState.PostgresPort (3002)
 	channel            string // optional override (empty = default "stable")
 	imageTag           string // optional override (empty = use CLI version)
 	telemetryOptIn     bool
@@ -227,6 +238,12 @@ func validateInitFlags() error {
 	if initBusBackend != "" && !config.IsValidBusBackend(initBusBackend) {
 		return fmt.Errorf("invalid --bus-backend %q: must be one of %s", initBusBackend, config.BusBackendNames())
 	}
+	if initPersistenceBackend != "" && !config.IsValidPersistenceBackend(initPersistenceBackend) {
+		return fmt.Errorf("invalid --persistence-backend %q: must be one of %s", initPersistenceBackend, config.PersistenceBackendNames())
+	}
+	if initPostgresPort != 0 && (initPostgresPort < 1 || initPostgresPort > 65535) {
+		return fmt.Errorf("invalid --postgres-port %d: must be 1-65535", initPostgresPort)
+	}
 	return nil
 }
 
@@ -253,6 +270,12 @@ func applyFlagOverrides(a *setupAnswers) {
 	if initBusBackend != "" {
 		a.busBackend = initBusBackend
 	}
+	if initPersistenceBackend != "" {
+		a.persistenceBackend = initPersistenceBackend
+	}
+	if initPostgresPort > 0 {
+		a.postgresPort = initPostgresPort
+	}
 }
 
 // buildAnswersFromFlags constructs setupAnswers from CLI flags for non-interactive mode.
@@ -262,6 +285,14 @@ func buildAnswersFromFlags(dataDir string) setupAnswers {
 	if busBackend == "" {
 		busBackend = defaults.BusBackend
 	}
+	persistenceBackend := initPersistenceBackend
+	if persistenceBackend == "" {
+		persistenceBackend = defaults.PersistenceBackend
+	}
+	postgresPort := initPostgresPort
+	if postgresPort == 0 {
+		postgresPort = defaults.PostgresPort
+	}
 	a := setupAnswers{
 		dir:                dataDir,
 		backendPortStr:     strconv.Itoa(initBackendPort),
@@ -269,9 +300,10 @@ func buildAnswersFromFlags(dataDir string) setupAnswers {
 		sandbox:            initSandbox == "true",
 		dockerSock:         defaultDockerSock(),
 		logLevel:           initLogLevel,
-		persistenceBackend: defaults.PersistenceBackend,
+		persistenceBackend: persistenceBackend,
 		memoryBackend:      defaults.MemoryBackend,
 		busBackend:         busBackend,
+		postgresPort:       postgresPort,
 		channel:            initChannel,
 		imageTag:           initImageTag,
 	}
@@ -296,6 +328,7 @@ func runSetupFormWithOverrides(cmd *cobra.Command, resolvedDataDir string) (setu
 		persistenceBackend: defaults.PersistenceBackend,
 		memoryBackend:      defaults.MemoryBackend,
 		busBackend:         defaults.BusBackend,
+		postgresPort:       defaults.PostgresPort,
 	}
 
 	applyFlagOverrides(&a)
@@ -406,6 +439,20 @@ func buildState(a setupAnswers) (config.State, error) {
 	if busBackend == "" {
 		busBackend = "internal"
 	}
+
+	postgresPort := a.postgresPort
+	postgresPassword := ""
+	if a.persistenceBackend == "postgres" {
+		if postgresPort == 0 {
+			postgresPort = config.DefaultState().PostgresPort
+		}
+		pw, err := compose.GeneratePassword(32)
+		if err != nil {
+			return config.State{}, fmt.Errorf("generating postgres password: %w", err)
+		}
+		postgresPassword = pw
+	}
+
 	return config.State{
 		DataDir:            dir,
 		ImageTag:           imageTag,
@@ -420,6 +467,8 @@ func buildState(a setupAnswers) (config.State, error) {
 		PersistenceBackend: a.persistenceBackend,
 		MemoryBackend:      a.memoryBackend,
 		BusBackend:         busBackend,
+		PostgresPort:       postgresPort,
+		PostgresPassword:   postgresPassword,
 		TelemetryOptIn:     a.telemetryOptIn,
 	}, nil
 }

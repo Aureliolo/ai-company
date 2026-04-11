@@ -7,18 +7,24 @@ repository's CAS mechanism serialises concurrent writers.
 """
 
 import asyncio
+from collections.abc import Callable
 
 import pytest
 
 import synthorg.settings.definitions  # noqa: F401 -- trigger registration  # noqa: F401
 from synthorg.api.dto_org import (
+    CreateAgentOrgRequest,
     CreateDepartmentRequest,
+    ReorderAgentsRequest,
+    ReorderDepartmentsRequest,
+    UpdateAgentOrgRequest,
     UpdateCompanyRequest,
     UpdateDepartmentRequest,
 )
 from synthorg.api.errors import ConflictError, VersionConflictError
 from synthorg.api.services.org_mutations import OrgMutationService
 from synthorg.config.schema import RootConfig
+from synthorg.core.enums import SeniorityLevel
 from synthorg.settings.registry import get_registry
 from synthorg.settings.service import SettingsService
 from tests.unit.api.fakes import FakePersistenceBackend
@@ -311,3 +317,187 @@ class TestCASRetry:
                 )
         finally:
             persistence.settings.set = original_set  # type: ignore[method-assign]
+
+
+# ── CAS retry coverage for the remaining 6 mutations ──────────
+
+
+def _always_conflict_for_key(
+    persistence: FakePersistenceBackend,
+    target_key: str,
+) -> tuple[Callable[[], None], Callable[[], None]]:
+    """Return an install/uninstall pair that forces CAS conflicts on *target_key*.
+
+    Used to verify that ``VersionConflictError`` propagates after retries
+    are exhausted for every CAS-protected mutation.
+    """
+    original_set = persistence.settings.set
+
+    async def always_conflict_set(
+        namespace: str,
+        key: str,
+        value: str,
+        updated_at: str,
+        *,
+        expected_updated_at: str | None = None,
+    ) -> bool:
+        if (
+            namespace == "company"
+            and key == target_key
+            and expected_updated_at is not None
+        ):
+            return False
+        return await original_set(
+            namespace,
+            key,
+            value,
+            updated_at,
+            expected_updated_at=expected_updated_at,
+        )
+
+    def install() -> None:
+        persistence.settings.set = always_conflict_set  # type: ignore[method-assign]
+
+    def uninstall() -> None:
+        persistence.settings.set = original_set  # type: ignore[method-assign]
+
+    return install, uninstall
+
+
+async def _seed_dept(service: OrgMutationService, name: str) -> None:
+    await service.create_department(
+        CreateDepartmentRequest(
+            name=name,
+            head="alice",
+            budget_percent=10.0,
+        ),
+    )
+
+
+async def _seed_agent(
+    service: OrgMutationService,
+    name: str,
+    department: str,
+) -> None:
+    await service.create_agent(
+        CreateAgentOrgRequest(
+            name=name,
+            role="Developer",
+            department=department,
+            level=SeniorityLevel.MID,
+        ),
+    )
+
+
+@pytest.mark.unit
+class TestCASRetryCoverage:
+    """Every mutation with a CAS retry loop must raise on exhaustion."""
+
+    async def test_delete_department_raises_after_retry_exhausted(
+        self,
+        service: OrgMutationService,
+        persistence: FakePersistenceBackend,
+    ) -> None:
+        await _seed_dept(service, "Engineering")
+        install, uninstall = _always_conflict_for_key(persistence, "departments")
+        install()
+        try:
+            with pytest.raises(VersionConflictError):
+                await service.delete_department("Engineering")
+        finally:
+            uninstall()
+
+    async def test_reorder_departments_raises_after_retry_exhausted(
+        self,
+        service: OrgMutationService,
+        persistence: FakePersistenceBackend,
+    ) -> None:
+        await _seed_dept(service, "Engineering")
+        await _seed_dept(service, "Marketing")
+        install, uninstall = _always_conflict_for_key(persistence, "departments")
+        install()
+        try:
+            with pytest.raises(VersionConflictError):
+                await service.reorder_departments(
+                    ReorderDepartmentsRequest(
+                        department_names=("Marketing", "Engineering"),
+                    ),
+                )
+        finally:
+            uninstall()
+
+    async def test_create_agent_raises_after_retry_exhausted(
+        self,
+        service: OrgMutationService,
+        persistence: FakePersistenceBackend,
+    ) -> None:
+        await _seed_dept(service, "Engineering")
+        # Seed an initial agent so the `company/agents` setting exists and
+        # CAS has a version to compare against on subsequent writes.
+        await _seed_agent(service, "alice-dev", "Engineering")
+        install, uninstall = _always_conflict_for_key(persistence, "agents")
+        install()
+        try:
+            with pytest.raises(VersionConflictError):
+                await service.create_agent(
+                    CreateAgentOrgRequest(
+                        name="bob-dev",
+                        role="Developer",
+                        department="Engineering",
+                        level=SeniorityLevel.MID,
+                    ),
+                )
+        finally:
+            uninstall()
+
+    async def test_update_agent_raises_after_retry_exhausted(
+        self,
+        service: OrgMutationService,
+        persistence: FakePersistenceBackend,
+    ) -> None:
+        await _seed_dept(service, "Engineering")
+        await _seed_agent(service, "alice-dev", "Engineering")
+        install, uninstall = _always_conflict_for_key(persistence, "agents")
+        install()
+        try:
+            with pytest.raises(VersionConflictError):
+                await service.update_agent(
+                    "alice-dev",
+                    UpdateAgentOrgRequest(role="Senior Developer"),
+                )
+        finally:
+            uninstall()
+
+    async def test_delete_agent_raises_after_retry_exhausted(
+        self,
+        service: OrgMutationService,
+        persistence: FakePersistenceBackend,
+    ) -> None:
+        await _seed_dept(service, "Engineering")
+        await _seed_agent(service, "alice-dev", "Engineering")
+        install, uninstall = _always_conflict_for_key(persistence, "agents")
+        install()
+        try:
+            with pytest.raises(VersionConflictError):
+                await service.delete_agent("alice-dev")
+        finally:
+            uninstall()
+
+    async def test_reorder_agents_raises_after_retry_exhausted(
+        self,
+        service: OrgMutationService,
+        persistence: FakePersistenceBackend,
+    ) -> None:
+        await _seed_dept(service, "Engineering")
+        await _seed_agent(service, "alice-dev", "Engineering")
+        await _seed_agent(service, "bob-dev", "Engineering")
+        install, uninstall = _always_conflict_for_key(persistence, "agents")
+        install()
+        try:
+            with pytest.raises(VersionConflictError):
+                await service.reorder_agents(
+                    "Engineering",
+                    ReorderAgentsRequest(agent_names=("bob-dev", "alice-dev")),
+                )
+        finally:
+            uninstall()

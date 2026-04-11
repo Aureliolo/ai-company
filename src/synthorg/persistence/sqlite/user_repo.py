@@ -39,7 +39,38 @@ from synthorg.observability.events.persistence import (
     PERSISTENCE_USER_SAVE_FAILED,
     PERSISTENCE_USER_SAVED,
 )
-from synthorg.persistence.errors import QueryError
+from synthorg.persistence.errors import ConstraintViolationError, QueryError
+
+# Stable tokens returned by ``_classify_sqlite_user_error`` so callers
+# can match on structural constraint names rather than DB error text.
+_USERS_USERNAME_UNIQUE = "users.username"
+_IDX_SINGLE_CEO = "idx_single_ceo"
+_LAST_CEO_TRIGGER = "enforce_ceo_minimum"
+_LAST_OWNER_TRIGGER = "enforce_owner_minimum"
+
+
+def _classify_sqlite_user_error(message: str) -> str | None:
+    """Map a SQLite error message on the ``users`` table to a stable token.
+
+    SQLite doesn't expose constraint names in its error objects, so
+    this function inspects the message once and returns a stable
+    identifier.  Callers should match on the return value rather than
+    re-parsing the raw error string.
+
+    Returns ``None`` when the message does not match any of the
+    known user-table constraints.
+    """
+    lower = message.lower()
+    if "cannot remove the last ceo" in lower:
+        return _LAST_CEO_TRIGGER
+    if "cannot remove the last owner" in lower:
+        return _LAST_OWNER_TRIGGER
+    if "unique constraint failed: users.username" in lower:
+        return _USERS_USERNAME_UNIQUE
+    if "unique constraint failed: users.role" in lower or "idx_single_ceo" in lower:
+        return _IDX_SINGLE_CEO
+    return None
+
 
 logger = get_logger(__name__)
 
@@ -159,6 +190,12 @@ ON CONFLICT(id) DO UPDATE SET
                 user_id=user.id,
                 error=str(exc),
             )
+            constraint = _classify_sqlite_user_error(str(exc))
+            if constraint is not None:
+                raise ConstraintViolationError(
+                    msg,
+                    constraint=constraint,
+                ) from exc
             raise QueryError(msg) from exc
         logger.info(PERSISTENCE_USER_SAVED, user_id=user.id)
 

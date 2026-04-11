@@ -161,6 +161,9 @@ func validateParams(p Params) error {
 		if p.PostgresPort == p.BackendPort || p.PostgresPort == p.WebPort {
 			return fmt.Errorf("postgres port %d collides with another service port", p.PostgresPort)
 		}
+		if p.DistributedEnabled() && p.PostgresPort == p.NatsClientPort {
+			return fmt.Errorf("postgres port %d collides with nats client port %d", p.PostgresPort, p.NatsClientPort)
+		}
 		if strings.TrimSpace(p.PostgresPassword) == "" {
 			return fmt.Errorf("postgres password is required when persistence backend is postgres")
 		}

@@ -28,7 +28,15 @@ from synthorg.observability.events.api import (
     API_USER_UPDATED,
     API_VALIDATION_FAILED,
 )
-from synthorg.persistence.errors import QueryError
+from synthorg.persistence.errors import ConstraintViolationError, QueryError
+
+# Stable constraint tokens returned by the user repositories.  Matches
+# ``_USERS_USERNAME_UNIQUE`` and friends in
+# ``synthorg.persistence.{sqlite,postgres}.user_repo``.
+_USERS_USERNAME_UNIQUE = "users.username"
+_IDX_SINGLE_CEO = "idx_single_ceo"
+_LAST_CEO_TRIGGER = "enforce_ceo_minimum"
+_LAST_OWNER_TRIGGER = "enforce_owner_minimum"
 
 logger = get_logger(__name__)
 
@@ -180,12 +188,20 @@ class UserController(Controller):
         )
         try:
             await app_state.persistence.users.save(user)
-        except QueryError as exc:
-            cause = str(exc.__cause__) if exc.__cause__ else str(exc)
-            if "username" in cause.lower():
+        except ConstraintViolationError as exc:
+            if exc.constraint == _USERS_USERNAME_UNIQUE:
                 msg = f"Username already taken: {data.username}"
-            else:
+            elif exc.constraint == _IDX_SINGLE_CEO:
                 msg = "A CEO user already exists"
+            else:
+                logger.error(
+                    API_USER_SAVE_FAILED,
+                    user_id=user.id,
+                    intent="create_user",
+                    constraint=exc.constraint,
+                    exc_info=True,
+                )
+                raise
             logger.warning(API_RESOURCE_CONFLICT, reason=msg)
             raise ConflictError(msg) from exc
 
@@ -278,12 +294,20 @@ class UserController(Controller):
         )
         try:
             await app_state.persistence.users.save(updated)
-        except QueryError as exc:
-            cause = str(exc.__cause__) if exc.__cause__ else str(exc)
-            if "last CEO" in cause:
+        except ConstraintViolationError as exc:
+            if exc.constraint == _LAST_CEO_TRIGGER:
                 msg = "Cannot change the only CEO's role"
-            else:
+            elif exc.constraint == _IDX_SINGLE_CEO:
                 msg = "A CEO user already exists"
+            else:
+                logger.error(
+                    API_USER_SAVE_FAILED,
+                    user_id=user.id,
+                    intent="update_user_role",
+                    constraint=exc.constraint,
+                    exc_info=True,
+                )
+                raise
             logger.warning(API_RESOURCE_CONFLICT, reason=msg)
             raise ConflictError(msg) from exc
 
@@ -413,6 +437,20 @@ class UserController(Controller):
         )
         try:
             await app_state.persistence.users.save(updated)
+        except ConstraintViolationError as exc:
+            if exc.constraint == _LAST_OWNER_TRIGGER:
+                msg = "Cannot modify the last owner"
+                logger.warning(API_RESOURCE_CONFLICT, reason=msg)
+                raise ConflictError(msg) from exc
+            logger.error(
+                API_USER_SAVE_FAILED,
+                user_id=user.id,
+                intent="grant_org_role",
+                role=data.role.value,
+                constraint=exc.constraint,
+                exc_info=True,
+            )
+            raise
         except QueryError:
             logger.error(
                 API_USER_SAVE_FAILED,
@@ -479,12 +517,21 @@ class UserController(Controller):
         )
         try:
             await app_state.persistence.users.save(updated)
-        except QueryError as exc:
-            cause = str(exc.__cause__) if exc.__cause__ else str(exc)
-            if "last owner" in cause.lower():
+        except ConstraintViolationError as exc:
+            if exc.constraint == _LAST_OWNER_TRIGGER:
                 msg = "Cannot revoke the last owner role"
                 logger.warning(API_RESOURCE_CONFLICT, reason=msg)
                 raise ConflictError(msg) from exc
+            logger.error(
+                API_USER_SAVE_FAILED,
+                user_id=user.id,
+                intent="revoke_org_role",
+                role=role,
+                constraint=exc.constraint,
+                exc_info=True,
+            )
+            raise
+        except QueryError:
             logger.error(
                 API_USER_SAVE_FAILED,
                 user_id=user.id,

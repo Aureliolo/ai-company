@@ -11,9 +11,12 @@ allowlist before being used in queries.
 """
 
 import re
-from typing import Any, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
 from synthorg.observability import get_logger
+
+if TYPE_CHECKING:
+    from datetime import datetime
 
 logger = get_logger(__name__)
 
@@ -62,8 +65,8 @@ class JsonbQueryCapability(Protocol):
         column: str,
         value: dict[str, Any] | list[Any],
         *,
-        since: Any | None = None,
-        until: Any | None = None,
+        since: datetime | None = None,
+        until: datetime | None = None,
         limit: int = 100,
         offset: int = 0,
     ) -> tuple[tuple[Any, ...], int]:
@@ -90,8 +93,8 @@ class JsonbQueryCapability(Protocol):
         column: str,
         key: str,
         *,
-        since: Any | None = None,
-        until: Any | None = None,
+        since: datetime | None = None,
+        until: datetime | None = None,
         limit: int = 100,
         offset: int = 0,
     ) -> tuple[tuple[Any, ...], int]:
@@ -119,8 +122,8 @@ class JsonbQueryCapability(Protocol):
         path: str,
         value: str,
         *,
-        since: Any | None = None,
-        until: Any | None = None,
+        since: datetime | None = None,
+        until: datetime | None = None,
         limit: int = 100,
         offset: int = 0,
     ) -> tuple[tuple[Any, ...], int]:

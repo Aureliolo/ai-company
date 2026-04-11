@@ -159,6 +159,9 @@ func startContainers(cmd *cobra.Command, ctx context.Context, state config.State
 }
 
 func startDetached(ctx context.Context, info docker.Info, safeDir string, state config.State, out, errOut *ui.UI, healthTimeout time.Duration) error {
+	if state.PersistenceBackend == "postgres" {
+		out.Step("Starting postgres container (backend will wait for it and apply migrations)")
+	}
 	sp := out.StartSpinner("Starting containers...")
 	if err := composeRunQuiet(ctx, info, safeDir, "up", "-d"); err != nil {
 		sp.Error("Failed to start containers")
@@ -175,6 +178,9 @@ func startDetached(ctx context.Context, info docker.Info, safeDir string, state 
 			return fmt.Errorf("health check did not pass: %w", err)
 		}
 		sp.Success("Backend healthy")
+		if state.PersistenceBackend == "postgres" {
+			out.Step("Postgres migrations applied by backend on startup")
+		}
 	} else {
 		out.Step("Health check skipped (--no-wait)")
 		out.HintGuidance("Run 'synthorg status --check' to verify health later.")
@@ -213,6 +219,9 @@ func pullStartAndWait(ctx context.Context, info docker.Info, safeDir string, sta
 		return fmt.Errorf("health check did not pass: %w", err)
 	}
 	sp.Success("Backend healthy")
+	if state.PersistenceBackend == "postgres" {
+		out.Step("Postgres migrations applied by backend on startup")
+	}
 	return nil
 }
 

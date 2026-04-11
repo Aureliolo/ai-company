@@ -29,7 +29,11 @@ from synthorg.hr.performance.models import (
     CollaborationMetricRecord,
     TaskMetricRecord,
 )
-from synthorg.persistence.errors import DuplicateRecordError, QueryError
+from synthorg.persistence.errors import (
+    ConstraintViolationError,
+    DuplicateRecordError,
+    QueryError,
+)
 from synthorg.persistence.preset_repository import PresetListRow, PresetRow
 from synthorg.security.models import AuditEntry, AuditVerdictStr
 from synthorg.security.timeout.parked_context import ParkedContext
@@ -311,13 +315,16 @@ class FakeUserRepository:
         for u in self._users.values():
             if u.username == user.username and u.id != user.id:
                 msg = "UNIQUE constraint failed: users.username"
-                raise QueryError(msg)
+                raise ConstraintViolationError(msg, constraint="users.username")
         # CEO uniqueness (partial unique index on role='ceo')
         if user.role == HumanRole.CEO:
             for u in self._users.values():
                 if u.role == HumanRole.CEO and u.id != user.id:
                     msg = "UNIQUE constraint failed: idx_single_ceo"
-                    raise QueryError(msg)
+                    raise ConstraintViolationError(
+                        msg,
+                        constraint="idx_single_ceo",
+                    )
         # Last-CEO trigger: prevent demoting the only CEO
         if (
             existing is not None
@@ -331,7 +338,10 @@ class FakeUserRepository:
             )
             if other_ceos == 0:
                 msg = "Cannot remove the last CEO"
-                raise QueryError(msg)
+                raise ConstraintViolationError(
+                    msg,
+                    constraint="enforce_ceo_minimum",
+                )
         # Last-owner trigger: prevent removing the last owner
         if (
             existing is not None
@@ -345,7 +355,10 @@ class FakeUserRepository:
             )
             if other_owners == 0:
                 msg = "Cannot remove the last owner"
-                raise QueryError(msg)
+                raise ConstraintViolationError(
+                    msg,
+                    constraint="enforce_owner_minimum",
+                )
         self._users[user.id] = user
 
     async def get(self, user_id: str) -> User | None:

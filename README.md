@@ -48,11 +48,14 @@ irm https://synthorg.io/get/install.ps1 | iex
 ### Run
 
 ```bash
-synthorg init       # interactive setup wizard
-synthorg start      # pull images + start containers
+synthorg init                                   # interactive setup wizard (SQLite default)
+synthorg init --persistence-backend postgres    # auto-provision a Postgres container
+synthorg start                                  # pull images + start containers
 ```
 
 Open [localhost:3000](http://localhost:3000) -- the **setup wizard** walks you through company config, LLM providers, agent setup with personality presets, and theme selection. Choose **Guided Setup** for the full experience or **Quick Setup** (company name + provider only, configure the rest later).
+
+**Persistence backends:** SQLite (default) for single-node and development, Postgres for multi-instance and production deployments. The CLI orchestrates both -- `--persistence-backend postgres` generates a `postgres:18-alpine` service, random credentials, and a named data volume. `synthorg stop` preserves the data volume unless `--volumes` is passed.
 
 ### From source
 

@@ -198,6 +198,17 @@ class AuditController(Controller):
             try:
                 value = json.loads(jsonb_contains)
             except json.JSONDecodeError as exc:
+                # Truncate the offending input so sensitive payloads
+                # aren't logged in full, but give operators enough
+                # context to debug parse failures.
+                preview = jsonb_contains[:256]
+                logger.warning(
+                    API_VALIDATION_FAILED,
+                    reason="invalid_jsonb_contains_json",
+                    input_length=len(jsonb_contains),
+                    input_preview=preview,
+                    error=str(exc),
+                )
                 raise ClientException(
                     detail=f"Invalid JSON in jsonb_contains: {exc}",
                 ) from exc

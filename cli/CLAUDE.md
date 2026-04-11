@@ -98,7 +98,7 @@ Settable keys: `auto_apply_compose`, `auto_cleanup`, `auto_pull`, `auto_restart`
 
 | Command | Flags |
 |---------|-------|
-| `init` | `--backend-port`, `--web-port`, `--sandbox`, `--image-tag`, `--channel`, `--log-level` (all flags = non-interactive mode) |
+| `init` | `--backend-port`, `--web-port`, `--sandbox`, `--image-tag`, `--channel`, `--log-level`, `--bus-backend`, `--persistence-backend`, `--postgres-port` (all required flags = non-interactive mode) |
 | `start` | `--no-wait`, `--timeout`, `--no-pull`, `--dry-run`, `--no-detach`, `--no-verify` |
 | `stop` | `--timeout`/`-t`, `--volumes` |
 | `status` | `--watch`/`-w`, `--interval`, `--wide`, `--no-trunc`, `--services`, `--check` |
@@ -112,3 +112,25 @@ Settable keys: `auto_apply_compose`, `auto_cleanup`, `auto_pull`, `auto_restart`
 | `doctor` | `--checks`, `--fix` |
 | `version` | `--short` |
 | `uninstall` | `--keep-data`, `--keep-images` |
+
+## Persistence Backends
+
+The CLI orchestrates two persistence backends:
+
+| Backend | Flag | Port | Data volume | When to use |
+|---------|------|------|-------------|-------------|
+| `sqlite` (default) | `--persistence-backend sqlite` | n/a (in-process) | `synthorg-data` | Single-node, development, small deployments |
+| `postgres` | `--persistence-backend postgres` | `3002` (default, override with `--postgres-port`) | `synthorg-pgdata` | Multi-instance, production, high concurrency |
+
+### Postgres orchestration
+
+When `--persistence-backend postgres` is selected, `synthorg init`:
+
+1. Adds a `postgres:18-alpine` service to the generated `compose.yml` (non-root user `70:70`, read-only rootfs, dropped capabilities, pg_isready healthcheck, named volume `synthorg-pgdata`).
+2. Generates a 32-byte URL-safe random password via `crypto/rand` and persists it to `config.json` (`postgres_password`). Re-init preserves the existing password to avoid breaking the running container.
+3. Wires `SYNTHORG_DATABASE_URL=postgresql://synthorg:<password>@postgres:5432/synthorg` into the backend container's environment. The SQLite-only `SYNTHORG_DB_PATH` variable is omitted.
+4. Declares `depends_on: postgres: condition: service_healthy` on the backend service so backend startup blocks until Postgres accepts connections.
+
+`synthorg start` brings up Postgres first (via compose ordering), then the backend applies Atlas migrations on connection. `synthorg stop` preserves `synthorg-pgdata` unless `--volumes` is passed. `synthorg status --wide` reports Postgres container health plus the `synthorg-pgdata` volume size.
+
+Port layout: `3000` web / `3001` backend / `3002` postgres / `3003` NATS client. `generate.go` validates against port collisions across all four services.

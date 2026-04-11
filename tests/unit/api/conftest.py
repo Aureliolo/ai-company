@@ -52,18 +52,6 @@ from tests.unit.api.fakes import (
 
 __all__ = ["FakeMessageBus", "FakePersistenceBackend"]
 
-# Replace the production argon2 hasher (64 MB memory_cost) with a
-# lightweight one for tests.  With 8 xdist workers each hashing
-# passwords concurrently, the production hasher causes OOM errors
-# (argon2.exceptions.HashingError: Memory allocation error).
-_auth_mod._hasher = argon2.PasswordHasher(
-    time_cost=1,
-    memory_cost=8,  # 8 KiB instead of 64 MiB
-    parallelism=1,
-    hash_len=32,
-    salt_len=16,
-)
-
 # ── Test auth constants ───────────────────────────────────────
 
 _TEST_JWT_SECRET = "test-secret-that-is-at-least-32-characters-long"
@@ -71,6 +59,31 @@ _TEST_JWT_SECRET = "test-secret-that-is-at-least-32-characters-long"
 _TEST_SETTINGS_KEY = "lKzZcMznksIF8A_2HFFUnKxhxhz9_bxTvVJoZ6mvZrk="
 _TEST_USER_ID = "test-user-001"
 _TEST_USERNAME = "testadmin"
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _lightweight_argon2_hasher() -> Any:
+    """Replace the production argon2 hasher with a lightweight one.
+
+    The production hasher uses ``memory_cost=65536`` (64 MiB per hash)
+    and ``parallelism=4``.  With 8 xdist workers each creating multiple
+    ``TestClient`` fixtures that hash passwords during user seeding,
+    peak memory reaches several hundred MB and triggers
+    ``argon2.exceptions.HashingError: Memory allocation error``.
+
+    Session-scoped so every worker replaces the module global exactly
+    once and restores it on teardown, avoiding isolation drift.
+    """
+    original = _auth_mod._hasher
+    _auth_mod._hasher = argon2.PasswordHasher(
+        time_cost=1,
+        memory_cost=8,  # 8 KiB instead of 64 MiB
+        parallelism=1,
+        hash_len=32,
+        salt_len=16,
+    )
+    yield
+    _auth_mod._hasher = original
 
 
 @pytest.fixture(autouse=True)

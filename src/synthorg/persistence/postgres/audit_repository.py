@@ -1,7 +1,7 @@
 """Postgres repository implementation for security audit entries."""
 
 import json
-from datetime import UTC
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
 import psycopg
@@ -311,8 +311,8 @@ INSERT INTO audit_entries (
 
     def _build_time_clause(
         self,
-        since: Any | None,
-        until: Any | None,
+        since: datetime | None,
+        until: datetime | None,
     ) -> tuple[list[str], list[object]]:
         """Build timestamp filter conditions."""
         conditions: list[str] = []
@@ -330,8 +330,8 @@ INSERT INTO audit_entries (
         extra_condition: str,
         extra_params: list[object],
         *,
-        since: Any | None,
-        until: Any | None,
+        since: datetime | None,
+        until: datetime | None,
         limit: int,
         offset: int,
     ) -> tuple[tuple[AuditEntry, ...], int]:

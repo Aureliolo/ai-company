@@ -16,7 +16,7 @@ import pytest
 
 from synthorg.api.auth.models import OrgRole, User
 from synthorg.api.guards import HumanRole
-from synthorg.persistence.errors import QueryError
+from synthorg.persistence.errors import ConstraintViolationError, QueryError
 from synthorg.persistence.sqlite.backend import SQLitePersistenceBackend
 
 
@@ -102,8 +102,9 @@ class TestLastCEOTrigger:
         demoted = ceo.model_copy(
             update={"role": HumanRole.MANAGER, "updated_at": datetime.now(UTC)},
         )
-        with pytest.raises(QueryError, match="Cannot remove the last CEO"):
+        with pytest.raises(ConstraintViolationError) as exc_info:
             await on_disk_backend.users.save(demoted)
+        assert exc_info.value.constraint == "enforce_ceo_minimum"
 
     async def test_can_demote_ceo_when_another_exists_sqlite(
         self,
@@ -153,8 +154,9 @@ class TestLastOwnerTrigger:
         revoked = owner.model_copy(
             update={"org_roles": (), "updated_at": datetime.now(UTC)},
         )
-        with pytest.raises(QueryError, match="Cannot remove the last owner"):
+        with pytest.raises(ConstraintViolationError) as exc_info:
             await on_disk_backend.users.save(revoked)
+        assert exc_info.value.constraint == "enforce_owner_minimum"
 
     async def test_can_revoke_owner_when_another_exists_sqlite(
         self,
