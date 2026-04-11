@@ -23,3 +23,12 @@ export { authLoginSuccess, authSetupSuccess } from './auth'
 export { artifactsList } from './artifacts'
 export { projectsList } from './projects'
 export { templatePacksList } from './template-packs'
+export {
+  connectionsList,
+  emptyConnectionsList,
+  integrationHealthList,
+  integrationsHandlers,
+  mcpCatalogHandlers,
+  oauthHandlers,
+  tunnelHandlers,
+} from './integrations'

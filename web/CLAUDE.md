@@ -82,6 +82,7 @@ web/src/
 | `TaskStatusIndicator` | `@/components/ui/task-status-indicator` | Task status dot with optional label and pulse animation (accepts `TaskStatus`) |
 | `PriorityBadge` | `@/components/ui/task-status-indicator` | Task priority colored pill badge (critical/high/medium/low) |
 | `ProviderHealthBadge` | `@/components/ui/provider-health-badge` | Provider health status indicator (up/degraded/down/unknown colored dot + optional label) |
+| `ConnectionHealthBadge` | `@/components/ui/connection-health-badge` | Integration connection health indicator (healthy/degraded/unhealthy/unknown); thin wrapper over `ProviderHealthBadge` that owns the enum mapping |
 | `TokenUsageBar` | `@/components/ui/token-usage-bar` | Segmented horizontal meter bar for token usage (multi-segment with auto-colors, `role="meter"`, animated transitions) |
 | `CodeMirrorEditor` | `@/components/ui/code-mirror-editor` | CodeMirror 6 editor with JSON/YAML modes, design-token dark theme, line numbers, bracket matching, `readOnly` support |
 | `SegmentedControl` | `@/components/ui/segmented-control` | Accessible radiogroup with keyboard navigation, size variants (`sm`/`md`), generic `<T extends string>` typing |

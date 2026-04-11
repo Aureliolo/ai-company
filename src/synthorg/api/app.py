@@ -144,6 +144,9 @@ if TYPE_CHECKING:
 
     from synthorg.api.auth.config import AuthConfig
     from synthorg.api.config import ApiConfig
+    from synthorg.integrations.mcp_catalog.installations import (
+        McpInstallationRepository,
+    )
     from synthorg.settings.service import SettingsService
     from synthorg.settings.subscriber import SettingsSubscriber
 
@@ -1097,6 +1100,7 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
     tunnel_provider = None
     webhook_event_bridge = None
     mcp_catalog_service = None
+    mcp_installations_repo: McpInstallationRepository | None = None
 
     # Bundled MCP catalog is stateless (loads static JSON) and has no
     # runtime dependencies, so it is wired unconditionally.
@@ -1113,6 +1117,61 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
         logger.warning(
             API_APP_STARTUP,
             error="MCP catalog auto-wire failed (non-fatal)",
+            exc_info=True,
+        )
+
+    # MCP installations repo: SQLite-backed when persistence is
+    # already connected and exposes an aiosqlite handle, otherwise
+    # an in-memory stub that keeps install/uninstall callable (so the
+    # endpoint works in tests and dev without a database). The merged
+    # MCPConfig is stitched at bridge startup time via
+    # ``synthorg.integrations.mcp_catalog.install.merge_installed_servers``.
+    #
+    # NB: ``create_app`` runs synchronously on every test that builds a
+    # Litestar app, so we MUST NOT call into code that raises on an
+    # unconnected backend or captures a traceback per miss. Both are
+    # hot-path regressions at suite scale. Check ``is_connected`` up
+    # front and fall through silently to in-memory otherwise.
+    try:
+        from synthorg.integrations.mcp_catalog.sqlite_repo import (  # noqa: PLC0415
+            InMemoryMcpInstallationRepository,
+            SQLiteMcpInstallationRepository,
+        )
+
+        sqlite_db = None
+        if persistence is not None and getattr(persistence, "is_connected", False):
+            get_db_fn = getattr(persistence, "get_db", None)
+            if callable(get_db_fn):
+                try:
+                    sqlite_db = get_db_fn()
+                except MemoryError, RecursionError:
+                    raise
+                except Exception:
+                    # Fall through to in-memory silently; the repo is a
+                    # degraded-mode fallback by design and a startup
+                    # warning here would fire on every test that builds
+                    # an app without a SQLite backend.
+                    sqlite_db = None
+        if sqlite_db is not None:
+            mcp_installations_repo = SQLiteMcpInstallationRepository(sqlite_db)
+            logger.info(
+                API_SERVICE_AUTO_WIRED,
+                service="mcp_installations_repo",
+                backend="sqlite",
+            )
+        else:
+            mcp_installations_repo = InMemoryMcpInstallationRepository()
+            logger.debug(
+                API_SERVICE_AUTO_WIRED,
+                service="mcp_installations_repo",
+                backend="in_memory",
+            )
+    except MemoryError, RecursionError:
+        raise
+    except Exception:
+        logger.warning(
+            API_APP_STARTUP,
+            error="MCP installations repo auto-wire failed (non-fatal)",
             exc_info=True,
         )
 
@@ -1304,6 +1363,7 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
         tunnel_provider=tunnel_provider,
         webhook_event_bridge=webhook_event_bridge,
         mcp_catalog_service=mcp_catalog_service,
+        mcp_installations_repo=mcp_installations_repo,
         startup_time=time.monotonic(),
     )
     if distributed_task_queue is not None:

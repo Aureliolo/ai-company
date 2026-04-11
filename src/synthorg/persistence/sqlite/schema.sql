@@ -862,3 +862,19 @@ CREATE TABLE webhook_receipts (
 
 CREATE INDEX idx_webhook_receipts_conn_received
     ON webhook_receipts(connection_name, received_at DESC);
+
+-- ── MCP catalog installations ────────────────────────────────
+-- Recorded when the dashboard installs an MCP catalog entry. The
+-- MCP bridge merges these rows with the YAML-configured servers at
+-- startup (see synthorg.integrations.mcp_catalog.install.
+-- merge_installed_servers) so installs survive restarts without
+-- touching the user-owned config file.
+CREATE TABLE mcp_installations (
+    catalog_entry_id TEXT NOT NULL PRIMARY KEY
+        CHECK(length(catalog_entry_id) > 0),
+    connection_name TEXT REFERENCES connections(name) ON DELETE SET NULL,
+    installed_at TEXT NOT NULL
+);
+
+CREATE INDEX idx_mcp_installations_connection
+    ON mcp_installations(connection_name);

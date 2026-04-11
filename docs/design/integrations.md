@@ -64,6 +64,7 @@ multiple instances that each need their own isolated key.
 | `PATCH` | `/api/v1/connections/{name}` | Update a connection |
 | `DELETE` | `/api/v1/connections/{name}` | Delete a connection |
 | `GET` | `/api/v1/connections/{name}/health` | On-demand health check |
+| `GET` | `/api/v1/connections/{name}/secrets/{field}` | Scoped reveal of a single credential field (audit-logged; returns a generic 404 on any failure to avoid side-channel leakage) |
 
 ---
 
@@ -160,6 +161,15 @@ GitHub, Slack, Filesystem, PostgreSQL, SQLite, Brave Search, Puppeteer, Memory.
 | `GET` | `/api/v1/integrations/mcp/catalog` | Browse all entries |
 | `GET` | `/api/v1/integrations/mcp/catalog/search?q=` | Search entries |
 | `GET` | `/api/v1/integrations/mcp/catalog/{entry_id}` | Get single entry |
+| `POST` | `/api/v1/integrations/mcp/catalog/install` | Install a catalog entry (dashboard-driven, idempotent) |
+| `DELETE` | `/api/v1/integrations/mcp/catalog/install/{entry_id}` | Uninstall a catalog entry (idempotent) |
+
+Installed catalog entries are persisted in the ``mcp_installations``
+table and merged into the effective ``MCPConfig.servers`` at bridge
+startup via :func:`synthorg.integrations.mcp_catalog.install.merge_installed_servers`.
+This keeps dashboard installs out-of-band from the user-owned YAML
+config and ensures they survive restarts without rewriting the
+config file.
 
 ---
 

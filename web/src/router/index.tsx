@@ -38,6 +38,9 @@ const SimulationDashboardPage = lazy(
   () => import('@/pages/SimulationDashboardPage'),
 )
 const ReviewPipelinePage = lazy(() => import('@/pages/ReviewPipelinePage'))
+const ConnectionsPage = lazy(() => import('@/pages/ConnectionsPage'))
+const OauthAppsPage = lazy(() => import('@/pages/OauthAppsPage'))
+const McpCatalogPage = lazy(() => import('@/pages/McpCatalogPage'))
 const SettingsPage = lazy(() => import('@/pages/SettingsPage'))
 const SettingsNamespacePage = lazy(() => import('@/pages/SettingsNamespacePage'))
 const SettingsSinksPage = lazy(() => import('@/pages/SettingsSinksPage'))
@@ -124,6 +127,9 @@ export const router = createBrowserRouter([
               { path: 'meetings/:meetingId', element: <MeetingDetailPage /> },
               { path: 'providers', element: <ProvidersPage /> },
               { path: 'providers/:providerName', element: <ProviderDetailPage /> },
+              { path: 'connections', element: <ConnectionsPage /> },
+              { path: 'integrations/oauth-apps', element: <OauthAppsPage /> },
+              { path: 'integrations/mcp-catalog', element: <McpCatalogPage /> },
               { path: 'ontology', element: <OntologyPage /> },
               { path: 'projects', element: <ProjectsPage /> },
               { path: 'projects/:projectId', element: <ProjectDetailPage /> },

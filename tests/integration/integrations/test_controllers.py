@@ -63,6 +63,7 @@ class TestConnectionsController:
         ctrl = ConnectionsController(owner=ConnectionsController)  # type: ignore[arg-type]
         response = await ctrl.list_connections.fn(ctrl, state=state)
         assert len(response.data) == 2
+        catalog.list_all.assert_awaited_once()
 
     async def test_get_missing_raises_not_found(self) -> None:
         from synthorg.api.controllers.connections import ConnectionsController
@@ -123,6 +124,88 @@ class TestConnectionsController:
                     "credentials": {"token": "t"},
                 },
             )
+
+    async def test_reveal_secret_returns_field(self) -> None:
+        from synthorg.api.controllers.connections import ConnectionsController
+
+        catalog = MagicMock()
+        catalog.get_credentials = AsyncMock(
+            return_value={"client_secret": "real-secret-value"},
+        )
+        state = {"app_state": MagicMock(connection_catalog=catalog)}
+
+        ctrl = ConnectionsController(owner=ConnectionsController)  # type: ignore[arg-type]
+        response = await ctrl.reveal_secret.fn(
+            ctrl,
+            state=state,
+            name="gh",
+            field="client_secret",
+        )
+        assert response.data == {
+            "field": "client_secret",
+            "value": "real-secret-value",
+        }
+
+    async def test_reveal_secret_missing_field_raises(self) -> None:
+        from synthorg.api.controllers.connections import ConnectionsController
+
+        catalog = MagicMock()
+        catalog.get_credentials = AsyncMock(return_value={"other": "x"})
+        state = {"app_state": MagicMock(connection_catalog=catalog)}
+
+        ctrl = ConnectionsController(owner=ConnectionsController)  # type: ignore[arg-type]
+        with pytest.raises(NotFoundError) as exc_info:
+            await ctrl.reveal_secret.fn(
+                ctrl,
+                state=state,
+                name="gh",
+                field="client_secret",
+            )
+        # Error message must not leak the field/connection identity.
+        assert "client_secret" not in str(exc_info.value)
+        assert "gh" not in str(exc_info.value)
+
+    async def test_reveal_secret_connection_not_found_hidden(self) -> None:
+        from synthorg.api.controllers.connections import ConnectionsController
+        from synthorg.integrations.errors import ConnectionNotFoundError
+
+        catalog = MagicMock()
+        catalog.get_credentials = AsyncMock(
+            side_effect=ConnectionNotFoundError("Connection 'gh' not found"),
+        )
+        state = {"app_state": MagicMock(connection_catalog=catalog)}
+
+        ctrl = ConnectionsController(owner=ConnectionsController)  # type: ignore[arg-type]
+        with pytest.raises(NotFoundError) as exc_info:
+            await ctrl.reveal_secret.fn(
+                ctrl,
+                state=state,
+                name="gh",
+                field="client_secret",
+            )
+        # Verify the connection name is not leaked in the public error.
+        assert "gh" not in str(exc_info.value)
+
+    async def test_reveal_secret_backend_error_hidden(self) -> None:
+        from synthorg.api.controllers.connections import ConnectionsController
+        from synthorg.integrations.errors import SecretRetrievalError
+
+        catalog = MagicMock()
+        catalog.get_credentials = AsyncMock(
+            side_effect=SecretRetrievalError("vault timeout"),
+        )
+        state = {"app_state": MagicMock(connection_catalog=catalog)}
+
+        ctrl = ConnectionsController(owner=ConnectionsController)  # type: ignore[arg-type]
+        with pytest.raises(NotFoundError) as exc_info:
+            await ctrl.reveal_secret.fn(
+                ctrl,
+                state=state,
+                name="gh",
+                field="client_secret",
+            )
+        # Backend failure detail must not leak to the client.
+        assert "vault" not in str(exc_info.value).lower()
 
 
 @pytest.mark.integration
@@ -265,6 +348,174 @@ class TestMCPCatalogController:
         ctrl = MCPCatalogController(owner=MCPCatalogController)  # type: ignore[arg-type]
         response = await ctrl.browse_catalog.fn(ctrl, state=state)
         assert len(response.data) >= 8
+
+    async def test_install_connectionless_entry(self) -> None:
+        from synthorg.api.controllers.mcp_catalog import MCPCatalogController
+        from synthorg.integrations.mcp_catalog.service import CatalogService
+        from synthorg.integrations.mcp_catalog.sqlite_repo import (
+            InMemoryMcpInstallationRepository,
+        )
+
+        repo = InMemoryMcpInstallationRepository()
+        state = {
+            "app_state": MagicMock(
+                mcp_catalog_service=CatalogService(),
+                mcp_installations_repo=repo,
+                _connection_catalog=None,
+            ),
+        }
+        ctrl = MCPCatalogController(owner=MCPCatalogController)  # type: ignore[arg-type]
+        response = await ctrl.install_entry.fn(
+            ctrl,
+            state=state,
+            data={"catalog_entry_id": "filesystem-mcp"},
+        )
+        assert response.data["status"] == "installed"
+        assert response.data["server_name"] == "Filesystem"
+        assert response.data["catalog_entry_id"] == "filesystem-mcp"
+        # tool_count matches filesystem-mcp capabilities:
+        # file_read, file_write, directory_listing.
+        assert response.data["tool_count"] == 3
+        stored = await repo.get(NotBlankStr("filesystem-mcp"))
+        assert stored is not None
+        # Repeat install must be idempotent -- same row, same response.
+        second = await ctrl.install_entry.fn(
+            ctrl,
+            state=state,
+            data={"catalog_entry_id": "filesystem-mcp"},
+        )
+        assert second.data == response.data
+        assert len(await repo.list_all()) == 1
+
+    async def test_install_missing_entry_raises_404(self) -> None:
+        from synthorg.api.controllers.mcp_catalog import MCPCatalogController
+        from synthorg.integrations.mcp_catalog.service import CatalogService
+        from synthorg.integrations.mcp_catalog.sqlite_repo import (
+            InMemoryMcpInstallationRepository,
+        )
+
+        state = {
+            "app_state": MagicMock(
+                mcp_catalog_service=CatalogService(),
+                mcp_installations_repo=InMemoryMcpInstallationRepository(),
+                _connection_catalog=None,
+            ),
+        }
+        ctrl = MCPCatalogController(owner=MCPCatalogController)  # type: ignore[arg-type]
+        with pytest.raises(NotFoundError):
+            await ctrl.install_entry.fn(
+                ctrl,
+                state=state,
+                data={"catalog_entry_id": "nope"},
+            )
+
+    async def test_install_requires_catalog_entry_id(self) -> None:
+        from synthorg.api.controllers.mcp_catalog import MCPCatalogController
+        from synthorg.integrations.mcp_catalog.service import CatalogService
+        from synthorg.integrations.mcp_catalog.sqlite_repo import (
+            InMemoryMcpInstallationRepository,
+        )
+
+        state = {
+            "app_state": MagicMock(
+                mcp_catalog_service=CatalogService(),
+                mcp_installations_repo=InMemoryMcpInstallationRepository(),
+                _connection_catalog=None,
+            ),
+        }
+        ctrl = MCPCatalogController(owner=MCPCatalogController)  # type: ignore[arg-type]
+        with pytest.raises(ApiValidationError):
+            await ctrl.install_entry.fn(ctrl, state=state, data={})
+
+    async def test_install_connection_type_mismatch_400(self) -> None:
+        from synthorg.api.controllers.mcp_catalog import MCPCatalogController
+        from synthorg.integrations.mcp_catalog.service import CatalogService
+        from synthorg.integrations.mcp_catalog.sqlite_repo import (
+            InMemoryMcpInstallationRepository,
+        )
+
+        catalog = MagicMock()
+        catalog.get = AsyncMock(
+            return_value=_make_conn("slacky"),  # GitHub type; doesn't match
+        )
+        wrong_type_conn = Connection(
+            name=NotBlankStr("slacky"),
+            connection_type=ConnectionType.SLACK,
+            auth_method=AuthMethod.API_KEY,
+        )
+        catalog.get = AsyncMock(return_value=wrong_type_conn)
+
+        state = {
+            "app_state": MagicMock(
+                mcp_catalog_service=CatalogService(),
+                mcp_installations_repo=InMemoryMcpInstallationRepository(),
+                _connection_catalog=catalog,
+            ),
+        }
+        ctrl = MCPCatalogController(owner=MCPCatalogController)  # type: ignore[arg-type]
+        with pytest.raises(ApiValidationError):
+            await ctrl.install_entry.fn(
+                ctrl,
+                state=state,
+                data={
+                    "catalog_entry_id": "github-mcp",
+                    "connection_name": "slacky",
+                },
+            )
+
+    async def test_uninstall_existing_entry(self) -> None:
+        from synthorg.api.controllers.mcp_catalog import MCPCatalogController
+        from synthorg.integrations.mcp_catalog.installations import McpInstallation
+        from synthorg.integrations.mcp_catalog.service import CatalogService
+        from synthorg.integrations.mcp_catalog.sqlite_repo import (
+            InMemoryMcpInstallationRepository,
+        )
+
+        repo = InMemoryMcpInstallationRepository()
+        await repo.save(
+            McpInstallation(
+                catalog_entry_id=NotBlankStr("filesystem-mcp"),
+                connection_name=None,
+                installed_at=datetime.now(UTC),
+            ),
+        )
+        state = {
+            "app_state": MagicMock(
+                mcp_catalog_service=CatalogService(),
+                mcp_installations_repo=repo,
+                _connection_catalog=None,
+            ),
+        }
+        ctrl = MCPCatalogController(owner=MCPCatalogController)  # type: ignore[arg-type]
+        response = await ctrl.uninstall_entry.fn(
+            ctrl,
+            state=state,
+            entry_id="filesystem-mcp",
+        )
+        assert response.data is None
+        assert await repo.get(NotBlankStr("filesystem-mcp")) is None
+
+    async def test_uninstall_missing_is_idempotent(self) -> None:
+        from synthorg.api.controllers.mcp_catalog import MCPCatalogController
+        from synthorg.integrations.mcp_catalog.service import CatalogService
+        from synthorg.integrations.mcp_catalog.sqlite_repo import (
+            InMemoryMcpInstallationRepository,
+        )
+
+        state = {
+            "app_state": MagicMock(
+                mcp_catalog_service=CatalogService(),
+                mcp_installations_repo=InMemoryMcpInstallationRepository(),
+                _connection_catalog=None,
+            ),
+        }
+        ctrl = MCPCatalogController(owner=MCPCatalogController)  # type: ignore[arg-type]
+        response = await ctrl.uninstall_entry.fn(
+            ctrl,
+            state=state,
+            entry_id="not-installed",
+        )
+        assert response.data is None
 
 
 @pytest.mark.integration

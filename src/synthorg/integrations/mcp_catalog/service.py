@@ -5,22 +5,50 @@ MCP servers from the bundled catalog.
 """
 
 import json
+from datetime import UTC, datetime
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+from pydantic import BaseModel, ConfigDict
 
 from synthorg.core.types import NotBlankStr
 from synthorg.integrations.connections.models import (
     CatalogEntry,
     ConnectionType,
 )
-from synthorg.integrations.errors import CatalogEntryNotFoundError
+from synthorg.integrations.errors import (
+    CatalogEntryNotFoundError,
+    ConnectionNotFoundError,
+    InvalidConnectionAuthError,
+)
+from synthorg.integrations.mcp_catalog.installations import (
+    McpInstallation,
+    McpInstallationRepository,
+)
 from synthorg.observability import get_logger
 from synthorg.observability.events.integrations import (
     MCP_CATALOG_BROWSED,
     MCP_CATALOG_ENTRY_NOT_FOUND,
     MCP_SERVER_INSTALL_FAILED,
+    MCP_SERVER_INSTALL_VALIDATION_FAILED,
 )
 
+if TYPE_CHECKING:
+    from synthorg.integrations.connections.catalog import ConnectionCatalog
+
 logger = get_logger(__name__)
+
+
+class InstallationResult(BaseModel):
+    """Outcome of a successful MCP catalog install."""
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+
+    catalog_entry_id: NotBlankStr
+    server_name: NotBlankStr
+    connection_name: NotBlankStr | None
+    tool_count: int
+
 
 _BUNDLED_PATH = Path(__file__).parent / "bundled.json"
 
@@ -40,6 +68,14 @@ class CatalogService:
         self,
         catalog_path: Path | None = None,
     ) -> None:
+        """Initialize the catalog service.
+
+        Args:
+            catalog_path: Override for the bundled catalog JSON file.
+                Defaults to the packaged ``bundled.json`` shipped
+                alongside this module. Tests pass a temporary path
+                to exercise edge cases without shipping fixtures.
+        """
         self._path = catalog_path or _BUNDLED_PATH
         self._entries: tuple[CatalogEntry, ...] = ()
         self._loaded = False
@@ -158,3 +194,133 @@ class CatalogService:
         )
         msg = f"Catalog entry '{entry_id}' not found"
         raise CatalogEntryNotFoundError(msg)
+
+    async def install(
+        self,
+        entry_id: str,
+        connection_name: str | None,
+        *,
+        connection_catalog: ConnectionCatalog | None,
+        installations_repo: McpInstallationRepository,
+    ) -> InstallationResult:
+        """Record that a catalog entry has been installed.
+
+        Validates the catalog entry exists and that ``connection_name``
+        (when required) resolves to a connection whose type matches
+        the entry's ``required_connection_type``. The installation is
+        persisted via ``installations_repo`` and picked up by the MCP
+        bridge on next reload via
+        :func:`synthorg.integrations.mcp_catalog.install.merge_installed_servers`.
+
+        Args:
+            entry_id: Catalog entry id to install.
+            connection_name: Name of the bound connection, or ``None``
+                for connectionless entries.
+            connection_catalog: Connection catalog used to validate
+                the bound connection. May be ``None`` when the entry
+                does not require a connection.
+            installations_repo: Where to persist the installation row.
+
+        Returns:
+            An :class:`InstallationResult` describing the installed
+            server.
+
+        Raises:
+            CatalogEntryNotFoundError: If the entry id is unknown.
+            ConnectionNotFoundError: If a required connection is
+                missing from the catalog.
+            InvalidConnectionAuthError: If the bound connection's
+                type does not match the entry's requirement.
+        """
+        entry = await self.get_entry(entry_id)
+        resolved_connection_name: str | None = None
+        if entry.required_connection_type is not None:
+            if not connection_name:
+                msg = (
+                    f"Catalog entry '{entry_id}' requires a connection "
+                    f"of type {entry.required_connection_type.value!r}"
+                )
+                logger.warning(
+                    MCP_SERVER_INSTALL_VALIDATION_FAILED,
+                    entry_id=entry_id,
+                    reason=msg,
+                )
+                raise InvalidConnectionAuthError(msg)
+            if connection_catalog is None:
+                msg = (
+                    "Connection catalog is required to install an entry "
+                    f"that binds a connection ('{entry_id}')"
+                )
+                logger.warning(
+                    MCP_SERVER_INSTALL_VALIDATION_FAILED,
+                    entry_id=entry_id,
+                    reason=msg,
+                )
+                raise InvalidConnectionAuthError(msg)
+            conn = await connection_catalog.get(connection_name)
+            if conn is None:
+                msg = f"Connection '{connection_name}' not found"
+                logger.warning(
+                    MCP_SERVER_INSTALL_VALIDATION_FAILED,
+                    entry_id=entry_id,
+                    connection_name=connection_name,
+                    reason=msg,
+                )
+                raise ConnectionNotFoundError(msg)
+            if conn.connection_type != entry.required_connection_type:
+                msg = (
+                    f"Connection '{connection_name}' has type "
+                    f"{conn.connection_type.value!r}, but catalog entry "
+                    f"'{entry_id}' requires "
+                    f"{entry.required_connection_type.value!r}"
+                )
+                logger.warning(
+                    MCP_SERVER_INSTALL_VALIDATION_FAILED,
+                    entry_id=entry_id,
+                    connection_name=connection_name,
+                    reason=msg,
+                )
+                raise InvalidConnectionAuthError(msg)
+            resolved_connection_name = conn.name
+        elif connection_name:
+            # Entry does not require a connection; ignore and warn.
+            logger.warning(
+                MCP_SERVER_INSTALL_VALIDATION_FAILED,
+                entry_id=entry_id,
+                connection_name=connection_name,
+                reason=(
+                    f"Catalog entry '{entry_id}' does not bind a "
+                    "connection; ignoring supplied connection_name"
+                ),
+            )
+
+        installation = McpInstallation(
+            catalog_entry_id=NotBlankStr(entry.id),
+            connection_name=(
+                NotBlankStr(resolved_connection_name)
+                if resolved_connection_name
+                else None
+            ),
+            installed_at=datetime.now(UTC),
+        )
+        await installations_repo.save(installation)
+        return InstallationResult(
+            catalog_entry_id=NotBlankStr(entry.id),
+            server_name=NotBlankStr(entry.name),
+            connection_name=installation.connection_name,
+            tool_count=len(entry.capabilities),
+        )
+
+    async def uninstall(
+        self,
+        entry_id: str,
+        *,
+        installations_repo: McpInstallationRepository,
+    ) -> bool:
+        """Remove a recorded installation.
+
+        Returns ``True`` when a row was removed. Missing entries
+        are a silent no-op so the endpoint can return 200 without
+        probing first.
+        """
+        return await installations_repo.delete(NotBlankStr(entry_id))
