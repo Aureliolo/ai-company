@@ -35,6 +35,7 @@ CHANNEL_REQUESTS: Final[str] = "requests"
 CHANNEL_SIMULATIONS: Final[str] = "simulations"
 CHANNEL_REVIEWS: Final[str] = "reviews"
 CHANNEL_WEBHOOKS: Final[str] = "#webhooks"
+CHANNEL_RATELIMIT: Final[str] = "#ratelimit"
 
 CHANNEL_USER_PREFIX: Final[str] = "user:"
 
@@ -55,6 +56,7 @@ ALL_CHANNELS: Final[tuple[str, ...]] = (
     CHANNEL_SIMULATIONS,
     CHANNEL_REVIEWS,
     CHANNEL_WEBHOOKS,
+    CHANNEL_RATELIMIT,
 )
 
 # Channels whose events contain sensitive cost/budget data.

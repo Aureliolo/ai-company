@@ -70,6 +70,19 @@ def with_connection_rate_limit(
     ) -> Callable[..., Coroutine[Any, Any, T]]:
         @functools.wraps(fn)
         async def wrapper(*args: Any, **kwargs: Any) -> T:
+            from synthorg.integrations.rate_limiting.shared_state import (  # noqa: PLC0415
+                get_coordinator,
+            )
+
+            coordinator = get_coordinator(connection_name)
+            if coordinator is not None:
+                await coordinator.acquire()
+                logger.debug(
+                    TOOL_RATE_LIMIT_ACQUIRED,
+                    connection_name=connection_name,
+                )
+                return await fn(*args, **kwargs)
+
             limiter = _get_or_create_limiter(
                 connection_name,
                 effective_config,

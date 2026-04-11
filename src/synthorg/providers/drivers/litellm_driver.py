@@ -127,6 +127,8 @@ class LiteLLMDriver(BaseCompletionProvider):
         self,
         provider_name: str,
         config: ProviderConfig,
+        *,
+        connection_catalog: Any | None = None,
     ) -> None:
         retry_handler = (
             RetryHandler(config.retry) if config.retry.max_retries > 0 else None
@@ -141,12 +143,36 @@ class LiteLLMDriver(BaseCompletionProvider):
         )
         self._provider_name = provider_name
         self._config = config
+        self._connection_catalog = connection_catalog
+        self._resolved_credentials: dict[str, str] | None = None
         self._model_lookup: MappingProxyType[str, ProviderModelConfig] = (
             MappingProxyType(self._build_model_lookup(config.models))
         )
         self._routing_key = config.litellm_provider or provider_name
 
-    # ── Hook implementations ─────────────────────────────────────
+    async def _ensure_credentials_resolved(self) -> None:
+        """Resolve credentials from ConnectionCatalog if needed.
+
+        Called once on first request. Caches the result on the
+        driver instance so subsequent calls are free.
+        """
+        if self._resolved_credentials is not None:
+            return
+        if self._config.connection_name is None or self._connection_catalog is None:
+            return
+        from synthorg.observability.events.integrations import (  # noqa: PLC0415
+            PROVIDER_CONNECTION_RESOLVED,
+        )
+
+        creds = await self._connection_catalog.get_credentials(
+            self._config.connection_name,
+        )
+        self._resolved_credentials = creds
+        logger.info(
+            PROVIDER_CONNECTION_RESOLVED,
+            provider=self._provider_name,
+            connection_name=self._config.connection_name,
+        )
 
     async def _do_complete(
         self,
@@ -157,6 +183,7 @@ class LiteLLMDriver(BaseCompletionProvider):
         config: CompletionConfig | None = None,
     ) -> CompletionResponse:
         """Call ``litellm.acompletion`` and map the response."""
+        await self._ensure_credentials_resolved()
         model_config = self._resolve_model(model)
         litellm_model = f"{self._routing_key}/{model_config.id}"
         kwargs = self._build_kwargs(
@@ -189,6 +216,7 @@ class LiteLLMDriver(BaseCompletionProvider):
         directly) because the base class ``await``s this coroutine to
         obtain the iterator.
         """
+        await self._ensure_credentials_resolved()
         model_config = self._resolve_model(model)
         litellm_model = f"{self._routing_key}/{model_config.id}"
         kwargs = self._build_kwargs(
@@ -313,7 +341,7 @@ class LiteLLMDriver(BaseCompletionProvider):
 
     # ── Request building ─────────────────────────────────────────
 
-    def _build_kwargs(  # noqa: C901
+    def _build_kwargs(  # noqa: C901, PLR0912
         self,
         messages: list[ChatMessage],
         litellm_model: str,
@@ -333,16 +361,20 @@ class LiteLLMDriver(BaseCompletionProvider):
             kwargs["stream"] = True
             kwargs["stream_options"] = {"include_usage": True}
 
+        resolved = self._resolved_credentials
         match self._config.auth_type:
             case AuthType.API_KEY:
-                if self._config.api_key is not None:
-                    kwargs["api_key"] = self._config.api_key
+                key = resolved.get("api_key") if resolved else None
+                if key is None:
+                    key = self._config.api_key
+                if key is not None:
+                    kwargs["api_key"] = key
             case AuthType.OAUTH:
-                # MVP: OAuth credentials stored; user provides
-                # pre-fetched token via api_key field. Full
-                # client_credentials token exchange is future work.
-                if self._config.api_key is not None:
-                    kwargs["api_key"] = self._config.api_key
+                key = resolved.get("api_key") if resolved else None
+                if key is None:
+                    key = self._config.api_key
+                if key is not None:
+                    kwargs["api_key"] = key
             case AuthType.CUSTOM_HEADER:
                 if self._config.custom_header_name and self._config.custom_header_value:
                     kwargs["extra_headers"] = {

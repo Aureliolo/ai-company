@@ -52,7 +52,7 @@ class TestChannels:
         assert channel in ALL_CHANNELS
 
     def test_all_channels_has_expected_entries(self) -> None:
-        assert len(ALL_CHANNELS) == 16
+        assert len(ALL_CHANNELS) == 17
 
     def test_create_channels_plugin(self) -> None:
         plugin = create_channels_plugin()

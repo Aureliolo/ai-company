@@ -306,6 +306,21 @@ class ProviderConfig(BaseModel):
         return self
 
     @model_validator(mode="after")
+    def _warn_embedded_api_key(self) -> Self:
+        """Emit deprecation warning when api_key is used without connection_name."""
+        import warnings  # noqa: PLC0415
+
+        if self.api_key is not None and self.connection_name is None:
+            warnings.warn(
+                "ProviderConfig.api_key without connection_name is "
+                "deprecated. Prefer connection_name to reference the "
+                "ConnectionCatalog for credential resolution.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+        return self
+
+    @model_validator(mode="after")
     def _validate_unique_model_identifiers(self) -> Self:
         """Ensure model IDs and aliases are each unique."""
         ids = [m.id for m in self.models]

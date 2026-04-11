@@ -1135,6 +1135,28 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
                     API_SERVICE_AUTO_WIRED,
                     service="webhook_event_bridge",
                 )
+
+            if message_bus is not None:
+                from synthorg.integrations.rate_limiting.shared_state import (  # noqa: PLC0415
+                    SharedRateLimitCoordinator,
+                    set_coordinator_factory,
+                )
+
+                _bus = message_bus
+
+                def _make_coordinator(
+                    name: str,
+                ) -> SharedRateLimitCoordinator:
+                    return SharedRateLimitCoordinator(
+                        bus=_bus,
+                        connection_name=name,
+                    )
+
+                set_coordinator_factory(_make_coordinator)
+                logger.info(
+                    API_SERVICE_AUTO_WIRED,
+                    service="rate_limit_coordinator_factory",
+                )
         except MemoryError, RecursionError:
             raise
         except Exception:
