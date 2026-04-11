@@ -1,12 +1,12 @@
 """Org configuration mutation service.
 
 Encapsulates read-modify-write operations on the company, department,
-and agent configuration stored in the settings system.  All mutations
-are serialised through a module-level ``asyncio.Lock`` which is safe
-for the single-process, single-event-loop Litestar deployment model.
+and agent configuration stored in the settings system.  Mutations use
+compare-and-swap (CAS) via ``expected_updated_at`` on settings writes
+to prevent lost updates under concurrent access, with a single retry
+on version conflict.
 """
 
-import asyncio
 import json
 import math
 from typing import TYPE_CHECKING, Any
@@ -21,7 +21,12 @@ from synthorg.api.dto_org import (  # noqa: TC001
     UpdateCompanyRequest,
     UpdateDepartmentRequest,
 )
-from synthorg.api.errors import ApiValidationError, ConflictError, NotFoundError
+from synthorg.api.errors import (
+    ApiValidationError,
+    ConflictError,
+    NotFoundError,
+    VersionConflictError,
+)
 from synthorg.config.schema import AgentConfig
 from synthorg.core.company import Company, Department
 from synthorg.core.enums import SeniorityLevel
@@ -32,6 +37,7 @@ from synthorg.observability.events.api import (
     API_AGENT_UPDATED,
     API_AGENTS_REORDERED,
     API_COMPANY_UPDATED,
+    API_CONCURRENCY_CONFLICT,
     API_DEPARTMENT_CREATED,
     API_DEPARTMENT_DELETED,
     API_DEPARTMENT_UPDATED,
@@ -53,11 +59,10 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
-# Serialises all org config mutations.  Safe for single-process,
-# single-event-loop deployment (see _dept_policy_lock in departments.py).
-_org_lock = asyncio.Lock()
-
 _BUDGET_PERCENT_CAP = 100.0
+
+# Maximum CAS retry attempts for read-modify-write mutations.
+_MAX_CAS_ATTEMPTS = 2
 
 
 class OrgMutationService:
@@ -154,19 +159,39 @@ class OrgMutationService:
 
     # ── Internal helpers ──────────────────────────────────────
 
+    async def _read_setting_versioned(
+        self,
+        namespace: str,
+        key: str,
+    ) -> tuple[str, str]:
+        """Read a setting value and its ``updated_at`` for CAS.
+
+        Returns:
+            ``(value, updated_at)`` tuple, or ``("", "")`` if
+            the setting has no DB override.
+        """
+        return await self._settings.get_versioned(namespace, key)
+
     async def _read_departments(self) -> tuple[Department, ...]:
         return await self._resolver.get_departments()
 
     async def _write_departments(
         self,
         departments: tuple[Department, ...],
+        *,
+        expected_updated_at: str | None = None,
     ) -> None:
-        """Serialise and persist the department list."""
+        """Serialise and persist the department list with CAS."""
         payload = json.dumps(
             [d.model_dump(mode="json") for d in departments],
             separators=(",", ":"),
         )
-        await self._settings.set("company", "departments", payload)
+        await self._settings.set(
+            "company",
+            "departments",
+            payload,
+            expected_updated_at=expected_updated_at,
+        )
 
     async def _read_agents(self) -> tuple[AgentConfig, ...]:
         return await self._resolver.get_agents()
@@ -174,13 +199,20 @@ class OrgMutationService:
     async def _write_agents(
         self,
         agents: tuple[AgentConfig, ...],
+        *,
+        expected_updated_at: str | None = None,
     ) -> None:
-        """Serialise and persist the agent list."""
+        """Serialise and persist the agent list with CAS."""
         payload = json.dumps(
             [a.model_dump(mode="json") for a in agents],
             separators=(",", ":"),
         )
-        await self._settings.set("company", "agents", payload)
+        await self._settings.set(
+            "company",
+            "agents",
+            payload,
+            expected_updated_at=expected_updated_at,
+        )
 
     def _find_department(
         self,
@@ -193,6 +225,24 @@ class OrgMutationService:
             if dept.name.lower() == lower:
                 return dept
         return None
+
+    @staticmethod
+    def _collect_department_updates(
+        data: UpdateDepartmentRequest,
+    ) -> dict[str, Any]:
+        """Extract set fields from an update request."""
+        updates: dict[str, Any] = {}
+        if "head" in data.model_fields_set:
+            updates["head"] = data.head
+        if "budget_percent" in data.model_fields_set:
+            updates["budget_percent"] = data.budget_percent
+        if "autonomy_level" in data.model_fields_set:
+            updates["autonomy_level"] = data.autonomy_level
+        if "teams" in data.model_fields_set:
+            updates["teams"] = tuple(data.teams) if data.teams else ()
+        if "ceremony_policy" in data.model_fields_set:
+            updates["ceremony_policy"] = data.ceremony_policy
+        return updates
 
     def _find_agent(
         self,
@@ -287,47 +337,86 @@ class OrgMutationService:
         Returns:
             Tuple of (updated fields dict, new ETag for full snapshot).
         """
-        updated: dict[str, Any] = {}
-        async with _org_lock:
-            if if_match:
-                cur_etag = await self._company_snapshot_etag()
-                check_if_match(if_match, cur_etag, "company")
+        for attempt in range(_MAX_CAS_ATTEMPTS):
+            try:
+                if if_match:
+                    cur_etag = await self._company_snapshot_etag()
+                    check_if_match(if_match, cur_etag, "company")
 
-            if data.company_name is not None:
-                await self._settings.set(
-                    "company",
-                    "company_name",
-                    data.company_name,
+                updated = await self._apply_company_scalars(data)
+                new_etag = await self._company_snapshot_etag()
+                if "budget_monthly" in updated:
+                    await self._snapshot_budget_config(saved_by=saved_by)
+                await self._snapshot_company(saved_by=saved_by)
+                break
+            except VersionConflictError:
+                if attempt == _MAX_CAS_ATTEMPTS - 1:
+                    logger.warning(
+                        API_CONCURRENCY_CONFLICT,
+                        resource="org_mutation",
+                        attempts=_MAX_CAS_ATTEMPTS,
+                    )
+                    raise
+                logger.debug(
+                    API_CONCURRENCY_CONFLICT,
+                    resource="org_mutation",
+                    attempt=attempt + 1,
+                    max_attempts=_MAX_CAS_ATTEMPTS,
                 )
-                updated["company_name"] = data.company_name
-            if data.autonomy_level is not None:
-                await self._settings.set(
-                    "company",
-                    "autonomy_level",
-                    data.autonomy_level.value,
-                )
-                updated["autonomy_level"] = data.autonomy_level.value
-            if data.budget_monthly is not None:
-                await self._settings.set(
-                    "company",
-                    "total_monthly",
-                    str(data.budget_monthly),
-                )
-                updated["budget_monthly"] = data.budget_monthly
-            if data.communication_pattern is not None:
-                await self._settings.set(
-                    "company",
-                    "communication_pattern",
-                    data.communication_pattern,
-                )
-                updated["communication_pattern"] = data.communication_pattern
-            # Compute new ETag from full snapshot while still under lock.
-            new_etag = await self._company_snapshot_etag()
-            if "budget_monthly" in updated:
-                await self._snapshot_budget_config(saved_by=saved_by)
-            await self._snapshot_company(saved_by=saved_by)
+                continue
         logger.info(API_COMPANY_UPDATED, fields=list(updated.keys()))
         return updated, new_etag
+
+    async def _apply_company_scalars(
+        self,
+        data: UpdateCompanyRequest,
+    ) -> dict[str, Any]:
+        """Write each company scalar with CAS protection."""
+        updated: dict[str, Any] = {}
+        if data.company_name is not None:
+            await self._set_versioned(
+                "company",
+                "company_name",
+                data.company_name,
+            )
+            updated["company_name"] = data.company_name
+        if data.autonomy_level is not None:
+            await self._set_versioned(
+                "company",
+                "autonomy_level",
+                data.autonomy_level.value,
+            )
+            updated["autonomy_level"] = data.autonomy_level.value
+        if data.budget_monthly is not None:
+            await self._set_versioned(
+                "company",
+                "total_monthly",
+                str(data.budget_monthly),
+            )
+            updated["budget_monthly"] = data.budget_monthly
+        if data.communication_pattern is not None:
+            await self._set_versioned(
+                "company",
+                "communication_pattern",
+                data.communication_pattern,
+            )
+            updated["communication_pattern"] = data.communication_pattern
+        return updated
+
+    async def _set_versioned(
+        self,
+        namespace: str,
+        key: str,
+        value: str,
+    ) -> None:
+        """Read version then write with CAS in one step."""
+        _, version = await self._read_setting_versioned(namespace, key)
+        await self._settings.set(
+            namespace,
+            key,
+            value,
+            expected_updated_at=version,
+        )
 
     # ── Departments ───────────────────────────────────────────
 
@@ -349,23 +438,51 @@ class OrgMutationService:
         Raises:
             ConflictError: If a department with the same name exists.
         """
-        async with _org_lock:
-            departments = await self._read_departments()
-            if self._find_department(departments, data.name):
-                msg = f"Department {data.name!r} already exists"
-                logger.warning(API_RESOURCE_CONFLICT, reason=msg, department=data.name)
-                raise ConflictError(msg)
+        for attempt in range(_MAX_CAS_ATTEMPTS):
+            try:
+                _, version = await self._read_setting_versioned(
+                    "company",
+                    "departments",
+                )
+                departments = await self._read_departments()
+                if self._find_department(departments, data.name):
+                    msg = f"Department {data.name!r} already exists"
+                    logger.warning(
+                        API_RESOURCE_CONFLICT,
+                        reason=msg,
+                        department=data.name,
+                    )
+                    raise ConflictError(msg)
 
-            dept = Department(
-                name=data.name,
-                head=data.head,
-                budget_percent=data.budget_percent,
-                autonomy_level=data.autonomy_level,
-            )
-            new_departments = (*departments, dept)
-            self._check_budget_sum(new_departments)
-            await self._write_departments(new_departments)
-            await self._snapshot_company(saved_by=saved_by)
+                dept = Department(
+                    name=data.name,
+                    head=data.head,
+                    budget_percent=data.budget_percent,
+                    autonomy_level=data.autonomy_level,
+                )
+                new_departments = (*departments, dept)
+                self._check_budget_sum(new_departments)
+                await self._write_departments(
+                    new_departments,
+                    expected_updated_at=version,
+                )
+                await self._snapshot_company(saved_by=saved_by)
+                break
+            except VersionConflictError:
+                if attempt == _MAX_CAS_ATTEMPTS - 1:
+                    logger.warning(
+                        API_CONCURRENCY_CONFLICT,
+                        resource="org_mutation",
+                        attempts=_MAX_CAS_ATTEMPTS,
+                    )
+                    raise
+                logger.debug(
+                    API_CONCURRENCY_CONFLICT,
+                    resource="org_mutation",
+                    attempt=attempt + 1,
+                    max_attempts=_MAX_CAS_ATTEMPTS,
+                )
+                continue
 
         logger.info(
             API_DEPARTMENT_CREATED,
@@ -396,37 +513,62 @@ class OrgMutationService:
         Raises:
             NotFoundError: If the department does not exist.
         """
-        async with _org_lock:
-            departments = await self._read_departments()
-            existing = self._find_department(departments, name)
-            if existing is None:
-                msg = f"Department {name!r} not found"
-                logger.warning(API_RESOURCE_NOT_FOUND, reason=msg, department=name)
-                raise NotFoundError(msg)
+        for attempt in range(_MAX_CAS_ATTEMPTS):
+            try:
+                _, version = await self._read_setting_versioned(
+                    "company",
+                    "departments",
+                )
+                departments = await self._read_departments()
+                existing = self._find_department(departments, name)
+                if existing is None:
+                    msg = f"Department {name!r} not found"
+                    logger.warning(
+                        API_RESOURCE_NOT_FOUND,
+                        reason=msg,
+                        department=name,
+                    )
+                    raise NotFoundError(msg)
 
-            if if_match:
-                cur = json.dumps(existing.model_dump(mode="json"), sort_keys=True)
-                check_if_match(if_match, compute_etag(cur, ""), f"department:{name}")
+                if if_match:
+                    cur = json.dumps(
+                        existing.model_dump(mode="json"),
+                        sort_keys=True,
+                    )
+                    check_if_match(
+                        if_match,
+                        compute_etag(cur, ""),
+                        f"department:{name}",
+                    )
 
-            updates: dict[str, Any] = {}
-            if "head" in data.model_fields_set:
-                updates["head"] = data.head
-            if "budget_percent" in data.model_fields_set:
-                updates["budget_percent"] = data.budget_percent
-            if "autonomy_level" in data.model_fields_set:
-                updates["autonomy_level"] = data.autonomy_level
-            if "teams" in data.model_fields_set:
-                updates["teams"] = tuple(data.teams) if data.teams else ()
-            if "ceremony_policy" in data.model_fields_set:
-                updates["ceremony_policy"] = data.ceremony_policy
-
-            updated = existing.model_copy(update=updates, deep=True)
-            new_departments = tuple(
-                updated if d.name.lower() == name.lower() else d for d in departments
-            )
-            self._check_budget_sum(new_departments)
-            await self._write_departments(new_departments)
-            await self._snapshot_company(saved_by=saved_by)
+                updates = self._collect_department_updates(data)
+                updated = existing.model_copy(update=updates, deep=True)
+                new_departments = tuple(
+                    updated if d.name.lower() == name.lower() else d
+                    for d in departments
+                )
+                self._check_budget_sum(new_departments)
+                await self._write_departments(
+                    new_departments,
+                    expected_updated_at=version,
+                )
+                await self._snapshot_company(saved_by=saved_by)
+                break
+            except VersionConflictError:
+                if attempt == _MAX_CAS_ATTEMPTS - 1:
+                    logger.warning(
+                        API_CONCURRENCY_CONFLICT,
+                        resource="org_mutation",
+                        attempts=_MAX_CAS_ATTEMPTS,
+                    )
+                    raise
+                logger.debug(
+                    API_CONCURRENCY_CONFLICT,
+                    resource="org_mutation",
+                    attempt=attempt + 1,
+                    max_attempts=_MAX_CAS_ATTEMPTS,
+                )
+                continue
 
         logger.info(
             API_DEPARTMENT_UPDATED,
@@ -451,35 +593,64 @@ class OrgMutationService:
             NotFoundError: If the department does not exist.
             ConflictError: If the department has agents attached.
         """
-        async with _org_lock:
-            departments = await self._read_departments()
-            existing = self._find_department(departments, name)
-            if existing is None:
-                msg = f"Department {name!r} not found"
-                logger.warning(API_RESOURCE_NOT_FOUND, reason=msg, department=name)
-                raise NotFoundError(msg)
-
-            # Referential integrity: reject if agents are attached
-            agents = await self._read_agents()
-            attached = tuple(a for a in agents if a.department.lower() == name.lower())
-            if attached:
-                msg = (
-                    f"Cannot delete department {name!r}: "
-                    f"{len(attached)} agents attached"
+        for attempt in range(_MAX_CAS_ATTEMPTS):
+            try:
+                _, version = await self._read_setting_versioned(
+                    "company",
+                    "departments",
                 )
-                logger.warning(
-                    API_RESOURCE_CONFLICT,
-                    reason=msg,
-                    department=name,
-                    agent_count=len(attached),
-                )
-                raise ConflictError(msg)
+                departments = await self._read_departments()
+                existing = self._find_department(departments, name)
+                if existing is None:
+                    msg = f"Department {name!r} not found"
+                    logger.warning(
+                        API_RESOURCE_NOT_FOUND,
+                        reason=msg,
+                        department=name,
+                    )
+                    raise NotFoundError(msg)
 
-            new_departments = tuple(
-                d for d in departments if d.name.lower() != name.lower()
-            )
-            await self._write_departments(new_departments)
-            await self._snapshot_company(saved_by=saved_by)
+                agents = await self._read_agents()
+                attached = tuple(
+                    a for a in agents if a.department.lower() == name.lower()
+                )
+                if attached:
+                    msg = (
+                        f"Cannot delete department {name!r}: "
+                        f"{len(attached)} agents attached"
+                    )
+                    logger.warning(
+                        API_RESOURCE_CONFLICT,
+                        reason=msg,
+                        department=name,
+                        agent_count=len(attached),
+                    )
+                    raise ConflictError(msg)
+
+                new_departments = tuple(
+                    d for d in departments if d.name.lower() != name.lower()
+                )
+                await self._write_departments(
+                    new_departments,
+                    expected_updated_at=version,
+                )
+                await self._snapshot_company(saved_by=saved_by)
+                break
+            except VersionConflictError:
+                if attempt == _MAX_CAS_ATTEMPTS - 1:
+                    logger.warning(
+                        API_CONCURRENCY_CONFLICT,
+                        resource="org_mutation",
+                        attempts=_MAX_CAS_ATTEMPTS,
+                    )
+                    raise
+                logger.debug(
+                    API_CONCURRENCY_CONFLICT,
+                    resource="org_mutation",
+                    attempt=attempt + 1,
+                    max_attempts=_MAX_CAS_ATTEMPTS,
+                )
+                continue
 
         logger.info(API_DEPARTMENT_DELETED, department=name)
 
@@ -501,19 +672,45 @@ class OrgMutationService:
         Raises:
             ApiValidationError: If names are not an exact permutation.
         """
-        async with _org_lock:
-            departments = await self._read_departments()
-            current_names = tuple(d.name for d in departments)
-            self._validate_permutation(
-                current_names,
-                data.department_names,
-                "department",
-            )
+        for attempt in range(_MAX_CAS_ATTEMPTS):
+            try:
+                _, version = await self._read_setting_versioned(
+                    "company",
+                    "departments",
+                )
+                departments = await self._read_departments()
+                current_names = tuple(d.name for d in departments)
+                self._validate_permutation(
+                    current_names,
+                    data.department_names,
+                    "department",
+                )
 
-            dept_by_lower = {d.name.lower(): d for d in departments}
-            reordered = tuple(dept_by_lower[n.lower()] for n in data.department_names)
-            await self._write_departments(reordered)
-            await self._snapshot_company(saved_by=saved_by)
+                dept_by_lower = {d.name.lower(): d for d in departments}
+                reordered = tuple(
+                    dept_by_lower[n.lower()] for n in data.department_names
+                )
+                await self._write_departments(
+                    reordered,
+                    expected_updated_at=version,
+                )
+                await self._snapshot_company(saved_by=saved_by)
+                break
+            except VersionConflictError:
+                if attempt == _MAX_CAS_ATTEMPTS - 1:
+                    logger.warning(
+                        API_CONCURRENCY_CONFLICT,
+                        resource="org_mutation",
+                        attempts=_MAX_CAS_ATTEMPTS,
+                    )
+                    raise
+                logger.debug(
+                    API_CONCURRENCY_CONFLICT,
+                    resource="org_mutation",
+                    attempt=attempt + 1,
+                    max_attempts=_MAX_CAS_ATTEMPTS,
+                )
+                continue
 
         logger.info(
             API_DEPARTMENTS_REORDERED,
@@ -526,11 +723,14 @@ class OrgMutationService:
     async def create_agent(
         self,
         data: CreateAgentOrgRequest,
+        *,
+        saved_by: str = "api",
     ) -> AgentConfig:
         """Create a new agent in the org config.
 
         Args:
             data: Agent creation request.
+            saved_by: Actor identity for version snapshot attribution.
 
         Returns:
             The created AgentConfig model.
@@ -539,37 +739,68 @@ class OrgMutationService:
             ApiValidationError: If the department does not exist.
             ConflictError: If an agent with the same name exists.
         """
-        async with _org_lock:
-            departments = await self._read_departments()
-            if not self._find_department(departments, data.department):
-                msg = f"Department {data.department!r} does not exist"
-                logger.warning(
-                    API_VALIDATION_FAILED, reason=msg, department=data.department
+        for attempt in range(_MAX_CAS_ATTEMPTS):
+            try:
+                _, version = await self._read_setting_versioned(
+                    "company",
+                    "agents",
                 )
-                raise ApiValidationError(msg)
+                departments = await self._read_departments()
+                if not self._find_department(departments, data.department):
+                    msg = f"Department {data.department!r} does not exist"
+                    logger.warning(
+                        API_VALIDATION_FAILED,
+                        reason=msg,
+                        department=data.department,
+                    )
+                    raise ApiValidationError(msg)
 
-            agents = await self._read_agents()
-            if self._find_agent(agents, data.name):
-                msg = f"Agent {data.name!r} already exists"
-                logger.warning(API_RESOURCE_CONFLICT, reason=msg, agent=data.name)
-                raise ConflictError(msg)
+                agents = await self._read_agents()
+                if self._find_agent(agents, data.name):
+                    msg = f"Agent {data.name!r} already exists"
+                    logger.warning(
+                        API_RESOURCE_CONFLICT,
+                        reason=msg,
+                        agent=data.name,
+                    )
+                    raise ConflictError(msg)
 
-            model_dict: dict[str, Any] = {}
-            if data.model_provider is not None:
-                model_dict = {
-                    "provider": str(data.model_provider),
-                    "model_id": str(data.model_id),
-                }
+                model_dict: dict[str, Any] = {}
+                if data.model_provider is not None:
+                    model_dict = {
+                        "provider": str(data.model_provider),
+                        "model_id": str(data.model_id),
+                    }
 
-            agent = AgentConfig(
-                name=data.name,
-                role=data.role,
-                department=data.department,
-                level=data.level,
-                model=model_dict,
-            )
-            new_agents = (*agents, agent)
-            await self._write_agents(new_agents)
+                agent = AgentConfig(
+                    name=data.name,
+                    role=data.role,
+                    department=data.department,
+                    level=data.level,
+                    model=model_dict,
+                )
+                new_agents = (*agents, agent)
+                await self._write_agents(
+                    new_agents,
+                    expected_updated_at=version,
+                )
+                await self._snapshot_company(saved_by=saved_by)
+                break
+            except VersionConflictError:
+                if attempt == _MAX_CAS_ATTEMPTS - 1:
+                    logger.warning(
+                        API_CONCURRENCY_CONFLICT,
+                        resource="org_mutation",
+                        attempts=_MAX_CAS_ATTEMPTS,
+                    )
+                    raise
+                logger.debug(
+                    API_CONCURRENCY_CONFLICT,
+                    resource="org_mutation",
+                    attempt=attempt + 1,
+                    max_attempts=_MAX_CAS_ATTEMPTS,
+                )
+                continue
 
         logger.info(
             API_AGENT_CREATED,
@@ -633,6 +864,7 @@ class OrgMutationService:
         data: UpdateAgentOrgRequest,
         *,
         if_match: str | None = None,
+        saved_by: str = "api",
     ) -> AgentConfig:
         """Update an existing agent.
 
@@ -640,6 +872,7 @@ class OrgMutationService:
             name: Current agent name.
             data: Partial update request.
             if_match: If-Match header value for optimistic concurrency.
+            saved_by: Actor identity for version snapshot attribution.
 
         Returns:
             The updated AgentConfig model.
@@ -649,25 +882,65 @@ class OrgMutationService:
             ApiValidationError: If the target department does not exist.
             ConflictError: If an agent with the new name already exists.
         """
-        async with _org_lock:
-            agents = await self._read_agents()
-            existing = self._find_agent(agents, name)
-            if existing is None:
-                msg = f"Agent {name!r} not found"
-                logger.warning(API_RESOURCE_NOT_FOUND, reason=msg, agent=name)
-                raise NotFoundError(msg)
+        for attempt in range(_MAX_CAS_ATTEMPTS):
+            try:
+                _, version = await self._read_setting_versioned(
+                    "company",
+                    "agents",
+                )
+                agents = await self._read_agents()
+                existing = self._find_agent(agents, name)
+                if existing is None:
+                    msg = f"Agent {name!r} not found"
+                    logger.warning(
+                        API_RESOURCE_NOT_FOUND,
+                        reason=msg,
+                        agent=name,
+                    )
+                    raise NotFoundError(msg)
 
-            if if_match:
-                cur = json.dumps(existing.model_dump(mode="json"), sort_keys=True)
-                check_if_match(if_match, compute_etag(cur, ""), f"agent:{name}")
+                if if_match:
+                    cur = json.dumps(
+                        existing.model_dump(mode="json"),
+                        sort_keys=True,
+                    )
+                    check_if_match(
+                        if_match,
+                        compute_etag(cur, ""),
+                        f"agent:{name}",
+                    )
 
-            updates = await self._validate_agent_update(name, data, agents)
+                updates = await self._validate_agent_update(
+                    name,
+                    data,
+                    agents,
+                )
 
-            updated = existing.model_copy(update=updates, deep=True)
-            new_agents = tuple(
-                updated if a.name.lower() == name.lower() else a for a in agents
-            )
-            await self._write_agents(new_agents)
+                updated = existing.model_copy(update=updates, deep=True)
+                new_agents = tuple(
+                    updated if a.name.lower() == name.lower() else a for a in agents
+                )
+                await self._write_agents(
+                    new_agents,
+                    expected_updated_at=version,
+                )
+                await self._snapshot_company(saved_by=saved_by)
+                break
+            except VersionConflictError:
+                if attempt == _MAX_CAS_ATTEMPTS - 1:
+                    logger.warning(
+                        API_CONCURRENCY_CONFLICT,
+                        resource="org_mutation",
+                        attempts=_MAX_CAS_ATTEMPTS,
+                    )
+                    raise
+                logger.debug(
+                    API_CONCURRENCY_CONFLICT,
+                    resource="org_mutation",
+                    attempt=attempt + 1,
+                    max_attempts=_MAX_CAS_ATTEMPTS,
+                )
+                continue
 
         logger.info(
             API_AGENT_UPDATED,
@@ -676,40 +949,72 @@ class OrgMutationService:
         )
         return updated
 
-    async def delete_agent(self, name: str) -> None:
+    async def delete_agent(self, name: str, *, saved_by: str = "api") -> None:
         """Delete an agent from the org config.
 
         Args:
             name: Agent name to delete.
+            saved_by: Actor identity for version snapshot attribution.
 
         Raises:
             NotFoundError: If the agent does not exist.
             ConflictError: If the agent is the CEO (c_suite level).
         """
-        async with _org_lock:
-            agents = await self._read_agents()
-            existing = self._find_agent(agents, name)
-            if existing is None:
-                msg = f"Agent {name!r} not found"
-                logger.warning(API_RESOURCE_NOT_FOUND, reason=msg, agent=name)
-                raise NotFoundError(msg)
-
-            if (
-                existing.level == SeniorityLevel.C_SUITE
-                and existing.role.lower() == "ceo"
-            ):
-                msg = f"Cannot delete CEO agent {name!r} -- reassign or demote first"
-                logger.warning(
-                    API_RESOURCE_CONFLICT,
-                    reason=msg,
-                    agent=name,
-                    level=existing.level.value,
-                    role=existing.role,
+        for attempt in range(_MAX_CAS_ATTEMPTS):
+            try:
+                _, version = await self._read_setting_versioned(
+                    "company",
+                    "agents",
                 )
-                raise ConflictError(msg)
+                agents = await self._read_agents()
+                existing = self._find_agent(agents, name)
+                if existing is None:
+                    msg = f"Agent {name!r} not found"
+                    logger.warning(
+                        API_RESOURCE_NOT_FOUND,
+                        reason=msg,
+                        agent=name,
+                    )
+                    raise NotFoundError(msg)
 
-            new_agents = tuple(a for a in agents if a.name.lower() != name.lower())
-            await self._write_agents(new_agents)
+                if (
+                    existing.level == SeniorityLevel.C_SUITE
+                    and existing.role.lower() == "ceo"
+                ):
+                    msg = (
+                        f"Cannot delete CEO agent {name!r} -- reassign or demote first"
+                    )
+                    logger.warning(
+                        API_RESOURCE_CONFLICT,
+                        reason=msg,
+                        agent=name,
+                        level=existing.level.value,
+                        role=existing.role,
+                    )
+                    raise ConflictError(msg)
+
+                new_agents = tuple(a for a in agents if a.name.lower() != name.lower())
+                await self._write_agents(
+                    new_agents,
+                    expected_updated_at=version,
+                )
+                await self._snapshot_company(saved_by=saved_by)
+                break
+            except VersionConflictError:
+                if attempt == _MAX_CAS_ATTEMPTS - 1:
+                    logger.warning(
+                        API_CONCURRENCY_CONFLICT,
+                        resource="org_mutation",
+                        attempts=_MAX_CAS_ATTEMPTS,
+                    )
+                    raise
+                logger.debug(
+                    API_CONCURRENCY_CONFLICT,
+                    resource="org_mutation",
+                    attempt=attempt + 1,
+                    max_attempts=_MAX_CAS_ATTEMPTS,
+                )
+                continue
 
         logger.info(API_AGENT_DELETED, agent=name)
 
@@ -717,12 +1022,15 @@ class OrgMutationService:
         self,
         dept_name: str,
         data: ReorderAgentsRequest,
+        *,
+        saved_by: str = "api",
     ) -> tuple[AgentConfig, ...]:
         """Reorder agents within a department.
 
         Args:
             dept_name: Department name.
             data: Ordered list of agent names.
+            saved_by: Actor identity for version snapshot attribution.
 
         Returns:
             The reordered agents belonging to the department.
@@ -731,44 +1039,72 @@ class OrgMutationService:
             NotFoundError: If the department does not exist.
             ApiValidationError: If names are not an exact permutation.
         """
-        async with _org_lock:
-            departments = await self._read_departments()
-            if not self._find_department(departments, dept_name):
-                msg = f"Department {dept_name!r} not found"
-                logger.warning(API_RESOURCE_NOT_FOUND, reason=msg, department=dept_name)
-                raise NotFoundError(msg)
+        for attempt in range(_MAX_CAS_ATTEMPTS):
+            try:
+                _, version = await self._read_setting_versioned(
+                    "company",
+                    "agents",
+                )
+                departments = await self._read_departments()
+                if not self._find_department(departments, dept_name):
+                    msg = f"Department {dept_name!r} not found"
+                    logger.warning(
+                        API_RESOURCE_NOT_FOUND,
+                        reason=msg,
+                        department=dept_name,
+                    )
+                    raise NotFoundError(msg)
 
-            agents = await self._read_agents()
-            dept_agents = tuple(
-                a for a in agents if a.department.lower() == dept_name.lower()
-            )
-            current_names = tuple(a.name for a in dept_agents)
-            self._validate_permutation(
-                current_names,
-                data.agent_names,
-                "agent",
-            )
+                agents = await self._read_agents()
+                dept_agents = tuple(
+                    a for a in agents if a.department.lower() == dept_name.lower()
+                )
+                current_names = tuple(a.name for a in dept_agents)
+                self._validate_permutation(
+                    current_names,
+                    data.agent_names,
+                    "agent",
+                )
 
-            agent_by_lower = {a.name.lower(): a for a in dept_agents}
-            reordered_dept = tuple(agent_by_lower[n.lower()] for n in data.agent_names)
+                agent_by_lower = {a.name.lower(): a for a in dept_agents}
+                reordered_dept = tuple(
+                    agent_by_lower[n.lower()] for n in data.agent_names
+                )
 
-            # Rebuild the full agent list preserving non-dept agent order.
-            # Insert reordered dept agents at the position of the first
-            # dept agent in the original list.
-            new_agents: list[AgentConfig] = []
-            dept_inserted = False
-            dept_lower = dept_name.lower()
-            for a in agents:
-                if a.department.lower() == dept_lower:
-                    if not dept_inserted:
-                        new_agents.extend(reordered_dept)
-                        dept_inserted = True
-                else:
-                    new_agents.append(a)
-            if not dept_inserted:
-                new_agents.extend(reordered_dept)
+                new_agents: list[AgentConfig] = []
+                dept_inserted = False
+                dept_lower = dept_name.lower()
+                for a in agents:
+                    if a.department.lower() == dept_lower:
+                        if not dept_inserted:
+                            new_agents.extend(reordered_dept)
+                            dept_inserted = True
+                    else:
+                        new_agents.append(a)
+                if not dept_inserted:
+                    new_agents.extend(reordered_dept)
 
-            await self._write_agents(tuple(new_agents))
+                await self._write_agents(
+                    tuple(new_agents),
+                    expected_updated_at=version,
+                )
+                await self._snapshot_company(saved_by=saved_by)
+                break
+            except VersionConflictError:
+                if attempt == _MAX_CAS_ATTEMPTS - 1:
+                    logger.warning(
+                        API_CONCURRENCY_CONFLICT,
+                        resource="org_mutation",
+                        attempts=_MAX_CAS_ATTEMPTS,
+                    )
+                    raise
+                logger.debug(
+                    API_CONCURRENCY_CONFLICT,
+                    resource="org_mutation",
+                    attempt=attempt + 1,
+                    max_attempts=_MAX_CAS_ATTEMPTS,
+                )
+                continue
 
         logger.info(
             API_AGENTS_REORDERED,

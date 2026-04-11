@@ -695,6 +695,61 @@ company_b_backend = create_backend(company_b_config.persistence)
     and migrate. Implementation details (data migration tooling, zero-downtime switchover,
     connection draining) are deferred to the PostgreSQL backend implementation.
 
+### Optional Repository Capability Extensions
+
+Some features are meaningful only for specific backends. The persistence layer exposes these
+via **optional, runtime-checkable Protocol extensions** that concrete repositories may implement
+without polluting the core `PersistenceBackend` protocol. SQLite-only or Postgres-only features
+belong here.
+
+**Pattern:**
+
+1. Define a new `@runtime_checkable` `Protocol` in `synthorg/persistence/<feature>_capability.py`.
+2. The Postgres repository implements the protocol by adding the required methods to its class;
+   the SQLite repository simply does not implement them.
+3. Call sites use `isinstance(repo, MyCapability)` before invoking the extension methods, and
+   either skip the feature or raise `HTTP 422` (`ClientException(status_code=422, ...)`) when the
+   active backend doesn't support it.
+4. All user-facing parameters (column names, path expressions) are validated against an
+   allowlist or regex before being woven into SQL. Value-side parameters are always passed via
+   psycopg placeholders, never interpolated.
+
+**Reference implementation:** `JsonbQueryCapability` in
+`src/synthorg/persistence/jsonb_capability.py` exposes `query_jsonb_contains`,
+`query_jsonb_key_exists`, and `query_jsonb_path_equals` methods on `PostgresAuditRepository`.
+These use the GIN-indexed `@>`, `?`, and `->>` JSONB operators on `audit_entries.matched_rules`.
+The audit search endpoint checks capability via `isinstance` and returns `HTTP 422` on SQLite.
+
+This pattern keeps the base `PersistenceBackend` protocol clean while still letting specific
+backends expose their unique strengths. Future capabilities (e.g. full-text search, vector
+similarity, time-series window functions) should follow the same template.
+
+### Database-Enforced Invariants
+
+Critical invariants that cannot be violated under any deployment -- including multi-instance
+Postgres clusters -- are enforced by **database constraint triggers** rather than in-process
+application locks. The triggers are the sole source of truth; the application catches
+constraint violations and maps them to domain errors.
+
+| Invariant | Enforcement mechanism | Postgres object | SQLite object |
+|-----------|----------------------|-----------------|---------------|
+| At most one CEO | Partial unique index | `idx_single_ceo` | `idx_single_ceo` |
+| At least one CEO | `AFTER UPDATE` constraint trigger (deferrable) | `trg_enforce_ceo_minimum` | `enforce_ceo_minimum` (BEFORE UPDATE) |
+| At least one owner | `AFTER UPDATE` constraint trigger (deferrable) | `trg_enforce_owner_minimum` | `enforce_owner_minimum` (BEFORE UPDATE) |
+| Unique username | Column `UNIQUE` constraint | `users_username_key` | `users.username` |
+
+When the repo's `save()` raises a driver exception, `_classify_postgres_user_error` (or
+`_classify_sqlite_user_error`) maps it to a stable constraint token and the repository raises
+`ConstraintViolationError(constraint=<token>)`. The controller matches on the structural token
+rather than parsing DB error messages, so the mapping is stable across driver versions.
+
+Service-layer mutations on the `settings` table (company, departments, agents) use
+**compare-and-swap optimistic concurrency** via the existing `updated_at` column and
+`SettingsRepository.set(expected_updated_at=...)`. Each mutation retries once on
+`VersionConflictError` and raises if the retry also fails. Retry attempts are logged via
+`API_CONCURRENCY_CONFLICT` for observability. This replaces the module-level `asyncio.Lock`
+instances that were only safe within a single process.
+
 ---
 
 ## Procedural Memory Auto-Generation

@@ -74,6 +74,7 @@ jobs:
     if: needs.changes.outputs.python == 'true' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    environment: atlas
     permissions:
       contents: read
     steps:
@@ -82,6 +83,8 @@ jobs:
           persist-credentials: false
 
       - uses: ariga/setup-atlas@2f3c785c89a15e1c0d07bcae3900fb5feb969eea # v0.3
+        with:
+          cloud-token: ${{ secrets.ATLAS_TOKEN }}
 
       - name: Validate migration checksums
         run: atlas migrate validate --dir "file://src/synthorg/persistence/sqlite/revisions" --dev-url "sqlite://file?mode=memory"
@@ -147,9 +150,10 @@ jobs:
     if: needs.changes.outputs.python == 'true' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    environment: ci
     permissions:
       contents: read
+      # Required for tokenless Codecov upload via use_oidc: true.
+      id-token: write
     strategy:
       matrix:
         python-version: ["3.14"]
@@ -175,24 +179,25 @@ jobs:
             --cov-fail-under=80 \
             --junitxml=junit.xml
 
-      # Codecov upload is best-effort -- CI should not fail on Codecov outages
-      # or missing tokens. Coverage enforcement is handled by --cov-fail-under.
+      # Codecov upload is best-effort -- CI should not fail on Codecov outages.
+      # Coverage enforcement is handled by --cov-fail-under. Uses tokenless
+      # OIDC upload for this public repo so no protected secrets are needed.
       - name: Upload coverage to Codecov
         if: ${{ !cancelled() }}
         uses: codecov/codecov-action@57e3a136b779b570ffcdbf80b3bdc90e7fab3de2 # v6.0.0
         with:
-          token: ${{ secrets.CODECOV_TOKEN }}
           files: coverage.xml
           fail_ci_if_error: false
+          use_oidc: true
 
       - name: Upload test results to Codecov
         if: ${{ !cancelled() }}
         uses: codecov/codecov-action@57e3a136b779b570ffcdbf80b3bdc90e7fab3de2 # v6.0.0
         with:
-          token: ${{ secrets.CODECOV_TOKEN }}
           files: junit.xml
           fail_ci_if_error: false
           report_type: test_results
+          use_oidc: true
 
       - name: Upload test results
         if: ${{ !cancelled() }}

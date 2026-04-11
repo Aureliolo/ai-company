@@ -42,7 +42,45 @@ from synthorg.observability.events.persistence import (
     PERSISTENCE_USER_SAVE_FAILED,
     PERSISTENCE_USER_SAVED,
 )
-from synthorg.persistence.errors import QueryError
+from synthorg.persistence.constraint_tokens import (
+    IDX_SINGLE_CEO,
+    LAST_CEO_TRIGGER,
+    LAST_OWNER_TRIGGER,
+    USERS_USERNAME_UNIQUE,
+)
+from synthorg.persistence.errors import ConstraintViolationError, QueryError
+
+_PG_CONSTRAINT_MAP: dict[str, str] = {
+    "idx_single_ceo": IDX_SINGLE_CEO,
+    "users_username_key": USERS_USERNAME_UNIQUE,
+}
+
+_PG_MESSAGE_MAP: tuple[tuple[str, str], ...] = (
+    ("cannot remove the last ceo", LAST_CEO_TRIGGER),
+    ("cannot remove the last owner", LAST_OWNER_TRIGGER),
+    ("users_username_key", USERS_USERNAME_UNIQUE),
+    ("users.username", USERS_USERNAME_UNIQUE),
+    ("idx_single_ceo", IDX_SINGLE_CEO),
+)
+
+
+def _classify_postgres_user_error(exc: psycopg.Error) -> str | None:
+    """Map a psycopg error on the ``users`` table to a stable token.
+
+    Postgres exposes the constraint name via ``exc.diag.constraint_name``
+    for unique/foreign-key violations.  For trigger-raised exceptions
+    the constraint name is usually empty, so we fall back to matching
+    the error message against our known trigger messages.
+    """
+    constraint = getattr(getattr(exc, "diag", None), "constraint_name", "") or ""
+    if constraint in _PG_CONSTRAINT_MAP:
+        return _PG_CONSTRAINT_MAP[constraint]
+    message = str(exc).lower()
+    for token, classified in _PG_MESSAGE_MAP:
+        if token in message:
+            return classified
+    return None
+
 
 if TYPE_CHECKING:
     from psycopg_pool import AsyncConnectionPool
@@ -119,6 +157,12 @@ class PostgresUserRepository:
             logger.exception(
                 PERSISTENCE_USER_SAVE_FAILED, user_id=user.id, error=str(exc)
             )
+            constraint = _classify_postgres_user_error(exc)
+            if constraint is not None:
+                raise ConstraintViolationError(
+                    msg,
+                    constraint=constraint,
+                ) from exc
             raise QueryError(msg) from exc
         logger.info(PERSISTENCE_USER_SAVED, user_id=user.id)
 
@@ -254,6 +298,19 @@ class PostgresUserRepository:
                 deleted = cur.rowcount > 0
                 await conn.commit()
         except psycopg.Error as exc:
+            constraint = _classify_postgres_user_error(exc)
+            if constraint:
+                msg = f"Failed to delete user {user_id!r}"
+                logger.warning(
+                    PERSISTENCE_USER_DELETE_FAILED,
+                    user_id=user_id,
+                    constraint=constraint,
+                    exc_info=True,
+                )
+                raise ConstraintViolationError(
+                    msg,
+                    constraint=constraint,
+                ) from exc
             msg = f"Failed to delete user {user_id!r}"
             logger.exception(
                 PERSISTENCE_USER_DELETE_FAILED, user_id=user_id, error=str(exc)

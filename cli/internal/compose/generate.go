@@ -5,6 +5,7 @@ import (
 	"bytes"
 	_ "embed"
 	"fmt"
+	"net/url"
 	"regexp"
 	"strings"
 	"text/template"
@@ -46,6 +47,8 @@ type Params struct {
 	MemoryBackend      string
 	BusBackend         string
 	TelemetryOptIn     bool
+	PostgresPort       int
+	PostgresPassword   string
 	DigestPins         map[string]string // image name suffix → digest (e.g. "backend" → "sha256:abc...")
 }
 
@@ -74,7 +77,14 @@ func ParamsFromState(s config.State) Params {
 		MemoryBackend:      s.MemoryBackend,
 		BusBackend:         busBackend,
 		TelemetryOptIn:     s.TelemetryOptIn,
+		PostgresPort:       s.PostgresPort,
+		PostgresPassword:   s.PostgresPassword,
 	}
+}
+
+// PostgresEnabled reports whether the Postgres persistence backend is active.
+func (p Params) PostgresEnabled() bool {
+	return p.PersistenceBackend == "postgres"
 }
 
 // DistributedEnabled reports whether the distributed runtime profile is
@@ -94,6 +104,8 @@ func Generate(p Params) ([]byte, error) {
 		"yamlStr":            yamlStr,
 		"digestPin":          digestPin(p.DigestPins),
 		"distributedEnabled": p.DistributedEnabled,
+		"postgresEnabled":    p.PostgresEnabled,
+		"pgDSN":              func() string { return pgDSN(p) },
 	}
 
 	tmpl, err := template.New("compose").Funcs(funcMap).Parse(composeTmpl)
@@ -141,8 +153,30 @@ func validateParams(p Params) error {
 	if p.BusBackend != "" && !config.IsValidBusBackend(p.BusBackend) {
 		return fmt.Errorf("invalid bus backend %q: must be one of %s", p.BusBackend, config.BusBackendNames())
 	}
-	if p.DistributedEnabled() && (p.NatsClientPort < 1 || p.NatsClientPort > 65535) {
-		return fmt.Errorf("invalid nats client port %d: must be 1-65535", p.NatsClientPort)
+	if p.DistributedEnabled() {
+		if p.NatsClientPort < 1 || p.NatsClientPort > 65535 {
+			return fmt.Errorf("invalid nats client port %d: must be 1-65535", p.NatsClientPort)
+		}
+		if p.NatsClientPort == p.BackendPort || p.NatsClientPort == p.WebPort {
+			return fmt.Errorf("nats client port %d collides with another service port", p.NatsClientPort)
+		}
+	}
+	if p.PostgresEnabled() {
+		if p.PostgresPort < 1 || p.PostgresPort > 65535 {
+			return fmt.Errorf("invalid postgres port %d: must be 1-65535", p.PostgresPort)
+		}
+		if p.PostgresPort == p.BackendPort || p.PostgresPort == p.WebPort {
+			return fmt.Errorf("postgres port %d collides with another service port", p.PostgresPort)
+		}
+		if p.DistributedEnabled() && p.PostgresPort == p.NatsClientPort {
+			return fmt.Errorf("postgres port %d collides with nats client port %d", p.PostgresPort, p.NatsClientPort)
+		}
+		if strings.TrimSpace(p.PostgresPassword) == "" {
+			return fmt.Errorf("postgres password is required when persistence backend is postgres")
+		}
+		if len(p.PostgresPassword) < 32 {
+			return fmt.Errorf("postgres password must be >= 32 characters, got %d", len(p.PostgresPassword))
+		}
 	}
 	// Cross-validate secrets: if one is set, both must be set.
 	// Both-empty is valid for development/testing (template omits env vars).
@@ -160,6 +194,21 @@ func validateParams(p Params) error {
 		}
 	}
 	return nil
+}
+
+// pgDSN builds a properly percent-encoded PostgreSQL connection string.
+// Uses url.UserPassword for userinfo encoding per RFC 3986 section 3.2.1.
+func pgDSN(p Params) string {
+	if !p.PostgresEnabled() || p.PostgresPassword == "" {
+		return ""
+	}
+	u := &url.URL{
+		Scheme: "postgresql",
+		User:   url.UserPassword("synthorg", p.PostgresPassword),
+		Host:   "postgres:5432",
+		Path:   "/synthorg",
+	}
+	return u.String()
 }
 
 // digestPin returns a template function that resolves an image name to either

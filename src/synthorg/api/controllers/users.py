@@ -1,6 +1,5 @@
 """User management controller -- CEO-only CRUD for human users."""
 
-import asyncio
 import uuid
 from datetime import UTC, datetime
 from typing import Any
@@ -29,7 +28,13 @@ from synthorg.observability.events.api import (
     API_USER_UPDATED,
     API_VALIDATION_FAILED,
 )
-from synthorg.persistence.errors import QueryError
+from synthorg.persistence.constraint_tokens import (
+    IDX_SINGLE_CEO,
+    LAST_CEO_TRIGGER,
+    LAST_OWNER_TRIGGER,
+    USERS_USERNAME_UNIQUE,
+)
+from synthorg.persistence.errors import ConstraintViolationError, QueryError
 
 logger = get_logger(__name__)
 
@@ -38,9 +43,6 @@ _MIN_PASSWORD_LENGTH: int = AuthConfig.model_fields["min_password_length"].defau
 
 # Roles that cannot be assigned via the user management API.
 _FORBIDDEN_ROLES: frozenset[HumanRole] = frozenset({HumanRole.SYSTEM})
-
-# Serializes CEO uniqueness check-then-act sequences.
-_CEO_LOCK = asyncio.Lock()
 
 
 # -- Request / Response DTOs -------------------------------------------
@@ -126,56 +128,6 @@ async def _get_user_or_404(
     return user
 
 
-async def _validate_ceo_create(app_state: AppState) -> None:
-    """Reject creation of a second CEO."""
-    ceo_count = await app_state.persistence.users.count_by_role(
-        HumanRole.CEO,
-    )
-    if ceo_count > 0:
-        msg = "A CEO user already exists"
-        logger.warning(API_RESOURCE_CONFLICT, reason=msg)
-        raise ConflictError(msg)
-
-
-async def _validate_username_unique(
-    app_state: AppState,
-    username: str,
-) -> None:
-    """Reject duplicate usernames."""
-    existing = await app_state.persistence.users.get_by_username(username)
-    if existing is not None:
-        msg = f"Username already taken: {username}"
-        logger.warning(API_RESOURCE_CONFLICT, reason=msg)
-        raise ConflictError(msg)
-
-
-async def _validate_role_change(
-    app_state: AppState,
-    user: User,
-    new_role: HumanRole,
-) -> None:
-    """Validate CEO-related constraints on role changes."""
-    # Prevent removing the only CEO
-    if user.role == HumanRole.CEO and new_role != HumanRole.CEO:
-        ceo_count = await app_state.persistence.users.count_by_role(
-            HumanRole.CEO,
-        )
-        if ceo_count <= 1:
-            msg = "Cannot change the only CEO's role"
-            logger.warning(API_RESOURCE_CONFLICT, reason=msg)
-            raise ConflictError(msg)
-
-    # Prevent creating a second CEO
-    if new_role == HumanRole.CEO and user.role != HumanRole.CEO:
-        ceo_count = await app_state.persistence.users.count_by_role(
-            HumanRole.CEO,
-        )
-        if ceo_count > 0:
-            msg = "A CEO user already exists"
-            logger.warning(API_RESOURCE_CONFLICT, reason=msg)
-            raise ConflictError(msg)
-
-
 # -- Controller --------------------------------------------------------
 
 
@@ -219,35 +171,45 @@ class UserController(Controller):
             logger.warning(API_VALIDATION_FAILED, reason=msg)
             raise ApiValidationError(msg)
 
-        async with _CEO_LOCK:
-            if data.role == HumanRole.CEO:
-                await _validate_ceo_create(app_state)
-
-            await _validate_username_unique(app_state, data.username)
-
-            now = datetime.now(UTC)
-            password_hash = await app_state.auth_service.hash_password_async(
-                data.password,
+        now = datetime.now(UTC)
+        password_hash = await app_state.auth_service.hash_password_async(
+            data.password,
+        )
+        user = User(
+            id=str(uuid.uuid4()),
+            username=data.username,
+            password_hash=password_hash,
+            role=data.role,
+            must_change_password=True,
+            created_at=now,
+            updated_at=now,
+        )
+        try:
+            await app_state.persistence.users.save(user)
+        except ConstraintViolationError as exc:
+            if exc.constraint == USERS_USERNAME_UNIQUE:
+                msg = f"Username already taken: {data.username}"
+            elif exc.constraint == IDX_SINGLE_CEO:
+                msg = "A CEO user already exists"
+            else:
+                logger.error(
+                    API_USER_SAVE_FAILED,
+                    user_id=user.id,
+                    intent="create_user",
+                    constraint=exc.constraint,
+                    exc_info=True,
+                )
+                raise
+            logger.warning(API_RESOURCE_CONFLICT, reason=msg)
+            raise ConflictError(msg) from exc
+        except QueryError:
+            logger.error(
+                API_USER_SAVE_FAILED,
+                user_id=user.id,
+                intent="create_user",
+                exc_info=True,
             )
-            user = User(
-                id=str(uuid.uuid4()),
-                username=data.username,
-                password_hash=password_hash,
-                role=data.role,
-                must_change_password=True,
-                created_at=now,
-                updated_at=now,
-            )
-            try:
-                await app_state.persistence.users.save(user)
-            except QueryError as exc:
-                cause = str(exc.__cause__) if exc.__cause__ else ""
-                if "users.username" in cause:
-                    msg = f"Username already taken: {data.username}"
-                else:
-                    msg = "A CEO user already exists"
-                logger.warning(API_RESOURCE_CONFLICT, reason=msg)
-                raise ConflictError(msg) from exc
+            raise
 
         logger.info(
             API_USER_CREATED,
@@ -332,19 +294,36 @@ class UserController(Controller):
             logger.warning(API_RESOURCE_CONFLICT, reason=msg)
             raise ConflictError(msg)
 
-        async with _CEO_LOCK:
-            await _validate_role_change(app_state, user, data.role)
-
-            now = datetime.now(UTC)
-            updated = user.model_copy(
-                update={"role": data.role, "updated_at": now},
-            )
-            try:
-                await app_state.persistence.users.save(updated)
-            except QueryError as exc:
+        now = datetime.now(UTC)
+        updated = user.model_copy(
+            update={"role": data.role, "updated_at": now},
+        )
+        try:
+            await app_state.persistence.users.save(updated)
+        except ConstraintViolationError as exc:
+            if exc.constraint == LAST_CEO_TRIGGER:
+                msg = "Cannot change the only CEO's role"
+            elif exc.constraint == IDX_SINGLE_CEO:
                 msg = "A CEO user already exists"
-                logger.warning(API_RESOURCE_CONFLICT, reason=msg)
-                raise ConflictError(msg) from exc
+            else:
+                logger.error(
+                    API_USER_SAVE_FAILED,
+                    user_id=user.id,
+                    intent="update_user_role",
+                    constraint=exc.constraint,
+                    exc_info=True,
+                )
+                raise
+            logger.warning(API_RESOURCE_CONFLICT, reason=msg)
+            raise ConflictError(msg) from exc
+        except QueryError:
+            logger.error(
+                API_USER_SAVE_FAILED,
+                user_id=user.id,
+                intent="update_user_role",
+                exc_info=True,
+            )
+            raise
 
         logger.info(
             API_USER_UPDATED,
@@ -393,7 +372,32 @@ class UserController(Controller):
             logger.warning(API_RESOURCE_CONFLICT, reason=msg)
             raise ConflictError(msg)
 
-        deleted = await app_state.persistence.users.delete(user_id)
+        try:
+            deleted = await app_state.persistence.users.delete(user_id)
+        except ConstraintViolationError as exc:
+            if exc.constraint == LAST_OWNER_TRIGGER:
+                msg = "Cannot delete the last owner"
+            elif exc.constraint == LAST_CEO_TRIGGER:
+                msg = "Cannot delete the last CEO"
+            else:
+                logger.error(
+                    API_USER_SAVE_FAILED,
+                    user_id=user_id,
+                    intent="delete_user",
+                    constraint=exc.constraint,
+                    exc_info=True,
+                )
+                raise
+            logger.warning(API_RESOURCE_CONFLICT, reason=msg)
+            raise ConflictError(msg) from exc
+        except QueryError:
+            logger.error(
+                API_USER_SAVE_FAILED,
+                user_id=user_id,
+                intent="delete_user",
+                exc_info=True,
+            )
+            raise
         if not deleted:
             msg = f"User not found: {user_id}"
             logger.warning(API_RESOURCE_NOT_FOUND, reason=msg)
@@ -430,60 +434,71 @@ class UserController(Controller):
             ApiValidationError: If department_admin without departments.
         """
         app_state: AppState = state.app_state
-        async with _CEO_LOCK:
-            user = await _get_user_or_404(app_state, user_id)
+        user = await _get_user_or_404(app_state, user_id)
 
-            if user.role == HumanRole.SYSTEM:
-                msg = "Cannot assign org roles to the system user"
-                logger.warning(API_VALIDATION_FAILED, reason=msg)
-                raise ApiValidationError(msg)
+        if user.role == HumanRole.SYSTEM:
+            msg = "Cannot assign org roles to the system user"
+            logger.warning(API_VALIDATION_FAILED, reason=msg)
+            raise ApiValidationError(msg)
 
-            existing_roles = set(user.org_roles)
-            if data.role in existing_roles:
-                msg = f"User already has role: {data.role.value}"
+        existing_roles = set(user.org_roles)
+        if data.role in existing_roles:
+            msg = f"User already has role: {data.role.value}"
+            logger.warning(API_RESOURCE_CONFLICT, reason=msg)
+            raise ConflictError(msg)
+
+        if data.role == OrgRole.DEPARTMENT_ADMIN and not data.scoped_departments:
+            msg = "department_admin role requires scoped_departments"
+            logger.warning(API_VALIDATION_FAILED, reason=msg)
+            raise ApiValidationError(msg)
+        if data.role != OrgRole.DEPARTMENT_ADMIN and data.scoped_departments:
+            msg = "scoped_departments can only be set for department_admin"
+            logger.warning(API_VALIDATION_FAILED, reason=msg)
+            raise ApiValidationError(msg)
+
+        new_roles = (*user.org_roles, data.role)
+        new_scoped = (
+            tuple(
+                sorted(
+                    dict.fromkeys([*user.scoped_departments, *data.scoped_departments]),
+                )
+            )
+            if data.role == OrgRole.DEPARTMENT_ADMIN
+            else user.scoped_departments
+        )
+        now = datetime.now(UTC)
+        updated = user.model_copy(
+            update={
+                "org_roles": new_roles,
+                "scoped_departments": new_scoped,
+                "updated_at": now,
+            },
+        )
+        try:
+            await app_state.persistence.users.save(updated)
+        except ConstraintViolationError as exc:
+            if exc.constraint == LAST_OWNER_TRIGGER:
+                msg = "Cannot modify the last owner"
                 logger.warning(API_RESOURCE_CONFLICT, reason=msg)
-                raise ConflictError(msg)
-
-            if data.role == OrgRole.DEPARTMENT_ADMIN and not data.scoped_departments:
-                msg = "department_admin role requires scoped_departments"
-                logger.warning(API_VALIDATION_FAILED, reason=msg)
-                raise ApiValidationError(msg)
-            if data.role != OrgRole.DEPARTMENT_ADMIN and data.scoped_departments:
-                msg = "scoped_departments can only be set for department_admin"
-                logger.warning(API_VALIDATION_FAILED, reason=msg)
-                raise ApiValidationError(msg)
-
-            new_roles = (*user.org_roles, data.role)
-            new_scoped = (
-                tuple(
-                    sorted(
-                        dict.fromkeys(
-                            [*user.scoped_departments, *data.scoped_departments]
-                        ),
-                    )
-                )
-                if data.role == OrgRole.DEPARTMENT_ADMIN
-                else user.scoped_departments
+                raise ConflictError(msg) from exc
+            logger.error(
+                API_USER_SAVE_FAILED,
+                user_id=user.id,
+                intent="grant_org_role",
+                role=data.role.value,
+                constraint=exc.constraint,
+                exc_info=True,
             )
-            now = datetime.now(UTC)
-            updated = user.model_copy(
-                update={
-                    "org_roles": new_roles,
-                    "scoped_departments": new_scoped,
-                    "updated_at": now,
-                },
+            raise
+        except QueryError:
+            logger.error(
+                API_USER_SAVE_FAILED,
+                user_id=user.id,
+                intent="grant_org_role",
+                role=data.role.value,
+                exc_info=True,
             )
-            try:
-                await app_state.persistence.users.save(updated)
-            except QueryError:
-                logger.error(
-                    API_USER_SAVE_FAILED,
-                    user_id=user.id,
-                    intent="grant_org_role",
-                    role=data.role.value,
-                    exc_info=True,
-                )
-                raise
+            raise
         logger.info(
             API_USER_UPDATED,
             user_id=user.id,
@@ -521,45 +536,49 @@ class UserController(Controller):
             logger.warning(API_VALIDATION_FAILED, reason=msg)
             raise ApiValidationError(msg) from None
 
-        async with _CEO_LOCK:
-            user = await _get_user_or_404(app_state, user_id)
+        user = await _get_user_or_404(app_state, user_id)
 
-            if org_role not in user.org_roles:
-                msg = f"User does not have role: {role}"
-                logger.warning(API_RESOURCE_NOT_FOUND, reason=msg)
-                raise NotFoundError(msg)
+        if org_role not in user.org_roles:
+            msg = f"User does not have role: {role}"
+            logger.warning(API_RESOURCE_NOT_FOUND, reason=msg)
+            raise NotFoundError(msg)
 
-            # Prevent revoking the last owner
-            if org_role == OrgRole.OWNER:
-                all_users = await app_state.persistence.users.list_users()
-                owner_count = sum(1 for u in all_users if OrgRole.OWNER in u.org_roles)
-                if owner_count <= 1:
-                    msg = "Cannot revoke the last owner role"
-                    logger.warning(API_RESOURCE_CONFLICT, reason=msg)
-                    raise ConflictError(msg)
-
-            new_roles = tuple(r for r in user.org_roles if r != org_role)
-            now = datetime.now(UTC)
-            updated = user.model_copy(
-                update={
-                    "org_roles": new_roles,
-                    "scoped_departments": ()
-                    if org_role == OrgRole.DEPARTMENT_ADMIN
-                    else user.scoped_departments,
-                    "updated_at": now,
-                },
+        new_roles = tuple(r for r in user.org_roles if r != org_role)
+        now = datetime.now(UTC)
+        updated = user.model_copy(
+            update={
+                "org_roles": new_roles,
+                "scoped_departments": ()
+                if org_role == OrgRole.DEPARTMENT_ADMIN
+                else user.scoped_departments,
+                "updated_at": now,
+            },
+        )
+        try:
+            await app_state.persistence.users.save(updated)
+        except ConstraintViolationError as exc:
+            if exc.constraint == LAST_OWNER_TRIGGER:
+                msg = "Cannot revoke the last owner role"
+                logger.warning(API_RESOURCE_CONFLICT, reason=msg)
+                raise ConflictError(msg) from exc
+            logger.error(
+                API_USER_SAVE_FAILED,
+                user_id=user.id,
+                intent="revoke_org_role",
+                role=role,
+                constraint=exc.constraint,
+                exc_info=True,
             )
-            try:
-                await app_state.persistence.users.save(updated)
-            except QueryError:
-                logger.error(
-                    API_USER_SAVE_FAILED,
-                    user_id=user.id,
-                    intent="revoke_org_role",
-                    role=role,
-                    exc_info=True,
-                )
-                raise
+            raise
+        except QueryError:
+            logger.error(
+                API_USER_SAVE_FAILED,
+                user_id=user.id,
+                intent="revoke_org_role",
+                role=role,
+                exc_info=True,
+            )
+            raise
         logger.info(
             API_USER_UPDATED,
             user_id=user.id,

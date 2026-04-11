@@ -180,7 +180,7 @@ func TestLoadRejectsInvalidBackends(t *testing.T) {
 	}{
 		{"empty persistence", "", "mem0"},
 		{"empty memory", "sqlite", ""},
-		{"unknown persistence", "postgres", "mem0"},
+		{"unknown persistence", "mysql", "mem0"},
 		{"unknown memory", "sqlite", "redis"},
 		{"both empty", "", ""},
 	}

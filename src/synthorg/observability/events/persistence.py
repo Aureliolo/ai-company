@@ -122,6 +122,7 @@ PERSISTENCE_AUDIT_ENTRY_QUERY_FAILED: Final[str] = (
 PERSISTENCE_AUDIT_ENTRY_DESERIALIZE_FAILED: Final[str] = (
     "persistence.audit_entry.deserialize_failed"
 )
+PERSISTENCE_JSONB_PATH_INVALID: Final[str] = "persistence.jsonb.path_invalid"
 
 # Decision record events
 PERSISTENCE_DECISION_RECORD_SAVED: Final[str] = "persistence.decision_record.saved"

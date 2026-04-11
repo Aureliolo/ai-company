@@ -19,13 +19,15 @@ import (
 )
 
 var (
-	initBackendPort int
-	initWebPort     int
-	initSandbox     string
-	initImageTag    string
-	initChannel     string
-	initLogLevel    string
-	initBusBackend  string
+	initBackendPort        int
+	initWebPort            int
+	initSandbox            string
+	initImageTag           string
+	initChannel            string
+	initLogLevel           string
+	initBusBackend         string
+	initPersistenceBackend string
+	initPostgresPort       int
 )
 
 var initCmd = &cobra.Command{
@@ -48,6 +50,8 @@ func init() {
 	initCmd.Flags().StringVar(&initChannel, "channel", "", "update channel (\"stable\" or \"dev\")")
 	initCmd.Flags().StringVar(&initLogLevel, "log-level", "", "log level (\"debug\", \"info\", \"warn\", \"error\")")
 	initCmd.Flags().StringVar(&initBusBackend, "bus-backend", "", "message bus backend (\"internal\" or \"nats\"; defaults to \"internal\")")
+	initCmd.Flags().StringVar(&initPersistenceBackend, "persistence-backend", "", "persistence backend (\"sqlite\" or \"postgres\"; defaults to \"sqlite\")")
+	initCmd.Flags().IntVar(&initPostgresPort, "postgres-port", 0, "postgres port when --persistence-backend=postgres (1-65535, default 3002)")
 	initCmd.GroupID = "core"
 	rootCmd.AddCommand(initCmd)
 }
@@ -66,7 +70,7 @@ func runInit(cmd *cobra.Command, _ []string) error {
 	opts := GetGlobalOpts(cmd.Context())
 	out := ui.NewUIWithOptions(cmd.OutOrStdout(), opts.UIOptions())
 
-	if err := validateInitFlags(); err != nil {
+	if err := validateInitFlags(opts.DataDir); err != nil {
 		return err
 	}
 	var answers setupAnswers
@@ -131,6 +135,9 @@ func handleReinit(cmd *cobra.Command, state *config.State, opts *GlobalOpts) (bo
 		if oldState.SettingsKey != "" {
 			state.SettingsKey = oldState.SettingsKey
 		}
+		if err := preservePostgresFromOldState(cmd, state, oldState); err != nil {
+			return false, err
+		}
 		return true, nil
 	}
 	if !isInteractive() {
@@ -147,7 +154,65 @@ func handleReinit(cmd *cobra.Command, state *config.State, opts *GlobalOpts) (bo
 	if *kept != "" {
 		state.SettingsKey = *kept
 	}
+	if err := preservePostgresFromOldState(cmd, state, oldState); err != nil {
+		return false, err
+	}
 	return true, nil
+}
+
+// preservePostgresFromOldState carries forward Postgres password and port
+// across a re-init. The decision is gated on the PERSISTED backend, not the
+// new state's backend, so that omitting --persistence-backend on an existing
+// Postgres deployment keeps the old settings. Explicit flags always win:
+//
+//   - If the user passed --persistence-backend with a non-postgres value,
+//     the new backend takes effect and Postgres fields are cleared.
+//   - If the user did not pass --persistence-backend, the new state inherits
+//     the persisted backend (and its Postgres settings) when the old config
+//     was already Postgres.
+//   - --postgres-port is always honored when explicitly set, otherwise the
+//     persisted port is carried over.
+func preservePostgresFromOldState(
+	cmd *cobra.Command,
+	state *config.State,
+	oldState config.State,
+) error {
+	backendFlagSet := cmd.Flags().Changed("persistence-backend")
+	// If the user didn't change the backend and the old one was postgres,
+	// inherit the old backend so the rest of the block applies.
+	if !backendFlagSet && oldState.PersistenceBackend == "postgres" {
+		state.PersistenceBackend = "postgres"
+	}
+	if state.PersistenceBackend != "postgres" {
+		// Not a postgres deployment (either user switched away, or this
+		// install was never postgres) -- clear any leaked postgres fields.
+		state.PostgresPassword = ""
+		state.PostgresPort = 0
+		return nil
+	}
+	if oldState.PostgresPassword != "" {
+		state.PostgresPassword = oldState.PostgresPassword
+	}
+	if oldState.PostgresPort != 0 && !cmd.Flags().Changed("postgres-port") {
+		state.PostgresPort = oldState.PostgresPort
+	}
+	// Re-validate the (possibly preserved) port against the new backend/web
+	// ports: re-init can introduce a conflict if the user changed
+	// --backend-port or --web-port to collide with the persisted postgres
+	// port.
+	if state.PostgresPort == state.BackendPort {
+		return fmt.Errorf(
+			"postgres port %d (from existing config) conflicts with backend port %d",
+			state.PostgresPort, state.BackendPort,
+		)
+	}
+	if state.PostgresPort == state.WebPort {
+		return fmt.Errorf(
+			"postgres port %d (from existing config) conflicts with web port %d",
+			state.PostgresPort, state.WebPort,
+		)
+	}
+	return nil
 }
 
 // confirmReinit prompts the user to confirm overwriting existing config.
@@ -195,6 +260,7 @@ type setupAnswers struct {
 	persistenceBackend string
 	memoryBackend      string
 	busBackend         string
+	postgresPort       int    // 0 = use DefaultState.PostgresPort (3002)
 	channel            string // optional override (empty = default "stable")
 	imageTag           string // optional override (empty = use CLI version)
 	telemetryOptIn     bool
@@ -202,7 +268,7 @@ type setupAnswers struct {
 
 // validateInitFlags checks that provided CLI flag values are valid before
 // the interactive/non-interactive branch. Only validates flags that were set.
-func validateInitFlags() error {
+func validateInitFlags(dataDir string) error {
 	if initBackendPort != 0 && (initBackendPort < 1 || initBackendPort > 65535) {
 		return fmt.Errorf("invalid --backend-port %d: must be 1-65535", initBackendPort)
 	}
@@ -226,6 +292,46 @@ func validateInitFlags() error {
 	}
 	if initBusBackend != "" && !config.IsValidBusBackend(initBusBackend) {
 		return fmt.Errorf("invalid --bus-backend %q: must be one of %s", initBusBackend, config.BusBackendNames())
+	}
+	if initPersistenceBackend != "" && !config.IsValidPersistenceBackend(initPersistenceBackend) {
+		return fmt.Errorf("invalid --persistence-backend %q: must be one of %s", initPersistenceBackend, config.PersistenceBackendNames())
+	}
+	if initPostgresPort != 0 {
+		// --postgres-port only applies when postgres is the effective backend.
+		// Resolution order: (1) explicit --persistence-backend flag wins,
+		// (2) during re-init the persisted backend from dataDir wins,
+		// (3) otherwise the State default (sqlite).
+		effectiveBackend := initPersistenceBackend
+		if effectiveBackend == "" && dataDir != "" {
+			if oldState, err := config.Load(dataDir); err == nil {
+				effectiveBackend = oldState.PersistenceBackend
+			}
+		}
+		if effectiveBackend == "" {
+			effectiveBackend = config.DefaultState().PersistenceBackend
+		}
+		if effectiveBackend != "postgres" {
+			return fmt.Errorf(
+				"--postgres-port %d is only valid with --persistence-backend postgres "+
+					"(current effective backend: %q)",
+				initPostgresPort, effectiveBackend,
+			)
+		}
+		if initPostgresPort < 1 || initPostgresPort > 65535 {
+			return fmt.Errorf("invalid --postgres-port %d: must be 1-65535", initPostgresPort)
+		}
+		if initBackendPort != 0 && initPostgresPort == initBackendPort {
+			return fmt.Errorf(
+				"invalid --postgres-port %d: conflicts with --backend-port %d",
+				initPostgresPort, initBackendPort,
+			)
+		}
+		if initWebPort != 0 && initPostgresPort == initWebPort {
+			return fmt.Errorf(
+				"invalid --postgres-port %d: conflicts with --web-port %d",
+				initPostgresPort, initWebPort,
+			)
+		}
 	}
 	return nil
 }
@@ -253,6 +359,12 @@ func applyFlagOverrides(a *setupAnswers) {
 	if initBusBackend != "" {
 		a.busBackend = initBusBackend
 	}
+	if initPersistenceBackend != "" {
+		a.persistenceBackend = initPersistenceBackend
+	}
+	if initPostgresPort > 0 {
+		a.postgresPort = initPostgresPort
+	}
 }
 
 // buildAnswersFromFlags constructs setupAnswers from CLI flags for non-interactive mode.
@@ -262,6 +374,14 @@ func buildAnswersFromFlags(dataDir string) setupAnswers {
 	if busBackend == "" {
 		busBackend = defaults.BusBackend
 	}
+	persistenceBackend := initPersistenceBackend
+	if persistenceBackend == "" {
+		persistenceBackend = defaults.PersistenceBackend
+	}
+	postgresPort := initPostgresPort
+	if postgresPort == 0 {
+		postgresPort = defaults.PostgresPort
+	}
 	a := setupAnswers{
 		dir:                dataDir,
 		backendPortStr:     strconv.Itoa(initBackendPort),
@@ -269,9 +389,10 @@ func buildAnswersFromFlags(dataDir string) setupAnswers {
 		sandbox:            initSandbox == "true",
 		dockerSock:         defaultDockerSock(),
 		logLevel:           initLogLevel,
-		persistenceBackend: defaults.PersistenceBackend,
+		persistenceBackend: persistenceBackend,
 		memoryBackend:      defaults.MemoryBackend,
 		busBackend:         busBackend,
+		postgresPort:       postgresPort,
 		channel:            initChannel,
 		imageTag:           initImageTag,
 	}
@@ -296,6 +417,7 @@ func runSetupFormWithOverrides(cmd *cobra.Command, resolvedDataDir string) (setu
 		persistenceBackend: defaults.PersistenceBackend,
 		memoryBackend:      defaults.MemoryBackend,
 		busBackend:         defaults.BusBackend,
+		postgresPort:       defaults.PostgresPort,
 	}
 
 	applyFlagOverrides(&a)
@@ -406,6 +528,41 @@ func buildState(a setupAnswers) (config.State, error) {
 	if busBackend == "" {
 		busBackend = "internal"
 	}
+
+	// Postgres-only fields stay at zero values for other backends so
+	// sqlite configs don't serialize postgres_port / postgres_password.
+	var (
+		postgresPort     int
+		postgresPassword string
+	)
+	if a.persistenceBackend == "postgres" {
+		postgresPort = a.postgresPort
+		if postgresPort == 0 {
+			postgresPort = config.DefaultState().PostgresPort
+		}
+		// Validate the RESOLVED port against backend/web ports. The CLI-flag
+		// check in validateInitFlags only fires when --postgres-port is
+		// explicit; the default 3002 can still collide if the user set
+		// --backend-port 3002 (or similar).
+		if postgresPort == backendPort {
+			return config.State{}, fmt.Errorf(
+				"postgres port %d conflicts with backend port %d",
+				postgresPort, backendPort,
+			)
+		}
+		if postgresPort == webPort {
+			return config.State{}, fmt.Errorf(
+				"postgres port %d conflicts with web port %d",
+				postgresPort, webPort,
+			)
+		}
+		pw, err := compose.GeneratePassword(32)
+		if err != nil {
+			return config.State{}, fmt.Errorf("generating postgres password: %w", err)
+		}
+		postgresPassword = pw
+	}
+
 	return config.State{
 		DataDir:            dir,
 		ImageTag:           imageTag,
@@ -420,6 +577,8 @@ func buildState(a setupAnswers) (config.State, error) {
 		PersistenceBackend: a.persistenceBackend,
 		MemoryBackend:      a.memoryBackend,
 		BusBackend:         busBackend,
+		PostgresPort:       postgresPort,
+		PostgresPassword:   postgresPassword,
 		TelemetryOptIn:     a.telemetryOptIn,
 	}, nil
 }

@@ -8,10 +8,14 @@
 # migrations per PR make review harder and pollute the release history.
 #
 # Algorithm:
-#   1. Ensure origin/main is fetched.
-#   2. Count new `.sql` files added under src/synthorg/persistence/sqlite/revisions/
-#      on HEAD that do not exist on origin/main.
-#   3. Fail if the count is greater than 1.
+#   1. Resolve the PR base branch dynamically: BASE_BRANCH env var wins, then
+#      GITHUB_BASE_REF (set by GitHub Actions on PR events), falling back to
+#      origin/main for local ad-hoc runs. This lets hotfix / release-branch PRs
+#      use their real base instead of always comparing against main.
+#   2. Ensure the resolved base ref is fetched (or fail in CI / skip locally).
+#   3. Count new `.sql` files added under src/synthorg/persistence/sqlite/revisions/
+#      on HEAD that do not exist on the resolved base branch.
+#   4. Fail if the count is greater than 1.
 #
 # The script runs on every commit (pre-commit stage) and every push (pre-push
 # stage). On the `main` branch itself the check is skipped (main never adds
@@ -31,10 +35,38 @@ fi
 
 REVISIONS_DIR="src/synthorg/persistence/sqlite/revisions"
 
-# Use existing origin/main ref when available; only fetch as a fallback.
-if ! git show-ref --verify --quiet refs/remotes/origin/main; then
-    if ! git fetch origin main --quiet 2>/dev/null; then
-        echo "check_single_migration_per_pr: origin/main is unavailable; skipping local check." >&2
+# Resolve the PR base branch. Precedence: BASE_BRANCH > GITHUB_BASE_REF >
+# origin/main. CI sets GITHUB_BASE_REF to a bare branch name; local callers
+# may set BASE_BRANCH to anything (bare, origin/<name>, or refs/heads/<name>).
+BASE_RAW="${BASE_BRANCH:-${GITHUB_BASE_REF:-origin/main}}"
+
+# Normalize to a remote-tracking form like "origin/<branch>". Only explicit
+# refs/remotes/ inputs are treated as already-qualified; everything else
+# (bare names, refs/heads/*, refs/*) gets the origin/ prefix, so namespaced
+# branches like "release/1.2" stay on origin. Users on non-origin remotes
+# must pass the full "refs/remotes/<remote>/<branch>" form.
+case "$BASE_RAW" in
+    refs/remotes/*)     BASE="${BASE_RAW#refs/remotes/}" ;;
+    refs/heads/*)       BASE="origin/${BASE_RAW#refs/heads/}" ;;
+    refs/*)             BASE="origin/${BASE_RAW#refs/}" ;;
+    origin/*)           BASE="$BASE_RAW" ;;
+    *)                  BASE="origin/$BASE_RAW" ;;
+esac
+# BRANCH_ONLY is the part after the remote name, used for git fetch.
+BRANCH_ONLY="${BASE#*/}"
+REMOTE_NAME="${BASE%%/*}"
+FETCH_TARGET="$BRANCH_ONLY"
+
+# Ensure the base ref exists locally; only fetch as a fallback.
+if ! git show-ref --verify --quiet "refs/remotes/$BASE" \
+    && ! git rev-parse --verify --quiet "$BASE" >/dev/null; then
+    if ! git fetch "$REMOTE_NAME" "$FETCH_TARGET" --quiet 2>/dev/null; then
+        # In CI a missing base branch is a hard failure; locally it's a skip.
+        if [ -n "${GITHUB_BASE_REF:-}" ]; then
+            echo "check_single_migration_per_pr: CI base branch $BASE is unavailable; cannot validate migrations." >&2
+            exit 1
+        fi
+        echo "check_single_migration_per_pr: $BASE is unavailable; skipping local check." >&2
         exit 0
     fi
 fi
@@ -45,12 +77,12 @@ while IFS= read -r line; do
     HEAD_FILES+=("$line")
 done < <(git ls-files --cached -- "$REVISIONS_DIR/*.sql" 2>/dev/null || true)
 
-# For each file on HEAD, check whether it exists on origin/main. If it does
-# not, it is a new migration added by this PR.
+# For each file on HEAD, check whether it exists on the base branch. If it
+# does not, it is a new migration added by this PR.
 NEW_COUNT=0
 NEW_FILES=()
 for f in "${HEAD_FILES[@]}"; do
-    if ! git cat-file -e "origin/main:${f}" 2>/dev/null; then
+    if ! git cat-file -e "${BASE}:${f}" 2>/dev/null; then
         NEW_COUNT=$((NEW_COUNT + 1))
         NEW_FILES+=("$f")
     fi
@@ -66,15 +98,14 @@ if [ "$NEW_COUNT" -gt 1 ]; then
         echo "  - $f" >&2
     done
     echo "" >&2
-    echo "To fix: delete all but the most recent in-progress migration, then" >&2
-    echo "re-generate a single consolidated migration:" >&2
+    echo "To fix: restore atlas.sum from the base branch, delete all PR" >&2
+    echo "migration files, then regenerate a single consolidated migration:" >&2
     echo "" >&2
-    echo "  1. rm src/synthorg/persistence/sqlite/revisions/<older_migration>.sql" >&2
-    echo "  2. Manually remove its line from src/synthorg/persistence/sqlite/revisions/atlas.sum" >&2
-    echo "  3. rm the newest in-progress migration as well" >&2
-    echo "  4. atlas migrate diff --env sqlite <name>" >&2
+    echo "  1. git restore --source='$BASE' -- '$REVISIONS_DIR/atlas.sum'" >&2
+    echo "  2. rm '$REVISIONS_DIR/<all_pr_migration_files>.sql'" >&2
+    echo "  3. atlas migrate diff --env sqlite <name>" >&2
     echo "" >&2
-    echo "This leaves the PR with exactly one clean migration file." >&2
+    echo "Do NOT manually edit atlas.sum -- always restore from the base branch." >&2
     exit 2
 fi
 

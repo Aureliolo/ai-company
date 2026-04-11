@@ -28,6 +28,8 @@ type State struct {
 	MemoryBackend      string            `json:"memory_backend"`
 	BusBackend         string            `json:"bus_backend"`
 	NatsClientPort     int               `json:"nats_client_port,omitempty"`
+	PostgresPort       int               `json:"postgres_port,omitempty"`
+	PostgresPassword   string            `json:"postgres_password,omitempty"`
 	AutoCleanup        bool              `json:"auto_cleanup"`
 	VerifiedDigests    map[string]string `json:"verified_digests,omitempty"`
 
@@ -54,7 +56,7 @@ type State struct {
 //
 // Host port layout (contiguous with existing services):
 //
-//	3000 web / 3001 backend / 3002 reserved for future DB backend / 3003 NATS client.
+//	3000 web / 3001 backend / 3002 postgres / 3003 NATS client.
 func DefaultState() State {
 	return State{
 		DataDir:            DataDir(),
@@ -68,6 +70,7 @@ func DefaultState() State {
 		MemoryBackend:      "mem0",
 		BusBackend:         "internal",
 		NatsClientPort:     3003,
+		PostgresPort:       3002,
 	}
 }
 
@@ -126,7 +129,7 @@ func Load(dataDir string) (State, error) {
 	return s, nil
 }
 
-var validPersistenceBackends = map[string]bool{"sqlite": true}
+var validPersistenceBackends = map[string]bool{"sqlite": true, "postgres": true}
 var validMemoryBackends = map[string]bool{"mem0": true}
 var validBusBackends = map[string]bool{"internal": true, "nats": true}
 var validChannels = map[string]bool{"stable": true, "dev": true}
@@ -258,6 +261,17 @@ func (s State) validate() error {
 	}
 	if s.Hints != "" && !IsValidHintsMode(s.Hints) {
 		return fmt.Errorf("invalid hints %q: must be one of %s", s.Hints, HintsModeNames())
+	}
+	if s.PersistenceBackend == "postgres" {
+		if s.PostgresPort < 1 || s.PostgresPort > 65535 {
+			return fmt.Errorf("invalid postgres_port %d: must be 1-65535", s.PostgresPort)
+		}
+		if strings.TrimSpace(s.PostgresPassword) == "" {
+			return fmt.Errorf("postgres_password is required when persistence_backend is postgres")
+		}
+		if len(s.PostgresPassword) < 32 {
+			return fmt.Errorf("postgres_password must be at least 32 characters, got %d", len(s.PostgresPassword))
+		}
 	}
 	for name, digest := range s.VerifiedDigests {
 		if !isValidDigestFormat(digest) {

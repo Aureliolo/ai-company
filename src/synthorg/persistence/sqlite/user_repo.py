@@ -39,7 +39,37 @@ from synthorg.observability.events.persistence import (
     PERSISTENCE_USER_SAVE_FAILED,
     PERSISTENCE_USER_SAVED,
 )
-from synthorg.persistence.errors import QueryError
+from synthorg.persistence.constraint_tokens import (
+    IDX_SINGLE_CEO,
+    LAST_CEO_TRIGGER,
+    LAST_OWNER_TRIGGER,
+    USERS_USERNAME_UNIQUE,
+)
+from synthorg.persistence.errors import ConstraintViolationError, QueryError
+
+
+def _classify_sqlite_user_error(message: str) -> str | None:
+    """Map a SQLite error message on the ``users`` table to a stable token.
+
+    SQLite doesn't expose constraint names in its error objects, so
+    this function inspects the message once and returns a stable
+    identifier.  Callers should match on the return value rather than
+    re-parsing the raw error string.
+
+    Returns ``None`` when the message does not match any of the
+    known user-table constraints.
+    """
+    lower = message.lower()
+    if "cannot remove the last ceo" in lower:
+        return LAST_CEO_TRIGGER
+    if "cannot remove the last owner" in lower:
+        return LAST_OWNER_TRIGGER
+    if "unique constraint failed: users.username" in lower:
+        return USERS_USERNAME_UNIQUE
+    if "unique constraint failed: users.role" in lower or "idx_single_ceo" in lower:
+        return IDX_SINGLE_CEO
+    return None
+
 
 logger = get_logger(__name__)
 
@@ -159,6 +189,12 @@ ON CONFLICT(id) DO UPDATE SET
                 user_id=user.id,
                 error=str(exc),
             )
+            constraint = _classify_sqlite_user_error(str(exc))
+            if constraint is not None:
+                raise ConstraintViolationError(
+                    msg,
+                    constraint=constraint,
+                ) from exc
             raise QueryError(msg) from exc
         logger.info(PERSISTENCE_USER_SAVED, user_id=user.id)
 
@@ -359,6 +395,19 @@ ON CONFLICT(id) DO UPDATE SET
             )
             await self._db.commit()
         except (sqlite3.Error, aiosqlite.Error) as exc:
+            constraint = _classify_sqlite_user_error(str(exc))
+            if constraint is not None:
+                msg = f"Failed to delete user {user_id!r}"
+                logger.warning(
+                    PERSISTENCE_USER_DELETE_FAILED,
+                    user_id=user_id,
+                    constraint=constraint,
+                    exc_info=True,
+                )
+                raise ConstraintViolationError(
+                    msg,
+                    constraint=constraint,
+                ) from exc
             msg = f"Failed to delete user {user_id!r}"
             logger.exception(
                 PERSISTENCE_USER_DELETE_FAILED,

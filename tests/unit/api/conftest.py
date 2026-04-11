@@ -5,10 +5,12 @@ from collections.abc import Generator
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
+import argon2
 import pytest
 from litestar import Litestar
 from litestar.testing import TestClient
 
+import synthorg.api.auth.service as _auth_mod
 import synthorg.settings.definitions  # noqa: F401 -- trigger registration
 from synthorg.api.app import create_app
 from synthorg.api.approval_store import ApprovalStore
@@ -57,6 +59,31 @@ _TEST_JWT_SECRET = "test-secret-that-is-at-least-32-characters-long"
 _TEST_SETTINGS_KEY = "lKzZcMznksIF8A_2HFFUnKxhxhz9_bxTvVJoZ6mvZrk="
 _TEST_USER_ID = "test-user-001"
 _TEST_USERNAME = "testadmin"
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _lightweight_argon2_hasher() -> Any:
+    """Replace the production argon2 hasher with a lightweight one.
+
+    The production hasher uses ``memory_cost=65536`` (64 MiB per hash)
+    and ``parallelism=4``.  With 8 xdist workers each creating multiple
+    ``TestClient`` fixtures that hash passwords during user seeding,
+    peak memory reaches several hundred MB and triggers
+    ``argon2.exceptions.HashingError: Memory allocation error``.
+
+    Session-scoped so every worker replaces the module global exactly
+    once and restores it on teardown, avoiding isolation drift.
+    """
+    original = _auth_mod._hasher
+    _auth_mod._hasher = argon2.PasswordHasher(
+        time_cost=1,
+        memory_cost=8,  # 8 KiB instead of 64 MiB
+        parallelism=1,
+        hash_len=32,
+        salt_len=16,
+    )
+    yield
+    _auth_mod._hasher = original
 
 
 @pytest.fixture(autouse=True)

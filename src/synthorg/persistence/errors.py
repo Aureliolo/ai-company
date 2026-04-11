@@ -34,6 +34,21 @@ class QueryError(PersistenceError):
     """Raised when a query fails due to invalid parameters or backend issues."""
 
 
+class ConstraintViolationError(QueryError):
+    """Raised when a DB constraint (unique, check, trigger) is violated.
+
+    Carries a ``constraint`` attribute that identifies the violated
+    constraint by its DB-side name (for Postgres) or by a stable
+    token parsed from the error message (for SQLite).  Callers can
+    check this attribute to map the violation to a domain error
+    without parsing error strings.
+    """
+
+    def __init__(self, message: str, *, constraint: str) -> None:
+        super().__init__(message)
+        self.constraint: str = constraint
+
+
 class VersionConflictError(QueryError):
     """Raised when an optimistic concurrency version check fails."""
 
