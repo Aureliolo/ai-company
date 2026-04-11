@@ -32,7 +32,7 @@ class CompositeScalingGuard:
     @property
     def name(self) -> NotBlankStr:
         """Guard identifier."""
-        return "composite"  # type: ignore[return-value]
+        return "composite"
 
     async def filter(
         self,

@@ -29,7 +29,10 @@ class _AlwaysHireStrategy:
     def action_types(self) -> frozenset[ScalingActionType]:
         return frozenset({ScalingActionType.HIRE})
 
-    async def evaluate(self, context):
+    async def evaluate(
+        self,
+        context: object,
+    ) -> tuple[ScalingDecision, ...]:
         return (
             make_decision(
                 action_type=ScalingActionType.HIRE,
@@ -50,7 +53,10 @@ class _EmptyStrategy:
     def action_types(self) -> frozenset[ScalingActionType]:
         return frozenset()
 
-    async def evaluate(self, context):
+    async def evaluate(
+        self,
+        context: object,
+    ) -> tuple[ScalingDecision, ...]:
         return ()
 
 

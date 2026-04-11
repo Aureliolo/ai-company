@@ -53,7 +53,7 @@ class ApprovalGateGuard:
     @property
     def name(self) -> NotBlankStr:
         """Guard identifier."""
-        return "approval_gate"  # type: ignore[return-value]
+        return "approval_gate"
 
     async def filter(
         self,

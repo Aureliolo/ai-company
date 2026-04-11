@@ -2,7 +2,13 @@
 
 import pytest
 
-from synthorg.hr.scaling.config import ScalingConfig
+from synthorg.hr.scaling.config import (
+    BudgetCapConfig,
+    PerformancePruningConfig,
+    ScalingConfig,
+    SkillGapConfig,
+    WorkloadScalingConfig,
+)
 from synthorg.hr.scaling.factory import (
     create_scaling_context_builder,
     create_scaling_guards,
@@ -23,17 +29,17 @@ class TestCreateScalingStrategies:
 
     def test_all_enabled(self) -> None:
         config = ScalingConfig(
-            skill_gap={"enabled": True},
+            skill_gap=SkillGapConfig(enabled=True),
         )
         strategies = create_scaling_strategies(config)
         assert len(strategies) == 3
 
     def test_all_disabled(self) -> None:
         config = ScalingConfig(
-            workload={"enabled": False},
-            budget_cap={"enabled": False},
-            skill_gap={"enabled": False},
-            performance_pruning={"enabled": False},
+            workload=WorkloadScalingConfig(enabled=False),
+            budget_cap=BudgetCapConfig(enabled=False),
+            skill_gap=SkillGapConfig(enabled=False),
+            performance_pruning=PerformancePruningConfig(enabled=False),
         )
         strategies = create_scaling_strategies(config)
         assert len(strategies) == 0

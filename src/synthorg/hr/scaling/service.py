@@ -6,7 +6,7 @@ guards (sequential) -> execute.
 
 import asyncio
 from collections import deque
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.hr.scaling.enums import (
@@ -88,7 +88,7 @@ class ScalingService:
         self,
         *,
         agent_ids: tuple[NotBlankStr, ...],
-        context_kwargs: dict | None = None,
+        context_kwargs: dict[str, Any] | None = None,
     ) -> tuple[ScalingDecision, ...]:
         """Run the evaluation pipeline.
 

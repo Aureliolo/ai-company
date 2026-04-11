@@ -40,7 +40,7 @@ class CooldownGuard:
     @property
     def name(self) -> NotBlankStr:
         """Guard identifier."""
-        return "cooldown"  # type: ignore[return-value]
+        return "cooldown"
 
     async def filter(
         self,

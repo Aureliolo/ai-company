@@ -1,7 +1,7 @@
 """Scaling context builder -- aggregates signals into a frozen context."""
 
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from synthorg.hr.scaling.models import ScalingContext, ScalingSignal
 from synthorg.observability import get_logger
@@ -48,10 +48,10 @@ class ScalingContextBuilder:
         self,
         *,
         agent_ids: tuple[NotBlankStr, ...],
-        workload_kwargs: dict | None = None,
-        budget_kwargs: dict | None = None,
-        performance_kwargs: dict | None = None,
-        skill_kwargs: dict | None = None,
+        workload_kwargs: dict[str, Any] | None = None,
+        budget_kwargs: dict[str, Any] | None = None,
+        performance_kwargs: dict[str, Any] | None = None,
+        skill_kwargs: dict[str, Any] | None = None,
     ) -> ScalingContext:
         """Build a frozen scaling context from all signal sources.
 

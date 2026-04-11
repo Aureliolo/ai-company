@@ -45,7 +45,7 @@ class RateLimitGuard:
     @property
     def name(self) -> NotBlankStr:
         """Guard identifier."""
-        return "rate_limit"  # type: ignore[return-value]
+        return "rate_limit"
 
     async def filter(
         self,

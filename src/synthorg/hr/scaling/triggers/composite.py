@@ -30,7 +30,7 @@ class CompositeScalingTrigger:
     @property
     def name(self) -> NotBlankStr:
         """Trigger name."""
-        return "composite"  # type: ignore[return-value]
+        return "composite"
 
     async def should_trigger(self) -> bool:
         """Trigger if any child trigger fires."""

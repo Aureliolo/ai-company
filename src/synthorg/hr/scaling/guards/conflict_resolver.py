@@ -47,7 +47,7 @@ class ConflictResolver:
     @property
     def name(self) -> NotBlankStr:
         """Guard identifier."""
-        return "conflict_resolver"  # type: ignore[return-value]
+        return "conflict_resolver"
 
     async def filter(
         self,

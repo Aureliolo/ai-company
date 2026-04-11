@@ -50,7 +50,7 @@ class SignalThresholdTrigger:
     @property
     def name(self) -> NotBlankStr:
         """Trigger name."""
-        return "signal_threshold"  # type: ignore[return-value]
+        return "signal_threshold"
 
     async def should_trigger(self) -> bool:
         """Check whether the signal has crossed the threshold.

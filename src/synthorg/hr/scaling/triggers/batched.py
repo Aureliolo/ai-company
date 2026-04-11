@@ -42,7 +42,7 @@ class BatchedScalingTrigger:
     @property
     def name(self) -> NotBlankStr:
         """Trigger name."""
-        return "batched"  # type: ignore[return-value]
+        return "batched"
 
     async def should_trigger(self) -> bool:
         """Trigger if the interval has elapsed since last run."""
