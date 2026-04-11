@@ -11,6 +11,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.scaling.enums import ScalingStrategyName
 from synthorg.observability import get_logger
+from synthorg.observability.events.hr import HR_SCALING_CONFIG_VALIDATION_FAILED
 
 logger = get_logger(__name__)
 
@@ -51,7 +52,7 @@ class WorkloadScalingConfig(BaseModel):
                 f"must be < hire_threshold ({self.hire_threshold})"
             )
             logger.warning(
-                "hr.scaling.config_validation_failed",
+                HR_SCALING_CONFIG_VALIDATION_FAILED,
                 model="WorkloadScalingConfig",
                 field="threshold_order",
                 prune_threshold=self.prune_threshold,
@@ -97,7 +98,7 @@ class BudgetCapConfig(BaseModel):
                 f"must be < safety_margin ({self.safety_margin})"
             )
             logger.warning(
-                "hr.scaling.config_validation_failed",
+                HR_SCALING_CONFIG_VALIDATION_FAILED,
                 model="BudgetCapConfig",
                 field="margin_order",
                 headroom_fraction=self.headroom_fraction,
@@ -250,7 +251,7 @@ class ScalingConfig(BaseModel):
         if len(self.priority_order) != len(set(self.priority_order)):
             msg = "priority_order must not contain duplicates"
             logger.warning(
-                "hr.scaling.config_validation_failed",
+                HR_SCALING_CONFIG_VALIDATION_FAILED,
                 model="ScalingConfig",
                 field="priority_order",
                 reason="duplicates",

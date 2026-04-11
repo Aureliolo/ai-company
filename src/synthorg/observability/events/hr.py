@@ -85,3 +85,7 @@ HR_SCALING_SIGNAL_COLLECTION_DEGRADED: Final[str] = (
     "hr.scaling.signal_collection_degraded"
 )
 HR_SCALING_MANUAL_TRIGGER_REQUESTED: Final[str] = "hr.scaling.manual_trigger_requested"
+HR_SCALING_CONFIG_VALIDATION_FAILED: Final[str] = "hr.scaling.config_validation_failed"
+HR_SCALING_STRATEGY_VALIDATION_FAILED: Final[str] = (
+    "hr.scaling.strategy_validation_failed"
+)

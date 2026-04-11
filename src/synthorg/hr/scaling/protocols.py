@@ -94,6 +94,14 @@ class ScalingTrigger(Protocol):
         """
         ...
 
+    async def record_run(self) -> None:
+        """Record that an evaluation cycle completed.
+
+        Implementations should reset any in-progress flags or
+        update the last-run timestamp.
+        """
+        ...
+
 
 @runtime_checkable
 class ScalingGuard(Protocol):

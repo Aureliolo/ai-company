@@ -51,11 +51,13 @@ class TestBudgetSignalSource:
         ("used_percent", "alert_level_enum", "expected_alert_value"),
         [
             (30.0, BudgetAlertLevel.NORMAL, 0.0),
+            (70.0, BudgetAlertLevel.WARNING, 1.0),
             (90.0, BudgetAlertLevel.CRITICAL, 2.0),
             (100.0, BudgetAlertLevel.HARD_STOP, 3.0),
         ],
         ids=[
             "normal-alert-level",
+            "warning-alert-level",
             "critical-alert-level",
             "hard-stop-alert-level",
         ],

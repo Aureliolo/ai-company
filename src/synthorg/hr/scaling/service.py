@@ -7,7 +7,6 @@ guards (sequential) -> execute.
 import asyncio
 from collections import deque
 from datetime import UTC, datetime
-from types import MappingProxyType
 from typing import TYPE_CHECKING, Any
 
 from synthorg.core.types import NotBlankStr
@@ -153,17 +152,28 @@ class ScalingService:
         """Check if a strategy is enabled at runtime."""
         return name not in self._disabled_strategies
 
+    async def _check_trigger(self) -> bool:
+        """Check trigger and return True if evaluation should proceed."""
+        if self._trigger is None:
+            return True
+        return await self._trigger.should_trigger()
+
     def update_priority_order(
         self,
         order: tuple[ScalingStrategyName, ...],
     ) -> None:
-        """Update the conflict resolution priority order at runtime."""
+        """Update the conflict resolution priority order at runtime.
+
+        Raises:
+            ValueError: If order contains duplicates.
+        """
+        if len(order) != len(set(order)):
+            msg = "priority_order must not contain duplicates"
+            raise ValueError(msg)
         self._config = self._config.model_copy(
             update={"priority_order": order},
         )
-        priority_map = MappingProxyType(
-            {name.value: idx for idx, name in enumerate(order)},
-        )
+        priority_map = {name.value: idx for idx, name in enumerate(order)}
         guard = self._guard
         if isinstance(guard, CompositeScalingGuard):
             for inner in guard.get_guards():
@@ -190,11 +200,8 @@ class ScalingService:
         if not self._config.enabled:
             return ()
 
-        # 0. Check trigger (when configured).
-        if self._trigger is not None:
-            should = await self._trigger.should_trigger()
-            if not should:
-                return ()
+        if not await self._check_trigger():
+            return ()
 
         logger.info(HR_SCALING_CYCLE_STARTED, agent_count=len(agent_ids))
 
@@ -262,6 +269,11 @@ class ScalingService:
             input_decisions=len(all_decisions),
             output_decisions=len(filtered),
         )
+
+        # 5. Record trigger completion so in-progress flags reset.
+        if self._trigger is not None:
+            await self._trigger.record_run()
+
         return filtered
 
     async def execute_decisions(

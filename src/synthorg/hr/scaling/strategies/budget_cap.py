@@ -11,7 +11,10 @@ from synthorg.core.types import NotBlankStr
 from synthorg.hr.scaling.enums import ScalingActionType, ScalingStrategyName
 from synthorg.hr.scaling.models import ScalingContext, ScalingDecision
 from synthorg.observability import get_logger
-from synthorg.observability.events.hr import HR_SCALING_STRATEGY_EVALUATED
+from synthorg.observability.events.hr import (
+    HR_SCALING_STRATEGY_EVALUATED,
+    HR_SCALING_STRATEGY_VALIDATION_FAILED,
+)
 
 logger = get_logger(__name__)
 
@@ -47,7 +50,7 @@ class BudgetCapStrategy:
         if not 0.0 < safety_margin <= 1.0:
             msg = f"safety_margin must be in (0, 1], got {safety_margin}"
             logger.warning(
-                "hr.scaling.strategy_validation_failed",
+                HR_SCALING_STRATEGY_VALIDATION_FAILED,
                 strategy="BudgetCapStrategy",
                 field="safety_margin",
                 value=safety_margin,
@@ -56,7 +59,7 @@ class BudgetCapStrategy:
         if not 0.0 <= headroom_fraction <= 1.0:
             msg = f"headroom_fraction must be in [0, 1], got {headroom_fraction}"
             logger.warning(
-                "hr.scaling.strategy_validation_failed",
+                HR_SCALING_STRATEGY_VALIDATION_FAILED,
                 strategy="BudgetCapStrategy",
                 field="headroom_fraction",
                 value=headroom_fraction,
@@ -68,7 +71,7 @@ class BudgetCapStrategy:
                 f"must be < safety_margin ({safety_margin})"
             )
             logger.warning(
-                "hr.scaling.strategy_validation_failed",
+                HR_SCALING_STRATEGY_VALIDATION_FAILED,
                 strategy="BudgetCapStrategy",
                 field="margin_order",
                 headroom_fraction=headroom_fraction,

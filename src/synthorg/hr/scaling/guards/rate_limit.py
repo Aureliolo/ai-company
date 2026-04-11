@@ -102,10 +102,15 @@ class RateLimitGuard:
     async def record_action(self, decision: ScalingDecision) -> None:
         """Record that an action was executed for rate tracking.
 
+        Only records actions that have configured limits (HIRE/PRUNE).
+        HOLD and NO_OP are not rate-limited and are ignored.
+
         Args:
             decision: The decision that was executed.
         """
         async with self._lock:
             action = str(decision.action_type)
+            if action not in self._limits:
+                return
             history = self._history.setdefault(action, [])
             history.append(datetime.now(UTC))

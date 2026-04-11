@@ -26,7 +26,7 @@ class TestSignalThresholdTrigger:
 
     async def test_no_crossing_initially(self) -> None:
         trigger = SignalThresholdTrigger(
-            signal_name="utilization",
+            signal_name=NotBlankStr("utilization"),
             threshold=0.85,
             above=True,
         )
@@ -35,9 +35,9 @@ class TestSignalThresholdTrigger:
     @pytest.mark.parametrize(
         ("signal_name", "threshold", "above", "values", "expect_trigger"),
         [
-            ("utilization", 0.85, True, (0.80, 0.90), True),
-            ("utilization", 0.85, True, (0.80, 0.80), False),
-            ("utilization", 0.30, False, (0.40, 0.20), True),
+            (NotBlankStr("utilization"), 0.85, True, (0.80, 0.90), True),
+            (NotBlankStr("utilization"), 0.85, True, (0.80, 0.80), False),
+            (NotBlankStr("utilization"), 0.30, False, (0.40, 0.20), True),
         ],
         ids=[
             "fires-on-above-crossing",
@@ -65,7 +65,7 @@ class TestSignalThresholdTrigger:
 
     async def test_ignores_wrong_signal_name(self) -> None:
         trigger = SignalThresholdTrigger(
-            signal_name="utilization",
+            signal_name=NotBlankStr("utilization"),
             threshold=0.85,
             above=True,
         )
@@ -74,7 +74,7 @@ class TestSignalThresholdTrigger:
 
     async def test_resets_after_trigger(self) -> None:
         trigger = SignalThresholdTrigger(
-            signal_name="utilization",
+            signal_name=NotBlankStr("utilization"),
             threshold=0.85,
             above=True,
         )
@@ -88,7 +88,7 @@ class TestSignalThresholdTrigger:
 
     async def test_no_repeated_firing(self) -> None:
         trigger = SignalThresholdTrigger(
-            signal_name="utilization",
+            signal_name=NotBlankStr("utilization"),
             threshold=0.85,
             above=True,
         )
@@ -102,7 +102,7 @@ class TestSignalThresholdTrigger:
 
     async def test_name_property(self) -> None:
         trigger = SignalThresholdTrigger(
-            signal_name="utilization",
+            signal_name=NotBlankStr("utilization"),
             threshold=0.85,
         )
         assert trigger.name == "signal_threshold"

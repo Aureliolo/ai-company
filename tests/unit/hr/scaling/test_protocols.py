@@ -57,6 +57,9 @@ class _StubTrigger:
     async def should_trigger(self) -> bool:
         return True
 
+    async def record_run(self) -> None:
+        pass
+
 
 class _StubGuard:
     """Minimal implementation satisfying ScalingGuard protocol."""
