@@ -61,6 +61,9 @@ class SecretBackendConfig(BaseModel):
     backend_type: Literal[
         "encrypted_sqlite",
         "env_var",
+        "vault",
+        "aws_secrets_manager",
+        "azure_key_vault",
     ] = "encrypted_sqlite"
     encrypted_sqlite: EncryptedSqliteConfig = Field(
         default_factory=EncryptedSqliteConfig,
