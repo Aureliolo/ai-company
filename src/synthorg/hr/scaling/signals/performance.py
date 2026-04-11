@@ -40,7 +40,7 @@ class PerformanceSignalSource:
         self,
         agent_ids: tuple[NotBlankStr, ...],
         *,
-        snapshots: dict[str, AgentPerformanceSnapshot] | None = None,
+        snapshots: dict[NotBlankStr, AgentPerformanceSnapshot] | None = None,
     ) -> tuple[ScalingSignal, ...]:
         """Collect performance trend signals.
 
@@ -81,8 +81,9 @@ class PerformanceSignalSource:
         declining_count = 0
 
         for agent_id in agent_ids:
-            snapshot = snapshots.get(str(agent_id))
+            snapshot = snapshots.get(agent_id)
             if snapshot is None:
+                trend_values.append(0.0)
                 continue
             quality_trend = next(
                 (t for t in snapshot.trends if t.metric_name == "quality_score"),

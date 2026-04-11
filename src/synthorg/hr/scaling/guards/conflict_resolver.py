@@ -5,7 +5,6 @@ Budget cap HOLD decisions block hires from lower-priority
 strategies.
 """
 
-import copy
 from types import MappingProxyType
 from typing import TYPE_CHECKING
 
@@ -49,12 +48,16 @@ class ConflictResolver:
         priority: dict[str, int] | None = None,
     ) -> None:
         base = DEFAULT_PRIORITY if priority is None else priority
-        self._priority = MappingProxyType(copy.deepcopy(base))
+        self._priority = MappingProxyType(base)
 
     @property
     def name(self) -> NotBlankStr:
         """Guard identifier."""
         return NotBlankStr("conflict_resolver")
+
+    def set_priority(self, priority: MappingProxyType[str, int]) -> None:
+        """Update the priority mapping at runtime."""
+        self._priority = priority
 
     def _priority_for(self, decision: ScalingDecision) -> int:
         """Return the priority rank for a decision's strategy."""

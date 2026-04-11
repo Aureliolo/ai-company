@@ -183,9 +183,23 @@ class ScalingDecision(BaseModel):
         """
         if self.action_type == ScalingActionType.HIRE and self.target_role is None:
             msg = "HIRE decisions must specify target_role"
+            logger.warning(
+                "hr.scaling.model_validation_failed",
+                model="ScalingDecision",
+                field="target_fields",
+                action_type="HIRE",
+                reason="missing_target_role",
+            )
             raise ValueError(msg)
         if self.action_type == ScalingActionType.PRUNE and self.target_agent_id is None:
             msg = "PRUNE decisions must specify target_agent_id"
+            logger.warning(
+                "hr.scaling.model_validation_failed",
+                model="ScalingDecision",
+                field="target_fields",
+                action_type="PRUNE",
+                reason="missing_target_agent_id",
+            )
             raise ValueError(msg)
         return self
 
@@ -232,11 +246,25 @@ class ScalingActionRecord(BaseModel):
         """
         if self.outcome == ScalingOutcome.FAILED and self.reason is None:
             msg = "FAILED records must include reason"
+            logger.warning(
+                "hr.scaling.model_validation_failed",
+                model="ScalingActionRecord",
+                field="outcome_fields",
+                outcome="FAILED",
+                reason="missing_reason",
+            )
             raise ValueError(msg)
         if (
             self.outcome in (ScalingOutcome.EXECUTED, ScalingOutcome.DEFERRED)
             and self.result_id is None
         ):
             msg = f"{self.outcome.value} records must include result_id"
+            logger.warning(
+                "hr.scaling.model_validation_failed",
+                model="ScalingActionRecord",
+                field="outcome_fields",
+                outcome=self.outcome.value,
+                reason="missing_result_id",
+            )
             raise ValueError(msg)
         return self

@@ -50,6 +50,13 @@ class WorkloadScalingConfig(BaseModel):
                 f"prune_threshold ({self.prune_threshold}) "
                 f"must be < hire_threshold ({self.hire_threshold})"
             )
+            logger.warning(
+                "hr.scaling.config_validation_failed",
+                model="WorkloadScalingConfig",
+                field="threshold_order",
+                prune_threshold=self.prune_threshold,
+                hire_threshold=self.hire_threshold,
+            )
             raise ValueError(msg)
         return self
 
@@ -88,6 +95,13 @@ class BudgetCapConfig(BaseModel):
             msg = (
                 f"headroom_fraction ({self.headroom_fraction}) "
                 f"must be < safety_margin ({self.safety_margin})"
+            )
+            logger.warning(
+                "hr.scaling.config_validation_failed",
+                model="BudgetCapConfig",
+                field="margin_order",
+                headroom_fraction=self.headroom_fraction,
+                safety_margin=self.safety_margin,
             )
             raise ValueError(msg)
         return self

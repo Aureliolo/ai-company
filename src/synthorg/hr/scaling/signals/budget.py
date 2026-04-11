@@ -54,13 +54,13 @@ class BudgetSignalSource:
             return (
                 ScalingSignal(
                     name=NotBlankStr("burn_rate_percent"),
-                    value=0.0,
+                    value=100.0,
                     source=_SOURCE_NAME,
                     timestamp=now,
                 ),
                 ScalingSignal(
                     name=NotBlankStr("alert_level"),
-                    value=0.0,
+                    value=3.0,
                     source=_SOURCE_NAME,
                     timestamp=now,
                 ),

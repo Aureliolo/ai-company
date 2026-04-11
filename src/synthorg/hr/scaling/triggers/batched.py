@@ -6,16 +6,13 @@ evaluation cycle.
 
 import asyncio
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING
 
+from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
 from synthorg.observability.events.hr import (
     HR_SCALING_TRIGGER_REQUESTED,
     HR_SCALING_TRIGGER_SKIPPED,
 )
-
-if TYPE_CHECKING:
-    from synthorg.core.types import NotBlankStr
 
 logger = get_logger(__name__)
 
@@ -43,7 +40,7 @@ class BatchedScalingTrigger:
     @property
     def name(self) -> NotBlankStr:
         """Trigger name."""
-        return "batched"
+        return NotBlankStr("batched")
 
     async def should_trigger(self) -> bool:
         """Trigger if the interval has elapsed since last run."""

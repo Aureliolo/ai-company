@@ -96,6 +96,13 @@ class SignalThresholdTrigger:
                 if self._above
                 else signal.value < self._threshold
             )
-            if is_over and not self._previously_over:
+            if self._previously_over is None:
+                # First signal: just initialize the state, don't trigger
+                self._previously_over = is_over
+            elif is_over and not self._previously_over:
+                # Crossing detected: signal transitioned from below to above
                 self._was_crossed = True
-            self._previously_over = is_over
+                self._previously_over = is_over
+            else:
+                # No crossing: just update state
+                self._previously_over = is_over

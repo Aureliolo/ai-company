@@ -43,8 +43,9 @@ class TestBudgetSignalSource:
         source = BudgetSignalSource()
         signals = await source.collect(_AGENT_IDS, summary=None)
         by_name = {s.name: s.value for s in signals}
-        assert by_name["burn_rate_percent"] == 0.0
-        assert by_name["alert_level"] == 0.0
+        # Fail-closed: assume maximum burn and hard-stop alert when summary unavailable
+        assert by_name["burn_rate_percent"] == 100.0
+        assert by_name["alert_level"] == 3.0
 
     async def test_normal_alert_level(self) -> None:
         source = BudgetSignalSource()

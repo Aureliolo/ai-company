@@ -36,6 +36,16 @@ class TestCompositeScalingTrigger:
             signal_name="utilization",
             threshold=0.85,
         )
+        # Initialize with below-threshold signal
+        await threshold.update_signal(
+            ScalingSignal(
+                name=NotBlankStr("utilization"),
+                value=0.80,
+                source=NotBlankStr("test"),
+                timestamp=_NOW,
+            ),
+        )
+        # Cross above threshold
         await threshold.update_signal(
             ScalingSignal(
                 name=NotBlankStr("utilization"),

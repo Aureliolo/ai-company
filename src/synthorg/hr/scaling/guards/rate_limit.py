@@ -36,8 +36,8 @@ class RateLimitGuard:
         max_prunes_per_day: int = 1,
     ) -> None:
         self._limits: dict[str, int] = {
-            ScalingActionType.HIRE: max_hires_per_day,
-            ScalingActionType.PRUNE: max_prunes_per_day,
+            str(ScalingActionType.HIRE): max_hires_per_day,
+            str(ScalingActionType.PRUNE): max_prunes_per_day,
         }
         self._history: dict[str, list[datetime]] = {}
         self._lock = asyncio.Lock()
@@ -63,6 +63,7 @@ class RateLimitGuard:
         cutoff = now.timestamp() - 86400
         result: list[ScalingDecision] = []
         accepted_in_batch: dict[str, int] = {}
+        pruned_actions: set[str] = set()
 
         async with self._lock:
             for decision in decisions:
@@ -73,9 +74,13 @@ class RateLimitGuard:
                     continue
 
                 # Prune old entries once per action type.
-                history = self._history.get(action, [])
-                history = [t for t in history if t.timestamp() > cutoff]
-                self._history[action] = history
+                if action not in pruned_actions:
+                    history = self._history.get(action, [])
+                    history = [t for t in history if t.timestamp() > cutoff]
+                    self._history[action] = history
+                    pruned_actions.add(action)
+                else:
+                    history = self._history.get(action, [])
 
                 used = len(history) + accepted_in_batch.get(action, 0)
                 if used >= limit:

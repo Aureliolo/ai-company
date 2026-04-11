@@ -5,7 +5,6 @@ guards (sequential) -> execute.
 """
 
 import asyncio
-import copy
 from collections import deque
 from datetime import UTC, datetime
 from types import MappingProxyType
@@ -38,6 +37,8 @@ from synthorg.observability.events.hr import (
 )
 
 if TYPE_CHECKING:
+    from typing import Protocol
+
     from synthorg.hr.hiring_service import HiringService
     from synthorg.hr.offboarding_service import OffboardingService
     from synthorg.hr.scaling.config import ScalingConfig
@@ -47,6 +48,14 @@ if TYPE_CHECKING:
         ScalingStrategy,
         ScalingTrigger,
     )
+
+    class AgentLookup(Protocol):
+        """Protocol for agent registry lookups."""
+
+        async def get(self, agent_id: str) -> Any | None:
+            """Retrieve an agent by ID."""
+            ...
+
 
 logger = get_logger(__name__)
 
@@ -105,7 +114,7 @@ class ScalingService:
         config: ScalingConfig,
         hiring_service: HiringService | None = None,
         offboarding_service: OffboardingService | None = None,
-        agent_registry: Any = None,
+        agent_registry: AgentLookup | None = None,
     ) -> None:
         self._strategies = strategies
         self._trigger = trigger
@@ -153,17 +162,15 @@ class ScalingService:
             update={"priority_order": order},
         )
         priority_map = MappingProxyType(
-            copy.deepcopy(
-                {name.value: idx for idx, name in enumerate(order)},
-            ),
+            {name.value: idx for idx, name in enumerate(order)},
         )
         guard = self._guard
         if isinstance(guard, CompositeScalingGuard):
             for inner in guard.get_guards():
                 if isinstance(inner, ConflictResolver):
-                    inner._priority = priority_map  # noqa: SLF001
+                    inner.set_priority(priority_map)
         elif isinstance(guard, ConflictResolver):
-            guard._priority = priority_map  # noqa: SLF001
+            guard.set_priority(priority_map)
 
     async def evaluate(
         self,

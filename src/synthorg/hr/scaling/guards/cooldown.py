@@ -5,14 +5,14 @@ recent same-type action on the same target.
 """
 
 import asyncio
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 
+from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
 from synthorg.observability.events.hr import HR_SCALING_GUARD_APPLIED
 
 if TYPE_CHECKING:
-    from synthorg.core.types import NotBlankStr
     from synthorg.hr.scaling.models import ScalingDecision
 
 logger = get_logger(__name__)
@@ -40,7 +40,7 @@ class CooldownGuard:
     @property
     def name(self) -> NotBlankStr:
         """Guard identifier."""
-        return "cooldown"
+        return NotBlankStr("cooldown")
 
     async def filter(
         self,
@@ -58,6 +58,12 @@ class CooldownGuard:
         result: list[ScalingDecision] = []
 
         async with self._lock:
+            # Prune stale entries before evaluating decisions.
+            cutoff = now - timedelta(seconds=self._cooldown)
+            stale = [k for k, v in self._last_action.items() if v < cutoff]
+            for k in stale:
+                del self._last_action[k]
+
             for decision in decisions:
                 key = self._make_key(decision)
                 last = self._last_action.get(key)

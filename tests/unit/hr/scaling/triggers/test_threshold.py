@@ -38,6 +38,9 @@ class TestSignalThresholdTrigger:
             threshold=0.85,
             above=True,
         )
+        # Initialize with signal below threshold
+        await trigger.update_signal(_make_signal("utilization", 0.80))
+        # Then cross above threshold
         await trigger.update_signal(_make_signal("utilization", 0.90))
         assert await trigger.should_trigger() is True
 
@@ -56,6 +59,9 @@ class TestSignalThresholdTrigger:
             threshold=0.30,
             above=False,
         )
+        # Initialize with signal above threshold
+        await trigger.update_signal(_make_signal("utilization", 0.40))
+        # Then cross below threshold
         await trigger.update_signal(_make_signal("utilization", 0.20))
         assert await trigger.should_trigger() is True
 
@@ -74,6 +80,9 @@ class TestSignalThresholdTrigger:
             threshold=0.85,
             above=True,
         )
+        # Initialize below threshold
+        await trigger.update_signal(_make_signal("utilization", 0.80))
+        # Cross above threshold
         await trigger.update_signal(_make_signal("utilization", 0.90))
         assert await trigger.should_trigger() is True
         # Should not fire again without new crossing.
@@ -85,6 +94,8 @@ class TestSignalThresholdTrigger:
             threshold=0.85,
             above=True,
         )
+        # Initialize below threshold
+        await trigger.update_signal(_make_signal("utilization", 0.80))
         # Multiple updates above threshold should only fire once.
         await trigger.update_signal(_make_signal("utilization", 0.90))
         await trigger.update_signal(_make_signal("utilization", 0.95))

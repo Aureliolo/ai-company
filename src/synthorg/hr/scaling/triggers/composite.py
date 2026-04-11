@@ -2,10 +2,10 @@
 
 from typing import TYPE_CHECKING
 
+from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
 
 if TYPE_CHECKING:
-    from synthorg.core.types import NotBlankStr
     from synthorg.hr.scaling.protocols import ScalingTrigger
 
 
@@ -31,7 +31,7 @@ class CompositeScalingTrigger:
     @property
     def name(self) -> NotBlankStr:
         """Trigger name."""
-        return "composite"
+        return NotBlankStr("composite")
 
     async def should_trigger(self) -> bool:
         """Trigger if any child trigger fires."""

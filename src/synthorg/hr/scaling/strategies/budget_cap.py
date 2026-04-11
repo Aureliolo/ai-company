@@ -46,14 +46,33 @@ class BudgetCapStrategy:
     ) -> None:
         if not 0.0 < safety_margin <= 1.0:
             msg = f"safety_margin must be in (0, 1], got {safety_margin}"
+            logger.warning(
+                "hr.scaling.strategy_validation_failed",
+                strategy="BudgetCapStrategy",
+                field="safety_margin",
+                value=safety_margin,
+            )
             raise ValueError(msg)
         if not 0.0 <= headroom_fraction <= 1.0:
             msg = f"headroom_fraction must be in [0, 1], got {headroom_fraction}"
+            logger.warning(
+                "hr.scaling.strategy_validation_failed",
+                strategy="BudgetCapStrategy",
+                field="headroom_fraction",
+                value=headroom_fraction,
+            )
             raise ValueError(msg)
         if headroom_fraction >= safety_margin:
             msg = (
                 f"headroom_fraction ({headroom_fraction}) "
                 f"must be < safety_margin ({safety_margin})"
+            )
+            logger.warning(
+                "hr.scaling.strategy_validation_failed",
+                strategy="BudgetCapStrategy",
+                field="margin_order",
+                headroom_fraction=headroom_fraction,
+                safety_margin=safety_margin,
             )
             raise ValueError(msg)
         self._safety_margin = safety_margin
