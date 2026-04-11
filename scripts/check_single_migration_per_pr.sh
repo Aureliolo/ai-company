@@ -66,15 +66,14 @@ if [ "$NEW_COUNT" -gt 1 ]; then
         echo "  - $f" >&2
     done
     echo "" >&2
-    echo "To fix: delete all but the most recent in-progress migration, then" >&2
-    echo "re-generate a single consolidated migration:" >&2
+    echo "To fix: restore atlas.sum from the base branch, delete all PR" >&2
+    echo "migration files, then regenerate a single consolidated migration:" >&2
     echo "" >&2
-    echo "  1. rm src/synthorg/persistence/sqlite/revisions/<older_migration>.sql" >&2
-    echo "  2. Manually remove its line from src/synthorg/persistence/sqlite/revisions/atlas.sum" >&2
-    echo "  3. rm the newest in-progress migration as well" >&2
-    echo "  4. atlas migrate diff --env sqlite <name>" >&2
+    echo "  1. git show origin/main:$REVISIONS_DIR/atlas.sum > $REVISIONS_DIR/atlas.sum" >&2
+    echo "  2. rm $REVISIONS_DIR/<all_pr_migration_files>.sql" >&2
+    echo "  3. atlas migrate diff --env sqlite <name>" >&2
     echo "" >&2
-    echo "This leaves the PR with exactly one clean migration file." >&2
+    echo "Do NOT manually edit atlas.sum lines -- always restore from the base branch." >&2
     exit 2
 fi
 

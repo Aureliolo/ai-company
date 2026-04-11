@@ -28,15 +28,13 @@ from synthorg.observability.events.api import (
     API_USER_UPDATED,
     API_VALIDATION_FAILED,
 )
+from synthorg.persistence.constraint_tokens import (
+    IDX_SINGLE_CEO,
+    LAST_CEO_TRIGGER,
+    LAST_OWNER_TRIGGER,
+    USERS_USERNAME_UNIQUE,
+)
 from synthorg.persistence.errors import ConstraintViolationError, QueryError
-
-# Stable constraint tokens returned by the user repositories.  Matches
-# ``_USERS_USERNAME_UNIQUE`` and friends in
-# ``synthorg.persistence.{sqlite,postgres}.user_repo``.
-_USERS_USERNAME_UNIQUE = "users.username"
-_IDX_SINGLE_CEO = "idx_single_ceo"
-_LAST_CEO_TRIGGER = "enforce_ceo_minimum"
-_LAST_OWNER_TRIGGER = "enforce_owner_minimum"
 
 logger = get_logger(__name__)
 
@@ -189,9 +187,9 @@ class UserController(Controller):
         try:
             await app_state.persistence.users.save(user)
         except ConstraintViolationError as exc:
-            if exc.constraint == _USERS_USERNAME_UNIQUE:
+            if exc.constraint == USERS_USERNAME_UNIQUE:
                 msg = f"Username already taken: {data.username}"
-            elif exc.constraint == _IDX_SINGLE_CEO:
+            elif exc.constraint == IDX_SINGLE_CEO:
                 msg = "A CEO user already exists"
             else:
                 logger.error(
@@ -295,9 +293,9 @@ class UserController(Controller):
         try:
             await app_state.persistence.users.save(updated)
         except ConstraintViolationError as exc:
-            if exc.constraint == _LAST_CEO_TRIGGER:
+            if exc.constraint == LAST_CEO_TRIGGER:
                 msg = "Cannot change the only CEO's role"
-            elif exc.constraint == _IDX_SINGLE_CEO:
+            elif exc.constraint == IDX_SINGLE_CEO:
                 msg = "A CEO user already exists"
             else:
                 logger.error(
@@ -438,7 +436,7 @@ class UserController(Controller):
         try:
             await app_state.persistence.users.save(updated)
         except ConstraintViolationError as exc:
-            if exc.constraint == _LAST_OWNER_TRIGGER:
+            if exc.constraint == LAST_OWNER_TRIGGER:
                 msg = "Cannot modify the last owner"
                 logger.warning(API_RESOURCE_CONFLICT, reason=msg)
                 raise ConflictError(msg) from exc
@@ -518,7 +516,7 @@ class UserController(Controller):
         try:
             await app_state.persistence.users.save(updated)
         except ConstraintViolationError as exc:
-            if exc.constraint == _LAST_OWNER_TRIGGER:
+            if exc.constraint == LAST_OWNER_TRIGGER:
                 msg = "Cannot revoke the last owner role"
                 logger.warning(API_RESOURCE_CONFLICT, reason=msg)
                 raise ConflictError(msg) from exc

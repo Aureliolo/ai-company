@@ -29,6 +29,12 @@ from synthorg.hr.performance.models import (
     CollaborationMetricRecord,
     TaskMetricRecord,
 )
+from synthorg.persistence.constraint_tokens import (
+    IDX_SINGLE_CEO,
+    LAST_CEO_TRIGGER,
+    LAST_OWNER_TRIGGER,
+    USERS_USERNAME_UNIQUE,
+)
 from synthorg.persistence.errors import (
     ConstraintViolationError,
     DuplicateRecordError,
@@ -315,7 +321,7 @@ class FakeUserRepository:
         for u in self._users.values():
             if u.username == user.username and u.id != user.id:
                 msg = "UNIQUE constraint failed: users.username"
-                raise ConstraintViolationError(msg, constraint="users.username")
+                raise ConstraintViolationError(msg, constraint=USERS_USERNAME_UNIQUE)
         # CEO uniqueness (partial unique index on role='ceo')
         if user.role == HumanRole.CEO:
             for u in self._users.values():
@@ -323,7 +329,7 @@ class FakeUserRepository:
                     msg = "UNIQUE constraint failed: idx_single_ceo"
                     raise ConstraintViolationError(
                         msg,
-                        constraint="idx_single_ceo",
+                        constraint=IDX_SINGLE_CEO,
                     )
         # Last-CEO trigger: prevent demoting the only CEO
         if (
@@ -340,7 +346,7 @@ class FakeUserRepository:
                 msg = "Cannot remove the last CEO"
                 raise ConstraintViolationError(
                     msg,
-                    constraint="enforce_ceo_minimum",
+                    constraint=LAST_CEO_TRIGGER,
                 )
         # Last-owner trigger: prevent removing the last owner
         if (
@@ -357,7 +363,7 @@ class FakeUserRepository:
                 msg = "Cannot remove the last owner"
                 raise ConstraintViolationError(
                     msg,
-                    constraint="enforce_owner_minimum",
+                    constraint=LAST_OWNER_TRIGGER,
                 )
         self._users[user.id] = user
 
@@ -396,7 +402,7 @@ class FakeUserRepository:
                 msg = "Cannot remove the last CEO"
                 raise ConstraintViolationError(
                     msg,
-                    constraint="enforce_ceo_minimum",
+                    constraint=LAST_CEO_TRIGGER,
                 )
         if OrgRole.OWNER in user.org_roles:
             other_owners = sum(
@@ -408,7 +414,7 @@ class FakeUserRepository:
                 msg = "Cannot remove the last owner"
                 raise ConstraintViolationError(
                     msg,
-                    constraint="enforce_owner_minimum",
+                    constraint=LAST_OWNER_TRIGGER,
                 )
         del self._users[user_id]
         return True

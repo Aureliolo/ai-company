@@ -16,7 +16,7 @@ import pytest
 
 from synthorg.api.auth.models import OrgRole, User
 from synthorg.api.guards import HumanRole
-from synthorg.persistence.errors import ConstraintViolationError, QueryError
+from synthorg.persistence.errors import ConstraintViolationError
 from synthorg.persistence.sqlite.backend import SQLitePersistenceBackend
 
 
@@ -55,15 +55,16 @@ class TestCEOUniqueness:
         await on_disk_backend.users.save(ceo1)
 
         ceo2 = _make_user(user_id="ceo-2", username="ceo2", role=HumanRole.CEO)
-        with pytest.raises(QueryError):
+        with pytest.raises(ConstraintViolationError) as exc_info:
             await on_disk_backend.users.save(ceo2)
+        assert exc_info.value.constraint == "idx_single_ceo"
 
     async def test_concurrent_ceo_creation_sqlite(
         self,
         on_disk_backend: SQLitePersistenceBackend,
     ) -> None:
         """5 concurrent CEO inserts -- exactly 1 succeeds."""
-        results: list[bool] = []
+        results: list[bool | str] = []
 
         async def try_create(idx: int) -> None:
             user = _make_user(
@@ -74,15 +75,18 @@ class TestCEOUniqueness:
             try:
                 await on_disk_backend.users.save(user)
                 results.append(True)
-            except QueryError:
-                results.append(False)
+            except ConstraintViolationError as exc:
+                results.append(exc.constraint)
 
         async with asyncio.TaskGroup() as tg:
             for i in range(5):
                 tg.create_task(try_create(i))
 
-        assert sum(results) == 1, f"Expected exactly 1 success, got {results}"
-        assert results.count(False) == 4
+        successes = [r for r in results if r is True]
+        failures = [r for r in results if r is not True]
+        assert len(successes) == 1, f"Expected exactly 1 success, got {results}"
+        assert len(failures) == 4
+        assert all(f == "idx_single_ceo" for f in failures)
 
 
 # ── Last-CEO trigger ──────────────────────────────────────────
@@ -203,7 +207,7 @@ class TestLastOwnerTrigger:
         await on_disk_backend.users.save(owner1)
         await on_disk_backend.users.save(owner2)
 
-        results: list[bool] = []
+        results: list[bool | str] = []
 
         async def try_revoke(user: User) -> None:
             revoked = user.model_copy(
@@ -212,12 +216,15 @@ class TestLastOwnerTrigger:
             try:
                 await on_disk_backend.users.save(revoked)
                 results.append(True)
-            except QueryError:
-                results.append(False)
+            except ConstraintViolationError as exc:
+                results.append(exc.constraint)
 
         async with asyncio.TaskGroup() as tg:
             tg.create_task(try_revoke(owner1))
             tg.create_task(try_revoke(owner2))
 
-        assert sum(results) == 1, f"Expected exactly 1 success, got {results}"
-        assert results.count(False) == 1
+        successes = [r for r in results if r is True]
+        failures = [r for r in results if r is not True]
+        assert len(successes) == 1, f"Expected exactly 1 success, got {results}"
+        assert len(failures) == 1
+        assert failures[0] == "enforce_owner_minimum"

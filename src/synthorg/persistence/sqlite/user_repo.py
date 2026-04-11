@@ -39,14 +39,13 @@ from synthorg.observability.events.persistence import (
     PERSISTENCE_USER_SAVE_FAILED,
     PERSISTENCE_USER_SAVED,
 )
+from synthorg.persistence.constraint_tokens import (
+    IDX_SINGLE_CEO,
+    LAST_CEO_TRIGGER,
+    LAST_OWNER_TRIGGER,
+    USERS_USERNAME_UNIQUE,
+)
 from synthorg.persistence.errors import ConstraintViolationError, QueryError
-
-# Stable tokens returned by ``_classify_sqlite_user_error`` so callers
-# can match on structural constraint names rather than DB error text.
-_USERS_USERNAME_UNIQUE = "users.username"
-_IDX_SINGLE_CEO = "idx_single_ceo"
-_LAST_CEO_TRIGGER = "enforce_ceo_minimum"
-_LAST_OWNER_TRIGGER = "enforce_owner_minimum"
 
 
 def _classify_sqlite_user_error(message: str) -> str | None:
@@ -62,13 +61,13 @@ def _classify_sqlite_user_error(message: str) -> str | None:
     """
     lower = message.lower()
     if "cannot remove the last ceo" in lower:
-        return _LAST_CEO_TRIGGER
+        return LAST_CEO_TRIGGER
     if "cannot remove the last owner" in lower:
-        return _LAST_OWNER_TRIGGER
+        return LAST_OWNER_TRIGGER
     if "unique constraint failed: users.username" in lower:
-        return _USERS_USERNAME_UNIQUE
+        return USERS_USERNAME_UNIQUE
     if "unique constraint failed: users.role" in lower or "idx_single_ceo" in lower:
-        return _IDX_SINGLE_CEO
+        return IDX_SINGLE_CEO
     return None
 
 

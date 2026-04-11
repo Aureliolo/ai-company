@@ -42,28 +42,25 @@ from synthorg.observability.events.persistence import (
     PERSISTENCE_USER_SAVE_FAILED,
     PERSISTENCE_USER_SAVED,
 )
+from synthorg.persistence.constraint_tokens import (
+    IDX_SINGLE_CEO,
+    LAST_CEO_TRIGGER,
+    LAST_OWNER_TRIGGER,
+    USERS_USERNAME_UNIQUE,
+)
 from synthorg.persistence.errors import ConstraintViolationError, QueryError
 
-# Stable tokens for constraint violations on the ``users`` table so
-# callers can match on structural constraint names rather than
-# parsing error strings.
-_USERS_USERNAME_UNIQUE = "users.username"
-_IDX_SINGLE_CEO = "idx_single_ceo"
-_LAST_CEO_TRIGGER = "enforce_ceo_minimum"
-_LAST_OWNER_TRIGGER = "enforce_owner_minimum"
-
-
 _PG_CONSTRAINT_MAP: dict[str, str] = {
-    "idx_single_ceo": _IDX_SINGLE_CEO,
-    "users_username_key": _USERS_USERNAME_UNIQUE,
+    "idx_single_ceo": IDX_SINGLE_CEO,
+    "users_username_key": USERS_USERNAME_UNIQUE,
 }
 
 _PG_MESSAGE_MAP: tuple[tuple[str, str], ...] = (
-    ("cannot remove the last ceo", _LAST_CEO_TRIGGER),
-    ("cannot remove the last owner", _LAST_OWNER_TRIGGER),
-    ("users_username_key", _USERS_USERNAME_UNIQUE),
-    ("users.username", _USERS_USERNAME_UNIQUE),
-    ("idx_single_ceo", _IDX_SINGLE_CEO),
+    ("cannot remove the last ceo", LAST_CEO_TRIGGER),
+    ("cannot remove the last owner", LAST_OWNER_TRIGGER),
+    ("users_username_key", USERS_USERNAME_UNIQUE),
+    ("users.username", USERS_USERNAME_UNIQUE),
+    ("idx_single_ceo", IDX_SINGLE_CEO),
 )
 
 

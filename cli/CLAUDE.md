@@ -133,4 +133,4 @@ When `--persistence-backend postgres` is selected, `synthorg init`:
 
 `synthorg start` brings up Postgres first (via compose ordering), then the backend applies Atlas migrations on connection. `synthorg stop` preserves `synthorg-pgdata` unless `--volumes` is passed. `synthorg status --wide` reports Postgres container health plus the `synthorg-pgdata` volume size.
 
-Port layout: `3000` web / `3001` backend / `3002` postgres / `3003` NATS client. `generate.go` validates against port collisions across all four services.
+Port layout: `3000` web / `3001` backend / `3002` postgres / `3003` NATS client. `generate.go` validates port collisions: web vs backend always; postgres vs web/backend/NATS when postgres enabled; NATS vs web/backend when distributed bus mode is active.
