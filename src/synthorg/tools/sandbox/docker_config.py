@@ -1,12 +1,17 @@
 """Docker sandbox configuration model."""
 
+import os
 from typing import Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.observability import get_logger
-from synthorg.observability.events.config import CONFIG_VALIDATION_FAILED
+from synthorg.observability.events.config import (
+    CONFIG_ENV_VAR_FALLBACK,
+    CONFIG_ENV_VAR_RESOLVED,
+    CONFIG_VALIDATION_FAILED,
+)
 from synthorg.tools.sandbox.policy import SandboxPolicy  # noqa: TC001
 
 logger = get_logger(__name__)
@@ -15,6 +20,36 @@ _VALID_NETWORK_MODES = frozenset({"none", "bridge", "host"})
 _MIN_PORT = 1
 _MAX_PORT = 65535
 _HOST_PORT_PARTS = 2
+_SANDBOX_IMAGE_ENV_VAR = "SYNTHORG_SANDBOX_IMAGE"
+_FALLBACK_SANDBOX_IMAGE = "ghcr.io/aureliolo/synthorg-sandbox:latest"
+
+
+def _default_sandbox_image() -> str:
+    """Resolve the default sandbox image from ``SYNTHORG_SANDBOX_IMAGE``.
+
+    The CLI injects the digest-pinned sandbox image reference into the
+    backend container via this env var.  When it is unset, empty, or
+    whitespace-only, fall back to the ghcr.io tag-based reference so an
+    operator running the backend outside the CLI still gets a pullable
+    default.  Logs both branches so operators debugging image-resolution
+    issues see which source won.
+    """
+    raw = os.environ.get(_SANDBOX_IMAGE_ENV_VAR, "")
+    value = raw.strip()
+    if value:
+        logger.debug(
+            CONFIG_ENV_VAR_RESOLVED,
+            var=_SANDBOX_IMAGE_ENV_VAR,
+            resolved=value,
+        )
+        return value
+    logger.warning(
+        CONFIG_ENV_VAR_FALLBACK,
+        var=_SANDBOX_IMAGE_ENV_VAR,
+        fallback=_FALLBACK_SANDBOX_IMAGE,
+        reason="env var unset or whitespace-only",
+    )
+    return _FALLBACK_SANDBOX_IMAGE
 
 
 class DockerSandboxConfig(BaseModel):
@@ -40,8 +75,11 @@ class DockerSandboxConfig(BaseModel):
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     image: NotBlankStr = Field(
-        default="synthorg-sandbox:latest",
-        description="Docker image to use for sandbox containers",
+        default_factory=_default_sandbox_image,
+        description=(
+            "Docker image for sandbox containers. Precedence: explicit YAML, "
+            "SYNTHORG_SANDBOX_IMAGE env var, synthorg-sandbox:latest fallback."
+        ),
     )
     network: Literal["none", "bridge", "host"] = Field(
         default="none",

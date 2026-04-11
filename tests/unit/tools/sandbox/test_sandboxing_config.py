@@ -17,7 +17,7 @@ class TestSandboxingConfigDefaults:
         assert config.default_backend == "subprocess"
         assert config.overrides == {}
         assert config.subprocess.timeout_seconds == 30.0
-        assert config.docker.image == "synthorg-sandbox:latest"
+        assert config.docker.image == "ghcr.io/aureliolo/synthorg-sandbox:latest"
 
     def test_frozen(self) -> None:
         config = SandboxingConfig()

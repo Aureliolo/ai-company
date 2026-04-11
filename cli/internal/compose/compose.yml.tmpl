@@ -49,6 +49,13 @@ services:
       - "{{.BackendPort}}:3001"
     volumes:
       - synthorg-data:/data
+{{- if .Sandbox}}
+      # Docker socket: backend spawns ephemeral sandbox containers via
+      # aiodocker. WARNING: root-equivalent access to the host Docker
+      # daemon -- cap_drop/no-new-privileges/read_only below do NOT
+      # contain socket-level privilege. Only enable in trusted hosts.
+      - "{{.DockerSock}}:/var/run/docker.sock"
+{{- end}}
 {{- if postgresEnabled}}
     depends_on:
       postgres:
@@ -73,6 +80,9 @@ services:
       MEM0_TELEMETRY: "false"
       SYNTHORG_TELEMETRY: "{{if .TelemetryOptIn}}true{{else}}false{{end}}"
       SYNTHORG_LOG_LEVEL: {{yamlStr .LogLevel}}
+{{- if .Sandbox}}
+      SYNTHORG_SANDBOX_IMAGE: {{yamlStr (sandboxImageRef .ImageTag)}}
+{{- end}}
 {{- if .JWTSecret}}
       SYNTHORG_JWT_SECRET: {{yamlStr .JWTSecret}}
 {{- end}}
@@ -80,6 +90,13 @@ services:
       SYNTHORG_SETTINGS_KEY: {{yamlStr .SettingsKey}}
 {{- end}}
     user: "65532:65532"
+{{- if and .Sandbox (gt .DockerSockGID 0)}}
+    # Supplementary group matches the host GID owning {{.DockerSock}}, so the
+    # non-root backend user (65532) can read/write the mounted socket without
+    # relaxing host-side permissions.
+    group_add:
+      - "{{.DockerSockGID}}"
+{{- end}}
     # CIS Docker Benchmark v1.6.0 hardening (5.3, 5.12, 5.25, 5.28)
     security_opt:
       - no-new-privileges:true
@@ -165,36 +182,6 @@ services:
       timeout: 3s
       retries: 3
       start_period: 5s
-    logging:
-      driver: json-file
-      options:
-        max-size: "10m"
-        max-file: "3"
-{{- end}}
-{{- if .Sandbox}}
-
-  sandbox:
-    image: {{digestPin "sandbox" "ghcr.io/aureliolo/synthorg-sandbox" .ImageTag}}
-    depends_on:
-      backend:
-        condition: service_healthy
-    volumes:
-      - "{{.DockerSock}}:/var/run/docker.sock:ro"
-    user: "10001:10001"
-    security_opt:
-      - no-new-privileges:true
-    cap_drop:
-      - ALL
-    read_only: true
-    tmpfs:
-      - /tmp:noexec,nosuid,nodev,size=128m
-    restart: unless-stopped
-    deploy:
-      resources:
-        limits:
-          memory: 256M
-          cpus: "0.5"
-          pids: 128
     logging:
       driver: json-file
       options:

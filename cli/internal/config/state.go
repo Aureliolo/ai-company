@@ -21,6 +21,7 @@ type State struct {
 	WebPort            int               `json:"web_port"`
 	Sandbox            bool              `json:"sandbox"`
 	DockerSock         string            `json:"docker_sock,omitempty"`
+	DockerSockGID      int               `json:"docker_sock_gid,omitempty"`
 	LogLevel           string            `json:"log_level"`
 	JWTSecret          string            `json:"jwt_secret,omitempty"`
 	SettingsKey        string            `json:"settings_key,omitempty"`
@@ -240,6 +241,9 @@ func (s State) validate() error {
 	}
 	if s.NatsClientPort != 0 && (s.NatsClientPort < 1 || s.NatsClientPort > 65535) {
 		return fmt.Errorf("invalid nats_client_port %d: must be 1-65535", s.NatsClientPort)
+	}
+	if s.DockerSockGID < 0 || s.DockerSockGID > 4294967295 {
+		return fmt.Errorf("invalid docker_sock_gid %d: must be 0-4294967295", s.DockerSockGID)
 	}
 	if s.Channel != "" && !IsValidChannel(s.Channel) {
 		return fmt.Errorf("invalid channel %q: must be one of %s", s.Channel, sortedKeys(validChannels))

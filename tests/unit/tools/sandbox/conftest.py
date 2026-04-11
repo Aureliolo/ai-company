@@ -8,6 +8,17 @@ from synthorg.tools.sandbox.config import SubprocessSandboxConfig
 from synthorg.tools.sandbox.subprocess_sandbox import SubprocessSandbox
 
 
+@pytest.fixture(autouse=True)
+def _isolate_sandbox_image_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Clear SYNTHORG_SANDBOX_IMAGE so host env never leaks into defaults.
+
+    DockerSandboxConfig.image resolves from this env var via a Pydantic
+    default_factory, so any CI or developer shell that exports it would
+    make the default-value tests non-deterministic without this isolation.
+    """
+    monkeypatch.delenv("SYNTHORG_SANDBOX_IMAGE", raising=False)
+
+
 @pytest.fixture
 def sandbox_workspace(tmp_path: Path) -> Path:
     """Temporary workspace directory for sandbox tests."""

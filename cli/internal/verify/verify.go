@@ -96,6 +96,18 @@ func BuildImageRefs(tag string, sandbox bool) []ImageRef {
 	return refs
 }
 
+// FormatImageRef returns the fully-qualified reference for a SynthOrg image.
+// If digest is a valid sha256 OCI digest it is used (repo@digest); otherwise
+// the ref falls back to repo:tag. Shared by compose template rendering and
+// the CLI start flow so both pick up the same pin source of truth.
+func FormatImageRef(name, tag, digest string) string {
+	repo := RegistryHost + "/" + ImageRepoPrefix + name
+	if IsValidDigest(digest) {
+		return repo + "@" + digest
+	}
+	return repo + ":" + tag
+}
+
 // IsValidDigest reports whether d is a valid sha256 OCI digest.
 func IsValidDigest(d string) bool {
 	return digestPattern.MatchString(d)

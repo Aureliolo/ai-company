@@ -43,6 +43,7 @@ type Params struct {
 	SettingsKey        string
 	Sandbox            bool
 	DockerSock         string
+	DockerSockGID      int // host GID owning DockerSock; 0 skips group_add
 	PersistenceBackend string
 	MemoryBackend      string
 	BusBackend         string
@@ -73,6 +74,7 @@ func ParamsFromState(s config.State) Params {
 		SettingsKey:        s.SettingsKey,
 		Sandbox:            s.Sandbox,
 		DockerSock:         s.DockerSock,
+		DockerSockGID:      s.DockerSockGID,
 		PersistenceBackend: s.PersistenceBackend,
 		MemoryBackend:      s.MemoryBackend,
 		BusBackend:         busBackend,
@@ -103,6 +105,7 @@ func Generate(p Params) ([]byte, error) {
 	funcMap := template.FuncMap{
 		"yamlStr":            yamlStr,
 		"digestPin":          digestPin(p.DigestPins),
+		"sandboxImageRef":    sandboxImageRef(p.DigestPins),
 		"distributedEnabled": p.DistributedEnabled,
 		"postgresEnabled":    p.PostgresEnabled,
 		"pgDSN":              func() string { return pgDSN(p) },
@@ -142,6 +145,9 @@ func validateParams(p Params) error {
 		}
 		if strings.ContainsAny(p.DockerSock, "\"'`$\n\r{}[]") {
 			return fmt.Errorf("docker socket path %q contains unsafe characters", p.DockerSock)
+		}
+		if p.DockerSockGID < 0 || p.DockerSockGID > 4294967295 {
+			return fmt.Errorf("invalid docker socket gid %d: must be 0-4294967295", p.DockerSockGID)
 		}
 	}
 	if !config.IsValidPersistenceBackend(p.PersistenceBackend) {
@@ -219,6 +225,16 @@ func digestPin(pins map[string]string) func(name, repo, tag string) string {
 			return repo + "@" + d
 		}
 		return repo + ":" + tag
+	}
+}
+
+// sandboxImageRef returns a template function that resolves the sandbox image
+// to its digest-pinned or tag-based reference. Wired into the backend's
+// SYNTHORG_SANDBOX_IMAGE env var so the backend and CLI stay version-locked
+// when the backend spawns ephemeral sandbox containers via aiodocker.
+func sandboxImageRef(pins map[string]string) func(tag string) string {
+	return func(tag string) string {
+		return verify.FormatImageRef("sandbox", tag, pins["sandbox"])
 	}
 }
 

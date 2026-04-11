@@ -144,9 +144,11 @@ func startContainers(cmd *cobra.Command, ctx context.Context, state config.State
 			return err
 		}
 		out.Blank()
-		if err := pullServicesLive(ctx, info, safeDir, state, out); err != nil {
+		refreshed, err := pullAllImages(ctx, info, safeDir, state, out)
+		if err != nil {
 			return err
 		}
+		state = refreshed
 	}
 
 	if startNoDetach {
@@ -198,9 +200,32 @@ func startDetached(ctx context.Context, info docker.Info, safeDir string, state 
 	return nil
 }
 
+// pullAllImages pulls the compose services and, when sandbox mode is
+// enabled, pre-pulls the sandbox image. State is reloaded from disk so the
+// caller picks up the VerifiedDigests written by a prior verify step (the
+// sandbox pre-pull needs the pinned reference, not the pre-verification
+// cached state). Returns the refreshed state so callers that still need
+// post-verify fields (e.g. VerifiedDigests) see them.
+func pullAllImages(ctx context.Context, info docker.Info, safeDir string, state config.State, out *ui.UI) (config.State, error) {
+	if err := pullServicesLive(ctx, info, safeDir, state, out); err != nil {
+		return state, err
+	}
+	if !state.Sandbox {
+		return state, nil
+	}
+	refreshed, err := config.Load(GetGlobalOpts(ctx).DataDir)
+	if err != nil {
+		return state, fmt.Errorf("reloading state after verification: %w", err)
+	}
+	if err := pullSandboxImage(ctx, info, refreshed, out); err != nil {
+		return refreshed, err
+	}
+	return refreshed, nil
+}
+
 // pullStartAndWait pulls images, starts containers, and waits for health.
 func pullStartAndWait(ctx context.Context, info docker.Info, safeDir string, state config.State, out, errOut *ui.UI) error {
-	if err := pullServicesLive(ctx, info, safeDir, state, out); err != nil {
+	if _, err := pullAllImages(ctx, info, safeDir, state, out); err != nil {
 		return err
 	}
 
@@ -226,18 +251,88 @@ func pullStartAndWait(ctx context.Context, info docker.Info, safeDir string, sta
 }
 
 // serviceNames returns the list of compose service names for the current config.
-func serviceNames(state config.State) []string {
-	names := []string{"backend", "web"}
-	if state.Sandbox {
-		names = append(names, "sandbox")
+// The sandbox image is intentionally not a compose service -- the backend
+// spawns ephemeral sandbox containers on demand via aiodocker. The image is
+// pre-pulled separately in pullSandboxImage.
+func serviceNames() []string {
+	return []string{"backend", "web"}
+}
+
+// sandboxImageRef returns the digest-pinned sandbox image reference, falling
+// back to the tag-based reference when no verified digest is available.
+// Delegates to verify.FormatImageRef so the compose template and the start
+// flow render the same reference format.
+func sandboxImageRef(state config.State) string {
+	return verify.FormatImageRef("sandbox", state.ImageTag, state.VerifiedDigests["sandbox"])
+}
+
+// sandboxPullAttempts bounds retries for transient sandbox-image pulls.
+// docker pull handles HTTP retries internally but not DNS failures or
+// early socket resets, so a thin CLI-level retry catches those without
+// paying a lot of latency on permanent failures.
+const sandboxPullAttempts = 3
+
+// sandboxPullRetryDelay is the base backoff between sandbox-pull retries.
+// Attempt N waits sandboxPullRetryDelay * 2^(N-1) before retrying.
+var sandboxPullRetryDelay = 2 * time.Second
+
+// pullSandboxImage pre-pulls the sandbox image via `docker pull` so the first
+// agent code execution isn't blocked on an image pull. The sandbox is not a
+// compose service, so it cannot be pulled via `docker compose pull`.
+func pullSandboxImage(ctx context.Context, info docker.Info, state config.State, out *ui.UI) error {
+	imageRef := sandboxImageRef(state)
+	sp := out.StartSpinner(fmt.Sprintf("Pulling sandbox image %s", imageRef))
+
+	var lastErr error
+	for attempt := 1; attempt <= sandboxPullAttempts; attempt++ {
+		err := dockerRunQuiet(ctx, info, "pull", imageRef)
+		if err == nil {
+			sp.Success("Sandbox image pulled")
+			return nil
+		}
+		lastErr = err
+		if attempt == sandboxPullAttempts || ctx.Err() != nil {
+			break
+		}
+		backoff := sandboxPullRetryDelay << (attempt - 1)
+		select {
+		case <-ctx.Done():
+			sp.Error("Sandbox image pull cancelled")
+			return fmt.Errorf("pulling sandbox image %s: %w", imageRef, ctx.Err())
+		case <-time.After(backoff):
+		}
 	}
-	return names
+	sp.Error("Failed to pull sandbox image")
+	return fmt.Errorf("pulling sandbox image %s: %w", imageRef, lastErr)
+}
+
+// dockerRunQuiet runs a docker command with output captured in a buffer.
+// Mirrors composeRunQuiet but shells out to `docker` directly via the
+// resolved binary path from docker.Info -- used for operations that
+// aren't tied to a compose service (e.g. pulling the sandbox image).
+func dockerRunQuiet(ctx context.Context, info docker.Info, args ...string) error {
+	dockerBin := info.DockerPath
+	if dockerBin == "" {
+		dockerBin = "docker"
+	}
+	var buf bytes.Buffer
+	c := exec.CommandContext(ctx, dockerBin, args...)
+	c.Stdout = &buf
+	c.Stderr = &buf
+	if err := c.Run(); err != nil {
+		output := sanitizeCLIOutput(buf.String())
+		if output != "" {
+			return fmt.Errorf("%w: %s", err, output)
+		}
+		return err
+	}
+	return nil
 }
 
 // pullServicesLive pulls each compose service concurrently, showing
 // per-service progress in a live-updating box.
-func pullServicesLive(ctx context.Context, info docker.Info, safeDir string, state config.State, out *ui.UI) error {
-	services := serviceNames(state)
+func pullServicesLive(ctx context.Context, info docker.Info, safeDir string, _ config.State, out *ui.UI) error {
+	services := serviceNames()
 	lb := out.NewLiveBox("Pull Images", services)
 	defer lb.Finish()
 

@@ -9,6 +9,11 @@ services:
       - "3001:3001"
     volumes:
       - synthorg-data:/data
+      # Docker socket: backend spawns ephemeral sandbox containers via
+      # aiodocker. WARNING: root-equivalent access to the host Docker
+      # daemon -- cap_drop/no-new-privileges/read_only below do NOT
+      # contain socket-level privilege. Only enable in trusted hosts.
+      - "/var/run/docker.sock:/var/run/docker.sock"
     environment:
       SYNTHORG_HOST: "0.0.0.0"
       SYNTHORG_PORT: "3001"
@@ -21,6 +26,7 @@ services:
       MEM0_TELEMETRY: "false"
       SYNTHORG_TELEMETRY: "false"
       SYNTHORG_LOG_LEVEL: "info"
+      SYNTHORG_SANDBOX_IMAGE: "ghcr.io/aureliolo/synthorg-sandbox:latest"
     user: "65532:65532"
     # CIS Docker Benchmark v1.6.0 hardening (5.3, 5.12, 5.25, 5.28)
     security_opt:
@@ -68,34 +74,6 @@ services:
           memory: 256M
           cpus: "0.5"
           pids: 64
-    logging:
-      driver: json-file
-      options:
-        max-size: "10m"
-        max-file: "3"
-
-  sandbox:
-    image: ghcr.io/aureliolo/synthorg-sandbox:latest
-    depends_on:
-      backend:
-        condition: service_healthy
-    volumes:
-      - "/var/run/docker.sock:/var/run/docker.sock:ro"
-    user: "10001:10001"
-    security_opt:
-      - no-new-privileges:true
-    cap_drop:
-      - ALL
-    read_only: true
-    tmpfs:
-      - /tmp:noexec,nosuid,nodev,size=128m
-    restart: unless-stopped
-    deploy:
-      resources:
-        limits:
-          memory: 256M
-          cpus: "0.5"
-          pids: 128
     logging:
       driver: json-file
       options:
