@@ -91,6 +91,7 @@ jobs:
         # https://github.com/zensical/backlog/issues/72
         env:
           SYNTHORG_VERSION: ${{ steps.version.outputs.version }}
+          PYTHONPATH: .
         run: uv run zensical build
 
       - name: Patch sitemap with static OpenAPI artifacts

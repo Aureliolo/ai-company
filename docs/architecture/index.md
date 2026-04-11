@@ -5,16 +5,19 @@ SynthOrg is organized as a modular, protocol-driven framework. Every major subsy
 ## Module Map
 
 ```d2
+Core: Core Models
+Providers: LLM Providers
+API: API Layer
+
 Config -> Engine
-Engine -> Core: Core Models
-Engine -> Providers: LLM Providers
+Engine -> Core
+Engine -> Providers
 Engine -> Communication
 Engine -> Tools
 Engine -> Memory
 Engine -> Security
 Engine -> Budget
 Engine -> HR
-API: API Layer
 API -> Engine
 Observability -> Engine {style.stroke-dash: 5}
 Observability -> Providers {style.stroke-dash: 5}

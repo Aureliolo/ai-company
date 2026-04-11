@@ -31,13 +31,16 @@ theme:
 
 plugins:
   - search
+  # D2 rendering is handled via pymdownx.superfences custom_fences
+  # (see d2_fence.py) because zensical does not run mkdocs plugin
+  # lifecycle hooks. Keep the config here so d2_fence.py reads it.
   - d2:
       layout: dagre
       theme: 200
       dark_theme: -1
       sketch: false
       pad: 100
-      cache: true
+      cache: false
   - mkdocstrings:
       default_handler: python
       handlers:
@@ -89,6 +92,10 @@ markdown_extensions:
         - name: mermaid
           class: mermaid
           format: !!python/name:pymdownx.superfences.fence_code_format
+        - name: d2
+          class: d2
+          validator: !!python/name:d2_fence.validator
+          format: !!python/name:d2_fence.formatter
   - pymdownx.tabbed:
       alternate_style: true
   - pymdownx.tasklist:

@@ -132,7 +132,9 @@ Automated pre-PR pipeline that runs checks, launches review agents, triages find
 
 Determine if agent review can be skipped:
 
-- If `$ARGUMENTS` contains `quick` -> skip agents, go to Phase 2 then Phase 8, then Phase 10 and Phase 11
+- If `$ARGUMENTS` contains `quick`:
+  - If any changed `.md` file contains a ` ```d2 ` or ` ```mermaid ` fence, run only `diagram-syntax-validator` (per Phase 3) before continuing to Phase 2.
+  - Otherwise skip agents entirely, go to Phase 2 then Phase 8, then Phase 10 and Phase 11
 - **Auto-detect**: If ALL changed files are non-substantive (only `.md` docs, config formatting, typo-level edits with no logic changes, `site/` static assets like images/fonts), skip agents automatically
   - Auto-skip examples: all changes are `.md` files; only `pyproject.toml` version bump; only `.yaml`/`.json` config with no Python changes; only `site/` image/font/asset changes
   - Do NOT auto-skip: any `.py` file changed; any `.go` file changed; any `.tsx`/`.ts`/`.css` file changed; any `docker/` or `.github/workflows/` file changed; config changes that affect runtime behavior; new dependencies added

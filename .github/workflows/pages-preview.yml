@@ -109,6 +109,20 @@ jobs:
       - name: Install uv
         uses: astral-sh/setup-uv@cec208311dfd045dd5311c1add060b2062131d57 # v8.0.0
 
+      # D2 binary -- required by d2_fence.py at build time.
+      # Keep version + checksum in sync with pages.yml.
+      - name: Install D2
+        env:
+          D2_VERSION: v0.7.1
+          D2_SHA256: eb172adf59f38d1e5a70ab177591356754ffaf9bebb84e0ca8b767dfb421dad7
+        run: |
+          curl -fsSL "https://github.com/terrastruct/d2/releases/download/${D2_VERSION}/d2-${D2_VERSION}-linux-amd64.tar.gz" -o d2.tar.gz
+          echo "${D2_SHA256}  d2.tar.gz" | sha256sum --check --strict -
+          tar -xzf d2.tar.gz
+          sudo mv "d2-${D2_VERSION}/bin/d2" /usr/local/bin/d2
+          rm -rf d2.tar.gz "d2-${D2_VERSION}"
+          d2 --version
+
       - name: Install docs dependencies
         run: uv sync --group docs --no-dev
 
@@ -122,6 +136,8 @@ jobs:
         # TODO: Restore --strict once zensical supports it
         # https://github.com/zensical/backlog/issues/72
         # SYNTHORG_VERSION intentionally omitted -- previews show "dev" banner
+        env:
+          PYTHONPATH: .
         run: uv run zensical build
 
       - name: Patch sitemap with static OpenAPI artifacts

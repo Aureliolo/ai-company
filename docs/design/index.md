@@ -126,7 +126,8 @@ The following diagram illustrates how the core entities in SynthOrg relate to ea
 Company -> Departments
 Company -> Projects
 Company -> Config
-Company -> HR: HR Registry
+HR: HR Registry
+Company -> HR
 
 Departments -> DeptHead {style.stroke-dash: 5}
 DeptHead: "Department Head\n(Agent, optional)"
