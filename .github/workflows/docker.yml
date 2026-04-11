@@ -180,12 +180,13 @@ jobs:
 
       - name: Grype table (diagnosis on failure)
         if: failure() && steps.grype-backend.outcome == 'failure'
-        env:
-          IMAGE_REF: ${{ steps.scan-ref.outputs.ref }}
-        run: |
-          grype "$IMAGE_REF" \
-            --fail-on critical --output table -c .github/.grype.yaml \
-            | grep -E 'Critical|High' || true
+        uses: anchore/scan-action@e1165082ffb1fe366ebaf02d8526e7c4989ea9d2 # v7.4.0
+        with:
+          image: ${{ steps.scan-ref.outputs.ref }}
+          fail-build: false
+          severity-cutoff: critical
+          output-format: table
+          config: .github/.grype.yaml
 
       # CIS Docker Benchmark v1.6.0 compliance check (uses trivy installed above).
       # Informational for now -- remove continue-on-error once baseline is clean.
@@ -388,12 +389,13 @@ jobs:
 
       - name: Grype table (diagnosis on failure)
         if: failure() && steps.grype-web.outcome == 'failure'
-        env:
-          IMAGE_REF: ${{ steps.scan-ref.outputs.ref }}
-        run: |
-          grype "$IMAGE_REF" \
-            --fail-on critical --output table -c .github/.grype.yaml \
-            | grep -E 'Critical|High' || true
+        uses: anchore/scan-action@e1165082ffb1fe366ebaf02d8526e7c4989ea9d2 # v7.4.0
+        with:
+          image: ${{ steps.scan-ref.outputs.ref }}
+          fail-build: false
+          severity-cutoff: critical
+          output-format: table
+          config: .github/.grype.yaml
 
       - name: CIS Docker Benchmark (web)
         continue-on-error: true
@@ -593,12 +595,13 @@ jobs:
 
       - name: Grype table (diagnosis on failure)
         if: failure() && steps.grype-sandbox.outcome == 'failure'
-        env:
-          IMAGE_REF: ${{ steps.scan-ref.outputs.ref }}
-        run: |
-          grype "$IMAGE_REF" \
-            --fail-on critical --output table -c .github/.grype.yaml \
-            | grep -E 'Critical|High' || true
+        uses: anchore/scan-action@e1165082ffb1fe366ebaf02d8526e7c4989ea9d2 # v7.4.0
+        with:
+          image: ${{ steps.scan-ref.outputs.ref }}
+          fail-build: false
+          severity-cutoff: critical
+          output-format: table
+          config: .github/.grype.yaml
 
       - name: CIS Docker Benchmark (sandbox)
         continue-on-error: true
