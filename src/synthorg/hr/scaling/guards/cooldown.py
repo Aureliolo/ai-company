@@ -33,6 +33,9 @@ class CooldownGuard:
         *,
         cooldown_seconds: int = 3600,
     ) -> None:
+        if cooldown_seconds < 0:
+            msg = f"cooldown_seconds must be >= 0, got {cooldown_seconds}"
+            raise ValueError(msg)
         self._cooldown = cooldown_seconds
         self._last_action: dict[str, datetime] = {}
         self._lock = asyncio.Lock()

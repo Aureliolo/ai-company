@@ -86,44 +86,24 @@ class _NotAStrategy:
 
 
 @pytest.mark.unit
-class TestScalingStrategyProtocol:
-    """ScalingStrategy runtime checkability."""
+class TestScalingProtocols:
+    """Runtime checkability of scaling protocols."""
 
-    def test_valid_implementation_is_instance(self) -> None:
-        assert isinstance(_StubStrategy(), ScalingStrategy)
-
-    def test_non_implementation_is_not_instance(self) -> None:
-        assert not isinstance(_NotAStrategy(), ScalingStrategy)
-
-
-@pytest.mark.unit
-class TestScalingSignalSourceProtocol:
-    """ScalingSignalSource runtime checkability."""
-
-    def test_valid_implementation_is_instance(self) -> None:
-        assert isinstance(_StubSignalSource(), ScalingSignalSource)
-
-    def test_non_implementation_is_not_instance(self) -> None:
-        assert not isinstance(_NotAStrategy(), ScalingSignalSource)
-
-
-@pytest.mark.unit
-class TestScalingTriggerProtocol:
-    """ScalingTrigger runtime checkability."""
-
-    def test_valid_implementation_is_instance(self) -> None:
-        assert isinstance(_StubTrigger(), ScalingTrigger)
-
-    def test_non_implementation_is_not_instance(self) -> None:
-        assert not isinstance(_NotAStrategy(), ScalingTrigger)
-
-
-@pytest.mark.unit
-class TestScalingGuardProtocol:
-    """ScalingGuard runtime checkability."""
-
-    def test_valid_implementation_is_instance(self) -> None:
-        assert isinstance(_StubGuard(), ScalingGuard)
-
-    def test_non_implementation_is_not_instance(self) -> None:
-        assert not isinstance(_NotAStrategy(), ScalingGuard)
+    @pytest.mark.parametrize(
+        ("protocol", "good_cls", "bad_cls"),
+        [
+            (ScalingStrategy, _StubStrategy, _NotAStrategy),
+            (ScalingSignalSource, _StubSignalSource, _NotAStrategy),
+            (ScalingTrigger, _StubTrigger, _NotAStrategy),
+            (ScalingGuard, _StubGuard, _NotAStrategy),
+        ],
+        ids=["strategy", "signal-source", "trigger", "guard"],
+    )
+    def test_protocol_isinstance_checks(
+        self,
+        protocol: type,
+        good_cls: type,
+        bad_cls: type,
+    ) -> None:
+        assert isinstance(good_cls(), protocol)
+        assert not isinstance(bad_cls(), protocol)

@@ -56,28 +56,29 @@ class TestScalingContextBuilder:
             budget_source=budget_source,
             skill_source=skill_source,
         )
-        ctx = await builder.build(agent_ids=_AGENT_IDS)
+        skill_kwargs = (
+            {
+                "agent_skills": {NotBlankStr("a1"): (NotBlankStr("python"),)},
+                "required_skills": (NotBlankStr("python"), NotBlankStr("go")),
+            }
+            if skill_source is not None
+            else None
+        )
+        ctx = await builder.build(
+            agent_ids=_AGENT_IDS,
+            skill_kwargs=skill_kwargs,
+        )
         assert ctx.active_agent_count == 2
         assert ctx.agent_ids == _AGENT_IDS
         assert len(ctx.workload_signals) == expected_workload_len
         assert len(ctx.budget_signals) == expected_budget_len
-        if skill_source is not None and expected_skill_len > 0:
-            skill_ctx = await ScalingContextBuilder(skill_source=skill_source).build(
-                agent_ids=_AGENT_IDS,
-                skill_kwargs={
-                    "agent_skills": {"a1": ("python",)},
-                    "required_skills": ("python", "go"),
-                },
-            )
-            assert len(skill_ctx.skill_signals) == expected_skill_len
-        else:
-            assert len(ctx.skill_signals) == expected_skill_len
+        assert len(ctx.skill_signals) == expected_skill_len
 
     async def test_context_is_frozen(self) -> None:
         builder = ScalingContextBuilder()
         ctx = await builder.build(agent_ids=_AGENT_IDS)
         with pytest.raises(ValidationError):
-            ctx.active_agent_count = 99  # type: ignore[misc]
+            ctx.agent_ids = ()  # type: ignore[misc]
 
     async def test_empty_agent_ids(self) -> None:
         builder = ScalingContextBuilder()

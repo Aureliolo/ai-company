@@ -61,7 +61,7 @@ class SignalThresholdTrigger:
         async with self._lock:
             if self._was_crossed:
                 self._was_crossed = False
-                logger.debug(
+                logger.info(
                     HR_SCALING_TRIGGER_REQUESTED,
                     trigger="signal_threshold",
                     signal=self._signal_name,
@@ -110,6 +110,13 @@ class SignalThresholdTrigger:
                 # Crossing detected: signal transitioned from below to above
                 self._was_crossed = True
                 self._previously_over = is_over
+                logger.info(
+                    HR_SCALING_TRIGGER_REQUESTED,
+                    trigger="signal_threshold",
+                    signal=self._signal_name,
+                    threshold=self._threshold,
+                    action="crossing_detected",
+                )
             else:
                 # No crossing: just update state
                 self._previously_over = is_over

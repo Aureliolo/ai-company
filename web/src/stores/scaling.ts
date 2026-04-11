@@ -48,23 +48,11 @@ export const useScalingStore = create<ScalingState>()((set, get) => ({
   fetchAll: async () => {
     set({ loading: true, error: null })
     try {
-      const prev = get()
       const [strategiesR, decisionsR, signalsR] = await Promise.allSettled([
         getScalingStrategies(),
         getScalingDecisions({ limit: 50 }),
         getScalingSignals(),
       ])
-
-      const strategies =
-        strategiesR.status === 'fulfilled'
-          ? strategiesR.value
-          : prev.strategies
-      const decisionsResult =
-        decisionsR.status === 'fulfilled'
-          ? decisionsR.value
-          : { data: prev.decisions, total: prev.totalDecisions }
-      const signals =
-        signalsR.status === 'fulfilled' ? signalsR.value : prev.signals
 
       const errors = [strategiesR, decisionsR, signalsR]
         .filter((r) => r.status === 'rejected')
@@ -74,14 +62,27 @@ export const useScalingStore = create<ScalingState>()((set, get) => ({
           ? errors.map((e) => getErrorMessage(e)).join('; ')
           : null
 
-      set({
-        strategies,
-        decisions: decisionsResult.data,
-        totalDecisions: decisionsResult.total,
-        signals,
+      // Functional updater: read the latest committed state inside
+      // the updater so concurrent writes that landed during our
+      // request are preserved for any slice whose fetch failed.
+      set((state) => ({
+        strategies:
+          strategiesR.status === 'fulfilled'
+            ? strategiesR.value
+            : state.strategies,
+        decisions:
+          decisionsR.status === 'fulfilled'
+            ? decisionsR.value.data
+            : state.decisions,
+        totalDecisions:
+          decisionsR.status === 'fulfilled'
+            ? decisionsR.value.total
+            : state.totalDecisions,
+        signals:
+          signalsR.status === 'fulfilled' ? signalsR.value : state.signals,
         loading: false,
         error: errorMsg,
-      })
+      }))
     } catch (err) {
       log.error('Failed to fetch scaling data', err)
       set({ loading: false, error: getErrorMessage(err) })

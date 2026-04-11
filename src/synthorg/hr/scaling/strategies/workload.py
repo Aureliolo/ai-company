@@ -35,6 +35,12 @@ class WorkloadAutoScaleStrategy:
         hire_threshold: float = 0.85,
         prune_threshold: float = 0.30,
     ) -> None:
+        if not 0.0 <= prune_threshold < hire_threshold <= 1.0:
+            msg = (
+                f"thresholds must satisfy 0.0 <= prune_threshold ({prune_threshold}) "
+                f"< hire_threshold ({hire_threshold}) <= 1.0"
+            )
+            raise ValueError(msg)
         self._hire_threshold = hire_threshold
         self._prune_threshold = prune_threshold
 

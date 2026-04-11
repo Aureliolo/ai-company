@@ -39,7 +39,9 @@ def _make_summary(
 class TestBudgetSignalSource:
     """BudgetSignalSource signal collection."""
 
-    async def test_no_summary_returns_zeros(self) -> None:
+    async def test_no_summary_fails_closed_returns_max_burn_and_hard_stop(
+        self,
+    ) -> None:
         source = BudgetSignalSource()
         signals = await source.collect(_AGENT_IDS, summary=None)
         by_name = {s.name: s.value for s in signals}

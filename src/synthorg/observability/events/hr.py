@@ -89,3 +89,4 @@ HR_SCALING_CONFIG_VALIDATION_FAILED: Final[str] = "hr.scaling.config_validation_
 HR_SCALING_STRATEGY_VALIDATION_FAILED: Final[str] = (
     "hr.scaling.strategy_validation_failed"
 )
+HR_SCALING_MODEL_VALIDATION_FAILED: Final[str] = "hr.scaling.model_validation_failed"

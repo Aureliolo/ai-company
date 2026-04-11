@@ -169,6 +169,12 @@ class ScalingService:
         """
         if len(order) != len(set(order)):
             msg = "priority_order must not contain duplicates"
+            logger.warning(
+                "hr.scaling.service_validation_failed",
+                method="update_priority_order",
+                reason="duplicate_strategy_names",
+                order=[n.value for n in order],
+            )
             raise ValueError(msg)
         self._config = self._config.model_copy(
             update={"priority_order": order},
@@ -458,7 +464,16 @@ class ScalingService:
 
         for inner in guards_to_notify:
             if isinstance(inner, (CooldownGuard, RateLimitGuard)):
-                await inner.record_action(decision)
+                try:
+                    await inner.record_action(decision)
+                except Exception:
+                    logger.error(
+                        HR_SCALING_EXECUTION_FAILED,
+                        action="guard_record_failed",
+                        guard=str(inner.name),
+                        decision_id=str(decision.id),
+                        exc_info=True,
+                    )
 
     def record_action(self, record: ScalingActionRecord) -> None:
         """Record an executed scaling action.

@@ -59,6 +59,8 @@ class WorkloadSignalSource:
             queue_depth.
         """
         now = datetime.now(UTC)
+        active_set = set(agent_ids)
+        workloads = tuple(w for w in workloads if w.agent_id in active_set)
 
         if not workloads:
             if agent_ids:

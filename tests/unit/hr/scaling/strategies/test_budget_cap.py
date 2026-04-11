@@ -15,12 +15,12 @@ class TestBudgetCapStrategy:
     @pytest.mark.parametrize(
         ("burn_rate_value", "expected_action_types"),
         [
-            (95.0, (ScalingActionType.PRUNE, ScalingActionType.HOLD)),
+            (95.0, (ScalingActionType.HOLD,)),
             (75.0, (ScalingActionType.HOLD,)),
             (50.0, ()),
         ],
         ids=[
-            "prune-and-hold-when-over-safety-margin",
+            "hold-only-when-over-safety-margin",
             "hold-between-headroom-and-safety",
             "no-action-under-headroom",
         ],

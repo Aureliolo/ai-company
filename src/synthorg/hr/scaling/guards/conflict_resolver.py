@@ -30,6 +30,24 @@ DEFAULT_PRIORITY: dict[str, int] = {
 _LOWEST_PRIORITY = 999
 
 
+def _decision_key(decision: ScalingDecision) -> str:
+    """Build a semantic dedup key for a decision.
+
+    Targeted decisions (PRUNE) key on target_agent_id. Non-targeted
+    decisions (HIRE) key on the role/department/skills tuple so
+    duplicate hire proposals collapse to the highest-priority one.
+    """
+    if decision.target_agent_id is not None:
+        return f"target:{decision.target_agent_id}"
+    parts = (
+        str(decision.action_type),
+        str(decision.target_role or ""),
+        str(decision.target_department or ""),
+        ",".join(sorted(str(s) for s in decision.target_skills)),
+    )
+    return "semantic:" + "|".join(parts)
+
+
 class ConflictResolver:
     """Resolves conflicts between competing scaling decisions.
 
@@ -91,9 +109,11 @@ class ConflictResolver:
         )
 
         # Single-pass deduplication: keep the best decision per
-        # target agent_id; non-targeted decisions pass through.
-        best_by_agent: dict[str, ScalingDecision] = {}
-        non_targeted: list[ScalingDecision] = []
+        # semantic key. For targeted decisions (PRUNE), the key is
+        # the target_agent_id. For non-targeted HIRE decisions, the
+        # key is the role/department/skills tuple so duplicate hire
+        # proposals for the same role collapse.
+        best_by_key: dict[str, ScalingDecision] = {}
 
         for decision in decisions:
             # Skip HOLD decisions themselves (control signals).
@@ -114,18 +134,14 @@ class ConflictResolver:
                 )
                 continue
 
-            if decision.target_agent_id is None:
-                non_targeted.append(decision)
-                continue
-
-            key = str(decision.target_agent_id)
-            existing = best_by_agent.get(key)
+            key = _decision_key(decision)
+            existing = best_by_key.get(key)
             if existing is None or self._priority_for(decision) < self._priority_for(
                 existing
             ):
-                best_by_agent[key] = decision
+                best_by_key[key] = decision
 
-        final = tuple(non_targeted) + tuple(best_by_agent.values())
+        final = tuple(best_by_key.values())
 
         logger.info(
             HR_SCALING_GUARD_APPLIED,

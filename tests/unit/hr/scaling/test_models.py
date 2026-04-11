@@ -106,15 +106,11 @@ class TestScalingContext:
     def test_frozen_enforcement(self) -> None:
         ctx = make_context()
         with pytest.raises(ValidationError):
-            ctx.active_agent_count = 10  # type: ignore[misc]
+            ctx.agent_ids = ()  # type: ignore[misc]
 
-    def test_negative_agent_count_rejected(self) -> None:
-        with pytest.raises(ValidationError):
-            make_context(active_agent_count=-1, agent_ids=())
-
-    def test_count_mismatch_rejected(self) -> None:
-        with pytest.raises(ValidationError, match="active_agent_count"):
-            make_context(active_agent_count=3, agent_ids=("a", "b"))
+    def test_active_agent_count_derives_from_agent_ids(self) -> None:
+        ctx = make_context(agent_ids=("a", "b"))
+        assert ctx.active_agent_count == len(ctx.agent_ids) == 2
 
 
 # -- ScalingDecision ---------------------------------------------------------

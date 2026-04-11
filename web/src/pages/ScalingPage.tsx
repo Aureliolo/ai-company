@@ -3,7 +3,10 @@ import { AlertTriangle, WifiOff } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { ErrorBoundary } from '@/components/ui/error-boundary'
 import { useScalingData } from '@/hooks/useScalingData'
+import { createLogger } from '@/lib/logger'
 import { useToastStore } from '@/stores/toast'
+
+const log = createLogger('ScalingPage')
 
 import { DecisionHistory } from './scaling/DecisionHistory'
 import { ScalingMetrics } from './scaling/ScalingMetrics'
@@ -39,7 +42,8 @@ export default function ScalingPage() {
           title: 'Evaluation produced no decisions',
         })
       }
-    } catch {
+    } catch (err) {
+      log.error('Evaluation failed', err)
       addToast({
         variant: 'error',
         title: 'Evaluation failed',

@@ -2,11 +2,11 @@
 
 from typing import TYPE_CHECKING
 
+from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
 from synthorg.observability.events.hr import HR_SCALING_GUARD_APPLIED
 
 if TYPE_CHECKING:
-    from synthorg.core.types import NotBlankStr
     from synthorg.hr.scaling.models import ScalingDecision
     from synthorg.hr.scaling.protocols import ScalingGuard
 
@@ -32,7 +32,7 @@ class CompositeScalingGuard:
     @property
     def name(self) -> NotBlankStr:
         """Guard identifier."""
-        return "composite"
+        return NotBlankStr("composite")
 
     def get_guards(self) -> tuple[ScalingGuard, ...]:
         """Return the contained guards (read-only)."""

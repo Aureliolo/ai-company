@@ -12,6 +12,7 @@ from pydantic import (
     BaseModel,
     ConfigDict,
     Field,
+    computed_field,
     model_validator,
 )
 
@@ -22,6 +23,7 @@ from synthorg.hr.scaling.enums import (
     ScalingStrategyName,
 )
 from synthorg.observability import get_logger
+from synthorg.observability.events.hr import HR_SCALING_MODEL_VALIDATION_FAILED
 
 logger = get_logger(__name__)
 
@@ -64,7 +66,6 @@ class ScalingContext(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
-    active_agent_count: int = Field(ge=0, description="Active agent count")
     agent_ids: tuple[NotBlankStr, ...] = Field(
         default=(),
         description="IDs of all active agents",
@@ -93,23 +94,11 @@ class ScalingContext(BaseModel):
         description="When the context was built",
     )
 
-    @model_validator(mode="after")
-    def _validate_agent_count(self) -> Self:
-        """Ensure active_agent_count matches agent_ids length."""
-        if self.active_agent_count != len(self.agent_ids):
-            msg = (
-                f"active_agent_count ({self.active_agent_count}) must equal "
-                f"len(agent_ids) ({len(self.agent_ids)})"
-            )
-            logger.warning(
-                "hr.scaling.model_validation_failed",
-                model="ScalingContext",
-                field="active_agent_count",
-                expected=len(self.agent_ids),
-                actual=self.active_agent_count,
-            )
-            raise ValueError(msg)
-        return self
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def active_agent_count(self) -> int:
+        """Derived from agent_ids length."""
+        return len(self.agent_ids)
 
 
 class ScalingDecision(BaseModel):
@@ -184,7 +173,7 @@ class ScalingDecision(BaseModel):
         if self.action_type == ScalingActionType.HIRE and self.target_role is None:
             msg = "HIRE decisions must specify target_role"
             logger.warning(
-                "hr.scaling.model_validation_failed",
+                HR_SCALING_MODEL_VALIDATION_FAILED,
                 model="ScalingDecision",
                 field="target_fields",
                 action_type="HIRE",
@@ -194,7 +183,7 @@ class ScalingDecision(BaseModel):
         if self.action_type == ScalingActionType.PRUNE and self.target_agent_id is None:
             msg = "PRUNE decisions must specify target_agent_id"
             logger.warning(
-                "hr.scaling.model_validation_failed",
+                HR_SCALING_MODEL_VALIDATION_FAILED,
                 model="ScalingDecision",
                 field="target_fields",
                 action_type="PRUNE",
@@ -247,7 +236,7 @@ class ScalingActionRecord(BaseModel):
         if self.outcome == ScalingOutcome.FAILED and self.reason is None:
             msg = "FAILED records must include reason"
             logger.warning(
-                "hr.scaling.model_validation_failed",
+                HR_SCALING_MODEL_VALIDATION_FAILED,
                 model="ScalingActionRecord",
                 field="outcome_fields",
                 outcome="FAILED",
@@ -260,7 +249,7 @@ class ScalingActionRecord(BaseModel):
         ):
             msg = f"{self.outcome.value} records must include result_id"
             logger.warning(
-                "hr.scaling.model_validation_failed",
+                HR_SCALING_MODEL_VALIDATION_FAILED,
                 model="ScalingActionRecord",
                 field="outcome_fields",
                 outcome=self.outcome.value,

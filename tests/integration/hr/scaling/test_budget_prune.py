@@ -24,8 +24,30 @@ from .conftest import AGENT_IDS
 class TestBudgetPrune:
     """Budget pressure triggers pruning and blocks hiring."""
 
-    async def test_over_budget_prunes_and_blocks_hires(self) -> None:
-        """When budget exceeds safety margin, prune fires and hires blocked."""
+    @pytest.mark.parametrize(
+        ("budget_percent", "alert_level", "expect_prune", "expect_hire"),
+        [
+            (95.0, "CRITICAL", 0, 0),
+            (30.0, "NORMAL", 0, 1),
+        ],
+        ids=["over-budget-blocks-hires", "under-headroom-allows-hires"],
+    )
+    async def test_budget_gates_hiring(
+        self,
+        budget_percent: float,
+        alert_level: str,
+        expect_prune: int,
+        expect_hire: int,
+    ) -> None:
+        from datetime import UTC, datetime
+
+        from synthorg.budget.enums import BudgetAlertLevel
+        from synthorg.budget.spending_summary import (
+            PeriodSpending,
+            SpendingSummary,
+        )
+        from synthorg.engine.assignment.models import AgentWorkload
+
         config = ScalingConfig()
         strategies = create_scaling_strategies(config)
         guard = create_scaling_guards(config)
@@ -42,36 +64,27 @@ class TestBudgetPrune:
             config=config,
         )
 
-        from datetime import UTC, datetime
-
-        from synthorg.budget.enums import BudgetAlertLevel
-        from synthorg.budget.spending_summary import (
-            PeriodSpending,
-            SpendingSummary,
-        )
-        from synthorg.engine.assignment.models import AgentWorkload
-
         start = datetime(2026, 4, 1, tzinfo=UTC)
         end = datetime(2026, 4, 30, tzinfo=UTC)
 
+        alert_enum = BudgetAlertLevel[alert_level]
         summary = SpendingSummary(
             period=PeriodSpending(
-                total_cost_usd=900.0,
-                record_count=100,
+                total_cost_usd=budget_percent * 10,
+                record_count=int(budget_percent),
                 start=start,
                 end=end,
             ),
             budget_total_monthly=1000.0,
-            budget_used_percent=95.0,  # Over safety margin (90%)
-            alert_level=BudgetAlertLevel.CRITICAL,
+            budget_used_percent=budget_percent,
+            alert_level=alert_enum,
         )
 
-        # Also set high utilization to trigger workload hire.
         workloads = tuple(
             AgentWorkload(
                 agent_id=aid,
                 active_task_count=3,
-                total_cost_usd=10.0,
+                total_cost_usd=5.0 if budget_percent < 50 else 10.0,
             )
             for aid in AGENT_IDS
         )
@@ -84,78 +97,15 @@ class TestBudgetPrune:
             },
         )
 
-        # Budget cap should produce PRUNE (highest priority).
         prune_decisions = [
             d for d in decisions if d.action_type == ScalingActionType.PRUNE
         ]
-        assert len(prune_decisions) >= 1
-
-        # Workload HIRE should be blocked by budget HOLD.
         hire_decisions = [
             d for d in decisions if d.action_type == ScalingActionType.HIRE
         ]
-        assert len(hire_decisions) == 0
 
-    async def test_under_headroom_allows_hires(self) -> None:
-        """When budget is under headroom, hires pass through."""
-        config = ScalingConfig()
-        strategies = create_scaling_strategies(config)
-        guard = create_scaling_guards(config)
-
-        builder = ScalingContextBuilder(
-            workload_source=WorkloadSignalSource(max_concurrent_tasks=3),
-            budget_source=BudgetSignalSource(),
-        )
-
-        service = ScalingService(
-            strategies=strategies,
-            guard=guard,
-            context_builder=builder,
-            config=config,
-        )
-
-        from datetime import UTC, datetime
-
-        from synthorg.budget.enums import BudgetAlertLevel
-        from synthorg.budget.spending_summary import (
-            PeriodSpending,
-            SpendingSummary,
-        )
-        from synthorg.engine.assignment.models import AgentWorkload
-
-        start = datetime(2026, 4, 1, tzinfo=UTC)
-        end = datetime(2026, 4, 30, tzinfo=UTC)
-
-        summary = SpendingSummary(
-            period=PeriodSpending(
-                total_cost_usd=300.0,
-                record_count=30,
-                start=start,
-                end=end,
-            ),
-            budget_total_monthly=1000.0,
-            budget_used_percent=30.0,  # Under headroom (60%)
-            alert_level=BudgetAlertLevel.NORMAL,
-        )
-
-        workloads = tuple(
-            AgentWorkload(
-                agent_id=aid,
-                active_task_count=3,
-                total_cost_usd=5.0,
-            )
-            for aid in AGENT_IDS
-        )
-
-        decisions = await service.evaluate(
-            agent_ids=AGENT_IDS,
-            context_kwargs={
-                "workload_kwargs": {"workloads": workloads},
-                "budget_kwargs": {"summary": summary},
-            },
-        )
-
-        hire_decisions = [
-            d for d in decisions if d.action_type == ScalingActionType.HIRE
-        ]
-        assert len(hire_decisions) >= 1
+        assert len(prune_decisions) == expect_prune
+        if expect_hire > 0:
+            assert len(hire_decisions) >= expect_hire
+        else:
+            assert len(hire_decisions) == 0

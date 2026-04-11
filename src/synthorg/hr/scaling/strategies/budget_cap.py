@@ -122,38 +122,23 @@ class BudgetCapStrategy:
         budget_signals = (burn_signal,)
 
         if burn_fraction >= self._safety_margin:
-            # Over budget -- prune last agent + HOLD to block hires.
-            decisions: list[ScalingDecision] = []
-            target = context.agent_ids[-1] if context.agent_ids else None
-            if target is not None:
-                decisions.append(
-                    ScalingDecision(
-                        action_type=ScalingActionType.PRUNE,
-                        source_strategy=ScalingStrategyName.BUDGET_CAP,
-                        target_agent_id=target,
-                        rationale=NotBlankStr(
-                            f"burn rate {burn_fraction:.0%} exceeds "
-                            f"safety margin {self._safety_margin:.0%}"
-                        ),
-                        confidence=1.0,
-                        signals=budget_signals,
-                        created_at=now,
-                    ),
-                )
-            # Also emit HOLD to block hires from lower-priority strategies.
-            decisions.append(
+            # Over budget -- block hires. A cost-aware prune target
+            # selection is a future enhancement; until then we only
+            # emit HOLD to prevent new spending rather than pruning
+            # an arbitrary agent.
+            decisions: list[ScalingDecision] = [
                 ScalingDecision(
                     action_type=ScalingActionType.HOLD,
                     source_strategy=ScalingStrategyName.BUDGET_CAP,
                     rationale=NotBlankStr(
                         f"burn rate {burn_fraction:.0%} exceeds safety "
-                        f"margin -- blocking all hires"
+                        f"margin {self._safety_margin:.0%} -- blocking hires"
                     ),
                     confidence=1.0,
                     signals=budget_signals,
                     created_at=now,
                 ),
-            )
+            ]
             logger.info(
                 HR_SCALING_STRATEGY_EVALUATED,
                 strategy="budget_cap",

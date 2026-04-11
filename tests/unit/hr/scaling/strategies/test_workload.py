@@ -12,42 +12,46 @@ from .conftest import make_context, make_signal
 class TestWorkloadAutoScaleStrategy:
     """WorkloadAutoScaleStrategy decision logic."""
 
-    async def test_hire_when_above_threshold(self) -> None:
-        strategy = WorkloadAutoScaleStrategy(hire_threshold=0.85)
-        ctx = make_context(
-            workload_signals=(make_signal(name="avg_utilization", value=0.90),),
-        )
-        decisions = await strategy.evaluate(ctx)
-        assert len(decisions) == 1
-        assert decisions[0].action_type == ScalingActionType.HIRE
-        assert decisions[0].target_role is not None
-
-    async def test_prune_when_below_threshold(self) -> None:
-        strategy = WorkloadAutoScaleStrategy(prune_threshold=0.30)
-        ctx = make_context(
-            agent_ids=("agent-001", "agent-002", "agent-003"),
-            workload_signals=(make_signal(name="avg_utilization", value=0.10),),
-        )
-        decisions = await strategy.evaluate(ctx)
-        assert len(decisions) == 1
-        assert decisions[0].action_type == ScalingActionType.PRUNE
-        assert decisions[0].target_agent_id is not None
-
-    async def test_no_action_in_normal_range(self) -> None:
+    @pytest.mark.parametrize(
+        ("util", "hire_thresh", "prune_thresh", "agent_count", "expected"),
+        [
+            (0.90, 0.85, 0.30, 1, ScalingActionType.HIRE),
+            (0.10, 0.85, 0.30, 3, ScalingActionType.PRUNE),
+            (0.60, 0.85, 0.30, 1, None),
+        ],
+        ids=["hire-above-threshold", "prune-below-threshold", "no-action-normal"],
+    )
+    async def test_threshold_based_decisions(
+        self,
+        util: float,
+        hire_thresh: float,
+        prune_thresh: float,
+        agent_count: int,
+        expected: ScalingActionType | None,
+    ) -> None:
         strategy = WorkloadAutoScaleStrategy(
-            hire_threshold=0.85,
-            prune_threshold=0.30,
+            hire_threshold=hire_thresh,
+            prune_threshold=prune_thresh,
         )
+        agent_ids = tuple(f"agent-{i:03d}" for i in range(agent_count))
         ctx = make_context(
-            workload_signals=(make_signal(name="avg_utilization", value=0.60),),
+            agent_ids=agent_ids,
+            workload_signals=(make_signal(name="avg_utilization", value=util),),
         )
         decisions = await strategy.evaluate(ctx)
-        assert len(decisions) == 0
+        if expected is None:
+            assert len(decisions) == 0
+        else:
+            assert len(decisions) == 1
+            assert decisions[0].action_type == expected
+            if expected == ScalingActionType.HIRE:
+                assert decisions[0].target_role is not None
+            else:
+                assert decisions[0].target_agent_id is not None
 
     async def test_no_prune_with_single_agent(self) -> None:
         strategy = WorkloadAutoScaleStrategy(prune_threshold=0.30)
         ctx = make_context(
-            active_agent_count=1,
             agent_ids=("agent-001",),
             workload_signals=(make_signal(name="avg_utilization", value=0.10),),
         )

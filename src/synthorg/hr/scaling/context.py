@@ -105,7 +105,6 @@ class ScalingContextBuilder:
         )
 
         context = ScalingContext(
-            active_agent_count=len(agent_ids),
             agent_ids=agent_ids,
             workload_signals=workload_signals,
             budget_signals=budget_signals,

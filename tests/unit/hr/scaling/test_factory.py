@@ -22,30 +22,27 @@ class TestCreateScalingStrategies:
     """Strategy creation from config."""
 
     @pytest.mark.parametrize(
-        ("config_tuple", "expected_count"),
+        ("config", "expected_count"),
         [
-            ((False, True, True, True), 2),
-            ((True, True, True, True), 3),
-            ((False, False, False, False), 0),
+            (ScalingConfig(), 2),
+            (ScalingConfig(skill_gap=SkillGapConfig(enabled=True)), 3),
+            (
+                ScalingConfig(
+                    workload=WorkloadScalingConfig(enabled=False),
+                    budget_cap=BudgetCapConfig(enabled=False),
+                    skill_gap=SkillGapConfig(enabled=False),
+                    performance_pruning=PerformancePruningConfig(enabled=False),
+                ),
+                0,
+            ),
         ],
-        ids=[
-            "default-config-creates-two-strategies",
-            "all-enabled",
-            "all-disabled",
-        ],
+        ids=["default", "all-enabled", "all-disabled"],
     )
     def test_strategy_creation(
         self,
-        config_tuple: tuple[bool, bool, bool, bool],
+        config: ScalingConfig,
         expected_count: int,
     ) -> None:
-        skill_gap_enabled, workload_enabled, budget_enabled, perf_enabled = config_tuple
-        config = ScalingConfig(
-            skill_gap=SkillGapConfig(enabled=skill_gap_enabled),
-            workload=WorkloadScalingConfig(enabled=workload_enabled),
-            budget_cap=BudgetCapConfig(enabled=budget_enabled),
-            performance_pruning=PerformancePruningConfig(enabled=perf_enabled),
-        )
         strategies = create_scaling_strategies(config)
         assert len(strategies) == expected_count
 

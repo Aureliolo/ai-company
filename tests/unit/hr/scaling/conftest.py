@@ -37,7 +37,6 @@ def make_signal(
 
 def make_context(  # noqa: PLR0913
     *,
-    active_agent_count: int | None = None,
     agent_ids: tuple[str, ...] = (
         "agent-001",
         "agent-002",
@@ -52,15 +51,8 @@ def make_context(  # noqa: PLR0913
     performance_snapshots: dict[str, Any] | None = None,
     evaluated_at: datetime | None = None,
 ) -> ScalingContext:
-    """Create a ScalingContext with sensible defaults.
-
-    If ``active_agent_count`` is not provided, it defaults to
-    ``len(agent_ids)`` so callers can customize one side without
-    worrying about the invariant.
-    """
-    count = active_agent_count if active_agent_count is not None else len(agent_ids)
+    """Create a ScalingContext with sensible defaults."""
     return ScalingContext(
-        active_agent_count=count,
         agent_ids=tuple(NotBlankStr(a) for a in agent_ids),
         workload_signals=workload_signals,
         budget_signals=budget_signals,

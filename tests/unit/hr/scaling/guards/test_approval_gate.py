@@ -13,33 +13,33 @@ from .conftest import make_decision
 class TestApprovalGateGuard:
     """ApprovalGateGuard approval item creation."""
 
-    async def test_creates_approval_for_hire(self) -> None:
+    @pytest.mark.parametrize(
+        ("action_type", "target_agent_id", "target_role", "expected"),
+        [
+            (ScalingActionType.HIRE, None, "backend_developer", "scaling:hire"),
+            (ScalingActionType.PRUNE, "agent-001", None, "scaling:prune"),
+        ],
+        ids=["hire", "prune"],
+    )
+    async def test_creates_approval(
+        self,
+        action_type: ScalingActionType,
+        target_agent_id: str | None,
+        target_role: str | None,
+        expected: str,
+    ) -> None:
         store = ApprovalStore()
         guard = ApprovalGateGuard(approval_store=store)
-        decisions = (make_decision(action_type=ScalingActionType.HIRE),)
-        result = await guard.filter(decisions)
-        # All decisions pass through (approval checked later).
-        assert len(result) == 1
-        # Approval item was created.
-        items = await store.list_items()
-        assert len(items) == 1
-        assert items[0].action_type == "scaling:hire"
-
-    async def test_creates_approval_for_prune(self) -> None:
-        store = ApprovalStore()
-        guard = ApprovalGateGuard(approval_store=store)
-        decisions = (
-            make_decision(
-                action_type=ScalingActionType.PRUNE,
-                target_agent_id="agent-001",
-                target_role=None,
-            ),
+        decision = make_decision(
+            action_type=action_type,
+            target_agent_id=target_agent_id,
+            target_role=target_role,
         )
-        result = await guard.filter(decisions)
+        result = await guard.filter((decision,))
         assert len(result) == 1
         items = await store.list_items()
         assert len(items) == 1
-        assert items[0].action_type == "scaling:prune"
+        assert items[0].action_type == expected
 
     async def test_skips_noop_and_hold(self) -> None:
         store = ApprovalStore()

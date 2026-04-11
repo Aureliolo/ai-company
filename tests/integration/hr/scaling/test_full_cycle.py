@@ -6,8 +6,13 @@ picks winners, guards filter, decisions are tracked.
 
 import pytest
 
-from synthorg.hr.scaling.config import ScalingConfig, SkillGapConfig
+from synthorg.hr.scaling.config import (
+    BudgetCapConfig,
+    ScalingConfig,
+    SkillGapConfig,
+)
 from synthorg.hr.scaling.context import ScalingContextBuilder
+from synthorg.hr.scaling.enums import ScalingStrategyName
 from synthorg.hr.scaling.factory import (
     create_scaling_guards,
     create_scaling_strategies,
@@ -28,6 +33,7 @@ class TestFullCycle:
         """Multiple strategies produce decisions, history is tracked."""
         config = ScalingConfig(
             skill_gap=SkillGapConfig(enabled=True),
+            budget_cap=BudgetCapConfig(enabled=False),
         )
         strategies = create_scaling_strategies(config)
         guard = create_scaling_guards(config)
@@ -70,16 +76,14 @@ class TestFullCycle:
         # Should have decisions from workload and skill gap strategies.
         assert len(decisions) >= 1
 
-        # Verify at least one decision has a known strategy source.
-        known_strategies = {
-            "workload",
-            "budget_cap",
-            "skill_gap",
-            "performance_pruning",
+        # Both workload and skill_gap must fire for this scenario.
+        expected = {
+            ScalingStrategyName.WORKLOAD,
+            ScalingStrategyName.SKILL_GAP,
         }
-        strategy_sources = {d.source_strategy for d in decisions if d.source_strategy}
-        assert any(strategy in known_strategies for strategy in strategy_sources), (
-            f"No known strategies found in {strategy_sources}"
+        strategy_sources = {d.source_strategy for d in decisions}
+        assert expected <= strategy_sources, (
+            f"Expected {expected} to be subset of {strategy_sources}"
         )
 
         # History should be tracked.

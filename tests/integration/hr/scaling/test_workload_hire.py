@@ -73,7 +73,7 @@ class TestWorkloadHire:
         hire_decisions = [
             d for d in decisions if d.action_type == ScalingActionType.HIRE
         ]
-        assert len(hire_decisions) >= expected_hire_count
+        assert len(hire_decisions) == expected_hire_count
         if expected_hire_count > 0:
             assert hire_decisions[0].target_role is not None
             assert hire_decisions[0].confidence > 0

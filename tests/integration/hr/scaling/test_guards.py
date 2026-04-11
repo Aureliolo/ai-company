@@ -4,6 +4,9 @@ Tests cooldown, rate limit, and conflict resolution working
 together in the full guard chain.
 """
 
+from types import SimpleNamespace
+from uuid import uuid4
+
 import pytest
 
 from synthorg.hr.scaling.config import GuardConfig, ScalingConfig
@@ -13,12 +16,17 @@ from synthorg.hr.scaling.factory import (
     create_scaling_guards,
     create_scaling_strategies,
 )
-from synthorg.hr.scaling.guards.cooldown import CooldownGuard
-from synthorg.hr.scaling.guards.rate_limit import RateLimitGuard
 from synthorg.hr.scaling.service import ScalingService
 from synthorg.hr.scaling.signals.workload import WorkloadSignalSource
 
 from .conftest import AGENT_IDS
+
+
+class _StubHiringService:
+    """Minimal hiring service stub that just returns a canned request."""
+
+    async def create_request(self, **kwargs: object) -> object:
+        return SimpleNamespace(id=uuid4())
 
 
 @pytest.mark.integration
@@ -42,6 +50,7 @@ class TestGuardChain:
             guard=guard,
             context_builder=builder,
             config=config,
+            hiring_service=_StubHiringService(),  # type: ignore[arg-type]
         )
 
         from synthorg.engine.assignment.models import AgentWorkload
@@ -62,15 +71,9 @@ class TestGuardChain:
         hires1 = [d for d in d1 if d.action_type == ScalingActionType.HIRE]
         assert len(hires1) >= 1
 
-        # Record the hire in the rate limiter.
-        # Access the composite guard's inner rate limit guard.
-        from synthorg.hr.scaling.guards.composite import CompositeScalingGuard
-
-        assert isinstance(guard, CompositeScalingGuard)
-        for g in guard.get_guards():
-            if isinstance(g, RateLimitGuard):
-                for h in hires1:
-                    await g.record_action(h)
+        # Execute through the service so guards are notified via the
+        # normal pipeline (not direct record_action calls).
+        await service.execute_decisions(tuple(hires1))
 
         # Second evaluation should be blocked by rate limit.
         d2 = await service.evaluate(agent_ids=AGENT_IDS, context_kwargs=kwargs)
@@ -94,6 +97,7 @@ class TestGuardChain:
             guard=guard,
             context_builder=builder,
             config=config,
+            hiring_service=_StubHiringService(),  # type: ignore[arg-type]
         )
 
         from synthorg.engine.assignment.models import AgentWorkload
@@ -113,14 +117,9 @@ class TestGuardChain:
         hires1 = [d for d in d1 if d.action_type == ScalingActionType.HIRE]
         assert len(hires1) >= 1
 
-        # Record the hire in the cooldown guard.
-        from synthorg.hr.scaling.guards.composite import CompositeScalingGuard
-
-        assert isinstance(guard, CompositeScalingGuard)
-        for g in guard.get_guards():
-            if isinstance(g, CooldownGuard):
-                for h in hires1:
-                    await g.record_action(h)
+        # Execute through the service so guards are notified via the
+        # normal pipeline (not direct record_action calls).
+        await service.execute_decisions(tuple(hires1))
 
         # Second evaluation within cooldown should be blocked.
         d2 = await service.evaluate(agent_ids=AGENT_IDS, context_kwargs=kwargs)
