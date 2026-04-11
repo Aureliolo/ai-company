@@ -90,3 +90,6 @@ HR_SCALING_STRATEGY_VALIDATION_FAILED: Final[str] = (
     "hr.scaling.strategy_validation_failed"
 )
 HR_SCALING_MODEL_VALIDATION_FAILED: Final[str] = "hr.scaling.model_validation_failed"
+HR_SCALING_SERVICE_VALIDATION_FAILED: Final[str] = (
+    "hr.scaling.service_validation_failed"
+)

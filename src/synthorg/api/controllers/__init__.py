@@ -118,6 +118,7 @@ ALL_CONTROLLERS: tuple[type[Controller], ...] = (
     SimulationController,
     ReviewController,
     ScalingController,
+    TrainingController,
 )
 
 __all__ = [

@@ -38,6 +38,8 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
+_FACTORY_READY_EVENT = "hr.scaling.factory_assembled"
+
 
 def create_scaling_strategies(
     config: ScalingConfig,
@@ -98,6 +100,12 @@ def create_scaling_strategies(
             ),
         )
 
+    logger.debug(
+        _FACTORY_READY_EVENT,
+        component="strategies",
+        count=len(strategies),
+        names=[str(s.name) for s in strategies],
+    )
     return tuple(strategies)
 
 
@@ -134,7 +142,14 @@ def create_scaling_guards(
             ),
         )
 
-    return CompositeScalingGuard(guards=tuple(guards))
+    composite = CompositeScalingGuard(guards=tuple(guards))
+    logger.debug(
+        _FACTORY_READY_EVENT,
+        component="guards",
+        count=len(guards),
+        names=[str(g.name) for g in guards],
+    )
+    return composite
 
 
 def create_scaling_context_builder(

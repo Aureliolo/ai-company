@@ -5,6 +5,7 @@ with the evolution system to defer pruning agents under active
 adaptation.
 """
 
+from collections.abc import Mapping  # noqa: TC003
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
@@ -82,7 +83,9 @@ class PerformancePruningStrategy:
         Returns:
             PRUNE decisions for eligible agents.
         """
-        snapshots: dict[str, AgentPerformanceSnapshot] = context.performance_snapshots
+        snapshots: Mapping[str, AgentPerformanceSnapshot] = (
+            context.performance_snapshots
+        )
         if not snapshots:
             return ()
 
@@ -95,19 +98,30 @@ class PerformancePruningStrategy:
             if snapshot is None:
                 continue
 
-            # Check evolution deferral.
-            if self._defer_during_evolution and self._evolution_checker is not None:
-                is_adapting = await self._evolution_checker(agent_id)
-                if is_adapting:
-                    logger.debug(
-                        HR_SCALING_STRATEGY_EVALUATED,
-                        strategy="performance_pruning",
-                        agent_id=agent_key,
-                        reason="deferred_evolution_active",
-                    )
-                    continue
+            try:
+                # Check evolution deferral.
+                if self._defer_during_evolution and self._evolution_checker is not None:
+                    is_adapting = await self._evolution_checker(agent_id)
+                    if is_adapting:
+                        logger.debug(
+                            HR_SCALING_STRATEGY_EVALUATED,
+                            strategy="performance_pruning",
+                            agent_id=agent_key,
+                            reason="deferred_evolution_active",
+                        )
+                        continue
 
-            evaluation = await self._policy.evaluate(agent_id, snapshot)
+                evaluation = await self._policy.evaluate(agent_id, snapshot)
+            except Exception:
+                logger.error(
+                    HR_SCALING_STRATEGY_EVALUATED,
+                    strategy="performance_pruning",
+                    agent_id=agent_key,
+                    action="per_agent_error",
+                    exc_info=True,
+                )
+                continue
+
             if evaluation.eligible:
                 decisions.append(
                     ScalingDecision(

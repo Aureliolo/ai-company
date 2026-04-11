@@ -37,6 +37,9 @@ class SkillGapStrategy:
         enabled: bool = False,
         min_missing_skills: int = 1,
     ) -> None:
+        if min_missing_skills < 1:
+            msg = f"min_missing_skills must be >= 1, got {min_missing_skills}"
+            raise ValueError(msg)
         self._enabled = enabled
         self._min_missing = min_missing_skills
 

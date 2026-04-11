@@ -47,7 +47,7 @@ class TestSkillGapStrategy:
                 ),
                 make_signal(name="coverage_ratio", value=0.5, source="skill"),
             )
-            if missing_count > 0.0 or expected_len > 0
+            if enabled
             else ()
         )
         ctx = make_context(skill_signals=signals)

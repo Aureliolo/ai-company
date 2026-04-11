@@ -48,6 +48,9 @@ class ApprovalGateGuard:
         approval_store: ApprovalStore,
         expiry_days: int = 7,
     ) -> None:
+        if expiry_days <= 0:
+            msg = f"expiry_days must be > 0, got {expiry_days}"
+            raise ValueError(msg)
         self._store = approval_store
         self._expiry_days = expiry_days
 

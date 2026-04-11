@@ -23,6 +23,7 @@ from synthorg.hr.scaling.guards.cooldown import CooldownGuard
 from synthorg.hr.scaling.guards.rate_limit import RateLimitGuard
 from synthorg.hr.scaling.models import (
     ScalingActionRecord,
+    ScalingContext,
     ScalingDecision,
 )
 from synthorg.observability import get_logger
@@ -32,6 +33,7 @@ from synthorg.observability.events.hr import (
     HR_SCALING_DECISIONS_MERGED,
     HR_SCALING_EXECUTED,
     HR_SCALING_EXECUTION_FAILED,
+    HR_SCALING_SERVICE_VALIDATION_FAILED,
     HR_SCALING_STRATEGY_EVALUATED,
 )
 
@@ -124,6 +126,7 @@ class ScalingService:
         self._offboarding_service = offboarding_service
         self._agent_registry = agent_registry
         self._disabled_strategies: set[str] = set()
+        self._last_context: ScalingContext | None = None
         self._recent_decisions: deque[ScalingDecision] = deque(
             maxlen=_MAX_HISTORY,
         )
@@ -170,7 +173,7 @@ class ScalingService:
         if len(order) != len(set(order)):
             msg = "priority_order must not contain duplicates"
             logger.warning(
-                "hr.scaling.service_validation_failed",
+                HR_SCALING_SERVICE_VALIDATION_FAILED,
                 method="update_priority_order",
                 reason="duplicate_strategy_names",
                 order=[n.value for n in order],
@@ -216,6 +219,7 @@ class ScalingService:
             agent_ids=agent_ids,
             **(context_kwargs or {}),
         )
+        self._last_context = context
 
         # 2. Run enabled strategies in parallel.
         active = tuple(
@@ -494,6 +498,10 @@ class ScalingService:
                 decision_id=str(record.decision_id),
                 reason=str(record.reason),
             )
+
+    def get_last_context(self) -> ScalingContext | None:
+        """Return the most recently built scaling context (if any)."""
+        return self._last_context
 
     def get_recent_decisions(self) -> tuple[ScalingDecision, ...]:
         """Get recent scaling decisions.

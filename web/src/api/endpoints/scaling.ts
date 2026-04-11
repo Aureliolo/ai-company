@@ -48,9 +48,17 @@ export async function getScalingDecisions(params?: {
     PaginatedResponse<ScalingDecisionResponse>
   >('/scaling/decisions', { params })
   const body = response.data
+  if (
+    !body.pagination ||
+    typeof body.pagination.total !== 'number'
+  ) {
+    throw new Error(
+      'Invalid paginated response: missing pagination.total field',
+    )
+  }
   return {
     data: body.data ?? [],
-    total: body.pagination?.total ?? 0,
+    total: body.pagination.total,
   }
 }
 

@@ -43,8 +43,9 @@ class TestConflictResolver:
             ),
         )
         result = await resolver.filter(decisions)
-        # HOLD is removed, HIRE blocked = empty
-        assert len(result) == 0
+        # HOLD is preserved (winning hold), HIRE blocked.
+        assert len(result) == 1
+        assert result[0].action_type == ScalingActionType.HOLD
 
     async def test_hold_does_not_block_prune(self) -> None:
         resolver = ConflictResolver()
@@ -62,8 +63,11 @@ class TestConflictResolver:
             ),
         )
         result = await resolver.filter(decisions)
-        assert len(result) == 1
-        assert result[0].action_type == ScalingActionType.PRUNE
+        # PRUNE passes through (not blocked), HOLD also preserved.
+        assert len(result) == 2
+        action_types = {d.action_type for d in result}
+        assert ScalingActionType.PRUNE in action_types
+        assert ScalingActionType.HOLD in action_types
 
     async def test_empty_input_returns_empty(self) -> None:
         resolver = ConflictResolver()

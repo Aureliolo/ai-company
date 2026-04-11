@@ -28,7 +28,7 @@ class TestBudgetCapStrategy:
     async def test_threshold_decisions(
         self,
         burn_rate_value: float,
-        expected_action_types: tuple[str, ...],
+        expected_action_types: tuple[ScalingActionType, ...],
     ) -> None:
         if burn_rate_value >= 90.0:
             strategy = BudgetCapStrategy(safety_margin=0.90)
@@ -64,5 +64,6 @@ class TestBudgetCapStrategy:
 
     async def test_action_types(self) -> None:
         strategy = BudgetCapStrategy()
-        assert ScalingActionType.PRUNE in strategy.action_types
+        # PRUNE is intentionally absent until cost-aware target selection.
+        assert ScalingActionType.PRUNE not in strategy.action_types
         assert ScalingActionType.HOLD in strategy.action_types

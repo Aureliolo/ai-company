@@ -8,7 +8,7 @@ import pytest
 
 from synthorg.hr.scaling.config import ScalingConfig, SkillGapConfig
 from synthorg.hr.scaling.context import ScalingContextBuilder
-from synthorg.hr.scaling.enums import ScalingActionType
+from synthorg.hr.scaling.enums import ScalingActionType, ScalingStrategyName
 from synthorg.hr.scaling.factory import (
     create_scaling_guards,
     create_scaling_strategies,
@@ -51,9 +51,12 @@ class TestSkillGapHire:
             },
         )
 
-        # Skill gap should produce a HIRE decision.
-        hire_decisions = [
-            d for d in decisions if d.action_type == ScalingActionType.HIRE
+        # Skill gap should produce a HIRE decision from the SKILL_GAP strategy.
+        skill_gap_hires = [
+            d
+            for d in decisions
+            if d.action_type == ScalingActionType.HIRE
+            and d.source_strategy == ScalingStrategyName.SKILL_GAP
         ]
-        assert len(hire_decisions) >= 1
-        assert "missing skills" in hire_decisions[0].rationale.lower()
+        assert len(skill_gap_hires) >= 1
+        assert "missing skills" in skill_gap_hires[0].rationale.lower()

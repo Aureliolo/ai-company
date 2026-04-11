@@ -4,6 +4,7 @@ Frozen Pydantic models for scaling signals, context, decisions,
 and action records.
 """
 
+from collections.abc import Mapping  # noqa: TC003
 from typing import Any, Self
 from uuid import uuid4
 
@@ -86,7 +87,7 @@ class ScalingContext(BaseModel):
         default=(),
         description="Skill coverage signals",
     )
-    performance_snapshots: dict[NotBlankStr, Any] = Field(
+    performance_snapshots: Mapping[NotBlankStr, Any] = Field(
         default_factory=dict,
         description="Raw performance snapshots keyed by agent_id",
     )

@@ -114,10 +114,15 @@ class ConflictResolver:
         # key is the role/department/skills tuple so duplicate hire
         # proposals for the same role collapse.
         best_by_key: dict[str, ScalingDecision] = {}
+        chosen_hold: ScalingDecision | None = None
 
         for decision in decisions:
-            # Skip HOLD decisions themselves (control signals).
+            # Track the highest-priority HOLD so it survives in the output.
             if decision.action_type == ScalingActionType.HOLD:
+                if chosen_hold is None or self._priority_for(
+                    decision,
+                ) < self._priority_for(chosen_hold):
+                    chosen_hold = decision
                 continue
 
             # Block HIRE from lower-priority strategies when HOLD is active.
@@ -141,7 +146,10 @@ class ConflictResolver:
             ):
                 best_by_key[key] = decision
 
-        final = tuple(best_by_key.values())
+        final_list = list(best_by_key.values())
+        if chosen_hold is not None:
+            final_list.append(chosen_hold)
+        final = tuple(final_list)
 
         logger.info(
             HR_SCALING_GUARD_APPLIED,

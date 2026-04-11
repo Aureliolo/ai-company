@@ -90,7 +90,7 @@ class ScalingDecisionResponse(BaseModel):
 class StrategyUpdateRequest(BaseModel):
     """Request body for enabling/disabling a strategy."""
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     enabled: bool = Field(description="Whether the strategy should be active")
 
@@ -98,9 +98,9 @@ class StrategyUpdateRequest(BaseModel):
 class PriorityUpdateRequest(BaseModel):
     """Request body for updating priority order."""
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
-    order: tuple[str, ...] = Field(
+    order: tuple[NotBlankStr, ...] = Field(
         description="Strategy names in priority order (first = highest)",
     )
 
@@ -229,17 +229,38 @@ class ScalingController(Controller):
         app_state: AppState = state.app_state
         scaling = app_state.scaling_service
         if scaling is None:
+            logger.warning(
+                "hr.scaling.controller_service_missing",
+                endpoint="list_signals",
+            )
             return ApiResponse(data=())
 
-        # Collect signals from the most recent decisions.
+        # Read live signals from the most recently built context. We
+        # fall back to decision history when no context has been built
+        # yet so the dashboard still shows something on cold start.
         signals: list[ScalingSignalResponse] = []
         seen: set[str] = set()
-        for decision in reversed(scaling.get_recent_decisions()):
-            for signal in decision.signals:
-                name_str = str(signal.name)
-                if name_str not in seen:
-                    seen.add(name_str)
-                    signals.append(_signal_to_response(signal))
+
+        live_context = scaling.get_last_context()
+        if live_context is not None:
+            for group in (
+                live_context.workload_signals,
+                live_context.budget_signals,
+                live_context.performance_signals,
+                live_context.skill_signals,
+            ):
+                for signal in group:
+                    name_str = str(signal.name)
+                    if name_str not in seen:
+                        seen.add(name_str)
+                        signals.append(_signal_to_response(signal))
+        else:
+            for decision in reversed(scaling.get_recent_decisions()):
+                for signal in decision.signals:
+                    name_str = str(signal.name)
+                    if name_str not in seen:
+                        seen.add(name_str)
+                        signals.append(_signal_to_response(signal))
         return ApiResponse(data=tuple(signals))
 
     @post("/evaluate", guards=[require_write_access])
@@ -258,6 +279,10 @@ class ScalingController(Controller):
         app_state: AppState = state.app_state
         scaling = app_state.scaling_service
         if scaling is None:
+            logger.warning(
+                "hr.scaling.controller_service_missing",
+                endpoint="trigger_evaluation",
+            )
             return ApiResponse(
                 data=(),
                 error="Scaling service not configured",
@@ -294,6 +319,11 @@ class ScalingController(Controller):
         app_state: AppState = state.app_state
         scaling = app_state.scaling_service
         if scaling is None:
+            logger.warning(
+                "hr.scaling.controller_service_missing",
+                endpoint="update_strategy",
+                strategy=strategy_name,
+            )
             return ApiResponse(
                 data=None,
                 error="Scaling service not configured",
@@ -307,6 +337,11 @@ class ScalingController(Controller):
             )
 
         scaling.set_strategy_enabled(strategy_name, enabled=data.enabled)
+        logger.info(
+            "hr.scaling.strategy_toggled",
+            strategy=strategy_name,
+            enabled=data.enabled,
+        )
 
         config = scaling.config
         configured_order = {
@@ -338,6 +373,10 @@ class ScalingController(Controller):
         app_state: AppState = state.app_state
         scaling = app_state.scaling_service
         if scaling is None:
+            logger.warning(
+                "hr.scaling.controller_service_missing",
+                endpoint="update_priority",
+            )
             return ApiResponse(
                 data=(),
                 error="Scaling service not configured",
@@ -349,6 +388,10 @@ class ScalingController(Controller):
             return ApiResponse(data=(), error=str(exc))
 
         scaling.update_priority_order(order)
+        logger.info(
+            "hr.scaling.priority_order_updated",
+            order=[n.value for n in order],
+        )
         return ApiResponse(
             data=tuple(n.value for n in order),
         )

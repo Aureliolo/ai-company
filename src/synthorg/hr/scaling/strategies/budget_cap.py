@@ -20,7 +20,7 @@ logger = get_logger(__name__)
 
 _NAME = NotBlankStr("budget_cap")
 _ACTION_TYPES = frozenset(
-    {ScalingActionType.PRUNE, ScalingActionType.HOLD, ScalingActionType.NO_OP},
+    {ScalingActionType.HOLD, ScalingActionType.NO_OP},
 )
 
 

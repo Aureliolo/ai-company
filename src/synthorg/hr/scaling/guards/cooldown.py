@@ -35,6 +35,12 @@ class CooldownGuard:
     ) -> None:
         if cooldown_seconds < 0:
             msg = f"cooldown_seconds must be >= 0, got {cooldown_seconds}"
+            logger.warning(
+                HR_SCALING_GUARD_APPLIED,
+                guard="cooldown",
+                action="init_validation_failed",
+                cooldown_seconds=cooldown_seconds,
+            )
             raise ValueError(msg)
         self._cooldown = cooldown_seconds
         self._last_action: dict[str, datetime] = {}

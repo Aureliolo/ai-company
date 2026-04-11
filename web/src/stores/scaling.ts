@@ -95,6 +95,7 @@ export const useScalingStore = create<ScalingState>()((set, get) => ({
       set({ strategies })
     } catch (err) {
       log.error('Failed to fetch strategies', err)
+      throw err
     }
   },
 
@@ -104,6 +105,7 @@ export const useScalingStore = create<ScalingState>()((set, get) => ({
       set({ decisions: result.data, totalDecisions: result.total })
     } catch (err) {
       log.error('Failed to fetch decisions', err)
+      throw err
     }
   },
 
@@ -113,6 +115,7 @@ export const useScalingStore = create<ScalingState>()((set, get) => ({
       set({ signals })
     } catch (err) {
       log.error('Failed to fetch signals', err)
+      throw err
     }
   },
 

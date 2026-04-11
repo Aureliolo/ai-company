@@ -615,7 +615,7 @@ The scaling dashboard page must be visually verified at these checkpoints:
 1. **Loading skeleton** -- `/scaling` with no data; verify `ScalingSkeleton` renders the 4 metric placeholders + 2 section cards + decision list placeholder.
 2. **Signal gauges** -- verify `SignalGauges` renders 3 circular gauges with correct labels (Utilization, Budget Burn, Declining Agents) and clamped values (0-100 for percentages, 0-10 for count).
 3. **Strategy controls** -- verify `StrategyControls` shows all enabled strategies with correct labels, status badges (active/offline), and priority numbers.
-4. **Decision history** -- verify `DecisionHistory` renders recent decisions with action type badge, rationale text, confidence, and timestamp.
+4. **Decision history** -- verify `DecisionHistory` renders recent decisions with action type badge, rationale text, strategy source, and confidence.
 5. **Evaluate Now** -- click the "Evaluate Now" button; verify spinner state, success toast (decisions produced), or info toast (no decisions).
 6. **Error banner** -- simulate API failure; verify red `role="alert"` banner with AlertTriangle icon appears.
 7. **WebSocket disconnection** -- simulate WS drop; verify amber warning banner with WifiOff icon appears.

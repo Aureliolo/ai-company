@@ -110,7 +110,7 @@ class ScalingContextBuilder:
             budget_signals=budget_signals,
             performance_signals=performance_signals,
             skill_signals=skill_signals,
-            performance_snapshots=dict(perf_snapshots),
+            performance_snapshots=perf_snapshots,
             evaluated_at=datetime.now(UTC),
         )
         logger.debug(
