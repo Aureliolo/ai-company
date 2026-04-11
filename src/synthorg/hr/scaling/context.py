@@ -16,6 +16,7 @@ from synthorg.observability.events.hr import (
 
 if TYPE_CHECKING:
     from synthorg.core.types import NotBlankStr
+    from synthorg.hr.scaling.protocols import ScalingSignalSource
     from synthorg.hr.scaling.signals.budget import BudgetSignalSource
     from synthorg.hr.scaling.signals.performance import (
         PerformanceSignalSource,
@@ -144,7 +145,7 @@ class ScalingContextBuilder:
     @staticmethod
     async def _safe_collect(
         name: str,
-        source: Any,
+        source: ScalingSignalSource | None,
         agent_ids: tuple[NotBlankStr, ...],
         kwargs: dict[str, Any] | None,
     ) -> tuple[ScalingSignal, ...]:

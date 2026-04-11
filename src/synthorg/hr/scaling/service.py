@@ -311,10 +311,17 @@ class ScalingService:
             record = await self._execute_one(decision)
             records.append(record)
             self.record_action(record)
-            # Notify stateful guards so repeated cycles respect recent
-            # activity (cooldown + rate limit tracking).
             if record.outcome == ScalingOutcome.EXECUTED:
+                # Notify stateful guards so repeated cycles respect recent
+                # activity (cooldown + rate limit tracking).
                 await self._notify_stateful_guards(decision)
+            elif record.outcome in (
+                ScalingOutcome.FAILED,
+                ScalingOutcome.DEFERRED,
+            ):
+                # Release the tentative cooldown reservation so a failed
+                # attempt does not consume the cooldown window.
+                await self._release_guard_reservations(decision)
         return tuple(records)
 
     async def _execute_one(
@@ -454,19 +461,19 @@ class ScalingService:
             executed_at=now,
         )
 
+    def _iter_inner_guards(self) -> list[Any]:
+        """Flatten the guard chain into a list of leaf guards."""
+        guard = self._guard
+        if isinstance(guard, CompositeScalingGuard):
+            return list(guard.get_guards())
+        return [guard]
+
     async def _notify_stateful_guards(
         self,
         decision: ScalingDecision,
     ) -> None:
         """Notify CooldownGuard and RateLimitGuard of an executed action."""
-        guards_to_notify: list[Any] = []
-        guard = self._guard
-        if isinstance(guard, CompositeScalingGuard):
-            guards_to_notify.extend(guard.get_guards())
-        else:
-            guards_to_notify.append(guard)
-
-        for inner in guards_to_notify:
+        for inner in self._iter_inner_guards():
             if isinstance(inner, (CooldownGuard, RateLimitGuard)):
                 try:
                     await inner.record_action(decision)
@@ -474,6 +481,24 @@ class ScalingService:
                     logger.error(
                         HR_SCALING_EXECUTION_FAILED,
                         action="guard_record_failed",
+                        guard=str(inner.name),
+                        decision_id=str(decision.id),
+                        exc_info=True,
+                    )
+
+    async def _release_guard_reservations(
+        self,
+        decision: ScalingDecision,
+    ) -> None:
+        """Release tentative cooldown reservations on execution failure."""
+        for inner in self._iter_inner_guards():
+            if isinstance(inner, CooldownGuard):
+                try:
+                    await inner.release_reservation(decision)
+                except Exception:
+                    logger.error(
+                        HR_SCALING_EXECUTION_FAILED,
+                        action="guard_release_failed",
                         guard=str(inner.name),
                         decision_id=str(decision.id),
                         exc_info=True,

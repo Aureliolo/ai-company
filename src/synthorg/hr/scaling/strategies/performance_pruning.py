@@ -92,11 +92,16 @@ class PerformancePruningStrategy:
 
         now = datetime.now(UTC)
         decisions: list[ScalingDecision] = []
+        agents_processed = 0
+        agents_skipped = 0
+        agents_deferred = 0
+        agents_error = 0
 
         for agent_id in context.agent_ids:
             agent_key = str(agent_id)
             snapshot = snapshots.get(agent_key)
             if snapshot is None:
+                agents_skipped += 1
                 continue
 
             try:
@@ -104,6 +109,7 @@ class PerformancePruningStrategy:
                 if self._defer_during_evolution and self._evolution_checker is not None:
                     is_adapting = await self._evolution_checker(agent_id)
                     if is_adapting:
+                        agents_deferred += 1
                         logger.debug(
                             HR_SCALING_STRATEGY_EVALUATED,
                             strategy="performance_pruning",
@@ -113,9 +119,40 @@ class PerformancePruningStrategy:
                         continue
 
                 evaluation = await self._policy.evaluate(agent_id, snapshot)
+
+                if evaluation.eligible:
+                    # Build per-agent signals from the snapshot's
+                    # quality trends. Fleet-wide aggregates in
+                    # context.performance_signals are NOT per-agent
+                    # evidence and must not be attached here.
+                    agent_signals = tuple(
+                        ScalingSignal(
+                            name=NotBlankStr(f"agent_{trend.metric_name}"),
+                            value=float(trend.slope),
+                            source=NotBlankStr("performance"),
+                            timestamp=now,
+                        )
+                        for trend in snapshot.trends
+                    )
+                    decisions.append(
+                        ScalingDecision(
+                            action_type=ScalingActionType.PRUNE,
+                            source_strategy=(ScalingStrategyName.PERFORMANCE_PRUNING),
+                            target_agent_id=agent_id,
+                            rationale=NotBlankStr(
+                                "; ".join(str(r) for r in evaluation.reasons)
+                                or "performance below threshold"
+                            ),
+                            confidence=0.8,
+                            signals=agent_signals,
+                            created_at=now,
+                        ),
+                    )
+                agents_processed += 1
             except MemoryError, RecursionError, asyncio.CancelledError:
                 raise
             except Exception:
+                agents_error += 1
                 logger.error(
                     HR_SCALING_STRATEGY_EVALUATED,
                     strategy="performance_pruning",
@@ -125,39 +162,14 @@ class PerformancePruningStrategy:
                 )
                 continue
 
-            if evaluation.eligible:
-                # Build per-agent signals from the snapshot's quality
-                # trends. Fleet-wide aggregates in
-                # context.performance_signals are NOT per-agent
-                # evidence and must not be attached here.
-                agent_signals = tuple(
-                    ScalingSignal(
-                        name=NotBlankStr(f"agent_{trend.metric_name}"),
-                        value=float(trend.slope),
-                        source=NotBlankStr("performance"),
-                        timestamp=now,
-                    )
-                    for trend in snapshot.trends
-                )
-                decisions.append(
-                    ScalingDecision(
-                        action_type=ScalingActionType.PRUNE,
-                        source_strategy=ScalingStrategyName.PERFORMANCE_PRUNING,
-                        target_agent_id=agent_id,
-                        rationale=NotBlankStr(
-                            "; ".join(str(r) for r in evaluation.reasons)
-                            or "performance below threshold"
-                        ),
-                        confidence=0.8,
-                        signals=agent_signals,
-                        created_at=now,
-                    ),
-                )
-
         logger.info(
             HR_SCALING_STRATEGY_EVALUATED,
             strategy="performance_pruning",
             decisions=len(decisions),
-            agents_evaluated=len(context.agent_ids),
+            agents_total=len(context.agent_ids),
+            agents_processed=agents_processed,
+            agents_skipped=agents_skipped,
+            agents_deferred=agents_deferred,
+            agents_error=agents_error,
         )
         return tuple(decisions)

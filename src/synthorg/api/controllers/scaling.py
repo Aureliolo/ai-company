@@ -162,6 +162,10 @@ class ScalingController(Controller):
         app_state: AppState = state.app_state
         scaling = app_state.scaling_service
         if scaling is None:
+            logger.warning(
+                HR_SCALING_CONTROLLER_SERVICE_MISSING,
+                endpoint="list_strategies",
+            )
             return ApiResponse(data=())
 
         config = scaling.config
@@ -199,6 +203,10 @@ class ScalingController(Controller):
         app_state: AppState = state.app_state
         scaling = app_state.scaling_service
         if scaling is None:
+            logger.warning(
+                HR_SCALING_CONTROLLER_SERVICE_MISSING,
+                endpoint="list_decisions",
+            )
             return PaginatedResponse(
                 data=(),
                 pagination=PaginationMeta(

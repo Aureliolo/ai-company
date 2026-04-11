@@ -24,7 +24,7 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 # Map scaling actions to approval risk levels.
-_RISK_MAP: dict[str, ApprovalRiskLevel] = {
+_RISK_MAP: dict[ScalingActionType, ApprovalRiskLevel] = {
     ScalingActionType.HIRE: ApprovalRiskLevel.MEDIUM,
     ScalingActionType.PRUNE: ApprovalRiskLevel.CRITICAL,
 }
@@ -99,7 +99,7 @@ class ApprovalGateGuard:
                 continue
 
             risk = _RISK_MAP.get(
-                str(decision.action_type),
+                decision.action_type,
                 ApprovalRiskLevel.MEDIUM,
             )
 

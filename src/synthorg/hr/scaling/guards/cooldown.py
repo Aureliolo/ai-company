@@ -109,7 +109,15 @@ class CooldownGuard:
         """
         async with self._lock:
             key = self._make_key(decision)
+            existed = key in self._last_action
             self._last_action.pop(key, None)
+            logger.debug(
+                HR_SCALING_GUARD_APPLIED,
+                guard="cooldown",
+                action="reservation_released",
+                key=key,
+                existed=existed,
+            )
 
     async def record_action(self, decision: ScalingDecision) -> None:
         """Record that an action was executed for cooldown tracking.
