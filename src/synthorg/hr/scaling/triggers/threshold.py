@@ -37,7 +37,7 @@ class SignalThresholdTrigger:
     def __init__(
         self,
         *,
-        signal_name: str,
+        signal_name: NotBlankStr,
         threshold: float,
         above: bool = True,
     ) -> None:
@@ -45,7 +45,7 @@ class SignalThresholdTrigger:
         self._threshold = threshold
         self._above = above
         self._was_crossed = False
-        self._previously_over = False
+        self._previously_over: bool | None = None
         self._lock = asyncio.Lock()
 
     @property

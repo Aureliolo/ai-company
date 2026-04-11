@@ -1,6 +1,6 @@
 """Tests for batched scaling trigger."""
 
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 
 import pytest
 
@@ -32,9 +32,8 @@ class TestBatchedScalingTrigger:
         assert await trigger.should_trigger() is True
         await trigger.record_run()
 
-        # Simulate time passing.
-        past = datetime.now(UTC) - timedelta(seconds=15)
-        trigger._last_run = past
+        # Simulate time passing with a fixed timestamp.
+        trigger._last_run = datetime(2020, 1, 1, 0, 0, 0, tzinfo=UTC)
         assert await trigger.should_trigger() is True
 
     async def test_record_run_updates_last_run(self) -> None:

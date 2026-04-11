@@ -1,7 +1,9 @@
 """Scaling context builder -- aggregates signals into a frozen context."""
 
 import asyncio
+import copy
 from datetime import UTC, datetime
+from types import MappingProxyType
 from typing import TYPE_CHECKING, Any
 
 from synthorg.hr.scaling.models import ScalingContext, ScalingSignal
@@ -95,8 +97,12 @@ class ScalingContextBuilder:
             skill_kwargs,
         )
 
-        # Pass through raw performance snapshots for the pruning strategy.
-        perf_snapshots = (performance_kwargs or {}).get("snapshots", {})
+        raw_snapshots = (performance_kwargs or {}).get("snapshots", {})
+        perf_snapshots = (
+            MappingProxyType(copy.deepcopy(raw_snapshots))
+            if isinstance(raw_snapshots, dict)
+            else MappingProxyType({})
+        )
 
         context = ScalingContext(
             active_agent_count=len(agent_ids),
@@ -105,9 +111,7 @@ class ScalingContextBuilder:
             budget_signals=budget_signals,
             performance_signals=performance_signals,
             skill_signals=skill_signals,
-            performance_snapshots=(
-                perf_snapshots if isinstance(perf_snapshots, dict) else {}
-            ),
+            performance_snapshots=dict(perf_snapshots),
             evaluated_at=datetime.now(UTC),
         )
         logger.debug(

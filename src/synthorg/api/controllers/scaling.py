@@ -168,7 +168,7 @@ class ScalingController(Controller):
         strategies = tuple(
             ScalingStrategyResponse(
                 name=str(s.name),
-                enabled=True,
+                enabled=scaling.is_strategy_enabled(str(s.name)),
                 priority=configured_order.get(str(s.name), 999),
             )
             for s in scaling.strategies

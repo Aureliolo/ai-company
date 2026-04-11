@@ -119,6 +119,7 @@ class PerformancePruningStrategy:
                             or "performance below threshold"
                         ),
                         confidence=0.8,
+                        signals=tuple(context.performance_signals),
                         created_at=now,
                     ),
                 )

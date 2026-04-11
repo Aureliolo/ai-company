@@ -27,8 +27,8 @@ class SkillSignalSource:
         self,
         agent_ids: tuple[NotBlankStr, ...],
         *,
-        agent_skills: dict[str, tuple[str, ...]] | None = None,
-        required_skills: tuple[str, ...] = (),
+        agent_skills: dict[NotBlankStr, tuple[NotBlankStr, ...]] | None = None,
+        required_skills: tuple[NotBlankStr, ...] = (),
     ) -> tuple[ScalingSignal, ...]:
         """Collect skill coverage signals.
 
@@ -41,32 +41,31 @@ class SkillSignalSource:
             Skill signals: coverage_ratio, missing_skill_count.
         """
         now = datetime.now(UTC)
+        unique_required = set(required_skills)
 
-        if not required_skills or not agent_skills:
+        if not unique_required or not agent_skills:
             return (
                 ScalingSignal(
                     name=NotBlankStr("coverage_ratio"),
-                    value=1.0 if not required_skills else 0.0,
+                    value=1.0 if not unique_required else 0.0,
                     source=_SOURCE_NAME,
                     timestamp=now,
                 ),
                 ScalingSignal(
                     name=NotBlankStr("missing_skill_count"),
-                    value=0.0 if not required_skills else float(len(required_skills)),
+                    value=0.0 if not unique_required else float(len(unique_required)),
                     source=_SOURCE_NAME,
                     timestamp=now,
                 ),
             )
 
-        # Union of skills from active agents only.
-        all_skills: set[str] = set()
+        all_skills: set[NotBlankStr] = set()
         for aid in agent_ids:
-            all_skills.update(agent_skills.get(str(aid), ()))
+            all_skills.update(agent_skills.get(aid, ()))
 
-        required_set = set(required_skills)
-        covered = required_set & all_skills
-        missing_count = len(required_set) - len(covered)
-        coverage = len(covered) / len(required_set) if required_set else 1.0
+        covered = unique_required & all_skills
+        missing_count = len(unique_required) - len(covered)
+        coverage = len(covered) / len(unique_required) if unique_required else 1.0
 
         return (
             ScalingSignal(

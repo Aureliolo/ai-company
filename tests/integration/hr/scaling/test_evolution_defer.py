@@ -97,16 +97,14 @@ class TestEvolutionDefer:
             config=ScalingConfig(),
         )
 
+        snapshots = {str(aid): _make_snapshot(str(aid)) for aid in AGENT_IDS}
         decisions = await service.evaluate(
             agent_ids=AGENT_IDS,
-            context_kwargs={},
+            context_kwargs={
+                "performance_kwargs": {"snapshots": snapshots},
+            },
         )
 
-        # No prune decisions because evolution is active.
-        # Note: the strategy needs snapshots passed directly,
-        # but the service calls strategy.evaluate(context) which
-        # doesn't pass snapshots. The performance pruning strategy
-        # returns empty when snapshots=None (default).
         prune_decisions = [
             d for d in decisions if d.action_type == ScalingActionType.PRUNE
         ]

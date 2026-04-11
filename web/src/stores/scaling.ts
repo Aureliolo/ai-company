@@ -48,6 +48,7 @@ export const useScalingStore = create<ScalingState>()((set, get) => ({
   fetchAll: async () => {
     set({ loading: true, error: null })
     try {
+      const prev = get()
       const [strategiesR, decisionsR, signalsR] = await Promise.allSettled([
         getScalingStrategies(),
         getScalingDecisions({ limit: 50 }),
@@ -55,12 +56,23 @@ export const useScalingStore = create<ScalingState>()((set, get) => ({
       ])
 
       const strategies =
-        strategiesR.status === 'fulfilled' ? strategiesR.value : []
+        strategiesR.status === 'fulfilled'
+          ? strategiesR.value
+          : prev.strategies
       const decisionsResult =
         decisionsR.status === 'fulfilled'
           ? decisionsR.value
-          : { data: [], total: 0 }
-      const signals = signalsR.status === 'fulfilled' ? signalsR.value : []
+          : { data: prev.decisions, total: prev.totalDecisions }
+      const signals =
+        signalsR.status === 'fulfilled' ? signalsR.value : prev.signals
+
+      const errors = [strategiesR, decisionsR, signalsR]
+        .filter((r) => r.status === 'rejected')
+        .map((r) => (r as PromiseRejectedResult).reason)
+      const errorMsg =
+        errors.length > 0
+          ? errors.map((e) => getErrorMessage(e)).join('; ')
+          : null
 
       set({
         strategies,
@@ -68,6 +80,7 @@ export const useScalingStore = create<ScalingState>()((set, get) => ({
         totalDecisions: decisionsResult.total,
         signals,
         loading: false,
+        error: errorMsg,
       })
     } catch (err) {
       log.error('Failed to fetch scaling data', err)

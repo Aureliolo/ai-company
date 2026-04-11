@@ -9,12 +9,12 @@ import copy
 from types import MappingProxyType
 from typing import TYPE_CHECKING
 
+from synthorg.core.types import NotBlankStr
 from synthorg.hr.scaling.enums import ScalingActionType, ScalingStrategyName
 from synthorg.observability import get_logger
 from synthorg.observability.events.hr import HR_SCALING_GUARD_APPLIED
 
 if TYPE_CHECKING:
-    from synthorg.core.types import NotBlankStr
     from synthorg.hr.scaling.models import ScalingDecision
 
 logger = get_logger(__name__)
@@ -54,7 +54,7 @@ class ConflictResolver:
     @property
     def name(self) -> NotBlankStr:
         """Guard identifier."""
-        return "conflict_resolver"
+        return NotBlankStr("conflict_resolver")
 
     def _priority_for(self, decision: ScalingDecision) -> int:
         """Return the priority rank for a decision's strategy."""

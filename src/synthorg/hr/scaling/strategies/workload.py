@@ -101,8 +101,8 @@ class WorkloadAutoScaleStrategy:
             )
 
         elif avg_util.value < self._prune_threshold and context.active_agent_count > 1:
-            # Select agent to prune (last in list -- utilization-based
-            # selection is a future enhancement).
+            # Placeholder target -- per-agent utilization-based selection
+            # is a future enhancement.
             target = context.agent_ids[-1] if context.agent_ids else None
             if target is not None:
                 confidence = min(

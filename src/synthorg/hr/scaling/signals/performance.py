@@ -80,8 +80,10 @@ class PerformanceSignalSource:
         trend_values: list[float] = []
         declining_count = 0
 
-        for snapshot in snapshots.values():
-            # Find quality_score trend in the trends tuple.
+        for agent_id in agent_ids:
+            snapshot = snapshots.get(str(agent_id))
+            if snapshot is None:
+                continue
             quality_trend = next(
                 (t for t in snapshot.trends if t.metric_name == "quality_score"),
                 None,

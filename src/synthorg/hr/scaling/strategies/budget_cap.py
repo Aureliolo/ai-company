@@ -44,6 +44,18 @@ class BudgetCapStrategy:
         safety_margin: float = 0.90,
         headroom_fraction: float = 0.60,
     ) -> None:
+        if not 0.0 < safety_margin <= 1.0:
+            msg = f"safety_margin must be in (0, 1], got {safety_margin}"
+            raise ValueError(msg)
+        if not 0.0 <= headroom_fraction <= 1.0:
+            msg = f"headroom_fraction must be in [0, 1], got {headroom_fraction}"
+            raise ValueError(msg)
+        if headroom_fraction >= safety_margin:
+            msg = (
+                f"headroom_fraction ({headroom_fraction}) "
+                f"must be < safety_margin ({safety_margin})"
+            )
+            raise ValueError(msg)
         self._safety_margin = safety_margin
         self._headroom_fraction = headroom_fraction
 

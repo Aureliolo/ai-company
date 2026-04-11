@@ -8,7 +8,11 @@ from typing import Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from synthorg.core.types import NotBlankStr
 from synthorg.hr.scaling.enums import ScalingStrategyName
+from synthorg.observability import get_logger
+
+logger = get_logger(__name__)
 
 
 class WorkloadScalingConfig(BaseModel):
@@ -198,8 +202,8 @@ class ScalingConfig(BaseModel):
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     enabled: bool = Field(default=True, description="Scaling service enabled")
-    default_hire_level: str = Field(
-        default="mid",
+    default_hire_level: NotBlankStr = Field(
+        default=NotBlankStr("mid"),
         description="Default seniority level for hire requests",
     )
     workload: WorkloadScalingConfig = Field(
@@ -231,5 +235,11 @@ class ScalingConfig(BaseModel):
         """
         if len(self.priority_order) != len(set(self.priority_order)):
             msg = "priority_order must not contain duplicates"
+            logger.warning(
+                "hr.scaling.config_validation_failed",
+                model="ScalingConfig",
+                field="priority_order",
+                reason="duplicates",
+            )
             raise ValueError(msg)
         return self

@@ -21,6 +21,9 @@ from synthorg.hr.scaling.enums import (
     ScalingOutcome,
     ScalingStrategyName,
 )
+from synthorg.observability import get_logger
+
+logger = get_logger(__name__)
 
 
 class ScalingSignal(BaseModel):
@@ -82,7 +85,7 @@ class ScalingContext(BaseModel):
         default=(),
         description="Skill coverage signals",
     )
-    performance_snapshots: dict[str, Any] = Field(
+    performance_snapshots: dict[NotBlankStr, Any] = Field(
         default_factory=dict,
         description="Raw performance snapshots keyed by agent_id",
     )
@@ -97,6 +100,13 @@ class ScalingContext(BaseModel):
             msg = (
                 f"active_agent_count ({self.active_agent_count}) must equal "
                 f"len(agent_ids) ({len(self.agent_ids)})"
+            )
+            logger.warning(
+                "hr.scaling.model_validation_failed",
+                model="ScalingContext",
+                field="active_agent_count",
+                expected=len(self.agent_ids),
+                actual=self.active_agent_count,
             )
             raise ValueError(msg)
         return self
