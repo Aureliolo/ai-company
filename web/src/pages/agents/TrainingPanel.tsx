@@ -14,8 +14,9 @@
 
 import { useState } from 'react'
 
+import { GraduationCap } from 'lucide-react'
+
 import { SectionCard } from '@/components/ui/section-card'
-import { StatusBadge } from '@/components/ui/status-badge'
 import { StatPill } from '@/components/ui/stat-pill'
 import { Button } from '@/components/ui/button'
 import { ToggleField } from '@/components/ui/toggle-field'
@@ -75,17 +76,15 @@ export function TrainingPanel({
   return (
     <SectionCard
       title="Training Mode"
-      icon="graduation-cap"
+      icon={GraduationCap}
       className={cn('', className)}
     >
       {/* Status display */}
       {plan && (
         <div className="mb-card flex items-center gap-grid-gap">
-          <span className="text-sm text-muted-foreground">Status:</span>
-          <StatusBadge
-            status={plan.status === 'executed' ? 'active' : plan.status === 'failed' ? 'error' : 'idle'}
-            label={plan.status}
-          />
+          <span className="text-sm text-muted-foreground">
+            Status: {plan.status}
+          </span>
         </div>
       )}
 
@@ -97,12 +96,16 @@ export function TrainingPanel({
       {/* Configuration (when no plan exists) */}
       {!plan && (
         <div className="space-y-card">
-          <TagInput
-            label="Override Source Agents"
-            value={overrideSources}
-            onChange={setOverrideSources}
-            placeholder="Enter agent IDs..."
-          />
+          <div>
+            <span className="mb-1 block text-sm font-medium text-foreground">
+              Override Source Agents
+            </span>
+            <TagInput
+              value={overrideSources}
+              onChange={setOverrideSources}
+              placeholder="Enter agent IDs..."
+            />
+          </div>
 
           <ToggleField
             label="Skip Training"

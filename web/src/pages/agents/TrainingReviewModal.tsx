@@ -31,9 +31,9 @@ interface TrainingReviewModalProps {
   planId: string
   approvalId: string
   items: TrainingReviewItem[]
-  onApprove: () => void
-  onReject: () => void
-  onClose: () => void
+  onApprove: () => void | Promise<void>
+  onReject?: () => void
+  onOpenChange: (open: boolean) => void
   loading?: boolean
 }
 
@@ -54,27 +54,24 @@ export function TrainingReviewModal({
   items,
   onApprove,
   onReject,
-  onClose,
+  onOpenChange,
   loading = false,
 }: TrainingReviewModalProps) {
   const totalItems = items.reduce((sum, item) => sum + item.item_count, 0)
 
   const handleApprove = () => {
     log.debug('Approving training plan', { planId, approvalId })
-    onApprove()
-  }
-
-  const handleReject = () => {
-    log.debug('Rejecting training plan', { planId, approvalId })
-    onReject()
+    return onApprove()
   }
 
   return (
     <ConfirmDialog
       open={open}
-      onClose={onClose}
+      onOpenChange={(nextOpen) => {
+        if (!nextOpen) onReject?.()
+        onOpenChange(nextOpen)
+      }}
       onConfirm={handleApprove}
-      onCancel={handleReject}
       title="Review Training Plan"
       confirmLabel="Approve"
       cancelLabel="Reject"
@@ -83,7 +80,7 @@ export function TrainingReviewModal({
       <div className="space-y-card">
         <p className="text-sm text-muted-foreground">
           Review {totalItems} training items before they are seeded
-          into the new agent's memory.
+          into the new agent&apos;s memory.
         </p>
 
         <div className="flex flex-wrap gap-grid-gap">

@@ -10,17 +10,27 @@
  * - Progress displays "Complete" with result summary when done
  */
 
-import { StatusBadge } from '@/components/ui/status-badge'
 import { StatPill } from '@/components/ui/stat-pill'
 import { cn } from '@/lib/utils'
 import type { TrainingResultResponse } from '@/api/endpoints/training'
 
 // -- Types -----------------------------------------------------------
 
+type TrainingStatus = 'pending' | 'in_progress' | 'complete' | 'skipped'
+
 interface TrainingProgressProps {
-  status: 'pending' | 'in_progress' | 'complete' | 'skipped'
+  status: TrainingStatus
   result?: TrainingResultResponse | null
   className?: string
+}
+
+// -- Status labels ---------------------------------------------------
+
+const STATUS_LABELS: Record<TrainingStatus, string> = {
+  pending: 'Pending',
+  in_progress: 'In Progress',
+  complete: 'Complete',
+  skipped: 'Skipped',
 }
 
 // -- Component -------------------------------------------------------
@@ -30,18 +40,11 @@ export function TrainingProgress({
   result,
   className,
 }: TrainingProgressProps) {
-  const statusMap = {
-    pending: { badge: 'idle' as const, label: 'Pending' },
-    in_progress: { badge: 'active' as const, label: 'In Progress' },
-    complete: { badge: 'active' as const, label: 'Complete' },
-    skipped: { badge: 'idle' as const, label: 'Skipped' },
-  }
-
-  const { badge, label } = statusMap[status]
-
   return (
     <div className={cn('flex items-center gap-grid-gap', className)}>
-      <StatusBadge status={badge} label={label} />
+      <span className="text-sm text-muted-foreground">
+        {STATUS_LABELS[status]}
+      </span>
 
       {status === 'complete' && result && (
         <div className="flex gap-grid-gap">

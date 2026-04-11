@@ -163,9 +163,13 @@ class TestTrainingServiceExecute:
         guard = AsyncMock()
         guard.evaluate.return_value = TrainingGuardDecision(
             approved_items=(),
-            rejected_count=5,
+            rejected_count=3,
             guard_name="test_guard",
-            rejection_reasons=("Rejected by test",),
+            rejection_reasons=(
+                "Rejected item 1",
+                "Rejected item 2",
+                "Rejected item 3",
+            ),
         )
         service = _make_service(guards=(guard,))
         plan = _make_plan()

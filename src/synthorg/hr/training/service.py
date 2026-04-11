@@ -49,13 +49,17 @@ _CONTENT_TYPE_TO_CATEGORY: dict[ContentType, MemoryCategory] = {
     ContentType.TOOL_PATTERNS: MemoryCategory.PROCEDURAL,
 }
 
+# Internal type alias for curated items map passed through pipeline.
+_CuratedMap = dict[ContentType, tuple[TrainingItem, ...]]
+
 
 class TrainingService:
     """Training pipeline orchestrator.
 
     Executes the full training flow: source resolution, parallel
     extraction + curation, sequential guard chain, and memory
-    storage.
+    storage.  All pipeline state is local to each ``execute()``
+    call -- no instance state leaks between invocations.
 
     Args:
         selector: Source agent selector.
@@ -117,16 +121,15 @@ class TrainingService:
         source_ids = await self._resolve_sources(plan)
 
         # 4. Parallel extraction + curation.
-        extracted, curated = await self._extract_and_curate(
-            plan,
-            source_ids,
+        extracted, curated, curated_items = await self._extract_and_curate(
+            plan, source_ids
         )
 
         # 5. Sequential guard chain.
-        guarded, errors = await self._apply_guards(plan, curated)
+        guarded, errors, guarded_items = await self._apply_guards(plan, curated_items)
 
         # 6. Storage.
-        stored = await self._store_items(plan, guarded)
+        stored = await self._store_items(plan, guarded_items)
 
         completed_at = datetime.now(UTC)
 
@@ -162,9 +165,8 @@ class TrainingService:
         """
         started_at = datetime.now(UTC)
         source_ids = await self._resolve_sources(plan)
-        extracted, curated = await self._extract_and_curate(
-            plan,
-            source_ids,
+        extracted, curated, _curated_items = await self._extract_and_curate(
+            plan, source_ids
         )
 
         return TrainingResult(
@@ -196,13 +198,16 @@ class TrainingService:
     ) -> tuple[
         tuple[tuple[ContentType, int], ...],
         tuple[tuple[ContentType, int], ...],
+        _CuratedMap,
     ]:
-        """Run extraction + curation in parallel per content type."""
+        """Run extraction + curation in parallel per content type.
+
+        Returns extracted counts, curated counts, and the curated
+        items map (local, not stored on self).
+        """
         extracted_counts: list[tuple[ContentType, int]] = []
         curated_counts: list[tuple[ContentType, int]] = []
-
-        # Per-content-type extraction results for guard chain.
-        self._curated_items: dict[ContentType, tuple[TrainingItem, ...]] = {}
+        curated_items: _CuratedMap = {}
 
         async def _process(ct: ContentType) -> None:
             extractor = self._extractors.get(ct)
@@ -229,27 +234,36 @@ class TrainingService:
                 content_type=ct,
             )
             curated_counts.append((ct, len(curated)))
-            self._curated_items[ct] = curated
+            curated_items[ct] = curated
 
         async with asyncio.TaskGroup() as tg:
             for ct in plan.enabled_content_types:
                 tg.create_task(_process(ct))
 
-        return tuple(extracted_counts), tuple(curated_counts)
+        return (
+            tuple(extracted_counts),
+            tuple(curated_counts),
+            curated_items,
+        )
 
     async def _apply_guards(
         self,
         plan: TrainingPlan,
-        curated_counts: tuple[tuple[ContentType, int], ...],  # noqa: ARG002
+        curated_items: _CuratedMap,
     ) -> tuple[
         tuple[tuple[ContentType, int], ...],
         tuple[str, ...],
+        _CuratedMap,
     ]:
-        """Apply guard chain sequentially per content type."""
+        """Apply guard chain sequentially per content type.
+
+        Returns guarded counts, errors, and the guarded items map.
+        """
         guarded_counts: list[tuple[ContentType, int]] = []
         all_errors: list[str] = []
+        guarded_items: _CuratedMap = {}
 
-        for ct, items in self._curated_items.items():
+        for ct, items in curated_items.items():
             current_items = items
             for guard in self._guards:
                 decision: TrainingGuardDecision = await guard.evaluate(
@@ -270,19 +284,19 @@ class TrainingService:
                 all_errors.extend(decision.rejection_reasons)
 
             guarded_counts.append((ct, len(current_items)))
-            self._curated_items[ct] = current_items
+            guarded_items[ct] = current_items
 
-        return tuple(guarded_counts), tuple(all_errors)
+        return tuple(guarded_counts), tuple(all_errors), guarded_items
 
     async def _store_items(
         self,
         plan: TrainingPlan,
-        guarded_counts: tuple[tuple[ContentType, int], ...],  # noqa: ARG002
+        guarded_items: _CuratedMap,
     ) -> tuple[tuple[ContentType, int], ...]:
         """Store approved items to memory backend."""
         stored_counts: list[tuple[ContentType, int]] = []
 
-        for ct, items in self._curated_items.items():
+        for ct, items in guarded_items.items():
             stored = 0
             category = _CONTENT_TYPE_TO_CATEGORY.get(ct, MemoryCategory.PROCEDURAL)
 

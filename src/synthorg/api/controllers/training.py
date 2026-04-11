@@ -82,17 +82,27 @@ class TrainingController(Controller):
             )
             raise NotFoundError(msg)
 
-        enabled_types = (
-            frozenset(ContentType(ct) for ct in data.content_types)
-            if data.content_types
-            else frozenset(ContentType)
-        )
+        try:
+            enabled_types = (
+                frozenset(ContentType(ct) for ct in data.content_types)
+                if data.content_types
+                else frozenset(ContentType)
+            )
+        except ValueError as exc:
+            msg = f"Invalid content type: {exc}"
+            logger.warning(API_REQUEST_ERROR, error=msg)
+            raise NotFoundError(msg) from exc
 
         volume_caps_kwarg: dict[str, object] = {}
         if data.custom_caps:
-            volume_caps_kwarg["volume_caps"] = tuple(
-                (ContentType(k), v) for k, v in data.custom_caps.items()
-            )
+            try:
+                volume_caps_kwarg["volume_caps"] = tuple(
+                    (ContentType(k), v) for k, v in data.custom_caps.items()
+                )
+            except ValueError as exc:
+                msg = f"Invalid content type in caps: {exc}"
+                logger.warning(API_REQUEST_ERROR, error=msg)
+                raise NotFoundError(msg) from exc
 
         plan = TrainingPlan(
             new_agent_id=str(identity.id),

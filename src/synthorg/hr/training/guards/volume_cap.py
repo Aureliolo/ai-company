@@ -67,7 +67,13 @@ class VolumeCapGuard:
                 break
 
         if cap is None:
-            # No cap defined -- pass all.
+            logger.debug(
+                HR_TRAINING_VOLUME_CAP_ENFORCED,
+                content_type=content_type.value,
+                cap="none",
+                input_count=len(items),
+                rejected_count=0,
+            )
             return TrainingGuardDecision(
                 approved_items=items,
                 rejected_count=0,
@@ -86,18 +92,8 @@ class VolumeCapGuard:
                 rejected_count=rejected_count,
             )
 
-        reasons = (
-            (
-                f"Exceeded {content_type.value} cap of {cap} "
-                f"({rejected_count} items truncated)",
-            )
-            if rejected_count > 0
-            else ()
-        )
-
         return TrainingGuardDecision(
             approved_items=approved,
             rejected_count=rejected_count,
             guard_name="volume_cap",
-            rejection_reasons=reasons,
         )

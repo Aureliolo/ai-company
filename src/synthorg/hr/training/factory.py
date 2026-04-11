@@ -96,6 +96,8 @@ def _build_selector(
             UserCuratedList,
         )
 
+        # Agent IDs come from TrainingPlan.override_sources at
+        # execution time, not from static config.
         return UserCuratedList(registry=registry, agent_ids=())
 
     # Default: role_top_performers.

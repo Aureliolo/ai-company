@@ -3,10 +3,12 @@ import type { ApiResponse } from '../types'
 
 // -- Types -----------------------------------------------------------
 
+export type ContentType = 'procedural' | 'semantic' | 'tool_patterns'
+
 export interface TrainingPlanRequest {
   override_sources?: string[]
-  content_types?: string[]
-  custom_caps?: Record<string, number>
+  content_types?: ContentType[]
+  custom_caps?: Partial<Record<ContentType, number>>
   skip_training?: boolean
   require_review?: boolean
 }
@@ -16,9 +18,9 @@ export interface TrainingPlanResponse {
   new_agent_id: string
   new_agent_role: string
   source_selector_type: string
-  enabled_content_types: string[]
+  enabled_content_types: ContentType[]
   curation_strategy_type: string
-  volume_caps: [string, number][]
+  volume_caps: Array<[ContentType, number]>
   override_sources: string[]
   skip_training: boolean
   require_review: boolean
@@ -32,10 +34,10 @@ export interface TrainingResultResponse {
   plan_id: string
   new_agent_id: string
   source_agents_used: string[]
-  items_extracted: [string, number][]
-  items_after_curation: [string, number][]
-  items_after_guards: [string, number][]
-  items_stored: [string, number][]
+  items_extracted: Array<[ContentType, number]>
+  items_after_curation: Array<[ContentType, number]>
+  items_after_guards: Array<[ContentType, number]>
+  items_stored: Array<[ContentType, number]>
   approval_item_id: string | null
   errors: string[]
   started_at: string
@@ -44,7 +46,7 @@ export interface TrainingResultResponse {
 
 export interface TrainingOverridesRequest {
   override_sources?: string[]
-  custom_caps?: Record<string, number>
+  custom_caps?: Partial<Record<ContentType, number>>
 }
 
 // -- Endpoints -------------------------------------------------------

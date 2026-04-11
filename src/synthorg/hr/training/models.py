@@ -122,6 +122,20 @@ class TrainingGuardDecision(BaseModel):
         description="ApprovalStore item ID (ReviewGateGuard only)",
     )
 
+    @model_validator(mode="after")
+    def _validate_rejection_reasons_count(self) -> Self:
+        """Ensure rejection_reasons length matches rejected_count or is empty."""
+        if (
+            self.rejection_reasons
+            and len(self.rejection_reasons) != self.rejected_count
+        ):
+            msg = (
+                f"rejection_reasons length ({len(self.rejection_reasons)}) "
+                f"must match rejected_count ({self.rejected_count}) or be empty"
+            )
+            raise ValueError(msg)
+        return self
+
 
 class TrainingPlan(BaseModel):
     """Configuration for a training session.

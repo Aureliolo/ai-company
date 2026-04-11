@@ -4,7 +4,6 @@ Queries the memory backend for semantic-category entries from
 source agents and converts them to training items.
 """
 
-from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 from synthorg.core.enums import MemoryCategory
@@ -79,7 +78,7 @@ class SemanticMemoryExtractor:
                     content=str(entry.content),
                     source_memory_id=str(entry.id),
                     metadata_tags=entry.metadata.tags,
-                    created_at=datetime.now(UTC),
+                    created_at=entry.created_at,
                 )
                 for entry in entries
             )
