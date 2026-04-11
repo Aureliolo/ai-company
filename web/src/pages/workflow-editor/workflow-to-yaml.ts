@@ -112,6 +112,11 @@ export function generateYamlPreview(
       if (config.routing_strategy) step.strategy = config.routing_strategy
       if (config.role_filter) step.role = config.role_filter
       if (config.agent_name) step.agent_name = config.agent_name
+    } else if (node.type === 'subworkflow' && config) {
+      if (config.subworkflow_id) step.subworkflow_id = config.subworkflow_id
+      if (config.version) step.version = config.version
+      if (config.input_bindings) step.input_bindings = config.input_bindings
+      if (config.output_bindings) step.output_bindings = config.output_bindings
     }
 
     // Dependencies (skip START/END), with explicit branch metadata

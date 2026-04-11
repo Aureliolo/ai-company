@@ -1,5 +1,6 @@
 """Tests for :class:`SubworkflowRegistry`."""
 
+import copy
 from datetime import UTC, datetime
 
 import pytest
@@ -93,14 +94,15 @@ class FakeSubworkflowRepository(SubworkflowRepository):
         if key in self._rows:
             msg = f"Duplicate {key}"
             raise DuplicateRecordError(msg)
-        self._rows[key] = definition
+        self._rows[key] = copy.deepcopy(definition)
 
     async def get(
         self,
         subworkflow_id: str,
         version: str,
     ) -> WorkflowDefinition | None:
-        return self._rows.get((subworkflow_id, version))
+        row = self._rows.get((subworkflow_id, version))
+        return copy.deepcopy(row) if row is not None else None
 
     async def list_versions(self, subworkflow_id: str) -> tuple[str, ...]:
         from packaging.version import Version
@@ -149,6 +151,17 @@ class FakeSubworkflowRepository(SubworkflowRepository):
             del self._rows[key]
             return True
         return False
+
+    async def delete_if_unreferenced(
+        self,
+        subworkflow_id: str,
+        version: str,
+    ) -> tuple[bool, tuple[ParentReference, ...]]:
+        parents = await self.find_parents(subworkflow_id, version)
+        if parents:
+            return False, parents
+        deleted = await self.delete(subworkflow_id, version)
+        return deleted, ()
 
     async def find_parents(
         self,
@@ -267,6 +280,7 @@ class TestDeleteProtection:
                 parent_name="Parent Workflow",
                 pinned_version="1.0.0",
                 node_id="sub-node",
+                parent_type="workflow_definition",
             ),
         )
 

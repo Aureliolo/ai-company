@@ -731,17 +731,26 @@ class WorkflowController(Controller):
     @post("/validate-draft", guards=[require_read_access], status_code=200)
     async def validate_draft(
         self,
+        state: State,
         data: CreateWorkflowDefinitionRequest,
     ) -> Response[ApiResponse[WorkflowValidationResult]]:
         """Validate a draft workflow without persisting."""
         try:
             nodes = tuple(WorkflowNode.model_validate(n) for n in data.nodes)
             edges = tuple(WorkflowEdge.model_validate(e) for e in data.edges)
+            inputs = tuple(WorkflowIODeclaration.model_validate(i) for i in data.inputs)
+            outputs = tuple(
+                WorkflowIODeclaration.model_validate(o) for o in data.outputs
+            )
             definition = WorkflowDefinition(
                 id="draft",
                 name=data.name,
                 description=data.description,
                 workflow_type=data.workflow_type,
+                version=data.version,
+                inputs=inputs,
+                outputs=outputs,
+                is_subworkflow=data.is_subworkflow,
                 nodes=nodes,
                 edges=edges,
                 created_by="draft",
@@ -759,6 +768,16 @@ class WorkflowController(Controller):
             )
 
         result = run_workflow_validation(definition)
+
+        subworkflow_errors = await _run_subworkflow_validation(
+            definition,
+            state,
+        )
+        if subworkflow_errors:
+            result = WorkflowValidationResult(
+                errors=result.errors + subworkflow_errors,
+            )
+
         return Response(
             content=ApiResponse[WorkflowValidationResult](
                 data=result,

@@ -119,13 +119,7 @@ class SQLitePersistenceBackend:
         self._config = config
         self._lifecycle_lock = asyncio.Lock()
         # Shared write lock for multi-statement transactions on the
-        # single aiosqlite connection.  Repositories that perform
-        # INSERT/UPDATE/DELETE + commit sequences should acquire this
-        # lock around their critical section so one repo's rollback
-        # cannot wipe another repo's in-flight changes.  Currently
-        # injected into SQLiteDecisionRepository (the primary
-        # audit-integrity-critical writer); broader rollout to other
-        # repositories is tracked as a follow-up.
+        # single aiosqlite connection.
         self._shared_write_lock = asyncio.Lock()
         self._db: aiosqlite.Connection | None = None
         self._artifacts: SQLiteArtifactRepository | None = None
@@ -459,168 +453,96 @@ class SQLitePersistenceBackend:
 
     @property
     def tasks(self) -> SQLiteTaskRepository:
-        """Repository for Task persistence.
-
-        Raises:
-            PersistenceConnectionError: If not connected.
-        """
+        """Repository for Task persistence."""
         return self._require_connected(self._tasks, "tasks")
 
     @property
     def cost_records(self) -> SQLiteCostRecordRepository:
-        """Repository for CostRecord persistence.
-
-        Raises:
-            PersistenceConnectionError: If not connected.
-        """
+        """Repository for CostRecord persistence."""
         return self._require_connected(self._cost_records, "cost_records")
 
     @property
     def messages(self) -> SQLiteMessageRepository:
-        """Repository for Message persistence.
-
-        Raises:
-            PersistenceConnectionError: If not connected.
-        """
+        """Repository for Message persistence."""
         return self._require_connected(self._messages, "messages")
 
     @property
     def lifecycle_events(self) -> SQLiteLifecycleEventRepository:
-        """Repository for AgentLifecycleEvent persistence.
-
-        Raises:
-            PersistenceConnectionError: If not connected.
-        """
+        """Repository for AgentLifecycleEvent persistence."""
         return self._require_connected(self._lifecycle_events, "lifecycle_events")
 
     @property
     def task_metrics(self) -> SQLiteTaskMetricRepository:
-        """Repository for TaskMetricRecord persistence.
-
-        Raises:
-            PersistenceConnectionError: If not connected.
-        """
+        """Repository for TaskMetricRecord persistence."""
         return self._require_connected(self._task_metrics, "task_metrics")
 
     @property
     def collaboration_metrics(self) -> SQLiteCollaborationMetricRepository:
-        """Repository for CollaborationMetricRecord persistence.
-
-        Raises:
-            PersistenceConnectionError: If not connected.
-        """
+        """Repository for CollaborationMetricRecord persistence."""
         return self._require_connected(
             self._collaboration_metrics, "collaboration_metrics"
         )
 
     @property
     def parked_contexts(self) -> SQLiteParkedContextRepository:
-        """Repository for ParkedContext persistence.
-
-        Raises:
-            PersistenceConnectionError: If not connected.
-        """
+        """Repository for ParkedContext persistence."""
         return self._require_connected(self._parked_contexts, "parked_contexts")
 
     @property
     def audit_entries(self) -> SQLiteAuditRepository:
-        """Repository for AuditEntry persistence.
-
-        Raises:
-            PersistenceConnectionError: If not connected.
-        """
+        """Repository for AuditEntry persistence."""
         return self._require_connected(self._audit_entries, "audit_entries")
 
     @property
     def decision_records(self) -> SQLiteDecisionRepository:
-        """Repository for DecisionRecord persistence (decisions drop-box).
-
-        Raises:
-            PersistenceConnectionError: If not connected.
-        """
+        """Repository for DecisionRecord persistence (decisions drop-box)."""
         return self._require_connected(self._decision_records, "decision_records")
 
     @property
     def users(self) -> SQLiteUserRepository:
-        """Repository for User persistence.
-
-        Raises:
-            PersistenceConnectionError: If not connected.
-        """
+        """Repository for User persistence."""
         return self._require_connected(self._users, "users")
 
     @property
     def api_keys(self) -> SQLiteApiKeyRepository:
-        """Repository for ApiKey persistence.
-
-        Raises:
-            PersistenceConnectionError: If not connected.
-        """
+        """Repository for ApiKey persistence."""
         return self._require_connected(self._api_keys, "api_keys")
 
     @property
     def checkpoints(self) -> SQLiteCheckpointRepository:
-        """Repository for Checkpoint persistence.
-
-        Raises:
-            PersistenceConnectionError: If not connected.
-        """
+        """Repository for Checkpoint persistence."""
         return self._require_connected(self._checkpoints, "checkpoints")
 
     @property
     def heartbeats(self) -> SQLiteHeartbeatRepository:
-        """Repository for Heartbeat persistence.
-
-        Raises:
-            PersistenceConnectionError: If not connected.
-        """
+        """Repository for Heartbeat persistence."""
         return self._require_connected(self._heartbeats, "heartbeats")
 
     @property
     def agent_states(self) -> SQLiteAgentStateRepository:
-        """Repository for AgentRuntimeState persistence.
-
-        Raises:
-            PersistenceConnectionError: If not connected.
-        """
+        """Repository for AgentRuntimeState persistence."""
         return self._require_connected(self._agent_states, "agent_states")
 
     @property
     def settings(self) -> SQLiteSettingsRepository:
-        """Repository for namespaced settings persistence.
-
-        Raises:
-            PersistenceConnectionError: If not connected.
-        """
+        """Repository for namespaced settings persistence."""
         return self._require_connected(self._settings, "settings")
 
     @property
     def artifacts(self) -> SQLiteArtifactRepository:
-        """Repository for Artifact persistence.
-
-        Raises:
-            PersistenceConnectionError: If not connected.
-        """
+        """Repository for Artifact persistence."""
         return self._require_connected(self._artifacts, "artifacts")
 
     @property
     def projects(self) -> SQLiteProjectRepository:
-        """Repository for Project persistence.
-
-        Raises:
-            PersistenceConnectionError: If not connected.
-        """
+        """Repository for Project persistence."""
         return self._require_connected(self._projects, "projects")
 
     @property
     def project_cost_aggregates(
         self,
     ) -> SQLiteProjectCostAggregateRepository:
-        """Repository for durable project cost aggregates.
-
-        Raises:
-            PersistenceConnectionError: If not connected.
-        """
+        """Repository for durable project cost aggregates."""
         return self._require_connected(
             self._project_cost_aggregates,
             "project_cost_aggregates",
@@ -628,20 +550,12 @@ class SQLitePersistenceBackend:
 
     @property
     def custom_presets(self) -> SQLitePersonalityPresetRepository:
-        """Repository for custom personality preset persistence.
-
-        Raises:
-            PersistenceConnectionError: If not connected.
-        """
+        """Repository for custom personality preset persistence."""
         return self._require_connected(self._custom_presets, "custom_presets")
 
     @property
     def workflow_definitions(self) -> SQLiteWorkflowDefinitionRepository:
-        """Repository for workflow definition persistence.
-
-        Raises:
-            PersistenceConnectionError: If not connected.
-        """
+        """Repository for workflow definition persistence."""
         return self._require_connected(
             self._workflow_definitions,
             "workflow_definitions",
@@ -649,11 +563,7 @@ class SQLitePersistenceBackend:
 
     @property
     def workflow_executions(self) -> SQLiteWorkflowExecutionRepository:
-        """Repository for workflow execution persistence.
-
-        Raises:
-            PersistenceConnectionError: If not connected.
-        """
+        """Repository for workflow execution persistence."""
         return self._require_connected(
             self._workflow_executions,
             "workflow_executions",
@@ -661,11 +571,7 @@ class SQLitePersistenceBackend:
 
     @property
     def subworkflows(self) -> SQLiteSubworkflowRepository:
-        """Repository for versioned subworkflow persistence.
-
-        Raises:
-            PersistenceConnectionError: If not connected.
-        """
+        """Repository for versioned subworkflow persistence."""
         return self._require_connected(
             self._subworkflows,
             "subworkflows",
@@ -673,11 +579,7 @@ class SQLitePersistenceBackend:
 
     @property
     def workflow_versions(self) -> SQLiteVersionRepository[WorkflowDefinition]:
-        """Repository for workflow definition version persistence.
-
-        Raises:
-            PersistenceConnectionError: If not connected.
-        """
+        """Repository for workflow definition version persistence."""
         return self._require_connected(
             self._workflow_versions,
             "workflow_versions",
@@ -685,11 +587,7 @@ class SQLitePersistenceBackend:
 
     @property
     def identity_versions(self) -> SQLiteVersionRepository[AgentIdentity]:
-        """Repository for AgentIdentity version snapshot persistence.
-
-        Raises:
-            PersistenceConnectionError: If not connected.
-        """
+        """Repository for AgentIdentity version snapshot persistence."""
         return self._require_connected(
             self._identity_versions,
             "identity_versions",
@@ -699,11 +597,7 @@ class SQLitePersistenceBackend:
     def evaluation_config_versions(
         self,
     ) -> SQLiteVersionRepository[EvaluationConfig]:
-        """Repository for EvaluationConfig version snapshot persistence.
-
-        Raises:
-            PersistenceConnectionError: If not connected.
-        """
+        """Repository for EvaluationConfig version snapshot persistence."""
         return self._require_connected(
             self._evaluation_config_versions,
             "evaluation_config_versions",
@@ -713,11 +607,7 @@ class SQLitePersistenceBackend:
     def budget_config_versions(
         self,
     ) -> SQLiteVersionRepository[BudgetConfig]:
-        """Repository for BudgetConfig version snapshot persistence.
-
-        Raises:
-            PersistenceConnectionError: If not connected.
-        """
+        """Repository for BudgetConfig version snapshot persistence."""
         return self._require_connected(
             self._budget_config_versions,
             "budget_config_versions",
@@ -727,11 +617,7 @@ class SQLitePersistenceBackend:
     def company_versions(
         self,
     ) -> SQLiteVersionRepository[Company]:
-        """Repository for Company version snapshot persistence.
-
-        Raises:
-            PersistenceConnectionError: If not connected.
-        """
+        """Repository for Company version snapshot persistence."""
         return self._require_connected(
             self._company_versions,
             "company_versions",
@@ -741,11 +627,7 @@ class SQLitePersistenceBackend:
     def role_versions(
         self,
     ) -> SQLiteVersionRepository[Role]:
-        """Repository for Role version snapshot persistence.
-
-        Raises:
-            PersistenceConnectionError: If not connected.
-        """
+        """Repository for Role version snapshot persistence."""
         return self._require_connected(
             self._role_versions,
             "role_versions",
@@ -753,11 +635,7 @@ class SQLitePersistenceBackend:
 
     @property
     def risk_overrides(self) -> SQLiteRiskOverrideRepository:
-        """Repository for risk tier override persistence.
-
-        Raises:
-            PersistenceConnectionError: If not connected.
-        """
+        """Repository for risk tier override persistence."""
         return self._require_connected(
             self._risk_overrides,
             "risk_overrides",
@@ -765,11 +643,7 @@ class SQLitePersistenceBackend:
 
     @property
     def ssrf_violations(self) -> SQLiteSsrfViolationRepository:
-        """Repository for SSRF violation record persistence.
-
-        Raises:
-            PersistenceConnectionError: If not connected.
-        """
+        """Repository for SSRF violation record persistence."""
         return self._require_connected(
             self._ssrf_violations,
             "ssrf_violations",
@@ -777,11 +651,7 @@ class SQLitePersistenceBackend:
 
     @property
     def circuit_breaker_state(self) -> SQLiteCircuitBreakerStateRepository:
-        """Repository for circuit breaker state persistence.
-
-        Raises:
-            PersistenceConnectionError: If not connected.
-        """
+        """Repository for circuit breaker state persistence."""
         return self._require_connected(
             self._circuit_breaker_state,
             "circuit_breaker_state",

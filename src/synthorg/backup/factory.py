@@ -88,6 +88,12 @@ def build_backup_service(
         Configured backup service, or ``None`` if construction fails.
     """
     backup_config = config.backup
+    if not backup_config.enabled:
+        logger.info(
+            API_APP_STARTUP,
+            note="Backup service disabled via config (enabled=false)",
+        )
+        return None
     try:
         handlers = build_backup_handlers(
             config,

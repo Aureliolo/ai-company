@@ -28,6 +28,7 @@ const ArtifactsPage = lazy(() => import('@/pages/ArtifactsPage'))
 const ArtifactDetailPage = lazy(() => import('@/pages/ArtifactDetailPage'))
 const WorkflowsPage = lazy(() => import('@/pages/WorkflowsPage'))
 const WorkflowEditorPage = lazy(() => import('@/pages/WorkflowEditorPage'))
+const SubworkflowsPage = lazy(() => import('@/pages/SubworkflowsPage'))
 const FineTuningPage = lazy(() => import('@/pages/FineTuningPage'))
 const ClientListPage = lazy(() => import('@/pages/ClientListPage'))
 const ClientDetailPage = lazy(() => import('@/pages/ClientDetailPage'))
@@ -128,6 +129,7 @@ export const router = createBrowserRouter([
               { path: 'artifacts/:artifactId', element: <ArtifactDetailPage /> },
               { path: 'workflows', element: <WorkflowsPage /> },
               { path: 'workflows/editor', element: <WorkflowEditorPage /> },
+              { path: 'subworkflows', element: <SubworkflowsPage /> },
               { path: 'clients', element: <ClientListPage /> },
               { path: 'clients/requests', element: <RequestQueuePage /> },
               { path: 'clients/simulations', element: <SimulationDashboardPage /> },

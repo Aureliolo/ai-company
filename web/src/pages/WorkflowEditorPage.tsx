@@ -19,6 +19,7 @@ import { AgentAssignmentNode } from './workflow-editor/AgentAssignmentNode'
 import { ConditionalNode } from './workflow-editor/ConditionalNode'
 import { ParallelSplitNode } from './workflow-editor/ParallelSplitNode'
 import { ParallelJoinNode } from './workflow-editor/ParallelJoinNode'
+import { SubworkflowNode } from './workflow-editor/SubworkflowNode'
 import { SequentialEdge } from './workflow-editor/SequentialEdge'
 import { ConditionalEdge } from './workflow-editor/ConditionalEdge'
 import { WorkflowToolbar } from './workflow-editor/WorkflowToolbar'
@@ -40,6 +41,7 @@ const nodeTypes = {
   conditional: ConditionalNode,
   parallel_split: ParallelSplitNode,
   parallel_join: ParallelJoinNode,
+  subworkflow: SubworkflowNode,
 }
 
 const edgeTypes = {

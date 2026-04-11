@@ -165,12 +165,18 @@ class SubworkflowRegistry:
     ) -> None:
         """Delete a subworkflow version with parent-reference protection.
 
+        Uses an atomic check-and-delete to eliminate the TOCTOU race
+        between the parent scan and the actual deletion.
+
         Raises:
             SubworkflowIOError: If any live parent still pins this
                 ``(id, version)`` coordinate.
             SubworkflowNotFoundError: If the coordinate does not exist.
         """
-        parents = await self._repo.find_parents(subworkflow_id, version)
+        deleted, parents = await self._repo.delete_if_unreferenced(
+            subworkflow_id,
+            version,
+        )
         if parents:
             names = ", ".join(f"{p.parent_name!r}" for p in parents)
             msg = (
@@ -178,13 +184,26 @@ class SubworkflowRegistry:
                 f"{version!r}: still referenced by {len(parents)} parent "
                 f"workflow(s): {names}"
             )
+            logger.warning(
+                SUBWORKFLOW_DELETED,
+                subworkflow_id=subworkflow_id,
+                version=version,
+                deleted=False,
+                blocked_by_parents=len(parents),
+            )
             raise SubworkflowIOError(msg)
 
-        deleted = await self._repo.delete(subworkflow_id, version)
         if not deleted:
             msg = (
                 f"Subworkflow {subworkflow_id!r} version {version!r} "
                 "not found in registry"
+            )
+            logger.warning(
+                SUBWORKFLOW_DELETED,
+                subworkflow_id=subworkflow_id,
+                version=version,
+                deleted=False,
+                reason="not_found",
             )
             raise SubworkflowNotFoundError(
                 msg,

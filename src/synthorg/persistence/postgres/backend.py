@@ -88,6 +88,9 @@ from synthorg.persistence.postgres.settings_repo import PostgresSettingsReposito
 from synthorg.persistence.postgres.ssrf_violation_repo import (
     PostgresSsrfViolationRepository,
 )
+from synthorg.persistence.postgres.subworkflow_repo import (
+    PostgresSubworkflowRepository,
+)
 from synthorg.persistence.postgres.user_repo import (
     PostgresApiKeyRepository,
     PostgresUserRepository,
@@ -378,6 +381,7 @@ class PostgresPersistenceBackend:
         # Workflow repositories.
         self._workflow_definitions = PostgresWorkflowDefinitionRepository(pool)
         self._workflow_executions = PostgresWorkflowExecutionRepository(pool)
+        self._subworkflows = PostgresSubworkflowRepository(pool)
 
         # Generic version repositories (one per versioned entity type).
         def _ver_repo[T: BaseModel](

@@ -76,6 +76,26 @@ export function WorkflowNodeDrawer({
 
   const handleFieldChange = useCallback(
     (key: string, value: string, fieldType?: string) => {
+      // JSON object fields: try parsing, keep raw string on failure.
+      if (key === 'input_bindings' || key === 'output_bindings') {
+        try {
+          const obj = JSON.parse(value) as unknown
+          if (
+            typeof obj === 'object' &&
+            obj !== null &&
+            !Array.isArray(obj)
+          ) {
+            onConfigChange({ ...config, [key]: obj })
+            return
+          }
+        } catch {
+          // Keep raw string so the user can continue editing.
+        }
+        // Don't write raw strings or arrays back into config --
+        // only successfully parsed plain objects are accepted.
+        return
+      }
+
       let parsed: string | number = value
       if (fieldType === 'number' && value !== '') {
         const num = Number(value)

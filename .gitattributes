@@ -19,6 +19,9 @@ cli/testdata/**/*.yml text eol=lf
 src/synthorg/persistence/sqlite/revisions/*.sql text eol=lf
 src/synthorg/persistence/sqlite/revisions/atlas.sum text eol=lf
 src/synthorg/persistence/sqlite/schema.sql text eol=lf
+src/synthorg/persistence/postgres/revisions/*.sql text eol=lf
+src/synthorg/persistence/postgres/revisions/atlas.sum text eol=lf
+src/synthorg/persistence/postgres/schema.sql text eol=lf
 
 # Shell scripts must use LF (bash can't parse CRLF).
 *.sh text eol=lf

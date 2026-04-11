@@ -281,7 +281,8 @@ topology. The TaskEngine's existing status machine handles execution ordering.
 **Per-node tracking** (`WorkflowNodeExecutionStatus`): `PENDING`, `SKIPPED`
 (conditional branch not taken), `TASK_CREATED` (concrete task instantiated),
 `TASK_COMPLETED` (task finished successfully), `TASK_FAILED` (task failed or
-cancelled), `COMPLETED` (control node processed).
+cancelled), `SUBWORKFLOW_COMPLETED` (subworkflow child graph finished),
+`COMPLETED` (control node processed).
 
 **Condition evaluator** (`condition_eval.py`): Safe string evaluator
 (no `eval()`/`exec()`). Supports boolean literals (`true`/`false`), context
