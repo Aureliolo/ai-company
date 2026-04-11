@@ -6,7 +6,11 @@ from uuid import uuid4
 
 import pytest
 
-from synthorg.budget.coordination_config import ErrorCategory, ErrorTaxonomyConfig
+from synthorg.budget.coordination_config import (
+    DetectorCategoryConfig,
+    ErrorCategory,
+    ErrorTaxonomyConfig,
+)
 from synthorg.core.agent import AgentIdentity, ModelConfig
 from synthorg.engine.classification.models import ErrorSeverity
 from synthorg.engine.classification.pipeline import classify_execution_errors
@@ -26,7 +30,7 @@ def _identity() -> AgentIdentity:
         name="Pipeline Test Agent",
         role="Developer",
         department="Engineering",
-        model=ModelConfig(provider="test-provider", model_id="test-model-001"),
+        model=ModelConfig(provider="test-provider", model_id="test-small-001"),
         hiring_date=date(2026, 1, 1),
     )
 
@@ -58,6 +62,15 @@ def _turn(
         cost_usd=0.01,
         finish_reason=finish_reason,
     )
+
+
+def _taxonomy_config(
+    *categories: ErrorCategory,
+    enabled: bool = True,
+) -> ErrorTaxonomyConfig:
+    """Build an ErrorTaxonomyConfig from a list of categories."""
+    detectors = {cat: DetectorCategoryConfig() for cat in categories}
+    return ErrorTaxonomyConfig(enabled=enabled, detectors=detectors)
 
 
 @pytest.mark.unit
@@ -95,10 +108,7 @@ class TestClassifyExecutionErrors:
 
     async def test_only_enabled_categories_run(self) -> None:
         """Only COORDINATION_FAILURE is enabled -- others should not run."""
-        config = ErrorTaxonomyConfig(
-            enabled=True,
-            categories=(ErrorCategory.COORDINATION_FAILURE,),
-        )
+        config = _taxonomy_config(ErrorCategory.COORDINATION_FAILURE)
         # Conversation has a contradiction but only coordination
         # failure is enabled -- should not detect contradiction
         messages = (
@@ -127,7 +137,7 @@ class TestClassifyExecutionErrors:
         """Pipeline catches regular exceptions and returns None."""
         config = ErrorTaxonomyConfig(enabled=True)
         with patch(
-            "synthorg.engine.classification.pipeline._run_detectors",
+            "synthorg.engine.classification.pipeline._run_pipeline",
             side_effect=RuntimeError("injected"),
         ):
             result = await classify_execution_errors(
@@ -143,7 +153,7 @@ class TestClassifyExecutionErrors:
         config = ErrorTaxonomyConfig(enabled=True)
         with (
             patch(
-                "synthorg.engine.classification.pipeline._run_detectors",
+                "synthorg.engine.classification.pipeline._run_pipeline",
                 side_effect=MemoryError,
             ),
             pytest.raises(MemoryError),
@@ -160,7 +170,7 @@ class TestClassifyExecutionErrors:
         config = ErrorTaxonomyConfig(enabled=True)
         with (
             patch(
-                "synthorg.engine.classification.pipeline._run_detectors",
+                "synthorg.engine.classification.pipeline._run_pipeline",
                 side_effect=RecursionError,
             ),
             pytest.raises(RecursionError),
@@ -176,10 +186,7 @@ class TestClassifyExecutionErrors:
         self,
     ) -> None:
         """Coordination failure findings should all be HIGH severity."""
-        config = ErrorTaxonomyConfig(
-            enabled=True,
-            categories=(ErrorCategory.COORDINATION_FAILURE,),
-        )
+        config = _taxonomy_config(ErrorCategory.COORDINATION_FAILURE)
         messages = (
             ChatMessage(role=MessageRole.ASSISTANT, content="Running tool."),
             ChatMessage(
@@ -199,12 +206,9 @@ class TestClassifyExecutionErrors:
             assert finding.severity == ErrorSeverity.HIGH
 
     async def test_result_has_correct_categories_checked(self) -> None:
-        config = ErrorTaxonomyConfig(
-            enabled=True,
-            categories=(
-                ErrorCategory.LOGICAL_CONTRADICTION,
-                ErrorCategory.NUMERICAL_DRIFT,
-            ),
+        config = _taxonomy_config(
+            ErrorCategory.LOGICAL_CONTRADICTION,
+            ErrorCategory.NUMERICAL_DRIFT,
         )
         result = await classify_execution_errors(
             _execution_result(turns=(_turn(),)),
@@ -220,12 +224,9 @@ class TestClassifyExecutionErrors:
 
     async def test_per_detector_isolation(self) -> None:
         """One broken detector should not prevent others from producing findings."""
-        config = ErrorTaxonomyConfig(
-            enabled=True,
-            categories=(
-                ErrorCategory.LOGICAL_CONTRADICTION,
-                ErrorCategory.COORDINATION_FAILURE,
-            ),
+        config = _taxonomy_config(
+            ErrorCategory.LOGICAL_CONTRADICTION,
+            ErrorCategory.COORDINATION_FAILURE,
         )
         messages = (
             ChatMessage(role=MessageRole.ASSISTANT, content="Running tool."),
@@ -235,7 +236,7 @@ class TestClassifyExecutionErrors:
             ),
         )
         with patch(
-            "synthorg.engine.classification.pipeline.detect_logical_contradictions",
+            "synthorg.engine.classification.heuristic_detectors.detect_logical_contradictions",
             side_effect=RuntimeError("detector crash"),
         ):
             result = await classify_execution_errors(
@@ -252,10 +253,7 @@ class TestClassifyExecutionErrors:
 
     async def test_safe_detect_memory_error_propagates(self) -> None:
         """MemoryError from an individual detector propagates through _safe_detect."""
-        config = ErrorTaxonomyConfig(
-            enabled=True,
-            categories=(ErrorCategory.LOGICAL_CONTRADICTION,),
-        )
+        config = _taxonomy_config(ErrorCategory.LOGICAL_CONTRADICTION)
         messages = (
             ChatMessage(role=MessageRole.ASSISTANT, content="Message one."),
             ChatMessage(role=MessageRole.USER, content="Continue."),
@@ -263,7 +261,7 @@ class TestClassifyExecutionErrors:
         )
         with (
             patch(
-                "synthorg.engine.classification.pipeline.detect_logical_contradictions",
+                "synthorg.engine.classification.heuristic_detectors.detect_logical_contradictions",
                 side_effect=MemoryError,
             ),
             pytest.raises(MemoryError),
@@ -276,10 +274,10 @@ class TestClassifyExecutionErrors:
             )
 
     async def test_empty_categories_produces_no_findings(self) -> None:
-        """Enabled config with empty categories tuple runs no detectors."""
+        """Enabled config with empty detectors dict runs no detectors."""
         config = ErrorTaxonomyConfig(
             enabled=True,
-            categories=(),
+            detectors={},
         )
         messages = (
             ChatMessage(role=MessageRole.ASSISTANT, content="The cache is enabled."),

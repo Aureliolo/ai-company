@@ -1,0 +1,402 @@
+"""Tests for LLM-backed semantic detectors."""
+
+import json
+from datetime import date
+from unittest.mock import AsyncMock
+from uuid import uuid4
+
+import pytest
+
+from synthorg.budget.coordination_config import (
+    DetectionScope,
+    ErrorCategory,
+)
+from synthorg.core.agent import AgentIdentity, ModelConfig
+from synthorg.engine.classification.budget_tracker import (
+    ClassificationBudgetTracker,
+)
+from synthorg.engine.classification.models import ErrorSeverity
+from synthorg.engine.classification.protocol import (
+    DetectionContext,
+    Detector,
+)
+from synthorg.engine.classification.semantic_detectors import (
+    SemanticContradictionDetector,
+    SemanticCoordinationDetector,
+    SemanticMissingReferenceDetector,
+    SemanticNumericalVerificationDetector,
+    _parse_findings,
+)
+from synthorg.engine.context import AgentContext
+from synthorg.engine.loop_protocol import (
+    ExecutionResult,
+    TerminationReason,
+)
+from synthorg.providers.enums import FinishReason, MessageRole
+from synthorg.providers.models import (
+    ChatMessage,
+    CompletionResponse,
+    TokenUsage,
+)
+
+
+def _identity() -> AgentIdentity:
+    return AgentIdentity(
+        id=uuid4(),
+        name="Semantic Test Agent",
+        role="Developer",
+        department="Engineering",
+        model=ModelConfig(
+            provider="test-provider",
+            model_id="test-small-001",
+        ),
+        hiring_date=date(2026, 1, 1),
+    )
+
+
+def _context(
+    messages: tuple[ChatMessage, ...] = (),
+) -> DetectionContext:
+    identity = _identity()
+    ctx = AgentContext.from_identity(identity)
+    for msg in messages:
+        ctx = ctx.with_message(msg)
+    er = ExecutionResult(
+        context=ctx,
+        termination_reason=TerminationReason.COMPLETED,
+    )
+    return DetectionContext(
+        execution_result=er,
+        agent_id="agent-1",
+        task_id="task-1",
+        scope=DetectionScope.SAME_TASK,
+    )
+
+
+def _completion_response(
+    content: str,
+    cost_usd: float = 0.001,
+) -> CompletionResponse:
+    return CompletionResponse(
+        content=content,
+        finish_reason=FinishReason.STOP,
+        usage=TokenUsage(
+            input_tokens=100,
+            output_tokens=50,
+            cost_usd=cost_usd,
+        ),
+        model="test-small-001",
+    )
+
+
+def _mock_provider(content: str = "[]") -> AsyncMock:
+    provider = AsyncMock()
+    provider.complete = AsyncMock(
+        return_value=_completion_response(content),
+    )
+    return provider
+
+
+# ── _parse_findings ────────────────────────────────────────────
+
+
+@pytest.mark.unit
+class TestParseFindingsHelper:
+    """Low-level JSON parsing for LLM detector output."""
+
+    def test_valid_json(self) -> None:
+        raw = json.dumps(
+            [
+                {
+                    "description": "A contradiction was found",
+                    "severity": "high",
+                    "evidence": ["msg 1", "msg 2"],
+                    "turn_start": 0,
+                    "turn_end": 3,
+                },
+            ]
+        )
+        findings = _parse_findings(raw, ErrorCategory.LOGICAL_CONTRADICTION)
+        assert len(findings) == 1
+        assert findings[0].category == ErrorCategory.LOGICAL_CONTRADICTION
+        assert findings[0].severity == ErrorSeverity.HIGH
+        assert len(findings[0].evidence) == 2
+        assert findings[0].turn_range == (0, 3)
+
+    def test_empty_json_array(self) -> None:
+        findings = _parse_findings("[]", ErrorCategory.LOGICAL_CONTRADICTION)
+        assert findings == ()
+
+    def test_none_input(self) -> None:
+        findings = _parse_findings(None, ErrorCategory.LOGICAL_CONTRADICTION)
+        assert findings == ()
+
+    def test_malformed_json(self) -> None:
+        findings = _parse_findings(
+            "not json",
+            ErrorCategory.LOGICAL_CONTRADICTION,
+        )
+        assert findings == ()
+
+    def test_non_array_json(self) -> None:
+        findings = _parse_findings(
+            '{"key": "value"}',
+            ErrorCategory.LOGICAL_CONTRADICTION,
+        )
+        assert findings == ()
+
+    def test_missing_description_skipped(self) -> None:
+        raw = json.dumps(
+            [
+                {"severity": "high", "evidence": []},
+                {"description": "Valid finding", "severity": "medium"},
+            ]
+        )
+        findings = _parse_findings(raw, ErrorCategory.NUMERICAL_DRIFT)
+        assert len(findings) == 1
+        assert findings[0].description == "Valid finding"
+
+    def test_default_severity(self) -> None:
+        raw = json.dumps([{"description": "Some issue"}])
+        findings = _parse_findings(raw, ErrorCategory.CONTEXT_OMISSION)
+        assert findings[0].severity == ErrorSeverity.MEDIUM
+
+    def test_invalid_turn_range_ignored(self) -> None:
+        raw = json.dumps(
+            [
+                {
+                    "description": "Issue",
+                    "turn_start": -1,
+                    "turn_end": 5,
+                },
+            ]
+        )
+        findings = _parse_findings(raw, ErrorCategory.CONTEXT_OMISSION)
+        assert findings[0].turn_range is None
+
+
+# ── Protocol compliance ────────────────────────────────────────
+
+
+@pytest.mark.unit
+class TestSemanticDetectorProtocolCompliance:
+    """All semantic detectors implement Detector protocol."""
+
+    @pytest.mark.parametrize(
+        "cls",
+        [
+            SemanticContradictionDetector,
+            SemanticNumericalVerificationDetector,
+            SemanticMissingReferenceDetector,
+            SemanticCoordinationDetector,
+        ],
+    )
+    def test_implements_detector(self, cls: type) -> None:
+        provider = _mock_provider()
+        detector = cls(
+            provider=provider,
+            model_id="test-small-001",
+        )
+        assert isinstance(detector, Detector)
+
+
+@pytest.mark.unit
+class TestSemanticDetectorCategories:
+    """Each semantic detector reports the correct category."""
+
+    def test_contradiction_category(self) -> None:
+        d = SemanticContradictionDetector(
+            provider=_mock_provider(),
+            model_id="test-small-001",
+        )
+        assert d.category == ErrorCategory.LOGICAL_CONTRADICTION
+
+    def test_numerical_category(self) -> None:
+        d = SemanticNumericalVerificationDetector(
+            provider=_mock_provider(),
+            model_id="test-small-001",
+        )
+        assert d.category == ErrorCategory.NUMERICAL_DRIFT
+
+    def test_missing_ref_category(self) -> None:
+        d = SemanticMissingReferenceDetector(
+            provider=_mock_provider(),
+            model_id="test-small-001",
+        )
+        assert d.category == ErrorCategory.CONTEXT_OMISSION
+
+    def test_coordination_category(self) -> None:
+        d = SemanticCoordinationDetector(
+            provider=_mock_provider(),
+            model_id="test-small-001",
+        )
+        assert d.category == ErrorCategory.COORDINATION_FAILURE
+
+
+# ── Detection behavior ─────────────────────────────────────────
+
+
+@pytest.mark.unit
+class TestSemanticDetectorBehavior:
+    """Semantic detector invocation and response handling."""
+
+    async def test_calls_provider(self) -> None:
+        provider = _mock_provider("[]")
+        detector = SemanticContradictionDetector(
+            provider=provider,
+            model_id="test-small-001",
+        )
+        messages = (
+            ChatMessage(
+                role=MessageRole.ASSISTANT,
+                content="The cache is enabled.",
+            ),
+        )
+        ctx = _context(messages)
+        await detector.detect(ctx)
+        provider.complete.assert_awaited_once()
+
+    async def test_parses_findings(self) -> None:
+        response_json = json.dumps(
+            [
+                {
+                    "description": "Contradiction found",
+                    "severity": "high",
+                    "evidence": ["first", "second"],
+                    "turn_start": 0,
+                    "turn_end": 2,
+                },
+            ]
+        )
+        provider = _mock_provider(response_json)
+        detector = SemanticContradictionDetector(
+            provider=provider,
+            model_id="test-small-001",
+        )
+        messages = (
+            ChatMessage(
+                role=MessageRole.ASSISTANT,
+                content="The cache is enabled.",
+            ),
+        )
+        ctx = _context(messages)
+        findings = await detector.detect(ctx)
+
+        assert len(findings) == 1
+        assert findings[0].category == ErrorCategory.LOGICAL_CONTRADICTION
+        assert findings[0].severity == ErrorSeverity.HIGH
+
+    async def test_empty_conversation_returns_empty(self) -> None:
+        provider = _mock_provider()
+        detector = SemanticContradictionDetector(
+            provider=provider,
+            model_id="test-small-001",
+        )
+        ctx = _context()
+        findings = await detector.detect(ctx)
+        assert findings == ()
+        provider.complete.assert_not_awaited()
+
+    async def test_provider_error_returns_empty(self) -> None:
+        provider = AsyncMock()
+        provider.complete = AsyncMock(
+            side_effect=RuntimeError("provider down"),
+        )
+        detector = SemanticContradictionDetector(
+            provider=provider,
+            model_id="test-small-001",
+        )
+        messages = (
+            ChatMessage(
+                role=MessageRole.ASSISTANT,
+                content="Some content.",
+            ),
+        )
+        ctx = _context(messages)
+        findings = await detector.detect(ctx)
+        assert findings == ()
+
+    async def test_budget_exhausted_skips_call(self) -> None:
+        provider = _mock_provider()
+        budget = ClassificationBudgetTracker(budget_usd=0.0)
+        detector = SemanticContradictionDetector(
+            provider=provider,
+            model_id="test-small-001",
+            budget_tracker=budget,
+        )
+        messages = (
+            ChatMessage(
+                role=MessageRole.ASSISTANT,
+                content="Some content.",
+            ),
+        )
+        ctx = _context(messages)
+        findings = await detector.detect(ctx)
+        assert findings == ()
+        provider.complete.assert_not_awaited()
+
+    async def test_budget_tracks_cost(self) -> None:
+        provider = _mock_provider("[]")
+        budget = ClassificationBudgetTracker(budget_usd=1.0)
+        detector = SemanticContradictionDetector(
+            provider=provider,
+            model_id="test-small-001",
+            budget_tracker=budget,
+        )
+        messages = (
+            ChatMessage(
+                role=MessageRole.ASSISTANT,
+                content="Some content.",
+            ),
+        )
+        ctx = _context(messages)
+        await detector.detect(ctx)
+        assert budget.total_spent_usd > 0
+
+    async def test_no_rate_limiter_on_detector(self) -> None:
+        """Detectors delegate rate limiting to the provider.
+
+        ``BaseCompletionProvider`` applies retry + rate limiting
+        automatically.  Semantic detectors do not accept or use a
+        separate rate limiter to avoid double-throttling.
+        """
+        provider = _mock_provider("[]")
+        detector = SemanticContradictionDetector(
+            provider=provider,
+            model_id="test-small-001",
+        )
+        messages = (
+            ChatMessage(
+                role=MessageRole.ASSISTANT,
+                content="Some content.",
+            ),
+        )
+        ctx = _context(messages)
+        findings = await detector.detect(ctx)
+        assert findings == ()
+        provider.complete.assert_awaited_once()
+
+    async def test_provider_called_with_messages_and_model(self) -> None:
+        """Provider.complete receives messages and the model_id."""
+        provider = _mock_provider("[]")
+        detector = SemanticContradictionDetector(
+            provider=provider,
+            model_id="test-small-001",
+        )
+        messages = (
+            ChatMessage(
+                role=MessageRole.ASSISTANT,
+                content="Some content.",
+            ),
+        )
+        ctx = _context(messages)
+        await detector.detect(ctx)
+
+        provider.complete.assert_awaited_once()
+        call_args = provider.complete.call_args
+        sent_messages = call_args[0][0]
+        sent_model = call_args[0][1]
+        assert sent_model == "test-small-001"
+        assert len(sent_messages) == 2
+        assert sent_messages[0].role == MessageRole.SYSTEM
+        assert "===BEGIN CONVERSATION===" in sent_messages[0].content

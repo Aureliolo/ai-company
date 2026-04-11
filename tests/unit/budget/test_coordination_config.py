@@ -6,6 +6,9 @@ from pydantic import ValidationError
 from synthorg.budget.coordination_config import (
     CoordinationMetricName,
     CoordinationMetricsConfig,
+    DetectionScope,
+    DetectorCategoryConfig,
+    DetectorVariant,
     ErrorCategory,
     ErrorTaxonomyConfig,
     OrchestrationAlertThresholds,
@@ -35,14 +38,111 @@ class TestCoordinationMetricName:
 class TestErrorCategory:
     """ErrorCategory enum."""
 
-    def test_values(self) -> None:
+    def test_original_values(self) -> None:
         assert ErrorCategory.LOGICAL_CONTRADICTION.value == "logical_contradiction"
         assert ErrorCategory.NUMERICAL_DRIFT.value == "numerical_drift"
         assert ErrorCategory.CONTEXT_OMISSION.value == "context_omission"
         assert ErrorCategory.COORDINATION_FAILURE.value == "coordination_failure"
 
+    def test_new_values(self) -> None:
+        assert (
+            ErrorCategory.DELEGATION_PROTOCOL_VIOLATION.value
+            == "delegation_protocol_violation"
+        )
+        assert (
+            ErrorCategory.REVIEW_PIPELINE_VIOLATION.value == "review_pipeline_violation"
+        )
+        assert (
+            ErrorCategory.AUTHORITY_BREACH_ATTEMPT.value == "authority_breach_attempt"
+        )
+
     def test_member_count(self) -> None:
-        assert len(ErrorCategory) == 4
+        assert len(ErrorCategory) == 7
+
+
+@pytest.mark.unit
+class TestDetectionScope:
+    """DetectionScope enum."""
+
+    def test_values(self) -> None:
+        assert DetectionScope.SAME_TASK.value == "same_task"
+        assert DetectionScope.TASK_TREE.value == "task_tree"
+
+    def test_member_count(self) -> None:
+        assert len(DetectionScope) == 2
+
+
+@pytest.mark.unit
+class TestDetectorVariant:
+    """DetectorVariant enum."""
+
+    def test_values(self) -> None:
+        assert DetectorVariant.HEURISTIC.value == "heuristic"
+        assert DetectorVariant.LLM_SEMANTIC.value == "llm_semantic"
+        assert DetectorVariant.PROTOCOL_CHECK.value == "protocol_check"
+        assert DetectorVariant.BEHAVIOR_CHECK.value == "behavior_check"
+
+    def test_member_count(self) -> None:
+        assert len(DetectorVariant) == 4
+
+
+@pytest.mark.unit
+class TestDetectorCategoryConfig:
+    """DetectorCategoryConfig validation."""
+
+    def test_defaults(self) -> None:
+        config = DetectorCategoryConfig()
+        assert config.variants == (DetectorVariant.HEURISTIC,)
+        assert config.scope == DetectionScope.SAME_TASK
+
+    def test_custom_llm_semantic_task_tree(self) -> None:
+        config = DetectorCategoryConfig(
+            variants=(DetectorVariant.LLM_SEMANTIC,),
+            scope=DetectionScope.TASK_TREE,
+        )
+        assert len(config.variants) == 1
+        assert config.scope == DetectionScope.TASK_TREE
+
+    def test_heuristic_task_tree_rejected(self) -> None:
+        """Heuristic variant does not support TASK_TREE scope."""
+        with pytest.raises(ValidationError, match="does not support scope"):
+            DetectorCategoryConfig(
+                variants=(DetectorVariant.HEURISTIC,),
+                scope=DetectionScope.TASK_TREE,
+            )
+
+    def test_behavior_check_task_tree_rejected(self) -> None:
+        """Behavior check variant does not support TASK_TREE scope."""
+        with pytest.raises(ValidationError, match="does not support scope"):
+            DetectorCategoryConfig(
+                variants=(DetectorVariant.BEHAVIOR_CHECK,),
+                scope=DetectionScope.TASK_TREE,
+            )
+
+    def test_protocol_check_task_tree_allowed(self) -> None:
+        config = DetectorCategoryConfig(
+            variants=(DetectorVariant.PROTOCOL_CHECK,),
+            scope=DetectionScope.TASK_TREE,
+        )
+        assert config.scope == DetectionScope.TASK_TREE
+
+    def test_empty_variants_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="must not be empty"):
+            DetectorCategoryConfig(variants=())
+
+    def test_duplicate_variants_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="must not contain duplicates"):
+            DetectorCategoryConfig(
+                variants=(
+                    DetectorVariant.HEURISTIC,
+                    DetectorVariant.HEURISTIC,
+                ),
+            )
+
+    def test_frozen(self) -> None:
+        config = DetectorCategoryConfig()
+        with pytest.raises(ValidationError):
+            config.scope = DetectionScope.TASK_TREE  # type: ignore[misc]
 
 
 @pytest.mark.unit
@@ -52,18 +152,74 @@ class TestErrorTaxonomyConfig:
     def test_defaults(self) -> None:
         config = ErrorTaxonomyConfig()
         assert config.enabled is False
-        assert len(config.categories) == 4
+        assert len(config.categories) == 7
+        assert len(config.detectors) == 7
 
-    def test_custom(self) -> None:
+    def test_categories_computed_from_detectors(self) -> None:
         config = ErrorTaxonomyConfig(
             enabled=True,
-            categories=(
-                ErrorCategory.LOGICAL_CONTRADICTION,
-                ErrorCategory.NUMERICAL_DRIFT,
-            ),
+            detectors={
+                ErrorCategory.LOGICAL_CONTRADICTION: DetectorCategoryConfig(),
+                ErrorCategory.NUMERICAL_DRIFT: DetectorCategoryConfig(),
+            },
         )
         assert config.enabled is True
         assert len(config.categories) == 2
+        assert ErrorCategory.LOGICAL_CONTRADICTION in config.categories
+        assert ErrorCategory.NUMERICAL_DRIFT in config.categories
+
+    def test_empty_detectors(self) -> None:
+        config = ErrorTaxonomyConfig(
+            enabled=True,
+            detectors={},
+        )
+        assert config.categories == ()
+
+    def test_default_llm_provider_tier(self) -> None:
+        config = ErrorTaxonomyConfig()
+        assert config.llm_provider_tier == "large"
+
+    def test_default_classification_budget(self) -> None:
+        config = ErrorTaxonomyConfig()
+        assert config.classification_budget_per_task_usd == 0.01
+
+    def test_negative_budget_rejected(self) -> None:
+        with pytest.raises(ValidationError):
+            ErrorTaxonomyConfig(
+                classification_budget_per_task_usd=-0.01,
+            )
+
+    def test_frozen(self) -> None:
+        config = ErrorTaxonomyConfig()
+        with pytest.raises(ValidationError):
+            config.enabled = True  # type: ignore[misc]
+
+    def test_default_detectors_structure(self) -> None:
+        """Default detectors have correct variant types."""
+        config = ErrorTaxonomyConfig()
+
+        # Original 4 categories use HEURISTIC
+        for cat in (
+            ErrorCategory.LOGICAL_CONTRADICTION,
+            ErrorCategory.NUMERICAL_DRIFT,
+            ErrorCategory.CONTEXT_OMISSION,
+            ErrorCategory.COORDINATION_FAILURE,
+        ):
+            assert config.detectors[cat].variants == (DetectorVariant.HEURISTIC,)
+            assert config.detectors[cat].scope == DetectionScope.SAME_TASK
+
+        # Protocol-level detectors
+        for cat in (
+            ErrorCategory.DELEGATION_PROTOCOL_VIOLATION,
+            ErrorCategory.REVIEW_PIPELINE_VIOLATION,
+        ):
+            assert config.detectors[cat].variants == (DetectorVariant.PROTOCOL_CHECK,)
+            assert config.detectors[cat].scope == DetectionScope.TASK_TREE
+
+        # Authority breach
+        assert config.detectors[ErrorCategory.AUTHORITY_BREACH_ATTEMPT].variants == (
+            DetectorVariant.BEHAVIOR_CHECK,
+        )
 
 
 @pytest.mark.unit
