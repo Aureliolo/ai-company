@@ -159,9 +159,19 @@ class _SlidingWindowRateLimiter:
 
         Returns ``True`` when the admission was granted (the caller
         may proceed) and ``False`` when the window is saturated.
+        Prunes stale entries for idle keys on each call to prevent
+        unbounded growth of ``_events`` from one-off agent IDs.
         """
         now = self._clock()
         cutoff = now - self._window_seconds
+        # Prune idle keys whose latest timestamp is outside the window.
+        stale_keys = [
+            k
+            for k, timestamps in self._events.items()
+            if k != key and (not timestamps or timestamps[-1] <= cutoff)
+        ]
+        for k in stale_keys:
+            del self._events[k]
         events = [ts for ts in self._events.get(key, []) if ts > cutoff]
         if len(events) >= self._max_events:
             self._events[key] = events
@@ -169,6 +179,19 @@ class _SlidingWindowRateLimiter:
         events.append(now)
         self._events[key] = events
         return True
+
+    def release(self, key: str) -> None:
+        """Refund the most recent admission for ``key``.
+
+        Call this when a ``take`` succeeded but the downstream
+        action failed, so the slot can be reused by the next
+        attempt.  Removes the latest timestamp for the key.
+        """
+        events = self._events.get(key)
+        if events:
+            events.pop()
+            if not events:
+                del self._events[key]
 
 
 class NotificationDispatcherSink:
@@ -267,6 +290,7 @@ class NotificationDispatcherSink:
             except MemoryError, RecursionError:
                 raise
             except Exception:
+                self._rate_limiter.release(result.agent_id)
                 logger.exception(
                     CLASSIFICATION_SINK_ERROR,
                     agent_id=result.agent_id,
