@@ -18,6 +18,6 @@ class TestSecretBackendStubs:
         self,
         backend_type: str,
     ) -> None:
-        config = SecretBackendConfig(backend_type=backend_type)
+        config = SecretBackendConfig(backend_type=backend_type)  # type: ignore[arg-type]
         with pytest.raises(NotImplementedError, match="not yet implemented"):
             create_secret_backend(config, db_path="/tmp/test.db")  # noqa: S108

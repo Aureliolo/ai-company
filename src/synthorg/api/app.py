@@ -1092,10 +1092,10 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
                 NgrokAdapter,
             )
 
-            db_path = (os.environ.get("SYNTHORG_DB_PATH") or "").strip() or None
+            secret_db_path = (os.environ.get("SYNTHORG_DB_PATH") or "").strip() or None
             secret_backend = create_secret_backend(
                 effective_config.integrations.secret_backend,
-                db_path=db_path,
+                db_path=secret_db_path,
             )
             connection_catalog = ConnectionCatalog(
                 repository=persistence.connections,
