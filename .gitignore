@@ -100,3 +100,6 @@ cli/cover.out
 
 # uv
 .python-version
+
+# mkdocs-d2-plugin cache (populated locally for faster rebuilds, not persisted in CI)
+.config/plugin/d2/

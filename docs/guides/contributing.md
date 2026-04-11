@@ -230,7 +230,7 @@ uv run zensical serve                      # preview at http://127.0.0.1:8000
 
 ### Writing Conventions
 
-- Use MkDocs Material features: admonitions (`!!! note`), tabs (`=== "Tab"`), code blocks, Mermaid diagrams
+- Use MkDocs Material features: admonitions (`!!! note`), tabs (`=== "Tab"`), code blocks, Mermaid (` ```mermaid `) for flowcharts/sequences/states, and D2 (` ```d2 `) for architecture/nested-container diagrams
 - YAML frontmatter with `title` and `description`
 - Technical but accessible tone
 - Cross-reference related pages

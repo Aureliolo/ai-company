@@ -128,16 +128,20 @@ The framework supports four workflow types for organizing task execution:
 
 ### Sequential Pipeline
 
-```text
-Requirements --> Design --> Implementation --> Review --> Testing --> Deploy
+```mermaid
+graph LR
+    Req[Requirements] --> Design --> Impl[Implementation] --> Review --> Testing --> Deploy
 ```
 
 ### Parallel Execution
 
-```text
-        ┌--> Frontend Dev --┐
-Task ---|                    |---> Integration --> QA
-        └--> Backend Dev  --┘
+```mermaid
+graph LR
+    Task --> FE[Frontend Dev]
+    Task --> BE[Backend Dev]
+    FE --> Int[Integration]
+    BE --> Int
+    Int --> QA
 ```
 
 The `ParallelExecutor` implements concurrent agent execution with
@@ -146,12 +150,11 @@ exclusive file access, error isolation, and progress tracking.
 
 ### Kanban Board
 
-```text
-Backlog | Ready | In Progress | Review | Done
-   o    |   o   |      *      |   o    |  ***
-   o    |   o   |      *      |        |  **
-   o    |       |             |        |  *
-```
+| Backlog | Ready | In Progress | Review | Done |
+|---------|-------|-------------|--------|------|
+| task | task | task | task | task |
+| task | task | task |      | task |
+| task |      |      |      | task |
 
 The `KanbanColumn` enum defines five columns that map bidirectionally to
 `TaskStatus` (Backlog=CREATED, Ready=ASSIGNED, In Progress=IN_PROGRESS,
@@ -169,8 +172,9 @@ this combined mode; `WorkflowConfig` aggregates both `KanbanConfig` and
 `SprintConfig` under a single top-level section (`workflow`) in the root
 configuration.
 
-```text
-Planning --> Active --> In Review --> Retrospective --> Completed
+```mermaid
+graph LR
+    Planning --> Active --> IR[In Review] --> Retro[Retrospective] --> Completed
 ```
 
 The `SprintStatus` lifecycle is strictly linear: PLANNING, ACTIVE,
