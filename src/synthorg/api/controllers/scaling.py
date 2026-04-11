@@ -4,7 +4,8 @@ Exposes scaling strategies, decisions, signals, and manual
 evaluation triggers.
 """
 
-from litestar import Controller, State, get, post
+from litestar import Controller, get, post
+from litestar.datastructures import State  # noqa: TC002
 from pydantic import BaseModel, ConfigDict, Field
 
 from synthorg.api.dto import ApiResponse, PaginatedResponse, PaginationMeta
