@@ -56,7 +56,7 @@ class InflectionTrigger:
             # Cap queue: evict oldest to keep most recent inflections
             if len(self._pending[key]) >= self._MAX_PENDING_PER_AGENT:
                 self._pending[key].pop(0)
-                logger.debug(
+                logger.info(
                     EVOLUTION_TRIGGER_SKIPPED,
                     agent_id=key,
                     trigger="inflection",
