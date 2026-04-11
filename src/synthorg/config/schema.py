@@ -307,16 +307,15 @@ class ProviderConfig(BaseModel):
 
     @model_validator(mode="after")
     def _warn_embedded_api_key(self) -> Self:
-        """Emit deprecation warning when api_key is used without connection_name."""
-        import warnings  # noqa: PLC0415
-
+        """Log deprecation when api_key is used without connection_name."""
         if self.api_key is not None and self.connection_name is None:
-            warnings.warn(
-                "ProviderConfig.api_key without connection_name is "
-                "deprecated. Prefer connection_name to reference the "
-                "ConnectionCatalog for credential resolution.",
-                DeprecationWarning,
-                stacklevel=2,
+            logger.debug(
+                CONFIG_VALIDATION_FAILED,
+                model="ProviderConfig",
+                error=(
+                    "api_key without connection_name is deprecated; "
+                    "prefer connection_name for catalog-based resolution"
+                ),
             )
         return self
 
