@@ -183,7 +183,7 @@ def _build_delegation_requests(
             visited.add(parent_id)
             for task in tasks_by_parent.get(parent_id, ()):
                 refinement = sanitize_message(
-                    task.description or "",
+                    task.description,
                     max_length=_SANITIZE_MAX_LENGTH,
                 )
                 sanitized_task = task.model_copy(
