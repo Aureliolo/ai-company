@@ -35,10 +35,19 @@ def _build_fence(executable: str = "d2") -> D2CustomFence:
     """Build a D2CustomFence with hardcoded config matching mkdocs.yml."""
     try:
         subprocess.run(  # noqa: S603
-            [executable, "--version"], capture_output=True, check=True
+            [executable, "--version"],
+            capture_output=True,
+            check=True,
+            timeout=5,
         )
     except FileNotFoundError:
         raise RuntimeError(_D2_NOT_FOUND) from None
+    except subprocess.TimeoutExpired:
+        msg = f"D2 executable '{executable}' timed out during version check"
+        raise RuntimeError(msg) from None
+    except subprocess.CalledProcessError as exc:
+        msg = f"D2 executable '{executable}' exited with code {exc.returncode}"
+        raise RuntimeError(msg) from exc
 
     renderer = partial(_render, executable, None)
     return D2CustomFence(dict(_D2_CONFIG), renderer)
