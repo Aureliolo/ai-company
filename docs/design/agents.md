@@ -432,7 +432,34 @@ The HR system manages the agent workforce dynamically:
     - What model/provider fits the budget?
 3. Candidate cards are presented for approval (to CEO or human)
 4. Approved candidates are instantiated and onboarded
-5. Onboarding includes: company context, project briefing, team introductions
+5. Onboarding includes: company context, project briefing, team introductions, learned from seniors (training mode)
+
+### Training Mode
+
+Training mode is a pluggable knowledge-transfer pipeline that seeds newly hired agents with
+curated senior experience at onboarding time. It runs as the `LEARNED_FROM_SENIORS` onboarding
+step.
+
+**Pipeline:**
+
+1. **Source selection** -- select senior agents as knowledge sources (pluggable: role top
+   performers, department diversity sampling, user-curated list, or composite)
+2. **Extraction** -- extract procedural memories, semantic knowledge, and tool usage patterns
+   from source agents in parallel
+3. **Curation** -- reduce candidates to a ranked subset (pluggable: relevance score or LLM-curated)
+4. **Guard chain** -- sanitization (mandatory, non-bypassable), volume caps (per-content-type
+   hard limits), review gate (human approval via ApprovalStore)
+5. **Storage** -- seed approved items into the new agent's memory backend with training tags
+
+**Per-hire customization:**
+
+- `override_sources` -- explicit agent IDs bypassing the selector
+- `content_types` -- enable/disable specific extractors
+- `custom_caps` -- override default volume caps per content type
+- `skip_training` -- bypass the step entirely
+
+**Safe defaults:** RoleTopPerformers (top 3), RelevanceScoreCuration, all guards enabled,
+human review required. Idempotent by plan ID.
 
 !!! info "Design decisions ([Decision Log](../architecture/decisions.md) D8)"
 

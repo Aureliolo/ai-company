@@ -58,6 +58,7 @@ from synthorg.api.controllers.subworkflows import SubworkflowController
 from synthorg.api.controllers.tasks import TaskController
 from synthorg.api.controllers.teams import TeamController
 from synthorg.api.controllers.template_packs import TemplatePackController
+from synthorg.api.controllers.training import TrainingController
 from synthorg.api.controllers.users import UserController
 from synthorg.api.controllers.workflow_executions import (
     WorkflowExecutionController,
@@ -115,6 +116,7 @@ ALL_CONTROLLERS: tuple[type[Controller], ...] = (
     RequestController,
     SimulationController,
     ReviewController,
+    TrainingController,
 )
 
 __all__ = [
@@ -162,6 +164,7 @@ __all__ = [
     "TaskController",
     "TeamController",
     "TemplatePackController",
+    "TrainingController",
     "UserController",
     "WorkflowController",
     "WorkflowExecutionController",

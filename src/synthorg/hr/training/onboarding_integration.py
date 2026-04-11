@@ -1,0 +1,106 @@
+"""Training onboarding integration bridge.
+
+Wires the TrainingService into the OnboardingService by building
+a TrainingPlan from the new agent's identity and executing it.
+"""
+
+from datetime import UTC, datetime
+from typing import TYPE_CHECKING
+
+from synthorg.hr.enums import OnboardingStep
+from synthorg.hr.training.models import TrainingPlan, TrainingResult
+from synthorg.observability import get_logger
+from synthorg.observability.events.training import (
+    HR_TRAINING_PLAN_CREATED,
+)
+
+if TYPE_CHECKING:
+    from synthorg.hr.onboarding_service import OnboardingService
+    from synthorg.hr.registry import AgentRegistryService
+    from synthorg.hr.training.models import ContentType
+    from synthorg.hr.training.service import TrainingService
+
+logger = get_logger(__name__)
+
+
+class TrainingOnboardingBridge:
+    """Bridge between training service and onboarding.
+
+    Looks up the agent identity, builds a TrainingPlan, executes
+    it, and marks the LEARNED_FROM_SENIORS step complete.
+
+    Args:
+        registry: Agent registry service.
+        training_service: Training service orchestrator.
+        onboarding_service: Onboarding service for step completion.
+    """
+
+    def __init__(
+        self,
+        *,
+        registry: AgentRegistryService,
+        training_service: TrainingService,
+        onboarding_service: OnboardingService,
+    ) -> None:
+        self._registry = registry
+        self._training_service = training_service
+        self._onboarding_service = onboarding_service
+
+    async def run_training_step(
+        self,
+        agent_id: str,
+        *,
+        override_sources: tuple[str, ...] = (),
+        custom_caps: dict[ContentType, int] | None = None,
+        skip_training: bool = False,
+    ) -> TrainingResult:
+        """Execute training for a newly hired agent.
+
+        Args:
+            agent_id: The new agent's ID.
+            override_sources: Explicit source agent IDs.
+            custom_caps: Per-content-type cap overrides.
+            skip_training: Whether to skip training.
+
+        Returns:
+            Training result.
+
+        Raises:
+            ValueError: If the agent is not found.
+        """
+        identity = await self._registry.get(agent_id)
+        if identity is None:
+            msg = f"Agent {agent_id!r} not found in registry"
+            raise ValueError(msg)
+
+        volume_caps = tuple(custom_caps.items()) if custom_caps is not None else None
+
+        plan_kwargs: dict[str, object] = {
+            "new_agent_id": str(identity.id),
+            "new_agent_role": str(identity.role),
+            "new_agent_level": identity.level,
+            "override_sources": override_sources,
+            "skip_training": skip_training,
+            "created_at": datetime.now(UTC),
+        }
+        if volume_caps is not None:
+            plan_kwargs["volume_caps"] = volume_caps
+
+        plan = TrainingPlan(**plan_kwargs)  # type: ignore[arg-type]
+
+        logger.info(
+            HR_TRAINING_PLAN_CREATED,
+            plan_id=str(plan.id),
+            agent_id=agent_id,
+            role=str(identity.role),
+        )
+
+        result = await self._training_service.execute(plan)
+
+        await self._onboarding_service.complete_step(
+            agent_id,
+            OnboardingStep.LEARNED_FROM_SENIORS,
+            notes=str(result.id),
+        )
+
+        return result

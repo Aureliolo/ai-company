@@ -1,0 +1,194 @@
+"""Factory for building the training service from config."""
+
+from typing import TYPE_CHECKING
+
+from synthorg.hr.training.models import ContentType
+from synthorg.observability import get_logger
+
+if TYPE_CHECKING:
+    from synthorg.api.approval_store import ApprovalStore
+    from synthorg.hr.performance.tracker import PerformanceTracker
+    from synthorg.hr.registry import AgentRegistryService
+    from synthorg.hr.training.config import TrainingConfig
+    from synthorg.hr.training.protocol import (
+        ContentExtractor,
+        CurationStrategy,
+        SourceSelector,
+        TrainingGuard,
+    )
+    from synthorg.hr.training.service import TrainingService
+    from synthorg.memory.protocol import MemoryBackend
+    from synthorg.providers.protocol import CompletionProvider
+    from synthorg.tools.invocation_tracker import ToolInvocationTracker
+
+logger = get_logger(__name__)
+
+
+def build_training_service(  # noqa: PLR0913
+    config: TrainingConfig,
+    *,
+    memory_backend: MemoryBackend,
+    tracker: PerformanceTracker,
+    registry: AgentRegistryService,
+    approval_store: ApprovalStore,
+    tool_tracker: ToolInvocationTracker,
+    provider: CompletionProvider | None = None,
+) -> TrainingService:
+    """Build a fully wired ``TrainingService`` from configuration.
+
+    Args:
+        config: Training configuration.
+        memory_backend: Memory backend.
+        tracker: Performance tracker.
+        registry: Agent registry.
+        approval_store: Approval store for review gate.
+        tool_tracker: Tool invocation tracker.
+        provider: LLM completion provider (optional).
+
+    Returns:
+        Configured training service.
+    """
+    from synthorg.hr.training.service import (  # noqa: PLC0415
+        TrainingService,
+    )
+
+    selector = _build_selector(config, tracker=tracker, registry=registry)
+    extractors = _build_extractors(
+        config,
+        memory_backend=memory_backend,
+        tool_tracker=tool_tracker,
+    )
+    curation = _build_curation(config, provider=provider)
+    guards = _build_guards(config, approval_store=approval_store)
+
+    return TrainingService(
+        selector=selector,
+        extractors=extractors,
+        curation=curation,
+        guards=guards,
+        memory_backend=memory_backend,
+        training_namespace=str(config.training_namespace),
+        training_tags=tuple(str(t) for t in config.training_tags),
+    )
+
+
+def _build_selector(
+    config: TrainingConfig,
+    *,
+    tracker: PerformanceTracker,
+    registry: AgentRegistryService,
+) -> SourceSelector:
+    """Build source selector from config."""
+    selector_type = str(config.source_selector_type)
+
+    if selector_type == "department_diversity":
+        from synthorg.hr.training.source_selectors.department_diversity import (  # noqa: PLC0415
+            DepartmentDiversitySampling,
+        )
+
+        return DepartmentDiversitySampling(
+            registry=registry,
+            tracker=tracker,
+        )
+
+    if selector_type == "user_curated":
+        from synthorg.hr.training.source_selectors.user_curated import (  # noqa: PLC0415
+            UserCuratedList,
+        )
+
+        return UserCuratedList(registry=registry, agent_ids=())
+
+    # Default: role_top_performers.
+    from synthorg.hr.training.source_selectors.role_top_performers import (  # noqa: PLC0415
+        RoleTopPerformers,
+    )
+
+    top_n = int(config.source_selector_config.get("top_n", 3))
+    return RoleTopPerformers(
+        registry=registry,
+        tracker=tracker,
+        top_n=top_n,
+    )
+
+
+def _build_extractors(
+    config: TrainingConfig,  # noqa: ARG001
+    *,
+    memory_backend: MemoryBackend,
+    tool_tracker: ToolInvocationTracker,
+) -> dict[ContentType, ContentExtractor]:
+    """Build extractors for all content types."""
+    from synthorg.hr.training.extractors.procedural import (  # noqa: PLC0415
+        ProceduralMemoryExtractor,
+    )
+    from synthorg.hr.training.extractors.semantic import (  # noqa: PLC0415
+        SemanticMemoryExtractor,
+    )
+    from synthorg.hr.training.extractors.tool_patterns import (  # noqa: PLC0415
+        ToolPatternExtractor,
+    )
+
+    return {
+        ContentType.PROCEDURAL: ProceduralMemoryExtractor(
+            backend=memory_backend,
+        ),
+        ContentType.SEMANTIC: SemanticMemoryExtractor(
+            backend=memory_backend,
+        ),
+        ContentType.TOOL_PATTERNS: ToolPatternExtractor(
+            tracker=tool_tracker,
+        ),
+    }
+
+
+def _build_curation(
+    config: TrainingConfig,
+    *,
+    provider: CompletionProvider | None,
+) -> CurationStrategy:
+    """Build curation strategy from config."""
+    strategy_type = str(config.curation_strategy_type)
+    top_k = int(config.curation_strategy_config.get("top_k", 50))
+
+    if strategy_type == "llm_curated":
+        from synthorg.hr.training.curation.llm_curated import (  # noqa: PLC0415
+            LLMCurated,
+        )
+
+        return LLMCurated(provider=provider, top_k=top_k)
+
+    # Default: relevance.
+    from synthorg.hr.training.curation.relevance import (  # noqa: PLC0415
+        RelevanceScoreCuration,
+    )
+
+    return RelevanceScoreCuration(top_k=top_k)
+
+
+def _build_guards(
+    config: TrainingConfig,
+    *,
+    approval_store: ApprovalStore,
+) -> tuple[TrainingGuard, ...]:
+    """Build guard chain from config.
+
+    Always includes SanitizationGuard first (mandatory).
+    """
+    from synthorg.hr.training.guards.review_gate import (  # noqa: PLC0415
+        ReviewGateGuard,
+    )
+    from synthorg.hr.training.guards.sanitization import (  # noqa: PLC0415
+        SanitizationGuard,
+    )
+    from synthorg.hr.training.guards.volume_cap import (  # noqa: PLC0415
+        VolumeCapGuard,
+    )
+
+    guards: list[TrainingGuard] = [
+        SanitizationGuard(
+            max_length=config.sanitization_max_length,
+        ),
+        VolumeCapGuard(),
+        ReviewGateGuard(approval_store=approval_store),
+    ]
+    return tuple(guards)
