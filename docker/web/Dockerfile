@@ -28,9 +28,26 @@ COPY --from=ghcr.io/astral-sh/uv:0.10.9@sha256:10902f58a1606787602f303954cea0996
 RUN groupadd -r --gid 1001 docsbuild && useradd -r --uid 1001 -g docsbuild docsbuild \
     && mkdir /app && chown docsbuild:docsbuild /app
 
+# D2 binary -- keep version in sync with .github/workflows/pages.yml
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+ARG D2_VERSION=v0.7.1
+ARG D2_SHA256=eb172adf59f38d1e5a70ab177591356754ffaf9bebb84e0ca8b767dfb421dad7
+# hadolint ignore=DL3008
+RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certificates \
+    && curl -fsSL "https://github.com/terrastruct/d2/releases/download/${D2_VERSION}/d2-${D2_VERSION}-linux-amd64.tar.gz" -o /tmp/d2.tar.gz \
+    && echo "${D2_SHA256}  /tmp/d2.tar.gz" | sha256sum --check --strict - \
+    && tar -xzf /tmp/d2.tar.gz -C /tmp \
+    && mv "/tmp/d2-${D2_VERSION}/bin/d2" /usr/local/bin/d2 \
+    && rm -rf /tmp/d2.tar.gz "/tmp/d2-${D2_VERSION}" \
+    && apt-get purge -y --auto-remove curl \
+    && rm -rf /var/lib/apt/lists/* \
+    && d2 --version
+SHELL ["/bin/sh", "-c"]
+
 ENV UV_COMPILE_BYTECODE=1 \
     UV_LINK_MODE=copy \
-    UV_CACHE_DIR=/tmp/uv-cache
+    UV_CACHE_DIR=/tmp/uv-cache \
+    PYTHONPATH=/app
 
 WORKDIR /app
 
@@ -48,7 +65,7 @@ RUN --mount=type=cache,target=/tmp/uv-cache,uid=1001,gid=1001 \
 
 # Build documentation
 COPY --chown=docsbuild:docsbuild docs/ docs/
-COPY --chown=docsbuild:docsbuild mkdocs.yml ./
+COPY --chown=docsbuild:docsbuild mkdocs.yml d2_fence.py ./
 COPY --chown=docsbuild:docsbuild scripts/export_openapi.py scripts/
 RUN uv run python scripts/export_openapi.py \
     && uv run zensical build
