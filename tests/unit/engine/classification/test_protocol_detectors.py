@@ -46,7 +46,7 @@ def _identity() -> AgentIdentity:
         department="Engineering",
         model=ModelConfig(
             provider="test-provider",
-            model_id="test-model-001",
+            model_id="test-small-001",
         ),
         hiring_date=date(2026, 1, 1),
     )
@@ -155,8 +155,8 @@ class TestDelegationProtocolDetector:
 
     def test_supported_scopes(self) -> None:
         scopes = DelegationProtocolDetector().supported_scopes
-        assert DetectionScope.SAME_TASK in scopes
         assert DetectionScope.TASK_TREE in scopes
+        assert DetectionScope.SAME_TASK not in scopes
 
     async def test_no_delegations_yields_empty(self) -> None:
         er = _execution_result()
@@ -363,7 +363,7 @@ class TestAuthorityBreachDetector:
             department="Engineering",
             model=ModelConfig(
                 provider="test-provider",
-                model_id="test-model-001",
+                model_id="test-small-001",
             ),
             hiring_date=date(2026, 1, 1),
         )
@@ -417,7 +417,7 @@ class TestAuthorityBreachDetector:
             department="Engineering",
             model=ModelConfig(
                 provider="test-provider",
-                model_id="test-model-001",
+                model_id="test-small-001",
             ),
             hiring_date=date(2026, 1, 1),
             tools=ToolPermissions(denied=("delete_database", "wire_transfer")),
@@ -468,7 +468,7 @@ class TestAuthorityBreachDetector:
             department="Engineering",
             model=ModelConfig(
                 provider="test-provider",
-                model_id="test-model-001",
+                model_id="test-small-001",
             ),
             hiring_date=date(2026, 1, 1),
             tools=ToolPermissions(denied=("Delete_Database",)),
@@ -515,7 +515,7 @@ class TestAuthorityBreachDetector:
             department="Engineering",
             model=ModelConfig(
                 provider="test-provider",
-                model_id="test-model-001",
+                model_id="test-small-001",
             ),
             hiring_date=date(2026, 1, 1),
             tools=ToolPermissions(denied=("forbidden",)),
@@ -563,7 +563,7 @@ class TestAuthorityBreachDetector:
             department="Engineering",
             model=ModelConfig(
                 provider="test-provider",
-                model_id="test-model-001",
+                model_id="test-small-001",
             ),
             hiring_date=date(2026, 1, 1),
             tools=ToolPermissions(),
@@ -609,7 +609,7 @@ class TestAuthorityBreachDetector:
             department="Engineering",
             model=ModelConfig(
                 provider="test-provider",
-                model_id="test-model-001",
+                model_id="test-small-001",
             ),
             hiring_date=date(2026, 1, 1),
             tools=ToolPermissions(),

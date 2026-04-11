@@ -2,7 +2,7 @@
 
 import json
 from datetime import date
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock
 from uuid import uuid4
 
 import pytest
@@ -48,7 +48,7 @@ def _identity() -> AgentIdentity:
         department="Engineering",
         model=ModelConfig(
             provider="test-provider",
-            model_id="test-model-001",
+            model_id="test-small-001",
         ),
         hiring_date=date(2026, 1, 1),
     )
@@ -85,7 +85,7 @@ def _completion_response(
             output_tokens=50,
             cost_usd=cost_usd,
         ),
-        model="test-model-001",
+        model="test-small-001",
     )
 
 
@@ -195,7 +195,7 @@ class TestSemanticDetectorProtocolCompliance:
         provider = _mock_provider()
         detector = cls(
             provider=provider,
-            model_id="test-model-001",
+            model_id="test-small-001",
         )
         assert isinstance(detector, Detector)
 
@@ -207,28 +207,28 @@ class TestSemanticDetectorCategories:
     def test_contradiction_category(self) -> None:
         d = SemanticContradictionDetector(
             provider=_mock_provider(),
-            model_id="test-model-001",
+            model_id="test-small-001",
         )
         assert d.category == ErrorCategory.LOGICAL_CONTRADICTION
 
     def test_numerical_category(self) -> None:
         d = SemanticNumericalVerificationDetector(
             provider=_mock_provider(),
-            model_id="test-model-001",
+            model_id="test-small-001",
         )
         assert d.category == ErrorCategory.NUMERICAL_DRIFT
 
     def test_missing_ref_category(self) -> None:
         d = SemanticMissingReferenceDetector(
             provider=_mock_provider(),
-            model_id="test-model-001",
+            model_id="test-small-001",
         )
         assert d.category == ErrorCategory.CONTEXT_OMISSION
 
     def test_coordination_category(self) -> None:
         d = SemanticCoordinationDetector(
             provider=_mock_provider(),
-            model_id="test-model-001",
+            model_id="test-small-001",
         )
         assert d.category == ErrorCategory.COORDINATION_FAILURE
 
@@ -244,7 +244,7 @@ class TestSemanticDetectorBehavior:
         provider = _mock_provider("[]")
         detector = SemanticContradictionDetector(
             provider=provider,
-            model_id="test-model-001",
+            model_id="test-small-001",
         )
         messages = (
             ChatMessage(
@@ -271,7 +271,7 @@ class TestSemanticDetectorBehavior:
         provider = _mock_provider(response_json)
         detector = SemanticContradictionDetector(
             provider=provider,
-            model_id="test-model-001",
+            model_id="test-small-001",
         )
         messages = (
             ChatMessage(
@@ -290,7 +290,7 @@ class TestSemanticDetectorBehavior:
         provider = _mock_provider()
         detector = SemanticContradictionDetector(
             provider=provider,
-            model_id="test-model-001",
+            model_id="test-small-001",
         )
         ctx = _context()
         findings = await detector.detect(ctx)
@@ -304,7 +304,7 @@ class TestSemanticDetectorBehavior:
         )
         detector = SemanticContradictionDetector(
             provider=provider,
-            model_id="test-model-001",
+            model_id="test-small-001",
         )
         messages = (
             ChatMessage(
@@ -321,7 +321,7 @@ class TestSemanticDetectorBehavior:
         budget = ClassificationBudgetTracker(budget_usd=0.0)
         detector = SemanticContradictionDetector(
             provider=provider,
-            model_id="test-model-001",
+            model_id="test-small-001",
             budget_tracker=budget,
         )
         messages = (
@@ -340,7 +340,7 @@ class TestSemanticDetectorBehavior:
         budget = ClassificationBudgetTracker(budget_usd=1.0)
         detector = SemanticContradictionDetector(
             provider=provider,
-            model_id="test-model-001",
+            model_id="test-small-001",
             budget_tracker=budget,
         )
         messages = (
@@ -353,37 +353,17 @@ class TestSemanticDetectorBehavior:
         await detector.detect(ctx)
         assert budget.total_spent_usd > 0
 
-    async def test_rate_limiter_acquire_release(self) -> None:
-        provider = _mock_provider("[]")
-        limiter = MagicMock()
-        limiter.acquire = AsyncMock()
-        limiter.release = MagicMock()
-        detector = SemanticContradictionDetector(
-            provider=provider,
-            model_id="test-model-001",
-            rate_limiter=limiter,
-        )
-        messages = (
-            ChatMessage(
-                role=MessageRole.ASSISTANT,
-                content="Some content.",
-            ),
-        )
-        ctx = _context(messages)
-        await detector.detect(ctx)
-        limiter.acquire.assert_awaited_once()
-        limiter.release.assert_called_once()
+    async def test_no_rate_limiter_on_detector(self) -> None:
+        """Detectors delegate rate limiting to the provider.
 
-    async def test_rate_limiter_acquire_failure_no_release(self) -> None:
-        """If acquire() raises, release() must NOT be called."""
+        ``BaseCompletionProvider`` applies retry + rate limiting
+        automatically.  Semantic detectors do not accept or use a
+        separate rate limiter to avoid double-throttling.
+        """
         provider = _mock_provider("[]")
-        limiter = MagicMock()
-        limiter.acquire = AsyncMock(side_effect=RuntimeError("limiter down"))
-        limiter.release = MagicMock()
         detector = SemanticContradictionDetector(
             provider=provider,
-            model_id="test-model-001",
-            rate_limiter=limiter,
+            model_id="test-small-001",
         )
         messages = (
             ChatMessage(
@@ -393,46 +373,15 @@ class TestSemanticDetectorBehavior:
         )
         ctx = _context(messages)
         findings = await detector.detect(ctx)
-
         assert findings == ()
-        limiter.acquire.assert_awaited_once()
-        # Release must NOT be called when acquire failed.
-        limiter.release.assert_not_called()
-        provider.complete.assert_not_awaited()
-
-    async def test_rate_limiter_release_on_provider_error(self) -> None:
-        """If provider raises, release() must still be called."""
-        provider = AsyncMock()
-        provider.complete = AsyncMock(
-            side_effect=RuntimeError("provider down"),
-        )
-        limiter = MagicMock()
-        limiter.acquire = AsyncMock()
-        limiter.release = MagicMock()
-        detector = SemanticContradictionDetector(
-            provider=provider,
-            model_id="test-model-001",
-            rate_limiter=limiter,
-        )
-        messages = (
-            ChatMessage(
-                role=MessageRole.ASSISTANT,
-                content="Some content.",
-            ),
-        )
-        ctx = _context(messages)
-        findings = await detector.detect(ctx)
-
-        assert findings == ()
-        limiter.acquire.assert_awaited_once()
-        limiter.release.assert_called_once()
+        provider.complete.assert_awaited_once()
 
     async def test_provider_called_with_messages_and_model(self) -> None:
         """Provider.complete receives messages and the model_id."""
         provider = _mock_provider("[]")
         detector = SemanticContradictionDetector(
             provider=provider,
-            model_id="test-model-001",
+            model_id="test-small-001",
         )
         messages = (
             ChatMessage(
@@ -447,7 +396,7 @@ class TestSemanticDetectorBehavior:
         call_args = provider.complete.call_args
         sent_messages = call_args[0][0]
         sent_model = call_args[0][1]
-        assert sent_model == "test-model-001"
+        assert sent_model == "test-small-001"
         assert len(sent_messages) == 2
         assert sent_messages[0].role == MessageRole.SYSTEM
         assert "===BEGIN CONVERSATION===" in sent_messages[0].content

@@ -30,7 +30,7 @@ def _identity() -> AgentIdentity:
         name="Pipeline Test Agent",
         role="Developer",
         department="Engineering",
-        model=ModelConfig(provider="test-provider", model_id="test-model-001"),
+        model=ModelConfig(provider="test-provider", model_id="test-small-001"),
         hiring_date=date(2026, 1, 1),
     )
 

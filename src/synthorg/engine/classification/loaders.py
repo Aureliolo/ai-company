@@ -186,13 +186,16 @@ def _build_delegation_requests(
                     task.description or "",
                     max_length=_SANITIZE_MAX_LENGTH,
                 )
+                sanitized_task = task.model_copy(
+                    update={"description": refinement},
+                )
                 chain = task.delegation_chain
                 delegator = chain[-1] if chain else agent_id
                 requests.append(
                     DelegationRequest(
                         delegator_id=delegator,
                         delegatee_id=task.assigned_to or "unassigned",
-                        task=task,
+                        task=sanitized_task,
                         refinement=refinement,
                     ),
                 )

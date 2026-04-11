@@ -54,6 +54,7 @@ from synthorg.observability.events.classification import (
     CLASSIFICATION_SINK_ERROR,
     CLASSIFICATION_SKIPPED,
     CLASSIFICATION_START,
+    CONTEXT_LOADER_ERROR,
     DETECTOR_ERROR,
     DETECTOR_SCOPE_MISMATCH,
     DETECTOR_TIMEOUT,
@@ -72,7 +73,6 @@ if TYPE_CHECKING:
     from synthorg.engine.loop_protocol import ExecutionResult
     from synthorg.persistence.repositories import TaskRepository
     from synthorg.providers.base import BaseCompletionProvider
-    from synthorg.providers.resilience.rate_limiter import RateLimiter
 
 logger = get_logger(__name__)
 
@@ -132,7 +132,6 @@ def _build_detectors(
     config: ErrorTaxonomyConfig,
     *,
     provider: BaseCompletionProvider | None = None,
-    rate_limiter: RateLimiter | None = None,
     budget_tracker: ClassificationBudgetTracker | None = None,
 ) -> tuple[Detector, ...]:
     """Instantiate detectors from config.
@@ -150,7 +149,6 @@ def _build_detectors(
             cat_config,
             config=config,
             provider=provider,
-            rate_limiter=rate_limiter,
             budget_tracker=budget_tracker,
         )
         if len(variants) == 1:
@@ -163,13 +161,12 @@ def _build_detectors(
     return tuple(detectors)
 
 
-def _build_variants(  # noqa: PLR0913
+def _build_variants(
     category: ErrorCategory,
     cat_config: DetectorCategoryConfig,
     *,
     config: ErrorTaxonomyConfig,
     provider: BaseCompletionProvider | None,
-    rate_limiter: RateLimiter | None,
     budget_tracker: ClassificationBudgetTracker | None,
 ) -> list[Detector]:
     """Build detector instances for a single category."""
@@ -181,7 +178,6 @@ def _build_variants(  # noqa: PLR0913
                 category,
                 provider=provider,
                 model_id=config.llm_provider_tier,
-                rate_limiter=rate_limiter,
                 budget_tracker=budget_tracker,
             )
         else:
@@ -192,19 +188,16 @@ def _build_variants(  # noqa: PLR0913
     return variants
 
 
-def _maybe_add_semantic(  # noqa: PLR0913
+def _maybe_add_semantic(
     variants: list[Detector],
     category: ErrorCategory,
     *,
     provider: BaseCompletionProvider | None,
     model_id: str,
-    rate_limiter: RateLimiter | None,
     budget_tracker: ClassificationBudgetTracker | None,
 ) -> None:
     """Add a semantic detector variant if provider is available."""
     if provider is None:
-        # Semantic detectors are opt-in; missing provider is expected
-        # when the user has not configured one.  Debug-level only.
         logger.debug(
             DETECTOR_ERROR,
             detector=f"semantic({category.value})",
@@ -217,7 +210,6 @@ def _maybe_add_semantic(  # noqa: PLR0913
             sem_cls(
                 provider=provider,
                 model_id=model_id,
-                rate_limiter=rate_limiter,
                 budget_tracker=budget_tracker,
             ),
         )
@@ -263,7 +255,6 @@ async def classify_execution_errors(  # noqa: PLR0913
     config: ErrorTaxonomyConfig,
     task_repo: TaskRepository | None = None,
     provider: BaseCompletionProvider | None = None,
-    rate_limiter: RateLimiter | None = None,
     sinks: tuple[ClassificationSink, ...] = (),
 ) -> ClassificationResult | None:
     """Classify coordination errors from an execution result.
@@ -272,6 +263,10 @@ async def classify_execution_errors(  # noqa: PLR0913
     scope-appropriate context, runs detectors sequentially
     (concurrency happens inside ``CompositeDetector``), and
     dispatches results to registered sinks.
+
+    Rate limiting is handled by the ``BaseCompletionProvider``
+    internally -- semantic detectors no longer accept a separate
+    rate limiter to avoid double-throttling.
 
     Returns ``None`` when the taxonomy is disabled.  Never raises --
     all exceptions except ``MemoryError``/``RecursionError`` are
@@ -284,7 +279,6 @@ async def classify_execution_errors(  # noqa: PLR0913
         config: Error taxonomy configuration.
         task_repo: Optional task repository for TASK_TREE scope.
         provider: Optional LLM provider for semantic detectors.
-        rate_limiter: Optional rate limiter for semantic detectors.
         sinks: Downstream consumers to notify after classification.
 
     Returns:
@@ -316,7 +310,6 @@ async def classify_execution_errors(  # noqa: PLR0913
         config=config,
         task_repo=task_repo,
         provider=provider,
-        rate_limiter=rate_limiter,
     )
     if result is None:
         return None
@@ -334,7 +327,6 @@ async def _classify_safely(  # noqa: PLR0913
     config: ErrorTaxonomyConfig,
     task_repo: TaskRepository | None,
     provider: BaseCompletionProvider | None,
-    rate_limiter: RateLimiter | None,
 ) -> ClassificationResult | None:
     """Run the pipeline and catch all non-fatal errors."""
     try:
@@ -346,7 +338,6 @@ async def _classify_safely(  # noqa: PLR0913
             config=config,
             task_repo=task_repo,
             provider=provider,
-            rate_limiter=rate_limiter,
         )
     except MemoryError, RecursionError:
         logger.error(
@@ -401,7 +392,6 @@ async def _run_pipeline(  # noqa: PLR0913
     config: ErrorTaxonomyConfig,
     task_repo: TaskRepository | None,
     provider: BaseCompletionProvider | None,
-    rate_limiter: RateLimiter | None,
 ) -> ClassificationResult:
     """Build detectors, load contexts, run, and collect findings."""
     budget_tracker = ClassificationBudgetTracker(
@@ -410,7 +400,6 @@ async def _run_pipeline(  # noqa: PLR0913
     all_detectors = _build_detectors(
         config,
         provider=provider,
-        rate_limiter=rate_limiter,
         budget_tracker=budget_tracker,
     )
     all_findings = await _run_detectors_by_scope(
@@ -491,7 +480,21 @@ async def _run_detectors_by_scope(  # noqa: PLR0913
                     reason="TASK_TREE scope requested but no task_repo configured",
                 )
             continue
-        context = await loader.load(execution_result, agent_id, task_id)
+        try:
+            context = await loader.load(execution_result, agent_id, task_id)
+        except MemoryError, RecursionError:
+            raise
+        except Exception:
+            detector_names = [type(d).__name__ for d in detectors]
+            logger.exception(
+                CONTEXT_LOADER_ERROR,
+                agent_id=agent_id,
+                task_id=task_id,
+                execution_id=execution_id,
+                scope=scope.value,
+                detectors=detector_names,
+            )
+            continue
         for detector in detectors:
             if context.scope not in detector.supported_scopes:
                 logger.warning(

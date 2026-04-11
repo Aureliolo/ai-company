@@ -39,6 +39,11 @@ class DelegationProtocolDetector:
       delegation).  The ``delegatee == last delegator`` variant is
       a subset of the circular check because the last delegator is
       always present in the delegation chain.
+
+    Supports only ``TASK_TREE`` scope because
+    ``DetectionContext.delegation_requests`` is only populated by
+    ``TaskTreeLoader``; at ``SAME_TASK`` scope the tuple is always
+    empty, so the detector would never produce findings.
     """
 
     @property
@@ -49,7 +54,7 @@ class DelegationProtocolDetector:
     @property
     def supported_scopes(self) -> frozenset[DetectionScope]:
         """Detection scopes this detector can operate on."""
-        return frozenset({DetectionScope.SAME_TASK, DetectionScope.TASK_TREE})
+        return frozenset({DetectionScope.TASK_TREE})
 
     async def detect(
         self,
@@ -155,6 +160,14 @@ class ReviewPipelineProtocolDetector:
             detector="review_pipeline_protocol",
             message_count=len(context.review_results),
         )
+        if not context.review_results:
+            logger.debug(
+                DETECTOR_COMPLETE,
+                detector="review_pipeline_protocol",
+                finding_count=0,
+                reason="no review_results in context (pending #1170)",
+            )
+            return ()
         findings: list[ErrorFinding] = []
 
         for review in context.review_results:

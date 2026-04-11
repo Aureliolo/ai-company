@@ -52,7 +52,7 @@ def _identity() -> AgentIdentity:
         name="Integration Test Agent",
         role="Developer",
         department="Engineering",
-        model=ModelConfig(provider="test-provider", model_id="test-model-001"),
+        model=ModelConfig(provider="test-provider", model_id="test-small-001"),
         hiring_date=date(2026, 1, 1),
     )
 
@@ -462,7 +462,7 @@ class TestCrossAgentNumericalDriftTaskTree:
                 output_tokens=50,
                 cost_usd=0.0005,
             ),
-            model="test-model-001",
+            model="test-small-001",
         )
         mock_provider = AsyncMock()
         mock_provider.complete = AsyncMock(return_value=provider_response)

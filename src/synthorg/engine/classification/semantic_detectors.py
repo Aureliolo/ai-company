@@ -34,7 +34,6 @@ if TYPE_CHECKING:
     )
     from synthorg.engine.classification.protocol import DetectionContext
     from synthorg.providers.base import BaseCompletionProvider
-    from synthorg.providers.resilience.rate_limiter import RateLimiter
 
 logger = get_logger(__name__)
 
@@ -160,24 +159,38 @@ def _parse_single_finding(
 def _build_conversation_text(
     context: DetectionContext,
 ) -> str:
-    """Build sanitized conversation text for the LLM prompt."""
+    """Build sanitized conversation text for the LLM prompt.
+
+    Includes both USER and ASSISTANT messages so the LLM can see
+    full conversational context (user claims, questions, and agent
+    responses) when detecting contradictions and drift.  SYSTEM
+    messages and tool results are excluded -- system prompts are
+    trusted infrastructure, and tool results may contain large
+    payloads that bloat the prompt without adding detection value.
+    """
     parts: list[str] = []
     for i, msg in enumerate(context.execution_result.context.conversation):
-        if msg.role == MessageRole.ASSISTANT and msg.content:
+        if msg.role in (MessageRole.ASSISTANT, MessageRole.USER) and msg.content:
             sanitized = sanitize_message(
                 msg.content,
                 max_length=_SANITIZE_MAX_LENGTH,
             )
-            parts.append(f"[{i}] {sanitized}")
+            parts.append(f"[{i}:{msg.role.value}] {sanitized}")
     return "\n".join(parts)
 
 
 class _BaseSemanticDetector:
     """Base class for LLM-backed semantic detectors.
 
-    Handles provider invocation, rate limiting, budget tracking,
-    and response parsing.  Subclasses provide the category, scopes,
-    and prompt text.
+    Handles provider invocation, budget tracking, and response
+    parsing.  Rate limiting is handled by the
+    ``BaseCompletionProvider`` internally -- the detector does NOT
+    acquire/release a rate limiter around the call to avoid
+    double-throttling or deadlocking when the same ``RateLimiter``
+    instance is shared between the pipeline and the provider (per
+    issue #228 "LLM detectors share a rate limiter with the
+    provider resilience layer").  Subclasses provide the category,
+    scopes, and prompt text.
     """
 
     @property
@@ -191,12 +204,10 @@ class _BaseSemanticDetector:
         *,
         provider: BaseCompletionProvider,
         model_id: str,
-        rate_limiter: RateLimiter | None = None,
         budget_tracker: ClassificationBudgetTracker | None = None,
     ) -> None:
         self._provider = provider
         self._model_id = model_id
-        self._rate_limiter = rate_limiter
         self._budget_tracker = budget_tracker
 
     def _prompt(self, conversation_text: str) -> str:
@@ -290,12 +301,8 @@ class _BaseSemanticDetector:
             ),
         ]
 
-        acquired = False
         settled = False
         try:
-            if self._rate_limiter is not None:
-                await self._rate_limiter.acquire()
-                acquired = True
             response = await self._provider.complete(messages, self._model_id)
             actual_cost = response.usage.cost_usd if response.usage is not None else 0.0
             if reserved and self._budget_tracker is not None:
@@ -317,8 +324,6 @@ class _BaseSemanticDetector:
             )
             return ()
         finally:
-            if acquired and self._rate_limiter is not None:
-                self._rate_limiter.release()
             if reserved and not settled and self._budget_tracker is not None:
                 await self._budget_tracker.release(estimated_cost)
 
