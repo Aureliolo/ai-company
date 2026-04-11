@@ -31,10 +31,16 @@ fi
 
 REVISIONS_DIR="src/synthorg/persistence/sqlite/revisions"
 
-# Use existing origin/main ref when available; only fetch as a fallback.
-if ! git show-ref --verify --quiet refs/remotes/origin/main; then
-    if ! git fetch origin main --quiet 2>/dev/null; then
-        echo "check_single_migration_per_pr: origin/main is unavailable; skipping local check." >&2
+# Resolve the PR base branch: CI sets GITHUB_BASE_REF, local callers may set
+# BASE_BRANCH, otherwise default to origin/main.
+BASE="${BASE_BRANCH:-${GITHUB_BASE_REF:-origin/main}}"
+
+# Ensure the base ref exists locally; only fetch as a fallback.
+if ! git show-ref --verify --quiet "refs/remotes/${BASE#origin/}" \
+    && ! git rev-parse --verify --quiet "$BASE" >/dev/null; then
+    fetch_target="${BASE#origin/}"
+    if ! git fetch origin "$fetch_target" --quiet 2>/dev/null; then
+        echo "check_single_migration_per_pr: $BASE is unavailable; skipping local check." >&2
         exit 0
     fi
 fi
@@ -45,12 +51,12 @@ while IFS= read -r line; do
     HEAD_FILES+=("$line")
 done < <(git ls-files --cached -- "$REVISIONS_DIR/*.sql" 2>/dev/null || true)
 
-# For each file on HEAD, check whether it exists on origin/main. If it does
-# not, it is a new migration added by this PR.
+# For each file on HEAD, check whether it exists on the base branch. If it
+# does not, it is a new migration added by this PR.
 NEW_COUNT=0
 NEW_FILES=()
 for f in "${HEAD_FILES[@]}"; do
-    if ! git cat-file -e "origin/main:${f}" 2>/dev/null; then
+    if ! git cat-file -e "${BASE}:${f}" 2>/dev/null; then
         NEW_COUNT=$((NEW_COUNT + 1))
         NEW_FILES+=("$f")
     fi
@@ -66,7 +72,6 @@ if [ "$NEW_COUNT" -gt 1 ]; then
         echo "  - $f" >&2
     done
     echo "" >&2
-    BASE="${BASE_BRANCH:-${GITHUB_BASE_REF:-origin/main}}"
     echo "To fix: restore atlas.sum from the base branch, delete all PR" >&2
     echo "migration files, then regenerate a single consolidated migration:" >&2
     echo "" >&2

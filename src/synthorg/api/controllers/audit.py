@@ -16,7 +16,7 @@ from litestar.datastructures import State  # noqa: TC002
 from litestar.exceptions import ClientException
 from litestar.params import Parameter
 
-from synthorg.api.dto import PaginatedResponse, PaginationMeta
+from synthorg.api.dto import PaginatedResponse
 from synthorg.api.guards import require_read_access
 from synthorg.api.pagination import (
     PaginationLimit,
@@ -263,17 +263,12 @@ class AuditController(Controller):
             action_type=action_type,
             verdict=verdict,
         )
-        page = filtered[offset : offset + limit]
-        meta = PaginationMeta(
-            total=len(filtered),
-            offset=offset,
-            limit=limit,
-        )
+        page, meta = paginate(filtered, offset=offset, limit=limit)
         logger.info(
             API_AUDIT_QUERIED,
             total=meta.total,
-            offset=offset,
-            limit=limit,
+            offset=meta.offset,
+            limit=meta.limit,
             jsonb_query=True,
         )
         return PaginatedResponse[AuditEntry](
@@ -291,7 +286,7 @@ def _apply_standard_filters(
     verdict: str | None,
 ) -> tuple[AuditEntry, ...]:
     """Post-filter JSONB results by standard audit criteria."""
-    if not any((agent_id, tool_name, action_type, verdict)):
+    if all(f is None for f in (agent_id, tool_name, action_type, verdict)):
         return entries
     result: list[AuditEntry] = []
     for e in entries:

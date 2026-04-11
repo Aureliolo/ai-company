@@ -202,6 +202,14 @@ class UserController(Controller):
                 raise
             logger.warning(API_RESOURCE_CONFLICT, reason=msg)
             raise ConflictError(msg) from exc
+        except QueryError:
+            logger.error(
+                API_USER_SAVE_FAILED,
+                user_id=user.id,
+                intent="create_user",
+                exc_info=True,
+            )
+            raise
 
         logger.info(
             API_USER_CREATED,
@@ -308,6 +316,14 @@ class UserController(Controller):
                 raise
             logger.warning(API_RESOURCE_CONFLICT, reason=msg)
             raise ConflictError(msg) from exc
+        except QueryError:
+            logger.error(
+                API_USER_SAVE_FAILED,
+                user_id=user.id,
+                intent="update_user_role",
+                exc_info=True,
+            )
+            raise
 
         logger.info(
             API_USER_UPDATED,
@@ -374,6 +390,14 @@ class UserController(Controller):
                 raise
             logger.warning(API_RESOURCE_CONFLICT, reason=msg)
             raise ConflictError(msg) from exc
+        except QueryError:
+            logger.error(
+                API_USER_SAVE_FAILED,
+                user_id=user_id,
+                intent="delete_user",
+                exc_info=True,
+            )
+            raise
         if not deleted:
             msg = f"User not found: {user_id}"
             logger.warning(API_RESOURCE_NOT_FOUND, reason=msg)
