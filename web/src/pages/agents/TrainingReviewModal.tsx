@@ -13,6 +13,7 @@
  */
 
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
+import { EmptyState } from '@/components/ui/empty-state'
 import { StatPill } from '@/components/ui/stat-pill'
 import { cn } from '@/lib/utils'
 import { createLogger } from '@/lib/logger'
@@ -100,14 +101,11 @@ export function TrainingReviewModal({
         {/* Per-content-type breakdown */}
         <div className="space-y-2">
           {items.length === 0 ? (
-            <div
-              className={cn(
-                'rounded-md bg-muted/50 p-card text-sm',
-                'text-center text-muted-foreground',
-              )}
-            >
-              No pending training items for this plan.
-            </div>
+            <EmptyState
+              title="No pending training items"
+              description="This plan has no items waiting for review."
+              className="py-6"
+            />
           ) : (
             items.map((item) => (
               <div

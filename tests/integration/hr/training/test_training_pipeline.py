@@ -169,11 +169,7 @@ def _build_service(
         VolumeCapGuard(),
     )
     if approval_store is not None:
-        guards = (
-            SanitizationGuard(),
-            VolumeCapGuard(),
-            ReviewGateGuard(approval_store=approval_store),
-        )
+        guards = (*guards, ReviewGateGuard(approval_store=approval_store))
 
     return TrainingService(
         selector=selector,
@@ -379,12 +375,4 @@ class TestFullTrainingPipeline:
 
         with pytest.raises(BaseExceptionGroup) as excinfo:
             await service.execute(plan)
-        causes = [type(exc).__name__ for exc in excinfo.value.exceptions]
-        assert "RuntimeError" in "".join(causes) or any(
-            isinstance(exc, RuntimeError)
-            or (
-                isinstance(exc, BaseExceptionGroup)
-                and any(isinstance(e, RuntimeError) for e in exc.exceptions)
-            )
-            for exc in excinfo.value.exceptions
-        )
+        assert excinfo.group_contains(RuntimeError)

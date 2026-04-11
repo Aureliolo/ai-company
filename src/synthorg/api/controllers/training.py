@@ -58,7 +58,12 @@ class _TrainingPlanStore:
 
     def __init__(self) -> None:
         self._plans: dict[str, TrainingPlan] = {}
+        # Results are keyed by plan_id so results for different plans
+        # on the same agent are never overwritten. A second map tracks
+        # the latest plan_id per agent to support the "get latest
+        # result by agent" endpoint semantics.
         self._results: dict[str, TrainingResultResponse] = {}
+        self._latest_plan_by_agent: dict[str, str] = {}
         self._lock = asyncio.Lock()
 
     async def save_plan(self, plan: TrainingPlan) -> None:
@@ -94,19 +99,36 @@ class _TrainingPlanStore:
     async def save_result(
         self,
         agent_id: str,
+        plan_id: str,
         result: TrainingResultResponse,
     ) -> None:
-        """Persist the latest training result for an agent."""
-        async with self._lock:
-            self._results[agent_id] = result
+        """Persist a training result by plan id.
 
-    async def get_result(
+        Also records ``plan_id`` as the latest result for
+        ``agent_id`` so the agent-scoped lookup can resolve it.
+        """
+        async with self._lock:
+            self._results[plan_id] = result
+            self._latest_plan_by_agent[agent_id] = plan_id
+
+    async def get_result_by_plan(
+        self,
+        plan_id: str,
+    ) -> TrainingResultResponse | None:
+        """Fetch a stored training result by plan id."""
+        async with self._lock:
+            return self._results.get(plan_id)
+
+    async def get_latest_result(
         self,
         agent_id: str,
     ) -> TrainingResultResponse | None:
         """Fetch the latest training result for an agent."""
         async with self._lock:
-            return self._results.get(agent_id)
+            plan_id = self._latest_plan_by_agent.get(agent_id)
+            if plan_id is None:
+                return None
+            return self._results.get(plan_id)
 
 
 # Process-local store singleton. Will be replaced with persistence
@@ -310,7 +332,7 @@ class TrainingController(Controller):
         identity = await _resolve_agent(app_state, agent_name)
         agent_id = str(identity.id)
 
-        result = await _store.get_result(agent_id)
+        result = await _store.get_latest_result(agent_id)
         if result is None:
             logger.warning(
                 API_RESOURCE_NOT_FOUND,

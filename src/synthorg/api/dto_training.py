@@ -127,7 +127,7 @@ class TrainingResultResponse(BaseModel):
     items_after_guards: tuple[tuple[NotBlankStr, int], ...]
     items_stored: tuple[tuple[NotBlankStr, int], ...]
     approval_item_id: NotBlankStr | None = None
-    pending_approvals: tuple[tuple[ContentType, NotBlankStr, int], ...] = ()
+    pending_approvals: tuple[tuple[NotBlankStr, NotBlankStr, int], ...] = ()
     review_pending: bool = False
     errors: tuple[str, ...] = ()
     started_at: AwareDatetime

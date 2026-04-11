@@ -13,6 +13,7 @@ from synthorg.hr.training.models import ContentType, TrainingItem
 from synthorg.observability import get_logger
 from synthorg.observability.events.training import (
     HR_TRAINING_EXTRACTION_FAILED,
+    HR_TRAINING_EXTRACTOR_CONFIG_INVALID,
     HR_TRAINING_ITEMS_EXTRACTED,
 )
 
@@ -47,7 +48,12 @@ class ToolPatternExtractor:
     ) -> None:
         if lookback_days <= 0:
             msg = f"lookback_days must be a positive integer, got {lookback_days}"
-            logger.warning(msg, lookback_days=lookback_days)
+            logger.warning(
+                HR_TRAINING_EXTRACTOR_CONFIG_INVALID,
+                extractor_type="tool_patterns",
+                reason=msg,
+                lookback_days=lookback_days,
+            )
             raise ValueError(msg)
         self._tracker = tracker
         self._lookback_days = lookback_days
