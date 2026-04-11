@@ -264,6 +264,7 @@ class TestEventConstants:
             "sub_constraint",
             "telemetry",
             "terminal",
+            "training",
             "versioning",
             "web",
         }
