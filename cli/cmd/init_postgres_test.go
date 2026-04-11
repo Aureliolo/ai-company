@@ -230,6 +230,60 @@ func TestPostgresLifecycle_InitGeneratesWritableState(t *testing.T) {
 	}
 }
 
+// TestPostgresLifecycle_ReinitPreservesCustomPostgresPort verifies that
+// re-init with a custom PostgresPort does not reset the port to the default
+// (3002). This exercises the oldState preservation path in handleReinit.
+func TestPostgresLifecycle_ReinitPreservesCustomPostgresPort(t *testing.T) {
+	dir := t.TempDir()
+	a := setupAnswers{
+		dir:                mustAbs(t, dir),
+		backendPortStr:     "3001",
+		webPortStr:         "3000",
+		sandbox:            false,
+		dockerSock:         "",
+		logLevel:           "info",
+		persistenceBackend: "postgres",
+		memoryBackend:      "mem0",
+		busBackend:         "internal",
+		postgresPort:       5433, // custom port
+	}
+
+	state, err := buildState(a)
+	if err != nil {
+		t.Fatalf("buildState: %v", err)
+	}
+	if _, err := writeInitFiles(state); err != nil {
+		t.Fatalf("writeInitFiles: %v", err)
+	}
+
+	// Read back the persisted config (simulates a re-init reading oldState).
+	persisted, err := config.Load(mustAbs(t, dir))
+	if err != nil {
+		t.Fatalf("config.Load: %v", err)
+	}
+	if persisted.PostgresPort != 5433 {
+		t.Errorf("persisted PostgresPort = %d, want 5433", persisted.PostgresPort)
+	}
+	if persisted.PostgresPassword == "" {
+		t.Error("persisted PostgresPassword must be non-empty")
+	}
+
+	// Regenerate compose from persisted state and verify the custom port + password
+	// survive (this is what `synthorg start` does after re-init).
+	params := compose.ParamsFromState(persisted)
+	regenerated, err := compose.Generate(params)
+	if err != nil {
+		t.Fatalf("regenerate compose: %v", err)
+	}
+	regenStr := string(regenerated)
+	if !strings.Contains(regenStr, "\"5433:5432\"") {
+		t.Error("regenerated compose must contain custom postgres port mapping 5433:5432")
+	}
+	if !strings.Contains(regenStr, persisted.PostgresPassword) {
+		t.Error("regenerated compose must contain the persisted password")
+	}
+}
+
 func mustAbs(t *testing.T, p string) string {
 	t.Helper()
 	abs, err := filepath.Abs(p)

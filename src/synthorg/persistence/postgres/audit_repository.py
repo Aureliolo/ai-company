@@ -342,6 +342,15 @@ INSERT INTO audit_entries (
         offset: int,
     ) -> tuple[tuple[AuditEntry, ...], int]:
         """Execute a JSONB query with time filters and pagination."""
+        self._validate_query_args(since=since, until=until, limit=limit)
+        if offset < 0:
+            msg = f"offset must be >= 0, got {offset}"
+            logger.warning(
+                PERSISTENCE_AUDIT_ENTRY_QUERY_FAILED,
+                error=msg,
+                offset=offset,
+            )
+            raise QueryError(msg)
         time_conds, time_params = self._build_time_clause(since, until)
         all_conds = [extra_condition, *time_conds]
         all_params = [*extra_params, *time_params]

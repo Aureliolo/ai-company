@@ -15,7 +15,7 @@ import pytest
 
 from synthorg.api.auth.models import OrgRole, User
 from synthorg.api.guards import HumanRole
-from synthorg.persistence.errors import ConstraintViolationError, QueryError
+from synthorg.persistence.errors import ConstraintViolationError
 from synthorg.persistence.postgres.backend import PostgresPersistenceBackend
 
 
@@ -54,8 +54,9 @@ class TestCEOUniquenessPostgres:
         await postgres_backend.users.save(ceo1)
 
         ceo2 = _make_user(user_id="ceo-2", username="ceo2", role=HumanRole.CEO)
-        with pytest.raises(QueryError):
+        with pytest.raises(ConstraintViolationError) as exc_info:
             await postgres_backend.users.save(ceo2)
+        assert exc_info.value.constraint == "idx_single_ceo"
 
     async def test_concurrent_ceo_creation(
         self,
@@ -73,7 +74,7 @@ class TestCEOUniquenessPostgres:
             try:
                 await postgres_backend.users.save(user)
                 results.append(True)
-            except QueryError:
+            except ConstraintViolationError:
                 results.append(False)
 
         async with asyncio.TaskGroup() as tg:
@@ -180,7 +181,7 @@ class TestLastOwnerTriggerPostgres:
             try:
                 await postgres_backend.users.save(revoked)
                 results.append(True)
-            except QueryError:
+            except ConstraintViolationError:
                 results.append(False)
 
         async with asyncio.TaskGroup() as tg:

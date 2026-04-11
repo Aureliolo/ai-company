@@ -150,7 +150,6 @@ jobs:
     if: needs.changes.outputs.python == 'true' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    environment: atlas
     permissions:
       contents: read
     strategy:

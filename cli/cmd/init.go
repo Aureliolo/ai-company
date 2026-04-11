@@ -135,8 +135,13 @@ func handleReinit(cmd *cobra.Command, state *config.State, opts *GlobalOpts) (bo
 		if oldState.SettingsKey != "" {
 			state.SettingsKey = oldState.SettingsKey
 		}
-		if oldState.PostgresPassword != "" && state.PersistenceBackend == "postgres" {
-			state.PostgresPassword = oldState.PostgresPassword
+		if state.PersistenceBackend == "postgres" {
+			if oldState.PostgresPassword != "" {
+				state.PostgresPassword = oldState.PostgresPassword
+			}
+			if oldState.PostgresPort != 0 {
+				state.PostgresPort = oldState.PostgresPort
+			}
 		}
 		return true, nil
 	}
@@ -154,8 +159,13 @@ func handleReinit(cmd *cobra.Command, state *config.State, opts *GlobalOpts) (bo
 	if *kept != "" {
 		state.SettingsKey = *kept
 	}
-	if oldState.PostgresPassword != "" && state.PersistenceBackend == "postgres" {
-		state.PostgresPassword = oldState.PostgresPassword
+	if state.PersistenceBackend == "postgres" {
+		if oldState.PostgresPassword != "" {
+			state.PostgresPassword = oldState.PostgresPassword
+		}
+		if oldState.PostgresPort != 0 {
+			state.PostgresPort = oldState.PostgresPort
+		}
 	}
 	return true, nil
 }

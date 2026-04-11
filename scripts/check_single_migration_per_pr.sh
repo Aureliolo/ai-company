@@ -31,9 +31,15 @@ fi
 
 REVISIONS_DIR="src/synthorg/persistence/sqlite/revisions"
 
-# Resolve the PR base branch: CI sets GITHUB_BASE_REF, local callers may set
-# BASE_BRANCH, otherwise default to origin/main.
-BASE="${BASE_BRANCH:-${GITHUB_BASE_REF:-origin/main}}"
+# Resolve the PR base branch: CI sets GITHUB_BASE_REF (bare branch name),
+# local callers may set BASE_BRANCH, otherwise default to origin/main.
+# Normalize to a remote-tracking ref so both git show-ref and git cat-file
+# resolve consistently.
+BASE_RAW="${BASE_BRANCH:-${GITHUB_BASE_REF:-origin/main}}"
+case "$BASE_RAW" in
+    origin/*|refs/*) BASE="$BASE_RAW" ;;
+    *)               BASE="origin/$BASE_RAW" ;;
+esac
 
 # Ensure the base ref exists locally; only fetch as a fallback.
 if ! git show-ref --verify --quiet "refs/remotes/${BASE#origin/}" \
