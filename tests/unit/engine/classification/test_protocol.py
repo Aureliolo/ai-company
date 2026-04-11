@@ -154,7 +154,7 @@ class TestDetectorProtocol:
             async def detect(
                 self,
                 context: DetectionContext,
-            ) -> tuple:
+            ) -> tuple[object, ...]:
                 return ()
 
         assert isinstance(FakeDetector(), Detector)

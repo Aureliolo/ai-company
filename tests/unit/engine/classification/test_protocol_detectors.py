@@ -38,12 +38,9 @@ from synthorg.providers.enums import FinishReason, MessageRole
 from synthorg.providers.models import ChatMessage
 
 
-def _identity(
-    *,
-    agent_id: str | None = None,
-) -> AgentIdentity:
+def _identity() -> AgentIdentity:
     return AgentIdentity(
-        id=agent_id or str(uuid4()),
+        id=uuid4(),
         name="Test Agent",
         role="Developer",
         department="Engineering",
@@ -58,10 +55,8 @@ def _identity(
 def _execution_result(
     messages: tuple[ChatMessage, ...] = (),
     turns: tuple[TurnRecord, ...] = (),
-    *,
-    agent_id: str | None = None,
 ) -> ExecutionResult:
-    identity = _identity(agent_id=agent_id)
+    identity = _identity()
     ctx = AgentContext.from_identity(identity)
     for msg in messages:
         ctx = ctx.with_message(msg)
@@ -362,7 +357,7 @@ class TestAuthorityBreachDetector:
     async def test_budget_overrun_detected(self) -> None:
         """Execution cost exceeding authority budget_limit is a breach."""
         identity = AgentIdentity(
-            id=str(uuid4()),
+            id=uuid4(),
             name="Test Agent",
             role="Developer",
             department="Engineering",

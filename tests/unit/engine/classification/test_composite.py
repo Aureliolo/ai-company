@@ -189,7 +189,7 @@ class TestCompositeDetector:
             def supported_scopes(self) -> frozenset[DetectionScope]:
                 return frozenset({DetectionScope.SAME_TASK})
 
-            async def detect(self, ctx: DetectionContext) -> tuple:
+            async def detect(self, ctx: DetectionContext) -> tuple[object, ...]:
                 return ()
 
         class ScopeB:
@@ -201,7 +201,7 @@ class TestCompositeDetector:
             def supported_scopes(self) -> frozenset[DetectionScope]:
                 return frozenset({DetectionScope.TASK_TREE})
 
-            async def detect(self, ctx: DetectionContext) -> tuple:
+            async def detect(self, ctx: DetectionContext) -> tuple[object, ...]:
                 return ()
 
         composite = CompositeDetector(detectors=(ScopeA(), ScopeB()))
