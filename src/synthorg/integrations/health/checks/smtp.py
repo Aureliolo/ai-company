@@ -1,0 +1,88 @@
+"""SMTP health check."""
+
+import asyncio
+import smtplib
+import time
+from datetime import UTC, datetime
+
+from synthorg.integrations.connections.models import (
+    Connection,
+    ConnectionStatus,
+    HealthReport,
+)
+from synthorg.observability import get_logger
+from synthorg.observability.events.integrations import (
+    HEALTH_CHECK_FAILED,
+    HEALTH_CHECK_PASSED,
+)
+
+logger = get_logger(__name__)
+
+_TIMEOUT = 10
+
+
+class SmtpHealthCheck:
+    """Health check via SMTP EHLO."""
+
+    async def check(self, connection: Connection) -> HealthReport:
+        """Verify SMTP connectivity via EHLO."""
+        start = time.monotonic()
+        try:
+            result = await asyncio.to_thread(
+                self._sync_check,
+                connection,
+            )
+        except Exception as exc:
+            elapsed = (time.monotonic() - start) * 1000
+            logger.debug(
+                HEALTH_CHECK_FAILED,
+                connection_name=connection.name,
+                error=str(exc),
+            )
+            return HealthReport(
+                connection_name=connection.name,
+                status=ConnectionStatus.UNHEALTHY,
+                latency_ms=elapsed,
+                error_detail=str(exc),
+                checked_at=datetime.now(UTC),
+            )
+        else:
+            return result
+
+    def _sync_check(self, connection: Connection) -> HealthReport:
+        """Synchronous SMTP EHLO check (run in thread)."""
+        start = time.monotonic()
+        host = connection.metadata.get("host", "localhost")
+        port = int(connection.metadata.get("port", "25"))
+        try:
+            with smtplib.SMTP(host, port, timeout=_TIMEOUT) as smtp:
+                code, _ = smtp.ehlo()
+            elapsed = (time.monotonic() - start) * 1000
+            if 200 <= code < 300:  # noqa: PLR2004
+                logger.debug(
+                    HEALTH_CHECK_PASSED,
+                    connection_name=connection.name,
+                    latency_ms=elapsed,
+                )
+                return HealthReport(
+                    connection_name=connection.name,
+                    status=ConnectionStatus.HEALTHY,
+                    latency_ms=elapsed,
+                    checked_at=datetime.now(UTC),
+                )
+            return HealthReport(
+                connection_name=connection.name,
+                status=ConnectionStatus.UNHEALTHY,
+                latency_ms=elapsed,
+                error_detail=f"SMTP EHLO returned {code}",
+                checked_at=datetime.now(UTC),
+            )
+        except (smtplib.SMTPException, OSError) as exc:
+            elapsed = (time.monotonic() - start) * 1000
+            return HealthReport(
+                connection_name=connection.name,
+                status=ConnectionStatus.UNHEALTHY,
+                latency_ms=elapsed,
+                error_detail=str(exc),
+                checked_at=datetime.now(UTC),
+            )
