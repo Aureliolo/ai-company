@@ -252,7 +252,7 @@ class TestCASRetry:
                     )
             return result
 
-        persistence.settings.get = intercepting_get  # type: ignore[assignment]
+        persistence.settings.get = intercepting_get  # type: ignore[method-assign]
         try:
             # This should fail on first CAS attempt but succeed on retry
             dept = await service.update_department(
@@ -261,7 +261,7 @@ class TestCASRetry:
             )
             assert dept.head == "bob"
         finally:
-            persistence.settings.get = original_get  # type: ignore[assignment]
+            persistence.settings.get = original_get  # type: ignore[method-assign]
 
     async def test_raises_after_retry_exhausted(
         self,
@@ -302,7 +302,7 @@ class TestCASRetry:
                 expected_updated_at=expected_updated_at,
             )
 
-        persistence.settings.set = always_conflict_set  # type: ignore[assignment]
+        persistence.settings.set = always_conflict_set  # type: ignore[method-assign]
         try:
             with pytest.raises(VersionConflictError):
                 await service.update_department(
@@ -310,4 +310,4 @@ class TestCASRetry:
                     UpdateDepartmentRequest(head="bob"),
                 )
         finally:
-            persistence.settings.set = original_set  # type: ignore[assignment]
+            persistence.settings.set = original_set  # type: ignore[method-assign]
