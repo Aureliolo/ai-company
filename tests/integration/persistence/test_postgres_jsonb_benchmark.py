@@ -110,42 +110,44 @@ class TestJsonbBenchmark:
         pool = postgres_backend._pool
         assert pool is not None
 
-        # Warm-up the capability query path.
+        # Warm-up the capability query path and lock in the expected
+        # selectivity.  10% of rows match so a correct index makes a
+        # meaningful difference.
         _, total = await repo.query_jsonb_contains(
             "matched_rules",
             ["rule-target"],
             limit=1,
         )
-        # 10% of rows match (total count filter).
         assert total >= _SEED_ROWS // 10, (
             f"expected >= {_SEED_ROWS // 10} matches, got {total}"
         )
 
-        # Time the GIN-indexed query.
-        gin_start = time.perf_counter()
-        _, _ = await repo.query_jsonb_contains(
-            "matched_rules",
-            ["rule-target"],
-            limit=100,
+        # Both branches run the same raw SQL with the same shape.
+        # The only variable is whether Postgres is allowed to use an
+        # index scan: ``force_seqscan=True`` disables index and
+        # bitmap scans for the duration of the enclosing transaction,
+        # forcing a sequential table scan.  This is the fair
+        # apples-to-apples comparison the old benchmark was missing.
+        bench_sql = (
+            "SELECT id FROM audit_entries "
+            "WHERE matched_rules @> %s::jsonb "
+            "ORDER BY timestamp DESC LIMIT 100"
         )
-        gin_elapsed = time.perf_counter() - gin_start
+        bench_param = (Jsonb(["rule-target"]),)
 
-        # Time the sequential-scan equivalent.  We force seq scan by
-        # disabling index access in this session.
-        seqscan_start = time.perf_counter()
-        async with pool.connection() as conn, conn.cursor() as cur:
-            await cur.execute("SET LOCAL enable_indexscan = off")
-            await cur.execute("SET LOCAL enable_bitmapscan = off")
-            await cur.execute(
-                "SELECT id FROM audit_entries "
-                "WHERE matched_rules @> %s::jsonb "
-                "ORDER BY timestamp DESC LIMIT 100",
-                (Jsonb(["rule-target"]),),
-            )
-            _ = await cur.fetchall()
-        seqscan_elapsed = time.perf_counter() - seqscan_start
+        async def _run_branch(*, force_seqscan: bool) -> float:
+            async with pool.connection() as conn, conn.cursor() as cur:
+                if force_seqscan:
+                    await cur.execute("SET LOCAL enable_indexscan = off")
+                    await cur.execute("SET LOCAL enable_bitmapscan = off")
+                start = time.perf_counter()
+                await cur.execute(bench_sql, bench_param)
+                _ = await cur.fetchall()
+                return time.perf_counter() - start
 
-        # Report the measurements via structured logging.
+        gin_elapsed = await _run_branch(force_seqscan=False)
+        seqscan_elapsed = await _run_branch(force_seqscan=True)
+
         logger.info(
             "PERSISTENCE_JSONB_BENCHMARK",
             gin_query_ms=round(gin_elapsed * 1000, 1),
@@ -154,15 +156,12 @@ class TestJsonbBenchmark:
             seed_rows=_SEED_ROWS,
         )
 
-        # In Docker testcontainers with all data in memory, the
-        # speedup may be negligible.  The hard assertion on GIN usage
-        # lives in TestGinIndexUsage (EXPLAIN ANALYZE).  This test
-        # records the measurement for trend monitoring; a speedup
-        # below 1.0 would indicate the GIN query is actively SLOWER
-        # than seq scan (should never happen for correct index use).
-        speedup = seqscan_elapsed / gin_elapsed
-        assert speedup >= 0.5, (
-            f"GIN query is slower than seq scan: {speedup:.1f}x "
-            f"(GIN={gin_elapsed * 1000:.1f}ms, "
-            f"seq={seqscan_elapsed * 1000:.1f}ms)"
+        # GIN must be at least as fast as the seq scan on a workload
+        # where 90% of rows don't match.  Tiny in-memory
+        # testcontainers can make the absolute times noisy, so we
+        # allow a 5% slack to keep the assertion stable.
+        assert gin_elapsed <= seqscan_elapsed * 1.05, (
+            f"GIN query is slower than seq scan: "
+            f"GIN={gin_elapsed * 1000:.1f}ms, "
+            f"seq={seqscan_elapsed * 1000:.1f}ms"
         )
