@@ -17,58 +17,55 @@ _NOW = datetime(2026, 4, 11, 12, 0, 0, tzinfo=UTC)
 class TestCompositeScalingTrigger:
     """CompositeScalingTrigger OR combination."""
 
-    async def test_fires_when_first_child_fires(self) -> None:
-        # Batched trigger fires on first call.
+    @pytest.mark.parametrize(
+        ("consume_batched", "signal_initial", "signal_final", "expect_trigger"),
+        [
+            (False, None, None, True),
+            (True, 0.80, 0.90, True),
+            (True, None, None, False),
+        ],
+        ids=[
+            "fires-when-first-child-fires",
+            "fires-when-second-child-fires",
+            "does-not-fire-when-no-child-fires",
+        ],
+    )
+    async def test_composite_trigger_logic(
+        self,
+        consume_batched: bool,
+        signal_initial,
+        signal_final,
+        expect_trigger: bool,
+    ) -> None:
         batched = BatchedScalingTrigger(interval_seconds=900)
-        threshold = SignalThresholdTrigger(
-            signal_name="utilization",
-            threshold=0.85,
-        )
-        composite = CompositeScalingTrigger(triggers=(batched, threshold))
-        assert await composite.should_trigger() is True
-
-    async def test_fires_when_second_child_fires(self) -> None:
-        # Batched has already fired, threshold crosses.
-        batched = BatchedScalingTrigger(interval_seconds=900)
-        await batched.should_trigger()  # consume the first fire
-
-        threshold = SignalThresholdTrigger(
-            signal_name="utilization",
-            threshold=0.85,
-        )
-        # Initialize with below-threshold signal
-        await threshold.update_signal(
-            ScalingSignal(
-                name=NotBlankStr("utilization"),
-                value=0.80,
-                source=NotBlankStr("test"),
-                timestamp=_NOW,
-            ),
-        )
-        # Cross above threshold
-        await threshold.update_signal(
-            ScalingSignal(
-                name=NotBlankStr("utilization"),
-                value=0.90,
-                source=NotBlankStr("test"),
-                timestamp=_NOW,
-            ),
-        )
-
-        composite = CompositeScalingTrigger(triggers=(batched, threshold))
-        assert await composite.should_trigger() is True
-
-    async def test_does_not_fire_when_no_child_fires(self) -> None:
-        # Batched has already fired, threshold has no crossing.
-        batched = BatchedScalingTrigger(interval_seconds=900)
-        await batched.should_trigger()  # consume
+        if consume_batched:
+            await batched.should_trigger()
 
         threshold = SignalThresholdTrigger(
             signal_name="utilization",
             threshold=0.85,
         )
+        if signal_initial is not None:
+            await threshold.update_signal(
+                ScalingSignal(
+                    name=NotBlankStr("utilization"),
+                    value=signal_initial,
+                    source=NotBlankStr("test"),
+                    timestamp=_NOW,
+                ),
+            )
+        if signal_final is not None:
+            await threshold.update_signal(
+                ScalingSignal(
+                    name=NotBlankStr("utilization"),
+                    value=signal_final,
+                    source=NotBlankStr("test"),
+                    timestamp=_NOW,
+                ),
+            )
+
         composite = CompositeScalingTrigger(triggers=(batched, threshold))
-        assert await composite.should_trigger() is False
+        assert (await composite.should_trigger()) is expect_trigger
 
     async def test_empty_triggers_returns_false(self) -> None:
         composite = CompositeScalingTrigger(triggers=())

@@ -12,56 +12,50 @@ from .conftest import make_context, make_signal
 class TestSkillGapStrategy:
     """SkillGapStrategy decision logic."""
 
-    async def test_disabled_returns_empty(self) -> None:
-        strategy = SkillGapStrategy(enabled=False)
-        ctx = make_context(
-            skill_signals=(
-                make_signal(name="missing_skill_count", value=3.0, source="skill"),
+    @pytest.mark.parametrize(
+        ("enabled", "min_missing_skills", "missing_count", "expected_len"),
+        [
+            (False, 1, 3.0, 0),
+            (True, 1, 2.0, 1),
+            (True, 1, 0.0, 0),
+            (True, 3, 2.0, 0),
+        ],
+        ids=[
+            "disabled-returns-empty",
+            "enabled-with-gaps",
+            "no-gaps-returns-empty",
+            "below-min-missing-returns-empty",
+        ],
+    )
+    async def test_strategy_evaluation(
+        self,
+        enabled: bool,
+        min_missing_skills: int,
+        missing_count: float,
+        expected_len: int,
+    ) -> None:
+        strategy = SkillGapStrategy(
+            enabled=enabled,
+            min_missing_skills=min_missing_skills,
+        )
+        signals = (
+            (
+                make_signal(
+                    name="missing_skill_count",
+                    value=missing_count,
+                    source="skill",
+                ),
                 make_signal(name="coverage_ratio", value=0.5, source="skill"),
-            ),
+            )
+            if missing_count > 0.0 or expected_len > 0
+            else ()
         )
+        ctx = make_context(skill_signals=signals)
         decisions = await strategy.evaluate(ctx)
-        assert len(decisions) == 0
-
-    async def test_enabled_with_gaps(self) -> None:
-        strategy = SkillGapStrategy(enabled=True)
-        ctx = make_context(
-            skill_signals=(
-                make_signal(name="missing_skill_count", value=2.0, source="skill"),
-                make_signal(name="coverage_ratio", value=0.5, source="skill"),
-            ),
-        )
-        decisions = await strategy.evaluate(ctx)
-        assert len(decisions) == 1
-        assert decisions[0].action_type == ScalingActionType.HIRE
-        assert "2 missing skills" in decisions[0].rationale
-
-    async def test_no_gaps_returns_empty(self) -> None:
-        strategy = SkillGapStrategy(enabled=True)
-        ctx = make_context(
-            skill_signals=(
-                make_signal(name="missing_skill_count", value=0.0, source="skill"),
-                make_signal(name="coverage_ratio", value=1.0, source="skill"),
-            ),
-        )
-        decisions = await strategy.evaluate(ctx)
-        assert len(decisions) == 0
-
-    async def test_below_min_missing_returns_empty(self) -> None:
-        strategy = SkillGapStrategy(enabled=True, min_missing_skills=3)
-        ctx = make_context(
-            skill_signals=(
-                make_signal(name="missing_skill_count", value=2.0, source="skill"),
-            ),
-        )
-        decisions = await strategy.evaluate(ctx)
-        assert len(decisions) == 0
-
-    async def test_no_signals_returns_empty(self) -> None:
-        strategy = SkillGapStrategy(enabled=True)
-        ctx = make_context(skill_signals=())
-        decisions = await strategy.evaluate(ctx)
-        assert len(decisions) == 0
+        assert len(decisions) == expected_len
+        if expected_len > 0:
+            assert decisions[0].action_type == ScalingActionType.HIRE
+            assert f"{int(missing_count)} missing skills" in decisions[0].rationale
 
     async def test_name_and_action_types(self) -> None:
         strategy = SkillGapStrategy()

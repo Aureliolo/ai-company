@@ -47,39 +47,35 @@ class TestPerformanceSignalSource:
         assert by_name["avg_quality_trend"] == 0.0
         assert by_name["declining_agent_count"] == 0.0
 
-    async def test_all_stable(self) -> None:
+    @pytest.mark.parametrize(
+        ("trend_a1", "trend_a2", "expected_avg_trend", "expected_declining_count"),
+        [
+            (TrendDirection.STABLE, TrendDirection.STABLE, 0.0, 0.0),
+            (TrendDirection.IMPROVING, TrendDirection.DECLINING, 0.0, 1.0),
+            (TrendDirection.DECLINING, TrendDirection.DECLINING, -1.0, 2.0),
+        ],
+        ids=[
+            "all-stable",
+            "mixed-trends",
+            "all-declining",
+        ],
+    )
+    async def test_performance_aggregation(
+        self,
+        trend_a1: TrendDirection,
+        trend_a2: TrendDirection,
+        expected_avg_trend: float,
+        expected_declining_count: float,
+    ) -> None:
         source = PerformanceSignalSource()
         snapshots = {
-            "a1": _make_snapshot("a1", TrendDirection.STABLE),
-            "a2": _make_snapshot("a2", TrendDirection.STABLE),
+            "a1": _make_snapshot("a1", trend_a1),
+            "a2": _make_snapshot("a2", trend_a2),
         }
         signals = await source.collect(_AGENT_IDS, snapshots=snapshots)
         by_name = {s.name: s.value for s in signals}
-        assert by_name["avg_quality_trend"] == 0.0
-        assert by_name["declining_agent_count"] == 0.0
-
-    async def test_mixed_trends(self) -> None:
-        source = PerformanceSignalSource()
-        snapshots = {
-            "a1": _make_snapshot("a1", TrendDirection.IMPROVING),
-            "a2": _make_snapshot("a2", TrendDirection.DECLINING),
-        }
-        signals = await source.collect(_AGENT_IDS, snapshots=snapshots)
-        by_name = {s.name: s.value for s in signals}
-        # (1.0 + -1.0) / 2 = 0.0
-        assert by_name["avg_quality_trend"] == 0.0
-        assert by_name["declining_agent_count"] == 1.0
-
-    async def test_all_declining(self) -> None:
-        source = PerformanceSignalSource()
-        snapshots = {
-            "a1": _make_snapshot("a1", TrendDirection.DECLINING),
-            "a2": _make_snapshot("a2", TrendDirection.DECLINING),
-        }
-        signals = await source.collect(_AGENT_IDS, snapshots=snapshots)
-        by_name = {s.name: s.value for s in signals}
-        assert by_name["avg_quality_trend"] == -1.0
-        assert by_name["declining_agent_count"] == 2.0
+        assert by_name["avg_quality_trend"] == expected_avg_trend
+        assert by_name["declining_agent_count"] == expected_declining_count
 
     async def test_snapshot_without_quality_trend(self) -> None:
         source = PerformanceSignalSource()

@@ -133,13 +133,14 @@ export const useScalingStore = create<ScalingState>()((set, get) => ({
   updateFromWsEvent: (event: WsEvent) => {
     log.debug('Scaling WS event', event.event_type)
     void (async () => {
-      try {
-        await Promise.all([
-          get().fetchDecisions(),
-          get().fetchSignals(),
-        ])
-      } catch (err) {
-        log.error('WS event refresh failed', err)
+      const results = await Promise.allSettled([
+        get().fetchDecisions(),
+        get().fetchSignals(),
+      ])
+      for (const r of results) {
+        if (r.status === 'rejected') {
+          log.error('WS event refresh partial failure', r.reason)
+        }
       }
     })()
   },

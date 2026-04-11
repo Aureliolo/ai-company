@@ -501,30 +501,38 @@ produces approved scaling actions.
 
 ### Architecture
 
-```text
-Trigger --> ScalingContextBuilder --> Strategies (parallel) --> Guards --> Execute
-  |              |                        |                      |          |
-  |              |                        |                      |          +-- HiringService
-  |              |                        |                      |          +-- OffboardingService
-  |              |                        |                      |
-  |              |                        |                      +-- ConflictResolver
-  |              |                        |                      +-- CooldownGuard
-  |              |                        |                      +-- RateLimitGuard
-  |              |                        |                      +-- ApprovalGateGuard
-  |              |                        |
-  |              |                        +-- WorkloadAutoScaleStrategy
-  |              |                        +-- BudgetCapStrategy
-  |              |                        +-- SkillGapStrategy
-  |              |                        +-- PerformancePruningStrategy
-  |              |
-  |              +-- WorkloadSignalSource
-  |              +-- BudgetSignalSource
-  |              +-- SkillSignalSource
-  |              +-- PerformanceSignalSource
-  |
-  +-- BatchedScalingTrigger
-  +-- SignalThresholdTrigger
-  +-- CompositeScalingTrigger
+```d2
+Pipeline: "Scaling Pipeline" {
+  Triggers: {
+    Batched: BatchedScalingTrigger
+    Threshold: SignalThresholdTrigger
+    Composite: CompositeScalingTrigger
+  }
+  Context: ScalingContextBuilder {
+    Workload: WorkloadSignalSource
+    Budget: BudgetSignalSource
+    Skill: SkillSignalSource
+    Performance: PerformanceSignalSource
+  }
+  Strategies: "Strategies (parallel)" {
+    WAS: WorkloadAutoScaleStrategy
+    BC: BudgetCapStrategy
+    SG: SkillGapStrategy
+    PP: PerformancePruningStrategy
+  }
+  Guards: {
+    CR: ConflictResolver
+    CD: CooldownGuard
+    RL: RateLimitGuard
+    AG: ApprovalGateGuard
+  }
+  Execute: {
+    Hire: HiringService
+    Offboard: OffboardingService
+  }
+
+  Triggers -> Context -> Strategies -> Guards -> Execute
+}
 ```
 
 Orchestrated by ``ScalingService`` in ``hr/scaling/service.py``.

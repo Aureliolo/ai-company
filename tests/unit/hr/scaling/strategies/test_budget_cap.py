@@ -12,39 +12,45 @@ from .conftest import make_context, make_signal
 class TestBudgetCapStrategy:
     """BudgetCapStrategy decision logic."""
 
-    async def test_prune_and_hold_when_over_safety_margin(self) -> None:
-        strategy = BudgetCapStrategy(safety_margin=0.90)
+    @pytest.mark.parametrize(
+        ("burn_rate_value", "expected_action_types"),
+        [
+            (95.0, (ScalingActionType.PRUNE, ScalingActionType.HOLD)),
+            (75.0, (ScalingActionType.HOLD,)),
+            (50.0, ()),
+        ],
+        ids=[
+            "prune-and-hold-when-over-safety-margin",
+            "hold-between-headroom-and-safety",
+            "no-action-under-headroom",
+        ],
+    )
+    async def test_threshold_decisions(
+        self,
+        burn_rate_value: float,
+        expected_action_types: tuple,
+    ) -> None:
+        if burn_rate_value >= 90.0:
+            strategy = BudgetCapStrategy(safety_margin=0.90)
+        elif burn_rate_value >= 60.0:
+            strategy = BudgetCapStrategy(safety_margin=0.90, headroom_fraction=0.60)
+        else:
+            strategy = BudgetCapStrategy(headroom_fraction=0.60)
         ctx = make_context(
             budget_signals=(
-                make_signal(name="burn_rate_percent", value=95.0, source="budget"),
+                make_signal(
+                    name="burn_rate_percent",
+                    value=burn_rate_value,
+                    source="budget",
+                ),
             ),
         )
         decisions = await strategy.evaluate(ctx)
-        assert len(decisions) == 2
-        assert decisions[0].action_type == ScalingActionType.PRUNE
-        assert decisions[0].confidence == 1.0
-        assert decisions[1].action_type == ScalingActionType.HOLD
-
-    async def test_hold_between_headroom_and_safety(self) -> None:
-        strategy = BudgetCapStrategy(safety_margin=0.90, headroom_fraction=0.60)
-        ctx = make_context(
-            budget_signals=(
-                make_signal(name="burn_rate_percent", value=75.0, source="budget"),
-            ),
-        )
-        decisions = await strategy.evaluate(ctx)
-        assert len(decisions) == 1
-        assert decisions[0].action_type == ScalingActionType.HOLD
-
-    async def test_no_action_under_headroom(self) -> None:
-        strategy = BudgetCapStrategy(headroom_fraction=0.60)
-        ctx = make_context(
-            budget_signals=(
-                make_signal(name="burn_rate_percent", value=50.0, source="budget"),
-            ),
-        )
-        decisions = await strategy.evaluate(ctx)
-        assert len(decisions) == 0
+        assert len(decisions) == len(expected_action_types)
+        for i, expected_type in enumerate(expected_action_types):
+            assert decisions[i].action_type == expected_type
+        if burn_rate_value >= 90.0:
+            assert decisions[0].confidence == 1.0
 
     async def test_no_signals_returns_empty(self) -> None:
         strategy = BudgetCapStrategy()

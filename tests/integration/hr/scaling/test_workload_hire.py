@@ -23,51 +23,26 @@ from .conftest import AGENT_IDS
 class TestWorkloadHire:
     """Workload spike produces a hire decision through the full pipeline."""
 
-    async def test_high_utilization_produces_hire(self) -> None:
+    @pytest.mark.parametrize(
+        ("active_task_count", "expected_hire_count"),
+        [
+            (3, 1),
+            (1, 0),
+        ],
+        ids=[
+            "high-utilization-produces-hire",
+            "normal-utilization-produces-no-hire",
+        ],
+    )
+    async def test_utilization_hire_logic(
+        self,
+        active_task_count: int,
+        expected_hire_count: int,
+    ) -> None:
         config = ScalingConfig()
         strategies = create_scaling_strategies(config)
         guard = create_scaling_guards(config)
 
-        builder = ScalingContextBuilder(
-            workload_source=WorkloadSignalSource(max_concurrent_tasks=3),
-        )
-
-        service = ScalingService(
-            strategies=strategies,
-            guard=guard,
-            context_builder=builder,
-            config=config,
-        )
-
-        # Build context with high utilization via kwargs.
-        from synthorg.engine.assignment.models import AgentWorkload
-
-        workloads = tuple(
-            AgentWorkload(
-                agent_id=aid,
-                active_task_count=3,  # 100% utilization
-                total_cost_usd=10.0,
-            )
-            for aid in AGENT_IDS
-        )
-
-        decisions = await service.evaluate(
-            agent_ids=AGENT_IDS,
-            context_kwargs={"workload_kwargs": {"workloads": workloads}},
-        )
-
-        # Should have at least one HIRE decision from workload strategy.
-        hire_decisions = [
-            d for d in decisions if d.action_type == ScalingActionType.HIRE
-        ]
-        assert len(hire_decisions) >= 1
-        assert hire_decisions[0].target_role is not None
-        assert hire_decisions[0].confidence > 0
-
-    async def test_normal_utilization_produces_no_hire(self) -> None:
-        config = ScalingConfig()
-        strategies = create_scaling_strategies(config)
-        guard = create_scaling_guards(config)
         builder = ScalingContextBuilder(
             workload_source=WorkloadSignalSource(max_concurrent_tasks=3),
         )
@@ -84,8 +59,8 @@ class TestWorkloadHire:
         workloads = tuple(
             AgentWorkload(
                 agent_id=aid,
-                active_task_count=1,  # 33% utilization
-                total_cost_usd=5.0,
+                active_task_count=active_task_count,
+                total_cost_usd=10.0 if active_task_count == 3 else 5.0,
             )
             for aid in AGENT_IDS
         )
@@ -98,4 +73,7 @@ class TestWorkloadHire:
         hire_decisions = [
             d for d in decisions if d.action_type == ScalingActionType.HIRE
         ]
-        assert len(hire_decisions) == 0
+        assert len(hire_decisions) >= expected_hire_count
+        if expected_hire_count > 0:
+            assert hire_decisions[0].target_role is not None
+            assert hire_decisions[0].confidence > 0

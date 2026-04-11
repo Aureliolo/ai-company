@@ -70,6 +70,18 @@ class TestFullCycle:
         # Should have decisions from workload and skill gap strategies.
         assert len(decisions) >= 1
 
+        # Verify at least one decision has a known strategy source.
+        known_strategies = {
+            "workload",
+            "budget_cap",
+            "skill_gap",
+            "performance_pruning",
+        }
+        strategy_sources = {d.source_strategy for d in decisions if d.source_strategy}
+        assert any(strategy in known_strategies for strategy in strategy_sources), (
+            f"No known strategies found in {strategy_sources}"
+        )
+
         # History should be tracked.
         recent = service.get_recent_decisions()
         assert len(recent) == len(decisions)

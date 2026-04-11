@@ -17,6 +17,23 @@ class TestCompositeScalingGuard:
     async def test_applies_guards_in_order(self) -> None:
         cooldown = CooldownGuard(cooldown_seconds=3600)
         rate_limit = RateLimitGuard(max_hires_per_day=1)
+
+        # Wrap filter methods to track call order
+        cooldown_filter_original = cooldown.filter
+        rate_limit_filter_original = rate_limit.filter
+        call_order = []
+
+        async def cooldown_filter_wrapper(decisions):
+            call_order.append("cooldown")
+            return await cooldown_filter_original(decisions)
+
+        async def rate_limit_filter_wrapper(decisions):
+            call_order.append("rate_limit")
+            return await rate_limit_filter_original(decisions)
+
+        cooldown.filter = cooldown_filter_wrapper  # type: ignore[method-assign]
+        rate_limit.filter = rate_limit_filter_wrapper  # type: ignore[method-assign]
+
         composite = CompositeScalingGuard(
             guards=(cooldown, rate_limit),
         )
@@ -24,6 +41,9 @@ class TestCompositeScalingGuard:
         decision = make_decision(action_type=ScalingActionType.HIRE)
         result = await composite.filter((decision,))
         assert len(result) == 1
+        assert call_order == ["cooldown", "rate_limit"], (
+            f"Guards executed in order: {call_order}"
+        )
 
     async def test_second_guard_can_filter(self) -> None:
         cooldown = CooldownGuard(cooldown_seconds=3600)

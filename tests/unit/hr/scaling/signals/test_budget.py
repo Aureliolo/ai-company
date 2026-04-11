@@ -47,28 +47,31 @@ class TestBudgetSignalSource:
         assert by_name["burn_rate_percent"] == 100.0
         assert by_name["alert_level"] == 3.0
 
-    async def test_normal_alert_level(self) -> None:
+    @pytest.mark.parametrize(
+        ("used_percent", "alert_level_enum", "expected_alert_value"),
+        [
+            (30.0, BudgetAlertLevel.NORMAL, 0.0),
+            (90.0, BudgetAlertLevel.CRITICAL, 2.0),
+            (100.0, BudgetAlertLevel.HARD_STOP, 3.0),
+        ],
+        ids=[
+            "normal-alert-level",
+            "critical-alert-level",
+            "hard-stop-alert-level",
+        ],
+    )
+    async def test_alert_level_mapping(
+        self,
+        used_percent: float,
+        alert_level_enum: BudgetAlertLevel,
+        expected_alert_value: float,
+    ) -> None:
         source = BudgetSignalSource()
-        summary = _make_summary(used_percent=30.0, alert=BudgetAlertLevel.NORMAL)
+        summary = _make_summary(used_percent=used_percent, alert=alert_level_enum)
         signals = await source.collect(_AGENT_IDS, summary=summary)
         by_name = {s.name: s.value for s in signals}
-        assert by_name["burn_rate_percent"] == 30.0
-        assert by_name["alert_level"] == 0.0
-
-    async def test_critical_alert_level(self) -> None:
-        source = BudgetSignalSource()
-        summary = _make_summary(used_percent=90.0, alert=BudgetAlertLevel.CRITICAL)
-        signals = await source.collect(_AGENT_IDS, summary=summary)
-        by_name = {s.name: s.value for s in signals}
-        assert by_name["burn_rate_percent"] == 90.0
-        assert by_name["alert_level"] == 2.0
-
-    async def test_hard_stop_alert_level(self) -> None:
-        source = BudgetSignalSource()
-        summary = _make_summary(used_percent=100.0, alert=BudgetAlertLevel.HARD_STOP)
-        signals = await source.collect(_AGENT_IDS, summary=summary)
-        by_name = {s.name: s.value for s in signals}
-        assert by_name["alert_level"] == 3.0
+        assert by_name["burn_rate_percent"] == used_percent
+        assert by_name["alert_level"] == expected_alert_value
 
     async def test_source_name(self) -> None:
         source = BudgetSignalSource()

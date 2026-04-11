@@ -32,38 +32,36 @@ class TestSignalThresholdTrigger:
         )
         assert await trigger.should_trigger() is False
 
-    async def test_fires_on_above_crossing(self) -> None:
+    @pytest.mark.parametrize(
+        ("signal_name", "threshold", "above", "values", "expect_trigger"),
+        [
+            ("utilization", 0.85, True, (0.80, 0.90), True),
+            ("utilization", 0.85, True, (0.80, 0.80), False),
+            ("utilization", 0.30, False, (0.40, 0.20), True),
+        ],
+        ids=[
+            "fires-on-above-crossing",
+            "does-not-fire-below-threshold",
+            "fires-on-below-crossing",
+        ],
+    )
+    async def test_threshold_crossing(
+        self,
+        signal_name: str,
+        threshold: float,
+        above: bool,
+        values: tuple,
+        expect_trigger: bool,
+    ) -> None:
+        initial_value, final_value = values
         trigger = SignalThresholdTrigger(
-            signal_name="utilization",
-            threshold=0.85,
-            above=True,
+            signal_name=signal_name,
+            threshold=threshold,
+            above=above,
         )
-        # Initialize with signal below threshold
-        await trigger.update_signal(_make_signal("utilization", 0.80))
-        # Then cross above threshold
-        await trigger.update_signal(_make_signal("utilization", 0.90))
-        assert await trigger.should_trigger() is True
-
-    async def test_does_not_fire_below_threshold(self) -> None:
-        trigger = SignalThresholdTrigger(
-            signal_name="utilization",
-            threshold=0.85,
-            above=True,
-        )
-        await trigger.update_signal(_make_signal("utilization", 0.80))
-        assert await trigger.should_trigger() is False
-
-    async def test_fires_on_below_crossing(self) -> None:
-        trigger = SignalThresholdTrigger(
-            signal_name="utilization",
-            threshold=0.30,
-            above=False,
-        )
-        # Initialize with signal above threshold
-        await trigger.update_signal(_make_signal("utilization", 0.40))
-        # Then cross below threshold
-        await trigger.update_signal(_make_signal("utilization", 0.20))
-        assert await trigger.should_trigger() is True
+        await trigger.update_signal(_make_signal(signal_name, initial_value))
+        await trigger.update_signal(_make_signal(signal_name, final_value))
+        assert (await trigger.should_trigger()) is expect_trigger
 
     async def test_ignores_wrong_signal_name(self) -> None:
         trigger = SignalThresholdTrigger(
