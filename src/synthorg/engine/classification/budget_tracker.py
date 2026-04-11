@@ -1,9 +1,14 @@
 """Per-classification-run LLM cost budget tracker.
 
-Simple in-memory tracker that accumulates cost across semantic
-detector invocations within a single classification run.  Not
-persisted -- one instance per ``classify_execution_errors`` call.
+Simple async-safe in-memory tracker that accumulates cost across
+semantic detector invocations within a single classification run.
+Not persisted -- one instance per ``classify_execution_errors``
+call.  Concurrent access is guarded by an ``asyncio.Lock`` to
+support parallel semantic detector invocations (e.g. inside a
+``CompositeDetector``).
 """
+
+import asyncio
 
 from synthorg.observability import get_logger
 from synthorg.observability.events.classification import (
@@ -19,6 +24,9 @@ class ClassificationBudgetTracker:
 
     Args:
         budget_usd: Maximum allowed spend for this run.
+
+    Raises:
+        ValueError: If ``budget_usd`` is negative.
     """
 
     def __init__(self, budget_usd: float) -> None:
@@ -27,6 +35,7 @@ class ClassificationBudgetTracker:
             raise ValueError(msg)
         self._budget_usd = budget_usd
         self._spent_usd = 0.0
+        self._lock = asyncio.Lock()
 
     def can_spend(self, estimated_cost: float) -> bool:
         """Check whether the estimated cost fits the remaining budget.
@@ -36,6 +45,9 @@ class ClassificationBudgetTracker:
 
         Returns:
             True if the call can proceed within budget.
+
+        Raises:
+            ValueError: If ``estimated_cost`` is negative.
         """
         if estimated_cost < 0:
             msg = "estimated_cost must be non-negative"
@@ -50,22 +62,26 @@ class ClassificationBudgetTracker:
             return False
         return True
 
-    def record(self, actual_cost: float) -> None:
-        """Record cost from a completed LLM call.
+    async def record(self, actual_cost: float) -> None:
+        """Record cost from a completed LLM call (async-safe).
 
         Args:
             actual_cost: Actual cost of the completed call.
+
+        Raises:
+            ValueError: If ``actual_cost`` is negative.
         """
         if actual_cost < 0:
             msg = "actual_cost must be non-negative"
             raise ValueError(msg)
-        self._spent_usd += actual_cost
-        logger.debug(
-            DETECTOR_COST_INCURRED,
-            cost_usd=actual_cost,
-            total_spent_usd=self._spent_usd,
-            remaining_usd=self.remaining_usd,
-        )
+        async with self._lock:
+            self._spent_usd += actual_cost
+            logger.debug(
+                DETECTOR_COST_INCURRED,
+                cost_usd=actual_cost,
+                total_spent_usd=self._spent_usd,
+                remaining_usd=self.remaining_usd,
+            )
 
     @property
     def remaining_usd(self) -> float:

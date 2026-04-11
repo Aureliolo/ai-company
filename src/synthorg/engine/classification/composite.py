@@ -139,6 +139,10 @@ class CompositeDetector:
     ) -> tuple[ErrorFinding, ...]:
         """Run all sub-detectors and return deduplicated findings.
 
+        Sub-detectors run concurrently inside an ``asyncio.TaskGroup``.
+        Findings are collected from task results without mutating
+        shared state from inside the tasks.
+
         Args:
             context: Detection context with execution data.
 
@@ -151,24 +155,14 @@ class CompositeDetector:
             message_count=len(self._detectors),
         )
 
-        all_findings: list[ErrorFinding] = []
-        results: list[tuple[ErrorFinding, ...]] = []
-
         async with asyncio.TaskGroup() as tg:
-            for detector in self._detectors:
-                results.append(())  # placeholder
+            tasks = [
+                tg.create_task(detector.detect(context)) for detector in self._detectors
+            ]
 
-                async def _run(
-                    d: Detector = detector,
-                    idx: int = len(results) - 1,
-                ) -> None:
-                    result = await d.detect(context)
-                    results[idx] = result
-
-                tg.create_task(_run())
-
-        for result in results:
-            all_findings.extend(result)
+        all_findings: list[ErrorFinding] = []
+        for task in tasks:
+            all_findings.extend(task.result())
 
         deduped = deduplicate_findings(tuple(all_findings))
         logger.debug(

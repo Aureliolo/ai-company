@@ -95,15 +95,35 @@ class TestDetectorCategoryConfig:
         assert config.variants == (DetectorVariant.HEURISTIC,)
         assert config.scope == DetectionScope.SAME_TASK
 
-    def test_custom(self) -> None:
+    def test_custom_llm_semantic_task_tree(self) -> None:
         config = DetectorCategoryConfig(
-            variants=(
-                DetectorVariant.HEURISTIC,
-                DetectorVariant.LLM_SEMANTIC,
-            ),
+            variants=(DetectorVariant.LLM_SEMANTIC,),
             scope=DetectionScope.TASK_TREE,
         )
-        assert len(config.variants) == 2
+        assert len(config.variants) == 1
+        assert config.scope == DetectionScope.TASK_TREE
+
+    def test_heuristic_task_tree_rejected(self) -> None:
+        """Heuristic variant does not support TASK_TREE scope."""
+        with pytest.raises(ValidationError, match="does not support scope"):
+            DetectorCategoryConfig(
+                variants=(DetectorVariant.HEURISTIC,),
+                scope=DetectionScope.TASK_TREE,
+            )
+
+    def test_behavior_check_task_tree_rejected(self) -> None:
+        """Behavior check variant does not support TASK_TREE scope."""
+        with pytest.raises(ValidationError, match="does not support scope"):
+            DetectorCategoryConfig(
+                variants=(DetectorVariant.BEHAVIOR_CHECK,),
+                scope=DetectionScope.TASK_TREE,
+            )
+
+    def test_protocol_check_task_tree_allowed(self) -> None:
+        config = DetectorCategoryConfig(
+            variants=(DetectorVariant.PROTOCOL_CHECK,),
+            scope=DetectionScope.TASK_TREE,
+        )
         assert config.scope == DetectionScope.TASK_TREE
 
     def test_empty_variants_rejected(self) -> None:

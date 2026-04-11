@@ -20,3 +20,8 @@ DETECTOR_COST_INCURRED: Final[str] = "classification.detector.cost_incurred"
 # Sink and dedup events
 CLASSIFICATION_SINK_ERROR: Final[str] = "classification.sink.error"
 CLASSIFICATION_FINDING_DEDUPLICATED: Final[str] = "classification.finding.deduplicated"
+
+# Context loader and detector infrastructure events
+CONTEXT_LOADER_ERROR: Final[str] = "classification.context_loader.error"
+DETECTOR_TIMEOUT: Final[str] = "classification.detector.timeout"
+DETECTOR_PARSE_ERROR: Final[str] = "classification.detector.parse_error"

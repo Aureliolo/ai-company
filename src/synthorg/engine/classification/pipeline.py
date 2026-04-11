@@ -7,6 +7,7 @@ dispatched via the ``Detector`` protocol.  The pipeline never raises
 exceptions -- all errors are caught and logged.
 """
 
+import asyncio
 from typing import TYPE_CHECKING
 
 from synthorg.budget.coordination_config import (
@@ -54,6 +55,7 @@ from synthorg.observability.events.classification import (
     CLASSIFICATION_SKIPPED,
     CLASSIFICATION_START,
     DETECTOR_ERROR,
+    DETECTOR_TIMEOUT,
 )
 
 if TYPE_CHECKING:
@@ -73,8 +75,12 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
+# Per-detector timeout in seconds -- prevents a hung detector from
+# blocking the classification pipeline indefinitely.
+_DETECTOR_TIMEOUT_SECONDS = 30.0
 
-# ── Heuristic detector factory map ────────────────────────────
+
+# ── Detector factory maps ──────────────────────────────────────
 
 _HEURISTIC_FACTORIES: dict[
     ErrorCategory,
@@ -101,7 +107,6 @@ _BEHAVIOR_FACTORIES: dict[
     ErrorCategory.AUTHORITY_BREACH_ATTEMPT: AuthorityBreachDetector,
 }
 
-
 _SEMANTIC_FACTORIES: dict[ErrorCategory, type] = {
     ErrorCategory.LOGICAL_CONTRADICTION: SemanticContradictionDetector,
     ErrorCategory.NUMERICAL_DRIFT: SemanticNumericalVerificationDetector,
@@ -117,6 +122,9 @@ _SIMPLE_FACTORIES: dict[
     DetectorVariant.PROTOCOL_CHECK: _PROTOCOL_FACTORIES,
     DetectorVariant.BEHAVIOR_CHECK: _BEHAVIOR_FACTORIES,
 }
+
+
+# ── Detector construction ──────────────────────────────────────
 
 
 def _build_detectors(
@@ -194,13 +202,12 @@ def _maybe_add_semantic(  # noqa: PLR0913
 ) -> None:
     """Add a semantic detector variant if provider is available."""
     if provider is None:
-        logger.warning(
+        # Semantic detectors are opt-in; missing provider is expected
+        # when the user has not configured one.  Debug-level only.
+        logger.debug(
             DETECTOR_ERROR,
             detector=f"semantic({category.value})",
-            agent_id="",
-            task_id="",
-            execution_id="",
-            message_count=0,
+            reason="no provider configured",
         )
         return
     sem_cls = _SEMANTIC_FACTORIES.get(category)
@@ -225,6 +232,9 @@ def _select_loader(
     return SameTaskLoader()
 
 
+# ── Public API ─────────────────────────────────────────────────
+
+
 async def classify_execution_errors(  # noqa: PLR0913
     execution_result: ExecutionResult,
     agent_id: NotBlankStr,
@@ -239,11 +249,13 @@ async def classify_execution_errors(  # noqa: PLR0913
     """Classify coordination errors from an execution result.
 
     Discovers detectors from ``config.detectors``, loads
-    scope-appropriate context, runs detectors concurrently,
-    and dispatches results to registered sinks.
+    scope-appropriate context, runs detectors sequentially
+    (concurrency happens inside ``CompositeDetector``), and
+    dispatches results to registered sinks.
 
     Returns ``None`` when the taxonomy is disabled.  Never raises --
-    all exceptions are caught and logged as ``CLASSIFICATION_ERROR``.
+    all exceptions except ``MemoryError``/``RecursionError`` are
+    caught and logged as ``CLASSIFICATION_ERROR``.
 
     Args:
         execution_result: The completed execution result to analyse.
@@ -276,8 +288,37 @@ async def classify_execution_errors(  # noqa: PLR0913
         categories=tuple(c.value for c in config.categories),
     )
 
+    result = await _classify_safely(
+        execution_result,
+        agent_id,
+        task_id,
+        execution_id=execution_id,
+        config=config,
+        task_repo=task_repo,
+        provider=provider,
+        rate_limiter=rate_limiter,
+    )
+    if result is None:
+        return None
+
+    await _dispatch_to_sinks(result, sinks, agent_id, task_id)
+    return result
+
+
+async def _classify_safely(  # noqa: PLR0913
+    execution_result: ExecutionResult,
+    agent_id: str,
+    task_id: str,
+    *,
+    execution_id: str,
+    config: ErrorTaxonomyConfig,
+    task_repo: TaskRepository | None,
+    provider: BaseCompletionProvider | None,
+    rate_limiter: RateLimiter | None,
+) -> ClassificationResult | None:
+    """Run the pipeline and catch all non-fatal errors."""
     try:
-        result = await _run_pipeline(
+        return await _run_pipeline(
             execution_result,
             agent_id,
             task_id,
@@ -305,7 +346,18 @@ async def classify_execution_errors(  # noqa: PLR0913
         )
         return None
 
-    # Dispatch to sinks (best-effort)
+
+async def _dispatch_to_sinks(
+    result: ClassificationResult,
+    sinks: tuple[ClassificationSink, ...],
+    agent_id: str,
+    task_id: str,
+) -> None:
+    """Dispatch classification result to all registered sinks.
+
+    Best-effort: individual sink errors are logged and swallowed.
+    ``MemoryError`` and ``RecursionError`` always propagate.
+    """
     for sink in sinks:
         try:
             await sink.on_classification(result)
@@ -316,9 +368,8 @@ async def classify_execution_errors(  # noqa: PLR0913
                 CLASSIFICATION_SINK_ERROR,
                 agent_id=agent_id,
                 task_id=task_id,
+                sink=type(sink).__name__,
             )
-
-    return result
 
 
 async def _run_pipeline(  # noqa: PLR0913
@@ -336,45 +387,21 @@ async def _run_pipeline(  # noqa: PLR0913
     budget_tracker = ClassificationBudgetTracker(
         budget_usd=config.classification_budget_per_task_usd,
     )
-
     all_detectors = _build_detectors(
         config,
         provider=provider,
         rate_limiter=rate_limiter,
         budget_tracker=budget_tracker,
     )
-
-    # Group detectors by their required scope
-    scope_detectors: dict[
-        DetectionScope,
-        list[Detector],
-    ] = {}
-    for detector in all_detectors:
-        # Use the scope from the category config
-        cat_cfg: DetectorCategoryConfig = config.detectors[detector.category]
-        scope_detectors.setdefault(cat_cfg.scope, []).append(detector)
-
-    # Load contexts per scope and run detectors sequentially.
-    # Concurrent execution happens inside CompositeDetector for
-    # multi-variant categories.
-    all_findings: list[ErrorFinding] = []
-
-    for scope, detectors in scope_detectors.items():
-        loader = _select_loader(scope, task_repo)
-        context = await loader.load(
-            execution_result,
-            agent_id,
-            task_id,
-        )
-        for detector in detectors:
-            findings = await _safe_detect(
-                detector,
-                context,
-                agent_id,
-                task_id,
-                execution_id,
-            )
-            all_findings.extend(findings)
+    all_findings = await _run_detectors_by_scope(
+        all_detectors,
+        execution_result,
+        agent_id,
+        task_id,
+        execution_id=execution_id,
+        config=config,
+        task_repo=task_repo,
+    )
 
     for finding in all_findings:
         logger.info(
@@ -394,7 +421,6 @@ async def _run_pipeline(  # noqa: PLR0913
         categories_checked=config.categories,
         findings=tuple(all_findings),
     )
-
     logger.info(
         CLASSIFICATION_COMPLETE,
         agent_id=agent_id,
@@ -402,8 +428,39 @@ async def _run_pipeline(  # noqa: PLR0913
         execution_id=execution_id,
         finding_count=classification.finding_count,
     )
-
     return classification
+
+
+async def _run_detectors_by_scope(  # noqa: PLR0913
+    all_detectors: tuple[Detector, ...],
+    execution_result: ExecutionResult,
+    agent_id: str,
+    task_id: str,
+    *,
+    execution_id: str,
+    config: ErrorTaxonomyConfig,
+    task_repo: TaskRepository | None,
+) -> list[ErrorFinding]:
+    """Group detectors by scope, load contexts, and run them."""
+    scope_detectors: dict[DetectionScope, list[Detector]] = {}
+    for detector in all_detectors:
+        cat_cfg = config.detectors[detector.category]
+        scope_detectors.setdefault(cat_cfg.scope, []).append(detector)
+
+    all_findings: list[ErrorFinding] = []
+    for scope, detectors in scope_detectors.items():
+        loader = _select_loader(scope, task_repo)
+        context = await loader.load(execution_result, agent_id, task_id)
+        for detector in detectors:
+            findings = await _safe_detect(
+                detector,
+                context,
+                agent_id,
+                task_id,
+                execution_id,
+            )
+            all_findings.extend(findings)
+    return all_findings
 
 
 async def _safe_detect(
@@ -413,15 +470,27 @@ async def _safe_detect(
     task_id: str,
     execution_id: str,
 ) -> tuple[ErrorFinding, ...]:
-    """Run a single detector with isolation.
+    """Run a single detector with isolation and a timeout.
 
     Re-raises ``MemoryError`` and ``RecursionError``; catches and
-    logs all other exceptions without stopping the pipeline.
+    logs all other exceptions (including ``asyncio.TimeoutError``)
+    without stopping the pipeline.
     """
     try:
-        return await detector.detect(context)
+        async with asyncio.timeout(_DETECTOR_TIMEOUT_SECONDS):
+            return await detector.detect(context)
     except MemoryError, RecursionError:
         raise
+    except TimeoutError:
+        logger.warning(
+            DETECTOR_TIMEOUT,
+            agent_id=agent_id,
+            task_id=task_id,
+            execution_id=execution_id,
+            detector=type(detector).__name__,
+            timeout_seconds=_DETECTOR_TIMEOUT_SECONDS,
+        )
+        return ()
     except Exception:
         logger.exception(
             DETECTOR_ERROR,

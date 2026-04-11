@@ -373,3 +373,81 @@ class TestSemanticDetectorBehavior:
         await detector.detect(ctx)
         limiter.acquire.assert_awaited_once()
         limiter.release.assert_called_once()
+
+    async def test_rate_limiter_acquire_failure_no_release(self) -> None:
+        """If acquire() raises, release() must NOT be called."""
+        provider = _mock_provider("[]")
+        limiter = MagicMock()
+        limiter.acquire = AsyncMock(side_effect=RuntimeError("limiter down"))
+        limiter.release = MagicMock()
+        detector = SemanticContradictionDetector(
+            provider=provider,
+            model_id="test-model-001",
+            rate_limiter=limiter,
+        )
+        messages = (
+            ChatMessage(
+                role=MessageRole.ASSISTANT,
+                content="Some content.",
+            ),
+        )
+        ctx = _context(messages)
+        findings = await detector.detect(ctx)
+
+        assert findings == ()
+        limiter.acquire.assert_awaited_once()
+        # Release must NOT be called when acquire failed.
+        limiter.release.assert_not_called()
+        provider.complete.assert_not_awaited()
+
+    async def test_rate_limiter_release_on_provider_error(self) -> None:
+        """If provider raises, release() must still be called."""
+        provider = AsyncMock()
+        provider.complete = AsyncMock(
+            side_effect=RuntimeError("provider down"),
+        )
+        limiter = MagicMock()
+        limiter.acquire = AsyncMock()
+        limiter.release = MagicMock()
+        detector = SemanticContradictionDetector(
+            provider=provider,
+            model_id="test-model-001",
+            rate_limiter=limiter,
+        )
+        messages = (
+            ChatMessage(
+                role=MessageRole.ASSISTANT,
+                content="Some content.",
+            ),
+        )
+        ctx = _context(messages)
+        findings = await detector.detect(ctx)
+
+        assert findings == ()
+        limiter.acquire.assert_awaited_once()
+        limiter.release.assert_called_once()
+
+    async def test_provider_called_with_messages_and_model(self) -> None:
+        """Provider.complete receives messages and the model_id."""
+        provider = _mock_provider("[]")
+        detector = SemanticContradictionDetector(
+            provider=provider,
+            model_id="test-model-001",
+        )
+        messages = (
+            ChatMessage(
+                role=MessageRole.ASSISTANT,
+                content="Some content.",
+            ),
+        )
+        ctx = _context(messages)
+        await detector.detect(ctx)
+
+        provider.complete.assert_awaited_once()
+        call_args = provider.complete.call_args
+        sent_messages = call_args[0][0]
+        sent_model = call_args[0][1]
+        assert sent_model == "test-model-001"
+        assert len(sent_messages) == 2
+        assert sent_messages[0].role == MessageRole.SYSTEM
+        assert "===BEGIN CONVERSATION===" in sent_messages[0].content

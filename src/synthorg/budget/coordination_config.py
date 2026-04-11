@@ -54,6 +54,23 @@ class DetectorVariant(StrEnum):
     BEHAVIOR_CHECK = "behavior_check"
 
 
+# Allowed detection scopes per detector variant.  Heuristic and
+# behavior-check detectors work on a single execution; protocol
+# checks and LLM semantic variants can operate on the full task
+# tree.  Attempting to configure an incompatible (variant, scope)
+# pair is a misconfiguration and is rejected at construction time.
+_VARIANT_SCOPES: dict[DetectorVariant, frozenset[DetectionScope]] = {
+    DetectorVariant.HEURISTIC: frozenset({DetectionScope.SAME_TASK}),
+    DetectorVariant.BEHAVIOR_CHECK: frozenset({DetectionScope.SAME_TASK}),
+    DetectorVariant.PROTOCOL_CHECK: frozenset(
+        {DetectionScope.SAME_TASK, DetectionScope.TASK_TREE},
+    ),
+    DetectorVariant.LLM_SEMANTIC: frozenset(
+        {DetectionScope.SAME_TASK, DetectionScope.TASK_TREE},
+    ),
+}
+
+
 class DetectorCategoryConfig(BaseModel):
     """Per-category detector configuration.
 
@@ -74,19 +91,23 @@ class DetectorCategoryConfig(BaseModel):
     )
 
     @model_validator(mode="after")
-    def _validate_non_empty_variants(self) -> Self:
-        """Ensure at least one variant is configured."""
+    def _validate_variants(self) -> Self:
+        """Ensure variants are non-empty, unique, and scope-compatible."""
         if not self.variants:
             msg = "variants must not be empty"
             raise ValueError(msg)
-        return self
-
-    @model_validator(mode="after")
-    def _validate_unique_variants(self) -> Self:
-        """Ensure no duplicate variants."""
         if len(self.variants) != len(set(self.variants)):
             msg = "variants must not contain duplicates"
             raise ValueError(msg)
+        for variant in self.variants:
+            allowed = _VARIANT_SCOPES.get(variant, frozenset())
+            if self.scope not in allowed:
+                msg = (
+                    f"variant {variant.value} does not support scope "
+                    f"{self.scope.value} (allowed: "
+                    f"{sorted(s.value for s in allowed)})"
+                )
+                raise ValueError(msg)
         return self
 
 

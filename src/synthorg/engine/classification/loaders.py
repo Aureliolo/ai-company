@@ -13,7 +13,7 @@ from synthorg.engine.classification.protocol import DetectionContext
 from synthorg.engine.sanitization import sanitize_message
 from synthorg.observability import get_logger
 from synthorg.observability.events.classification import (
-    DETECTOR_ERROR,
+    CONTEXT_LOADER_ERROR,
 )
 
 if TYPE_CHECKING:
@@ -113,8 +113,8 @@ class TaskTreeLoader:
 
     async def _collect_delegations(
         self,
-        root_task_id: str,
-        agent_id: str,
+        root_task_id: NotBlankStr,
+        agent_id: NotBlankStr,
     ) -> tuple[DelegationRequest, ...]:
         """Collect delegation requests from the task tree.
 
@@ -129,53 +129,67 @@ class TaskTreeLoader:
         Returns:
             Delegation requests found in the task tree.
         """
-        all_tasks: tuple[Task, ...]
         try:
-            all_tasks = await self._task_repo.list_tasks()
+            all_tasks: tuple[Task, ...] = await self._task_repo.list_tasks()
         except MemoryError, RecursionError:
             raise
         except Exception:
             logger.exception(
-                DETECTOR_ERROR,
-                detector="task_tree_loader",
+                CONTEXT_LOADER_ERROR,
+                loader="task_tree_loader",
                 agent_id=agent_id,
                 task_id=root_task_id,
-                message_count=0,
             )
             return ()
 
-        # Build delegation requests from parent-child relationships.
-        requests: list[DelegationRequest] = []
-        visited: set[str] = set()
-        queue = [root_task_id]
-        depth = 0
+        return _build_delegation_requests(
+            all_tasks,
+            root_task_id,
+            agent_id,
+        )
 
-        while queue and depth < _MAX_TREE_DEPTH:
-            next_queue: list[str] = []
-            for parent_id in queue:
-                if parent_id in visited:
+
+def _build_delegation_requests(
+    all_tasks: tuple[Task, ...],
+    root_task_id: NotBlankStr,
+    agent_id: NotBlankStr,
+) -> tuple[DelegationRequest, ...]:
+    """Walk the task tree and build delegation request records.
+
+    Performs a BFS up to ``_MAX_TREE_DEPTH`` levels, filters child
+    tasks by ``parent_task_id``, and sanitizes descriptions before
+    including them in the returned requests.
+    """
+    requests: list[DelegationRequest] = []
+    visited: set[str] = set()
+    queue: list[str] = [root_task_id]
+    depth = 0
+
+    while queue and depth < _MAX_TREE_DEPTH:
+        next_queue: list[str] = []
+        for parent_id in queue:
+            if parent_id in visited:
+                continue
+            visited.add(parent_id)
+            for task in all_tasks:
+                if task.parent_task_id != parent_id:
                     continue
-                visited.add(parent_id)
-                for task in all_tasks:
-                    if task.parent_task_id == parent_id:
-                        refinement = sanitize_message(
-                            task.description or "",
-                            max_length=_SANITIZE_MAX_LENGTH,
-                        )
-                        # Build a synthetic DelegationRequest from
-                        # the task tree data.
-                        chain = task.delegation_chain
-                        delegator = chain[-1] if chain else agent_id
-                        requests.append(
-                            DelegationRequest(
-                                delegator_id=delegator,
-                                delegatee_id=task.assigned_to or "unassigned",
-                                task=task,
-                                refinement=refinement,
-                            ),
-                        )
-                        next_queue.append(task.id)
-            queue = next_queue
-            depth += 1
+                refinement = sanitize_message(
+                    task.description or "",
+                    max_length=_SANITIZE_MAX_LENGTH,
+                )
+                chain = task.delegation_chain
+                delegator = chain[-1] if chain else agent_id
+                requests.append(
+                    DelegationRequest(
+                        delegator_id=delegator,
+                        delegatee_id=task.assigned_to or "unassigned",
+                        task=task,
+                        refinement=refinement,
+                    ),
+                )
+                next_queue.append(task.id)
+        queue = next_queue
+        depth += 1
 
-        return tuple(requests)
+    return tuple(requests)

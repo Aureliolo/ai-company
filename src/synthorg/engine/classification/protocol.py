@@ -5,13 +5,13 @@ context model, context loader protocol, and downstream classification
 sink protocol.
 """
 
-from typing import TYPE_CHECKING, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Protocol, Self, runtime_checkable
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.budget.coordination_config import (
-    DetectionScope,  # noqa: TC001
-    ErrorCategory,  # noqa: TC001
+    DetectionScope,
+    ErrorCategory,
 )
 from synthorg.communication.delegation.models import (
     DelegationRequest,  # noqa: TC001
@@ -65,6 +65,26 @@ class DetectionContext(BaseModel):
         default=(),
         description="Delegation requests (TASK_TREE scope)",
     )
+
+    @model_validator(mode="after")
+    def _validate_scope_fields(self) -> Self:
+        """Enforce scope-field consistency.
+
+        ``SAME_TASK`` contexts must not carry task-tree data --
+        populating those fields would be a loader bug and could
+        confuse detectors that expect empty tuples in SAME_TASK
+        mode.
+        """
+        if self.scope == DetectionScope.SAME_TASK and (
+            self.delegate_executions or self.review_results or self.delegation_requests
+        ):
+            msg = (
+                "SAME_TASK scope must not populate TASK_TREE fields "
+                "(delegate_executions, review_results, "
+                "delegation_requests)"
+            )
+            raise ValueError(msg)
+        return self
 
 
 @runtime_checkable
