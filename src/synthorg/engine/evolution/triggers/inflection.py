@@ -52,9 +52,10 @@ class InflectionTrigger:
         async with self._lock:
             if key not in self._pending:
                 self._pending[key] = []
-            # Cap queue to prevent unbounded growth if drain stalls
-            if len(self._pending[key]) < self._MAX_PENDING_PER_AGENT:
-                self._pending[key].append(inflection)
+            # Cap queue: evict oldest to keep most recent inflections
+            if len(self._pending[key]) >= self._MAX_PENDING_PER_AGENT:
+                self._pending[key].pop(0)
+            self._pending[key].append(inflection)
 
     async def should_trigger(
         self,

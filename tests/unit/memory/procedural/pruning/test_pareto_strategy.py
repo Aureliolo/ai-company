@@ -223,3 +223,44 @@ class TestParetoPruningStrategy:
             entries=tuple(entries),
         )
         assert set(result) == {"mem-dominated"}
+
+    @pytest.mark.unit
+    async def test_frontier_over_cap_truncates_by_recency(self) -> None:
+        """Test frontier trimming when frontier exceeds max_entries.
+
+        Create entries that are all non-dominated (different relevance-recency
+        tradeoffs), so the entire frontier exceeds max_entries. The strategy
+        should keep only the most recent entries up to max_entries.
+        """
+        now = datetime.now(UTC)
+
+        # 4 entries with inverse relevance-recency correlation
+        # (no entry dominates another)
+        e1 = MagicMock()
+        e1.id = "e1"
+        e1.relevance_score = 1.0
+        e1.created_at = now - timedelta(days=3)  # highest rel, oldest
+
+        e2 = MagicMock()
+        e2.id = "e2"
+        e2.relevance_score = 0.7
+        e2.created_at = now - timedelta(days=2)
+
+        e3 = MagicMock()
+        e3.id = "e3"
+        e3.relevance_score = 0.4
+        e3.created_at = now - timedelta(days=1)
+
+        e4 = MagicMock()
+        e4.id = "e4"
+        e4.relevance_score = 0.1
+        e4.created_at = now  # lowest rel, newest
+
+        strategy = ParetoPruningStrategy(max_entries=2)
+        result = await strategy.prune(
+            agent_id="test-agent-1",
+            entries=(e1, e2, e3, e4),
+        )
+        # All 4 are on the frontier (non-dominated). Trimmed to 2 most
+        # recent: e4, e3 kept. e1, e2 pruned.
+        assert set(result) == {"e1", "e2"}
