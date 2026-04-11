@@ -63,7 +63,7 @@ uv sync                  # install dev + test deps
 uv sync --group docs     # install docs toolchain
 ```
 
-Schema migrations require the [Atlas CLI](https://atlasgo.io/getting-started) on `PATH`.
+Schema migrations require the [Atlas CLI](https://atlasgo.io/getting-started) on `PATH`. Building the docs site locally (for D2 diagrams) additionally requires the [D2 CLI](https://d2lang.com/tour/install) on `PATH`.
 
 ### Docker Compose (manual)
 

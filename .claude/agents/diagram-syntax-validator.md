@@ -21,7 +21,7 @@ For each changed `docs/**/*.md` file in the diff, check for these issues:
 For every ` ```d2 ` block found in changed files, validate the syntax by running:
 
 ```bash
-export PATH="$PATH:/c/Program Files/D2" && d2 --dry-run - <<'EOF'
+d2 --dry-run - <<'EOF'
 <diagram content>
 EOF
 ```
@@ -40,7 +40,12 @@ For every ` ```mermaid ` block found in changed files, check for common syntax e
 
 ### 3. Wrong fence type (MAJOR)
 
-Flag any ` ```text ` blocks that contain ASCII box-drawing characters (`+--+`, `|`, `-->`, Unicode box chars) -- these should have been converted to Mermaid or D2.
+Flag any ` ```text ` blocks that contain explicit ASCII/Unicode box-drawing patterns -- these should have been converted to Mermaid or D2. A single `|` is not enough (that matches tables, logs, and command output). Only flag when one or more of these are present:
+
+- `+---+` or `+--+` corner/edge markers
+- Adjacent lines that both match `^\|.*\|$` (a repeated `| ... |` frame across neighbouring lines)
+- Arrow connectors `-->` or `<--`
+- Any Unicode box-drawing character in the range `U+2500` to `U+257F`
 
 ### 4. Convention check (MEDIUM)
 

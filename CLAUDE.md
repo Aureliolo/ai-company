@@ -26,7 +26,7 @@
 
 ## Diagrams in Documentation
 
-- **D2** (`\`\`\`d2`): architecture diagrams, nested container layouts, complex entity relationships. Rendered at build time via `mkdocs-d2-plugin` (dagre layout). Requires `d2` binary installed locally and in CI.
+- **D2** (`\`\`\`d2`): architecture diagrams, nested container layouts, complex entity relationships. Rendered at build time via `mkdocs-d2-plugin` (dagre layout). Requires the [D2 CLI](https://d2lang.com/tour/install) on `PATH` locally and in CI (pinned to v0.7.1 via `.github/workflows/pages.yml`).
 - **Mermaid** (`\`\`\`mermaid`): flowcharts, sequence diagrams, simple hierarchies, pipelines. Rendered client-side via `pymdownx.superfences`.
 - **Markdown tables**: grid/matrix data that is semantically tabular (not diagrams).
 - D2 uses theme 200 (Dark Mauve), dark-only render -- configured globally in `mkdocs.yml`.

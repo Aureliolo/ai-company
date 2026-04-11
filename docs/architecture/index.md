@@ -16,11 +16,11 @@ Engine -> Budget
 Engine -> HR
 API: API Layer
 API -> Engine
-Observability -> Engine: {style.stroke-dash: 5}
-Observability -> Providers: {style.stroke-dash: 5}
-Observability -> Security: {style.stroke-dash: 5}
-Persistence -> HR: {style.stroke-dash: 5}
-Persistence -> Security: {style.stroke-dash: 5}
+Observability -> Engine {style.stroke-dash: 5}
+Observability -> Providers {style.stroke-dash: 5}
+Observability -> Security {style.stroke-dash: 5}
+Persistence -> HR {style.stroke-dash: 5}
+Persistence -> Security {style.stroke-dash: 5}
 Templates -> Config
 ```
 

@@ -613,35 +613,37 @@ does.
 
 ### Architecture
 
-```mermaid
-graph LR
-    subgraph S1[Trigger]
-        T1[BatchedTrigger<br/>cron-like]
-        T2[InflectionTrigger<br/>performance trend]
-        T3[PerTaskTrigger<br/>post-execution]
-        T4[CompositeTrigger<br/>OR-combines]
-    end
-    subgraph S2[Build Context]
-        BC[EvolutionContext<br/>identity, performance, memories]
-    end
-    subgraph S3[Proposer]
-        P1[SeparateAnalyzerProposer]
-        P2[SelfReportProposer]
-        P3[CompositeProposer]
-    end
-    subgraph S4[Guards]
-        G1[RateLimitGuard]
-        G2[ReviewGateGuard]
-        G3[RollbackGuard]
-        G4[ShadowEvaluationGuard]
-        G5[CompositeGuard]
-    end
-    subgraph S5[Adapter.apply]
-        A1[IdentityAdapter]
-        A2[StrategySelectionAdapter]
-        A3[PromptTemplateAdapter]
-    end
-    S1 --> S2 --> S3 --> S4 --> S5
+```d2
+Pipeline: "Evolution Pipeline" {
+  Trigger: {
+    T1: "BatchedTrigger\n(cron-like)"
+    T2: "InflectionTrigger\n(performance trend)"
+    T3: "PerTaskTrigger\n(post-execution)"
+    T4: "CompositeTrigger\n(OR-combines)"
+  }
+  Context: "Build Context" {
+    BC: "EvolutionContext\n(identity, performance, memories)"
+  }
+  Proposer: {
+    P1: SeparateAnalyzerProposer
+    P2: SelfReportProposer
+    P3: CompositeProposer
+  }
+  Guards: {
+    G1: RateLimitGuard
+    G2: ReviewGateGuard
+    G3: RollbackGuard
+    G4: ShadowEvaluationGuard
+    G5: CompositeGuard
+  }
+  Apply: "Adapter.apply" {
+    A1: IdentityAdapter
+    A2: StrategySelectionAdapter
+    A3: PromptTemplateAdapter
+  }
+
+  Trigger -> Context -> Proposer -> Guards -> Apply
+}
 ```
 
 The pipeline is orchestrated by ``EvolutionService`` in ``engine/evolution/service.py``.

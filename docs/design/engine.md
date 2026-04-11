@@ -150,11 +150,11 @@ exclusive file access, error isolation, and progress tracking.
 
 ### Kanban Board
 
-| Backlog | Ready | In Progress | Review | Done |
-|---------|-------|-------------|--------|------|
-| task | task | task | task | task |
-| task | task | task |      | task |
-| task |      |      |      | task |
+| Backlog | Ready | In Progress | Review | Done  |
+|---------|-------|-------------|--------|-------|
+| o       | o     | *           | o      | * * * |
+| o       | o     | *           |        | * *   |
+| o       |       |             |        | *     |
 
 The `KanbanColumn` enum defines five columns that map bidirectionally to
 `TaskStatus` (Backlog=CREATED, Ready=ASSIGNED, In Progress=IN_PROGRESS,

@@ -136,6 +136,7 @@ Determine if agent review can be skipped:
 - **Auto-detect**: If ALL changed files are non-substantive (only `.md` docs, config formatting, typo-level edits with no logic changes, `site/` static assets like images/fonts), skip agents automatically
   - Auto-skip examples: all changes are `.md` files; only `pyproject.toml` version bump; only `.yaml`/`.json` config with no Python changes; only `site/` image/font/asset changes
   - Do NOT auto-skip: any `.py` file changed; any `.go` file changed; any `.tsx`/`.ts`/`.css` file changed; any `docker/` or `.github/workflows/` file changed; config changes that affect runtime behavior; new dependencies added
+  - **Exception for diagram changes**: even when auto-skipping, if any changed `.md` file contains a ` ```d2 ` or ` ```mermaid ` fence, run the `diagram-syntax-validator` agent (per Phase 3) before continuing. Its entire purpose is to catch broken diagrams in docs-only PRs -- the one scenario where auto-skip would otherwise bypass it.
 - If auto-skipping, inform user: "Skipping agent review (no substantive code changes detected). Running automated checks only."
 
 ## Phase 2: Automated Checks (always run)

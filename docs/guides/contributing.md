@@ -230,7 +230,8 @@ uv run zensical serve                      # preview at http://127.0.0.1:8000
 
 ### Writing Conventions
 
-- Use MkDocs Material features: admonitions (`!!! note`), tabs (`=== "Tab"`), code blocks, Mermaid (` ```mermaid `) for flowcharts/sequences/states, and D2 (` ```d2 `) for architecture/nested-container diagrams
+- Use MkDocs Material features: admonitions (`!!! note`), tabs (`=== "Tab"`), code blocks, Mermaid (` ```mermaid `) for flowcharts/sequences/states, D2 (` ```d2 `) for architecture/nested-container diagrams, and Markdown tables for semantically tabular grid/matrix data. Never use ` ```text ` blocks with ASCII/Unicode box-drawing characters for diagrams.
+- Building docs locally with D2 diagrams requires the [D2 CLI](https://d2lang.com/tour/install) on `PATH` in addition to `uv sync --group docs`
 - YAML frontmatter with `title` and `description`
 - Technical but accessible tone
 - Cross-reference related pages

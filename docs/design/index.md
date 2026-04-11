@@ -128,7 +128,7 @@ Company -> Projects
 Company -> Config
 Company -> HR: HR Registry
 
-Departments -> DeptHead: {style.stroke-dash: 5}
+Departments -> DeptHead {style.stroke-dash: 5}
 DeptHead: "Department Head\n(Agent, optional)"
 Departments -> Members
 Members: "Members (Agent[])"

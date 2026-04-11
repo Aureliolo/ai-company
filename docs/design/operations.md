@@ -1423,15 +1423,15 @@ overview, Agent Card projection, and concept mapping tables.
 The REST/WebSocket API is the **primary interface** for all consumers. The Web UI and any
 future CLI tool are thin clients that call the API -- they contain no business logic.
 
-```mermaid
-graph TD
-    Engine["SynthOrg Engine\n(Core Logic, Agent Orchestration, Tasks)"]
-    API["REST/WS API\n(Litestar)"]
-    WebUI["Web UI\n(React)"]
-    CLI["CLI Tool\n(Go)"]
-    Engine --> API
-    API --> WebUI
-    API --> CLI
+```d2
+Engine: "SynthOrg Engine\n(Core Logic, Agent Orchestration, Tasks)"
+API: "REST/WS API\n(Litestar)"
+WebUI: "Web UI\n(React)"
+CLI: "CLI Tool\n(Go)"
+
+Engine -> API
+API -> WebUI
+API -> CLI
 ```
 
 !!! info "CLI Tool (Implemented)"
