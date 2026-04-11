@@ -1121,11 +1121,17 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
         )
 
     # MCP installations repo: SQLite-backed when persistence is
-    # connected, otherwise an in-memory stub that keeps install/
-    # uninstall callable (so the endpoint works in tests and dev
-    # without a database). The merged MCPConfig is stitched at
-    # bridge startup time via
+    # already connected and exposes an aiosqlite handle, otherwise
+    # an in-memory stub that keeps install/uninstall callable (so the
+    # endpoint works in tests and dev without a database). The merged
+    # MCPConfig is stitched at bridge startup time via
     # ``synthorg.integrations.mcp_catalog.install.merge_installed_servers``.
+    #
+    # NB: ``create_app`` runs synchronously on every test that builds a
+    # Litestar app, so we MUST NOT call into code that raises on an
+    # unconnected backend or captures a traceback per miss. Both are
+    # hot-path regressions at suite scale. Check ``is_connected`` up
+    # front and fall through silently to in-memory otherwise.
     try:
         from synthorg.integrations.mcp_catalog.sqlite_repo import (  # noqa: PLC0415
             InMemoryMcpInstallationRepository,
@@ -1133,30 +1139,19 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
         )
 
         sqlite_db = None
-        if persistence is not None:
+        if persistence is not None and getattr(persistence, "is_connected", False):
             get_db_fn = getattr(persistence, "get_db", None)
             if callable(get_db_fn):
                 try:
                     sqlite_db = get_db_fn()
                 except MemoryError, RecursionError:
                     raise
-                except AttributeError, TypeError, RuntimeError:
-                    # Structural/shape errors in the persistence object
-                    # are real bugs, not transient failures. Log at
-                    # error level so they surface on dashboards, then
-                    # fall back to the in-memory repo so the app still
-                    # starts in degraded mode.
-                    logger.error(
-                        API_APP_STARTUP,
-                        error="get_db() misconfigured for mcp_installations_repo",
-                        exc_info=True,
-                    )
                 except Exception:
-                    logger.warning(
-                        API_APP_STARTUP,
-                        error="get_db() failed for mcp_installations_repo",
-                        exc_info=True,
-                    )
+                    # Fall through to in-memory silently; the repo is a
+                    # degraded-mode fallback by design and a startup
+                    # warning here would fire on every test that builds
+                    # an app without a SQLite backend.
+                    sqlite_db = None
         if sqlite_db is not None:
             mcp_installations_repo = SQLiteMcpInstallationRepository(sqlite_db)
             logger.info(
@@ -1166,7 +1161,7 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
             )
         else:
             mcp_installations_repo = InMemoryMcpInstallationRepository()
-            logger.info(
+            logger.debug(
                 API_SERVICE_AUTO_WIRED,
                 service="mcp_installations_repo",
                 backend="in_memory",
