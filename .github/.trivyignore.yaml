@@ -60,6 +60,8 @@ vulnerabilities:
   - id: CVE-2026-28386
     purls:
       - "pkg:apk/chainguard/openssl"
+      - "pkg:apk/chainguard/libcrypto3"
+      - "pkg:apk/chainguard/libssl3"
     expired_at: "2026-07-10T00:00:00Z"
     statement: >-
       OpenSSL AES-CFB128 out-of-bounds read on x86-64 with AVX-512 and
