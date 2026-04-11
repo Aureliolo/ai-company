@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 
 from synthorg.observability import get_logger
 from synthorg.observability.events.evolution import (
+    EVOLUTION_TRIGGER_FAILED,
     EVOLUTION_TRIGGER_REQUESTED,
 )
 
@@ -58,10 +59,23 @@ class CompositeTrigger:
         context: EvolutionContext,
     ) -> bool:
         """OR-combine sub-triggers (evaluate all, no short-circuit)."""
-        results = [
-            await t.should_trigger(agent_id=agent_id, context=context)
-            for t in self._triggers
-        ]
+        results = []
+        for t in self._triggers:
+            try:
+                result = await t.should_trigger(
+                    agent_id=agent_id,
+                    context=context,
+                )
+            except Exception as exc:
+                logger.warning(
+                    EVOLUTION_TRIGGER_FAILED,
+                    agent_id=str(agent_id),
+                    trigger=t.name,
+                    error=str(exc),
+                )
+                results.append(False)
+            else:
+                results.append(result)
         fired = any(results)
         if fired:
             fired_names = [

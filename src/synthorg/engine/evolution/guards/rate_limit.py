@@ -24,7 +24,7 @@ class RateLimitGuard:
         Args:
             max_per_day: Maximum adaptations allowed per agent per day.
         """
-        self._max_per_day = max_per_day
+        self._max_per_day = max(1, max_per_day)
         self._timestamps: dict[str, list[datetime]] = {}
         self._lock = asyncio.Lock()
 

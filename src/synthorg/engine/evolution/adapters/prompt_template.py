@@ -9,10 +9,13 @@ from synthorg.engine.evolution.models import (
     AdaptationAxis,
     AdaptationProposal,
 )
+from synthorg.observability import get_logger
 
 if TYPE_CHECKING:
     from synthorg.core.types import NotBlankStr
     from synthorg.memory.protocol import MemoryBackend
+
+logger = get_logger(__name__)
 
 
 class PromptTemplateAdapter:

@@ -49,6 +49,24 @@ ignore:
     reason: >-
       Same as libncursesw6 entry above -- ncurses infocmp -i overflow.
 
+  # Audit: 2026-04-11 -- Review-by: 2026-07-10
+  # Revisit when Chainguard ships python-3.14 >= 3.14.3-r3 or 3.14.4
+  - vulnerability: CVE-2026-4519
+    package:
+      name: python-3.14
+      type: apk
+    reason: >-
+      Python webbrowser module command-line option injection. Our backend
+      never invokes webbrowser.open() -- the module is not imported or used.
+      Fixed in CPython 3.14.4 but Chainguard image pins 3.14.3-r2.
+      Risk accepted: no code path reaches the vulnerable function.
+  - vulnerability: CVE-2026-4519
+    package:
+      name: python-3.14-base
+      type: apk
+    reason: >-
+      Same as python-3.14 entry above -- webbrowser command injection.
+
   # Audit: 2026-06-17 -- review after 90 days (no native expiration in Grype)
   - vulnerability: CVE-2026-32767
     package:

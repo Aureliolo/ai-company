@@ -36,6 +36,16 @@ vulnerabilities:
       is ephemeral, network-isolated via iptables, runs as non-root
       (UID 10001).
 
+  - id: CVE-2026-4519
+    purls:
+      - "pkg:apk/chainguard/python-3.14"
+    expired_at: "2026-07-10T00:00:00Z"
+    statement: >-
+      Python webbrowser module command-line option injection (CVE-2026-4519).
+      Our backend never invokes webbrowser.open() -- the module is not
+      imported or used. Fixed in CPython 3.14.4 but Chainguard image pins
+      3.14.3-r2. Risk accepted: no code path reaches the vulnerable function.
+
   - id: CVE-2026-32767
     purls:
       - "pkg:apk/alpine/libexpat"

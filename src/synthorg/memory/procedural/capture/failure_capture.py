@@ -12,6 +12,9 @@ from synthorg.memory.procedural.pipeline import propose_procedural_memory
 from synthorg.memory.procedural.proposer import ProceduralMemoryProposer  # noqa: TC001
 from synthorg.memory.protocol import MemoryBackend  # noqa: TC001
 from synthorg.observability import get_logger
+from synthorg.observability.events.procedural_memory import (
+    PROCEDURAL_CAPTURE_STORE_FAILED,
+)
 
 logger = get_logger(__name__)
 
@@ -68,12 +71,22 @@ class FailureCaptureStrategy:
         if recovery_result is None:
             return None
 
-        return await propose_procedural_memory(
-            execution_result,
-            recovery_result,
-            agent_id,
-            task_id,
-            proposer=self._proposer,
-            memory_backend=memory_backend,
-            config=self._config,
-        )
+        try:
+            return await propose_procedural_memory(
+                execution_result,
+                recovery_result,
+                agent_id,
+                task_id,
+                proposer=self._proposer,
+                memory_backend=memory_backend,
+                config=self._config,
+            )
+        except Exception as exc:
+            logger.warning(
+                PROCEDURAL_CAPTURE_STORE_FAILED,
+                agent_id=str(agent_id),
+                task_id=str(task_id),
+                error=str(exc),
+                strategy="failure",
+            )
+            return None
