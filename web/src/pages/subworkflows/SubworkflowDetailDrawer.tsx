@@ -160,7 +160,7 @@ export function SubworkflowDetailDrawer({
               <Skeleton className="h-12 rounded" />
             ) : parents.length === 0 ? (
               <p className="text-xs text-muted-foreground">
-                No parent references reference this subworkflow.
+                No parent references for this subworkflow.
               </p>
             ) : (
               <ul className="flex flex-col gap-1">
@@ -191,7 +191,7 @@ export function SubworkflowDetailDrawer({
                 loading
                   ? 'Checking parent references...'
                   : parents.length > 0
-                    ? 'Cannot delete: still referenced by parent references'
+                    ? 'Cannot delete: still referenced'
                     : 'Delete this subworkflow version'
               }
             >
