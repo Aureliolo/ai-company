@@ -113,9 +113,21 @@ class RoleTopPerformers:
         candidates: Sequence[AgentIdentity],
     ) -> list[AgentPerformanceSnapshot]:
         """Fetch quality snapshots for all candidates concurrently."""
+
+        async def _fetch_one(
+            agent: AgentIdentity,
+        ) -> AgentPerformanceSnapshot:
+            try:
+                return await self._tracker.get_snapshot(str(agent.id))
+            except Exception as exc:
+                logger.exception(
+                    HR_TRAINING_SELECTION_SKIPPED,
+                    selector="role_top_performers",
+                    agent_id=str(agent.id),
+                    error=str(exc),
+                )
+                raise
+
         async with asyncio.TaskGroup() as tg:
-            tasks = [
-                tg.create_task(self._tracker.get_snapshot(str(agent.id)))
-                for agent in candidates
-            ]
+            tasks = [tg.create_task(_fetch_one(agent)) for agent in candidates]
         return [task.result() for task in tasks]

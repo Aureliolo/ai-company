@@ -126,6 +126,14 @@ def _build_selector(
         directly without routing through a selector.
     """
     selector_type = str(config.source_selector_type)
+    _allowed_selectors = {"role_top_performers", "department_diversity"}
+
+    if selector_type not in _allowed_selectors:
+        msg = (
+            f"Unknown source_selector_type {selector_type!r}; "
+            f"supported: {sorted(_allowed_selectors)}"
+        )
+        raise ValueError(msg)
 
     if selector_type == "department_diversity":
         from synthorg.hr.training.source_selectors.department_diversity import (  # noqa: PLC0415
@@ -137,7 +145,6 @@ def _build_selector(
             tracker=tracker,
         )
 
-    # Default: role_top_performers.
     from synthorg.hr.training.source_selectors.role_top_performers import (  # noqa: PLC0415
         RoleTopPerformers,
     )
@@ -191,6 +198,15 @@ def _build_curation(
 ) -> CurationStrategy:
     """Build curation strategy from config."""
     strategy_type = str(config.curation_strategy_type)
+    _allowed_strategies = {"relevance", "llm_curated"}
+
+    if strategy_type not in _allowed_strategies:
+        msg = (
+            f"Unknown curation_strategy_type {strategy_type!r}; "
+            f"supported: {sorted(_allowed_strategies)}"
+        )
+        raise ValueError(msg)
+
     top_k = _coerce_positive_int(
         config.curation_strategy_config.get("top_k"),
         field_name="curation_strategy_config.top_k",
@@ -204,7 +220,6 @@ def _build_curation(
 
         return LLMCurated(provider=provider, top_k=top_k)
 
-    # Default: relevance.
     from synthorg.hr.training.curation.relevance import (  # noqa: PLC0415
         RelevanceScoreCuration,
     )

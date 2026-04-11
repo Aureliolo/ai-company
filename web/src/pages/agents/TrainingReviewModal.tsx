@@ -84,7 +84,6 @@ export function TrainingReviewModal({
       title="Review Training Plan"
       confirmLabel="Approve"
       cancelLabel="Reject"
-      variant="destructive"
       loading={loading}
     >
       <div className="space-y-card">

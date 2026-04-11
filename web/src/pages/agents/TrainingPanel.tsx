@@ -106,10 +106,13 @@ export function TrainingPanel({
 
   const updateCap = useCallback(
     (ct: TrainingContentType, value: string) => {
-      const parsed = Number.parseInt(value, 10)
       setCustomCaps((prev) => {
         const filtered = prev.filter((entry) => entry.contentType !== ct)
-        if (!Number.isFinite(parsed) || parsed <= 0) {
+        if (!/^\d+$/.test(value)) {
+          return filtered
+        }
+        const parsed = Number.parseInt(value, 10)
+        if (parsed <= 0) {
           return filtered
         }
         return [...filtered, { contentType: ct, cap: parsed }]
@@ -299,8 +302,9 @@ function TrainingResultSummary({
           <h4 className="text-sm font-medium text-danger">
             Rejection Reasons
           </h4>
-          {result.errors.map((error) => (
-            <p key={error} className="text-xs text-muted-foreground">
+          {result.errors.map((error, idx) => (
+            // eslint-disable-next-line @eslint-react/no-array-index-key -- errors can repeat
+            <p key={idx} className="text-xs text-muted-foreground">
               {error}
             </p>
           ))}

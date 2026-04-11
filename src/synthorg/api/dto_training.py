@@ -1,9 +1,14 @@
 """Request/response DTOs for the training API endpoints."""
 
+from typing import Annotated
+
+from annotated_types import Gt
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
 
 from synthorg.core.types import NotBlankStr  # noqa: TC001
-from synthorg.hr.training.models import TrainingPlanStatus  # noqa: TC001
+from synthorg.hr.training.models import ContentType, TrainingPlanStatus  # noqa: TC001
+
+PositiveInt = Annotated[int, Gt(0)]
 
 
 class CreateTrainingPlanRequest(BaseModel):
@@ -15,13 +20,13 @@ class CreateTrainingPlanRequest(BaseModel):
         default=(),
         description="Explicit source agent IDs",
     )
-    content_types: tuple[NotBlankStr, ...] | None = Field(
+    content_types: tuple[ContentType, ...] | None = Field(
         default=None,
         description="Enable specific content types",
     )
-    custom_caps: dict[NotBlankStr, int] | None = Field(
+    custom_caps: dict[ContentType, PositiveInt] | None = Field(
         default=None,
-        description="Per-content-type cap overrides",
+        description="Per-content-type cap overrides (positive integers)",
     )
     skip_training: bool = Field(
         default=False,
@@ -42,9 +47,9 @@ class UpdateTrainingOverridesRequest(BaseModel):
         default=None,
         description="Updated source agent IDs",
     )
-    custom_caps: dict[NotBlankStr, int] | None = Field(
+    custom_caps: dict[ContentType, PositiveInt] | None = Field(
         default=None,
-        description="Updated per-content-type caps",
+        description="Updated per-content-type caps (positive integers)",
     )
 
 

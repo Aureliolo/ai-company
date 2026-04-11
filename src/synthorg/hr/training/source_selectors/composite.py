@@ -6,6 +6,7 @@ deduplicates agent IDs while preserving order.
 
 from typing import TYPE_CHECKING
 
+from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.observability import get_logger
 from synthorg.observability.events.training import (
     HR_TRAINING_SELECTION_COMPLETE,
@@ -13,7 +14,6 @@ from synthorg.observability.events.training import (
 
 if TYPE_CHECKING:
     from synthorg.core.enums import SeniorityLevel
-    from synthorg.core.types import NotBlankStr
     from synthorg.hr.training.protocol import SourceSelector
 
 logger = get_logger(__name__)
@@ -73,7 +73,7 @@ class CompositeSelector:
             return ()
 
         seen: set[str] = set()
-        result: list[str] = []
+        result: list[NotBlankStr] = []
 
         for selector in self._selectors:
             ids = await selector.select(
@@ -85,7 +85,7 @@ class CompositeSelector:
                 str_id = str(agent_id)
                 if str_id not in seen:
                     seen.add(str_id)
-                    result.append(str_id)
+                    result.append(agent_id)
 
         logger.debug(
             HR_TRAINING_SELECTION_COMPLETE,

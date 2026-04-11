@@ -445,7 +445,7 @@ class TrainingService:
                 handle = TrainingApprovalHandle(
                     approval_item_id=decision.approval_item_id,
                     content_type=ct,
-                    item_count=len(items),
+                    item_count=decision.rejected_count,
                 )
 
         return current_items, errors, handle

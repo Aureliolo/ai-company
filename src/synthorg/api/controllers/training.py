@@ -132,30 +132,26 @@ async def _resolve_agent(
 
 
 def _parse_content_types(
-    raw: tuple[str, ...] | None,
+    raw: tuple[ContentType, ...] | None,
 ) -> frozenset[ContentType]:
-    """Parse content type strings, raising ApiValidationError."""
+    """Convert validated content types, defaulting to all when empty."""
     if not raw:
         return frozenset(ContentType)
-    try:
-        return frozenset(ContentType(ct) for ct in raw)
-    except ValueError as exc:
-        msg = f"Invalid content type: {exc}"
-        logger.warning(API_REQUEST_ERROR, error=msg)
-        raise ApiValidationError(msg) from exc
+    return frozenset(raw)
 
 
 def _parse_custom_caps(
-    raw: dict[str, int] | None,
+    raw: dict[ContentType, int] | None,
     *,
     defaults: tuple[tuple[ContentType, int], ...],
 ) -> tuple[tuple[ContentType, int], ...] | None:
-    """Parse custom caps and merge with defaults for any unspecified types.
+    """Merge validated custom caps with defaults for any unspecified types.
 
     Args:
-        raw: Raw caps dict from the request, keyed by content type
-            value (e.g. ``"procedural"``).  May be ``None`` when no
-            override is supplied.
+        raw: Validated caps dict from the request DTO.  Keys are
+            ``ContentType`` enums (parsed by Pydantic), values are
+            positive integers (validated by DTO ``PositiveInt``).
+            May be ``None`` when no override is supplied.
         defaults: The fallback caps for any content type not present
             in ``raw`` -- typically the plan's default volume caps.
 
@@ -165,21 +161,8 @@ def _parse_custom_caps(
     """
     if not raw:
         return None
-    try:
-        overrides = {ContentType(k): v for k, v in raw.items()}
-    except ValueError as exc:
-        msg = f"Invalid content type in caps: {exc}"
-        logger.warning(API_REQUEST_ERROR, error=msg)
-        raise ApiValidationError(msg) from exc
-
-    for ct, cap in overrides.items():
-        if cap <= 0:
-            msg = f"Cap for {ct.value} must be positive, got {cap}"
-            logger.warning(API_REQUEST_ERROR, error=msg)
-            raise ApiValidationError(msg)
-
     merged: dict[ContentType, int] = dict(defaults)
-    merged.update(overrides)
+    merged.update(raw)
     return tuple(merged.items())
 
 

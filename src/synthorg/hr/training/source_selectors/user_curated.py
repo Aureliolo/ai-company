@@ -72,17 +72,20 @@ class UserCuratedList:
                 for agent_id in self._agent_ids
             ]
 
+        seen: set[str] = set()
         valid: list[NotBlankStr] = []
         for task in tasks:
             agent_id, exists = task.result()
-            if exists:
-                valid.append(agent_id)
-            else:
+            str_id = str(agent_id)
+            if not exists:
                 logger.warning(
                     HR_TRAINING_AGENT_NOT_FOUND,
                     selector="user_curated",
-                    agent_id=str(agent_id),
+                    agent_id=str_id,
                 )
+            elif str_id not in seen:
+                seen.add(str_id)
+                valid.append(agent_id)
 
         logger.debug(
             HR_TRAINING_SELECTION_COMPLETE,

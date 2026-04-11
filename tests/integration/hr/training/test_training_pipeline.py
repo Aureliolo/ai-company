@@ -225,9 +225,13 @@ class TestFullTrainingPipeline:
         # Should pass sanitization (content has non-path text)
         total_stored = sum(c for _, c in result.items_stored)
         assert total_stored > 0
+        # Stored content must not contain the original path fragment.
+        for call in backend.store.call_args_list:
+            stored_request = call.args[1]
+            assert "C:\\Users\\dev\\app.py" not in stored_request.content
 
     async def test_volume_caps_enforced(self) -> None:
-        """Volume caps truncate items beyond the limit."""
+        """Volume caps truncate items per content type."""
         entries = tuple(
             _make_memory_entry(
                 memory_id=f"mem-{i}",
@@ -239,20 +243,20 @@ class TestFullTrainingPipeline:
         backend.retrieve.return_value = entries
         backend.store.return_value = "stored-id"
 
-        service = _build_service(backend=backend)
-        plan = _make_plan(
-            volume_caps=(
-                (ContentType.PROCEDURAL, 5),
-                (ContentType.SEMANTIC, 5),
-                (ContentType.TOOL_PATTERNS, 5),
-            ),
+        caps = (
+            (ContentType.PROCEDURAL, 5),
+            (ContentType.SEMANTIC, 5),
+            (ContentType.TOOL_PATTERNS, 5),
         )
+        service = _build_service(backend=backend)
+        plan = _make_plan(volume_caps=caps)
         result = await service.execute(plan)
 
-        # Procedural items should be capped at 5
+        cap_by_type = dict(caps)
         for ct, count in result.items_after_guards:
-            if ct == ContentType.PROCEDURAL:
-                assert count <= 5
+            assert count <= cap_by_type[ct], (
+                f"{ct.value}: {count} exceeds cap {cap_by_type[ct]}"
+            )
 
     async def test_override_sources_precedence(self) -> None:
         """override_sources bypasses the selector entirely."""
@@ -328,13 +332,13 @@ class TestFullTrainingPipeline:
         approval_store.add.assert_called()
 
     async def test_review_gate_rejection_prevents_storage(self) -> None:
-        """Rejecting a review plan keeps items out of the memory store.
+        """Review gate blocks seeding regardless of approval outcome.
 
-        Simulates the full rejection flow: a review is created, the
-        caller rejects it via the approval store, and a subsequent
-        run of the same plan (still flagged for review) does not
-        seed any items because the pipeline treats the store as the
-        source of truth for approval state.
+        Verifies that when require_review=True the guard blocks ALL
+        items unconditionally on each execution. Approval items are
+        created but no memory storage occurs.  The downstream resume
+        flow (post-approval seeding) is a separate endpoint concern
+        and not tested here.
         """
         approval_store = AsyncMock()
         approval_items: list[ApprovalItem] = []

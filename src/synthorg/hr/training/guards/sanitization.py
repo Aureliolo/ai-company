@@ -41,8 +41,8 @@ class SanitizationGuard:
         *,
         max_length: int = _DEFAULT_MAX_LENGTH,
     ) -> None:
-        if max_length <= 0:
-            msg = f"max_length must be a positive integer, got {max_length}"
+        if max_length < 0:
+            msg = f"max_length must be a non-negative integer, got {max_length}"
             raise ValueError(msg)
         self._max_length = max_length
 
