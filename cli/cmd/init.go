@@ -70,7 +70,7 @@ func runInit(cmd *cobra.Command, _ []string) error {
 	opts := GetGlobalOpts(cmd.Context())
 	out := ui.NewUIWithOptions(cmd.OutOrStdout(), opts.UIOptions())
 
-	if err := validateInitFlags(); err != nil {
+	if err := validateInitFlags(opts.DataDir); err != nil {
 		return err
 	}
 	var answers setupAnswers
@@ -135,7 +135,9 @@ func handleReinit(cmd *cobra.Command, state *config.State, opts *GlobalOpts) (bo
 		if oldState.SettingsKey != "" {
 			state.SettingsKey = oldState.SettingsKey
 		}
-		preservePostgresFromOldState(cmd, state, oldState)
+		if err := preservePostgresFromOldState(cmd, state, oldState); err != nil {
+			return false, err
+		}
 		return true, nil
 	}
 	if !isInteractive() {
@@ -152,7 +154,9 @@ func handleReinit(cmd *cobra.Command, state *config.State, opts *GlobalOpts) (bo
 	if *kept != "" {
 		state.SettingsKey = *kept
 	}
-	preservePostgresFromOldState(cmd, state, oldState)
+	if err := preservePostgresFromOldState(cmd, state, oldState); err != nil {
+		return false, err
+	}
 	return true, nil
 }
 
@@ -172,7 +176,7 @@ func preservePostgresFromOldState(
 	cmd *cobra.Command,
 	state *config.State,
 	oldState config.State,
-) {
+) error {
 	backendFlagSet := cmd.Flags().Changed("persistence-backend")
 	// If the user didn't change the backend and the old one was postgres,
 	// inherit the old backend so the rest of the block applies.
@@ -184,7 +188,7 @@ func preservePostgresFromOldState(
 		// install was never postgres) -- clear any leaked postgres fields.
 		state.PostgresPassword = ""
 		state.PostgresPort = 0
-		return
+		return nil
 	}
 	if oldState.PostgresPassword != "" {
 		state.PostgresPassword = oldState.PostgresPassword
@@ -192,6 +196,23 @@ func preservePostgresFromOldState(
 	if oldState.PostgresPort != 0 && !cmd.Flags().Changed("postgres-port") {
 		state.PostgresPort = oldState.PostgresPort
 	}
+	// Re-validate the (possibly preserved) port against the new backend/web
+	// ports: re-init can introduce a conflict if the user changed
+	// --backend-port or --web-port to collide with the persisted postgres
+	// port.
+	if state.PostgresPort == state.BackendPort {
+		return fmt.Errorf(
+			"postgres port %d (from existing config) conflicts with backend port %d",
+			state.PostgresPort, state.BackendPort,
+		)
+	}
+	if state.PostgresPort == state.WebPort {
+		return fmt.Errorf(
+			"postgres port %d (from existing config) conflicts with web port %d",
+			state.PostgresPort, state.WebPort,
+		)
+	}
+	return nil
 }
 
 // confirmReinit prompts the user to confirm overwriting existing config.
@@ -247,7 +268,7 @@ type setupAnswers struct {
 
 // validateInitFlags checks that provided CLI flag values are valid before
 // the interactive/non-interactive branch. Only validates flags that were set.
-func validateInitFlags() error {
+func validateInitFlags(dataDir string) error {
 	if initBackendPort != 0 && (initBackendPort < 1 || initBackendPort > 65535) {
 		return fmt.Errorf("invalid --backend-port %d: must be 1-65535", initBackendPort)
 	}
@@ -277,10 +298,15 @@ func validateInitFlags() error {
 	}
 	if initPostgresPort != 0 {
 		// --postgres-port only applies when postgres is the effective backend.
-		// Flag default (empty) means "use whatever the State default is,
-		// currently sqlite", so an explicit --postgres-port with no matching
-		// --persistence-backend is a misconfiguration, not a silent no-op.
+		// Resolution order: (1) explicit --persistence-backend flag wins,
+		// (2) during re-init the persisted backend from dataDir wins,
+		// (3) otherwise the State default (sqlite).
 		effectiveBackend := initPersistenceBackend
+		if effectiveBackend == "" && dataDir != "" {
+			if oldState, err := config.Load(dataDir); err == nil {
+				effectiveBackend = oldState.PersistenceBackend
+			}
+		}
 		if effectiveBackend == "" {
 			effectiveBackend = config.DefaultState().PersistenceBackend
 		}

@@ -40,15 +40,16 @@ REVISIONS_DIR="src/synthorg/persistence/sqlite/revisions"
 # may set BASE_BRANCH to anything (bare, origin/<name>, or refs/heads/<name>).
 BASE_RAW="${BASE_BRANCH:-${GITHUB_BASE_REF:-origin/main}}"
 
-# Normalize to a remote-tracking form like "<remote>/<branch>" (e.g.
-# origin/main, upstream/main). Accepts bare branch names, refs/heads/*,
-# refs/remotes/*/*, and already-prefixed remote names. Bare branches default
-# to origin/*.
+# Normalize to a remote-tracking form like "origin/<branch>". Only explicit
+# refs/remotes/ inputs are treated as already-qualified; everything else
+# (bare names, refs/heads/*, refs/*) gets the origin/ prefix, so namespaced
+# branches like "release/1.2" stay on origin. Users on non-origin remotes
+# must pass the full "refs/remotes/<remote>/<branch>" form.
 case "$BASE_RAW" in
     refs/remotes/*)     BASE="${BASE_RAW#refs/remotes/}" ;;
     refs/heads/*)       BASE="origin/${BASE_RAW#refs/heads/}" ;;
     refs/*)             BASE="origin/${BASE_RAW#refs/}" ;;
-    */*)                BASE="$BASE_RAW" ;;
+    origin/*)           BASE="$BASE_RAW" ;;
     *)                  BASE="origin/$BASE_RAW" ;;
 esac
 # BRANCH_ONLY is the part after the remote name, used for git fetch.

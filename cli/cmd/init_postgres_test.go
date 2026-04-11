@@ -112,7 +112,7 @@ func TestInitValidatePostgresFlag(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			defer snapshotInitFlags()()
 			initPersistenceBackend = tt.backend
-			err := validateInitFlags()
+			err := validateInitFlags("")
 			if (err != nil) != tt.wantErr {
 				t.Errorf("validateInitFlags() err=%v, wantErr=%v", err, tt.wantErr)
 			}
@@ -142,11 +142,56 @@ func TestInitValidatePostgresPort(t *testing.T) {
 			defer snapshotInitFlags()()
 			initPersistenceBackend = tt.backend
 			initPostgresPort = tt.port
-			err := validateInitFlags()
+			err := validateInitFlags("")
 			if (err != nil) != tt.wantErr {
 				t.Errorf("validateInitFlags() err=%v, wantErr=%v", err, tt.wantErr)
 			}
 		})
+	}
+}
+
+// TestInitValidatePostgresPort_ReinitPersistedBackend verifies that
+// during re-init, an existing postgres config in dataDir allows
+// --postgres-port without an explicit --persistence-backend flag.
+func TestInitValidatePostgresPort_ReinitPersistedBackend(t *testing.T) {
+	defer snapshotInitFlags()()
+	dir := t.TempDir()
+	absDir := mustAbs(t, dir)
+
+	// Seed a postgres config in the target data directory.
+	seed := setupAnswers{
+		dir:                absDir,
+		backendPortStr:     "3001",
+		webPortStr:         "3000",
+		sandbox:            false,
+		dockerSock:         "",
+		logLevel:           "info",
+		persistenceBackend: "postgres",
+		memoryBackend:      "mem0",
+		busBackend:         "internal",
+		postgresPort:       3002,
+	}
+	seedState, err := buildState(seed)
+	if err != nil {
+		t.Fatalf("buildState: %v", err)
+	}
+	if _, err := writeInitFiles(seedState); err != nil {
+		t.Fatalf("writeInitFiles: %v", err)
+	}
+
+	// Now simulate re-init: user passes --postgres-port 5433 without
+	// --persistence-backend. validateInitFlags should accept it because
+	// the persisted backend is postgres.
+	initPersistenceBackend = ""
+	initPostgresPort = 5433
+	if err := validateInitFlags(absDir); err != nil {
+		t.Errorf("validateInitFlags with persisted postgres config: %v", err)
+	}
+
+	// Sanity check: same flags with an empty data dir should reject
+	// because there's no persisted state to fall back to.
+	if err := validateInitFlags(""); err == nil {
+		t.Error("expected error when persisted state is unavailable")
 	}
 }
 
