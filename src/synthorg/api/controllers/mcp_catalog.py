@@ -3,17 +3,29 @@
 Browse and install MCP servers from the bundled catalog.
 """
 
-from litestar import Controller, get
+from typing import Any
+
+from litestar import Controller, delete, get, post
 from litestar.datastructures import State  # noqa: TC002
 from litestar.params import Parameter
 
 from synthorg.api.dto import ApiResponse
-from synthorg.api.guards import require_read_access
+from synthorg.api.errors import (
+    ApiValidationError,
+    NotFoundError,
+)
+from synthorg.api.guards import require_read_access, require_write_access
 from synthorg.integrations.connections.models import CatalogEntry  # noqa: TC001
-from synthorg.integrations.errors import CatalogEntryNotFoundError
+from synthorg.integrations.errors import (
+    CatalogEntryNotFoundError,
+    ConnectionNotFoundError,
+    InvalidConnectionAuthError,
+)
 from synthorg.observability import get_logger
 from synthorg.observability.events.integrations import (
     MCP_CATALOG_ENTRY_NOT_FOUND,
+    MCP_SERVER_INSTALLED,
+    MCP_SERVER_UNINSTALLED,
 )
 
 logger = get_logger(__name__)
@@ -65,8 +77,6 @@ class MCPCatalogController(Controller):
         entry_id: str,
     ) -> ApiResponse[CatalogEntry]:
         """Get a single catalog entry by ID."""
-        from synthorg.api.errors import NotFoundError  # noqa: PLC0415
-
         service = state["app_state"].mcp_catalog_service
         try:
             entry = await service.get_entry(entry_id)
@@ -78,3 +88,103 @@ class MCPCatalogController(Controller):
             )
             raise NotFoundError(str(exc)) from exc
         return ApiResponse(data=entry)
+
+    @post(
+        "/catalog/install",
+        guards=[require_write_access],
+        summary="Install a catalog entry",
+    )
+    async def install_entry(
+        self,
+        state: State,
+        data: dict[str, Any],
+    ) -> ApiResponse[dict[str, Any]]:
+        """Record an installation of a bundled MCP catalog entry.
+
+        Validates the entry exists, that the bound connection (if
+        required) matches the entry's ``required_connection_type``,
+        and persists the row so the MCP bridge picks it up on next
+        reload. Re-installing an existing entry is idempotent.
+        """
+        entry_id_raw = data.get("catalog_entry_id")
+        if not isinstance(entry_id_raw, str) or not entry_id_raw.strip():
+            msg = "Field 'catalog_entry_id' is required"
+            raise ApiValidationError(msg)
+        entry_id = entry_id_raw.strip()
+
+        connection_name_raw = data.get("connection_name")
+        connection_name: str | None
+        if connection_name_raw is None:
+            connection_name = None
+        elif isinstance(connection_name_raw, str):
+            connection_name = connection_name_raw.strip() or None
+        else:
+            msg = "Field 'connection_name' must be a string or null"
+            raise ApiValidationError(msg)
+
+        app_state = state["app_state"]
+        service = app_state.mcp_catalog_service
+        installations_repo = app_state.mcp_installations_repo
+        connection_catalog = (
+            app_state._connection_catalog  # noqa: SLF001
+        )
+
+        try:
+            result = await service.install(
+                entry_id,
+                connection_name,
+                connection_catalog=connection_catalog,
+                installations_repo=installations_repo,
+            )
+        except CatalogEntryNotFoundError as exc:
+            raise NotFoundError(str(exc)) from exc
+        except ConnectionNotFoundError as exc:
+            raise NotFoundError(str(exc)) from exc
+        except InvalidConnectionAuthError as exc:
+            raise ApiValidationError(str(exc)) from exc
+
+        logger.info(
+            MCP_SERVER_INSTALLED,
+            catalog_entry_id=result.catalog_entry_id,
+            server_name=result.server_name,
+            connection_name=result.connection_name,
+            tool_count=result.tool_count,
+        )
+        return ApiResponse(
+            data={
+                "status": "installed",
+                "server_name": result.server_name,
+                "catalog_entry_id": result.catalog_entry_id,
+                "tool_count": result.tool_count,
+            },
+        )
+
+    @delete(
+        "/catalog/install/{entry_id:str}",
+        guards=[require_write_access],
+        summary="Uninstall a catalog entry",
+        status_code=200,
+    )
+    async def uninstall_entry(
+        self,
+        state: State,
+        entry_id: str,
+    ) -> ApiResponse[None]:
+        """Remove a recorded installation.
+
+        Missing entries are a silent no-op so the endpoint is
+        idempotent and callers can always treat 200 as success.
+        """
+        app_state = state["app_state"]
+        service = app_state.mcp_catalog_service
+        installations_repo = app_state.mcp_installations_repo
+        removed = await service.uninstall(
+            entry_id,
+            installations_repo=installations_repo,
+        )
+        logger.info(
+            MCP_SERVER_UNINSTALLED,
+            catalog_entry_id=entry_id,
+            removed=removed,
+        )
+        return ApiResponse(data=None)

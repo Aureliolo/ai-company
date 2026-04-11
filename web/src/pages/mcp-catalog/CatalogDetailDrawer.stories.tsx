@@ -1,0 +1,38 @@
+import type { Meta, StoryObj } from '@storybook/react-vite'
+import { fn } from 'storybook/test'
+import type { McpCatalogEntry } from '@/api/types'
+import { CatalogDetailDrawer } from './CatalogDetailDrawer'
+
+const githubEntry: McpCatalogEntry = {
+  id: 'github-mcp',
+  name: 'GitHub',
+  description:
+    'Read and write GitHub repositories, issues, pull requests, and actions',
+  npm_package: '@modelcontextprotocol/server-github',
+  required_connection_type: 'github',
+  transport: 'stdio',
+  capabilities: ['repository_access', 'issue_management', 'pull_requests', 'actions'],
+  tags: ['vcs', 'collaboration', 'ci'],
+}
+
+const meta = {
+  title: 'Pages/McpCatalog/CatalogDetailDrawer',
+  component: CatalogDetailDrawer,
+  tags: ['autodocs'],
+  args: {
+    onClose: fn(),
+    onInstall: fn(),
+    onUninstall: fn(),
+  },
+} satisfies Meta<typeof CatalogDetailDrawer>
+
+export default meta
+type Story = StoryObj<typeof meta>
+
+export const NotInstalled: Story = {
+  args: { entry: githubEntry, installed: false },
+}
+
+export const Installed: Story = {
+  args: { entry: githubEntry, installed: true },
+}

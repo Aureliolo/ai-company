@@ -27,8 +27,12 @@ from synthorg.integrations.errors import (
     ConnectionNotFoundError,
     DuplicateConnectionError,
     InvalidConnectionAuthError,
+    SecretRetrievalError,
 )
 from synthorg.observability import get_logger
+from synthorg.observability.events.integrations import (
+    CONNECTION_SECRET_REVEALED,
+)
 
 logger = get_logger(__name__)
 
@@ -227,3 +231,40 @@ class ConnectionsController(Controller):
             checked_at=report.checked_at,
         )
         return ApiResponse(data=report)
+
+    @get(
+        "/{name:str}/secrets/{field:str}",
+        guards=[require_read_access],
+        summary="Reveal a single credential field",
+    )
+    async def reveal_secret(
+        self,
+        state: State,
+        name: str,
+        field: str,
+    ) -> ApiResponse[dict[str, str]]:
+        """Return the plaintext value of one credential field.
+
+        Scoped to a single field so a reveal action on the OAuth
+        Apps page can surface a specific ``client_secret`` without
+        exposing the rest of the credential blob. The reveal is
+        audit-logged (field name only, never the value).
+        """
+        catalog = state["app_state"].connection_catalog
+        try:
+            credentials = await catalog.get_credentials(name)
+        except ConnectionNotFoundError as exc:
+            raise NotFoundError(str(exc)) from exc
+        except SecretRetrievalError as exc:
+            raise NotFoundError(str(exc)) from exc
+
+        value = credentials.get(field)
+        if value is None:
+            msg = f"Credential field '{field}' not set for connection '{name}'"
+            raise NotFoundError(msg)
+        logger.info(
+            CONNECTION_SECRET_REVEALED,
+            connection_name=name,
+            field=field,
+        )
+        return ApiResponse(data={"field": field, "value": value})

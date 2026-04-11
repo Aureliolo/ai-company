@@ -1097,6 +1097,7 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
     tunnel_provider = None
     webhook_event_bridge = None
     mcp_catalog_service = None
+    mcp_installations_repo: object | None = None
 
     # Bundled MCP catalog is stateless (loads static JSON) and has no
     # runtime dependencies, so it is wired unconditionally.
@@ -1113,6 +1114,53 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
         logger.warning(
             API_APP_STARTUP,
             error="MCP catalog auto-wire failed (non-fatal)",
+            exc_info=True,
+        )
+
+    # MCP installations repo: SQLite-backed when persistence is
+    # connected, otherwise an in-memory stub that keeps install/
+    # uninstall callable (so the endpoint works in tests and dev
+    # without a database). The merged MCPConfig is stitched at
+    # bridge startup time via
+    # ``synthorg.integrations.mcp_catalog.install.merge_installed_servers``.
+    try:
+        from synthorg.integrations.mcp_catalog.sqlite_repo import (  # noqa: PLC0415
+            InMemoryMcpInstallationRepository,
+            SQLiteMcpInstallationRepository,
+        )
+
+        sqlite_db = None
+        if persistence is not None:
+            get_db_fn = getattr(persistence, "get_db", None)
+            if callable(get_db_fn):
+                try:
+                    sqlite_db = get_db_fn()
+                except Exception:
+                    logger.warning(
+                        API_APP_STARTUP,
+                        error="get_db() failed for mcp_installations_repo",
+                        exc_info=True,
+                    )
+        if sqlite_db is not None:
+            mcp_installations_repo = SQLiteMcpInstallationRepository(sqlite_db)
+            logger.info(
+                API_SERVICE_AUTO_WIRED,
+                service="mcp_installations_repo",
+                backend="sqlite",
+            )
+        else:
+            mcp_installations_repo = InMemoryMcpInstallationRepository()
+            logger.info(
+                API_SERVICE_AUTO_WIRED,
+                service="mcp_installations_repo",
+                backend="in_memory",
+            )
+    except MemoryError, RecursionError:
+        raise
+    except Exception:
+        logger.warning(
+            API_APP_STARTUP,
+            error="MCP installations repo auto-wire failed (non-fatal)",
             exc_info=True,
         )
 
@@ -1304,6 +1352,7 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
         tunnel_provider=tunnel_provider,
         webhook_event_bridge=webhook_event_bridge,
         mcp_catalog_service=mcp_catalog_service,
+        mcp_installations_repo=mcp_installations_repo,  # type: ignore[arg-type]
         startup_time=time.monotonic(),
     )
     if distributed_task_queue is not None:

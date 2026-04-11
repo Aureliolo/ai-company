@@ -11,12 +11,17 @@ import {
   GitBranch,
   Inbox,
   KanbanSquare,
+  KeyRound,
   LayoutDashboard,
+  Layers,
+  LibraryBig,
   LogOut,
   MessageSquare,
   Package,
   PanelLeftClose,
   PanelLeftOpen,
+  Plug,
+  Scale,
   Settings,
   Shapes,
   ShieldCheck,
@@ -24,8 +29,6 @@ import {
   UserCheck,
   Users,
   Video,
-  Layers,
-  Scale,
   Workflow,
   X,
 } from 'lucide-react'
@@ -243,6 +246,24 @@ function SidebarNav({ collapsed }: { collapsed: boolean }) {
           <SidebarNavItem to={ROUTES.MEETINGS} icon={Video} label="Meetings" collapsed={collapsed} />
           <SidebarNavItem to={ROUTES.PROVIDERS} icon={Cpu} label="Providers" collapsed={collapsed} />
           <SidebarNavItem to={ROUTES.ONTOLOGY} icon={Shapes} label="Ontology" collapsed={collapsed} />
+        </div>
+      </div>
+
+      <div className="mt-4 border-t border-border pt-3">
+        {!collapsed && (
+          <span className="mb-2 block px-3 text-xs font-medium uppercase tracking-wider text-muted-foreground">
+            Integrations
+          </span>
+        )}
+        <div className="flex flex-col gap-1">
+          <SidebarNavItem to={ROUTES.CONNECTIONS} icon={Plug} label="Connections" collapsed={collapsed} />
+          <SidebarNavItem to={ROUTES.OAUTH_APPS} icon={KeyRound} label="OAuth Apps" collapsed={collapsed} />
+          <SidebarNavItem to={ROUTES.MCP_CATALOG} icon={LibraryBig} label="MCP Catalog" collapsed={collapsed} />
+        </div>
+      </div>
+
+      <div className="mt-4 border-t border-border pt-3">
+        <div className="flex flex-col gap-1">
           <SidebarNavItem to={ROUTES.DOCUMENTATION} icon={BookOpen} label="Docs" collapsed={collapsed} external />
           <SidebarNavItem to={ROUTES.CLIENTS} icon={UserCheck} label="Clients" collapsed={collapsed} />
           <SidebarNavItem to={ROUTES.REQUEST_QUEUE} icon={Inbox} label="Request Queue" collapsed={collapsed} />
