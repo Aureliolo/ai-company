@@ -8,6 +8,7 @@ repository's CAS mechanism serialises concurrent writers.
 
 import asyncio
 from collections.abc import Callable
+from typing import Any
 
 import pytest
 
@@ -329,9 +330,13 @@ def _always_conflict_for_key(
     """Return an install/uninstall pair that forces CAS conflicts on *target_key*.
 
     Used to verify that ``VersionConflictError`` propagates after retries
-    are exhausted for every CAS-protected mutation.
+    are exhausted for every CAS-protected mutation.  Both ``set`` and
+    ``set_many`` are intercepted so mutations that bundle multiple keys
+    into a single transaction (like ``delete_department``) also surface
+    the conflict.
     """
     original_set = persistence.settings.set
+    original_set_many = persistence.settings.set_many
 
     async def always_conflict_set(
         namespace: str,
@@ -355,11 +360,27 @@ def _always_conflict_for_key(
             expected_updated_at=expected_updated_at,
         )
 
+    async def always_conflict_set_many(
+        items: Any,
+        *,
+        expected_updated_at_map: Any = None,
+    ) -> bool:
+        if expected_updated_at_map is not None and any(
+            ns == "company" and k == target_key for ns, k in expected_updated_at_map
+        ):
+            return False
+        return await original_set_many(
+            items,
+            expected_updated_at_map=expected_updated_at_map,
+        )
+
     def install() -> None:
         persistence.settings.set = always_conflict_set  # type: ignore[method-assign]
+        persistence.settings.set_many = always_conflict_set_many  # type: ignore[method-assign]
 
     def uninstall() -> None:
         persistence.settings.set = original_set  # type: ignore[method-assign]
+        persistence.settings.set_many = original_set_many  # type: ignore[method-assign]
 
     return install, uninstall
 

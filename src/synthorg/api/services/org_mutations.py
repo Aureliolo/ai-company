@@ -371,52 +371,43 @@ class OrgMutationService:
         self,
         data: UpdateCompanyRequest,
     ) -> dict[str, Any]:
-        """Write each company scalar with CAS protection."""
+        """Atomically write all changed company scalars via set_many.
+
+        Preflights the version for every scalar that is about to
+        change, then persists them in a single transaction.  If any
+        CAS check fails the whole batch rolls back so ``update_company``
+        sees a consistent ``VersionConflictError`` and retries.
+        """
+        items: list[tuple[str, str, str]] = []
         updated: dict[str, Any] = {}
         if data.company_name is not None:
-            await self._set_versioned(
-                "company",
-                "company_name",
-                data.company_name,
-            )
+            items.append(("company", "company_name", data.company_name))
             updated["company_name"] = data.company_name
         if data.autonomy_level is not None:
-            await self._set_versioned(
-                "company",
-                "autonomy_level",
-                data.autonomy_level.value,
-            )
+            items.append(("company", "autonomy_level", data.autonomy_level.value))
             updated["autonomy_level"] = data.autonomy_level.value
         if data.budget_monthly is not None:
-            await self._set_versioned(
-                "company",
-                "total_monthly",
-                str(data.budget_monthly),
-            )
+            items.append(("company", "total_monthly", str(data.budget_monthly)))
             updated["budget_monthly"] = data.budget_monthly
         if data.communication_pattern is not None:
-            await self._set_versioned(
-                "company",
-                "communication_pattern",
-                data.communication_pattern,
+            items.append(
+                ("company", "communication_pattern", data.communication_pattern),
             )
             updated["communication_pattern"] = data.communication_pattern
-        return updated
 
-    async def _set_versioned(
-        self,
-        namespace: str,
-        key: str,
-        value: str,
-    ) -> None:
-        """Read version then write with CAS in one step."""
-        _, version = await self._read_setting_versioned(namespace, key)
-        await self._settings.set(
-            namespace,
-            key,
-            value,
-            expected_updated_at=version,
+        if not items:
+            return updated
+
+        expected_map: dict[tuple[str, str], str] = {}
+        for namespace, key, _value in items:
+            _, version = await self._read_setting_versioned(namespace, key)
+            expected_map[(namespace, key)] = version
+
+        await self._settings.set_many(
+            items,
+            expected_updated_at_map=expected_map,
         )
+        return updated
 
     # ── Departments ───────────────────────────────────────────
 
@@ -595,9 +586,13 @@ class OrgMutationService:
         """
         for attempt in range(_MAX_CAS_ATTEMPTS):
             try:
-                _, version = await self._read_setting_versioned(
+                _, dept_version = await self._read_setting_versioned(
                     "company",
                     "departments",
+                )
+                _, agents_version = await self._read_setting_versioned(
+                    "company",
+                    "agents",
                 )
                 departments = await self._read_departments()
                 existing = self._find_department(departments, name)
@@ -630,9 +625,29 @@ class OrgMutationService:
                 new_departments = tuple(
                     d for d in departments if d.name.lower() != name.lower()
                 )
-                await self._write_departments(
-                    new_departments,
-                    expected_updated_at=version,
+                # Pin BOTH the department list and the agents list
+                # under CAS in a single transaction.  If a concurrent
+                # create_agent bumps the agents version between the
+                # reference check above and the write below, the
+                # agents CAS fails and the department delete rolls
+                # back -- closing the TOCTOU gap.
+                dept_payload = json.dumps(
+                    [d.model_dump(mode="json") for d in new_departments],
+                    separators=(",", ":"),
+                )
+                agents_payload = json.dumps(
+                    [a.model_dump(mode="json") for a in agents],
+                    separators=(",", ":"),
+                )
+                await self._settings.set_many(
+                    [
+                        ("company", "departments", dept_payload),
+                        ("company", "agents", agents_payload),
+                    ],
+                    expected_updated_at_map={
+                        ("company", "departments"): dept_version,
+                        ("company", "agents"): agents_version,
+                    },
                 )
                 await self._snapshot_company(saved_by=saved_by)
                 break

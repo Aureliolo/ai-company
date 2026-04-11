@@ -324,6 +324,14 @@ class _FakeSettingsRepository:
     async def set(self, namespace: str, key: str, value: str, updated_at: str) -> None:
         pass
 
+    async def set_many(
+        self,
+        items: object,
+        *,
+        expected_updated_at_map: object = None,
+    ) -> bool:
+        return True
+
     async def delete(self, namespace: str, key: str) -> bool:
         return False
 
