@@ -49,6 +49,9 @@ services:
       - "{{.BackendPort}}:3001"
     volumes:
       - synthorg-data:/data
+{{- if .Sandbox}}
+      - "{{.DockerSock}}:/var/run/docker.sock"
+{{- end}}
 {{- if postgresEnabled}}
     depends_on:
       postgres:
@@ -73,6 +76,9 @@ services:
       MEM0_TELEMETRY: "false"
       SYNTHORG_TELEMETRY: "{{if .TelemetryOptIn}}true{{else}}false{{end}}"
       SYNTHORG_LOG_LEVEL: {{yamlStr .LogLevel}}
+{{- if .Sandbox}}
+      SYNTHORG_SANDBOX_IMAGE: {{yamlStr (sandboxImageRef .ImageTag)}}
+{{- end}}
 {{- if .JWTSecret}}
       SYNTHORG_JWT_SECRET: {{yamlStr .JWTSecret}}
 {{- end}}
@@ -165,36 +171,6 @@ services:
       timeout: 3s
       retries: 3
       start_period: 5s
-    logging:
-      driver: json-file
-      options:
-        max-size: "10m"
-        max-file: "3"
-{{- end}}
-{{- if .Sandbox}}
-
-  sandbox:
-    image: {{digestPin "sandbox" "ghcr.io/aureliolo/synthorg-sandbox" .ImageTag}}
-    depends_on:
-      backend:
-        condition: service_healthy
-    volumes:
-      - "{{.DockerSock}}:/var/run/docker.sock:ro"
-    user: "10001:10001"
-    security_opt:
-      - no-new-privileges:true
-    cap_drop:
-      - ALL
-    read_only: true
-    tmpfs:
-      - /tmp:noexec,nosuid,nodev,size=128m
-    restart: unless-stopped
-    deploy:
-      resources:
-        limits:
-          memory: 256M
-          cpus: "0.5"
-          pids: 128
     logging:
       driver: json-file
       options:

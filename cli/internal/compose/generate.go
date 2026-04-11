@@ -103,6 +103,7 @@ func Generate(p Params) ([]byte, error) {
 	funcMap := template.FuncMap{
 		"yamlStr":            yamlStr,
 		"digestPin":          digestPin(p.DigestPins),
+		"sandboxImageRef":    sandboxImageRef(p.DigestPins),
 		"distributedEnabled": p.DistributedEnabled,
 		"postgresEnabled":    p.PostgresEnabled,
 		"pgDSN":              func() string { return pgDSN(p) },
@@ -216,6 +217,20 @@ func pgDSN(p Params) string {
 func digestPin(pins map[string]string) func(name, repo, tag string) string {
 	return func(name, repo, tag string) string {
 		if d, ok := pins[name]; ok && d != "" {
+			return repo + "@" + d
+		}
+		return repo + ":" + tag
+	}
+}
+
+// sandboxImageRef returns a template function that resolves the sandbox image
+// to its digest-pinned or tag-based reference. Wired into the backend's
+// SYNTHORG_SANDBOX_IMAGE env var so the backend and CLI stay version-locked
+// when the backend spawns ephemeral sandbox containers via aiodocker.
+func sandboxImageRef(pins map[string]string) func(tag string) string {
+	return func(tag string) string {
+		const repo = "ghcr.io/aureliolo/synthorg-sandbox"
+		if d, ok := pins["sandbox"]; ok && d != "" {
 			return repo + "@" + d
 		}
 		return repo + ":" + tag

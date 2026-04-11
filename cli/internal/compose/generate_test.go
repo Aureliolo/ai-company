@@ -110,8 +110,24 @@ func TestGenerateWithSandbox(t *testing.T) {
 	}
 	yaml := string(out)
 
-	assertContains(t, yaml, "synthorg-sandbox:latest")
-	assertContains(t, yaml, "/var/run/docker.sock:/var/run/docker.sock:ro")
+	// Backend gets the docker.sock mount (read-write) so aiodocker
+	// can create/start/stop ephemeral sandbox containers.
+	assertContains(t, yaml, "/var/run/docker.sock:/var/run/docker.sock")
+	if strings.Contains(yaml, "/var/run/docker.sock:/var/run/docker.sock:ro") {
+		t.Error("backend docker.sock mount must be read-write (no :ro suffix)")
+	}
+
+	// Backend env var pins the sandbox image reference so the CLI
+	// and backend stay version-locked.
+	assertContains(t, yaml, `SYNTHORG_SANDBOX_IMAGE: "ghcr.io/aureliolo/synthorg-sandbox:latest"`)
+
+	// No standalone sandbox service -- the backend spawns ephemeral
+	// sandbox containers on demand via aiodocker, not via compose.
+	if strings.Contains(yaml, "\n  sandbox:\n") {
+		t.Error("sandbox must not be a compose service; backend spawns sandbox containers on demand")
+	}
+
+	// Hardening still present on backend.
 	assertContains(t, yaml, "no-new-privileges:true")
 
 	// Compose must not override Dockerfile healthchecks.
@@ -186,7 +202,15 @@ func TestGenerateWithDigestPinsAndSandbox(t *testing.T) {
 
 	assertContains(t, yaml, "ghcr.io/aureliolo/synthorg-backend@sha256:aaaa")
 	assertContains(t, yaml, "ghcr.io/aureliolo/synthorg-web@sha256:bbbb")
-	assertContains(t, yaml, "ghcr.io/aureliolo/synthorg-sandbox@sha256:cccc")
+
+	// Sandbox digest pin is wired through the backend env var, not a
+	// standalone image field.
+	assertContains(t, yaml, `SYNTHORG_SANDBOX_IMAGE: "ghcr.io/aureliolo/synthorg-sandbox@sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"`)
+
+	// No standalone sandbox service block.
+	if strings.Contains(yaml, "\n  sandbox:\n") {
+		t.Error("sandbox must not be a compose service")
+	}
 }
 
 func TestGenerateNilDigestPinsFallsBackToTag(t *testing.T) {

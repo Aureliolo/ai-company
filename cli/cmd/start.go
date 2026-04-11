@@ -143,9 +143,22 @@ func startContainers(cmd *cobra.Command, ctx context.Context, state config.State
 		if err := verifyAndPinImages(ctx, cmd, state, safeDir, out, errOut); err != nil {
 			return err
 		}
+		// Reload state to pick up the VerifiedDigests written by
+		// verifyAndPinImages -- the sandbox pre-pull below needs the pinned
+		// reference, not the cached pre-verification state.
+		refreshed, loadErr := config.Load(GetGlobalOpts(ctx).DataDir)
+		if loadErr != nil {
+			return fmt.Errorf("reloading state after verification: %w", loadErr)
+		}
+		state = refreshed
 		out.Blank()
 		if err := pullServicesLive(ctx, info, safeDir, state, out); err != nil {
 			return err
+		}
+		if state.Sandbox {
+			if err := pullSandboxImage(ctx, state, out); err != nil {
+				return err
+			}
 		}
 	}
 
@@ -226,12 +239,54 @@ func pullStartAndWait(ctx context.Context, info docker.Info, safeDir string, sta
 }
 
 // serviceNames returns the list of compose service names for the current config.
-func serviceNames(state config.State) []string {
-	names := []string{"backend", "web"}
-	if state.Sandbox {
-		names = append(names, "sandbox")
+// The sandbox image is intentionally not a compose service -- the backend
+// spawns ephemeral sandbox containers on demand via aiodocker. The image is
+// pre-pulled separately in pullSandboxImage.
+func serviceNames(_ config.State) []string {
+	return []string{"backend", "web"}
+}
+
+// sandboxImageRef returns the digest-pinned sandbox image reference, falling
+// back to the tag-based reference when no verified digest is available.
+func sandboxImageRef(state config.State) string {
+	const repo = "ghcr.io/aureliolo/synthorg-sandbox"
+	if d, ok := state.VerifiedDigests["sandbox"]; ok && d != "" {
+		return repo + "@" + d
 	}
-	return names
+	return repo + ":" + state.ImageTag
+}
+
+// pullSandboxImage pre-pulls the sandbox image via `docker pull` so the first
+// agent code execution isn't blocked on an image pull. The sandbox is not a
+// compose service, so it cannot be pulled via `docker compose pull`.
+func pullSandboxImage(ctx context.Context, state config.State, out *ui.UI) error {
+	imageRef := sandboxImageRef(state)
+	sp := out.StartSpinner(fmt.Sprintf("Pulling sandbox image %s", imageRef))
+	if err := dockerRunQuiet(ctx, "pull", imageRef); err != nil {
+		sp.Error("Failed to pull sandbox image")
+		return fmt.Errorf("pulling sandbox image %s: %w", imageRef, err)
+	}
+	sp.Success("Sandbox image pulled")
+	return nil
+}
+
+// dockerRunQuiet runs a docker command with output captured in a buffer.
+// Mirrors composeRunQuiet but shells out to `docker` directly -- used for
+// operations that aren't tied to a compose service (e.g. pulling the
+// sandbox image).
+func dockerRunQuiet(ctx context.Context, args ...string) error {
+	var buf bytes.Buffer
+	c := exec.CommandContext(ctx, "docker", args...)
+	c.Stdout = &buf
+	c.Stderr = &buf
+	if err := c.Run(); err != nil {
+		output := sanitizeCLIOutput(buf.String())
+		if output != "" {
+			return fmt.Errorf("%w: %s", err, output)
+		}
+		return err
+	}
+	return nil
 }
 
 // pullServicesLive pulls each compose service concurrently, showing

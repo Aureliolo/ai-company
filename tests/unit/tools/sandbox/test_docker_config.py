@@ -12,7 +12,8 @@ pytestmark = pytest.mark.unit
 class TestDockerSandboxConfigDefaults:
     """Default values are sensible."""
 
-    def test_defaults(self) -> None:
+    def test_defaults(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.delenv("SYNTHORG_SANDBOX_IMAGE", raising=False)
         config = DockerSandboxConfig()
         assert config.image == "synthorg-sandbox:latest"
         assert config.network == "none"
@@ -29,6 +30,51 @@ class TestDockerSandboxConfigDefaults:
         config = DockerSandboxConfig()
         with pytest.raises(ValidationError):
             config.image = "other:latest"  # type: ignore[misc]
+
+
+class TestDockerSandboxConfigImageResolution:
+    """SYNTHORG_SANDBOX_IMAGE env var drives the default image reference.
+
+    The CLI injects the digest-pinned sandbox image reference into the
+    backend container via this env var so the CLI and backend stay
+    version-locked. Explicit YAML config still wins over the env var.
+    """
+
+    def test_env_var_provides_default(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        pinned = (
+            "ghcr.io/aureliolo/synthorg-sandbox@sha256:"
+            "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+        )
+        monkeypatch.setenv("SYNTHORG_SANDBOX_IMAGE", pinned)
+        config = DockerSandboxConfig()
+        assert config.image == pinned
+
+    def test_fallback_when_env_var_unset(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.delenv("SYNTHORG_SANDBOX_IMAGE", raising=False)
+        config = DockerSandboxConfig()
+        assert config.image == "synthorg-sandbox:latest"
+
+    def test_fallback_when_env_var_empty(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("SYNTHORG_SANDBOX_IMAGE", "")
+        config = DockerSandboxConfig()
+        assert config.image == "synthorg-sandbox:latest"
+
+    def test_fallback_when_env_var_whitespace(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("SYNTHORG_SANDBOX_IMAGE", "   ")
+        config = DockerSandboxConfig()
+        assert config.image == "synthorg-sandbox:latest"
+
+    def test_explicit_yaml_wins_over_env_var(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv(
+            "SYNTHORG_SANDBOX_IMAGE",
+            "ghcr.io/aureliolo/synthorg-sandbox:env-var",
+        )
+        config = DockerSandboxConfig(image="explicit:yaml")
+        assert config.image == "explicit:yaml"
 
 
 class TestDockerSandboxConfigCustomValues:

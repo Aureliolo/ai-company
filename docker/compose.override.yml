@@ -1,10 +1,17 @@
 # Local development overrides.
 # NOT auto-merged when using -f: include explicitly with:
 #   docker compose -f docker/compose.yml -f docker/compose.override.yml up
+#
+# Enabling the sandbox overlay mounts the host's Docker socket on the
+# backend container so DockerSandbox (aiodocker) can spawn ephemeral
+# per-execution sandbox containers. This mirrors the CLI-generated
+# compose layout produced by `synthorg init --sandbox true`.
+#
+# WARNING: Mounting the Docker socket gives the container full control
+# over the Docker daemon. Only enable in trusted development environments.
 services:
   backend:
-    # Docker socket for agent code execution sandbox.
-    # WARNING: Mounting the Docker socket gives the container full control
-    # over the Docker daemon. Only enable in trusted development environments.
-    # volumes:
-    #   - /var/run/docker.sock:/var/run/docker.sock
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      SYNTHORG_SANDBOX_IMAGE: "ghcr.io/aureliolo/synthorg-sandbox:latest"
