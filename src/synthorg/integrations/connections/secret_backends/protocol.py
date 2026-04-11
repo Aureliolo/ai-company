@@ -7,6 +7,8 @@ storage engine.
 
 from typing import Protocol, runtime_checkable
 
+from synthorg.core.types import NotBlankStr  # noqa: TC001
+
 
 @runtime_checkable
 class SecretBackend(Protocol):
@@ -17,13 +19,13 @@ class SecretBackend(Protocol):
     """
 
     @property
-    def backend_name(self) -> str:
+    def backend_name(self) -> NotBlankStr:
         """Human-readable backend identifier."""
         ...
 
     async def store(
         self,
-        secret_id: str,
+        secret_id: NotBlankStr,
         value: bytes,
     ) -> None:
         """Store an encrypted secret.
@@ -33,7 +35,7 @@ class SecretBackend(Protocol):
         """
         ...
 
-    async def retrieve(self, secret_id: str) -> bytes | None:
+    async def retrieve(self, secret_id: NotBlankStr) -> bytes | None:
         """Retrieve and decrypt a secret.
 
         Returns:
@@ -44,7 +46,7 @@ class SecretBackend(Protocol):
         """
         ...
 
-    async def delete(self, secret_id: str) -> bool:
+    async def delete(self, secret_id: NotBlankStr) -> bool:
         """Delete a secret.
 
         Returns:
@@ -57,9 +59,9 @@ class SecretBackend(Protocol):
 
     async def rotate(
         self,
-        old_id: str,
+        old_id: NotBlankStr,
         new_value: bytes,
-    ) -> str:
+    ) -> NotBlankStr:
         """Rotate a secret: store *new_value* under a new ID, delete *old_id*.
 
         Returns:

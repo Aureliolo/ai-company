@@ -34,6 +34,10 @@ from synthorg.integrations.oauth.flows.client_credentials import (
     ClientCredentialsFlow,
 )
 from synthorg.integrations.oauth.flows.device_flow import DeviceFlow
+from synthorg.integrations.oauth.pkce import (
+    encrypt_pkce_verifier,
+    generate_code_verifier,
+)
 
 
 def _mock_token_response(
@@ -52,10 +56,14 @@ def _mock_token_response(
 class TestAuthorizationCodeFlow:
     async def test_exchange_code_returns_raw_tokens(self) -> None:
         flow = AuthorizationCodeFlow()
+        # OAuthState now stores the PKCE verifier encrypted at rest;
+        # build the same ciphertext the real ``start_flow`` would
+        # produce so ``exchange_code`` can decrypt it back.
+        verifier = generate_code_verifier()
         state = OAuthState(
             state_token=NotBlankStr("state-xyz"),
             connection_name=NotBlankStr("conn-1"),
-            pkce_verifier=NotBlankStr("verifier-abc"),
+            pkce_verifier=NotBlankStr(encrypt_pkce_verifier(verifier)),
             scopes_requested="read",
             redirect_uri="https://app.example.com/cb",
             expires_at=datetime.now(UTC) + timedelta(hours=1),

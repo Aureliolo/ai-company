@@ -6,6 +6,7 @@ API.
 """
 
 import json
+import time
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any
 
@@ -88,6 +89,11 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
+_CREDENTIAL_CACHE_TTL = 300.0
+"""Cached credentials from the connection catalog are refreshed at
+most every ``_CREDENTIAL_CACHE_TTL`` seconds. Prevents pinning stale
+OAuth/rotating tokens for the lifetime of the driver."""
+
 # ── Exception mapping table ──────────────────────────────────────
 
 _EXCEPTION_TABLE: tuple[tuple[type[Exception], type[errors.ProviderError]], ...] = (
@@ -145,6 +151,12 @@ class LiteLLMDriver(BaseCompletionProvider):
         self._config = config
         self._connection_catalog = connection_catalog
         self._resolved_credentials: dict[str, str] | None = None
+        # Cached credentials expire after ``_CREDENTIAL_CACHE_TTL`` so
+        # rotating/OAuth tokens are re-fetched from the catalog
+        # periodically instead of being pinned for the lifetime of
+        # the driver. The TTL is intentionally coarse -- it is a safety
+        # net for rotation, not a token-refresh mechanism.
+        self._credentials_cached_at: float | None = None
         self._model_lookup: MappingProxyType[str, ProviderModelConfig] = (
             MappingProxyType(self._build_model_lookup(config.models))
         )
@@ -153,21 +165,31 @@ class LiteLLMDriver(BaseCompletionProvider):
     async def _ensure_credentials_resolved(self) -> None:
         """Resolve credentials from ConnectionCatalog if needed.
 
-        Called once on first request. Caches the result on the
-        driver instance so subsequent calls are free.
+        Caches the result on the driver instance with a bounded TTL
+        so rotating/OAuth tokens are picked up on a subsequent call
+        rather than pinned forever.
         """
-        if self._resolved_credentials is not None:
-            return
         if self._config.connection_name is None or self._connection_catalog is None:
             return
         from synthorg.observability.events.integrations import (  # noqa: PLC0415
             PROVIDER_CONNECTION_RESOLVED,
         )
 
+        now = time.monotonic()
+        if (
+            self._resolved_credentials is not None
+            and self._credentials_cached_at is not None
+            and (now - self._credentials_cached_at) < _CREDENTIAL_CACHE_TTL
+        ):
+            return
+
         creds = await self._connection_catalog.get_credentials(
             self._config.connection_name,
         )
-        self._resolved_credentials = creds
+        # Snapshot so the caller's view is insulated from any
+        # subsequent mutation in the catalog layer.
+        self._resolved_credentials = dict(creds)
+        self._credentials_cached_at = now
         logger.info(
             PROVIDER_CONNECTION_RESOLVED,
             provider=self._provider_name,

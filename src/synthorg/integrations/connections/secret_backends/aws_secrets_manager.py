@@ -1,4 +1,4 @@
-"""AWS Secrets Manager secret backend (stub).
+"""Cloud secret manager backend -- variant A (stub).
 
 Full implementation deferred -- this stub satisfies the
 pluggable-backend protocol and raises ``NotImplementedError``
@@ -12,8 +12,8 @@ from synthorg.observability.events.integrations import (
 
 logger = get_logger(__name__)
 
-_BACKEND_NAME = "aws_secrets_manager"
-_MSG = "AWS Secrets Manager backend not yet implemented"
+_BACKEND_NAME = "secret_manager_cloud_a"
+_MSG = "Cloud secret manager (variant A) backend not yet implemented"
 
 
 class AwsSecretsManagerBackend:

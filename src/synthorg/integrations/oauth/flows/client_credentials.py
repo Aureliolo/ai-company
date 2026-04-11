@@ -76,10 +76,26 @@ class ClientCredentialsFlow:
             msg = f"Client credentials exchange failed: {exc}"
             raise TokenExchangeFailedError(msg) from exc
 
-        access_token = str(data.get("access_token", ""))
-        if not access_token:
-            msg = "No access_token in client credentials response"
+        if not isinstance(data, dict):
+            logger.warning(
+                OAUTH_TOKEN_EXCHANGE_FAILED,
+                error="token response is not a JSON object",
+                response_type=type(data).__name__,
+            )
+            msg = (
+                "Client credentials response is not a JSON object: "
+                f"{type(data).__name__}"
+            )
             raise TokenExchangeFailedError(msg)
+        access_token_raw = data.get("access_token")
+        if not isinstance(access_token_raw, str) or not access_token_raw:
+            logger.warning(
+                OAUTH_TOKEN_EXCHANGE_FAILED,
+                error="missing or invalid access_token",
+            )
+            msg = "No valid access_token in client credentials response"
+            raise TokenExchangeFailedError(msg)
+        access_token = access_token_raw
 
         expires_in = data.get("expires_in")
         expires_at = None

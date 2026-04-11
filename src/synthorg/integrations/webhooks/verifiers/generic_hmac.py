@@ -45,7 +45,14 @@ class GenericHmacVerifier:
         secret: str,
     ) -> bool:
         """Verify a generic HMAC-SHA256 webhook signature."""
-        raw_signature = headers.get(self._header_name, "")
+        raw_signature = next(
+            (
+                value
+                for key, value in headers.items()
+                if key.lower() == self._header_name
+            ),
+            "",
+        )
         if self._prefix and raw_signature.startswith(self._prefix):
             received = raw_signature[len(self._prefix) :]
         else:

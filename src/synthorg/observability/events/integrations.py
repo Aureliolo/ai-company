@@ -76,6 +76,7 @@ TOOL_RATE_LIMIT_BACKOFF: Final[str] = "integrations.rate_limit.backoff"
 # -- MCP catalog ---------------------------------------------------------
 
 MCP_CATALOG_BROWSED: Final[str] = "integrations.mcp_catalog.browsed"
+MCP_CATALOG_ENTRY_NOT_FOUND: Final[str] = "integrations.mcp_catalog.entry_not_found"
 MCP_SERVER_INSTALLED: Final[str] = "integrations.mcp_catalog.installed"
 MCP_SERVER_INSTALL_FAILED: Final[str] = "integrations.mcp_catalog.install_failed"
 

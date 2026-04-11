@@ -22,7 +22,13 @@ CREATE TABLE "connections" (
   "metadata_json" jsonb NOT NULL DEFAULT '{}',
   "created_at" timestamptz NOT NULL,
   "updated_at" timestamptz NOT NULL,
-  PRIMARY KEY ("name")
+  PRIMARY KEY ("name"),
+  CONSTRAINT "connections_auth_method_check" CHECK (auth_method = ANY (ARRAY['api_key'::text, 'oauth2'::text, 'basic_auth'::text, 'bearer_token'::text, 'custom'::text])),
+  CONSTRAINT "connections_connection_type_check" CHECK (connection_type = ANY (ARRAY['github'::text, 'slack'::text, 'smtp'::text, 'database'::text, 'generic_http'::text, 'oauth_app'::text])),
+  CONSTRAINT "connections_health_status_check" CHECK (health_status = ANY (ARRAY['healthy'::text, 'degraded'::text, 'unhealthy'::text, 'unknown'::text])),
+  CONSTRAINT "connections_name_check" CHECK (length(name) > 0),
+  CONSTRAINT "connections_rate_limit_concurrent_check" CHECK (rate_limit_concurrent >= 0),
+  CONSTRAINT "connections_rate_limit_rpm_check" CHECK (rate_limit_rpm >= 0)
 );
 -- Create index "idx_connections_type" to table: "connections"
 CREATE INDEX "idx_connections_type" ON "connections" ("connection_type");

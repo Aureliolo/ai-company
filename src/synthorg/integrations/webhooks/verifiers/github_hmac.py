@@ -12,6 +12,22 @@ from synthorg.observability.events.integrations import (
 logger = get_logger(__name__)
 
 
+def _lookup_header_case_insensitive(
+    headers: dict[str, str],
+    name: str,
+) -> str:
+    """Return the first header value matching ``name`` regardless of case.
+
+    Returns ``""`` when no match is found so callers can keep the
+    existing empty-string fallback behaviour.
+    """
+    lowered = name.lower()
+    for key, value in headers.items():
+        if key.lower() == lowered:
+            return value
+    return ""
+
+
 class GitHubHmacVerifier:
     """Verifies GitHub webhook signatures.
 
@@ -33,7 +49,10 @@ class GitHubHmacVerifier:
         secret: str,
     ) -> bool:
         """Verify a GitHub webhook signature."""
-        signature = headers.get(self.signature_header, "")
+        signature = _lookup_header_case_insensitive(
+            headers,
+            self.signature_header,
+        )
         if not signature.startswith("sha256="):
             logger.warning(
                 WEBHOOK_SIGNATURE_INVALID,

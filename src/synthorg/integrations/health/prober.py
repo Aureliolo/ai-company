@@ -192,10 +192,19 @@ class HealthProberService:
             else:
                 count = self._failure_counts.get(name, 0) + 1
                 self._failure_counts[name] = count
+                # Honour ``degraded_threshold``: stay ``HEALTHY`` until
+                # the degraded threshold is reached, transition to
+                # ``DEGRADED`` between the two thresholds, and flip to
+                # ``UNHEALTHY`` only once ``unhealthy_threshold`` is
+                # hit. Previously a single failure forced ``DEGRADED``
+                # regardless of configuration, so raising
+                # ``degraded_threshold`` had no effect.
                 if count >= self._unhealthy_threshold:
                     new_status = ConnectionStatus.UNHEALTHY
-                else:
+                elif count >= self._degraded_threshold:
                     new_status = ConnectionStatus.DEGRADED
+                else:
+                    new_status = ConnectionStatus.HEALTHY
 
         if old_status != new_status:
             logger.info(

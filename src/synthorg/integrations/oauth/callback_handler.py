@@ -143,6 +143,11 @@ async def handle_oauth_callback(
     meta_updates = dict(conn.metadata)
     if token.expires_at:
         meta_updates["token_expires_at"] = token.expires_at.isoformat()
+    else:
+        # New token has no expiry (non-expiring grant). Drop any
+        # stale ``token_expires_at`` carried over from a prior flow
+        # so we do not incorrectly mark the token as expired later.
+        meta_updates.pop("token_expires_at", None)
     await catalog.update(conn.name, metadata=meta_updates)
 
     logger.info(

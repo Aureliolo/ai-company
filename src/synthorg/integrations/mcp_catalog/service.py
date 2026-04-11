@@ -83,6 +83,16 @@ class CatalogService:
                 error="failed to load bundled catalog",
             )
             raise
+        except ValueError, TypeError:
+            # Catches ``ConnectionType(conn_type)`` enum rejection
+            # and ``CatalogEntry(...)`` Pydantic validation errors so
+            # a malformed bundled entry surfaces as a logged failure
+            # instead of escaping silently.
+            logger.exception(
+                MCP_SERVER_INSTALL_FAILED,
+                error="bundled catalog entry failed model validation",
+            )
+            raise
         self._entries = tuple(entries)
         self._loaded = True
 

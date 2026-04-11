@@ -55,6 +55,22 @@ class TestSharedRateLimitCoordinator:
             connection_name="cross-worker",
             max_rpm=2,
         )
+        # Deterministic synchronization: wrap coord_b's ``_ingest`` so
+        # every time the poll loop accepts a remote acquire event we
+        # ``set()`` an event the test can ``wait_for``. Avoids the
+        # previous polling loop that would flake under CI load.
+        ingest_event = asyncio.Event()
+        original_ingest = coord_b._ingest
+
+        async def _observing_ingest(message: object) -> None:
+            await original_ingest(message)
+            # Only flip the event once both coord_a acquires have
+            # landed in coord_b's local view.
+            if len(coord_b._window) >= 2:
+                ingest_event.set()
+
+        coord_b._ingest = _observing_ingest  # type: ignore[method-assign]
+
         await coord_a.start()
         await coord_b.start()
         try:
@@ -62,13 +78,9 @@ class TestSharedRateLimitCoordinator:
             await coord_a.acquire()
             await coord_a.acquire()
 
-            # Wait for the publish to propagate through the in-memory
-            # bus into coordinator B's ingest path.
-            for _ in range(20):
-                if len(coord_b._window) >= 2:
-                    break
-                await asyncio.sleep(0.1)
-
+            # Wait for both publishes to propagate through the
+            # in-memory bus into coord_b's ingest path.
+            await asyncio.wait_for(ingest_event.wait(), timeout=2.0)
             assert len(coord_b._window) >= 2
 
             # Coordinator B should now reject because the global

@@ -160,7 +160,14 @@ class SharedRateLimitCoordinator:
                 raise ConnectionRateLimitError(msg)
 
             self._window.append(now)
-        await self._publish_acquire(now)
+        # Skip the publish path entirely once we have fallen back to
+        # local-only mode. Retrying a broken bus publish on every
+        # acquire would otherwise flood the logs with warnings and
+        # never actually resubscribe (the coordinator has no retry
+        # policy -- the fall-back is terminal until ``stop()`` +
+        # ``start()`` recreates the subscription).
+        if self._distributed:
+            await self._publish_acquire(now)
 
     def _evict_old(self, now: float) -> None:
         """Remove entries older than 60 seconds."""
@@ -170,6 +177,8 @@ class SharedRateLimitCoordinator:
 
     async def _publish_acquire(self, acquired_at: float) -> None:
         """Publish an acquire event for other workers."""
+        if not self._distributed:
+            return
         message = Message(
             timestamp=datetime.now(UTC),
             sender=f"ratelimit:{self._connection_name}",

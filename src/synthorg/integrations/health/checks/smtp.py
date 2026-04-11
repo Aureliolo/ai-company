@@ -32,7 +32,12 @@ class SmtpHealthCheck:
                 self._sync_check,
                 connection,
             )
-        except Exception as exc:
+        except (smtplib.SMTPException, OSError, ValueError) as exc:
+            # Only catch expected transport/config errors. Programming
+            # bugs (TypeError, AttributeError, etc.) must propagate so
+            # they are not silently reported as a transient SMTP
+            # outage. ``ValueError`` is included to cover malformed
+            # port metadata in ``_sync_check``.
             elapsed = (time.monotonic() - start) * 1000
             logger.warning(
                 HEALTH_CHECK_FAILED,

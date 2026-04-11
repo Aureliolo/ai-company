@@ -2,6 +2,12 @@
 
 from synthorg.integrations.connections.models import ConnectionType
 from synthorg.integrations.errors import InvalidConnectionAuthError
+from synthorg.observability import get_logger
+from synthorg.observability.events.integrations import (
+    CONNECTION_VALIDATION_FAILED,
+)
+
+logger = get_logger(__name__)
 
 
 class GenericHttpAuthenticator:
@@ -22,7 +28,14 @@ class GenericHttpAuthenticator:
         credentials: dict[str, str],
     ) -> None:
         """Validate credential fields."""
-        if "base_url" not in credentials or not credentials["base_url"].strip():
+        base_url = credentials.get("base_url")
+        if not isinstance(base_url, str) or not base_url.strip():
+            logger.warning(
+                CONNECTION_VALIDATION_FAILED,
+                connection_type=ConnectionType.GENERIC_HTTP.value,
+                field="base_url",
+                error="missing, non-string, or blank",
+            )
             msg = "Generic HTTP connection requires a 'base_url' field"
             raise InvalidConnectionAuthError(msg)
 

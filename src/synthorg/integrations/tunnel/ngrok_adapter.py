@@ -85,7 +85,7 @@ class NgrokAdapter:
             msg = f"Failed to start ngrok tunnel: {exc}"
             raise TunnelError(msg) from exc
 
-        logger.warning(
+        logger.info(
             TUNNEL_STARTED,
             public_url=self._public_url,
             port=self._port,

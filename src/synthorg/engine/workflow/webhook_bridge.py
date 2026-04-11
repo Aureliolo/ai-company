@@ -115,8 +115,29 @@ class WebhookEventBridge:
                         WEBHOOK_BRIDGE_POLL_ERROR,
                         error="too many consecutive errors, stopping",
                     )
-                    # Clear the task reference so ``start()`` can
-                    # be called again to re-subscribe after recovery.
+                    # Unsubscribe before clearing the task reference
+                    # so a later ``start()`` can register a fresh
+                    # subscription. Leaving the stale subscriber id
+                    # attached would let the bus queue deliveries
+                    # that never get consumed, and ``start()`` would
+                    # then fail with a duplicate-subscriber error.
+                    try:
+                        await self._bus.unsubscribe(
+                            WEBHOOK_CHANNEL.name,
+                            _SUBSCRIBER_ID,
+                        )
+                    except Exception:
+                        logger.warning(
+                            WEBHOOK_BRIDGE_STOPPED,
+                            subscriber_id=_SUBSCRIBER_ID,
+                            channel=WEBHOOK_CHANNEL.name,
+                            error=(
+                                "unsubscribe failed after max "
+                                "consecutive errors; state may need "
+                                "manual reset before restart"
+                            ),
+                            exc_info=True,
+                        )
                     self._task = None
                     return
                 logger.warning(

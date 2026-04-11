@@ -45,8 +45,14 @@ Credentials are encrypted at rest via a pluggable `SecretBackend`:
 |---------|------------|--------|
 | `encrypted_sqlite` | Fernet-encrypted in same DB (default) | Implemented |
 | `env_var` | Read-only, env var passthrough | Implemented |
+| `secret_manager_vault` | External secret manager adapter | Stub |
+| `secret_manager_cloud_a` | Cloud secret manager (variant A) | Stub |
+| `secret_manager_cloud_b` | Cloud secret manager (variant B) | Stub |
 
-Master key from `SYNTHORG_MASTER_KEY` env var.
+The master key is read from the environment variable named by
+`EncryptedSqliteConfig.master_key_env` (default `SYNTHORG_MASTER_KEY`).
+Set that field to use a different variable name when deploying
+multiple instances that each need their own isolated key.
 
 ### API Endpoints
 

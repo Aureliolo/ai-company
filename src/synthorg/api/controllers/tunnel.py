@@ -10,6 +10,11 @@ from synthorg.api.dto import ApiResponse
 from synthorg.api.guards import require_read_access, require_write_access
 from synthorg.integrations.errors import TunnelError
 from synthorg.observability import get_logger
+from synthorg.observability.events.integrations import (
+    TUNNEL_ERROR,
+    TUNNEL_STARTED,
+    TUNNEL_STOPPED,
+)
 
 logger = get_logger(__name__)
 
@@ -38,7 +43,16 @@ class TunnelController(Controller):
         try:
             url = await tunnel.start()
         except TunnelError as exc:
+            logger.warning(
+                TUNNEL_ERROR,
+                action="start",
+                error=str(exc),
+            )
             raise ServiceUnavailableError(str(exc)) from exc
+        logger.info(
+            TUNNEL_STARTED,
+            public_url=url,
+        )
         return ApiResponse(data={"public_url": url})
 
     @post(
@@ -51,8 +65,21 @@ class TunnelController(Controller):
         state: State,
     ) -> ApiResponse[None]:
         """Stop the ngrok tunnel."""
+        from synthorg.api.errors import (  # noqa: PLC0415
+            ServiceUnavailableError,
+        )
+
         tunnel = state["app_state"].tunnel_provider
-        await tunnel.stop()
+        try:
+            await tunnel.stop()
+        except TunnelError as exc:
+            logger.warning(
+                TUNNEL_ERROR,
+                action="stop",
+                error=str(exc),
+            )
+            raise ServiceUnavailableError(str(exc)) from exc
+        logger.info(TUNNEL_STOPPED)
         return ApiResponse(data=None)
 
     @get(

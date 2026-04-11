@@ -802,15 +802,30 @@ CREATE TABLE connection_secrets (
 
 -- ── Connections ──────────────────────────────────────────────
 CREATE TABLE connections (
-    name TEXT NOT NULL PRIMARY KEY,
-    connection_type TEXT NOT NULL,
-    auth_method TEXT NOT NULL,
+    name TEXT NOT NULL PRIMARY KEY CHECK(length(name) > 0),
+    connection_type TEXT NOT NULL CHECK(
+        connection_type IN (
+            'github', 'slack', 'smtp', 'database',
+            'generic_http', 'oauth_app'
+        )
+    ),
+    auth_method TEXT NOT NULL CHECK(
+        auth_method IN (
+            'api_key', 'oauth2', 'basic_auth',
+            'bearer_token', 'custom'
+        )
+    ),
     base_url TEXT,
     secret_refs_json TEXT NOT NULL DEFAULT '[]',
-    rate_limit_rpm INTEGER NOT NULL DEFAULT 0,
-    rate_limit_concurrent INTEGER NOT NULL DEFAULT 0,
-    health_check_enabled INTEGER NOT NULL DEFAULT 1,
-    health_status TEXT NOT NULL DEFAULT 'unknown',
+    rate_limit_rpm INTEGER NOT NULL DEFAULT 0 CHECK(rate_limit_rpm >= 0),
+    rate_limit_concurrent INTEGER NOT NULL DEFAULT 0
+        CHECK(rate_limit_concurrent >= 0),
+    health_check_enabled INTEGER NOT NULL DEFAULT 1
+        CHECK(health_check_enabled IN (0, 1)),
+    health_status TEXT NOT NULL DEFAULT 'unknown'
+        CHECK(
+            health_status IN ('healthy', 'degraded', 'unhealthy', 'unknown')
+        ),
     last_health_check_at TEXT,
     metadata_json TEXT NOT NULL DEFAULT '{}',
     created_at TEXT NOT NULL,

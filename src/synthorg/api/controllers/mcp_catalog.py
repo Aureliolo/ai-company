@@ -12,6 +12,9 @@ from synthorg.api.guards import require_read_access
 from synthorg.integrations.connections.models import CatalogEntry  # noqa: TC001
 from synthorg.integrations.errors import CatalogEntryNotFoundError
 from synthorg.observability import get_logger
+from synthorg.observability.events.integrations import (
+    MCP_CATALOG_ENTRY_NOT_FOUND,
+)
 
 logger = get_logger(__name__)
 
@@ -68,5 +71,10 @@ class MCPCatalogController(Controller):
         try:
             entry = await service.get_entry(entry_id)
         except CatalogEntryNotFoundError as exc:
+            logger.warning(
+                MCP_CATALOG_ENTRY_NOT_FOUND,
+                entry_id=entry_id,
+                error=str(exc),
+            )
             raise NotFoundError(str(exc)) from exc
         return ApiResponse(data=entry)

@@ -22,7 +22,26 @@ CREATE TABLE `connections` (
   `metadata_json` text NOT NULL DEFAULT '{}',
   `created_at` text NOT NULL,
   `updated_at` text NOT NULL,
-  PRIMARY KEY (`name`)
+  PRIMARY KEY (`name`),
+  CHECK (length(name) > 0),
+  CHECK (
+        connection_type IN (
+            'github', 'slack', 'smtp', 'database',
+            'generic_http', 'oauth_app'
+        )
+    ),
+  CHECK (
+        auth_method IN (
+            'api_key', 'oauth2', 'basic_auth',
+            'bearer_token', 'custom'
+        )
+    ),
+  CHECK (rate_limit_rpm >= 0),
+  CHECK (rate_limit_concurrent >= 0),
+  CHECK (health_check_enabled IN (0, 1)),
+  CHECK (
+            health_status IN ('healthy', 'degraded', 'unhealthy', 'unknown')
+        )
 );
 -- Create index "idx_connections_type" to table: "connections"
 CREATE INDEX `idx_connections_type` ON `connections` (`connection_type`);

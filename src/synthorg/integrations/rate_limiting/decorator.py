@@ -19,7 +19,18 @@ logger = get_logger(__name__)
 
 T = TypeVar("T")
 
-_limiters: dict[str, RateLimiter] = {}
+_limiters: dict[tuple[str, str], RateLimiter] = {}
+
+
+def _config_signature(config: RateLimiterConfig) -> str:
+    """Stable hash of the rate-limiter config.
+
+    Used as part of the limiter cache key so different
+    ``RateLimiterConfig`` instances targeting the same connection
+    get distinct limiters instead of silently reusing whichever
+    config was cached first.
+    """
+    return config.model_dump_json()
 
 
 def _get_or_create_limiter(
@@ -27,12 +38,13 @@ def _get_or_create_limiter(
     config: RateLimiterConfig,
 ) -> RateLimiter:
     """Get or create a rate limiter for a connection."""
-    if connection_name not in _limiters:
-        _limiters[connection_name] = RateLimiter(
+    key = (connection_name, _config_signature(config))
+    if key not in _limiters:
+        _limiters[key] = RateLimiter(
             config,
             provider_name=f"connection:{connection_name}",
         )
-    return _limiters[connection_name]
+    return _limiters[key]
 
 
 def with_connection_rate_limit(
@@ -64,6 +76,7 @@ def with_connection_rate_limit(
     effective_config = config or RateLimiterConfig(
         max_requests_per_minute=60,
     )
+    config_was_explicit = config is not None
 
     def decorator(
         fn: Callable[..., Coroutine[Any, Any, T]],
@@ -81,6 +94,24 @@ def with_connection_rate_limit(
                     TOOL_RATE_LIMIT_ACQUIRED,
                     connection_name=connection_name,
                 )
+                # When the caller passed an explicit ``config=``,
+                # also honour it via the local token-bucket limiter
+                # so workload-specific overrides are not silently
+                # dropped just because a cross-worker coordinator
+                # exists. The coordinator enforces the connection-
+                # wide fair share; the local limiter then enforces
+                # the caller's narrower per-tool cap on top.
+                if config_was_explicit:
+                    limiter = _get_or_create_limiter(
+                        connection_name,
+                        effective_config,
+                    )
+                    if limiter.is_enabled:
+                        await limiter.acquire()
+                        try:
+                            return await fn(*args, **kwargs)
+                        finally:
+                            limiter.release()
                 return await fn(*args, **kwargs)
 
             limiter = _get_or_create_limiter(

@@ -31,15 +31,18 @@ class _SpyExternalTriggerStrategy(ExternalTriggerStrategy):
     """Real strategy subclass that records ``on_external_event`` calls.
 
     The parent class uses ``__slots__`` so we extend the slot tuple
-    with ``calls`` to add our own instance attribute without
-    triggering ``AttributeError``.
+    with ``calls`` and ``called`` to add our own instance attributes
+    without triggering ``AttributeError``. ``called`` is an
+    ``asyncio.Event`` that tests ``await`` to deterministically wait
+    for a forwarded event instead of polling with ``sleep``.
     """
 
-    __slots__ = ("calls",)
+    __slots__ = ("called", "calls")
 
     def __init__(self) -> None:
         super().__init__()
         self.calls: list[tuple[object, str, Mapping[str, Any]]] = []
+        self.called: asyncio.Event = asyncio.Event()
 
     async def on_external_event(
         self,
@@ -48,6 +51,7 @@ class _SpyExternalTriggerStrategy(ExternalTriggerStrategy):
         payload: Mapping[str, Any],
     ) -> None:
         self.calls.append((sprint, event_name, payload))
+        self.called.set()
 
 
 class _SpyCeremonyScheduler:
@@ -94,11 +98,11 @@ class TestWebhookFullPath:
                 event_type="issues.opened",
                 payload={"number": 42, "title": "hello"},
             )
-            # Wait for the bridge to consume the message (poll timeout 1s).
-            for _ in range(20):
-                if strategy.calls:
-                    break
-                await asyncio.sleep(0.1)
+            # Wait deterministically for the bridge to consume the
+            # message. ``strategy.called`` is ``set()`` inside the
+            # real ``on_external_event`` override; if the bridge
+            # wiring is broken the timeout fires instead of flaking.
+            await asyncio.wait_for(strategy.called.wait(), timeout=2.0)
         finally:
             await bridge.stop()
 

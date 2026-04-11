@@ -33,29 +33,23 @@ class TestGitHubHmacVerifier:
         )
         assert result is True
 
-    async def test_invalid_signature_rejected(self) -> None:
+    @pytest.mark.parametrize(
+        ("headers", "case"),
+        [
+            ({"x-hub-signature-256": "sha256=bad"}, "bad_digest"),
+            ({"x-hub-signature-256": "noprefixhere"}, "missing_prefix"),
+            ({}, "missing_header"),
+        ],
+    )
+    async def test_negative_cases_rejected(
+        self,
+        headers: dict[str, str],
+        case: str,
+    ) -> None:
         verifier = GitHubHmacVerifier()
         result = await verifier.verify(
             body=b"payload",
-            headers={"x-hub-signature-256": "sha256=bad"},
-            secret="secret",
-        )
-        assert result is False
-
-    async def test_missing_prefix_rejected(self) -> None:
-        verifier = GitHubHmacVerifier()
-        result = await verifier.verify(
-            body=b"payload",
-            headers={"x-hub-signature-256": "noprefixhere"},
-            secret="secret",
-        )
-        assert result is False
-
-    async def test_missing_header_rejected(self) -> None:
-        verifier = GitHubHmacVerifier()
-        result = await verifier.verify(
-            body=b"payload",
-            headers={},
+            headers=headers,
             secret="secret",
         )
         assert result is False
@@ -86,23 +80,28 @@ class TestSlackSigningVerifier:
         )
         assert result is True
 
-    async def test_old_timestamp_rejected(self) -> None:
+    @pytest.mark.parametrize(
+        ("headers", "case"),
+        [
+            (
+                {
+                    "x-slack-request-timestamp": "1000000000",
+                    "x-slack-signature": "v0=bad",
+                },
+                "old_timestamp",
+            ),
+            ({}, "missing_headers"),
+        ],
+    )
+    async def test_negative_cases_rejected(
+        self,
+        headers: dict[str, str],
+        case: str,
+    ) -> None:
         verifier = SlackSigningVerifier()
         result = await verifier.verify(
             body=b"payload",
-            headers={
-                "x-slack-request-timestamp": "1000000000",
-                "x-slack-signature": "v0=bad",
-            },
-            secret="secret",
-        )
-        assert result is False
-
-    async def test_missing_headers_rejected(self) -> None:
-        verifier = SlackSigningVerifier()
-        result = await verifier.verify(
-            body=b"payload",
-            headers={},
+            headers=headers,
             secret="secret",
         )
         assert result is False

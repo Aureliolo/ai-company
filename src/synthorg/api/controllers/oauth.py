@@ -168,7 +168,10 @@ class OAuthController(Controller):
         expires_at = conn.metadata.get("token_expires_at")
         # Check the credential blob for a stored access_token as
         # a secondary signal (e.g. non-expiring client credentials).
-        has_access_token = False
+        # ``has_token=None`` signals a secret-store outage -- distinct
+        # from ``False`` (user never connected) so the UI can render a
+        # "backend unavailable" state instead of prompting a reconnect.
+        has_access_token: bool | None = False
         try:
             credentials = await catalog.get_credentials(connection_name)
             has_access_token = bool(credentials.get("access_token"))
@@ -179,10 +182,15 @@ class OAuthController(Controller):
                 error="credential lookup failed in /status",
                 exc_info=True,
             )
+            has_access_token = None
+        if has_access_token is None:
+            has_token: bool | None = None
+        else:
+            has_token = bool(expires_at) or has_access_token
         return ApiResponse(
             data={
                 "connection_name": connection_name,
-                "has_token": bool(expires_at) or has_access_token,
+                "has_token": has_token,
                 "token_expires_at": expires_at,
             },
         )

@@ -1,15 +1,27 @@
 """PKCE (RFC 7636) utilities for OAuth 2.1 authorization code flows.
 
-Provides code verifier generation and SHA-256 code challenge
-computation per the PKCE specification.
+Provides code verifier generation, SHA-256 code challenge
+computation, and symmetric at-rest encryption for the verifier.
+
+The verifier is ephemeral but persisted in ``oauth_states`` between
+the authorization request and the code exchange. Storing it in
+plaintext means a database leak gives an attacker the verifier
+needed to complete an intercepted authorization code. We wrap the
+verifier in Fernet symmetric encryption using the same master key
+as the encrypted_sqlite secret backend, so the DB row alone is not
+sufficient to recover it.
 """
 
 import base64
 import hashlib
+import os
 import re
 import secrets
+from threading import Lock
 
-from synthorg.integrations.errors import PKCEValidationError
+from cryptography.fernet import Fernet, InvalidToken
+
+from synthorg.integrations.errors import MasterKeyError, PKCEValidationError
 from synthorg.observability import get_logger
 
 logger = get_logger(__name__)
@@ -18,6 +30,92 @@ _UNRESERVED_RE = re.compile(r"^[A-Za-z0-9\-._~]+$")
 _VERIFIER_LENGTH = 128
 _MIN_VERIFIER_LENGTH = 43
 _MAX_VERIFIER_LENGTH = 128
+
+_MASTER_KEY_ENV = "SYNTHORG_MASTER_KEY"
+_cipher_lock = Lock()
+_cipher_holder: list[Fernet | None] = [None]
+
+
+def _get_cipher() -> Fernet:
+    """Return the lazy-initialized Fernet instance for verifier cipher.
+
+    Raises:
+        MasterKeyError: If ``SYNTHORG_MASTER_KEY`` is unset or invalid.
+    """
+    with _cipher_lock:
+        cached = _cipher_holder[0]
+        if cached is not None:
+            return cached
+        raw = os.environ.get(_MASTER_KEY_ENV, "").strip()
+        if not raw:
+            msg = (
+                f"{_MASTER_KEY_ENV} must be set to a valid Fernet key "
+                f"to encrypt OAuth PKCE verifiers at rest"
+            )
+            raise MasterKeyError(msg)
+        try:
+            cipher = Fernet(raw.encode("ascii"))
+        except (ValueError, TypeError) as exc:
+            msg = f"Invalid Fernet key in {_MASTER_KEY_ENV}"
+            raise MasterKeyError(msg) from exc
+        _cipher_holder[0] = cipher
+        return cipher
+
+
+def _reset_cipher_for_tests() -> None:
+    """Reset the cached cipher. Test-only hook for env-var changes."""
+    with _cipher_lock:
+        _cipher_holder[0] = None
+
+
+def encrypt_pkce_verifier(verifier: str) -> str:
+    """Encrypt a PKCE verifier for at-rest storage.
+
+    Args:
+        verifier: Raw verifier string.
+
+    Returns:
+        URL-safe Fernet ciphertext (ASCII).
+
+    Raises:
+        MasterKeyError: If the master key is not configured.
+    """
+    validate_code_verifier(verifier)
+    cipher = _get_cipher()
+    token = cipher.encrypt(verifier.encode("ascii"))
+    return token.decode("ascii")
+
+
+def decrypt_pkce_verifier(ciphertext: str) -> str:
+    """Decrypt a stored PKCE verifier.
+
+    Args:
+        ciphertext: Fernet ciphertext produced by
+            :func:`encrypt_pkce_verifier`.
+
+    Returns:
+        The original verifier plaintext.
+
+    Raises:
+        PKCEValidationError: If the ciphertext cannot be decrypted
+            (tamper, wrong key, or plaintext stored instead of
+            ciphertext).
+    """
+    cipher = _get_cipher()
+    try:
+        plaintext = cipher.decrypt(ciphertext.encode("ascii"))
+    except InvalidToken as exc:
+        from synthorg.observability.events.integrations import (  # noqa: PLC0415
+            OAUTH_PKCE_VALIDATION_FAILED,
+        )
+
+        logger.warning(
+            OAUTH_PKCE_VALIDATION_FAILED,
+            error="verifier decrypt failed (tamper or wrong key)",
+        )
+        msg = "Failed to decrypt stored PKCE verifier"
+        raise PKCEValidationError(msg) from exc
+    return plaintext.decode("ascii")
 
 
 def generate_code_verifier() -> str:
@@ -95,7 +193,15 @@ def validate_code_challenge(verifier: str, challenge: str) -> None:
     Raises:
         PKCEValidationError: If the challenge does not match.
     """
+    from synthorg.observability.events.integrations import (  # noqa: PLC0415
+        OAUTH_PKCE_VALIDATION_FAILED,
+    )
+
     expected = generate_code_challenge(verifier)
     if not secrets.compare_digest(expected, challenge):
+        logger.warning(
+            OAUTH_PKCE_VALIDATION_FAILED,
+            error="challenge mismatch",
+        )
         msg = "Code challenge does not match verifier"
         raise PKCEValidationError(msg)

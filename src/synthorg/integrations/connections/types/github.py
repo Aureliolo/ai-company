@@ -27,12 +27,13 @@ class GitHubAuthenticator:
         credentials: dict[str, str],
     ) -> None:
         """Validate credential fields."""
-        if "token" not in credentials or not credentials["token"].strip():
+        token = credentials.get("token")
+        if not isinstance(token, str) or not token.strip():
             logger.warning(
                 CONNECTION_VALIDATION_FAILED,
-                connection_type=str(ConnectionType.GITHUB),
+                connection_type=ConnectionType.GITHUB.value,
                 field="token",
-                error="missing or blank",
+                error="missing, non-string, or blank",
             )
             msg = "GitHub connection requires a 'token' field"
             raise InvalidConnectionAuthError(msg)

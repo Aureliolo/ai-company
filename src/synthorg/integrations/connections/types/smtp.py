@@ -2,6 +2,12 @@
 
 from synthorg.integrations.connections.models import ConnectionType
 from synthorg.integrations.errors import InvalidConnectionAuthError
+from synthorg.observability import get_logger
+from synthorg.observability.events.integrations import (
+    CONNECTION_VALIDATION_FAILED,
+)
+
+logger = get_logger(__name__)
 
 
 class SmtpAuthenticator:
@@ -22,12 +28,29 @@ class SmtpAuthenticator:
         credentials: dict[str, str],
     ) -> None:
         """Validate credential fields."""
-        if "host" not in credentials or not credentials["host"].strip():
+        host = credentials.get("host")
+        if not isinstance(host, str) or not host.strip():
+            logger.warning(
+                CONNECTION_VALIDATION_FAILED,
+                connection_type=ConnectionType.SMTP.value,
+                field="host",
+                error="missing, non-string, or blank",
+            )
             msg = "SMTP connection requires a 'host' field"
             raise InvalidConnectionAuthError(msg)
         username = credentials.get("username", "")
         password = credentials.get("password", "")
-        if bool(username) != bool(password):
+        # Normalize whitespace so pure-whitespace values do not look
+        # valid to ``bool()``.
+        username_s = username.strip() if isinstance(username, str) else ""
+        password_s = password.strip() if isinstance(password, str) else ""
+        if bool(username_s) != bool(password_s):
+            logger.warning(
+                CONNECTION_VALIDATION_FAILED,
+                connection_type=ConnectionType.SMTP.value,
+                field="username/password",
+                error="must provide both or neither",
+            )
             msg = "SMTP connection requires both 'username' and 'password', or neither"
             raise InvalidConnectionAuthError(msg)
 

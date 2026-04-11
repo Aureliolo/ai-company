@@ -121,10 +121,13 @@ class StubWebhookReceiptRepository:
         *,
         limit: int = 100,
     ) -> tuple[WebhookReceipt, ...]:
-        """List by connection (deep-copied)."""
+        """List by connection (deep-copied), newest-first."""
+        # ``self._store`` is append-ordered, so the most recent
+        # receipts live at the end. The repository contract asks
+        # callers to receive newest-first, so reverse before slicing.
         matches = [
             copy.deepcopy(r)
-            for r in self._store
+            for r in reversed(self._store)
             if r.connection_name == connection_name
         ]
         return tuple(matches[:limit])

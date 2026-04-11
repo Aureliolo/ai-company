@@ -75,6 +75,18 @@ class ReplayProtector:
         """
         now = self._clock()
 
+        # Fail closed: when neither a nonce nor a timestamp is supplied
+        # the protector has nothing to check against, so accepting the
+        # request would silently downgrade replay protection to a
+        # no-op. Reject instead -- misconfigured verifiers or missing
+        # headers should surface as rejected deliveries.
+        if nonce is None and timestamp is None:
+            logger.warning(
+                WEBHOOK_REPLAY_DETECTED,
+                reason="no freshness signal (nonce and timestamp both missing)",
+            )
+            return False
+
         if timestamp is not None and abs(now - timestamp) > self._window:
             logger.warning(
                 WEBHOOK_REPLAY_DETECTED,

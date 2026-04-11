@@ -39,7 +39,10 @@ from synthorg.memory.org.config import OrgMemoryConfig
 from synthorg.notifications.config import NotificationConfig
 from synthorg.observability import get_logger
 from synthorg.observability.config import LogConfig  # noqa: TC001
-from synthorg.observability.events.config import CONFIG_VALIDATION_FAILED
+from synthorg.observability.events.config import (
+    CONFIG_DEPRECATION_NOTICE,
+    CONFIG_VALIDATION_FAILED,
+)
 from synthorg.ontology.config import OntologyConfig
 from synthorg.persistence.config import PersistenceConfig
 from synthorg.providers.enums import AuthType
@@ -289,7 +292,17 @@ class ProviderConfig(BaseModel):
 
     @model_validator(mode="after")
     def _validate_auth_fields(self) -> Self:
-        """Validate auth fields based on auth_type."""
+        """Validate auth fields based on auth_type.
+
+        When ``connection_name`` is set, the provider resolves
+        credentials from the ConnectionCatalog at runtime, so the
+        embedded auth fields (oauth_*, custom_header_*, subscription_*)
+        are not required on the config itself. Skip the check in that
+        case to let catalog-backed providers use OAuth / custom header
+        / subscription grants without duplicating secrets in YAML.
+        """
+        if self.connection_name is not None:
+            return self
         required = self._AUTH_REQUIRED_FIELDS.get(self.auth_type)
         if required is None:
             return self
@@ -310,9 +323,10 @@ class ProviderConfig(BaseModel):
         """Log deprecation when api_key is used without connection_name."""
         if self.api_key is not None and self.connection_name is None:
             logger.debug(
-                CONFIG_VALIDATION_FAILED,
+                CONFIG_DEPRECATION_NOTICE,
                 model="ProviderConfig",
-                error=(
+                field="api_key",
+                message=(
                     "api_key without connection_name is deprecated; "
                     "prefer connection_name for catalog-based resolution"
                 ),

@@ -22,6 +22,9 @@ from synthorg.integrations.connections.types.oauth_app import (
 )
 from synthorg.integrations.connections.types.slack import SlackAuthenticator
 from synthorg.integrations.connections.types.smtp import SmtpAuthenticator
+from synthorg.observability import get_logger
+
+logger = get_logger(__name__)
 
 CONNECTION_TYPE_REGISTRY: MappingProxyType[ConnectionType, ConnectionAuthenticator] = (
     MappingProxyType(
@@ -51,4 +54,15 @@ def get_authenticator(
     Raises:
         KeyError: If the connection type has no registered authenticator.
     """
-    return CONNECTION_TYPE_REGISTRY[connection_type]
+    try:
+        return CONNECTION_TYPE_REGISTRY[connection_type]
+    except KeyError:
+        logger.exception(
+            "integrations.connection.authenticator_missing",
+            connection_type=(
+                connection_type.value
+                if isinstance(connection_type, ConnectionType)
+                else str(connection_type)
+            ),
+        )
+        raise

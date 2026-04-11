@@ -12,6 +12,7 @@ from synthorg.integrations.config import EnvVarConfig
 from synthorg.integrations.errors import SecretStorageError
 from synthorg.observability import get_logger
 from synthorg.observability.events.integrations import (
+    SECRET_BACKEND_UNAVAILABLE,
     SECRET_RETRIEVAL_FAILED,
     SECRET_RETRIEVED,
 )
@@ -41,10 +42,16 @@ class EnvVarSecretBackend:
 
     async def store(
         self,
-        secret_id: str,  # noqa: ARG002
+        secret_id: str,
         value: bytes,  # noqa: ARG002
     ) -> None:
         """Not supported -- environment is read-only."""
+        logger.warning(
+            SECRET_BACKEND_UNAVAILABLE,
+            backend=self.backend_name,
+            operation="store",
+            secret_id=secret_id,
+        )
         msg = "EnvVarSecretBackend is read-only; cannot store secrets"
         raise SecretStorageError(msg)
 
@@ -64,18 +71,30 @@ class EnvVarSecretBackend:
 
     async def delete(
         self,
-        secret_id: str,  # noqa: ARG002
+        secret_id: str,
     ) -> bool:
         """Not supported -- environment is read-only."""
+        logger.warning(
+            SECRET_BACKEND_UNAVAILABLE,
+            backend=self.backend_name,
+            operation="delete",
+            secret_id=secret_id,
+        )
         msg = "EnvVarSecretBackend is read-only; cannot delete secrets"
         raise SecretStorageError(msg)
 
     async def rotate(
         self,
-        old_id: str,  # noqa: ARG002
+        old_id: str,
         new_value: bytes,  # noqa: ARG002
     ) -> str:
         """Not supported -- environment is read-only."""
+        logger.warning(
+            SECRET_BACKEND_UNAVAILABLE,
+            backend=self.backend_name,
+            operation="rotate",
+            old_id=old_id,
+        )
         msg = "EnvVarSecretBackend is read-only; cannot rotate secrets"
         raise SecretStorageError(msg)
 

@@ -34,13 +34,10 @@ class TestCodeVerifier:
         verifier = generate_code_verifier()
         validate_code_verifier(verifier)
 
-    def test_validate_rejects_too_short(self) -> None:
+    @pytest.mark.parametrize("size", [42, 129])
+    def test_validate_rejects_invalid_lengths(self, size: int) -> None:
         with pytest.raises(PKCEValidationError, match="43-128"):
-            validate_code_verifier("a" * 42)
-
-    def test_validate_rejects_too_long(self) -> None:
-        with pytest.raises(PKCEValidationError, match="43-128"):
-            validate_code_verifier("a" * 129)
+            validate_code_verifier("a" * size)
 
     def test_validate_rejects_invalid_chars(self) -> None:
         with pytest.raises(PKCEValidationError, match="invalid"):

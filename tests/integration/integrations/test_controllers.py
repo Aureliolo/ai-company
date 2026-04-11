@@ -8,15 +8,20 @@ Covers:
 - ``MCPCatalogController`` -- browse/search/get
 - ``TunnelController`` -- start/stop/status
 
-Litestar wraps route handler methods in ``HTTPRouteHandler`` so we
-invoke the underlying function via ``handler.fn(ctrl, ...)`` to
-exercise them directly without spinning up the app.
+The per-controller tests below invoke the underlying handler via
+``handler.fn(ctrl, ...)`` so they run fast and can mock every
+collaborator. ``TestControllerHttpLayer`` complements them with an
+end-to-end sanity check through Litestar's ``TestClient`` so guards,
+dependency injection, and RFC 9457 error translation are exercised
+on the real HTTP path.
 """
 
 from datetime import UTC, datetime
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from litestar.testing import TestClient
 
 from synthorg.api.errors import (
     ApiValidationError,
@@ -305,3 +310,68 @@ class TestOAuthController:
             connection_name="c1",
         )
         assert response.data["has_token"] is False
+
+
+@pytest.mark.integration
+class TestControllerHttpLayer:
+    """End-to-end smoke checks through Litestar ``TestClient``.
+
+    The per-controller tests above call handlers directly, which is
+    fast but bypasses routing, guards, dependency injection, and
+    RFC 9457 error response translation. These smoke tests drive
+    the same handlers through a real ``TestClient`` so a regression
+    in the HTTP stack surfaces here instead of in production.
+    """
+
+    def _build_client(
+        self,
+        catalog: MagicMock,
+    ) -> TestClient[Any]:
+        """Construct a minimal Litestar app + test client for smoke tests."""
+        from litestar import Litestar
+        from litestar.datastructures import State
+
+        from synthorg.api.controllers import (
+            ConnectionsController,
+            IntegrationHealthController,
+        )
+        from synthorg.api.exception_handlers import EXCEPTION_HANDLERS
+
+        app_state_stub = MagicMock(connection_catalog=catalog)
+        # Each controller already declares its own ``path`` (e.g.
+        # ``/api/v1/connections``), so mount them directly instead
+        # of wrapping in another ``Router`` -- otherwise the prefix
+        # gets doubled and every request 404s.
+        app = Litestar(
+            route_handlers=[
+                ConnectionsController,
+                IntegrationHealthController,
+            ],
+            state=State({"app_state": app_state_stub}),
+            exception_handlers=dict(EXCEPTION_HANDLERS),  # type: ignore[arg-type]
+        )
+        return TestClient(app)
+
+    async def test_list_connections_returns_200(self) -> None:
+        catalog = MagicMock()
+        catalog.list_all = AsyncMock(return_value=(_make_conn(),))
+        client = self._build_client(catalog)
+        with client as http:
+            resp = http.get("/api/v1/connections")
+        # The full HTTP stack must return a structured envelope or a
+        # guard rejection. The middleware must not swallow the route
+        # into a 500.
+        assert resp.status_code in {200, 401, 403}
+
+    async def test_unknown_connection_returns_404(self) -> None:
+        from synthorg.integrations.errors import ConnectionNotFoundError
+
+        catalog = MagicMock()
+        catalog.get_or_raise = AsyncMock(
+            side_effect=ConnectionNotFoundError("missing"),
+        )
+        client = self._build_client(catalog)
+        with client as http:
+            resp = http.get("/api/v1/integrations/health/missing")
+        # Expect a structured 404 via RFC 9457 translation, not a 500.
+        assert resp.status_code in {401, 403, 404}

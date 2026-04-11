@@ -28,8 +28,10 @@ class DatabaseHealthCheck:
     async def check(self, connection: Connection) -> HealthReport:
         """Verify database connection metadata is valid."""
         start = time.monotonic()
-        dialect = connection.metadata.get("dialect", "")
-        database = connection.metadata.get("database", "")
+        raw_dialect = connection.metadata.get("dialect")
+        raw_database = connection.metadata.get("database")
+        dialect = raw_dialect.strip() if isinstance(raw_dialect, str) else ""
+        database = raw_database.strip() if isinstance(raw_database, str) else ""
         elapsed = (time.monotonic() - start) * 1000
 
         if not dialect or not database:

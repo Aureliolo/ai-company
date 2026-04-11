@@ -1,4 +1,4 @@
-"""HashiCorp Vault secret backend (stub).
+"""External secret manager backend (stub).
 
 Full implementation deferred -- this stub satisfies the
 pluggable-backend protocol and raises ``NotImplementedError``
@@ -12,8 +12,8 @@ from synthorg.observability.events.integrations import (
 
 logger = get_logger(__name__)
 
-_BACKEND_NAME = "vault"
-_MSG = "HashiCorp Vault backend not yet implemented"
+_BACKEND_NAME = "secret_manager_vault"
+_MSG = "External secret manager (vault) backend not yet implemented"
 
 
 class VaultSecretBackend:

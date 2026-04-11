@@ -12,7 +12,11 @@ from synthorg.integrations.connections.secret_backends.factory import (
 class TestSecretBackendStubs:
     @pytest.mark.parametrize(
         "backend_type",
-        ["vault", "aws_secrets_manager", "azure_key_vault"],
+        [
+            "secret_manager_vault",
+            "secret_manager_cloud_a",
+            "secret_manager_cloud_b",
+        ],
     )
     def test_stub_raises_not_implemented(
         self,

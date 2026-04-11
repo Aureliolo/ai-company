@@ -14,6 +14,9 @@ from synthorg.integrations.connections.secret_backends.protocol import (
     SecretBackend,  # noqa: TC001
 )
 from synthorg.observability import get_logger
+from synthorg.observability.events.integrations import (
+    SECRET_BACKEND_UNAVAILABLE,
+)
 
 logger = get_logger(__name__)
 
@@ -39,6 +42,11 @@ def create_secret_backend(
 
     if backend_type == "encrypted_sqlite":
         if db_path is None:
+            logger.error(
+                SECRET_BACKEND_UNAVAILABLE,
+                backend=backend_type,
+                error="db_path is required for encrypted_sqlite",
+            )
             msg = "db_path is required for encrypted_sqlite secret backend"
             raise ValueError(msg)
         return EncryptedSqliteSecretBackend(
@@ -49,10 +57,24 @@ def create_secret_backend(
     if backend_type == "env_var":
         return EnvVarSecretBackend(config=config.env_var)
 
-    stub_backends = {"vault", "aws_secrets_manager", "azure_key_vault"}
+    stub_backends = {
+        "secret_manager_vault",
+        "secret_manager_cloud_a",
+        "secret_manager_cloud_b",
+    }
     if backend_type in stub_backends:
+        logger.error(
+            SECRET_BACKEND_UNAVAILABLE,
+            backend=backend_type,
+            error="backend type not yet implemented",
+        )
         msg = f"{backend_type} secret backend not yet implemented"
         raise NotImplementedError(msg)
 
+    logger.error(
+        SECRET_BACKEND_UNAVAILABLE,
+        backend=backend_type,
+        error="unknown backend type",
+    )
     msg = f"Unknown secret backend type: {backend_type}"
     raise ValueError(msg)

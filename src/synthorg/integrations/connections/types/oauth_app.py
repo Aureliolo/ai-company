@@ -12,7 +12,11 @@ from synthorg.observability.events.integrations import (
 logger = get_logger(__name__)
 
 _URL_FIELDS = ("auth_url", "token_url")
-_ALLOWED_SCHEMES = ("http", "https")
+# Default: HTTPS only. Plain HTTP is permitted for loopback hosts so
+# local OAuth mock servers still work in dev without compromising
+# real-world deployments where client_secret / authorization_code /
+# access_token would otherwise leak over cleartext transport.
+_LOOPBACK_HOSTS = frozenset({"localhost", "127.0.0.1", "::1"})
 
 
 class OAuthAppAuthenticator:
@@ -48,16 +52,29 @@ class OAuthAppAuthenticator:
 
         for url_field in _URL_FIELDS:
             parsed = urlparse(credentials[url_field].strip())
-            if parsed.scheme not in _ALLOWED_SCHEMES or not parsed.netloc:
+            if not parsed.netloc:
                 logger.warning(
                     CONNECTION_VALIDATION_FAILED,
-                    connection_type=str(ConnectionType.OAUTH_APP),
+                    connection_type=ConnectionType.OAUTH_APP.value,
                     field=url_field,
-                    error=f"invalid URL scheme/host: {parsed.scheme}",
+                    error="URL has no hostname",
+                )
+                msg = f"OAuth app '{url_field}' must have a valid hostname"
+                raise InvalidConnectionAuthError(msg)
+            hostname = (parsed.hostname or "").lower()
+            is_loopback_http = parsed.scheme == "http" and hostname in _LOOPBACK_HOSTS
+            if parsed.scheme != "https" and not is_loopback_http:
+                logger.warning(
+                    CONNECTION_VALIDATION_FAILED,
+                    connection_type=ConnectionType.OAUTH_APP.value,
+                    field=url_field,
+                    error="non-HTTPS URL not permitted outside loopback",
+                    scheme=parsed.scheme,
+                    hostname=hostname,
                 )
                 msg = (
-                    f"OAuth app '{url_field}' must be an http or https URL "
-                    "with a valid hostname"
+                    f"OAuth app '{url_field}' must use HTTPS "
+                    "(plain http is only allowed for loopback hosts)"
                 )
                 raise InvalidConnectionAuthError(msg)
 

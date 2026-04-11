@@ -7,6 +7,7 @@ receipts.  Split from ``repositories.py`` to keep files under the
 
 from typing import Protocol, runtime_checkable
 
+from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.integrations.connections.models import (
     Connection,  # noqa: TC001
     ConnectionType,  # noqa: TC001
@@ -23,7 +24,7 @@ class ConnectionRepository(Protocol):
         """Persist a connection (insert or upsert)."""
         ...
 
-    async def get(self, name: str) -> Connection | None:
+    async def get(self, name: NotBlankStr) -> Connection | None:
         """Retrieve a connection by name."""
         ...
 
@@ -38,7 +39,7 @@ class ConnectionRepository(Protocol):
         """List connections of a specific type."""
         ...
 
-    async def delete(self, name: str) -> bool:
+    async def delete(self, name: NotBlankStr) -> bool:
         """Delete a connection by name.
 
         Returns:
@@ -57,18 +58,18 @@ class ConnectionSecretRepository(Protocol):
 
     async def store(
         self,
-        secret_id: str,
+        secret_id: NotBlankStr,
         encrypted_value: bytes,
         key_version: int,
     ) -> None:
         """Persist an encrypted secret."""
         ...
 
-    async def retrieve(self, secret_id: str) -> bytes | None:
+    async def retrieve(self, secret_id: NotBlankStr) -> bytes | None:
         """Retrieve an encrypted secret blob."""
         ...
 
-    async def delete(self, secret_id: str) -> bool:
+    async def delete(self, secret_id: NotBlankStr) -> bool:
         """Delete an encrypted secret."""
         ...
 
@@ -81,11 +82,11 @@ class OAuthStateRepository(Protocol):
         """Persist an OAuth state."""
         ...
 
-    async def get(self, state_token: str) -> OAuthState | None:
+    async def get(self, state_token: NotBlankStr) -> OAuthState | None:
         """Retrieve by state token."""
         ...
 
-    async def delete(self, state_token: str) -> bool:
+    async def delete(self, state_token: NotBlankStr) -> bool:
         """Delete a state token (consumed or expired)."""
         ...
 
@@ -108,7 +109,7 @@ class WebhookReceiptRepository(Protocol):
 
     async def get_by_connection(
         self,
-        connection_name: str,
+        connection_name: NotBlankStr,
         *,
         limit: int = 100,
     ) -> tuple[WebhookReceipt, ...]:

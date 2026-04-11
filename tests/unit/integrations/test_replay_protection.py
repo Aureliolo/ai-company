@@ -26,44 +26,57 @@ class _FakeClock:
 class TestReplayProtector:
     """Tests for nonce + timestamp replay protection."""
 
+    @pytest.mark.parametrize(
+        ("first_nonce", "second_nonce", "expected_second"),
+        [
+            ("abc", "abc", False),  # duplicate rejected
+            ("a", "b", True),  # distinct accepted
+            (None, "abc", True),  # None nonce first, then real
+        ],
+    )
+    def test_nonce_check_matrix(
+        self,
+        first_nonce: str | None,
+        second_nonce: str,
+        *,
+        expected_second: bool,
+    ) -> None:
+        clock = _FakeClock()
+        protector = ReplayProtector(window_seconds=300, clock=clock)
+        protector.check(nonce=first_nonce, timestamp=clock.now)
+        assert (
+            protector.check(nonce=second_nonce, timestamp=clock.now) is expected_second
+        )
+
     def test_fresh_request_accepted(self) -> None:
         clock = _FakeClock()
         protector = ReplayProtector(window_seconds=300, clock=clock)
         assert protector.check(nonce="abc", timestamp=clock.now) is True
 
-    def test_duplicate_nonce_rejected(self) -> None:
-        clock = _FakeClock()
-        protector = ReplayProtector(window_seconds=300, clock=clock)
-        protector.check(nonce="abc", timestamp=clock.now)
-        assert protector.check(nonce="abc", timestamp=clock.now) is False
-
-    def test_different_nonces_accepted(self) -> None:
-        clock = _FakeClock()
-        protector = ReplayProtector(window_seconds=300, clock=clock)
-        assert protector.check(nonce="a", timestamp=clock.now) is True
-        assert protector.check(nonce="b", timestamp=clock.now) is True
-
-    def test_old_timestamp_rejected(self) -> None:
+    @pytest.mark.parametrize(
+        "skew_seconds",
+        [-120, 120],
+        ids=["old_timestamp", "future_timestamp"],
+    )
+    def test_timestamp_outside_window_rejected(
+        self,
+        skew_seconds: int,
+    ) -> None:
         clock = _FakeClock()
         protector = ReplayProtector(window_seconds=60, clock=clock)
-        old_time = clock.now - 120
-        assert protector.check(nonce="x", timestamp=old_time) is False
+        skewed = clock.now + skew_seconds
+        assert protector.check(nonce="n", timestamp=skewed) is False
 
-    def test_future_timestamp_rejected(self) -> None:
-        clock = _FakeClock()
-        protector = ReplayProtector(window_seconds=60, clock=clock)
-        future_time = clock.now + 120
-        assert protector.check(nonce="y", timestamp=future_time) is False
-
-    def test_none_nonce_accepted(self) -> None:
-        clock = _FakeClock()
-        protector = ReplayProtector(window_seconds=300, clock=clock)
-        assert protector.check(nonce=None, timestamp=clock.now) is True
-
-    def test_none_timestamp_skips_time_check(self) -> None:
+    def test_none_timestamp_with_nonce_accepted(self) -> None:
         clock = _FakeClock()
         protector = ReplayProtector(window_seconds=300, clock=clock)
         assert protector.check(nonce="z", timestamp=None) is True
+
+    def test_both_none_fails_closed(self) -> None:
+        """Missing both nonce and timestamp must reject the request."""
+        clock = _FakeClock()
+        protector = ReplayProtector(window_seconds=300, clock=clock)
+        assert protector.check(nonce=None, timestamp=None) is False
 
     def test_eviction_removes_old_nonces(self) -> None:
         clock = _FakeClock()

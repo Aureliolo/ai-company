@@ -38,9 +38,24 @@ async def check_connection_health(
     now = datetime.now(UTC)
 
     if checker is None:
+        # Surface ``UNKNOWN`` instead of ``conn.health_status`` so an
+        # on-demand caller never sees a stale persisted status (which
+        # could otherwise report a long-dead integration as
+        # ``HEALTHY``). The missing checker is logged so operators can
+        # register one.
+        logger.warning(
+            HEALTH_CHECK_FAILED,
+            connection_name=name,
+            connection_type=(
+                conn.connection_type.value
+                if hasattr(conn.connection_type, "value")
+                else str(conn.connection_type)
+            ),
+            error="no health checker registered for this type",
+        )
         return HealthReport(
             connection_name=conn.name,
-            status=conn.health_status,
+            status=ConnectionStatus.UNKNOWN,
             error_detail="No health checker for this type",
             checked_at=now,
         )

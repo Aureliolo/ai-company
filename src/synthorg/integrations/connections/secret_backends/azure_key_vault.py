@@ -1,4 +1,4 @@
-"""Azure Key Vault secret backend (stub).
+"""Cloud secret manager backend -- variant B (stub).
 
 Full implementation deferred -- this stub satisfies the
 pluggable-backend protocol and raises ``NotImplementedError``
@@ -12,8 +12,8 @@ from synthorg.observability.events.integrations import (
 
 logger = get_logger(__name__)
 
-_BACKEND_NAME = "azure_key_vault"
-_MSG = "Azure Key Vault backend not yet implemented"
+_BACKEND_NAME = "secret_manager_cloud_b"
+_MSG = "Cloud secret manager (variant B) backend not yet implemented"
 
 
 class AzureKeyVaultBackend:

@@ -2,6 +2,7 @@
 
 from typing import Protocol, runtime_checkable
 
+from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.integrations.connections.models import ConnectionType  # noqa: TC001
 
 
@@ -20,7 +21,7 @@ class ConnectionAuthenticator(Protocol):
 
     def validate_credentials(
         self,
-        credentials: dict[str, str],
+        credentials: dict[NotBlankStr, str],
     ) -> None:
         """Validate that required credential fields are present.
 
@@ -29,6 +30,6 @@ class ConnectionAuthenticator(Protocol):
         """
         ...
 
-    def required_fields(self) -> tuple[str, ...]:
+    def required_fields(self) -> tuple[NotBlankStr, ...]:
         """Return the credential field names required for this type."""
         ...

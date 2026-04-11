@@ -17,6 +17,8 @@ from synthorg.integrations.errors import (
     TokenRefreshFailedError,
 )
 from synthorg.integrations.oauth.pkce import (
+    decrypt_pkce_verifier,
+    encrypt_pkce_verifier,
     generate_code_challenge,
     generate_code_verifier,
 )
@@ -67,6 +69,10 @@ class AuthorizationCodeFlow:
         state_token = stdlib_secrets.token_urlsafe(32)
         verifier = generate_code_verifier()
         challenge = generate_code_challenge(verifier)
+        # The verifier is persisted until the code exchange completes;
+        # encrypt it at rest so a DB leak alone is not enough to
+        # complete an intercepted authorization code.
+        encrypted_verifier = encrypt_pkce_verifier(verifier)
 
         params = {
             "response_type": "code",
@@ -83,7 +89,7 @@ class AuthorizationCodeFlow:
         oauth_state = OAuthState(
             state_token=NotBlankStr(state_token),
             connection_name=NotBlankStr("pending"),
-            pkce_verifier=NotBlankStr(verifier),
+            pkce_verifier=NotBlankStr(encrypted_verifier),
             scopes_requested=" ".join(scopes),
             redirect_uri=redirect_uri,
             created_at=now,
@@ -110,6 +116,17 @@ class AuthorizationCodeFlow:
         if state.pkce_verifier is None:
             msg = "PKCE verifier missing from OAuth state"
             raise TokenExchangeFailedError(msg)
+        # state.pkce_verifier is encrypted at rest; decrypt before
+        # sending to the OAuth provider.
+        try:
+            verifier = decrypt_pkce_verifier(state.pkce_verifier)
+        except Exception as exc:
+            logger.warning(
+                OAUTH_TOKEN_EXCHANGE_FAILED,
+                error="failed to decrypt stored PKCE verifier",
+            )
+            msg = f"Invalid PKCE verifier in OAuth state: {exc}"
+            raise TokenExchangeFailedError(msg) from exc
 
         payload = {
             "grant_type": "authorization_code",
@@ -117,7 +134,7 @@ class AuthorizationCodeFlow:
             "redirect_uri": redirect_uri,
             "client_id": client_id,
             "client_secret": client_secret,
-            "code_verifier": state.pkce_verifier,
+            "code_verifier": verifier,
         }
         try:
             async with httpx.AsyncClient(timeout=30) as client:
@@ -179,20 +196,31 @@ class AuthorizationCodeFlow:
 
     @staticmethod
     def _parse_token_response(
-        data: dict[str, object],
+        data: object,
         operation: str,
     ) -> OAuthToken:
         """Parse a token endpoint response into an OAuthToken.
+
+        Accepts ``object`` because ``resp.json()`` can return a list
+        or scalar as well as a dict, and we must reject non-dict
+        payloads before reading fields.
 
         Returns an ``OAuthToken`` with raw ``access_token`` /
         ``refresh_token`` populated. The caller is responsible
         for persisting them via
         ``ConnectionCatalog.store_oauth_tokens``.
         """
-        access_token = str(data.get("access_token", ""))
-        if not access_token:
-            msg = f"No access_token in {operation} response"
+        if not isinstance(data, dict):
+            msg = (
+                f"Token {operation} response is not a JSON object: "
+                f"{type(data).__name__}"
+            )
             raise TokenExchangeFailedError(msg)
+        access_token_raw = data.get("access_token")
+        if not isinstance(access_token_raw, str) or not access_token_raw:
+            msg = f"No valid access_token in {operation} response"
+            raise TokenExchangeFailedError(msg)
+        access_token = access_token_raw
 
         expires_in = data.get("expires_in")
         expires_at = None

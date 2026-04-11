@@ -89,8 +89,18 @@ def _make_connection(name: str) -> Connection:
 
 @pytest.mark.integration
 class TestHealthProberRegistry:
-    def test_check_registry_has_five_entries(self) -> None:
-        assert len(_CHECK_REGISTRY) == 5
+    def test_check_registry_covers_required_types(self) -> None:
+        # Assert the required types are present rather than pinning the
+        # registry at exactly N entries. Adding a sixth checker should
+        # not break this test.
+        required = {
+            ConnectionType.GITHUB,
+            ConnectionType.SLACK,
+            ConnectionType.SMTP,
+            ConnectionType.DATABASE,
+            ConnectionType.GENERIC_HTTP,
+        }
+        assert required.issubset(_CHECK_REGISTRY.keys())
 
     def test_check_registry_is_read_only(self) -> None:
         assert isinstance(_CHECK_REGISTRY, MappingProxyType)

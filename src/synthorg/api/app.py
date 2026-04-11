@@ -1118,7 +1118,16 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
                 NgrokAdapter,
             )
 
-            secret_db_path = (os.environ.get("SYNTHORG_DB_PATH") or "").strip() or None
+            # Prefer the active SQLite persistence path so the
+            # encrypted_sqlite secret backend lands in the same DB
+            # file as ``connections`` -- otherwise a diverging
+            # SYNTHORG_DB_PATH can orphan connection_secrets in a
+            # separate file or fail outright.
+            if resolved_db_path is not None:
+                secret_db_path: str | None = str(resolved_db_path)
+            else:
+                env_db_path = (os.environ.get("SYNTHORG_DB_PATH") or "").strip()
+                secret_db_path = env_db_path or None
             secret_backend = create_secret_backend(
                 effective_config.integrations.secret_backend,
                 db_path=secret_db_path,
@@ -1260,9 +1269,27 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
     # registration per create_app). Skip them entirely when the
     # integrations subsystem is disabled, so unit tests that do not
     # exercise integration endpoints pay no registration cost.
-    integration_controllers: tuple[type[Controller], ...] = (
-        INTEGRATION_CONTROLLERS if effective_config.integrations.enabled else ()
+    #
+    # Also skip when the backing ``connection_catalog`` failed to
+    # auto-wire (the try/except above is intentionally non-fatal):
+    # exposing OAuth/webhook/health/tunnel routes without the catalog
+    # would crash handlers with ``AttributeError`` on every request
+    # instead of returning a clean 404 for the missing endpoint.
+    integration_routes_enabled = (
+        effective_config.integrations.enabled and connection_catalog is not None
     )
+    integration_controllers: tuple[type[Controller], ...] = (
+        INTEGRATION_CONTROLLERS if integration_routes_enabled else ()
+    )
+    if effective_config.integrations.enabled and connection_catalog is None:
+        logger.warning(
+            API_APP_STARTUP,
+            note=(
+                "Integrations enabled in config but connection_catalog "
+                "auto-wire failed; skipping integration route "
+                "registration"
+            ),
+        )
     api_router = Router(
         path=api_config.api_prefix,
         route_handlers=[
@@ -1456,6 +1483,11 @@ def _build_auth_exclude_paths(
     """Compute auth middleware exclude paths with fail-safe defaults."""
     setup_status_path = f"^{prefix}/setup/status$"
     metrics_path = f"^{prefix}/metrics$"
+    # The OAuth provider redirects the user's browser here without a
+    # session cookie, so the global auth middleware has to let it
+    # through. CSRF protection is handled by the state token the
+    # callback validates against the oauth_states repo.
+    oauth_callback_path = f"^{prefix}/oauth/callback$"
     exclude_paths = (
         auth.exclude_paths
         if auth.exclude_paths is not None
@@ -1467,6 +1499,7 @@ def _build_auth_exclude_paths(
             f"^{prefix}/auth/setup$",
             f"^{prefix}/auth/login$",
             setup_status_path,
+            oauth_callback_path,
         )
     )
     if metrics_path not in exclude_paths:
@@ -1475,6 +1508,8 @@ def _build_auth_exclude_paths(
         exclude_paths = (*exclude_paths, setup_status_path)
     if ws_path not in exclude_paths:
         exclude_paths = (*exclude_paths, ws_path)
+    if oauth_callback_path not in exclude_paths:
+        exclude_paths = (*exclude_paths, oauth_callback_path)
     return exclude_paths
 
 

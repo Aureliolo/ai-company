@@ -243,19 +243,21 @@ class ConnectionCatalog:
         Raises:
             ConnectionNotFoundError: If the connection does not exist.
         """
-        existing = await self.get_or_raise(name)
-        updates: dict[str, object] = {"updated_at": datetime.now(UTC)}
-        if base_url is not _UNSET:
-            updates["base_url"] = NotBlankStr(base_url) if base_url else None
-        if metadata is not None:
-            updates["metadata"] = metadata
-        if health_check_enabled is not None:
-            updates["health_check_enabled"] = health_check_enabled
-        updated = existing.model_copy(update=updates)
-        await self._repo.save(updated)
-        self._invalidate_cache()
-        logger.info(CONNECTION_UPDATED, connection_name=name)
-        return updated
+        lock = await self._lock_for(name)
+        async with lock:
+            existing = await self.get_or_raise(name)
+            updates: dict[str, object] = {"updated_at": datetime.now(UTC)}
+            if base_url is not _UNSET:
+                updates["base_url"] = NotBlankStr(base_url) if base_url else None
+            if metadata is not None:
+                updates["metadata"] = metadata
+            if health_check_enabled is not None:
+                updates["health_check_enabled"] = health_check_enabled
+            updated = existing.model_copy(update=updates)
+            await self._repo.save(updated)
+            self._invalidate_cache()
+            logger.info(CONNECTION_UPDATED, connection_name=name)
+            return updated
 
     async def update_health(
         self,
@@ -269,17 +271,19 @@ class ConnectionCatalog:
         Raises:
             ConnectionNotFoundError: If the connection does not exist.
         """
-        existing = await self.get_or_raise(name)
-        updated = existing.model_copy(
-            update={
-                "health_status": status,
-                "last_health_check_at": checked_at,
-                "updated_at": datetime.now(UTC),
-            },
-        )
-        await self._repo.save(updated)
-        self._invalidate_cache()
-        return updated
+        lock = await self._lock_for(name)
+        async with lock:
+            existing = await self.get_or_raise(name)
+            updated = existing.model_copy(
+                update={
+                    "health_status": status,
+                    "last_health_check_at": checked_at,
+                    "updated_at": datetime.now(UTC),
+                },
+            )
+            await self._repo.save(updated)
+            self._invalidate_cache()
+            return updated
 
     async def delete(self, name: str) -> None:
         """Delete a connection and its secrets.
@@ -359,6 +363,21 @@ class ConnectionCatalog:
                     f"'{name}' is not a credential dict"
                 )
                 raise SecretRetrievalError(msg)
+            if not all(
+                isinstance(key, str) and isinstance(value, str)
+                for key, value in data.items()
+            ):
+                logger.warning(
+                    SECRET_RETRIEVAL_FAILED,
+                    connection_name=name,
+                    secret_id=ref.secret_id,
+                    error="secret payload contains non-string entries",
+                )
+                msg = (
+                    f"Secret '{ref.secret_id}' for connection "
+                    f"'{name}' contains non-string credential entries"
+                )
+                raise SecretRetrievalError(msg)
             merged.update(data)
         return copy.deepcopy(merged)
 
@@ -387,6 +406,7 @@ class ConnectionCatalog:
             if refresh_token is not None:
                 merged["refresh_token"] = refresh_token
             conn = await self.get_or_raise(name)
+            new_secret_id: str | None = None
             if not conn.secret_refs:
                 # No existing secret ref -- create a fresh one.
                 secret_id = str(uuid4())
@@ -394,6 +414,7 @@ class ConnectionCatalog:
                     secret_id,
                     json.dumps(merged).encode("utf-8"),
                 )
+                new_secret_id = secret_id
                 ref = SecretRef(
                     secret_id=NotBlankStr(secret_id),
                     backend=NotBlankStr(self._secret_backend.backend_name),
@@ -414,7 +435,23 @@ class ConnectionCatalog:
                 updated = conn.model_copy(
                     update={"updated_at": datetime.now(UTC)},
                 )
-            await self._repo.save(updated)
+            try:
+                await self._repo.save(updated)
+            except Exception:
+                # Compensating cleanup only for the new-secret path --
+                # re-stores into an existing ref have no orphan to clean.
+                if new_secret_id is not None:
+                    logger.exception(
+                        OAUTH_TOKEN_EXCHANGED,
+                        connection_name=name,
+                        error=(
+                            "repo save failed; deleting orphaned OAuth "
+                            "secret to avoid leaking tokens"
+                        ),
+                    )
+                    with contextlib.suppress(Exception):
+                        await self._secret_backend.delete(new_secret_id)
+                raise
             self._invalidate_cache()
             logger.info(
                 OAUTH_TOKEN_EXCHANGED,

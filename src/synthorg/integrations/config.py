@@ -58,12 +58,20 @@ class SecretBackendConfig(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
+    # Neutral, vendor-agnostic discriminators so the public config
+    # surface does not embed specific vendor names. The factory maps
+    # these to concrete adapters internally:
+    #   - ``encrypted_sqlite``: bundled Fernet+SQLite backend (default)
+    #   - ``env_var``: environment variable backend
+    #   - ``secret_manager_vault``: HashiCorp Vault adapter (stub)
+    #   - ``secret_manager_cloud_a``: AWS Secrets Manager adapter (stub)
+    #   - ``secret_manager_cloud_b``: Azure Key Vault adapter (stub)
     backend_type: Literal[
         "encrypted_sqlite",
         "env_var",
-        "vault",
-        "aws_secrets_manager",
-        "azure_key_vault",
+        "secret_manager_vault",
+        "secret_manager_cloud_a",
+        "secret_manager_cloud_b",
     ] = "encrypted_sqlite"
     encrypted_sqlite: EncryptedSqliteConfig = Field(
         default_factory=EncryptedSqliteConfig,
