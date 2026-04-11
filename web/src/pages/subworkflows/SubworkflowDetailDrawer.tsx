@@ -173,7 +173,7 @@ export function SubworkflowDetailDrawer({
                       {p.parent_name}
                     </span>
                     <span className="ml-1 text-muted-foreground">
-                      (v{p.pinned_version})
+                      (v{p.pinned_version}{p.parent_type === 'subworkflow' ? ', subworkflow' : ''})
                     </span>
                   </li>
                 ))}
@@ -188,11 +188,13 @@ export function SubworkflowDetailDrawer({
               onClick={() => setDeleteConfirmOpen(true)}
               disabled={loading || parents.length > 0 || loadedKey !== detailsKey}
               title={
-                loading
-                  ? 'Checking parent references...'
-                  : parents.length > 0
-                    ? 'Cannot delete: still referenced'
-                    : 'Delete this subworkflow version'
+                loadedKey !== detailsKey
+                  ? 'Details out of date -- refresh to enable delete'
+                  : loading
+                    ? 'Checking parent references...'
+                    : parents.length > 0
+                      ? 'Cannot delete: still referenced'
+                      : 'Delete this subworkflow version'
               }
             >
               <Trash2 className="mr-1 size-3.5" />
