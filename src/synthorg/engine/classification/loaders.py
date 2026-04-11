@@ -156,10 +156,20 @@ def _build_delegation_requests(
 ) -> tuple[DelegationRequest, ...]:
     """Walk the task tree and build delegation request records.
 
-    Performs a BFS up to ``_MAX_TREE_DEPTH`` levels, filters child
-    tasks by ``parent_task_id``, and sanitizes descriptions before
+    Pre-indexes ``all_tasks`` by ``parent_task_id`` into a dict so
+    the BFS that follows is O(N + M) -- N tasks total, M tasks
+    actually reachable in the tree -- instead of the previous
+    O(depth * parents * N) full-table rescan per node.  Bounded to
+    ``_MAX_TREE_DEPTH`` levels, sanitizes descriptions before
     including them in the returned requests.
     """
+    tasks_by_parent: dict[str, list[Task]] = {}
+    for task in all_tasks:
+        parent = task.parent_task_id
+        if parent is None:
+            continue
+        tasks_by_parent.setdefault(parent, []).append(task)
+
     requests: list[DelegationRequest] = []
     visited: set[str] = set()
     queue: list[str] = [root_task_id]
@@ -171,9 +181,7 @@ def _build_delegation_requests(
             if parent_id in visited:
                 continue
             visited.add(parent_id)
-            for task in all_tasks:
-                if task.parent_task_id != parent_id:
-                    continue
+            for task in tasks_by_parent.get(parent_id, ()):
                 refinement = sanitize_message(
                     task.description or "",
                     max_length=_SANITIZE_MAX_LENGTH,

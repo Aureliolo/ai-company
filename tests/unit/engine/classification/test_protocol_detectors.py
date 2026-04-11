@@ -405,3 +405,240 @@ class TestAuthorityBreachDetector:
             f.category == ErrorCategory.AUTHORITY_BREACH_ATTEMPT for f in findings
         )
         assert all(f.severity == ErrorSeverity.HIGH for f in findings)
+
+    async def test_denied_tool_invocation_from_turn_record(self) -> None:
+        """Tool names in turn.tool_calls_made are matched against denied."""
+        from synthorg.core.agent import ToolPermissions
+
+        identity = AgentIdentity(
+            id=uuid4(),
+            name="Restricted Agent",
+            role="Developer",
+            department="Engineering",
+            model=ModelConfig(
+                provider="test-provider",
+                model_id="test-model-001",
+            ),
+            hiring_date=date(2026, 1, 1),
+            tools=ToolPermissions(denied=("delete_database", "wire_transfer")),
+        )
+        ctx_obj = AgentContext.from_identity(identity)
+        ctx_obj = ctx_obj.with_message(
+            ChatMessage(
+                role=MessageRole.ASSISTANT,
+                content="Running a tool.",
+            ),
+        )
+        turns = (
+            TurnRecord(
+                turn_number=1,
+                input_tokens=10,
+                output_tokens=5,
+                cost_usd=0.0,
+                finish_reason=FinishReason.STOP,
+                tool_calls_made=("delete_database",),
+            ),
+        )
+        er = ExecutionResult(
+            context=ctx_obj,
+            termination_reason=TerminationReason.COMPLETED,
+            turns=turns,
+        )
+        det_ctx = DetectionContext(
+            execution_result=er,
+            agent_id="agent-1",
+            task_id="task-1",
+            scope=DetectionScope.SAME_TASK,
+        )
+        findings = await AuthorityBreachDetector().detect(det_ctx)
+        assert len(findings) == 1
+        finding = findings[0]
+        assert finding.severity == ErrorSeverity.HIGH
+        assert "delete_database" in finding.description
+        assert "denied" in finding.description.lower()
+
+    async def test_denied_tool_case_insensitive_match(self) -> None:
+        """Tool denial matching casefolds on both sides."""
+        from synthorg.core.agent import ToolPermissions
+
+        identity = AgentIdentity(
+            id=uuid4(),
+            name="Restricted Agent",
+            role="Developer",
+            department="Engineering",
+            model=ModelConfig(
+                provider="test-provider",
+                model_id="test-model-001",
+            ),
+            hiring_date=date(2026, 1, 1),
+            tools=ToolPermissions(denied=("Delete_Database",)),
+        )
+        ctx_obj = AgentContext.from_identity(identity)
+        ctx_obj = ctx_obj.with_message(
+            ChatMessage(
+                role=MessageRole.ASSISTANT,
+                content="Running it.",
+            ),
+        )
+        turns = (
+            TurnRecord(
+                turn_number=1,
+                input_tokens=10,
+                output_tokens=5,
+                cost_usd=0.0,
+                finish_reason=FinishReason.STOP,
+                tool_calls_made=("DELETE_DATABASE",),
+            ),
+        )
+        er = ExecutionResult(
+            context=ctx_obj,
+            termination_reason=TerminationReason.COMPLETED,
+            turns=turns,
+        )
+        det_ctx = DetectionContext(
+            execution_result=er,
+            agent_id="agent-1",
+            task_id="task-1",
+            scope=DetectionScope.SAME_TASK,
+        )
+        findings = await AuthorityBreachDetector().detect(det_ctx)
+        assert len(findings) == 1
+
+    async def test_denied_tool_deduplicated(self) -> None:
+        """Multiple calls to the same denied tool produce one finding."""
+        from synthorg.core.agent import ToolPermissions
+
+        identity = AgentIdentity(
+            id=uuid4(),
+            name="Restricted Agent",
+            role="Developer",
+            department="Engineering",
+            model=ModelConfig(
+                provider="test-provider",
+                model_id="test-model-001",
+            ),
+            hiring_date=date(2026, 1, 1),
+            tools=ToolPermissions(denied=("forbidden",)),
+        )
+        ctx_obj = AgentContext.from_identity(identity)
+        ctx_obj = ctx_obj.with_message(
+            ChatMessage(
+                role=MessageRole.ASSISTANT,
+                content="Calling.",
+            ),
+        )
+        turns = (
+            TurnRecord(
+                turn_number=1,
+                input_tokens=10,
+                output_tokens=5,
+                cost_usd=0.0,
+                finish_reason=FinishReason.STOP,
+                tool_calls_made=("forbidden", "forbidden", "forbidden"),
+            ),
+        )
+        er = ExecutionResult(
+            context=ctx_obj,
+            termination_reason=TerminationReason.COMPLETED,
+            turns=turns,
+        )
+        det_ctx = DetectionContext(
+            execution_result=er,
+            agent_id="agent-1",
+            task_id="task-1",
+            scope=DetectionScope.SAME_TASK,
+        )
+        findings = await AuthorityBreachDetector().detect(det_ctx)
+        assert len(findings) == 1
+
+    async def test_unauthorised_delegation_target(self) -> None:
+        """Delegation target outside authority.can_delegate_to fires HIGH."""
+        from synthorg.core.agent import ToolPermissions
+        from synthorg.core.role import Authority
+
+        identity = AgentIdentity(
+            id=uuid4(),
+            name="Manager",
+            role="EngineeringManager",
+            department="Engineering",
+            model=ModelConfig(
+                provider="test-provider",
+                model_id="test-model-001",
+            ),
+            hiring_date=date(2026, 1, 1),
+            tools=ToolPermissions(),
+            authority=Authority(can_delegate_to=("Developer",)),
+        )
+        ctx_obj = AgentContext.from_identity(identity)
+        er = ExecutionResult(
+            context=ctx_obj,
+            termination_reason=TerminationReason.COMPLETED,
+        )
+        unauthorised_task = _task(
+            task_id="child-unauth",
+            parent_task_id="task-1",
+            assigned_to="Architect",
+            delegation_chain=("agent-manager",),
+        )
+        req = DelegationRequest(
+            delegator_id="agent-manager",
+            delegatee_id="Architect",
+            task=unauthorised_task,
+        )
+        det_ctx = DetectionContext(
+            execution_result=er,
+            agent_id="agent-manager",
+            task_id="task-1",
+            scope=DetectionScope.TASK_TREE,
+            delegation_requests=(req,),
+        )
+        findings = await AuthorityBreachDetector().detect(det_ctx)
+        assert len(findings) == 1
+        assert "delegate" in findings[0].description.lower()
+        assert findings[0].severity == ErrorSeverity.HIGH
+
+    async def test_authority_budget_limit_from_identity(self) -> None:
+        """When no explicit limit, identity.authority.budget_limit is used."""
+        from synthorg.core.agent import ToolPermissions
+        from synthorg.core.role import Authority
+
+        identity = AgentIdentity(
+            id=uuid4(),
+            name="Budgeted Agent",
+            role="Developer",
+            department="Engineering",
+            model=ModelConfig(
+                provider="test-provider",
+                model_id="test-model-001",
+            ),
+            hiring_date=date(2026, 1, 1),
+            tools=ToolPermissions(),
+            authority=Authority(budget_limit=0.05),
+        )
+        ctx_obj = AgentContext.from_identity(identity)
+        ctx_obj = ctx_obj.with_message(
+            ChatMessage(role=MessageRole.ASSISTANT, content="Done."),
+        )
+        turns = (
+            TurnRecord(
+                turn_number=1,
+                input_tokens=10,
+                output_tokens=5,
+                cost_usd=0.10,
+                finish_reason=FinishReason.STOP,
+            ),
+        )
+        er = ExecutionResult(
+            context=ctx_obj,
+            termination_reason=TerminationReason.COMPLETED,
+            turns=turns,
+        )
+        det_ctx = DetectionContext(
+            execution_result=er,
+            agent_id="agent-1",
+            task_id="task-1",
+            scope=DetectionScope.SAME_TASK,
+        )
+        findings = await AuthorityBreachDetector().detect(det_ctx)
+        assert len(findings) >= 1
+        assert any("budget" in f.description.lower() for f in findings)

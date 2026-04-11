@@ -39,6 +39,12 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 _SANITIZE_MAX_LENGTH = 2000
+# Cost reserved per LLM semantic detector invocation.  Small enough
+# that the reservation gate admits several concurrent detectors
+# inside a reasonable per-run budget, large enough that a runaway
+# provider cannot silently overshoot.  Actual cost is reconciled via
+# ``ClassificationBudgetTracker.settle`` once the call completes.
+_ESTIMATED_LLM_COST_USD = 0.001
 _SEVERITY_MAP = {
     "low": ErrorSeverity.LOW,
     "medium": ErrorSeverity.MEDIUM,
@@ -215,10 +221,12 @@ class _BaseSemanticDetector:
             Tuple of findings parsed from LLM response.
         """
         detector_name = type(self).__name__
-        logger.debug(DETECTOR_START, detector=detector_name, message_count=0)
-
-        if not self._can_run(detector_name):
-            return ()
+        message_count = len(context.execution_result.context.conversation)
+        logger.debug(
+            DETECTOR_START,
+            detector=detector_name,
+            message_count=message_count,
+        )
 
         conversation_text = _build_conversation_text(context)
         if not conversation_text:
@@ -226,6 +234,7 @@ class _BaseSemanticDetector:
                 DETECTOR_COMPLETE,
                 detector=detector_name,
                 finding_count=0,
+                reason="empty conversation",
             )
             return ()
 
@@ -233,6 +242,7 @@ class _BaseSemanticDetector:
             conversation_text=conversation_text,
             context=context,
             detector_name=detector_name,
+            message_count=message_count,
         )
         logger.debug(
             DETECTOR_COMPLETE,
@@ -241,28 +251,36 @@ class _BaseSemanticDetector:
         )
         return findings
 
-    def _can_run(self, detector_name: str) -> bool:
-        """Check if the budget allows another LLM call."""
-        if self._budget_tracker is None:
-            return True
-        if not self._budget_tracker.can_spend(0.001):
-            logger.debug(
-                DETECTOR_COMPLETE,
-                detector=detector_name,
-                finding_count=0,
-                reason="budget exhausted",
-            )
-            return False
-        return True
-
     async def _invoke_llm(
         self,
         *,
         conversation_text: str,
         context: DetectionContext,
         detector_name: str,
+        message_count: int,
     ) -> tuple[ErrorFinding, ...]:
-        """Send the prompt to the provider and parse the response."""
+        """Send the prompt to the provider and parse the response.
+
+        Uses an atomic ``try_reserve`` + ``settle``/``release``
+        pattern against the classification budget tracker so
+        concurrent semantic detectors running in a
+        ``CompositeDetector`` cannot race through the admission
+        gate and collectively exceed the per-run budget.
+        """
+        estimated_cost = _ESTIMATED_LLM_COST_USD
+        if self._budget_tracker is not None:
+            reserved = await self._budget_tracker.try_reserve(estimated_cost)
+            if not reserved:
+                logger.debug(
+                    DETECTOR_COMPLETE,
+                    detector=detector_name,
+                    finding_count=0,
+                    reason="budget exhausted",
+                )
+                return ()
+        else:
+            reserved = False
+
         prompt_text = self._prompt(conversation_text)
         messages = [
             ChatMessage(role=MessageRole.SYSTEM, content=prompt_text),
@@ -273,13 +291,19 @@ class _BaseSemanticDetector:
         ]
 
         acquired = False
+        settled = False
         try:
             if self._rate_limiter is not None:
                 await self._rate_limiter.acquire()
                 acquired = True
             response = await self._provider.complete(messages, self._model_id)
-            if self._budget_tracker is not None and response.usage is not None:
-                await self._budget_tracker.record(response.usage.cost_usd)
+            actual_cost = response.usage.cost_usd if response.usage is not None else 0.0
+            if reserved and self._budget_tracker is not None:
+                await self._budget_tracker.settle(
+                    estimated_cost=estimated_cost,
+                    actual_cost=actual_cost,
+                )
+                settled = True
             return _parse_findings(response.content, self.category)
         except MemoryError, RecursionError:
             raise
@@ -289,12 +313,14 @@ class _BaseSemanticDetector:
                 detector=detector_name,
                 agent_id=context.agent_id,
                 task_id=context.task_id,
-                message_count=0,
+                message_count=message_count,
             )
             return ()
         finally:
             if acquired and self._rate_limiter is not None:
                 self._rate_limiter.release()
+            if reserved and not settled and self._budget_tracker is not None:
+                await self._budget_tracker.release(estimated_cost)
 
 
 class SemanticContradictionDetector(_BaseSemanticDetector):

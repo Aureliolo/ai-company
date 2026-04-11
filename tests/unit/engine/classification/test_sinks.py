@@ -193,3 +193,92 @@ class TestNotificationDispatcherSink:
         result = _classification_result(_finding())
         with pytest.raises(MemoryError):
             await sink.on_classification(result)
+
+    async def test_rate_limiter_caps_per_agent_notifications(self) -> None:
+        """Sliding-window rate limiter drops excess dispatch calls."""
+        dispatcher = AsyncMock()
+        dispatcher.dispatch = AsyncMock()
+        fake_time = [0.0]
+        sink = NotificationDispatcherSink(
+            dispatcher=dispatcher,
+            min_severity=ErrorSeverity.HIGH,
+            max_events_per_window=1,
+            window_seconds=60.0,
+            clock=lambda: fake_time[0],
+        )
+        result = _classification_result(
+            _finding(description="A"),
+            _finding(description="B"),
+            _finding(description="C"),
+        )
+        await sink.on_classification(result)
+        assert dispatcher.dispatch.await_count == 1
+
+    async def test_rate_limiter_refreshes_after_window(self) -> None:
+        """Notifications resume once the sliding window advances."""
+        dispatcher = AsyncMock()
+        dispatcher.dispatch = AsyncMock()
+        fake_time = [0.0]
+        sink = NotificationDispatcherSink(
+            dispatcher=dispatcher,
+            min_severity=ErrorSeverity.HIGH,
+            max_events_per_window=1,
+            window_seconds=10.0,
+            clock=lambda: fake_time[0],
+        )
+        first = _classification_result(_finding(description="A"))
+        await sink.on_classification(first)
+        assert dispatcher.dispatch.await_count == 1
+
+        fake_time[0] = 11.0  # past the 10s window
+        second = _classification_result(_finding(description="B"))
+        await sink.on_classification(second)
+        assert dispatcher.dispatch.await_count == 2
+
+    async def test_rate_limiter_per_agent_isolation(self) -> None:
+        """Different agent_ids maintain independent rate-limit counters."""
+        dispatcher = AsyncMock()
+        dispatcher.dispatch = AsyncMock()
+        fake_time = [0.0]
+        sink = NotificationDispatcherSink(
+            dispatcher=dispatcher,
+            min_severity=ErrorSeverity.HIGH,
+            max_events_per_window=1,
+            window_seconds=60.0,
+            clock=lambda: fake_time[0],
+        )
+
+        agent_a = ClassificationResult(
+            execution_id="exec-A",
+            agent_id="agent-A",
+            task_id="task-A",
+            categories_checked=(ErrorCategory.LOGICAL_CONTRADICTION,),
+            findings=(_finding(description="A"),),
+        )
+        agent_b = ClassificationResult(
+            execution_id="exec-B",
+            agent_id="agent-B",
+            task_id="task-B",
+            categories_checked=(ErrorCategory.LOGICAL_CONTRADICTION,),
+            findings=(_finding(description="B"),),
+        )
+        await sink.on_classification(agent_a)
+        await sink.on_classification(agent_b)
+        # Both agents were admitted because the window is per-agent.
+        assert dispatcher.dispatch.await_count == 2
+
+    async def test_notification_construction_error_swallowed(self) -> None:
+        """Exceptions during Notification(...) are absorbed best-effort."""
+        from unittest.mock import patch
+
+        dispatcher = AsyncMock()
+        dispatcher.dispatch = AsyncMock()
+        sink = NotificationDispatcherSink(dispatcher=dispatcher)
+        result = _classification_result(_finding())
+        with patch(
+            "synthorg.engine.classification.sinks.Notification",
+            side_effect=RuntimeError("constructor failed"),
+        ):
+            # Should not raise -- construction is inside the try/except.
+            await sink.on_classification(result)
+        dispatcher.dispatch.assert_not_awaited()

@@ -55,6 +55,7 @@ from synthorg.observability.events.classification import (
     CLASSIFICATION_SKIPPED,
     CLASSIFICATION_START,
     DETECTOR_ERROR,
+    DETECTOR_SCOPE_MISMATCH,
     DETECTOR_TIMEOUT,
 )
 
@@ -225,9 +226,28 @@ def _maybe_add_semantic(  # noqa: PLR0913
 def _select_loader(
     scope: DetectionScope,
     task_repo: TaskRepository | None,
-) -> ScopedContextLoader:
-    """Select context loader for the given scope."""
-    if scope == DetectionScope.TASK_TREE and task_repo is not None:
+) -> ScopedContextLoader | None:
+    """Select a context loader for the requested detection scope.
+
+    TASK_TREE detectors are skipped (``None`` returned) when no task
+    repository is configured -- the previous behaviour silently fell
+    back to :class:`SameTaskLoader`, which produced a context with
+    ``scope=SAME_TASK``, causing TASK_TREE detectors to run against
+    missing delegation/review data.  Skipping them instead keeps
+    every detector aligned with its declared scope.
+
+    Args:
+        scope: Detection scope requested by a detector category.
+        task_repo: Optional task repository supporting TASK_TREE
+            enrichment.
+
+    Returns:
+        The loader to use, or ``None`` when TASK_TREE scope was
+        requested but no task repository was provided.
+    """
+    if scope == DetectionScope.TASK_TREE:
+        if task_repo is None:
+            return None
         return TaskTreeLoader(task_repo=task_repo)
     return SameTaskLoader()
 
@@ -441,7 +461,16 @@ async def _run_detectors_by_scope(  # noqa: PLR0913
     config: ErrorTaxonomyConfig,
     task_repo: TaskRepository | None,
 ) -> list[ErrorFinding]:
-    """Group detectors by scope, load contexts, and run them."""
+    """Group detectors by scope, load contexts, and run them.
+
+    TASK_TREE detectors are skipped with a warning log when no task
+    repository is configured (``_select_loader`` returns ``None``);
+    they are never silently downgraded to SAME_TASK context.  Each
+    detector is also sanity-checked against its ``supported_scopes``
+    before ``detect()`` is invoked so a scope/detector mismatch
+    surfaces as a ``DETECTOR_SCOPE_MISMATCH`` warning rather than a
+    silent corrupt run.
+    """
     scope_detectors: dict[DetectionScope, list[Detector]] = {}
     for detector in all_detectors:
         cat_cfg = config.detectors[detector.category]
@@ -450,8 +479,31 @@ async def _run_detectors_by_scope(  # noqa: PLR0913
     all_findings: list[ErrorFinding] = []
     for scope, detectors in scope_detectors.items():
         loader = _select_loader(scope, task_repo)
+        if loader is None:
+            for detector in detectors:
+                logger.warning(
+                    CLASSIFICATION_SKIPPED,
+                    agent_id=agent_id,
+                    task_id=task_id,
+                    execution_id=execution_id,
+                    detector=type(detector).__name__,
+                    scope=scope.value,
+                    reason="TASK_TREE scope requested but no task_repo configured",
+                )
+            continue
         context = await loader.load(execution_result, agent_id, task_id)
         for detector in detectors:
+            if context.scope not in detector.supported_scopes:
+                logger.warning(
+                    DETECTOR_SCOPE_MISMATCH,
+                    agent_id=agent_id,
+                    task_id=task_id,
+                    execution_id=execution_id,
+                    detector=type(detector).__name__,
+                    context_scope=context.scope.value,
+                    supported_scopes=sorted(s.value for s in detector.supported_scopes),
+                )
+                continue
             findings = await _safe_detect(
                 detector,
                 context,
@@ -498,6 +550,8 @@ async def _safe_detect(
             task_id=task_id,
             execution_id=execution_id,
             detector=type(detector).__name__,
-            message_count=0,
+            message_count=len(
+                context.execution_result.context.conversation,
+            ),
         )
         return ()

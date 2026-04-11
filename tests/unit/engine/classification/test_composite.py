@@ -252,3 +252,99 @@ class TestCompositeDetector:
         ctx = _context()
         findings = await composite.detect(ctx)
         assert len(findings) == 1
+
+    async def test_failing_sub_detector_does_not_discard_siblings(self) -> None:
+        """One sub-detector raising must never cancel the others."""
+
+        class _RaisingDetector:
+            @property
+            def category(self) -> ErrorCategory:
+                return ErrorCategory.LOGICAL_CONTRADICTION
+
+            @property
+            def supported_scopes(self) -> frozenset[DetectionScope]:
+                return frozenset({DetectionScope.SAME_TASK})
+
+            async def detect(
+                self, context: DetectionContext
+            ) -> tuple[ErrorFinding, ...]:
+                msg = "simulated provider failure"
+                raise RuntimeError(msg)
+
+        healthy = _FakeDetector(
+            ErrorCategory.LOGICAL_CONTRADICTION,
+            (_finding(description="Survivor"),),
+        )
+        composite = CompositeDetector(detectors=(_RaisingDetector(), healthy))
+        findings = await composite.detect(_context())
+        assert len(findings) == 1
+        assert findings[0].description == "Survivor"
+
+    async def test_scope_filter_skips_incompatible_detectors(self) -> None:
+        """Sub-detectors whose scopes exclude ``context.scope`` are skipped."""
+
+        class _SameTaskOnly:
+            @property
+            def category(self) -> ErrorCategory:
+                return ErrorCategory.LOGICAL_CONTRADICTION
+
+            @property
+            def supported_scopes(self) -> frozenset[DetectionScope]:
+                return frozenset({DetectionScope.SAME_TASK})
+
+            async def detect(
+                self, context: DetectionContext
+            ) -> tuple[ErrorFinding, ...]:
+                return (_finding(description="same-task only"),)
+
+        class _TaskTreeOnly:
+            def __init__(self) -> None:
+                self.called = False
+
+            @property
+            def category(self) -> ErrorCategory:
+                return ErrorCategory.LOGICAL_CONTRADICTION
+
+            @property
+            def supported_scopes(self) -> frozenset[DetectionScope]:
+                return frozenset({DetectionScope.TASK_TREE})
+
+            async def detect(
+                self, context: DetectionContext
+            ) -> tuple[ErrorFinding, ...]:
+                self.called = True
+                return (_finding(description="task-tree only"),)
+
+        task_tree_only = _TaskTreeOnly()
+        composite = CompositeDetector(
+            detectors=(_SameTaskOnly(), task_tree_only),
+        )
+        # context.scope is SAME_TASK; the TASK_TREE-only detector
+        # must be filtered out and never invoked.
+        ctx = _context()
+        assert ctx.scope == DetectionScope.SAME_TASK
+        findings = await composite.detect(ctx)
+        assert len(findings) == 1
+        assert findings[0].description == "same-task only"
+        assert task_tree_only.called is False
+
+    async def test_scope_filter_skips_all_returns_empty(self) -> None:
+        """A composite with no eligible detectors returns empty."""
+
+        class _TaskTreeOnly:
+            @property
+            def category(self) -> ErrorCategory:
+                return ErrorCategory.LOGICAL_CONTRADICTION
+
+            @property
+            def supported_scopes(self) -> frozenset[DetectionScope]:
+                return frozenset({DetectionScope.TASK_TREE})
+
+            async def detect(
+                self, context: DetectionContext
+            ) -> tuple[ErrorFinding, ...]:
+                return (_finding(description="should not run"),)
+
+        composite = CompositeDetector(detectors=(_TaskTreeOnly(),))
+        findings = await composite.detect(_context())
+        assert findings == ()

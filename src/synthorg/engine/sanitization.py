@@ -41,6 +41,13 @@ _URL_PATTERN = re.compile(
 # payloads that downstream LLM flows expect to preserve -- redacting
 # them would corrupt valid input with no meaningful injection-defense
 # benefit.
+#
+# The ``=== BEGIN/END <FRAME> ===`` family covers delimiters used by
+# the classification semantic detectors (``===BEGIN CONVERSATION===``,
+# ``===END CONVERSATION===``) and related framings a caller might
+# introduce, so that untrusted content cannot spoof its own frame
+# terminator and break out of the bounded region in a downstream LLM
+# prompt.
 _PROMPT_INJECTION_PATTERN = re.compile(
     r"(?i)"
     r"(?:ignore\s+(?:all\s+|any\s+|the\s+|your\s+|previous\s+|above\s+)+"
@@ -48,6 +55,7 @@ _PROMPT_INJECTION_PATTERN = re.compile(
     r"|\[/?(?:INST|SYS|SYSTEM|USER|ASSISTANT)\]"
     r"|<\|(?:im_start|im_end|system|user|assistant|endoftext)\|>"
     r"|<\|/?(?:system|user|assistant)\|>"
+    r"|={3,}\s*(?:BEGIN|END)\s+[A-Z][A-Z_ ]*\s*={3,}"
 )
 
 
