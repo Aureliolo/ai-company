@@ -26,7 +26,7 @@ const STRATEGY_DESCRIPTIONS: Record<string, string> = {
 export function StrategyControls({ strategies }: StrategyControlsProps) {
   return (
     <SectionCard title="Strategies" icon={Settings}>
-      <div className="flex flex-col gap-3">
+      <div className="flex flex-col gap-card-gap">
         {strategies.map((strategy) => (
           <div
             key={strategy.name}

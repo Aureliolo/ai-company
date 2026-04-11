@@ -37,7 +37,7 @@ class PerformanceSignalSource:
 
     async def collect(
         self,
-        agent_ids: tuple[NotBlankStr, ...],  # noqa: ARG002
+        agent_ids: tuple[NotBlankStr, ...],
         *,
         snapshots: dict[str, AgentPerformanceSnapshot] | None = None,
     ) -> tuple[ScalingSignal, ...]:
@@ -54,6 +54,13 @@ class PerformanceSignalSource:
         now = datetime.now(UTC)
 
         if not snapshots:
+            if agent_ids:
+                logger.warning(
+                    "hr.scaling.signal_collection_degraded",
+                    source="performance",
+                    reason="no_snapshots_for_active_agents",
+                    agent_count=len(agent_ids),
+                )
             return (
                 ScalingSignal(
                     name=NotBlankStr("avg_quality_trend"),
@@ -80,6 +87,13 @@ class PerformanceSignalSource:
             )
             if quality_trend is not None:
                 direction = str(quality_trend.direction)
+                if direction not in _TREND_MAP:
+                    logger.warning(
+                        "hr.scaling.signal_collection_degraded",
+                        source="performance",
+                        reason="unknown_trend_direction",
+                        direction=direction,
+                    )
                 value = _TREND_MAP.get(direction, 0.0)
                 trend_values.append(value)
                 if direction == "declining":

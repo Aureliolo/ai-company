@@ -86,6 +86,17 @@ class ScalingContext(BaseModel):
         description="When the context was built",
     )
 
+    @model_validator(mode="after")
+    def _validate_agent_count(self) -> Self:
+        """Ensure active_agent_count matches agent_ids length."""
+        if self.active_agent_count != len(self.agent_ids):
+            msg = (
+                f"active_agent_count ({self.active_agent_count}) must equal "
+                f"len(agent_ids) ({len(self.agent_ids)})"
+            )
+            raise ValueError(msg)
+        return self
+
 
 class ScalingDecision(BaseModel):
     """A scaling action proposed by a strategy.
@@ -197,3 +208,21 @@ class ScalingActionRecord(BaseModel):
         description="Additional context",
     )
     executed_at: AwareDatetime = Field(description="When execution occurred")
+
+    @model_validator(mode="after")
+    def _validate_outcome_fields(self) -> Self:
+        """Validate outcome-dependent field presence.
+
+        - FAILED outcomes must include a reason.
+        - EXECUTED/DEFERRED outcomes should carry a result_id.
+        """
+        if self.outcome == ScalingOutcome.FAILED and self.reason is None:
+            msg = "FAILED records must include reason"
+            raise ValueError(msg)
+        if (
+            self.outcome in (ScalingOutcome.EXECUTED, ScalingOutcome.DEFERRED)
+            and self.result_id is None
+        ):
+            msg = f"{self.outcome.value} records must include result_id"
+            raise ValueError(msg)
+        return self

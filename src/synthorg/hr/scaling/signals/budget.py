@@ -45,6 +45,11 @@ class BudgetSignalSource:
         now = datetime.now(UTC)
 
         if summary is None:
+            logger.warning(
+                "hr.scaling.signal_collection_degraded",
+                source="budget",
+                reason="no_spending_summary",
+            )
             return (
                 ScalingSignal(
                     name=NotBlankStr("burn_rate_percent"),
@@ -67,7 +72,15 @@ class BudgetSignalSource:
             "critical": 2.0,
             "hard_stop": 3.0,
         }
-        alert_value = alert_map.get(summary.alert_level.value, 0.0)
+        alert_key = summary.alert_level.value
+        if alert_key not in alert_map:
+            logger.warning(
+                "hr.scaling.signal_collection_degraded",
+                source="budget",
+                reason="unknown_alert_level",
+                alert_level=alert_key,
+            )
+        alert_value = alert_map.get(alert_key, 0.0)
 
         return (
             ScalingSignal(

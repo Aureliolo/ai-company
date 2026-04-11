@@ -19,22 +19,26 @@ logger = get_logger(__name__)
 
 # Default priority: lower number = higher priority.
 DEFAULT_PRIORITY: dict[str, int] = {
-    ScalingStrategyName.BUDGET_CAP: 0,
-    ScalingStrategyName.PERFORMANCE_PRUNING: 1,
-    ScalingStrategyName.SKILL_GAP: 2,
-    ScalingStrategyName.WORKLOAD: 3,
+    ScalingStrategyName.BUDGET_CAP.value: 0,
+    ScalingStrategyName.PERFORMANCE_PRUNING.value: 1,
+    ScalingStrategyName.SKILL_GAP.value: 2,
+    ScalingStrategyName.WORKLOAD.value: 3,
 }
+
+_LOWEST_PRIORITY = 999
 
 
 class ConflictResolver:
     """Resolves conflicts between competing scaling decisions.
 
-    Higher-priority strategies win when decisions conflict on the
-    same target. Budget HOLD decisions block HIRE decisions from
-    lower-priority strategies.
+    Lower priority numbers win when decisions conflict on the same
+    target (priority 0 beats priority 1, etc). Budget HOLD decisions
+    block HIRE decisions from lower-priority strategies.
 
     Args:
         priority: Strategy name to priority mapping (lower = higher).
+            Keys must be the string values of ``ScalingStrategyName``
+            members (e.g. ``"workload"``).
     """
 
     def __init__(
@@ -48,6 +52,10 @@ class ConflictResolver:
     def name(self) -> NotBlankStr:
         """Guard identifier."""
         return "conflict_resolver"
+
+    def _priority_for(self, decision: ScalingDecision) -> int:
+        """Return the priority rank for a decision's strategy."""
+        return self._priority.get(decision.source_strategy.value, _LOWEST_PRIORITY)
 
     async def filter(
         self,
@@ -64,68 +72,53 @@ class ConflictResolver:
         if not decisions:
             return ()
 
-        # Check for any HOLD decisions -- these block all HIREs
-        # from lower-priority strategies.
-        has_hold = any(d.action_type == ScalingActionType.HOLD for d in decisions)
+        # Find the highest-priority HOLD (if any) -- this blocks
+        # HIRE decisions from lower-priority strategies.
         hold_priority = min(
             (
-                self._priority.get(str(d.source_strategy), 999)
+                self._priority_for(d)
                 for d in decisions
                 if d.action_type == ScalingActionType.HOLD
             ),
-            default=999,
+            default=_LOWEST_PRIORITY + 1,
         )
 
-        result: list[ScalingDecision] = []
+        # Single-pass deduplication: keep the best decision per
+        # target agent_id; non-targeted decisions pass through.
+        best_by_agent: dict[str, ScalingDecision] = {}
+        non_targeted: list[ScalingDecision] = []
+
         for decision in decisions:
-            # Skip HOLD decisions themselves (they're control signals).
+            # Skip HOLD decisions themselves (control signals).
             if decision.action_type == ScalingActionType.HOLD:
                 continue
 
-            # If there's a HOLD, block HIRE from lower-priority strategies.
-            if has_hold and decision.action_type == ScalingActionType.HIRE:
-                strategy_priority = self._priority.get(
-                    str(decision.source_strategy),
-                    999,
+            # Block HIRE from lower-priority strategies when HOLD is active.
+            if (
+                decision.action_type == ScalingActionType.HIRE
+                and self._priority_for(decision) > hold_priority
+            ):
+                logger.info(
+                    HR_SCALING_GUARD_APPLIED,
+                    guard="conflict_resolver",
+                    action="blocked_hire",
+                    strategy=decision.source_strategy.value,
+                    reason="hold_from_higher_priority",
                 )
-                if strategy_priority > hold_priority:
-                    logger.info(
-                        HR_SCALING_GUARD_APPLIED,
-                        guard="conflict_resolver",
-                        action="blocked_hire",
-                        strategy=str(decision.source_strategy),
-                        reason="hold_from_higher_priority",
-                    )
-                    continue
-
-            result.append(decision)
-
-        # Deduplicate: if multiple strategies target the same agent
-        # for different actions, keep the highest-priority one.
-        seen_agents: dict[str, ScalingDecision] = {}
-        final: list[ScalingDecision] = []
-        for decision in result:
-            key = str(decision.target_agent_id) if decision.target_agent_id else None
-            if key is None:
-                final.append(decision)
                 continue
-            existing = seen_agents.get(key)
-            if existing is None:
-                seen_agents[key] = decision
-                final.append(decision)
-            else:
-                existing_pri = self._priority.get(
-                    str(existing.source_strategy),
-                    999,
-                )
-                new_pri = self._priority.get(
-                    str(decision.source_strategy),
-                    999,
-                )
-                if new_pri < existing_pri:
-                    final.remove(existing)
-                    seen_agents[key] = decision
-                    final.append(decision)
+
+            if decision.target_agent_id is None:
+                non_targeted.append(decision)
+                continue
+
+            key = str(decision.target_agent_id)
+            existing = best_by_agent.get(key)
+            if existing is None or self._priority_for(decision) < self._priority_for(
+                existing
+            ):
+                best_by_agent[key] = decision
+
+        final = tuple(non_targeted) + tuple(best_by_agent.values())
 
         logger.info(
             HR_SCALING_GUARD_APPLIED,
@@ -133,4 +126,4 @@ class ConflictResolver:
             input_count=len(decisions),
             output_count=len(final),
         )
-        return tuple(final)
+        return final

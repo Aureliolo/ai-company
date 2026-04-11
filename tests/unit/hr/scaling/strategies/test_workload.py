@@ -25,7 +25,7 @@ class TestWorkloadAutoScaleStrategy:
     async def test_prune_when_below_threshold(self) -> None:
         strategy = WorkloadAutoScaleStrategy(prune_threshold=0.30)
         ctx = make_context(
-            active_agent_count=3,
+            agent_ids=("agent-001", "agent-002", "agent-003"),
             workload_signals=(make_signal(name="avg_utilization", value=0.10),),
         )
         decisions = await strategy.evaluate(ctx)

@@ -80,7 +80,27 @@ class TestScalingConfig:
             config.enabled = False  # type: ignore[misc]
 
     def test_custom_priority_order(self) -> None:
+        from synthorg.hr.scaling.enums import ScalingStrategyName
+
         config = ScalingConfig(
-            priority_order=("workload", "budget_cap"),
+            priority_order=(
+                ScalingStrategyName.WORKLOAD,
+                ScalingStrategyName.BUDGET_CAP,
+                ScalingStrategyName.PERFORMANCE_PRUNING,
+                ScalingStrategyName.SKILL_GAP,
+            ),
         )
-        assert config.priority_order == ("workload", "budget_cap")
+        assert config.priority_order[0] == ScalingStrategyName.WORKLOAD
+
+    def test_priority_order_rejects_duplicates(self) -> None:
+        from synthorg.hr.scaling.enums import ScalingStrategyName
+
+        with pytest.raises(ValidationError, match="duplicates"):
+            ScalingConfig(
+                priority_order=(
+                    ScalingStrategyName.BUDGET_CAP,
+                    ScalingStrategyName.BUDGET_CAP,
+                    ScalingStrategyName.SKILL_GAP,
+                    ScalingStrategyName.WORKLOAD,
+                ),
+            )

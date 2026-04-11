@@ -24,14 +24,17 @@ _ACTION_TYPES = frozenset(
 class BudgetCapStrategy:
     """Budget-aware scaling strategy.
 
-    Emits PRUNE when burn rate exceeds the safety margin.
-    Emits HOLD (blocking hires) when burn is between headroom
-    and safety margin. Emits nothing when under headroom.
+    Emits both PRUNE and HOLD when burn rate exceeds the safety
+    margin -- PRUNE targets the cheapest-to-remove agent, and HOLD
+    blocks hires from lower-priority strategies via the conflict
+    resolver. Emits HOLD only (no PRUNE) when burn is between
+    headroom and safety margin. Emits nothing when under headroom.
 
     Args:
-        safety_margin: Burn rate fraction above which to prune.
-        headroom_fraction: Burn rate fraction below which hires
-            are allowed.
+        safety_margin: Burn rate fraction above which to prune and
+            block hires.
+        headroom_fraction: Burn rate fraction below which hires are
+            allowed without a HOLD block.
     """
 
     def __init__(
@@ -72,7 +75,7 @@ class BudgetCapStrategy:
             None,
         )
         if burn_signal is None:
-            logger.debug(
+            logger.info(
                 HR_SCALING_STRATEGY_EVALUATED,
                 strategy="budget_cap",
                 decisions=0,

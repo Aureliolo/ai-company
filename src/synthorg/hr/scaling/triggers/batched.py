@@ -67,6 +67,11 @@ class BatchedScalingTrigger:
             )
             return True
 
-    def record_run(self) -> None:
-        """Record that an evaluation cycle completed."""
-        self._last_run = datetime.now(UTC)
+    async def record_run(self) -> None:
+        """Record that an evaluation cycle completed.
+
+        Must be called under the same event loop as ``should_trigger``
+        so the lock protects both the read and write of ``_last_run``.
+        """
+        async with self._lock:
+            self._last_run = datetime.now(UTC)

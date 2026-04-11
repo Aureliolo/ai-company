@@ -1,10 +1,12 @@
 """Scaling context builder -- aggregates signals into a frozen context."""
 
+import asyncio
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
 from synthorg.hr.scaling.models import ScalingContext, ScalingSignal
 from synthorg.observability import get_logger
+from synthorg.observability.events.hr import HR_SCALING_CONTEXT_BUILT
 
 if TYPE_CHECKING:
     from synthorg.core.types import NotBlankStr
@@ -65,36 +67,32 @@ class ScalingContextBuilder:
         Returns:
             Frozen ``ScalingContext`` with all collected signals.
         """
-        workload_signals: tuple[ScalingSignal, ...] = ()
-        budget_signals: tuple[ScalingSignal, ...] = ()
-        performance_signals: tuple[ScalingSignal, ...] = ()
-        skill_signals: tuple[ScalingSignal, ...] = ()
+        workload_signals = await self._safe_collect(
+            "workload",
+            self._workload,
+            agent_ids,
+            workload_kwargs,
+        )
+        budget_signals = await self._safe_collect(
+            "budget",
+            self._budget,
+            agent_ids,
+            budget_kwargs,
+        )
+        performance_signals = await self._safe_collect(
+            "performance",
+            self._performance,
+            agent_ids,
+            performance_kwargs,
+        )
+        skill_signals = await self._safe_collect(
+            "skill",
+            self._skill,
+            agent_ids,
+            skill_kwargs,
+        )
 
-        if self._workload is not None:
-            workload_signals = await self._workload.collect(
-                agent_ids,
-                **(workload_kwargs or {}),
-            )
-
-        if self._budget is not None:
-            budget_signals = await self._budget.collect(
-                agent_ids,
-                **(budget_kwargs or {}),
-            )
-
-        if self._performance is not None:
-            performance_signals = await self._performance.collect(
-                agent_ids,
-                **(performance_kwargs or {}),
-            )
-
-        if self._skill is not None:
-            skill_signals = await self._skill.collect(
-                agent_ids,
-                **(skill_kwargs or {}),
-            )
-
-        return ScalingContext(
+        context = ScalingContext(
             active_agent_count=len(agent_ids),
             agent_ids=agent_ids,
             workload_signals=workload_signals,
@@ -103,3 +101,46 @@ class ScalingContextBuilder:
             skill_signals=skill_signals,
             evaluated_at=datetime.now(UTC),
         )
+        logger.debug(
+            HR_SCALING_CONTEXT_BUILT,
+            agent_count=len(agent_ids),
+            workload_signals=len(workload_signals),
+            budget_signals=len(budget_signals),
+            performance_signals=len(performance_signals),
+            skill_signals=len(skill_signals),
+        )
+        return context
+
+    @staticmethod
+    async def _safe_collect(
+        name: str,
+        source: Any,
+        agent_ids: tuple[NotBlankStr, ...],
+        kwargs: dict[str, Any] | None,
+    ) -> tuple[ScalingSignal, ...]:
+        """Collect signals from a source, degrading gracefully on failure.
+
+        A single source crashing must not prevent the rest of the
+        context from being built.
+        """
+        if source is None:
+            return ()
+        try:
+            result: tuple[ScalingSignal, ...] = await source.collect(
+                agent_ids,
+                **(kwargs or {}),
+            )
+        except MemoryError, RecursionError:
+            raise
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            logger.warning(
+                HR_SCALING_CONTEXT_BUILT,
+                source=name,
+                action="collection_failed",
+                error=f"{type(exc).__name__}: {exc}",
+                exc_info=True,
+            )
+            return ()
+        return result

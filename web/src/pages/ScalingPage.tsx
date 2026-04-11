@@ -61,16 +61,22 @@ export default function ScalingPage() {
 
       {/* Error banner */}
       {error && (
-        <div className="flex items-center gap-2 rounded-md bg-danger/10 p-3 text-danger">
-          <AlertTriangle className="size-5 shrink-0" />
+        <div
+          role="alert"
+          className="flex items-center gap-2 rounded-md bg-danger/10 p-card text-danger"
+        >
+          <AlertTriangle className="size-5 shrink-0" aria-hidden="true" />
           <span>{error}</span>
         </div>
       )}
 
       {/* WebSocket disconnection warning */}
       {!wsConnected && (
-        <div className="flex items-center gap-2 rounded-md bg-warning/10 p-3 text-warning">
-          <WifiOff className="size-5 shrink-0" />
+        <div
+          role="alert"
+          className="flex items-center gap-2 rounded-md bg-warning/10 p-card text-warning"
+        >
+          <WifiOff className="size-5 shrink-0" aria-hidden="true" />
           <span>Real-time updates unavailable</span>
         </div>
       )}

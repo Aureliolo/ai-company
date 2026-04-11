@@ -59,19 +59,33 @@ class ApprovalGateGuard:
         self,
         decisions: tuple[ScalingDecision, ...],
     ) -> tuple[ScalingDecision, ...]:
-        """Create approval items for all decisions.
+        """Create approval items for all actionable decisions.
+
+        This is a side-effect-only guard: it creates ``ApprovalItem``
+        entries in the ``ApprovalStore`` and returns the decisions
+        unchanged so downstream code can execute approved actions
+        (or defer execution pending human approval). NO_OP and HOLD
+        decisions are skipped since they do not require approval.
+
+        Approval-store write failures for a single decision are
+        logged but do not abort the whole chain -- the decision is
+        dropped (it has no corresponding approval entry and cannot
+        be executed safely).
 
         Args:
             decisions: Incoming decisions.
 
         Returns:
-            All decisions (unchanged -- approval status checked later).
+            Decisions that either do not need approval or had an
+            approval item successfully created.
         """
+        surviving: list[ScalingDecision] = []
         for decision in decisions:
             if decision.action_type in {
                 ScalingActionType.NO_OP,
                 ScalingActionType.HOLD,
             }:
+                surviving.append(decision)
                 continue
 
             risk = _RISK_MAP.get(
@@ -102,7 +116,23 @@ class ApprovalGateGuard:
                 expires_at=now + timedelta(days=self._expiry_days),
             )
 
-            await self._store.add(item)
+            try:
+                await self._store.add(item)
+            except MemoryError, RecursionError:
+                raise
+            except Exception as exc:
+                logger.error(
+                    HR_SCALING_GUARD_APPLIED,
+                    guard="approval_gate",
+                    action="approval_creation_failed",
+                    decision_id=str(decision.id),
+                    error=f"{type(exc).__name__}: {exc}",
+                    exc_info=True,
+                )
+                # Drop the decision: without an approval item it
+                # cannot be safely executed through the existing flow.
+                continue
+
             logger.info(
                 HR_SCALING_GUARD_APPLIED,
                 guard="approval_gate",
@@ -111,5 +141,6 @@ class ApprovalGateGuard:
                 decision_id=str(decision.id),
                 risk_level=risk.value,
             )
+            surviving.append(decision)
 
-        return decisions
+        return tuple(surviving)

@@ -15,8 +15,12 @@ from synthorg.observability import get_logger
 from synthorg.observability.events.hr import HR_SCALING_STRATEGY_EVALUATED
 
 if TYPE_CHECKING:
+    from collections.abc import Awaitable, Callable
+
     from synthorg.hr.performance.models import AgentPerformanceSnapshot
     from synthorg.hr.pruning.policy import PruningPolicy
+
+    EvolutionChecker = Callable[[NotBlankStr], Awaitable[bool]]
 
 logger = get_logger(__name__)
 
@@ -35,9 +39,9 @@ class PerformancePruningStrategy:
 
     Args:
         policy: Pruning policy to delegate to.
-        performance_snapshots: Provider of snapshots per agent.
-        evolution_checker: Optional callable that returns True if
-            an agent has recent evolution adaptations.
+        evolution_checker: Optional async callable that returns True
+            if an agent has recent evolution adaptations. Signature:
+            ``async def(agent_id: NotBlankStr) -> bool``.
         defer_during_evolution: Whether to defer pruning during
             active evolution.
     """
@@ -46,7 +50,7 @@ class PerformancePruningStrategy:
         self,
         *,
         policy: PruningPolicy,
-        evolution_checker: object | None = None,
+        evolution_checker: EvolutionChecker | None = None,
         defer_during_evolution: bool = True,
     ) -> None:
         self._policy = policy
@@ -92,17 +96,15 @@ class PerformancePruningStrategy:
 
             # Check evolution deferral.
             if self._defer_during_evolution and self._evolution_checker is not None:
-                checker = self._evolution_checker
-                if callable(checker):
-                    is_adapting = await checker(agent_id)
-                    if is_adapting:
-                        logger.debug(
-                            HR_SCALING_STRATEGY_EVALUATED,
-                            strategy="performance_pruning",
-                            agent_id=agent_key,
-                            reason="deferred_evolution_active",
-                        )
-                        continue
+                is_adapting = await self._evolution_checker(agent_id)
+                if is_adapting:
+                    logger.debug(
+                        HR_SCALING_STRATEGY_EVALUATED,
+                        strategy="performance_pruning",
+                        agent_id=agent_key,
+                        reason="deferred_evolution_active",
+                    )
+                    continue
 
             evaluation = await self._policy.evaluate(agent_id, snapshot)
             if evaluation.eligible:

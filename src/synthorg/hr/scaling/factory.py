@@ -13,9 +13,13 @@ from synthorg.hr.scaling.guards.conflict_resolver import ConflictResolver
 from synthorg.hr.scaling.guards.cooldown import CooldownGuard
 from synthorg.hr.scaling.guards.rate_limit import RateLimitGuard
 from synthorg.hr.scaling.signals.budget import BudgetSignalSource
+from synthorg.hr.scaling.signals.performance import PerformanceSignalSource
 from synthorg.hr.scaling.signals.skill import SkillSignalSource
 from synthorg.hr.scaling.signals.workload import WorkloadSignalSource
 from synthorg.hr.scaling.strategies.budget_cap import BudgetCapStrategy
+from synthorg.hr.scaling.strategies.performance_pruning import (
+    PerformancePruningStrategy,
+)
 from synthorg.hr.scaling.strategies.skill_gap import SkillGapStrategy
 from synthorg.hr.scaling.strategies.workload import (
     WorkloadAutoScaleStrategy,
@@ -24,7 +28,11 @@ from synthorg.hr.scaling.triggers.batched import BatchedScalingTrigger
 from synthorg.observability import get_logger
 
 if TYPE_CHECKING:
+    from collections.abc import Awaitable, Callable
+
     from synthorg.api.approval_store import ApprovalStore
+    from synthorg.core.types import NotBlankStr
+    from synthorg.hr.pruning.policy import PruningPolicy
     from synthorg.hr.scaling.config import ScalingConfig
     from synthorg.hr.scaling.protocols import ScalingGuard, ScalingStrategy
 
@@ -33,11 +41,22 @@ logger = get_logger(__name__)
 
 def create_scaling_strategies(
     config: ScalingConfig,
+    *,
+    pruning_policy: PruningPolicy | None = None,
+    evolution_checker: Callable[[NotBlankStr], Awaitable[bool]] | None = None,
 ) -> tuple[ScalingStrategy, ...]:
     """Create enabled strategies from configuration.
 
     Args:
         config: Scaling configuration.
+        pruning_policy: Optional ``PruningPolicy`` to wire into the
+            ``PerformancePruningStrategy``. When omitted, the
+            performance pruning strategy is skipped even if enabled
+            in config -- it cannot evaluate without a policy.
+        evolution_checker: Optional async callable that reports
+            whether an agent has recent evolution adaptations. Passed
+            through to ``PerformancePruningStrategy`` so it can defer
+            pruning of agents currently being adapted.
 
     Returns:
         Tuple of enabled strategy instances.
@@ -68,6 +87,17 @@ def create_scaling_strategies(
             ),
         )
 
+    if config.performance_pruning.enabled and pruning_policy is not None:
+        strategies.append(
+            PerformancePruningStrategy(
+                policy=pruning_policy,
+                evolution_checker=evolution_checker,
+                defer_during_evolution=(
+                    config.performance_pruning.defer_during_evolution
+                ),
+            ),
+        )
+
     return tuple(strategies)
 
 
@@ -85,7 +115,7 @@ def create_scaling_guards(
     Returns:
         A CompositeScalingGuard or single guard.
     """
-    priority_map = {name: idx for idx, name in enumerate(config.priority_order)}
+    priority_map = {name.value: idx for idx, name in enumerate(config.priority_order)}
 
     guards: list[ScalingGuard] = [
         ConflictResolver(priority=priority_map),
@@ -121,10 +151,14 @@ def create_scaling_context_builder(
     workload_src = WorkloadSignalSource() if config.workload.enabled else None
     budget_src = BudgetSignalSource() if config.budget_cap.enabled else None
     skill_src = SkillSignalSource() if config.skill_gap.enabled else None
+    performance_src = (
+        PerformanceSignalSource() if config.performance_pruning.enabled else None
+    )
 
     return ScalingContextBuilder(
         workload_source=workload_src,
         budget_source=budget_src,
+        performance_source=performance_src,
         skill_source=skill_src,
     )
 

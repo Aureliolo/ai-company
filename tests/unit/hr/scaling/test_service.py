@@ -148,6 +148,7 @@ class TestScalingService:
         record = ScalingActionRecord(
             decision_id=NotBlankStr("d1"),
             outcome=ScalingOutcome.EXECUTED,
+            result_id=NotBlankStr("hire-request-1"),
             executed_at=NOW,
         )
         service.record_action(record)

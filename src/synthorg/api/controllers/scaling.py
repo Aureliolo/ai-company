@@ -13,7 +13,10 @@ from synthorg.api.guards import require_read_access, require_write_access
 from synthorg.api.pagination import PaginationLimit, PaginationOffset, paginate
 from synthorg.api.state import AppState  # noqa: TC001
 from synthorg.core.types import NotBlankStr
-from synthorg.hr.scaling.models import ScalingDecision  # noqa: TC001
+from synthorg.hr.scaling.models import (  # noqa: TC001
+    ScalingDecision,
+    ScalingSignal,
+)
 from synthorg.observability import get_logger
 from synthorg.observability.events.hr import (
     HR_SCALING_CYCLE_STARTED,
@@ -35,6 +38,21 @@ class ScalingStrategyResponse(BaseModel):
     priority: int = Field(ge=0, description="Priority rank")
 
 
+class ScalingSignalResponse(BaseModel):
+    """Signal value for API responses."""
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+
+    name: str = Field(description="Signal name")
+    value: float = Field(description="Current value")
+    source: str = Field(description="Signal source")
+    threshold: float | None = Field(
+        default=None,
+        description="Configured threshold for this signal",
+    )
+    timestamp: str = Field(description="ISO timestamp when collected")
+
+
 class ScalingDecisionResponse(BaseModel):
     """Decision summary for API responses."""
 
@@ -51,19 +69,32 @@ class ScalingDecisionResponse(BaseModel):
         default=None,
         description="Role to hire for",
     )
+    target_skills: tuple[str, ...] = Field(
+        default=(),
+        description="Skills required for the hire target",
+    )
+    target_department: str | None = Field(
+        default=None,
+        description="Department for the hire target",
+    )
     rationale: str = Field(description="Decision rationale")
     confidence: float = Field(description="Strategy confidence")
+    signals: tuple[ScalingSignalResponse, ...] = Field(
+        default=(),
+        description="Signals that informed the decision",
+    )
     created_at: str = Field(description="ISO timestamp")
 
 
-class ScalingSignalResponse(BaseModel):
-    """Signal value for API responses."""
-
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
-
-    name: str = Field(description="Signal name")
-    value: float = Field(description="Current value")
-    source: str = Field(description="Signal source")
+def _signal_to_response(s: ScalingSignal) -> ScalingSignalResponse:
+    """Convert a domain signal to a response DTO."""
+    return ScalingSignalResponse(
+        name=str(s.name),
+        value=s.value,
+        source=str(s.source),
+        threshold=s.threshold,
+        timestamp=s.timestamp.isoformat(),
+    )
 
 
 def _decision_to_response(d: ScalingDecision) -> ScalingDecisionResponse:
@@ -74,8 +105,11 @@ def _decision_to_response(d: ScalingDecision) -> ScalingDecisionResponse:
         source_strategy=d.source_strategy.value,
         target_agent_id=str(d.target_agent_id) if d.target_agent_id else None,
         target_role=str(d.target_role) if d.target_role else None,
+        target_skills=tuple(str(s) for s in d.target_skills),
+        target_department=(str(d.target_department) if d.target_department else None),
         rationale=str(d.rationale),
         confidence=d.confidence,
+        signals=tuple(_signal_to_response(s) for s in d.signals),
         created_at=d.created_at.isoformat(),
     )
 
@@ -113,7 +147,7 @@ class ScalingController(Controller):
                 enabled=True,
                 priority=idx,
             )
-            for idx, s in enumerate(scaling._strategies)  # noqa: SLF001
+            for idx, s in enumerate(scaling.strategies)
         )
         return ApiResponse(data=strategies)
 
@@ -176,13 +210,7 @@ class ScalingController(Controller):
             for signal in decision.signals:
                 if signal.name not in seen:
                     seen.add(str(signal.name))
-                    signals.append(
-                        ScalingSignalResponse(
-                            name=str(signal.name),
-                            value=signal.value,
-                            source=str(signal.source),
-                        ),
-                    )
+                    signals.append(_signal_to_response(signal))
         return ApiResponse(data=tuple(signals))
 
     @post("/evaluate", guards=[require_write_access])
@@ -211,7 +239,7 @@ class ScalingController(Controller):
         # Get active agents from registry.
         registry = app_state.agent_registry
         agents = await registry.list_active()
-        agent_ids = tuple(NotBlankStr(str(a.id)) for a in agents)
+        agent_ids = tuple(NotBlankStr(a.name) for a in agents)
 
         decisions = await scaling.evaluate(agent_ids=agent_ids)
         responses = tuple(_decision_to_response(d) for d in decisions)

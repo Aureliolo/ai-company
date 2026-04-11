@@ -40,7 +40,7 @@ class WorkloadSignalSource:
 
     async def collect(
         self,
-        agent_ids: tuple[NotBlankStr, ...],  # noqa: ARG002
+        agent_ids: tuple[NotBlankStr, ...],
         *,
         workloads: tuple[AgentWorkload, ...] = (),
     ) -> tuple[ScalingSignal, ...]:
@@ -57,6 +57,13 @@ class WorkloadSignalSource:
         now = datetime.now(UTC)
 
         if not workloads:
+            if agent_ids:
+                logger.warning(
+                    "hr.scaling.signal_collection_degraded",
+                    source="workload",
+                    reason="no_workloads_for_active_agents",
+                    agent_count=len(agent_ids),
+                )
             return (
                 ScalingSignal(
                     name=NotBlankStr("avg_utilization"),

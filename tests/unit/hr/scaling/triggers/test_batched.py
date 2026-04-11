@@ -32,7 +32,7 @@ class TestBatchedScalingTrigger:
     async def test_record_run_updates_last_run(self) -> None:
         trigger = BatchedScalingTrigger(interval_seconds=900)
         assert trigger._last_run is None
-        trigger.record_run()
+        await trigger.record_run()
         assert trigger._last_run is not None
 
     async def test_minimum_interval_clamped_to_one(self) -> None:

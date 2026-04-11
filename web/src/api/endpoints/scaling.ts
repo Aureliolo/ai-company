@@ -9,21 +9,26 @@ export interface ScalingStrategyResponse {
   priority: number
 }
 
+export interface ScalingSignalResponse {
+  name: string
+  value: number
+  source: string
+  threshold: number | null
+  timestamp: string
+}
+
 export interface ScalingDecisionResponse {
   id: string
   action_type: string
   source_strategy: string
   target_agent_id: string | null
   target_role: string | null
+  target_skills: readonly string[]
+  target_department: string | null
   rationale: string
   confidence: number
+  signals: readonly ScalingSignalResponse[]
   created_at: string
-}
-
-export interface ScalingSignalResponse {
-  name: string
-  value: number
-  source: string
 }
 
 // -- API functions -----------------------------------------------------------

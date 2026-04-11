@@ -69,7 +69,7 @@ class WorkloadAutoScaleStrategy:
             None,
         )
         if avg_util is None:
-            logger.debug(
+            logger.info(
                 HR_SCALING_STRATEGY_EVALUATED,
                 strategy="workload",
                 decisions=0,

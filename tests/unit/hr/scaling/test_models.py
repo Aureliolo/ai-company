@@ -88,12 +88,12 @@ class TestScalingContext:
     """ScalingContext construction, frozen enforcement, validation."""
 
     def test_valid_context(self) -> None:
-        ctx = make_context(active_agent_count=3)
+        ctx = make_context(agent_ids=("a", "b", "c"))
         assert ctx.active_agent_count == 3
-        assert len(ctx.agent_ids) == 5
+        assert len(ctx.agent_ids) == 3
 
     def test_empty_context(self) -> None:
-        ctx = make_context(active_agent_count=0, agent_ids=())
+        ctx = make_context(agent_ids=())
         assert ctx.active_agent_count == 0
         assert ctx.agent_ids == ()
         assert ctx.workload_signals == ()
@@ -110,7 +110,11 @@ class TestScalingContext:
 
     def test_negative_agent_count_rejected(self) -> None:
         with pytest.raises(ValidationError):
-            make_context(active_agent_count=-1)
+            make_context(active_agent_count=-1, agent_ids=())
+
+    def test_count_mismatch_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="active_agent_count"):
+            make_context(active_agent_count=3, agent_ids=("a", "b"))
 
 
 # -- ScalingDecision ---------------------------------------------------------
@@ -259,20 +263,32 @@ class TestScalingActionRecord:
         record = ScalingActionRecord(
             decision_id=NotBlankStr("decision-001"),
             outcome=ScalingOutcome.EXECUTED,
+            result_id=NotBlankStr("result-001"),
             executed_at=NOW,
         )
         with pytest.raises(ValidationError):
             record.outcome = ScalingOutcome.FAILED  # type: ignore[misc]
 
-    @pytest.mark.parametrize(
-        "outcome",
-        list(ScalingOutcome),
-        ids=lambda o: o.value,
-    )
-    def test_all_outcomes_accepted(self, outcome: ScalingOutcome) -> None:
+    def test_rejected_record(self) -> None:
         record = ScalingActionRecord(
             decision_id=NotBlankStr("decision-001"),
-            outcome=outcome,
+            outcome=ScalingOutcome.REJECTED,
             executed_at=NOW,
         )
-        assert record.outcome == outcome
+        assert record.outcome == ScalingOutcome.REJECTED
+
+    def test_failed_without_reason_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="FAILED"):
+            ScalingActionRecord(
+                decision_id=NotBlankStr("decision-001"),
+                outcome=ScalingOutcome.FAILED,
+                executed_at=NOW,
+            )
+
+    def test_executed_without_result_id_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="executed"):
+            ScalingActionRecord(
+                decision_id=NotBlankStr("decision-001"),
+                outcome=ScalingOutcome.EXECUTED,
+                executed_at=NOW,
+            )

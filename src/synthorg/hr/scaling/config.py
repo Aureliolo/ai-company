@@ -208,7 +208,7 @@ class ScalingConfig(BaseModel):
     )
     triggers: TriggerConfig = Field(default_factory=TriggerConfig)
     guards: GuardConfig = Field(default_factory=GuardConfig)
-    priority_order: tuple[str, ...] = Field(
+    priority_order: tuple[ScalingStrategyName, ...] = Field(
         default=(
             ScalingStrategyName.BUDGET_CAP,
             ScalingStrategyName.PERFORMANCE_PRUNING,
@@ -217,3 +217,11 @@ class ScalingConfig(BaseModel):
         ),
         description="Strategy priority (first = highest)",
     )
+
+    @model_validator(mode="after")
+    def _validate_priority_order(self) -> Self:
+        """Ensure priority_order contains unique, valid strategy names."""
+        if len(self.priority_order) != len(set(self.priority_order)):
+            msg = "priority_order must not contain duplicates"
+            raise ValueError(msg)
+        return self
