@@ -120,21 +120,27 @@ func TestInitValidatePostgresFlag(t *testing.T) {
 	}
 }
 
-// TestInitValidatePostgresPort verifies --postgres-port range validation.
+// TestInitValidatePostgresPort verifies --postgres-port range validation
+// and the backend-gating check (port must be paired with postgres backend).
 func TestInitValidatePostgresPort(t *testing.T) {
 	tests := []struct {
 		name    string
-		port    int
+		backend string // --persistence-backend value
+		port    int    // --postgres-port value
 		wantErr bool
 	}{
-		{"default (0)", 0, false},
-		{"valid 5432", 5432, false},
-		{"too low", 0 - 1, true},
-		{"too high", 65536, true},
+		{"default port with postgres", "postgres", 0, false},
+		{"valid 5432 with postgres", "postgres", 5432, false},
+		{"too low with postgres", "postgres", 0 - 1, true},
+		{"too high with postgres", "postgres", 65536, true},
+		{"valid port rejected without postgres backend", "", 5432, true},
+		{"valid port rejected with sqlite backend", "sqlite", 5432, true},
+		{"unset port with sqlite backend", "sqlite", 0, false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			defer snapshotInitFlags()()
+			initPersistenceBackend = tt.backend
 			initPostgresPort = tt.port
 			err := validateInitFlags()
 			if (err != nil) != tt.wantErr {

@@ -40,22 +40,26 @@ REVISIONS_DIR="src/synthorg/persistence/sqlite/revisions"
 # may set BASE_BRANCH to anything (bare, origin/<name>, or refs/heads/<name>).
 BASE_RAW="${BASE_BRANCH:-${GITHUB_BASE_REF:-origin/main}}"
 
-# Normalize to (1) a remote-tracking ref for comparisons with
-# git cat-file / git show-ref, and (2) a bare branch name for git fetch.
+# Normalize to a remote-tracking form like "<remote>/<branch>" (e.g.
+# origin/main, upstream/main). Accepts bare branch names, refs/heads/*,
+# refs/remotes/*/*, and already-prefixed remote names. Bare branches default
+# to origin/*.
 case "$BASE_RAW" in
-    refs/heads/*)       BASE_NAME="${BASE_RAW#refs/heads/}" ;;
-    refs/remotes/*)     BASE_NAME="${BASE_RAW#refs/remotes/origin/}" ;;
-    origin/*)           BASE_NAME="${BASE_RAW#origin/}" ;;
-    refs/*)             BASE_NAME="${BASE_RAW#refs/}" ;;
-    *)                  BASE_NAME="$BASE_RAW" ;;
+    refs/remotes/*)     BASE="${BASE_RAW#refs/remotes/}" ;;
+    refs/heads/*)       BASE="origin/${BASE_RAW#refs/heads/}" ;;
+    refs/*)             BASE="origin/${BASE_RAW#refs/}" ;;
+    */*)                BASE="$BASE_RAW" ;;
+    *)                  BASE="origin/$BASE_RAW" ;;
 esac
-BASE="origin/$BASE_NAME"
-FETCH_TARGET="$BASE_NAME"
+# BRANCH_ONLY is the part after the remote name, used for git fetch.
+BRANCH_ONLY="${BASE#*/}"
+REMOTE_NAME="${BASE%%/*}"
+FETCH_TARGET="$BRANCH_ONLY"
 
 # Ensure the base ref exists locally; only fetch as a fallback.
-if ! git show-ref --verify --quiet "refs/remotes/$BASE_NAME" \
+if ! git show-ref --verify --quiet "refs/remotes/$BASE" \
     && ! git rev-parse --verify --quiet "$BASE" >/dev/null; then
-    if ! git fetch origin "$FETCH_TARGET" --quiet 2>/dev/null; then
+    if ! git fetch "$REMOTE_NAME" "$FETCH_TARGET" --quiet 2>/dev/null; then
         # In CI a missing base branch is a hard failure; locally it's a skip.
         if [ -n "${GITHUB_BASE_REF:-}" ]; then
             echo "check_single_migration_per_pr: CI base branch $BASE is unavailable; cannot validate migrations." >&2

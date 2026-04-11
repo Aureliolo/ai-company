@@ -255,20 +255,37 @@ func validateInitFlags() error {
 	if initPersistenceBackend != "" && !config.IsValidPersistenceBackend(initPersistenceBackend) {
 		return fmt.Errorf("invalid --persistence-backend %q: must be one of %s", initPersistenceBackend, config.PersistenceBackendNames())
 	}
-	if initPostgresPort != 0 && (initPostgresPort < 1 || initPostgresPort > 65535) {
-		return fmt.Errorf("invalid --postgres-port %d: must be 1-65535", initPostgresPort)
-	}
-	if initPostgresPort != 0 && initBackendPort != 0 && initPostgresPort == initBackendPort {
-		return fmt.Errorf(
-			"invalid --postgres-port %d: conflicts with --backend-port %d",
-			initPostgresPort, initBackendPort,
-		)
-	}
-	if initPostgresPort != 0 && initWebPort != 0 && initPostgresPort == initWebPort {
-		return fmt.Errorf(
-			"invalid --postgres-port %d: conflicts with --web-port %d",
-			initPostgresPort, initWebPort,
-		)
+	if initPostgresPort != 0 {
+		// --postgres-port only applies when postgres is the effective backend.
+		// Flag default (empty) means "use whatever the State default is,
+		// currently sqlite", so an explicit --postgres-port with no matching
+		// --persistence-backend is a misconfiguration, not a silent no-op.
+		effectiveBackend := initPersistenceBackend
+		if effectiveBackend == "" {
+			effectiveBackend = config.DefaultState().PersistenceBackend
+		}
+		if effectiveBackend != "postgres" {
+			return fmt.Errorf(
+				"--postgres-port %d is only valid with --persistence-backend postgres "+
+					"(current effective backend: %q)",
+				initPostgresPort, effectiveBackend,
+			)
+		}
+		if initPostgresPort < 1 || initPostgresPort > 65535 {
+			return fmt.Errorf("invalid --postgres-port %d: must be 1-65535", initPostgresPort)
+		}
+		if initBackendPort != 0 && initPostgresPort == initBackendPort {
+			return fmt.Errorf(
+				"invalid --postgres-port %d: conflicts with --backend-port %d",
+				initPostgresPort, initBackendPort,
+			)
+		}
+		if initWebPort != 0 && initPostgresPort == initWebPort {
+			return fmt.Errorf(
+				"invalid --postgres-port %d: conflicts with --web-port %d",
+				initPostgresPort, initWebPort,
+			)
+		}
 	}
 	return nil
 }
@@ -466,9 +483,14 @@ func buildState(a setupAnswers) (config.State, error) {
 		busBackend = "internal"
 	}
 
-	postgresPort := a.postgresPort
-	postgresPassword := ""
+	// Postgres-only fields stay at zero values for other backends so
+	// sqlite configs don't serialize postgres_port / postgres_password.
+	var (
+		postgresPort     int
+		postgresPassword string
+	)
 	if a.persistenceBackend == "postgres" {
+		postgresPort = a.postgresPort
 		if postgresPort == 0 {
 			postgresPort = config.DefaultState().PostgresPort
 		}
