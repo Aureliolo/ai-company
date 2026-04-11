@@ -62,12 +62,30 @@ for f in "${MODIFIED[@]}"; do
     echo "  Modified vs origin/main: $f" >&2
 done
 echo "" >&2
-echo "If you need to change an already-merged migration:" >&2
-echo "  1. Leave the existing migration alone." >&2
-echo "  2. Create a NEW migration with your delta:" >&2
-echo "       atlas migrate diff --env sqlite <name>" >&2
-echo "" >&2
+# Normalize BASE the same way as check_single_migration_per_pr.sh so
+# the echoed git restore command emits a valid remote-tracking ref.
+BASE_RAW="${BASE_BRANCH:-${GITHUB_BASE_REF:-origin/main}}"
+case "$BASE_RAW" in
+    refs/remotes/*) BASE_REF="${BASE_RAW#refs/remotes/}" ;;
+    refs/heads/*)   BASE_REF="origin/${BASE_RAW#refs/heads/}" ;;
+    refs/*)         BASE_REF="origin/${BASE_RAW#refs/}" ;;
+    origin/*)       BASE_REF="$BASE_RAW" ;;
+    *)              BASE_REF="origin/$BASE_RAW" ;;
+esac
 echo "If you are mid-PR regenerating a migration your own branch added," >&2
 echo "this check will already pass (the file is not on origin/main yet)." >&2
+echo "" >&2
+echo "To recover an accidentally-edited already-merged migration:" >&2
+for dir in "${REVISIONS_DIRS[@]}"; do
+    echo "  git restore --source='$BASE_REF' -- '$dir/atlas.sum'" >&2
+done
+echo "  Delete any PR-local migration files you added, then regenerate:" >&2
+echo "    atlas migrate diff --env sqlite <name>" >&2
+echo "    atlas migrate diff --env postgres <name>" >&2
+echo "" >&2
+echo "If you need to change an already-merged migration's behaviour, create" >&2
+echo "a NEW migration with your delta instead -- leave the existing one alone." >&2
+echo "" >&2
+echo "Do NOT manually edit atlas.sum -- always restore from the base branch." >&2
 echo "" >&2
 exit 1
