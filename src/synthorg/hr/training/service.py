@@ -6,7 +6,7 @@ extraction + curation, sequential guard chain, memory storage.
 
 import asyncio
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from synthorg.core.enums import MemoryCategory
 from synthorg.hr.training.models import (
@@ -16,6 +16,7 @@ from synthorg.hr.training.models import (
     TrainingPlanStatus,
     TrainingResult,
 )
+from synthorg.memory.errors import MemoryError as _MemoryError
 from synthorg.memory.models import MemoryMetadata, MemoryStoreRequest
 from synthorg.observability import get_logger
 from synthorg.observability.events.training import (
@@ -126,7 +127,9 @@ class TrainingService:
         )
 
         # 5. Sequential guard chain.
-        guarded, errors, guarded_items = await self._apply_guards(plan, curated_items)
+        guarded, errors, guarded_items, approval_id = await self._apply_guards(
+            plan, curated_items
+        )
 
         # 6. Storage.
         stored = await self._store_items(plan, guarded_items)
@@ -149,6 +152,7 @@ class TrainingService:
             items_after_curation=curated,
             items_after_guards=guarded,
             items_stored=stored,
+            approval_item_id=approval_id,
             errors=errors,
             started_at=started_at,
             completed_at=completed_at,
@@ -202,24 +206,24 @@ class TrainingService:
     ]:
         """Run extraction + curation in parallel per content type.
 
-        Returns extracted counts, curated counts, and the curated
-        items map (local, not stored on self).
+        Each content type runs extraction then curation in its own
+        task.  Results are returned from each task and merged after
+        the TaskGroup completes -- no shared mutable state during
+        the parallel phase.
         """
-        extracted_counts: list[tuple[ContentType, int]] = []
-        curated_counts: list[tuple[ContentType, int]] = []
-        curated_items: _CuratedMap = {}
 
-        async def _process(ct: ContentType) -> None:
+        async def _process(
+            ct: ContentType,
+        ) -> tuple[ContentType, int, int, tuple[TrainingItem, ...]] | None:
             extractor = self._extractors.get(ct)
             if extractor is None:
-                return
+                return None
 
             items = await extractor.extract(
                 source_agent_ids=source_ids,
                 new_agent_role=plan.new_agent_role,
                 new_agent_level=plan.new_agent_level,
             )
-            extracted_counts.append((ct, len(items)))
 
             logger.debug(
                 HR_TRAINING_ITEMS_EXTRACTED,
@@ -233,12 +237,26 @@ class TrainingService:
                 new_agent_level=plan.new_agent_level,
                 content_type=ct,
             )
-            curated_counts.append((ct, len(curated)))
-            curated_items[ct] = curated
+            return ct, len(items), len(curated), curated
 
+        tasks: list[asyncio.Task[Any]] = []
         async with asyncio.TaskGroup() as tg:
-            for ct in plan.enabled_content_types:
-                tg.create_task(_process(ct))
+            tasks.extend(
+                tg.create_task(_process(ct)) for ct in plan.enabled_content_types
+            )
+
+        # Merge results after all tasks complete (no shared mutation).
+        extracted_counts: list[tuple[ContentType, int]] = []
+        curated_counts: list[tuple[ContentType, int]] = []
+        curated_items: _CuratedMap = {}
+
+        for task in tasks:
+            result = task.result()
+            if result is not None:
+                ct, ext_count, cur_count, curated = result
+                extracted_counts.append((ct, ext_count))
+                curated_counts.append((ct, cur_count))
+                curated_items[ct] = curated
 
         return (
             tuple(extracted_counts),
@@ -254,14 +272,17 @@ class TrainingService:
         tuple[tuple[ContentType, int], ...],
         tuple[str, ...],
         _CuratedMap,
+        str | None,
     ]:
         """Apply guard chain sequentially per content type.
 
-        Returns guarded counts, errors, and the guarded items map.
+        Returns guarded counts, errors, guarded items map, and
+        the approval item ID (if review gate triggered).
         """
         guarded_counts: list[tuple[ContentType, int]] = []
         all_errors: list[str] = []
         guarded_items: _CuratedMap = {}
+        approval_item_id: str | None = None
 
         for ct, items in curated_items.items():
             current_items = items
@@ -283,10 +304,18 @@ class TrainingService:
                 current_items = decision.approved_items
                 all_errors.extend(decision.rejection_reasons)
 
+                if decision.approval_item_id is not None:
+                    approval_item_id = str(decision.approval_item_id)
+
             guarded_counts.append((ct, len(current_items)))
             guarded_items[ct] = current_items
 
-        return tuple(guarded_counts), tuple(all_errors), guarded_items
+        return (
+            tuple(guarded_counts),
+            tuple(all_errors),
+            guarded_items,
+            approval_item_id,
+        )
 
     async def _store_items(
         self,
@@ -322,7 +351,7 @@ class TrainingService:
                         request,
                     )
                     stored += 1
-                except Exception:
+                except _MemoryError:
                     logger.warning(
                         HR_TRAINING_STORE_FAILED,
                         plan_id=str(plan.id),

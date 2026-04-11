@@ -129,16 +129,13 @@ class LLMCurated:
                     temperature=self._temperature,
                 ),
             )
-            selected_indices = self._parse_indices(
-                str(response.content),
-                max_index=len(items) - 1,
-            )
-        except Exception:
+        except (ValueError, TypeError) as exc:
             logger.warning(
                 HR_TRAINING_CURATION_COMPLETE,
                 strategy="llm_curated",
                 fallback="relevance",
-                reason="llm_error",
+                reason="parse_error",
+                error=str(exc),
             )
             return await self._fallback.curate(
                 items,
@@ -146,6 +143,11 @@ class LLMCurated:
                 new_agent_level=new_agent_level,
                 content_type=content_type,
             )
+
+        selected_indices = self._parse_indices(
+            str(response.content),
+            max_index=len(items) - 1,
+        )
 
         if not selected_indices:
             return await self._fallback.curate(

@@ -16,10 +16,11 @@ from synthorg.api.dto_training import (
     TrainingResultResponse,
     UpdateTrainingOverridesRequest,
 )
-from synthorg.api.errors import NotFoundError
+from synthorg.api.errors import ApiValidationError, NotFoundError
 from synthorg.api.guards import require_org_mutation, require_read_access
 from synthorg.api.path_params import PathName  # noqa: TC001
 from synthorg.api.state import AppState  # noqa: TC001
+from synthorg.core.agent import AgentIdentity  # noqa: TC001
 from synthorg.hr.training.models import (
     ContentType,
     TrainingPlan,
@@ -38,14 +39,62 @@ logger = get_logger(__name__)
 # In-memory training plan/result stores (will be replaced with
 # persistence in a future issue).
 _training_plans: dict[str, TrainingPlan] = {}
-_training_results: dict[str, object] = {}
+_training_results: dict[str, TrainingResultResponse] = {}
+
+
+async def _resolve_agent(
+    app_state: AppState,
+    agent_name: PathName,
+) -> AgentIdentity:
+    """Resolve agent name to identity, raising NotFoundError."""
+    identity = await app_state.agent_registry.get_by_name(agent_name)
+    if identity is None:
+        msg = "Agent not found"
+        logger.warning(
+            API_RESOURCE_NOT_FOUND,
+            resource="agent",
+            name=str(agent_name),
+        )
+        raise NotFoundError(msg)
+    return identity
+
+
+def _parse_content_types(
+    raw: tuple[str, ...] | None,
+) -> frozenset[ContentType]:
+    """Parse content type strings, raising ApiValidationError."""
+    if not raw:
+        return frozenset(ContentType)
+    try:
+        return frozenset(ContentType(ct) for ct in raw)
+    except ValueError as exc:
+        msg = f"Invalid content type: {exc}"
+        logger.warning(API_REQUEST_ERROR, error=msg)
+        raise ApiValidationError(msg) from exc
+
+
+def _parse_custom_caps(
+    raw: dict[str, int] | None,
+) -> tuple[tuple[ContentType, int], ...] | None:
+    """Parse custom caps dict, validating keys and values."""
+    if not raw:
+        return None
+    try:
+        caps = tuple((ContentType(k), v) for k, v in raw.items())
+    except ValueError as exc:
+        msg = f"Invalid content type in caps: {exc}"
+        logger.warning(API_REQUEST_ERROR, error=msg)
+        raise ApiValidationError(msg) from exc
+
+    for ct, cap in caps:
+        if cap <= 0:
+            msg = f"Cap for {ct.value} must be positive, got {cap}"
+            raise ApiValidationError(msg)
+    return caps
 
 
 class TrainingController(Controller):
-    """Training mode API endpoints.
-
-    Path prefix: ``/api/v1/agents/{agent_name:str}/training``
-    """
+    """Training mode API endpoints."""
 
     path = "/api/v1/agents/{agent_name:str}/training"
 
@@ -60,62 +109,25 @@ class TrainingController(Controller):
         agent_name: PathName,
         data: CreateTrainingPlanRequest,
     ) -> ApiResponse[TrainingPlanResponse]:
-        """Create a training plan for an agent.
+        """Create a training plan for an agent."""
+        identity = await _resolve_agent(app_state, agent_name)
+        enabled_types = _parse_content_types(data.content_types)
 
-        Args:
-            app_state: Application state.
-            agent_name: Agent display name.
-            data: Plan creation request.
+        plan_kwargs: dict[str, object] = {
+            "new_agent_id": str(identity.id),
+            "new_agent_role": str(identity.role),
+            "new_agent_level": identity.level,
+            "override_sources": data.override_sources,
+            "enabled_content_types": enabled_types,
+            "skip_training": data.skip_training,
+            "require_review": data.require_review,
+            "created_at": datetime.now(UTC),
+        }
+        caps = _parse_custom_caps(data.custom_caps)
+        if caps is not None:
+            plan_kwargs["volume_caps"] = caps
 
-        Returns:
-            Created training plan.
-        """
-        identity = await app_state.agent_registry.get_by_name(
-            agent_name,
-        )
-        if identity is None:
-            msg = "Agent not found"
-            logger.warning(
-                API_RESOURCE_NOT_FOUND,
-                resource="agent",
-                name=str(agent_name),
-            )
-            raise NotFoundError(msg)
-
-        try:
-            enabled_types = (
-                frozenset(ContentType(ct) for ct in data.content_types)
-                if data.content_types
-                else frozenset(ContentType)
-            )
-        except ValueError as exc:
-            msg = f"Invalid content type: {exc}"
-            logger.warning(API_REQUEST_ERROR, error=msg)
-            raise NotFoundError(msg) from exc
-
-        volume_caps_kwarg: dict[str, object] = {}
-        if data.custom_caps:
-            try:
-                volume_caps_kwarg["volume_caps"] = tuple(
-                    (ContentType(k), v) for k, v in data.custom_caps.items()
-                )
-            except ValueError as exc:
-                msg = f"Invalid content type in caps: {exc}"
-                logger.warning(API_REQUEST_ERROR, error=msg)
-                raise NotFoundError(msg) from exc
-
-        plan = TrainingPlan(
-            new_agent_id=str(identity.id),
-            new_agent_role=str(identity.role),
-            new_agent_level=identity.level,
-            override_sources=data.override_sources,
-            enabled_content_types=enabled_types,
-            skip_training=data.skip_training,
-            require_review=data.require_review,
-            created_at=datetime.now(UTC),
-            **volume_caps_kwarg,  # type: ignore[arg-type]
-        )
-
+        plan = TrainingPlan(**plan_kwargs)  # type: ignore[arg-type]
         _training_plans[str(plan.id)] = plan
 
         logger.info(
@@ -124,9 +136,7 @@ class TrainingController(Controller):
             agent_name=str(agent_name),
         )
 
-        return ApiResponse(
-            data=_plan_to_response(plan),
-        )
+        return ApiResponse(data=_plan_to_response(plan))
 
     @post(
         "/execute",
@@ -135,15 +145,20 @@ class TrainingController(Controller):
     )
     async def execute_plan(
         self,
-        app_state: AppState,  # noqa: ARG002
-        agent_name: PathName,  # noqa: ARG002
+        app_state: AppState,
+        agent_name: PathName,
     ) -> ApiResponse[TrainingResultResponse]:
-        """Execute the latest training plan.
+        """Execute the latest pending training plan."""
+        identity = await _resolve_agent(app_state, agent_name)
+        agent_id = str(identity.id)
 
-        Returns:
-            Training result.
-        """
-        # Placeholder: would find latest plan and execute
+        plan = _find_latest_plan(agent_id)
+        if plan is None:
+            msg = "No pending training plan found"
+            raise NotFoundError(msg)
+
+        # Placeholder: service wiring requires TrainingService
+        # in AppState (tracked for future issue).
         msg = "Training execution not yet wired to service layer"
         logger.warning(API_REQUEST_ERROR, error=msg)
         raise NotFoundError(msg)
@@ -155,17 +170,23 @@ class TrainingController(Controller):
     )
     async def get_result(
         self,
-        app_state: AppState,  # noqa: ARG002
-        agent_name: PathName,  # noqa: ARG002
+        app_state: AppState,
+        agent_name: PathName,
     ) -> ApiResponse[TrainingResultResponse]:
-        """Get the latest training result.
+        """Get the latest training result."""
+        identity = await _resolve_agent(app_state, agent_name)
+        agent_id = str(identity.id)
 
-        Returns:
-            Training result.
-        """
-        msg = "No training result found"
-        logger.warning(API_RESOURCE_NOT_FOUND, resource="training_result")
-        raise NotFoundError(msg)
+        result = _training_results.get(agent_id)
+        if result is None:
+            msg = "No training result found"
+            logger.warning(
+                API_RESOURCE_NOT_FOUND,
+                resource="training_result",
+            )
+            raise NotFoundError(msg)
+
+        return ApiResponse(data=result)
 
     @post(
         "/preview",
@@ -174,14 +195,19 @@ class TrainingController(Controller):
     )
     async def preview_plan(
         self,
-        app_state: AppState,  # noqa: ARG002
-        agent_name: PathName,  # noqa: ARG002
+        app_state: AppState,
+        agent_name: PathName,
     ) -> ApiResponse[TrainingResultResponse]:
-        """Preview a training plan (dry run).
+        """Preview a training plan (dry run)."""
+        identity = await _resolve_agent(app_state, agent_name)
+        agent_id = str(identity.id)
 
-        Returns:
-            Preview result with extraction/curation counts.
-        """
+        plan = _find_latest_plan(agent_id)
+        if plan is None:
+            msg = "No pending training plan found"
+            raise NotFoundError(msg)
+
+        # Placeholder: service wiring requires TrainingService.
         msg = "Training preview not yet wired to service layer"
         logger.warning(API_REQUEST_ERROR, error=msg)
         raise NotFoundError(msg)
@@ -193,22 +219,14 @@ class TrainingController(Controller):
     )
     async def update_overrides(
         self,
-        app_state: AppState,  # noqa: ARG002
-        agent_name: PathName,  # noqa: ARG002
+        app_state: AppState,
+        agent_name: PathName,
         plan_id: str,
         data: UpdateTrainingOverridesRequest,
     ) -> ApiResponse[TrainingPlanResponse]:
-        """Update training plan overrides.
+        """Update training plan overrides."""
+        identity = await _resolve_agent(app_state, agent_name)
 
-        Args:
-            app_state: Application state.
-            agent_name: Agent display name.
-            plan_id: Training plan ID.
-            data: Override updates.
-
-        Returns:
-            Updated training plan.
-        """
         plan = _training_plans.get(plan_id)
         if plan is None:
             msg = "Training plan not found"
@@ -219,20 +237,30 @@ class TrainingController(Controller):
             )
             raise NotFoundError(msg)
 
+        # Verify plan belongs to the resolved agent.
+        if str(plan.new_agent_id) != str(identity.id):
+            msg = "Training plan does not belong to this agent"
+            raise NotFoundError(msg)
+
         updates: dict[str, object] = {}
         if data.override_sources is not None:
             updates["override_sources"] = data.override_sources
-        if data.custom_caps is not None:
-            updates["volume_caps"] = tuple(
-                (ContentType(k), v) for k, v in data.custom_caps.items()
-            )
+        caps = _parse_custom_caps(data.custom_caps)
+        if caps is not None:
+            updates["volume_caps"] = caps
 
         updated = plan.model_copy(update=updates)
         _training_plans[plan_id] = updated
 
-        return ApiResponse(
-            data=_plan_to_response(updated),
-        )
+        return ApiResponse(data=_plan_to_response(updated))
+
+
+def _find_latest_plan(agent_id: str) -> TrainingPlan | None:
+    """Find the latest pending training plan for an agent."""
+    for plan in reversed(_training_plans.values()):
+        if str(plan.new_agent_id) == agent_id:
+            return plan
+    return None
 
 
 def _plan_to_response(plan: TrainingPlan) -> TrainingPlanResponse:

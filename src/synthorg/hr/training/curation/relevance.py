@@ -78,7 +78,7 @@ class RelevanceScoreCuration:
 
         max_len = max(len(item.content) for item in items)
 
-        for _idx, item in enumerate(items):
+        for item in items:
             # Content richness: normalized by max content length.
             richness = len(item.content) / max_len if max_len > 0 else 0.0
 

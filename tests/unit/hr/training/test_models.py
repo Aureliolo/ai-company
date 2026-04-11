@@ -71,6 +71,7 @@ def _make_plan(  # noqa: PLR0913
 # -- ContentType enum ------------------------------------------------
 
 
+@pytest.mark.unit
 class TestContentType:
     """ContentType enum tests."""
 
@@ -86,6 +87,7 @@ class TestContentType:
 # -- TrainingPlanStatus enum ------------------------------------------
 
 
+@pytest.mark.unit
 class TestTrainingPlanStatus:
     """TrainingPlanStatus enum tests."""
 
