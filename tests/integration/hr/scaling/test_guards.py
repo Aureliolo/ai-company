@@ -67,7 +67,7 @@ class TestGuardChain:
         from synthorg.hr.scaling.guards.composite import CompositeScalingGuard
 
         assert isinstance(guard, CompositeScalingGuard)
-        for g in guard._guards:
+        for g in guard.get_guards():
             if isinstance(g, RateLimitGuard):
                 for h in hires1:
                     await g.record_action(h)
@@ -117,7 +117,7 @@ class TestGuardChain:
         from synthorg.hr.scaling.guards.composite import CompositeScalingGuard
 
         assert isinstance(guard, CompositeScalingGuard)
-        for g in guard._guards:
+        for g in guard.get_guards():
             if isinstance(g, CooldownGuard):
                 for h in hires1:
                     await g.record_action(h)

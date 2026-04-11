@@ -135,14 +135,14 @@ class TestEvolutionDefer:
             config=ScalingConfig(),
         )
 
-        # Without snapshots passed to evaluate(), the strategy
-        # returns empty (snapshots=None default). This tests
-        # the deferral path specifically -- the unit tests
-        # cover the full policy evaluation with snapshots.
+        snapshots = {str(aid): _make_snapshot(str(aid)) for aid in AGENT_IDS}
         decisions = await service.evaluate(
             agent_ids=AGENT_IDS,
-            context_kwargs={},
+            context_kwargs={
+                "performance_kwargs": {"snapshots": snapshots},
+            },
         )
-        # Strategy returns empty without snapshots -- this is correct
-        # (snapshots are passed via the context builder in production).
-        assert isinstance(decisions, tuple)
+        prune_decisions = [
+            d for d in decisions if d.action_type == ScalingActionType.PRUNE
+        ]
+        assert len(prune_decisions) >= 1

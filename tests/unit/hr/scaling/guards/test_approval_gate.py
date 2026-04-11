@@ -49,10 +49,15 @@ class TestApprovalGateGuard:
                 action_type=ScalingActionType.NO_OP,
                 target_role=None,
             ),
+            make_decision(
+                action_type=ScalingActionType.HOLD,
+                target_role=None,
+            ),
         )
-        await guard.filter(decisions)
+        result = await guard.filter(decisions)
         items = await store.list_items()
         assert len(items) == 0
+        assert len(result) == 2
 
     async def test_approval_metadata_contains_decision_id(self) -> None:
         store = ApprovalStore()

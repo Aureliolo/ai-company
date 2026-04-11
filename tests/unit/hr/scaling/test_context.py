@@ -1,6 +1,7 @@
 """Tests for scaling context builder."""
 
 import pytest
+from pydantic import ValidationError
 
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.scaling.context import ScalingContextBuilder
@@ -70,7 +71,7 @@ class TestScalingContextBuilder:
     async def test_context_is_frozen(self) -> None:
         builder = ScalingContextBuilder()
         ctx = await builder.build(agent_ids=_AGENT_IDS)
-        with pytest.raises(Exception):  # noqa: B017, PT011
+        with pytest.raises(ValidationError):
             ctx.active_agent_count = 99  # type: ignore[misc]
 
     async def test_empty_agent_ids(self) -> None:

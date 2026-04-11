@@ -1,6 +1,6 @@
 """Tests for cooldown guard."""
 
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 
 import pytest
 
@@ -31,7 +31,7 @@ class TestCooldownGuard:
         decision = make_decision()
         # Simulate expired cooldown.
         key = guard._make_key(decision)
-        guard._last_action[key] = datetime.now(UTC) - timedelta(seconds=15)
+        guard._last_action[key] = datetime(2020, 1, 1, tzinfo=UTC)
         result = await guard.filter((decision,))
         assert len(result) == 1
 

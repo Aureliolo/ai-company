@@ -4,7 +4,7 @@ Exposes scaling strategies, decisions, signals, and manual
 evaluation triggers.
 """
 
-from litestar import Controller, get, post
+from litestar import Controller, get, post, put
 from litestar.datastructures import State  # noqa: TC002
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -13,6 +13,7 @@ from synthorg.api.guards import require_read_access, require_write_access
 from synthorg.api.pagination import PaginationLimit, PaginationOffset, paginate
 from synthorg.api.state import AppState  # noqa: TC001
 from synthorg.core.types import NotBlankStr
+from synthorg.hr.scaling.enums import ScalingStrategyName
 from synthorg.hr.scaling.models import (  # noqa: TC001
     ScalingDecision,
     ScalingSignal,
@@ -84,6 +85,24 @@ class ScalingDecisionResponse(BaseModel):
         description="Signals that informed the decision",
     )
     created_at: str = Field(description="ISO timestamp")
+
+
+class StrategyUpdateRequest(BaseModel):
+    """Request body for enabling/disabling a strategy."""
+
+    model_config = ConfigDict(frozen=True)
+
+    enabled: bool = Field(description="Whether the strategy should be active")
+
+
+class PriorityUpdateRequest(BaseModel):
+    """Request body for updating priority order."""
+
+    model_config = ConfigDict(frozen=True)
+
+    order: tuple[str, ...] = Field(
+        description="Strategy names in priority order (first = highest)",
+    )
 
 
 def _signal_to_response(s: ScalingSignal) -> ScalingSignalResponse:
@@ -254,3 +273,82 @@ class ScalingController(Controller):
         decisions = await scaling.evaluate(agent_ids=agent_ids)
         responses = tuple(_decision_to_response(d) for d in decisions)
         return ApiResponse(data=responses)
+
+    @put("/strategies/{strategy_name:str}", guards=[require_write_access])
+    async def update_strategy(
+        self,
+        state: State,
+        strategy_name: str,
+        data: StrategyUpdateRequest,
+    ) -> ApiResponse[ScalingStrategyResponse]:
+        """Enable or disable a scaling strategy.
+
+        Args:
+            state: Application state.
+            strategy_name: Strategy name to update.
+            data: Update payload with enabled flag.
+
+        Returns:
+            Updated strategy status.
+        """
+        app_state: AppState = state.app_state
+        scaling = app_state.scaling_service
+        if scaling is None:
+            return ApiResponse(
+                data=None,
+                error="Scaling service not configured",
+            )
+
+        known = {str(s.name) for s in scaling.strategies}
+        if strategy_name not in known:
+            return ApiResponse(
+                data=None,
+                error=f"Unknown strategy: {strategy_name}",
+            )
+
+        scaling.set_strategy_enabled(strategy_name, enabled=data.enabled)
+
+        config = scaling.config
+        configured_order = {
+            name.value: idx for idx, name in enumerate(config.priority_order)
+        }
+        return ApiResponse(
+            data=ScalingStrategyResponse(
+                name=strategy_name,
+                enabled=scaling.is_strategy_enabled(strategy_name),
+                priority=configured_order.get(strategy_name, 999),
+            ),
+        )
+
+    @put("/priority", guards=[require_write_access])
+    async def update_priority(
+        self,
+        state: State,
+        data: PriorityUpdateRequest,
+    ) -> ApiResponse[tuple[str, ...]]:
+        """Update the conflict resolution priority order.
+
+        Args:
+            state: Application state.
+            data: New priority order (strategy names, first = highest).
+
+        Returns:
+            Updated priority order.
+        """
+        app_state: AppState = state.app_state
+        scaling = app_state.scaling_service
+        if scaling is None:
+            return ApiResponse(
+                data=(),
+                error="Scaling service not configured",
+            )
+
+        try:
+            order = tuple(ScalingStrategyName(n) for n in data.order)
+        except ValueError as exc:
+            return ApiResponse(data=(), error=str(exc))
+
+        scaling.update_priority_order(order)
+        return ApiResponse(
+            data=tuple(n.value for n in order),
+        )

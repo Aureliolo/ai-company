@@ -198,6 +198,10 @@ class ScalingConfig(BaseModel):
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     enabled: bool = Field(default=True, description="Scaling service enabled")
+    default_hire_level: str = Field(
+        default="mid",
+        description="Default seniority level for hire requests",
+    )
     workload: WorkloadScalingConfig = Field(
         default_factory=WorkloadScalingConfig,
     )

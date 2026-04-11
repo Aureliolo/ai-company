@@ -5,8 +5,10 @@ guards (sequential) -> execute.
 """
 
 import asyncio
+import copy
 from collections import deque
 from datetime import UTC, datetime
+from types import MappingProxyType
 from typing import TYPE_CHECKING, Any
 
 from synthorg.core.types import NotBlankStr
@@ -18,6 +20,7 @@ from synthorg.hr.scaling.enums import (
     ScalingStrategyName,
 )
 from synthorg.hr.scaling.guards.composite import CompositeScalingGuard
+from synthorg.hr.scaling.guards.conflict_resolver import ConflictResolver
 from synthorg.hr.scaling.guards.cooldown import CooldownGuard
 from synthorg.hr.scaling.guards.rate_limit import RateLimitGuard
 from synthorg.hr.scaling.models import (
@@ -102,6 +105,7 @@ class ScalingService:
         config: ScalingConfig,
         hiring_service: HiringService | None = None,
         offboarding_service: OffboardingService | None = None,
+        agent_registry: Any = None,
     ) -> None:
         self._strategies = strategies
         self._trigger = trigger
@@ -110,6 +114,8 @@ class ScalingService:
         self._config = config
         self._hiring_service = hiring_service
         self._offboarding_service = offboarding_service
+        self._agent_registry = agent_registry
+        self._disabled_strategies: set[str] = set()
         self._recent_decisions: deque[ScalingDecision] = deque(
             maxlen=_MAX_HISTORY,
         )
@@ -121,6 +127,43 @@ class ScalingService:
     def strategies(self) -> tuple[ScalingStrategy, ...]:
         """Return the configured strategies (read-only)."""
         return self._strategies
+
+    def set_strategy_enabled(
+        self,
+        name: str,
+        *,
+        enabled: bool,
+    ) -> None:
+        """Enable or disable a strategy at runtime."""
+        if enabled:
+            self._disabled_strategies.discard(name)
+        else:
+            self._disabled_strategies.add(name)
+
+    def is_strategy_enabled(self, name: str) -> bool:
+        """Check if a strategy is enabled at runtime."""
+        return name not in self._disabled_strategies
+
+    def update_priority_order(
+        self,
+        order: tuple[ScalingStrategyName, ...],
+    ) -> None:
+        """Update the conflict resolution priority order at runtime."""
+        self._config = self._config.model_copy(
+            update={"priority_order": order},
+        )
+        priority_map = MappingProxyType(
+            copy.deepcopy(
+                {name.value: idx for idx, name in enumerate(order)},
+            ),
+        )
+        guard = self._guard
+        if isinstance(guard, CompositeScalingGuard):
+            for inner in guard.get_guards():
+                if isinstance(inner, ConflictResolver):
+                    inner._priority = priority_map  # noqa: SLF001
+        elif isinstance(guard, ConflictResolver):
+            guard._priority = priority_map  # noqa: SLF001
 
     async def evaluate(
         self,
@@ -154,8 +197,10 @@ class ScalingService:
             **(context_kwargs or {}),
         )
 
-        # 2. Run strategies in parallel. A single strategy failure
-        # must not crash the whole cycle -- log and continue.
+        # 2. Run enabled strategies in parallel.
+        active = tuple(
+            s for s in self._strategies if str(s.name) not in self._disabled_strategies
+        )
         all_decisions: list[ScalingDecision] = []
 
         async def _safe_evaluate(
@@ -178,11 +223,11 @@ class ScalingService:
                 return ()
 
         strategy_results = await asyncio.gather(
-            *(_safe_evaluate(s) for s in self._strategies),
+            *(_safe_evaluate(s) for s in active),
         )
 
         for strategy, decisions in zip(
-            self._strategies,
+            active,
             strategy_results,
             strict=True,
         ):
@@ -295,7 +340,7 @@ class ScalingService:
                 requested_by=NotBlankStr("scaling_service"),
                 department=decision.target_department or NotBlankStr("engineering"),
                 role=decision.target_role or NotBlankStr("general"),
-                level="mid",
+                level=self._config.default_hire_level,
                 required_skills=decision.target_skills,
                 reason=decision.rationale,
             )
@@ -334,9 +379,18 @@ class ScalingService:
         assert decision.target_agent_id is not None  # noqa: S101
         try:
             firing_reason = _firing_reason_for(decision)
+            agent_name = decision.target_agent_id
+            if self._agent_registry is not None:
+                agent = await self._agent_registry.get(
+                    str(decision.target_agent_id),
+                )
+                if agent is not None:
+                    agent_name = NotBlankStr(
+                        getattr(agent, "name", str(decision.target_agent_id)),
+                    )
             firing_request = FiringRequest(
                 agent_id=decision.target_agent_id,
-                agent_name=decision.target_agent_id,
+                agent_name=agent_name,
                 reason=firing_reason,
                 requested_by=NotBlankStr("scaling_service"),
                 details=str(decision.rationale),

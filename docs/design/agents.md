@@ -597,6 +597,23 @@ The ``/scaling`` page shows:
 Module: `src/synthorg/hr/scaling/` (models, protocols, strategies, signals,
 triggers, guards, config, factory, service).
 
+Agent delegation is protocol-stubbed but not implemented -- the headless path
+is always used. Agent-delegated evaluation is a future enhancement.
+
+### Visual Testing Checkpoints
+
+The scaling dashboard page must be visually verified at these checkpoints:
+
+1. **Loading skeleton** -- `/scaling` with no data; verify `ScalingSkeleton` renders the 4 metric placeholders + 2 section cards + decision list placeholder.
+2. **Signal gauges** -- verify `SignalGauges` renders 3 circular gauges with correct labels (Utilization, Budget Burn, Declining Agents) and clamped values (0-100 for percentages, 0-10 for count).
+3. **Strategy controls** -- verify `StrategyControls` shows all enabled strategies with correct labels, status badges (active/offline), and priority numbers.
+4. **Decision history** -- verify `DecisionHistory` renders recent decisions with action type badge, rationale text, confidence, and timestamp.
+5. **Evaluate Now** -- click the "Evaluate Now" button; verify spinner state, success toast (decisions produced), or info toast (no decisions).
+6. **Error banner** -- simulate API failure; verify red `role="alert"` banner with AlertTriangle icon appears.
+7. **WebSocket disconnection** -- simulate WS drop; verify amber warning banner with WifiOff icon appears.
+8. **Responsive metrics** -- resize viewport below `xl` breakpoint; verify metrics grid collapses from 4 columns to 2 then 1.
+9. **Empty state** -- no strategies configured; verify "No strategies configured" message in strategy controls.
+
 ---
 
 ## Firing / Offboarding

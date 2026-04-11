@@ -51,8 +51,12 @@ class TestRateLimitGuard:
             action_type=ScalingActionType.NO_OP,
             target_role=None,
         )
-        result = await guard.filter((noop,))
-        assert len(result) == 1
+        hold = make_decision(
+            action_type=ScalingActionType.HOLD,
+            target_role=None,
+        )
+        result = await guard.filter((noop, hold))
+        assert len(result) == 2
 
     async def test_name_property(self) -> None:
         guard = RateLimitGuard()
