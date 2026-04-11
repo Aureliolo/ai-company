@@ -4,6 +4,8 @@ Wraps the existing ``propose_procedural_memory`` pipeline to capture
 procedural memories from task failures (when recovery_result is not None).
 """
 
+import asyncio
+
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.engine.loop_protocol import ExecutionResult  # noqa: TC001
 from synthorg.engine.recovery import RecoveryResult  # noqa: TC001
@@ -81,6 +83,10 @@ class FailureCaptureStrategy:
                 memory_backend=memory_backend,
                 config=self._config,
             )
+        except MemoryError, RecursionError:
+            raise
+        except asyncio.CancelledError:
+            raise
         except Exception as exc:
             logger.warning(
                 PROCEDURAL_CAPTURE_STORE_FAILED,
