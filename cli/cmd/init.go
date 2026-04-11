@@ -258,6 +258,18 @@ func validateInitFlags() error {
 	if initPostgresPort != 0 && (initPostgresPort < 1 || initPostgresPort > 65535) {
 		return fmt.Errorf("invalid --postgres-port %d: must be 1-65535", initPostgresPort)
 	}
+	if initPostgresPort != 0 && initBackendPort != 0 && initPostgresPort == initBackendPort {
+		return fmt.Errorf(
+			"invalid --postgres-port %d: conflicts with --backend-port %d",
+			initPostgresPort, initBackendPort,
+		)
+	}
+	if initPostgresPort != 0 && initWebPort != 0 && initPostgresPort == initWebPort {
+		return fmt.Errorf(
+			"invalid --postgres-port %d: conflicts with --web-port %d",
+			initPostgresPort, initWebPort,
+		)
+	}
 	return nil
 }
 

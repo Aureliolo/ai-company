@@ -8,10 +8,14 @@
 # migrations per PR make review harder and pollute the release history.
 #
 # Algorithm:
-#   1. Ensure origin/main is fetched.
-#   2. Count new `.sql` files added under src/synthorg/persistence/sqlite/revisions/
-#      on HEAD that do not exist on origin/main.
-#   3. Fail if the count is greater than 1.
+#   1. Resolve the PR base branch dynamically: BASE_BRANCH env var wins, then
+#      GITHUB_BASE_REF (set by GitHub Actions on PR events), falling back to
+#      origin/main for local ad-hoc runs. This lets hotfix / release-branch PRs
+#      use their real base instead of always comparing against main.
+#   2. Ensure the resolved base ref is fetched (or fail in CI / skip locally).
+#   3. Count new `.sql` files added under src/synthorg/persistence/sqlite/revisions/
+#      on HEAD that do not exist on the resolved base branch.
+#   4. Fail if the count is greater than 1.
 #
 # The script runs on every commit (pre-commit stage) and every push (pre-push
 # stage). On the `main` branch itself the check is skipped (main never adds

@@ -1,7 +1,7 @@
 """Postgres repository implementation for security audit entries."""
 
 import json
-from datetime import UTC
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
 import psycopg
@@ -126,8 +126,8 @@ INSERT INTO audit_entries (
         action_type: str | None = None,
         verdict: AuditVerdictStr | None = None,
         risk_level: ApprovalRiskLevel | None = None,
-        since: AwareDatetime | None = None,
-        until: AwareDatetime | None = None,
+        since: datetime | None = None,
+        until: datetime | None = None,
         limit: int = 100,
     ) -> tuple[AuditEntry, ...]:
         """Query audit entries with optional filters (newest first).
@@ -317,8 +317,8 @@ INSERT INTO audit_entries (
 
     def _build_time_clause(
         self,
-        since: AwareDatetime | None,
-        until: AwareDatetime | None,
+        since: datetime | None,
+        until: datetime | None,
     ) -> tuple[list[str], list[object]]:
         """Build timestamp filter conditions."""
         conditions: list[str] = []
@@ -336,8 +336,8 @@ INSERT INTO audit_entries (
         extra_condition: str,
         extra_params: list[object],
         *,
-        since: AwareDatetime | None,
-        until: AwareDatetime | None,
+        since: datetime | None,
+        until: datetime | None,
         limit: int,
         offset: int,
     ) -> tuple[tuple[AuditEntry, ...], int]:
@@ -392,8 +392,8 @@ INSERT INTO audit_entries (
         column: str,
         value: dict[str, Any] | list[Any],
         *,
-        since: AwareDatetime | None = None,
-        until: AwareDatetime | None = None,
+        since: datetime | None = None,
+        until: datetime | None = None,
         limit: int = 100,
         offset: int = 0,
     ) -> tuple[tuple[AuditEntry, ...], int]:
@@ -417,8 +417,8 @@ INSERT INTO audit_entries (
         column: str,
         key: str,
         *,
-        since: AwareDatetime | None = None,
-        until: AwareDatetime | None = None,
+        since: datetime | None = None,
+        until: datetime | None = None,
         limit: int = 100,
         offset: int = 0,
     ) -> tuple[tuple[AuditEntry, ...], int]:
@@ -443,8 +443,8 @@ INSERT INTO audit_entries (
         path: str,
         value: str,
         *,
-        since: AwareDatetime | None = None,
-        until: AwareDatetime | None = None,
+        since: datetime | None = None,
+        until: datetime | None = None,
         limit: int = 100,
         offset: int = 0,
     ) -> tuple[tuple[AuditEntry, ...], int]:
