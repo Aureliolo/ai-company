@@ -50,6 +50,12 @@ class ApprovalGateGuard:
     ) -> None:
         if expiry_days <= 0:
             msg = f"expiry_days must be > 0, got {expiry_days}"
+            logger.warning(
+                HR_SCALING_GUARD_APPLIED,
+                guard="approval_gate",
+                action="init_validation_failed",
+                expiry_days=expiry_days,
+            )
             raise ValueError(msg)
         self._store = approval_store
         self._expiry_days = expiry_days
@@ -103,13 +109,21 @@ class ApprovalGateGuard:
             )
 
             now = datetime.now(UTC)
-            # Deterministic id so replays on the same decision don't
-            # enqueue duplicate pending approvals.
+            # Deterministic id from a SEMANTIC key (not the transient
+            # decision.id) so replays across evaluation cycles reuse
+            # the same approval item instead of enqueuing duplicates.
+            semantic_key = "|".join(
+                [
+                    decision.action_type.value,
+                    decision.source_strategy.value,
+                    str(decision.target_agent_id or ""),
+                    str(decision.target_role or ""),
+                    str(decision.target_department or ""),
+                    ",".join(sorted(str(s) for s in decision.target_skills)),
+                ],
+            )
             approval_id = str(
-                uuid5(
-                    NAMESPACE_URL,
-                    f"scaling:{decision.id}:{decision.action_type.value}",
-                ),
+                uuid5(NAMESPACE_URL, f"scaling:{semantic_key}"),
             )
             item = ApprovalItem(
                 id=approval_id,
@@ -121,6 +135,7 @@ class ApprovalGateGuard:
                 status=ApprovalStatus.PENDING,
                 metadata={
                     "scaling_decision_id": str(decision.id),
+                    "scaling_semantic_key": semantic_key,
                     "source_strategy": str(decision.source_strategy),
                     "confidence": str(decision.confidence),
                 },

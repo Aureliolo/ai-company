@@ -405,7 +405,17 @@ class ScalingController(Controller):
             )
             return ApiResponse(data=(), error=str(exc))
 
-        scaling.update_priority_order(order)
+        try:
+            scaling.update_priority_order(order)
+        except ValueError as exc:
+            logger.warning(
+                HR_SCALING_CONTROLLER_INVALID_REQUEST,
+                endpoint="update_priority",
+                reason="invalid_priority_order",
+                order=list(data.order),
+                error=str(exc),
+            )
+            return ApiResponse(data=(), error=str(exc))
         logger.info(
             HR_SCALING_PRIORITY_ORDER_UPDATED,
             order=[n.value for n in order],

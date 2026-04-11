@@ -65,6 +65,7 @@ class CooldownGuard:
         """
         now = datetime.now(UTC)
         result: list[ScalingDecision] = []
+        reserved: list[str] = []
 
         async with self._lock:
             # Prune stale entries before evaluating decisions.
@@ -90,9 +91,25 @@ class CooldownGuard:
                         )
                         continue
 
+                # Tentatively reserve the slot so concurrent filter()
+                # calls within the same async loop see this decision
+                # and drop duplicates. If execution fails, callers
+                # should invoke release_reservation(decision) to undo.
+                self._last_action[key] = now
+                reserved.append(key)
                 result.append(decision)
 
         return tuple(result)
+
+    async def release_reservation(self, decision: ScalingDecision) -> None:
+        """Release a tentative cooldown reservation on failure.
+
+        Called by ScalingService when execution fails so a failed
+        attempt does not consume the cooldown window.
+        """
+        async with self._lock:
+            key = self._make_key(decision)
+            self._last_action.pop(key, None)
 
     async def record_action(self, decision: ScalingDecision) -> None:
         """Record that an action was executed for cooldown tracking.

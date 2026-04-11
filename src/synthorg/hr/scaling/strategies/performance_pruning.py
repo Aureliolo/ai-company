@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING
 
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.scaling.enums import ScalingActionType, ScalingStrategyName
-from synthorg.hr.scaling.models import ScalingContext, ScalingDecision
+from synthorg.hr.scaling.models import ScalingContext, ScalingDecision, ScalingSignal
 from synthorg.observability import get_logger
 from synthorg.observability.events.hr import HR_SCALING_STRATEGY_EVALUATED
 
@@ -126,6 +126,19 @@ class PerformancePruningStrategy:
                 continue
 
             if evaluation.eligible:
+                # Build per-agent signals from the snapshot's quality
+                # trends. Fleet-wide aggregates in
+                # context.performance_signals are NOT per-agent
+                # evidence and must not be attached here.
+                agent_signals = tuple(
+                    ScalingSignal(
+                        name=NotBlankStr(f"agent_{trend.metric_name}"),
+                        value=float(trend.slope),
+                        source=NotBlankStr("performance"),
+                        timestamp=now,
+                    )
+                    for trend in snapshot.trends
+                )
                 decisions.append(
                     ScalingDecision(
                         action_type=ScalingActionType.PRUNE,
@@ -136,7 +149,7 @@ class PerformancePruningStrategy:
                             or "performance below threshold"
                         ),
                         confidence=0.8,
-                        signals=tuple(context.performance_signals),
+                        signals=agent_signals,
                         created_at=now,
                     ),
                 )

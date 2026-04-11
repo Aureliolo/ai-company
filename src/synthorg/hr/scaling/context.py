@@ -73,30 +73,47 @@ class ScalingContextBuilder:
         Returns:
             Frozen ``ScalingContext`` with all collected signals.
         """
-        workload_signals = await self._safe_collect(
-            "workload",
-            self._workload,
-            agent_ids,
-            workload_kwargs,
-        )
-        budget_signals = await self._safe_collect(
-            "budget",
-            self._budget,
-            agent_ids,
-            budget_kwargs,
-        )
-        performance_signals = await self._safe_collect(
-            "performance",
-            self._performance,
-            agent_ids,
-            performance_kwargs,
-        )
-        skill_signals = await self._safe_collect(
-            "skill",
-            self._skill,
-            agent_ids,
-            skill_kwargs,
-        )
+        # Run all signal sources in parallel. _safe_collect already
+        # catches exceptions per-source so a failure in one does not
+        # cancel siblings.
+        async with asyncio.TaskGroup() as tg:
+            workload_task = tg.create_task(
+                self._safe_collect(
+                    "workload",
+                    self._workload,
+                    agent_ids,
+                    workload_kwargs,
+                ),
+            )
+            budget_task = tg.create_task(
+                self._safe_collect(
+                    "budget",
+                    self._budget,
+                    agent_ids,
+                    budget_kwargs,
+                ),
+            )
+            performance_task = tg.create_task(
+                self._safe_collect(
+                    "performance",
+                    self._performance,
+                    agent_ids,
+                    performance_kwargs,
+                ),
+            )
+            skill_task = tg.create_task(
+                self._safe_collect(
+                    "skill",
+                    self._skill,
+                    agent_ids,
+                    skill_kwargs,
+                ),
+            )
+
+        workload_signals = workload_task.result()
+        budget_signals = budget_task.result()
+        performance_signals = performance_task.result()
+        skill_signals = skill_task.result()
 
         raw_snapshots = (performance_kwargs or {}).get("snapshots", {})
         perf_snapshots = (

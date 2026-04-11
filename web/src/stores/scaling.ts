@@ -15,6 +15,11 @@ import type { WsEvent } from '@/api/types'
 
 const log = createLogger('scaling')
 
+// Coalesce concurrent WS refreshes so a burst of events does not
+// spawn overlapping request storms.
+let wsRefreshInFlight = false
+let wsRefreshQueued = false
+
 interface ScalingState {
   // Data
   strategies: readonly ScalingStrategyResponse[]
@@ -136,16 +141,32 @@ export const useScalingStore = create<ScalingState>()((set, get) => ({
 
   updateFromWsEvent: (event: WsEvent) => {
     log.debug('Scaling WS event', event.event_type)
-    void (async () => {
-      const results = await Promise.allSettled([
-        get().fetchDecisions(),
-        get().fetchSignals(),
-      ])
-      for (const r of results) {
-        if (r.status === 'rejected') {
-          log.error('WS event refresh partial failure', r.reason)
-        }
+
+    const runRefresh = async (): Promise<void> => {
+      if (wsRefreshInFlight) {
+        wsRefreshQueued = true
+        return
       }
-    })()
+      wsRefreshInFlight = true
+      try {
+        const results = await Promise.allSettled([
+          get().fetchDecisions(),
+          get().fetchSignals(),
+        ])
+        for (const r of results) {
+          if (r.status === 'rejected') {
+            log.error('WS event refresh partial failure', r.reason)
+          }
+        }
+      } finally {
+        wsRefreshInFlight = false
+      }
+      if (wsRefreshQueued) {
+        wsRefreshQueued = false
+        void runRefresh()
+      }
+    }
+
+    void runRefresh()
   },
 }))
