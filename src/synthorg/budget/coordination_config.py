@@ -7,7 +7,9 @@ collected, error taxonomy, and orchestration alert thresholds.
 from enum import StrEnum
 from typing import Self
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
+
+from synthorg.core.types import NotBlankStr  # noqa: TC001
 
 
 class CoordinationMetricName(StrEnum):
@@ -31,14 +33,104 @@ class ErrorCategory(StrEnum):
     NUMERICAL_DRIFT = "numerical_drift"
     CONTEXT_OMISSION = "context_omission"
     COORDINATION_FAILURE = "coordination_failure"
+    DELEGATION_PROTOCOL_VIOLATION = "delegation_protocol_violation"
+    REVIEW_PIPELINE_VIOLATION = "review_pipeline_violation"
+    AUTHORITY_BREACH_ATTEMPT = "authority_breach_attempt"
+
+
+class DetectionScope(StrEnum):
+    """Scope of data available to a detector."""
+
+    SAME_TASK = "same_task"
+    TASK_TREE = "task_tree"
+
+
+class DetectorVariant(StrEnum):
+    """Variant type for a detector implementation."""
+
+    HEURISTIC = "heuristic"
+    LLM_SEMANTIC = "llm_semantic"
+    PROTOCOL_CHECK = "protocol_check"
+    BEHAVIOR_CHECK = "behavior_check"
+
+
+class DetectorCategoryConfig(BaseModel):
+    """Per-category detector configuration.
+
+    Attributes:
+        variants: Detector implementation variants to run.
+        scope: Detection scope level.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+
+    variants: tuple[DetectorVariant, ...] = Field(
+        default=(DetectorVariant.HEURISTIC,),
+        description="Detector implementation variants to run",
+    )
+    scope: DetectionScope = Field(
+        default=DetectionScope.SAME_TASK,
+        description="Detection scope level",
+    )
+
+    @model_validator(mode="after")
+    def _validate_non_empty_variants(self) -> Self:
+        """Ensure at least one variant is configured."""
+        if not self.variants:
+            msg = "variants must not be empty"
+            raise ValueError(msg)
+        return self
+
+    @model_validator(mode="after")
+    def _validate_unique_variants(self) -> Self:
+        """Ensure no duplicate variants."""
+        if len(self.variants) != len(set(self.variants)):
+            msg = "variants must not contain duplicates"
+            raise ValueError(msg)
+        return self
+
+
+def _default_detectors() -> dict[ErrorCategory, DetectorCategoryConfig]:
+    """Build the default detector configuration.
+
+    Enables all 7 categories with safe defaults:
+    - Original 4: heuristic variant, SAME_TASK scope
+    - Delegation + review: protocol_check variant, TASK_TREE scope
+    - Authority breach: behavior_check variant, SAME_TASK scope
+    """
+    return {
+        ErrorCategory.LOGICAL_CONTRADICTION: DetectorCategoryConfig(),
+        ErrorCategory.NUMERICAL_DRIFT: DetectorCategoryConfig(),
+        ErrorCategory.CONTEXT_OMISSION: DetectorCategoryConfig(),
+        ErrorCategory.COORDINATION_FAILURE: DetectorCategoryConfig(),
+        ErrorCategory.DELEGATION_PROTOCOL_VIOLATION: DetectorCategoryConfig(
+            variants=(DetectorVariant.PROTOCOL_CHECK,),
+            scope=DetectionScope.TASK_TREE,
+        ),
+        ErrorCategory.REVIEW_PIPELINE_VIOLATION: DetectorCategoryConfig(
+            variants=(DetectorVariant.PROTOCOL_CHECK,),
+            scope=DetectionScope.TASK_TREE,
+        ),
+        ErrorCategory.AUTHORITY_BREACH_ATTEMPT: DetectorCategoryConfig(
+            variants=(DetectorVariant.BEHAVIOR_CHECK,),
+        ),
+    }
 
 
 class ErrorTaxonomyConfig(BaseModel):
     """Configuration for multi-agent error taxonomy tracking.
 
+    The ``detectors`` dict is the single source of truth for which
+    categories are active and how they are configured.  The
+    ``categories`` computed property derives the active category
+    tuple from ``detectors.keys()``.
+
     Attributes:
         enabled: Whether error taxonomy tracking is enabled.
-        categories: Error categories to track (must be unique).
+        detectors: Per-category detector configuration.
+        llm_provider_tier: Provider tier for semantic detectors.
+        classification_budget_per_task_usd: Max cost per task for
+            LLM-backed classification.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
@@ -47,18 +139,27 @@ class ErrorTaxonomyConfig(BaseModel):
         default=False,
         description="Whether error taxonomy tracking is enabled",
     )
-    categories: tuple[ErrorCategory, ...] = Field(
-        default=tuple(ErrorCategory),
-        description="Error categories to track",
+    detectors: dict[ErrorCategory, DetectorCategoryConfig] = Field(
+        default_factory=_default_detectors,
+        description="Per-category detector configuration",
+    )
+    llm_provider_tier: NotBlankStr = Field(
+        default="large",
+        description="Provider tier for semantic detectors",
+    )
+    classification_budget_per_task_usd: float = Field(
+        default=0.01,
+        ge=0.0,
+        description="Max cost per task for LLM classification",
     )
 
-    @model_validator(mode="after")
-    def _validate_unique_categories(self) -> Self:
-        """Ensure no duplicate categories."""
-        if len(self.categories) != len(set(self.categories)):
-            msg = "categories must not contain duplicates"
-            raise ValueError(msg)
-        return self
+    @computed_field(  # type: ignore[prop-decorator]
+        description="Active error categories",
+    )
+    @property
+    def categories(self) -> tuple[ErrorCategory, ...]:
+        """Active error categories derived from detectors dict."""
+        return tuple(self.detectors)
 
 
 class OrchestrationAlertThresholds(BaseModel):

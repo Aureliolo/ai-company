@@ -9,7 +9,11 @@ from uuid import uuid4
 
 import pytest
 
-from synthorg.budget.coordination_config import ErrorCategory, ErrorTaxonomyConfig
+from synthorg.budget.coordination_config import (
+    DetectorCategoryConfig,
+    ErrorCategory,
+    ErrorTaxonomyConfig,
+)
 from synthorg.core.agent import AgentIdentity, ModelConfig
 from synthorg.engine.classification.models import ErrorSeverity
 from synthorg.engine.classification.pipeline import classify_execution_errors
@@ -65,6 +69,15 @@ def _execution_result(
     )
 
 
+def _taxonomy_config(
+    *categories: ErrorCategory,
+    enabled: bool = True,
+) -> ErrorTaxonomyConfig:
+    """Build an ErrorTaxonomyConfig from a list of categories."""
+    detectors = {cat: DetectorCategoryConfig() for cat in categories}
+    return ErrorTaxonomyConfig(enabled=enabled, detectors=detectors)
+
+
 @pytest.mark.integration
 class TestErrorTaxonomyIntegration:
     """Full pipeline integration with realistic conversation patterns."""
@@ -101,10 +114,7 @@ class TestErrorTaxonomyIntegration:
                 ),
             ),
         )
-        config = ErrorTaxonomyConfig(
-            enabled=True,
-            categories=(ErrorCategory.LOGICAL_CONTRADICTION,),
-        )
+        config = _taxonomy_config(ErrorCategory.LOGICAL_CONTRADICTION)
         result = await classify_execution_errors(
             _execution_result(messages, turns=(_turn(), _turn(turn_number=2))),
             "agent-1",
@@ -148,10 +158,7 @@ class TestErrorTaxonomyIntegration:
             _turn(turn_number=1),
             _turn(turn_number=2, finish_reason=FinishReason.ERROR),
         )
-        config = ErrorTaxonomyConfig(
-            enabled=True,
-            categories=(ErrorCategory.COORDINATION_FAILURE,),
-        )
+        config = _taxonomy_config(ErrorCategory.COORDINATION_FAILURE)
         result = await classify_execution_errors(
             _execution_result(messages, turns=turns),
             "agent-1",
@@ -184,10 +191,7 @@ class TestErrorTaxonomyIntegration:
                 content="The system processes about 500 requests per second.",
             ),
         )
-        config = ErrorTaxonomyConfig(
-            enabled=True,
-            categories=tuple(ErrorCategory),
-        )
+        config = ErrorTaxonomyConfig(enabled=True)
         result = await classify_execution_errors(
             _execution_result(messages, turns=(_turn(),)),
             "agent-1",
@@ -221,10 +225,7 @@ class TestErrorTaxonomyIntegration:
             )
         turns = tuple(_turn(turn_number=i + 1) for i in range(25))
 
-        config = ErrorTaxonomyConfig(
-            enabled=True,
-            categories=tuple(ErrorCategory),
-        )
+        config = ErrorTaxonomyConfig(enabled=True)
 
         result = await classify_execution_errors(
             _execution_result(tuple(messages), turns=turns),
@@ -277,10 +278,7 @@ class TestErrorTaxonomyIntegration:
                 ),
             ),
         )
-        config = ErrorTaxonomyConfig(
-            enabled=True,
-            categories=(ErrorCategory.NUMERICAL_DRIFT,),
-        )
+        config = _taxonomy_config(ErrorCategory.NUMERICAL_DRIFT)
         result = await classify_execution_errors(
             _execution_result(messages, turns=(_turn(),)),
             "agent-1",
@@ -340,10 +338,7 @@ class TestErrorTaxonomyIntegration:
                 ),
             ),
         )
-        config = ErrorTaxonomyConfig(
-            enabled=True,
-            categories=(ErrorCategory.CONTEXT_OMISSION,),
-        )
+        config = _taxonomy_config(ErrorCategory.CONTEXT_OMISSION)
         result = await classify_execution_errors(
             _execution_result(messages, turns=(_turn(),)),
             "agent-1",

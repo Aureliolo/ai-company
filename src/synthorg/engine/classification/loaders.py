@@ -1,0 +1,181 @@
+"""Scoped context loaders for the classification pipeline.
+
+Provides ``SameTaskLoader`` (wraps a single execution result) and
+``TaskTreeLoader`` (queries the task tree via the task repository
+to enrich the detection context with delegation chain data).
+"""
+
+from typing import TYPE_CHECKING
+
+from synthorg.budget.coordination_config import DetectionScope
+from synthorg.communication.delegation.models import DelegationRequest
+from synthorg.engine.classification.protocol import DetectionContext
+from synthorg.engine.sanitization import sanitize_message
+from synthorg.observability import get_logger
+from synthorg.observability.events.classification import (
+    DETECTOR_ERROR,
+)
+
+if TYPE_CHECKING:
+    from synthorg.core.task import Task
+    from synthorg.core.types import NotBlankStr
+    from synthorg.engine.loop_protocol import ExecutionResult
+    from synthorg.persistence.repositories import TaskRepository
+
+logger = get_logger(__name__)
+
+_MAX_TREE_DEPTH = 5
+
+# sanitize_message cap for cross-agent evidence included in findings.
+_SANITIZE_MAX_LENGTH = 2000
+
+
+class SameTaskLoader:
+    """Context loader for SAME_TASK scope.
+
+    Wraps the single execution result into a ``DetectionContext``
+    with no delegate or review data.
+    """
+
+    async def load(
+        self,
+        execution_result: ExecutionResult,
+        agent_id: NotBlankStr,
+        task_id: NotBlankStr,
+    ) -> DetectionContext:
+        """Build a SAME_TASK detection context.
+
+        Args:
+            execution_result: Primary execution result.
+            agent_id: Agent identifier.
+            task_id: Task identifier.
+
+        Returns:
+            Detection context with scope SAME_TASK.
+        """
+        return DetectionContext(
+            execution_result=execution_result,
+            agent_id=agent_id,
+            task_id=task_id,
+            scope=DetectionScope.SAME_TASK,
+        )
+
+
+class TaskTreeLoader:
+    """Context loader for TASK_TREE scope.
+
+    Queries the task repository for child tasks created via
+    delegation (``parent_task_id`` linkage) and builds delegation
+    request records from the task metadata.
+
+    Cross-agent text data is sanitized via ``sanitize_message``
+    before inclusion in the detection context.
+
+    Args:
+        task_repo: Task repository for querying child tasks.
+    """
+
+    def __init__(self, task_repo: TaskRepository) -> None:
+        self._task_repo = task_repo
+
+    async def load(
+        self,
+        execution_result: ExecutionResult,
+        agent_id: NotBlankStr,
+        task_id: NotBlankStr,
+    ) -> DetectionContext:
+        """Build a TASK_TREE detection context.
+
+        Queries child tasks up to ``_MAX_TREE_DEPTH`` levels.
+        Missing tasks are skipped with a warning log.  The loader
+        never raises -- failures produce a degraded context.
+
+        Args:
+            execution_result: Primary execution result.
+            agent_id: Agent identifier.
+            task_id: Task identifier.
+
+        Returns:
+            Detection context with scope TASK_TREE.
+        """
+        delegation_requests = await self._collect_delegations(
+            task_id,
+            agent_id,
+        )
+
+        return DetectionContext(
+            execution_result=execution_result,
+            agent_id=agent_id,
+            task_id=task_id,
+            scope=DetectionScope.TASK_TREE,
+            delegation_requests=delegation_requests,
+        )
+
+    async def _collect_delegations(
+        self,
+        root_task_id: str,
+        agent_id: str,
+    ) -> tuple[DelegationRequest, ...]:
+        """Collect delegation requests from the task tree.
+
+        Best-effort: catches all exceptions except MemoryError
+        and RecursionError, logs them, and returns what was
+        successfully loaded.
+
+        Args:
+            root_task_id: Root task to start traversal from.
+            agent_id: Agent identifier for logging.
+
+        Returns:
+            Delegation requests found in the task tree.
+        """
+        all_tasks: tuple[Task, ...]
+        try:
+            all_tasks = await self._task_repo.list_tasks()
+        except MemoryError, RecursionError:
+            raise
+        except Exception:
+            logger.exception(
+                DETECTOR_ERROR,
+                detector="task_tree_loader",
+                agent_id=agent_id,
+                task_id=root_task_id,
+                message_count=0,
+            )
+            return ()
+
+        # Build delegation requests from parent-child relationships.
+        requests: list[DelegationRequest] = []
+        visited: set[str] = set()
+        queue = [root_task_id]
+        depth = 0
+
+        while queue and depth < _MAX_TREE_DEPTH:
+            next_queue: list[str] = []
+            for parent_id in queue:
+                if parent_id in visited:
+                    continue
+                visited.add(parent_id)
+                for task in all_tasks:
+                    if task.parent_task_id == parent_id:
+                        refinement = sanitize_message(
+                            task.description or "",
+                            max_length=_SANITIZE_MAX_LENGTH,
+                        )
+                        # Build a synthetic DelegationRequest from
+                        # the task tree data.
+                        chain = task.delegation_chain
+                        delegator = chain[-1] if chain else agent_id
+                        requests.append(
+                            DelegationRequest(
+                                delegator_id=delegator,
+                                delegatee_id=task.assigned_to or "unassigned",
+                                task=task,
+                                refinement=refinement,
+                            ),
+                        )
+                        next_queue.append(task.id)
+            queue = next_queue
+            depth += 1
+
+        return tuple(requests)

@@ -467,20 +467,42 @@ etc.).
 
 #### Coordination Error Taxonomy
 
-When coordination metrics collection is enabled, the system can optionally classify
+When coordination metrics collection is enabled, the system classifies
 coordination errors into structured categories for targeted diagnosis.
+Each category supports a pluggable dual-implementation system: a cheap
+heuristic variant (regex/structural) and an optional LLM-backed semantic
+variant (accurate, expensive, disabled by default).
 
-| Error Category | Description | Detection Method |
-|---------------|-------------|-----------------|
-| **Logical contradiction** | Agent asserts both "X is true" and "X is false," or derives conclusions violating its stated premises | Semantic contradiction detection on agent outputs |
-| **Numerical drift** | Accumulated computational errors from cascading rounding or unit conversion (>5% deviation) | Numerical comparison against ground truth or cross-agent verification |
-| **Context omission** | Failure to reference previously established entities, relationships, or state required for current reasoning | Missing-reference detection across agent conversation history |
-| **Coordination failure** | Message misinterpretation, task allocation conflicts, state synchronization errors between agents | Protocol-level error detection in orchestration layer |
+**Detection scope**: detectors operate at SAME_TASK (single execution) or
+TASK_TREE (parent + delegate executions via `parent_task_id` linkage).
+Cross-agent data is sanitized via `sanitize_message` before inclusion.
 
-Error taxonomy classification requires semantic analysis of agent outputs and is expensive.
-Enable via `coordination_metrics.error_taxonomy.enabled: true` only when actively gathering
-data for system tuning. The classification pipeline runs post-execution (never blocks agent
-work) and logs structured events to the observability layer.
+| Error Category | Description | Heuristic Variant | Semantic Variant | Default Scope |
+|---------------|-------------|-------------------|------------------|--------------|
+| **Logical contradiction** | Agent asserts both "X is true" and "X is false" | Regex assertion matching | LLM reasoning over assistant texts | SAME_TASK |
+| **Numerical drift** | Accumulated errors from cascading rounding (>5% deviation) | Context-labeled number extraction + % drift | LLM cross-verification of numerical claims | SAME_TASK |
+| **Context omission** | Failure to reference previously established entities | Capitalized entity set diff (first-half/second-half) | LLM entity introduction/disposition tracking | SAME_TASK |
+| **Coordination failure** | Message misinterpretation, task allocation conflicts | Tool errors + error finish reasons | LLM classification of coordination breakdowns | SAME_TASK |
+| **Delegation protocol violation** | Broken delegation chains, missing parent linkage | Structural check: parent_task_id, delegation_chain integrity | -- | TASK_TREE |
+| **Review pipeline violation** | PASS without stages, PASS contradicting FAIL stage | Structural check: verdict/stage consistency | -- | TASK_TREE |
+| **Authority breach attempt** | Execution cost exceeding authority budget limit | Budget comparison: total turn cost vs limit | -- | SAME_TASK |
+
+**Pipeline architecture**: detectors implement the `Detector` protocol and are
+discovered dynamically from `ErrorTaxonomyConfig.detectors` (a dict mapping
+`ErrorCategory` to per-category variant/scope config). When multiple variants
+target the same category, a `CompositeDetector` runs them concurrently and
+deduplicates findings by `(turn_range, description_hash, category)`.
+
+**Downstream sinks**: `ClassificationSink` protocol enables wiring findings
+into the performance tracker (`PerformanceTrackerSink`) and notification
+dispatcher (`NotificationDispatcherSink`, threshold-filtered).
+
+**Cost control**: LLM semantic variants share the provider's rate limiter and
+track per-classification-run cost against `classification_budget_per_task_usd`.
+
+Error taxonomy classification runs post-execution (never blocks agent work)
+and logs structured events to the observability layer. Enable via
+`coordination_metrics.error_taxonomy.enabled: true`.
 
 Error categories derived from [Kim et al., 2025](https://arxiv.org/abs/2512.08296) and the
 Multi-Agent System Failure Taxonomy (MAST) by Cemri et al. (2025).
