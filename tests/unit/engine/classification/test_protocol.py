@@ -12,6 +12,7 @@ from synthorg.budget.coordination_config import (
     ErrorCategory,
 )
 from synthorg.core.agent import AgentIdentity, ModelConfig
+from synthorg.engine.classification.models import ErrorFinding
 from synthorg.engine.classification.protocol import (
     ClassificationSink,
     DetectionContext,
@@ -154,7 +155,7 @@ class TestDetectorProtocol:
             async def detect(
                 self,
                 context: DetectionContext,
-            ) -> tuple[object, ...]:
+            ) -> tuple[ErrorFinding, ...]:
                 return ()
 
         assert isinstance(FakeDetector(), Detector)
