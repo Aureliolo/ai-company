@@ -72,7 +72,14 @@ export function SubworkflowDetailDrawer({
       }
     }
     void load()
-    return () => { cancelled = true }
+    return () => {
+      cancelled = true
+      setVersions([])
+      setParents([])
+      setLoadedKey(null)
+      setDeleteConfirmOpen(false)
+      setDeleting(false)
+    }
   }, [open, subworkflow, addToast])
 
   const handleDelete = useCallback(async () => {
@@ -153,7 +160,7 @@ export function SubworkflowDetailDrawer({
               <Skeleton className="h-12 rounded" />
             ) : parents.length === 0 ? (
               <p className="text-xs text-muted-foreground">
-                No parent workflows reference this subworkflow.
+                No parent references reference this subworkflow.
               </p>
             ) : (
               <ul className="flex flex-col gap-1">
@@ -184,7 +191,7 @@ export function SubworkflowDetailDrawer({
                 loading
                   ? 'Checking parent references...'
                   : parents.length > 0
-                    ? 'Cannot delete: still referenced by parent workflows'
+                    ? 'Cannot delete: still referenced by parent references'
                     : 'Delete this subworkflow version'
               }
             >

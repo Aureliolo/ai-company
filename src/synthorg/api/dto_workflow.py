@@ -38,10 +38,10 @@ def _validate_default_type(
         msg = (
             f"Declaration {name!r}: default value {default!r} is not JSON-serializable"
         )
-        raise TypeError(msg) from exc
+        raise ValueError(msg) from exc
     except ValueError as exc:
         msg = f"Declaration {name!r}: default value {default!r} contains NaN/Inf"
-        raise TypeError(msg) from exc
+        raise ValueError(msg) from exc
     expected = _TYPE_CHECKS.get(declared_type)
     if expected is None:
         # JSON, TASK_REF, AGENT_REF -- accept any JSON-serializable value.
