@@ -20,6 +20,7 @@ from synthorg.persistence.integration_stubs import (
 from synthorg.security.rules.risk_override import RiskTierOverride
 from synthorg.security.ssrf_violation import SsrfViolation, SsrfViolationStatus
 from synthorg.versioning.models import VersionSnapshot
+from tests.unit.api.fake_user_repository import FakeUserRepository
 from tests.unit.api.fakes import (
     FakeAgentStateRepository,
     FakeApiKeyRepository,
@@ -38,7 +39,6 @@ from tests.unit.api.fakes import (
     FakeSettingsRepository,
     FakeTaskMetricRepository,
     FakeTaskRepository,
-    FakeUserRepository,
 )
 from tests.unit.api.fakes_workflow import (
     FakeSubworkflowRepository,
