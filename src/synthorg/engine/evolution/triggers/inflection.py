@@ -32,6 +32,8 @@ class InflectionTrigger:
     there are pending inflections for the agent.
     """
 
+    _MAX_PENDING_PER_AGENT: int = 1000
+
     def __init__(self) -> None:
         self._pending: dict[str, list[PerformanceInflection]] = {}
         self._lock = asyncio.Lock()
@@ -50,7 +52,9 @@ class InflectionTrigger:
         async with self._lock:
             if key not in self._pending:
                 self._pending[key] = []
-            self._pending[key].append(inflection)
+            # Cap queue to prevent unbounded growth if drain stalls
+            if len(self._pending[key]) < self._MAX_PENDING_PER_AGENT:
+                self._pending[key].append(inflection)
 
     async def should_trigger(
         self,
@@ -78,4 +82,4 @@ class InflectionTrigger:
     ) -> tuple[PerformanceInflection, ...]:
         """Peek at pending inflections without consuming them."""
         async with self._lock:
-            return tuple(self._pending.get(agent_id, []))
+            return tuple(self._pending.get(str(agent_id), []))

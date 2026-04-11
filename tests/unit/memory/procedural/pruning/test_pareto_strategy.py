@@ -52,7 +52,7 @@ class TestParetoPruningStrategy:
         Entry C: relevance=0.0, created 1 day ago (middle)
 
         Only B and A are on the Pareto frontier.
-        C is dominated by both (lower relevance and lower recency).
+        C is dominated by B (lower relevance and lower recency).
         """
         now = datetime.now(UTC)
         entries = []
@@ -100,8 +100,9 @@ class TestParetoPruningStrategy:
             agent_id="test-agent-1",
             entries=tuple(entries),
         )
-        # Top relevance entries should be on frontier
-        assert "mem-0" not in result  # relevance=1.0, should be kept
+        # mem-0 dominates all others (highest relevance + most recent)
+        assert "mem-0" not in result
+        assert set(result) == {"mem-1", "mem-2", "mem-3", "mem-4"}
 
     @pytest.mark.unit
     async def test_none_relevance_score(self) -> None:
