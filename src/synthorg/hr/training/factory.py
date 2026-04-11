@@ -136,6 +136,7 @@ def _build_selector(
             f"Unknown source_selector_type {selector_type!r}; "
             f"supported: {sorted(_allowed_selectors)}"
         )
+        logger.warning(msg, selector_type=selector_type)
         raise ValueError(msg)
 
     if selector_type == "department_diversity":
@@ -208,6 +209,7 @@ def _build_curation(
             f"Unknown curation_strategy_type {strategy_type!r}; "
             f"supported: {sorted(_allowed_strategies)}"
         )
+        logger.warning(msg, strategy_type=strategy_type)
         raise ValueError(msg)
 
     top_k = _coerce_positive_int(

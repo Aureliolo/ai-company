@@ -7,6 +7,7 @@ from the new hire's department.
 import asyncio
 from typing import TYPE_CHECKING
 
+from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
 from synthorg.observability.events.training import (
     HR_TRAINING_SELECTION_COMPLETE,
@@ -18,7 +19,6 @@ if TYPE_CHECKING:
 
     from synthorg.core.agent import AgentIdentity
     from synthorg.core.enums import SeniorityLevel
-    from synthorg.core.types import NotBlankStr
     from synthorg.hr.performance.models import AgentPerformanceSnapshot
     from synthorg.hr.performance.tracker import PerformanceTracker
     from synthorg.hr.registry import AgentRegistryService
@@ -59,6 +59,7 @@ class DepartmentDiversitySampling:
                 f">= 0, got top={top_performer_count}, "
                 f"complementary={complementary_count}"
             )
+            logger.warning(msg)
             raise ValueError(msg)
         self._registry = registry
         self._tracker = tracker
@@ -125,13 +126,13 @@ class DepartmentDiversitySampling:
 
         # Merge and deduplicate preserving order.
         seen: set[str] = set()
-        result: list[str] = []
+        result: list[NotBlankStr] = []
         for agent_id in (*top_performers, *complementary):
             if agent_id not in seen:
                 seen.add(agent_id)
-                result.append(agent_id)
+                result.append(NotBlankStr(agent_id))
 
-        logger.debug(
+        logger.info(
             HR_TRAINING_SELECTION_COMPLETE,
             selector="department_diversity",
             department=department,
@@ -168,9 +169,21 @@ class DepartmentDiversitySampling:
         agents: Sequence[AgentIdentity],
     ) -> list[AgentPerformanceSnapshot]:
         """Fetch quality snapshots for all agents concurrently."""
+
+        async def _fetch_one(
+            agent: AgentIdentity,
+        ) -> AgentPerformanceSnapshot:
+            try:
+                return await self._tracker.get_snapshot(str(agent.id))
+            except Exception as exc:
+                logger.exception(
+                    HR_TRAINING_SELECTION_SKIPPED,
+                    selector="department_diversity",
+                    agent_id=str(agent.id),
+                    error=str(exc),
+                )
+                raise
+
         async with asyncio.TaskGroup() as tg:
-            tasks = [
-                tg.create_task(self._tracker.get_snapshot(str(agent.id)))
-                for agent in agents
-            ]
+            tasks = [tg.create_task(_fetch_one(agent)) for agent in agents]
         return [task.result() for task in tasks]

@@ -162,7 +162,7 @@ class TestTrainingServiceExecute:
         )
         result = await service.execute(plan)
         # Selector should NOT be called when override_sources is set
-        selector.select.assert_not_called()
+        selector.select.assert_not_awaited()
         assert "override-1" in result.source_agents_used
 
     async def test_stores_to_memory_backend(self) -> None:
@@ -171,7 +171,7 @@ class TestTrainingServiceExecute:
         service = _make_service(memory_backend=backend)
         plan = _make_plan(require_review=False)
         await service.execute(plan)
-        backend.store.assert_called()
+        backend.store.assert_awaited()
 
     async def test_collects_guard_errors(self) -> None:
         guard = AsyncMock()
@@ -200,7 +200,7 @@ class TestTrainingServicePreview:
         service = _make_service(memory_backend=backend)
         plan = _make_plan()
         result = await service.preview(plan)
-        backend.store.assert_not_called()
+        backend.store.assert_not_awaited()
         assert result.items_stored == ()
 
     async def test_preview_returns_extraction_counts(self) -> None:

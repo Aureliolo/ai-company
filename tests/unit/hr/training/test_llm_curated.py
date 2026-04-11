@@ -77,7 +77,7 @@ class TestLLMCurated:
         assert len(result) == 2
         assert result[0].content == "Item 0"
         assert result[1].content == "Item 2"
-        provider.complete.assert_called_once()
+        provider.complete.assert_awaited_once()
 
     async def test_provider_error_falls_back(self) -> None:
         provider = AsyncMock()

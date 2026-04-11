@@ -47,6 +47,7 @@ class ToolPatternExtractor:
     ) -> None:
         if lookback_days <= 0:
             msg = f"lookback_days must be a positive integer, got {lookback_days}"
+            logger.warning(msg, lookback_days=lookback_days)
             raise ValueError(msg)
         self._tracker = tracker
         self._lookback_days = lookback_days
@@ -136,7 +137,7 @@ class ToolPatternExtractor:
         logger.debug(
             HR_TRAINING_ITEMS_EXTRACTED,
             content_type="tool_patterns",
-            agent_count=len(source_agent_ids),
+            agent_count=len(unique_ids),
             item_count=len(items),
         )
         return tuple(items)

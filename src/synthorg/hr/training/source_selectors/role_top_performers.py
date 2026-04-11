@@ -50,6 +50,7 @@ class RoleTopPerformers:
     ) -> None:
         if top_n <= 0:
             msg = f"top_n must be a positive integer, got {top_n}"
+            logger.warning(msg, top_n=top_n)
             raise ValueError(msg)
         self._registry = registry
         self._tracker = tracker
@@ -104,7 +105,7 @@ class RoleTopPerformers:
         scored.sort(key=lambda x: x[0], reverse=True)
         selected = tuple(agent_id for _, agent_id in scored[: self._top_n])
 
-        logger.debug(
+        logger.info(
             HR_TRAINING_SELECTION_COMPLETE,
             selector="role_top_performers",
             role=str(new_agent_role),
