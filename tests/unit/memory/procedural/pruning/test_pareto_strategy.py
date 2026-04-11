@@ -81,7 +81,7 @@ class TestParetoPruningStrategy:
             entries=tuple(entries),
         )
         # C is dominated and should be pruned
-        assert "mem-c" in result
+        assert set(result) == {"mem-c"}
 
     @pytest.mark.unit
     async def test_high_relevance_kept(self) -> None:
@@ -123,7 +123,7 @@ class TestParetoPruningStrategy:
             entries=(entry_with_score, entry_no_score),
         )
         # Entries with None score are treated as 0.0
-        assert "mem-2" in result
+        assert set(result) == {"mem-2"}
 
     @pytest.mark.unit
     async def test_equals_max_entries_no_pruning(self) -> None:
@@ -221,4 +221,4 @@ class TestParetoPruningStrategy:
             agent_id="test-agent-1",
             entries=tuple(entries),
         )
-        assert "mem-dominated" in result
+        assert set(result) == {"mem-dominated"}

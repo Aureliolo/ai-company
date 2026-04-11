@@ -63,7 +63,7 @@ class InflectionTrigger:
         async with self._lock:
             pending = self._pending.pop(key, [])
             if pending:
-                logger.debug(
+                logger.info(
                     EVOLUTION_TRIGGER_REQUESTED,
                     agent_id=key,
                     trigger="inflection",
@@ -74,7 +74,7 @@ class InflectionTrigger:
 
     async def get_pending(
         self,
-        agent_id: str,
+        agent_id: NotBlankStr,
     ) -> tuple[PerformanceInflection, ...]:
         """Peek at pending inflections without consuming them."""
         async with self._lock:

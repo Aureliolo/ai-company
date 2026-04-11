@@ -350,6 +350,11 @@ class EvolutionService:
         identity = await self._identity_store.get_current(agent_id)
         if identity is None:
             msg = f"Agent {agent_id!r} not found in identity store"
+            logger.warning(
+                EVOLUTION_CONTEXT_BUILD_FAILED,
+                agent_id=str(agent_id),
+                error=msg,
+            )
             raise ValueError(msg)
 
         # Fetch performance snapshot.

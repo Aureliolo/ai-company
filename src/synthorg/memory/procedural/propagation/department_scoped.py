@@ -70,7 +70,9 @@ class DepartmentScopedPropagation:
             source_agent.department,
         )
 
-        # Filter out source agent
+        # Filter out source agent.
+        # NOTE: list_by_department returns all statuses; callers should
+        # use list_active + department filter if inactive exclusion is needed.
         target_agents = tuple(
             a for a in target_agents if str(a.id) != str(source_agent.id)
         )
