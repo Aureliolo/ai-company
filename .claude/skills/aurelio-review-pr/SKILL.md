@@ -178,6 +178,7 @@ Based on changed files, launch applicable review agents **in parallel** using th
 | **go-reviewer** | Any `cli_go` | `explore` |
 | **go-security-reviewer** | Any `cli_go` with dangerous patterns | `explore` |
 | **go-conventions-enforcer** | Any `cli_go` | `explore` |
+| **diagram-syntax-validator** | Any `docs` files changed that contain ` ```d2 ` or ` ```mermaid ` blocks | `explore` (use `.claude/agents/diagram-syntax-validator.md` prompt) |
 | **issue-resolution-verifier** | Issue is linked (pre-existing or auto-linked in Phase 2) | `explore` (issue-resolution-verifier) |
 
 **If the Task tool fails** (e.g., "Unknown agent type"), fall back to running the check manually using Read/Grep tools on the changed files AND the additional required sources (CLAUDE.md, README.md, docs/design/*.md for the relevant pages). Ensure the issue-resolution-verifier also fetches the full linked issue content via `gh issue view N --json title,body,labels,comments`.

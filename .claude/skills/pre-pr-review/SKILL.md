@@ -269,6 +269,7 @@ This captures committed-but-unpushed changes AND any uncommitted/untracked work 
 | **go-conventions-enforcer** | Any `cli_go` | `pr-review-toolkit:code-reviewer` (custom prompt below) |
 | **issue-resolution-verifier** | Issue context was found in Phase 0 step 6 | `pr-review-toolkit:code-reviewer` (custom prompt below) |
 | **tool-parity-checker** | Any `.claude/` or `.opencode/` or `opencode.json` or `AGENTS.md` or `CLAUDE.md` file changed | `.claude/agents/tool-parity-checker.md` prompt (verifies Claude Code <-> OpenCode config parity) |
+| **diagram-syntax-validator** | Any `docs` files changed that contain ` ```d2 ` or ` ```mermaid ` blocks | `.claude/agents/diagram-syntax-validator.md` prompt (validates diagram syntax, conventions, fence types) |
 
 ### Go-conventions-enforcer custom prompt
 

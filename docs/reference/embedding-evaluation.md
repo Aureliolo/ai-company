@@ -157,25 +157,13 @@ single GPU.
 
 ### Pipeline Overview
 
-```text
-+-------------------+     +---------------------+     +-------------------+
-|  1. Synthetic     |     |  2. Hard Negative   |     |  3. Contrastive   |
-|  Data Generation  | --> |  Mining             | --> |  Fine-Tuning      |
-|                   |     |                     |     |                   |
-|  Org docs, ADRs,  |     |  Base model embeds  |     |  InfoNCE loss     |
-|  procedures -->   |     |  all passages,      |     |  tau = 0.02       |
-|  LLM generates    |     |  selects top-k      |     |  3 epochs,        |
-|  query-doc pairs  |     |  confusing negatives|     |  lr = 1e-5        |
-+-------------------+     +---------------------+     +-------------------+
-                                                              |
-                                                              v
-                                                      +-------------------+
-                                                      |  4. Deploy        |
-                                                      |                   |
-                                                      |  Save checkpoint, |
-                                                      |  update embedder  |
-                                                      |  config           |
-                                                      +-------------------+
+```mermaid
+graph LR
+    S1["1. Synthetic Data Generation\nOrg docs, ADRs, procedures\nLLM generates query-doc pairs"]
+    S2["2. Hard Negative Mining\nBase model embeds all passages,\nselects top-k confusing negatives"]
+    S3["3. Contrastive Fine-Tuning\nInfoNCE loss, tau = 0.02\n3 epochs, lr = 1e-5"]
+    S4["4. Deploy\nSave checkpoint,\nupdate embedder config"]
+    S1 --> S2 --> S3 --> S4
 ```
 
 ### Stage Details

@@ -122,31 +122,41 @@ configuration reference.
 
 The following diagram illustrates how the core entities in SynthOrg relate to each other:
 
-```mermaid
-graph TD
-    Company --> Departments
-    Company --> Projects
-    Company --> Config
-    Company --> HR["HR Registry"]
+```d2
+Company -> Departments
+Company -> Projects
+Company -> Config
+Company -> HR: HR Registry
 
-    Departments -.-> DeptHead["Department Head (Agent, optional)"]
-    Departments --> Members["Members (Agent[])"]
+Departments -> DeptHead: {style.stroke-dash: 5}
+DeptHead: "Department Head\n(Agent, optional)"
+Departments -> Members
+Members: "Members (Agent[])"
 
-    Projects --> Tasks
-    Projects --> Team["Team (Agent[])"]
+Projects -> Tasks
+Projects -> Team
+Team: "Team (Agent[])"
 
-    Tasks --> Assigned["Assigned Agent(s)"]
-    Tasks --> Artifacts
-    Tasks --> Status["Status / History"]
+Tasks -> Assigned
+Assigned: "Assigned Agent(s)"
+Tasks -> Artifacts
+Tasks -> Status
+Status: "Status / History"
 
-    Config --> Autonomy["Autonomy Level"]
-    Config --> Budget
-    Config --> CommSettings["Communication Settings"]
-    Config --> ToolPerms["Tool Permissions"]
+Config -> Autonomy
+Autonomy: Autonomy Level
+Config -> Budget
+Config -> CommSettings
+CommSettings: Communication Settings
+Config -> ToolPerms
+ToolPerms: Tool Permissions
 
-    HR --> Active["Active Agents[]"]
-    HR --> Roles["Available Roles[]"]
-    HR --> Queue["Hiring Queue"]
+HR -> Active
+Active: "Active Agents[]"
+HR -> Roles
+Roles: "Available Roles[]"
+HR -> Queue
+Queue: Hiring Queue
 ```
 
 ---

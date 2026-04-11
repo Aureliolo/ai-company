@@ -24,6 +24,15 @@
 - Surface improvements as suggestions, not silent changes -- user decides
 - **Prioritize issues by dependency order**, not priority labels -- unblocked dependencies come first
 
+## Diagrams in Documentation
+
+- **D2** (`\`\`\`d2`): architecture diagrams, nested container layouts, complex entity relationships. Rendered at build time via `mkdocs-d2-plugin` (dagre layout). Requires `d2` binary installed locally and in CI.
+- **Mermaid** (`\`\`\`mermaid`): flowcharts, sequence diagrams, simple hierarchies, pipelines. Rendered client-side via `pymdownx.superfences`.
+- **Markdown tables**: grid/matrix data that is semantically tabular (not diagrams).
+- D2 uses theme 200 (Dark Mauve), dark-only render -- configured globally in `mkdocs.yml`.
+- Never use `\`\`\`text` blocks with ASCII/Unicode box-drawing characters for diagrams.
+- Review agent `diagram-syntax-validator` runs in `/pre-pr-review` and `/aurelio-review-pr` pipelines.
+
 ## Quick Commands
 
 ```bash

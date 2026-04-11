@@ -17,24 +17,12 @@ configuration without modifying application code.
 
 ## Memory Architecture
 
-```text
-+-------------------------------------------------+
-|              Agent Memory System                |
-+----------+----------+-----------+---------------+
-| Working  | Episodic | Semantic  | Procedural    |
-| Memory   | Memory   | Memory    | Memory        |
-|          |          |           |               |
-| Current  | Past     | Knowledge | Skills &      |
-| task     | events & | & facts   | how-to        |
-| context  | decisions| learned   |               |
-+----------+----------+-----------+---------------+
-|            Storage Backend                      |
-|   Mem0 (durable, Qdrant+SQLite)                 |
-|   InMemory (session-scoped)                     |
-|   Composite (namespace-based routing adapter)   |
-|     See Decision Log                            |
-+-------------------------------------------------+
-```
+| Working Memory | Episodic Memory | Semantic Memory | Procedural Memory |
+|---|---|---|---|
+| Current task context | Past events & decisions | Knowledge & facts learned | Skills & how-to |
+
+**Storage Backend:** Mem0 (durable, Qdrant+SQLite), InMemory (session-scoped),
+Composite (namespace-based routing adapter). See [Decision Log](../architecture/decisions.md).
 
 Each agent maintains its own memory store. The storage backend is selected via configuration
 and all access flows through the [`MemoryBackend`](#memorybackend-protocol) protocol.
@@ -537,29 +525,29 @@ repository protocols; the storage engine is an implementation detail swappable v
 
 ### Architecture
 
-```text
-+------------------------------------------------------------------+
-|                     Application Code                             |
-|  engine/  budget/  communication/  security/                     |
-|     |        |           |             |                         |
-|     v        v           v             v                         |
-|  +------+ +------+ +----------+ +----------+                     |
-|  | Task | | Cost | | Message  | |  Audit   |  <-- Repository     |
-|  | Repo | | Repo | |  Repo    | |  Repo    |      Protocols      |
-|  +--+---+ +--+---+ +----+-----+ +----+-----+                     |
-|     +--------+----------+------------+                           |
-|                      |                                           |
-|  +-------------------+-------------------------------------------+
-|  |              PersistenceBackend (protocol)                    |
-|  |  connect() . disconnect() . health_check() . migrate()        |
-|  +-------------------+-------------------------------------------+
-|                      |                                           |
-|  +-------------------+-------------------------------------------+
-|  |  SQLitePersistenceBackend (implemented)                       |
-|  |  PostgresPersistenceBackend (implemented -- v0.6.5)           |
-|  |  MariaDBPersistenceBackend (future)                           |
-|  +---------------------------------------------------------------+
-+------------------------------------------------------------------+
+```d2
+Application Code: {
+  Repos: "Repository Protocols" {
+    grid-columns: 4
+    Task Repo: "Task Repo\n(engine/)"
+    Cost Repo: "Cost Repo\n(budget/)"
+    Message Repo: "Message Repo\n(communication/)"
+    Audit Repo: "Audit Repo\n(security/)"
+  }
+
+  Backend: |
+    PersistenceBackend (protocol)
+    connect() . disconnect() . health_check() . migrate()
+  |
+
+  Impls: |
+    SQLitePersistenceBackend (implemented)
+    PostgresPersistenceBackend (implemented -- v0.6.5)
+    MariaDBPersistenceBackend (future)
+  |
+
+  Repos -> Backend -> Impls
+}
 ```
 
 ### Protocol Design

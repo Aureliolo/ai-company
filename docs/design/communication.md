@@ -25,16 +25,13 @@ The framework supports multiple communication patterns, configurable per company
 
     **Recommended Default**
 
-    ```text
-    ┌──────────┐     ┌─────────────────┐     ┌──────────┐
-    │  Agent A  │────>│   Message Bus   │<────│  Agent B  │
-    └──────────┘     │ (Topics/Queues) │     └──────────┘
-                     └────────┬────────┘
-                              │
-                  ┌───────────┼───────────┐
-                  v           v           v
-            #engineering  #product   #all-hands
-            #code-review  #design    #incidents
+    ```mermaid
+    graph TD
+        A[Agent A] --> Bus[Message Bus\nTopics/Queues]
+        B[Agent B] --> Bus
+        Bus --> T1["#engineering\n#code-review"]
+        Bus --> T2["#product\n#design"]
+        Bus --> T3["#all-hands\n#incidents"]
     ```
 
     - Agents publish to topics, subscribe to relevant channels
@@ -47,10 +44,11 @@ The framework supports multiple communication patterns, configurable per company
 
 === "Pattern 2: Hierarchical Delegation"
 
-    ```text
-    CEO --> CTO --> Eng Lead --> Sr Dev --> Jr Dev
-                       |
-                       └--> QA Lead --> QA Eng
+    ```mermaid
+    graph LR
+        CEO --> CTO --> EL[Eng Lead]
+        EL --> SD[Sr Dev] --> JD[Jr Dev]
+        EL --> QAL[QA Lead] --> QAE[QA Eng]
     ```
 
     - Tasks flow down the hierarchy, results flow up
@@ -62,18 +60,11 @@ The framework supports multiple communication patterns, configurable per company
 
 === "Pattern 3: Meeting-Based"
 
-    ```text
-    ┌─────────────────────────────────┐
-    │        Sprint Planning          │
-    │  PM + CTO + Devs + QA + Design  │
-    │  Output: Sprint backlog         │
-    └─────────────────────────────────┘
-             │
-    ┌────────┴────────┐
-    │  Daily Standup  │
-    │  Devs + QA      │
-    │  Output: Status │
-    └─────────────────┘
+    ```mermaid
+    graph TD
+        SP["Sprint Planning\nPM + CTO + Devs + QA + Design\nOutput: Sprint backlog"]
+        DS["Daily Standup\nDevs + QA\nOutput: Status"]
+        SP --> DS
     ```
 
     - Structured multi-agent conversations at defined intervals
@@ -120,32 +111,29 @@ sole transport for intra-organization messages.
 
 ### Architecture
 
-```text
-                        +-----------------------+
-                        |   External A2A Agent  |
-                        |   (other framework)   |
-                        +-----------+-----------+
-                                    |
-                             JSON-RPC / SSE
-                                    |
-+-----------------------+-----------v-----------+-----------------------+
-|                       |    A2A Gateway        |                       |
-|  SynthOrg             |  (optional, disabled  |                       |
-|  Organization         |   by default)         |                       |
-|                       +-----+-----+-----------+                       |
-|                             |     |                                   |
-|                      inbound|     |outbound                           |
-|                             v     v                                   |
-|                       +--------------------+                          |
-|                       |   Message Bus      |                          |
-|                       |  (internal,        |                          |
-|                       |   unchanged)       |                          |
-|                       +--+----+----+----+--+                          |
-|                          |    |    |    |                             |
-|                       +--v-+--v-+--v-+--v-+                           |
-|                       | A1 | A2 | A3 | A4 |  Internal Agents          |
-|                       +----+----+----+----+                           |
-+-----------------------+-----------------------------------------------+
+```d2
+External: "External A2A Agent\n(other framework)"
+
+External -> SynthOrg.Gateway: "JSON-RPC / SSE"
+
+SynthOrg: "SynthOrg Organization" {
+  Gateway: "A2A Gateway\n(optional, disabled by default)"
+
+  Bus: "Message Bus\n(internal, unchanged)"
+
+  Gateway -> Bus: inbound
+  Bus -> Gateway: outbound
+
+  Agents: "Internal Agents" {
+    grid-columns: 4
+    A1
+    A2
+    A3
+    A4
+  }
+
+  Bus -> Agents
+}
 ```
 
 The gateway sits at the organization boundary and handles two directions:

@@ -19,18 +19,11 @@ The framework provides a unified interface for all LLM interactions. The provide
 abstracts away vendor differences, exposing a single `completion()` method regardless of
 whether the backend is a cloud API, OpenRouter, Ollama, or a custom endpoint.
 
-```text
-+--------------------------------------------------+
-|            Unified Model Interface               |
-|   completion(messages, tools, config) -> resp    |
-+-----------+-----------+-----------+--------------+
-| Cloud API | OpenRouter|  Ollama   |  Custom      |
-|  Adapter  |  Adapter  |  Adapter  |  Adapter     |
-+-----------+-----------+-----------+--------------+
-| Direct    | 400+ LLMs | Local LLMs|  Any API     |
-| API call  | via OR    | Self-host |              |
-+-----------+-----------+-----------+--------------+
-```
+**Unified Model Interface:** `completion(messages, tools, config) -> resp`
+
+| | Cloud API Adapter | OpenRouter Adapter | Ollama Adapter | Custom Adapter |
+|---|---|---|---|---|
+| **Method** | Direct API call | 400+ LLMs via OR | Local LLMs, self-host | Any API |
 
 ### Provider Configuration
 
@@ -958,30 +951,15 @@ implemented.
 
 ### Approval Workflow
 
-```text
-                    +---------------+
-                    |  Task/Action  |
-                    +-------+-------+
-                            |
-                    +-------v-------+
-                    | Security Ops  |
-                    |   Agent       |
-                    +-------+-------+
-                      /           \
-               +-----v--+      +--v-----+
-               |APPROVE |      | DENY   |
-               |(auto)  |      |+ reason|
-               +----+---+      +---+----+
-                    |              |
-               Execute         +---v---------+
-                               | Human Queue |
-                               | (Dashboard) |
-                               +---+---------+
-                             /         \
-                      +-----v--+    +---v----------+
-                      |Override|    |Alternative   |
-                      |Approve |    |Suggested     |
-                      +--------+    +--------------+
+```mermaid
+graph TD
+    Task[Task/Action] --> SecOps[Security Ops Agent]
+    SecOps --> Approve["APPROVE\n(auto)"]
+    SecOps --> Deny["DENY\n+ reason"]
+    Approve --> Execute[Execute]
+    Deny --> HQ[Human Queue\nDashboard]
+    HQ --> Override[Override Approve]
+    HQ --> Alt[Alternative Suggested]
 ```
 
 ### Autonomy Levels
@@ -1445,21 +1423,15 @@ overview, Agent Card projection, and concept mapping tables.
 The REST/WebSocket API is the **primary interface** for all consumers. The Web UI and any
 future CLI tool are thin clients that call the API -- they contain no business logic.
 
-```text
-+-------------------------------------------------+
-|               SynthOrg Engine                   |
-|  (Core Logic, Agent Orchestration, Tasks)       |
-+--------------------+----------------------------+
-                     |
-            +--------v--------+
-            |   REST/WS API   |  <-- primary interface
-            |   (Litestar)    |
-            +---+----------+--+
-                |          |
-        +-------v---+  +---v--------+
-        |  Web UI   |  |  CLI Tool  |
-        |  (React)  |  |  (Go)      |
-        +-----------+  +------------+
+```mermaid
+graph TD
+    Engine["SynthOrg Engine\n(Core Logic, Agent Orchestration, Tasks)"]
+    API["REST/WS API\n(Litestar)"]
+    WebUI["Web UI\n(React)"]
+    CLI["CLI Tool\n(Go)"]
+    Engine --> API
+    API --> WebUI
+    API --> CLI
 ```
 
 !!! info "CLI Tool (Implemented)"

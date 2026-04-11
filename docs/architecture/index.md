@@ -4,24 +4,24 @@ SynthOrg is organized as a modular, protocol-driven framework. Every major subsy
 
 ## Module Map
 
-```mermaid
-graph TB
-    Config[Config] --> Engine[Engine]
-    Engine --> Core[Core Models]
-    Engine --> Providers[LLM Providers]
-    Engine --> Communication[Communication]
-    Engine --> Tools[Tools]
-    Engine --> Memory[Memory]
-    Engine --> Security[Security]
-    Engine --> Budget[Budget]
-    Engine --> HR[HR]
-    API[API Layer] --> Engine
-    Observability[Observability] -.-> Engine
-    Observability -.-> Providers
-    Observability -.-> Security
-    Persistence[Persistence] -.-> HR
-    Persistence -.-> Security
-    Templates[Templates] --> Config
+```d2
+Config -> Engine
+Engine -> Core: Core Models
+Engine -> Providers: LLM Providers
+Engine -> Communication
+Engine -> Tools
+Engine -> Memory
+Engine -> Security
+Engine -> Budget
+Engine -> HR
+API: API Layer
+API -> Engine
+Observability -> Engine: {style.stroke-dash: 5}
+Observability -> Providers: {style.stroke-dash: 5}
+Observability -> Security: {style.stroke-dash: 5}
+Persistence -> HR: {style.stroke-dash: 5}
+Persistence -> Security: {style.stroke-dash: 5}
+Templates -> Config
 ```
 
 ## Module Responsibilities

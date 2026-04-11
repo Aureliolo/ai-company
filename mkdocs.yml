@@ -31,6 +31,13 @@ theme:
 
 plugins:
   - search
+  - d2:
+      layout: dagre
+      theme: 200
+      dark_theme: -1
+      sketch: false
+      pad: 100
+      cache: true
   - mkdocstrings:
       default_handler: python
       handlers:

@@ -2,41 +2,66 @@
 
 ## High-Level Architecture
 
-```text
-┌──────────────────────────────────────────────────────────────┐
-│                        SynthOrg Engine                       │
-│                                                              │
-│  ┌──────────────┐  ┌──────────────┐  ┌────────────────────┐  │
-│  │ Company Mgr  │  │ Agent Engine │  │ Task/Workflow Eng. │  │
-│  │ (Config,     │  │ (Lifecycle,  │  │ (Queue, Routing,   │  │
-│  │  Templates,  │  │  Personality,│  │  Dependencies,     │  │
-│  │  Hierarchy)  │  │  Execution)  │  │  Scheduling)       │  │
-│  └──────────────┘  └──────────────┘  └────────────────────┘  │
-│                                                              │
-│  ┌──────────────┐  ┌──────────────┐  ┌────────────────────┐  │
-│  │ Comms Layer  │  │ Memory Layer │  │ Tool/Capability    │  │
-│  │ (Message Bus,│  │ (Pluggable,  │  │ System (MCP,       │  │
-│  │  Meetings,   │  │  Retrieval,  │  │  Sandboxing,       │  │
-│  │  A2A)        │  │  Archive)    │  │  Permissions)      │  │
-│  └──────────────┘  └──────────────┘  └────────────────────┘  │
-│                                                              │
-│  ┌──────────────┐  ┌──────────────┐  ┌────────────────────┐  │
-│  │ Provider Lyr │  │ Budget/Cost  │  │ Security/Approval  │  │
-│  │ (Unified,    │  │ Engine       │  │ System (SecOps,    │  │
-│  │  Routing,    │  │ (Tracking,   │  │  Audit Log,        │  │
-│  │  Fallbacks)  │  │  Limits,     │  │  Human Queue)      │  │
-│  │              │  │  CFO Agent)  │  │                    │  │
-│  └──────────────┘  └──────────────┘  └────────────────────┘  │
-│                                                              │
-│  ┌──────────────────────────────────────────────────────┐    │
-│  │    API Layer (Async Framework + WebSocket)           │    │
-│  └──────────────────────────────────────────────────────┘    │
-│                                                              │
-│  ┌──────────────────────────┐  ┌──────────────────────────┐  │
-│  │ Web UI (Local)           │  │ CLI Tool                 │  │
-│  │ Web Dashboard            │  │ synthorg <command>       │  │
-│  └──────────────────────────┘  └──────────────────────────┘  │
-└──────────────────────────────────────────────────────────────┘
+```d2
+SynthOrg Engine: {
+  grid-rows: 5
+
+  Management: {
+    grid-columns: 3
+    Company Mgr: |
+      Config, Templates,
+      Hierarchy
+    |
+    Agent Engine: |
+      Lifecycle, Personality,
+      Execution
+    |
+    Task/Workflow Eng.: |
+      Queue, Routing,
+      Dependencies, Scheduling
+    |
+  }
+
+  Infrastructure: {
+    grid-columns: 3
+    Comms Layer: |
+      Message Bus,
+      Meetings, A2A
+    |
+    Memory Layer: |
+      Pluggable, Retrieval,
+      Archive
+    |
+    Tool/Capability System: |
+      MCP, Sandboxing,
+      Permissions
+    |
+  }
+
+  Foundation: {
+    grid-columns: 3
+    Provider Layer: |
+      Unified, Routing,
+      Fallbacks
+    |
+    Budget/Cost Engine: |
+      Tracking, Limits,
+      CFO Agent
+    |
+    Security/Approval: |
+      SecOps, Audit Log,
+      Human Queue
+    |
+  }
+
+  API Layer: Async Framework + WebSocket
+
+  Clients: {
+    grid-columns: 2
+    Web Dashboard: Web UI (Local)
+    CLI Tool: "synthorg [command]"
+  }
+}
 ```
 
 The SynthOrg engine is structured as a set of loosely coupled subsystems. Each box represents a major component that communicates through well-defined protocol interfaces. The API layer sits below the engine, exposing REST and WebSocket endpoints to the Web UI and CLI.
