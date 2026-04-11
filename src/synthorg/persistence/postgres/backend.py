@@ -16,7 +16,7 @@ backend: callers get Pydantic models back either way.
 import asyncio
 import math
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import psycopg
 from psycopg import sql
@@ -556,16 +556,23 @@ class PostgresPersistenceBackend:
     async def _apply_timescaledb_setup(self) -> None:
         """Convert append-only time-series tables to hypertables.
 
-        Gated on ``config.enable_timescaledb``.  Called at the end of
-        ``migrate`` so Atlas has already created the base tables with
-        composite primary keys that include the partitioning column.
-        Uses only Apache-2.0 licensed TimescaleDB features:
-        ``create_hypertable`` is Apache; retention policies and
-        compression are under the Timescale License and are NOT
-        used here.  A missing extension is treated as a warning
-        (not an error) so operators running vanilla Postgres can
-        leave ``enable_timescaledb=True`` in their config without
-        breaking the migration.
+        Scope: converts ``cost_records`` and ``audit_entries`` to
+        hypertables.  ``heartbeats`` is deliberately excluded because
+        it is update-heavy (one row per execution_id, bumped per
+        pulse) and hypertables optimise for immutable append-only
+        data.  Gated on ``config.enable_timescaledb``.  Called at
+        the end of ``migrate`` so Atlas has already created the base
+        tables with composite primary keys that include the
+        partitioning column.  Uses only Apache-2.0 licensed
+        TimescaleDB features: ``create_hypertable`` is Apache;
+        retention policies and compression are under the Timescale
+        License and are NOT used here.  A missing extension is
+        treated as a warning (not an error) so operators running
+        vanilla Postgres can leave ``enable_timescaledb=True`` in
+        their config without breaking the migration.  Rollback of
+        any psycopg error is handled by the enclosing ``migrate``
+        method (pool close + state clear); this method's try/except
+        only exists to tag the log event.
         """
         assert self._pool is not None  # noqa: S101 -- checked in migrate()
         try:
@@ -576,8 +583,7 @@ class PostgresPersistenceBackend:
                 await cur.execute(
                     "SELECT 1 FROM pg_available_extensions WHERE name = 'timescaledb'",
                 )
-                available = await cur.fetchone()
-                if available is None:
+                if await cur.fetchone() is None:
                     logger.warning(
                         PERSISTENCE_TIMESCALEDB_UNAVAILABLE,
                         host=self._config.host,
@@ -585,34 +591,16 @@ class PostgresPersistenceBackend:
                     await conn.commit()
                     return
 
-                await cur.execute(
-                    "CREATE EXTENSION IF NOT EXISTS timescaledb",
+                await cur.execute("CREATE EXTENSION IF NOT EXISTS timescaledb")
+                await self._create_hypertable(
+                    cur,
+                    "cost_records",
+                    self._config.cost_records_chunk_interval,
                 )
-                await cur.execute(
-                    "SELECT create_hypertable("
-                    "'cost_records', 'timestamp', "
-                    "chunk_time_interval => CAST(%s AS INTERVAL), "
-                    "if_not_exists => TRUE, "
-                    "migrate_data => TRUE)",
-                    (self._config.cost_records_chunk_interval,),
-                )
-                logger.info(
-                    PERSISTENCE_TIMESCALEDB_HYPERTABLE_CREATED,
-                    table="cost_records",
-                    chunk_interval=self._config.cost_records_chunk_interval,
-                )
-                await cur.execute(
-                    "SELECT create_hypertable("
-                    "'audit_entries', 'timestamp', "
-                    "chunk_time_interval => CAST(%s AS INTERVAL), "
-                    "if_not_exists => TRUE, "
-                    "migrate_data => TRUE)",
-                    (self._config.audit_entries_chunk_interval,),
-                )
-                logger.info(
-                    PERSISTENCE_TIMESCALEDB_HYPERTABLE_CREATED,
-                    table="audit_entries",
-                    chunk_interval=self._config.audit_entries_chunk_interval,
+                await self._create_hypertable(
+                    cur,
+                    "audit_entries",
+                    self._config.audit_entries_chunk_interval,
                 )
                 await conn.commit()
         except psycopg.Error as exc:
@@ -622,6 +610,34 @@ class PostgresPersistenceBackend:
                 error_type=type(exc).__name__,
             )
             raise
+
+    async def _create_hypertable(
+        self,
+        cur: psycopg.AsyncCursor[Any],
+        table: str,
+        chunk_interval: str,
+    ) -> None:
+        """Convert a single append-only table to a TimescaleDB hypertable.
+
+        Idempotent via ``if_not_exists => TRUE`` -- a table that is
+        already a hypertable is a no-op.  ``migrate_data => TRUE``
+        moves existing rows into chunks on first run; this is a
+        full-table rewrite and can be slow on large production
+        tables.  Operators should test on a staging clone first.
+        """
+        await cur.execute(
+            "SELECT create_hypertable("
+            "%s, 'timestamp', "
+            "chunk_time_interval => CAST(%s AS INTERVAL), "
+            "if_not_exists => TRUE, "
+            "migrate_data => TRUE)",
+            (table, chunk_interval),
+        )
+        logger.info(
+            PERSISTENCE_TIMESCALEDB_HYPERTABLE_CREATED,
+            table=table,
+            chunk_interval=chunk_interval,
+        )
 
     @property
     def is_connected(self) -> bool:

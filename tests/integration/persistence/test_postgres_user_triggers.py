@@ -97,6 +97,7 @@ class TestCEOUniquenessPostgres:
             for i in range(3, 5):
                 tg.create_task(try_create(i, backend_b))
 
+        assert len(results) == 5, f"Expected 5 results, got {results}"
         assert sum(results) == 1, f"Expected exactly 1 success, got {results}"
 
 
@@ -214,4 +215,5 @@ class TestLastOwnerTriggerPostgres:
             tg.create_task(try_revoke(owner1, postgres_backend))
             tg.create_task(try_revoke(owner2, backend_b))
 
+        assert len(results) == 2, f"Expected 2 results, got {results}"
         assert sum(results) == 1, f"Expected exactly 1 success, got {results}"

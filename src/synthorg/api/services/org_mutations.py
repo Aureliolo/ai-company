@@ -9,7 +9,10 @@ on version conflict.
 
 import json
 import math
+from collections.abc import Sequence  # noqa: TC003
 from typing import TYPE_CHECKING, Any
+
+from pydantic import BaseModel  # noqa: TC002
 
 from synthorg.api.concurrency import check_if_match, compute_etag
 from synthorg.api.dto_org import (  # noqa: TC001
@@ -63,6 +66,14 @@ _BUDGET_PERCENT_CAP = 100.0
 
 # Maximum CAS retry attempts for read-modify-write mutations.
 _MAX_CAS_ATTEMPTS = 2
+
+
+def _json_dump_models(models: Sequence[BaseModel]) -> str:
+    """Serialize a sequence of Pydantic models to compact JSON."""
+    return json.dumps(
+        [m.model_dump(mode="json") for m in models],
+        separators=(",", ":"),
+    )
 
 
 class OrgMutationService:
@@ -586,70 +597,7 @@ class OrgMutationService:
         """
         for attempt in range(_MAX_CAS_ATTEMPTS):
             try:
-                _, dept_version = await self._read_setting_versioned(
-                    "company",
-                    "departments",
-                )
-                _, agents_version = await self._read_setting_versioned(
-                    "company",
-                    "agents",
-                )
-                departments = await self._read_departments()
-                existing = self._find_department(departments, name)
-                if existing is None:
-                    msg = f"Department {name!r} not found"
-                    logger.warning(
-                        API_RESOURCE_NOT_FOUND,
-                        reason=msg,
-                        department=name,
-                    )
-                    raise NotFoundError(msg)
-
-                agents = await self._read_agents()
-                attached = tuple(
-                    a for a in agents if a.department.lower() == name.lower()
-                )
-                if attached:
-                    msg = (
-                        f"Cannot delete department {name!r}: "
-                        f"{len(attached)} agents attached"
-                    )
-                    logger.warning(
-                        API_RESOURCE_CONFLICT,
-                        reason=msg,
-                        department=name,
-                        agent_count=len(attached),
-                    )
-                    raise ConflictError(msg)
-
-                new_departments = tuple(
-                    d for d in departments if d.name.lower() != name.lower()
-                )
-                # Pin BOTH the department list and the agents list
-                # under CAS in a single transaction.  If a concurrent
-                # create_agent bumps the agents version between the
-                # reference check above and the write below, the
-                # agents CAS fails and the department delete rolls
-                # back -- closing the TOCTOU gap.
-                dept_payload = json.dumps(
-                    [d.model_dump(mode="json") for d in new_departments],
-                    separators=(",", ":"),
-                )
-                agents_payload = json.dumps(
-                    [a.model_dump(mode="json") for a in agents],
-                    separators=(",", ":"),
-                )
-                await self._settings.set_many(
-                    [
-                        ("company", "departments", dept_payload),
-                        ("company", "agents", agents_payload),
-                    ],
-                    expected_updated_at_map={
-                        ("company", "departments"): dept_version,
-                        ("company", "agents"): agents_version,
-                    },
-                )
-                await self._snapshot_company(saved_by=saved_by)
+                await self._try_delete_department(name, saved_by=saved_by)
                 break
             except VersionConflictError:
                 if attempt == _MAX_CAS_ATTEMPTS - 1:
@@ -668,6 +616,62 @@ class OrgMutationService:
                 continue
 
         logger.info(API_DEPARTMENT_DELETED, department=name)
+
+    async def _try_delete_department(
+        self,
+        name: str,
+        *,
+        saved_by: str,
+    ) -> None:
+        """One TOCTOU-safe attempt: CAS on BOTH departments and agents."""
+        _, dept_version = await self._read_setting_versioned("company", "departments")
+        _, agents_version = await self._read_setting_versioned("company", "agents")
+        departments = await self._read_departments()
+        if self._find_department(departments, name) is None:
+            msg = f"Department {name!r} not found"
+            logger.warning(API_RESOURCE_NOT_FOUND, reason=msg, department=name)
+            raise NotFoundError(msg)
+
+        agents = await self._read_agents()
+        self._check_no_attached_agents(name, agents)
+
+        new_departments = tuple(
+            d for d in departments if d.name.lower() != name.lower()
+        )
+        await self._settings.set_many(
+            [
+                ("company", "departments", _json_dump_models(new_departments)),
+                ("company", "agents", _json_dump_models(agents)),
+            ],
+            expected_updated_at_map={
+                ("company", "departments"): dept_version,
+                ("company", "agents"): agents_version,
+            },
+        )
+        await self._snapshot_company(saved_by=saved_by)
+
+    def _check_no_attached_agents(
+        self,
+        department_name: str,
+        agents: Sequence[AgentConfig],
+    ) -> None:
+        """Raise ConflictError when any agent references the department."""
+        attached = tuple(
+            a for a in agents if a.department.lower() == department_name.lower()
+        )
+        if not attached:
+            return
+        msg = (
+            f"Cannot delete department {department_name!r}: "
+            f"{len(attached)} agents attached"
+        )
+        logger.warning(
+            API_RESOURCE_CONFLICT,
+            reason=msg,
+            department=department_name,
+            agent_count=len(attached),
+        )
+        raise ConflictError(msg)
 
     async def reorder_departments(
         self,
