@@ -1,0 +1,72 @@
+"""Batched (time-interval) scaling trigger.
+
+Fires when enough time has passed since the last scaling
+evaluation cycle.
+"""
+
+import asyncio
+from datetime import UTC, datetime
+from typing import TYPE_CHECKING
+
+from synthorg.observability import get_logger
+from synthorg.observability.events.hr import (
+    HR_SCALING_TRIGGER_REQUESTED,
+    HR_SCALING_TRIGGER_SKIPPED,
+)
+
+if TYPE_CHECKING:
+    from synthorg.core.types import NotBlankStr
+
+logger = get_logger(__name__)
+
+
+class BatchedScalingTrigger:
+    """Trigger that fires on a time interval.
+
+    Tracks the last evaluation time and triggers when the
+    configured interval has elapsed.
+
+    Args:
+        interval_seconds: Minimum seconds between evaluations.
+    """
+
+    def __init__(
+        self,
+        *,
+        interval_seconds: int = 900,
+    ) -> None:
+        self._interval = max(1, interval_seconds)
+        self._last_run: datetime | None = None
+        self._lock = asyncio.Lock()
+
+    @property
+    def name(self) -> NotBlankStr:
+        """Trigger name."""
+        return "batched"  # type: ignore[return-value]
+
+    async def should_trigger(self) -> bool:
+        """Trigger if the interval has elapsed since last run."""
+        now = datetime.now(UTC)
+        async with self._lock:
+            if self._last_run is not None:
+                elapsed = (now - self._last_run).total_seconds()
+                if elapsed < self._interval:
+                    logger.debug(
+                        HR_SCALING_TRIGGER_SKIPPED,
+                        trigger="batched",
+                        reason="interval_not_elapsed",
+                        elapsed_seconds=int(elapsed),
+                        interval_seconds=self._interval,
+                    )
+                    return False
+
+            self._last_run = now
+            logger.debug(
+                HR_SCALING_TRIGGER_REQUESTED,
+                trigger="batched",
+            )
+            return True
+
+    def record_run(self) -> None:
+        """Record that an evaluation cycle completed."""
+        self._last_run = datetime.now(UTC)

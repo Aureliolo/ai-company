@@ -1,0 +1,107 @@
+"""Workload signal source -- reads agent utilization from assignment."""
+
+from datetime import UTC, datetime
+from typing import TYPE_CHECKING
+
+from synthorg.core.types import NotBlankStr
+from synthorg.hr.scaling.models import ScalingSignal
+from synthorg.observability import get_logger
+
+if TYPE_CHECKING:
+    from synthorg.engine.assignment.models import AgentWorkload
+
+logger = get_logger(__name__)
+
+_SOURCE_NAME = NotBlankStr("workload")
+
+
+class WorkloadSignalSource:
+    """Read-only adapter over the assignment subsystem.
+
+    Converts ``AgentWorkload`` snapshots into scaling signals:
+    ``avg_utilization``, ``peak_utilization``, ``queue_depth``.
+
+    Args:
+        max_concurrent_tasks: Maximum concurrent tasks per agent
+            (used to compute utilization as a fraction).
+    """
+
+    def __init__(
+        self,
+        *,
+        max_concurrent_tasks: int = 3,
+    ) -> None:
+        self._max_concurrent = max_concurrent_tasks
+
+    @property
+    def name(self) -> NotBlankStr:
+        """Source identifier."""
+        return _SOURCE_NAME
+
+    async def collect(
+        self,
+        agent_ids: tuple[NotBlankStr, ...],  # noqa: ARG002
+        *,
+        workloads: tuple[AgentWorkload, ...] = (),
+    ) -> tuple[ScalingSignal, ...]:
+        """Collect workload signals from agent workload snapshots.
+
+        Args:
+            agent_ids: Active agent IDs (used for queue depth).
+            workloads: Current workload snapshots per agent.
+
+        Returns:
+            Workload signals: avg_utilization, peak_utilization,
+            queue_depth.
+        """
+        now = datetime.now(UTC)
+
+        if not workloads:
+            return (
+                ScalingSignal(
+                    name=NotBlankStr("avg_utilization"),
+                    value=0.0,
+                    source=_SOURCE_NAME,
+                    timestamp=now,
+                ),
+                ScalingSignal(
+                    name=NotBlankStr("peak_utilization"),
+                    value=0.0,
+                    source=_SOURCE_NAME,
+                    timestamp=now,
+                ),
+                ScalingSignal(
+                    name=NotBlankStr("queue_depth"),
+                    value=0.0,
+                    source=_SOURCE_NAME,
+                    timestamp=now,
+                ),
+            )
+
+        utilizations = tuple(
+            min(w.active_task_count / self._max_concurrent, 1.0) for w in workloads
+        )
+        avg_util = sum(utilizations) / len(utilizations)
+        peak_util = max(utilizations)
+        total_tasks = sum(w.active_task_count for w in workloads)
+
+        return (
+            ScalingSignal(
+                name=NotBlankStr("avg_utilization"),
+                value=round(avg_util, 4),
+                source=_SOURCE_NAME,
+                timestamp=now,
+            ),
+            ScalingSignal(
+                name=NotBlankStr("peak_utilization"),
+                value=round(peak_util, 4),
+                source=_SOURCE_NAME,
+                timestamp=now,
+            ),
+            ScalingSignal(
+                name=NotBlankStr("queue_depth"),
+                value=float(total_tasks),
+                source=_SOURCE_NAME,
+                timestamp=now,
+            ),
+        )

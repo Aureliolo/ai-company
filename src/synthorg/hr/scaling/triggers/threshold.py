@@ -1,0 +1,95 @@
+"""Signal threshold trigger.
+
+Fires when a named signal crosses a configured threshold.
+Tracks previous values to avoid repeated firing on the same
+crossing.
+"""
+
+import asyncio
+from typing import TYPE_CHECKING
+
+from synthorg.observability import get_logger
+from synthorg.observability.events.hr import (
+    HR_SCALING_TRIGGER_REQUESTED,
+    HR_SCALING_TRIGGER_SKIPPED,
+)
+
+if TYPE_CHECKING:
+    from synthorg.core.types import NotBlankStr
+    from synthorg.hr.scaling.models import ScalingSignal
+
+logger = get_logger(__name__)
+
+
+class SignalThresholdTrigger:
+    """Trigger that fires when a signal crosses a threshold.
+
+    Only fires on the transition (not while the signal remains
+    above/below the threshold).
+
+    Args:
+        signal_name: Name of the signal to watch.
+        threshold: Threshold value.
+        above: If True, fires when signal goes above threshold;
+            if False, fires when signal goes below.
+    """
+
+    def __init__(
+        self,
+        *,
+        signal_name: str,
+        threshold: float,
+        above: bool = True,
+    ) -> None:
+        self._signal_name = signal_name
+        self._threshold = threshold
+        self._above = above
+        self._was_crossed = False
+        self._lock = asyncio.Lock()
+
+    @property
+    def name(self) -> NotBlankStr:
+        """Trigger name."""
+        return "signal_threshold"  # type: ignore[return-value]
+
+    async def should_trigger(self) -> bool:
+        """Check whether the signal has crossed the threshold.
+
+        Call ``update_signal`` first to provide current values.
+        """
+        async with self._lock:
+            if self._was_crossed:
+                self._was_crossed = False
+                logger.debug(
+                    HR_SCALING_TRIGGER_REQUESTED,
+                    trigger="signal_threshold",
+                    signal=self._signal_name,
+                    threshold=self._threshold,
+                )
+                return True
+
+            logger.debug(
+                HR_SCALING_TRIGGER_SKIPPED,
+                trigger="signal_threshold",
+                signal=self._signal_name,
+                reason="no_crossing",
+            )
+            return False
+
+    async def update_signal(self, signal: ScalingSignal) -> None:
+        """Update the tracked signal value and detect crossings.
+
+        Args:
+            signal: Current signal value.
+        """
+        if signal.name != self._signal_name:
+            return
+
+        async with self._lock:
+            crossed = (
+                signal.value > self._threshold
+                if self._above
+                else signal.value < self._threshold
+            )
+            if crossed and not self._was_crossed:
+                self._was_crossed = True
