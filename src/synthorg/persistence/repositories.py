@@ -4,6 +4,7 @@ Each entity type has its own protocol so that application code depends
 only on abstract interfaces, never on a concrete backend.
 """
 
+from collections.abc import Mapping, Sequence  # noqa: TC003
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 from pydantic import AwareDatetime  # noqa: TC002
@@ -652,6 +653,34 @@ class SettingsRepository(Protocol):
 
         Raises:
             PersistenceError: If the operation fails.
+        """
+        ...
+
+    async def set_many(
+        self,
+        items: Sequence[tuple[NotBlankStr, NotBlankStr, str, str]],
+        *,
+        expected_updated_at_map: (Mapping[tuple[str, str], str] | None) = None,
+    ) -> bool:
+        """Atomically upsert multiple settings in a single transaction.
+
+        Each element of ``items`` is ``(namespace, key, value,
+        updated_at)``.  ``expected_updated_at_map`` optionally supplies
+        a compare-and-swap expected version per ``(namespace, key)``;
+        keys absent from the map are upserted unconditionally.  Pass
+        an empty string ``""`` in the map for first-write CAS
+        semantics (the row must not exist yet).
+
+        The whole operation is atomic: if any CAS check fails, the
+        transaction rolls back and no rows are modified.
+
+        Returns:
+            ``True`` if every write succeeded.  ``False`` if any CAS
+            check failed -- callers should re-read versions and retry
+            if they need to recover.
+
+        Raises:
+            PersistenceError: On DB-level failures (not CAS misses).
         """
         ...
 
