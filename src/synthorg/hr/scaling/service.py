@@ -15,6 +15,7 @@ from synthorg.hr.models import FiringRequest
 from synthorg.hr.scaling.enums import (
     ScalingActionType,
     ScalingOutcome,
+    ScalingStrategyName,
 )
 from synthorg.hr.scaling.guards.composite import CompositeScalingGuard
 from synthorg.hr.scaling.guards.cooldown import CooldownGuard
@@ -47,6 +48,20 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 _MAX_HISTORY = 100
+
+_STRATEGY_TO_FIRING_REASON: dict[str, FiringReason] = {
+    ScalingStrategyName.BUDGET_CAP.value: FiringReason.BUDGET,
+    ScalingStrategyName.PERFORMANCE_PRUNING.value: FiringReason.PERFORMANCE,
+    ScalingStrategyName.WORKLOAD.value: FiringReason.MANUAL,
+}
+
+
+def _firing_reason_for(decision: ScalingDecision) -> FiringReason:
+    """Map a decision's source strategy to the appropriate firing reason."""
+    return _STRATEGY_TO_FIRING_REASON.get(
+        decision.source_strategy.value,
+        FiringReason.PERFORMANCE,
+    )
 
 
 class ScalingService:
@@ -124,6 +139,12 @@ class ScalingService:
         """
         if not self._config.enabled:
             return ()
+
+        # 0. Check trigger (when configured).
+        if self._trigger is not None:
+            should = await self._trigger.should_trigger()
+            if not should:
+                return ()
 
         logger.info(HR_SCALING_CYCLE_STARTED, agent_count=len(agent_ids))
 
@@ -312,10 +333,11 @@ class ScalingService:
         assert self._offboarding_service is not None  # noqa: S101
         assert decision.target_agent_id is not None  # noqa: S101
         try:
+            firing_reason = _firing_reason_for(decision)
             firing_request = FiringRequest(
                 agent_id=decision.target_agent_id,
                 agent_name=decision.target_agent_id,
-                reason=FiringReason.PERFORMANCE,
+                reason=firing_reason,
                 requested_by=NotBlankStr("scaling_service"),
                 details=str(decision.rationale),
                 created_at=now,
@@ -357,7 +379,7 @@ class ScalingService:
         guards_to_notify: list[Any] = []
         guard = self._guard
         if isinstance(guard, CompositeScalingGuard):
-            guards_to_notify.extend(guard._guards)  # noqa: SLF001
+            guards_to_notify.extend(guard.get_guards())
         else:
             guards_to_notify.append(guard)
 
@@ -392,6 +414,11 @@ class ScalingService:
             Recent decisions (most recent last).
         """
         return tuple(self._recent_decisions)
+
+    @property
+    def config(self) -> ScalingConfig:
+        """Return the scaling configuration (read-only)."""
+        return self._config
 
     def get_recent_actions(self) -> tuple[ScalingActionRecord, ...]:
         """Get recent scaling action records.

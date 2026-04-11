@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.scaling.models import ScalingSignal
 from synthorg.observability import get_logger
+from synthorg.observability.events.hr import HR_SCALING_SIGNAL_COLLECTION_DEGRADED
 
 if TYPE_CHECKING:
     from synthorg.hr.performance.models import AgentPerformanceSnapshot
@@ -56,7 +57,7 @@ class PerformanceSignalSource:
         if not snapshots:
             if agent_ids:
                 logger.warning(
-                    "hr.scaling.signal_collection_degraded",
+                    HR_SCALING_SIGNAL_COLLECTION_DEGRADED,
                     source="performance",
                     reason="no_snapshots_for_active_agents",
                     agent_count=len(agent_ids),
@@ -89,7 +90,7 @@ class PerformanceSignalSource:
                 direction = str(quality_trend.direction)
                 if direction not in _TREND_MAP:
                     logger.warning(
-                        "hr.scaling.signal_collection_degraded",
+                        HR_SCALING_SIGNAL_COLLECTION_DEGRADED,
                         source="performance",
                         reason="unknown_trend_direction",
                         direction=direction,

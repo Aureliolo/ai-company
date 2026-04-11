@@ -220,7 +220,11 @@ class ScalingConfig(BaseModel):
 
     @model_validator(mode="after")
     def _validate_priority_order(self) -> Self:
-        """Ensure priority_order contains unique, valid strategy names."""
+        """Ensure priority_order contains unique strategy names.
+
+        Omitted strategies are treated as lowest priority during conflict
+        resolution (they receive ``_LOWEST_PRIORITY`` rank).
+        """
         if len(self.priority_order) != len(set(self.priority_order)):
             msg = "priority_order must not contain duplicates"
             raise ValueError(msg)

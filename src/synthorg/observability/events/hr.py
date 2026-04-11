@@ -81,3 +81,7 @@ HR_SCALING_CYCLE_STARTED: Final[str] = "hr.scaling.cycle_started"
 HR_SCALING_CYCLE_COMPLETE: Final[str] = "hr.scaling.cycle_complete"
 HR_SCALING_SERVICE_STARTED: Final[str] = "hr.scaling.service_started"
 HR_SCALING_SERVICE_STOPPED: Final[str] = "hr.scaling.service_stopped"
+HR_SCALING_SIGNAL_COLLECTION_DEGRADED: Final[str] = (
+    "hr.scaling.signal_collection_degraded"
+)
+HR_SCALING_MANUAL_TRIGGER_REQUESTED: Final[str] = "hr.scaling.manual_trigger_requested"

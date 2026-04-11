@@ -3,7 +3,7 @@ import { StaggerGroup, StaggerItem } from '@/components/ui/stagger-group'
 
 export function ScalingSkeleton() {
   return (
-    <div className="flex flex-col gap-section-gap p-6">
+    <div className="flex flex-col gap-section-gap">
       <StaggerGroup className="grid grid-cols-4 gap-card-gap">
         {(['strategies', 'decisions', 'utilization', 'budget'] as const).map(
           (id) => (

@@ -5,6 +5,8 @@ Budget cap HOLD decisions block hires from lower-priority
 strategies.
 """
 
+import copy
+from types import MappingProxyType
 from typing import TYPE_CHECKING
 
 from synthorg.hr.scaling.enums import ScalingActionType, ScalingStrategyName
@@ -46,7 +48,8 @@ class ConflictResolver:
         *,
         priority: dict[str, int] | None = None,
     ) -> None:
-        self._priority = priority or DEFAULT_PRIORITY
+        base = DEFAULT_PRIORITY if priority is None else priority
+        self._priority = MappingProxyType(copy.deepcopy(base))
 
     @property
     def name(self) -> NotBlankStr:

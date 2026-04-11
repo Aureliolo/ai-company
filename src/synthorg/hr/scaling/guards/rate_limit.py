@@ -7,12 +7,12 @@ import asyncio
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
+from synthorg.core.types import NotBlankStr
 from synthorg.hr.scaling.enums import ScalingActionType
 from synthorg.observability import get_logger
 from synthorg.observability.events.hr import HR_SCALING_GUARD_APPLIED
 
 if TYPE_CHECKING:
-    from synthorg.core.types import NotBlankStr
     from synthorg.hr.scaling.models import ScalingDecision
 
 logger = get_logger(__name__)
@@ -45,7 +45,7 @@ class RateLimitGuard:
     @property
     def name(self) -> NotBlankStr:
         """Guard identifier."""
-        return "rate_limit"
+        return NotBlankStr("rate_limit")
 
     async def filter(
         self,
@@ -62,6 +62,7 @@ class RateLimitGuard:
         now = datetime.now(UTC)
         cutoff = now.timestamp() - 86400
         result: list[ScalingDecision] = []
+        accepted_in_batch: dict[str, int] = {}
 
         async with self._lock:
             for decision in decisions:
@@ -71,23 +72,25 @@ class RateLimitGuard:
                     result.append(decision)
                     continue
 
-                # Prune old entries.
+                # Prune old entries once per action type.
                 history = self._history.get(action, [])
                 history = [t for t in history if t.timestamp() > cutoff]
                 self._history[action] = history
 
-                if len(history) >= limit:
+                used = len(history) + accepted_in_batch.get(action, 0)
+                if used >= limit:
                     logger.info(
                         HR_SCALING_GUARD_APPLIED,
                         guard="rate_limit",
                         action="dropped",
                         action_type=action,
-                        count=len(history),
+                        count=used,
                         limit=limit,
                     )
                     continue
 
                 result.append(decision)
+                accepted_in_batch[action] = accepted_in_batch.get(action, 0) + 1
 
         return tuple(result)
 

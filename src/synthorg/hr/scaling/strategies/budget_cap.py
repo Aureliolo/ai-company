@@ -25,10 +25,11 @@ class BudgetCapStrategy:
     """Budget-aware scaling strategy.
 
     Emits both PRUNE and HOLD when burn rate exceeds the safety
-    margin -- PRUNE targets the cheapest-to-remove agent, and HOLD
-    blocks hires from lower-priority strategies via the conflict
-    resolver. Emits HOLD only (no PRUNE) when burn is between
-    headroom and safety margin. Emits nothing when under headroom.
+    margin -- PRUNE targets the last agent in the ID list (cost-based
+    selection is a future enhancement), and HOLD blocks hires from
+    lower-priority strategies via the conflict resolver. Emits HOLD
+    only (no PRUNE) when burn is between headroom and safety margin.
+    Emits nothing when under headroom.
 
     Args:
         safety_margin: Burn rate fraction above which to prune and
@@ -84,12 +85,10 @@ class BudgetCapStrategy:
             return ()
 
         burn_fraction = burn_signal.value / 100.0
-        budget_signals = tuple(
-            s for s in context.budget_signals if s.name == "burn_rate_percent"
-        )
+        budget_signals = (burn_signal,)
 
         if burn_fraction >= self._safety_margin:
-            # Over budget -- prune cheapest agent + HOLD to block hires.
+            # Over budget -- prune last agent + HOLD to block hires.
             decisions: list[ScalingDecision] = []
             target = context.agent_ids[-1] if context.agent_ids else None
             if target is not None:

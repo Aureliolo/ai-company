@@ -25,7 +25,7 @@ class SkillSignalSource:
 
     async def collect(
         self,
-        agent_ids: tuple[NotBlankStr, ...],  # noqa: ARG002
+        agent_ids: tuple[NotBlankStr, ...],
         *,
         agent_skills: dict[str, tuple[str, ...]] | None = None,
         required_skills: tuple[str, ...] = (),
@@ -58,10 +58,10 @@ class SkillSignalSource:
                 ),
             )
 
-        # Union of all agent skills.
+        # Union of skills from active agents only.
         all_skills: set[str] = set()
-        for skills in agent_skills.values():
-            all_skills.update(skills)
+        for aid in agent_ids:
+            all_skills.update(agent_skills.get(str(aid), ()))
 
         required_set = set(required_skills)
         covered = required_set & all_skills

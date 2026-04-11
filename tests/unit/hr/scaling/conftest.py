@@ -1,6 +1,7 @@
 """Shared fixtures for scaling unit tests."""
 
 from datetime import UTC, datetime
+from typing import Any
 
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.scaling.enums import (
@@ -48,6 +49,7 @@ def make_context(  # noqa: PLR0913
     budget_signals: tuple[ScalingSignal, ...] = (),
     performance_signals: tuple[ScalingSignal, ...] = (),
     skill_signals: tuple[ScalingSignal, ...] = (),
+    performance_snapshots: dict[str, Any] | None = None,
     evaluated_at: datetime | None = None,
 ) -> ScalingContext:
     """Create a ScalingContext with sensible defaults.
@@ -64,6 +66,7 @@ def make_context(  # noqa: PLR0913
         budget_signals=budget_signals,
         performance_signals=performance_signals,
         skill_signals=skill_signals,
+        performance_snapshots=performance_snapshots or {},
         evaluated_at=evaluated_at or NOW,
     )
 

@@ -37,6 +37,7 @@ class BatchedScalingTrigger:
     ) -> None:
         self._interval = max(1, interval_seconds)
         self._last_run: datetime | None = None
+        self._in_progress = False
         self._lock = asyncio.Lock()
 
     @property
@@ -46,8 +47,16 @@ class BatchedScalingTrigger:
 
     async def should_trigger(self) -> bool:
         """Trigger if the interval has elapsed since last run."""
-        now = datetime.now(UTC)
         async with self._lock:
+            if self._in_progress:
+                logger.debug(
+                    HR_SCALING_TRIGGER_SKIPPED,
+                    trigger="batched",
+                    reason="run_in_progress",
+                )
+                return False
+
+            now = datetime.now(UTC)
             if self._last_run is not None:
                 elapsed = (now - self._last_run).total_seconds()
                 if elapsed < self._interval:
@@ -60,7 +69,7 @@ class BatchedScalingTrigger:
                     )
                     return False
 
-            self._last_run = now
+            self._in_progress = True
             logger.debug(
                 HR_SCALING_TRIGGER_REQUESTED,
                 trigger="batched",
@@ -75,3 +84,4 @@ class BatchedScalingTrigger:
         """
         async with self._lock:
             self._last_run = datetime.now(UTC)
+            self._in_progress = False

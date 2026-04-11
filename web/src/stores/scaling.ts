@@ -119,8 +119,15 @@ export const useScalingStore = create<ScalingState>()((set, get) => ({
 
   updateFromWsEvent: (event: WsEvent) => {
     log.debug('Scaling WS event', event.event_type)
-    // Refresh data on any scaling event.
-    void get().fetchDecisions()
-    void get().fetchSignals()
+    void (async () => {
+      try {
+        await Promise.all([
+          get().fetchDecisions(),
+          get().fetchSignals(),
+        ])
+      } catch (err) {
+        log.error('WS event refresh failed', err)
+      }
+    })()
   },
 }))

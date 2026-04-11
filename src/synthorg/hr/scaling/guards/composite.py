@@ -34,6 +34,10 @@ class CompositeScalingGuard:
         """Guard identifier."""
         return "composite"
 
+    def get_guards(self) -> tuple[ScalingGuard, ...]:
+        """Return the contained guards (read-only)."""
+        return self._guards
+
     async def filter(
         self,
         decisions: tuple[ScalingDecision, ...],
@@ -49,7 +53,17 @@ class CompositeScalingGuard:
         current = decisions
         for guard in self._guards:
             before = len(current)
-            current = await guard.filter(current)
+            try:
+                current = await guard.filter(current)
+            except Exception:
+                logger.error(
+                    HR_SCALING_GUARD_APPLIED,
+                    guard=str(guard.name),
+                    action="guard_error",
+                    input_count=before,
+                    exc_info=True,
+                )
+                raise
             logger.debug(
                 HR_SCALING_GUARD_APPLIED,
                 guard=str(guard.name),

@@ -85,7 +85,8 @@ class SkillGapStrategy:
             )
             return ()
 
-        confidence = 1.0 - (coverage_signal.value if coverage_signal else 0.0)
+        raw_confidence = 1.0 - (coverage_signal.value if coverage_signal else 0.0)
+        confidence = max(0.0, min(raw_confidence, 1.0))
         skill_signals = tuple(context.skill_signals)
 
         decision = ScalingDecision(
@@ -95,7 +96,7 @@ class SkillGapStrategy:
             rationale=NotBlankStr(
                 f"{int(missing_signal.value)} missing skills detected"
             ),
-            confidence=round(min(confidence, 1.0), 4),
+            confidence=round(confidence, 4),
             signals=skill_signals,
             created_at=now,
         )

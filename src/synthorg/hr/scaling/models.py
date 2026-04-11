@@ -4,7 +4,7 @@ Frozen Pydantic models for scaling signals, context, decisions,
 and action records.
 """
 
-from typing import Self
+from typing import Any, Self
 from uuid import uuid4
 
 from pydantic import (
@@ -81,6 +81,10 @@ class ScalingContext(BaseModel):
     skill_signals: tuple[ScalingSignal, ...] = Field(
         default=(),
         description="Skill coverage signals",
+    )
+    performance_snapshots: dict[str, Any] = Field(
+        default_factory=dict,
+        description="Raw performance snapshots keyed by agent_id",
     )
     evaluated_at: AwareDatetime = Field(
         description="When the context was built",

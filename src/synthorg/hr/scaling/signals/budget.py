@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.scaling.models import ScalingSignal
 from synthorg.observability import get_logger
+from synthorg.observability.events.hr import HR_SCALING_SIGNAL_COLLECTION_DEGRADED
 
 if TYPE_CHECKING:
     from synthorg.budget.spending_summary import SpendingSummary
@@ -46,7 +47,7 @@ class BudgetSignalSource:
 
         if summary is None:
             logger.warning(
-                "hr.scaling.signal_collection_degraded",
+                HR_SCALING_SIGNAL_COLLECTION_DEGRADED,
                 source="budget",
                 reason="no_spending_summary",
             )
@@ -75,12 +76,12 @@ class BudgetSignalSource:
         alert_key = summary.alert_level.value
         if alert_key not in alert_map:
             logger.warning(
-                "hr.scaling.signal_collection_degraded",
+                HR_SCALING_SIGNAL_COLLECTION_DEGRADED,
                 source="budget",
                 reason="unknown_alert_level",
                 alert_level=alert_key,
             )
-        alert_value = alert_map.get(alert_key, 0.0)
+        alert_value = alert_map.get(alert_key, alert_map["hard_stop"])
 
         return (
             ScalingSignal(

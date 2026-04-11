@@ -73,26 +73,26 @@ class TestPerformancePruningStrategy:
     async def test_eligible_agents_produce_prune(self) -> None:
         policy = _StubPruningPolicy(eligible=True)
         strategy = PerformancePruningStrategy(policy=policy)
-        ctx = make_context(agent_ids=_AGENT_IDS)
         snapshots = {aid: _make_snapshot(aid) for aid in _AGENT_IDS}
-        decisions = await strategy.evaluate(ctx, snapshots=snapshots)
+        ctx = make_context(agent_ids=_AGENT_IDS, performance_snapshots=snapshots)
+        decisions = await strategy.evaluate(ctx)
         assert len(decisions) == 2
         assert all(d.action_type == ScalingActionType.PRUNE for d in decisions)
 
     async def test_ineligible_agents_produce_nothing(self) -> None:
         policy = _StubPruningPolicy(eligible=False)
         strategy = PerformancePruningStrategy(policy=policy)
-        ctx = make_context(agent_ids=_AGENT_IDS)
         snapshots = {aid: _make_snapshot(aid) for aid in _AGENT_IDS}
-        decisions = await strategy.evaluate(ctx, snapshots=snapshots)
+        ctx = make_context(agent_ids=_AGENT_IDS, performance_snapshots=snapshots)
+        decisions = await strategy.evaluate(ctx)
         assert len(decisions) == 0
 
     async def test_no_snapshots_returns_empty(self) -> None:
         policy = _StubPruningPolicy()
         strategy = PerformancePruningStrategy(policy=policy)
         ctx = make_context(agent_ids=_AGENT_IDS)
-        decisions = await strategy.evaluate(ctx, snapshots=None)
-        assert len(decisions) == 0
+        decisions = await strategy.evaluate(ctx)
+        assert decisions == ()
 
     async def test_defers_during_evolution(self) -> None:
         policy = _StubPruningPolicy(eligible=True)
@@ -105,9 +105,9 @@ class TestPerformancePruningStrategy:
             evolution_checker=_always_adapting,
             defer_during_evolution=True,
         )
-        ctx = make_context(agent_ids=_AGENT_IDS)
         snapshots = {aid: _make_snapshot(aid) for aid in _AGENT_IDS}
-        decisions = await strategy.evaluate(ctx, snapshots=snapshots)
+        ctx = make_context(agent_ids=_AGENT_IDS, performance_snapshots=snapshots)
+        decisions = await strategy.evaluate(ctx)
         assert len(decisions) == 0
 
     async def test_no_deferral_when_disabled(self) -> None:
@@ -121,9 +121,9 @@ class TestPerformancePruningStrategy:
             evolution_checker=_always_adapting,
             defer_during_evolution=False,
         )
-        ctx = make_context(agent_ids=_AGENT_IDS)
         snapshots = {aid: _make_snapshot(aid) for aid in _AGENT_IDS}
-        decisions = await strategy.evaluate(ctx, snapshots=snapshots)
+        ctx = make_context(agent_ids=_AGENT_IDS, performance_snapshots=snapshots)
+        decisions = await strategy.evaluate(ctx)
         assert len(decisions) == 2
 
     async def test_name_and_action_types(self) -> None:

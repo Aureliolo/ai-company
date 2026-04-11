@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.scaling.models import ScalingSignal
 from synthorg.observability import get_logger
+from synthorg.observability.events.hr import HR_SCALING_SIGNAL_COLLECTION_DEGRADED
 
 if TYPE_CHECKING:
     from synthorg.engine.assignment.models import AgentWorkload
@@ -31,6 +32,9 @@ class WorkloadSignalSource:
         *,
         max_concurrent_tasks: int = 3,
     ) -> None:
+        if max_concurrent_tasks <= 0:
+            msg = "max_concurrent_tasks must be > 0"
+            raise ValueError(msg)
         self._max_concurrent = max_concurrent_tasks
 
     @property
@@ -59,7 +63,7 @@ class WorkloadSignalSource:
         if not workloads:
             if agent_ids:
                 logger.warning(
-                    "hr.scaling.signal_collection_degraded",
+                    HR_SCALING_SIGNAL_COLLECTION_DEGRADED,
                     source="workload",
                     reason="no_workloads_for_active_agents",
                     agent_count=len(agent_ids),

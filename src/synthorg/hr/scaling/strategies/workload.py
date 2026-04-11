@@ -77,9 +77,7 @@ class WorkloadAutoScaleStrategy:
             )
             return ()
 
-        workload_signals = tuple(
-            s for s in context.workload_signals if s.name == "avg_utilization"
-        )
+        workload_signals = (avg_util,)
 
         if avg_util.value > self._hire_threshold:
             confidence = min(
@@ -103,8 +101,8 @@ class WorkloadAutoScaleStrategy:
             )
 
         elif avg_util.value < self._prune_threshold and context.active_agent_count > 1:
-            # Find the agent with lowest utilization to prune.
-            # For now, use the last agent in the list.
+            # Select agent to prune (last in list -- utilization-based
+            # selection is a future enhancement).
             target = context.agent_ids[-1] if context.agent_ids else None
             if target is not None:
                 confidence = min(

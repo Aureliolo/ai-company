@@ -19,7 +19,7 @@ from synthorg.hr.scaling.models import (  # noqa: TC001
 )
 from synthorg.observability import get_logger
 from synthorg.observability.events.hr import (
-    HR_SCALING_CYCLE_STARTED,
+    HR_SCALING_MANUAL_TRIGGER_REQUESTED,
 )
 
 logger = get_logger(__name__)
@@ -141,13 +141,18 @@ class ScalingController(Controller):
         if scaling is None:
             return ApiResponse(data=())
 
+        config = scaling.config
+        configured_order = {
+            name.value: idx for idx, name in enumerate(config.priority_order)
+        }
+
         strategies = tuple(
             ScalingStrategyResponse(
                 name=str(s.name),
                 enabled=True,
-                priority=idx,
+                priority=configured_order.get(str(s.name), 999),
             )
-            for idx, s in enumerate(scaling.strategies)
+            for s in scaling.strategies
         )
         return ApiResponse(data=strategies)
 
@@ -180,7 +185,11 @@ class ScalingController(Controller):
                 ),
             )
 
-        decisions = scaling.get_recent_decisions()
+        decisions = sorted(
+            scaling.get_recent_decisions(),
+            key=lambda d: d.created_at,
+            reverse=True,
+        )
         responses = tuple(_decision_to_response(d) for d in decisions)
         page, meta = paginate(responses, offset=offset, limit=limit)
         return PaginatedResponse(data=page, pagination=meta)
@@ -208,8 +217,9 @@ class ScalingController(Controller):
         seen: set[str] = set()
         for decision in reversed(scaling.get_recent_decisions()):
             for signal in decision.signals:
-                if signal.name not in seen:
-                    seen.add(str(signal.name))
+                name_str = str(signal.name)
+                if name_str not in seen:
+                    seen.add(name_str)
                     signals.append(_signal_to_response(signal))
         return ApiResponse(data=tuple(signals))
 
@@ -234,12 +244,12 @@ class ScalingController(Controller):
                 error="Scaling service not configured",
             )
 
-        logger.info(HR_SCALING_CYCLE_STARTED, trigger="manual")
+        logger.info(HR_SCALING_MANUAL_TRIGGER_REQUESTED)
 
         # Get active agents from registry.
         registry = app_state.agent_registry
         agents = await registry.list_active()
-        agent_ids = tuple(NotBlankStr(a.name) for a in agents)
+        agent_ids = tuple(NotBlankStr(str(a.id)) for a in agents)
 
         decisions = await scaling.evaluate(agent_ids=agent_ids)
         responses = tuple(_decision_to_response(d) for d in decisions)

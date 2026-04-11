@@ -31,7 +31,7 @@ export function ScalingMetrics({
   const burnRate = findSignal(signals, 'burn_rate_percent')
 
   return (
-    <StaggerGroup className="grid grid-cols-4 gap-card-gap">
+    <StaggerGroup className="grid grid-cols-1 gap-card-gap sm:grid-cols-2 xl:grid-cols-4">
       <StaggerItem>
         <MetricCard
           label="Active Strategies"

@@ -2,7 +2,8 @@
 
 Routes scaling decisions through the existing ApprovalStore
 for human approval. Creates ApprovalItem entries and returns
-decisions as DEFERRED.
+the original decisions unchanged; execution checks approval
+status later.
 """
 
 from datetime import UTC, datetime, timedelta
@@ -11,13 +12,13 @@ from uuid import uuid4
 
 from synthorg.core.approval import ApprovalItem
 from synthorg.core.enums import ApprovalRiskLevel, ApprovalStatus
+from synthorg.core.types import NotBlankStr
 from synthorg.hr.scaling.enums import ScalingActionType
 from synthorg.observability import get_logger
 from synthorg.observability.events.hr import HR_SCALING_GUARD_APPLIED
 
 if TYPE_CHECKING:
     from synthorg.api.approval_store import ApprovalStore
-    from synthorg.core.types import NotBlankStr
     from synthorg.hr.scaling.models import ScalingDecision
 
 logger = get_logger(__name__)
@@ -53,7 +54,7 @@ class ApprovalGateGuard:
     @property
     def name(self) -> NotBlankStr:
         """Guard identifier."""
-        return "approval_gate"
+        return NotBlankStr("approval_gate")
 
     async def filter(
         self,

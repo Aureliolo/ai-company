@@ -5,6 +5,10 @@ import { StatusBadge } from '@/components/ui/status-badge'
 import type { ScalingStrategyResponse } from '@/api/endpoints/scaling'
 import type { AgentRuntimeStatus } from '@/lib/utils'
 
+function statusFromEnabled(enabled: boolean): AgentRuntimeStatus {
+  return enabled ? 'active' : 'offline'
+}
+
 interface StrategyControlsProps {
   strategies: readonly ScalingStrategyResponse[]
 }
@@ -38,9 +42,7 @@ export function StrategyControls({ strategies }: StrategyControlsProps) {
                   {STRATEGY_LABELS[strategy.name] ?? strategy.name}
                 </span>
                 <StatusBadge
-                  status={
-                    (strategy.enabled ? 'active' : 'offline') as AgentRuntimeStatus
-                  }
+                  status={statusFromEnabled(strategy.enabled)}
                 />
               </div>
               <span className="text-sm text-muted-foreground">

@@ -26,16 +26,23 @@ export default function ScalingPage() {
   const addToast = useToastStore((s) => s.add)
 
   const handleEvaluateNow = async () => {
-    const results = await evaluateNow()
-    if (results.length > 0) {
+    try {
+      const results = await evaluateNow()
+      if (results.length > 0) {
+        addToast({
+          variant: 'success',
+          title: `Evaluation produced ${results.length} decision(s)`,
+        })
+      } else {
+        addToast({
+          variant: 'info',
+          title: 'Evaluation produced no decisions',
+        })
+      }
+    } catch {
       addToast({
-        variant: 'success',
-        title: `Evaluation produced ${results.length} decision(s)`,
-      })
-    } else {
-      addToast({
-        variant: 'info',
-        title: 'Evaluation produced no decisions',
+        variant: 'error',
+        title: 'Evaluation failed',
       })
     }
   }
@@ -45,7 +52,7 @@ export default function ScalingPage() {
   }
 
   return (
-    <div className="flex flex-col gap-section-gap p-6">
+    <div className="flex flex-col gap-section-gap">
       {/* Header */}
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-semibold text-foreground">
@@ -91,7 +98,7 @@ export default function ScalingPage() {
       </ErrorBoundary>
 
       {/* Signal gauges and strategy controls side by side */}
-      <div className="grid grid-cols-2 gap-card-gap">
+      <div className="grid grid-cols-2 gap-grid-gap">
         <ErrorBoundary level="section">
           <SignalGauges signals={signals} />
         </ErrorBoundary>

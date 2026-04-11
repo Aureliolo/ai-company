@@ -70,19 +70,20 @@ class PerformancePruningStrategy:
     async def evaluate(
         self,
         context: ScalingContext,
-        *,
-        snapshots: dict[str, AgentPerformanceSnapshot] | None = None,
     ) -> tuple[ScalingDecision, ...]:
         """Evaluate agents through the pruning policy.
 
+        Reads ``context.performance_snapshots`` for per-agent snapshot
+        data. Returns empty when no snapshots are available.
+
         Args:
             context: Aggregated company state snapshot.
-            snapshots: Performance snapshots keyed by agent_id.
 
         Returns:
             PRUNE decisions for eligible agents.
         """
-        if snapshots is None:
+        snapshots: dict[str, AgentPerformanceSnapshot] = context.performance_snapshots
+        if not snapshots:
             return ()
 
         now = datetime.now(UTC)

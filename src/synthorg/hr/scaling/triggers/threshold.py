@@ -8,6 +8,7 @@ crossing.
 import asyncio
 from typing import TYPE_CHECKING
 
+from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
 from synthorg.observability.events.hr import (
     HR_SCALING_TRIGGER_REQUESTED,
@@ -15,7 +16,6 @@ from synthorg.observability.events.hr import (
 )
 
 if TYPE_CHECKING:
-    from synthorg.core.types import NotBlankStr
     from synthorg.hr.scaling.models import ScalingSignal
 
 logger = get_logger(__name__)
@@ -45,12 +45,13 @@ class SignalThresholdTrigger:
         self._threshold = threshold
         self._above = above
         self._was_crossed = False
+        self._previously_over = False
         self._lock = asyncio.Lock()
 
     @property
     def name(self) -> NotBlankStr:
         """Trigger name."""
-        return "signal_threshold"
+        return NotBlankStr("signal_threshold")
 
     async def should_trigger(self) -> bool:
         """Check whether the signal has crossed the threshold.
@@ -79,6 +80,10 @@ class SignalThresholdTrigger:
     async def update_signal(self, signal: ScalingSignal) -> None:
         """Update the tracked signal value and detect crossings.
 
+        Only fires on a transition from below to above (or above to
+        below when ``above=False``), not while the signal remains on
+        the triggered side.
+
         Args:
             signal: Current signal value.
         """
@@ -86,10 +91,11 @@ class SignalThresholdTrigger:
             return
 
         async with self._lock:
-            crossed = (
+            is_over = (
                 signal.value > self._threshold
                 if self._above
                 else signal.value < self._threshold
             )
-            if crossed and not self._was_crossed:
+            if is_over and not self._previously_over:
                 self._was_crossed = True
+            self._previously_over = is_over

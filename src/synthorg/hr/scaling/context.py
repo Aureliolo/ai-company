@@ -6,7 +6,10 @@ from typing import TYPE_CHECKING, Any
 
 from synthorg.hr.scaling.models import ScalingContext, ScalingSignal
 from synthorg.observability import get_logger
-from synthorg.observability.events.hr import HR_SCALING_CONTEXT_BUILT
+from synthorg.observability.events.hr import (
+    HR_SCALING_CONTEXT_BUILT,
+    HR_SCALING_SIGNAL_COLLECTION_DEGRADED,
+)
 
 if TYPE_CHECKING:
     from synthorg.core.types import NotBlankStr
@@ -92,6 +95,9 @@ class ScalingContextBuilder:
             skill_kwargs,
         )
 
+        # Pass through raw performance snapshots for the pruning strategy.
+        perf_snapshots = (performance_kwargs or {}).get("snapshots", {})
+
         context = ScalingContext(
             active_agent_count=len(agent_ids),
             agent_ids=agent_ids,
@@ -99,6 +105,9 @@ class ScalingContextBuilder:
             budget_signals=budget_signals,
             performance_signals=performance_signals,
             skill_signals=skill_signals,
+            performance_snapshots=(
+                perf_snapshots if isinstance(perf_snapshots, dict) else {}
+            ),
             evaluated_at=datetime.now(UTC),
         )
         logger.debug(
@@ -136,7 +145,7 @@ class ScalingContextBuilder:
             raise
         except Exception as exc:
             logger.warning(
-                HR_SCALING_CONTEXT_BUILT,
+                HR_SCALING_SIGNAL_COLLECTION_DEGRADED,
                 source=name,
                 action="collection_failed",
                 error=f"{type(exc).__name__}: {exc}",

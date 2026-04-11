@@ -18,11 +18,19 @@ class TestBatchedScalingTrigger:
     async def test_second_trigger_within_interval_skips(self) -> None:
         trigger = BatchedScalingTrigger(interval_seconds=900)
         assert await trigger.should_trigger() is True
+        await trigger.record_run()
+        assert await trigger.should_trigger() is False
+
+    async def test_in_progress_blocks_second_trigger(self) -> None:
+        trigger = BatchedScalingTrigger(interval_seconds=900)
+        assert await trigger.should_trigger() is True
+        # Without record_run(), _in_progress blocks.
         assert await trigger.should_trigger() is False
 
     async def test_trigger_after_interval_fires(self) -> None:
         trigger = BatchedScalingTrigger(interval_seconds=10)
         assert await trigger.should_trigger() is True
+        await trigger.record_run()
 
         # Simulate time passing.
         past = datetime.now(UTC) - timedelta(seconds=15)
