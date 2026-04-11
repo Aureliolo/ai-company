@@ -12,7 +12,7 @@ from .conftest import make_context, make_signal
 class TestBudgetCapStrategy:
     """BudgetCapStrategy decision logic."""
 
-    async def test_prune_when_over_safety_margin(self) -> None:
+    async def test_prune_and_hold_when_over_safety_margin(self) -> None:
         strategy = BudgetCapStrategy(safety_margin=0.90)
         ctx = make_context(
             budget_signals=(
@@ -20,9 +20,10 @@ class TestBudgetCapStrategy:
             ),
         )
         decisions = await strategy.evaluate(ctx)
-        assert len(decisions) == 1
+        assert len(decisions) == 2
         assert decisions[0].action_type == ScalingActionType.PRUNE
         assert decisions[0].confidence == 1.0
+        assert decisions[1].action_type == ScalingActionType.HOLD
 
     async def test_hold_between_headroom_and_safety(self) -> None:
         strategy = BudgetCapStrategy(safety_margin=0.90, headroom_fraction=0.60)

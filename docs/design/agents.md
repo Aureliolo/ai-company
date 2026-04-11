@@ -492,6 +492,113 @@ Module: `src/synthorg/hr/pruning/` (models, policy, service).
 
 ---
 
+## Dynamic Scaling
+
+The scaling service closes the loop between workload, budget, skill coverage, and
+performance signals and the existing hiring/pruning pipelines. It evaluates four
+pluggable strategies in parallel, filters decisions through a guard chain, and
+produces approved scaling actions.
+
+### Architecture
+
+```text
+Trigger --> ScalingContextBuilder --> Strategies (parallel) --> Guards --> Execute
+  |              |                        |                      |          |
+  |              |                        |                      |          +-- HiringService
+  |              |                        |                      |          +-- OffboardingService
+  |              |                        |                      |
+  |              |                        |                      +-- ConflictResolver
+  |              |                        |                      +-- CooldownGuard
+  |              |                        |                      +-- RateLimitGuard
+  |              |                        |                      +-- ApprovalGateGuard
+  |              |                        |
+  |              |                        +-- WorkloadAutoScaleStrategy
+  |              |                        +-- BudgetCapStrategy
+  |              |                        +-- SkillGapStrategy
+  |              |                        +-- PerformancePruningStrategy
+  |              |
+  |              +-- WorkloadSignalSource
+  |              +-- BudgetSignalSource
+  |              +-- SkillSignalSource
+  |              +-- PerformanceSignalSource
+  |
+  +-- BatchedScalingTrigger
+  +-- SignalThresholdTrigger
+  +-- CompositeScalingTrigger
+```
+
+Orchestrated by ``ScalingService`` in ``hr/scaling/service.py``.
+
+### Strategies
+
+| Strategy | Signals | Actions | Default |
+|----------|---------|---------|---------|
+| **WorkloadAutoScale** | avg utilization, queue depth | HIRE when > 85% sustained, PRUNE when < 30% sustained | Enabled |
+| **BudgetCap** | burn rate %, alert level | PRUNE when > 90% safety margin, HOLD to block hires | Enabled |
+| **SkillGap** | coverage ratio, missing skills | HIRE with specific skill profile | Disabled (LLM cost) |
+| **PerformancePruning** | quality/collaboration trends | PRUNE via existing PruningPolicy | Enabled |
+
+Each strategy supports a headless (rule-based) path and an optional agent-delegated
+path (``agent_delegate`` config field). Agent delegation is protocol-stubbed but not
+implemented -- the headless path is always used.
+
+**PerformancePruningStrategy** coordinates with the evolution system (#243): when
+``defer_during_evolution`` is True (default), agents with recent evolution
+adaptations are skipped.
+
+### Guard Chain
+
+All decisions flow through guards sequentially before execution:
+
+1. **ConflictResolver** -- priority-ordered resolution. Default: BudgetCap (0) >
+   PerformancePruning (1) > SkillGap (2) > Workload (3). HOLD from BudgetCap
+   blocks HIRE from lower-priority strategies.
+2. **CooldownGuard** -- per action-type + target cooldown (default 1 hour).
+3. **RateLimitGuard** -- global daily caps (default 3 hires, 1 prune per day).
+4. **ApprovalGateGuard** -- routes decisions through ``ApprovalStore`` as
+   ``ApprovalItem`` entries for human approval.
+
+### Configuration
+
+```yaml
+scaling:
+  enabled: true
+  workload:
+    enabled: true
+    hire_threshold: 0.85
+    prune_threshold: 0.30
+  budget_cap:
+    enabled: true
+    safety_margin: 0.90
+    headroom_fraction: 0.60
+  skill_gap:
+    enabled: false
+  performance_pruning:
+    enabled: true
+    defer_during_evolution: true
+  triggers:
+    batched_interval_seconds: 900
+  guards:
+    cooldown_seconds: 3600
+    max_hires_per_day: 3
+    max_prunes_per_day: 1
+    approval_expiry_days: 7
+```
+
+### Dashboard
+
+The ``/scaling`` page shows:
+
+- **Signal gauges**: utilization, budget burn, declining agent count
+- **Strategy controls**: enabled status, priority order
+- **Pending decisions**: awaiting human approval
+- **Recent decisions**: history with outcome and rationale
+
+Module: `src/synthorg/hr/scaling/` (models, protocols, strategies, signals,
+triggers, guards, config, factory, service).
+
+---
+
 ## Firing / Offboarding
 
 Offboarding is triggered by: budget cuts, poor performance metrics, project completion, or

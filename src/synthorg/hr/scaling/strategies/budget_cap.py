@@ -86,29 +86,46 @@ class BudgetCapStrategy:
         )
 
         if burn_fraction >= self._safety_margin:
-            # Over budget -- prune cheapest agent.
+            # Over budget -- prune cheapest agent + HOLD to block hires.
+            decisions: list[ScalingDecision] = []
             target = context.agent_ids[-1] if context.agent_ids else None
             if target is not None:
-                decision = ScalingDecision(
-                    action_type=ScalingActionType.PRUNE,
+                decisions.append(
+                    ScalingDecision(
+                        action_type=ScalingActionType.PRUNE,
+                        source_strategy=ScalingStrategyName.BUDGET_CAP,
+                        target_agent_id=target,
+                        rationale=NotBlankStr(
+                            f"burn rate {burn_fraction:.0%} exceeds "
+                            f"safety margin {self._safety_margin:.0%}"
+                        ),
+                        confidence=1.0,
+                        signals=budget_signals,
+                        created_at=now,
+                    ),
+                )
+            # Also emit HOLD to block hires from lower-priority strategies.
+            decisions.append(
+                ScalingDecision(
+                    action_type=ScalingActionType.HOLD,
                     source_strategy=ScalingStrategyName.BUDGET_CAP,
-                    target_agent_id=target,
                     rationale=NotBlankStr(
-                        f"burn rate {burn_fraction:.0%} exceeds "
-                        f"safety margin {self._safety_margin:.0%}"
+                        f"burn rate {burn_fraction:.0%} exceeds safety "
+                        f"margin -- blocking all hires"
                     ),
                     confidence=1.0,
                     signals=budget_signals,
                     created_at=now,
-                )
-                logger.info(
-                    HR_SCALING_STRATEGY_EVALUATED,
-                    strategy="budget_cap",
-                    decisions=1,
-                    action="prune",
-                    burn_fraction=burn_fraction,
-                )
-                return (decision,)
+                ),
+            )
+            logger.info(
+                HR_SCALING_STRATEGY_EVALUATED,
+                strategy="budget_cap",
+                decisions=len(decisions),
+                action="prune+hold",
+                burn_fraction=burn_fraction,
+            )
+            return tuple(decisions)
 
         if burn_fraction > self._headroom_fraction:
             # Between headroom and safety -- block hires.
