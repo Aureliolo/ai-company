@@ -36,18 +36,22 @@ __all__ = [
     "AuditRepository",
     "CheckpointRepository",
     "CollaborationMetricRepository",
+    "ConnectionRepository",
+    "ConnectionSecretRepository",
     "CostRecordRepository",
     "DecisionRepository",
     "DecisionRole",
     "HeartbeatRepository",
     "LifecycleEventRepository",
     "MessageRepository",
+    "OAuthStateRepository",
     "ParkedContextRepository",
     "ProjectRepository",
     "SettingsRepository",
     "TaskMetricRepository",
     "TaskRepository",
     "UserRepository",
+    "WebhookReceiptRepository",
 ]
 
 
@@ -700,4 +704,10 @@ from synthorg.persistence.repositories_checkpoint import (  # noqa: E402
 from synthorg.persistence.repositories_decisions import (  # noqa: E402
     DecisionRepository as DecisionRepository,  # noqa: PLC0414
     DecisionRole as DecisionRole,  # noqa: PLC0414
+)
+from synthorg.persistence.repositories_integrations import (  # noqa: E402
+    ConnectionRepository as ConnectionRepository,  # noqa: PLC0414
+    ConnectionSecretRepository as ConnectionSecretRepository,  # noqa: PLC0414
+    OAuthStateRepository as OAuthStateRepository,  # noqa: PLC0414
+    WebhookReceiptRepository as WebhookReceiptRepository,  # noqa: PLC0414
 )

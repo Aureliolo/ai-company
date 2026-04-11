@@ -1,0 +1,83 @@
+"""Environment variable secret backend (read-only).
+
+Secrets are read from environment variables with a configurable
+prefix.  This backend does not support store, delete, or rotate --
+it is intended for development and simple deployments where secrets
+are managed externally (e.g. Docker secrets, systemd credentials).
+"""
+
+import os
+
+from synthorg.integrations.config import EnvVarConfig
+from synthorg.integrations.errors import SecretStorageError
+from synthorg.observability import get_logger
+from synthorg.observability.events.integrations import (
+    SECRET_RETRIEVAL_FAILED,
+    SECRET_RETRIEVED,
+)
+
+logger = get_logger(__name__)
+
+
+class EnvVarSecretBackend:
+    """Read-only secret backend backed by environment variables.
+
+    Secret IDs are mapped to env vars as ``{prefix}{secret_id}``.
+
+    Args:
+        config: Env var backend configuration.
+    """
+
+    def __init__(
+        self,
+        config: EnvVarConfig | None = None,
+    ) -> None:
+        self._prefix = (config or EnvVarConfig()).prefix
+
+    @property
+    def backend_name(self) -> str:
+        """Human-readable backend identifier."""
+        return "env_var"
+
+    async def store(
+        self,
+        secret_id: str,  # noqa: ARG002
+        value: bytes,  # noqa: ARG002
+    ) -> None:
+        """Not supported -- environment is read-only."""
+        msg = "EnvVarSecretBackend is read-only; cannot store secrets"
+        raise SecretStorageError(msg)
+
+    async def retrieve(self, secret_id: str) -> bytes | None:
+        """Read a secret from the environment."""
+        env_key = f"{self._prefix}{secret_id}"
+        raw = os.environ.get(env_key)
+        if raw is None:
+            logger.debug(
+                SECRET_RETRIEVAL_FAILED,
+                secret_id=secret_id,
+                error=f"env var {env_key} not set",
+            )
+            return None
+        logger.debug(SECRET_RETRIEVED, secret_id=secret_id)
+        return raw.encode("utf-8")
+
+    async def delete(
+        self,
+        secret_id: str,  # noqa: ARG002
+    ) -> bool:
+        """Not supported -- environment is read-only."""
+        msg = "EnvVarSecretBackend is read-only; cannot delete secrets"
+        raise SecretStorageError(msg)
+
+    async def rotate(
+        self,
+        old_id: str,  # noqa: ARG002
+        new_value: bytes,  # noqa: ARG002
+    ) -> str:
+        """Not supported -- environment is read-only."""
+        msg = "EnvVarSecretBackend is read-only; cannot rotate secrets"
+        raise SecretStorageError(msg)
+
+    async def close(self) -> None:
+        """No-op."""

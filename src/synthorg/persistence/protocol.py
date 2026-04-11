@@ -32,15 +32,19 @@ from synthorg.persistence.repositories import (
     ArtifactRepository,  # noqa: TC001
     AuditRepository,  # noqa: TC001
     CheckpointRepository,  # noqa: TC001
+    ConnectionRepository,  # noqa: TC001
+    ConnectionSecretRepository,  # noqa: TC001
     CostRecordRepository,  # noqa: TC001
     DecisionRepository,  # noqa: TC001
     HeartbeatRepository,  # noqa: TC001
     MessageRepository,  # noqa: TC001
+    OAuthStateRepository,  # noqa: TC001
     ParkedContextRepository,  # noqa: TC001
     ProjectRepository,  # noqa: TC001
     SettingsRepository,  # noqa: TC001
     TaskRepository,  # noqa: TC001
     UserRepository,  # noqa: TC001
+    WebhookReceiptRepository,  # noqa: TC001
 )
 from synthorg.persistence.risk_override_repo import (
     RiskOverrideRepository,  # noqa: TC001
@@ -315,6 +319,26 @@ class PersistenceBackend(Protocol):
     @property
     def circuit_breaker_state(self) -> CircuitBreakerStateRepository:
         """Repository for circuit breaker state persistence."""
+        ...
+
+    @property
+    def connections(self) -> ConnectionRepository:
+        """Repository for external service connection persistence."""
+        ...
+
+    @property
+    def connection_secrets(self) -> ConnectionSecretRepository:
+        """Repository for encrypted connection secret persistence."""
+        ...
+
+    @property
+    def oauth_states(self) -> OAuthStateRepository:
+        """Repository for transient OAuth state persistence."""
+        ...
+
+    @property
+    def webhook_receipts(self) -> WebhookReceiptRepository:
+        """Repository for webhook receipt log persistence."""
         ...
 
     async def get_setting(self, key: NotBlankStr) -> str | None:

@@ -1,0 +1,191 @@
+"""Fernet-encrypted SQLite secret backend.
+
+Secrets are encrypted with a Fernet key derived from the
+``SYNTHORG_MASTER_KEY`` environment variable and stored in the
+``connection_secrets`` table of the persistence database.
+"""
+
+import os
+from uuid import uuid4
+
+import aiosqlite
+from cryptography.fernet import Fernet, InvalidToken
+
+from synthorg.integrations.config import EncryptedSqliteConfig
+from synthorg.integrations.errors import (
+    MasterKeyError,
+    SecretRetrievalError,
+    SecretRotationError,
+    SecretStorageError,
+)
+from synthorg.observability import get_logger
+from synthorg.observability.events.integrations import (
+    SECRET_BACKEND_UNAVAILABLE,
+    SECRET_DELETED,
+    SECRET_RETRIEVAL_FAILED,
+    SECRET_ROTATED,
+    SECRET_STORAGE_FAILED,
+    SECRET_STORED,
+)
+
+logger = get_logger(__name__)
+
+
+class EncryptedSqliteSecretBackend:
+    """Fernet-encrypted SQLite secret backend.
+
+    Secrets are stored as encrypted blobs in the ``connection_secrets``
+    table.  The Fernet key is read from the environment variable
+    specified in ``config.master_key_env`` (default
+    ``SYNTHORG_MASTER_KEY``).
+
+    If the env var is not set, a new key is generated and a
+    ``MasterKeyError`` is raised with instructions.
+
+    Args:
+        db_path: Path to the SQLite database file.
+        config: Encrypted SQLite backend configuration.
+    """
+
+    def __init__(
+        self,
+        db_path: str,
+        config: EncryptedSqliteConfig | None = None,
+    ) -> None:
+        cfg = config or EncryptedSqliteConfig()
+        self._db_path = db_path
+        self._fernet = self._init_fernet(cfg.master_key_env)
+
+    @property
+    def backend_name(self) -> str:
+        """Human-readable backend identifier."""
+        return "encrypted_sqlite"
+
+    @staticmethod
+    def _init_fernet(env_var: str) -> Fernet:
+        raw = os.environ.get(env_var, "").strip()
+        if not raw:
+            generated = Fernet.generate_key().decode("ascii")
+            msg = (
+                f"{env_var} is not set. Set it to a valid Fernet key "
+                f"(URL-safe base64 of 32 bytes). Generated example: "
+                f"{generated}"
+            )
+            raise MasterKeyError(msg)
+        try:
+            return Fernet(raw.encode("ascii"))
+        except (ValueError, TypeError) as exc:
+            msg = f"Invalid Fernet key in {env_var}"
+            raise MasterKeyError(msg) from exc
+
+    async def store(
+        self,
+        secret_id: str,
+        value: bytes,
+    ) -> None:
+        """Encrypt and store a secret."""
+        try:
+            encrypted = self._fernet.encrypt(value)
+            async with aiosqlite.connect(self._db_path) as db:
+                await db.execute(
+                    "INSERT OR REPLACE INTO connection_secrets "
+                    "(secret_id, encrypted_value, key_version, "
+                    "created_at, rotated_at) "
+                    "VALUES (?, ?, 1, datetime('now'), NULL)",
+                    (secret_id, encrypted),
+                )
+                await db.commit()
+            logger.debug(SECRET_STORED, secret_id=secret_id)
+        except MasterKeyError:
+            raise
+        except Exception as exc:
+            logger.exception(
+                SECRET_STORAGE_FAILED,
+                secret_id=secret_id,
+                error=str(exc),
+            )
+            msg = f"Failed to store secret {secret_id}"
+            raise SecretStorageError(msg) from exc
+
+    async def retrieve(self, secret_id: str) -> bytes | None:
+        """Retrieve and decrypt a secret."""
+        try:
+            async with aiosqlite.connect(self._db_path) as db:
+                cursor = await db.execute(
+                    "SELECT encrypted_value FROM connection_secrets "
+                    "WHERE secret_id = ?",
+                    (secret_id,),
+                )
+                row = await cursor.fetchone()
+        except InvalidToken as exc:
+            logger.exception(
+                SECRET_RETRIEVAL_FAILED,
+                secret_id=secret_id,
+                error="wrong key or corrupted data",
+            )
+            msg = f"Failed to decrypt secret {secret_id}"
+            raise SecretRetrievalError(msg) from exc
+        except Exception as exc:
+            logger.exception(
+                SECRET_RETRIEVAL_FAILED,
+                secret_id=secret_id,
+                error=str(exc),
+            )
+            msg = f"Failed to retrieve secret {secret_id}"
+            raise SecretRetrievalError(msg) from exc
+        else:
+            if row is None:
+                return None
+            return self._fernet.decrypt(row[0])
+
+    async def delete(self, secret_id: str) -> bool:
+        """Delete a secret."""
+        try:
+            async with aiosqlite.connect(self._db_path) as db:
+                cursor = await db.execute(
+                    "DELETE FROM connection_secrets WHERE secret_id = ?",
+                    (secret_id,),
+                )
+                await db.commit()
+                deleted = cursor.rowcount > 0
+        except Exception as exc:
+            logger.exception(
+                SECRET_STORAGE_FAILED,
+                secret_id=secret_id,
+                error=str(exc),
+            )
+            msg = f"Failed to delete secret {secret_id}"
+            raise SecretStorageError(msg) from exc
+        else:
+            if deleted:
+                logger.debug(SECRET_DELETED, secret_id=secret_id)
+            return deleted
+
+    async def rotate(
+        self,
+        old_id: str,
+        new_value: bytes,
+    ) -> str:
+        """Rotate: store new value under new ID, delete old."""
+        new_id = str(uuid4())
+        try:
+            await self.store(new_id, new_value)
+            await self.delete(old_id)
+            logger.info(
+                SECRET_ROTATED,
+                old_id=old_id,
+                new_id=new_id,
+            )
+        except Exception as exc:
+            logger.exception(
+                SECRET_BACKEND_UNAVAILABLE,
+                old_id=old_id,
+                error=str(exc),
+            )
+            msg = f"Failed to rotate secret {old_id}"
+            raise SecretRotationError(msg) from exc
+        else:
+            return new_id
+
+    async def close(self) -> None:
+        """No-op for SQLite (connections are per-call)."""
