@@ -417,9 +417,9 @@ appendix maps each risk to SynthOrg coverage. Full analysis in
 | 1.4 | Strategic information withholding | Gap (low priority) | Material only for adversarial A2A federation. Constraint on #1253. |
 | 1.5 | Information asymmetry exploitation | Gap (low priority) | Material only for negotiation templates. |
 | **2.1** | **Majority sway bias** | **Gap (HIGH)** | `EvidenceWeightedSynthesizer`. Paper data: 6/10 fake-news override. Constraint on #1251. |
-| **2.2** | **Authority deference** | **Structural (HIGHEST)** | `AuthorityResolver` is the default. Paper data: 0/10 → 10/10 deterministic errors under authority cue. `AuthorityDeferenceGuard`. Constraint on #1250 + #1251. |
+| **2.2** | **Authority deference** | **Structural (HIGHEST)** | `AuthorityResolver` is the default. Paper data: 0/10 → 10/10 deterministic errors under authority cue. `AuthorityDeferenceGuard`. Constraint on #1250 + #1251 + #1253. |
 | 3.1 | Non-convergence without arbitrator | Covered | `ConflictResolver` protocol with arbitrator escalation. |
-| 3.2 | Over-adherence to initial instructions | Partial | `AssumptionViolationSignal` propagation as escalation (not retry). Constraint on #1250. |
+| 3.2 | Over-adherence to initial instructions | Partial | `AssumptionViolationSignal` propagation as escalation (not retry). Constraint on #1250 + #1251. |
 | 3.3 | Architecturally induced clarification failure | Gap (medium) | Pre-decomposition specificity check on `acceptance_criteria`. Constraint on #1251. |
 | 3.4 | Role allocation failure | Covered | Hard role binding, `merge_id` disambiguation. |
 | 3.5 | Role stability under incentive pressure | Covered (by absence) | No inter-agent monetary incentives. Documented risk if reintroduced. |

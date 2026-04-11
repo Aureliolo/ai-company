@@ -25,9 +25,11 @@ SynthOrg provides pre-built company templates for common organizational patterns
 !!! info "Company size vs. per-task coordination group size"
     The `Size` column above describes the full company roster, not the number of
     agents working on any single task. Per-task coordination-group size is
-    bounded separately at **3-4 agents (default)** regardless of company size
-    -- an Enterprise Org with 50 agents does not run 50-agent coordination
-    waves. See [Task Decomposability & Coordination Topology](engine.md#coordination-group-size-bounds)
+    bounded separately by `coordination.max_concurrency_per_wave` (settings
+    registry default **5**; **3-4 recommended** per research, adoption tracked
+    on R1 #1250) -- an Enterprise Org with 50 agents does not run 50-agent
+    coordination waves. See
+    [Task Decomposability & Coordination Topology](engine.md#coordination-group-size-bounds)
     for the full bounds and [S1 Multi-Agent Architecture Decision §2](../research/s1-multi-agent-decision.md#section-2--team-size-bounds).
 
 See the [Template System](#template-system) section for details on how templates are defined,
