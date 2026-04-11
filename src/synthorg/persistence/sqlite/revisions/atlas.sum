@@ -1,6 +1,7 @@
-h1:Ny9MjKXMb9192dWQCLwFCrssOJdViaKdX7qzjOcrITk=
+h1:K6WvwH616X11arqnw8KfqUNt41AyuGidiuoO/gNbE2o=
 20260409210418_baseline.sql h1:S7ZGI9L3DKFOcpqqJWq/UNypsf1P8aOyckYHejTZUrE=
 20260410113102_subworkflows.sql h1:lrH6BsWIdWDYc5eoOtovHamSTbrF08OeGX02YnsDv28=
 20260411003128_subworkflows_updated_at.sql h1:Rs2IysKx75bU+KTHkQDi4lTzcqQSsaEkZ7eYBCArJbY=
 20260411124342_user_invariant_triggers.sql h1:oguEgDCOId7uKN9yMj2/c3SMcVvBymgzNUZl7kzcsMU=
 20260411194657_integrations.sql h1:Lu7uX+4oHt4YJAa2sqmjvA+jEWAMNQl89Kwk5ZtrVN0=
+20260411213050_mcp_installations.sql h1:LyIsj91Y2val23Buy6H18cO/cIP8bJ7mU97F5z+Ko1A=

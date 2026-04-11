@@ -75,6 +75,9 @@ if TYPE_CHECKING:
     from synthorg.engine.workflow.webhook_bridge import WebhookEventBridge
     from synthorg.integrations.connections.catalog import ConnectionCatalog
     from synthorg.integrations.health.prober import HealthProberService
+    from synthorg.integrations.mcp_catalog.installations import (
+        McpInstallationRepository,
+    )
     from synthorg.integrations.mcp_catalog.service import CatalogService
     from synthorg.integrations.oauth.token_manager import OAuthTokenManager
     from synthorg.integrations.tunnel.ngrok_adapter import NgrokAdapter
@@ -117,6 +120,7 @@ class AppState:
         "_health_prober_service",
         "_lockout_store",
         "_mcp_catalog_service",
+        "_mcp_installations_repo",
         "_meeting_orchestrator",
         "_meeting_scheduler",
         "_message_bus",
@@ -184,6 +188,7 @@ class AppState:
         tunnel_provider: NgrokAdapter | None = None,
         webhook_event_bridge: WebhookEventBridge | None = None,
         mcp_catalog_service: CatalogService | None = None,
+        mcp_installations_repo: McpInstallationRepository | None = None,
         startup_time: float = 0.0,
     ) -> None:
         self.config = config
@@ -224,6 +229,7 @@ class AppState:
         self._webhook_event_bridge = webhook_event_bridge
         self._webhook_replay_protector: object | None = None
         self._mcp_catalog_service = mcp_catalog_service
+        self._mcp_installations_repo = mcp_installations_repo
         self._prometheus_collector: PrometheusCollector | None = None
         self._fine_tune_orchestrator: FineTuneOrchestrator | None = None
         self._config_resolver: ConfigResolver | None = None
@@ -941,6 +947,30 @@ class AppState:
     def set_mcp_catalog_service(self, service: CatalogService) -> None:
         """Attach the MCP catalog service (once-only)."""
         self._set_once("_mcp_catalog_service", service, "MCP catalog service")
+
+    @property
+    def has_mcp_installations_repo(self) -> bool:
+        """Check whether the MCP installations repository is configured."""
+        return self._mcp_installations_repo is not None
+
+    @property
+    def mcp_installations_repo(self) -> McpInstallationRepository:
+        """Return the MCP installations repository or raise 503."""
+        return self._require_service(
+            self._mcp_installations_repo,
+            "mcp_installations_repo",
+        )
+
+    def set_mcp_installations_repo(
+        self,
+        repo: McpInstallationRepository,
+    ) -> None:
+        """Attach the MCP installations repository (once-only)."""
+        self._set_once(
+            "_mcp_installations_repo",
+            repo,
+            "MCP installations repository",
+        )
 
     def set_settings_service(self, settings_service: SettingsService) -> None:
         """Set settings service and rebuild derived services."""
