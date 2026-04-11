@@ -8,6 +8,8 @@ exceptions -- all errors are caught and logged.
 """
 
 import asyncio
+import copy
+from types import MappingProxyType
 from typing import TYPE_CHECKING
 
 from synthorg.budget.coordination_config import (
@@ -61,7 +63,7 @@ from synthorg.observability.events.classification import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Mapping
 
     from synthorg.core.types import NotBlankStr
     from synthorg.engine.classification.protocol import (
@@ -83,46 +85,64 @@ _DETECTOR_TIMEOUT_SECONDS = 30.0
 
 # ── Detector factory maps ──────────────────────────────────────
 
-_HEURISTIC_FACTORIES: dict[
+_HEURISTIC_FACTORIES: MappingProxyType[
     ErrorCategory,
     Callable[[], Detector],
-] = {
-    ErrorCategory.LOGICAL_CONTRADICTION: HeuristicContradictionDetector,
-    ErrorCategory.NUMERICAL_DRIFT: HeuristicNumericalDriftDetector,
-    ErrorCategory.CONTEXT_OMISSION: HeuristicContextOmissionDetector,
-    ErrorCategory.COORDINATION_FAILURE: HeuristicCoordinationFailureDetector,
-}
+] = MappingProxyType(
+    copy.deepcopy(
+        {
+            ErrorCategory.LOGICAL_CONTRADICTION: HeuristicContradictionDetector,
+            ErrorCategory.NUMERICAL_DRIFT: HeuristicNumericalDriftDetector,
+            ErrorCategory.CONTEXT_OMISSION: HeuristicContextOmissionDetector,
+            ErrorCategory.COORDINATION_FAILURE: HeuristicCoordinationFailureDetector,
+        },
+    ),
+)
 
-_PROTOCOL_FACTORIES: dict[
+_PROTOCOL_FACTORIES: MappingProxyType[
     ErrorCategory,
     Callable[[], Detector],
-] = {
-    ErrorCategory.DELEGATION_PROTOCOL_VIOLATION: DelegationProtocolDetector,
-    ErrorCategory.REVIEW_PIPELINE_VIOLATION: ReviewPipelineProtocolDetector,
-}
+] = MappingProxyType(
+    copy.deepcopy(
+        {
+            ErrorCategory.DELEGATION_PROTOCOL_VIOLATION: DelegationProtocolDetector,
+            ErrorCategory.REVIEW_PIPELINE_VIOLATION: ReviewPipelineProtocolDetector,
+        },
+    ),
+)
 
-_BEHAVIOR_FACTORIES: dict[
+_BEHAVIOR_FACTORIES: MappingProxyType[
     ErrorCategory,
     Callable[[], Detector],
-] = {
-    ErrorCategory.AUTHORITY_BREACH_ATTEMPT: AuthorityBreachDetector,
-}
+] = MappingProxyType(
+    copy.deepcopy(
+        {
+            ErrorCategory.AUTHORITY_BREACH_ATTEMPT: AuthorityBreachDetector,
+        },
+    ),
+)
 
-_SEMANTIC_FACTORIES: dict[ErrorCategory, type] = {
-    ErrorCategory.LOGICAL_CONTRADICTION: SemanticContradictionDetector,
-    ErrorCategory.NUMERICAL_DRIFT: SemanticNumericalVerificationDetector,
-    ErrorCategory.CONTEXT_OMISSION: SemanticMissingReferenceDetector,
-    ErrorCategory.COORDINATION_FAILURE: SemanticCoordinationDetector,
-}
+_SEMANTIC_FACTORIES: MappingProxyType[ErrorCategory, type] = MappingProxyType(
+    copy.deepcopy(
+        {
+            ErrorCategory.LOGICAL_CONTRADICTION: SemanticContradictionDetector,
+            ErrorCategory.NUMERICAL_DRIFT: SemanticNumericalVerificationDetector,
+            ErrorCategory.CONTEXT_OMISSION: SemanticMissingReferenceDetector,
+            ErrorCategory.COORDINATION_FAILURE: SemanticCoordinationDetector,
+        },
+    ),
+)
 
-_SIMPLE_FACTORIES: dict[
+_SIMPLE_FACTORIES: MappingProxyType[
     DetectorVariant,
-    dict[ErrorCategory, Callable[[], Detector]],
-] = {
-    DetectorVariant.HEURISTIC: _HEURISTIC_FACTORIES,
-    DetectorVariant.PROTOCOL_CHECK: _PROTOCOL_FACTORIES,
-    DetectorVariant.BEHAVIOR_CHECK: _BEHAVIOR_FACTORIES,
-}
+    MappingProxyType[ErrorCategory, Callable[[], Detector]],
+] = MappingProxyType(
+    {
+        DetectorVariant.HEURISTIC: _HEURISTIC_FACTORIES,
+        DetectorVariant.PROTOCOL_CHECK: _PROTOCOL_FACTORIES,
+        DetectorVariant.BEHAVIOR_CHECK: _BEHAVIOR_FACTORIES,
+    },
+)
 
 
 # ── Detector construction ──────────────────────────────────────
@@ -181,7 +201,9 @@ def _build_variants(
                 budget_tracker=budget_tracker,
             )
         else:
-            factory_map = _SIMPLE_FACTORIES.get(variant, {})
+            factory_map: Mapping[ErrorCategory, Callable[[], Detector]] = (
+                _SIMPLE_FACTORIES.get(variant, {})
+            )
             factory = factory_map.get(category)
             if factory is not None:
                 variants.append(factory())
@@ -402,7 +424,7 @@ async def _run_pipeline(  # noqa: PLR0913
         provider=provider,
         budget_tracker=budget_tracker,
     )
-    all_findings = await _run_detectors_by_scope(
+    all_findings, checked_categories = await _run_detectors_by_scope(
         all_detectors,
         execution_result,
         agent_id,
@@ -427,7 +449,7 @@ async def _run_pipeline(  # noqa: PLR0913
         execution_id=execution_id,
         agent_id=agent_id,
         task_id=task_id,
-        categories_checked=config.categories,
+        categories_checked=tuple(sorted(checked_categories, key=lambda c: c.value)),
         findings=tuple(all_findings),
     )
     logger.info(
@@ -449,16 +471,15 @@ async def _run_detectors_by_scope(  # noqa: PLR0913
     execution_id: str,
     config: ErrorTaxonomyConfig,
     task_repo: TaskRepository | None,
-) -> list[ErrorFinding]:
+) -> tuple[list[ErrorFinding], set[ErrorCategory]]:
     """Group detectors by scope, load contexts, and run them.
 
-    TASK_TREE detectors are skipped with a warning log when no task
-    repository is configured (``_select_loader`` returns ``None``);
-    they are never silently downgraded to SAME_TASK context.  Each
-    detector is also sanity-checked against its ``supported_scopes``
-    before ``detect()`` is invoked so a scope/detector mismatch
-    surfaces as a ``DETECTOR_SCOPE_MISMATCH`` warning rather than a
-    silent corrupt run.
+    Returns a tuple of (findings, checked_categories) where
+    ``checked_categories`` contains only the categories for which
+    at least one detector actually executed.  Categories are
+    excluded when: their scope's loader is unavailable (TASK_TREE
+    without ``task_repo``), the loader raises, or a scope mismatch
+    prevents invocation.
     """
     scope_detectors: dict[DetectionScope, list[Detector]] = {}
     for detector in all_detectors:
@@ -466,6 +487,7 @@ async def _run_detectors_by_scope(  # noqa: PLR0913
         scope_detectors.setdefault(cat_cfg.scope, []).append(detector)
 
     all_findings: list[ErrorFinding] = []
+    checked_categories: set[ErrorCategory] = set()
     for scope, detectors in scope_detectors.items():
         loader = _select_loader(scope, task_repo)
         if loader is None:
@@ -515,7 +537,8 @@ async def _run_detectors_by_scope(  # noqa: PLR0913
                 execution_id,
             )
             all_findings.extend(findings)
-    return all_findings
+            checked_categories.add(detector.category)
+    return all_findings, checked_categories
 
 
 async def _safe_detect(

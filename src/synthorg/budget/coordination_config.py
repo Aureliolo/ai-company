@@ -154,7 +154,7 @@ class ErrorTaxonomyConfig(BaseModel):
             LLM-backed classification.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     enabled: bool = Field(
         default=False,

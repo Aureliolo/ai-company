@@ -7,6 +7,7 @@ via ``DetectorVariant.LLM_SEMANTIC`` in the per-category config.
 """
 
 import json
+from types import MappingProxyType
 from typing import TYPE_CHECKING
 
 from synthorg.budget.coordination_config import (
@@ -44,11 +45,13 @@ _SANITIZE_MAX_LENGTH = 2000
 # provider cannot silently overshoot.  Actual cost is reconciled via
 # ``ClassificationBudgetTracker.settle`` once the call completes.
 _ESTIMATED_LLM_COST_USD = 0.001
-_SEVERITY_MAP = {
-    "low": ErrorSeverity.LOW,
-    "medium": ErrorSeverity.MEDIUM,
-    "high": ErrorSeverity.HIGH,
-}
+_SEVERITY_MAP: MappingProxyType[str, ErrorSeverity] = MappingProxyType(
+    {
+        "low": ErrorSeverity.LOW,
+        "medium": ErrorSeverity.MEDIUM,
+        "high": ErrorSeverity.HIGH,
+    },
+)
 
 
 def _parse_findings(

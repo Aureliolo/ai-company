@@ -203,4 +203,16 @@ def _build_delegation_requests(
         queue = next_queue
         depth += 1
 
+    if queue:
+        logger.warning(
+            CONTEXT_LOADER_ERROR,
+            loader="task_tree_loader",
+            agent_id=agent_id,
+            task_id=root_task_id,
+            reason=(
+                f"Task tree traversal truncated at depth {_MAX_TREE_DEPTH} "
+                f"with {len(queue)} unvisited nodes remaining"
+            ),
+        )
+
     return tuple(requests)

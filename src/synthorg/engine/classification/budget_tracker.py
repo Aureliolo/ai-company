@@ -113,6 +113,15 @@ class ClassificationBudgetTracker:
         Raises:
             ValueError: If ``actual_cost`` is negative.
         """
+        if estimated_cost < 0:
+            msg = "estimated_cost must be non-negative"
+            logger.warning(
+                INVALID_COST,
+                cost_usd=estimated_cost,
+                kind="estimated",
+                reason=msg,
+            )
+            raise ValueError(msg)
         if actual_cost < 0:
             msg = "actual_cost must be non-negative"
             logger.warning(

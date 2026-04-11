@@ -4,8 +4,8 @@ Implements ``ClassificationSink`` for wiring classification
 results into the performance tracker and notification dispatcher.
 """
 
-import asyncio
 import copy
+import time
 from datetime import UTC, datetime
 from types import MappingProxyType
 from typing import TYPE_CHECKING
@@ -151,7 +151,7 @@ class _SlidingWindowRateLimiter:
             raise ValueError(msg)
         self._max_events = max_events
         self._window_seconds = window_seconds
-        self._clock: Callable[[], float] = clock or asyncio.get_event_loop().time
+        self._clock: Callable[[], float] = clock or time.monotonic
         self._events: dict[str, list[float]] = {}
 
     def take(self, key: str) -> bool:

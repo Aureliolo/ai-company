@@ -191,7 +191,13 @@ class TestErrorTaxonomyIntegration:
             assert f.severity == ErrorSeverity.HIGH
 
     async def test_all_categories_run_together(self) -> None:
-        """Enable all categories and verify pipeline handles them."""
+        """Enable all categories and verify pipeline handles them.
+
+        Without a ``task_repo``, TASK_TREE-only categories
+        (delegation protocol, review pipeline) are skipped.
+        ``categories_checked`` only contains actually-executed
+        categories.
+        """
         messages = (
             ChatMessage(
                 role=MessageRole.SYSTEM,
@@ -216,7 +222,14 @@ class TestErrorTaxonomyIntegration:
             config=config,
         )
         assert result is not None
-        assert set(result.categories_checked) == set(ErrorCategory)
+        same_task_categories = {
+            ErrorCategory.LOGICAL_CONTRADICTION,
+            ErrorCategory.NUMERICAL_DRIFT,
+            ErrorCategory.CONTEXT_OMISSION,
+            ErrorCategory.COORDINATION_FAILURE,
+            ErrorCategory.AUTHORITY_BREACH_ATTEMPT,
+        }
+        assert set(result.categories_checked) == same_task_categories
 
     async def test_pipeline_handles_large_conversation(self) -> None:
         """Classification should complete for a moderately large conversation."""
@@ -252,7 +265,14 @@ class TestErrorTaxonomyIntegration:
         )
 
         assert result is not None
-        assert set(result.categories_checked) == set(ErrorCategory)
+        same_task_categories = {
+            ErrorCategory.LOGICAL_CONTRADICTION,
+            ErrorCategory.NUMERICAL_DRIFT,
+            ErrorCategory.CONTEXT_OMISSION,
+            ErrorCategory.COORDINATION_FAILURE,
+            ErrorCategory.AUTHORITY_BREACH_ATTEMPT,
+        }
+        assert set(result.categories_checked) == same_task_categories
 
     async def test_disabled_taxonomy_returns_none(self) -> None:
         """Disabled taxonomy should return None."""
