@@ -13,7 +13,7 @@ class TestOnboardingStepEnum:
         assert hasattr(OnboardingStep, "LEARNED_FROM_SENIORS")
 
     def test_learned_from_seniors_value(self) -> None:
-        assert OnboardingStep.LEARNED_FROM_SENIORS == "learned_from_seniors"
+        assert OnboardingStep.LEARNED_FROM_SENIORS.value == "learned_from_seniors"
 
     def test_has_four_members(self) -> None:
         assert len(OnboardingStep) == 4

@@ -78,9 +78,9 @@ class TestContentType:
         assert len(ContentType) == 3
 
     def test_values(self) -> None:
-        assert ContentType.PROCEDURAL == "procedural"
-        assert ContentType.SEMANTIC == "semantic"
-        assert ContentType.TOOL_PATTERNS == "tool_patterns"
+        assert ContentType.PROCEDURAL.value == "procedural"
+        assert ContentType.SEMANTIC.value == "semantic"
+        assert ContentType.TOOL_PATTERNS.value == "tool_patterns"
 
 
 # -- TrainingPlanStatus enum ------------------------------------------
@@ -93,9 +93,9 @@ class TestTrainingPlanStatus:
         assert len(TrainingPlanStatus) == 3
 
     def test_values(self) -> None:
-        assert TrainingPlanStatus.PENDING == "pending"
-        assert TrainingPlanStatus.EXECUTED == "executed"
-        assert TrainingPlanStatus.FAILED == "failed"
+        assert TrainingPlanStatus.PENDING.value == "pending"
+        assert TrainingPlanStatus.EXECUTED.value == "executed"
+        assert TrainingPlanStatus.FAILED.value == "failed"
 
 
 # -- TrainingItem model -----------------------------------------------

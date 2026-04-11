@@ -145,7 +145,10 @@ def _build_service(
         tracker=tracker,
         top_n=3,
     )
-    extractors = {
+    extractors: dict[
+        ContentType,
+        ProceduralMemoryExtractor | SemanticMemoryExtractor | ToolPatternExtractor,
+    ] = {
         ContentType.PROCEDURAL: ProceduralMemoryExtractor(
             backend=backend,
         ),

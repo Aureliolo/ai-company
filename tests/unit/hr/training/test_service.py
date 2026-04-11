@@ -66,9 +66,9 @@ def _make_guard_decision(
 def _make_service(
     *,
     selector: AsyncMock | None = None,
-    extractors: dict | None = None,
+    extractors: dict[ContentType, AsyncMock] | None = None,
     curation: AsyncMock | None = None,
-    guards: tuple | None = None,
+    guards: tuple[AsyncMock, ...] | None = None,
     memory_backend: AsyncMock | None = None,
 ) -> TrainingService:
     """Build a TrainingService with mocked dependencies."""

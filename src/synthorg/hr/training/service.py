@@ -28,6 +28,8 @@ from synthorg.observability.events.training import (
 )
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping
+
     from synthorg.core.types import NotBlankStr
     from synthorg.hr.training.models import TrainingPlan
     from synthorg.hr.training.protocol import (
@@ -69,7 +71,7 @@ class TrainingService:
         self,
         *,
         selector: SourceSelector,
-        extractors: dict[ContentType, ContentExtractor],
+        extractors: Mapping[ContentType, ContentExtractor],
         curation: CurationStrategy,
         guards: tuple[TrainingGuard, ...],
         memory_backend: MemoryBackend,
