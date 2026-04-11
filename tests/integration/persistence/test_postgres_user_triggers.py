@@ -9,6 +9,7 @@ Requires Docker (via testcontainers).  Skipped when Docker is absent.
 """
 
 import asyncio
+from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 
 import pytest
@@ -61,26 +62,42 @@ class TestCEOUniquenessPostgres:
     async def test_concurrent_ceo_creation(
         self,
         postgres_backend: PostgresPersistenceBackend,
+        postgres_backend_factory: Callable[[], Awaitable[PostgresPersistenceBackend]],
     ) -> None:
-        """5 concurrent CEO inserts against Postgres -- exactly 1 succeeds."""
+        """5 concurrent CEO inserts split across two pools.
+
+        Three writers run through the original ``postgres_backend`` pool,
+        two run through a second backend instance bound to the same DSN
+        but with its own pool.  A same-pool race can hide behind
+        serialisation quirks (prepared-statement cache, channel
+        pinning); splitting writers between independent pools forces
+        the DB itself to enforce the unique partial index.
+        """
+        backend_b = await postgres_backend_factory()
         results: list[bool] = []
 
-        async def try_create(idx: int) -> None:
+        async def try_create(
+            idx: int,
+            backend: PostgresPersistenceBackend,
+        ) -> None:
             user = _make_user(
                 user_id=f"ceo-{idx}",
                 username=f"ceo{idx}",
                 role=HumanRole.CEO,
             )
             try:
-                await postgres_backend.users.save(user)
+                await backend.users.save(user)
                 results.append(True)
             except ConstraintViolationError:
                 results.append(False)
 
         async with asyncio.TaskGroup() as tg:
-            for i in range(5):
-                tg.create_task(try_create(i))
+            for i in range(3):
+                tg.create_task(try_create(i, postgres_backend))
+            for i in range(3, 5):
+                tg.create_task(try_create(i, backend_b))
 
+        assert len(results) == 5, f"Expected 5 results, got {results}"
         assert sum(results) == 1, f"Expected exactly 1 success, got {results}"
 
 
@@ -157,8 +174,15 @@ class TestLastOwnerTriggerPostgres:
     async def test_concurrent_owner_revoke_one_fails(
         self,
         postgres_backend: PostgresPersistenceBackend,
+        postgres_backend_factory: Callable[[], Awaitable[PostgresPersistenceBackend]],
     ) -> None:
-        """Two concurrent owner revokes on Postgres -- exactly one fails."""
+        """Two concurrent owner revokes split across independent pools.
+
+        Each writer uses its own ``PostgresPersistenceBackend``
+        instance so the race is arbitrated by the CONSTRAINT TRIGGER,
+        not by coincidentally shared pool state.
+        """
+        backend_b = await postgres_backend_factory()
         owner1 = _make_user(
             user_id="owner-1",
             username="owner1",
@@ -174,18 +198,22 @@ class TestLastOwnerTriggerPostgres:
 
         results: list[bool] = []
 
-        async def try_revoke(user: User) -> None:
+        async def try_revoke(
+            user: User,
+            backend: PostgresPersistenceBackend,
+        ) -> None:
             revoked = user.model_copy(
                 update={"org_roles": (), "updated_at": datetime.now(UTC)},
             )
             try:
-                await postgres_backend.users.save(revoked)
+                await backend.users.save(revoked)
                 results.append(True)
             except ConstraintViolationError:
                 results.append(False)
 
         async with asyncio.TaskGroup() as tg:
-            tg.create_task(try_revoke(owner1))
-            tg.create_task(try_revoke(owner2))
+            tg.create_task(try_revoke(owner1, postgres_backend))
+            tg.create_task(try_revoke(owner2, backend_b))
 
+        assert len(results) == 2, f"Expected 2 results, got {results}"
         assert sum(results) == 1, f"Expected exactly 1 success, got {results}"

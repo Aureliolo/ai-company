@@ -6,6 +6,7 @@ from ISO strings at the boundary so the protocol surface --
 ``tuple[str, str]`` -- is identical for both backends.
 """
 
+from collections.abc import Mapping, Sequence  # noqa: TC003
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, cast
 
@@ -27,6 +28,14 @@ from synthorg.observability.events.settings import (
 from synthorg.persistence.errors import QueryError
 
 logger = get_logger(__name__)
+
+
+class _CASConflict(Exception):  # noqa: N818
+    """Internal sentinel -- raised inside transactions to signal CAS miss.
+
+    Caught immediately by ``set_many`` to convert the exception into a
+    ``False`` return.  Never escapes the repository.
+    """
 
 
 def _parse_iso(value: str) -> datetime:
@@ -246,6 +255,81 @@ class PostgresSettingsRepository:
             namespace=namespace,
             key=key,
         )
+        return True
+
+    async def set_many(
+        self,
+        items: Sequence[tuple[NotBlankStr, NotBlankStr, str, str]],
+        *,
+        expected_updated_at_map: (Mapping[tuple[str, str], str] | None) = None,
+    ) -> bool:
+        """Atomically upsert multiple settings (see protocol docstring)."""
+        if not items:
+            return True
+        cas_map: Mapping[tuple[str, str], str] = expected_updated_at_map or {}
+        try:
+            async with self._pool.connection() as conn:
+                try:
+                    async with conn.transaction(), conn.cursor() as cur:
+                        for namespace, key, value, updated_at in items:
+                            updated_at_dt = _parse_iso(updated_at)
+                            expected = cas_map.get((str(namespace), str(key)))
+                            if expected is None:
+                                await cur.execute(
+                                    "INSERT INTO settings "
+                                    "(namespace, key, value, updated_at) "
+                                    "VALUES (%s, %s, %s, %s) "
+                                    "ON CONFLICT (namespace, key) "
+                                    "DO UPDATE SET "
+                                    "value = EXCLUDED.value, "
+                                    "updated_at = EXCLUDED.updated_at",
+                                    (namespace, key, value, updated_at_dt),
+                                )
+                                continue
+                            if expected == "":
+                                await cur.execute(
+                                    "INSERT INTO settings "
+                                    "(namespace, key, value, updated_at) "
+                                    "VALUES (%s, %s, %s, %s) "
+                                    "ON CONFLICT (namespace, key) "
+                                    "DO NOTHING",
+                                    (namespace, key, value, updated_at_dt),
+                                )
+                                if cur.rowcount == 0:
+                                    raise _CASConflict  # noqa: TRY301
+                                continue
+                            expected_dt = _parse_iso(expected)
+                            await cur.execute(
+                                "UPDATE settings "
+                                "SET value = %s, updated_at = %s "
+                                "WHERE namespace = %s AND key = %s "
+                                "AND updated_at = %s",
+                                (
+                                    value,
+                                    updated_at_dt,
+                                    namespace,
+                                    key,
+                                    expected_dt,
+                                ),
+                            )
+                            if cur.rowcount == 0:
+                                raise _CASConflict  # noqa: TRY301
+                except _CASConflict:
+                    return False
+        except psycopg.Error as exc:
+            msg = "Failed to set_many settings"
+            logger.exception(
+                SETTINGS_SET_FAILED,
+                error=str(exc),
+                item_count=len(items),
+            )
+            raise QueryError(msg) from exc
+        for namespace, key, _value, _updated_at in items:
+            logger.debug(
+                SETTINGS_VALUE_SET,
+                namespace=namespace,
+                key=key,
+            )
         return True
 
     async def delete(

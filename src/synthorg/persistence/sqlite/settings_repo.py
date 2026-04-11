@@ -1,6 +1,7 @@
 """SQLite implementation of the SettingsRepository protocol."""
 
 import sqlite3
+from collections.abc import Mapping, Sequence  # noqa: TC003
 
 import aiosqlite
 
@@ -166,6 +167,72 @@ class SQLiteSettingsRepository:
             namespace=namespace,
             key=key,
         )
+        return True
+
+    async def set_many(
+        self,
+        items: Sequence[tuple[NotBlankStr, NotBlankStr, str, str]],
+        *,
+        expected_updated_at_map: (Mapping[tuple[str, str], str] | None) = None,
+    ) -> bool:
+        """Atomically upsert multiple settings (see protocol docstring)."""
+        if not items:
+            return True
+        cas_map: Mapping[tuple[str, str], str] = expected_updated_at_map or {}
+        try:
+            await self._db.execute("BEGIN IMMEDIATE")
+            try:
+                for namespace, key, value, updated_at in items:
+                    expected = cas_map.get((str(namespace), str(key)))
+                    if expected is None:
+                        await self._db.execute(
+                            "INSERT INTO settings "
+                            "(namespace, key, value, updated_at) "
+                            "VALUES (?, ?, ?, ?) "
+                            "ON CONFLICT(namespace, key) DO UPDATE SET "
+                            "value=excluded.value, "
+                            "updated_at=excluded.updated_at",
+                            (namespace, key, value, updated_at),
+                        )
+                        continue
+                    cursor = await self._db.execute(
+                        "UPDATE settings SET value = ?, updated_at = ? "
+                        "WHERE namespace = ? AND key = ? "
+                        "AND updated_at = ?",
+                        (value, updated_at, namespace, key, expected),
+                    )
+                    if cursor.rowcount == 0:
+                        if expected == "":
+                            cursor = await self._db.execute(
+                                "INSERT OR IGNORE INTO settings "
+                                "(namespace, key, value, updated_at) "
+                                "VALUES (?, ?, ?, ?)",
+                                (namespace, key, value, updated_at),
+                            )
+                            if cursor.rowcount == 0:
+                                await self._db.rollback()
+                                return False
+                        else:
+                            await self._db.rollback()
+                            return False
+                await self._db.commit()
+            except BaseException:
+                await self._db.rollback()
+                raise
+        except (sqlite3.Error, aiosqlite.Error) as exc:
+            msg = "Failed to set_many settings"
+            logger.exception(
+                SETTINGS_SET_FAILED,
+                error=str(exc),
+                item_count=len(items),
+            )
+            raise QueryError(msg) from exc
+        for namespace, key, _value, _updated_at in items:
+            logger.debug(
+                SETTINGS_VALUE_SET,
+                namespace=namespace,
+                key=key,
+            )
         return True
 
     async def delete(

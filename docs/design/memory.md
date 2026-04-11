@@ -715,10 +715,10 @@ belong here.
    psycopg placeholders, never interpolated.
 
 **Reference implementation:** `JsonbQueryCapability` in
-`src/synthorg/persistence/jsonb_capability.py` exposes `query_jsonb_contains`,
-`query_jsonb_key_exists`, and `query_jsonb_path_equals` methods on `PostgresAuditRepository`.
-These use the GIN-indexed `@>`, `?`, and `->>` JSONB operators on `audit_entries.matched_rules`.
-The audit search endpoint checks capability via `isinstance` and returns `HTTP 422` on SQLite.
+`src/synthorg/persistence/jsonb_capability.py` exposes `query_jsonb_contains` and
+`query_jsonb_key_exists` methods on `PostgresAuditRepository`. These use the GIN-indexed
+`@>` and `?` JSONB operators on `audit_entries.matched_rules`. The audit search endpoint
+checks capability via `isinstance` and returns `HTTP 422` on SQLite.
 
 This pattern keeps the base `PersistenceBackend` protocol clean while still letting specific
 backends expose their unique strengths. Future capabilities (e.g. full-text search, vector

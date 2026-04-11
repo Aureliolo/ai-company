@@ -266,6 +266,7 @@ markers = [
     "integration: Integration tests (may use I/O, databases, APIs)",
     "e2e: End-to-end tests (full system, slow)",
     "slow: Slow tests (excluded from default runs)",
+    "timescaledb: Integration tests that require the TimescaleDB extension (self-hosted Postgres only)",
 ]
 addopts = ["--strict-markers", "--strict-config", "-ra", "--tb=short", "--dist=worksteal", "-n=8"]
 filterwarnings = [

@@ -259,21 +259,7 @@ class TestGinIndexUsage:
 
 @pytest.mark.integration
 class TestSqlInjectionSafety:
-    """Verify that path validation and column allowlisting prevent injection."""
-
-    async def test_rejects_sql_injection_in_path(
-        self,
-        postgres_backend: PostgresPersistenceBackend,
-    ) -> None:
-        repo = postgres_backend.audit_entries
-        assert isinstance(repo, JsonbQueryCapability)
-
-        with pytest.raises(ValueError, match="Invalid JSONB path"):
-            await repo.query_jsonb_path_equals(
-                "matched_rules",
-                "'; DROP TABLE audit_entries; --",
-                "ignored",
-            )
+    """Verify that column allowlisting prevents injection."""
 
     async def test_rejects_unknown_column(
         self,
@@ -296,17 +282,9 @@ class TestSqlInjectionSafety:
         repo = postgres_backend.audit_entries
         assert isinstance(repo, JsonbQueryCapability)
 
-        # Trigger injection rejection paths
-        with pytest.raises(ValueError, match="Invalid JSONB path"):
-            await repo.query_jsonb_path_equals(
-                "matched_rules",
-                "'; DROP TABLE audit_entries; --",
-                "x",
-            )
         with pytest.raises(ValueError, match="not allowed"):
             await repo.query_jsonb_contains("password", ["foo"])
 
-        # Table must still be queryable
         await repo.save(
             _make_audit_entry(
                 entry_id="intact-1",

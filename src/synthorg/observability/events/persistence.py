@@ -122,7 +122,15 @@ PERSISTENCE_AUDIT_ENTRY_QUERY_FAILED: Final[str] = (
 PERSISTENCE_AUDIT_ENTRY_DESERIALIZE_FAILED: Final[str] = (
     "persistence.audit_entry.deserialize_failed"
 )
-PERSISTENCE_JSONB_PATH_INVALID: Final[str] = "persistence.jsonb.path_invalid"
+
+# TimescaleDB hypertable events
+PERSISTENCE_TIMESCALEDB_UNAVAILABLE: Final[str] = "persistence.timescaledb.unavailable"
+PERSISTENCE_TIMESCALEDB_HYPERTABLE_CREATED: Final[str] = (
+    "persistence.timescaledb.hypertable_created"
+)
+PERSISTENCE_TIMESCALEDB_SETUP_FAILED: Final[str] = (
+    "persistence.timescaledb.setup_failed"
+)
 
 # Decision record events
 PERSISTENCE_DECISION_RECORD_SAVED: Final[str] = "persistence.decision_record.saved"
