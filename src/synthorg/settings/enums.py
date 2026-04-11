@@ -20,6 +20,7 @@ class SettingNamespace(StrEnum):
     OBSERVABILITY = "observability"
     BACKUP = "backup"
     ENGINE = "engine"
+    INTEGRATIONS = "integrations"
 
 
 class SettingType(StrEnum):

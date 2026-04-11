@@ -24,6 +24,7 @@ from synthorg.api.controllers.company import CompanyController
 from synthorg.api.controllers.company_versions import (
     CompanyVersionController,
 )
+from synthorg.api.controllers.connections import ConnectionsController
 from synthorg.api.controllers.coordination import CoordinationController
 from synthorg.api.controllers.coordination_metrics import (
     CoordinationMetricsController,
@@ -33,10 +34,12 @@ from synthorg.api.controllers.evaluation_config_versions import (
     EvaluationConfigVersionController,
 )
 from synthorg.api.controllers.health import HealthController
+from synthorg.api.controllers.mcp_catalog import MCPCatalogController
 from synthorg.api.controllers.meetings import MeetingController
 from synthorg.api.controllers.memory import MemoryAdminController
 from synthorg.api.controllers.messages import MessageController
 from synthorg.api.controllers.metrics import MetricsController
+from synthorg.api.controllers.oauth import OAuthController
 from synthorg.api.controllers.ontology import OntologyController
 from synthorg.api.controllers.personalities import (
     PersonalityPresetController,
@@ -60,7 +63,9 @@ from synthorg.api.controllers.tasks import TaskController
 from synthorg.api.controllers.teams import TeamController
 from synthorg.api.controllers.template_packs import TemplatePackController
 from synthorg.api.controllers.training import TrainingController
+from synthorg.api.controllers.tunnel import TunnelController
 from synthorg.api.controllers.users import UserController
+from synthorg.api.controllers.webhooks import WebhooksController
 from synthorg.api.controllers.workflow_executions import (
     WorkflowExecutionController,
 )
@@ -119,6 +124,11 @@ ALL_CONTROLLERS: tuple[type[Controller], ...] = (
     ReviewController,
     ScalingController,
     TrainingController,
+    ConnectionsController,
+    OAuthController,
+    WebhooksController,
+    MCPCatalogController,
+    TunnelController,
 )
 
 __all__ = [
