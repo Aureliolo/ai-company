@@ -331,14 +331,13 @@ class TestFullTrainingPipeline:
         backend.store.assert_not_called()
         approval_store.add.assert_called()
 
-    async def test_review_gate_rejection_prevents_storage(self) -> None:
-        """Review gate blocks seeding regardless of approval outcome.
+    async def test_review_gate_creates_pending_approvals(self) -> None:
+        """Review gate creates PENDING approvals and prevents storage.
 
-        Verifies that when require_review=True the guard blocks ALL
-        items unconditionally on each execution. Approval items are
-        created but no memory storage occurs.  The downstream resume
-        flow (post-approval seeding) is a separate endpoint concern
-        and not tested here.
+        Verifies that when ``require_review=True`` the guard creates
+        approval items in PENDING state and blocks seeding entirely.
+        This test does NOT exercise the reviewer rejection or resume
+        flow -- those are separate endpoint concerns.
         """
         approval_store = AsyncMock()
         approval_items: list[ApprovalItem] = []
@@ -363,12 +362,9 @@ class TestFullTrainingPipeline:
         result = await service.execute(plan)
 
         assert result.review_pending is True
-        # Reviewer rejects every approval raised by the guard.
         for item in approval_items:
             assert item.status == ApprovalStatus.PENDING
 
-        # After the reviewer rejects, the seed step must remain a no-op:
-        # the guard does not fall back to storing on cancellation.
         backend.store.assert_not_called()
         total_stored = sum(count for _, count in result.items_stored)
         assert total_stored == 0

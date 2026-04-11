@@ -87,7 +87,7 @@ class UserCuratedList:
                 seen.add(str_id)
                 valid.append(agent_id)
 
-        logger.debug(
+        logger.info(
             HR_TRAINING_SELECTION_COMPLETE,
             selector="user_curated",
             requested=len(self._agent_ids),

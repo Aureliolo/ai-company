@@ -1,13 +1,15 @@
 /**
  * Training progress display for the onboarding checklist.
  *
- * Shows the LEARNED_FROM_SENIORS step status during onboarding,
- * with extraction and curation progress indicators.
+ * Shows the LEARNED_FROM_SENIORS step status during onboarding.
+ * In the "complete" state it also shows a result summary with
+ * item and source counts.
  *
  * Visual testing checkpoints:
- * - Progress displays "Pending" when training not started
- * - Progress displays extraction/curation counts when in progress
- * - Progress displays "Complete" with result summary when done
+ * - Displays "Pending" when training is not yet started
+ * - Displays "In Progress" while the pipeline is running
+ * - Displays "Complete" with the result summary when finished
+ * - Displays "Skipped" when training was bypassed
  */
 
 import { StatPill } from '@/components/ui/stat-pill'

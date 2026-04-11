@@ -257,9 +257,17 @@ class TrainingPlan(BaseModel):
 
     @model_validator(mode="after")
     def _validate_executed_at(self) -> Self:
-        """Ensure executed_at is set only when status is EXECUTED."""
+        """Ensure executed_at aligns with status.
+
+        - ``EXECUTED``: ``executed_at`` must be set (terminal success).
+        - ``FAILED``: ``executed_at`` must be set (terminal failure).
+        - ``PENDING``: ``executed_at`` must be ``None``.
+        """
         if self.status == TrainingPlanStatus.EXECUTED and self.executed_at is None:
             msg = "executed_at must be set when status is EXECUTED"
+            raise ValueError(msg)
+        if self.status == TrainingPlanStatus.FAILED and self.executed_at is None:
+            msg = "executed_at must be set when status is FAILED"
             raise ValueError(msg)
         if self.status == TrainingPlanStatus.PENDING and self.executed_at is not None:
             msg = "executed_at must be None when status is PENDING"
@@ -403,7 +411,14 @@ class TrainingResult(BaseModel):
                         f"at stage {stage_name}: {count}"
                     )
                     raise ValueError(msg)
-                counts.setdefault(content_type, {})[stage_name] = count
+                existing = counts.setdefault(content_type, {})
+                if stage_name in existing:
+                    msg = (
+                        f"Duplicate entry for {content_type.value} "
+                        f"at stage {stage_name}"
+                    )
+                    raise ValueError(msg)
+                existing[stage_name] = count
 
         for content_type, per_stage in counts.items():
             extracted = per_stage.get("extracted", 0)

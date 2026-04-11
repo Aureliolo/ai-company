@@ -51,6 +51,14 @@ class UpdateTrainingOverridesRequest(BaseModel):
         default=None,
         description="Updated per-content-type caps (positive integers)",
     )
+    content_types: tuple[ContentType, ...] | None = Field(
+        default=None,
+        description="Updated enabled content types",
+    )
+    skip_training: bool | None = Field(
+        default=None,
+        description="Updated skip_training flag",
+    )
 
 
 class TrainingPlanResponse(BaseModel):

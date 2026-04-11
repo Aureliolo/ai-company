@@ -62,8 +62,8 @@ class TestTrainingOnboardingBridge:
 
         result = await bridge.run_training_step("new-1")
 
-        training_service.execute.assert_called_once()
-        onboarding.complete_step.assert_called_once_with(
+        training_service.execute.assert_awaited_once()
+        onboarding.complete_step.assert_awaited_once_with(
             "new-1",
             OnboardingStep.LEARNED_FROM_SENIORS,
             notes=result.id,
@@ -85,8 +85,10 @@ class TestTrainingOnboardingBridge:
         )
 
         await bridge.run_training_step("new-1", skip_training=True)
-        # Training service should still be called (it handles skip internally)
-        training_service.execute.assert_called_once()
+        # Training service still runs (it short-circuits internally on skip)
+        training_service.execute.assert_awaited_once()
+        # Onboarding step should still complete since no review is pending.
+        onboarding.complete_step.assert_awaited_once()
 
     async def test_passes_override_sources(self) -> None:
         registry = AsyncMock()

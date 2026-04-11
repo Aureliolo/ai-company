@@ -10,6 +10,7 @@ from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.observability import get_logger
 from synthorg.observability.events.training import (
     HR_TRAINING_SELECTION_COMPLETE,
+    HR_TRAINING_SELECTOR_CONFIG_INVALID,
 )
 
 if TYPE_CHECKING:
@@ -43,7 +44,13 @@ class CompositeSelector:
                 f"lengths, got selectors={len(selectors)}, "
                 f"weights={len(weights)}"
             )
-            logger.warning(msg)
+            logger.warning(
+                HR_TRAINING_SELECTOR_CONFIG_INVALID,
+                selector_type="composite",
+                reason=msg,
+                selectors_len=len(selectors),
+                weights_len=len(weights),
+            )
             raise ValueError(msg)
         self._selectors = selectors
         self._weights = weights

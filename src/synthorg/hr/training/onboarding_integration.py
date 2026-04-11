@@ -90,12 +90,17 @@ class TrainingOnboardingBridge:
             raise ValueError(msg)
 
         volume_caps = tuple(custom_caps.items()) if custom_caps is not None else None
+        # Preserve None for department so downstream selectors can
+        # distinguish "unknown" from a literal department named "None".
+        department = (
+            str(identity.department) if identity.department is not None else None
+        )
 
-        plan_kwargs: dict[str, object] = {
+        plan_kwargs: dict[str, object | None] = {
             "new_agent_id": str(identity.id),
             "new_agent_role": str(identity.role),
             "new_agent_level": identity.level,
-            "new_agent_department": str(identity.department),
+            "new_agent_department": department,
             "override_sources": override_sources,
             "skip_training": skip_training,
             "created_at": datetime.now(UTC),

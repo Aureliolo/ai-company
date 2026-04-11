@@ -134,7 +134,7 @@ class ToolPatternExtractor:
                 ),
             )
 
-        logger.debug(
+        logger.info(
             HR_TRAINING_ITEMS_EXTRACTED,
             content_type="tool_patterns",
             agent_count=len(unique_ids),

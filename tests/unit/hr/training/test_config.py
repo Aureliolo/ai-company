@@ -70,3 +70,5 @@ class TestTrainingConfig:
             },
         )
         assert config.default_volume_caps[ContentType.PROCEDURAL] == 100
+        assert config.default_volume_caps[ContentType.SEMANTIC] == 25
+        assert config.default_volume_caps[ContentType.TOOL_PATTERNS] == 50

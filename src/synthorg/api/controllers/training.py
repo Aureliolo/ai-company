@@ -418,6 +418,10 @@ class TrainingController(Controller):
         caps = _parse_custom_caps(data.custom_caps, defaults=plan.volume_caps)
         if caps is not None:
             updates["volume_caps"] = caps
+        if data.content_types is not None:
+            updates["enabled_content_types"] = frozenset(data.content_types)
+        if data.skip_training is not None:
+            updates["skip_training"] = data.skip_training
 
         updated = plan.model_copy(update=updates)
         await _store.save_plan(updated)

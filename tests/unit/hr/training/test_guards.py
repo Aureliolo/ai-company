@@ -205,7 +205,7 @@ class TestReviewGateGuard:
         # Items blocked pending approval
         assert len(decision.approved_items) == 0
         assert decision.approval_item_id is not None
-        store.add.assert_called_once()
+        store.add.assert_awaited_once()
 
     async def test_passes_when_review_not_required(self) -> None:
         store = AsyncMock()
@@ -220,7 +220,7 @@ class TestReviewGateGuard:
         )
         assert len(decision.approved_items) == 1
         assert decision.approval_item_id is None
-        store.add.assert_not_called()
+        store.add.assert_not_awaited()
 
     async def test_empty_input_skips_review(self) -> None:
         store = AsyncMock()
@@ -231,4 +231,4 @@ class TestReviewGateGuard:
             plan=_make_plan(require_review=True),
         )
         assert decision.approved_items == ()
-        store.add.assert_not_called()
+        store.add.assert_not_awaited()

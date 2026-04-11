@@ -99,27 +99,38 @@ export function TrainingReviewModal({
 
         {/* Per-content-type breakdown */}
         <div className="space-y-2">
-          {items.map((item) => (
+          {items.length === 0 ? (
             <div
-              key={item.content_type}
               className={cn(
-                'flex items-center justify-between',
                 'rounded-md bg-muted/50 p-card text-sm',
+                'text-center text-muted-foreground',
               )}
             >
-              <span className="text-foreground">
-                {CONTENT_TYPE_LABELS[item.content_type] ?? item.content_type}
-              </span>
-              <div className="flex gap-grid-gap">
-                <span className="font-mono text-muted-foreground">
-                  {item.item_count} items
-                </span>
-                <span className="text-muted-foreground">
-                  from {item.source_agents.length} agent(s)
-                </span>
-              </div>
+              No pending training items for this plan.
             </div>
-          ))}
+          ) : (
+            items.map((item) => (
+              <div
+                key={item.content_type}
+                className={cn(
+                  'flex items-center justify-between',
+                  'rounded-md bg-muted/50 p-card text-sm',
+                )}
+              >
+                <span className="text-foreground">
+                  {CONTENT_TYPE_LABELS[item.content_type] ?? item.content_type}
+                </span>
+                <div className="flex gap-grid-gap">
+                  <span className="font-mono text-muted-foreground">
+                    {item.item_count} items
+                  </span>
+                  <span className="text-muted-foreground">
+                    from {item.source_agents.length} agent(s)
+                  </span>
+                </div>
+              </div>
+            ))
+          )}
         </div>
       </div>
     </ConfirmDialog>

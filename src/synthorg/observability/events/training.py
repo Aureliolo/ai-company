@@ -46,3 +46,4 @@ HR_TRAINING_REVIEW_PENDING: Final[str] = "hr.training.review_pending"
 # -- Error paths ------------------------------------------------------
 
 HR_TRAINING_STORE_FAILED: Final[str] = "hr.training.store_failed"
+HR_TRAINING_SELECTOR_CONFIG_INVALID: Final[str] = "hr.training.selector_config_invalid"
