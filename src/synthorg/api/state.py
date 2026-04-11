@@ -37,6 +37,7 @@ from synthorg.engine.task_engine import TaskEngine  # noqa: TC001
 from synthorg.engine.workflow.ceremony_scheduler import CeremonyScheduler  # noqa: TC001
 from synthorg.hr.performance.tracker import PerformanceTracker  # noqa: TC001
 from synthorg.hr.registry import AgentRegistryService  # noqa: TC001
+from synthorg.hr.scaling.service import ScalingService  # noqa: TC001
 from synthorg.memory.embedding.fine_tune_orchestrator import (
     FineTuneOrchestrator,  # noqa: TC001
 )
@@ -121,6 +122,7 @@ class AppState:
         "_provider_management",
         "_provider_registry",
         "_review_gate_service",
+        "_scaling_service",
         "_session_store",
         "_settings_service",
         "_task_engine",
@@ -206,6 +208,7 @@ class AppState:
             persistence=persistence,
         )
         self._review_gate_service: ReviewGateService | None = None
+        self._scaling_service: ScalingService | None = None
         self._client_simulation_state: ClientSimulationState | None = None
         self._approval_timeout_scheduler: ApprovalTimeoutScheduler | None = None
         self._session_store: SessionStore | None = None
@@ -422,6 +425,15 @@ class AppState:
     def set_review_gate_service(self, service: ReviewGateService) -> None:
         """Attach the review gate service (once-only)."""
         self._set_once("_review_gate_service", service, "Review gate service")
+
+    @property
+    def scaling_service(self) -> ScalingService | None:
+        """Return scaling service, or None if not configured."""
+        return self._scaling_service
+
+    def set_scaling_service(self, service: ScalingService) -> None:
+        """Attach the scaling service (once-only)."""
+        self._set_once("_scaling_service", service, "Scaling service")
 
     @property
     def has_client_simulation_state(self) -> bool:

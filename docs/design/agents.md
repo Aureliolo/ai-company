@@ -492,6 +492,138 @@ Module: `src/synthorg/hr/pruning/` (models, policy, service).
 
 ---
 
+## Dynamic Scaling
+
+The scaling service closes the loop between workload, budget, skill coverage, and
+performance signals and the existing hiring/pruning pipelines. It evaluates four
+pluggable strategies in parallel, filters decisions through a guard chain, and
+produces approved scaling actions.
+
+### Architecture
+
+```d2
+Pipeline: "Scaling Pipeline" {
+  Triggers: {
+    Batched: BatchedScalingTrigger
+    Threshold: SignalThresholdTrigger
+    Composite: CompositeScalingTrigger
+  }
+  Context: ScalingContextBuilder {
+    Workload: WorkloadSignalSource
+    Budget: BudgetSignalSource
+    Skill: SkillSignalSource
+    Performance: PerformanceSignalSource
+  }
+  Strategies: "Strategies (parallel)" {
+    WAS: WorkloadAutoScaleStrategy
+    BC: BudgetCapStrategy
+    SG: SkillGapStrategy
+    PP: PerformancePruningStrategy
+  }
+  Guards: {
+    CR: ConflictResolver
+    CD: CooldownGuard
+    RL: RateLimitGuard
+    AG: ApprovalGateGuard
+  }
+  Execute: {
+    Hire: HiringService
+    Offboard: OffboardingService
+  }
+
+  Triggers -> Context -> Strategies -> Guards -> Execute
+}
+```
+
+Orchestrated by ``ScalingService`` in ``hr/scaling/service.py``.
+
+### Strategies
+
+| Strategy | Signals | Actions | Default |
+|----------|---------|---------|---------|
+| **WorkloadAutoScale** | avg utilization, queue depth | HIRE when > 85% sustained, PRUNE when < 30% sustained | Enabled |
+| **BudgetCap** | burn rate %, alert level | PRUNE when > 90% safety margin, HOLD to block hires | Enabled |
+| **SkillGap** | coverage ratio, missing skills | HIRE with specific skill profile | Disabled (LLM cost) |
+| **PerformancePruning** | quality/collaboration trends | PRUNE via existing PruningPolicy | Enabled |
+
+Each strategy supports a headless (rule-based) path and an optional agent-delegated
+path (``agent_delegate`` config field). Agent delegation is protocol-stubbed but not
+implemented -- the headless path is always used.
+
+**PerformancePruningStrategy** coordinates with the evolution system (#243): when
+``defer_during_evolution`` is True (default), agents with recent evolution
+adaptations are skipped.
+
+### Guard Chain
+
+All decisions flow through guards sequentially before execution:
+
+1. **ConflictResolver** -- priority-ordered resolution. Default: BudgetCap (0) >
+   PerformancePruning (1) > SkillGap (2) > Workload (3). HOLD from BudgetCap
+   blocks HIRE from lower-priority strategies.
+2. **CooldownGuard** -- per action-type + target cooldown (default 1 hour).
+3. **RateLimitGuard** -- global daily caps (default 3 hires, 1 prune per day).
+4. **ApprovalGateGuard** -- routes decisions through ``ApprovalStore`` as
+   ``ApprovalItem`` entries for human approval.
+
+### Configuration
+
+```yaml
+scaling:
+  enabled: true
+  workload:
+    enabled: true
+    hire_threshold: 0.85
+    prune_threshold: 0.30
+  budget_cap:
+    enabled: true
+    safety_margin: 0.90
+    headroom_fraction: 0.60
+  skill_gap:
+    enabled: false
+  performance_pruning:
+    enabled: true
+    defer_during_evolution: true
+  triggers:
+    batched_interval_seconds: 900
+  guards:
+    cooldown_seconds: 3600
+    max_hires_per_day: 3
+    max_prunes_per_day: 1
+    approval_expiry_days: 7
+```
+
+### Dashboard
+
+The ``/scaling`` page shows:
+
+- **Signal gauges**: utilization, budget burn, declining agent count
+- **Strategy controls**: enabled status, priority order
+- **Pending decisions**: awaiting human approval
+- **Recent decisions**: history with outcome and rationale
+
+Module: `src/synthorg/hr/scaling/` (models, protocols, strategies, signals,
+triggers, guards, config, factory, service).
+
+Agent delegation is protocol-stubbed but not implemented -- the headless path
+is always used. Agent-delegated evaluation is a future enhancement.
+
+### Visual Testing Checkpoints
+
+The scaling dashboard page must be visually verified at these checkpoints:
+
+1. **Loading skeleton** -- `/scaling` with no data; verify `ScalingSkeleton` renders the 4 metric placeholders + 2 section cards + decision list placeholder.
+2. **Signal gauges** -- verify `SignalGauges` renders 3 circular gauges with correct labels (Utilization, Budget Burn, Declining Agents) and clamped values (0-100 for percentages, 0-10 for count).
+3. **Strategy controls** -- verify `StrategyControls` shows all enabled strategies with correct labels, status badges (active/offline), and priority numbers.
+4. **Decision history** -- verify `DecisionHistory` renders recent decisions with action type badge, rationale text, strategy source, and confidence.
+5. **Evaluate Now** -- click the "Evaluate Now" button; verify spinner state, success toast (decisions produced), or info toast (no decisions).
+6. **Error banner** -- simulate API failure; verify red `role="alert"` banner with AlertTriangle icon appears.
+7. **WebSocket disconnection** -- simulate WS drop; verify amber warning banner with WifiOff icon appears.
+8. **Responsive metrics** -- resize viewport below `xl` breakpoint; verify metrics grid collapses from 4 columns to 2 then 1.
+9. **Empty state** -- no strategies configured; verify "No strategies configured" message in strategy controls.
+
+---
+
 ## Firing / Offboarding
 
 Offboarding is triggered by: budget cuts, poor performance metrics, project completion, or

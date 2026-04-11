@@ -48,6 +48,7 @@ from synthorg.api.controllers.reports import ReportsController
 from synthorg.api.controllers.requests import RequestController
 from synthorg.api.controllers.reviews import ReviewController
 from synthorg.api.controllers.role_versions import RoleVersionController
+from synthorg.api.controllers.scaling import ScalingController
 from synthorg.api.controllers.settings import SettingsController
 from synthorg.api.controllers.setup import SetupController
 from synthorg.api.controllers.setup_personality import (
@@ -116,6 +117,7 @@ ALL_CONTROLLERS: tuple[type[Controller], ...] = (
     RequestController,
     SimulationController,
     ReviewController,
+    ScalingController,
     TrainingController,
 )
 
@@ -156,6 +158,7 @@ __all__ = [
     "RequestController",
     "ReviewController",
     "RoleVersionController",
+    "ScalingController",
     "SettingsController",
     "SetupController",
     "SetupPersonalityController",

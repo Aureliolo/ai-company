@@ -1,0 +1,86 @@
+import { useCallback, useEffect, useMemo } from 'react'
+
+import type { WsChannel } from '@/api/types'
+import { usePolling } from '@/hooks/usePolling'
+import { useWebSocket, type ChannelBinding } from '@/hooks/useWebSocket'
+import { useScalingStore } from '@/stores/scaling'
+import type {
+  ScalingDecisionResponse,
+  ScalingSignalResponse,
+  ScalingStrategyResponse,
+} from '@/api/endpoints/scaling'
+
+const SCALING_POLL_INTERVAL = 30_000
+const SCALING_CHANNELS = ['scaling'] as const satisfies readonly WsChannel[]
+
+export interface UseScalingDataReturn {
+  strategies: readonly ScalingStrategyResponse[]
+  decisions: readonly ScalingDecisionResponse[]
+  signals: readonly ScalingSignalResponse[]
+  totalDecisions: number
+  loading: boolean
+  error: string | null
+  evaluating: boolean
+  wsConnected: boolean
+  wsSetupError: string | null
+  evaluateNow: () => Promise<ScalingDecisionResponse[]>
+}
+
+export function useScalingData(): UseScalingDataReturn {
+  // Granular selectors for re-render optimization.
+  const strategies = useScalingStore((s) => s.strategies)
+  const decisions = useScalingStore((s) => s.decisions)
+  const signals = useScalingStore((s) => s.signals)
+  const totalDecisions = useScalingStore((s) => s.totalDecisions)
+  const loading = useScalingStore((s) => s.loading)
+  const error = useScalingStore((s) => s.error)
+  const evaluating = useScalingStore((s) => s.evaluating)
+  const evaluateNow = useScalingStore((s) => s.evaluateNow)
+
+  // Initial fetch.
+  useEffect(() => {
+    useScalingStore.getState().fetchAll()
+  }, [])
+
+  // Polling for lightweight refresh.
+  const pollFn = useCallback(async () => {
+    await useScalingStore.getState().fetchDecisions()
+    await useScalingStore.getState().fetchSignals()
+  }, [])
+
+  const polling = usePolling(pollFn, SCALING_POLL_INTERVAL)
+  useEffect(() => {
+    polling.start()
+    return () => polling.stop()
+    // eslint-disable-next-line @eslint-react/exhaustive-deps -- start/stop are stable useCallback refs; polling object identity is not stable
+  }, [polling.start, polling.stop])
+
+  // WebSocket bindings.
+  const bindings: ChannelBinding[] = useMemo(
+    () =>
+      SCALING_CHANNELS.map((channel) => ({
+        channel,
+        handler: (event) => {
+          useScalingStore.getState().updateFromWsEvent(event)
+        },
+      })),
+    [],
+  )
+
+  const { connected: wsConnected, setupError: wsSetupError } = useWebSocket({
+    bindings,
+  })
+
+  return {
+    strategies,
+    decisions,
+    signals,
+    totalDecisions,
+    loading,
+    error,
+    evaluating,
+    wsConnected,
+    wsSetupError,
+    evaluateNow,
+  }
+}

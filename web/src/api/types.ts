@@ -1146,7 +1146,7 @@ export interface ProjectFilters {
 // ── WebSocket ────────────────────────────────────────────────
 
 /** All valid WebSocket channel names. Runtime set derived from this in websocket store. */
-export const WS_CHANNELS = ['tasks', 'agents', 'budget', 'messages', 'system', 'approvals', 'meetings', 'artifacts', 'projects', 'company', 'departments'] as const
+export const WS_CHANNELS = ['tasks', 'agents', 'budget', 'messages', 'system', 'approvals', 'meetings', 'artifacts', 'projects', 'company', 'departments', 'scaling'] as const
 
 export type WsChannel = typeof WS_CHANNELS[number]
 
@@ -1194,6 +1194,16 @@ export type WsEventType =
   | 'agent.updated'
   | 'agent.deleted'
   | 'agents.reordered'
+  | 'hr.scaling.trigger_requested'
+  | 'hr.scaling.cycle_started'
+  | 'hr.scaling.cycle_complete'
+  | 'hr.scaling.strategy_evaluated'
+  | 'hr.scaling.guard_applied'
+  | 'hr.scaling.executed'
+  | 'hr.scaling.execution_failed'
+  | 'hr.scaling.decision_approved'
+  | 'hr.scaling.decision_rejected'
+  | 'hr.scaling.manual_trigger_requested'
 
 export const WS_EVENT_TYPE_VALUES = [
   'task.created', 'task.updated', 'task.status_changed', 'task.assigned',
@@ -1211,6 +1221,10 @@ export const WS_EVENT_TYPE_VALUES = [
   'company.updated',
   'department.created', 'department.updated', 'department.deleted', 'departments.reordered',
   'agent.created', 'agent.updated', 'agent.deleted', 'agents.reordered',
+  'hr.scaling.trigger_requested', 'hr.scaling.cycle_started', 'hr.scaling.cycle_complete',
+  'hr.scaling.strategy_evaluated', 'hr.scaling.guard_applied', 'hr.scaling.executed',
+  'hr.scaling.execution_failed', 'hr.scaling.decision_approved', 'hr.scaling.decision_rejected',
+  'hr.scaling.manual_trigger_requested',
 ] as const satisfies readonly WsEventType[]
 
 export const DEPARTMENT_NAME_VALUES = [

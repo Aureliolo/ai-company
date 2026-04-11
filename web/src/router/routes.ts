@@ -16,6 +16,7 @@ export const ROUTES = {
   BUDGET: '/budget',
   BUDGET_FORECAST: '/budget/forecast',
   APPROVALS: '/approvals',
+  SCALING: '/scaling',
   AGENTS: '/agents',
   AGENT_DETAIL: '/agents/:agentId',
   MESSAGES: '/messages',
