@@ -1,0 +1,62 @@
+import { MetricCard } from '@/components/ui/metric-card'
+import { StaggerGroup, StaggerItem } from '@/components/ui/stagger-group'
+import type {
+  ScalingDecisionResponse,
+  ScalingSignalResponse,
+  ScalingStrategyResponse,
+} from '@/api/endpoints/scaling'
+
+interface ScalingMetricsProps {
+  strategies: readonly ScalingStrategyResponse[]
+  decisions: readonly ScalingDecisionResponse[]
+  signals: readonly ScalingSignalResponse[]
+}
+
+function findSignal(
+  signals: readonly ScalingSignalResponse[],
+  name: string,
+): number | null {
+  const signal = signals.find((s) => s.name === name)
+  return signal?.value ?? null
+}
+
+export function ScalingMetrics({
+  strategies,
+  decisions,
+  signals,
+}: ScalingMetricsProps) {
+  const activeStrategies = strategies.filter((s) => s.enabled).length
+  const pendingDecisions = decisions.length
+  const utilization = findSignal(signals, 'avg_utilization')
+  const burnRate = findSignal(signals, 'burn_rate_percent')
+
+  return (
+    <StaggerGroup className="grid grid-cols-4 gap-card-gap">
+      <StaggerItem>
+        <MetricCard
+          label="Active Strategies"
+          value={activeStrategies}
+          subText={`of ${strategies.length} total`}
+        />
+      </StaggerItem>
+      <StaggerItem>
+        <MetricCard
+          label="Pending Decisions"
+          value={pendingDecisions}
+        />
+      </StaggerItem>
+      <StaggerItem>
+        <MetricCard
+          label="Avg Utilization"
+          value={utilization !== null ? `${Math.round(utilization * 100)}%` : 'N/A'}
+        />
+      </StaggerItem>
+      <StaggerItem>
+        <MetricCard
+          label="Budget Burn"
+          value={burnRate !== null ? `${Math.round(burnRate)}%` : 'N/A'}
+        />
+      </StaggerItem>
+    </StaggerGroup>
+  )
+}

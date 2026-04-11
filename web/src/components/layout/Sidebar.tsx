@@ -25,6 +25,7 @@ import {
   Users,
   Video,
   Layers,
+  Scale,
   Workflow,
   X,
 } from 'lucide-react'
@@ -223,6 +224,7 @@ function SidebarNav({ collapsed }: { collapsed: boolean }) {
         <SidebarNavItem to={ROUTES.TASKS} icon={KanbanSquare} label="Task Board" collapsed={collapsed} />
         <SidebarNavItem to={ROUTES.BUDGET} icon={DollarSign} label="Budget" collapsed={collapsed} />
         <SidebarNavItem to={ROUTES.APPROVALS} icon={ShieldCheck} label="Approvals" collapsed={collapsed} badge={0} />
+        <SidebarNavItem to={ROUTES.SCALING} icon={Scale} label="Scaling" collapsed={collapsed} />
       </div>
 
       <div className="mt-4 border-t border-border pt-3">
