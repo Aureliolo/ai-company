@@ -196,58 +196,56 @@ class SettingsService:
 
         Shared pipeline used by both ``get()`` and ``get_versioned()``
         so the two APIs never drift on how sensitive values are
-        decoded.
-
-        Args:
-            definition: The registered setting definition.
-
-        Returns:
-            A fully-resolved ``SettingValue`` (decrypted for sensitive
-            settings), or ``None`` if the DB has no row for the key.
-
-        Raises:
-            SettingsEncryptionError: If the setting is sensitive and
-                either no encryptor is configured or decryption fails.
+        decoded.  Returns ``None`` when the DB has no row for the
+        key; raises ``SettingsEncryptionError`` when a sensitive
+        setting cannot be decrypted.
         """
-        namespace = definition.namespace
-        key = definition.key
         result = await self._repository.get(
-            NotBlankStr(namespace),
-            NotBlankStr(key),
+            NotBlankStr(definition.namespace),
+            NotBlankStr(definition.key),
         )
         if result is None:
             return None
         raw_value, updated_at = result
-        value = raw_value
-        if definition.sensitive:
-            if self._encryptor is None:
-                logger.error(
-                    SETTINGS_ENCRYPTION_ERROR,
-                    namespace=namespace,
-                    key=key,
-                    reason="no_encryptor_on_read",
-                )
-                msg = (
-                    f"Cannot decrypt sensitive setting {namespace}/{key}: no encryptor"
-                )
-                raise SettingsEncryptionError(msg)
-            try:
-                value = self._encryptor.decrypt(raw_value)
-            except SettingsEncryptionError:
-                logger.exception(
-                    SETTINGS_ENCRYPTION_ERROR,
-                    namespace=namespace,
-                    key=key,
-                    reason="decrypt_failed",
-                )
-                raise
+        value = self._decrypt_if_sensitive(definition, raw_value)
         return SettingValue(
             namespace=definition.namespace,
-            key=key,
+            key=definition.key,
             value=value,
             source=SettingSource.DATABASE,
             updated_at=updated_at,
         )
+
+    def _decrypt_if_sensitive(
+        self,
+        definition: SettingDefinition,
+        raw_value: str,
+    ) -> str:
+        """Decrypt ``raw_value`` for sensitive settings, else return as-is."""
+        if not definition.sensitive:
+            return raw_value
+        if self._encryptor is None:
+            logger.error(
+                SETTINGS_ENCRYPTION_ERROR,
+                namespace=definition.namespace,
+                key=definition.key,
+                reason="no_encryptor_on_read",
+            )
+            msg = (
+                f"Cannot decrypt sensitive setting "
+                f"{definition.namespace}/{definition.key}: no encryptor"
+            )
+            raise SettingsEncryptionError(msg)
+        try:
+            return self._encryptor.decrypt(raw_value)
+        except SettingsEncryptionError:
+            logger.exception(
+                SETTINGS_ENCRYPTION_ERROR,
+                namespace=definition.namespace,
+                key=definition.key,
+                reason="decrypt_failed",
+            )
+            raise
 
     async def get(self, namespace: str, key: str) -> SettingValue:
         """Resolve a setting value through the priority chain.
@@ -496,17 +494,11 @@ class SettingsService:
     ) -> tuple[str, str]:
         """Read a setting value and its ``updated_at`` for CAS.
 
-        Runs through the shared ``_resolve_db`` pipeline so sensitive
-        values are returned decrypted (same as ``get()``). Does not
-        consult the cache or the env/YAML/default fallback chain --
-        CAS callers only care about the DB-backed state so they can
-        compare versions.
-
-        Returns:
-            ``(value, updated_at)`` tuple, or ``("", "")`` if the
-            setting has no DB override (the empty-string sentinel
-            enables CAS on first writes) or the key is not in the
-            registry.
+        Shares the ``_resolve_db`` pipeline with ``get()`` so
+        sensitive values come back decrypted.  Bypasses cache and
+        fallback chain -- CAS callers only care about DB state.
+        Returns ``("", "")`` when the setting has no DB override
+        (first-write sentinel) or the key is not in the registry.
         """
         definition = self._registry.get(namespace, key)
         if definition is None:
@@ -514,9 +506,6 @@ class SettingsService:
         setting_value = await self._resolve_db(definition)
         if setting_value is None:
             return "", ""
-        # DB-sourced SettingValue always has updated_at set; the
-        # ``or ""`` guard narrows the type for mypy without changing
-        # behaviour.
         return setting_value.value, setting_value.updated_at or ""
 
     async def set(
@@ -527,30 +516,12 @@ class SettingsService:
         *,
         expected_updated_at: str | None = None,
     ) -> SettingEntry:
-        """Validate and persist a setting value.
+        """Validate, encrypt, and persist a setting value with optional CAS.
 
-        Args:
-            namespace: Setting namespace.
-            key: Setting key.
-            value: New value as a string.
-            expected_updated_at: When provided, enforces atomic
-                compare-and-swap -- raises ``VersionConflictError``
-                if the current ``updated_at`` does not match.
-                Pass ``""`` (empty string) for first-write semantics
-                when no DB override exists yet (the controller's
-                ``_check_setting_etag`` returns ``""`` for settings
-                that have never been persisted).
-
-        Returns:
-            The updated setting entry.
-
-        Raises:
-            SettingNotFoundError: If the key is not in the registry.
-            SettingValidationError: If the value fails validation.
-            SettingsEncryptionError: If the setting is sensitive and
-                no encryptor is available.
-            VersionConflictError: If ``expected_updated_at`` is
-                provided and does not match the current value.
+        Pass ``expected_updated_at=""`` for first-write semantics.
+        Raises ``VersionConflictError`` on CAS miss,
+        ``SettingNotFoundError`` / ``SettingValidationError`` /
+        ``SettingsEncryptionError`` on preflight failures.
         """
         definition = self._registry.get(namespace, key)
         if definition is None:
@@ -558,35 +529,13 @@ class SettingsService:
             msg = f"Unknown setting: {namespace}/{key}"
             raise SettingNotFoundError(msg)
 
-        # Validate
         try:
             _validate_value(definition, value)
         except SettingValidationError:
-            logger.warning(
-                SETTINGS_VALIDATION_FAILED,
-                namespace=namespace,
-                key=key,
-            )
+            logger.warning(SETTINGS_VALIDATION_FAILED, namespace=namespace, key=key)
             raise
 
-        # Encrypt if sensitive
-        store_value = value
-        if definition.sensitive:
-            if self._encryptor is None:
-                logger.error(
-                    SETTINGS_ENCRYPTION_ERROR,
-                    namespace=namespace,
-                    key=key,
-                    reason="no_encryptor",
-                )
-                msg = (
-                    f"Cannot store sensitive setting {namespace}/{key} "
-                    f"without encryption key"
-                )
-                raise SettingsEncryptionError(msg)
-            store_value = self._encryptor.encrypt(value)
-
-        # Persist
+        store_value = self._encrypt_if_sensitive(definition, value)
         updated_at = _now_iso()
         written = await self._repository.set(
             NotBlankStr(namespace),
@@ -611,17 +560,9 @@ class SettingsService:
             raise VersionConflictError(msg)
 
         self._invalidate_cache(namespace, key)
-
-        logger.info(
-            SETTINGS_VALUE_SET,
-            namespace=namespace,
-            key=key,
-        )
-
-        # Notify
+        logger.info(SETTINGS_VALUE_SET, namespace=namespace, key=key)
         await self._publish_change(namespace, key, definition)
 
-        # Return the entry with the display value
         display_value = _SENSITIVE_MASK if definition.sensitive else value
         return SettingEntry(
             definition=definition,
@@ -638,78 +579,23 @@ class SettingsService:
     ) -> str:
         """Atomically persist multiple setting values with per-key CAS.
 
-        Each element of ``items`` is ``(namespace, key, value)``.  The
-        service validates and (if sensitive) encrypts every value,
-        then routes the batch through ``SettingsRepository.set_many``
-        in a single transaction.  A common ``updated_at`` timestamp
-        is applied to all writes so a retry of the batch is easy to
-        reason about.
-
-        ``expected_updated_at_map`` supplies the CAS expected version
-        for every ``(namespace, key)`` in ``items`` -- callers read
-        the versions up front, then pass them here.  Pass ``""`` for
-        a key that must not exist yet (first-write semantics).
-
-        Returns:
-            The ``updated_at`` ISO string shared by every successful
-            write.  Callers that need the new ETag use this.
-
-        Raises:
-            SettingNotFoundError: If any key is not in the registry.
-            SettingValidationError: If any value fails validation.
-            SettingsEncryptionError: If a sensitive key has no encryptor.
-            VersionConflictError: If any CAS check fails -- the whole
-                transaction rolls back, so no writes take effect.
+        Each element is ``(namespace, key, value)``.  The service
+        validates and (if sensitive) encrypts every value, then
+        routes the batch through ``SettingsRepository.set_many`` in
+        one transaction with a shared ``updated_at`` timestamp.
+        ``expected_updated_at_map`` supplies per-key CAS versions;
+        pass ``""`` for first-write semantics.  Returns the shared
+        ``updated_at`` ISO string.  Raises ``VersionConflictError``
+        on CAS miss (whole transaction rolled back),
+        ``SettingNotFoundError`` / ``SettingValidationError`` /
+        ``SettingsEncryptionError`` on preflight failures.
         """
         if not items:
             msg = "set_many requires at least one item"
             raise ValueError(msg)
 
-        prepared: list[tuple[NotBlankStr, NotBlankStr, str, str]] = []
-        definitions: list[tuple[str, str, SettingDefinition]] = []
         updated_at = _now_iso()
-        for namespace, key, value in items:
-            definition = self._registry.get(namespace, key)
-            if definition is None:
-                logger.warning(SETTINGS_NOT_FOUND, namespace=namespace, key=key)
-                msg = f"Unknown setting: {namespace}/{key}"
-                raise SettingNotFoundError(msg)
-
-            try:
-                _validate_value(definition, value)
-            except SettingValidationError:
-                logger.warning(
-                    SETTINGS_VALIDATION_FAILED,
-                    namespace=namespace,
-                    key=key,
-                )
-                raise
-
-            store_value = value
-            if definition.sensitive:
-                if self._encryptor is None:
-                    logger.error(
-                        SETTINGS_ENCRYPTION_ERROR,
-                        namespace=namespace,
-                        key=key,
-                        reason="no_encryptor",
-                    )
-                    msg = (
-                        f"Cannot store sensitive setting {namespace}/{key} "
-                        f"without encryption key"
-                    )
-                    raise SettingsEncryptionError(msg)
-                store_value = self._encryptor.encrypt(value)
-
-            prepared.append(
-                (
-                    NotBlankStr(namespace),
-                    NotBlankStr(key),
-                    store_value,
-                    updated_at,
-                )
-            )
-            definitions.append((namespace, key, definition))
+        prepared, definitions = self._prepare_set_many(items, updated_at)
 
         written = await self._repository.set_many(
             prepared,
@@ -731,14 +617,80 @@ class SettingsService:
 
         for namespace, key, definition in definitions:
             self._invalidate_cache(namespace, key)
-            logger.info(
-                SETTINGS_VALUE_SET,
-                namespace=namespace,
-                key=key,
-            )
+            logger.info(SETTINGS_VALUE_SET, namespace=namespace, key=key)
             await self._publish_change(namespace, key, definition)
 
         return updated_at
+
+    def _prepare_set_many(
+        self,
+        items: Sequence[tuple[str, str, str]],
+        updated_at: str,
+    ) -> tuple[
+        list[tuple[NotBlankStr, NotBlankStr, str, str]],
+        list[tuple[str, str, SettingDefinition]],
+    ]:
+        """Validate, encrypt, and shape items for a batch ``set_many`` write.
+
+        Returns two parallel lists: the tuple format the repository
+        protocol expects, and the per-item definitions so the caller
+        can invalidate cache + publish change events after the
+        transactional write succeeds.
+        """
+        prepared: list[tuple[NotBlankStr, NotBlankStr, str, str]] = []
+        definitions: list[tuple[str, str, SettingDefinition]] = []
+        for namespace, key, value in items:
+            definition = self._registry.get(namespace, key)
+            if definition is None:
+                logger.warning(SETTINGS_NOT_FOUND, namespace=namespace, key=key)
+                msg = f"Unknown setting: {namespace}/{key}"
+                raise SettingNotFoundError(msg)
+
+            try:
+                _validate_value(definition, value)
+            except SettingValidationError:
+                logger.warning(SETTINGS_VALIDATION_FAILED, namespace=namespace, key=key)
+                raise
+
+            store_value = self._encrypt_if_sensitive(definition, value)
+            prepared.append(
+                (
+                    NotBlankStr(namespace),
+                    NotBlankStr(key),
+                    store_value,
+                    updated_at,
+                )
+            )
+            definitions.append((namespace, key, definition))
+        return prepared, definitions
+
+    def _encrypt_if_sensitive(
+        self,
+        definition: SettingDefinition,
+        value: str,
+    ) -> str:
+        """Encrypt ``value`` via the configured encryptor when sensitive.
+
+        Returns the plaintext unchanged for non-sensitive settings.
+        Raises ``SettingsEncryptionError`` when a sensitive setting
+        is configured without an encryptor.
+        """
+        if not definition.sensitive:
+            return value
+        if self._encryptor is None:
+            logger.error(
+                SETTINGS_ENCRYPTION_ERROR,
+                namespace=definition.namespace,
+                key=definition.key,
+                reason="no_encryptor",
+            )
+            msg = (
+                f"Cannot store sensitive setting "
+                f"{definition.namespace}/{definition.key} "
+                f"without encryption key"
+            )
+            raise SettingsEncryptionError(msg)
+        return self._encryptor.encrypt(value)
 
     async def delete(self, namespace: str, key: str) -> None:
         """Delete a DB override, reverting to the next source in chain.

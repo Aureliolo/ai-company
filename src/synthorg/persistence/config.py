@@ -178,7 +178,10 @@ class PostgresConfig(BaseModel):
     )
     audit_entries_chunk_interval: NotBlankStr = Field(
         default="1 day",
-        description="Hypertable chunk interval for audit_entries.",
+        description=(
+            "Hypertable chunk interval for audit_entries. Ignored "
+            "when enable_timescaledb is False."
+        ),
     )
 
     @model_validator(mode="after")

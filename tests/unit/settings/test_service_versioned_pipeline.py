@@ -15,6 +15,7 @@ from pydantic import BaseModel, ConfigDict
 from synthorg.persistence.repositories import SettingsRepository
 from synthorg.settings.encryption import SettingsEncryptor
 from synthorg.settings.enums import SettingNamespace, SettingType
+from synthorg.settings.errors import SettingsEncryptionError
 from synthorg.settings.models import SettingDefinition
 from synthorg.settings.registry import SettingsRegistry
 from synthorg.settings.service import SettingsService
@@ -94,6 +95,19 @@ def service(
     )
 
 
+@pytest.fixture
+def service_no_encryptor(
+    mock_repo: AsyncMock,
+    registry: SettingsRegistry,
+) -> SettingsService:
+    return SettingsService(
+        repository=mock_repo,
+        registry=registry,
+        config=_FakeConfig(),
+        encryptor=None,
+    )
+
+
 @pytest.mark.unit
 class TestGetVersionedSharedPipeline:
     """get_versioned() goes through the same DB pipeline as get()."""
@@ -158,3 +172,32 @@ class TestGetVersionedSharedPipeline:
         # (CAS callers must always read live DB state), so it triggers
         # a second DB read.
         assert mock_repo.get.await_count == 2
+
+
+@pytest.mark.unit
+class TestResolveDbErrorPaths:
+    """Failure paths in the shared ``_resolve_db`` pipeline."""
+
+    async def test_missing_encryptor_on_sensitive_read_raises(
+        self,
+        service_no_encryptor: SettingsService,
+        mock_repo: AsyncMock,
+    ) -> None:
+        """get_versioned on a sensitive key without encryptor raises."""
+        mock_repo.get.return_value = (
+            "ciphertext",
+            "2026-04-11T10:00:00Z",
+        )
+        with pytest.raises(SettingsEncryptionError, match="no encryptor"):
+            await service_no_encryptor.get_versioned("providers", "openai_api_key")
+
+    async def test_decrypt_failure_raises(
+        self,
+        service: SettingsService,
+        mock_repo: AsyncMock,
+        encryptor: SettingsEncryptor,
+    ) -> None:
+        """Corrupted ciphertext in the DB raises SettingsEncryptionError."""
+        mock_repo.get.return_value = ("not-valid-fernet", "2026-04-11T10:00:00Z")
+        with pytest.raises(SettingsEncryptionError):
+            await service.get_versioned("providers", "openai_api_key")

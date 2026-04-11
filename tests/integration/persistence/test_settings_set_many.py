@@ -160,7 +160,6 @@ async def _run_mixed(repo: SettingsRepository) -> None:
 
 
 @pytest.mark.integration
-@pytest.mark.xdist_group(name="settings_set_many_sqlite")
 class TestSetManySqlite:
     async def test_all_success(
         self,

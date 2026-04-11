@@ -10,7 +10,7 @@ The repository code path must work unchanged against a hypertable-backed
 table because hypertables are transparent to regular SQL.
 """
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any, cast
 
 import pytest
@@ -23,7 +23,7 @@ from synthorg.persistence.postgres.backend import PostgresPersistenceBackend
 from synthorg.security.models import AuditEntry
 from tests.unit.persistence.conftest import make_task
 
-pytestmark = [pytest.mark.integration, pytest.mark.timescaledb]
+pytestmark = pytest.mark.integration
 
 
 async def _fetchone(
@@ -38,7 +38,7 @@ async def _fetchone(
         return await cur.fetchone()
 
 
-@pytest.mark.integration
+@pytest.mark.timescaledb
 class TestHypertableConversion:
     async def test_cost_records_is_hypertable(
         self,
@@ -75,6 +75,10 @@ class TestHypertableConversion:
         )
         assert row is None, "heartbeats must stay a regular table -- it is update-heavy"
 
+
+class TestVanillaPostgresFallback:
+    """Vanilla Postgres (no TimescaleDB) still runs the same schema."""
+
     async def test_disabled_falls_back_to_plain_table(
         self,
         postgres_backend: PostgresPersistenceBackend,
@@ -105,7 +109,7 @@ class TestHypertableConversion:
             assert count_row[0] == 1
 
 
-@pytest.mark.integration
+@pytest.mark.timescaledb
 class TestRepositoryTransparency:
     """Repository code is unchanged under hypertables -- same behaviour."""
 
@@ -113,7 +117,7 @@ class TestRepositoryTransparency:
         self,
         timescaledb_backend: PostgresPersistenceBackend,
     ) -> None:
-        now = datetime.now(UTC)
+        base = datetime(2026, 4, 1, 12, 0, 0, tzinfo=UTC)
         # cost_records has an FK to tasks; seed the referenced tasks first.
         for task_idx in range(3):
             await timescaledb_backend.tasks.save(
@@ -121,6 +125,8 @@ class TestRepositoryTransparency:
             )
 
         for i in range(50):
+            # Stagger timestamps across ~7 days so the hypertable
+            # actually partitions the data into multiple chunks.
             record = CostRecord(
                 agent_id=NotBlankStr(f"agent-{i % 5}"),
                 task_id=NotBlankStr(f"task-{i % 3}"),
@@ -129,13 +135,26 @@ class TestRepositoryTransparency:
                 input_tokens=100,
                 output_tokens=50,
                 cost_usd=0.001,
-                timestamp=now,
+                timestamp=base + timedelta(days=i % 7, hours=i),
                 call_category=None,
             )
             await timescaledb_backend.cost_records.save(record)
 
         results = await timescaledb_backend.cost_records.query()
         assert len(results) == 50
+
+        # Hypertable partitioning check: multiple chunks exist.
+        chunk_row = await _fetchone(
+            timescaledb_backend,
+            "SELECT num_chunks FROM timescaledb_information.hypertables "
+            "WHERE hypertable_name = 'cost_records'",
+        )
+        assert chunk_row is not None
+        num_chunks = chunk_row[0]
+        assert isinstance(num_chunks, int)
+        assert num_chunks >= 2, (
+            f"expected >=2 chunks after 7-day spread, got {num_chunks}"
+        )
 
     async def test_audit_repo_jsonb_query_still_works(
         self,
