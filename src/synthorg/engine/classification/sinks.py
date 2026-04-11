@@ -145,9 +145,21 @@ class _SlidingWindowRateLimiter:
     ) -> None:
         if max_events < 1:
             msg = "max_events must be >= 1"
+            logger.error(
+                CLASSIFICATION_SINK_ERROR,
+                component="sliding_window_rate_limiter",
+                max_events=max_events,
+                reason=msg,
+            )
             raise ValueError(msg)
         if window_seconds <= 0:
             msg = "window_seconds must be > 0"
+            logger.error(
+                CLASSIFICATION_SINK_ERROR,
+                component="sliding_window_rate_limiter",
+                window_seconds=window_seconds,
+                reason=msg,
+            )
             raise ValueError(msg)
         self._max_events = max_events
         self._window_seconds = window_seconds
