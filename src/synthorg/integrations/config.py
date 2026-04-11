@@ -4,9 +4,9 @@ All models are frozen Pydantic ``BaseModel`` instances following
 the codebase convention of ``ConfigDict(frozen=True, allow_inf_nan=False)``.
 """
 
-from typing import Literal
+from typing import Literal, Self
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class ConnectionsConfig(BaseModel):
@@ -130,6 +130,18 @@ class IntegrationHealthConfig(BaseModel):
     check_interval_seconds: int = Field(default=300, gt=0)
     unhealthy_threshold: int = Field(default=3, ge=1)
     degraded_threshold: int = Field(default=1, ge=1)
+
+    @model_validator(mode="after")
+    def _validate_thresholds(self) -> Self:
+        """Ensure ``degraded_threshold`` is not above ``unhealthy_threshold``."""
+        if self.degraded_threshold > self.unhealthy_threshold:
+            msg = (
+                "IntegrationHealthConfig.degraded_threshold "
+                f"({self.degraded_threshold}) must be <= "
+                f"unhealthy_threshold ({self.unhealthy_threshold})"
+            )
+            raise ValueError(msg)
+        return self
 
 
 class TunnelConfig(BaseModel):

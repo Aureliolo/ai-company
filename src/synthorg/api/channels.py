@@ -59,8 +59,12 @@ ALL_CHANNELS: Final[tuple[str, ...]] = (
     CHANNEL_RATELIMIT,
 )
 
-# Channels whose events contain sensitive cost/budget data.
-BUDGET_CHANNELS: Final[frozenset[str]] = frozenset({CHANNEL_BUDGET})
+# Channels whose events are sensitive and restricted to system roles
+# (CEO/MANAGER). Includes budget channels and internal integration
+# coordination channels that carry secrets or rate-limit signals.
+BUDGET_CHANNELS: Final[frozenset[str]] = frozenset(
+    {CHANNEL_BUDGET, CHANNEL_WEBHOOKS, CHANNEL_RATELIMIT}
+)
 
 
 def user_channel(user_id: str) -> str:

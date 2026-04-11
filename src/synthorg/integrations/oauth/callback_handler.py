@@ -37,7 +37,9 @@ async def handle_oauth_callback(
     """Process an OAuth authorization code callback.
 
     Validates the state token, exchanges the code for tokens,
-    and updates the connection in the catalog.
+    persists the raw access/refresh tokens via the connection
+    catalog (which writes them through the configured secret
+    backend), and updates the connection's token expiry metadata.
 
     Args:
         state_param: The state parameter from the callback URL.
@@ -51,7 +53,9 @@ async def handle_oauth_callback(
 
     Raises:
         InvalidStateError: If the state token is invalid or expired.
-        TokenExchangeFailedError: If the code exchange fails.
+        TokenExchangeFailedError: If the code exchange fails or the
+            exchange credentials (token_url / client_id /
+            client_secret) are missing from the connection.
     """
     logger.info(OAUTH_CALLBACK_RECEIVED, state=state_param[:8] + "...")
 
@@ -78,12 +82,36 @@ async def handle_oauth_callback(
     conn = await catalog.get_or_raise(oauth_state.connection_name)
     credentials = await catalog.get_credentials(conn.name)
 
+    token_url = credentials.get("token_url", "")
+    client_id = credentials.get("client_id", "")
+    client_secret = credentials.get("client_secret", "")
+    missing = [
+        label
+        for label, value in (
+            ("token_url", token_url),
+            ("client_id", client_id),
+            ("client_secret", client_secret),
+        )
+        if not value
+    ]
+    if missing:
+        logger.warning(
+            OAUTH_FLOW_FAILED,
+            connection_name=conn.name,
+            missing=",".join(missing),
+        )
+        msg = (
+            "Cannot exchange OAuth code: connection is missing "
+            f"credentials: {', '.join(missing)}"
+        )
+        raise TokenExchangeFailedError(msg)
+
     auth_flow = flow or AuthorizationCodeFlow()
     try:
         token = await auth_flow.exchange_code(
-            token_url=credentials.get("token_url", ""),
-            client_id=credentials.get("client_id", ""),
-            client_secret=credentials.get("client_secret", ""),
+            token_url=token_url,
+            client_id=client_id,
+            client_secret=client_secret,
             state=oauth_state,
             code=code,
             redirect_uri=oauth_state.redirect_uri,
@@ -95,7 +123,23 @@ async def handle_oauth_callback(
         )
         raise
 
-    # Update connection metadata with token expiry
+    if not token.access_token:
+        logger.warning(
+            OAUTH_FLOW_FAILED,
+            connection_name=conn.name,
+            reason="flow returned no access_token",
+        )
+        msg = "OAuth flow returned no access_token"
+        raise TokenExchangeFailedError(msg)
+
+    # Persist access/refresh tokens via the secret backend.
+    await catalog.store_oauth_tokens(
+        conn.name,
+        access_token=token.access_token,
+        refresh_token=token.refresh_token,
+    )
+
+    # Update connection metadata with token expiry.
     meta_updates = dict(conn.metadata)
     if token.expires_at:
         meta_updates["token_expires_at"] = token.expires_at.isoformat()

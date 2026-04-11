@@ -33,7 +33,7 @@ class DatabaseHealthCheck:
         elapsed = (time.monotonic() - start) * 1000
 
         if not dialect or not database:
-            logger.debug(
+            logger.warning(
                 HEALTH_CHECK_FAILED,
                 connection_name=connection.name,
                 error="missing dialect or database in metadata",
@@ -46,7 +46,7 @@ class DatabaseHealthCheck:
                 checked_at=datetime.now(UTC),
             )
 
-        logger.debug(
+        logger.info(
             HEALTH_CHECK_PASSED,
             connection_name=connection.name,
             latency_ms=elapsed,

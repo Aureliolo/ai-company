@@ -8,7 +8,7 @@ at runtime via the configured ``SecretBackend``.
 import copy
 from datetime import UTC, datetime
 from enum import StrEnum
-from typing import Self
+from typing import Literal, Self
 from uuid import uuid4
 
 from pydantic import (
@@ -142,22 +142,52 @@ class OAuthState(BaseModel):
     )
     expires_at: AwareDatetime
 
+    @model_validator(mode="after")
+    def _validate_expiry(self) -> Self:
+        """Ensure ``expires_at`` is strictly after ``created_at``."""
+        if self.expires_at <= self.created_at:
+            msg = "OAuthState.expires_at must be after created_at"
+            raise ValueError(msg)
+        return self
+
 
 class OAuthToken(BaseModel):
-    """OAuth token set stored as encrypted secrets.
+    """OAuth token set returned by an OAuth flow.
+
+    The ``access_token`` and ``refresh_token`` fields carry raw
+    secret values -- they are *transient*, must NOT be serialized
+    to logs or persisted directly, and are expected to be stored
+    via the connection catalog which writes them through the
+    configured secret backend. The ``*_ref`` fields are the
+    opaque handles returned after the catalog stores the tokens.
+
+    Flows return ``OAuthToken`` with raw ``access_token`` /
+    ``refresh_token`` populated and ``*_ref`` set to ``None``; the
+    callback handler (or token manager) then calls
+    ``ConnectionCatalog.store_oauth_tokens`` which persists the
+    secrets and updates the connection with real ``SecretRef``s.
 
     Attributes:
-        access_token_ref: SecretRef for the access token.
-        refresh_token_ref: SecretRef for the refresh token (if present).
+        access_token: Raw access token (transient).
+        refresh_token: Raw refresh token (transient, optional).
+        access_token_ref: SecretRef after persistence.
+        refresh_token_ref: SecretRef after persistence.
         token_type: Token type (usually "Bearer").
         expires_at: When the access token expires.
         scope_granted: Space-separated scopes actually granted.
         issued_at: When the tokens were issued.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(
+        frozen=True,
+        allow_inf_nan=False,
+        # Raw tokens are sensitive -- exclude from repr to keep them
+        # out of accidental logging and exception tracebacks.
+    )
 
-    access_token_ref: SecretRef
+    access_token: str | None = Field(default=None, repr=False, exclude=True)
+    refresh_token: str | None = Field(default=None, repr=False, exclude=True)
+    access_token_ref: SecretRef | None = None
     refresh_token_ref: SecretRef | None = None
     token_type: str = "Bearer"  # noqa: S105
     expires_at: AwareDatetime | None = None
@@ -242,6 +272,6 @@ class CatalogEntry(BaseModel):
     description: str = ""
     npm_package: NotBlankStr | None = None
     required_connection_type: ConnectionType | None = None
-    transport: str = "stdio"
+    transport: Literal["stdio", "streamable_http"] = "stdio"
     capabilities: tuple[str, ...] = ()
     tags: tuple[str, ...] = ()

@@ -117,14 +117,6 @@ class EncryptedSqliteSecretBackend:
                     (secret_id,),
                 )
                 row = await cursor.fetchone()
-        except InvalidToken as exc:
-            logger.exception(
-                SECRET_RETRIEVAL_FAILED,
-                secret_id=secret_id,
-                error="wrong key or corrupted data",
-            )
-            msg = f"Failed to decrypt secret {secret_id}"
-            raise SecretRetrievalError(msg) from exc
         except Exception as exc:
             logger.exception(
                 SECRET_RETRIEVAL_FAILED,
@@ -133,10 +125,20 @@ class EncryptedSqliteSecretBackend:
             )
             msg = f"Failed to retrieve secret {secret_id}"
             raise SecretRetrievalError(msg) from exc
-        else:
-            if row is None:
-                return None
+
+        if row is None:
+            return None
+
+        try:
             return self._fernet.decrypt(row[0])
+        except InvalidToken as exc:
+            logger.exception(
+                SECRET_RETRIEVAL_FAILED,
+                secret_id=secret_id,
+                error="wrong key or corrupted data",
+            )
+            msg = f"Failed to decrypt secret {secret_id}"
+            raise SecretRetrievalError(msg) from exc
 
     async def delete(self, secret_id: str) -> bool:
         """Delete a secret."""
@@ -166,26 +168,72 @@ class EncryptedSqliteSecretBackend:
         old_id: str,
         new_value: bytes,
     ) -> str:
-        """Rotate: store new value under new ID, delete old."""
+        """Rotate: store new value under new ID, delete old.
+
+        If deletion of ``old_id`` fails after ``new_id`` has been
+        written, the new secret is deleted as a best-effort
+        rollback so callers are never left referencing a half-
+        committed rotation. Rollback failures are embedded in the
+        raised ``SecretRotationError`` so the caller can take
+        manual cleanup action if needed.
+        """
         new_id = str(uuid4())
         try:
             await self.store(new_id, new_value)
-            await self.delete(old_id)
-            logger.info(
-                SECRET_ROTATED,
-                old_id=old_id,
-                new_id=new_id,
-            )
         except Exception as exc:
             logger.exception(
                 SECRET_BACKEND_UNAVAILABLE,
                 old_id=old_id,
-                error=str(exc),
+                error=f"store of new secret failed: {exc}",
             )
-            msg = f"Failed to rotate secret {old_id}"
+            msg = f"Failed to store rotated secret (old_id={old_id})"
             raise SecretRotationError(msg) from exc
-        else:
-            return new_id
+
+        try:
+            deleted = await self.delete(old_id)
+        except Exception as exc:
+            logger.exception(
+                SECRET_BACKEND_UNAVAILABLE,
+                old_id=old_id,
+                new_id=new_id,
+                error=f"delete of old secret failed: {exc}",
+            )
+            rollback_note = await self._rollback_new(new_id)
+            msg = (
+                f"Failed to delete old secret {old_id} during rotation; {rollback_note}"
+            )
+            raise SecretRotationError(msg) from exc
+
+        if not deleted:
+            logger.warning(
+                SECRET_BACKEND_UNAVAILABLE,
+                old_id=old_id,
+                new_id=new_id,
+                error="old secret not found at delete time",
+            )
+            rollback_note = await self._rollback_new(new_id)
+            msg = f"Old secret {old_id} not found during rotation; {rollback_note}"
+            raise SecretRotationError(msg)
+
+        logger.info(
+            SECRET_ROTATED,
+            old_id=old_id,
+            new_id=new_id,
+        )
+        return new_id
+
+    async def _rollback_new(self, new_id: str) -> str:
+        """Attempt to delete *new_id* after a failed rotation."""
+        try:
+            await self.delete(new_id)
+        except Exception as rb_exc:
+            logger.exception(
+                SECRET_BACKEND_UNAVAILABLE,
+                new_id=new_id,
+                error=f"rollback delete failed: {rb_exc}",
+            )
+            return f"rollback of new_id={new_id} also failed: {rb_exc}"
+        return f"new_id={new_id} rolled back"
 
     async def close(self) -> None:
         """No-op for SQLite (connections are per-call)."""

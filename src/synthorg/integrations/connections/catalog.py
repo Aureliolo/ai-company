@@ -5,6 +5,7 @@ lookup, credential resolution, and health status management.
 """
 
 import asyncio
+import contextlib
 import copy
 import json
 from datetime import UTC, datetime
@@ -26,6 +27,7 @@ from synthorg.integrations.errors import (
     ConnectionNotFoundError,
     DuplicateConnectionError,
     InvalidConnectionAuthError,
+    SecretRetrievalError,
 )
 from synthorg.observability import get_logger
 from synthorg.observability.events.integrations import (
@@ -35,6 +37,8 @@ from synthorg.observability.events.integrations import (
     CONNECTION_NOT_FOUND,
     CONNECTION_UPDATED,
     CONNECTION_VALIDATION_FAILED,
+    OAUTH_TOKEN_EXCHANGED,
+    SECRET_RETRIEVAL_FAILED,
 )
 from synthorg.persistence.repositories_integrations import (
     ConnectionRepository,  # noqa: TC001
@@ -68,6 +72,11 @@ class ConnectionCatalog:
         self._cache: dict[str, Connection] = {}
         self._cache_lock = asyncio.Lock()
         self._cache_valid = False
+        # Per-name mutation lock used to serialize create/update/
+        # delete/rotate for a given connection. Prevents races that
+        # would otherwise leave orphaned secrets or repo rows.
+        self._name_locks: dict[str, asyncio.Lock] = {}
+        self._name_locks_lock = asyncio.Lock()
 
     async def _ensure_cache(self) -> None:
         """Populate the cache from persistence if invalid."""
@@ -82,6 +91,15 @@ class ConnectionCatalog:
 
     def _invalidate_cache(self) -> None:
         self._cache_valid = False
+
+    async def _lock_for(self, name: str) -> asyncio.Lock:
+        """Return (or create) the mutation lock for a connection name."""
+        async with self._name_locks_lock:
+            lock = self._name_locks.get(name)
+            if lock is None:
+                lock = asyncio.Lock()
+                self._name_locks[name] = lock
+            return lock
 
     async def create(  # noqa: PLR0913
         self,
@@ -115,56 +133,69 @@ class ConnectionCatalog:
             DuplicateConnectionError: If name already exists.
             InvalidConnectionAuthError: If credentials are invalid.
         """
-        await self._ensure_cache()
-        if name in self._cache:
-            logger.warning(
-                CONNECTION_DUPLICATE,
-                connection_name=name,
-            )
-            msg = f"Connection '{name}' already exists"
-            raise DuplicateConnectionError(msg)
+        lock = await self._lock_for(name)
+        async with lock:
+            await self._ensure_cache()
+            if name in self._cache:
+                logger.warning(
+                    CONNECTION_DUPLICATE,
+                    connection_name=name,
+                )
+                msg = f"Connection '{name}' already exists"
+                raise DuplicateConnectionError(msg)
 
-        authenticator = get_authenticator(connection_type)
-        try:
-            authenticator.validate_credentials(credentials)
-        except InvalidConnectionAuthError:
-            logger.warning(
-                CONNECTION_VALIDATION_FAILED,
+            authenticator = get_authenticator(connection_type)
+            try:
+                authenticator.validate_credentials(credentials)
+            except InvalidConnectionAuthError:
+                logger.warning(
+                    CONNECTION_VALIDATION_FAILED,
+                    connection_name=name,
+                    connection_type=connection_type,
+                )
+                raise
+
+            secret_id = str(uuid4())
+            await self._secret_backend.store(
+                secret_id,
+                json.dumps(credentials).encode("utf-8"),
+            )
+
+            secret_ref = SecretRef(
+                secret_id=NotBlankStr(secret_id),
+                backend=NotBlankStr(self._secret_backend.backend_name),
+            )
+            now = datetime.now(UTC)
+            connection = Connection(
+                name=NotBlankStr(name),
+                connection_type=connection_type,
+                auth_method=AuthMethod(auth_method),
+                base_url=NotBlankStr(base_url) if base_url else None,
+                secret_refs=(secret_ref,),
+                health_check_enabled=health_check_enabled,
+                metadata=metadata or {},
+                created_at=now,
+                updated_at=now,
+            )
+            try:
+                await self._repo.save(connection)
+            except Exception:
+                # Compensating cleanup: secret was already stored.
+                logger.exception(
+                    CONNECTION_CREATED,
+                    connection_name=name,
+                    error="repo save failed, deleting orphaned secret",
+                )
+                with contextlib.suppress(Exception):
+                    await self._secret_backend.delete(secret_id)
+                raise
+            self._invalidate_cache()
+            logger.info(
+                CONNECTION_CREATED,
                 connection_name=name,
                 connection_type=connection_type,
             )
-            raise
-
-        secret_id = str(uuid4())
-        await self._secret_backend.store(
-            secret_id,
-            json.dumps(credentials).encode("utf-8"),
-        )
-
-        secret_ref = SecretRef(
-            secret_id=NotBlankStr(secret_id),
-            backend=NotBlankStr(self._secret_backend.backend_name),
-        )
-        now = datetime.now(UTC)
-        connection = Connection(
-            name=NotBlankStr(name),
-            connection_type=connection_type,
-            auth_method=AuthMethod(auth_method),
-            base_url=NotBlankStr(base_url) if base_url else None,
-            secret_refs=(secret_ref,),
-            health_check_enabled=health_check_enabled,
-            metadata=metadata or {},
-            created_at=now,
-            updated_at=now,
-        )
-        await self._repo.save(connection)
-        self._invalidate_cache()
-        logger.info(
-            CONNECTION_CREATED,
-            connection_name=name,
-            connection_type=connection_type,
-        )
-        return connection
+            return connection
 
     async def get(self, name: str) -> Connection | None:
         """Retrieve a connection by name."""
@@ -253,15 +284,30 @@ class ConnectionCatalog:
     async def delete(self, name: str) -> None:
         """Delete a connection and its secrets.
 
+        The repo row is removed first; secrets are only deleted
+        after the repo deletion succeeds, so a failure during
+        secret cleanup leaves the row already removed (and the
+        orphaned secret is logged for follow-up).
+
         Raises:
             ConnectionNotFoundError: If the connection does not exist.
         """
-        existing = await self.get_or_raise(name)
-        for ref in existing.secret_refs:
-            await self._secret_backend.delete(ref.secret_id)
-        await self._repo.delete(name)
-        self._invalidate_cache()
-        logger.info(CONNECTION_DELETED, connection_name=name)
+        lock = await self._lock_for(name)
+        async with lock:
+            existing = await self.get_or_raise(name)
+            await self._repo.delete(name)
+            for ref in existing.secret_refs:
+                try:
+                    await self._secret_backend.delete(ref.secret_id)
+                except Exception:
+                    logger.exception(
+                        CONNECTION_DELETED,
+                        connection_name=name,
+                        secret_id=ref.secret_id,
+                        error="secret delete failed after repo delete",
+                    )
+            self._invalidate_cache()
+            logger.info(CONNECTION_DELETED, connection_name=name)
 
     async def get_credentials(self, name: str) -> dict[str, str]:
         """Retrieve decrypted credentials for a connection.
@@ -271,14 +317,108 @@ class ConnectionCatalog:
 
         Raises:
             ConnectionNotFoundError: If the connection does not exist.
-            SecretRetrievalError: If decryption fails.
+            SecretRetrievalError: If a referenced secret is missing
+                or cannot be decoded.
         """
         conn = await self.get_or_raise(name)
         merged: dict[str, str] = {}
         for ref in conn.secret_refs:
             raw = await self._secret_backend.retrieve(ref.secret_id)
-            if raw is not None:
+            if raw is None:
+                logger.warning(
+                    SECRET_RETRIEVAL_FAILED,
+                    connection_name=name,
+                    secret_id=ref.secret_id,
+                    error="secret not found",
+                )
+                msg = (
+                    f"Secret '{ref.secret_id}' for connection "
+                    f"'{name}' not found in backend"
+                )
+                raise SecretRetrievalError(msg)
+            try:
                 data = json.loads(raw.decode("utf-8"))
-                if isinstance(data, dict):
-                    merged.update(data)
+            except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+                logger.warning(
+                    SECRET_RETRIEVAL_FAILED,
+                    connection_name=name,
+                    secret_id=ref.secret_id,
+                    error=f"malformed secret: {exc}",
+                )
+                msg = f"Secret '{ref.secret_id}' for connection '{name}' is malformed"
+                raise SecretRetrievalError(msg) from exc
+            if not isinstance(data, dict):
+                logger.warning(
+                    SECRET_RETRIEVAL_FAILED,
+                    connection_name=name,
+                    secret_id=ref.secret_id,
+                    error="secret payload is not a dict",
+                )
+                msg = (
+                    f"Secret '{ref.secret_id}' for connection "
+                    f"'{name}' is not a credential dict"
+                )
+                raise SecretRetrievalError(msg)
+            merged.update(data)
         return copy.deepcopy(merged)
+
+    async def store_oauth_tokens(
+        self,
+        name: str,
+        *,
+        access_token: str,
+        refresh_token: str | None = None,
+    ) -> Connection:
+        """Persist OAuth access/refresh tokens via the secret backend.
+
+        Merges the tokens into the connection's existing credential
+        blob (so token_url, client_id, client_secret etc. remain
+        available) and re-stores the merged blob atomically under
+        the same ``SecretRef``.
+
+        Raises:
+            ConnectionNotFoundError: If the connection does not exist.
+        """
+        lock = await self._lock_for(name)
+        async with lock:
+            existing = await self.get_credentials(name)
+            merged = dict(existing)
+            merged["access_token"] = access_token
+            if refresh_token is not None:
+                merged["refresh_token"] = refresh_token
+            conn = await self.get_or_raise(name)
+            if not conn.secret_refs:
+                # No existing secret ref -- create a fresh one.
+                secret_id = str(uuid4())
+                await self._secret_backend.store(
+                    secret_id,
+                    json.dumps(merged).encode("utf-8"),
+                )
+                ref = SecretRef(
+                    secret_id=NotBlankStr(secret_id),
+                    backend=NotBlankStr(self._secret_backend.backend_name),
+                )
+                updated = conn.model_copy(
+                    update={
+                        "secret_refs": (ref,),
+                        "updated_at": datetime.now(UTC),
+                    }
+                )
+            else:
+                # Re-store into the first existing ref.
+                first_ref = conn.secret_refs[0]
+                await self._secret_backend.store(
+                    first_ref.secret_id,
+                    json.dumps(merged).encode("utf-8"),
+                )
+                updated = conn.model_copy(
+                    update={"updated_at": datetime.now(UTC)},
+                )
+            await self._repo.save(updated)
+            self._invalidate_cache()
+            logger.info(
+                OAUTH_TOKEN_EXCHANGED,
+                connection_name=name,
+                has_refresh=refresh_token is not None,
+            )
+            return updated

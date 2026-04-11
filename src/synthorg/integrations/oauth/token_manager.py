@@ -11,8 +11,10 @@ from datetime import UTC, datetime, timedelta
 from synthorg.integrations.connections.catalog import ConnectionCatalog  # noqa: TC001
 from synthorg.integrations.connections.models import (
     AuthMethod,
+    Connection,
     ConnectionStatus,
 )
+from synthorg.integrations.errors import TokenRefreshFailedError
 from synthorg.integrations.oauth.flows.authorization_code import (
     AuthorizationCodeFlow,
 )
@@ -51,26 +53,29 @@ class OAuthTokenManager:
         self._interval = check_interval_seconds
         self._task: asyncio.Task[None] | None = None
         self._flow = AuthorizationCodeFlow()
+        self._lifecycle_lock = asyncio.Lock()
 
     async def start(self) -> None:
         """Start the background refresh loop."""
-        if self._task is not None:
-            return
-        self._task = asyncio.create_task(self._refresh_loop())
-        logger.info(
-            OAUTH_TOKEN_REFRESHED,
-            has_refresh=False,
-            note="token manager started",
-        )
+        async with self._lifecycle_lock:
+            if self._task is not None:
+                return
+            self._task = asyncio.create_task(self._refresh_loop())
+            logger.info(
+                OAUTH_TOKEN_REFRESHED,
+                has_refresh=False,
+                note="token manager started",
+            )
 
     async def stop(self) -> None:
         """Stop the background refresh loop."""
-        if self._task is None:
-            return
-        self._task.cancel()
-        with contextlib.suppress(asyncio.CancelledError):
-            await self._task
-        self._task = None
+        async with self._lifecycle_lock:
+            if self._task is None:
+                return
+            self._task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await self._task
+            self._task = None
 
     async def _refresh_loop(self) -> None:
         """Periodically check and refresh expiring tokens."""
@@ -115,9 +120,87 @@ class OAuthTokenManager:
                     checked_at=now,
                 )
             elif expiry <= threshold:
-                logger.info(
-                    OAUTH_TOKEN_REFRESHED,
-                    connection_name=conn.name,
-                    has_refresh=True,
-                    note="proactive refresh",
-                )
+                await self._refresh_one(conn, now)
+
+    async def _refresh_one(self, conn: Connection, now: datetime) -> None:
+        """Refresh tokens for one connection and persist them.
+
+        Any failure is logged and the connection is flipped to
+        ``DEGRADED``; exceptions are swallowed here so one failing
+        connection never crashes the refresh loop.
+        """
+        try:
+            credentials = await self._catalog.get_credentials(conn.name)
+        except Exception:
+            logger.exception(
+                OAUTH_TOKEN_REFRESH_FAILED,
+                connection_name=conn.name,
+                error="credential load failed",
+            )
+            await self._catalog.update_health(
+                conn.name,
+                status=ConnectionStatus.DEGRADED,
+                checked_at=now,
+            )
+            return
+
+        token_url = credentials.get("token_url", "")
+        client_id = credentials.get("client_id", "")
+        client_secret = credentials.get("client_secret", "")
+        refresh_token = credentials.get("refresh_token", "")
+        if not (token_url and client_id and client_secret and refresh_token):
+            logger.warning(
+                OAUTH_TOKEN_REFRESH_FAILED,
+                connection_name=conn.name,
+                reason="missing refresh credentials",
+            )
+            await self._catalog.update_health(
+                conn.name,
+                status=ConnectionStatus.DEGRADED,
+                checked_at=now,
+            )
+            return
+
+        try:
+            refreshed = await self._flow.refresh_token(
+                token_url=token_url,
+                client_id=client_id,
+                client_secret=client_secret,
+                refresh_token=refresh_token,
+            )
+        except TokenRefreshFailedError:
+            logger.warning(
+                OAUTH_TOKEN_REFRESH_FAILED,
+                connection_name=conn.name,
+            )
+            await self._catalog.update_health(
+                conn.name,
+                status=ConnectionStatus.DEGRADED,
+                checked_at=now,
+            )
+            return
+
+        if not refreshed.access_token:
+            logger.warning(
+                OAUTH_TOKEN_REFRESH_FAILED,
+                connection_name=conn.name,
+                reason="refresh returned no access_token",
+            )
+            return
+
+        await self._catalog.store_oauth_tokens(
+            conn.name,
+            access_token=refreshed.access_token,
+            refresh_token=refreshed.refresh_token,
+        )
+        if refreshed.expires_at is not None:
+            meta_updates = dict(conn.metadata)
+            meta_updates["token_expires_at"] = refreshed.expires_at.isoformat()
+            await self._catalog.update(conn.name, metadata=meta_updates)
+
+        logger.info(
+            OAUTH_TOKEN_REFRESHED,
+            connection_name=conn.name,
+            has_refresh=refreshed.refresh_token is not None,
+            note="proactive refresh completed",
+        )

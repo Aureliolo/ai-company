@@ -11,16 +11,22 @@ from litestar.datastructures import State  # noqa: TC002
 from litestar.params import Parameter
 
 from synthorg.api.dto import ApiResponse
-from synthorg.api.errors import NotFoundError
+from synthorg.api.errors import (
+    ApiValidationError,
+    ConflictError,
+    NotFoundError,
+)
 from synthorg.api.guards import require_read_access, require_write_access
 from synthorg.integrations.connections.catalog import _UNSET
-from synthorg.integrations.connections.models import (  # noqa: TC001
+from synthorg.integrations.connections.models import (
     Connection,
+    ConnectionType,
     HealthReport,
 )
 from synthorg.integrations.errors import (
     ConnectionNotFoundError,
     DuplicateConnectionError,
+    InvalidConnectionAuthError,
 )
 from synthorg.observability import get_logger
 
@@ -75,28 +81,57 @@ class ConnectionsController(Controller):
         state: State,
         data: dict[str, Any],
     ) -> ApiResponse[Connection]:
-        """Create a new connection."""
-        from synthorg.api.errors import ConflictError  # noqa: PLC0415
-        from synthorg.integrations.connections.models import (  # noqa: PLC0415
-            ConnectionType,
-        )
+        """Create a new connection.
+
+        Validates required fields and connection type before
+        delegating to the catalog so clients get a structured
+        400 instead of a 500 on malformed payloads.
+        """
+        name = data.get("name")
+        if not isinstance(name, str) or not name.strip():
+            msg = "Field 'name' is required and must be a non-empty string"
+            raise ApiValidationError(msg)
+
+        connection_type_raw = data.get("connection_type")
+        if not isinstance(connection_type_raw, str) or not connection_type_raw:
+            msg = "Field 'connection_type' is required"
+            raise ApiValidationError(msg)
+        try:
+            connection_type = ConnectionType(connection_type_raw)
+        except ValueError as exc:
+            msg = f"Unknown connection_type '{connection_type_raw}'"
+            raise ApiValidationError(msg) from exc
+
+        credentials = data.get("credentials", {})
+        if not isinstance(credentials, dict):
+            msg = "Field 'credentials' must be an object"
+            raise ApiValidationError(msg)
+
+        metadata = data.get("metadata")
+        if metadata is not None and not isinstance(metadata, dict):
+            msg = "Field 'metadata' must be an object if provided"
+            raise ApiValidationError(msg)
+
+        health_check_enabled = data.get("health_check_enabled", True)
+        if not isinstance(health_check_enabled, bool):
+            msg = "Field 'health_check_enabled' must be a boolean"
+            raise ApiValidationError(msg)
 
         catalog = state["app_state"].connection_catalog
         try:
             conn = await catalog.create(
-                name=data["name"],
-                connection_type=ConnectionType(data["connection_type"]),
+                name=name,
+                connection_type=connection_type,
                 auth_method=data.get("auth_method", "api_key"),
-                credentials=data.get("credentials", {}),
+                credentials=credentials,
                 base_url=data.get("base_url"),
-                metadata=data.get("metadata"),
-                health_check_enabled=data.get(
-                    "health_check_enabled",
-                    True,
-                ),
+                metadata=metadata,
+                health_check_enabled=health_check_enabled,
             )
         except DuplicateConnectionError as exc:
             raise ConflictError(str(exc)) from exc
+        except InvalidConnectionAuthError as exc:
+            raise ApiValidationError(str(exc)) from exc
         return ApiResponse(data=conn)
 
     @patch(

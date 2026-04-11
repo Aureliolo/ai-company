@@ -11,11 +11,11 @@ no distributed benefit, minimal overhead.
 
 import asyncio
 import contextlib
-import time
 from collections import deque
 from collections.abc import Callable  # noqa: TC003
 from datetime import UTC, datetime
 from types import MappingProxyType
+from uuid import uuid4
 
 from synthorg.communication.bus_protocol import MessageBus  # noqa: TC001
 from synthorg.communication.channel import Channel
@@ -28,6 +28,18 @@ from synthorg.observability.events.integrations import (
     RATE_LIMIT_COORDINATOR_STARTED,
     RATE_LIMIT_COORDINATOR_STOPPED,
 )
+
+
+def _wall_clock_seconds() -> float:
+    """Current wall-clock seconds since the Unix epoch.
+
+    Used in preference to ``time.monotonic()`` for cross-worker
+    coordination. Monotonic clocks are process-local, so their
+    values are meaningless when published over the message bus
+    to other workers.
+    """
+    return datetime.now(UTC).timestamp()
+
 
 logger = get_logger(__name__)
 
@@ -58,55 +70,74 @@ class SharedRateLimitCoordinator:
         self._window: deque[float] = deque()
         self._window_lock = asyncio.Lock()
         self._task: asyncio.Task[None] | None = None
-        self._subscriber_id = f"{_SUBSCRIBER_PREFIX}{connection_name}"
+        # Subscriber ID includes a per-instance UUID so multiple
+        # coordinators (whether in separate worker processes or in
+        # the same test process) can coexist on the same bus
+        # without colliding on a shared subscription slot.
+        self._subscriber_id = f"{_SUBSCRIBER_PREFIX}{connection_name}_{uuid4().hex[:8]}"
         self._started = False
+        self._distributed = True
+        self._lifecycle_lock = asyncio.Lock()
 
     async def start(self) -> None:
         """Subscribe and start the polling task."""
-        if self._started:
-            return
-        try:
-            await self._bus.subscribe(
-                _RATELIMIT_CHANNEL.name,
-                self._subscriber_id,
+        async with self._lifecycle_lock:
+            if self._started:
+                return
+            try:
+                await self._bus.subscribe(
+                    _RATELIMIT_CHANNEL.name,
+                    self._subscriber_id,
+                )
+            except Exception:
+                logger.warning(
+                    RATE_LIMIT_COORDINATOR_STARTED,
+                    connection_name=self._connection_name,
+                    error="subscribe failed, falling back to in-process",
+                    exc_info=True,
+                )
+                self._distributed = False
+                self._started = True
+                return
+            self._task = asyncio.create_task(
+                self._poll_loop(),
+                name=f"ratelimit-{self._connection_name}",
             )
-        except Exception:
-            logger.warning(
+            self._distributed = True
+            self._started = True
+            logger.debug(
                 RATE_LIMIT_COORDINATOR_STARTED,
                 connection_name=self._connection_name,
-                error="subscribe failed, falling back to in-process",
-                exc_info=True,
+                max_rpm=self._max_rpm,
             )
-            self._started = True
-            return
-        self._task = asyncio.create_task(
-            self._poll_loop(),
-            name=f"ratelimit-{self._connection_name}",
-        )
-        self._started = True
-        logger.debug(
-            RATE_LIMIT_COORDINATOR_STARTED,
-            connection_name=self._connection_name,
-            max_rpm=self._max_rpm,
-        )
 
     async def stop(self) -> None:
         """Cancel polling and unsubscribe."""
-        if self._task is not None:
-            self._task.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await self._task
-            self._task = None
-        with contextlib.suppress(Exception):
-            await self._bus.unsubscribe(
-                _RATELIMIT_CHANNEL.name,
-                self._subscriber_id,
+        async with self._lifecycle_lock:
+            if self._task is not None:
+                self._task.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await self._task
+                self._task = None
+            try:
+                await self._bus.unsubscribe(
+                    _RATELIMIT_CHANNEL.name,
+                    self._subscriber_id,
+                )
+            except Exception:
+                logger.warning(
+                    RATE_LIMIT_COORDINATOR_STOPPED,
+                    connection_name=self._connection_name,
+                    subscriber_id=self._subscriber_id,
+                    error="unsubscribe failed (swallowing on shutdown)",
+                    exc_info=True,
+                )
+            self._started = False
+            self._distributed = False
+            logger.debug(
+                RATE_LIMIT_COORDINATOR_STOPPED,
+                connection_name=self._connection_name,
             )
-        self._started = False
-        logger.debug(
-            RATE_LIMIT_COORDINATOR_STOPPED,
-            connection_name=self._connection_name,
-        )
 
     async def acquire(self) -> None:
         """Acquire a rate limit slot, publish, and check the window.
@@ -118,7 +149,7 @@ class SharedRateLimitCoordinator:
             await self.start()
 
         async with self._window_lock:
-            now = time.monotonic()
+            now = _wall_clock_seconds()
             self._evict_old(now)
 
             if len(self._window) >= self._max_rpm:
@@ -129,7 +160,7 @@ class SharedRateLimitCoordinator:
                 raise ConnectionRateLimitError(msg)
 
             self._window.append(now)
-        await self._publish_acquire()
+        await self._publish_acquire(now)
 
     def _evict_old(self, now: float) -> None:
         """Remove entries older than 60 seconds."""
@@ -137,7 +168,7 @@ class SharedRateLimitCoordinator:
         while self._window and self._window[0] < cutoff:
             self._window.popleft()
 
-    async def _publish_acquire(self) -> None:
+    async def _publish_acquire(self, acquired_at: float) -> None:
         """Publish an acquire event for other workers."""
         message = Message(
             timestamp=datetime.now(UTC),
@@ -150,7 +181,7 @@ class SharedRateLimitCoordinator:
                     data=MappingProxyType(
                         {
                             "connection_name": self._connection_name,
-                            "timestamp": time.monotonic(),
+                            "timestamp": acquired_at,
                         }
                     ),
                 ),
@@ -163,6 +194,7 @@ class SharedRateLimitCoordinator:
                 connection_name=self._connection_name,
             )
         except Exception:
+            self._distributed = False
             logger.warning(
                 RATE_LIMIT_ACQUIRE_PUBLISHED,
                 connection_name=self._connection_name,
@@ -185,6 +217,13 @@ class SharedRateLimitCoordinator:
             except asyncio.CancelledError:
                 break
             except Exception:
+                logger.warning(
+                    RATE_LIMIT_COORDINATOR_STARTED,
+                    connection_name=self._connection_name,
+                    subscriber_id=self._subscriber_id,
+                    error="poll loop error, retrying after 1s",
+                    exc_info=True,
+                )
                 await asyncio.sleep(1.0)
 
     async def _ingest(self, message: object) -> None:
@@ -205,19 +244,50 @@ class SharedRateLimitCoordinator:
             if isinstance(ts, int | float):
                 async with self._window_lock:
                     self._window.append(float(ts))
-                    self._evict_old(time.monotonic())
+                    self._evict_old(_wall_clock_seconds())
 
 
 _coordinator_factory: Callable[[str], SharedRateLimitCoordinator] | None = None
 _coordinators: dict[str, SharedRateLimitCoordinator] = {}
 
 
-def set_coordinator_factory(
-    factory: Callable[[str], SharedRateLimitCoordinator],
+async def set_coordinator_factory(
+    factory: Callable[[str], SharedRateLimitCoordinator] | None,
 ) -> None:
-    """Set the factory used by the decorator to create coordinators.
+    """Set (or clear) the factory used to create coordinators.
 
     Called from ``auto_wire.py`` after the bus and catalog exist.
+    Any previously-created coordinators are stopped so background
+    poll tasks produced by the old factory don't linger.
+
+    Args:
+        factory: New factory callable, or ``None`` to disable.
+    """
+    global _coordinator_factory  # noqa: PLW0603
+    # Stop and drop every previously-cached coordinator.
+    old = tuple(_coordinators.values())
+    _coordinators.clear()
+    for coordinator in old:
+        try:
+            await coordinator.stop()
+        except Exception:
+            logger.warning(
+                RATE_LIMIT_COORDINATOR_STOPPED,
+                connection_name=coordinator._connection_name,  # noqa: SLF001
+                error="stop failed during factory swap",
+                exc_info=True,
+            )
+    _coordinator_factory = factory
+
+
+def set_coordinator_factory_sync(
+    factory: Callable[[str], SharedRateLimitCoordinator] | None,
+) -> None:
+    """Synchronous factory setter that does NOT tear down old coordinators.
+
+    Use only in startup paths where no coordinators have been
+    created yet. The async ``set_coordinator_factory`` should be
+    preferred when re-wiring after the first acquire.
     """
     global _coordinator_factory  # noqa: PLW0603
     _coordinator_factory = factory

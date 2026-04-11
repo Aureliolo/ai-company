@@ -10,6 +10,9 @@ import re
 import secrets
 
 from synthorg.integrations.errors import PKCEValidationError
+from synthorg.observability import get_logger
+
+logger = get_logger(__name__)
 
 _UNRESERVED_RE = re.compile(r"^[A-Za-z0-9\-._~]+$")
 _VERIFIER_LENGTH = 128
@@ -57,14 +60,27 @@ def validate_code_verifier(verifier: str) -> None:
         PKCEValidationError: If the verifier does not meet RFC 7636
             requirements.
     """
+    from synthorg.observability.events.integrations import (  # noqa: PLC0415
+        OAUTH_PKCE_VALIDATION_FAILED,
+    )
+
     length = len(verifier)
     if length < _MIN_VERIFIER_LENGTH or length > _MAX_VERIFIER_LENGTH:
+        logger.warning(
+            OAUTH_PKCE_VALIDATION_FAILED,
+            error="length out of range",
+            length=length,
+        )
         msg = (
             f"Code verifier must be {_MIN_VERIFIER_LENGTH}-"
             f"{_MAX_VERIFIER_LENGTH} characters, got {length}"
         )
         raise PKCEValidationError(msg)
     if not _UNRESERVED_RE.match(verifier):
+        logger.warning(
+            OAUTH_PKCE_VALIDATION_FAILED,
+            error="invalid characters",
+        )
         msg = "Code verifier contains invalid characters"
         raise PKCEValidationError(msg)
 

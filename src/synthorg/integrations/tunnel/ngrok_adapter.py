@@ -4,6 +4,7 @@ Wraps the ``pyngrok`` library (or ngrok binary) to expose the
 local API server on a public URL for receiving webhooks.
 """
 
+import asyncio
 import os
 
 from synthorg.integrations.errors import TunnelError
@@ -22,6 +23,10 @@ class NgrokAdapter:
 
     Exposes the local API port on a public ngrok URL.
     Requires ``pyngrok`` to be installed (optional dependency).
+
+    All ngrok calls are blocking, so they are offloaded to a
+    worker thread via ``asyncio.to_thread`` to keep the event
+    loop responsive.
 
     Args:
         auth_token_env: Environment variable holding the ngrok auth
@@ -56,6 +61,11 @@ class NgrokAdapter:
                 ngrok,
             )
         except ImportError as exc:
+            logger.warning(
+                TUNNEL_ERROR,
+                error="pyngrok not installed",
+                exc_info=True,
+            )
             msg = (
                 "pyngrok is not installed. Install it with "
                 "'pip install pyngrok' to use the tunnel feature."
@@ -67,7 +77,7 @@ class NgrokAdapter:
             conf.get_default().auth_token = auth_token
 
         try:
-            tunnel = ngrok.connect(self._port, "http")
+            tunnel = await asyncio.to_thread(ngrok.connect, self._port, "http")
             self._tunnel = tunnel
             self._public_url = str(tunnel.public_url)
         except Exception as exc:
@@ -90,7 +100,7 @@ class NgrokAdapter:
         try:
             from pyngrok import ngrok  # noqa: PLC0415
 
-            ngrok.disconnect(self._public_url)
+            await asyncio.to_thread(ngrok.disconnect, self._public_url)
         except Exception:
             logger.exception(TUNNEL_ERROR, error="failed to disconnect")
         self._tunnel = None

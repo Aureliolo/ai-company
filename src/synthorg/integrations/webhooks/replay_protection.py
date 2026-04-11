@@ -4,12 +4,27 @@ Prevents replay attacks by tracking nonces and validating
 timestamps within a configurable window.
 """
 
-import time
+from collections import OrderedDict
+from collections.abc import Callable  # noqa: TC003
 
 from synthorg.observability import get_logger
 from synthorg.observability.events.integrations import WEBHOOK_REPLAY_DETECTED
 
 logger = get_logger(__name__)
+
+_DEFAULT_WINDOW_SECONDS = 300
+_DEFAULT_MAX_ENTRIES = 10_000
+
+
+def _default_clock() -> float:
+    """Wall-clock seconds since the Unix epoch.
+
+    Kept out of the ``time`` import so tests can inject a clock
+    without patching a module-wide name.
+    """
+    import time  # noqa: PLC0415
+
+    return time.time()
 
 
 class ReplayProtector:
@@ -19,15 +34,28 @@ class ReplayProtector:
     - A timestamp outside the configured window.
     - A previously-seen nonce within the window.
 
-    Nonces are evicted when they expire beyond the window.
+    Nonces are evicted when they expire beyond the window. The
+    store is also bounded: once ``max_entries`` is reached, the
+    oldest nonces are dropped in insertion order to prevent an
+    attacker from exhausting memory with unique nonces.
 
     Args:
         window_seconds: Maximum clock skew / replay window.
+        max_entries: Maximum nonces retained at once.
+        clock: Wall-clock source (injectable for deterministic tests).
     """
 
-    def __init__(self, window_seconds: int = 300) -> None:
+    def __init__(
+        self,
+        window_seconds: int = _DEFAULT_WINDOW_SECONDS,
+        *,
+        max_entries: int = _DEFAULT_MAX_ENTRIES,
+        clock: Callable[[], float] = _default_clock,
+    ) -> None:
         self._window = window_seconds
-        self._seen: dict[str, float] = {}
+        self._max_entries = max_entries
+        self._seen: OrderedDict[str, float] = OrderedDict()
+        self._clock = clock
 
     def check(
         self,
@@ -45,7 +73,7 @@ class ReplayProtector:
             ``True`` if the request is safe (not a replay).
             ``False`` if the request should be rejected.
         """
-        now = time.time()
+        now = self._clock()
 
         if timestamp is not None and abs(now - timestamp) > self._window:
             logger.warning(
@@ -66,12 +94,19 @@ class ReplayProtector:
                 )
                 return False
             self._seen[nonce] = now
+            # Bound the store: evict oldest insertion(s) if over limit.
+            while len(self._seen) > self._max_entries:
+                self._seen.popitem(last=False)
 
         return True
 
     def _evict(self, now: float) -> None:
-        """Remove expired nonces."""
+        """Remove nonces older than the window."""
         cutoff = now - self._window
-        expired = [k for k, ts in self._seen.items() if ts < cutoff]
-        for key in expired:
-            del self._seen[key]
+        # OrderedDict preserves insertion order; stop at the first
+        # non-expired entry since later insertions are always newer.
+        while self._seen:
+            nonce, ts = next(iter(self._seen.items()))
+            if ts >= cutoff:
+                break
+            del self._seen[nonce]

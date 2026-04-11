@@ -5,6 +5,7 @@ from datetime import UTC, datetime
 
 import httpx
 
+from synthorg.integrations.connections.catalog import ConnectionCatalog  # noqa: TC001
 from synthorg.integrations.connections.models import (
     Connection,
     ConnectionStatus,
@@ -20,13 +21,50 @@ logger = get_logger(__name__)
 
 _DEFAULT_API_URL = "https://api.github.com"
 _TIMEOUT = 10.0
+_HTTP_OK = 200
 
 
 class GitHubHealthCheck:
     """Health check via ``GET /user`` on the GitHub API."""
 
+    def __init__(self, catalog: ConnectionCatalog | None = None) -> None:
+        self._catalog = catalog
+
+    def bind_catalog(self, catalog: ConnectionCatalog) -> None:
+        """Bind a catalog after construction (see prober registry)."""
+        self._catalog = catalog
+
     async def check(self, connection: Connection) -> HealthReport:
         """Verify the GitHub token is valid via /user endpoint."""
+        now = datetime.now(UTC)
+        if self._catalog is None:
+            logger.warning(
+                HEALTH_CHECK_FAILED,
+                connection_name=connection.name,
+                error="catalog not bound, cannot fetch token",
+            )
+            return HealthReport(
+                connection_name=connection.name,
+                status=ConnectionStatus.UNKNOWN,
+                error_detail="catalog not bound",
+                checked_at=now,
+            )
+
+        credentials = await self._catalog.get_credentials(connection.name)
+        token = credentials.get("token")
+        if not token:
+            logger.warning(
+                HEALTH_CHECK_FAILED,
+                connection_name=connection.name,
+                error="missing GitHub token",
+            )
+            return HealthReport(
+                connection_name=connection.name,
+                status=ConnectionStatus.UNHEALTHY,
+                error_detail="missing GitHub token",
+                checked_at=now,
+            )
+
         api_url = connection.base_url or _DEFAULT_API_URL
         url = f"{api_url}/user"
         start = time.monotonic()
@@ -35,15 +73,13 @@ class GitHubHealthCheck:
                 resp = await client.get(
                     url,
                     headers={
-                        "Authorization": (
-                            f"Bearer {connection.metadata.get('token', '')}"
-                        ),
+                        "Authorization": f"Bearer {token}",
                         "Accept": "application/vnd.github+json",
                     },
                 )
             elapsed = (time.monotonic() - start) * 1000
-            if resp.status_code == 200:  # noqa: PLR2004
-                logger.debug(
+            if resp.status_code == _HTTP_OK:
+                logger.info(
                     HEALTH_CHECK_PASSED,
                     connection_name=connection.name,
                     latency_ms=elapsed,
@@ -63,7 +99,7 @@ class GitHubHealthCheck:
             )
         except httpx.HTTPError as exc:
             elapsed = (time.monotonic() - start) * 1000
-            logger.debug(
+            logger.warning(
                 HEALTH_CHECK_FAILED,
                 connection_name=connection.name,
                 error=str(exc),

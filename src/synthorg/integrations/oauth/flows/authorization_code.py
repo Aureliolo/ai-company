@@ -1,5 +1,6 @@
 """OAuth 2.1 authorization code flow with PKCE."""
 
+import json
 import secrets as stdlib_secrets
 from datetime import UTC, datetime, timedelta
 from urllib.parse import urlencode
@@ -10,7 +11,6 @@ from synthorg.core.types import NotBlankStr
 from synthorg.integrations.connections.models import (
     OAuthState,
     OAuthToken,
-    SecretRef,
 )
 from synthorg.integrations.errors import (
     TokenExchangeFailedError,
@@ -124,7 +124,7 @@ class AuthorizationCodeFlow:
                 resp = await client.post(token_url, data=payload)
                 resp.raise_for_status()
                 data = resp.json()
-        except httpx.HTTPError as exc:
+        except (httpx.HTTPError, json.JSONDecodeError) as exc:
             logger.exception(
                 OAUTH_TOKEN_EXCHANGE_FAILED,
                 error=str(exc),
@@ -145,7 +145,8 @@ class AuthorizationCodeFlow:
         """Refresh an access token.
 
         Raises:
-            TokenRefreshFailedError: If the refresh fails.
+            TokenRefreshFailedError: If the refresh fails or the
+                response cannot be parsed.
         """
         payload = {
             "grant_type": "refresh_token",
@@ -158,7 +159,7 @@ class AuthorizationCodeFlow:
                 resp = await client.post(token_url, data=payload)
                 resp.raise_for_status()
                 data = resp.json()
-        except httpx.HTTPError as exc:
+        except (httpx.HTTPError, json.JSONDecodeError) as exc:
             logger.exception(
                 OAUTH_TOKEN_REFRESH_FAILED,
                 error=str(exc),
@@ -166,14 +167,28 @@ class AuthorizationCodeFlow:
             msg = f"Token refresh failed: {exc}"
             raise TokenRefreshFailedError(msg) from exc
 
-        return self._parse_token_response(data, "refresh")
+        try:
+            return self._parse_token_response(data, "refresh")
+        except TokenExchangeFailedError as exc:
+            # Normalize refresh failures to the refresh error domain.
+            logger.exception(
+                OAUTH_TOKEN_REFRESH_FAILED,
+                error=str(exc),
+            )
+            raise TokenRefreshFailedError(str(exc)) from exc
 
     @staticmethod
     def _parse_token_response(
         data: dict[str, object],
         operation: str,
     ) -> OAuthToken:
-        """Parse a token endpoint response into an OAuthToken."""
+        """Parse a token endpoint response into an OAuthToken.
+
+        Returns an ``OAuthToken`` with raw ``access_token`` /
+        ``refresh_token`` populated. The caller is responsible
+        for persisting them via
+        ``ConnectionCatalog.store_oauth_tokens``.
+        """
         access_token = str(data.get("access_token", ""))
         if not access_token:
             msg = f"No access_token in {operation} response"
@@ -185,24 +200,18 @@ class AuthorizationCodeFlow:
             expires_at = datetime.now(UTC) + timedelta(seconds=expires_in)
 
         refresh = data.get("refresh_token")
-        refresh_ref = None
+        refresh_raw: str | None = None
         if refresh and isinstance(refresh, str):
-            refresh_ref = SecretRef(
-                secret_id=NotBlankStr("pending-refresh"),
-                backend=NotBlankStr("pending"),
-            )
+            refresh_raw = refresh
 
         event = (
             OAUTH_TOKEN_EXCHANGED if operation == "exchange" else OAUTH_TOKEN_REFRESHED
         )
-        logger.info(event, has_refresh=refresh_ref is not None)
+        logger.info(event, has_refresh=refresh_raw is not None)
 
         return OAuthToken(
-            access_token_ref=SecretRef(
-                secret_id=NotBlankStr("pending-access"),
-                backend=NotBlankStr("pending"),
-            ),
-            refresh_token_ref=refresh_ref,
+            access_token=access_token,
+            refresh_token=refresh_raw,
             token_type=str(data.get("token_type", "Bearer")),
             expires_at=expires_at,
             scope_granted=str(data.get("scope", "")),

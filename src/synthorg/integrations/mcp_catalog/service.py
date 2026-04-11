@@ -44,7 +44,13 @@ class CatalogService:
         self._loaded = False
 
     def _load(self) -> None:
-        """Load the catalog from disk (lazy, once)."""
+        """Load the catalog from disk (lazy, once).
+
+        A corrupt or missing bundled catalog is a release-time
+        regression, not a runtime degradation: log the failure
+        with full traceback and re-raise so callers see an error
+        instead of silently reading an empty catalog.
+        """
         if self._loaded:
             return
         try:
@@ -71,13 +77,13 @@ class CatalogService:
                         tags=tuple(s.get("tags", ())),
                     ),
                 )
-            self._entries = tuple(entries)
         except json.JSONDecodeError, KeyError, FileNotFoundError:
             logger.exception(
                 MCP_SERVER_INSTALL_FAILED,
                 error="failed to load bundled catalog",
             )
-            self._entries = ()
+            raise
+        self._entries = tuple(entries)
         self._loaded = True
 
     async def browse(self) -> tuple[CatalogEntry, ...]:

@@ -10,7 +10,7 @@ from datetime import UTC, datetime
 from synthorg.integrations.connections.catalog import ConnectionCatalog  # noqa: TC001
 from synthorg.integrations.connections.models import ConnectionStatus
 from synthorg.integrations.health.models import HealthReport
-from synthorg.integrations.health.prober import _CHECK_REGISTRY
+from synthorg.integrations.health.prober import get_health_checker
 from synthorg.observability import get_logger
 from synthorg.observability.events.integrations import HEALTH_CHECK_FAILED
 
@@ -34,7 +34,7 @@ async def check_connection_health(
         ConnectionNotFoundError: If the connection does not exist.
     """
     conn = await catalog.get_or_raise(name)
-    checker = _CHECK_REGISTRY.get(conn.connection_type)
+    checker = get_health_checker(conn.connection_type)
     now = datetime.now(UTC)
 
     if checker is None:

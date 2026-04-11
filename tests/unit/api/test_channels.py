@@ -4,6 +4,7 @@ import pytest
 
 from synthorg.api.channels import (
     ALL_CHANNELS,
+    BUDGET_CHANNELS,
     CHANNEL_AGENTS,
     CHANNEL_APPROVALS,
     CHANNEL_ARTIFACTS,
@@ -14,11 +15,13 @@ from synthorg.api.channels import (
     CHANNEL_MEETINGS,
     CHANNEL_MESSAGES,
     CHANNEL_PROJECTS,
+    CHANNEL_RATELIMIT,
     CHANNEL_REQUESTS,
     CHANNEL_REVIEWS,
     CHANNEL_SIMULATIONS,
     CHANNEL_SYSTEM,
     CHANNEL_TASKS,
+    CHANNEL_WEBHOOKS,
     create_channels_plugin,
     extract_user_id,
     is_user_channel,
@@ -52,7 +55,32 @@ class TestChannels:
         assert channel in ALL_CHANNELS
 
     def test_all_channels_has_expected_entries(self) -> None:
-        assert len(ALL_CHANNELS) == 17
+        expected = {
+            CHANNEL_TASKS,
+            CHANNEL_AGENTS,
+            CHANNEL_BUDGET,
+            CHANNEL_MESSAGES,
+            CHANNEL_SYSTEM,
+            CHANNEL_APPROVALS,
+            CHANNEL_MEETINGS,
+            CHANNEL_ARTIFACTS,
+            CHANNEL_PROJECTS,
+            CHANNEL_COMPANY,
+            CHANNEL_DEPARTMENTS,
+            CHANNEL_CLIENTS,
+            CHANNEL_REQUESTS,
+            CHANNEL_SIMULATIONS,
+            CHANNEL_REVIEWS,
+            CHANNEL_WEBHOOKS,
+            CHANNEL_RATELIMIT,
+        }
+        assert set(ALL_CHANNELS) == expected
+
+    def test_budget_channels_include_sensitive_integration_channels(self) -> None:
+        """``#webhooks`` and ``#ratelimit`` must be restricted to system roles."""
+        assert CHANNEL_BUDGET in BUDGET_CHANNELS
+        assert CHANNEL_WEBHOOKS in BUDGET_CHANNELS
+        assert CHANNEL_RATELIMIT in BUDGET_CHANNELS
 
     def test_create_channels_plugin(self) -> None:
         plugin = create_channels_plugin()

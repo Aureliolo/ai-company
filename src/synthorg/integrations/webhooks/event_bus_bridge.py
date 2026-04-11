@@ -4,6 +4,7 @@ Publishes verified webhook events onto the SynthOrg message bus
 so that ``ExternalTriggerStrategy`` and other consumers can react.
 """
 
+import copy
 from datetime import UTC, datetime
 from types import MappingProxyType
 from typing import Any
@@ -32,11 +33,18 @@ async def publish_webhook_event(
 ) -> None:
     """Publish a verified webhook event to the message bus.
 
+    A verified webhook must not be silently dropped on publish
+    failure: if the bus rejects the message, the exception is
+    logged and re-raised so the caller returns a 5xx and the
+    sender can retry.
+
     Args:
         bus: The message bus instance.
         connection_name: Source connection name.
         event_type: Provider-specific event type.
-        payload: Webhook payload dict.
+        payload: Webhook payload dict -- deep-copied before being
+            frozen via ``MappingProxyType`` so downstream consumers
+            cannot mutate the original.
     """
     message = Message(
         timestamp=datetime.now(UTC),
@@ -50,7 +58,7 @@ async def publish_webhook_event(
                     {
                         "connection_name": connection_name,
                         "event_type": event_type,
-                        "payload": payload,
+                        "payload": copy.deepcopy(payload),
                         "received_at": datetime.now(UTC).isoformat(),
                     }
                 ),
@@ -59,14 +67,15 @@ async def publish_webhook_event(
     )
     try:
         await bus.publish(message)
-        logger.info(
-            WEBHOOK_EVENT_PUBLISHED,
-            connection_name=connection_name,
-            event_type=event_type,
-        )
     except Exception:
         logger.exception(
             WEBHOOK_EVENT_PUBLISH_FAILED,
             connection_name=connection_name,
             event_type=event_type,
         )
+        raise
+    logger.info(
+        WEBHOOK_EVENT_PUBLISHED,
+        connection_name=connection_name,
+        event_type=event_type,
+    )

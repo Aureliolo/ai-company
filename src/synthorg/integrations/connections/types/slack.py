@@ -2,6 +2,12 @@
 
 from synthorg.integrations.connections.models import ConnectionType
 from synthorg.integrations.errors import InvalidConnectionAuthError
+from synthorg.observability import get_logger
+from synthorg.observability.events.integrations import (
+    CONNECTION_VALIDATION_FAILED,
+)
+
+logger = get_logger(__name__)
 
 
 class SlackAuthenticator:
@@ -23,6 +29,12 @@ class SlackAuthenticator:
     ) -> None:
         """Validate credential fields."""
         if "token" not in credentials or not credentials["token"].strip():
+            logger.warning(
+                CONNECTION_VALIDATION_FAILED,
+                connection_type=str(ConnectionType.SLACK),
+                field="token",
+                error="missing or blank",
+            )
             msg = "Slack connection requires a 'token' field"
             raise InvalidConnectionAuthError(msg)
 

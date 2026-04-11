@@ -7,11 +7,17 @@ signatures, and publishes to the message bus.
 import json
 from typing import Any
 
-from litestar import Controller, Request, Response, get, post
+from litestar import Controller, Request, get, post
 from litestar.datastructures import State  # noqa: TC002
 from litestar.params import Parameter
 
 from synthorg.api.dto import ApiResponse
+from synthorg.api.errors import (
+    ApiValidationError,
+    ConflictError,
+    NotFoundError,
+    UnauthorizedError,
+)
 from synthorg.api.guards import require_read_access
 from synthorg.integrations.connections.models import WebhookReceipt  # noqa: TC001
 from synthorg.integrations.webhooks.event_bus_bridge import (
@@ -28,7 +34,7 @@ from synthorg.observability.events.integrations import (
 
 logger = get_logger(__name__)
 
-_replay_protector = ReplayProtector(window_seconds=300)
+_replay_protector = ReplayProtector(window_seconds=300, max_entries=10_000)
 
 
 class WebhooksController(Controller):
@@ -48,19 +54,23 @@ class WebhooksController(Controller):
         request: Request[Any, Any, Any],
         connection_name: str,
         event_type: str,
-    ) -> Response[dict[str, object]]:
+    ) -> ApiResponse[dict[str, object]]:
         """Receive and verify a webhook event.
 
-        Returns 202 Accepted on success, 401 on signature failure,
-        409 on replay detection.
+        Returns 202 Accepted on success. Raises structured errors
+        (404 on unknown connection, 401 on missing or failed
+        signature, 400 on malformed timestamp, 409 on replay).
         """
         catalog = state["app_state"].connection_catalog
         conn = await catalog.get(connection_name)
         if conn is None:
-            return Response(
-                content={"error": "connection not found"},
-                status_code=404,
+            logger.warning(
+                WEBHOOK_REJECTED,
+                connection_name=connection_name,
+                reason="connection not found",
             )
+            msg = f"Connection '{connection_name}' not found"
+            raise NotFoundError(msg)
 
         logger.info(
             WEBHOOK_RECEIVED,
@@ -71,7 +81,7 @@ class WebhooksController(Controller):
         body = await request.body()
         headers = {k.lower(): v for k, v in request.headers.items()}
 
-        # Signature verification
+        # Signature verification -- fail closed when secret missing.
         verifier = get_verifier(conn.connection_type)
         credentials = await catalog.get_credentials(connection_name)
         signing_secret = credentials.get(
@@ -79,50 +89,64 @@ class WebhooksController(Controller):
             credentials.get("webhook_secret", ""),
         )
 
-        if signing_secret:
-            valid = await verifier.verify(
-                body=body,
-                headers=headers,
-                secret=signing_secret,
+        if not signing_secret:
+            logger.warning(
+                WEBHOOK_REJECTED,
+                connection_name=connection_name,
+                reason="signing secret not configured",
             )
-            if not valid:
+            msg = (
+                "Webhook signing secret is not configured for this "
+                "connection; request rejected"
+            )
+            raise UnauthorizedError(msg)
+
+        valid = await verifier.verify(
+            body=body,
+            headers=headers,
+            secret=signing_secret,
+        )
+        if not valid:
+            logger.warning(
+                WEBHOOK_REJECTED,
+                connection_name=connection_name,
+                reason="signature verification failed",
+            )
+            msg = "Signature verification failed"
+            raise UnauthorizedError(msg)
+
+        # Replay protection -- parse timestamp defensively.
+        nonce = headers.get("x-nonce") or headers.get("x-request-id")
+        timestamp_str = headers.get("x-timestamp", "")
+        timestamp: float | None = None
+        if timestamp_str:
+            try:
+                timestamp = float(timestamp_str)
+            except ValueError:
                 logger.warning(
                     WEBHOOK_REJECTED,
                     connection_name=connection_name,
-                    reason="signature verification failed",
+                    reason="malformed x-timestamp header",
                 )
-                return Response(
-                    content={"error": "signature verification failed"},
-                    status_code=401,
-                )
+                msg = "Malformed x-timestamp header"
+                raise ApiValidationError(msg) from None
 
-        # Replay protection
-        nonce = headers.get("x-nonce") or headers.get(
-            "x-request-id",
-        )
-        timestamp_str = headers.get("x-timestamp", "")
-        timestamp = float(timestamp_str) if timestamp_str else None
-        if not _replay_protector.check(
-            nonce=nonce,
-            timestamp=timestamp,
-        ):
+        if not _replay_protector.check(nonce=nonce, timestamp=timestamp):
             logger.warning(
                 WEBHOOK_REJECTED,
                 connection_name=connection_name,
                 reason="replay detected",
             )
-            return Response(
-                content={"error": "replay detected"},
-                status_code=409,
-            )
+            msg = "Replay detected (duplicate nonce or stale timestamp)"
+            raise ConflictError(msg)
 
-        # Parse payload
+        # Parse payload (best-effort -- unparseable stays raw).
         try:
             payload = json.loads(body)
         except json.JSONDecodeError, UnicodeDecodeError:
             payload = {"raw": body.decode("utf-8", errors="replace")}
 
-        # Publish to message bus
+        # Publish to message bus.
         bus = state["app_state"].message_bus
         await publish_webhook_event(
             bus=bus,
@@ -136,9 +160,8 @@ class WebhooksController(Controller):
             connection_name=connection_name,
             event_type=event_type,
         )
-        return Response(
-            content={"status": "accepted", "event_type": event_type},
-            status_code=202,
+        return ApiResponse(
+            data={"status": "accepted", "event_type": event_type},
         )
 
     @get(

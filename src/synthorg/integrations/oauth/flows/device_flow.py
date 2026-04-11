@@ -1,15 +1,12 @@
 """OAuth 2.1 device authorization flow (RFC 8628)."""
 
 import asyncio
+import json
 from datetime import UTC, datetime, timedelta
 
 import httpx
 
-from synthorg.core.types import NotBlankStr
-from synthorg.integrations.connections.models import (
-    OAuthToken,
-    SecretRef,
-)
+from synthorg.integrations.connections.models import OAuthToken
 from synthorg.integrations.errors import (
     DeviceFlowTimeoutError,
     TokenExchangeFailedError,
@@ -115,7 +112,7 @@ class DeviceFlow:
                 )
                 resp.raise_for_status()
                 data = resp.json()
-        except httpx.HTTPError as exc:
+        except (httpx.HTTPError, json.JSONDecodeError) as exc:
             logger.exception(
                 OAUTH_TOKEN_EXCHANGE_FAILED,
                 error=str(exc),
@@ -123,9 +120,10 @@ class DeviceFlow:
             msg = f"Device code request failed: {exc}"
             raise TokenExchangeFailedError(msg) from exc
 
+        # user_code is an active credential -- do not log it at
+        # INFO. Only the verification URI is safe to surface.
         logger.info(
             OAUTH_DEVICE_FLOW_STARTED,
-            user_code=data.get("user_code"),
             verification_uri=data.get("verification_uri"),
         )
         return DeviceFlowResult(
@@ -181,7 +179,7 @@ class DeviceFlow:
                 async with httpx.AsyncClient(timeout=30) as client:
                     resp = await client.post(token_url, data=payload)
                     data = resp.json()
-            except httpx.HTTPError as exc:
+            except (httpx.HTTPError, json.JSONDecodeError) as exc:
                 logger.exception(
                     OAUTH_TOKEN_EXCHANGE_FAILED,
                     error=str(exc),
@@ -212,18 +210,8 @@ class DeviceFlow:
                     )
                 refresh = data.get("refresh_token")
                 return OAuthToken(
-                    access_token_ref=SecretRef(
-                        secret_id=NotBlankStr("pending-access"),
-                        backend=NotBlankStr("pending"),
-                    ),
-                    refresh_token_ref=(
-                        SecretRef(
-                            secret_id=NotBlankStr("pending-refresh"),
-                            backend=NotBlankStr("pending"),
-                        )
-                        if refresh
-                        else None
-                    ),
+                    access_token=str(access_token),
+                    refresh_token=(str(refresh) if refresh else None),
                     token_type=str(
                         data.get("token_type", "Bearer"),
                     ),

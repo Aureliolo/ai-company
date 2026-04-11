@@ -51,35 +51,46 @@ class WebhookEventBridge:
         self._bus = bus
         self._scheduler = ceremony_scheduler
         self._task: asyncio.Task[None] | None = None
+        self._lifecycle_lock = asyncio.Lock()
 
     async def start(self) -> None:
         """Subscribe and start the polling task."""
-        if self._task is not None:
-            return
-        await self._bus.subscribe(
-            WEBHOOK_CHANNEL.name,
-            _SUBSCRIBER_ID,
-        )
-        self._task = asyncio.create_task(
-            self._poll_loop(),
-            name="webhook-event-bridge",
-        )
-        logger.info(WEBHOOK_BRIDGE_STARTED)
-
-    async def stop(self) -> None:
-        """Cancel the polling task and unsubscribe."""
-        if self._task is None:
-            return
-        self._task.cancel()
-        with contextlib.suppress(asyncio.CancelledError):
-            await self._task
-        self._task = None
-        with contextlib.suppress(Exception):
-            await self._bus.unsubscribe(
+        async with self._lifecycle_lock:
+            if self._task is not None:
+                return
+            await self._bus.subscribe(
                 WEBHOOK_CHANNEL.name,
                 _SUBSCRIBER_ID,
             )
-        logger.info(WEBHOOK_BRIDGE_STOPPED)
+            self._task = asyncio.create_task(
+                self._poll_loop(),
+                name="webhook-event-bridge",
+            )
+            logger.info(WEBHOOK_BRIDGE_STARTED)
+
+    async def stop(self) -> None:
+        """Cancel the polling task and unsubscribe."""
+        async with self._lifecycle_lock:
+            if self._task is None:
+                return
+            self._task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await self._task
+            try:
+                await self._bus.unsubscribe(
+                    WEBHOOK_CHANNEL.name,
+                    _SUBSCRIBER_ID,
+                )
+            except Exception:
+                logger.warning(
+                    WEBHOOK_BRIDGE_STOPPED,
+                    subscriber_id=_SUBSCRIBER_ID,
+                    channel=WEBHOOK_CHANNEL.name,
+                    error="unsubscribe failed (swallowing on shutdown)",
+                    exc_info=True,
+                )
+            self._task = None
+            logger.info(WEBHOOK_BRIDGE_STOPPED)
 
     async def _poll_loop(self) -> None:
         """Poll ``#webhooks`` and forward events."""
@@ -96,7 +107,7 @@ class WebhookEventBridge:
                 consecutive_errors = 0
                 await self._forward(envelope.message)
             except asyncio.CancelledError:
-                break
+                raise
             except Exception:
                 consecutive_errors += 1
                 if consecutive_errors >= _MAX_CONSECUTIVE_ERRORS:
@@ -104,7 +115,10 @@ class WebhookEventBridge:
                         WEBHOOK_BRIDGE_POLL_ERROR,
                         error="too many consecutive errors, stopping",
                     )
-                    break
+                    # Clear the task reference so ``start()`` can
+                    # be called again to re-subscribe after recovery.
+                    self._task = None
+                    return
                 logger.warning(
                     WEBHOOK_BRIDGE_POLL_ERROR,
                     consecutive_errors=consecutive_errors,

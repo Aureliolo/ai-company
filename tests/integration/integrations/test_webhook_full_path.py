@@ -1,11 +1,124 @@
-"""Webhook end-to-end: verify the bus bridge is wired."""
+"""Webhook end-to-end: bus publish -> bridge forward -> strategy call.
+
+Exercises the full path required by issue #246 acceptance criterion:
+``WebhookEventBridge subscribes to #webhooks and forwards events into
+ExternalTriggerStrategy.on_external_event``.
+
+The test uses the in-process ``InMemoryMessageBus`` together with a
+spy ceremony scheduler that yields a spy ``ExternalTriggerStrategy``.
+Publishing to ``#webhooks`` must trigger ``on_external_event`` with
+the correct event_type and payload.
+"""
+
+import asyncio
+from typing import Any
 
 import pytest
 
-from synthorg.integrations.webhooks.event_bus_bridge import WEBHOOK_CHANNEL
+from synthorg.communication.bus.memory import InMemoryMessageBus
+from synthorg.engine.workflow.strategies.external_trigger import (
+    ExternalTriggerStrategy,
+)
+from synthorg.engine.workflow.webhook_bridge import WebhookEventBridge
+from synthorg.integrations.webhooks.event_bus_bridge import (
+    WEBHOOK_CHANNEL,
+    publish_webhook_event,
+)
+
+
+class _SpyExternalTriggerStrategy(ExternalTriggerStrategy):  # type: ignore[misc]
+    """Minimal spy strategy that records every ``on_external_event`` call."""
+
+    def __init__(self) -> None:
+        self.calls: list[tuple[object, str, dict[str, Any]]] = []
+
+    async def on_external_event(
+        self,
+        sprint: object,
+        event_type: str,
+        payload: dict[str, Any],
+    ) -> None:
+        self.calls.append((sprint, event_type, payload))
+
+
+class _SpyCeremonyScheduler:
+    """Stand-in for ``CeremonyScheduler`` returning a fixed strategy/sprint."""
+
+    def __init__(
+        self,
+        strategy: _SpyExternalTriggerStrategy | None,
+        sprint: object | None,
+    ) -> None:
+        self._strategy = strategy
+        self._sprint = sprint
+
+    async def get_active_info(
+        self,
+    ) -> tuple[object | None, object | None]:
+        return self._strategy, self._sprint
 
 
 @pytest.mark.integration
-class TestWebhookBusWiring:
+class TestWebhookFullPath:
+    """End-to-end: publish to the bus, assert the bridge forwards."""
+
     async def test_webhook_channel_name(self) -> None:
+        """Contract check: the #webhooks channel name never changes."""
         assert WEBHOOK_CHANNEL.name == "#webhooks"
+
+    async def test_publish_triggers_on_external_event(
+        self,
+        memory_bus: InMemoryMessageBus,
+    ) -> None:
+        strategy = _SpyExternalTriggerStrategy()
+        sprint = object()
+        scheduler = _SpyCeremonyScheduler(strategy, sprint)
+        bridge = WebhookEventBridge(
+            bus=memory_bus,
+            ceremony_scheduler=scheduler,  # type: ignore[arg-type]
+        )
+        await bridge.start()
+        try:
+            await publish_webhook_event(
+                bus=memory_bus,
+                connection_name="conn-1",
+                event_type="issues.opened",
+                payload={"number": 42, "title": "hello"},
+            )
+            # Wait for the bridge to consume the message (poll timeout 1s).
+            for _ in range(20):
+                if strategy.calls:
+                    break
+                await asyncio.sleep(0.1)
+        finally:
+            await bridge.stop()
+
+        assert len(strategy.calls) == 1
+        forwarded_sprint, event_type, payload = strategy.calls[0]
+        assert forwarded_sprint is sprint
+        assert event_type == "issues.opened"
+        assert payload == {"number": 42, "title": "hello"}
+
+    async def test_publish_with_no_active_strategy_is_silently_dropped(
+        self,
+        memory_bus: InMemoryMessageBus,
+    ) -> None:
+        scheduler = _SpyCeremonyScheduler(strategy=None, sprint=None)
+        bridge = WebhookEventBridge(
+            bus=memory_bus,
+            ceremony_scheduler=scheduler,  # type: ignore[arg-type]
+        )
+        await bridge.start()
+        try:
+            await publish_webhook_event(
+                bus=memory_bus,
+                connection_name="conn-2",
+                event_type="test",
+                payload={},
+            )
+            # Give the bridge a chance to process.
+            await asyncio.sleep(0.3)
+        finally:
+            await bridge.stop()
+        # No crash is the success condition -- bridge must not raise
+        # when there is no active sprint/strategy.

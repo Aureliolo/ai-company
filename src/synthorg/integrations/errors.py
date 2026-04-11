@@ -2,11 +2,21 @@
 
 All integration errors inherit from ``IntegrationError`` so callers
 can catch the entire family with a single except clause.
+
+Errors carry an ``is_retryable`` class attribute that mirrors the
+provider resilience layer's convention: ``True`` means transient
+(network, timeout, rate-limit) and safe to retry, ``False`` means
+deterministic (bad config, invalid state, missing credentials) and
+should propagate.
 """
 
 
 class IntegrationError(Exception):
     """Base exception for all integration operations."""
+
+    # Default: deterministic failure -- do NOT retry. Subclasses
+    # representing transient failures override this.
+    is_retryable: bool = False
 
 
 # -- Connection errors ---------------------------------------------------
@@ -27,6 +37,8 @@ class InvalidConnectionAuthError(IntegrationError):
 class ConnectionHealthError(IntegrationError):
     """A health check operation failed."""
 
+    is_retryable = True
+
 
 # -- Secret errors -------------------------------------------------------
 
@@ -34,13 +46,19 @@ class ConnectionHealthError(IntegrationError):
 class SecretRetrievalError(IntegrationError):
     """A secret could not be retrieved from the backend."""
 
+    is_retryable = True
+
 
 class SecretStorageError(IntegrationError):
     """A secret could not be stored in the backend."""
 
+    is_retryable = True
+
 
 class SecretRotationError(IntegrationError):
     """A secret rotation operation failed."""
+
+    is_retryable = True
 
 
 class MasterKeyError(IntegrationError):
@@ -59,11 +77,23 @@ class OAuthFlowError(OAuthError):
 
 
 class TokenExchangeFailedError(OAuthError):
-    """The authorization code could not be exchanged for tokens."""
+    """The authorization code could not be exchanged for tokens.
+
+    Transient -- the token endpoint may have been temporarily
+    unavailable, rate-limited, or returned a non-JSON body.
+    """
+
+    is_retryable = True
 
 
 class TokenRefreshFailedError(OAuthError):
-    """A token refresh attempt failed."""
+    """A token refresh attempt failed.
+
+    Transient -- the refresh endpoint call failed or returned
+    an unusable response. Callers should back off and retry.
+    """
+
+    is_retryable = True
 
 
 class InvalidStateError(OAuthError):
@@ -107,12 +137,16 @@ class WebhookProcessingError(WebhookError):
 class ConnectionRateLimitError(IntegrationError):
     """The connection's rate limit has been exceeded."""
 
+    is_retryable = True
+
 
 # -- Tunnel errors -------------------------------------------------------
 
 
 class TunnelError(IntegrationError):
     """An error occurred starting or operating the tunnel."""
+
+    is_retryable = True
 
 
 # -- MCP catalog errors --------------------------------------------------

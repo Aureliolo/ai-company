@@ -7,7 +7,7 @@ from litestar import Controller, get, post
 from litestar.datastructures import State  # noqa: TC002
 
 from synthorg.api.dto import ApiResponse
-from synthorg.api.guards import require_write_access
+from synthorg.api.guards import require_read_access, require_write_access
 from synthorg.integrations.errors import TunnelError
 from synthorg.observability import get_logger
 
@@ -57,6 +57,7 @@ class TunnelController(Controller):
 
     @get(
         "/status",
+        guards=[require_read_access],
         summary="Get tunnel status",
     )
     async def get_status(

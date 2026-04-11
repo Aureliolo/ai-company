@@ -34,7 +34,7 @@ class SmtpHealthCheck:
             )
         except Exception as exc:
             elapsed = (time.monotonic() - start) * 1000
-            logger.debug(
+            logger.warning(
                 HEALTH_CHECK_FAILED,
                 connection_name=connection.name,
                 error=str(exc),
@@ -59,7 +59,7 @@ class SmtpHealthCheck:
                 code, _ = smtp.ehlo()
             elapsed = (time.monotonic() - start) * 1000
             if 200 <= code < 300:  # noqa: PLR2004
-                logger.debug(
+                logger.info(
                     HEALTH_CHECK_PASSED,
                     connection_name=connection.name,
                     latency_ms=elapsed,

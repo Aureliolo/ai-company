@@ -75,6 +75,7 @@ if TYPE_CHECKING:
     from synthorg.engine.workflow.webhook_bridge import WebhookEventBridge
     from synthorg.integrations.connections.catalog import ConnectionCatalog
     from synthorg.integrations.health.prober import HealthProberService
+    from synthorg.integrations.mcp_catalog.service import CatalogService
     from synthorg.integrations.oauth.token_manager import OAuthTokenManager
     from synthorg.integrations.tunnel.ngrok_adapter import NgrokAdapter
 
@@ -115,6 +116,7 @@ class AppState:
         "_fine_tune_orchestrator",
         "_health_prober_service",
         "_lockout_store",
+        "_mcp_catalog_service",
         "_meeting_orchestrator",
         "_meeting_scheduler",
         "_message_bus",
@@ -146,7 +148,7 @@ class AppState:
         "startup_time",
     )
 
-    def __init__(  # noqa: PLR0913
+    def __init__(  # noqa: PLR0913, PLR0915
         self,
         *,
         config: RootConfig,
@@ -180,6 +182,7 @@ class AppState:
         health_prober_service: HealthProberService | None = None,
         tunnel_provider: NgrokAdapter | None = None,
         webhook_event_bridge: WebhookEventBridge | None = None,
+        mcp_catalog_service: CatalogService | None = None,
         startup_time: float = 0.0,
     ) -> None:
         self.config = config
@@ -218,6 +221,7 @@ class AppState:
         self._health_prober_service = health_prober_service
         self._tunnel_provider = tunnel_provider
         self._webhook_event_bridge = webhook_event_bridge
+        self._mcp_catalog_service = mcp_catalog_service
         self._prometheus_collector: PrometheusCollector | None = None
         self._fine_tune_orchestrator: FineTuneOrchestrator | None = None
         self._config_resolver: ConfigResolver | None = None
@@ -919,6 +923,22 @@ class AppState:
     def webhook_event_bridge(self) -> WebhookEventBridge | None:
         """Return webhook event bridge, or None if not configured."""
         return self._webhook_event_bridge
+
+    @property
+    def mcp_catalog_service(self) -> CatalogService:
+        """Return MCP catalog service or raise 503.
+
+        The bundled MCP catalog is a stateless static loader with
+        no dependencies, so it is always wired in ``create_app``.
+        """
+        return self._require_service(
+            self._mcp_catalog_service,
+            "mcp_catalog_service",
+        )
+
+    def set_mcp_catalog_service(self, service: CatalogService) -> None:
+        """Attach the MCP catalog service (once-only)."""
+        self._set_once("_mcp_catalog_service", service, "MCP catalog service")
 
     def set_settings_service(self, settings_service: SettingsService) -> None:
         """Set settings service and rebuild derived services."""

@@ -183,24 +183,22 @@ class LiteLLMDriver(BaseCompletionProvider):
         config: CompletionConfig | None = None,
     ) -> CompletionResponse:
         """Call ``litellm.acompletion`` and map the response."""
-        await self._ensure_credentials_resolved()
-        model_config = self._resolve_model(model)
-        litellm_model = f"{self._routing_key}/{model_config.id}"
-        kwargs = self._build_kwargs(
-            messages,
-            litellm_model,
-            tools=tools,
-            config=config,
-        )
-
         try:
+            await self._ensure_credentials_resolved()
+            model_config = self._resolve_model(model)
+            litellm_model = f"{self._routing_key}/{model_config.id}"
+            kwargs = self._build_kwargs(
+                messages,
+                litellm_model,
+                tools=tools,
+                config=config,
+            )
             response = await _litellm.acompletion(**kwargs)
         except errors.ProviderError:
             raise
         except Exception as exc:
             raise self._map_exception(exc, model) from exc
-        else:
-            return self._map_response(response, model_config)
+        return self._map_response(response, model_config)
 
     async def _do_stream(
         self,
@@ -216,18 +214,17 @@ class LiteLLMDriver(BaseCompletionProvider):
         directly) because the base class ``await``s this coroutine to
         obtain the iterator.
         """
-        await self._ensure_credentials_resolved()
-        model_config = self._resolve_model(model)
-        litellm_model = f"{self._routing_key}/{model_config.id}"
-        kwargs = self._build_kwargs(
-            messages,
-            litellm_model,
-            tools=tools,
-            config=config,
-            stream=True,
-        )
-
         try:
+            await self._ensure_credentials_resolved()
+            model_config = self._resolve_model(model)
+            litellm_model = f"{self._routing_key}/{model_config.id}"
+            kwargs = self._build_kwargs(
+                messages,
+                litellm_model,
+                tools=tools,
+                config=config,
+                stream=True,
+            )
             raw_stream = await _litellm.acompletion(**kwargs)
             return self._wrap_stream(raw_stream, model, model_config)
         except errors.ProviderError:

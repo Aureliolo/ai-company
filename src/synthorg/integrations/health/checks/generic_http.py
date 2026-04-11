@@ -19,13 +19,19 @@ from synthorg.observability.events.integrations import (
 logger = get_logger(__name__)
 
 _TIMEOUT = 10.0
+_ERROR_THRESHOLD = 400
+_METHOD_NOT_ALLOWED = 405
+_NOT_IMPLEMENTED = 501
 
 
 class GenericHttpHealthCheck:
-    """Health check via HTTP HEAD to the connection's base URL."""
+    """Health check via HTTP HEAD to the connection's base URL.
+
+    Falls back to GET if the server returns 405 or 501 on HEAD.
+    """
 
     async def check(self, connection: Connection) -> HealthReport:
-        """Execute a HEAD request against ``connection.base_url``."""
+        """Execute a HEAD (or GET fallback) against ``base_url``."""
         if not connection.base_url:
             return HealthReport(
                 connection_name=connection.name,
@@ -37,9 +43,11 @@ class GenericHttpHealthCheck:
         try:
             async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
                 resp = await client.head(connection.base_url)
+                if resp.status_code in (_METHOD_NOT_ALLOWED, _NOT_IMPLEMENTED):
+                    resp = await client.get(connection.base_url)
             elapsed = (time.monotonic() - start) * 1000
-            if resp.status_code < 400:  # noqa: PLR2004
-                logger.debug(
+            if resp.status_code < _ERROR_THRESHOLD:
+                logger.info(
                     HEALTH_CHECK_PASSED,
                     connection_name=connection.name,
                     latency_ms=elapsed,
@@ -50,7 +58,7 @@ class GenericHttpHealthCheck:
                     latency_ms=elapsed,
                     checked_at=datetime.now(UTC),
                 )
-            logger.debug(
+            logger.warning(
                 HEALTH_CHECK_FAILED,
                 connection_name=connection.name,
                 status_code=resp.status_code,
@@ -64,7 +72,7 @@ class GenericHttpHealthCheck:
             )
         except httpx.HTTPError as exc:
             elapsed = (time.monotonic() - start) * 1000
-            logger.debug(
+            logger.warning(
                 HEALTH_CHECK_FAILED,
                 connection_name=connection.name,
                 error=str(exc),

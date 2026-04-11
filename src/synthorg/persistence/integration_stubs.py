@@ -4,7 +4,15 @@ These in-memory stubs allow the persistence backends to satisfy
 the ``PersistenceBackend`` protocol immediately.  Full SQLite and
 Postgres implementations will replace these as integration features
 are exercised.
+
+All reads return deep copies so callers cannot mutate internal
+state by holding references to returned models. Even though the
+domain models are frozen Pydantic ``BaseModel`` instances, their
+mutable fields (``dict`` metadata) would otherwise still be
+aliased to the stored value.
 """
+
+import copy
 
 from synthorg.integrations.connections.models import (
     Connection,  # noqa: TC001
@@ -21,24 +29,27 @@ class StubConnectionRepository:
         self._store: dict[str, Connection] = {}
 
     async def save(self, connection: Connection) -> None:
-        """Persist a connection."""
-        self._store[connection.name] = connection
+        """Persist a connection (deep-copied on write)."""
+        self._store[connection.name] = copy.deepcopy(connection)
 
     async def get(self, name: str) -> Connection | None:
-        """Retrieve by name."""
-        return self._store.get(name)
+        """Retrieve by name (deep-copied on read)."""
+        existing = self._store.get(name)
+        return copy.deepcopy(existing) if existing is not None else None
 
     async def list_all(self) -> tuple[Connection, ...]:
-        """List all."""
-        return tuple(self._store.values())
+        """List all (deep-copied)."""
+        return tuple(copy.deepcopy(c) for c in self._store.values())
 
     async def list_by_type(
         self,
         connection_type: ConnectionType,
     ) -> tuple[Connection, ...]:
-        """List by type."""
+        """List by type (deep-copied)."""
         return tuple(
-            c for c in self._store.values() if c.connection_type == connection_type
+            copy.deepcopy(c)
+            for c in self._store.values()
+            if c.connection_type == connection_type
         )
 
     async def delete(self, name: str) -> bool:
@@ -58,7 +69,7 @@ class StubConnectionSecretRepository:
         encrypted_value: bytes,
         key_version: int,  # noqa: ARG002
     ) -> None:
-        """Persist a secret."""
+        """Persist a secret (bytes are immutable, no copy needed)."""
         self._store[secret_id] = encrypted_value
 
     async def retrieve(self, secret_id: str) -> bytes | None:
@@ -77,12 +88,13 @@ class StubOAuthStateRepository:
         self._store: dict[str, OAuthState] = {}
 
     async def save(self, state: OAuthState) -> None:
-        """Persist a state."""
-        self._store[state.state_token] = state
+        """Persist a state (deep-copied)."""
+        self._store[state.state_token] = copy.deepcopy(state)
 
     async def get(self, state_token: str) -> OAuthState | None:
-        """Retrieve by token."""
-        return self._store.get(state_token)
+        """Retrieve by token (deep-copied)."""
+        existing = self._store.get(state_token)
+        return copy.deepcopy(existing) if existing is not None else None
 
     async def delete(self, state_token: str) -> bool:
         """Delete by token."""
@@ -100,8 +112,8 @@ class StubWebhookReceiptRepository:
         self._store: list[WebhookReceipt] = []
 
     async def log(self, receipt: WebhookReceipt) -> None:
-        """Persist a receipt."""
-        self._store.append(receipt)
+        """Persist a receipt (deep-copied)."""
+        self._store.append(copy.deepcopy(receipt))
 
     async def get_by_connection(
         self,
@@ -109,8 +121,12 @@ class StubWebhookReceiptRepository:
         *,
         limit: int = 100,
     ) -> tuple[WebhookReceipt, ...]:
-        """List by connection."""
-        matches = [r for r in self._store if r.connection_name == connection_name]
+        """List by connection (deep-copied)."""
+        matches = [
+            copy.deepcopy(r)
+            for r in self._store
+            if r.connection_name == connection_name
+        ]
         return tuple(matches[:limit])
 
     async def cleanup_old(

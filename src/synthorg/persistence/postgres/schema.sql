@@ -829,7 +829,7 @@ CREATE INDEX idx_connections_type ON connections(connection_type);
 -- ── OAuth states ─────────────────────────────────────────────
 CREATE TABLE oauth_states (
     state_token TEXT NOT NULL PRIMARY KEY,
-    connection_name TEXT NOT NULL,
+    connection_name TEXT NOT NULL REFERENCES connections(name) ON DELETE CASCADE,
     pkce_verifier TEXT,
     scopes_requested TEXT NOT NULL DEFAULT '',
     redirect_uri TEXT NOT NULL DEFAULT '',
@@ -838,16 +838,17 @@ CREATE TABLE oauth_states (
 );
 
 CREATE INDEX idx_oauth_states_expires ON oauth_states(expires_at);
+CREATE INDEX idx_oauth_states_connection ON oauth_states(connection_name);
 
 -- ── Webhook receipts ─────────────────────────────────────────
 CREATE TABLE webhook_receipts (
     id TEXT NOT NULL PRIMARY KEY,
-    connection_name TEXT NOT NULL,
+    connection_name TEXT NOT NULL REFERENCES connections(name) ON DELETE CASCADE,
     event_type TEXT NOT NULL DEFAULT '',
     status TEXT NOT NULL DEFAULT 'received',
     received_at TIMESTAMPTZ NOT NULL,
     processed_at TIMESTAMPTZ,
-    payload_json JSONB NOT NULL DEFAULT '""',
+    payload_json JSONB NOT NULL DEFAULT '{}'::jsonb,
     error TEXT
 );
 

@@ -1,11 +1,11 @@
 """OAuth 2.1 client credentials flow (machine-to-machine)."""
 
+import json
 from datetime import UTC, datetime, timedelta
 
 import httpx
 
-from synthorg.core.types import NotBlankStr
-from synthorg.integrations.connections.models import OAuthToken, SecretRef
+from synthorg.integrations.connections.models import OAuthToken
 from synthorg.integrations.errors import TokenExchangeFailedError
 from synthorg.observability import get_logger
 from synthorg.observability.events.integrations import (
@@ -68,7 +68,7 @@ class ClientCredentialsFlow:
                 resp = await client.post(token_url, data=payload)
                 resp.raise_for_status()
                 data = resp.json()
-        except httpx.HTTPError as exc:
+        except (httpx.HTTPError, json.JSONDecodeError) as exc:
             logger.exception(
                 OAUTH_TOKEN_EXCHANGE_FAILED,
                 error=str(exc),
@@ -76,7 +76,7 @@ class ClientCredentialsFlow:
             msg = f"Client credentials exchange failed: {exc}"
             raise TokenExchangeFailedError(msg) from exc
 
-        access_token = data.get("access_token", "")
+        access_token = str(data.get("access_token", ""))
         if not access_token:
             msg = "No access_token in client credentials response"
             raise TokenExchangeFailedError(msg)
@@ -88,10 +88,7 @@ class ClientCredentialsFlow:
 
         logger.info(OAUTH_TOKEN_EXCHANGED, grant_type="client_credentials")
         return OAuthToken(
-            access_token_ref=SecretRef(
-                secret_id=NotBlankStr("pending-access"),
-                backend=NotBlankStr("pending"),
-            ),
+            access_token=access_token,
             token_type=str(data.get("token_type", "Bearer")),
             expires_at=expires_at,
             scope_granted=str(data.get("scope", "")),

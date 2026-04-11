@@ -6,7 +6,10 @@ Periodically checks the health of all connections with
 
 import asyncio
 import contextlib
+import copy
 from datetime import UTC, datetime
+from types import MappingProxyType
+from typing import Final
 
 from synthorg.integrations.connections.catalog import ConnectionCatalog  # noqa: TC001
 from synthorg.integrations.connections.models import (
@@ -31,13 +34,40 @@ from synthorg.observability.events.integrations import (
 
 logger = get_logger(__name__)
 
-_CHECK_REGISTRY: dict[ConnectionType, ConnectionHealthCheck] = {
-    ConnectionType.GITHUB: GitHubHealthCheck(),
-    ConnectionType.SLACK: SlackHealthCheck(),
-    ConnectionType.SMTP: SmtpHealthCheck(),
-    ConnectionType.DATABASE: DatabaseHealthCheck(),
-    ConnectionType.GENERIC_HTTP: GenericHttpHealthCheck(),
-}
+_CHECK_REGISTRY: Final[MappingProxyType[ConnectionType, ConnectionHealthCheck]] = (
+    MappingProxyType(
+        copy.deepcopy(
+            {
+                ConnectionType.GITHUB: GitHubHealthCheck(),
+                ConnectionType.SLACK: SlackHealthCheck(),
+                ConnectionType.SMTP: SmtpHealthCheck(),
+                ConnectionType.DATABASE: DatabaseHealthCheck(),
+                ConnectionType.GENERIC_HTTP: GenericHttpHealthCheck(),
+            }
+        )
+    )
+)
+
+
+def get_health_checker(
+    connection_type: ConnectionType,
+) -> ConnectionHealthCheck | None:
+    """Return the registered checker for a connection type, if any."""
+    return _CHECK_REGISTRY.get(connection_type)
+
+
+def bind_health_check_catalog(catalog: ConnectionCatalog) -> None:
+    """Bind a catalog to every checker that exposes ``bind_catalog``.
+
+    The check registry is instantiated at import time, before the
+    catalog exists. Health checks that need to fetch credentials
+    (GitHub, Slack) expose ``bind_catalog`` so the live catalog can
+    be injected at app startup.
+    """
+    for checker in _CHECK_REGISTRY.values():
+        bind = getattr(checker, "bind_catalog", None)
+        if callable(bind):
+            bind(catalog)
 
 
 class HealthProberService:
@@ -65,23 +95,26 @@ class HealthProberService:
         self._failure_counts: dict[str, int] = {}
         self._failure_lock = asyncio.Lock()
         self._task: asyncio.Task[None] | None = None
+        self._lifecycle_lock = asyncio.Lock()
 
     async def start(self) -> None:
         """Start the background probe loop."""
-        if self._task is not None:
-            return
-        self._task = asyncio.create_task(self._probe_loop())
-        logger.info(HEALTH_PROBER_STARTED, interval=self._interval)
+        async with self._lifecycle_lock:
+            if self._task is not None:
+                return
+            self._task = asyncio.create_task(self._probe_loop())
+            logger.info(HEALTH_PROBER_STARTED, interval=self._interval)
 
     async def stop(self) -> None:
         """Stop the background probe loop."""
-        if self._task is None:
-            return
-        self._task.cancel()
-        with contextlib.suppress(asyncio.CancelledError):
-            await self._task
-        self._task = None
-        logger.info(HEALTH_PROBER_STOPPED)
+        async with self._lifecycle_lock:
+            if self._task is None:
+                return
+            self._task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await self._task
+            self._task = None
+            logger.info(HEALTH_PROBER_STOPPED)
 
     async def _probe_loop(self) -> None:
         """Run probes indefinitely at the configured interval."""
@@ -113,8 +146,13 @@ class HealthProberService:
         name: str,
         connection_type: ConnectionType,
     ) -> None:
-        """Probe a single connection and update its health."""
-        checker = _CHECK_REGISTRY.get(connection_type)
+        """Probe a single connection and update its health.
+
+        Exceptions from the checker are caught and logged here so
+        one flaky probe cannot cancel its siblings inside the
+        ``TaskGroup`` in ``_probe_all``.
+        """
+        checker = get_health_checker(connection_type)
         if checker is None:
             logger.debug(
                 HEALTH_CHECK_FAILED,
@@ -133,7 +171,17 @@ class HealthProberService:
             )
             return
 
-        report = await checker.check(conn)
+        try:
+            report = await checker.check(conn)
+        except Exception:
+            logger.exception(
+                HEALTH_CHECK_FAILED,
+                connection_name=name,
+                connection_type=str(connection_type),
+                error="health checker raised unexpected exception",
+            )
+            return
+
         old_status = conn.health_status
         now = datetime.now(UTC)
 
@@ -144,12 +192,10 @@ class HealthProberService:
             else:
                 count = self._failure_counts.get(name, 0) + 1
                 self._failure_counts[name] = count
-            if count >= self._unhealthy_threshold:
-                new_status = ConnectionStatus.UNHEALTHY
-            elif count >= self._degraded_threshold:
-                new_status = ConnectionStatus.DEGRADED
-            else:
-                new_status = ConnectionStatus.DEGRADED
+                if count >= self._unhealthy_threshold:
+                    new_status = ConnectionStatus.UNHEALTHY
+                else:
+                    new_status = ConnectionStatus.DEGRADED
 
         if old_status != new_status:
             logger.info(

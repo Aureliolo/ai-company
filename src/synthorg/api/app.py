@@ -688,6 +688,12 @@ def _build_lifecycle(  # noqa: PLR0913, PLR0915, C901
                 API_APP_SHUTDOWN,
                 "Failed to stop webhook event bridge",
             )
+        if app_state.has_tunnel_provider:
+            await _try_stop(
+                app_state.tunnel_provider.stop(),
+                API_APP_SHUTDOWN,
+                "Failed to stop tunnel provider",
+            )
         if _auto_wired_dispatcher is not None:
             await _try_stop(
                 _auto_wired_dispatcher.stop(),
@@ -1073,6 +1079,25 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
     health_prober_service = None
     tunnel_provider = None
     webhook_event_bridge = None
+    mcp_catalog_service = None
+
+    # Bundled MCP catalog is stateless (loads static JSON) and has no
+    # runtime dependencies, so it is wired unconditionally.
+    try:
+        from synthorg.integrations.mcp_catalog.service import (  # noqa: PLC0415
+            CatalogService,
+        )
+
+        mcp_catalog_service = CatalogService()
+        logger.info(API_SERVICE_AUTO_WIRED, service="mcp_catalog_service")
+    except MemoryError, RecursionError:
+        raise
+    except Exception:
+        logger.warning(
+            API_APP_STARTUP,
+            error="MCP catalog auto-wire failed (non-fatal)",
+            exc_info=True,
+        )
 
     if effective_config.integrations.enabled and persistence is not None:
         try:
@@ -1084,6 +1109,7 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
             )
             from synthorg.integrations.health.prober import (  # noqa: PLC0415
                 HealthProberService,
+                bind_health_check_catalog,
             )
             from synthorg.integrations.oauth.token_manager import (  # noqa: PLC0415
                 OAuthTokenManager,
@@ -1101,6 +1127,7 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
                 repository=persistence.connections,
                 secret_backend=secret_backend,
             )
+            bind_health_check_catalog(connection_catalog)
             logger.info(API_SERVICE_AUTO_WIRED, service="connection_catalog")
 
             health_cfg = effective_config.integrations.health
@@ -1139,7 +1166,7 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
             if message_bus is not None:
                 from synthorg.integrations.rate_limiting.shared_state import (  # noqa: PLC0415
                     SharedRateLimitCoordinator,
-                    set_coordinator_factory,
+                    set_coordinator_factory_sync,
                 )
 
                 _bus = message_bus
@@ -1152,7 +1179,7 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
                         connection_name=name,
                     )
 
-                set_coordinator_factory(_make_coordinator)
+                set_coordinator_factory_sync(_make_coordinator)
                 logger.info(
                     API_SERVICE_AUTO_WIRED,
                     service="rate_limit_coordinator_factory",
@@ -1203,6 +1230,7 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
         health_prober_service=health_prober_service,
         tunnel_provider=tunnel_provider,
         webhook_event_bridge=webhook_event_bridge,
+        mcp_catalog_service=mcp_catalog_service,
         startup_time=time.monotonic(),
     )
     if distributed_task_queue is not None:
