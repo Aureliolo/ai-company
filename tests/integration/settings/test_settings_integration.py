@@ -10,6 +10,7 @@ import pytest
 
 import synthorg.settings.definitions  # noqa: F401 -- trigger registration
 from synthorg.config.schema import RootConfig
+from synthorg.persistence import atlas
 from synthorg.persistence.config import SQLiteConfig
 from synthorg.persistence.sqlite.backend import SQLitePersistenceBackend
 from synthorg.settings.registry import get_registry
@@ -28,15 +29,30 @@ def db_path(tmp_path: Path) -> str:
 
 
 @pytest.fixture
-async def backend(db_path: str) -> AsyncGenerator[SQLitePersistenceBackend]:
+async def backend(
+    db_path: str,
+    tmp_path: Path,
+) -> AsyncGenerator[SQLitePersistenceBackend]:
     """Create a connected and migrated on-disk SQLite backend.
+
+    Uses an isolated revisions copy + ``--skip-lock`` so parallel
+    xdist workers never contend on Atlas's directory lock.
 
     Yields:
         A ``SQLitePersistenceBackend`` ready for settings operations.
     """
     be = SQLitePersistenceBackend(SQLiteConfig(path=db_path))
     await be.connect()
-    await be.migrate()
+    revisions_url = atlas.copy_revisions(
+        tmp_path / "sqlite_revisions",
+        backend="sqlite",
+    )
+    await atlas.migrate_apply(
+        atlas.to_sqlite_url(db_path),
+        revisions_url=revisions_url,
+        skip_lock=True,
+        backend="sqlite",
+    )
     yield be
     await be.disconnect()
 
