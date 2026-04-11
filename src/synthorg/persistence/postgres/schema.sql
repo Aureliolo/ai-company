@@ -242,6 +242,20 @@ CREATE CONSTRAINT TRIGGER trg_enforce_owner_minimum
           AND NOT NEW.org_roles @> '["owner"]'::jsonb)
     EXECUTE FUNCTION enforce_owner_minimum();
 
+CREATE CONSTRAINT TRIGGER trg_enforce_ceo_minimum_delete
+    AFTER DELETE ON users
+    DEFERRABLE INITIALLY DEFERRED
+    FOR EACH ROW
+    WHEN (OLD.role = 'ceo')
+    EXECUTE FUNCTION enforce_ceo_minimum();
+
+CREATE CONSTRAINT TRIGGER trg_enforce_owner_minimum_delete
+    AFTER DELETE ON users
+    DEFERRABLE INITIALLY DEFERRED
+    FOR EACH ROW
+    WHEN (OLD.org_roles @> '["owner"]'::jsonb)
+    EXECUTE FUNCTION enforce_owner_minimum();
+
 -- ── API keys ──────────────────────────────────────────────────
 CREATE TABLE api_keys (
     id TEXT NOT NULL PRIMARY KEY,

@@ -209,6 +209,27 @@ BEGIN
     ) = 0;
 END;
 
+-- Prevent deleting the last CEO.
+CREATE TRIGGER enforce_ceo_minimum_delete
+BEFORE DELETE ON users
+WHEN OLD.role = 'ceo'
+BEGIN
+    SELECT RAISE(ABORT, 'Cannot remove the last CEO')
+    WHERE (SELECT COUNT(*) FROM users WHERE role = 'ceo' AND id != OLD.id) = 0;
+END;
+
+-- Prevent deleting the last owner.
+CREATE TRIGGER enforce_owner_minimum_delete
+BEFORE DELETE ON users
+WHEN EXISTS (SELECT 1 FROM json_each(OLD.org_roles) WHERE value = 'owner')
+BEGIN
+    SELECT RAISE(ABORT, 'Cannot remove the last owner')
+    WHERE (
+        SELECT COUNT(*) FROM users u, json_each(u.org_roles) je
+        WHERE u.id != OLD.id AND je.value = 'owner'
+    ) = 0;
+END;
+
 -- ── API keys ──────────────────────────────────────────────────
 CREATE TABLE api_keys (
     id TEXT NOT NULL PRIMARY KEY,

@@ -396,6 +396,18 @@ ON CONFLICT(id) DO UPDATE SET
             )
             await self._db.commit()
         except (sqlite3.Error, aiosqlite.Error) as exc:
+            constraint = _classify_sqlite_user_error(str(exc))
+            if constraint is not None:
+                msg = f"Failed to delete user {user_id!r}"
+                logger.warning(
+                    PERSISTENCE_USER_DELETE_FAILED,
+                    user_id=user_id,
+                    constraint=constraint,
+                )
+                raise ConstraintViolationError(
+                    msg,
+                    constraint=constraint,
+                ) from exc
             msg = f"Failed to delete user {user_id!r}"
             logger.exception(
                 PERSISTENCE_USER_DELETE_FAILED,

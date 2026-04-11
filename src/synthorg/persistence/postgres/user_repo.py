@@ -301,6 +301,18 @@ class PostgresUserRepository:
                 deleted = cur.rowcount > 0
                 await conn.commit()
         except psycopg.Error as exc:
+            constraint = _classify_postgres_user_error(exc)
+            if constraint:
+                msg = f"Failed to delete user {user_id!r}"
+                logger.warning(
+                    PERSISTENCE_USER_DELETE_FAILED,
+                    user_id=user_id,
+                    constraint=constraint,
+                )
+                raise ConstraintViolationError(
+                    msg,
+                    constraint=constraint,
+                ) from exc
             msg = f"Failed to delete user {user_id!r}"
             logger.exception(
                 PERSISTENCE_USER_DELETE_FAILED, user_id=user_id, error=str(exc)
