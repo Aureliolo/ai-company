@@ -11,6 +11,12 @@ from pydantic import AwareDatetime
 
 from synthorg.core.types import NotBlankStr
 from synthorg.persistence.errors import DuplicateRecordError
+from synthorg.persistence.integration_stubs import (
+    StubConnectionRepository,
+    StubConnectionSecretRepository,
+    StubOAuthStateRepository,
+    StubWebhookReceiptRepository,
+)
 from synthorg.security.rules.risk_override import RiskTierOverride
 from synthorg.security.ssrf_violation import SsrfViolation, SsrfViolationStatus
 from synthorg.versioning.models import VersionSnapshot
@@ -259,6 +265,10 @@ class FakePersistenceBackend:
         self._heartbeats = FakeHeartbeatRepository()
         self._agent_states = FakeAgentStateRepository()
         self._settings_repo = FakeSettingsRepository()
+        self._connections_stub = StubConnectionRepository()
+        self._connection_secrets_stub = StubConnectionSecretRepository()
+        self._oauth_states_stub = StubOAuthStateRepository()
+        self._webhook_receipts_stub = StubWebhookReceiptRepository()
         # Legacy flat KV store for get_setting/set_setting (pre-namespaced).
         # The `settings` property returns `_settings_repo` (namespaced repo).
         self._settings: dict[str, str] = {}
@@ -409,28 +419,24 @@ class FakePersistenceBackend:
         return self._circuit_breaker_state
 
     @property
-    def connections(self) -> object:
-        """Stub -- not implemented in fake backend."""
-        msg = "FakePersistenceBackend.connections not implemented"
-        raise NotImplementedError(msg)
+    def connections(self) -> StubConnectionRepository:
+        """Stub connection repository."""
+        return self._connections_stub
 
     @property
-    def connection_secrets(self) -> object:
-        """Stub -- not implemented in fake backend."""
-        msg = "FakePersistenceBackend.connection_secrets not implemented"
-        raise NotImplementedError(msg)
+    def connection_secrets(self) -> StubConnectionSecretRepository:
+        """Stub connection secret repository."""
+        return self._connection_secrets_stub
 
     @property
-    def oauth_states(self) -> object:
-        """Stub -- not implemented in fake backend."""
-        msg = "FakePersistenceBackend.oauth_states not implemented"
-        raise NotImplementedError(msg)
+    def oauth_states(self) -> StubOAuthStateRepository:
+        """Stub OAuth state repository."""
+        return self._oauth_states_stub
 
     @property
-    def webhook_receipts(self) -> object:
-        """Stub -- not implemented in fake backend."""
-        msg = "FakePersistenceBackend.webhook_receipts not implemented"
-        raise NotImplementedError(msg)
+    def webhook_receipts(self) -> StubWebhookReceiptRepository:
+        """Stub webhook receipt repository."""
+        return self._webhook_receipts_stub
 
     async def get_setting(self, key: str) -> str | None:
         return self._settings.get(key)

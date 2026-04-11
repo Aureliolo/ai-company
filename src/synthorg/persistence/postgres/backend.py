@@ -46,6 +46,12 @@ from synthorg.observability.events.persistence import (
 from synthorg.persistence import atlas
 from synthorg.persistence.config import PostgresConfig  # noqa: TC001
 from synthorg.persistence.errors import PersistenceConnectionError
+from synthorg.persistence.integration_stubs import (
+    StubConnectionRepository,
+    StubConnectionSecretRepository,
+    StubOAuthStateRepository,
+    StubWebhookReceiptRepository,
+)
 from synthorg.persistence.postgres.agent_state_repo import (
     PostgresAgentStateRepository,
 )
@@ -220,6 +226,10 @@ class PostgresPersistenceBackend:
         self._risk_overrides: RiskOverrideRepository | None = None
         self._ssrf_violations: SsrfViolationRepository | None = None
         self._circuit_breaker_state: CircuitBreakerStateRepository | None = None
+        self._connections_stub = StubConnectionRepository()
+        self._connection_secrets_stub = StubConnectionSecretRepository()
+        self._oauth_states_stub = StubOAuthStateRepository()
+        self._webhook_receipts_stub = StubWebhookReceiptRepository()
         self._project_cost_aggregates: PostgresProjectCostAggregateRepository | None = (
             None
         )
@@ -738,6 +748,26 @@ class PostgresPersistenceBackend:
             self._project_cost_aggregates,
             "project_cost_aggregates",
         )
+
+    @property
+    def connections(self) -> StubConnectionRepository:
+        """Repository for external service connection persistence."""
+        return self._connections_stub
+
+    @property
+    def connection_secrets(self) -> StubConnectionSecretRepository:
+        """Repository for encrypted connection secret persistence."""
+        return self._connection_secrets_stub
+
+    @property
+    def oauth_states(self) -> StubOAuthStateRepository:
+        """Repository for transient OAuth state persistence."""
+        return self._oauth_states_stub
+
+    @property
+    def webhook_receipts(self) -> StubWebhookReceiptRepository:
+        """Repository for webhook receipt log persistence."""
+        return self._webhook_receipts_stub
 
     async def get_setting(self, key: NotBlankStr) -> str | None:
         """Retrieve a setting value by key from the ``_system`` namespace.
