@@ -11,8 +11,8 @@ func TestGeneratePasswordLength(t *testing.T) {
 		t.Fatalf("GeneratePassword(32) error: %v", err)
 	}
 	// 32 bytes -> 43 chars in base64url (no padding)
-	if len(pw) < 32 {
-		t.Errorf("password too short: got %d chars, want >= 32", len(pw))
+	if len(pw) != 43 {
+		t.Errorf("password length = %d, want 43 (32 bytes base64url)", len(pw))
 	}
 }
 

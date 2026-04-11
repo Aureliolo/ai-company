@@ -58,7 +58,7 @@ services:
       SYNTHORG_HOST: "0.0.0.0"
       SYNTHORG_PORT: "3001"
 {{- if postgresEnabled}}
-      SYNTHORG_DATABASE_URL: {{yamlStr (printf "postgresql://synthorg:%s@postgres:5432/synthorg" (urlQueryEscape .PostgresPassword))}}
+      SYNTHORG_DATABASE_URL: {{yamlStr pgDSN}}
 {{- else}}
       SYNTHORG_DB_PATH: "/data/synthorg.db"
 {{- end}}

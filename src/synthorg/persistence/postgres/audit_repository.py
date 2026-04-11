@@ -445,7 +445,16 @@ INSERT INTO audit_entries (
         before use.
         """
         self._check_jsonb_column(column)
-        validate_jsonb_path(path)
+        try:
+            validate_jsonb_path(path)
+        except ValueError:
+            logger.warning(
+                PERSISTENCE_AUDIT_ENTRY_QUERY_FAILED,
+                reason="jsonb_path_invalid",
+                column=column,
+                path=path,
+            )
+            raise
         parts = path.split(".")
         if len(parts) == 1:
             condition = f"{column} ->> %s = %s"

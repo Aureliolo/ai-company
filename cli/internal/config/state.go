@@ -269,6 +269,9 @@ func (s State) validate() error {
 		if strings.TrimSpace(s.PostgresPassword) == "" {
 			return fmt.Errorf("postgres_password is required when persistence_backend is postgres")
 		}
+		if len(s.PostgresPassword) < 32 {
+			return fmt.Errorf("postgres_password must be at least 32 characters, got %d", len(s.PostgresPassword))
+		}
 	}
 	for name, digest := range s.VerifiedDigests {
 		if !isValidDigestFormat(digest) {

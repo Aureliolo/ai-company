@@ -105,7 +105,7 @@ func Generate(p Params) ([]byte, error) {
 		"digestPin":          digestPin(p.DigestPins),
 		"distributedEnabled": p.DistributedEnabled,
 		"postgresEnabled":    p.PostgresEnabled,
-		"urlQueryEscape":     url.QueryEscape,
+		"pgDSN":              func() string { return pgDSN(p) },
 	}
 
 	tmpl, err := template.New("compose").Funcs(funcMap).Parse(composeTmpl)
@@ -194,6 +194,21 @@ func validateParams(p Params) error {
 		}
 	}
 	return nil
+}
+
+// pgDSN builds a properly percent-encoded PostgreSQL connection string.
+// Uses url.UserPassword for userinfo encoding per RFC 3986 section 3.2.1.
+func pgDSN(p Params) string {
+	if !p.PostgresEnabled() || p.PostgresPassword == "" {
+		return ""
+	}
+	u := &url.URL{
+		Scheme: "postgresql",
+		User:   url.UserPassword("synthorg", p.PostgresPassword),
+		Host:   "postgres:5432",
+		Path:   "/synthorg",
+	}
+	return u.String()
 }
 
 // digestPin returns a template function that resolves an image name to either

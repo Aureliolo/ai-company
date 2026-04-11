@@ -373,7 +373,7 @@ class TestAuthMiddlewareApiKeyEdgeCases:
             id="key-orphan",
             key_hash=key_hash,
             name="orphaned-key",
-            role=HumanRole.CEO,
+            role=HumanRole.MANAGER,
             user_id=user.id,
             created_at=now,
         )
