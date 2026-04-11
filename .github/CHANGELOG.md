@@ -1,5 +1,39 @@
 # Changelog
 
+## [0.6.7](https://github.com/Aureliolo/synthorg/compare/v0.6.6...v0.6.7) (2026-04-11)
+
+
+### Features
+
+* implement agent evolution and improvement over time ([#1229](https://github.com/Aureliolo/synthorg/issues/1229)) ([aad186f](https://github.com/Aureliolo/synthorg/commit/aad186f1f296aa8d6f027650c7230caa28fe397f)), closes [#243](https://github.com/Aureliolo/synthorg/issues/243)
+* implement dynamic company scaling ([#1235](https://github.com/Aureliolo/synthorg/issues/1235)) ([19f07dd](https://github.com/Aureliolo/synthorg/commit/19f07dd8459c5ad83f367c3753b08c7b0dbaac21))
+* implement external service integration APIs ([#1240](https://github.com/Aureliolo/synthorg/issues/1240)) ([94e8343](https://github.com/Aureliolo/synthorg/commit/94e834381e9e3598f41c5eab3bcbe073a0576c83))
+* implement semantic analysis detectors for error taxonomy ([#1233](https://github.com/Aureliolo/synthorg/issues/1233)) ([6e4eb6d](https://github.com/Aureliolo/synthorg/commit/6e4eb6d245a2ec6eb018230923d79e787a75cfb4)), closes [#228](https://github.com/Aureliolo/synthorg/issues/228)
+* implement training mode for agent learning ([#249](https://github.com/Aureliolo/synthorg/issues/249)) ([#1232](https://github.com/Aureliolo/synthorg/issues/1232)) ([b9fbcfb](https://github.com/Aureliolo/synthorg/commit/b9fbcfb240fce65852adfbaac2b2b6e80abb2275))
+* Postgres production readiness -- DB atomic ops, JSONB analytics, CLI orchestration ([#1239](https://github.com/Aureliolo/synthorg/issues/1239)) ([4796ffb](https://github.com/Aureliolo/synthorg/commit/4796ffb3f564b98c7bcbb0f7c037f8c0e1dfb12f)), closes [#1216](https://github.com/Aureliolo/synthorg/issues/1216) [#1211](https://github.com/Aureliolo/synthorg/issues/1211) [#1210](https://github.com/Aureliolo/synthorg/issues/1210)
+
+
+### Bug Fixes
+
+* **ci:** use scan-action for grype diagnostic output ([#1231](https://github.com/Aureliolo/synthorg/issues/1231)) ([18d7de9](https://github.com/Aureliolo/synthorg/commit/18d7de985fc61ae2bddab06f300c3b5dbaa70a5f))
+* subworkflow follow-up fixes + dashboard UI + integration tests ([#1223](https://github.com/Aureliolo/synthorg/issues/1223), [#1218](https://github.com/Aureliolo/synthorg/issues/1218)) ([#1230](https://github.com/Aureliolo/synthorg/issues/1230)) ([36e3062](https://github.com/Aureliolo/synthorg/commit/36e3062128d31464c9497fa19b6494202cb2bfe2))
+
+
+### Refactoring
+
+* evaluate nats-core + split bus/nats.py into focused modules ([#1228](https://github.com/Aureliolo/synthorg/issues/1228)) ([3bc57bf](https://github.com/Aureliolo/synthorg/commit/3bc57bfa7fba5d15aff2741a1acf96b46b909436)), closes [#1217](https://github.com/Aureliolo/synthorg/issues/1217) [#1221](https://github.com/Aureliolo/synthorg/issues/1221)
+
+
+### Documentation
+
+* replace ASCII/Unicode box diagrams with Mermaid + D2 hybrid tooling ([#1234](https://github.com/Aureliolo/synthorg/issues/1234)) ([88ce189](https://github.com/Aureliolo/synthorg/commit/88ce189282a9369dfb16e690a5ff62994421f24b))
+* S1 multi-agent architecture decision + 15-risk register ([#1259](https://github.com/Aureliolo/synthorg/issues/1259)) ([3d580f2](https://github.com/Aureliolo/synthorg/commit/3d580f2b8ea75dc93b66f8fc7ddb73c4822f4ce2)), closes [#1254](https://github.com/Aureliolo/synthorg/issues/1254)
+
+
+### Maintenance
+
+* **ci:** audit and update GitHub Actions from v0.6.6 release ([#1225](https://github.com/Aureliolo/synthorg/issues/1225)) ([6251227](https://github.com/Aureliolo/synthorg/commit/6251227802a31cd75ed1290a79124ca6457dca7f)), closes [#1224](https://github.com/Aureliolo/synthorg/issues/1224)
+
 ## [0.6.6](https://github.com/Aureliolo/synthorg/compare/v0.6.5...v0.6.6) (2026-04-10)
 
 
