@@ -143,7 +143,7 @@ class BudgetCapStrategy:
                 HR_SCALING_STRATEGY_EVALUATED,
                 strategy="budget_cap",
                 decisions=len(decisions),
-                action="prune+hold",
+                action="hold",
                 burn_fraction=burn_fraction,
             )
             return tuple(decisions)

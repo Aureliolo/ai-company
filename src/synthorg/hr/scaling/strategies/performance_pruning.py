@@ -5,6 +5,7 @@ with the evolution system to defer pruning agents under active
 adaptation.
 """
 
+import asyncio
 from collections.abc import Mapping  # noqa: TC003
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
@@ -112,6 +113,8 @@ class PerformancePruningStrategy:
                         continue
 
                 evaluation = await self._policy.evaluate(agent_id, snapshot)
+            except MemoryError, RecursionError, asyncio.CancelledError:
+                raise
             except Exception:
                 logger.error(
                     HR_SCALING_STRATEGY_EVALUATED,

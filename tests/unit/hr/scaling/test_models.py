@@ -269,9 +269,18 @@ class TestScalingActionRecord:
         record = ScalingActionRecord(
             decision_id=NotBlankStr("decision-001"),
             outcome=ScalingOutcome.REJECTED,
+            reason=NotBlankStr("approval timeout"),
             executed_at=NOW,
         )
         assert record.outcome == ScalingOutcome.REJECTED
+
+    def test_rejected_without_reason_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="REJECTED"):
+            ScalingActionRecord(
+                decision_id=NotBlankStr("decision-001"),
+                outcome=ScalingOutcome.REJECTED,
+                executed_at=NOW,
+            )
 
     def test_failed_without_reason_rejected(self) -> None:
         with pytest.raises(ValidationError, match="FAILED"):

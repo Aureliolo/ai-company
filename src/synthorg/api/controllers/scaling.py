@@ -20,7 +20,11 @@ from synthorg.hr.scaling.models import (  # noqa: TC001
 )
 from synthorg.observability import get_logger
 from synthorg.observability.events.hr import (
+    HR_SCALING_CONTROLLER_INVALID_REQUEST,
+    HR_SCALING_CONTROLLER_SERVICE_MISSING,
     HR_SCALING_MANUAL_TRIGGER_REQUESTED,
+    HR_SCALING_PRIORITY_ORDER_UPDATED,
+    HR_SCALING_STRATEGY_TOGGLED,
 )
 
 logger = get_logger(__name__)
@@ -230,7 +234,7 @@ class ScalingController(Controller):
         scaling = app_state.scaling_service
         if scaling is None:
             logger.warning(
-                "hr.scaling.controller_service_missing",
+                HR_SCALING_CONTROLLER_SERVICE_MISSING,
                 endpoint="list_signals",
             )
             return ApiResponse(data=())
@@ -280,7 +284,7 @@ class ScalingController(Controller):
         scaling = app_state.scaling_service
         if scaling is None:
             logger.warning(
-                "hr.scaling.controller_service_missing",
+                HR_SCALING_CONTROLLER_SERVICE_MISSING,
                 endpoint="trigger_evaluation",
             )
             return ApiResponse(
@@ -320,7 +324,7 @@ class ScalingController(Controller):
         scaling = app_state.scaling_service
         if scaling is None:
             logger.warning(
-                "hr.scaling.controller_service_missing",
+                HR_SCALING_CONTROLLER_SERVICE_MISSING,
                 endpoint="update_strategy",
                 strategy=strategy_name,
             )
@@ -331,6 +335,13 @@ class ScalingController(Controller):
 
         known = {str(s.name) for s in scaling.strategies}
         if strategy_name not in known:
+            logger.warning(
+                HR_SCALING_CONTROLLER_INVALID_REQUEST,
+                endpoint="update_strategy",
+                reason="unknown_strategy",
+                strategy=strategy_name,
+                known=sorted(known),
+            )
             return ApiResponse(
                 data=None,
                 error=f"Unknown strategy: {strategy_name}",
@@ -338,7 +349,7 @@ class ScalingController(Controller):
 
         scaling.set_strategy_enabled(strategy_name, enabled=data.enabled)
         logger.info(
-            "hr.scaling.strategy_toggled",
+            HR_SCALING_STRATEGY_TOGGLED,
             strategy=strategy_name,
             enabled=data.enabled,
         )
@@ -374,7 +385,7 @@ class ScalingController(Controller):
         scaling = app_state.scaling_service
         if scaling is None:
             logger.warning(
-                "hr.scaling.controller_service_missing",
+                HR_SCALING_CONTROLLER_SERVICE_MISSING,
                 endpoint="update_priority",
             )
             return ApiResponse(
@@ -385,11 +396,18 @@ class ScalingController(Controller):
         try:
             order = tuple(ScalingStrategyName(n) for n in data.order)
         except ValueError as exc:
+            logger.warning(
+                HR_SCALING_CONTROLLER_INVALID_REQUEST,
+                endpoint="update_priority",
+                reason="invalid_priority_order",
+                order=list(data.order),
+                error=str(exc),
+            )
             return ApiResponse(data=(), error=str(exc))
 
         scaling.update_priority_order(order)
         logger.info(
-            "hr.scaling.priority_order_updated",
+            HR_SCALING_PRIORITY_ORDER_UPDATED,
             order=[n.value for n in order],
         )
         return ApiResponse(

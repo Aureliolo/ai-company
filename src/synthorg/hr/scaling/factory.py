@@ -26,6 +26,7 @@ from synthorg.hr.scaling.strategies.workload import (
 )
 from synthorg.hr.scaling.triggers.batched import BatchedScalingTrigger
 from synthorg.observability import get_logger
+from synthorg.observability.events.hr import HR_SCALING_FACTORY_ASSEMBLED
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
@@ -37,8 +38,6 @@ if TYPE_CHECKING:
     from synthorg.hr.scaling.protocols import ScalingGuard, ScalingStrategy
 
 logger = get_logger(__name__)
-
-_FACTORY_READY_EVENT = "hr.scaling.factory_assembled"
 
 
 def create_scaling_strategies(
@@ -101,7 +100,7 @@ def create_scaling_strategies(
         )
 
     logger.debug(
-        _FACTORY_READY_EVENT,
+        HR_SCALING_FACTORY_ASSEMBLED,
         component="strategies",
         count=len(strategies),
         names=[str(s.name) for s in strategies],
@@ -144,7 +143,7 @@ def create_scaling_guards(
 
     composite = CompositeScalingGuard(guards=tuple(guards))
     logger.debug(
-        _FACTORY_READY_EVENT,
+        HR_SCALING_FACTORY_ASSEMBLED,
         component="guards",
         count=len(guards),
         names=[str(g.name) for g in guards],

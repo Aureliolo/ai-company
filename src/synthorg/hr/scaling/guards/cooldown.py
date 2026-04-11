@@ -106,5 +106,15 @@ class CooldownGuard:
 
     @staticmethod
     def _make_key(decision: ScalingDecision) -> str:
-        target = str(decision.target_agent_id or decision.target_role or "global")
+        if decision.target_agent_id is not None:
+            target = f"agent:{decision.target_agent_id}"
+        elif decision.target_role is not None:
+            parts = [
+                f"role:{decision.target_role}",
+                f"dept:{decision.target_department or ''}",
+                "skills:" + ",".join(sorted(str(s) for s in decision.target_skills)),
+            ]
+            target = "|".join(parts)
+        else:
+            target = "global"
         return f"{decision.action_type}:{target}"

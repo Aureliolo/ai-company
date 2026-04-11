@@ -130,7 +130,7 @@ export const useScalingStore = create<ScalingState>()((set, get) => ({
     } catch (err) {
       log.error('Failed to trigger evaluation', err)
       set({ evaluating: false, error: getErrorMessage(err) })
-      return []
+      throw err
     }
   },
 

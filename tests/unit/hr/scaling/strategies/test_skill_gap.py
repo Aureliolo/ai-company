@@ -38,17 +38,14 @@ class TestSkillGapStrategy:
             enabled=enabled,
             min_missing_skills=min_missing_skills,
         )
+        # Always provide signals so the test proves enabled=False ignores them.
         signals = (
-            (
-                make_signal(
-                    name="missing_skill_count",
-                    value=missing_count,
-                    source="skill",
-                ),
-                make_signal(name="coverage_ratio", value=0.5, source="skill"),
-            )
-            if enabled
-            else ()
+            make_signal(
+                name="missing_skill_count",
+                value=missing_count,
+                source="skill",
+            ),
+            make_signal(name="coverage_ratio", value=0.5, source="skill"),
         )
         ctx = make_context(skill_signals=signals)
         decisions = await strategy.evaluate(ctx)

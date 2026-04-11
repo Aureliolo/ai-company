@@ -2,6 +2,7 @@
 
 import asyncio
 import copy
+from collections.abc import Mapping
 from datetime import UTC, datetime
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any
@@ -99,8 +100,8 @@ class ScalingContextBuilder:
 
         raw_snapshots = (performance_kwargs or {}).get("snapshots", {})
         perf_snapshots = (
-            MappingProxyType(copy.deepcopy(raw_snapshots))
-            if isinstance(raw_snapshots, dict)
+            MappingProxyType(copy.deepcopy(dict(raw_snapshots)))
+            if isinstance(raw_snapshots, Mapping)
             else MappingProxyType({})
         )
 

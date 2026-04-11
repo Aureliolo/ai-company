@@ -8,7 +8,7 @@ status later.
 
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
-from uuid import uuid4
+from uuid import NAMESPACE_URL, uuid5
 
 from synthorg.core.approval import ApprovalItem
 from synthorg.core.enums import ApprovalRiskLevel, ApprovalStatus
@@ -103,8 +103,16 @@ class ApprovalGateGuard:
             )
 
             now = datetime.now(UTC)
+            # Deterministic id so replays on the same decision don't
+            # enqueue duplicate pending approvals.
+            approval_id = str(
+                uuid5(
+                    NAMESPACE_URL,
+                    f"scaling:{decision.id}:{decision.action_type.value}",
+                ),
+            )
             item = ApprovalItem(
-                id=str(uuid4()),
+                id=approval_id,
                 action_type=f"scaling:{decision.action_type.value}",
                 title=title,
                 description=str(decision.rationale),

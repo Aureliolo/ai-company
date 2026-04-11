@@ -244,6 +244,16 @@ class ScalingActionRecord(BaseModel):
                 reason="missing_reason",
             )
             raise ValueError(msg)
+        if self.outcome == ScalingOutcome.REJECTED and self.reason is None:
+            msg = "REJECTED records must include reason"
+            logger.warning(
+                HR_SCALING_MODEL_VALIDATION_FAILED,
+                model="ScalingActionRecord",
+                field="outcome_fields",
+                outcome="REJECTED",
+                reason="missing_reason",
+            )
+            raise ValueError(msg)
         if (
             self.outcome in (ScalingOutcome.EXECUTED, ScalingOutcome.DEFERRED)
             and self.result_id is None

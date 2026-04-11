@@ -93,3 +93,12 @@ HR_SCALING_MODEL_VALIDATION_FAILED: Final[str] = "hr.scaling.model_validation_fa
 HR_SCALING_SERVICE_VALIDATION_FAILED: Final[str] = (
     "hr.scaling.service_validation_failed"
 )
+HR_SCALING_CONTROLLER_SERVICE_MISSING: Final[str] = (
+    "hr.scaling.controller_service_missing"
+)
+HR_SCALING_STRATEGY_TOGGLED: Final[str] = "hr.scaling.strategy_toggled"
+HR_SCALING_PRIORITY_ORDER_UPDATED: Final[str] = "hr.scaling.priority_order_updated"
+HR_SCALING_FACTORY_ASSEMBLED: Final[str] = "hr.scaling.factory_assembled"
+HR_SCALING_CONTROLLER_INVALID_REQUEST: Final[str] = (
+    "hr.scaling.controller_invalid_request"
+)
