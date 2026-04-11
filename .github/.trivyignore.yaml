@@ -56,3 +56,15 @@ vulnerabilities:
       not a libexpat vulnerability. Trivy incorrectly maps this CVE to
       libexpat 2.7.4. Our nginx-unprivileged web image does not run SiYuan,
       execute SQL, or use libexpat for security-critical operations.
+
+  - id: CVE-2026-28386
+    purls:
+      - "pkg:apk/chainguard/openssl"
+    expired_at: "2026-07-10T00:00:00Z"
+    statement: >-
+      OpenSSL AES-CFB128 out-of-bounds read on x86-64 with AVX-512 and
+      VAES support (CVSS 9.1). Requires partial block processing at page
+      boundary with unmapped following page. CFB mode is not used in
+      TLS/DTLS and our application does not use AES-CFB128. No patched
+      Chainguard package available yet. EPSS < 0.1%.
+      Risk accepted: attack vector is unreachable in our images.

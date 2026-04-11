@@ -67,3 +67,22 @@ ignore:
       False positive: SiYuan Note auth bypass, not a libexpat vulnerability.
       Trivy incorrectly maps this CVE to libexpat. Web image is nginx
       serving static files -- SiYuan and SQL are not present.
+
+  # Audit: 2026-04-11 -- Review-by: 2026-07-10
+  # Revisit when Chainguard ships openssl >= 3.6.1-r3 or a patched FIPS module
+  - vulnerability: CVE-2026-28386
+    package:
+      name: libcrypto3
+      type: apk
+    reason: >-
+      OpenSSL AES-CFB128 out-of-bounds read on x86-64 with AVX-512/VAES.
+      Requires partial block processing at page boundary with unmapped
+      following page. CFB mode is not used in TLS/DTLS and our application
+      does not use AES-CFB128. No patched Chainguard package available yet.
+      EPSS < 0.1%. Risk accepted: attack vector is unreachable.
+  - vulnerability: CVE-2026-28386
+    package:
+      name: libssl3
+      type: apk
+    reason: >-
+      Same as libcrypto3 entry above -- OpenSSL AES-CFB128 OOB read.
