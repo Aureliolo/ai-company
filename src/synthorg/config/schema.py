@@ -33,6 +33,7 @@ from synthorg.engine.task_engine_config import TaskEngineConfig
 from synthorg.engine.workflow.config import WorkflowConfig
 from synthorg.hr.performance.config import PerformanceConfig
 from synthorg.hr.promotion.config import PromotionConfig
+from synthorg.integrations.config import IntegrationsConfig
 from synthorg.memory.config import CompanyMemoryConfig
 from synthorg.memory.org.config import OrgMemoryConfig
 from synthorg.notifications.config import NotificationConfig
@@ -769,6 +770,10 @@ class RootConfig(BaseModel):
     notifications: NotificationConfig = Field(
         default_factory=NotificationConfig,
         description="Notification subsystem configuration",
+    )
+    integrations: IntegrationsConfig = Field(
+        default_factory=IntegrationsConfig,
+        description="External service integrations configuration",
     )
     ontology: OntologyConfig = Field(
         default_factory=OntologyConfig,

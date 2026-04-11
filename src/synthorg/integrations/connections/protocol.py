@@ -1,0 +1,34 @@
+"""Protocols for the connection subsystem."""
+
+from typing import Protocol, runtime_checkable
+
+from synthorg.integrations.connections.models import ConnectionType  # noqa: TC001
+
+
+@runtime_checkable
+class ConnectionAuthenticator(Protocol):
+    """Validates and enriches connection auth for a specific type.
+
+    Each ``ConnectionType`` has an authenticator that knows which
+    secret fields are required and how to validate them.
+    """
+
+    @property
+    def connection_type(self) -> ConnectionType:
+        """The connection type this authenticator handles."""
+        ...
+
+    def validate_credentials(
+        self,
+        credentials: dict[str, str],
+    ) -> None:
+        """Validate that required credential fields are present.
+
+        Raises:
+            InvalidConnectionAuthError: If validation fails.
+        """
+        ...
+
+    def required_fields(self) -> tuple[str, ...]:
+        """Return the credential field names required for this type."""
+        ...
