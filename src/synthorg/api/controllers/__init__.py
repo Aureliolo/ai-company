@@ -78,7 +78,8 @@ from synthorg.api.controllers.workflow_versions import (
 from synthorg.api.controllers.workflows import WorkflowController
 from synthorg.api.controllers.ws import ws_handler
 
-ALL_CONTROLLERS: tuple[type[Controller], ...] = (
+# Core API controllers (always registered).
+BASE_CONTROLLERS: tuple[type[Controller], ...] = (
     HealthController,
     MetricsController,
     CompanyController,
@@ -127,6 +128,13 @@ ALL_CONTROLLERS: tuple[type[Controller], ...] = (
     ReviewController,
     ScalingController,
     TrainingController,
+)
+
+# Integration subsystem controllers. Registered only when
+# ``effective_config.integrations.enabled`` is True (default in
+# production, disabled in unit tests so Litestar route registration
+# stays cheap -- ~0.7s per create_app() otherwise).
+INTEGRATION_CONTROLLERS: tuple[type[Controller], ...] = (
     ConnectionsController,
     IntegrationHealthController,
     OAuthController,
@@ -135,8 +143,15 @@ ALL_CONTROLLERS: tuple[type[Controller], ...] = (
     TunnelController,
 )
 
+ALL_CONTROLLERS: tuple[type[Controller], ...] = (
+    *BASE_CONTROLLERS,
+    *INTEGRATION_CONTROLLERS,
+)
+
 __all__ = [
     "ALL_CONTROLLERS",
+    "BASE_CONTROLLERS",
+    "INTEGRATION_CONTROLLERS",
     "ActivityController",
     "AgentController",
     "AnalyticsController",

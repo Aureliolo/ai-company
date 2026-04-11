@@ -248,6 +248,13 @@ def approval_store() -> ApprovalStore:
 def root_config() -> RootConfig:
     # High rate limit so Hypothesis property tests (10k+ examples)
     # don't hit 429.
+    #
+    # ``integrations.enabled=False`` skips ~20 integration controller
+    # route registrations (~0.7s per ``create_app``). Tests that need
+    # integration endpoints must opt-in by constructing their own
+    # ``RootConfig(integrations=IntegrationsConfig(enabled=True))``.
+    from synthorg.integrations.config import IntegrationsConfig
+
     return RootConfig(
         company_name="test-company",
         api=ApiConfig(
@@ -256,6 +263,7 @@ def root_config() -> RootConfig:
                 auth_max_requests=1_000_000,
             ),
         ),
+        integrations=IntegrationsConfig(enabled=False),
     )
 
 

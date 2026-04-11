@@ -16,7 +16,7 @@ from datetime import UTC, datetime
 from pathlib import Path, PurePath
 from typing import TYPE_CHECKING, Any
 
-from litestar import Litestar, Request, Router
+from litestar import Controller, Litestar, Request, Router
 from litestar.config.compression import CompressionConfig
 from litestar.config.cors import CORSConfig
 from litestar.datastructures import State
@@ -47,7 +47,7 @@ from synthorg.api.channels import (
     CHANNEL_MEETINGS,
     create_channels_plugin,
 )
-from synthorg.api.controllers import ALL_CONTROLLERS
+from synthorg.api.controllers import BASE_CONTROLLERS, INTEGRATION_CONTROLLERS
 from synthorg.api.controllers.ws import ws_handler
 from synthorg.api.exception_handlers import EXCEPTION_HANDLERS
 from synthorg.api.lifecycle import (
@@ -1256,9 +1256,20 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
     plugins: list[ChannelsPlugin] = [channels_plugin]
     middleware = _build_middleware(api_config)
 
+    # Integration controllers add ~20 routes (~0.7s of Litestar
+    # registration per create_app). Skip them entirely when the
+    # integrations subsystem is disabled, so unit tests that do not
+    # exercise integration endpoints pay no registration cost.
+    integration_controllers: tuple[type[Controller], ...] = (
+        INTEGRATION_CONTROLLERS if effective_config.integrations.enabled else ()
+    )
     api_router = Router(
         path=api_config.api_prefix,
-        route_handlers=[*ALL_CONTROLLERS, ws_handler],
+        route_handlers=[
+            *BASE_CONTROLLERS,
+            *integration_controllers,
+            ws_handler,
+        ],
         guards=[require_password_changed],
     )
 

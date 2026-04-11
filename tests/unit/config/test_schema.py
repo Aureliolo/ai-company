@@ -536,7 +536,13 @@ class TestRootConfig:
         assert cfg.performance.min_data_points == 10
 
     def test_factory(self) -> None:
-        cfg = RootConfigFactory.build()
+        # ``IntegrationHealthConfig`` carries a model-level validator
+        # (``degraded_threshold <= unhealthy_threshold``) that polyfactory
+        # cannot satisfy with independent random draws, so we pin it to
+        # its default here rather than pollute the shared factory.
+        from synthorg.integrations.config import IntegrationsConfig
+
+        cfg = RootConfigFactory.build(integrations=IntegrationsConfig())
         assert isinstance(cfg, RootConfig)
         assert cfg.company_name
 

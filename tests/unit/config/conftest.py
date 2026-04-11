@@ -28,7 +28,6 @@ from synthorg.engine.strategy.models import StrategyConfig
 from synthorg.engine.workflow.config import WorkflowConfig
 from synthorg.hr.performance.config import PerformanceConfig
 from synthorg.hr.promotion.config import PromotionConfig
-from synthorg.integrations.config import IntegrationsConfig
 from synthorg.memory.config import CompanyMemoryConfig
 from synthorg.memory.org.config import OrgMemoryConfig
 from synthorg.persistence.config import PersistenceConfig
@@ -118,10 +117,6 @@ class RootConfigFactory(ModelFactory[RootConfig]):
     # internal bus, and polyfactory cannot coordinate the two
     # sub-configs automatically.
     queue = QueueConfig()
-    # Pinned because ``IntegrationHealthConfig`` has a model-level
-    # validator requiring ``degraded_threshold <= unhealthy_threshold``
-    # that polyfactory cannot satisfy with independent random draws.
-    integrations = IntegrationsConfig()
 
 
 # ── Sample YAML strings ──────────────────────────────────────────
