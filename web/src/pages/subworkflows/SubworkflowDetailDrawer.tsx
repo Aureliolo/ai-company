@@ -39,6 +39,8 @@ export function SubworkflowDetailDrawer({
     const subVersion = subworkflow.latest_version
     let cancelled = false
     async function load() {
+      setVersions([])
+      setParents([])
       setLoading(true)
       try {
         const [v, p] = await Promise.all([
@@ -170,11 +172,13 @@ export function SubworkflowDetailDrawer({
               variant="destructive"
               size="sm"
               onClick={() => setDeleteConfirmOpen(true)}
-              disabled={parents.length > 0}
+              disabled={loading || parents.length > 0}
               title={
-                parents.length > 0
-                  ? 'Cannot delete: still referenced by parent workflows'
-                  : 'Delete this subworkflow version'
+                loading
+                  ? 'Checking parent references...'
+                  : parents.length > 0
+                    ? 'Cannot delete: still referenced by parent workflows'
+                    : 'Delete this subworkflow version'
               }
             >
               <Trash2 className="mr-1 size-3.5" />

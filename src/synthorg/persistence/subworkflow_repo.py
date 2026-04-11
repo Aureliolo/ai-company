@@ -62,7 +62,6 @@ class ParentReference(BaseModel):
     pinned_version: NotBlankStr = Field(description="Pinned semver")
     node_id: NotBlankStr = Field(description="Referencing node ID")
     parent_type: Literal["workflow_definition", "subworkflow"] = Field(
-        default="workflow_definition",
         description="Whether the parent is a workflow definition or subworkflow",
     )
 

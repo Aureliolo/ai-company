@@ -33,6 +33,8 @@ export function SubworkflowBindingsEditor({
     if (!subworkflowId || !version) return
     let cancelled = false
     async function load() {
+      setInputs([])
+      setOutputs([])
       setLoading(true)
       try {
         const def = await getVersion(subworkflowId, version)
@@ -43,6 +45,8 @@ export function SubworkflowBindingsEditor({
       } catch (err: unknown) {
         if (!cancelled) {
           log.warn('Failed to load subworkflow IO declarations', sanitizeForLog(err))
+          setInputs([])
+          setOutputs([])
         }
       } finally {
         if (!cancelled) setLoading(false)

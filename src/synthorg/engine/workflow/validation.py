@@ -355,9 +355,15 @@ def _extract_subworkflow_config(
     subworkflow_id = node_config.get("subworkflow_id")
     if not isinstance(subworkflow_id, str) or not subworkflow_id.strip():
         return None
-    version = node_config.get("version")
-    if not isinstance(version, str) or not version.strip():
+    version_obj = node_config.get("version")
+    if version_obj is None:
         version = None
+    elif isinstance(version_obj, str):
+        version = version_obj.strip() or None
+    else:
+        # Non-string, non-None version is malformed -- return None
+        # so downstream validation can surface the error.
+        return None
     ib = node_config.get("input_bindings") or {}
     ob = node_config.get("output_bindings") or {}
     if not isinstance(ib, dict):

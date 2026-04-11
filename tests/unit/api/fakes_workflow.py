@@ -337,6 +337,7 @@ class FakeSubworkflowRepository:
                         parent_name=definition.name,
                         pinned_version=pinned,
                         node_id=node.id,
+                        parent_type="workflow_definition",
                     ),
                 )
         return tuple(references)

@@ -34,12 +34,17 @@ export function SubworkflowUpdateModal({
     let cancelled = false
     async function load() {
       setLoading(true)
+      setVersions([])
+      setSelectedVersion('')
       try {
         const vers = await listVersions(subworkflow.subworkflow_id)
         if (!cancelled) {
-          setVersions(vers)
-          const newer = vers.find((v) => v !== currentPinnedVersion)
-          if (newer) setSelectedVersion(newer)
+          // API returns newest first -- only allow versions that
+          // appear before the current pin (i.e. strictly newer).
+          const currentIdx = vers.indexOf(currentPinnedVersion)
+          const candidates = currentIdx > 0 ? vers.slice(0, currentIdx) : []
+          setVersions(candidates)
+          setSelectedVersion(candidates[0] ?? '')
         }
       } catch (err: unknown) {
         if (!cancelled) {
@@ -53,11 +58,13 @@ export function SubworkflowUpdateModal({
     return () => { cancelled = true }
   }, [open, subworkflow.subworkflow_id, currentPinnedVersion])
 
+  const newerVersions = versions
+
   const handleConfirm = useCallback(() => {
-    if (!selectedVersion || selectedVersion === currentPinnedVersion) return
+    if (loading || !newerVersions.includes(selectedVersion)) return
     onRepin(selectedVersion)
     onClose()
-  }, [selectedVersion, currentPinnedVersion, onRepin, onClose])
+  }, [loading, newerVersions, selectedVersion, onRepin, onClose])
 
   const handleOpenChange = useCallback(
     (nextOpen: boolean) => {
@@ -65,8 +72,6 @@ export function SubworkflowUpdateModal({
     },
     [onClose],
   )
-
-  const newerVersions = versions.filter((v) => v !== currentPinnedVersion)
 
   return (
     <Dialog.Root open={open} onOpenChange={handleOpenChange}>
@@ -142,7 +147,7 @@ export function SubworkflowUpdateModal({
               <Button
                 size="sm"
                 onClick={handleConfirm}
-                disabled={!selectedVersion || selectedVersion === currentPinnedVersion}
+                disabled={loading || !newerVersions.includes(selectedVersion)}
               >
                 Re-pin to v{selectedVersion || '...'}
               </Button>

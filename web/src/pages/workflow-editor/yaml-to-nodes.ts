@@ -35,6 +35,10 @@ interface YamlStep {
   strategy?: string
   role?: string
   agent_name?: string
+  subworkflow_id?: string
+  version?: string
+  input_bindings?: Record<string, unknown>
+  output_bindings?: Record<string, unknown>
   depends_on?: (string | number | { id: string; branch?: string })[]
 }
 
@@ -421,6 +425,25 @@ function buildConfig(step: YamlStep, stepType: string): Record<string, unknown> 
     if (role) config.role_filter = role
     const agentName = stringOrUndef(step.agent_name)
     if (agentName) config.agent_name = agentName
+  } else if (stepType === 'subworkflow') {
+    const subworkflowId = stringOrUndef(step.subworkflow_id)
+    if (subworkflowId) config.subworkflow_id = subworkflowId
+    const version = stringOrUndef(step.version)
+    if (version) config.version = version
+    if (
+      typeof step.input_bindings === 'object' &&
+      step.input_bindings !== null &&
+      !Array.isArray(step.input_bindings)
+    ) {
+      config.input_bindings = step.input_bindings
+    }
+    if (
+      typeof step.output_bindings === 'object' &&
+      step.output_bindings !== null &&
+      !Array.isArray(step.output_bindings)
+    ) {
+      config.output_bindings = step.output_bindings
+    }
   }
 
   return config

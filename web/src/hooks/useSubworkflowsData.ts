@@ -18,10 +18,6 @@ export function useSubworkflowsData(): UseSubworkflowsDataReturn {
   const error = useSubworkflowsStore((s) => s.listError)
   const searchQuery = useSubworkflowsStore((s) => s.searchQuery)
 
-  useEffect(() => {
-    useSubworkflowsStore.getState().fetchSubworkflows()
-  }, [])
-
   const pollFn = useCallback(async () => {
     await useSubworkflowsStore.getState().fetchSubworkflows()
   }, [])

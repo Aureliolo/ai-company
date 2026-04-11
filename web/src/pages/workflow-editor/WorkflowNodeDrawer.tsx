@@ -80,14 +80,19 @@ export function WorkflowNodeDrawer({
       if (key === 'input_bindings' || key === 'output_bindings') {
         try {
           const obj = JSON.parse(value) as unknown
-          if (typeof obj === 'object' && obj !== null) {
+          if (
+            typeof obj === 'object' &&
+            obj !== null &&
+            !Array.isArray(obj)
+          ) {
             onConfigChange({ ...config, [key]: obj })
             return
           }
         } catch {
           // Keep raw string so the user can continue editing.
         }
-        onConfigChange({ ...config, [key]: value })
+        // Don't write raw strings or arrays back into config --
+        // only successfully parsed plain objects are accepted.
         return
       }
 

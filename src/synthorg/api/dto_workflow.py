@@ -9,12 +9,38 @@ from typing import Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from synthorg.core.enums import WorkflowType, WorkflowValueType  # noqa: TC001
+from synthorg.core.enums import WorkflowType, WorkflowValueType
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 
 _SEMVER_RE = re.compile(
-    r"^\d+\.\d+\.\d+(-[a-zA-Z0-9.]+)?(\+[a-zA-Z0-9.]+)?$",
+    r"^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)$",
 )
+
+_TYPE_CHECKS: dict[WorkflowValueType, type | tuple[type, ...]] = {
+    WorkflowValueType.STRING: str,
+    WorkflowValueType.INTEGER: int,
+    WorkflowValueType.FLOAT: (int, float),
+    WorkflowValueType.BOOLEAN: bool,
+    WorkflowValueType.DATETIME: str,
+}
+
+
+def _validate_default_type(
+    name: str,
+    declared_type: WorkflowValueType,
+    default: object,
+) -> None:
+    """Reject defaults that are not compatible with the declared type."""
+    expected = _TYPE_CHECKS.get(declared_type)
+    if expected is None:
+        # JSON, TASK_REF, AGENT_REF -- accept any JSON-serializable value.
+        return
+    if not isinstance(default, expected):
+        msg = (
+            f"Declaration {name!r}: default value {default!r} is not "
+            f"compatible with type {declared_type.value!r}"
+        )
+        raise TypeError(msg)
 
 
 class WorkflowIODeclarationRequest(BaseModel):
@@ -45,13 +71,19 @@ class WorkflowIODeclarationRequest(BaseModel):
 
     @model_validator(mode="after")
     def _validate_default_with_required(self) -> Self:
-        """Reject defaults on required declarations at the DTO boundary."""
+        """Reject defaults on required declarations at the DTO boundary.
+
+        Also validates that non-None defaults are type-compatible with
+        the declared ``type`` and JSON-serializable.
+        """
         if self.required and self.default is not None:
             msg = (
                 f"Declaration {self.name!r}: required declarations "
                 f"must not carry a default value"
             )
             raise ValueError(msg)
+        if self.default is not None:
+            _validate_default_type(self.name, self.type, self.default)
         return self
 
 

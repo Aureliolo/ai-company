@@ -173,7 +173,7 @@ Visual workflow designer -- a DAG-based editor for creating and editing workflow
 
 **Key features**:
 
-- **7 node types**: start, end, task, agent_assignment, conditional, parallel_split, parallel_join
+- **8 node types**: start, end, task, agent_assignment, conditional, parallel_split, parallel_join, subworkflow
 - **4 edge types**: sequential, conditional_true, conditional_false, parallel_branch
 - **Undo/redo**: full history stack for node/edge additions, deletions, moves, and config changes
 - **YAML preview**: live read-only YAML export of the current workflow graph

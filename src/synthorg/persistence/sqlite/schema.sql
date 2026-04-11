@@ -377,7 +377,7 @@ CREATE TABLE subworkflows (
     edges TEXT NOT NULL,
     created_by TEXT NOT NULL CHECK(length(created_by) > 0),
     created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL DEFAULT '1970-01-01T00:00:00+00:00',
     PRIMARY KEY (subworkflow_id, semver)
 );
 

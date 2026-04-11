@@ -43,7 +43,6 @@ export const useSubworkflowsStore = create<SubworkflowsState>((set, get) => ({
         ? await searchSubworkflows(query)
         : await listSubworkflows()
       if (isStaleRequest(token)) {
-        set(() => ({ listLoading: false }))
         return
       }
       set(() => ({
@@ -52,7 +51,6 @@ export const useSubworkflowsStore = create<SubworkflowsState>((set, get) => ({
       }))
     } catch (err: unknown) {
       if (isStaleRequest(token)) {
-        set(() => ({ listLoading: false }))
         return
       }
       log.warn('Failed to fetch subworkflows', sanitizeForLog(err))
@@ -65,11 +63,7 @@ export const useSubworkflowsStore = create<SubworkflowsState>((set, get) => ({
 
   async deleteSubworkflow(id: string, version: string) {
     await deleteSubworkflowApi(id, version)
-    set((state) => ({
-      subworkflows: state.subworkflows.filter(
-        (s) => s.subworkflow_id !== id,
-      ),
-    }))
+    await get().fetchSubworkflows()
   },
 
   setSearchQuery(q: string) {

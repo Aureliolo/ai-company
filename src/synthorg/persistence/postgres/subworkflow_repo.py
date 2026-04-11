@@ -102,7 +102,7 @@ def _deserialize_row(
         raise QueryError(msg) from exc
 
 
-def _extract_references(  # noqa: PLR0913
+def _extract_references(  # noqa: PLR0913, C901
     rows: Iterable[dict[str, Any]],
     subworkflow_id: str,
     version: str | None,
@@ -131,13 +131,16 @@ def _extract_references(  # noqa: PLR0913
             if config.get("subworkflow_id") != subworkflow_id:
                 continue
             pinned = str(config.get("version") or "")
+            if not pinned:
+                # Intentionally unpinned subworkflow ref -- skip.
+                continue
             if version is not None and pinned != version:
                 continue
             node_id = node.get("id")
-            if not isinstance(node_id, str) or not pinned:
+            if not isinstance(node_id, str):
                 msg = (
                     f"Malformed SUBWORKFLOW node in"
-                    f" {parent_type} {parent_id!r}: missing id or version"
+                    f" {parent_type} {parent_id!r}: missing id"
                 )
                 raise QueryError(msg)
             references.append(
@@ -375,12 +378,22 @@ VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
         subworkflow_id: NotBlankStr,
         version: NotBlankStr,
     ) -> tuple[bool, tuple[ParentReference, ...]]:
-        """Atomically check-and-delete inside a single transaction."""
+        """Atomically check-and-delete inside a single transaction.
+
+        Uses a Postgres advisory lock keyed on the subworkflow
+        coordinate to serialize with concurrent writers and prevent
+        TOCTOU races under READ COMMITTED isolation.
+        """
         try:
             async with (
                 self._pool.connection() as conn,
                 conn.transaction(),
             ):
+                lock_key = hash((subworkflow_id, version)) & 0x7FFFFFFF
+                await conn.execute(
+                    "SELECT pg_advisory_xact_lock(%s)",
+                    (lock_key,),
+                )
                 parents = await self._find_parents_with_conn(
                     conn,
                     subworkflow_id,

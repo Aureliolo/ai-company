@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Dialog } from '@base-ui/react/dialog'
 import { Layers, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -29,6 +29,7 @@ export function SubworkflowPicker({ open, onClose, onSelect }: SubworkflowPicker
   const [selectedVersion, setSelectedVersion] = useState<string>('')
   const [loading, setLoading] = useState(false)
   const [versionsLoading, setVersionsLoading] = useState(false)
+  const versionsRequestIdRef = useRef(0)
 
   useEffect(() => {
     if (!open) return
@@ -53,17 +54,20 @@ export function SubworkflowPicker({ open, onClose, onSelect }: SubworkflowPicker
   }, [open, query, addToast])
 
   const handleSubSelect = useCallback(async (sub: SubworkflowSummary) => {
+    const requestId = ++versionsRequestIdRef.current
     setSelectedSub(sub)
     setSelectedVersion(sub.latest_version)
     setVersionsLoading(true)
     try {
       const vers = await listVersions(sub.subworkflow_id)
+      if (requestId !== versionsRequestIdRef.current) return
       setVersions(vers)
     } catch (err: unknown) {
+      if (requestId !== versionsRequestIdRef.current) return
       log.warn('Failed to load versions', sanitizeForLog(err))
       setVersions([sub.latest_version])
     } finally {
-      setVersionsLoading(false)
+      if (requestId === versionsRequestIdRef.current) setVersionsLoading(false)
     }
   }, [])
 

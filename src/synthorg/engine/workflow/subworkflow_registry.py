@@ -184,12 +184,26 @@ class SubworkflowRegistry:
                 f"{version!r}: still referenced by {len(parents)} parent "
                 f"workflow(s): {names}"
             )
+            logger.warning(
+                SUBWORKFLOW_DELETED,
+                subworkflow_id=subworkflow_id,
+                version=version,
+                deleted=False,
+                blocked_by_parents=len(parents),
+            )
             raise SubworkflowIOError(msg)
 
         if not deleted:
             msg = (
                 f"Subworkflow {subworkflow_id!r} version {version!r} "
                 "not found in registry"
+            )
+            logger.warning(
+                SUBWORKFLOW_DELETED,
+                subworkflow_id=subworkflow_id,
+                version=version,
+                deleted=False,
+                reason="not_found",
             )
             raise SubworkflowNotFoundError(
                 msg,

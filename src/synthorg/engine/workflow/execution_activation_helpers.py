@@ -117,15 +117,16 @@ def find_upstream_task_ids(
             continue
         visited.add(pred_id)
         pred_node = node_map[pred_id]
-        if (
-            pred_node.type
-            in {
-                WorkflowNodeType.TASK,
-                WorkflowNodeType.SUBWORKFLOW,
-            }
-            and pred_id in node_task_ids
-        ):
-            _flatten_task_ids(node_task_ids[pred_id], result)
+        if pred_node.type in {
+            WorkflowNodeType.TASK,
+            WorkflowNodeType.SUBWORKFLOW,
+        }:
+            if pred_id in node_task_ids:
+                _flatten_task_ids(node_task_ids[pred_id], result)
+            else:
+                # Subworkflow produced no tasks -- treat as a
+                # control hop and keep walking backwards.
+                queue.extend(reverse_adj.get(pred_id, []))
         elif pred_node.type in CONTROL_NODE_TYPES:
             # Keep walking backwards through control nodes
             queue.extend(reverse_adj.get(pred_id, []))

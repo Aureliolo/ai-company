@@ -111,35 +111,46 @@ def _collect_terminal_task_ids(
     child_prefix: str,
     state: _WalkState,
 ) -> tuple[str, ...]:
-    """Collect task IDs from a child graph's terminal TASK nodes.
+    """Collect task IDs from a child graph's terminal executable nodes.
 
-    A terminal TASK node is one whose only successors are END nodes
-    or that has no successors at all.  The result is stored in the
-    parent frame's ``frame_node_task_ids`` so downstream parent TASK
-    nodes receive these as dependencies.
+    A terminal node is one whose only successors are END nodes or
+    that has no successors at all.  Both TASK and SUBWORKFLOW nodes
+    are considered -- SUBWORKFLOW entries may store a tuple of child
+    terminal task IDs that must be flattened.
 
     Returns:
         A tuple of task IDs (possibly empty when the child graph
-        had no TASK nodes or all tasks were skipped).
+        had no executable nodes or all were skipped).
     """
     adjacency, _, _ = build_adjacency_maps(child_definition)
     node_map = {n.id: n for n in child_definition.nodes}
     terminal_task_ids: list[str] = []
     for node in child_definition.nodes:
-        if node.type is not WorkflowNodeType.TASK:
+        if node.type not in (
+            WorkflowNodeType.TASK,
+            WorkflowNodeType.SUBWORKFLOW,
+        ):
             continue
         qualified = _qualify_id(child_prefix, node.id)
-        task_id = state.node_task_ids.get(qualified)
-        if task_id is None:
-            continue
-        # Check if this TASK node is terminal: all successors are
-        # END or no successors at all.
         successors = adjacency.get(node.id, [])
-        if (
+        is_terminal = (
             all(node_map[s].type is WorkflowNodeType.END for s in successors)
             or not successors
-        ):
-            terminal_task_ids.append(task_id)
+        )
+        if not is_terminal:
+            continue
+        if node.type is WorkflowNodeType.TASK:
+            task_id = state.node_task_ids.get(qualified)
+            if task_id is not None:
+                terminal_task_ids.append(task_id)
+        else:
+            # SUBWORKFLOW entries may contain a tuple of child
+            # terminal task IDs -- flatten them.
+            entry = state.node_task_ids.get(qualified)
+            if isinstance(entry, tuple):
+                terminal_task_ids.extend(entry)
+            elif isinstance(entry, str):
+                terminal_task_ids.append(entry)
     return tuple(terminal_task_ids)
 
 

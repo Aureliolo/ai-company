@@ -158,13 +158,16 @@ def _extract_references(  # noqa: C901, PLR0913
             if config.get("subworkflow_id") != subworkflow_id:
                 continue
             pinned = str(config.get("version") or "")
+            if not pinned:
+                # Intentionally unpinned subworkflow ref -- skip.
+                continue
             if version is not None and pinned != version:
                 continue
             node_id = node.get("id")
-            if not isinstance(node_id, str) or not pinned:
+            if not isinstance(node_id, str):
                 msg = (
                     f"Malformed SUBWORKFLOW node in"
-                    f" {parent_type} {parent_id!r}: missing id or version"
+                    f" {parent_type} {parent_id!r}: missing id"
                 )
                 raise QueryError(msg)
             references.append(

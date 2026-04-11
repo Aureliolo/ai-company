@@ -392,12 +392,18 @@ def _update_node_status(
 
 
 def _all_tasks_completed(execution: WorkflowExecution) -> bool:
-    """Check if all non-skipped TASK nodes have completed."""
+    """Check if all non-skipped executable nodes have completed."""
     for ne in execution.node_executions:
-        if ne.node_type is not WorkflowNodeType.TASK:
-            continue
         if ne.status is WorkflowNodeExecutionStatus.SKIPPED:
             continue
-        if ne.status is not WorkflowNodeExecutionStatus.TASK_COMPLETED:
+        if (
+            ne.node_type is WorkflowNodeType.TASK
+            and ne.status is not WorkflowNodeExecutionStatus.TASK_COMPLETED
+        ):
+            return False
+        if (
+            ne.node_type is WorkflowNodeType.SUBWORKFLOW
+            and ne.status is not WorkflowNodeExecutionStatus.SUBWORKFLOW_COMPLETED
+        ):
             return False
     return True
