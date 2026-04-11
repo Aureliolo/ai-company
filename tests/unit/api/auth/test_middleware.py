@@ -348,10 +348,22 @@ class TestAuthMiddlewareApiKey:
 class TestAuthMiddlewareApiKeyEdgeCases:
     async def test_api_key_with_deleted_owner_returns_401(self) -> None:
         svc = _make_auth_service()
-        user = _make_user(svc)
         persistence = FakePersistenceBackend()
         await persistence.connect()
-        # Save the user, create a key, then delete the user
+        # Create a manager (not CEO) so deletion doesn't violate invariants.
+        # The CEO from _make_user stays to satisfy the CEO-minimum trigger.
+        ceo = _make_user(svc)
+        await persistence.users.save(ceo)
+        now = datetime.now(UTC)
+        user = User(
+            id="mw-deletable",
+            username="deletable",
+            password_hash=ceo.password_hash,
+            role=HumanRole.MANAGER,
+            must_change_password=False,
+            created_at=now,
+            updated_at=now,
+        )
         await persistence.users.save(user)
 
         raw_key = AuthService.generate_api_key()
