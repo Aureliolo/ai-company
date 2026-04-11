@@ -139,7 +139,9 @@ func handleReinit(cmd *cobra.Command, state *config.State, opts *GlobalOpts) (bo
 			if oldState.PostgresPassword != "" {
 				state.PostgresPassword = oldState.PostgresPassword
 			}
-			if oldState.PostgresPort != 0 {
+			// Only reuse the persisted port when the user did NOT pass
+			// --postgres-port on this invocation; an explicit flag must win.
+			if oldState.PostgresPort != 0 && !cmd.Flags().Changed("postgres-port") {
 				state.PostgresPort = oldState.PostgresPort
 			}
 		}
@@ -163,7 +165,9 @@ func handleReinit(cmd *cobra.Command, state *config.State, opts *GlobalOpts) (bo
 		if oldState.PostgresPassword != "" {
 			state.PostgresPassword = oldState.PostgresPassword
 		}
-		if oldState.PostgresPort != 0 {
+		// Only reuse the persisted port when the user did NOT pass
+		// --postgres-port on this invocation; an explicit flag must win.
+		if oldState.PostgresPort != 0 && !cmd.Flags().Changed("postgres-port") {
 			state.PostgresPort = oldState.PostgresPort
 		}
 	}

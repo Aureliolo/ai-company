@@ -31,21 +31,32 @@ fi
 
 REVISIONS_DIR="src/synthorg/persistence/sqlite/revisions"
 
-# Resolve the PR base branch: CI sets GITHUB_BASE_REF (bare branch name),
-# local callers may set BASE_BRANCH, otherwise default to origin/main.
-# Normalize to a remote-tracking ref so both git show-ref and git cat-file
-# resolve consistently.
+# Resolve the PR base branch. Precedence: BASE_BRANCH > GITHUB_BASE_REF >
+# origin/main. CI sets GITHUB_BASE_REF to a bare branch name; local callers
+# may set BASE_BRANCH to anything (bare, origin/<name>, or refs/heads/<name>).
 BASE_RAW="${BASE_BRANCH:-${GITHUB_BASE_REF:-origin/main}}"
+
+# Normalize to (1) a remote-tracking ref for comparisons with
+# git cat-file / git show-ref, and (2) a bare branch name for git fetch.
 case "$BASE_RAW" in
-    origin/*|refs/*) BASE="$BASE_RAW" ;;
-    *)               BASE="origin/$BASE_RAW" ;;
+    refs/heads/*)       BASE_NAME="${BASE_RAW#refs/heads/}" ;;
+    refs/remotes/*)     BASE_NAME="${BASE_RAW#refs/remotes/origin/}" ;;
+    origin/*)           BASE_NAME="${BASE_RAW#origin/}" ;;
+    refs/*)             BASE_NAME="${BASE_RAW#refs/}" ;;
+    *)                  BASE_NAME="$BASE_RAW" ;;
 esac
+BASE="origin/$BASE_NAME"
+FETCH_TARGET="$BASE_NAME"
 
 # Ensure the base ref exists locally; only fetch as a fallback.
-if ! git show-ref --verify --quiet "refs/remotes/${BASE#origin/}" \
+if ! git show-ref --verify --quiet "refs/remotes/$BASE_NAME" \
     && ! git rev-parse --verify --quiet "$BASE" >/dev/null; then
-    fetch_target="${BASE#origin/}"
-    if ! git fetch origin "$fetch_target" --quiet 2>/dev/null; then
+    if ! git fetch origin "$FETCH_TARGET" --quiet 2>/dev/null; then
+        # In CI a missing base branch is a hard failure; locally it's a skip.
+        if [ -n "${GITHUB_BASE_REF:-}" ]; then
+            echo "check_single_migration_per_pr: CI base branch $BASE is unavailable; cannot validate migrations." >&2
+            exit 1
+        fi
         echo "check_single_migration_per_pr: $BASE is unavailable; skipping local check." >&2
         exit 0
     fi

@@ -7,6 +7,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/spf13/cobra"
+
 	"github.com/Aureliolo/synthorg/cli/internal/compose"
 	"github.com/Aureliolo/synthorg/cli/internal/config"
 )
@@ -108,8 +110,7 @@ func TestInitValidatePostgresFlag(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			old := initPersistenceBackend
-			defer func() { initPersistenceBackend = old }()
+			defer snapshotInitFlags()()
 			initPersistenceBackend = tt.backend
 			err := validateInitFlags()
 			if (err != nil) != tt.wantErr {
@@ -133,14 +134,52 @@ func TestInitValidatePostgresPort(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			old := initPostgresPort
-			defer func() { initPostgresPort = old }()
+			defer snapshotInitFlags()()
 			initPostgresPort = tt.port
 			err := validateInitFlags()
 			if (err != nil) != tt.wantErr {
 				t.Errorf("validateInitFlags() err=%v, wantErr=%v", err, tt.wantErr)
 			}
 		})
+	}
+}
+
+// snapshotInitFlags captures every package-level init* flag variable that
+// validateInitFlags reads, and returns a restore function. Callers
+// “defer snapshotInitFlags()()“ so subtests are order-independent even when
+// they mutate a single flag -- the full init flag state is restored on exit.
+func snapshotInitFlags() func() {
+	saved := struct {
+		backendPort        int
+		webPort            int
+		sandbox            string
+		imageTag           string
+		channel            string
+		logLevel           string
+		busBackend         string
+		persistenceBackend string
+		postgresPort       int
+	}{
+		backendPort:        initBackendPort,
+		webPort:            initWebPort,
+		sandbox:            initSandbox,
+		imageTag:           initImageTag,
+		channel:            initChannel,
+		logLevel:           initLogLevel,
+		busBackend:         initBusBackend,
+		persistenceBackend: initPersistenceBackend,
+		postgresPort:       initPostgresPort,
+	}
+	return func() {
+		initBackendPort = saved.backendPort
+		initWebPort = saved.webPort
+		initSandbox = saved.sandbox
+		initImageTag = saved.imageTag
+		initChannel = saved.channel
+		initLogLevel = saved.logLevel
+		initBusBackend = saved.busBackend
+		initPersistenceBackend = saved.persistenceBackend
+		initPostgresPort = saved.postgresPort
 	}
 }
 
@@ -230,12 +269,31 @@ func TestPostgresLifecycle_InitGeneratesWritableState(t *testing.T) {
 	}
 }
 
-// TestPostgresLifecycle_ReinitPreservesCustomPostgresPort verifies that
-// re-init with a custom PostgresPort does not reset the port to the default
-// (3002). This exercises the oldState preservation path in handleReinit.
+// newReinitCmd builds a throwaway cobra.Command with the --postgres-port flag
+// registered so tests can drive handleReinit() through the real code path,
+// including cmd.Flags().Changed("postgres-port") checks.
+func newReinitCmd() *cobra.Command {
+	cmd := &cobra.Command{Use: "init"}
+	cmd.Flags().IntVar(&initPostgresPort, "postgres-port", 0, "")
+	return cmd
+}
+
+// TestPostgresLifecycle_ReinitPreservesCustomPostgresPort drives handleReinit()
+// through both behaviours we care about:
+//
+//   - when the user does NOT pass --postgres-port, the persisted custom port
+//     (5433) must survive the re-init;
+//   - when the user DOES pass --postgres-port with a different value (6543),
+//     the explicit flag must win and the persisted value must be discarded.
+//
+// The previous revision of this test only exercised buildState + writeInitFiles
+// + config.Load, which never reached the handleReinit flag-precedence path.
 func TestPostgresLifecycle_ReinitPreservesCustomPostgresPort(t *testing.T) {
+	defer snapshotInitFlags()()
+
 	dir := t.TempDir()
-	a := setupAnswers{
+	// ── First init: custom port 5433 ─────────────────────────────
+	first := setupAnswers{
 		dir:                mustAbs(t, dir),
 		backendPortStr:     "3001",
 		webPortStr:         "3000",
@@ -245,41 +303,86 @@ func TestPostgresLifecycle_ReinitPreservesCustomPostgresPort(t *testing.T) {
 		persistenceBackend: "postgres",
 		memoryBackend:      "mem0",
 		busBackend:         "internal",
-		postgresPort:       5433, // custom port
+		postgresPort:       5433,
 	}
-
-	state, err := buildState(a)
+	initialState, err := buildState(first)
 	if err != nil {
-		t.Fatalf("buildState: %v", err)
+		t.Fatalf("buildState (first): %v", err)
 	}
-	if _, err := writeInitFiles(state); err != nil {
-		t.Fatalf("writeInitFiles: %v", err)
+	if _, err := writeInitFiles(initialState); err != nil {
+		t.Fatalf("writeInitFiles (first): %v", err)
 	}
+	originalPassword := initialState.PostgresPassword
 
-	// Read back the persisted config (simulates a re-init reading oldState).
+	// ── Re-init WITHOUT --postgres-port: persisted 5433 wins ─────
+	t.Run("no flag preserves persisted port", func(t *testing.T) {
+		defer snapshotInitFlags()()
+		second := first
+		second.postgresPort = 0 // user did not pass the flag
+		newState, err := buildState(second)
+		if err != nil {
+			t.Fatalf("buildState (no flag): %v", err)
+		}
+		// buildState fills in DefaultState().PostgresPort (3002) when 0;
+		// handleReinit should override that with the persisted 5433.
+		cmd := newReinitCmd() // flag NOT .Changed()
+		opts := &GlobalOpts{DataDir: mustAbs(t, dir), Yes: true}
+		ok, err := handleReinit(cmd, &newState, opts)
+		if err != nil || !ok {
+			t.Fatalf("handleReinit (no flag): ok=%v err=%v", ok, err)
+		}
+		if newState.PostgresPort != 5433 {
+			t.Errorf("PostgresPort = %d, want 5433 (persisted)", newState.PostgresPort)
+		}
+		if newState.PostgresPassword != originalPassword {
+			t.Error("PostgresPassword should be preserved from persisted state")
+		}
+	})
+
+	// ── Re-init WITH --postgres-port=6543: flag wins ─────────────
+	t.Run("explicit flag overrides persisted port", func(t *testing.T) {
+		defer snapshotInitFlags()()
+		second := first
+		second.postgresPort = 6543
+		newState, err := buildState(second)
+		if err != nil {
+			t.Fatalf("buildState (flag): %v", err)
+		}
+		cmd := newReinitCmd()
+		// Simulate user passing --postgres-port=6543 on the command line.
+		if err := cmd.Flags().Set("postgres-port", "6543"); err != nil {
+			t.Fatalf("cmd.Flags().Set: %v", err)
+		}
+		opts := &GlobalOpts{DataDir: mustAbs(t, dir), Yes: true}
+		ok, err := handleReinit(cmd, &newState, opts)
+		if err != nil || !ok {
+			t.Fatalf("handleReinit (flag): ok=%v err=%v", ok, err)
+		}
+		if newState.PostgresPort != 6543 {
+			t.Errorf(
+				"PostgresPort = %d, want 6543 (explicit flag must win)",
+				newState.PostgresPort,
+			)
+		}
+		if newState.PostgresPassword != originalPassword {
+			t.Error("PostgresPassword should still be preserved from persisted state")
+		}
+	})
+
+	// ── Regenerate compose from persisted state and verify round-trip ──
 	persisted, err := config.Load(mustAbs(t, dir))
 	if err != nil {
 		t.Fatalf("config.Load: %v", err)
 	}
-	if persisted.PostgresPort != 5433 {
-		t.Errorf("persisted PostgresPort = %d, want 5433", persisted.PostgresPort)
-	}
-	if persisted.PostgresPassword == "" {
-		t.Error("persisted PostgresPassword must be non-empty")
-	}
-
-	// Regenerate compose from persisted state and verify the custom port + password
-	// survive (this is what `synthorg start` does after re-init).
 	params := compose.ParamsFromState(persisted)
 	regenerated, err := compose.Generate(params)
 	if err != nil {
 		t.Fatalf("regenerate compose: %v", err)
 	}
-	regenStr := string(regenerated)
-	if !strings.Contains(regenStr, "\"5433:5432\"") {
+	if !strings.Contains(string(regenerated), "\"5433:5432\"") {
 		t.Error("regenerated compose must contain custom postgres port mapping 5433:5432")
 	}
-	if !strings.Contains(regenStr, persisted.PostgresPassword) {
+	if !strings.Contains(string(regenerated), persisted.PostgresPassword) {
 		t.Error("regenerated compose must contain the persisted password")
 	}
 }

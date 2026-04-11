@@ -1,7 +1,7 @@
 """Postgres repository implementation for security audit entries."""
 
 import json
-from datetime import UTC, datetime
+from datetime import UTC
 from typing import TYPE_CHECKING, Any
 
 import psycopg
@@ -317,8 +317,8 @@ INSERT INTO audit_entries (
 
     def _build_time_clause(
         self,
-        since: datetime | None,
-        until: datetime | None,
+        since: AwareDatetime | None,
+        until: AwareDatetime | None,
     ) -> tuple[list[str], list[object]]:
         """Build timestamp filter conditions."""
         conditions: list[str] = []
@@ -336,8 +336,8 @@ INSERT INTO audit_entries (
         extra_condition: str,
         extra_params: list[object],
         *,
-        since: datetime | None,
-        until: datetime | None,
+        since: AwareDatetime | None,
+        until: AwareDatetime | None,
         limit: int,
         offset: int,
     ) -> tuple[tuple[AuditEntry, ...], int]:
@@ -392,8 +392,8 @@ INSERT INTO audit_entries (
         column: str,
         value: dict[str, Any] | list[Any],
         *,
-        since: datetime | None = None,
-        until: datetime | None = None,
+        since: AwareDatetime | None = None,
+        until: AwareDatetime | None = None,
         limit: int = 100,
         offset: int = 0,
     ) -> tuple[tuple[AuditEntry, ...], int]:
@@ -417,8 +417,8 @@ INSERT INTO audit_entries (
         column: str,
         key: str,
         *,
-        since: datetime | None = None,
-        until: datetime | None = None,
+        since: AwareDatetime | None = None,
+        until: AwareDatetime | None = None,
         limit: int = 100,
         offset: int = 0,
     ) -> tuple[tuple[AuditEntry, ...], int]:
@@ -443,8 +443,8 @@ INSERT INTO audit_entries (
         path: str,
         value: str,
         *,
-        since: datetime | None = None,
-        until: datetime | None = None,
+        since: AwareDatetime | None = None,
+        until: AwareDatetime | None = None,
         limit: int = 100,
         offset: int = 0,
     ) -> tuple[tuple[AuditEntry, ...], int]:

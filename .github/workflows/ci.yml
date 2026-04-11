@@ -177,24 +177,25 @@ jobs:
             --cov-fail-under=80 \
             --junitxml=junit.xml
 
-      # Codecov upload is best-effort -- CI should not fail on Codecov outages
-      # or missing tokens. Coverage enforcement is handled by --cov-fail-under.
+      # Codecov upload is best-effort -- CI should not fail on Codecov outages.
+      # Coverage enforcement is handled by --cov-fail-under. Uses tokenless
+      # OIDC upload for this public repo so no protected secrets are needed.
       - name: Upload coverage to Codecov
         if: ${{ !cancelled() }}
         uses: codecov/codecov-action@57e3a136b779b570ffcdbf80b3bdc90e7fab3de2 # v6.0.0
         with:
-          token: ${{ secrets.CODECOV_TOKEN }}
           files: coverage.xml
           fail_ci_if_error: false
+          use_oidc: true
 
       - name: Upload test results to Codecov
         if: ${{ !cancelled() }}
         uses: codecov/codecov-action@57e3a136b779b570ffcdbf80b3bdc90e7fab3de2 # v6.0.0
         with:
-          token: ${{ secrets.CODECOV_TOKEN }}
           files: junit.xml
           fail_ci_if_error: false
           report_type: test_results
+          use_oidc: true
 
       - name: Upload test results
         if: ${{ !cancelled() }}
