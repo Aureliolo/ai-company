@@ -14,4 +14,4 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
     environment:
-      SYNTHORG_SANDBOX_IMAGE: "ghcr.io/aureliolo/synthorg-sandbox:latest"
+      SYNTHORG_SANDBOX_IMAGE: "${SYNTHORG_SANDBOX_IMAGE:-ghcr.io/aureliolo/synthorg-sandbox:latest}"

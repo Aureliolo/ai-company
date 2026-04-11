@@ -20,14 +20,7 @@ _FALLBACK_SANDBOX_IMAGE = "synthorg-sandbox:latest"
 
 
 def _default_sandbox_image() -> str:
-    """Resolve the default sandbox image from SYNTHORG_SANDBOX_IMAGE.
-
-    The CLI injects the digest-pinned sandbox image reference into the
-    backend container via SYNTHORG_SANDBOX_IMAGE so the CLI and backend
-    stay version-locked. Explicit YAML config (``sandboxing.docker.image``)
-    still wins because Pydantic only calls ``default_factory`` when the
-    field is not provided.
-    """
+    """Resolve the default sandbox image from ``SYNTHORG_SANDBOX_IMAGE``."""
     value = os.environ.get("SYNTHORG_SANDBOX_IMAGE", "").strip()
     return value or _FALLBACK_SANDBOX_IMAGE
 
@@ -57,10 +50,8 @@ class DockerSandboxConfig(BaseModel):
     image: NotBlankStr = Field(
         default_factory=_default_sandbox_image,
         description=(
-            "Docker image to use for sandbox containers. Defaults to the "
-            "SYNTHORG_SANDBOX_IMAGE environment variable (set by the CLI "
-            "to the digest-pinned reference), falling back to "
-            "'synthorg-sandbox:latest'. Explicit YAML config wins over both."
+            "Docker image for sandbox containers. Precedence: explicit YAML, "
+            "SYNTHORG_SANDBOX_IMAGE env var, synthorg-sandbox:latest fallback."
         ),
     )
     network: Literal["none", "bridge", "host"] = Field(

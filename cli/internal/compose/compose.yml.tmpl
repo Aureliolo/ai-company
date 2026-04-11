@@ -50,6 +50,10 @@ services:
     volumes:
       - synthorg-data:/data
 {{- if .Sandbox}}
+      # Docker socket: backend spawns ephemeral sandbox containers via
+      # aiodocker. WARNING: root-equivalent access to the host Docker
+      # daemon -- cap_drop/no-new-privileges/read_only below do NOT
+      # contain socket-level privilege. Only enable in trusted hosts.
       - "{{.DockerSock}}:/var/run/docker.sock"
 {{- end}}
 {{- if postgresEnabled}}

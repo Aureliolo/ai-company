@@ -229,11 +229,7 @@ func digestPin(pins map[string]string) func(name, repo, tag string) string {
 // when the backend spawns ephemeral sandbox containers via aiodocker.
 func sandboxImageRef(pins map[string]string) func(tag string) string {
 	return func(tag string) string {
-		const repo = "ghcr.io/aureliolo/synthorg-sandbox"
-		if d, ok := pins["sandbox"]; ok && d != "" {
-			return repo + "@" + d
-		}
-		return repo + ":" + tag
+		return verify.FormatImageRef("sandbox", tag, pins["sandbox"])
 	}
 }
 

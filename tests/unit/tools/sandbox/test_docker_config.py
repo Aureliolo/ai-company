@@ -9,11 +9,16 @@ from synthorg.tools.sandbox.policy import NetworkPolicy, SandboxPolicy
 pytestmark = pytest.mark.unit
 
 
+@pytest.fixture(autouse=True)
+def _isolate_sandbox_image_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Clear SYNTHORG_SANDBOX_IMAGE so host env never leaks into defaults."""
+    monkeypatch.delenv("SYNTHORG_SANDBOX_IMAGE", raising=False)
+
+
 class TestDockerSandboxConfigDefaults:
     """Default values are sensible."""
 
-    def test_defaults(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.delenv("SYNTHORG_SANDBOX_IMAGE", raising=False)
+    def test_defaults(self) -> None:
         config = DockerSandboxConfig()
         assert config.image == "synthorg-sandbox:latest"
         assert config.network == "none"

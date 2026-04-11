@@ -9,6 +9,10 @@ services:
       - "3001:3001"
     volumes:
       - synthorg-data:/data
+      # Docker socket: backend spawns ephemeral sandbox containers via
+      # aiodocker. WARNING: root-equivalent access to the host Docker
+      # daemon -- cap_drop/no-new-privileges/read_only below do NOT
+      # contain socket-level privilege. Only enable in trusted hosts.
       - "/var/run/docker.sock:/var/run/docker.sock"
     environment:
       SYNTHORG_HOST: "0.0.0.0"
