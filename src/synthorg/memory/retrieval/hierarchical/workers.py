@@ -143,9 +143,17 @@ class SemanticWorker:
                     shared = ()
 
             if self._config.fusion_strategy == FusionStrategy.RRF:
-                ranked = self._rank_rrf(personal, shared)
+                ranked = self._rank_rrf(
+                    personal,
+                    shared,
+                    max_results=query.max_results,
+                )
             else:
-                ranked = self._rank_linear(personal, shared)
+                ranked = self._rank_linear(
+                    personal,
+                    shared,
+                    max_results=query.max_results,
+                )
 
             candidates = tuple(
                 _scored_to_candidate(s, source_worker=self.name) for s in ranked
@@ -182,6 +190,8 @@ class SemanticWorker:
         self,
         personal: tuple[MemoryEntry, ...],
         shared: tuple[MemoryEntry, ...],
+        *,
+        max_results: int,
     ) -> tuple[ScoredMemory, ...]:
         """Rank via RRF fusion over personal + shared lists."""
         lists: list[tuple[MemoryEntry, ...]] = []
@@ -194,18 +204,23 @@ class SemanticWorker:
         return fuse_ranked_lists(
             tuple(lists),
             k=self._config.rrf_k,
-            max_results=self._config.max_memories,
+            max_results=max_results,
         )
 
     def _rank_linear(
         self,
         personal: tuple[MemoryEntry, ...],
         shared: tuple[MemoryEntry, ...],
+        *,
+        max_results: int,
     ) -> tuple[ScoredMemory, ...]:
         """Rank via linear combination of relevance + recency."""
+        effective_config = self._config.model_copy(
+            update={"max_memories": max_results},
+        )
         return rank_memories(
             personal,
-            config=self._config,
+            config=effective_config,
             now=datetime.now(UTC),
             shared_entries=shared or (),
         )

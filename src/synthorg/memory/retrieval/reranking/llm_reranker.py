@@ -173,13 +173,7 @@ class LLMQuerySpecificReranker:
             )
             return candidates
 
-        # Re-order and assign decaying scores
-        reranked: list[RetrievalCandidate] = []
-        for rank_pos, idx in enumerate(ranking):
-            new_score = max(0.0, 1.0 - rank_pos * (1.0 / max(n, 1)))
-            reranked.append(
-                candidates[idx].model_copy(
-                    update={"combined_score": new_score},
-                ),
-            )
-        return tuple(reranked)
+        # Re-order preserving original combined_score so downstream
+        # filtering/diversity logic still sees the true relevance signal.
+        # The re-ranking intent is communicated via sequence order.
+        return tuple(candidates[idx] for idx in ranking)

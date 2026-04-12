@@ -250,8 +250,18 @@ class WikiExporter:
                 if not isinstance(data, dict):
                     msg = f"expected dict, got {type(data).__name__}"
                     raise TypeError(msg)  # noqa: TRY301
-                decisions = data.get("strategic_decisions", [])
-                contexts = data.get("applicable_contexts", [])
+                raw_decisions = data.get("strategic_decisions", [])
+                raw_contexts = data.get("applicable_contexts", [])
+                decisions = (
+                    [d for d in raw_decisions if isinstance(d, str)]
+                    if isinstance(raw_decisions, list)
+                    else []
+                )
+                contexts = (
+                    [c for c in raw_contexts if isinstance(c, str)]
+                    if isinstance(raw_contexts, list)
+                    else []
+                )
             except json.JSONDecodeError, TypeError:
                 logger.warning(
                     WIKI_EXPORT_FAILED,

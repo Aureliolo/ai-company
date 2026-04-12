@@ -249,9 +249,18 @@ class SupervisorRouter:
         corrected_query = None
         corrected_text = parsed.get("corrected_query")
         if corrected_text:
-            corrected_query = type(query).model_validate(
-                query.model_dump(mode="python") | {"text": corrected_text},
-            )
+            try:
+                corrected_query = type(query).model_validate(
+                    query.model_dump(mode="python") | {"text": corrected_text},
+                )
+            except Exception as exc:
+                logger.debug(
+                    MEMORY_HIERARCHICAL_RETRY,
+                    action="corrected_query_invalid",
+                    error=str(exc),
+                    corrected_text=str(corrected_text)[:80],
+                )
+                corrected_query = None
 
         alt_strategy = parsed.get("alternative_strategy")
         if alt_strategy and alt_strategy not in {

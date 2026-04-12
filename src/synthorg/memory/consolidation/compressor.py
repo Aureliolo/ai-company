@@ -49,7 +49,7 @@ class ExperienceCompressor(Protocol):
         memory_context: tuple[MemoryEntry, ...],
         *,
         agent_id: NotBlankStr = "unknown",
-        source_artifact_ids: tuple[NotBlankStr, ...] = (),
+        source_artifact_ids: tuple[NotBlankStr, ...],
     ) -> CompressedExperience:
         """Compress a single raw experience into strategic learnings.
 
@@ -129,7 +129,7 @@ class LLMExperienceCompressor:
         memory_context: tuple[MemoryEntry, ...],
         *,
         agent_id: NotBlankStr = "unknown",
-        source_artifact_ids: tuple[NotBlankStr, ...] = (),
+        source_artifact_ids: tuple[NotBlankStr, ...],
     ) -> CompressedExperience:
         """Compress a single raw experience via LLM.
 

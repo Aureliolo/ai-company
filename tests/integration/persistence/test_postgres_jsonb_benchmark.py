@@ -71,7 +71,12 @@ async def _seed_audit_entries(
     backend: PostgresPersistenceBackend,
     count: int,
 ) -> None:
-    """Bulk-insert *count* audit entries with randomised matched_rules.
+    """Bulk-insert *count* audit entries with deterministic matched_rules.
+
+    Every 10th row (``i % 10 == 0``) has ``matched_rules =
+    ["rule-target", "rule-{i}"]``; all other rows have ``matched_rules
+    = ["rule-noise-{i}"]``.  The deterministic 10% selectivity is what
+    the benchmark's GIN-vs-seqscan speedup assertion relies on.
 
     Uses ``COPY FROM STDIN`` rather than ``executemany`` for bulk
     performance: COPY is typically 10-20x faster on 100k-row inserts

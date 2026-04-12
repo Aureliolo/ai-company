@@ -185,7 +185,7 @@ class ExperienceCompressorConfig(BaseModel):
             (``None`` = use medium-tier default).
         temperature: Sampling temperature for compression.
         max_tokens: Token budget for the compressor response.
-        min_compression_ratio: Discard compressions with a ratio above
+        min_compression_ratio: Discard compressions with a ratio below
             this threshold (0.0 = keep all, closer to 1.0 = stricter).
     """
 
@@ -219,7 +219,7 @@ class ExperienceCompressorConfig(BaseModel):
         ge=0.0,
         lt=1.0,
         description=(
-            "Discard compressions with a ratio above this threshold (0.0 = keep all)"
+            "Discard compressions with a ratio below this threshold (0.0 = keep all)"
         ),
     )
 

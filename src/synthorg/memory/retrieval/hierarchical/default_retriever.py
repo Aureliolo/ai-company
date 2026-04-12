@@ -122,6 +122,10 @@ class DefaultHierarchicalRetriever:
         # Phase 4: Reflective retry
         retries = 0
         current_query = query
+        last_attempt: tuple[str, tuple[str, ...]] = (
+            query.text,
+            tuple(selected),
+        )
         if self._supervisor.reflective_retry_enabled:
             max_retries = self._supervisor.max_retry_count
             while retries < max_retries:
@@ -139,17 +143,32 @@ class DefaultHierarchicalRetriever:
                         reason=correction.reason,
                     )
                     break
-                retries += 1
-                current_query = (
+                proposed_query = (
                     correction.corrected_query
                     if correction.corrected_query is not None
                     else current_query
                 )
-                retry_query = current_query
-                retry_workers = self._resolve_retry_workers(
+                proposed_workers = self._resolve_retry_workers(
                     correction.alternative_strategy,
                     selected,
                 )
+                proposed_attempt: tuple[str, tuple[str, ...]] = (
+                    proposed_query.text,
+                    tuple(proposed_workers),
+                )
+                if proposed_attempt == last_attempt:
+                    logger.info(
+                        MEMORY_HIERARCHICAL_RETRY,
+                        action="no-op",
+                        retry_count=retries + 1,
+                        reason="supervisor proposed identical (query, workers)",
+                    )
+                    break
+                retries += 1
+                current_query = proposed_query
+                retry_query = current_query
+                retry_workers = proposed_workers
+                last_attempt = proposed_attempt
                 logger.info(
                     MEMORY_HIERARCHICAL_RETRY,
                     action="executing",

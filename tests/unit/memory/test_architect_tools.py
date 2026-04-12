@@ -174,8 +174,11 @@ class TestKnowledgeArchitectDeleteTool:
     @pytest.mark.unit
     async def test_delete_denied_at_full_autonomy(self) -> None:
         backend = _mock_org_backend()
+        fact_store = AsyncMock()
+        fact_store.delete = AsyncMock(return_value=True)
         tool = KnowledgeArchitectDeleteTool(
             org_backend=backend,
+            fact_store=fact_store,
             agent_id="agent-1",
             autonomy_level=AutonomyLevel.FULL,
         )
@@ -184,6 +187,7 @@ class TestKnowledgeArchitectDeleteTool:
         )
         assert result.is_error
         assert "denied" in result.content.lower()
+        fact_store.delete.assert_not_awaited()
 
     @pytest.mark.unit
     async def test_delete_allowed_at_supervised(self) -> None:

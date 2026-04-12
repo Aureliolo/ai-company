@@ -101,7 +101,10 @@ class TestLLMQuerySpecificReranker:
         result = await reranker.rerank(_make_query(), (c1, c2))
         assert result[0].entry.id == "mem-2"
         assert result[1].entry.id == "mem-1"
-        assert result[0].combined_score > result[1].combined_score
+        # Reranker preserves original combined_score; order reflects
+        # LLM ranking signal, not a positional decay.
+        assert result[0].combined_score == 0.7
+        assert result[1].combined_score == 0.9
 
     @pytest.mark.unit
     async def test_rerank_single_candidate_passthrough(self) -> None:
@@ -218,4 +221,5 @@ class TestLLMQuerySpecificReranker:
         c1 = _make_candidate("mem-1", 0.9)
         c2 = _make_candidate("mem-2", 0.7)
         result = await reranker.rerank(_make_query(), (c1, c2))
-        assert result[0].entry.id == "mem-1"
+        assert len(result) == 2
+        assert [c.entry.id for c in result] == ["mem-1", "mem-2"]

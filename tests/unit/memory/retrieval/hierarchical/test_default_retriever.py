@@ -206,7 +206,9 @@ class TestDefaultHierarchicalRetriever:
             config=config,
         )
         result = await retriever.retrieve(_make_query())
-        assert result.candidates == () or len(result.worker_results) >= 1
+        assert result.candidates == ()
+        assert len(result.worker_results) == 1
+        assert result.worker_results[0].error is not None
 
     @pytest.mark.unit
     async def test_retrieve_with_retry(self) -> None:
@@ -228,8 +230,15 @@ class TestDefaultHierarchicalRetriever:
                 ),
             ],
         )
+        # Provide a corrected query so the retry is not a no-op
+        # (identical (query, workers) pairs are rejected to prevent
+        # infinite loops).
+        corrected = _make_query().model_copy(
+            update={"text": "corrected query text"},
+        )
         correction = RetrievalRetryCorrection(
             reason="Results too low quality",
+            corrected_query=corrected,
         )
         supervisor = _stub_supervisor(
             ("semantic",),
@@ -250,13 +259,19 @@ class TestDefaultHierarchicalRetriever:
 
     @pytest.mark.unit
     async def test_retrieve_empty_workers_returns_empty(self) -> None:
+        semantic_candidate = _make_candidate("mem-sem", 0.8, "semantic")
         supervisor = _stub_supervisor(("nonexistent",))
-        config = MemoryRetrievalConfig(retriever="hierarchical")
         retriever = DefaultHierarchicalRetriever(
             supervisor=supervisor,
-            workers={"semantic": _stub_worker("semantic")},
-            config=config,
+            workers={
+                "semantic": _stub_worker("semantic", (semantic_candidate,)),
+            },
+            config=MemoryRetrievalConfig(retriever="hierarchical"),
         )
         result = await retriever.retrieve(_make_query())
         # nonexistent worker filtered out, falls back to semantic
         assert isinstance(result, FinalRetrievalResult)
+        worker_names = {wr.worker_name for wr in result.worker_results}
+        assert worker_names == {"semantic"}
+        assert "nonexistent" not in worker_names
+        assert any(c.entry.id == "mem-sem" for c in result.candidates)

@@ -363,8 +363,10 @@ class CompressedExperience(BaseModel):
         description="When and where this experience applies",
     )
     source_artifact_ids: tuple[NotBlankStr, ...] = Field(
-        default=(),
-        description="Links back to DetailedExperience IDs",
+        description=(
+            "Links back to DetailedExperience IDs "
+            "(must contain at least one entry -- provenance required)"
+        ),
     )
     compression_ratio: float = Field(
         gt=0.0,
@@ -383,9 +385,15 @@ class CompressedExperience(BaseModel):
     )
 
     @model_validator(mode="after")
-    def _validate_strategic_decisions_non_empty(self) -> Self:
-        """Require at least one strategic decision."""
+    def _validate_non_empty(self) -> Self:
+        """Require at least one strategic decision and one source artifact."""
         if not self.strategic_decisions:
             msg = "strategic_decisions must contain at least one entry"
+            raise ValueError(msg)
+        if not self.source_artifact_ids:
+            msg = (
+                "source_artifact_ids must contain at least one entry "
+                "(provenance required to prevent orphan experiences)"
+            )
             raise ValueError(msg)
         return self

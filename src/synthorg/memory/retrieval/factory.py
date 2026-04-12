@@ -24,7 +24,10 @@ from synthorg.observability.events.memory import (
 if TYPE_CHECKING:
     from synthorg.core.types import NotBlankStr
     from synthorg.memory.protocol import MemoryBackend
-    from synthorg.memory.retrieval.protocol import RetrievalWorker
+    from synthorg.memory.retrieval.protocol import (
+        HierarchicalRetriever,
+        RetrievalWorker,
+    )
     from synthorg.memory.retrieval_config import MemoryRetrievalConfig
     from synthorg.memory.shared import SharedKnowledgeStore
     from synthorg.providers.protocol import CompletionProvider
@@ -39,7 +42,7 @@ def create_hierarchical_retriever(
     provider: CompletionProvider,
     model: NotBlankStr,
     shared_store: SharedKnowledgeStore | None = None,
-) -> DefaultHierarchicalRetriever:
+) -> HierarchicalRetriever:
     """Create a hierarchical retriever with all workers wired up.
 
     Args:

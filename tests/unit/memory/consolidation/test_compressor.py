@@ -130,13 +130,16 @@ class TestExperienceCompressorProtocol:
     @pytest.mark.unit
     def test_protocol_is_runtime_checkable(self) -> None:
         class _StubCompressor:
-            async def compress(
+            async def compress(  # noqa: PLR0913
                 self,
                 prompt: str,
                 output: str,
                 verification_feedback: str | None,
                 reasoning_trace: tuple[str, ...],
                 memory_context: tuple[MemoryEntry, ...],
+                *,
+                agent_id: str = "unknown",
+                source_artifact_ids: tuple[str, ...],
             ) -> CompressedExperience:
                 return _make_compressed()
 
