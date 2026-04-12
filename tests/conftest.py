@@ -207,11 +207,18 @@ def pytest_sessionfinish(
         threshold_secs = float(baseline.get("regression_threshold_secs", 10))
     except json.JSONDecodeError, KeyError, ValueError, OSError:
         return  # Malformed baseline -- skip check, don't block.
-    # Only compare against baseline when running (roughly) the full
-    # suite.  Partial runs have very different timing profiles and
-    # would produce noisy false positives.
+    # Only compare against baseline when the session is (roughly) the
+    # full unit suite and nothing else.  The baseline measures unit-
+    # test time only; ``elapsed`` is total wall-clock including
+    # integration/conformance/e2e tests when they are mixed in via
+    # ``pytest tests/``.  Skip the check if either:
+    #   1. the unit count is well below the baseline (partial run), or
+    #   2. non-unit tests were collected alongside unit tests.
     unit_count = sum(1 for item in session.items if item.get_closest_marker("unit"))
+    non_unit_count = len(session.items) - unit_count
     if baseline_count and unit_count < baseline_count * 0.8:
+        return
+    if non_unit_count > 0:
         return
     max_allowed = baseline_secs + threshold_secs
     # Allow override for optimization work where the suite is

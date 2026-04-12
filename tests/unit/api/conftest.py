@@ -425,7 +425,7 @@ def _restore_instance_patches(obj: object) -> None:
 
 
 @pytest.fixture
-def test_client(  # noqa: PLR0913
+def test_client(  # noqa: C901, PLR0913
     _shared_app: Litestar,  # noqa: PT019
     fake_persistence: FakePersistenceBackend,
     fake_message_bus: FakeMessageBus,

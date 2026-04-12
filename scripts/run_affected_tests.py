@@ -157,16 +157,20 @@ def _check_timing_regression(elapsed: float, *, run_all: bool) -> bool:
 
     Only checks full-suite runs (``run_all=True``) since affected-only
     runs vary widely and are not comparable to the baseline.
+
+    Uses an absolute-seconds tolerance (``regression_threshold_secs``):
+    only a few seconds of variance is allowed; larger regressions are
+    real bugs that must block the push.
     """
     if not run_all or not _BASELINE_PATH.exists():
         return False
     try:
         baseline = json.loads(_BASELINE_PATH.read_text(encoding="utf-8"))
         baseline_secs = float(baseline["unit_suite_seconds"])
-        threshold_pct = float(baseline.get("regression_threshold_pct", 30))
+        threshold_secs = float(baseline.get("regression_threshold_secs", 10))
     except json.JSONDecodeError, KeyError, ValueError, OSError:
         return False
-    max_allowed = baseline_secs * (1 + threshold_pct / 100)
+    max_allowed = baseline_secs + threshold_secs
     # Honor the same override used by the conftest guard.
     import contextlib
     import os
@@ -176,14 +180,17 @@ def _check_timing_regression(elapsed: float, *, run_all: bool) -> bool:
         with contextlib.suppress(ValueError):
             max_allowed = float(env_override)
     if elapsed > max_allowed:
-        pct = (elapsed - baseline_secs) / baseline_secs * 100
+        delta = elapsed - baseline_secs
         border = "!" * 60
         print(
             f"\n{border}\n"
             f"REGRESSION DETECTED: suite took {elapsed:.0f}s, "
-            f"baseline is {baseline_secs:.0f}s (+{pct:.0f}%)\n"
+            f"baseline is {baseline_secs:.0f}s (+{delta:.0f}s, "
+            f"tolerance {threshold_secs:.0f}s)\n"
             f"Run A/B against origin/main before fixing anything.\n"
             f"Do NOT delete tests or use --no-verify.\n"
+            f"If the new baseline is intentional, update "
+            f"tests/baselines/unit_timing.json.\n"
             f"{border}",
             file=sys.stderr,
         )
