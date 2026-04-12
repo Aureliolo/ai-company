@@ -177,7 +177,9 @@ jobs:
             --cov-report=term-missing \
             --cov-report=xml:coverage.xml \
             --cov-fail-under=80 \
-            --junitxml=junit.xml
+            --junitxml=junit.xml \
+            --durations=20 \
+            --durations-min=1.0
 
       # Codecov upload is best-effort -- CI should not fail on Codecov outages.
       # Coverage enforcement is handled by --cov-fail-under. Uses tokenless

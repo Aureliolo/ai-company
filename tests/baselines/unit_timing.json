@@ -1,0 +1,7 @@
+{
+  "unit_suite_seconds": 191,
+  "test_count": 18299,
+  "commit": "be0cf09f",
+  "measured_at": "2026-04-12",
+  "regression_threshold_pct": 30
+}

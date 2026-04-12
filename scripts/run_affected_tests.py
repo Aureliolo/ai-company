@@ -14,9 +14,11 @@ Exit codes match pytest: 0 (passed/nothing to run), 1 (failures), etc.
 Git command failures fall back to running the full unit suite.
 """
 
+import json
 import re
 import subprocess
 import sys
+import time
 from pathlib import Path, PurePosixPath
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -147,7 +149,41 @@ def _affected_test_dirs(changed: list[str]) -> tuple[list[str], bool]:
     return test_dirs, False
 
 
-def _run_pytest(paths: list[str]) -> int:
+_BASELINE_PATH = _REPO_ROOT / "tests" / "baselines" / "unit_timing.json"
+
+
+def _check_timing_regression(elapsed: float, *, run_all: bool) -> bool:
+    """Return True if the run shows a timing regression.
+
+    Only checks full-suite runs (``run_all=True``) since affected-only
+    runs vary widely and are not comparable to the baseline.
+    """
+    if not run_all or not _BASELINE_PATH.exists():
+        return False
+    try:
+        baseline = json.loads(_BASELINE_PATH.read_text(encoding="utf-8"))
+        baseline_secs = float(baseline["unit_suite_seconds"])
+        threshold_pct = float(baseline.get("regression_threshold_pct", 30))
+    except json.JSONDecodeError, KeyError, ValueError, OSError:
+        return False
+    max_allowed = baseline_secs * (1 + threshold_pct / 100)
+    if elapsed > max_allowed:
+        pct = (elapsed - baseline_secs) / baseline_secs * 100
+        border = "!" * 60
+        print(
+            f"\n{border}\n"
+            f"REGRESSION DETECTED: suite took {elapsed:.0f}s, "
+            f"baseline is {baseline_secs:.0f}s (+{pct:.0f}%)\n"
+            f"Run A/B against origin/main before fixing anything.\n"
+            f"Do NOT delete tests or use --no-verify.\n"
+            f"{border}",
+            file=sys.stderr,
+        )
+        return True
+    return False
+
+
+def _run_pytest(paths: list[str], *, run_all: bool = False) -> int:
     """Run pytest with the given paths.
 
     Uses ``--dist loadscope`` instead of pyproject.toml's default
@@ -174,7 +210,12 @@ def _run_pytest(paths: list[str]) -> int:
         "--max-worker-restart=0",
         "-q",
     ]
+    start = time.monotonic()
     result = subprocess.run(cmd, cwd=_REPO_ROOT, check=False)
+    elapsed = time.monotonic() - start
+    if _check_timing_regression(elapsed, run_all=run_all):
+        # Regression detected -- block the push even if tests passed.
+        return max(result.returncode, 1)
     return result.returncode
 
 
@@ -184,13 +225,13 @@ def main() -> int:
         base = _merge_base()
     except _GitError as exc:
         print(f"ERROR: {exc} -- running full unit suite", file=sys.stderr)
-        return _run_pytest(["tests/unit/"])
+        return _run_pytest(["tests/unit/"], run_all=True)
 
     try:
         changed = _changed_files(base)
     except _GitError as exc:
         print(f"ERROR: {exc} -- running full unit suite", file=sys.stderr)
-        return _run_pytest(["tests/unit/"])
+        return _run_pytest(["tests/unit/"], run_all=True)
 
     # Filter to Python files only.
     py_changed = [f for f in changed if f.endswith(".py")]
@@ -202,7 +243,7 @@ def main() -> int:
 
     if run_all:
         print("Foundational module or conftest changed -- running full unit suite.")
-        return _run_pytest(["tests/unit/"])
+        return _run_pytest(["tests/unit/"], run_all=True)
 
     if not test_dirs:
         print("Changed files don't map to any test directories -- skipping.")

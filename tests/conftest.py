@@ -1,8 +1,11 @@
 """Root test configuration and shared fixtures."""
 
+import contextlib
+import json
 import logging
 import os
 import shutil
+import sys
 import time
 from collections.abc import AsyncGenerator, Iterable
 from pathlib import Path
@@ -154,6 +157,64 @@ def pytest_runtest_teardown(item: pytest.Item) -> None:
             f"a fixture is doing heavy I/O -- check setup/teardown.",
             pytrace=False,
         )
+
+
+# ── Suite-level regression guard ─────────────────────────────────
+# Compares total wall-clock time against the committed baseline in
+# tests/baselines/unit_timing.json.  Fires after every full suite
+# run (locally, in pre-push hooks, in CI).  When a regression is
+# detected, prints a loud warning so the cause is investigated
+# instead of "fixing" by deleting tests or bypassing hooks.
+_BASELINE_PATH = Path(__file__).parent / "baselines" / "unit_timing.json"
+_suite_start: float | None = None
+
+
+@pytest.hookimpl(tryfirst=True)
+def pytest_sessionstart(session: pytest.Session) -> None:
+    """Record suite start time for regression detection."""
+    global _suite_start  # noqa: PLW0603
+    _suite_start = time.monotonic()
+
+
+@pytest.hookimpl(trylast=True)
+def pytest_sessionfinish(
+    session: pytest.Session,
+    exitstatus: int,
+) -> None:
+    """Warn loudly if the unit suite regressed beyond the baseline."""
+    if _suite_start is None or _FUZZ_PROFILE_ACTIVE:
+        return
+    # Only check when running unit tests (not integration/e2e-only).
+    if not any(item.get_closest_marker("unit") for item in session.items):
+        return
+    elapsed = time.monotonic() - _suite_start
+    if not _BASELINE_PATH.exists():
+        return
+    try:
+        baseline = json.loads(_BASELINE_PATH.read_text(encoding="utf-8"))
+        baseline_secs = float(baseline["unit_suite_seconds"])
+        threshold_pct = float(baseline.get("regression_threshold_pct", 30))
+    except json.JSONDecodeError, KeyError, ValueError, OSError:
+        return  # Malformed baseline -- skip check, don't block.
+    max_allowed = baseline_secs * (1 + threshold_pct / 100)
+    # Allow override for optimization work where the suite is
+    # intentionally being re-measured at a new (lower) baseline.
+    env_override = os.environ.get("UNIT_SUITE_MAX_SECONDS")
+    if env_override is not None:
+        with contextlib.suppress(ValueError):
+            max_allowed = float(env_override)
+    if elapsed > max_allowed:
+        pct = (elapsed - baseline_secs) / baseline_secs * 100
+        border = "!" * 60
+        msg = (
+            f"\n{border}\n"
+            f"REGRESSION DETECTED: suite took {elapsed:.0f}s, "
+            f"baseline is {baseline_secs:.0f}s (+{pct:.0f}%)\n"
+            f"Run A/B against origin/main before fixing anything.\n"
+            f"Do NOT delete tests or use --no-verify.\n"
+            f"{border}\n"
+        )
+        print(msg, file=sys.stderr)  # noqa: T201
 
 
 def clear_logging_state() -> None:

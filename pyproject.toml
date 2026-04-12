@@ -90,6 +90,7 @@ dev = [
     "ruff==0.15.10",
     "types-pyyaml==6.0.12.20260408",
     "bandit==1.9.4",
+    "pytest-randomly>=4.0.1",
     {include-group = "test"},
     {include-group = "docs"},
 ]
@@ -268,7 +269,7 @@ markers = [
     "slow: Slow tests (excluded from default runs)",
     "timescaledb: Integration tests that require the TimescaleDB extension (self-hosted Postgres only)",
 ]
-addopts = ["--strict-markers", "--strict-config", "-ra", "--tb=short", "--dist=worksteal", "-n=8"]
+addopts = ["--strict-markers", "--strict-config", "-ra", "--tb=short", "--dist=worksteal", "-n=8", "-p", "no:randomly"]
 filterwarnings = [
     "error",
     "ignore:Core Pydantic V1 functionality:UserWarning",
