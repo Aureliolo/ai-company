@@ -337,7 +337,8 @@ class TestMigrationSquashUpgradePaths:
             check=False,
             env=env,
         )
-        assert result.returncode == 0
-        assert "Below threshold" in result.stdout
-        assert "sqlite" in result.stdout.lower()
-        assert "postgres" in result.stdout.lower()
+        diag = f"stdout={result.stdout!r}\nstderr={result.stderr!r}"
+        assert result.returncode == 0, diag
+        assert "Below threshold" in result.stdout, diag
+        assert "sqlite" in result.stdout.lower(), diag
+        assert "postgres" in result.stdout.lower(), diag
