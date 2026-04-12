@@ -16,6 +16,7 @@ migrations, squash the first 4 into a checkpoint, then verify that:
 """
 
 import os
+import shutil
 import sqlite3
 import subprocess
 import time
@@ -269,58 +270,60 @@ class TestMigrationSquashUpgradePaths:
         assert _tables(db) == ["t1", "t2", "t3"]
         assert _indexes(db) == ["idx_t2_ref"]
 
-    def test_db_at_squash_boundary_upgrades(
+    @pytest.mark.parametrize(
+        ("case", "pre_count", "pre_tables", "pre_indexes", "squashed_succeeds"),
+        [
+            # DB at squash boundary (count=4) applies remaining 2.
+            ("boundary", _SQUASH_POINT, ["t1", "t2"], [], True),
+            # DB past squash point (count=5) applies remaining 1.
+            (
+                "past",
+                _SQUASH_POINT + 1,
+                ["t1", "t2"],
+                ["idx_t2_ref"],
+                True,
+            ),
+            # DB before squash point (count=2) fails -- files are gone.
+            ("before", 2, ["t1"], [], False),
+        ],
+    )
+    def test_db_upgrade_matrix(  # noqa: PLR0913
         self,
         squash_project: tuple[Path, Path, list[str]],
         tmp_path: Path,
+        case: str,
+        pre_count: int,
+        pre_tables: list[str],
+        pre_indexes: list[str],
+        squashed_succeeds: bool,
     ) -> None:
-        """DB at migration 4 (squash boundary) applies remaining 2."""
+        """Upgrade matrix: DBs at various migration points vs squashed dir."""
         original, squashed, _ = squash_project
-        db = tmp_path / "boundary.db"
+        db = tmp_path / f"{case}.db"
 
-        assert _apply(original, db, count=_SQUASH_POINT)
-        assert _tables(db) == ["t1", "t2"]
+        assert _apply(original, db, count=pre_count)
+        assert _tables(db) == pre_tables
+        assert _indexes(db) == pre_indexes
 
-        assert _apply(squashed, db)
-        assert _tables(db) == ["t1", "t2", "t3"]
-        assert _indexes(db) == ["idx_t2_ref"]
-
-    def test_db_past_squash_point_upgrades(
-        self,
-        squash_project: tuple[Path, Path, list[str]],
-        tmp_path: Path,
-    ) -> None:
-        """DB at migration 5 (past squash) applies remaining 1."""
-        original, squashed, _ = squash_project
-        db = tmp_path / "past.db"
-
-        assert _apply(original, db, count=_SQUASH_POINT + 1)
-        assert _tables(db) == ["t1", "t2"]
-        assert _indexes(db) == ["idx_t2_ref"]
-
-        assert _apply(squashed, db)
-        assert _tables(db) == ["t1", "t2", "t3"]
-
-    def test_db_before_squash_point_fails(
-        self,
-        squash_project: tuple[Path, Path, list[str]],
-        tmp_path: Path,
-    ) -> None:
-        """DB at migration 2 (before squash) fails -- files are gone."""
-        original, squashed, _ = squash_project
-        db = tmp_path / "old.db"
-
-        assert _apply(original, db, count=2)
-        assert _tables(db) == ["t1"]
-
-        assert not _apply(squashed, db)
+        if squashed_succeeds:
+            assert _apply(squashed, db)
+            assert _tables(db) == ["t1", "t2", "t3"]
+            assert _indexes(db) == ["idx_t2_ref"]
+        else:
+            assert not _apply(squashed, db)
 
     def test_squash_script_below_threshold(self) -> None:
         """Squash script reports 'below threshold' for both backends."""
-        # The bash subprocess may not have atlas on PATH (Windows
-        # Git Bash vs. system PATH).  Skip when unavailable.
-        probe = subprocess.run(
-            ["bash", "-c", "command -v atlas"],  # noqa: S607
+        # Locate bash via shutil.which to avoid FileNotFoundError on
+        # systems where bash is not on PATH (pure Windows cmd).
+        bash_path = shutil.which("bash")
+        if bash_path is None:
+            pytest.skip("bash not available in PATH")
+
+        # Atlas may not be on the bash subprocess's PATH even when it's
+        # available from the test runner (Windows Git Bash vs. system).
+        probe = subprocess.run(  # noqa: S603
+            [bash_path, "-c", "command -v atlas"],
             capture_output=True,
             check=False,
         )
@@ -330,8 +333,8 @@ class TestMigrationSquashUpgradePaths:
         # Set threshold absurdly high so the script never triggers an
         # actual squash against the real repo's migration directory.
         env = {**os.environ, "SQUASH_THRESHOLD": "999999"}
-        result = subprocess.run(
-            ["bash", "scripts/squash_migrations.sh"],  # noqa: S607
+        result = subprocess.run(  # noqa: S603
+            [bash_path, "scripts/squash_migrations.sh"],
             capture_output=True,
             text=True,
             check=False,
