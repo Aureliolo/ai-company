@@ -18,7 +18,7 @@ class QuerySpecificReranker(Protocol):
 
     Takes the top-K fused candidates and scores each against the
     current query using an LLM or other scoring function.  Returns
-    candidates in re-ordered sequence with updated combined_scores.
+    candidates in re-ordered sequence with updated combined_score.
     """
 
     async def rerank(
@@ -34,6 +34,6 @@ class QuerySpecificReranker(Protocol):
 
         Returns:
             Same candidates in re-ordered sequence with updated
-            combined_scores reflecting the new ranking.
+            combined_score reflecting the new ranking.
         """
         ...

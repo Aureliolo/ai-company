@@ -83,8 +83,10 @@ class TestSemanticWorker:
         assert result.error is None
 
     @pytest.mark.unit
-    async def test_retrieve_on_backend_error_returns_empty(self) -> None:
-        """Backend errors are caught by _safe_retrieve, returning empty."""
+    async def test_retrieve_on_backend_error_returns_empty_with_error(
+        self,
+    ) -> None:
+        """Backend errors propagate to worker error isolation."""
         backend = _mock_backend()
         backend.retrieve = AsyncMock(
             side_effect=RuntimeError("connection lost"),
@@ -93,9 +95,8 @@ class TestSemanticWorker:
         worker = SemanticWorker(backend=backend, config=config)
         result = await worker.retrieve(_make_query())
         assert result.candidates == ()
-        # _safe_retrieve swallows the error and returns (),
-        # so the worker completes normally with empty results
-        assert result.error is None
+        assert result.error is not None
+        assert "connection lost" in result.error
 
     @pytest.mark.unit
     async def test_all_candidates_tagged_semantic(self) -> None:
@@ -138,8 +139,10 @@ class TestEpisodicWorker:
         assert mem_query.since is not None  # time window applied
 
     @pytest.mark.unit
-    async def test_retrieve_on_backend_error_returns_empty(self) -> None:
-        """Backend errors are caught by _safe_retrieve, returning empty."""
+    async def test_retrieve_on_backend_error_returns_empty_with_error(
+        self,
+    ) -> None:
+        """Backend errors propagate to worker error isolation."""
         backend = _mock_backend()
         backend.retrieve = AsyncMock(
             side_effect=RuntimeError("timeout"),
@@ -147,7 +150,8 @@ class TestEpisodicWorker:
         worker = EpisodicWorker(backend=backend)
         result = await worker.retrieve(_make_query())
         assert result.candidates == ()
-        assert result.error is None
+        assert result.error is not None
+        assert "timeout" in result.error
 
 
 class TestProceduralWorker:
@@ -180,8 +184,10 @@ class TestProceduralWorker:
         )
 
     @pytest.mark.unit
-    async def test_retrieve_on_backend_error_returns_empty(self) -> None:
-        """Backend errors are caught by _safe_retrieve, returning empty."""
+    async def test_retrieve_on_backend_error_returns_empty_with_error(
+        self,
+    ) -> None:
+        """Backend errors propagate to worker error isolation."""
         backend = _mock_backend()
         backend.retrieve = AsyncMock(
             side_effect=RuntimeError("backend down"),
@@ -189,4 +195,5 @@ class TestProceduralWorker:
         worker = ProceduralWorker(backend=backend)
         result = await worker.retrieve(_make_query())
         assert result.candidates == ()
-        assert result.error is None
+        assert result.error is not None
+        assert "backend down" in result.error

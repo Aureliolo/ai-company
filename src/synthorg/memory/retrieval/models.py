@@ -62,8 +62,7 @@ class RetrievalCandidate(BaseModel):
     entry: MemoryEntry = Field(description="The underlying memory entry")
     relevance_score: float = Field(
         ge=0.0,
-        le=1.0,
-        description="Backend relevance score",
+        description="Backend relevance score (may exceed 1.0 with boosts)",
     )
     recency_score: float = Field(
         default=0.0,
@@ -73,8 +72,7 @@ class RetrievalCandidate(BaseModel):
     )
     combined_score: float = Field(
         ge=0.0,
-        le=1.0,
-        description="Final ranking signal",
+        description="Final ranking signal (may exceed 1.0 with boosts)",
     )
     source_worker: NotBlankStr = Field(
         description="Which worker produced this candidate",

@@ -117,11 +117,12 @@ class DefaultHierarchicalRetriever:
 
         # Phase 4: Reflective retry
         retries = 0
+        current_query = query
         if self._supervisor.reflective_retry_enabled:
             max_retries = self._supervisor.max_retry_count
             while retries < max_retries:
                 correction = await self._supervisor.evaluate_for_retry(
-                    query,
+                    current_query,
                     result,
                 )
                 if correction is None:
@@ -135,11 +136,12 @@ class DefaultHierarchicalRetriever:
                     )
                     break
                 retries += 1
-                retry_query = (
+                current_query = (
                     correction.corrected_query
                     if correction.corrected_query is not None
-                    else query
+                    else current_query
                 )
+                retry_query = current_query
                 retry_workers = self._resolve_retry_workers(
                     correction.alternative_strategy,
                     selected,

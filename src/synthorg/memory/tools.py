@@ -17,6 +17,7 @@ injection system into the standard tool dispatch pipeline
 from typing import TYPE_CHECKING, Any
 
 from synthorg.core.enums import AutonomyLevel, SeniorityLevel, ToolCategory
+from synthorg.memory.org.enums import OrgFactCategory
 from synthorg.memory.org.models import (
     OrgFactAuthor,
     OrgFactWriteRequest,
@@ -688,11 +689,22 @@ class KnowledgeArchitectSearchTool(BaseTool):
         arguments: dict[str, Any],
     ) -> ToolExecutionResult:
         """Execute org memory search."""
-        query = OrgMemoryQuery(
-            context=arguments["query"],
-            limit=arguments.get("limit", 10),
-        )
         try:
+            category_str = arguments.get("category")
+            categories = None
+            if category_str:
+                try:
+                    categories = (OrgFactCategory(category_str),)
+                except ValueError:
+                    return ToolExecutionResult(
+                        content=f"Invalid category: {category_str!r}",
+                        is_error=True,
+                    )
+            query = OrgMemoryQuery(
+                context=arguments["query"],
+                limit=arguments.get("limit", 10),
+                categories=categories,
+            )
             facts = await self._org_backend.query(query)
         except Exception as exc:
             return ToolExecutionResult(
@@ -742,12 +754,12 @@ class KnowledgeArchitectReadTool(BaseTool):
         """Read an org memory entry by ID."""
         entry_id = arguments["entry_id"]
         try:
-            query = OrgMemoryQuery(limit=100)
-            facts = await self._org_backend.query(query)
-            match = next(
-                (f for f in facts if f.id == entry_id),
-                None,
+            query = OrgMemoryQuery(
+                fact_id=entry_id,
+                limit=1,
             )
+            facts = await self._org_backend.query(query)
+            match = facts[0] if facts else None
         except Exception as exc:
             return ToolExecutionResult(
                 content=f"Read failed: {exc}",
@@ -784,11 +796,15 @@ class KnowledgeArchitectWriteTool(BaseTool):
             parameters_schema={
                 "type": "object",
                 "properties": {
-                    "content": {"type": "string"},
+                    "content": {
+                        "type": "string",
+                        "maxLength": 100000,
+                    },
                     "category": {"type": "string"},
                     "tags": {
                         "type": "array",
                         "items": {"type": "string"},
+                        "maxItems": 50,
                     },
                 },
                 "required": ["content", "category"],
@@ -805,7 +821,12 @@ class KnowledgeArchitectWriteTool(BaseTool):
         *,
         arguments: dict[str, Any],
     ) -> ToolExecutionResult:
-        """Write to org memory with autonomy gating."""
+        """Write to org memory with autonomy gating.
+
+        Gated by autonomy level: FULL autonomy disables writes.
+        SUPERVISED and LOCKED levels allow writes (plan review gate
+        handles approval upstream).
+        """
         if self._autonomy_level == AutonomyLevel.FULL:
             logger.warning(
                 KNOWLEDGE_ARCHITECT_WRITE_DENIED,
@@ -821,17 +842,26 @@ class KnowledgeArchitectWriteTool(BaseTool):
                 is_error=True,
             )
 
-        request = OrgFactWriteRequest(
-            content=arguments["content"],
-            category=arguments["category"],
-            tags=tuple(arguments.get("tags", ())),
-        )
-        author = OrgFactAuthor(
-            agent_id=self._agent_id,
-            seniority=SeniorityLevel.SENIOR,
-            is_human=False,
-        )
         try:
+            category_str = arguments["category"]
+            try:
+                OrgFactCategory(category_str)
+            except ValueError:
+                return ToolExecutionResult(
+                    content=f"Invalid category: {category_str!r}",
+                    is_error=True,
+                )
+            request = OrgFactWriteRequest(
+                content=arguments["content"],
+                category=category_str,
+                tags=tuple(arguments.get("tags", ())),
+            )
+            author = OrgFactAuthor(
+                agent_id=self._agent_id,
+                seniority=SeniorityLevel.SENIOR,
+                is_human=False,
+                autonomy_level=self._autonomy_level,
+            )
             fact_id = await self._org_backend.write(
                 request,
                 author=author,
@@ -886,7 +916,10 @@ class KnowledgeArchitectDeleteTool(BaseTool):
         *,
         arguments: dict[str, Any],
     ) -> ToolExecutionResult:
-        """Delete (archive) an org memory entry."""
+        """Delete (archive) an org memory entry.
+
+        Gated by autonomy level: FULL autonomy disables deletes.
+        """
         if self._autonomy_level == AutonomyLevel.FULL:
             logger.warning(
                 KNOWLEDGE_ARCHITECT_WRITE_DENIED,
@@ -898,14 +931,42 @@ class KnowledgeArchitectDeleteTool(BaseTool):
                 content="Delete denied: FULL autonomy level",
                 is_error=True,
             )
+        entry_id = arguments["entry_id"]
+        try:
+            author = OrgFactAuthor(
+                agent_id=self._agent_id,
+                seniority=SeniorityLevel.SENIOR,
+                is_human=False,
+                autonomy_level=self._autonomy_level,
+            )
+            deleted = await self._org_backend.delete(
+                fact_id=entry_id,
+                author=author,
+            )
+        except Exception as exc:
+            logger.warning(
+                KNOWLEDGE_ARCHITECT_DELETE,
+                agent_id=self._agent_id,
+                entry_id=entry_id,
+                error=str(exc),
+            )
+            return ToolExecutionResult(
+                content=f"Delete failed: {exc}",
+                is_error=True,
+            )
+        if not deleted:
+            return ToolExecutionResult(
+                content=f"Entry {entry_id!r} not found or already archived.",
+                is_error=True,
+            )
         logger.info(
             KNOWLEDGE_ARCHITECT_DELETE,
             agent_id=self._agent_id,
-            entry_id=arguments["entry_id"],
+            entry_id=entry_id,
             autonomy=self._autonomy_level.value,
         )
         return ToolExecutionResult(
-            content=f"Archived: {arguments['entry_id']}",
+            content=f"Archived: {entry_id}",
             is_error=False,
         )
 

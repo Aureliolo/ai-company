@@ -162,6 +162,12 @@ class ContextInjectionStrategy:
         self._estimator = (
             token_estimator if token_estimator is not None else DefaultTokenEstimator()
         )
+        if config.retriever == "hierarchical" and hierarchical_retriever is None:
+            msg = "retriever='hierarchical' requires a hierarchical_retriever instance"
+            raise ValueError(msg)
+        if config.query_specific_rerank_enabled and reranker is None:
+            msg = "query_specific_rerank_enabled=True requires a reranker instance"
+            raise ValueError(msg)
         self._hierarchical_retriever = hierarchical_retriever
         self._reranker = reranker
 
@@ -301,11 +307,22 @@ class ContextInjectionStrategy:
 
         # Post-ranking: query-specific re-ranking (opt-in)
         if self._config.query_specific_rerank_enabled and self._reranker is not None:
-            ranked = await self._apply_reranking(
-                query_text=query_text,
-                agent_id=agent_id,
-                ranked=ranked,
-            )
+            try:
+                ranked = await self._apply_reranking(
+                    query_text=query_text,
+                    agent_id=agent_id,
+                    ranked=ranked,
+                )
+            except builtins.MemoryError, RecursionError:
+                raise
+            except Exception as exc:
+                logger.warning(
+                    MEMORY_RETRIEVAL_DEGRADED,
+                    source="reranker",
+                    agent_id=agent_id,
+                    error_type=type(exc).__qualname__,
+                    reason="query_specific_rerank_failed_falling_back",
+                )
 
         ranked = self._filter_or_fail_closed(ranked, agent_id=agent_id)
         if not ranked:

@@ -19,6 +19,7 @@ from synthorg.observability.events.memory import (
 )
 from synthorg.providers.enums import MessageRole
 from synthorg.providers.models import ChatMessage
+from synthorg.providers.resilience.errors import RetryExhaustedError
 
 if TYPE_CHECKING:
     from synthorg.core.types import NotBlankStr
@@ -40,8 +41,8 @@ workers to invoke. Available workers:
 - procedural: Skills, patterns, and how-to knowledge
 
 Respond with JSON: {{"workers": ["worker1", ...], "reason": "..."}}
-Select 1 to {max_workers} workers. Always include "semantic" unless \
-the query is purely about recent events or procedural skills.
+Select 1 to {max_workers} workers. Prefer "semantic" for broad queries. \
+Use "episodic" for time-sensitive questions and "procedural" for how-to.
 """
 
 _RETRY_SYSTEM_PROMPT = """\
@@ -114,6 +115,8 @@ class SupervisorRouter:
             return await self._route_via_llm(query)
         except builtins.MemoryError, RecursionError:
             raise
+        except RetryExhaustedError:
+            raise
         except Exception as exc:
             logger.warning(
                 MEMORY_HIERARCHICAL_ROUTING,
@@ -159,10 +162,12 @@ class SupervisorRouter:
             return await self._evaluate_via_llm(query, result)
         except builtins.MemoryError, RecursionError:
             raise
+        except RetryExhaustedError:
+            raise
         except Exception as exc:
             logger.warning(
                 MEMORY_HIERARCHICAL_RETRY,
-                action="skip",
+                action="eval_failed",
                 reason=f"LLM retry evaluation failed: {exc}",
             )
             return None
@@ -186,7 +191,16 @@ class SupervisorRouter:
         if response.content is None:
             msg = "LLM returned empty content for routing"
             raise ValueError(msg)
-        parsed = json.loads(response.content)
+        try:
+            parsed = json.loads(response.content)
+        except json.JSONDecodeError as exc:
+            logger.warning(
+                MEMORY_HIERARCHICAL_ROUTING,
+                action="json_parse_failed",
+                raw_content=response.content[:200],
+                error=str(exc),
+            )
+            raise
         workers = tuple(
             w for w in parsed.get("workers", ["semantic"]) if w in _VALID_WORKERS
         )[: self._max_workers]

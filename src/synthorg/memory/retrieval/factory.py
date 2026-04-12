@@ -1,7 +1,6 @@
 """Retrieval component factories.
 
-Creates hierarchical retrievers and query-specific rerankers
-based on configuration discriminators.
+Creates hierarchical retrievers based on configuration.
 """
 
 from typing import TYPE_CHECKING

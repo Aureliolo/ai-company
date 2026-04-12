@@ -4,6 +4,7 @@ Serializes consolidated org memory and compressed experiences to a
 three-view filesystem tree: ``raw/``, ``wiki/``, and ``index.md``.
 """
 
+import asyncio
 import builtins
 import json
 from datetime import UTC, datetime
@@ -85,6 +86,13 @@ class WikiExporter:
         Returns:
             Export result with counts and root path.
         """
+        if not self._config.enabled:
+            return WikiExportResult(
+                raw_count=0,
+                compressed_count=0,
+                export_root=self._config.export_root,
+            )
+
         logger.info(
             WIKI_EXPORT_START,
             agent_id=agent_id,
@@ -158,8 +166,22 @@ class WikiExporter:
                 f"---\n\n"
                 f"{entry.content}\n"
             )
-            filepath = output_dir / f"{entry.id}.md"
-            filepath.write_text(md_content, encoding="utf-8")
+            safe_name = entry.id.replace("/", "_").replace("\\", "_")
+            filepath = output_dir / f"{safe_name}.md"
+            resolved = filepath.resolve()
+            if not resolved.is_relative_to(output_dir.resolve()):  # noqa: ASYNC240
+                logger.warning(
+                    WIKI_EXPORT_FAILED,
+                    tier="raw",
+                    entry_id=entry.id,
+                    error="path traversal detected",
+                )
+                continue
+            await asyncio.to_thread(
+                filepath.write_text,
+                md_content,
+                encoding="utf-8",
+            )
 
         return len(entries)
 
@@ -193,7 +215,7 @@ class WikiExporter:
                 decisions = data.get("strategic_decisions", [])
                 contexts = data.get("applicable_contexts", [])
             except json.JSONDecodeError, TypeError:
-                logger.debug(
+                logger.warning(
                     WIKI_EXPORT_FAILED,
                     tier="compressed_parse",
                     entry_id=entry.id,
@@ -224,8 +246,22 @@ class WikiExporter:
                 f"## Applicable Contexts\n\n"
                 f"{contexts_md}\n"
             )
-            filepath = output_dir / f"{entry.id}.md"
-            filepath.write_text(md_content, encoding="utf-8")
+            safe_name = entry.id.replace("/", "_").replace("\\", "_")
+            filepath = output_dir / f"{safe_name}.md"
+            resolved = filepath.resolve()
+            if not resolved.is_relative_to(output_dir.resolve()):  # noqa: ASYNC240
+                logger.warning(
+                    WIKI_EXPORT_FAILED,
+                    tier="compressed",
+                    entry_id=entry.id,
+                    error="path traversal detected",
+                )
+                continue
+            await asyncio.to_thread(
+                filepath.write_text,
+                md_content,
+                encoding="utf-8",
+            )
 
         return len(entries)
 
@@ -249,4 +285,13 @@ class WikiExporter:
             f"Tier 2 strategic learnings\n"
         )
         index_path = root / "index.md"
-        index_path.write_text(index_content, encoding="utf-8")
+        try:
+            index_path.write_text(index_content, encoding="utf-8")
+        except builtins.MemoryError, RecursionError:
+            raise
+        except OSError as exc:
+            logger.warning(
+                WIKI_EXPORT_FAILED,
+                tier="index",
+                error=str(exc),
+            )

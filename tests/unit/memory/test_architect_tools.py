@@ -19,6 +19,7 @@ def _mock_org_backend() -> AsyncMock:
     backend = AsyncMock()
     backend.query = AsyncMock(return_value=())
     backend.write = AsyncMock(return_value="fact-1")
+    backend.delete = AsyncMock(return_value=True)
     return backend
 
 
@@ -197,6 +198,7 @@ class TestKnowledgeArchitectDeleteTool:
         )
         assert not result.is_error
         assert "fact-1" in result.content
+        backend.delete.assert_awaited_once()
 
 
 class TestKnowledgeArchitectBrowseWikiTool:

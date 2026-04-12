@@ -19,7 +19,7 @@ from synthorg.observability.events.consolidation import (
     EXPERIENCE_COMPRESSED,
 )
 from synthorg.providers.enums import MessageRole
-from synthorg.providers.models import ChatMessage
+from synthorg.providers.models import ChatMessage, CompletionConfig
 
 if TYPE_CHECKING:
     from synthorg.core.types import NotBlankStr
@@ -39,13 +39,15 @@ class ExperienceCompressor(Protocol):
     of strategic decisions from raw traces on a held-out test set.
     """
 
-    async def compress(
+    async def compress(  # noqa: PLR0913
         self,
         prompt: NotBlankStr,
         output: NotBlankStr,
         verification_feedback: NotBlankStr | None,
         reasoning_trace: tuple[NotBlankStr, ...],
         memory_context: tuple[MemoryEntry, ...],
+        *,
+        agent_id: NotBlankStr = "unknown",
     ) -> CompressedExperience:
         """Compress a single raw experience into strategic learnings.
 
@@ -56,14 +58,15 @@ class ExperienceCompressor(Protocol):
                 (``None`` when no verification was performed).
             reasoning_trace: Step-by-step reasoning trace entries.
             memory_context: Related memories for compression context.
+            agent_id: Agent owning the experience (for provenance).
 
         Returns:
             Compressed experience with strategic decisions and
             applicable contexts.
 
         Raises:
-            ProviderError: On LLM call failure (caller decides
-                fallback behaviour).
+            Exception: On LLM call failure (caller decides fallback
+                behaviour).
         """
         ...
 
@@ -114,13 +117,15 @@ class LLMExperienceCompressor:
         self._model = model
         self._config = config
 
-    async def compress(
+    async def compress(  # noqa: PLR0913
         self,
         prompt: NotBlankStr,
         output: NotBlankStr,
         verification_feedback: NotBlankStr | None,
         reasoning_trace: tuple[NotBlankStr, ...],
         memory_context: tuple[MemoryEntry, ...],
+        *,
+        agent_id: NotBlankStr = "unknown",
     ) -> CompressedExperience:
         """Compress a single raw experience via LLM.
 
@@ -130,6 +135,7 @@ class LLMExperienceCompressor:
             verification_feedback: Verification result text.
             reasoning_trace: Step-by-step reasoning trace entries.
             memory_context: Related memories for compression context.
+            agent_id: Agent owning the experience (for provenance).
 
         Returns:
             Compressed experience with strategic decisions.
@@ -163,10 +169,14 @@ class LLMExperienceCompressor:
             ChatMessage(role=MessageRole.USER, content=user_content),
         ]
 
+        completion_config = CompletionConfig(
+            temperature=self._config.temperature,
+            max_tokens=self._config.max_tokens,
+        )
         response = await self._provider.complete(
             messages,
             self._model,
-            config=None,
+            config=completion_config,
         )
         if response.content is None:
             msg = "LLM returned empty content for compression"
@@ -186,7 +196,7 @@ class LLMExperienceCompressor:
 
         experience = CompressedExperience(
             id=str(uuid4()),
-            agent_id="unknown",
+            agent_id=agent_id,
             strategic_decisions=decisions,
             applicable_contexts=contexts,
             source_artifact_ids=(),

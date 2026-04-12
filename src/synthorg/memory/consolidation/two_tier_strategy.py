@@ -82,6 +82,9 @@ class TwoTierCompressionStrategy:
         Returns:
             Result with removed (detailed) and summary (compressed) IDs.
         """
+        if not self._config.enabled:
+            return ConsolidationResult()
+
         logger.info(
             TWO_TIER_COMPRESSION_START,
             agent_id=agent_id,
@@ -107,7 +110,19 @@ class TwoTierCompressionStrategy:
                     verification_feedback=feedback,
                     reasoning_trace=trace,
                     memory_context=context_entries,
+                    agent_id=agent_id,
                 )
+                if compressed.compression_ratio > self._config.min_compression_ratio:
+                    logger.debug(
+                        TWO_TIER_COMPRESSION_FAILED,
+                        agent_id=agent_id,
+                        entry_id=entry.id,
+                        error=(
+                            f"compression_ratio {compressed.compression_ratio:.2f} "
+                            f"exceeds min {self._config.min_compression_ratio:.2f}"
+                        ),
+                    )
+                    return None
                 content = json.dumps(
                     {
                         "strategic_decisions": list(
@@ -118,7 +133,10 @@ class TwoTierCompressionStrategy:
                         ),
                         "compression_ratio": compressed.compression_ratio,
                         "compressor_version": compressed.compressor_version,
-                        "source_artifact_ids": [entry.id],
+                        "source_artifact_ids": list(
+                            compressed.source_artifact_ids,
+                        )
+                        or [entry.id],
                     }
                 )
                 store_request = MemoryStoreRequest(

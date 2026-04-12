@@ -16,6 +16,7 @@ from synthorg.observability.events.memory import (
 )
 from synthorg.providers.enums import MessageRole
 from synthorg.providers.models import ChatMessage
+from synthorg.providers.resilience.errors import RetryExhaustedError
 
 if TYPE_CHECKING:
     from synthorg.core.types import NotBlankStr
@@ -107,6 +108,8 @@ class LLMQuerySpecificReranker:
             reranked = await self._rerank_via_llm(query, candidates)
         except builtins.MemoryError, RecursionError:
             raise
+        except RetryExhaustedError:
+            raise
         except Exception as exc:
             logger.warning(
                 MEMORY_RERANK_FAILED,
@@ -157,6 +160,12 @@ class LLMQuerySpecificReranker:
         # Validate ranking indices
         n = len(candidates)
         if sorted(ranking) != list(range(n)):
+            logger.debug(
+                MEMORY_RERANK_FAILED,
+                error="Invalid ranking indices from LLM",
+                expected_count=n,
+                received=ranking,
+            )
             return candidates
 
         # Re-order and assign decaying scores

@@ -22,6 +22,7 @@ _DEFAULT_DIVERSITY_LAMBDA = 0.7
 _DEFAULT_CANDIDATE_POOL_MULTIPLIER = 3
 _DEFAULT_MAX_WORKERS_PER_QUERY = 2
 _DEFAULT_RERANK_CACHE_TTL_SECONDS = 3600
+_DEFAULT_MAX_RETRY_COUNT = 2
 
 
 class MemoryRetrievalConfig(BaseModel):
@@ -198,7 +199,7 @@ class MemoryRetrievalConfig(BaseModel):
         ),
     )
     max_workers_per_query: int = Field(
-        default=2,
+        default=_DEFAULT_MAX_WORKERS_PER_QUERY,
         ge=1,
         le=4,
         description=(
@@ -232,7 +233,7 @@ class MemoryRetrievalConfig(BaseModel):
         ),
     )
     rerank_cache_ttl_seconds: int = Field(
-        default=3600,
+        default=_DEFAULT_RERANK_CACHE_TTL_SECONDS,
         ge=60,
         le=86400,
         description=(
@@ -439,15 +440,22 @@ class MemoryRetrievalConfig(BaseModel):
                 value=self.max_workers_per_query,
                 reason=("max_workers_per_query is ignored when retriever is 'flat'"),
             )
-        if (
-            "reflective_retry_enabled" in self.model_fields_set
-            and self.reflective_retry_enabled
-        ):
+        if "reflective_retry_enabled" in self.model_fields_set:
             logger.warning(
                 CONFIG_VALIDATION_FAILED,
                 field="reflective_retry_enabled",
                 value=self.reflective_retry_enabled,
                 reason=("reflective_retry_enabled is ignored when retriever is 'flat'"),
+            )
+        if (
+            "max_retry_count" in self.model_fields_set
+            and self.max_retry_count != _DEFAULT_MAX_RETRY_COUNT
+        ):
+            logger.warning(
+                CONFIG_VALIDATION_FAILED,
+                field="max_retry_count",
+                value=self.max_retry_count,
+                reason=("max_retry_count is ignored when retriever is 'flat'"),
             )
         return self
 

@@ -62,14 +62,17 @@ async def _safe_retrieve(
     agent_id: str,
     query: MemoryQuery,
 ) -> tuple[MemoryEntry, ...]:
-    """Retrieve from backend, returning ``()`` on domain errors."""
+    """Retrieve from backend, returning ``()`` on domain errors.
+
+    Only domain-specific ``MemoryError`` (from ``memory.errors``) is
+    swallowed as a non-fatal empty result.  Unexpected exceptions
+    propagate so the caller's error isolation captures them.
+    """
     try:
         return await backend.retrieve(agent_id, query)
     except builtins.MemoryError, RecursionError:
         raise
     except memory_errors.MemoryError:
-        return ()
-    except Exception:
         return ()
 
 
@@ -256,12 +259,30 @@ class EpisodicWorker:
                 query.agent_id,
                 mem_query,
             )
+            now = datetime.now(UTC)
+            window_seconds = self._time_window_hours * 3600
             candidates = tuple(
                 RetrievalCandidate(
                     entry=e,
-                    relevance_score=e.relevance_score or 0.5,
-                    recency_score=1.0,
-                    combined_score=e.relevance_score or 0.5,
+                    relevance_score=(
+                        e.relevance_score if e.relevance_score is not None else 0.5
+                    ),
+                    recency_score=max(
+                        0.0,
+                        1.0
+                        - (now - e.created_at).total_seconds() / max(window_seconds, 1),
+                    ),
+                    combined_score=(
+                        0.4
+                        * (e.relevance_score if e.relevance_score is not None else 0.5)
+                        + 0.6
+                        * max(
+                            0.0,
+                            1.0
+                            - (now - e.created_at).total_seconds()
+                            / max(window_seconds, 1),
+                        )
+                    ),
                     source_worker=self.name,
                 )
                 for e in entries
@@ -334,8 +355,12 @@ class ProceduralWorker:
             candidates = tuple(
                 RetrievalCandidate(
                     entry=e,
-                    relevance_score=e.relevance_score or 0.5,
-                    combined_score=e.relevance_score or 0.5,
+                    relevance_score=(
+                        e.relevance_score if e.relevance_score is not None else 0.5
+                    ),
+                    combined_score=(
+                        e.relevance_score if e.relevance_score is not None else 0.5
+                    ),
                     source_worker=self.name,
                 )
                 for e in entries

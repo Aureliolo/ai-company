@@ -196,6 +196,7 @@ class TestGetBuiltinRole:
             "Content Writer",
             "Brand Strategist",
             "Growth Marketer",
+            "Knowledge Architect",
         ],
     )
     def test_all_roles_lookupable(self, name: str) -> None:
