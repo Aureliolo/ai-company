@@ -13,6 +13,13 @@
 
 set -euo pipefail
 
+# Migration squash commits legitimately delete old files and rewrite
+# atlas.sum.  The squash script instructs users to commit with this
+# env var set so the immutability check steps aside.
+if [ "${SYNTHORG_MIGRATION_SQUASH:-0}" = "1" ]; then
+    exit 0
+fi
+
 REVISIONS_DIRS=(
     "src/synthorg/persistence/sqlite/revisions"
     "src/synthorg/persistence/postgres/revisions"

@@ -13,9 +13,9 @@
 #      origin/main for local ad-hoc runs. This lets hotfix / release-branch PRs
 #      use their real base instead of always comparing against main.
 #   2. Ensure the resolved base ref is fetched (or fail in CI / skip locally).
-#   3. Count new `.sql` files added under src/synthorg/persistence/sqlite/revisions/
-#      on HEAD that do not exist on the resolved base branch.
-#   4. Fail if the count is greater than 1.
+#   3. Count new `.sql` files added under both SQLite and Postgres revisions
+#      directories on HEAD that do not exist on the resolved base branch.
+#   4. Fail if the total count across both backends is greater than 1.
 #
 # The script runs on every commit (pre-commit stage) and every push (pre-push
 # stage). On the `main` branch itself the check is skipped (main never adds
@@ -33,7 +33,10 @@ if [ "$BRANCH" = "main" ]; then
     exit 0
 fi
 
-REVISIONS_DIR="src/synthorg/persistence/sqlite/revisions"
+REVISIONS_DIRS=(
+    "src/synthorg/persistence/sqlite/revisions"
+    "src/synthorg/persistence/postgres/revisions"
+)
 
 # Resolve the PR base branch. Precedence: BASE_BRANCH > GITHUB_BASE_REF >
 # origin/main. CI sets GITHUB_BASE_REF to a bare branch name; local callers
@@ -71,21 +74,24 @@ if ! git show-ref --verify --quiet "refs/remotes/$BASE" \
     fi
 fi
 
-# Find all .sql files under revisions/ (staged + committed).
-HEAD_FILES=()
-while IFS= read -r line; do
-    HEAD_FILES+=("$line")
-done < <(git ls-files --cached -- "$REVISIONS_DIR/*.sql" 2>/dev/null || true)
-
-# For each file on HEAD, check whether it exists on the base branch. If it
-# does not, it is a new migration added by this PR.
+# Count new .sql files across both backends.
 NEW_COUNT=0
 NEW_FILES=()
-for f in "${HEAD_FILES[@]}"; do
-    if ! git cat-file -e "${BASE}:${f}" 2>/dev/null; then
-        NEW_COUNT=$((NEW_COUNT + 1))
-        NEW_FILES+=("$f")
-    fi
+
+for REVISIONS_DIR in "${REVISIONS_DIRS[@]}"; do
+    # Find all .sql files under revisions/ (staged + committed).
+    HEAD_FILES=()
+    while IFS= read -r line; do
+        HEAD_FILES+=("$line")
+    done < <(git ls-files --cached -- "$REVISIONS_DIR/*.sql" 2>/dev/null || true)
+
+    # For each file on HEAD, check whether it exists on the base branch.
+    for f in "${HEAD_FILES[@]}"; do
+        if ! git cat-file -e "${BASE}:${f}" 2>/dev/null; then
+            NEW_COUNT=$((NEW_COUNT + 1))
+            NEW_FILES+=("$f")
+        fi
+    done
 done
 
 if [ "$NEW_COUNT" -gt 1 ]; then
@@ -101,9 +107,13 @@ if [ "$NEW_COUNT" -gt 1 ]; then
     echo "To fix: restore atlas.sum from the base branch, delete all PR" >&2
     echo "migration files, then regenerate a single consolidated migration:" >&2
     echo "" >&2
-    echo "  1. git restore --source='$BASE' -- '$REVISIONS_DIR/atlas.sum'" >&2
-    echo "  2. rm '$REVISIONS_DIR/<all_pr_migration_files>.sql'" >&2
-    echo "  3. atlas migrate diff --env sqlite <name>" >&2
+    for REVISIONS_DIR in "${REVISIONS_DIRS[@]}"; do
+        echo "  git restore --source='$BASE' -- '$REVISIONS_DIR/atlas.sum'" >&2
+    done
+    echo "" >&2
+    echo "  # Delete PR-local migration files, then regenerate:" >&2
+    echo "  atlas migrate diff --env sqlite <name>" >&2
+    echo "  atlas migrate diff --env postgres <name>" >&2
     echo "" >&2
     echo "Do NOT manually edit atlas.sum -- always restore from the base branch." >&2
     exit 2

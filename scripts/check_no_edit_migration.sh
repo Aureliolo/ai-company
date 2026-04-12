@@ -16,11 +16,15 @@ if [[ -z "$FILE_PATH" ]]; then
     exit 0
 fi
 
-REVISIONS_DIR="src/synthorg/persistence/sqlite/revisions"
+REVISIONS_DIRS=(
+    "src/synthorg/persistence/sqlite/revisions"
+    "src/synthorg/persistence/postgres/revisions"
+)
 
-if [[ "$FILE_PATH" == */"$REVISIONS_DIR/"*.sql || "$FILE_PATH" == "$REVISIONS_DIR/"*.sql ]]; then
-    REASON="Do not manually edit migration files. Edit schema.sql and regenerate: atlas migrate diff --env sqlite <name>"
-    cat <<ENDJSON
+for REVISIONS_DIR in "${REVISIONS_DIRS[@]}"; do
+    if [[ "$FILE_PATH" == */"$REVISIONS_DIR/"*.sql || "$FILE_PATH" == "$REVISIONS_DIR/"*.sql ]]; then
+        REASON="Do not manually edit migration files. Edit schema.sql and regenerate: atlas migrate diff --env sqlite <name> / atlas migrate diff --env postgres <name>"
+        cat <<ENDJSON
 {
   "hookSpecificOutput": {
     "hookEventName": "PreToolUse",
@@ -29,7 +33,8 @@ if [[ "$FILE_PATH" == */"$REVISIONS_DIR/"*.sql || "$FILE_PATH" == "$REVISIONS_DI
   }
 }
 ENDJSON
-    exit 2
-fi
+        exit 2
+    fi
+done
 
 exit 0
