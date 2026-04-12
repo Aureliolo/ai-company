@@ -56,20 +56,25 @@ class TestDockerSandboxConfigImageResolution:
         config = DockerSandboxConfig()
         assert config.image == pinned
 
-    def test_fallback_when_env_var_unset(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.delenv("SYNTHORG_SANDBOX_IMAGE", raising=False)
-        config = DockerSandboxConfig()
-        assert config.image == "ghcr.io/aureliolo/synthorg-sandbox:latest"
-
-    def test_fallback_when_env_var_empty(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setenv("SYNTHORG_SANDBOX_IMAGE", "")
-        config = DockerSandboxConfig()
-        assert config.image == "ghcr.io/aureliolo/synthorg-sandbox:latest"
-
-    def test_fallback_when_env_var_whitespace(
-        self, monkeypatch: pytest.MonkeyPatch
+    @pytest.mark.parametrize(
+        ("env_action", "env_value"),
+        [
+            ("delenv", None),
+            ("setenv", ""),
+            ("setenv", "   "),
+        ],
+        ids=["unset", "empty", "whitespace"],
+    )
+    def test_fallback_when_env_var_absent_or_blank(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        env_action: str,
+        env_value: str | None,
     ) -> None:
-        monkeypatch.setenv("SYNTHORG_SANDBOX_IMAGE", "   ")
+        if env_action == "delenv":
+            monkeypatch.delenv("SYNTHORG_SANDBOX_IMAGE", raising=False)
+        else:
+            monkeypatch.setenv("SYNTHORG_SANDBOX_IMAGE", env_value)  # type: ignore[arg-type]
         config = DockerSandboxConfig()
         assert config.image == "ghcr.io/aureliolo/synthorg-sandbox:latest"
 
@@ -83,21 +88,21 @@ class TestDockerSandboxConfigImageResolution:
         config = DockerSandboxConfig(image="explicit:yaml")
         assert config.image == "explicit:yaml"
 
-    def test_fallback_path_logs_warning(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_fallback_path_logs_debug(self, monkeypatch: pytest.MonkeyPatch) -> None:
         from synthorg.tools.sandbox import docker_config as module
 
         monkeypatch.delenv("SYNTHORG_SANDBOX_IMAGE", raising=False)
         recorded: list[tuple[str, str, dict[str, object]]] = []
 
         def _capture(event: str, **kwargs: object) -> None:
-            recorded.append(("warning", event, dict(kwargs)))
+            recorded.append(("debug", event, dict(kwargs)))
 
-        monkeypatch.setattr(module.logger, "warning", _capture)
+        monkeypatch.setattr(module.logger, "debug", _capture)
         DockerSandboxConfig()
         assert any(
-            level == "warning" and event == "config.env_var.fallback"
+            level == "debug" and event == "config.env_var.fallback"
             for level, event, _ in recorded
-        ), f"expected fallback warning, got: {recorded}"
+        ), f"expected fallback debug log, got: {recorded}"
 
 
 class TestDockerSandboxConfigCustomValues:

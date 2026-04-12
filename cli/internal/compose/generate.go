@@ -146,8 +146,8 @@ func validateParams(p Params) error {
 		if strings.ContainsAny(p.DockerSock, "\"'`$\n\r{}[]") {
 			return fmt.Errorf("docker socket path %q contains unsafe characters", p.DockerSock)
 		}
-		if p.DockerSockGID < 0 || p.DockerSockGID > 4294967295 {
-			return fmt.Errorf("invalid docker socket gid %d: must be 0-4294967295", p.DockerSockGID)
+		if p.DockerSockGID < -1 || p.DockerSockGID > 4294967295 {
+			return fmt.Errorf("invalid docker socket gid %d: must be -1 to 4294967295", p.DockerSockGID)
 		}
 	}
 	if !config.IsValidPersistenceBackend(p.PersistenceBackend) {

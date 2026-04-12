@@ -1745,7 +1745,7 @@ applies the CSP, HSTS, and Permissions-Policy headers configured in `web/nginx.c
 and `web/security-headers.conf`.
 
 A future migration of the web image to a Caddy-based, pure-apko model is tracked in
-#1267.
+issue #1267.
 
 ## Performance Tracking Configuration
 

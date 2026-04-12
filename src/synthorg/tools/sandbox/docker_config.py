@@ -43,7 +43,7 @@ def _default_sandbox_image() -> str:
             resolved=value,
         )
         return value
-    logger.warning(
+    logger.debug(
         CONFIG_ENV_VAR_FALLBACK,
         var=_SANDBOX_IMAGE_ENV_VAR,
         fallback=_FALLBACK_SANDBOX_IMAGE,

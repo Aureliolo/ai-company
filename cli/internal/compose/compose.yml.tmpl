@@ -90,7 +90,7 @@ services:
       SYNTHORG_SETTINGS_KEY: {{yamlStr .SettingsKey}}
 {{- end}}
     user: "65532:65532"
-{{- if and .Sandbox (gt .DockerSockGID 0)}}
+{{- if and .Sandbox (ge .DockerSockGID 0)}}
     # Supplementary group matches the host GID owning {{.DockerSock}}, so the
     # non-root backend user (65532) can read/write the mounted socket without
     # relaxing host-side permissions.

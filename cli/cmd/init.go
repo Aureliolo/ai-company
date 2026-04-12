@@ -507,7 +507,7 @@ func buildState(a setupAnswers) (config.State, error) {
 	}
 
 	dockerSock := strings.TrimSpace(a.dockerSock)
-	var dockerSockGID int
+	dockerSockGID := -1
 	if a.sandbox {
 		if err := validateDockerSock(dockerSock); err != nil {
 			return config.State{}, err
@@ -517,7 +517,10 @@ func buildState(a setupAnswers) (config.State, error) {
 		// Docker socket (typically mode 660 root:docker on Linux). Stat
 		// the socket to capture the owning GID so the compose template
 		// can render `group_add: [<gid>]` on the backend service.
-		dockerSockGID = config.DetectDockerSockGID(dockerSock)
+		// -1 means detection failed (Windows named pipe, socket missing).
+		if gid, ok := config.DetectDockerSockGID(dockerSock); ok {
+			dockerSockGID = gid
+		}
 	}
 
 	jwtSecret, settingsKey, err := generateInitSecrets()

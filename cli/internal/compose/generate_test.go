@@ -100,6 +100,7 @@ func TestGenerateWithSandbox(t *testing.T) {
 		LogLevel:           "info",
 		Sandbox:            true,
 		DockerSock:         "/var/run/docker.sock",
+		DockerSockGID:      -1,
 		PersistenceBackend: "sqlite",
 		MemoryBackend:      "mem0",
 		BusBackend:         "internal",
@@ -135,9 +136,9 @@ func TestGenerateWithSandbox(t *testing.T) {
 		t.Error("compose output must not override healthcheck (defined in Dockerfile)")
 	}
 
-	// DockerSockGID defaults to 0 here, so no group_add block should render.
+	// DockerSockGID is -1 (detection failed), so no group_add block should render.
 	if strings.Contains(yaml, "group_add:") {
-		t.Error("group_add must not render when DockerSockGID is 0")
+		t.Error("group_add must not render when DockerSockGID is -1 (not detected)")
 	}
 
 	compareGolden(t, "compose_sandbox.yml", out)
@@ -164,13 +165,62 @@ func TestGenerateWithSandboxAndDockerSockGID(t *testing.T) {
 	}
 	yaml := string(out)
 
-	// group_add renders with the host docker GID so the non-root backend
-	// user can access the mounted socket.
 	assertContains(t, yaml, "group_add:")
 	assertContains(t, yaml, `- "999"`)
-
-	// Docker socket mount still present.
 	assertContains(t, yaml, "/var/run/docker.sock:/var/run/docker.sock")
+}
+
+func TestGenerateWithSandboxAndDockerSockGIDZero(t *testing.T) {
+	t.Parallel()
+	p := Params{
+		CLIVersion:         "dev",
+		ImageTag:           "latest",
+		BackendPort:        3001,
+		WebPort:            3000,
+		LogLevel:           "info",
+		Sandbox:            true,
+		DockerSock:         "/var/run/docker.sock",
+		DockerSockGID:      0,
+		PersistenceBackend: "sqlite",
+		MemoryBackend:      "mem0",
+		BusBackend:         "internal",
+	}
+	out, err := Generate(p)
+	if err != nil {
+		t.Fatalf("Generate: %v", err)
+	}
+	yaml := string(out)
+
+	// GID 0 (root group) is a valid detection result and must render.
+	assertContains(t, yaml, "group_add:")
+	assertContains(t, yaml, `- "0"`)
+}
+
+func TestGenerateWithSandboxAndDockerSockGIDNegative(t *testing.T) {
+	t.Parallel()
+	p := Params{
+		CLIVersion:         "dev",
+		ImageTag:           "latest",
+		BackendPort:        3001,
+		WebPort:            3000,
+		LogLevel:           "info",
+		Sandbox:            true,
+		DockerSock:         "/var/run/docker.sock",
+		DockerSockGID:      -1,
+		PersistenceBackend: "sqlite",
+		MemoryBackend:      "mem0",
+		BusBackend:         "internal",
+	}
+	out, err := Generate(p)
+	if err != nil {
+		t.Fatalf("Generate: %v", err)
+	}
+	yaml := string(out)
+
+	// -1 means detection failed; group_add must NOT render.
+	if strings.Contains(yaml, "group_add:") {
+		t.Error("group_add must not render when DockerSockGID is -1 (not detected)")
+	}
 }
 
 func TestGenerateWithDigestPins(t *testing.T) {
@@ -220,6 +270,7 @@ func TestGenerateWithDigestPinsAndSandbox(t *testing.T) {
 		LogLevel:           "info",
 		Sandbox:            true,
 		DockerSock:         "/var/run/docker.sock",
+		DockerSockGID:      -1,
 		PersistenceBackend: "sqlite",
 		MemoryBackend:      "mem0",
 		BusBackend:         "internal",
@@ -258,6 +309,7 @@ func TestGenerateWithSandboxAndPostgres(t *testing.T) {
 		LogLevel:           "info",
 		Sandbox:            true,
 		DockerSock:         "/var/run/docker.sock",
+		DockerSockGID:      -1,
 		PersistenceBackend: "postgres",
 		MemoryBackend:      "mem0",
 		BusBackend:         "internal",
@@ -292,6 +344,7 @@ func TestGenerateWithSandboxAndSecrets(t *testing.T) {
 		LogLevel:           "info",
 		Sandbox:            true,
 		DockerSock:         "/var/run/docker.sock",
+		DockerSockGID:      -1,
 		JWTSecret:          "test-secret-value",
 		SettingsKey:        "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
 		PersistenceBackend: "sqlite",
@@ -321,6 +374,7 @@ func TestGenerateWithSandboxAndEmptyDigestPins(t *testing.T) {
 		LogLevel:           "info",
 		Sandbox:            true,
 		DockerSock:         "/var/run/docker.sock",
+		DockerSockGID:      -1,
 		PersistenceBackend: "sqlite",
 		MemoryBackend:      "mem0",
 		BusBackend:         "internal",

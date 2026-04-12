@@ -6,6 +6,6 @@ package config
 // named pipe (`//./pipe/docker_engine`) rather than a Unix domain socket.
 // Named pipe access is not governed by Unix group IDs, so compose
 // `group_add` is not needed.
-func DetectDockerSockGID(path string) int {
-	return 0
+func DetectDockerSockGID(_ string) (int, bool) {
+	return 0, false
 }
