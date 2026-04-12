@@ -48,7 +48,7 @@ class ExperienceCompressor(Protocol):
         memory_context: tuple[MemoryEntry, ...],
         *,
         agent_id: NotBlankStr = "unknown",
-        source_artifact_ids: tuple[str, ...] = (),
+        source_artifact_ids: tuple[NotBlankStr, ...] = (),
     ) -> CompressedExperience:
         """Compress a single raw experience into strategic learnings.
 
@@ -128,7 +128,7 @@ class LLMExperienceCompressor:
         memory_context: tuple[MemoryEntry, ...],
         *,
         agent_id: NotBlankStr = "unknown",
-        source_artifact_ids: tuple[str, ...] = (),
+        source_artifact_ids: tuple[NotBlankStr, ...] = (),
     ) -> CompressedExperience:
         """Compress a single raw experience via LLM.
 
@@ -194,7 +194,8 @@ class LLMExperienceCompressor:
                 error=f"JSON decode failed: {exc}",
                 raw_content=response.content[:200],
             )
-            raise
+            msg = f"malformed compression output: {exc}"
+            raise ValueError(msg) from exc
         if not isinstance(parsed, dict):
             msg = f"LLM returned non-dict: {type(parsed).__name__}"
             logger.warning(

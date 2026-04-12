@@ -92,6 +92,13 @@ class TwoTierCompressionStrategy:
         )
         candidates = [e for e in entries if _DETAILED_TAG in e.metadata.tags]
         if not candidates:
+            logger.info(
+                TWO_TIER_COMPRESSION_COMPLETE,
+                agent_id=agent_id,
+                compressed_count=0,
+                removed_count=0,
+                reason="no_detailed_entries",
+            )
             return ConsolidationResult()
 
         # Fetch context memories for compression
@@ -230,11 +237,20 @@ class TwoTierCompressionStrategy:
         """
         try:
             data = json.loads(content)
-            return (
-                data.get("prompt", content),
-                data.get("output", ""),
-                data.get("verification_feedback"),
-                tuple(data.get("reasoning_trace", ())),
-            )
         except json.JSONDecodeError, TypeError:
             return (content, "", None, ())
+        if not isinstance(data, dict):
+            return (content, "", None, ())
+        prompt = data.get("prompt", content)
+        output = data.get("output", "")
+        feedback = data.get("verification_feedback")
+        trace = data.get("reasoning_trace", ())
+        if not isinstance(prompt, str) or not isinstance(output, str):
+            return (content, "", None, ())
+        if feedback is not None and not isinstance(feedback, str):
+            return (content, "", None, ())
+        if not isinstance(trace, list | tuple) or not all(
+            isinstance(step, str) for step in trace
+        ):
+            return (content, "", None, ())
+        return (prompt, output, feedback, tuple(trace))
