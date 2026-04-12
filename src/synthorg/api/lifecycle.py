@@ -5,6 +5,7 @@ failure), ``_safe_shutdown`` (graceful ordered teardown), and their
 supporting helpers.
 """
 
+import asyncio
 from typing import TYPE_CHECKING, Protocol
 
 from synthorg.api.auth.secret import resolve_jwt_secret
@@ -209,7 +210,7 @@ async def _init_persistence(
         raise
 
 
-def _reset_if_tasks_dead(
+def _reset_if_tasks_dead(  # noqa: PLR0911
     obj: object,
     running_attr: str,
     tasks_attr: str,
@@ -217,23 +218,40 @@ def _reset_if_tasks_dead(
     """Flip *running_attr* to ``False`` when all background tasks are dead.
 
     Services with tasks bound to the event loop (``MessageBusBridge``,
-    ``MeetingScheduler``) leave ``_running=True`` after the owning
-    loop closes and cancels their tasks.  Without this reset the next
-    startup skips ``start()``, leaving the service non-functional.
+    ``MeetingScheduler``, ``SettingsChangeDispatcher``) leave
+    ``_running=True`` after the owning loop closes and cancels their
+    tasks.  Without this reset the next startup skips ``start()``,
+    leaving the service non-functional.
 
-    No-op for ``MagicMock`` instances (``_tasks`` is not a real list)
-    and for services whose tasks are still alive.
+    Handles both plural task collections (``_tasks: list[Task]``) and
+    single-task services (``_task: Task | None``).  No-op for
+    ``MagicMock`` instances and for services whose tasks are still
+    alive.
     """
-    tasks = getattr(obj, tasks_attr, None)
-    if not isinstance(tasks, list) or not tasks:
+    tasks_or_task = getattr(obj, tasks_attr, None)
+    if tasks_or_task is None:
         return
-    if all(t.done() for t in tasks):
+    if isinstance(tasks_or_task, list):
+        if not tasks_or_task or not all(t.done() for t in tasks_or_task):
+            return
         try:
             setattr(obj, running_attr, False)
         except AttributeError:
             # ``__slots__``-only class without the running attr -- skip.
             return
-        tasks.clear()
+        tasks_or_task.clear()
+        return
+    if isinstance(tasks_or_task, asyncio.Task):
+        if not tasks_or_task.done():
+            return
+        try:
+            setattr(obj, running_attr, False)
+        except AttributeError:
+            return
+        try:
+            setattr(obj, tasks_attr, None)
+        except AttributeError:
+            return
 
 
 async def _safe_startup(  # noqa: PLR0913, PLR0912, PLR0915, C901
@@ -381,6 +399,13 @@ async def _safe_startup(  # noqa: PLR0913, PLR0912, PLR0915, C901
                 )
                 raise
             started_bridge = True
+        if settings_dispatcher is not None:
+            # SettingsChangeDispatcher has a singular ``_task`` (not
+            # ``_tasks``).  Its ``_on_task_done`` callback *usually*
+            # resets ``_running`` when the task dies, but on event-loop
+            # close the callback may not fire reliably, leaving the
+            # dispatcher stuck with ``_running=True`` and no live task.
+            _reset_if_tasks_dead(settings_dispatcher, "_running", "_task")
         _sd_running = getattr(settings_dispatcher, "_running", None)
         if settings_dispatcher is not None and _sd_running is not True:
             try:

@@ -460,8 +460,12 @@ def test_client(  # noqa: C901, PLR0913
         coordination_metrics_store,
     )
     for svc in _services:
-        svc.clear()
+        # Restore original methods BEFORE calling clear(): a prior
+        # test may have monkeypatched ``svc.clear`` itself (or a method
+        # that clear() invokes) with a stub that raises or corrupts
+        # state; we want the real ``clear`` implementation to run.
         _restore_instance_patches(svc)
+        svc.clear()
     fake_persistence.clear()
     fake_message_bus.clear()
 

@@ -1,6 +1,7 @@
 """In-memory fake implementations for API unit tests."""
 
 import asyncio
+import contextlib
 from collections.abc import Mapping, Sequence
 from datetime import datetime
 from typing import Any
@@ -675,13 +676,11 @@ class FakeMessageBus:
         loop runs at most once per timeout window and cancellation
         is a single ``asyncio.CancelledError`` on a suspended task.
         """
-        import contextlib as _contextlib
-
         if timeout is None:
             # No timeout -- block forever (until cancelled).
             await asyncio.Event().wait()
             return None
-        with _contextlib.suppress(TimeoutError):
+        with contextlib.suppress(TimeoutError):
             await asyncio.wait_for(asyncio.Event().wait(), timeout=timeout)
         return None
 
