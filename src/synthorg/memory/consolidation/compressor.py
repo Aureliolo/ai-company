@@ -165,6 +165,17 @@ class LLMExperienceCompressor:
             )
             raise ValueError(msg)
 
+        # Raw artifact length excludes the optional ``memory_context``
+        # so ``compression_ratio`` is a stable size comparison between
+        # the source (prompt + output + verification + reasoning) and
+        # the compressed LLM response.
+        raw_artifact_parts = [prompt, output]
+        if verification_feedback:
+            raw_artifact_parts.append(verification_feedback)
+        if reasoning_trace:
+            raw_artifact_parts.extend(reasoning_trace)
+        raw_len = sum(len(part) for part in raw_artifact_parts)
+
         user_parts = [
             f"## Prompt\n{prompt}",
             f"## Output\n{output}",
@@ -181,7 +192,6 @@ class LLMExperienceCompressor:
             user_parts.append(f"## Memory Context\n{context_text}")
 
         user_content = "\n\n".join(user_parts)
-        raw_len = len(user_content)
 
         messages: list[ChatMessage] = [
             ChatMessage(

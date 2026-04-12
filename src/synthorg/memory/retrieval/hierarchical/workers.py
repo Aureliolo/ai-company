@@ -25,6 +25,7 @@ from synthorg.memory.retrieval.models import (
 from synthorg.observability import get_logger
 from synthorg.observability.events.memory import (
     MEMORY_HIERARCHICAL_WORKER_COMPLETE,
+    MEMORY_HIERARCHICAL_WORKER_DEGRADED,
     MEMORY_HIERARCHICAL_WORKER_FAILED,
     MEMORY_HIERARCHICAL_WORKER_START,
 )
@@ -108,7 +109,7 @@ class SemanticWorker:
     async def retrieve(self, query: RetrievalQuery) -> RetrievalResult:
         """Execute semantic retrieval using dense + optional sparse."""
         start = time.monotonic()
-        logger.debug(
+        logger.info(
             MEMORY_HIERARCHICAL_WORKER_START,
             worker=self.name,
             query_length=len(query.text),
@@ -134,8 +135,12 @@ class SemanticWorker:
                 except builtins.MemoryError, RecursionError:
                     raise
                 except Exception as exc:
+                    # Shared store failure is a partial degradation:
+                    # the worker can still return personal results, so
+                    # emit DEGRADED (not FAILED) to avoid overcounting
+                    # worker failures in telemetry.
                     logger.warning(
-                        MEMORY_HIERARCHICAL_WORKER_FAILED,
+                        MEMORY_HIERARCHICAL_WORKER_DEGRADED,
                         worker=self.name,
                         source="shared_store",
                         error=str(exc),
@@ -159,7 +164,7 @@ class SemanticWorker:
                 _scored_to_candidate(s, source_worker=self.name) for s in ranked
             )
             elapsed_ms = int((time.monotonic() - start) * 1000)
-            logger.debug(
+            logger.info(
                 MEMORY_HIERARCHICAL_WORKER_COMPLETE,
                 worker=self.name,
                 candidate_count=len(candidates),
@@ -243,6 +248,9 @@ class EpisodicWorker:
         backend: MemoryBackend,
         time_window_hours: int = _DEFAULT_EPISODIC_WINDOW_HOURS,
     ) -> None:
+        if time_window_hours <= 0:
+            msg = f"time_window_hours must be positive, got {time_window_hours}"
+            raise ValueError(msg)
         self._backend = backend
         self._time_window_hours = time_window_hours
 
@@ -254,7 +262,7 @@ class EpisodicWorker:
     async def retrieve(self, query: RetrievalQuery) -> RetrievalResult:
         """Retrieve recent episodic memories."""
         start = time.monotonic()
-        logger.debug(
+        logger.info(
             MEMORY_HIERARCHICAL_WORKER_START,
             worker=self.name,
             query_length=len(query.text),
@@ -298,7 +306,7 @@ class EpisodicWorker:
                 )
             candidates = tuple(candidates_list)
             elapsed_ms = int((time.monotonic() - start) * 1000)
-            logger.debug(
+            logger.info(
                 MEMORY_HIERARCHICAL_WORKER_COMPLETE,
                 worker=self.name,
                 candidate_count=len(candidates),
@@ -346,7 +354,7 @@ class ProceduralWorker:
     async def retrieve(self, query: RetrievalQuery) -> RetrievalResult:
         """Retrieve procedural memories."""
         start = time.monotonic()
-        logger.debug(
+        logger.info(
             MEMORY_HIERARCHICAL_WORKER_START,
             worker=self.name,
             query_length=len(query.text),
@@ -375,7 +383,7 @@ class ProceduralWorker:
                 )
             candidates = tuple(candidates_list)
             elapsed_ms = int((time.monotonic() - start) * 1000)
-            logger.debug(
+            logger.info(
                 MEMORY_HIERARCHICAL_WORKER_COMPLETE,
                 worker=self.name,
                 candidate_count=len(candidates),

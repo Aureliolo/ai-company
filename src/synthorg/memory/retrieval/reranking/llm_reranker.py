@@ -100,20 +100,23 @@ class LLMQuerySpecificReranker:
         if len(candidates) <= 1:
             return candidates
 
+        candidate_ids = tuple(c.entry.id for c in candidates)
+        # Duplicate IDs would silently collapse in the ``by_id`` map
+        # below and corrupt cached-ranking replay.  Skip both cache
+        # read/write in that edge case.
+        cache_eligible = self._cache is not None and len(set(candidate_ids)) == len(
+            candidate_ids
+        )
         by_id = {c.entry.id: c for c in candidates}
+        cache_key = ""
 
         # Check cache -- returns stored ID ordering, we reapply to
         # the current candidate set so fresh state always wins.
-        if self._cache is not None:
-            cache_key = _build_cache_key(
-                query.text,
-                tuple(c.entry.id for c in candidates),
-            )
+        if cache_eligible and self._cache is not None:
+            cache_key = _build_cache_key(query.text, candidate_ids)
             cached_ids = await self._cache.get(cache_key)
             if cached_ids is not None and set(cached_ids) == set(by_id):
                 return tuple(by_id[cid] for cid in cached_ids)
-        else:
-            cache_key = ""
 
         try:
             reranked = await self._rerank_via_llm(query, candidates)
@@ -133,7 +136,7 @@ class LLMQuerySpecificReranker:
             )
             return candidates
         else:
-            if self._cache is not None and cache_key:
+            if cache_eligible and self._cache is not None and cache_key:
                 await self._cache.put(
                     cache_key,
                     tuple(c.entry.id for c in reranked),
