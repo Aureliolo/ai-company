@@ -167,6 +167,14 @@ def _check_timing_regression(elapsed: float, *, run_all: bool) -> bool:
     except json.JSONDecodeError, KeyError, ValueError, OSError:
         return False
     max_allowed = baseline_secs * (1 + threshold_pct / 100)
+    # Honor the same override used by the conftest guard.
+    import contextlib
+    import os
+
+    env_override = os.environ.get("UNIT_SUITE_MAX_SECONDS")
+    if env_override is not None:
+        with contextlib.suppress(ValueError):
+            max_allowed = float(env_override)
     if elapsed > max_allowed:
         pct = (elapsed - baseline_secs) / baseline_secs * 100
         border = "!" * 60

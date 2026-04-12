@@ -130,7 +130,12 @@ class TestInflectionDetection:
         # Should not raise.
         await tracker.get_snapshot("agent-1")
         if tasks := list(tracker._background_tasks):
-            await asyncio.gather(*tasks, return_exceptions=True)
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+            # Verify only the expected sink error propagated, not
+            # unexpected failures that would indicate a real bug.
+            for result in results:
+                if isinstance(result, BaseException):
+                    assert isinstance(result, RuntimeError)
 
     @pytest.mark.unit
     async def test_cache_is_updated(self) -> None:

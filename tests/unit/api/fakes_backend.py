@@ -277,12 +277,22 @@ class FakePersistenceBackend:
     def clear(self) -> None:
         """Reset all in-memory state for test isolation.
 
-        Preserves the connection flag so the backend remains usable
-        after clearing.  Called between tests when the app is cached
-        at module level to prevent cross-test state pollution.
+        Clears repository contents in-place so any services holding
+        references to repository objects observe the reset.  Preserves
+        object identity and the connection flag.
         """
-        self.__init__()  # type: ignore[misc]
-        self._connected = True
+        for attr_name in list(vars(self)):
+            if attr_name == "_connected":
+                continue
+            value = getattr(self, attr_name)
+            # Clear mutable containers directly.
+            if isinstance(value, (dict, list, set)):
+                value.clear()
+                continue
+            # Clear internal state of fake repository objects.
+            for inner_value in vars(value).values():
+                if isinstance(inner_value, (dict, list, set)):
+                    inner_value.clear()
 
     async def connect(self) -> None:
         self._connected = True

@@ -1,7 +1,7 @@
 """Shared fixtures for API unit tests."""
 
 import uuid
-from collections.abc import Generator
+from collections.abc import AsyncGenerator, Generator
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -233,17 +233,19 @@ def auth_service() -> AuthService:
 
 
 @pytest.fixture
-def fake_persistence() -> FakePersistenceBackend:
+async def fake_persistence() -> AsyncGenerator[FakePersistenceBackend]:
     backend = FakePersistenceBackend()
-    backend._connected = True
-    return backend
+    await backend.connect()
+    yield backend
+    await backend.disconnect()
 
 
 @pytest.fixture
-def fake_message_bus() -> FakeMessageBus:
+async def fake_message_bus() -> AsyncGenerator[FakeMessageBus]:
     bus = FakeMessageBus()
-    bus._running = True
-    return bus
+    await bus.start()
+    yield bus
+    await bus.stop()
 
 
 @pytest.fixture

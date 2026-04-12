@@ -193,9 +193,16 @@ def pytest_sessionfinish(
     try:
         baseline = json.loads(_BASELINE_PATH.read_text(encoding="utf-8"))
         baseline_secs = float(baseline["unit_suite_seconds"])
+        baseline_count = int(baseline.get("test_count", 0))
         threshold_pct = float(baseline.get("regression_threshold_pct", 30))
     except json.JSONDecodeError, KeyError, ValueError, OSError:
         return  # Malformed baseline -- skip check, don't block.
+    # Only compare against baseline when running (roughly) the full
+    # suite.  Partial runs have very different timing profiles and
+    # would produce noisy false positives.
+    unit_count = sum(1 for item in session.items if item.get_closest_marker("unit"))
+    if baseline_count and unit_count < baseline_count * 0.8:
+        return
     max_allowed = baseline_secs * (1 + threshold_pct / 100)
     # Allow override for optimization work where the suite is
     # intentionally being re-measured at a new (lower) baseline.
