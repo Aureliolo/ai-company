@@ -20,6 +20,7 @@ from synthorg.observability.events.middleware import (
     MIDDLEWARE_AFTER_MODEL,
     MIDDLEWARE_BEFORE_AGENT,
     MIDDLEWARE_BEFORE_MODEL,
+    MIDDLEWARE_HOOK_ERROR,
     MIDDLEWARE_WRAP_MODEL_CALL,
     MIDDLEWARE_WRAP_TOOL_CALL,
 )
@@ -248,7 +249,15 @@ class AgentMiddlewareChain:
                 MIDDLEWARE_BEFORE_AGENT,
                 middleware=mw.name,
             )
-            ctx = await mw.before_agent(ctx)
+            try:
+                ctx = await mw.before_agent(ctx)
+            except Exception:
+                logger.warning(
+                    MIDDLEWARE_HOOK_ERROR,
+                    middleware=mw.name,
+                    hook="before_agent",
+                )
+                raise
         return ctx
 
     async def run_before_model(
@@ -261,7 +270,15 @@ class AgentMiddlewareChain:
                 MIDDLEWARE_BEFORE_MODEL,
                 middleware=mw.name,
             )
-            ctx = await mw.before_model(ctx)
+            try:
+                ctx = await mw.before_model(ctx)
+            except Exception:
+                logger.warning(
+                    MIDDLEWARE_HOOK_ERROR,
+                    middleware=mw.name,
+                    hook="before_model",
+                )
+                raise
         return ctx
 
     async def run_after_model(
@@ -274,7 +291,15 @@ class AgentMiddlewareChain:
                 MIDDLEWARE_AFTER_MODEL,
                 middleware=mw.name,
             )
-            ctx = await mw.after_model(ctx)
+            try:
+                ctx = await mw.after_model(ctx)
+            except Exception:
+                logger.warning(
+                    MIDDLEWARE_HOOK_ERROR,
+                    middleware=mw.name,
+                    hook="after_model",
+                )
+                raise
         return ctx
 
     async def run_after_agent(
@@ -287,7 +312,15 @@ class AgentMiddlewareChain:
                 MIDDLEWARE_AFTER_AGENT,
                 middleware=mw.name,
             )
-            ctx = await mw.after_agent(ctx)
+            try:
+                ctx = await mw.after_agent(ctx)
+            except Exception:
+                logger.warning(
+                    MIDDLEWARE_HOOK_ERROR,
+                    middleware=mw.name,
+                    hook="after_agent",
+                )
+                raise
         return ctx
 
     async def run_wrap_model_call(

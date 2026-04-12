@@ -95,6 +95,22 @@ class ClarificationGateConfig(BaseModel):
         description="Patterns for overly generic criteria text",
     )
 
+    @model_validator(mode="after")
+    def _validate_generic_patterns_compile(self) -> Self:
+        """Ensure all generic patterns are valid regexes."""
+        for pattern in self.generic_patterns:
+            try:
+                re.compile(pattern)
+            except re.error as exc:
+                msg = f"Invalid generic pattern {pattern!r}: {exc}"
+                logger.warning(
+                    msg,
+                    pattern=pattern,
+                    error=str(exc),
+                )
+                raise ValueError(msg) from exc
+        return self
+
 
 # ── Chain-level configs ───────────────────────────────────────────
 

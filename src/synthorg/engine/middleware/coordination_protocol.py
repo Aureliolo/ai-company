@@ -20,6 +20,9 @@ from synthorg.engine.middleware.models import (
     TaskLedger,  # noqa: TC001
 )
 from synthorg.observability import get_logger
+from synthorg.observability.events.middleware import (
+    MIDDLEWARE_COORDINATION_HOOK_ERROR,
+)
 
 logger = get_logger(__name__)
 
@@ -289,7 +292,15 @@ class CoordinationMiddlewareChain:
     ) -> CoordinationMiddlewareContext:
         """Run ``before_decompose`` hooks left-to-right."""
         for mw in self._middleware:
-            ctx = await mw.before_decompose(ctx)
+            try:
+                ctx = await mw.before_decompose(ctx)
+            except Exception:
+                logger.warning(
+                    MIDDLEWARE_COORDINATION_HOOK_ERROR,
+                    middleware=mw.name,
+                    hook="before_decompose",
+                )
+                raise
         return ctx
 
     async def run_after_decompose(
@@ -298,7 +309,15 @@ class CoordinationMiddlewareChain:
     ) -> CoordinationMiddlewareContext:
         """Run ``after_decompose`` hooks right-to-left."""
         for mw in reversed(self._middleware):
-            ctx = await mw.after_decompose(ctx)
+            try:
+                ctx = await mw.after_decompose(ctx)
+            except Exception:
+                logger.warning(
+                    MIDDLEWARE_COORDINATION_HOOK_ERROR,
+                    middleware=mw.name,
+                    hook="after_decompose",
+                )
+                raise
         return ctx
 
     async def run_before_dispatch(
@@ -307,7 +326,15 @@ class CoordinationMiddlewareChain:
     ) -> CoordinationMiddlewareContext:
         """Run ``before_dispatch`` hooks left-to-right."""
         for mw in self._middleware:
-            ctx = await mw.before_dispatch(ctx)
+            try:
+                ctx = await mw.before_dispatch(ctx)
+            except Exception:
+                logger.warning(
+                    MIDDLEWARE_COORDINATION_HOOK_ERROR,
+                    middleware=mw.name,
+                    hook="before_dispatch",
+                )
+                raise
         return ctx
 
     async def run_after_rollup(
@@ -316,7 +343,15 @@ class CoordinationMiddlewareChain:
     ) -> CoordinationMiddlewareContext:
         """Run ``after_rollup`` hooks right-to-left."""
         for mw in reversed(self._middleware):
-            ctx = await mw.after_rollup(ctx)
+            try:
+                ctx = await mw.after_rollup(ctx)
+            except Exception:
+                logger.warning(
+                    MIDDLEWARE_COORDINATION_HOOK_ERROR,
+                    middleware=mw.name,
+                    hook="after_rollup",
+                )
+                raise
         return ctx
 
     async def run_before_update_parent(
@@ -325,5 +360,13 @@ class CoordinationMiddlewareChain:
     ) -> CoordinationMiddlewareContext:
         """Run ``before_update_parent`` hooks left-to-right."""
         for mw in self._middleware:
-            ctx = await mw.before_update_parent(ctx)
+            try:
+                ctx = await mw.before_update_parent(ctx)
+            except Exception:
+                logger.warning(
+                    MIDDLEWARE_COORDINATION_HOOK_ERROR,
+                    middleware=mw.name,
+                    hook="before_update_parent",
+                )
+                raise
         return ctx
