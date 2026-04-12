@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING
 from synthorg.observability import get_logger
 from synthorg.observability.events.delegation import (
     DELEGATION_RECORD_EVICTED,
+    DELEGATION_RECORD_STORE_CLEARED,
     DELEGATION_RECORD_STORED,
     DELEGATION_RECORDS_QUERIED,
     DELEGATION_TIME_RANGE_INVALID,
@@ -65,8 +66,13 @@ class DelegationRecordStore:
 
     def clear(self) -> None:
         """Reset all delegation records for test isolation."""
+        cleared_count = len(self._records)
         self._records.clear()
         self._eviction_warned = False
+        logger.info(
+            DELEGATION_RECORD_STORE_CLEARED,
+            cleared_count=cleared_count,
+        )
 
     def record_sync(self, delegation: DelegationRecord) -> None:
         """Append a delegation record (sync, for cooperative scheduling).

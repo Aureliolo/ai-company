@@ -559,7 +559,10 @@ def _build_lifecycle(  # noqa: PLR0913, PLR0915, C901
                     exc_info=True,
                 )
 
-        # Wire workflow execution observer (needs connected persistence)
+        # Wire workflow execution observer (needs connected persistence).
+        # Idempotent: only register when no WorkflowExecutionObserver is
+        # already present.  Startup may re-enter via the shared-app test
+        # fixture, and ``register_observer`` is append-only.
         if (
             task_engine is not None
             and persistence is not None
@@ -570,12 +573,17 @@ def _build_lifecycle(  # noqa: PLR0913, PLR0915, C901
                 WorkflowExecutionObserver,
             )
 
-            _wf_observer = WorkflowExecutionObserver(
-                definition_repo=persistence.workflow_definitions,
-                execution_repo=persistence.workflow_executions,
-                task_engine=task_engine,
+            _already_registered = any(
+                isinstance(o, WorkflowExecutionObserver)
+                for o in getattr(task_engine, "_observers", ())
             )
-            task_engine.register_observer(_wf_observer)
+            if not _already_registered:
+                _wf_observer = WorkflowExecutionObserver(
+                    definition_repo=persistence.workflow_definitions,
+                    execution_repo=persistence.workflow_executions,
+                    task_engine=task_engine,
+                )
+                task_engine.register_observer(_wf_observer)
 
         # Phase 2 auto-wire: SettingsService (needs connected persistence)
         if (
@@ -615,11 +623,38 @@ def _build_lifecycle(  # noqa: PLR0913, PLR0915, C901
                 raise
         await _maybe_bootstrap_agents(app_state)
         await _maybe_promote_first_owner(app_state)
+        # Idempotent: a prior ticket-cleanup task from a previous
+        # startup may still be alive when lifespan re-enters (e.g.
+        # shared-app test fixture).  Cancel it before spawning a
+        # fresh one so tasks do not accumulate.  Any non-cancellation
+        # exception from the prior task has already been logged by
+        # ``_on_cleanup_task_done``; it is discarded here because we
+        # are replacing the task, not handling its outcome.
+        if _ticket_cleanup_task is not None and not _ticket_cleanup_task.done():
+            _ticket_cleanup_task.cancel()
+            try:
+                await _ticket_cleanup_task
+            except asyncio.CancelledError:
+                pass
+            except MemoryError, RecursionError:
+                raise
+            except Exception:  # noqa: S110 -- already logged via done-callback
+                pass
         _ticket_cleanup_task = asyncio.create_task(
             _ticket_cleanup_loop(app_state),
             name="ws-ticket-cleanup",
         )
         _ticket_cleanup_task.add_done_callback(_on_cleanup_task_done)
+        # Idempotent: stop any prior health prober instance before
+        # starting a new one so probers do not accumulate when the
+        # shared app re-enters lifespan.
+        if _health_prober is not None:
+            await _try_stop(
+                _health_prober.stop(),
+                API_APP_STARTUP,
+                "Failed to stop prior health prober before restart",
+            )
+            _health_prober = None
         _health_prober = await _maybe_start_health_prober(app_state)
 
         # Start integration background services (non-fatal).

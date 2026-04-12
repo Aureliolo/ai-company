@@ -50,6 +50,7 @@ from synthorg.observability.events.budget import (
     BUDGET_SUMMARY_BUILT,
     BUDGET_TIME_RANGE_INVALID,
     BUDGET_TOTAL_COST_QUERIED,
+    BUDGET_TRACKER_CLEARED,
     BUDGET_TRACKER_CREATED,
 )
 
@@ -588,7 +589,9 @@ class CostTracker:
 
     def clear(self) -> None:
         """Reset all recorded cost data for test isolation."""
+        cleared_count = len(self._records)
         self._records.clear()
+        logger.info(BUDGET_TRACKER_CLEARED, cleared_count=cleared_count)
 
     # ── Private helpers ──────────────────────────────────────────────
 

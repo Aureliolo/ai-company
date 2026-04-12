@@ -16,6 +16,7 @@ from synthorg.observability import get_logger
 from synthorg.observability.events.hr import (
     HR_REGISTRY_AGENT_REGISTERED,
     HR_REGISTRY_AGENT_REMOVED,
+    HR_REGISTRY_CLEARED,
     HR_REGISTRY_IDENTITY_EVOLVED,
     HR_REGISTRY_IDENTITY_UPDATED,
     HR_REGISTRY_STATUS_UPDATED,
@@ -49,7 +50,9 @@ class AgentRegistryService:
 
     def clear(self) -> None:
         """Reset all registered agents for test isolation."""
+        cleared_count = len(self._agents)
         self._agents.clear()
+        logger.info(HR_REGISTRY_CLEARED, cleared_count=cleared_count)
 
     async def register(
         self,

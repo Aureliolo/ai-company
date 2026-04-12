@@ -14,6 +14,7 @@ from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.observability import get_logger
 from synthorg.observability.events.coordination_metrics import (
     COORD_METRICS_COLLECTION_COMPLETED,
+    COORD_METRICS_STORE_CLEARED,
     COORD_METRICS_VALIDATION_ERROR,
 )
 
@@ -67,7 +68,9 @@ class CoordinationMetricsStore:
 
     def clear(self) -> None:
         """Reset all coordination metrics for test isolation."""
+        cleared_count = len(self._records)
         self._records.clear()
+        logger.info(COORD_METRICS_STORE_CLEARED, cleared_count=cleared_count)
 
     def record(self, entry: CoordinationMetricsRecord) -> None:
         """Append a metrics record (oldest evicted when full)."""

@@ -24,6 +24,7 @@ from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.observability import get_logger
 from synthorg.observability.events.provider import (
     PROVIDER_HEALTH_AUTO_PRUNED,
+    PROVIDER_HEALTH_CLEARED,
     PROVIDER_HEALTH_PRUNED,
 )
 
@@ -224,7 +225,9 @@ class ProviderHealthTracker:
 
     def clear(self) -> None:
         """Reset all health records for test isolation."""
+        cleared_count = len(self._records)
         self._records.clear()
+        logger.info(PROVIDER_HEALTH_CLEARED, cleared_count=cleared_count)
 
     async def record(self, record: ProviderHealthRecord) -> None:
         """Append a health record.

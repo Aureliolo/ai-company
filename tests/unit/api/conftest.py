@@ -1,7 +1,7 @@
 """Shared fixtures for API unit tests."""
 
 import uuid
-from collections.abc import Generator
+from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -88,7 +88,7 @@ def _lightweight_argon2_hasher() -> Any:
 
 
 @pytest.fixture(scope="session", autouse=True)
-def _required_env_vars() -> Generator[None]:
+def _required_env_vars() -> Iterator[None]:
     """Set SYNTHORG_JWT_SECRET and SYNTHORG_SETTINGS_KEY for API tests.
 
     Session-scoped with manual env-var management (``monkeypatch`` is
@@ -112,7 +112,7 @@ def _required_env_vars() -> Generator[None]:
 
 
 @pytest.fixture(scope="session", autouse=True)
-def _no_backup_service() -> Generator[None]:
+def _no_backup_service() -> Iterator[None]:
     """Disable the backup service in all API unit tests.
 
     Session-scoped with ``unittest.mock.patch`` (``monkeypatch`` is
@@ -222,12 +222,14 @@ def make_auth_headers(
 
 # ── Fixtures ────────────────────────────────────────────────────
 #
-# All fixtures are session-scoped: created once per xdist worker,
-# cleared by test_client before each test.  The shared app uses
-# _skip_lifecycle_shutdown=True to prevent lifespan shutdown from
+# The underlying service/app fixtures in this file are session-scoped:
+# created once per xdist worker and shared across tests.  The
+# ``test_client`` fixture is function-scoped, though, and performs
+# per-test clearing/reconnection.  The shared app uses
+# ``_skip_lifecycle_shutdown=True`` to prevent lifespan shutdown from
 # stopping/disconnecting shared services.  Tests that create their
 # own apps may disconnect/stop the shared persistence/bus, but
-# test_client re-connects them before each test.
+# ``test_client`` re-connects them before each test.
 
 
 @pytest.fixture(scope="session")
@@ -399,9 +401,13 @@ def _restore_instance_patches(obj: object) -> None:
 
     Tests like ``test_degraded_tool_tracker`` patch methods directly
     on session-scoped instances (``tracker.get_records = _raise``).
-    This function removes any instance attribute that shadows a
-    class-level callable, restoring the original method from the
-    class so the next test sees the unpatched implementation.
+    Tests also patch private methods (``tracker._evict = _raise``) via
+    ``monkeypatch`` / ``unittest.mock.patch.object`` to simulate
+    internal failures.  This function removes any instance attribute
+    that shadows a class-level callable -- including single-underscore
+    "private" methods -- restoring the original method from the class
+    so the next test sees the unpatched implementation.  Dunders are
+    skipped to avoid touching Python's protocol attributes.
 
     Skips ``__slots__``-only classes: they have no ``__dict__``, and
     ``__slots__`` prevents arbitrary attribute assignment, so they
@@ -412,7 +418,7 @@ def _restore_instance_patches(obj: object) -> None:
         return
     cls = type(obj)
     for attr in list(obj_dict):
-        if attr.startswith("_"):
+        if attr.startswith("__"):
             continue
         if callable(getattr(cls, attr, None)):
             delattr(obj, attr)
@@ -433,7 +439,7 @@ def test_client(  # noqa: PLR0913
     audit_log: AuditLog,
     coordination_metrics_store: CoordinationMetricsStore,
     auth_service: AuthService,
-) -> Generator[TestClient[Any]]:
+) -> Iterator[TestClient[Any]]:
     """Yield a TestClient wrapping the shared app with clean state.
 
     The expensive ``create_app()`` runs once per worker.  Each test
@@ -486,7 +492,14 @@ def test_client(  # noqa: PLR0913
         te._versions = type(te._versions)()
         te._observers.clear()
 
-    # 3. Clear AppState-internal stores and caches
+    # 3. Clear AppState-internal stores and caches.
+    #    Session and lockout stores must be reset to None so that
+    #    the next _safe_startup() rebuilds them.  Otherwise the
+    #    has_session_store / has_lockout_store guards skip the
+    #    rebuild and revoked-session / lockout state from a prior
+    #    test bleeds into the next one.
+    app_state._session_store = None
+    app_state._lockout_store = None
     app_state._ticket_store._tickets.clear()
     app_state._user_presence._counts.clear()
     if app_state._settings_service is not None:
@@ -503,9 +516,35 @@ def test_client(  # noqa: PLR0913
     }
 
     # 6. Clear Litestar-internal rate-limit stores to prevent 429s
-    #    from accumulating request counters across tests.
-    for store in _shared_app.stores._stores.values():
-        store._store.clear()  # type: ignore[attr-defined]
+    #    from accumulating request counters across tests.  Reaches
+    #    into private attributes (``stores._stores`` and
+    #    ``store._store``) because Litestar has no public
+    #    bulk-clear API.  Guarded with ``hasattr`` so a Litestar
+    #    upgrade fails with a clear, actionable error instead of
+    #    a cryptic ``AttributeError`` deep in fixture setup.
+    _shared_stores = _shared_app.stores
+    if not hasattr(_shared_stores, "_stores"):
+        msg = (
+            "Test fixture expected Litestar app.stores to expose a "
+            "private '_stores' mapping for rate-limit reset, but it "
+            "was not found. Litestar internals may have changed; "
+            "update this fixture to use a supported store-clearing "
+            "API if available."
+        )
+        raise RuntimeError(msg)
+    for store in _shared_stores._stores.values():
+        inner = getattr(store, "_store", None)
+        if inner is None or not hasattr(inner, "clear"):
+            msg = (
+                "Test fixture expected each Litestar store to expose "
+                "a private '_store' object with a 'clear()' method "
+                "for rate-limit reset, but the internal structure "
+                "did not match. Litestar internals may have changed; "
+                "update this fixture to use a supported "
+                "store-clearing API if available."
+            )
+            raise RuntimeError(msg)
+        inner.clear()
 
     # 7. Enter TestClient -- startup re-runs (idempotent),
     #    shutdown is skipped (_skip_lifecycle_shutdown=True).

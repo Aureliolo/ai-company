@@ -209,6 +209,33 @@ async def _init_persistence(
         raise
 
 
+def _reset_if_tasks_dead(
+    obj: object,
+    running_attr: str,
+    tasks_attr: str,
+) -> None:
+    """Flip *running_attr* to ``False`` when all background tasks are dead.
+
+    Services with tasks bound to the event loop (``MessageBusBridge``,
+    ``MeetingScheduler``) leave ``_running=True`` after the owning
+    loop closes and cancels their tasks.  Without this reset the next
+    startup skips ``start()``, leaving the service non-functional.
+
+    No-op for ``MagicMock`` instances (``_tasks`` is not a real list)
+    and for services whose tasks are still alive.
+    """
+    tasks = getattr(obj, tasks_attr, None)
+    if not isinstance(tasks, list) or not tasks:
+        return
+    if all(t.done() for t in tasks):
+        try:
+            setattr(obj, running_attr, False)
+        except AttributeError:
+            # ``__slots__``-only class without the running attr -- skip.
+            return
+        tasks.clear()
+
+
 async def _safe_startup(  # noqa: PLR0913, PLR0912, PLR0915, C901
     persistence: PersistenceBackend | None,
     message_bus: MessageBus | None,
@@ -334,6 +361,16 @@ async def _safe_startup(  # noqa: PLR0913, PLR0912, PLR0915, C901
         # ``False`` (skipping start and breaking those tests), while
         # ``MagicMock() is not True`` correctly evaluates to ``True``.
         # For real services ``_running`` is a bool, so both forms agree.
+        #
+        # Task-liveness guard: for services whose background tasks get
+        # bound to the event loop (bridge, meeting_scheduler), a prior
+        # TestClient's event loop can close and cancel those tasks
+        # while ``_running`` still reads ``True``.  Detect dead tasks
+        # and flip ``_running`` back to ``False`` so this startup
+        # actually restarts the service.  ``MagicMock`` instances have
+        # no real ``_tasks`` list, so this path is a no-op for them.
+        if bridge is not None:
+            _reset_if_tasks_dead(bridge, "_running", "_tasks")
         if bridge is not None and getattr(bridge, "_running", None) is not True:
             try:
                 await bridge.start()
@@ -365,6 +402,8 @@ async def _safe_startup(  # noqa: PLR0913, PLR0912, PLR0915, C901
                 )
                 raise
             started_task_engine = True
+        if meeting_scheduler is not None:
+            _reset_if_tasks_dead(meeting_scheduler, "_running", "_tasks")
         _ms_running = getattr(meeting_scheduler, "running", None)
         if meeting_scheduler is not None and _ms_running is not True:
             try:
@@ -377,11 +416,20 @@ async def _safe_startup(  # noqa: PLR0913, PLR0912, PLR0915, C901
                 raise
             started_meeting_scheduler = True
         if backup_service is not None:
+            # Skip start() when the backup scheduler is already
+            # running (shared-app test fixture re-enters startup).
+            # Also only flip ``started_backup_service`` to ``True``
+            # *after* a fresh ``start()`` completes, so
+            # ``_cleanup_on_failure()`` never stops a
+            # previously-running shared service.
+            _bs_scheduler = getattr(backup_service, "scheduler", None)
+            _bs_already_running = getattr(_bs_scheduler, "is_running", False)
             try:
                 if not app_state.has_backup_service:
                     app_state.set_backup_service(backup_service)
-                started_backup_service = True
-                await backup_service.start()
+                if not _bs_already_running:
+                    await backup_service.start()
+                    started_backup_service = True
             except Exception:
                 logger.exception(
                     API_APP_STARTUP,

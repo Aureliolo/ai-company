@@ -61,6 +61,7 @@ TOOL_INVOCATION_RECORDED: Final[str] = "tool.invocation.recorded"
 TOOL_INVOCATION_RECORD_FAILED: Final[str] = "tool.invocation.record_failed"
 TOOL_INVOCATIONS_QUERIED: Final[str] = "tool.invocations.queried"
 TOOL_INVOCATION_EVICTED: Final[str] = "tool.invocation.evicted"
+TOOL_INVOCATION_TRACKER_CLEARED: Final[str] = "tool.invocation_tracker.cleared"
 TOOL_INVOCATION_TIME_RANGE_INVALID: Final[str] = "tool.invocation.time_range.invalid"
 
 # ── Memory tool events ────────────────────────────────────────────

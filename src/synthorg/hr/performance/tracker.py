@@ -29,6 +29,7 @@ from synthorg.observability.events.performance import (
     PERF_METRIC_RECORDED,
     PERF_OVERRIDE_APPLIED,
     PERF_SNAPSHOT_COMPUTED,
+    PERF_TRACKER_CLEARED,
     PERF_WINDOW_INSUFFICIENT_DATA,
 )
 
@@ -164,13 +165,29 @@ class PerformanceTracker:
         For production shutdown where tasks must drain cleanly, use
         :meth:`aclose` instead -- it cancels and awaits.
         """
-        for t in self._background_tasks:
+        tasks_cancelled = len(self._background_tasks)
+        task_metrics_cleared = len(self._task_metrics)
+        collab_metrics_cleared = len(self._collab_metrics)
+        contributions_cleared = len(self._contributions)
+        trend_cache_cleared = len(self._trend_direction_cache)
+        # Iterate over a snapshot: task done-callbacks remove from the
+        # set, so iterating the live set would raise
+        # ``RuntimeError: set changed size during iteration``.
+        for t in list(self._background_tasks):
             t.cancel()
         self._background_tasks.clear()
         self._task_metrics.clear()
         self._collab_metrics.clear()
         self._contributions.clear()
         self._trend_direction_cache.clear()
+        logger.info(
+            PERF_TRACKER_CLEARED,
+            tasks_cancelled=tasks_cancelled,
+            task_metrics_cleared=task_metrics_cleared,
+            collab_metrics_cleared=collab_metrics_cleared,
+            contributions_cleared=contributions_cleared,
+            trend_cache_cleared=trend_cache_cleared,
+        )
 
     async def aclose(self) -> None:
         """Cancel and await all pending background tasks.

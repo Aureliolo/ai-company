@@ -18,6 +18,7 @@ from synthorg.observability import get_logger
 from synthorg.observability.events.api import (
     API_APPROVAL_CONFLICT,
     API_APPROVAL_EXPIRED,
+    API_APPROVAL_STORE_CLEARED,
     API_RESOURCE_NOT_FOUND,
 )
 
@@ -41,7 +42,9 @@ class ApprovalStore:
 
     def clear(self) -> None:
         """Reset all approval items for test isolation."""
+        cleared_count = len(self._items)
         self._items.clear()
+        logger.info(API_APPROVAL_STORE_CLEARED, cleared_count=cleared_count)
 
     async def add(self, item: ApprovalItem) -> None:
         """Add a new approval item.
