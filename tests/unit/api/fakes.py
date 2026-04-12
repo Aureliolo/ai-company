@@ -628,6 +628,10 @@ class FakeMessageBus:
         self._running = False
         self._channels: list[Channel] = []
 
+    def clear(self) -> None:
+        """Reset all in-memory state for test isolation."""
+        self._channels.clear()
+
     async def start(self) -> None:
         self._running = True
 

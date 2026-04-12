@@ -4,7 +4,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 import pytest
-from hypothesis import given, settings
+from hypothesis import given
 from hypothesis import strategies as st
 
 from synthorg.communication.enums import MessagePriority, MessageType
@@ -155,7 +155,6 @@ class TestMessageRoundtripProperties:
 
 class TestFromAliasProperties:
     @given(sender=_not_blank)
-    @settings(max_examples=50)
     def test_from_alias_works(self, sender: str) -> None:
         kwargs = _make_default_message_kwargs()
         kwargs["from"] = sender
@@ -163,7 +162,6 @@ class TestFromAliasProperties:
         assert msg.sender == sender
 
     @given(sender=_not_blank)
-    @settings(max_examples=50)
     def test_populate_by_name_works(self, sender: str) -> None:
         kwargs = _make_default_message_kwargs()
         del kwargs["from"]
@@ -237,7 +235,6 @@ class TestMetadataRoundtripProperties:
             st.floats(min_value=0.0, max_value=100.0, allow_nan=False),
         ),
     )
-    @settings(max_examples=100)
     def test_metadata_roundtrip(
         self,
         task_id: str | None,

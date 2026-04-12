@@ -5,7 +5,7 @@ import ipaddress
 from unittest.mock import AsyncMock
 
 import pytest
-from hypothesis import given, settings
+from hypothesis import given
 from hypothesis import strategies as st
 from pydantic import ValidationError
 
@@ -695,7 +695,6 @@ class TestValidateCloneUrlHostProperties:
             *(st.ip_addresses(v=4, network=str(net)) for net in _ALL_BLOCKED_V4)
         ),
     )
-    @settings(max_examples=200)
     def test_blocked_ipv4_always_detected(self, ip: ipaddress.IPv4Address) -> None:
         """Every IPv4 in a blocked range is detected."""
         assert _is_blocked_ip(str(ip)) is True
@@ -709,7 +708,6 @@ class TestValidateCloneUrlHostProperties:
             )
         ),
     )
-    @settings(max_examples=200)
     def test_blocked_ipv6_always_detected(self, ip: ipaddress.IPv6Address) -> None:
         """Every IPv6 in a blocked range is detected."""
         assert _is_blocked_ip(str(ip)) is True
@@ -719,7 +717,6 @@ class TestValidateCloneUrlHostProperties:
             lambda ip: not any(ip in net for net in _ALL_BLOCKED_V4)
         ),
     )
-    @settings(max_examples=200)
     def test_non_blocked_ipv4_never_flagged(self, ip: ipaddress.IPv4Address) -> None:
         """IPv4 outside blocked ranges is never flagged."""
         assert _is_blocked_ip(str(ip)) is False
@@ -736,7 +733,6 @@ class TestValidateCloneUrlHostProperties:
             )
         ),
     )
-    @settings(max_examples=50)
     def test_non_blocked_ipv6_never_flagged(self, ip: ipaddress.IPv6Address) -> None:
         """IPv6 outside blocked ranges is never flagged.
 

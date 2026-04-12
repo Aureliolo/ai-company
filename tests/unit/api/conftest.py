@@ -86,32 +86,44 @@ def _lightweight_argon2_hasher() -> Any:
     _auth_mod._hasher = original
 
 
-@pytest.fixture(autouse=True)
-def _required_env_vars(monkeypatch: pytest.MonkeyPatch) -> None:
+@pytest.fixture(scope="session", autouse=True)
+def _required_env_vars() -> Generator[None]:
     """Set SYNTHORG_JWT_SECRET and SYNTHORG_SETTINGS_KEY for API tests.
 
-    The backend now requires both env vars at startup (no auto-generation).
+    Session-scoped with manual env-var management (``monkeypatch`` is
+    function-scoped and cannot be used here).
     """
-    monkeypatch.setenv("SYNTHORG_JWT_SECRET", _TEST_JWT_SECRET)
-    monkeypatch.setenv("SYNTHORG_SETTINGS_KEY", _TEST_SETTINGS_KEY)
+    import os
+
+    old_jwt = os.environ.get("SYNTHORG_JWT_SECRET")
+    old_key = os.environ.get("SYNTHORG_SETTINGS_KEY")
+    os.environ["SYNTHORG_JWT_SECRET"] = _TEST_JWT_SECRET
+    os.environ["SYNTHORG_SETTINGS_KEY"] = _TEST_SETTINGS_KEY
+    yield
+    if old_jwt is None:
+        os.environ.pop("SYNTHORG_JWT_SECRET", None)
+    else:
+        os.environ["SYNTHORG_JWT_SECRET"] = old_jwt
+    if old_key is None:
+        os.environ.pop("SYNTHORG_SETTINGS_KEY", None)
+    else:
+        os.environ["SYNTHORG_SETTINGS_KEY"] = old_key
 
 
-@pytest.fixture(autouse=True)
-def _no_backup_service(monkeypatch: pytest.MonkeyPatch) -> None:
+@pytest.fixture(scope="session", autouse=True)
+def _no_backup_service() -> Generator[None]:
     """Disable the backup service in all API unit tests.
 
-    ``create_app`` auto-builds a real ``BackupService`` from config,
-    which triggers filesystem I/O (backup creation + retention
-    pruning of tar.gz archives) on every app startup and shutdown.
-    On Windows this adds 15-25 s per ``TestClient`` lifecycle due to
-    Defender scanning each archive.  Patching the factory to return
-    ``None`` eliminates this overhead.  Backup-specific behaviour is
-    tested in ``tests/unit/backup/`` with dedicated mocks.
+    Session-scoped with ``unittest.mock.patch`` (``monkeypatch`` is
+    function-scoped and cannot be used here).
     """
-    monkeypatch.setattr(
+    from unittest.mock import patch
+
+    with patch(
         "synthorg.api.app.build_backup_service",
-        lambda *_a, **_kw: None,
-    )
+        return_value=None,
+    ):
+        yield
 
 
 def make_exception_handler_app(handler: Any) -> Litestar:
@@ -221,16 +233,16 @@ def auth_service() -> AuthService:
 
 
 @pytest.fixture
-async def fake_persistence() -> FakePersistenceBackend:
+def fake_persistence() -> FakePersistenceBackend:
     backend = FakePersistenceBackend()
-    await backend.connect()
+    backend._connected = True
     return backend
 
 
 @pytest.fixture
-async def fake_message_bus() -> FakeMessageBus:
+def fake_message_bus() -> FakeMessageBus:
     bus = FakeMessageBus()
-    await bus.start()
+    bus._running = True
     return bus
 
 
@@ -246,13 +258,6 @@ def approval_store() -> ApprovalStore:
 
 @pytest.fixture
 def root_config() -> RootConfig:
-    # High rate limit so Hypothesis property tests (10k+ examples)
-    # don't hit 429.
-    #
-    # ``integrations.enabled=False`` skips ~20 integration controller
-    # route registrations (~0.7s per ``create_app``). Tests that need
-    # integration endpoints must opt-in by constructing their own
-    # ``RootConfig(integrations=IntegrationsConfig(enabled=True))``.
     from synthorg.integrations.config import IntegrationsConfig
 
     return RootConfig(
@@ -274,25 +279,21 @@ def performance_tracker() -> PerformanceTracker:
 
 @pytest.fixture
 def agent_registry() -> AgentRegistryService:
-    """Return a fresh AgentRegistryService instance."""
     return AgentRegistryService()
 
 
 @pytest.fixture
 def provider_health_tracker() -> ProviderHealthTracker:
-    """Return a fresh ProviderHealthTracker instance."""
     return ProviderHealthTracker()
 
 
 @pytest.fixture
 def tool_invocation_tracker() -> ToolInvocationTracker:
-    """Return a fresh ToolInvocationTracker instance."""
     return ToolInvocationTracker()
 
 
 @pytest.fixture
 def delegation_record_store() -> DelegationRecordStore:
-    """Return a fresh DelegationRecordStore instance."""
     return DelegationRecordStore()
 
 
@@ -300,21 +301,16 @@ def delegation_record_store() -> DelegationRecordStore:
 def fake_task_engine(
     fake_persistence: FakePersistenceBackend,
 ) -> TaskEngine:
-    """TaskEngine backed by the shared fake persistence."""
-    return TaskEngine(
-        persistence=fake_persistence,
-    )
+    return TaskEngine(persistence=fake_persistence)
 
 
 @pytest.fixture
 def audit_log() -> AuditLog:
-    """Fresh in-memory audit log."""
     return AuditLog()
 
 
 @pytest.fixture
 def trust_service() -> TrustService:
-    """Trust service with disabled strategy (no-op evaluation)."""
     return TrustService(
         strategy=DisabledTrustStrategy(),
         config=TrustConfig(),
@@ -323,7 +319,6 @@ def trust_service() -> TrustService:
 
 @pytest.fixture
 def coordination_metrics_store() -> CoordinationMetricsStore:
-    """Fresh in-memory coordination metrics store."""
     return CoordinationMetricsStore()
 
 
@@ -345,7 +340,6 @@ def test_client(  # noqa: PLR0913
     trust_service: TrustService,
     coordination_metrics_store: CoordinationMetricsStore,
 ) -> Generator[TestClient[Any]]:
-    # Pre-seed users for each role so JWT sub claims resolve
     _seed_test_users(fake_persistence, auth_service)
 
     settings_service = SettingsService(
@@ -374,7 +368,6 @@ def test_client(  # noqa: PLR0913
         coordination_metrics_store=coordination_metrics_store,
     )
     with TestClient(app) as client:
-        # Default: CEO token (most tests need write access)
         client.headers.update(make_auth_headers("ceo"))
         yield client
 

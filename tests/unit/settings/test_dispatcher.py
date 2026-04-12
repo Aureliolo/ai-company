@@ -563,8 +563,9 @@ class TestConsecutiveErrors:
                 if call_count == 4:
                     # After 3 errors, return a valid message once
                     return _envelope(_settings_message("ns", "k"))
-                # Then block (normal poll timeout)
-                await asyncio.sleep(timeout or 1.0)
+                # Then block (normal poll timeout) -- use Event
+                # instead of real sleep to avoid wall-clock delay.
+                await asyncio.Event().wait()
                 return None
 
         bus = _TransientBus()

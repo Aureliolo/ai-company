@@ -274,6 +274,16 @@ class FakePersistenceBackend:
         self._settings: dict[str, str] = {}
         self._connected = False
 
+    def clear(self) -> None:
+        """Reset all in-memory state for test isolation.
+
+        Preserves the connection flag so the backend remains usable
+        after clearing.  Called between tests when the app is cached
+        at module level to prevent cross-test state pollution.
+        """
+        self.__init__()  # type: ignore[misc]
+        self._connected = True
+
     async def connect(self) -> None:
         self._connected = True
 

@@ -1,7 +1,7 @@
 """Property-based tests for custom type validators (NotBlankStr)."""
 
 import pytest
-from hypothesis import given, settings
+from hypothesis import given
 from hypothesis import strategies as st
 from pydantic import BaseModel, ValidationError
 
@@ -18,7 +18,6 @@ class TestNotBlankStrProperties:
     @given(
         text=st.text(min_size=1).filter(lambda s: s.strip()),
     )
-    @settings(max_examples=200)
     def test_valid_strings_accepted(self, text: str) -> None:
         model = _NotBlankModel(value=text)
         assert model.value == text
@@ -30,7 +29,6 @@ class TestNotBlankStrProperties:
             max_size=20,
         ),
     )
-    @settings(max_examples=100)
     def test_whitespace_only_rejected(self, text: str) -> None:
         with pytest.raises(ValidationError):
             _NotBlankModel(value=text)
@@ -50,7 +48,6 @@ class TestNotBlankStrProperties:
             max_size=5,
         ),
     )
-    @settings(max_examples=100)
     def test_strings_with_non_whitespace_core_accepted(
         self,
         prefix: str,

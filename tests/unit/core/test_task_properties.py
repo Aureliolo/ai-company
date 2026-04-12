@@ -3,7 +3,7 @@
 from typing import Any
 
 import pytest
-from hypothesis import given, settings
+from hypothesis import given
 from hypothesis import strategies as st
 from pydantic import ValidationError
 
@@ -56,7 +56,6 @@ _roundtrip_st = st.fixed_dictionaries(
 
 class TestTaskRoundtripProperties:
     @given(data=_roundtrip_st)
-    @settings(max_examples=100)
     def test_model_dump_validate_roundtrip(self, data: dict[str, Any]) -> None:
         task = Task(
             id="task-rt-001",
@@ -76,7 +75,6 @@ class TestTaskRoundtripProperties:
 
 class TestSelfDependencyProperties:
     @given(task_id=_not_blank)
-    @settings(max_examples=100)
     def test_self_dependency_always_rejected(self, task_id: str) -> None:
         with pytest.raises(ValidationError, match="cannot depend on itself"):
             Task(
@@ -93,7 +91,6 @@ class TestWithTransitionProperties:
             list(VALID_TRANSITIONS[TaskStatus.CREATED]),
         ),
     )
-    @settings(max_examples=20)
     def test_valid_transition_from_created(self, target: TaskStatus) -> None:
         task = Task(**_make_task_kwargs())
         # CREATED can only go to ASSIGNED, which requires assigned_to.
@@ -108,7 +105,6 @@ class TestWithTransitionProperties:
             lambda s: s not in VALID_TRANSITIONS[TaskStatus.CREATED],
         ),
     )
-    @settings(max_examples=50)
     def test_invalid_transition_from_created_raises(
         self,
         target: TaskStatus,
