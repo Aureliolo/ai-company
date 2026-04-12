@@ -21,7 +21,7 @@ type State struct {
 	WebPort            int               `json:"web_port"`
 	Sandbox            bool              `json:"sandbox"`
 	DockerSock         string            `json:"docker_sock,omitempty"`
-	DockerSockGID      int               `json:"docker_sock_gid,omitempty"`
+	DockerSockGID      int               `json:"docker_sock_gid"`
 	LogLevel           string            `json:"log_level"`
 	JWTSecret          string            `json:"jwt_secret,omitempty"`
 	SettingsKey        string            `json:"settings_key,omitempty"`
