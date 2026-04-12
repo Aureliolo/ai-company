@@ -30,7 +30,7 @@ class AuthorityDeferenceConfig(BaseModel):
             for downstream agents.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     enabled: bool = Field(
         default=True,
@@ -81,7 +81,7 @@ class ClarificationGateConfig(BaseModel):
         generic_patterns: Patterns for overly generic criteria text.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     enabled: bool = Field(
         default=True,
@@ -150,7 +150,7 @@ class AgentMiddlewareConfig(BaseModel):
         authority_deference: AuthorityDeferenceGuard settings.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     chain: tuple[NotBlankStr, ...] = Field(
         default=DEFAULT_AGENT_CHAIN,
@@ -170,7 +170,7 @@ class CoordinationMiddlewareConfig(BaseModel):
         clarification_gate: ClarificationGate settings.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     chain: tuple[NotBlankStr, ...] = Field(
         default=DEFAULT_COORDINATION_CHAIN,
@@ -192,7 +192,7 @@ class MiddlewareConfig(BaseModel):
         coordination: Coordination-level middleware configuration.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     agent: AgentMiddlewareConfig = Field(
         default_factory=AgentMiddlewareConfig,

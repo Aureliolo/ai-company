@@ -133,7 +133,7 @@ class BaseAgentMiddleware:
                 name=repr(name),
             )
             raise ValueError(msg)
-        self._name = name
+        self._name = name.strip()
 
     @property
     def name(self) -> str:
@@ -211,6 +211,7 @@ class AgentMiddlewareChain:
         self,
         middleware: tuple[AgentMiddleware, ...] = (),
     ) -> None:
+        middleware = tuple(middleware)
         names = [mw.name for mw in middleware]
         if len(names) != len(set(names)):
             dupes = [n for n in names if names.count(n) > 1]
