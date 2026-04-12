@@ -27,13 +27,16 @@ export function createListActions(set: ConnectionsSet, get: ConnectionsGet) {
           listConnections(),
           listIntegrationHealth().catch((err) => {
             log.warn('Health aggregate fetch failed:', getErrorMessage(err))
-            return [] as readonly HealthReport[]
+            return null
           }),
         ])
         if (requestId !== _listRequestId) return
-        const healthMap: Record<string, HealthReport> = {}
-        for (const report of healthReports) {
-          healthMap[report.connection_name] = report
+        const prevHealthMap = get().healthMap
+        const healthMap: Record<string, HealthReport> = { ...prevHealthMap }
+        if (healthReports !== null) {
+          for (const report of healthReports) {
+            healthMap[report.connection_name] = report
+          }
         }
         set({ connections, healthMap, listLoading: false })
       } catch (err) {

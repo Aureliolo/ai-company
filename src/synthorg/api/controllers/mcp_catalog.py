@@ -24,6 +24,7 @@ from synthorg.integrations.errors import (
 from synthorg.observability import get_logger
 from synthorg.observability.events.integrations import (
     MCP_CATALOG_ENTRY_NOT_FOUND,
+    MCP_SERVER_INSTALL_FAILED,
     MCP_SERVER_UNINSTALL_NOOP,
 )
 
@@ -108,6 +109,10 @@ class MCPCatalogController(Controller):
         entry_id_raw = data.get("catalog_entry_id")
         if not isinstance(entry_id_raw, str) or not entry_id_raw.strip():
             msg = "Field 'catalog_entry_id' is required"
+            logger.warning(
+                MCP_SERVER_INSTALL_FAILED,
+                reason="missing_catalog_entry_id",
+            )
             raise ApiValidationError(msg)
         entry_id = entry_id_raw.strip()
 
@@ -119,6 +124,11 @@ class MCPCatalogController(Controller):
             connection_name = connection_name_raw.strip() or None
         else:
             msg = "Field 'connection_name' must be a string or null"
+            logger.warning(
+                MCP_SERVER_INSTALL_FAILED,
+                entry_id=entry_id,
+                reason="invalid_connection_name_type",
+            )
             raise ApiValidationError(msg)
 
         app_state = state["app_state"]
@@ -144,17 +154,19 @@ class MCPCatalogController(Controller):
             raise NotFoundError(str(exc)) from exc
         except ConnectionNotFoundError as exc:
             logger.warning(
-                MCP_CATALOG_ENTRY_NOT_FOUND,
+                MCP_SERVER_INSTALL_FAILED,
                 entry_id=entry_id,
                 connection_name=connection_name,
+                reason="connection_not_found",
                 error=str(exc),
             )
             raise NotFoundError(str(exc)) from exc
         except InvalidConnectionAuthError as exc:
             logger.warning(
-                MCP_CATALOG_ENTRY_NOT_FOUND,
+                MCP_SERVER_INSTALL_FAILED,
                 entry_id=entry_id,
                 connection_name=connection_name,
+                reason="connection_type_mismatch",
                 error=str(exc),
             )
             raise ApiValidationError(str(exc)) from exc

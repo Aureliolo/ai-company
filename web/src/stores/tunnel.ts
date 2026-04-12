@@ -43,14 +43,17 @@ export const useTunnelStore = create<TunnelState>()((set) => ({
   ...INITIAL_STATE,
 
   fetchStatus: async () => {
+    const gen = ++_operationGeneration
     try {
       const status = await getTunnelStatus()
+      if (gen !== _operationGeneration) return
       set({
         publicUrl: status.public_url,
         phase: status.public_url ? 'on' : 'stopped',
         error: null,
       })
     } catch (err) {
+      if (gen !== _operationGeneration) return
       const message = getErrorMessage(err)
       log.warn('Tunnel status fetch failed:', message)
       set({ phase: 'error', error: message, publicUrl: null })
@@ -107,5 +110,8 @@ export const useTunnelStore = create<TunnelState>()((set) => ({
   },
 
   setAutoStop: (enabled: boolean) => set({ autoStop: enabled }),
-  reset: () => set({ ...INITIAL_STATE }),
+  reset: () => {
+    ++_operationGeneration
+    set({ ...INITIAL_STATE })
+  },
 }))

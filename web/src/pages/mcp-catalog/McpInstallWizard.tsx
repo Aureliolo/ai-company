@@ -40,9 +40,10 @@ export function McpInstallWizard({ onRequestCreateConnection }: McpInstallWizard
     [connections, requiredType],
   )
 
-  // For connectionless entries, skip straight from picking-connection to install
+  // For connectionless entries, auto-confirm when flow reaches
+  // 'installing' (startInstall sets this directly).
   useEffect(() => {
-    if (flow === 'picking-connection' && requiredType === null) {
+    if (flow === 'installing' && requiredType === null) {
       void confirmInstall()
     }
   }, [flow, requiredType, confirmInstall])
