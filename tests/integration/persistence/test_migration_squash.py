@@ -19,6 +19,7 @@ import os
 import sqlite3
 import subprocess
 import time
+from datetime import datetime, timedelta
 from pathlib import Path, PurePosixPath, PureWindowsPath
 
 import pytest
@@ -165,12 +166,14 @@ def _build_squashed_dir(
     post = {f.name for f in partial.glob("*.sql")}
     cp_orig = sorted(post - pre)[0]
 
-    # Compute checkpoint timestamp between m4 and m5.
-    m4_ts = int(files[_SQUASH_POINT - 1][:14])
-    m5_ts = int(files[_SQUASH_POINT][:14])
-    cp_ts = m4_ts + 1
-    assert cp_ts < m5_ts, f"No room for checkpoint between {m4_ts} and {m5_ts}"
-    cp_name = f"{cp_ts}_checkpoint.sql"
+    # Compute checkpoint timestamp between m4 and m5 using datetime
+    # arithmetic to handle minute/hour rollover (e.g. :59 + 1 = :00).
+    _ts_fmt = "%Y%m%d%H%M%S"
+    m4_dt = datetime.strptime(files[_SQUASH_POINT - 1][:14], _ts_fmt)  # noqa: DTZ007
+    m5_dt = datetime.strptime(files[_SQUASH_POINT][:14], _ts_fmt)  # noqa: DTZ007
+    cp_dt = m4_dt + timedelta(seconds=1)
+    assert cp_dt < m5_dt, f"No room for checkpoint between {m4_dt} and {m5_dt}"
+    cp_name = f"{cp_dt.strftime(_ts_fmt)}_checkpoint.sql"
 
     # Assemble squashed dir: checkpoint + remaining files.
     (dest / cp_name).write_bytes((partial / cp_orig).read_bytes())
