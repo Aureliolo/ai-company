@@ -76,3 +76,16 @@ LLM_STRATEGY_ERROR: Final[str] = "consolidation.llm.error"
 DISTILLATION_CAPTURED: Final[str] = "consolidation.distillation.captured"
 DISTILLATION_CAPTURE_FAILED: Final[str] = "consolidation.distillation.capture_failed"
 DISTILLATION_CAPTURE_SKIPPED: Final[str] = "consolidation.distillation.capture_skipped"
+
+# ── Two-tier compression ───────────────────────────────────────
+
+TWO_TIER_COMPRESSION_START: Final[str] = "consolidation.two_tier.start"
+TWO_TIER_COMPRESSION_COMPLETE: Final[str] = "consolidation.two_tier.complete"
+TWO_TIER_COMPRESSION_FAILED: Final[str] = "consolidation.two_tier.failed"
+EXPERIENCE_COMPRESSED: Final[str] = "consolidation.two_tier.compressed"
+
+# ── Wiki export ────────────────────────────────────────────────
+
+WIKI_EXPORT_START: Final[str] = "consolidation.wiki.export_start"
+WIKI_EXPORT_COMPLETE: Final[str] = "consolidation.wiki.export_complete"
+WIKI_EXPORT_FAILED: Final[str] = "consolidation.wiki.export_failed"
