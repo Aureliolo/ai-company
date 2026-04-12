@@ -53,7 +53,11 @@ class LLMQuerySpecificReranker:
     """LLM-based query-specific re-ranker.
 
     Calls a small-tier model to re-rank candidates by query relevance.
-    Falls back to original order on any LLM failure.
+    The ordering reflects the LLM's ranking signal; original
+    ``combined_score`` values are preserved so downstream filtering
+    keeps its semantics.  Falls back to original order on any LLM
+    failure (``builtins.MemoryError`` / ``RecursionError`` still
+    propagate).
 
     Args:
         provider: Completion provider for LLM calls.
@@ -79,14 +83,19 @@ class LLMQuerySpecificReranker:
     ) -> tuple[RetrievalCandidate, ...]:
         """Re-rank candidates using query-specific LLM scoring.
 
-        Falls back to original order on any failure.
+        Falls back to the original order on LLM failure (system-level
+        errors like ``MemoryError`` and ``RecursionError`` still
+        propagate).  Original ``combined_score`` values are preserved
+        on reranked candidates -- the LLM signal is encoded only in
+        the output sequence order.
 
         Args:
             query: The original retrieval query.
             candidates: Post-fusion candidates to re-rank.
 
         Returns:
-            Candidates in re-ordered sequence with updated scores.
+            Candidates in re-ordered sequence with original scores
+            preserved.
         """
         if len(candidates) <= 1:
             return candidates

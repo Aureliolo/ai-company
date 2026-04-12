@@ -5,6 +5,7 @@ execution traces into concise strategic learnings (GEMS two-tier
 architecture).
 """
 
+import builtins
 import hashlib
 import json
 from datetime import UTC, datetime
@@ -121,7 +122,7 @@ class LLMExperienceCompressor:
         self._model = model
         self._config = config
 
-    async def compress(  # noqa: PLR0913, PLR0915, C901
+    async def compress(  # noqa: PLR0912, PLR0913, PLR0915, C901
         self,
         prompt: NotBlankStr,
         output: NotBlankStr,
@@ -147,8 +148,23 @@ class LLMExperienceCompressor:
             Compressed experience with strategic decisions.
 
         Raises:
+            ValueError: If ``source_artifact_ids`` is empty (fail fast
+                before spending an LLM call), or if the LLM response
+                is malformed.
             Exception: On LLM call failure (not silently swallowed).
         """
+        if not source_artifact_ids:
+            msg = (
+                "source_artifact_ids must contain at least one entry "
+                "(provenance required before compression)"
+            )
+            logger.warning(
+                EXPERIENCE_COMPRESSION_FAILED,
+                error=msg,
+                agent_id=agent_id,
+            )
+            raise ValueError(msg)
+
         user_parts = [
             f"## Prompt\n{prompt}",
             f"## Output\n{output}",
@@ -185,6 +201,8 @@ class LLMExperienceCompressor:
                 self._model,
                 config=completion_config,
             )
+        except builtins.MemoryError, RecursionError:
+            raise
         except Exception as exc:
             logger.warning(
                 EXPERIENCE_COMPRESSION_FAILED,
@@ -259,6 +277,8 @@ class LLMExperienceCompressor:
                 ),
                 created_at=datetime.now(UTC),
             )
+        except builtins.MemoryError, RecursionError:
+            raise
         except Exception as exc:
             logger.warning(
                 EXPERIENCE_COMPRESSION_FAILED,

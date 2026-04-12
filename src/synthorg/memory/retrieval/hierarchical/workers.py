@@ -362,19 +362,18 @@ class ProceduralWorker:
                 query.agent_id,
                 mem_query,
             )
-            candidates = tuple(
-                RetrievalCandidate(
-                    entry=e,
-                    relevance_score=(
-                        e.relevance_score if e.relevance_score is not None else 0.5
-                    ),
-                    combined_score=(
-                        e.relevance_score if e.relevance_score is not None else 0.5
-                    ),
-                    source_worker=self.name,
+            candidates_list: list[RetrievalCandidate] = []
+            for e in entries:
+                relevance = e.relevance_score if e.relevance_score is not None else 0.5
+                candidates_list.append(
+                    RetrievalCandidate(
+                        entry=e,
+                        relevance_score=relevance,
+                        combined_score=relevance,
+                        source_worker=self.name,
+                    )
                 )
-                for e in entries
-            )
+            candidates = tuple(candidates_list)
             elapsed_ms = int((time.monotonic() - start) * 1000)
             logger.debug(
                 MEMORY_HIERARCHICAL_WORKER_COMPLETE,
