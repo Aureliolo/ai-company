@@ -105,8 +105,10 @@ class RerankerCache:
     ) -> None:
         """Store reranked ID ordering in the cache.
 
-        Evicts the least recently accessed entry when ``max_size``
-        is exceeded.
+        Purges expired entries first, then evicts the least recently
+        accessed entry when ``max_size`` is still exceeded.  Purging
+        before LRU prevents a stale (but not-yet-GCed) entry from
+        displacing a live ranking.
 
         Args:
             key: Cache key.
@@ -114,6 +116,15 @@ class RerankerCache:
         """
         async with self._lock:
             now = time.monotonic()
+            # Purge expired entries first so they don't protect
+            # themselves from eviction by occupying slots.
+            expired_keys = [
+                k
+                for k, (_, created_at, _) in self._store.items()
+                if now - created_at > self._ttl
+            ]
+            for k in expired_keys:
+                del self._store[k]
             self._store[key] = (id_order, now, now)
             if len(self._store) > self._max_size:
                 self._evict_lru()

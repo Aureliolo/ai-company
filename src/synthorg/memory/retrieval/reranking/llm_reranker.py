@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING
 
 from synthorg.observability import get_logger
 from synthorg.observability.events.memory import (
+    MEMORY_RERANK_CACHE_MISS,
     MEMORY_RERANK_COMPLETE,
     MEMORY_RERANK_FAILED,
 )
@@ -76,7 +77,7 @@ class LLMQuerySpecificReranker:
         self._model = model
         self._cache = cache
 
-    async def rerank(
+    async def rerank(  # noqa: C901
         self,
         query: RetrievalQuery,
         candidates: tuple[RetrievalCandidate, ...],
@@ -112,9 +113,21 @@ class LLMQuerySpecificReranker:
 
         # Check cache -- returns stored ID ordering, we reapply to
         # the current candidate set so fresh state always wins.
+        # Cache faults degrade to a cold rerank rather than failing
+        # retrieval; this is an optional optimization.
         if cache_eligible and self._cache is not None:
             cache_key = _build_cache_key(query.text, candidate_ids)
-            cached_ids = await self._cache.get(cache_key)
+            try:
+                cached_ids = await self._cache.get(cache_key)
+            except builtins.MemoryError, RecursionError:
+                raise
+            except Exception as exc:
+                logger.warning(
+                    MEMORY_RERANK_CACHE_MISS,
+                    error=str(exc),
+                    reason="cache_get_failed",
+                )
+                cached_ids = None
             if cached_ids is not None and set(cached_ids) == set(by_id):
                 return tuple(by_id[cid] for cid in cached_ids)
 
@@ -146,10 +159,19 @@ class LLMQuerySpecificReranker:
             return candidates
         else:
             if cache_eligible and self._cache is not None and cache_key:
-                await self._cache.put(
-                    cache_key,
-                    tuple(c.entry.id for c in reranked),
-                )
+                try:
+                    await self._cache.put(
+                        cache_key,
+                        tuple(c.entry.id for c in reranked),
+                    )
+                except builtins.MemoryError, RecursionError:
+                    raise
+                except Exception as exc:
+                    logger.warning(
+                        MEMORY_RERANK_CACHE_MISS,
+                        error=str(exc),
+                        reason="cache_put_failed",
+                    )
             logger.info(
                 MEMORY_RERANK_COMPLETE,
                 candidate_count=len(reranked),

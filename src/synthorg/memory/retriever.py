@@ -164,9 +164,21 @@ class ContextInjectionStrategy:
         )
         if config.retriever == "hierarchical" and hierarchical_retriever is None:
             msg = "retriever='hierarchical' requires a hierarchical_retriever instance"
+            logger.error(
+                MEMORY_RETRIEVAL_DEGRADED,
+                source="pipeline_init",
+                error_type="misconfiguration",
+                reason=msg,
+            )
             raise ValueError(msg)
         if config.query_specific_rerank_enabled and reranker is None:
             msg = "query_specific_rerank_enabled=True requires a reranker instance"
+            logger.error(
+                MEMORY_RETRIEVAL_DEGRADED,
+                source="pipeline_init",
+                error_type="misconfiguration",
+                reason=msg,
+            )
             raise ValueError(msg)
         self._hierarchical_retriever = hierarchical_retriever
         self._reranker = reranker

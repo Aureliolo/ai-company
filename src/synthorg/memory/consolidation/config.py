@@ -267,7 +267,13 @@ class WikiExportConfig(BaseModel):
     max_entries_per_view: int | None = Field(
         default=None,
         ge=1,
-        description="Maximum entries per view (None = all)",
+        le=1000,
+        description=(
+            "Maximum entries per view.  ``None`` means 'use the "
+            "backend's maximum page size' (``MemoryQuery.limit`` is "
+            "capped at 1000 by schema).  Multi-page exports for "
+            "collections larger than 1000 are not yet supported."
+        ),
     )
 
     @model_validator(mode="after")

@@ -789,7 +789,22 @@ class KnowledgeArchitectReadTool(BaseTool):
 
 
 class KnowledgeArchitectWriteTool(BaseTool):
-    """``memory.write`` -- write to org memory with autonomy gating."""
+    """``memory.write`` -- write to org memory with autonomy gating.
+
+    Per-autonomy gating policy (issue #1266 spec):
+
+    * ``FULL``       -- disabled (no architect writes).
+    * ``SEMI``       -- disabled unless ``architect_writes_enabled`` is
+      True in the tool config.
+    * ``SUPERVISED`` -- allowed; plan review gate MUST fire upstream
+      before constructing this tool.
+    * ``LOCKED``     -- allowed; plan review + post-write audit MUST
+      fire upstream.
+
+    The tool itself enforces the FULL/SEMI gates.  SUPERVISED/LOCKED
+    gating is enforced by the agent runtime before invoking the tool
+    (``ApprovalItem`` / plan review infrastructure).
+    """
 
     def __init__(
         self,
@@ -797,6 +812,7 @@ class KnowledgeArchitectWriteTool(BaseTool):
         org_backend: OrgMemoryBackend,
         agent_id: NotBlankStr,
         autonomy_level: AutonomyLevel,
+        architect_writes_enabled: bool = False,
     ) -> None:
         super().__init__(
             name="memory.write",
@@ -823,6 +839,7 @@ class KnowledgeArchitectWriteTool(BaseTool):
         self._org_backend = org_backend
         self._agent_id = agent_id
         self._autonomy_level = autonomy_level
+        self._architect_writes_enabled = architect_writes_enabled
 
     async def execute(
         self,
@@ -831,9 +848,9 @@ class KnowledgeArchitectWriteTool(BaseTool):
     ) -> ToolExecutionResult:
         """Write to org memory with autonomy gating.
 
-        Gated by autonomy level: FULL autonomy disables writes.
-        SUPERVISED and LOCKED levels allow writes (plan review gate
-        handles approval upstream).
+        Enforces FULL autonomy block and SEMI opt-in check at the
+        tool boundary.  SUPERVISED and LOCKED gating (plan review +
+        audit) is the agent runtime's responsibility.
         """
         if self._autonomy_level == AutonomyLevel.FULL:
             logger.warning(
@@ -846,6 +863,23 @@ class KnowledgeArchitectWriteTool(BaseTool):
                 content=(
                     "Write denied: FULL autonomy level "
                     "disables architect writes to org memory"
+                ),
+                is_error=True,
+            )
+        if (
+            self._autonomy_level == AutonomyLevel.SEMI
+            and not self._architect_writes_enabled
+        ):
+            logger.warning(
+                KNOWLEDGE_ARCHITECT_WRITE_DENIED,
+                agent_id=self._agent_id,
+                autonomy=self._autonomy_level.value,
+                reason="SEMI requires architect_writes_enabled opt-in",
+            )
+            return ToolExecutionResult(
+                content=(
+                    "Write denied: SEMI autonomy requires explicit "
+                    "architect_writes_enabled opt-in"
                 ),
                 is_error=True,
             )
@@ -893,7 +927,12 @@ class KnowledgeArchitectWriteTool(BaseTool):
 
 
 class KnowledgeArchitectDeleteTool(BaseTool):
-    """``memory.delete`` -- archive an org memory entry."""
+    """``memory.delete`` -- archive an org memory entry.
+
+    Per-autonomy gating mirrors ``KnowledgeArchitectWriteTool``:
+    FULL disabled; SEMI requires explicit opt-in; SUPERVISED/LOCKED
+    allowed (upstream approval/plan review gate expected).
+    """
 
     def __init__(
         self,
@@ -902,6 +941,7 @@ class KnowledgeArchitectDeleteTool(BaseTool):
         fact_store: OrgFactStore | None = None,
         agent_id: NotBlankStr,
         autonomy_level: AutonomyLevel,
+        architect_writes_enabled: bool = False,
     ) -> None:
         super().__init__(
             name="memory.delete",
@@ -920,6 +960,7 @@ class KnowledgeArchitectDeleteTool(BaseTool):
         self._fact_store = fact_store
         self._agent_id = agent_id
         self._autonomy_level = autonomy_level
+        self._architect_writes_enabled = architect_writes_enabled
 
     async def execute(
         self,
@@ -928,7 +969,8 @@ class KnowledgeArchitectDeleteTool(BaseTool):
     ) -> ToolExecutionResult:
         """Delete (archive) an org memory entry.
 
-        Gated by autonomy level: FULL autonomy disables deletes.
+        Gated by autonomy level: FULL disabled, SEMI opt-in,
+        SUPERVISED/LOCKED allowed (upstream approval gate expected).
         Requires ``fact_store`` to perform the actual retraction.
         """
         if self._autonomy_level == AutonomyLevel.FULL:
@@ -940,6 +982,23 @@ class KnowledgeArchitectDeleteTool(BaseTool):
             )
             return ToolExecutionResult(
                 content="Delete denied: FULL autonomy level",
+                is_error=True,
+            )
+        if (
+            self._autonomy_level == AutonomyLevel.SEMI
+            and not self._architect_writes_enabled
+        ):
+            logger.warning(
+                KNOWLEDGE_ARCHITECT_WRITE_DENIED,
+                agent_id=self._agent_id,
+                autonomy=self._autonomy_level.value,
+                reason="SEMI requires architect_writes_enabled opt-in",
+            )
+            return ToolExecutionResult(
+                content=(
+                    "Delete denied: SEMI autonomy requires explicit "
+                    "architect_writes_enabled opt-in"
+                ),
                 is_error=True,
             )
         if self._fact_store is None:

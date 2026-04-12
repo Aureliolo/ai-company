@@ -17,8 +17,12 @@ class QuerySpecificReranker(Protocol):
     """Post-fusion re-ranker using query-specific scoring.
 
     Takes the top-K fused candidates and scores each against the
-    current query using an LLM or other scoring function.  Returns
-    candidates in re-ordered sequence with updated combined_score.
+    current query using an LLM or other scoring function.  The
+    contract is ordering-only: implementations MUST return the same
+    candidate set in a new sequence and SHOULD preserve the original
+    ``combined_score`` values so downstream filtering sees
+    consistent scores.  The LLM preference signal is encoded solely
+    in the output order.
     """
 
     async def rerank(
@@ -33,7 +37,8 @@ class QuerySpecificReranker(Protocol):
             candidates: Post-fusion candidates to re-rank.
 
         Returns:
-            Same candidates in re-ordered sequence with updated
-            combined_score reflecting the new ranking.
+            Same candidates in a new sequence order.  Original
+            ``combined_score`` values are preserved -- the rerank
+            signal is encoded only in the output ordering.
         """
         ...

@@ -133,12 +133,30 @@ class TestKnowledgeArchitectWriteTool:
         assert "fact-1" in result.content
 
     @pytest.mark.unit
-    async def test_write_allowed_at_semi(self) -> None:
+    async def test_write_denied_at_semi_without_optin(self) -> None:
         backend = _mock_org_backend()
         tool = KnowledgeArchitectWriteTool(
             org_backend=backend,
             agent_id="agent-1",
             autonomy_level=AutonomyLevel.SEMI,
+        )
+        result = await tool.execute(
+            arguments={
+                "content": "convention",
+                "category": "convention",
+            },
+        )
+        assert result.is_error
+        assert "opt-in" in result.content.lower()
+
+    @pytest.mark.unit
+    async def test_write_allowed_at_semi_with_optin(self) -> None:
+        backend = _mock_org_backend()
+        tool = KnowledgeArchitectWriteTool(
+            org_backend=backend,
+            agent_id="agent-1",
+            autonomy_level=AutonomyLevel.SEMI,
+            architect_writes_enabled=True,
         )
         result = await tool.execute(
             arguments={

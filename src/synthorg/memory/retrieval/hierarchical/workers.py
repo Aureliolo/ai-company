@@ -73,7 +73,15 @@ async def _safe_retrieve(
         return await backend.retrieve(agent_id, query)
     except builtins.MemoryError, RecursionError:
         raise
-    except memory_errors.MemoryError:
+    except memory_errors.MemoryError as exc:
+        # Domain-level retrieval failure: log as degradation so the
+        # empty result is distinguishable from "no memories matched".
+        logger.warning(
+            MEMORY_HIERARCHICAL_WORKER_DEGRADED,
+            worker="_safe_retrieve",
+            agent_id=agent_id,
+            error=str(exc),
+        )
         return ()
 
 

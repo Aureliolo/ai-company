@@ -256,6 +256,14 @@ class TestDefaultHierarchicalRetriever:
         )
         result = await retriever.retrieve(_make_query())
         assert result.retries_performed >= 1
+        # Worker was invoked twice (initial + 1 retry)
+        assert semantic.retrieve.await_count == 2
+        # Best candidate from retry (c2 with 0.9) wins over c1 (0.1)
+        # after dedup on entry.id / highest combined_score.
+        candidate_ids = [c.entry.id for c in result.candidates]
+        assert "mem-2" in candidate_ids
+        mem2 = next(c for c in result.candidates if c.entry.id == "mem-2")
+        assert mem2.combined_score == 0.9
 
     @pytest.mark.unit
     async def test_retrieve_empty_workers_returns_empty(self) -> None:

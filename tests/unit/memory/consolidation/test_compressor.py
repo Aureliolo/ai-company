@@ -42,6 +42,7 @@ class TestDetailedExperience:
             agent_id="agent-1",
             prompt="implement auth",
             output="done",
+            metadata=MemoryMetadata(tags=("detailed_experience",)),
             created_at=datetime(2026, 1, 1, tzinfo=UTC),
         )
         assert d.prompt == "implement auth"
@@ -73,6 +74,7 @@ class TestDetailedExperience:
             agent_id="agent-1",
             prompt="p",
             output="o",
+            metadata=MemoryMetadata(tags=("detailed_experience",)),
             created_at=datetime(2026, 1, 1, tzinfo=UTC),
         )
         with pytest.raises(ValidationError):
@@ -86,6 +88,7 @@ class TestDetailedExperience:
                 agent_id="agent-1",
                 prompt="",
                 output="o",
+                metadata=MemoryMetadata(tags=("detailed_experience",)),
                 created_at=datetime(2026, 1, 1, tzinfo=UTC),
             )
 

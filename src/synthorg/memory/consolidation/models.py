@@ -325,6 +325,18 @@ class DetailedExperience(BaseModel):
         description="Optional originating task identifier",
     )
 
+    @model_validator(mode="after")
+    def _validate_tier_tag(self) -> Self:
+        """Require the ``detailed_experience`` tag in metadata.tags."""
+        if "detailed_experience" not in self.metadata.tags:
+            msg = (
+                "DetailedExperience.metadata.tags must contain "
+                "'detailed_experience' (tier marker required by the "
+                "two-tier pipeline)"
+            )
+            raise ValueError(msg)
+        return self
+
 
 class CompressedExperience(BaseModel):
     """Tier 2 compressed learning -- retrieval-primary.
@@ -386,7 +398,7 @@ class CompressedExperience(BaseModel):
 
     @model_validator(mode="after")
     def _validate_non_empty(self) -> Self:
-        """Require at least one strategic decision and one source artifact."""
+        """Require strategic decisions, provenance, and tier marker."""
         if not self.strategic_decisions:
             msg = "strategic_decisions must contain at least one entry"
             raise ValueError(msg)
@@ -394,6 +406,13 @@ class CompressedExperience(BaseModel):
             msg = (
                 "source_artifact_ids must contain at least one entry "
                 "(provenance required to prevent orphan experiences)"
+            )
+            raise ValueError(msg)
+        if "compressed_experience" not in self.metadata.tags:
+            msg = (
+                "CompressedExperience.metadata.tags must contain "
+                "'compressed_experience' (tier marker required by the "
+                "two-tier pipeline)"
             )
             raise ValueError(msg)
         return self
