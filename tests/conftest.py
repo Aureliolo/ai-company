@@ -181,7 +181,14 @@ def pytest_sessionfinish(
     session: pytest.Session,
     exitstatus: int,
 ) -> None:
-    """Warn loudly if the unit suite regressed beyond the baseline."""
+    """Fail the suite hard if it regressed beyond the baseline.
+
+    Only small increases (a few seconds, ``regression_threshold_secs``
+    in the baseline file) are tolerated.  Larger regressions are a
+    real bug -- either in source code or in test infrastructure --
+    and the suite must exit with a non-zero status so CI and
+    pre-push hooks block the change.
+    """
     if _suite_start is None or _FUZZ_PROFILE_ACTIVE:
         return
     # Only check when running unit tests (not integration/e2e-only).
@@ -194,7 +201,10 @@ def pytest_sessionfinish(
         baseline = json.loads(_BASELINE_PATH.read_text(encoding="utf-8"))
         baseline_secs = float(baseline["unit_suite_seconds"])
         baseline_count = int(baseline.get("test_count", 0))
-        threshold_pct = float(baseline.get("regression_threshold_pct", 30))
+        # Absolute tolerance in seconds -- only small increases are
+        # allowed.  Any regression beyond this is a real bug that
+        # must be fixed before merging.
+        threshold_secs = float(baseline.get("regression_threshold_secs", 10))
     except json.JSONDecodeError, KeyError, ValueError, OSError:
         return  # Malformed baseline -- skip check, don't block.
     # Only compare against baseline when running (roughly) the full
@@ -203,7 +213,7 @@ def pytest_sessionfinish(
     unit_count = sum(1 for item in session.items if item.get_closest_marker("unit"))
     if baseline_count and unit_count < baseline_count * 0.8:
         return
-    max_allowed = baseline_secs * (1 + threshold_pct / 100)
+    max_allowed = baseline_secs + threshold_secs
     # Allow override for optimization work where the suite is
     # intentionally being re-measured at a new (lower) baseline.
     env_override = os.environ.get("UNIT_SUITE_MAX_SECONDS")
@@ -211,17 +221,24 @@ def pytest_sessionfinish(
         with contextlib.suppress(ValueError):
             max_allowed = float(env_override)
     if elapsed > max_allowed:
-        pct = (elapsed - baseline_secs) / baseline_secs * 100
+        delta = elapsed - baseline_secs
         border = "!" * 60
         msg = (
             f"\n{border}\n"
             f"REGRESSION DETECTED: suite took {elapsed:.0f}s, "
-            f"baseline is {baseline_secs:.0f}s (+{pct:.0f}%)\n"
+            f"baseline is {baseline_secs:.0f}s (+{delta:.0f}s, "
+            f"tolerance {threshold_secs:.0f}s)\n"
             f"Run A/B against origin/main before fixing anything.\n"
             f"Do NOT delete tests or use --no-verify.\n"
+            f"If the new baseline is intentional, update "
+            f"tests/baselines/unit_timing.json.\n"
             f"{border}\n"
         )
         print(msg, file=sys.stderr)  # noqa: T201
+        # Hard fail: exit status 3 signals test-level failure to CI
+        # and pre-push hooks.  This is intentional -- regressions
+        # beyond the tolerance must block the change, not just warn.
+        session.exitstatus = 3
 
 
 def clear_logging_state() -> None:

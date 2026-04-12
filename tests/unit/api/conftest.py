@@ -493,13 +493,16 @@ def test_client(  # noqa: PLR0913
         te._observers.clear()
 
     # 3. Clear AppState-internal stores and caches.
-    #    Session and lockout stores must be reset to None so that
-    #    the next _safe_startup() rebuilds them.  Otherwise the
-    #    has_session_store / has_lockout_store guards skip the
-    #    rebuild and revoked-session / lockout state from a prior
-    #    test bleeds into the next one.
-    app_state._session_store = None
-    app_state._lockout_store = None
+    #    Session and lockout stores are kept (rebuilding them from
+    #    DB on every test is expensive); we clear their in-memory
+    #    caches in place so revoked-session / lockout state from a
+    #    prior test cannot bleed into the next one.  The
+    #    has_session_store / has_lockout_store guards in
+    #    _safe_startup() then correctly skip re-initialization.
+    if app_state._session_store is not None:
+        app_state._session_store._revoked.clear()
+    if app_state._lockout_store is not None:
+        app_state._lockout_store._locked.clear()
     app_state._ticket_store._tickets.clear()
     app_state._user_presence._counts.clear()
     if app_state._settings_service is not None:
