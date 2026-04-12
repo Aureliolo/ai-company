@@ -135,11 +135,30 @@ export const CONNECTION_TYPE_FIELDS: Record<ConnectionType, ConnectionTypeSpec> 
   },
 }
 
+const DATABASE_SERVER_FIELDS = new Set(['host', 'port', 'username', 'password'])
+
+/**
+ * Validate a single connection field.
+ *
+ * For ``database`` type connections, pass the current ``dialect``
+ * value so that host/port/username/password are required for
+ * non-SQLite dialects (PostgreSQL, MySQL) but optional for SQLite.
+ */
 export function validateConnectionField(
   spec: ConnectionFieldSpec,
   value: string,
+  dialect?: string,
 ): string | null {
-  if (spec.required && !value.trim()) {
+  let effectiveRequired = spec.required
+  if (
+    !effectiveRequired &&
+    DATABASE_SERVER_FIELDS.has(spec.key) &&
+    dialect !== undefined &&
+    dialect.toLowerCase() !== 'sqlite'
+  ) {
+    effectiveRequired = true
+  }
+  if (effectiveRequired && !value.trim()) {
     return `${spec.label} is required`
   }
   if (spec.type === 'url' && value.trim()) {

@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
 import { AlertCircle, CheckCircle2, Loader2 } from 'lucide-react'
 import type { Connection, McpCatalogEntry } from '@/api/types'
 import { Button } from '@/components/ui/button'
@@ -40,11 +40,19 @@ export function McpInstallWizard({ onRequestCreateConnection }: McpInstallWizard
     [connections, requiredType],
   )
 
-  // For connectionless entries, auto-confirm when flow reaches
-  // 'installing' (startInstall sets this directly).
+  // Track whether we've already auto-dispatched confirmInstall for
+  // this install session. Without this guard, the Retry button on a
+  // connectionless entry would set flow='installing', re-triggering
+  // the effect and firing a second parallel install request.
+  const autoConfirmedRef = useRef(false)
+
   useEffect(() => {
-    if (flow === 'installing' && requiredType === null) {
+    if (flow === 'installing' && requiredType === null && !autoConfirmedRef.current) {
+      autoConfirmedRef.current = true
       void confirmInstall()
+    }
+    if (flow === 'idle') {
+      autoConfirmedRef.current = false
     }
   }, [flow, requiredType, confirmInstall])
 

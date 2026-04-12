@@ -147,6 +147,10 @@ export function ConnectionFormModal({
 
   function validateAll(): boolean {
     if (!spec) return false
+    const dialect =
+      form.type === 'database'
+        ? form.credentials.dialect ?? ''
+        : undefined
     const nextErrors: Record<string, string | null> = {}
     if (mode === 'create') {
       nextErrors.name = validateConnectionName(form.name)
@@ -155,6 +159,7 @@ export function ConnectionFormModal({
       nextErrors[field.key] = validateConnectionField(
         field,
         form.topLevel[field.key] ?? '',
+        dialect,
       )
     }
     if (mode === 'create') {
@@ -162,6 +167,7 @@ export function ConnectionFormModal({
         nextErrors[field.key] = validateConnectionField(
           field,
           form.credentials[field.key] ?? '',
+          dialect,
         )
       }
     }
@@ -209,7 +215,12 @@ export function ConnectionFormModal({
                 variant="ghost"
                 aria-label="Back to type picker"
                 onClick={() =>
-                  setForm((prev) => ({ ...prev, type: null }))
+                  setForm((prev) => ({
+                    ...prev,
+                    type: null,
+                    topLevel: {},
+                    credentials: {},
+                  }))
                 }
               >
                 <ArrowLeft className="size-4" aria-hidden />
