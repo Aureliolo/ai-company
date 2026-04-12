@@ -16,8 +16,12 @@ injection system into the standard tool dispatch pipeline
 
 from typing import TYPE_CHECKING, Any
 
-from synthorg.core.enums import AutonomyLevel, SeniorityLevel, ToolCategory
-from synthorg.memory.org.enums import OrgFactCategory
+from synthorg.core.enums import (
+    AutonomyLevel,
+    OrgFactCategory,
+    SeniorityLevel,
+    ToolCategory,
+)
 from synthorg.memory.org.models import (
     OrgFactAuthor,
     OrgFactWriteRequest,
@@ -64,6 +68,7 @@ if TYPE_CHECKING:
     from synthorg.memory.consolidation.wiki_export import WikiExporter
     from synthorg.memory.injection import MemoryInjectionStrategy
     from synthorg.memory.org.protocol import OrgMemoryBackend
+    from synthorg.memory.org.store import OrgFactStore
     from synthorg.tools.registry import ToolRegistry
 
 logger = get_logger(__name__)
@@ -694,7 +699,7 @@ class KnowledgeArchitectSearchTool(BaseTool):
             categories = None
             if category_str:
                 try:
-                    categories = (OrgFactCategory(category_str),)
+                    categories = frozenset({OrgFactCategory(category_str)})
                 except ValueError:
                     return ToolExecutionResult(
                         content=f"Invalid category: {category_str!r}",
@@ -755,11 +760,14 @@ class KnowledgeArchitectReadTool(BaseTool):
         entry_id = arguments["entry_id"]
         try:
             query = OrgMemoryQuery(
-                fact_id=entry_id,
-                limit=1,
+                context=entry_id,
+                limit=100,
             )
             facts = await self._org_backend.query(query)
-            match = facts[0] if facts else None
+            match = next(
+                (f for f in facts if f.id == entry_id),
+                None,
+            )
         except Exception as exc:
             return ToolExecutionResult(
                 content=f"Read failed: {exc}",
@@ -891,6 +899,7 @@ class KnowledgeArchitectDeleteTool(BaseTool):
         self,
         *,
         org_backend: OrgMemoryBackend,
+        fact_store: OrgFactStore | None = None,
         agent_id: NotBlankStr,
         autonomy_level: AutonomyLevel,
     ) -> None:
@@ -908,6 +917,7 @@ class KnowledgeArchitectDeleteTool(BaseTool):
             category=ToolCategory.MEMORY,
         )
         self._org_backend = org_backend
+        self._fact_store = fact_store
         self._agent_id = agent_id
         self._autonomy_level = autonomy_level
 
@@ -919,6 +929,7 @@ class KnowledgeArchitectDeleteTool(BaseTool):
         """Delete (archive) an org memory entry.
 
         Gated by autonomy level: FULL autonomy disables deletes.
+        Requires ``fact_store`` to perform the actual retraction.
         """
         if self._autonomy_level == AutonomyLevel.FULL:
             logger.warning(
@@ -931,15 +942,19 @@ class KnowledgeArchitectDeleteTool(BaseTool):
                 content="Delete denied: FULL autonomy level",
                 is_error=True,
             )
+        if self._fact_store is None:
+            return ToolExecutionResult(
+                content="Delete not available: fact store not configured",
+                is_error=True,
+            )
         entry_id = arguments["entry_id"]
         try:
             author = OrgFactAuthor(
                 agent_id=self._agent_id,
                 seniority=SeniorityLevel.SENIOR,
                 is_human=False,
-                autonomy_level=self._autonomy_level,
             )
-            deleted = await self._org_backend.delete(
+            deleted = await self._fact_store.delete(
                 fact_id=entry_id,
                 author=author,
             )
