@@ -20,6 +20,31 @@ class MiddlewareRegistryError(MiddlewareError):
         self.registry_type = registry_type
 
 
+class PlanReviewGatedError(MiddlewareError):
+    """Raised when dispatch is gated pending plan review.
+
+    The ``PlanReviewGateMiddleware`` halts the coordination pipeline
+    when the autonomy level requires manual plan approval before
+    dispatch.
+
+    Attributes:
+        task_id: The task whose dispatch was gated.
+        autonomy_level: The autonomy level that triggered the gate.
+    """
+
+    def __init__(
+        self,
+        *,
+        task_id: str,
+        autonomy_level: str,
+    ) -> None:
+        super().__init__(
+            f"Dispatch gated for task {task_id!r} (autonomy_level={autonomy_level})"
+        )
+        self.task_id = task_id
+        self.autonomy_level = autonomy_level
+
+
 class ClarificationRequiredError(MiddlewareError):
     """Raised when acceptance criteria lack specificity.
 

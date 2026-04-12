@@ -20,10 +20,13 @@ from synthorg.core.agent import AgentIdentity  # noqa: TC001
 from synthorg.core.task import Task  # noqa: TC001
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.engine.context import AgentContext  # noqa: TC001
+from synthorg.observability import get_logger
 from synthorg.providers.models import TokenUsage  # noqa: TC001
 from synthorg.security.autonomy.models import (
     EffectiveAutonomy,  # noqa: TC001
 )
+
+logger = get_logger(__name__)
 
 # ── Agent middleware context ──────────────────────────────────────
 
@@ -74,12 +77,11 @@ class AgentMiddlewareContext(BaseModel):
     @model_validator(mode="after")
     def _deepcopy_metadata(self) -> AgentMiddlewareContext:
         """Defensive copy so callers cannot mutate the frozen model."""
-        if self.metadata:
-            object.__setattr__(
-                self,
-                "metadata",
-                copy.deepcopy(self.metadata),
-            )
+        object.__setattr__(
+            self,
+            "metadata",
+            copy.deepcopy(self.metadata),
+        )
         return self
 
     def with_metadata(
@@ -97,7 +99,7 @@ class AgentMiddlewareContext(BaseModel):
             New context with the entry added.
         """
         updated = copy.deepcopy(self.metadata)
-        updated[key] = value
+        updated[key] = copy.deepcopy(value)
         return self.model_copy(update={"metadata": updated})
 
 
@@ -163,9 +165,11 @@ class ToolCallResult(BaseModel):
         """Ensure success and error fields are consistent."""
         if self.success and self.error is not None:
             msg = "successful tool call must not have an error"
+            logger.warning(msg, tool_name=self.tool_name)
             raise ValueError(msg)
         if not self.success and self.error is None:
             msg = "failed tool call must have an error description"
+            logger.warning(msg, tool_name=self.tool_name)
             raise ValueError(msg)
         return self
 
@@ -268,6 +272,12 @@ class TaskLedger(BaseModel):
         """Ensure superseded_at is not before created_at."""
         if self.superseded_at is not None and self.superseded_at < self.created_at:
             msg = "superseded_at must be >= created_at"
+            logger.warning(
+                msg,
+                plan_version=self.plan_version,
+                created_at=str(self.created_at),
+                superseded_at=str(self.superseded_at),
+            )
             raise ValueError(msg)
         return self
 
@@ -319,5 +329,10 @@ class ProgressLedger(BaseModel):
         """Stall count must be zero when progress was made."""
         if self.progress_made and self.stall_count > 0:
             msg = "stall_count must be 0 when progress_made is True"
+            logger.warning(
+                msg,
+                round_number=self.round_number,
+                stall_count=self.stall_count,
+            )
             raise ValueError(msg)
         return self

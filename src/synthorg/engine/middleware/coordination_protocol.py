@@ -87,12 +87,11 @@ class CoordinationMiddlewareContext(BaseModel):
     @model_validator(mode="after")
     def _deepcopy_metadata(self) -> CoordinationMiddlewareContext:
         """Defensive copy so callers cannot mutate the frozen model."""
-        if self.metadata:
-            object.__setattr__(
-                self,
-                "metadata",
-                copy.deepcopy(self.metadata),
-            )
+        object.__setattr__(
+            self,
+            "metadata",
+            copy.deepcopy(self.metadata),
+        )
         return self
 
     def with_metadata(
@@ -102,7 +101,7 @@ class CoordinationMiddlewareContext(BaseModel):
     ) -> CoordinationMiddlewareContext:
         """Return a copy with an additional metadata entry."""
         updated = copy.deepcopy(self.metadata)
-        updated[key] = value
+        updated[key] = copy.deepcopy(value)
         return self.model_copy(update={"metadata": updated})
 
 
@@ -181,6 +180,9 @@ class BaseCoordinationMiddleware:
     __slots__ = ("_name",)
 
     def __init__(self, *, name: str) -> None:
+        if not name or not name.strip():
+            msg = "middleware name cannot be blank"
+            raise ValueError(msg)
         self._name = name
 
     @property
@@ -249,14 +251,14 @@ class CoordinationMiddlewareChain:
         middleware: tuple[CoordinationMiddleware, ...] = (),
     ) -> None:
         names = [mw.name for mw in middleware]
-        seen: set[str] = set()
-        dupes = [n for n in names if n in seen or (seen.add(n) or False)]  # type: ignore[func-returns-value]
-        if dupes:
+        if len(names) != len(set(names)):
+            dupes = [n for n in names if names.count(n) > 1]
             from synthorg.engine.middleware.errors import (  # noqa: PLC0415
                 MiddlewareConfigError,
             )
 
             msg = f"Duplicate middleware names in chain: {sorted(set(dupes))}"
+            logger.warning(msg, duplicates=sorted(set(dupes)))
             raise MiddlewareConfigError(msg)
         self._middleware = middleware
 

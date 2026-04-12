@@ -1,8 +1,10 @@
 """Builtin middleware wrappers for existing engine hooks.
 
-Thin wrappers that delegate to existing functions/classes unchanged.
-No rewrite of the underlying logic -- each wrapper simply calls the
-existing implementation from the appropriate middleware hook.
+Named slots in the middleware chain for configuration and ordering.
+The actual hook logic remains inline in the execution pipeline
+(``AgentEngine.run()``, ``ToolInvoker``, ``_post_execution_pipeline``).
+These wrappers will delegate to the real implementations once the
+agent middleware chain is wired into the execution loop.
 """
 
 from typing import TYPE_CHECKING
@@ -36,13 +38,16 @@ logger = get_logger(__name__)
 
 
 class SecurityInterceptorMiddleware(BaseAgentMiddleware):
-    """Wraps ``SecOpsService`` as a ``wrap_tool_call`` middleware.
+    """Named slot for security interception in ``wrap_tool_call``.
 
-    Delegates to the existing security interceptor for tool-call
-    evaluation (ALLOW / DENY / ESCALATE verdicts).
+    The actual interception is wired into ``ToolInvoker.invoke()``
+    at construction.  This middleware reserves the ordering position
+    so configuration can control where security runs relative to
+    other middleware.
 
     Args:
-        interceptor: The security interception strategy to apply.
+        interceptor: The security interception strategy (stored for
+            future direct delegation).
     """
 
     def __init__(
@@ -72,10 +77,11 @@ class SecurityInterceptorMiddleware(BaseAgentMiddleware):
 
 
 class SanitizeMessageMiddleware(BaseAgentMiddleware):
-    """Wraps ``sanitize_message()`` as a ``before_model`` middleware.
+    """Named slot for message sanitization in ``before_model``.
 
-    Sanitizes messages in the agent context before they reach the
-    model, redacting paths, URLs, and injection markers.
+    The actual sanitization is applied inline in the execution
+    pipeline (failure criteria, error messages).  This middleware
+    reserves the ordering position.
     """
 
     def __init__(self, **_kwargs: object) -> None:
@@ -98,14 +104,14 @@ class SanitizeMessageMiddleware(BaseAgentMiddleware):
 
 
 class ApprovalGateMiddleware(BaseAgentMiddleware):
-    """Wraps ``ApprovalGate`` as an ``after_model`` middleware.
+    """Named slot for approval gating in ``after_model``.
 
-    Delegates to the existing approval gate for escalation detection
-    and context parking.
+    The approval gate is wired into the execution loop at
+    construction.  This middleware reserves the ordering position.
 
     Args:
-        approval_gate: The approval gate instance, or None if not
-            configured.
+        approval_gate: The approval gate instance (stored for
+            future direct delegation).
     """
 
     def __init__(
@@ -133,13 +139,15 @@ class ApprovalGateMiddleware(BaseAgentMiddleware):
 
 
 class ClassificationMiddleware(BaseAgentMiddleware):
-    """Wraps ``classify_execution_errors()`` for error paths.
+    """Named slot for error classification in wrap hooks.
 
-    Classification runs in both ``wrap_model_call`` and
-    ``wrap_tool_call`` error paths.
+    Classification is invoked in ``_post_execution_pipeline``,
+    not per-call.  This middleware reserves ordering positions
+    in both ``wrap_model_call`` and ``wrap_tool_call``.
 
     Args:
-        error_taxonomy_config: Configuration for error classification.
+        error_taxonomy_config: Configuration for error classification
+            (stored for future direct delegation).
     """
 
     def __init__(
@@ -174,14 +182,14 @@ class ClassificationMiddleware(BaseAgentMiddleware):
 
 
 class CostRecordingMiddleware(BaseAgentMiddleware):
-    """Wraps ``record_execution_costs()`` as ``after_agent`` middleware.
+    """Named slot for cost recording in ``after_agent``.
 
-    Records per-turn costs to the CostTracker after agent execution
-    completes. Failures are logged but non-fatal (same as existing
-    behavior).
+    Cost recording is invoked in ``_post_execution_pipeline``.
+    This middleware reserves the ordering position.
 
     Args:
-        tracker: The cost tracker instance, or None to skip.
+        tracker: The cost tracker instance (stored for future
+            direct delegation).
     """
 
     def __init__(
@@ -209,14 +217,16 @@ class CostRecordingMiddleware(BaseAgentMiddleware):
 
 
 class CheckpointResumeMiddleware(BaseAgentMiddleware):
-    """Wraps checkpoint resume logic as ``before_agent`` middleware.
+    """Named slot for checkpoint resume in ``before_agent``.
 
-    Handles checkpoint deserialization and reconciliation when
-    resuming from a crashed execution.
+    Checkpoint resume runs in ``AgentEngine._resume_from_checkpoint``.
+    This middleware reserves the ordering position.
 
     Args:
-        checkpoint_repo: Checkpoint persistence repository.
-        heartbeat_repo: Heartbeat persistence repository.
+        checkpoint_repo: Checkpoint persistence repository (stored
+            for future direct delegation).
+        heartbeat_repo: Heartbeat persistence repository (stored
+            for future direct delegation).
     """
 
     def __init__(

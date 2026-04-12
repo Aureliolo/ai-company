@@ -42,11 +42,13 @@ logger = get_logger(__name__)
 
 
 class AuthorityDeferenceGuard(BaseAgentMiddleware):
-    """Strips authority cues from transcripts (S1 S3 risk 2.2).
+    """Detects authority cues in transcripts (S1 S3 risk 2.2).
 
     Scans the incoming conversation history for imperative directives
-    and authority-laden phrases, redacts them, and injects a
-    mandatory-justification header.
+    and authority-laden phrases, logs all matches for audit, and
+    stores the justification header in metadata for downstream
+    prompt injection.  Actual content redaction is deferred to
+    prompt-builder integration.
 
     Args:
         config: Authority deference configuration.
@@ -66,30 +68,31 @@ class AuthorityDeferenceGuard(BaseAgentMiddleware):
         self,
         ctx: AgentMiddlewareContext,
     ) -> AgentMiddlewareContext:
-        """Strip authority cues and inject justification header."""
+        """Detect authority cues and store justification header."""
         if not self._config.enabled:
             return ctx
 
-        # Count authority cues in conversation messages
-        stripped_count = 0
+        # Detect authority cues in conversation messages
+        detected_count = 0
         for msg in ctx.agent_context.conversation:
             for pattern in self._compiled:
                 matches = pattern.findall(msg.content or "")
-                stripped_count += len(matches)
+                detected_count += len(matches)
 
-        if stripped_count > 0:
+        if detected_count > 0:
             logger.info(
                 MIDDLEWARE_AUTHORITY_DEFERENCE_STRIPPED,
                 agent_id=ctx.agent_id,
                 task_id=ctx.task_id,
-                stripped_count=stripped_count,
+                stripped_count=detected_count,
             )
 
         return ctx.with_metadata(
             "authority_deference",
             {
-                "stripped_count": stripped_count,
+                "detected_count": detected_count,
                 "justification_header": self._config.justification_header,
+                "inject_header": detected_count > 0,
             },
         )
 
@@ -100,7 +103,9 @@ class AuthorityDeferenceCoordinationMiddleware(
     """Coordination-level authority deference (S1 S3 risk 2.2).
 
     Scans the rollup summary for authority-contaminated language
-    before it gets written to the parent task.
+    before it gets written to the parent task.  Logs detections
+    for audit; actual rollup content redaction is deferred to
+    coordinator integration.
 
     Args:
         config: Authority deference configuration.
@@ -142,7 +147,7 @@ class AuthorityDeferenceCoordinationMiddleware(
 
         return ctx.with_metadata(
             "authority_deference_coordination",
-            {"stripped_count": stripped_count},
+            {"detected_count": stripped_count},
         )
 
 
@@ -245,6 +250,10 @@ class ClarificationGateMiddleware(BaseCoordinationMiddleware):
     ) -> None:
         super().__init__(name="clarification_gate")
         self._config = config or ClarificationGateConfig()
+        self._compiled_generic = tuple(
+            re.compile(rf"\b{re.escape(p)}\b", re.IGNORECASE)
+            for p in self._config.generic_patterns
+        )
 
     async def before_decompose(
         self,
@@ -264,7 +273,7 @@ class ClarificationGateMiddleware(BaseCoordinationMiddleware):
             text = criterion.description.strip()
             if len(text) < self._config.min_criterion_length:
                 reasons.append(f"criterion too short ({len(text)} chars): {text!r}")
-            if text.casefold() in {p.casefold() for p in self._config.generic_patterns}:
+            if any(p.search(text) for p in self._compiled_generic):
                 reasons.append(f"criterion is generic: {text!r}")
 
         if reasons:
@@ -308,9 +317,10 @@ class DelegationChainHashMiddleware(BaseAgentMiddleware):
     """Records content hash for delegation chain drift (S1 S3 risk 4.3).
 
     Computes a SHA-256 hash of the task's title, description, and
-    acceptance criteria.  Stores it in metadata for audit.  If the
-    task has a parent (delegation chain), compares against the root
-    hash to detect drift.
+    acceptance criteria.  For root tasks, stores the hash as both
+    ``delegation_chain_hash`` and ``root_task_content_hash`` in
+    metadata.  For delegated tasks, compares against the root hash
+    to detect and log drift.
     """
 
     def __init__(self, **_kwargs: object) -> None:
@@ -336,8 +346,13 @@ class DelegationChainHashMiddleware(BaseAgentMiddleware):
             content_hash=content_hash[:16],
         )
 
-        # Check for drift if this is a delegated task
-        if task.parent_task_id and task.delegation_chain:
+        # Seed root hash for root tasks; check drift for delegated tasks
+        if not task.parent_task_id:
+            ctx = ctx.with_metadata(
+                "root_task_content_hash",
+                content_hash,
+            )
+        elif task.delegation_chain:
             root_hash = ctx.metadata.get("root_task_content_hash")
             if root_hash is not None and root_hash != content_hash:
                 logger.warning(

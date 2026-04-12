@@ -24,6 +24,7 @@ from synthorg.engine.middleware.coordination_protocol import (
     CoordinationMiddleware,
     CoordinationMiddlewareContext,
 )
+from synthorg.engine.middleware.errors import PlanReviewGatedError
 from synthorg.engine.middleware.models import (
     ProgressLedger,
     TaskLedger,
@@ -146,15 +147,27 @@ class TestProgressLedgerMiddleware:
     def test_name(self) -> None:
         assert ProgressLedgerMiddleware().name == "progress_ledger"
 
-    async def test_first_round_with_rollup(self) -> None:
+    async def test_first_round_with_progress(self) -> None:
+        from types import SimpleNamespace
+
+        rollup = SimpleNamespace(completed_count=2)
         mw = ProgressLedgerMiddleware()
-        ctx = _mw_context(status_rollup="mock rollup")
+        ctx = _mw_context(status_rollup=rollup)
         result = await mw.after_rollup(ctx)
         assert result.progress_ledger is not None
         assert result.progress_ledger.round_number == 1
         assert result.progress_ledger.progress_made is True
         assert result.progress_ledger.stall_count == 0
         assert result.progress_ledger.next_action == "continue"
+
+    async def test_first_round_no_completed_count_no_progress(self) -> None:
+        mw = ProgressLedgerMiddleware()
+        ctx = _mw_context(status_rollup="mock rollup")
+        result = await mw.after_rollup(ctx)
+        assert result.progress_ledger is not None
+        assert result.progress_ledger.round_number == 1
+        assert result.progress_ledger.progress_made is False
+        assert result.progress_ledger.stall_count == 1
 
     async def test_stall_increments(self) -> None:
         mw = ProgressLedgerMiddleware()
@@ -361,19 +374,18 @@ class TestPlanReviewGateMiddleware:
             default_autonomy_level=AutonomyLevel.SUPERVISED,
         )
         ctx = _mw_context()
-        result = await mw.before_dispatch(ctx)
-        meta = result.metadata["plan_review_gate"]
-        assert meta["gated"] is True
-        assert meta["autonomy_level"] == "supervised"
+        with pytest.raises(PlanReviewGatedError) as exc_info:
+            await mw.before_dispatch(ctx)
+        assert exc_info.value.autonomy_level == "supervised"
 
     async def test_locked_gated(self) -> None:
         mw = PlanReviewGateMiddleware(
             default_autonomy_level=AutonomyLevel.LOCKED,
         )
         ctx = _mw_context()
-        result = await mw.before_dispatch(ctx)
-        meta = result.metadata["plan_review_gate"]
-        assert meta["gated"] is True
+        with pytest.raises(PlanReviewGatedError) as exc_info:
+            await mw.before_dispatch(ctx)
+        assert exc_info.value.autonomy_level == "locked"
 
     async def test_semi_not_gated(self) -> None:
         mw = PlanReviewGateMiddleware(

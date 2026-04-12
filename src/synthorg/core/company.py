@@ -492,6 +492,7 @@ class CompanyConfig(BaseModel):
         budget_monthly: Monthly budget in USD (base currency).
         communication_pattern: Default communication pattern name.
         tool_access_default: Default tool access for all agents.
+        middleware: Agent and coordination middleware configuration.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)

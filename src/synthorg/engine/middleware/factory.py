@@ -79,6 +79,10 @@ def build_agent_middleware_chain(
         try:
             mw = factory(**effective_deps)
         except TypeError as exc:
+            # Only skip if the TypeError is from missing factory args,
+            # not from internal bugs in the factory
+            if "argument" not in str(exc) and "parameter" not in str(exc):
+                raise
             logger.debug(
                 MIDDLEWARE_SKIPPED,
                 middleware=name,
@@ -89,12 +93,19 @@ def build_agent_middleware_chain(
         middleware.append(mw)
 
     chain = AgentMiddlewareChain(tuple(middleware))
+    built_names = list(chain.names)
+    skipped_names: list[str] = []
+    for requested_name in config.chain:
+        if requested_name in built_names:
+            built_names.remove(requested_name)
+        else:
+            skipped_names.append(requested_name)
     logger.info(
         MIDDLEWARE_CHAIN_BUILT,
         chain_names=chain.names,
         chain_length=len(chain),
         requested=config.chain,
-        skipped=tuple(n for n in config.chain if n not in chain.names),
+        skipped=tuple(skipped_names),
     )
     return chain
 
@@ -133,6 +144,8 @@ def build_coordination_middleware_chain(
         try:
             mw = factory(**effective_deps)
         except TypeError as exc:
+            if "argument" not in str(exc) and "parameter" not in str(exc):
+                raise
             logger.debug(
                 MIDDLEWARE_COORDINATION_SKIPPED,
                 middleware=name,
@@ -143,11 +156,18 @@ def build_coordination_middleware_chain(
         middleware.append(mw)
 
     chain = CoordinationMiddlewareChain(tuple(middleware))
+    built_names = list(chain.names)
+    skipped_names: list[str] = []
+    for requested_name in config.chain:
+        if requested_name in built_names:
+            built_names.remove(requested_name)
+        else:
+            skipped_names.append(requested_name)
     logger.info(
         MIDDLEWARE_COORDINATION_CHAIN_BUILT,
         chain_names=chain.names,
         chain_length=len(chain),
         requested=config.chain,
-        skipped=tuple(n for n in config.chain if n not in chain.names),
+        skipped=tuple(skipped_names),
     )
     return chain

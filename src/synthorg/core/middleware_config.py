@@ -12,6 +12,9 @@ from typing import Self
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.observability import get_logger
+
+logger = get_logger(__name__)
 
 # ── Sub-configs for individual middleware ──────────────────────────
 
@@ -58,6 +61,11 @@ class AuthorityDeferenceConfig(BaseModel):
                 re.compile(pattern)
             except re.error as exc:
                 msg = f"Invalid regex pattern {pattern!r}: {exc}"
+                logger.warning(
+                    msg,
+                    pattern=pattern,
+                    error=str(exc),
+                )
                 raise ValueError(msg) from exc
         return self
 

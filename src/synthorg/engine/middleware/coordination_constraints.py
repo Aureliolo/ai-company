@@ -17,6 +17,7 @@ from synthorg.engine.middleware.coordination_protocol import (
     BaseCoordinationMiddleware,
     CoordinationMiddlewareContext,
 )
+from synthorg.engine.middleware.errors import PlanReviewGatedError
 from synthorg.engine.middleware.models import (
     ProgressLedger,
     TaskLedger,
@@ -63,7 +64,13 @@ class TaskLedgerMiddleware(BaseCoordinationMiddleware):
         task = ctx.coordination_context.task
 
         # Extract plan text from decomposition
-        plan_text = str(decomp)
+        plan_text = str(decomp).strip()
+        if not plan_text:
+            logger.warning(
+                "decomposition_empty_plan_text",
+                task_id=task.id,
+            )
+            return ctx
 
         # Extract known facts from task description + criteria
         known_facts: list[str] = []
@@ -101,10 +108,19 @@ class ProgressLedgerMiddleware(BaseCoordinationMiddleware):
     Analyzes the ``SubtaskStatusRollup`` to determine whether
     progress was made, increments stall counters, and recommends
     the next action.
+
+    Args:
+        escalation_threshold: Stall count triggering escalation.
     """
 
-    def __init__(self, **_kwargs: object) -> None:
+    def __init__(
+        self,
+        *,
+        escalation_threshold: int = 3,
+        **_kwargs: object,
+    ) -> None:
         super().__init__(name="progress_ledger")
+        self._escalation_threshold = escalation_threshold
 
     async def after_rollup(
         self,
@@ -117,8 +133,21 @@ class ProgressLedgerMiddleware(BaseCoordinationMiddleware):
         # Determine round number
         round_number = (existing.round_number + 1) if existing else 1
 
-        # Analyze progress from rollup
-        progress_made = rollup is not None
+        # Analyze progress from rollup contents (not just existence)
+        progress_made = False
+        if rollup is not None:
+            completed = getattr(rollup, "completed_count", None)
+            prev_completed = (
+                getattr(existing, "_prev_completed", None) if existing else None
+            )
+            if completed is not None and prev_completed is not None:
+                progress_made = completed > prev_completed
+            elif completed is not None and completed > 0:
+                progress_made = True
+            else:
+                # Fallback: any non-None rollup with no count info
+                # is treated as no progress (conservative)
+                progress_made = False
 
         # Stall detection
         prev_stall = existing.stall_count if existing else 0
@@ -134,8 +163,7 @@ class ProgressLedgerMiddleware(BaseCoordinationMiddleware):
         ]
 
         # Decide next action
-        _escalation_threshold = 3
-        if stall_count >= _escalation_threshold:
+        if stall_count >= self._escalation_threshold:
             next_action = "escalate"
         elif stall_count >= 1:
             next_action = "replan"
@@ -264,11 +292,8 @@ class MagenticReplanHook:
         # Budget affordability check
         if self._budget_enforcer is not None:
             try:
-                can_afford = (
-                    await self._budget_enforcer.check_can_execute(
-                        agent_id="coordination-replan",
-                    )
-                    is not None
+                await self._budget_enforcer.check_can_execute(
+                    agent_id="coordination-replan",
                 )
             except MemoryError, RecursionError:
                 raise
@@ -276,14 +301,7 @@ class MagenticReplanHook:
                 logger.warning(
                     COORDINATION_REPLAN_BUDGET_BLOCKED,
                     task_id=task.id,
-                    error=f"budget check failed: {type(exc).__name__}: {exc}",
-                )
-                can_afford = False
-
-            if not can_afford:
-                logger.warning(
-                    COORDINATION_REPLAN_BUDGET_BLOCKED,
-                    task_id=task.id,
+                    error=f"{type(exc).__name__}: {exc}",
                 )
                 return False
 
@@ -384,8 +402,14 @@ class PlanReviewGateMiddleware(BaseCoordinationMiddleware):
         self,
         ctx: CoordinationMiddlewareContext,
     ) -> CoordinationMiddlewareContext:
-        """Gate dispatch based on autonomy level."""
-        level = self._default_level
+        """Gate dispatch based on autonomy level.
+
+        Reads autonomy level from the coordination context's config
+        when available, otherwise falls back to ``default_autonomy_level``.
+        """
+        # Read autonomy from context config if available
+        config = getattr(ctx.coordination_context, "config", None)
+        level = getattr(config, "autonomy_level", None) or self._default_level
         task = ctx.coordination_context.task
 
         if level in (AutonomyLevel.SUPERVISED, AutonomyLevel.LOCKED):
@@ -395,12 +419,9 @@ class PlanReviewGateMiddleware(BaseCoordinationMiddleware):
                 autonomy_level=level.value,
                 plan_present=ctx.task_ledger is not None,
             )
-            return ctx.with_metadata(
-                "plan_review_gate",
-                {
-                    "gated": True,
-                    "autonomy_level": level.value,
-                },
+            raise PlanReviewGatedError(
+                task_id=task.id,
+                autonomy_level=level.value,
             )
 
         if level == AutonomyLevel.SEMI:

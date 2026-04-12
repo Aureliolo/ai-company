@@ -77,6 +77,8 @@ class Task(BaseModel):
             other (``None`` when not yet classified).
         coordination_topology: Coordination topology for multi-agent
             execution (defaults to ``AUTO``).
+        middleware_override: Per-task middleware chain override
+            (``None`` uses company default chain).
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)

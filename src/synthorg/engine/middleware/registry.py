@@ -47,6 +47,10 @@ def register_agent_middleware(
     if existing is not None:
         if existing is factory:
             return  # idempotent
+        logger.warning(
+            "conflicting_agent_middleware_registration",
+            name=name,
+        )
         raise MiddlewareRegistryError(
             name,
             registry_type="agent",
@@ -70,6 +74,10 @@ def get_agent_middleware_factory(
     """
     factory = _AGENT_REGISTRY.get(name)
     if factory is None:
+        logger.warning(
+            "unknown_agent_middleware",
+            name=name,
+        )
         raise MiddlewareRegistryError(
             name,
             registry_type="agent",
@@ -120,6 +128,10 @@ def register_coordination_middleware(
     if existing is not None:
         if existing is factory:
             return
+        logger.warning(
+            "conflicting_coordination_middleware_registration",
+            name=name,
+        )
         raise MiddlewareRegistryError(
             name,
             registry_type="coordination",
@@ -143,6 +155,10 @@ def get_coordination_middleware_factory(
     """
     factory = _COORDINATION_REGISTRY.get(name)
     if factory is None:
+        logger.warning(
+            "unknown_coordination_middleware",
+            name=name,
+        )
         raise MiddlewareRegistryError(
             name,
             registry_type="coordination",

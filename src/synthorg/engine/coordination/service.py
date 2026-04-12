@@ -172,6 +172,9 @@ class MultiAgentCoordinator:
                     },
                 )
                 mw_ctx = await mw_chain.run_after_decompose(mw_ctx)
+                # Propagate middleware-mutated artifacts
+                if mw_ctx.decomposition_result is not None:
+                    decomp_result = mw_ctx.decomposition_result
 
             # Phase 2: Route
             routing_result = self._phase_route(context, decomp_result, phases)
@@ -191,6 +194,9 @@ class MultiAgentCoordinator:
                     },
                 )
                 mw_ctx = await mw_chain.run_before_dispatch(mw_ctx)
+                # Propagate middleware-mutated routing
+                if mw_ctx.routing_result is not None:
+                    routing_result = mw_ctx.routing_result
 
             # Phase 5: Dispatch (workspace setup -> execute -> merge)
             dispatch_result = await self._phase_dispatch(
@@ -215,12 +221,16 @@ class MultiAgentCoordinator:
                     },
                 )
                 mw_ctx = await mw_chain.run_after_rollup(mw_ctx)
+                # Propagate middleware-mutated rollup
+                rollup = mw_ctx.status_rollup
 
             # Middleware: before_update_parent
             if mw_chain is not None:
                 mw_ctx = await mw_chain.run_before_update_parent(
                     mw_ctx,
                 )
+                # Propagate middleware-sanitized rollup
+                rollup = mw_ctx.status_rollup
 
             # Phase 7: Update parent task
             await self._phase_update_parent(context, rollup, phases)

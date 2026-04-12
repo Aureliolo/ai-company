@@ -416,10 +416,10 @@ department, or per conflict type.
         This strategy is safe for **1-2 downstream agents**. For deliberation
         stacks with more than two downstream agents, `AuthorityDeferenceGuard`
         is **implemented** as agent middleware (`engine/middleware/s1_constraints.py`):
-        strips authority cues from transcripts via regex patterns, injects a
-        mandatory-justification header into the system prompt, and logs all
-        stripping actions for audit. Coordination-level analog scans rollup
-        summaries before parent-task updates. See
+        detects authority cues in transcripts via regex patterns, stores a
+        mandatory-justification header in middleware metadata for downstream
+        prompt injection, and logs all detections for audit. Coordination-level
+        analog scans rollup summaries before parent-task updates. See
         [S1 Multi-Agent Architecture Decision §3](../research/s1-multi-agent-decision.md#section-3--risk-mitigation-register-15-emergent-risks-from-paper-1),
         [Engine Design -- Harness Middleware Layer](engine.md#harness-middleware-layer),
         and [#1260](https://github.com/Aureliolo/synthorg/issues/1260).

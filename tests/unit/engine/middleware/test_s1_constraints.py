@@ -144,7 +144,7 @@ class TestAuthorityDeferenceGuard:
         )
         result = await mw.before_agent(ctx)
         meta = result.metadata["authority_deference"]
-        assert meta["stripped_count"] > 0
+        assert meta["detected_count"] > 0
 
     async def test_no_cues_zero_count(self) -> None:
         mw = AuthorityDeferenceGuard()
@@ -158,7 +158,7 @@ class TestAuthorityDeferenceGuard:
         )
         result = await mw.before_agent(ctx)
         meta = result.metadata["authority_deference"]
-        assert meta["stripped_count"] == 0
+        assert meta["detected_count"] == 0
 
     async def test_records_justification_header(self) -> None:
         mw = AuthorityDeferenceGuard()
@@ -187,7 +187,7 @@ class TestAuthorityDeferenceCoordination:
         ctx = _coord_context()
         result = await mw.before_update_parent(ctx)
         meta = result.metadata["authority_deference_coordination"]
-        assert meta["stripped_count"] == 0
+        assert meta["detected_count"] == 0
 
 
 # ── AssumptionViolationMiddleware ─────────────────────────────────

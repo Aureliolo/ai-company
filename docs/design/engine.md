@@ -115,6 +115,7 @@ task:
   status: "assigned"
   parent_task_id: null           # parent task ID when created via delegation
   delegation_chain: []           # ordered agent IDs of delegators (root first)
+  middleware_override: null       # per-task middleware chain override (null = company default)
 ```
 
 `task_structure` and `coordination_topology` are described in
