@@ -3,7 +3,7 @@
 Frozen Pydantic models for per-company and per-task middleware
 configuration.  Lives in ``core`` (not ``engine``) to avoid
 circular imports when ``CompanyConfig`` references these types.
-Only depends on ``core.types``.
+Depends on ``core.types`` and ``observability`` (for validation logging).
 """
 
 import re
@@ -62,7 +62,8 @@ class AuthorityDeferenceConfig(BaseModel):
             except re.error as exc:
                 msg = f"Invalid regex pattern {pattern!r}: {exc}"
                 logger.warning(
-                    msg,
+                    "config.validation.invalid_regex",
+                    message=msg,
                     pattern=pattern,
                     error=str(exc),
                 )
@@ -104,7 +105,8 @@ class ClarificationGateConfig(BaseModel):
             except re.error as exc:
                 msg = f"Invalid generic pattern {pattern!r}: {exc}"
                 logger.warning(
-                    msg,
+                    "config.validation.invalid_regex",
+                    message=msg,
                     pattern=pattern,
                     error=str(exc),
                 )

@@ -127,6 +127,11 @@ class BaseAgentMiddleware:
     def __init__(self, *, name: str) -> None:
         if not name or not name.strip():
             msg = "middleware name cannot be blank"
+            logger.warning(
+                MIDDLEWARE_HOOK_ERROR,
+                error=msg,
+                name=repr(name),
+            )
             raise ValueError(msg)
         self._name = name
 
@@ -193,8 +198,8 @@ class AgentMiddlewareChain:
     * **wrap_* hooks**: onion-style -- each middleware wraps the next,
       innermost is the actual call.
 
-    Exceptions propagate without catching.  The classification
-    pipeline handles error disposition.
+    Exceptions are logged (``MIDDLEWARE_HOOK_ERROR``) and re-raised.
+    The classification pipeline handles error disposition.
 
     Args:
         middleware: Ordered tuple of middleware instances.

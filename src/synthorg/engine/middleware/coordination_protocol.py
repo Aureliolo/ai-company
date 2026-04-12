@@ -185,6 +185,11 @@ class BaseCoordinationMiddleware:
     def __init__(self, *, name: str) -> None:
         if not name or not name.strip():
             msg = "middleware name cannot be blank"
+            logger.warning(
+                MIDDLEWARE_COORDINATION_HOOK_ERROR,
+                error=msg,
+                name=repr(name),
+            )
             raise ValueError(msg)
         self._name = name
 
