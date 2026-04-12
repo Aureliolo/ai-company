@@ -25,24 +25,6 @@ import pytest
 
 pytestmark = [pytest.mark.integration, pytest.mark.slow]
 
-
-def _atlas_checkpoint_available() -> bool:
-    """Return True if ``atlas migrate checkpoint`` is available (Atlas Pro)."""
-    result = subprocess.run(
-        ["atlas", "migrate", "checkpoint", "--help"],  # noqa: S607
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    # Free-tier Atlas exits non-zero with "available only to Atlas Pro"
-    return "pro" not in result.stderr.lower()
-
-
-_skip_no_checkpoint = pytest.mark.skipif(
-    not _atlas_checkpoint_available(),
-    reason="atlas migrate checkpoint requires Atlas Pro",
-)
-
 # Incremental schema states for generating 6 migrations.
 _SCHEMA_STEPS: tuple[str, ...] = (
     "CREATE TABLE t1 (id INTEGER PRIMARY KEY);",
@@ -258,12 +240,16 @@ def squash_project(
     original = project / "revisions"
 
     squashed = base / "squashed"
-    _build_squashed_dir(original, files, squashed)
+    try:
+        _build_squashed_dir(original, files, squashed)
+    except RuntimeError as exc:
+        if "atlas pro" in str(exc).lower():
+            pytest.skip("atlas migrate checkpoint requires Atlas Pro")
+        raise
 
     return original, squashed, files
 
 
-@_skip_no_checkpoint
 class TestMigrationSquashUpgradePaths:
     """Verify databases at various migration points upgrade through squash."""
 
