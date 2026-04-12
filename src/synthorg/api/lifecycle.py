@@ -268,13 +268,14 @@ async def _safe_startup(  # noqa: PLR0913, PLR0912, PLR0915, C901
                     "session store disabled",
                 )
             else:
-                session_store = SessionStore(db)
-                await session_store.load_revoked()
-                app_state.set_session_store(session_store)
-                logger.info(
-                    API_APP_STARTUP,
-                    note="Session store initialized",
-                )
+                if not app_state.has_session_store:
+                    session_store = SessionStore(db)
+                    await session_store.load_revoked()
+                    app_state.set_session_store(session_store)
+                    logger.info(
+                        API_APP_STARTUP,
+                        note="Session store initialized",
+                    )
 
                 # Lockout store shares the same DB connection.
                 from synthorg.api.auth.lockout_store import (  # noqa: PLC0415
@@ -284,7 +285,7 @@ async def _safe_startup(  # noqa: PLR0913, PLR0912, PLR0915, C901
                 auth_cfg = (
                     app_state.config.api.auth if app_state.config is not None else None
                 )
-                if auth_cfg is not None:
+                if auth_cfg is not None and not app_state.has_lockout_store:
                     try:
                         lockout_store = LockoutStore(db, auth_cfg)
                         await lockout_store.load_locked()
@@ -327,7 +328,7 @@ async def _safe_startup(  # noqa: PLR0913, PLR0912, PLR0915, C901
                 service="distributed_task_queue",
                 phase="started",
             )
-        if bridge is not None:
+        if bridge is not None and getattr(bridge, "_running", None) is not True:
             try:
                 await bridge.start()
             except Exception:
@@ -337,7 +338,8 @@ async def _safe_startup(  # noqa: PLR0913, PLR0912, PLR0915, C901
                 )
                 raise
             started_bridge = True
-        if settings_dispatcher is not None:
+        _sd_running = getattr(settings_dispatcher, "_running", None)
+        if settings_dispatcher is not None and _sd_running is not True:
             try:
                 await settings_dispatcher.start()
             except Exception:
@@ -347,7 +349,7 @@ async def _safe_startup(  # noqa: PLR0913, PLR0912, PLR0915, C901
                 )
                 raise
             started_settings_dispatcher = True
-        if task_engine is not None:
+        if task_engine is not None and task_engine.is_running is not True:
             try:
                 task_engine.start()
             except Exception:
@@ -357,7 +359,8 @@ async def _safe_startup(  # noqa: PLR0913, PLR0912, PLR0915, C901
                 )
                 raise
             started_task_engine = True
-        if meeting_scheduler is not None:
+        _ms_running = getattr(meeting_scheduler, "running", None)
+        if meeting_scheduler is not None and _ms_running is not True:
             try:
                 await meeting_scheduler.start()
             except Exception:
@@ -369,7 +372,8 @@ async def _safe_startup(  # noqa: PLR0913, PLR0912, PLR0915, C901
             started_meeting_scheduler = True
         if backup_service is not None:
             try:
-                app_state.set_backup_service(backup_service)
+                if not app_state.has_backup_service:
+                    app_state.set_backup_service(backup_service)
                 started_backup_service = True
                 await backup_service.start()
             except Exception:

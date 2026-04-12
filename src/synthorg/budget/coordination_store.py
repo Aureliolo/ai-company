@@ -65,6 +65,10 @@ class CoordinationMetricsStore:
             maxlen=max_entries,
         )
 
+    def clear(self) -> None:
+        """Reset all coordination metrics for test isolation."""
+        self._records.clear()
+
     def record(self, entry: CoordinationMetricsRecord) -> None:
         """Append a metrics record (oldest evicted when full)."""
         self._records.append(entry)

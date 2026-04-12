@@ -586,6 +586,10 @@ class CostTracker:
             )
         return result
 
+    def clear(self) -> None:
+        """Reset all recorded cost data for test isolation."""
+        self._records.clear()
+
     # ── Private helpers ──────────────────────────────────────────────
 
     async def _update_project_aggregate(

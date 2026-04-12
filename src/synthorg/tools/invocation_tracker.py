@@ -56,6 +56,11 @@ class ToolInvocationTracker:
         self._lock: asyncio.Lock = asyncio.Lock()
         self._eviction_warned: bool = False
 
+    def clear(self) -> None:
+        """Reset all invocation records for test isolation."""
+        self._records.clear()
+        self._eviction_warned = False
+
     async def record(self, invocation: ToolInvocationRecord) -> None:
         """Append a tool invocation record.
 

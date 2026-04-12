@@ -947,6 +947,7 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
     audit_log: AuditLog | None = None,
     trust_service: TrustService | None = None,
     coordination_metrics_store: CoordinationMetricsStore | None = None,
+    _skip_lifecycle_shutdown: bool = False,
 ) -> Litestar:
     """Create and configure the Litestar application.
 
@@ -1514,6 +1515,8 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
         should_auto_wire_settings=_should_auto_wire,
         effective_config=effective_config,
     )
+    if _skip_lifecycle_shutdown:
+        shutdown = []
 
     return Litestar(
         route_handlers=[api_router],

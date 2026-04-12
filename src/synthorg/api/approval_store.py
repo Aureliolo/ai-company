@@ -39,6 +39,10 @@ class ApprovalStore:
         self._items: dict[str, ApprovalItem] = {}
         self._on_expire = on_expire
 
+    def clear(self) -> None:
+        """Reset all approval items for test isolation."""
+        self._items.clear()
+
     async def add(self, item: ApprovalItem) -> None:
         """Add a new approval item.
 

@@ -1,7 +1,7 @@
 """Shared fixtures for API unit tests."""
 
 import uuid
-from collections.abc import AsyncGenerator, Generator
+from collections.abc import Generator
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -20,6 +20,7 @@ from synthorg.api.auth.service import AuthService
 from synthorg.api.config import ApiConfig, RateLimitConfig
 from synthorg.api.exception_handlers import EXCEPTION_HANDLERS
 from synthorg.api.guards import HumanRole
+from synthorg.api.state import AppState
 from synthorg.budget.coordination_store import CoordinationMetricsStore
 from synthorg.budget.tracker import CostTracker
 from synthorg.communication.delegation.record_store import (
@@ -220,45 +221,50 @@ def make_auth_headers(
 
 
 # ── Fixtures ────────────────────────────────────────────────────
+#
+# All fixtures are session-scoped: created once per xdist worker,
+# cleared by test_client before each test.  The shared app uses
+# _skip_lifecycle_shutdown=True to prevent lifespan shutdown from
+# stopping/disconnecting shared services.  Tests that create their
+# own apps may disconnect/stop the shared persistence/bus, but
+# test_client re-connects them before each test.
 
 
-@pytest.fixture
+@pytest.fixture(scope="session")
 def auth_config() -> AuthConfig:
     return _make_test_auth_config()
 
 
-@pytest.fixture
+@pytest.fixture(scope="session")
 def auth_service() -> AuthService:
     return _make_test_auth_service()
 
 
-@pytest.fixture
-async def fake_persistence() -> AsyncGenerator[FakePersistenceBackend]:
+@pytest.fixture(scope="session")
+def fake_persistence() -> FakePersistenceBackend:
     backend = FakePersistenceBackend()
-    await backend.connect()
-    yield backend
-    await backend.disconnect()
+    backend._connected = True
+    return backend
 
 
-@pytest.fixture
-async def fake_message_bus() -> AsyncGenerator[FakeMessageBus]:
+@pytest.fixture(scope="session")
+def fake_message_bus() -> FakeMessageBus:
     bus = FakeMessageBus()
-    await bus.start()
-    yield bus
-    await bus.stop()
+    bus._running = True
+    return bus
 
 
-@pytest.fixture
+@pytest.fixture(scope="session")
 def cost_tracker() -> CostTracker:
     return CostTracker()
 
 
-@pytest.fixture
+@pytest.fixture(scope="session")
 def approval_store() -> ApprovalStore:
     return ApprovalStore()
 
 
-@pytest.fixture
+@pytest.fixture(scope="session")
 def root_config() -> RootConfig:
     from synthorg.integrations.config import IntegrationsConfig
 
@@ -274,44 +280,44 @@ def root_config() -> RootConfig:
     )
 
 
-@pytest.fixture
+@pytest.fixture(scope="session")
 def performance_tracker() -> PerformanceTracker:
     return PerformanceTracker()
 
 
-@pytest.fixture
+@pytest.fixture(scope="session")
 def agent_registry() -> AgentRegistryService:
     return AgentRegistryService()
 
 
-@pytest.fixture
+@pytest.fixture(scope="session")
 def provider_health_tracker() -> ProviderHealthTracker:
     return ProviderHealthTracker()
 
 
-@pytest.fixture
+@pytest.fixture(scope="session")
 def tool_invocation_tracker() -> ToolInvocationTracker:
     return ToolInvocationTracker()
 
 
-@pytest.fixture
+@pytest.fixture(scope="session")
 def delegation_record_store() -> DelegationRecordStore:
     return DelegationRecordStore()
 
 
-@pytest.fixture
+@pytest.fixture(scope="session")
 def fake_task_engine(
     fake_persistence: FakePersistenceBackend,
 ) -> TaskEngine:
     return TaskEngine(persistence=fake_persistence)
 
 
-@pytest.fixture
+@pytest.fixture(scope="session")
 def audit_log() -> AuditLog:
     return AuditLog()
 
 
-@pytest.fixture
+@pytest.fixture(scope="session")
 def trust_service() -> TrustService:
     return TrustService(
         strategy=DisabledTrustStrategy(),
@@ -319,20 +325,23 @@ def trust_service() -> TrustService:
     )
 
 
-@pytest.fixture
+@pytest.fixture(scope="session")
 def coordination_metrics_store() -> CoordinationMetricsStore:
     return CoordinationMetricsStore()
 
 
-@pytest.fixture
-def test_client(  # noqa: PLR0913
+# ── Session-scoped shared app ─────────────────────────────────
+
+
+@pytest.fixture(scope="session")
+def _shared_app(  # noqa: PLR0913
     fake_persistence: FakePersistenceBackend,
     fake_message_bus: FakeMessageBus,
+    fake_task_engine: TaskEngine,
     cost_tracker: CostTracker,
     approval_store: ApprovalStore,
     root_config: RootConfig,
     auth_service: AuthService,
-    fake_task_engine: TaskEngine,
     performance_tracker: PerformanceTracker,
     agent_registry: AgentRegistryService,
     provider_health_tracker: ProviderHealthTracker,
@@ -341,16 +350,21 @@ def test_client(  # noqa: PLR0913
     audit_log: AuditLog,
     trust_service: TrustService,
     coordination_metrics_store: CoordinationMetricsStore,
-) -> Generator[TestClient[Any]]:
-    _seed_test_users(fake_persistence, auth_service)
+) -> Litestar:
+    """Build the Litestar app ONCE per xdist worker.
 
+    Uses ``_skip_lifecycle_shutdown=True`` so startup hooks run
+    normally but shutdown is empty.  The startup hooks are
+    idempotent (guarded by ``has_*`` checks and ``is_running``
+    flags), so re-running them per-test is safe and near-instant.
+    """
     settings_service = SettingsService(
         repository=fake_persistence.settings,
         registry=get_registry(),
         config=root_config,
     )
 
-    app = create_app(
+    return create_app(
         config=root_config,
         persistence=fake_persistence,
         message_bus=fake_message_bus,
@@ -368,10 +382,161 @@ def test_client(  # noqa: PLR0913
         audit_log=audit_log,
         trust_service=trust_service,
         coordination_metrics_store=coordination_metrics_store,
+        _skip_lifecycle_shutdown=True,
     )
-    with TestClient(app) as client:
+
+
+# ── Function-scoped test_client with per-test reset ────────────
+
+
+def _restore_instance_patches(obj: object) -> None:
+    """Remove instance-level method patches from session-scoped services.
+
+    Tests like ``test_degraded_tool_tracker`` patch methods directly
+    on session-scoped instances (``tracker.get_records = _raise``).
+    ``clear()`` resets data but not patched methods.  This function
+    removes any instance attribute that shadows a class-level
+    callable, restoring the original method from the class.
+    """
+    obj_dict = getattr(obj, "__dict__", None)
+    if obj_dict is None:
+        return
+    cls = type(obj)
+    for attr in list(obj_dict):
+        if attr.startswith("_"):
+            continue
+        if callable(getattr(cls, attr, None)):
+            delattr(obj, attr)
+
+
+@pytest.fixture
+def test_client(  # noqa: PLR0913
+    _shared_app: Litestar,  # noqa: PT019
+    fake_persistence: FakePersistenceBackend,
+    fake_message_bus: FakeMessageBus,
+    cost_tracker: CostTracker,
+    approval_store: ApprovalStore,
+    performance_tracker: PerformanceTracker,
+    agent_registry: AgentRegistryService,
+    provider_health_tracker: ProviderHealthTracker,
+    tool_invocation_tracker: ToolInvocationTracker,
+    delegation_record_store: DelegationRecordStore,
+    audit_log: AuditLog,
+    coordination_metrics_store: CoordinationMetricsStore,
+    auth_service: AuthService,
+) -> Generator[TestClient[Any]]:
+    """Yield a TestClient wrapping the shared app with clean state.
+
+    The expensive ``create_app()`` runs once per worker.  Each test
+    gets a function-scoped ``TestClient`` whose lifespan startup
+    re-runs (idempotent, ~90ms) but shutdown is skipped (saves
+    ~460ms per test).
+    """
+    # 1. Clear all mutable service state and undo method patches
+    _services = (
+        cost_tracker,
+        approval_store,
+        performance_tracker,
+        agent_registry,
+        provider_health_tracker,
+        tool_invocation_tracker,
+        delegation_record_store,
+        audit_log,
+        coordination_metrics_store,
+    )
+    for svc in _services:
+        svc.clear()
+        _restore_instance_patches(svc)
+    fake_persistence.clear()
+    fake_message_bus.clear()
+
+    # 2. Re-connect persistence and reset task engine running state.
+    #    A previous test may have disconnected persistence via its own
+    #    app's lifespan shutdown.  The task engine's _running stays True
+    #    because _skip_lifecycle_shutdown prevents stop(), but its
+    #    internal asyncio tasks die when the previous TestClient's
+    #    event loop closes.  Resetting _running lets the next startup
+    #    create fresh tasks on the new event loop.
+    fake_persistence._connected = True
+    app_state: AppState = _shared_app.state.app_state
+    # Reset the task engine for the new event loop.  asyncio.Queue
+    # objects are bound to the loop where they were created, so
+    # the session-scoped engine's queues become invalid when
+    # the previous TestClient's loop closes.  Recreate them and
+    # reset the running flag so the next startup creates fresh
+    # processing tasks on the new loop.
+    te = app_state._task_engine
+    if te is not None:
+        import asyncio as _aio
+
+        te._running = False
+        te._queue = _aio.Queue(maxsize=te._config.max_queue_size)
+        te._observer_queue = _aio.Queue(
+            maxsize=te._config.effective_observer_queue_size,
+        )
+        te._versions = type(te._versions)()
+        te._observers.clear()
+
+    # 3. Clear AppState-internal stores and caches
+    app_state._ticket_store._tickets.clear()
+    app_state._user_presence._counts.clear()
+    if app_state._settings_service is not None:
+        app_state._settings_service._cache.clear()
+
+    # 4. Re-seed test users
+    _seed_test_users(fake_persistence, auth_service)
+
+    # 5. Snapshot AppState service refs before the test
+    saved = {
+        attr: getattr(app_state, attr)
+        for attr in AppState.__slots__
+        if attr.startswith("_")
+    }
+
+    # 6. Clear Litestar-internal rate-limit stores to prevent 429s
+    #    from accumulating request counters across tests.
+    for store in _shared_app.stores._stores.values():
+        store._store.clear()  # type: ignore[attr-defined]
+
+    # 7. Enter TestClient -- startup re-runs (idempotent),
+    #    shutdown is skipped (_skip_lifecycle_shutdown=True).
+    #    Startup may create a system user (ensure_system_user) and
+    #    modify settings, so re-clear persistence + settings cache
+    #    and re-seed users AFTER entering.
+    with TestClient(_shared_app) as client:
+        fake_persistence.clear()
+        fake_persistence._connected = True
+        if app_state._settings_service is not None:
+            app_state._settings_service._cache.clear()
+        _seed_test_users(fake_persistence, auth_service)
+        _promote_first_owner(fake_persistence)
         client.headers.update(make_auth_headers("ceo"))
         yield client
+
+    # 7. Restore AppState refs (undo test mutations)
+    for attr, value in saved.items():
+        setattr(app_state, attr, value)
+
+
+def _promote_first_owner(backend: FakePersistenceBackend) -> None:
+    """Promote the first seeded user to OWNER.
+
+    Replicates ``_maybe_promote_first_owner`` from the lifespan
+    startup.  Called after seeding test users to ensure at least
+    one user has ``OrgRole.OWNER``, matching the production
+    startup behavior.
+    """
+    from synthorg.api.auth.models import OrgRole
+
+    users = backend._users._users
+    if not users:
+        return
+    first_id = next(iter(users))
+    first = users[first_id]
+    if OrgRole.OWNER not in first.org_roles:
+        users[first_id] = first.model_copy(
+            update={"org_roles": (*first.org_roles, OrgRole.OWNER)},
+        )
 
 
 def _seed_test_users(

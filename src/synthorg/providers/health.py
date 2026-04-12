@@ -222,6 +222,10 @@ class ProviderHealthTracker:
         self._lock = asyncio.Lock()
         self._auto_prune_threshold = auto_prune_threshold
 
+    def clear(self) -> None:
+        """Reset all health records for test isolation."""
+        self._records.clear()
+
     async def record(self, record: ProviderHealthRecord) -> None:
         """Append a health record.
 

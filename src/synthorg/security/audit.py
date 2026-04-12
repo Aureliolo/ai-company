@@ -46,6 +46,11 @@ class AuditLog:
         self._entries: deque[AuditEntry] = deque(maxlen=max_entries)
         self._total_recorded: int = 0
 
+    def clear(self) -> None:
+        """Reset all audit entries for test isolation."""
+        self._entries.clear()
+        self._total_recorded = 0
+
     def record(self, entry: AuditEntry) -> None:
         """Append an audit entry.
 

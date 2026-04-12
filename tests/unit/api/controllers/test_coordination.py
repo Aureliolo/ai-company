@@ -79,7 +79,7 @@ def mock_coordinator() -> AsyncMock:
 
 
 @pytest.fixture
-def agent_registry() -> AgentRegistryService:
+def local_agent_registry() -> AgentRegistryService:
     return AgentRegistryService()
 
 
@@ -89,7 +89,7 @@ def coordination_client(
     fake_message_bus: FakeMessageBus,
     auth_service: AuthService,
     mock_coordinator: AsyncMock,
-    agent_registry: AgentRegistryService,
+    local_agent_registry: AgentRegistryService,
 ) -> Generator[TestClient[Any]]:
     """Test client with coordinator and agent registry configured."""
     from tests.unit.api.conftest import _seed_test_users
@@ -132,7 +132,7 @@ def coordination_client(
         auth_service=auth_service,
         task_engine=task_engine,
         coordinator=mock_coordinator,
-        agent_registry=agent_registry,
+        agent_registry=local_agent_registry,
         settings_service=settings_service,
     )
     with TestClient(app) as client:
@@ -146,10 +146,10 @@ class TestCoordinationControllerHappyPath:
         self,
         coordination_client: TestClient[Any],
         mock_coordinator: AsyncMock,
-        agent_registry: AgentRegistryService,
+        local_agent_registry: AgentRegistryService,
     ) -> None:
         agent = _make_agent()
-        await agent_registry.register(agent)
+        await local_agent_registry.register(agent)
 
         resp = coordination_client.post(
             "/api/v1/tasks",
@@ -183,10 +183,10 @@ class TestCoordinationControllerHappyPath:
         self,
         coordination_client: TestClient[Any],
         mock_coordinator: AsyncMock,
-        agent_registry: AgentRegistryService,
+        local_agent_registry: AgentRegistryService,
     ) -> None:
         agent = _make_agent("alice")
-        await agent_registry.register(agent)
+        await local_agent_registry.register(agent)
 
         resp = coordination_client.post(
             "/api/v1/tasks",
@@ -218,11 +218,11 @@ class TestCoordinationControllerHappyPath:
         self,
         coordination_client: TestClient[Any],
         mock_coordinator: AsyncMock,
-        agent_registry: AgentRegistryService,
+        local_agent_registry: AgentRegistryService,
     ) -> None:
         """Coordination returns is_success=False for failed phases."""
         agent = _make_agent()
-        await agent_registry.register(agent)
+        await local_agent_registry.register(agent)
 
         resp = coordination_client.post(
             "/api/v1/tasks",
@@ -312,10 +312,10 @@ class TestCoordinationControllerErrors:
         self,
         coordination_client: TestClient[Any],
         mock_coordinator: AsyncMock,
-        agent_registry: AgentRegistryService,
+        local_agent_registry: AgentRegistryService,
     ) -> None:
         agent = _make_agent()
-        await agent_registry.register(agent)
+        await local_agent_registry.register(agent)
 
         resp = coordination_client.post(
             "/api/v1/tasks",

@@ -47,6 +47,10 @@ class AgentRegistryService:
         self._lock = asyncio.Lock()
         self._versioning = versioning
 
+    def clear(self) -> None:
+        """Reset all registered agents for test isolation."""
+        self._agents.clear()
+
     async def register(
         self,
         identity: AgentIdentity,

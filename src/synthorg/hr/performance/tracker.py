@@ -151,6 +151,19 @@ class PerformanceTracker:
             declining_threshold=cfg.declining_threshold,
         )
 
+    def clear(self) -> None:
+        """Reset all recorded metrics for test isolation.
+
+        Cancels pending background tasks before clearing data.
+        """
+        for t in self._background_tasks:
+            t.cancel()
+        self._background_tasks.clear()
+        self._task_metrics.clear()
+        self._collab_metrics.clear()
+        self._contributions.clear()
+        self._trend_direction_cache.clear()
+
     async def aclose(self) -> None:
         """Cancel and await all pending background tasks.
 

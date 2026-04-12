@@ -63,6 +63,11 @@ class DelegationRecordStore:
         self._lock: asyncio.Lock = asyncio.Lock()
         self._eviction_warned: bool = False
 
+    def clear(self) -> None:
+        """Reset all delegation records for test isolation."""
+        self._records.clear()
+        self._eviction_warned = False
+
     def record_sync(self, delegation: DelegationRecord) -> None:
         """Append a delegation record (sync, for cooperative scheduling).
 
