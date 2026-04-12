@@ -5,6 +5,7 @@ execution traces into concise strategic learnings (GEMS two-tier
 architecture).
 """
 
+import hashlib
 import json
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
@@ -204,7 +205,10 @@ class LLMExperienceCompressor:
             logger.warning(
                 EXPERIENCE_COMPRESSION_FAILED,
                 error=f"JSON decode failed: {exc}",
-                raw_content=response.content[:200],
+                content_length=len(response.content),
+                content_hash=hashlib.sha256(
+                    response.content.encode("utf-8"),
+                ).hexdigest()[:16],
             )
             msg = f"malformed compression output: {exc}"
             raise ValueError(msg) from exc
@@ -241,19 +245,28 @@ class LLMExperienceCompressor:
         ratio = compressed_len / max(raw_len, 1)
         ratio = min(ratio, 1.0)
 
-        experience = CompressedExperience(
-            id=str(uuid4()),
-            agent_id=agent_id,
-            strategic_decisions=decisions,
-            applicable_contexts=contexts,
-            source_artifact_ids=source_artifact_ids,
-            compression_ratio=max(ratio, 0.01),
-            compressor_version=_COMPRESSOR_VERSION,
-            metadata=MemoryMetadata(
-                tags=("compressed_experience",),
-            ),
-            created_at=datetime.now(UTC),
-        )
+        try:
+            experience = CompressedExperience(
+                id=str(uuid4()),
+                agent_id=agent_id,
+                strategic_decisions=decisions,
+                applicable_contexts=contexts,
+                source_artifact_ids=source_artifact_ids,
+                compression_ratio=max(ratio, 0.01),
+                compressor_version=_COMPRESSOR_VERSION,
+                metadata=MemoryMetadata(
+                    tags=("compressed_experience",),
+                ),
+                created_at=datetime.now(UTC),
+            )
+        except Exception as exc:
+            logger.warning(
+                EXPERIENCE_COMPRESSION_FAILED,
+                error=f"CompressedExperience validation failed: {exc}",
+                agent_id=agent_id,
+                source_artifact_count=len(source_artifact_ids),
+            )
+            raise
         logger.info(
             EXPERIENCE_COMPRESSED,
             decisions_count=len(decisions),

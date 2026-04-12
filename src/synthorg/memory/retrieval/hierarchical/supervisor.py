@@ -123,11 +123,11 @@ class SupervisorRouter:
                 MEMORY_HIERARCHICAL_ROUTING,
                 action="fallback",
                 reason=f"LLM routing failed: {exc}",
-                query_text=query.text[:80],
+                query_length=len(query.text),
             )
             return WorkerRoutingDecision(
                 selected_workers=_DEFAULT_FALLBACK_WORKERS,
-                reason=f"LLM routing fallback: {exc}",
+                reason="LLM routing fallback",
             )
 
     async def evaluate_for_retry(
@@ -196,7 +196,7 @@ class SupervisorRouter:
             logger.warning(
                 MEMORY_HIERARCHICAL_ROUTING,
                 action="json_parse_failed",
-                raw_content=response.content[:200],
+                content_length=len(response.content),
                 error=str(exc),
             )
             raise
@@ -210,8 +210,7 @@ class SupervisorRouter:
             MEMORY_HIERARCHICAL_ROUTING,
             action="decided",
             workers=list(workers),
-            reason=reason,
-            query_text=query.text[:80],
+            query_length=len(query.text),
         )
         return WorkerRoutingDecision(
             selected_workers=workers,
@@ -252,7 +251,7 @@ class SupervisorRouter:
             logger.warning(
                 MEMORY_HIERARCHICAL_RETRY,
                 action="json_parse_failed",
-                raw_content=response.content[:200],
+                content_length=len(response.content),
                 error=str(exc),
             )
             return None
@@ -266,12 +265,14 @@ class SupervisorRouter:
                 corrected_query = type(query).model_validate(
                     query.model_dump(mode="python") | {"text": corrected_text},
                 )
+            except builtins.MemoryError, RecursionError:
+                raise
             except Exception as exc:
                 logger.debug(
                     MEMORY_HIERARCHICAL_RETRY,
                     action="corrected_query_invalid",
                     error=str(exc),
-                    corrected_text=str(corrected_text)[:80],
+                    corrected_length=len(str(corrected_text)),
                 )
                 corrected_query = None
 

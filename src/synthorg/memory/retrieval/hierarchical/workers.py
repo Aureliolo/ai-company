@@ -111,7 +111,7 @@ class SemanticWorker:
         logger.debug(
             MEMORY_HIERARCHICAL_WORKER_START,
             worker=self.name,
-            query_text=query.text[:80],
+            query_length=len(query.text),
         )
         try:
             mem_query = MemoryQuery(
@@ -257,7 +257,7 @@ class EpisodicWorker:
         logger.debug(
             MEMORY_HIERARCHICAL_WORKER_START,
             worker=self.name,
-            query_text=query.text[:80],
+            query_length=len(query.text),
         )
         try:
             since = datetime.now(UTC) - timedelta(
@@ -349,7 +349,7 @@ class ProceduralWorker:
         logger.debug(
             MEMORY_HIERARCHICAL_WORKER_START,
             worker=self.name,
-            query_text=query.text[:80],
+            query_length=len(query.text),
         )
         try:
             mem_query = MemoryQuery(

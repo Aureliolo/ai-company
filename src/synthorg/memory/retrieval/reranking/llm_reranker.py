@@ -120,7 +120,7 @@ class LLMQuerySpecificReranker:
                 MEMORY_RERANK_FAILED,
                 error=str(exc),
                 candidate_count=len(candidates),
-                query_text=query.text[:80],
+                query_length=len(query.text),
             )
             return candidates
         else:
@@ -132,7 +132,7 @@ class LLMQuerySpecificReranker:
             logger.info(
                 MEMORY_RERANK_COMPLETE,
                 candidate_count=len(reranked),
-                query_text=query.text[:80],
+                query_length=len(query.text),
             )
             return reranked
 

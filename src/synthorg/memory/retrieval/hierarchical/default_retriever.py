@@ -5,6 +5,7 @@ Implements the 4-phase pipeline: Route -> Execute -> Merge -> Retry.
 
 import asyncio
 import builtins
+from types import MappingProxyType
 from typing import TYPE_CHECKING
 
 from synthorg.memory.retrieval.models import (
@@ -75,7 +76,12 @@ class DefaultHierarchicalRetriever:
         config: MemoryRetrievalConfig,
     ) -> None:
         self._supervisor = supervisor
-        self._workers = dict(workers)
+        # Freeze the worker registry so routing cannot be mutated
+        # after construction.  Deepcopy is skipped because
+        # ``RetrievalWorker`` instances hold live backend references.
+        self._workers: Mapping[str, RetrievalWorker] = MappingProxyType(
+            dict(workers),
+        )
         self._config = config
 
     async def retrieve(
