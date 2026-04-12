@@ -10,6 +10,7 @@ import type { McpCatalogSet, McpCatalogState } from './types'
 const log = createLogger('mcp-catalog')
 
 let _searchDebounceHandle: ReturnType<typeof setTimeout> | null = null
+let _searchGeneration = 0
 
 export function createListActions(set: McpCatalogSet) {
   return {
@@ -29,25 +30,31 @@ export function createListActions(set: McpCatalogSet) {
 
     setSearchQuery: async (q: string) => {
       set({ searchQuery: q })
-      if (_searchDebounceHandle !== null) clearTimeout(_searchDebounceHandle)
+      if (_searchDebounceHandle !== null) {
+        clearTimeout(_searchDebounceHandle)
+        _searchDebounceHandle = null
+      }
       if (!q.trim()) {
         set({ searchResults: null, searchLoading: false })
         return
       }
       set({ searchLoading: true })
-      await new Promise<void>((resolve) => {
-        _searchDebounceHandle = setTimeout(resolve, 200)
-      })
-      try {
-        const results = await searchMcpCatalog(q)
-        set({
-          searchResults: results as readonly McpCatalogEntry[],
-          searchLoading: false,
-        })
-      } catch (err) {
-        log.warn('MCP search failed:', getErrorMessage(err))
-        set({ searchResults: [], searchLoading: false })
-      }
+      const generation = ++_searchGeneration
+      _searchDebounceHandle = setTimeout(async () => {
+        if (generation !== _searchGeneration) return
+        try {
+          const results = await searchMcpCatalog(q)
+          if (generation !== _searchGeneration) return
+          set({
+            searchResults: results as readonly McpCatalogEntry[],
+            searchLoading: false,
+          })
+        } catch (err) {
+          if (generation !== _searchGeneration) return
+          log.warn('MCP search failed:', getErrorMessage(err))
+          set({ searchResults: [], searchLoading: false })
+        }
+      }, 200)
     },
 
     selectEntry: (entry: McpCatalogState['selectedEntry']) =>

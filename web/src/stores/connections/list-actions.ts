@@ -58,7 +58,7 @@ export function createListActions(set: ConnectionsSet, get: ConnectionsGet) {
           checkingHealth: state.checkingHealth.filter((n) => n !== name),
         })
       } catch (err) {
-        log.warn(`Health check failed for ${name}:`, getErrorMessage(err))
+        log.warn('Health check failed for connection:', name, getErrorMessage(err))
         const state = get()
         set({
           checkingHealth: state.checkingHealth.filter((n) => n !== name),

@@ -3,7 +3,7 @@ import type { ApiResponse, HealthReport } from '../types'
 
 export async function listIntegrationHealth(): Promise<readonly HealthReport[]> {
   const response = await apiClient.get<ApiResponse<readonly HealthReport[]>>(
-    '/integrations/health/',
+    '/integrations/health',
   )
   return unwrap(response)
 }

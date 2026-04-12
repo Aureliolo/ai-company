@@ -125,7 +125,7 @@ class MCPCatalogController(Controller):
         service = app_state.mcp_catalog_service
         installations_repo = app_state.mcp_installations_repo
         connection_catalog = (
-            app_state._connection_catalog  # noqa: SLF001
+            app_state.connection_catalog if app_state.has_connection_catalog else None
         )
 
         try:
@@ -136,10 +136,27 @@ class MCPCatalogController(Controller):
                 installations_repo=installations_repo,
             )
         except CatalogEntryNotFoundError as exc:
+            logger.warning(
+                MCP_CATALOG_ENTRY_NOT_FOUND,
+                entry_id=entry_id,
+                error=str(exc),
+            )
             raise NotFoundError(str(exc)) from exc
         except ConnectionNotFoundError as exc:
+            logger.warning(
+                MCP_CATALOG_ENTRY_NOT_FOUND,
+                entry_id=entry_id,
+                connection_name=connection_name,
+                error=str(exc),
+            )
             raise NotFoundError(str(exc)) from exc
         except InvalidConnectionAuthError as exc:
+            logger.warning(
+                MCP_CATALOG_ENTRY_NOT_FOUND,
+                entry_id=entry_id,
+                connection_name=connection_name,
+                error=str(exc),
+            )
             raise ApiValidationError(str(exc)) from exc
 
         # NB: we intentionally don't re-log ``MCP_SERVER_INSTALLED``

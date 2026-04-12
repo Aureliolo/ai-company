@@ -243,7 +243,7 @@ class ConnectionsController(Controller):
 
     @get(
         "/{name:str}/secrets/{field:str}",
-        guards=[require_read_access],
+        guards=[require_write_access],
         summary="Reveal a single credential field",
     )
     async def reveal_secret(
@@ -263,7 +263,7 @@ class ConnectionsController(Controller):
         try:
             credentials = await catalog.get_credentials(name)
         except ConnectionNotFoundError as exc:
-            logger.info(
+            logger.warning(
                 CONNECTION_SECRET_REVEAL_FAILED,
                 connection_name=name,
                 field=field,
@@ -286,7 +286,7 @@ class ConnectionsController(Controller):
 
         value = credentials.get(field)
         if value is None:
-            logger.info(
+            logger.warning(
                 CONNECTION_SECRET_REVEAL_FAILED,
                 connection_name=name,
                 field=field,

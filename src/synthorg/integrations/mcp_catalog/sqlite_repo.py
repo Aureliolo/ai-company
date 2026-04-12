@@ -179,8 +179,13 @@ class InMemoryMcpInstallationRepository:
         return self._store.get(catalog_entry_id)
 
     async def list_all(self) -> tuple[McpInstallation, ...]:
-        """List all installations in insertion order."""
-        return tuple(self._store.values())
+        """List all installations ordered by ``installed_at`` ASC.
+
+        Matches the SQLite backend so behavior is consistent.
+        """
+        return tuple(
+            sorted(self._store.values(), key=lambda i: i.installed_at),
+        )
 
     async def delete(self, catalog_entry_id: NotBlankStr) -> bool:
         """Delete by catalog entry id."""

@@ -33,5 +33,10 @@ export const useMcpCatalogStore = create<McpCatalogState>()((set, get) => ({
   ...INITIAL_STATE,
   ...createListActions(set),
   ...createInstallActions(set, get),
-  reset: () => set({ ...INITIAL_STATE }),
+  reset: () =>
+    set({
+      ...INITIAL_STATE,
+      installedEntryIds: new Set<string>(),
+      installContext: { ...EMPTY_INSTALL_CONTEXT },
+    }),
 }))

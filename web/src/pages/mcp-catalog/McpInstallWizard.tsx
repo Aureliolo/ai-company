@@ -47,12 +47,36 @@ export function McpInstallWizard({ onRequestCreateConnection }: McpInstallWizard
     }
   }, [flow, requiredType, confirmInstall])
 
-  if (flow === 'idle' || entry === null) {
+  if (flow === 'idle') {
     return null
   }
 
   const isOpen = true
   const handleClose = () => resetInstall()
+
+  if (entry === null && flow === 'error') {
+    return (
+      <Dialog open={isOpen} onOpenChange={(next) => !next && handleClose()}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Install failed</DialogTitle>
+            <DialogCloseButton />
+          </DialogHeader>
+          <div className="p-card">
+            <ErrorStep
+              message={context.errorMessage ?? 'Catalog entry not found'}
+              onRetry={handleClose}
+              onCancel={handleClose}
+            />
+          </div>
+        </DialogContent>
+      </Dialog>
+    )
+  }
+
+  if (entry === null) {
+    return null
+  }
 
   return (
     <Dialog open={isOpen} onOpenChange={(next) => !next && handleClose()}>

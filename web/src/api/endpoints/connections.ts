@@ -9,7 +9,7 @@ import type {
 } from '../types'
 
 export async function listConnections(): Promise<readonly Connection[]> {
-  const response = await apiClient.get<ApiResponse<readonly Connection[]>>('/connections/')
+  const response = await apiClient.get<ApiResponse<readonly Connection[]>>('/connections')
   return unwrap(response)
 }
 
@@ -23,7 +23,7 @@ export async function getConnection(name: string): Promise<Connection> {
 export async function createConnection(
   data: CreateConnectionRequest,
 ): Promise<Connection> {
-  const response = await apiClient.post<ApiResponse<Connection>>('/connections/', data)
+  const response = await apiClient.post<ApiResponse<Connection>>('/connections', data)
   return unwrap(response)
 }
 

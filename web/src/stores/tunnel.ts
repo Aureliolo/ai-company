@@ -37,6 +37,8 @@ const INITIAL_STATE = {
   autoStop: true,
 }
 
+let _operationGeneration = 0
+
 export const useTunnelStore = create<TunnelState>()((set) => ({
   ...INITIAL_STATE,
 
@@ -56,9 +58,11 @@ export const useTunnelStore = create<TunnelState>()((set) => ({
   },
 
   start: async () => {
+    const gen = ++_operationGeneration
     set({ phase: 'enabling', error: null })
     try {
       const { public_url } = await apiStartTunnel()
+      if (gen !== _operationGeneration) return
       set({ phase: 'on', publicUrl: public_url, error: null })
       useToastStore.getState().add({
         variant: 'success',
@@ -66,6 +70,7 @@ export const useTunnelStore = create<TunnelState>()((set) => ({
         description: public_url,
       })
     } catch (err) {
+      if (gen !== _operationGeneration) return
       const message = getErrorMessage(err)
       log.error('Failed to start tunnel:', message)
       set({ phase: 'error', error: message, publicUrl: null })
@@ -78,15 +83,18 @@ export const useTunnelStore = create<TunnelState>()((set) => ({
   },
 
   stop: async () => {
+    const gen = ++_operationGeneration
     set({ phase: 'disabling' })
     try {
       await apiStopTunnel()
+      if (gen !== _operationGeneration) return
       set({ phase: 'stopped', publicUrl: null, error: null })
       useToastStore.getState().add({
         variant: 'info',
         title: 'Tunnel stopped',
       })
     } catch (err) {
+      if (gen !== _operationGeneration) return
       const message = getErrorMessage(err)
       log.error('Failed to stop tunnel:', message)
       set({ phase: 'error', error: message })

@@ -361,7 +361,7 @@ class TestMCPCatalogController:
             "app_state": MagicMock(
                 mcp_catalog_service=CatalogService(),
                 mcp_installations_repo=repo,
-                _connection_catalog=None,
+                has_connection_catalog=False,
             ),
         }
         ctrl = MCPCatalogController(owner=MCPCatalogController)  # type: ignore[arg-type]
@@ -398,7 +398,7 @@ class TestMCPCatalogController:
             "app_state": MagicMock(
                 mcp_catalog_service=CatalogService(),
                 mcp_installations_repo=InMemoryMcpInstallationRepository(),
-                _connection_catalog=None,
+                has_connection_catalog=False,
             ),
         }
         ctrl = MCPCatalogController(owner=MCPCatalogController)  # type: ignore[arg-type]
@@ -420,7 +420,7 @@ class TestMCPCatalogController:
             "app_state": MagicMock(
                 mcp_catalog_service=CatalogService(),
                 mcp_installations_repo=InMemoryMcpInstallationRepository(),
-                _connection_catalog=None,
+                has_connection_catalog=False,
             ),
         }
         ctrl = MCPCatalogController(owner=MCPCatalogController)  # type: ignore[arg-type]
@@ -435,9 +435,6 @@ class TestMCPCatalogController:
         )
 
         catalog = MagicMock()
-        catalog.get = AsyncMock(
-            return_value=_make_conn("slacky"),  # GitHub type; doesn't match
-        )
         wrong_type_conn = Connection(
             name=NotBlankStr("slacky"),
             connection_type=ConnectionType.SLACK,
@@ -449,7 +446,8 @@ class TestMCPCatalogController:
             "app_state": MagicMock(
                 mcp_catalog_service=CatalogService(),
                 mcp_installations_repo=InMemoryMcpInstallationRepository(),
-                _connection_catalog=catalog,
+                has_connection_catalog=True,
+                connection_catalog=catalog,
             ),
         }
         ctrl = MCPCatalogController(owner=MCPCatalogController)  # type: ignore[arg-type]
@@ -483,7 +481,7 @@ class TestMCPCatalogController:
             "app_state": MagicMock(
                 mcp_catalog_service=CatalogService(),
                 mcp_installations_repo=repo,
-                _connection_catalog=None,
+                has_connection_catalog=False,
             ),
         }
         ctrl = MCPCatalogController(owner=MCPCatalogController)  # type: ignore[arg-type]
@@ -506,7 +504,7 @@ class TestMCPCatalogController:
             "app_state": MagicMock(
                 mcp_catalog_service=CatalogService(),
                 mcp_installations_repo=InMemoryMcpInstallationRepository(),
-                _connection_catalog=None,
+                has_connection_catalog=False,
             ),
         }
         ctrl = MCPCatalogController(owner=MCPCatalogController)  # type: ignore[arg-type]

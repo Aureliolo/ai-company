@@ -92,10 +92,10 @@ export const CONNECTION_TYPE_FIELDS: Record<ConnectionType, ConnectionTypeSpec> 
         placeholder: 'postgresql',
         hint: 'postgresql, mysql, or sqlite',
       },
-      { key: 'host', label: 'Host', type: 'text', required: true },
-      { key: 'port', label: 'Port', type: 'number', required: true },
-      { key: 'username', label: 'Username', type: 'text', required: true },
-      { key: 'password', label: 'Password', type: 'password', required: true },
+      { key: 'host', label: 'Host', type: 'text', required: false, hint: 'Not required for SQLite' },
+      { key: 'port', label: 'Port', type: 'number', required: false },
+      { key: 'username', label: 'Username', type: 'text', required: false },
+      { key: 'password', label: 'Password', type: 'password', required: false },
       { key: 'database', label: 'Database', type: 'text', required: true },
     ],
   },
@@ -145,7 +145,7 @@ export function validateConnectionField(
   if (spec.type === 'url' && value.trim()) {
     try {
       const url = new URL(value)
-      if (!url.protocol.startsWith('http')) {
+      if (url.protocol !== 'http:' && url.protocol !== 'https:') {
         return `${spec.label} must be an http(s) URL`
       }
     } catch {

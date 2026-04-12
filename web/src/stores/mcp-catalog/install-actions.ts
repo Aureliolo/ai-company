@@ -17,6 +17,8 @@ const EMPTY_CONTEXT: InstallContext = {
   result: null,
 }
 
+let _installGeneration = 0
+
 export function createInstallActions(
   set: McpCatalogSet,
   get: McpCatalogGet,
@@ -52,12 +54,14 @@ export function createInstallActions(
     confirmInstall: async (): Promise<McpInstallResponse | null> => {
       const ctx = get().installContext
       if (ctx.entryId === null) return null
+      const generation = ++_installGeneration
       set({ installFlow: 'installing' })
       try {
         const result = await installMcpServer({
           catalog_entry_id: ctx.entryId,
           connection_name: ctx.connectionName ?? undefined,
         })
+        if (generation !== _installGeneration) return null
         const installed = new Set(get().installedEntryIds)
         installed.add(ctx.entryId)
         set({
@@ -68,10 +72,11 @@ export function createInstallActions(
         useToastStore.getState().add({
           variant: 'success',
           title: `${result.server_name} installed`,
-          description: `${result.tool_count} tools available after MCP bridge reload`,
+          description: `${String(result.tool_count)} tools available after MCP bridge reload`,
         })
         return result
       } catch (err) {
+        if (generation !== _installGeneration) return null
         log.error('MCP install failed:', getErrorMessage(err))
         set({
           installFlow: 'error',
@@ -112,10 +117,12 @@ export function createInstallActions(
       }
     },
 
-    resetInstall: () =>
+    resetInstall: () => {
+      ++_installGeneration
       set({
         installFlow: 'idle',
-        installContext: EMPTY_CONTEXT,
-      }),
+        installContext: { ...EMPTY_CONTEXT },
+      })
+    },
   }
 }

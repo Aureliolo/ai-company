@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Eye, EyeOff, KeyRound, MoreVertical } from 'lucide-react'
 import { revealConnectionSecret } from '@/api/endpoints/connections'
 import type { Connection } from '@/api/types'
@@ -29,10 +29,22 @@ export function OauthAppCard({
 }: OauthAppCardProps) {
   const [revealedSecret, setRevealedSecret] = useState<string | null>(null)
   const [revealing, setRevealing] = useState(false)
+  const revealTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  useEffect(
+    () => () => {
+      if (revealTimerRef.current !== null) clearTimeout(revealTimerRef.current)
+    },
+    [],
+  )
 
   async function handleReveal() {
     if (revealedSecret !== null) {
       setRevealedSecret(null)
+      if (revealTimerRef.current !== null) {
+        clearTimeout(revealTimerRef.current)
+        revealTimerRef.current = null
+      }
       return
     }
     setRevealing(true)
@@ -47,8 +59,10 @@ export function OauthAppCard({
         title: 'Client secret revealed',
         description: 'The reveal has been audit-logged server-side.',
       })
-      // Auto-clear after TTL so a walk-away user doesn't leave it on-screen.
-      setTimeout(() => setRevealedSecret(null), REVEAL_TTL_MS)
+      revealTimerRef.current = setTimeout(() => {
+        setRevealedSecret(null)
+        revealTimerRef.current = null
+      }, REVEAL_TTL_MS)
     } catch (err) {
       log.warn('Reveal secret failed:', getErrorMessage(err))
       useToastStore.getState().add({

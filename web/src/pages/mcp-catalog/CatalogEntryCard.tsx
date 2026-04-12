@@ -20,11 +20,18 @@ export function CatalogEntryCard({
 }: CatalogEntryCardProps) {
   const Icon = getCatalogEntryIcon(entry.id)
   return (
-    <button
-      type="button"
+    <div
+      role="button"
+      tabIndex={0}
       onClick={onSelect}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault()
+          onSelect()
+        }
+      }}
       className={cn(
-        'group flex h-full flex-col gap-3 rounded-lg border border-border bg-card p-card text-left',
+        'group flex h-full cursor-pointer flex-col gap-3 rounded-lg border border-border bg-card p-card text-left',
         'transition-all duration-200',
         'hover:bg-card-hover hover:-translate-y-px hover:shadow-[var(--so-shadow-card-hover)]',
         'focus:outline-none focus:ring-2 focus:ring-accent',
@@ -85,6 +92,6 @@ export function CatalogEntryCard({
           {installed ? 'Installed' : 'Install'}
         </Button>
       </div>
-    </button>
+    </div>
   )
 }

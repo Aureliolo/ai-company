@@ -164,12 +164,12 @@ GitHub, Slack, Filesystem, PostgreSQL, SQLite, Brave Search, Puppeteer, Memory.
 | `POST` | `/api/v1/integrations/mcp/catalog/install` | Install a catalog entry (dashboard-driven, idempotent) |
 | `DELETE` | `/api/v1/integrations/mcp/catalog/install/{entry_id}` | Uninstall a catalog entry (idempotent) |
 
-Installed catalog entries are persisted in the ``mcp_installations``
-table and merged into the effective ``MCPConfig.servers`` at bridge
-startup via :func:`synthorg.integrations.mcp_catalog.install.merge_installed_servers`.
-This keeps dashboard installs out-of-band from the user-owned YAML
-config and ensures they survive restarts without rewriting the
-config file.
+Installed catalog entries are persisted in the `mcp_installations`
+table and merged into the effective `MCPConfig.servers` at bridge
+startup via `merge_installed_servers()` in
+`synthorg.integrations.mcp_catalog.install`. This keeps dashboard
+installs out-of-band from the user-owned YAML config and ensures
+they survive restarts without rewriting the config file.
 
 ---
 
