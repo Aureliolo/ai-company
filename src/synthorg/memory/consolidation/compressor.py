@@ -241,6 +241,6 @@ class LLMExperienceCompressor:
             EXPERIENCE_COMPRESSED,
             decisions_count=len(decisions),
             contexts_count=len(contexts),
-            compression_ratio=ratio,
+            compression_ratio=experience.compression_ratio,
         )
         return experience

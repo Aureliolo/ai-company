@@ -154,7 +154,11 @@ class WikiExporter:
         """Export Tier 1 raw artifacts to ``raw/`` directory."""
         query = MemoryQuery(
             tags=(_DETAILED_TAG,),
-            limit=self._config.max_entries_per_view or 1000,
+            limit=(
+                self._config.max_entries_per_view
+                if self._config.max_entries_per_view is not None
+                else 1000
+            ),
         )
         try:
             entries = await self._backend.retrieve(agent_id, query)
@@ -219,7 +223,11 @@ class WikiExporter:
         """Export Tier 2 compressed experiences to ``wiki/`` directory."""
         query = MemoryQuery(
             tags=(_COMPRESSED_TAG,),
-            limit=self._config.max_entries_per_view or 1000,
+            limit=(
+                self._config.max_entries_per_view
+                if self._config.max_entries_per_view is not None
+                else 1000
+            ),
         )
         try:
             entries = await self._backend.retrieve(agent_id, query)
