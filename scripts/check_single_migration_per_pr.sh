@@ -15,7 +15,7 @@
 #   2. Ensure the resolved base ref is fetched (or fail in CI / skip locally).
 #   3. Count new `.sql` files added under both SQLite and Postgres revisions
 #      directories on HEAD that do not exist on the resolved base branch.
-#   4. Fail if the total count across both backends is greater than 1.
+#   4. Fail if any single backend has more than 1 new migration.
 #
 # The script runs on every commit (pre-commit stage) and every push (pre-push
 # stage). On the `main` branch itself the check is skipped (main never adds
@@ -74,9 +74,10 @@ if ! git show-ref --verify --quiet "refs/remotes/$BASE" \
     fi
 fi
 
-# Count new .sql files across both backends.
-NEW_COUNT=0
-NEW_FILES=()
+# Count new .sql files per backend (allow 1 per backend since a single
+# schema change generates one migration file for each backend).
+ALL_NEW_FILES=()
+FAILED_BACKEND=""
 
 for REVISIONS_DIR in "${REVISIONS_DIRS[@]}"; do
     # Find all .sql files under revisions/ (staged + committed).
@@ -86,21 +87,30 @@ for REVISIONS_DIR in "${REVISIONS_DIRS[@]}"; do
     done < <(git ls-files --cached -- "$REVISIONS_DIR/*.sql" 2>/dev/null || true)
 
     # For each file on HEAD, check whether it exists on the base branch.
+    BACKEND_COUNT=0
+    BACKEND_FILES=()
     for f in "${HEAD_FILES[@]}"; do
         if ! git cat-file -e "${BASE}:${f}" 2>/dev/null; then
-            NEW_COUNT=$((NEW_COUNT + 1))
-            NEW_FILES+=("$f")
+            BACKEND_COUNT=$((BACKEND_COUNT + 1))
+            BACKEND_FILES+=("$f")
+            ALL_NEW_FILES+=("$f")
         fi
     done
+
+    if [ "$BACKEND_COUNT" -gt 1 ]; then
+        FAILED_BACKEND="$REVISIONS_DIR"
+        break
+    fi
 done
 
-if [ "$NEW_COUNT" -gt 1 ]; then
+if [ -n "$FAILED_BACKEND" ]; then
     echo "" >&2
-    echo "ERROR: This PR adds $NEW_COUNT new Atlas migration files, but the policy" >&2
-    echo "allows at most ONE new migration per PR." >&2
+    echo "ERROR: This PR adds multiple new Atlas migration files in" >&2
+    echo "$FAILED_BACKEND, but the policy allows at most ONE new" >&2
+    echo "migration per backend per PR." >&2
     echo "" >&2
     echo "New migrations detected:" >&2
-    for f in "${NEW_FILES[@]}"; do
+    for f in "${ALL_NEW_FILES[@]}"; do
         echo "  - $f" >&2
     done
     echo "" >&2

@@ -185,12 +185,15 @@ class TestOwnerRevocationConstraint:
 
         # Transfer OWNER from CEO to manager so manager is the
         # sole owner and the delete trigger fires.
-        ceo = fake_persistence._users._users[ceo_id]
-        fake_persistence._users._users[ceo_id] = ceo.model_copy(
+        users_by_id = fake_persistence._users._users
+        ceo = users_by_id.get(ceo_id)
+        manager = users_by_id.get(manager_id)
+        assert ceo is not None, f"Missing seeded CEO user: {ceo_id}"
+        assert manager is not None, f"Missing seeded manager: {manager_id}"
+        users_by_id[ceo_id] = ceo.model_copy(
             update={"org_roles": ()},
         )
-        manager = fake_persistence._users._users[manager_id]
-        fake_persistence._users._users[manager_id] = manager.model_copy(
+        users_by_id[manager_id] = manager.model_copy(
             update={"org_roles": (OrgRole.OWNER,)},
         )
 

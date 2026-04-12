@@ -15,6 +15,7 @@ migrations, squash the first 4 into a checkpoint, then verify that:
   clear error (expected -- the individual files it needs are gone)
 """
 
+import os
 import sqlite3
 import subprocess
 import time
@@ -23,6 +24,24 @@ from pathlib import Path, PurePosixPath, PureWindowsPath
 import pytest
 
 pytestmark = [pytest.mark.integration, pytest.mark.slow]
+
+
+def _atlas_checkpoint_available() -> bool:
+    """Return True if ``atlas migrate checkpoint`` is available (Atlas Pro)."""
+    result = subprocess.run(
+        ["atlas", "migrate", "checkpoint", "--help"],  # noqa: S607
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    # Free-tier Atlas exits non-zero with "available only to Atlas Pro"
+    return "pro" not in result.stderr.lower()
+
+
+_skip_no_checkpoint = pytest.mark.skipif(
+    not _atlas_checkpoint_available(),
+    reason="atlas migrate checkpoint requires Atlas Pro",
+)
 
 # Incremental schema states for generating 6 migrations.
 _SCHEMA_STEPS: tuple[str, ...] = (
@@ -226,8 +245,9 @@ def squash_project(
 ) -> tuple[Path, Path, list[str]]:
     """Create a project with 6 migrations and a squashed variant.
 
-    Session-scoped so the expensive migration generation + checkpoint
-    creation happens once, shared across all xdist workers.
+    Session-scoped to avoid repeating the expensive migration
+    generation + checkpoint creation within a single pytest process.
+    Under pytest-xdist, this fixture still runs once per worker.
 
     Returns (original_revisions, squashed_revisions, migration_files).
     """
@@ -243,6 +263,7 @@ def squash_project(
     return original, squashed, files
 
 
+@_skip_no_checkpoint
 class TestMigrationSquashUpgradePaths:
     """Verify databases at various migration points upgrade through squash."""
 
@@ -317,11 +338,15 @@ class TestMigrationSquashUpgradePaths:
         if probe.returncode != 0:
             pytest.skip("atlas not available in bash PATH")
 
+        # Set threshold absurdly high so the script never triggers an
+        # actual squash against the real repo's migration directory.
+        env = {**os.environ, "SQUASH_THRESHOLD": "999999"}
         result = subprocess.run(
             ["bash", "scripts/squash_migrations.sh"],  # noqa: S607
             capture_output=True,
             text=True,
             check=False,
+            env=env,
         )
         assert result.returncode == 0
         assert "Below threshold" in result.stdout

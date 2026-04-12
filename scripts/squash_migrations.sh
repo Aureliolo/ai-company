@@ -42,6 +42,11 @@ fi
 any_failed=0
 any_squashed=0
 
+# Clean up temp directories on unexpected exit (set -e, signals).
+_TMP_DIRS=()
+cleanup() { for d in "${_TMP_DIRS[@]}"; do rm -rf "$d"; done; }
+trap cleanup EXIT
+
 for backend in "${BACKENDS[@]}"; do
     MIGRATION_DIR="src/synthorg/persistence/$backend/revisions"
     echo "=== $backend ==="
@@ -107,11 +112,12 @@ for backend in "${BACKENDS[@]}"; do
     if [ "$backend" = "sqlite" ]; then
         DEV_URL="sqlite://file?mode=memory"
     else
-        DEV_URL="docker://postgres/18/dev?search_path=public"
+        DEV_URL="${POSTGRES_DEV_URL:-docker://postgres/18/dev?search_path=public}"
     fi
 
     # 1. Copy files to squash into a temp directory.
     tmp_partial=$(mktemp -d)
+    _TMP_DIRS+=("$tmp_partial")
     for ((i = 0; i < squash_count; i++)); do
         cp "$MIGRATION_DIR/${ALL_MIGRATIONS[$i]}" "$tmp_partial/"
     done
@@ -126,22 +132,22 @@ for backend in "${BACKENDS[@]}"; do
         continue
     fi
 
-    # 3. Find the checkpoint file (the new .sql file).
+    # 3. Find the checkpoint file (the new .sql file) using an
+    #    associative array for O(n) lookup instead of nested loops.
+    declare -A original_set
+    for ((i = 0; i < squash_count; i++)); do
+        original_set["${ALL_MIGRATIONS[$i]}"]=1
+    done
+
     cp_orig=""
     for f in "$tmp_partial"/*.sql; do
         fname="$(basename "$f")"
-        is_original=0
-        for ((i = 0; i < squash_count; i++)); do
-            if [ "$fname" = "${ALL_MIGRATIONS[$i]}" ]; then
-                is_original=1
-                break
-            fi
-        done
-        if [ "$is_original" -eq 0 ]; then
+        if [[ -z "${original_set[$fname]:-}" ]]; then
             cp_orig="$fname"
             break
         fi
     done
+    unset original_set
 
     if [ -z "$cp_orig" ]; then
         echo "$backend: could not identify checkpoint file." >&2
@@ -153,15 +159,12 @@ for backend in "${BACKENDS[@]}"; do
 
     # 4. Build the squashed directory: renamed checkpoint + remaining files.
     tmp_squashed=$(mktemp -d)
+    _TMP_DIRS+=("$tmp_squashed")
     cp_name="${cp_ts}_checkpoint.sql"
     cp "$tmp_partial/$cp_orig" "$tmp_squashed/$cp_name"
     for ((i = squash_count; i < count; i++)); do
         cp "$MIGRATION_DIR/${ALL_MIGRATIONS[$i]}" "$tmp_squashed/"
     done
-    # Also copy __init__.py if present.
-    if [ -f "$MIGRATION_DIR/__init__.py" ]; then
-        cp "$MIGRATION_DIR/__init__.py" "$tmp_squashed/"
-    fi
     atlas migrate hash --dir "file://$tmp_squashed"
 
     # 5. Replace the original directory contents.
