@@ -17,6 +17,7 @@ from synthorg.memory.models import MemoryEntry, MemoryMetadata
 from synthorg.observability import get_logger
 from synthorg.observability.events.consolidation import (
     EXPERIENCE_COMPRESSED,
+    EXPERIENCE_COMPRESSION_FAILED,
 )
 from synthorg.providers.enums import MessageRole
 from synthorg.providers.models import ChatMessage, CompletionConfig
@@ -184,14 +185,14 @@ class LLMExperienceCompressor:
         )
         if response.content is None:
             msg = "LLM returned empty content for compression"
-            logger.warning(EXPERIENCE_COMPRESSED, error=msg)
+            logger.warning(EXPERIENCE_COMPRESSION_FAILED, error=msg)
             raise ValueError(msg)
 
         try:
             parsed = json.loads(response.content)
         except json.JSONDecodeError as exc:
             logger.warning(
-                EXPERIENCE_COMPRESSED,
+                EXPERIENCE_COMPRESSION_FAILED,
                 error=f"JSON decode failed: {exc}",
                 raw_content=response.content[:200],
             )
@@ -200,7 +201,7 @@ class LLMExperienceCompressor:
         if not isinstance(parsed, dict):
             msg = f"LLM returned non-dict: {type(parsed).__name__}"
             logger.warning(
-                EXPERIENCE_COMPRESSED,
+                EXPERIENCE_COMPRESSION_FAILED,
                 error=msg,
             )
             raise TypeError(msg)
@@ -210,20 +211,20 @@ class LLMExperienceCompressor:
             isinstance(d, str) and d.strip() for d in raw_decisions
         ):
             msg = "strategic_decisions must be a list of non-blank strings"
-            logger.warning(EXPERIENCE_COMPRESSED, error=msg)
+            logger.warning(EXPERIENCE_COMPRESSION_FAILED, error=msg)
             raise ValueError(msg)
         if not isinstance(raw_contexts, list) or not all(
             isinstance(c, str) and c.strip() for c in raw_contexts
         ):
             msg = "applicable_contexts must be a list of non-blank strings"
-            logger.warning(EXPERIENCE_COMPRESSED, error=msg)
+            logger.warning(EXPERIENCE_COMPRESSION_FAILED, error=msg)
             raise ValueError(msg)
         decisions = tuple(raw_decisions)
         contexts = tuple(raw_contexts)
 
         if not decisions:
             msg = "LLM produced no strategic decisions"
-            logger.warning(EXPERIENCE_COMPRESSED, error=msg)
+            logger.warning(EXPERIENCE_COMPRESSION_FAILED, error=msg)
             raise ValueError(msg)
 
         compressed_len = len(response.content)

@@ -83,6 +83,7 @@ TWO_TIER_COMPRESSION_START: Final[str] = "consolidation.two_tier.start"
 TWO_TIER_COMPRESSION_COMPLETE: Final[str] = "consolidation.two_tier.complete"
 TWO_TIER_COMPRESSION_FAILED: Final[str] = "consolidation.two_tier.failed"
 EXPERIENCE_COMPRESSED: Final[str] = "consolidation.two_tier.compressed"
+EXPERIENCE_COMPRESSION_FAILED: Final[str] = "consolidation.two_tier.compression_failed"
 
 # ── Wiki export ────────────────────────────────────────────────
 
