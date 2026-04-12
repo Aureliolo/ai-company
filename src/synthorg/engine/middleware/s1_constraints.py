@@ -272,6 +272,7 @@ class ClarificationGateMiddleware(BaseCoordinationMiddleware):
                 MIDDLEWARE_CLARIFICATION_REQUIRED,
                 task_id=task.id,
                 reason_count=len(reasons),
+                reasons=reasons,
             )
             raise ClarificationRequiredError(
                 task_id=task.id,
@@ -344,8 +345,8 @@ class DelegationChainHashMiddleware(BaseAgentMiddleware):
                     agent_id=ctx.agent_id,
                     task_id=ctx.task_id,
                     parent_task_id=task.parent_task_id,
-                    root_hash=root_hash[:16],
-                    current_hash=content_hash[:16],
+                    root_hash=root_hash,
+                    current_hash=content_hash,
                 )
 
         return ctx.with_metadata(

@@ -272,7 +272,12 @@ class MagenticReplanHook:
                 )
             except MemoryError, RecursionError:
                 raise
-            except Exception:
+            except Exception as exc:
+                logger.warning(
+                    COORDINATION_REPLAN_BUDGET_BLOCKED,
+                    task_id=task.id,
+                    error=f"budget check failed: {type(exc).__name__}: {exc}",
+                )
                 can_afford = False
 
             if not can_afford:

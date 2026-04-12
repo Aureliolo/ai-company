@@ -230,6 +230,17 @@ class TestAgentMiddlewareChain:
         )
         assert chain.names == ("a", "b")
 
+    def test_rejects_duplicate_names(self) -> None:
+        from synthorg.engine.middleware.errors import MiddlewareConfigError
+
+        with pytest.raises(MiddlewareConfigError, match="Duplicate"):
+            AgentMiddlewareChain(
+                (
+                    BaseAgentMiddleware(name="a"),
+                    BaseAgentMiddleware(name="a"),
+                )
+            )
+
     async def test_before_agent_left_to_right(self) -> None:
         log: list[str] = []
         chain = AgentMiddlewareChain(
@@ -435,6 +446,23 @@ class TestAgentMiddlewareContext:
         updated = ctx.with_metadata("b", 2)
         assert updated.metadata["a"] == 1
         assert updated.metadata["b"] == 2
+
+    def test_metadata_defensive_copy(self) -> None:
+        """Modifying the input dict does not affect the frozen context."""
+        identity = _identity()
+        ctx_inner = AgentContext.from_identity(identity)
+        input_dict = {"key": "value"}
+        ctx = AgentMiddlewareContext(
+            agent_context=ctx_inner,
+            identity=identity,
+            task=_task(),
+            agent_id=str(identity.id),
+            task_id="task-1",
+            execution_id="exec-1",
+            metadata=input_dict,
+        )
+        input_dict["key"] = "mutated"
+        assert ctx.metadata["key"] == "value"
 
     def test_default_metadata_is_empty(self) -> None:
         ctx = _mw_context()

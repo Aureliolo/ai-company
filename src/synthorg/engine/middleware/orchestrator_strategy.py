@@ -7,6 +7,7 @@ within the ``CentralizedDispatcher``.  Two implementations:
 2. ``MagenticDynamicSelectStrategy`` -- prioritizes stalled subtasks
 """
 
+import re
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 from synthorg.observability import get_logger
@@ -91,10 +92,14 @@ class MagenticDynamicSelectStrategy:
             return subtask_ids
 
         # Extract subtask IDs mentioned in blocking issues
+        # Use word-boundary matching to prevent "task-1" matching "task-10"
         prioritized: list[str] = []
         for issue in progress.blocking_issues:
             for sid in subtask_ids:
-                if sid in issue and sid not in prioritized:
+                if (
+                    re.search(rf"\b{re.escape(sid)}\b", issue)
+                    and sid not in prioritized
+                ):
                     prioritized.append(sid)
 
         # Remaining subtasks in original order

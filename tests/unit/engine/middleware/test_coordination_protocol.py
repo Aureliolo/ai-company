@@ -306,6 +306,27 @@ class TestCoordinationMiddlewareContext:
         assert updated.metadata["key"] == "value"
         assert "key" not in ctx.metadata
 
+    def test_metadata_defensive_copy(self) -> None:
+        """Modifying the input dict does not affect the frozen context."""
+        input_dict = {"key": "value"}
+        ctx = CoordinationMiddlewareContext(
+            coordination_context=_coord_context(),
+            metadata=input_dict,
+        )
+        # Mutate the original dict
+        input_dict["key"] = "mutated"
+        # Context should be unaffected
+        assert ctx.metadata["key"] == "value"
+
+    def test_metadata_not_shared_between_copies(self) -> None:
+        """Metadata from with_metadata does not leak to the original."""
+        ctx = _mw_context()
+        updated = ctx.with_metadata("a", [1, 2, 3])
+        # Mutate the list in the updated context
+        updated.metadata["a"].append(4)
+        # Original should not have "a" at all
+        assert "a" not in ctx.metadata
+
     def test_default_fields_none(self) -> None:
         ctx = _mw_context()
         assert ctx.decomposition_result is None

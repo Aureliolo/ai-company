@@ -6,7 +6,10 @@ circular imports when ``CompanyConfig`` references these types.
 Only depends on ``core.types``.
 """
 
-from pydantic import BaseModel, ConfigDict, Field
+import re
+from typing import Self
+
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 
@@ -46,6 +49,17 @@ class AuthorityDeferenceConfig(BaseModel):
         ),
         description="Injected system prompt header",
     )
+
+    @model_validator(mode="after")
+    def _validate_patterns_compile(self) -> Self:
+        """Ensure all regex patterns are valid."""
+        for pattern in self.patterns:
+            try:
+                re.compile(pattern)
+            except re.error as exc:
+                msg = f"Invalid regex pattern {pattern!r}: {exc}"
+                raise ValueError(msg) from exc
+        return self
 
 
 class ClarificationGateConfig(BaseModel):

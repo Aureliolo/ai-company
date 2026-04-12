@@ -1691,7 +1691,7 @@ Default chain: `clarification_gate`, `task_ledger`, `plan_review_gate`, `progres
 
 | Middleware | Hook | S1 Risk | Behavior |
 |-----------|------|---------|----------|
-| `AuthorityDeferenceGuard` | `before_agent` | 2.2 | Strips authority cues from transcripts, injects justification header |
+| `AuthorityDeferenceGuard` | `before_agent` | 2.2 | Detects authority cues in transcripts, logs patterns, injects justification header |
 | `AssumptionViolationMiddleware` | `after_model` | 3.2 | Detects broken assumptions, emits escalation events |
 | `ClarificationGateMiddleware` | `before_decompose` | 3.3 | Validates acceptance criteria specificity |
 | `DelegationChainHashMiddleware` | `before_agent` | 4.3 | Records SHA-256 content hash for delegation drift detection |

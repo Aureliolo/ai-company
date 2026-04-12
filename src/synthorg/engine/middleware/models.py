@@ -263,6 +263,14 @@ class TaskLedger(BaseModel):
         description="When replaced by a newer version (None if current)",
     )
 
+    @model_validator(mode="after")
+    def _validate_temporal_ordering(self) -> Self:
+        """Ensure superseded_at is not before created_at."""
+        if self.superseded_at is not None and self.superseded_at < self.created_at:
+            msg = "superseded_at must be >= created_at"
+            raise ValueError(msg)
+        return self
+
 
 class ProgressLedger(BaseModel):
     """Per-round coordination progress snapshot.

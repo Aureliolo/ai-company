@@ -202,6 +202,16 @@ class AgentMiddlewareChain:
         self,
         middleware: tuple[AgentMiddleware, ...] = (),
     ) -> None:
+        names = [mw.name for mw in middleware]
+        seen: set[str] = set()
+        dupes = [n for n in names if n in seen or (seen.add(n) or False)]  # type: ignore[func-returns-value]
+        if dupes:
+            from synthorg.engine.middleware.errors import (  # noqa: PLC0415
+                MiddlewareConfigError,
+            )
+
+            msg = f"Duplicate middleware names in chain: {sorted(set(dupes))}"
+            raise MiddlewareConfigError(msg)
         self._middleware = middleware
 
     @property

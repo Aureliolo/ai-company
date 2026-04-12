@@ -9,7 +9,7 @@ on ``CoordinationMiddlewareContext`` (distinct from the agent-level
 import copy
 from typing import Any, Protocol, runtime_checkable
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.engine.coordination.models import (
     CoordinationContext,  # noqa: TC001
@@ -83,6 +83,17 @@ class CoordinationMiddlewareContext(BaseModel):
         default_factory=dict,
         description="Middleware-to-middleware data pass-through",
     )
+
+    @model_validator(mode="after")
+    def _deepcopy_metadata(self) -> CoordinationMiddlewareContext:
+        """Defensive copy so callers cannot mutate the frozen model."""
+        if self.metadata:
+            object.__setattr__(
+                self,
+                "metadata",
+                copy.deepcopy(self.metadata),
+            )
+        return self
 
     def with_metadata(
         self,
@@ -237,6 +248,16 @@ class CoordinationMiddlewareChain:
         self,
         middleware: tuple[CoordinationMiddleware, ...] = (),
     ) -> None:
+        names = [mw.name for mw in middleware]
+        seen: set[str] = set()
+        dupes = [n for n in names if n in seen or (seen.add(n) or False)]  # type: ignore[func-returns-value]
+        if dupes:
+            from synthorg.engine.middleware.errors import (  # noqa: PLC0415
+                MiddlewareConfigError,
+            )
+
+            msg = f"Duplicate middleware names in chain: {sorted(set(dupes))}"
+            raise MiddlewareConfigError(msg)
         self._middleware = middleware
 
     @property
