@@ -158,7 +158,7 @@ class _TrackingCoordMiddleware(BaseCoordinationMiddleware):
 
 @pytest.mark.unit
 class TestCoordinationMiddlewareChain:
-    """Chain composition: before_* left-to-right, after_* right-to-left."""
+    """Chain composition: all hooks run left-to-right (linear)."""
 
     def test_empty_chain(self) -> None:
         chain = CoordinationMiddlewareChain()
