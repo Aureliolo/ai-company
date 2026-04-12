@@ -25,6 +25,7 @@ from synthorg.observability.events.memory import (
 if TYPE_CHECKING:
     from synthorg.core.types import NotBlankStr
     from synthorg.memory.protocol import MemoryBackend
+    from synthorg.memory.retrieval.protocol import RetrievalWorker
     from synthorg.memory.retrieval_config import MemoryRetrievalConfig
     from synthorg.memory.shared import SharedKnowledgeStore
     from synthorg.providers.protocol import CompletionProvider
@@ -59,7 +60,7 @@ def create_hierarchical_retriever(
         reflective_retry_enabled=config.reflective_retry_enabled,
         max_retry_count=config.max_retry_count,
     )
-    workers = {
+    workers: dict[str, RetrievalWorker] = {
         "semantic": SemanticWorker(
             backend=backend,
             config=config,

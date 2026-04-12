@@ -84,7 +84,7 @@ class TestRetrievalRetryCorrection:
     )
     def test_valid_alternative_strategies(self, strategy: str) -> None:
         c = RetrievalRetryCorrection(
-            alternative_strategy=strategy,
+            alternative_strategy=strategy,  # type: ignore[arg-type]
             reason="Testing strategy",
         )
         assert c.alternative_strategy == strategy
