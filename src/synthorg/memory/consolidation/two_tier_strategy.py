@@ -111,6 +111,7 @@ class TwoTierCompressionStrategy:
                     reasoning_trace=trace,
                     memory_context=context_entries,
                     agent_id=agent_id,
+                    source_artifact_ids=(entry.id,),
                 )
                 if compressed.compression_ratio < self._config.min_compression_ratio:
                     logger.debug(

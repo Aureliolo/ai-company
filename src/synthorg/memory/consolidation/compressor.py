@@ -48,6 +48,7 @@ class ExperienceCompressor(Protocol):
         memory_context: tuple[MemoryEntry, ...],
         *,
         agent_id: NotBlankStr = "unknown",
+        source_artifact_ids: tuple[str, ...] = (),
     ) -> CompressedExperience:
         """Compress a single raw experience into strategic learnings.
 
@@ -59,6 +60,7 @@ class ExperienceCompressor(Protocol):
             reasoning_trace: Step-by-step reasoning trace entries.
             memory_context: Related memories for compression context.
             agent_id: Agent owning the experience (for provenance).
+            source_artifact_ids: IDs of raw artifacts being compressed.
 
         Returns:
             Compressed experience with strategic decisions and
@@ -126,6 +128,7 @@ class LLMExperienceCompressor:
         memory_context: tuple[MemoryEntry, ...],
         *,
         agent_id: NotBlankStr = "unknown",
+        source_artifact_ids: tuple[str, ...] = (),
     ) -> CompressedExperience:
         """Compress a single raw experience via LLM.
 
@@ -136,6 +139,7 @@ class LLMExperienceCompressor:
             reasoning_trace: Step-by-step reasoning trace entries.
             memory_context: Related memories for compression context.
             agent_id: Agent owning the experience (for provenance).
+            source_artifact_ids: IDs of raw artifacts being compressed.
 
         Returns:
             Compressed experience with strategic decisions.
@@ -201,15 +205,15 @@ class LLMExperienceCompressor:
         raw_decisions = parsed.get("strategic_decisions", [])
         raw_contexts = parsed.get("applicable_contexts", [])
         if not isinstance(raw_decisions, list) or not all(
-            isinstance(d, str) for d in raw_decisions
+            isinstance(d, str) and d.strip() for d in raw_decisions
         ):
-            msg = "strategic_decisions must be a list of strings"
+            msg = "strategic_decisions must be a list of non-blank strings"
             logger.warning(EXPERIENCE_COMPRESSED, error=msg)
             raise ValueError(msg)
         if not isinstance(raw_contexts, list) or not all(
-            isinstance(c, str) for c in raw_contexts
+            isinstance(c, str) and c.strip() for c in raw_contexts
         ):
-            msg = "applicable_contexts must be a list of strings"
+            msg = "applicable_contexts must be a list of non-blank strings"
             logger.warning(EXPERIENCE_COMPRESSED, error=msg)
             raise ValueError(msg)
         decisions = tuple(raw_decisions)
@@ -229,7 +233,7 @@ class LLMExperienceCompressor:
             agent_id=agent_id,
             strategic_decisions=decisions,
             applicable_contexts=contexts,
-            source_artifact_ids=(),
+            source_artifact_ids=source_artifact_ids,
             compression_ratio=max(ratio, 0.01),
             compressor_version=_COMPRESSOR_VERSION,
             metadata=MemoryMetadata(
