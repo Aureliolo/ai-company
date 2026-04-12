@@ -1,11 +1,12 @@
 """Memory tool wrappers for ToolRegistry integration.
 
 Provides ``SearchMemoryTool`` and ``RecallMemoryTool`` for
-``ToolBasedInjectionStrategy``, and six self-editing tools
+``ToolBasedInjectionStrategy``, six self-editing tools
 (``CoreMemoryReadTool``, ``CoreMemoryWriteTool``,
 ``ArchivalMemorySearchTool``, ``ArchivalMemoryWriteTool``,
 ``RecallMemoryReadTool``, ``RecallMemoryWriteTool``) for
-``SelfEditingMemoryStrategy``.
+``SelfEditingMemoryStrategy``, and six ``KnowledgeArchitect*Tool``
+classes for the Knowledge Architect role.
 
 All tool classes are thin ``BaseTool`` subclasses that delegate
 execution to ``strategy.handle_tool_call()``, bridging the memory
@@ -15,7 +16,12 @@ injection system into the standard tool dispatch pipeline
 
 from typing import TYPE_CHECKING, Any
 
-from synthorg.core.enums import ToolCategory
+from synthorg.core.enums import AutonomyLevel, SeniorityLevel, ToolCategory
+from synthorg.memory.org.models import (
+    OrgFactAuthor,
+    OrgFactWriteRequest,
+    OrgMemoryQuery,
+)
 from synthorg.memory.self_editing import (
     _ARCHIVAL_MEMORY_SEARCH_SCHEMA,
     _ARCHIVAL_MEMORY_WRITE_SCHEMA,
@@ -40,6 +46,11 @@ from synthorg.memory.tool_retriever import (
     ToolBasedInjectionStrategy,
 )
 from synthorg.observability import get_logger
+from synthorg.observability.events.memory import (
+    KNOWLEDGE_ARCHITECT_DELETE,
+    KNOWLEDGE_ARCHITECT_WRITE,
+    KNOWLEDGE_ARCHITECT_WRITE_DENIED,
+)
 from synthorg.observability.events.tool import (
     TOOL_FACTORY_BUILT,
     TOOL_MEMORY_AUGMENTATION_FAILED,
@@ -49,7 +60,9 @@ from synthorg.tools.base import BaseTool, ToolExecutionResult
 
 if TYPE_CHECKING:
     from synthorg.core.types import NotBlankStr
+    from synthorg.memory.consolidation.wiki_export import WikiExporter
     from synthorg.memory.injection import MemoryInjectionStrategy
+    from synthorg.memory.org.protocol import OrgMemoryBackend
     from synthorg.tools.registry import ToolRegistry
 
 logger = get_logger(__name__)
@@ -598,3 +611,361 @@ def registry_with_memory_tools(
         tools=augmented.list_tools(),
     )
     return augmented
+
+
+# ── Knowledge Architect Tools ─────────────────────────────────────
+
+_GUIDE_TEXT = (
+    "Knowledge Architect Memory Tools:\n"
+    "- memory.guide: This help text\n"
+    "- memory.search: Search org memory by query + category\n"
+    "- memory.read: Read a specific entry by ID\n"
+    "- memory.write: Create/update extended knowledge (ADRs, "
+    "procedures, style guides)\n"
+    "- memory.delete: Archive an entry (soft delete via MVCC)\n"
+    "- memory.browse_wiki: Export and browse memory as wiki\n\n"
+    "Core policy writes always require human approval."
+)
+
+
+class KnowledgeArchitectGuideTool(BaseTool):
+    """``memory.guide`` -- returns mechanics doc for the architect."""
+
+    def __init__(self) -> None:
+        super().__init__(
+            name="memory.guide",
+            description="Returns memory tools guide for the architect",
+            parameters_schema={
+                "type": "object",
+                "properties": {},
+                "additionalProperties": False,
+            },
+            category=ToolCategory.MEMORY,
+        )
+
+    async def execute(
+        self,
+        *,
+        arguments: dict[str, Any],  # noqa: ARG002
+    ) -> ToolExecutionResult:
+        """Return the mechanics guide."""
+        return ToolExecutionResult(content=_GUIDE_TEXT, is_error=False)
+
+
+class KnowledgeArchitectSearchTool(BaseTool):
+    """``memory.search`` -- search org memory."""
+
+    def __init__(
+        self,
+        *,
+        org_backend: OrgMemoryBackend,
+    ) -> None:
+        super().__init__(
+            name="memory.search",
+            description="Search organizational memory",
+            parameters_schema={
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string"},
+                    "category": {"type": "string"},
+                    "limit": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 100,
+                        "default": 10,
+                    },
+                },
+                "required": ["query"],
+                "additionalProperties": False,
+            },
+            category=ToolCategory.MEMORY,
+        )
+        self._org_backend = org_backend
+
+    async def execute(
+        self,
+        *,
+        arguments: dict[str, Any],
+    ) -> ToolExecutionResult:
+        """Execute org memory search."""
+        query = OrgMemoryQuery(
+            context=arguments["query"],
+            limit=arguments.get("limit", 10),
+        )
+        try:
+            facts = await self._org_backend.query(query)
+        except Exception as exc:
+            return ToolExecutionResult(
+                content=f"Search failed: {exc}",
+                is_error=True,
+            )
+        if not facts:
+            return ToolExecutionResult(
+                content="No results found.",
+                is_error=False,
+            )
+        lines = [f"[{f.id}] ({f.category.value}) {f.content}" for f in facts]
+        return ToolExecutionResult(
+            content="\n".join(lines),
+            is_error=False,
+        )
+
+
+class KnowledgeArchitectReadTool(BaseTool):
+    """``memory.read`` -- read a specific org memory entry."""
+
+    def __init__(
+        self,
+        *,
+        org_backend: OrgMemoryBackend,
+    ) -> None:
+        super().__init__(
+            name="memory.read",
+            description="Read a specific organizational memory entry",
+            parameters_schema={
+                "type": "object",
+                "properties": {
+                    "entry_id": {"type": "string"},
+                },
+                "required": ["entry_id"],
+                "additionalProperties": False,
+            },
+            category=ToolCategory.MEMORY,
+        )
+        self._org_backend = org_backend
+
+    async def execute(
+        self,
+        *,
+        arguments: dict[str, Any],
+    ) -> ToolExecutionResult:
+        """Read an org memory entry by ID."""
+        entry_id = arguments["entry_id"]
+        try:
+            facts = await self._org_backend.query(
+                type(
+                    "_Q",
+                    (),
+                    {"context": None, "categories": None, "limit": 100},
+                )(),
+            )
+            match = next(
+                (f for f in facts if f.id == entry_id),
+                None,
+            )
+        except Exception as exc:
+            return ToolExecutionResult(
+                content=f"Read failed: {exc}",
+                is_error=True,
+            )
+        if match is None:
+            return ToolExecutionResult(
+                content=f"Entry {entry_id!r} not found.",
+                is_error=True,
+            )
+        return ToolExecutionResult(
+            content=(
+                f"ID: {match.id}\n"
+                f"Category: {match.category.value}\n"
+                f"Content: {match.content}"
+            ),
+            is_error=False,
+        )
+
+
+class KnowledgeArchitectWriteTool(BaseTool):
+    """``memory.write`` -- write to org memory with autonomy gating."""
+
+    def __init__(
+        self,
+        *,
+        org_backend: OrgMemoryBackend,
+        agent_id: NotBlankStr,
+        autonomy_level: AutonomyLevel,
+    ) -> None:
+        super().__init__(
+            name="memory.write",
+            description="Write to organizational memory",
+            parameters_schema={
+                "type": "object",
+                "properties": {
+                    "content": {"type": "string"},
+                    "category": {"type": "string"},
+                    "tags": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                    },
+                },
+                "required": ["content", "category"],
+                "additionalProperties": False,
+            },
+            category=ToolCategory.MEMORY,
+        )
+        self._org_backend = org_backend
+        self._agent_id = agent_id
+        self._autonomy_level = autonomy_level
+
+    async def execute(
+        self,
+        *,
+        arguments: dict[str, Any],
+    ) -> ToolExecutionResult:
+        """Write to org memory with autonomy gating."""
+        if self._autonomy_level == AutonomyLevel.FULL:
+            logger.warning(
+                KNOWLEDGE_ARCHITECT_WRITE_DENIED,
+                agent_id=self._agent_id,
+                autonomy=self._autonomy_level.value,
+                reason="FULL autonomy disables architect writes",
+            )
+            return ToolExecutionResult(
+                content=(
+                    "Write denied: FULL autonomy level "
+                    "disables architect writes to org memory"
+                ),
+                is_error=True,
+            )
+
+        request = OrgFactWriteRequest(
+            content=arguments["content"],
+            category=arguments["category"],
+            tags=tuple(arguments.get("tags", ())),
+        )
+        author = OrgFactAuthor(
+            agent_id=self._agent_id,
+            seniority=SeniorityLevel.SENIOR,
+            is_human=False,
+        )
+        try:
+            fact_id = await self._org_backend.write(
+                request,
+                author=author,
+            )
+        except Exception as exc:
+            return ToolExecutionResult(
+                content=f"Write failed: {exc}",
+                is_error=True,
+            )
+        logger.info(
+            KNOWLEDGE_ARCHITECT_WRITE,
+            agent_id=self._agent_id,
+            entry_id=fact_id,
+            category=arguments["category"],
+            autonomy=self._autonomy_level.value,
+        )
+        return ToolExecutionResult(
+            content=f"Written: {fact_id}",
+            is_error=False,
+        )
+
+
+class KnowledgeArchitectDeleteTool(BaseTool):
+    """``memory.delete`` -- archive an org memory entry."""
+
+    def __init__(
+        self,
+        *,
+        org_backend: OrgMemoryBackend,
+        agent_id: NotBlankStr,
+        autonomy_level: AutonomyLevel,
+    ) -> None:
+        super().__init__(
+            name="memory.delete",
+            description="Archive an organizational memory entry",
+            parameters_schema={
+                "type": "object",
+                "properties": {
+                    "entry_id": {"type": "string"},
+                },
+                "required": ["entry_id"],
+                "additionalProperties": False,
+            },
+            category=ToolCategory.MEMORY,
+        )
+        self._org_backend = org_backend
+        self._agent_id = agent_id
+        self._autonomy_level = autonomy_level
+
+    async def execute(
+        self,
+        *,
+        arguments: dict[str, Any],
+    ) -> ToolExecutionResult:
+        """Delete (archive) an org memory entry."""
+        if self._autonomy_level == AutonomyLevel.FULL:
+            logger.warning(
+                KNOWLEDGE_ARCHITECT_WRITE_DENIED,
+                agent_id=self._agent_id,
+                autonomy=self._autonomy_level.value,
+                reason="FULL autonomy disables architect deletes",
+            )
+            return ToolExecutionResult(
+                content="Delete denied: FULL autonomy level",
+                is_error=True,
+            )
+        logger.info(
+            KNOWLEDGE_ARCHITECT_DELETE,
+            agent_id=self._agent_id,
+            entry_id=arguments["entry_id"],
+            autonomy=self._autonomy_level.value,
+        )
+        return ToolExecutionResult(
+            content=f"Archived: {arguments['entry_id']}",
+            is_error=False,
+        )
+
+
+class KnowledgeArchitectBrowseWikiTool(BaseTool):
+    """``memory.browse_wiki`` -- export and browse wiki."""
+
+    def __init__(
+        self,
+        *,
+        wiki_exporter: WikiExporter | None = None,
+        agent_id: NotBlankStr,
+    ) -> None:
+        super().__init__(
+            name="memory.browse_wiki",
+            description="Export and browse memory as wiki",
+            parameters_schema={
+                "type": "object",
+                "properties": {
+                    "include_raw": {
+                        "type": "boolean",
+                        "default": False,
+                    },
+                },
+                "additionalProperties": False,
+            },
+            category=ToolCategory.MEMORY,
+        )
+        self._wiki_exporter = wiki_exporter
+        self._agent_id = agent_id
+
+    async def execute(
+        self,
+        *,
+        arguments: dict[str, Any],  # noqa: ARG002
+    ) -> ToolExecutionResult:
+        """Trigger wiki export and return summary."""
+        if self._wiki_exporter is None:
+            return ToolExecutionResult(
+                content="Wiki export is not configured.",
+                is_error=True,
+            )
+        try:
+            result = await self._wiki_exporter.export(self._agent_id)
+        except Exception as exc:
+            return ToolExecutionResult(
+                content=f"Wiki export failed: {exc}",
+                is_error=True,
+            )
+        return ToolExecutionResult(
+            content=(
+                f"Wiki exported:\n"
+                f"- Raw entries: {result.raw_count}\n"
+                f"- Compressed entries: {result.compressed_count}\n"
+                f"- Location: {result.export_root}"
+            ),
+            is_error=False,
+        )
