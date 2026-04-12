@@ -112,14 +112,14 @@ class TwoTierCompressionStrategy:
                     memory_context=context_entries,
                     agent_id=agent_id,
                 )
-                if compressed.compression_ratio > self._config.min_compression_ratio:
+                if compressed.compression_ratio < self._config.min_compression_ratio:
                     logger.debug(
                         TWO_TIER_COMPRESSION_FAILED,
                         agent_id=agent_id,
                         entry_id=entry.id,
                         error=(
                             f"compression_ratio {compressed.compression_ratio:.2f} "
-                            f"exceeds min {self._config.min_compression_ratio:.2f}"
+                            f"below min {self._config.min_compression_ratio:.2f}"
                         ),
                     )
                     return None

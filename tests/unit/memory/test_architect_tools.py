@@ -188,8 +188,11 @@ class TestKnowledgeArchitectDeleteTool:
     @pytest.mark.unit
     async def test_delete_allowed_at_supervised(self) -> None:
         backend = _mock_org_backend()
+        fact_store = AsyncMock()
+        fact_store.delete = AsyncMock(return_value=True)
         tool = KnowledgeArchitectDeleteTool(
             org_backend=backend,
+            fact_store=fact_store,
             agent_id="agent-1",
             autonomy_level=AutonomyLevel.SUPERVISED,
         )
@@ -198,7 +201,7 @@ class TestKnowledgeArchitectDeleteTool:
         )
         assert not result.is_error
         assert "fact-1" in result.content
-        backend.delete.assert_awaited_once()
+        fact_store.delete.assert_awaited_once()
 
 
 class TestKnowledgeArchitectBrowseWikiTool:

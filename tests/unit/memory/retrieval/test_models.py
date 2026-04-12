@@ -116,8 +116,18 @@ class TestRetrievalCandidate:
 
     @pytest.mark.unit
     def test_score_bounds(self) -> None:
+        # combined_score and relevance_score allow > 1.0 (boosted scores)
+        c = _make_candidate(combined_score=1.5)
+        assert c.combined_score == 1.5
+        # recency_score still capped at 1.0
         with pytest.raises(ValidationError, match="less than or equal"):
-            _make_candidate(combined_score=1.1)
+            RetrievalCandidate(
+                entry=_make_entry(),
+                relevance_score=0.5,
+                recency_score=1.1,
+                combined_score=0.5,
+                source_worker="semantic",
+            )
         with pytest.raises(ValidationError, match="greater than or equal"):
             _make_candidate(combined_score=-0.1)
 
