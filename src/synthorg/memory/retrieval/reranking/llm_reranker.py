@@ -152,6 +152,11 @@ class LLMQuerySpecificReranker:
         ]
         response = await self._provider.complete(messages, self._model)
         if response.content is None:
+            logger.debug(
+                MEMORY_RERANK_FAILED,
+                error="LLM returned null content",
+                candidate_count=len(candidates),
+            )
             return candidates
 
         parsed = json.loads(response.content)

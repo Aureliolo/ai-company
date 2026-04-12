@@ -85,7 +85,11 @@ class DefaultHierarchicalRetriever:
         """Execute the full hierarchical retrieval pipeline."""
         # Phase 1: Route
         routing = await self._supervisor.route(query)
-        selected = [name for name in routing.selected_workers if name in self._workers]
+        selected = list(
+            dict.fromkeys(
+                name for name in routing.selected_workers if name in self._workers
+            )
+        )
         if not selected:
             selected = ["semantic"] if "semantic" in self._workers else []
         if not selected:

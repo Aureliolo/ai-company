@@ -19,7 +19,6 @@ from synthorg.observability.events.memory import (
 )
 from synthorg.providers.enums import MessageRole
 from synthorg.providers.models import ChatMessage
-from synthorg.providers.resilience.errors import RetryExhaustedError
 
 if TYPE_CHECKING:
     from synthorg.core.types import NotBlankStr
@@ -115,8 +114,6 @@ class SupervisorRouter:
             return await self._route_via_llm(query)
         except builtins.MemoryError, RecursionError:
             raise
-        except RetryExhaustedError:
-            raise
         except Exception as exc:
             logger.warning(
                 MEMORY_HIERARCHICAL_ROUTING,
@@ -161,8 +158,6 @@ class SupervisorRouter:
         try:
             return await self._evaluate_via_llm(query, result)
         except builtins.MemoryError, RecursionError:
-            raise
-        except RetryExhaustedError:
             raise
         except Exception as exc:
             logger.warning(
@@ -254,8 +249,8 @@ class SupervisorRouter:
         corrected_query = None
         corrected_text = parsed.get("corrected_query")
         if corrected_text:
-            corrected_query = query.model_copy(
-                update={"text": corrected_text},
+            corrected_query = type(query).model_validate(
+                query.model_dump(mode="python") | {"text": corrected_text},
             )
 
         alt_strategy = parsed.get("alternative_strategy")

@@ -215,7 +215,7 @@ class MemoryRetrievalConfig(BaseModel):
         ),
     )
     max_retry_count: int = Field(
-        default=2,
+        default=_DEFAULT_MAX_RETRY_COUNT,
         ge=0,
         le=5,
         description=(

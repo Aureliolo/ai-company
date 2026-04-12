@@ -261,32 +261,27 @@ class EpisodicWorker:
             )
             now = datetime.now(UTC)
             window_seconds = self._time_window_hours * 3600
-            candidates = tuple(
-                RetrievalCandidate(
-                    entry=e,
-                    relevance_score=(
-                        e.relevance_score if e.relevance_score is not None else 0.5
-                    ),
-                    recency_score=max(
+            candidates_list: list[RetrievalCandidate] = []
+            for e in entries:
+                relevance = e.relevance_score if e.relevance_score is not None else 0.5
+                recency = min(
+                    1.0,
+                    max(
                         0.0,
                         1.0
                         - (now - e.created_at).total_seconds() / max(window_seconds, 1),
                     ),
-                    combined_score=(
-                        0.4
-                        * (e.relevance_score if e.relevance_score is not None else 0.5)
-                        + 0.6
-                        * max(
-                            0.0,
-                            1.0
-                            - (now - e.created_at).total_seconds()
-                            / max(window_seconds, 1),
-                        )
-                    ),
-                    source_worker=self.name,
                 )
-                for e in entries
-            )
+                candidates_list.append(
+                    RetrievalCandidate(
+                        entry=e,
+                        relevance_score=relevance,
+                        recency_score=recency,
+                        combined_score=0.4 * relevance + 0.6 * recency,
+                        source_worker=self.name,
+                    )
+                )
+            candidates = tuple(candidates_list)
             elapsed_ms = int((time.monotonic() - start) * 1000)
             logger.debug(
                 MEMORY_HIERARCHICAL_WORKER_COMPLETE,

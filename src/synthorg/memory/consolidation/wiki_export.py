@@ -156,6 +156,7 @@ class WikiExporter:
             )
             return 0
 
+        exported = 0
         for entry in entries:
             md_content = (
                 f"---\n"
@@ -177,13 +178,25 @@ class WikiExporter:
                     error="path traversal detected",
                 )
                 continue
-            await asyncio.to_thread(
-                filepath.write_text,
-                md_content,
-                encoding="utf-8",
-            )
+            try:
+                await asyncio.to_thread(
+                    filepath.write_text,
+                    md_content,
+                    encoding="utf-8",
+                )
+            except builtins.MemoryError, RecursionError:
+                raise
+            except OSError as exc:
+                logger.warning(
+                    WIKI_EXPORT_FAILED,
+                    tier="raw",
+                    entry_id=entry.id,
+                    error=str(exc),
+                )
+                continue
+            exported += 1
 
-        return len(entries)
+        return exported
 
     async def _export_compressed(
         self,
@@ -208,6 +221,7 @@ class WikiExporter:
             )
             return 0
 
+        exported = 0
         for entry in entries:
             # Parse structured content for rich markdown
             try:
@@ -257,13 +271,25 @@ class WikiExporter:
                     error="path traversal detected",
                 )
                 continue
-            await asyncio.to_thread(
-                filepath.write_text,
-                md_content,
-                encoding="utf-8",
-            )
+            try:
+                await asyncio.to_thread(
+                    filepath.write_text,
+                    md_content,
+                    encoding="utf-8",
+                )
+            except builtins.MemoryError, RecursionError:
+                raise
+            except OSError as exc:
+                logger.warning(
+                    WIKI_EXPORT_FAILED,
+                    tier="compressed",
+                    entry_id=entry.id,
+                    error=str(exc),
+                )
+                continue
+            exported += 1
 
-        return len(entries)
+        return exported
 
     def _write_index(
         self,

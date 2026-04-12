@@ -183,8 +183,23 @@ class LLMExperienceCompressor:
             raise ValueError(msg)
 
         parsed = json.loads(response.content)
-        decisions = tuple(parsed.get("strategic_decisions", []))
-        contexts = tuple(parsed.get("applicable_contexts", []))
+        if not isinstance(parsed, dict):
+            msg = f"LLM returned non-dict: {type(parsed).__name__}"
+            raise TypeError(msg)
+        raw_decisions = parsed.get("strategic_decisions", [])
+        raw_contexts = parsed.get("applicable_contexts", [])
+        if not isinstance(raw_decisions, list) or not all(
+            isinstance(d, str) for d in raw_decisions
+        ):
+            msg = "strategic_decisions must be a list of strings"
+            raise ValueError(msg)
+        if not isinstance(raw_contexts, list) or not all(
+            isinstance(c, str) for c in raw_contexts
+        ):
+            msg = "applicable_contexts must be a list of strings"
+            raise ValueError(msg)
+        decisions = tuple(raw_decisions)
+        contexts = tuple(raw_contexts)
 
         if not decisions:
             msg = "LLM produced no strategic decisions"

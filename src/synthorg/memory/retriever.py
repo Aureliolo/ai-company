@@ -322,6 +322,7 @@ class ContextInjectionStrategy:
                     agent_id=agent_id,
                     error_type=type(exc).__qualname__,
                     reason="query_specific_rerank_failed_falling_back",
+                    exc_info=True,
                 )
 
         ranked = self._filter_or_fail_closed(ranked, agent_id=agent_id)
