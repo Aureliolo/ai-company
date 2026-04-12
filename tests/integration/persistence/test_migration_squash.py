@@ -67,7 +67,9 @@ def _atlas(
     lock for some operations, causing failures when multiple xdist
     workers invoke atlas concurrently).
     """
-    result = subprocess.CompletedProcess(args=[], returncode=1)
+    result: subprocess.CompletedProcess[str] = subprocess.CompletedProcess(
+        args=[], returncode=1, stdout="", stderr=""
+    )
     for attempt in range(5):
         result = subprocess.run(  # noqa: S603
             ["atlas", *args],  # noqa: S607
@@ -307,12 +309,12 @@ class TestMigrationSquashUpgradePaths:
         """Squash script reports 'below threshold' for both backends."""
         # The bash subprocess may not have atlas on PATH (Windows
         # Git Bash vs. system PATH).  Skip when unavailable.
-        result = subprocess.run(
+        probe = subprocess.run(
             ["bash", "-c", "command -v atlas"],  # noqa: S607
             capture_output=True,
             check=False,
         )
-        if result.returncode != 0:
+        if probe.returncode != 0:
             pytest.skip("atlas not available in bash PATH")
 
         result = subprocess.run(
