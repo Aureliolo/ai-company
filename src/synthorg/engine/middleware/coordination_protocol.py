@@ -11,6 +11,7 @@ from typing import Any, Protocol, runtime_checkable
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.engine.coordination.models import (
     CoordinationContext,  # noqa: TC001
     CoordinationPhaseResult,  # noqa: TC001
@@ -123,12 +124,12 @@ class CoordinationMiddleware(Protocol):
     * ``after_rollup`` -- after Phase 6 (rollup)
     * ``before_update_parent`` -- before Phase 7 (parent task update)
 
-    All hooks run linearly: ``before_*`` left-to-right,
-    ``after_*`` right-to-left.
+    All hooks run linearly in declared (left-to-right) order.
+    Coordination middleware is a phase-based pipeline, not a stack.
     """
 
     @property
-    def name(self) -> str:
+    def name(self) -> NotBlankStr:
         """Unique middleware name for registry and logging."""
         ...
 
@@ -191,10 +192,10 @@ class BaseCoordinationMiddleware:
                 name=repr(name),
             )
             raise ValueError(msg)
-        self._name = name.strip()
+        self._name: NotBlankStr = name.strip()
 
     @property
-    def name(self) -> str:
+    def name(self) -> NotBlankStr:
         """Unique middleware name."""
         return self._name
 
@@ -242,8 +243,8 @@ class CoordinationMiddlewareChain:
 
     Composition rules:
 
-    * ``before_*`` hooks run left-to-right (declared order).
-    * ``after_*`` hooks run right-to-left (symmetric unwinding).
+    * All hooks run left-to-right (declared order). Coordination
+      middleware is a linear phase-based pipeline, not a stack.
 
     No onion wrapping -- coordination hooks are linear transforms
     on the context, not call wrappers.
@@ -284,7 +285,7 @@ class CoordinationMiddlewareChain:
         return self._middleware
 
     @property
-    def names(self) -> tuple[str, ...]:
+    def names(self) -> tuple[NotBlankStr, ...]:
         """Return middleware names in declared order."""
         return tuple(mw.name for mw in self._middleware)
 
@@ -313,8 +314,8 @@ class CoordinationMiddlewareChain:
         self,
         ctx: CoordinationMiddlewareContext,
     ) -> CoordinationMiddlewareContext:
-        """Run ``after_decompose`` hooks right-to-left."""
-        for mw in reversed(self._middleware):
+        """Run ``after_decompose`` hooks left-to-right."""
+        for mw in self._middleware:
             try:
                 ctx = await mw.after_decompose(ctx)
             except Exception:
@@ -347,8 +348,8 @@ class CoordinationMiddlewareChain:
         self,
         ctx: CoordinationMiddlewareContext,
     ) -> CoordinationMiddlewareContext:
-        """Run ``after_rollup`` hooks right-to-left."""
-        for mw in reversed(self._middleware):
+        """Run ``after_rollup`` hooks left-to-right."""
+        for mw in self._middleware:
             try:
                 ctx = await mw.after_rollup(ctx)
             except Exception:

@@ -191,7 +191,7 @@ class TestCoordinationMiddlewareChain:
             "c:before_decompose",
         ]
 
-    async def test_after_decompose_right_to_left(self) -> None:
+    async def test_after_decompose_left_to_right(self) -> None:
         log: list[str] = []
         chain = CoordinationMiddlewareChain(
             (
@@ -203,9 +203,9 @@ class TestCoordinationMiddlewareChain:
         ctx = _mw_context()
         await chain.run_after_decompose(ctx)
         assert log == [
-            "c:after_decompose",
-            "b:after_decompose",
             "a:after_decompose",
+            "b:after_decompose",
+            "c:after_decompose",
         ]
 
     async def test_before_dispatch_left_to_right(self) -> None:
@@ -223,7 +223,7 @@ class TestCoordinationMiddlewareChain:
             "b:before_dispatch",
         ]
 
-    async def test_after_rollup_right_to_left(self) -> None:
+    async def test_after_rollup_left_to_right(self) -> None:
         log: list[str] = []
         chain = CoordinationMiddlewareChain(
             (
@@ -233,7 +233,7 @@ class TestCoordinationMiddlewareChain:
         )
         ctx = _mw_context()
         await chain.run_after_rollup(ctx)
-        assert log == ["b:after_rollup", "a:after_rollup"]
+        assert log == ["a:after_rollup", "b:after_rollup"]
 
     async def test_before_update_parent_left_to_right(self) -> None:
         log: list[str] = []

@@ -9,6 +9,7 @@ linear for before_*/after_* hooks).
 from collections.abc import Awaitable, Callable
 from typing import Protocol, runtime_checkable
 
+from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.engine.middleware.models import (
     AgentMiddlewareContext,
     ModelCallResult,
@@ -59,7 +60,7 @@ class AgentMiddleware(Protocol):
     """
 
     @property
-    def name(self) -> str:
+    def name(self) -> NotBlankStr:
         """Unique middleware name for registry and logging."""
         ...
 
@@ -133,10 +134,10 @@ class BaseAgentMiddleware:
                 name=repr(name),
             )
             raise ValueError(msg)
-        self._name = name.strip()
+        self._name: NotBlankStr = name.strip()
 
     @property
-    def name(self) -> str:
+    def name(self) -> NotBlankStr:
         """Unique middleware name."""
         return self._name
 
@@ -237,7 +238,7 @@ class AgentMiddlewareChain:
         return self._middleware
 
     @property
-    def names(self) -> tuple[str, ...]:
+    def names(self) -> tuple[NotBlankStr, ...]:
         """Return middleware names in declared order."""
         return tuple(mw.name for mw in self._middleware)
 
