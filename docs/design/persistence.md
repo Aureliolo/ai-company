@@ -171,3 +171,59 @@ Hand-written migrations (procedural SQL that Atlas cannot derive from
 `schema.sql`) are NOT added to the `revisions/` directory because they would
 invalidate `atlas.sum`.  Instead, procedural setup runs through the backend's
 runtime migration hooks (see the TimescaleDB pattern above).
+
+## Migration squashing
+
+As the migration count grows, the revisions directory becomes harder to review
+and Atlas's diff engine slows perceptibly.  SynthOrg uses a periodic partial
+squash to keep the history manageable while preserving upgrade paths.
+
+### When squashing triggers
+
+The squash script (`scripts/squash_migrations.sh`) checks both SQLite and
+Postgres backends.  When a backend exceeds **100 migration files** (configurable
+via `SQUASH_THRESHOLD`), the oldest files beyond the **newest 50**
+(`SQUASH_KEEP`) are replaced by a single Atlas checkpoint.
+
+### How it works
+
+1. The script copies the oldest files to a temporary directory and runs
+   `atlas migrate checkpoint` to produce a DDL-only snapshot of the schema at
+   that point.
+2. The checkpoint file is timestamped between the last squashed migration and
+   the first kept migration so Atlas orders it correctly.
+3. The original revisions directory is rebuilt with the checkpoint plus the
+   remaining individual files, and `atlas migrate hash` regenerates
+   `atlas.sum`.
+
+### Upgrade paths after squash
+
+| Database state | Behavior |
+|---|---|
+| Fresh install | Applies checkpoint (full schema to squash point) then remaining files |
+| At or past squash point | Skips checkpoint, applies only unapplied files |
+| Before squash point | **Error** -- the individual files it needs are gone; upgrade through the unsquashed release first |
+
+The "before squash point" case is safe because the threshold (100) and keep
+count (50) guarantee that by the time a squash runs, all production databases
+have had at least 50 releases to catch up past the squash boundary.
+
+### Dual-backend squashing
+
+Both SQLite and Postgres backends are processed independently in a single
+invocation.  Each backend may have a different migration count; only backends
+that exceed the threshold are squashed.
+
+```bash
+bash scripts/squash_migrations.sh
+```
+
+### Committing a squash
+
+Squash commits delete old migration files and rewrite `atlas.sum`, which the
+pre-commit hook `check_no_modify_migration.sh` would normally block.  Set the
+`SYNTHORG_MIGRATION_SQUASH` environment variable to bypass:
+
+```bash
+SYNTHORG_MIGRATION_SQUASH=1 git commit -m "chore: squash oldest migrations"
+```
