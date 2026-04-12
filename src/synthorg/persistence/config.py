@@ -4,10 +4,18 @@ Frozen Pydantic models for persistence backend selection and
 backend-specific settings.
 """
 
+import re
 from pathlib import PurePosixPath, PureWindowsPath
 from typing import ClassVar, Literal, Self
 
-from pydantic import BaseModel, ConfigDict, Field, SecretStr, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    SecretStr,
+    field_validator,
+    model_validator,
+)
 
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.observability import get_logger
@@ -183,6 +191,25 @@ class PostgresConfig(BaseModel):
             "when enable_timescaledb is False."
         ),
     )
+
+    _INTERVAL_RE: ClassVar[re.Pattern[str]] = re.compile(
+        r"^\d+\s+"
+        r"(microseconds?|milliseconds?|seconds?|minutes?|hours?|days?|weeks?|months?|years?)$",
+        re.IGNORECASE,
+    )
+
+    @field_validator("cost_records_chunk_interval", "audit_entries_chunk_interval")
+    @classmethod
+    def _validate_chunk_interval(cls, value: str) -> str:
+        """Reject malformed Postgres interval literals at config time."""
+        if not cls._INTERVAL_RE.match(value.strip()):
+            msg = (
+                f"Invalid Postgres interval: {value!r}. "
+                "Expected format: '<number> <unit>' "
+                "(e.g. '1 day', '12 hours', '7 days')."
+            )
+            raise ValueError(msg)
+        return value
 
     @model_validator(mode="after")
     def _validate_pool_sizes(self) -> Self:

@@ -2,8 +2,8 @@
 
 Locks the behaviour of the Postgres backend's ``enable_timescaledb``
 opt-in knob: when enabled, ``cost_records`` and ``audit_entries`` are
-converted to hypertables with the configured chunk interval and
-retention policies.  ``heartbeats`` stays a regular table (it is
+converted to hypertables with the configured chunk interval.
+``heartbeats`` stays a regular table (it is
 update-heavy, not append-only, so hypertables are the wrong fit).
 
 The repository code path must work unchanged against a hypertable-backed
@@ -76,6 +76,7 @@ class TestHypertableConversion:
         assert row is None, "heartbeats must stay a regular table -- it is update-heavy"
 
 
+@pytest.mark.integration
 class TestVanillaPostgresFallback:
     """Vanilla Postgres (no TimescaleDB) still runs the same schema."""
 

@@ -214,10 +214,9 @@ async def timescaledb_backend(
 ) -> AsyncIterator[PostgresPersistenceBackend]:
     """Yield a connected, migrated PostgresPersistenceBackend with TimescaleDB on.
 
-    Sets ``enable_timescaledb=True`` plus short retention windows so
-    hypertables and retention jobs are present and observable in
-    tests.  Each test gets a fresh database on the shared container
-    to stay isolated.
+    Sets ``enable_timescaledb=True`` with 1-day chunk intervals so
+    hypertables are created and observable in tests.  Each test gets
+    a fresh database on the shared container to stay isolated.
     """
     db_name = f"ts_{uuid.uuid4().hex}"
     admin_conninfo = psycopg.conninfo.make_conninfo(

@@ -16,7 +16,8 @@ The design specification has been split into focused documentation pages for bet
 | [Communication](design/communication.md) | Communication Architecture | Message bus, delegation, conflict resolution, meetings |
 | [Distributed Runtime](design/distributed-runtime.md) | Transport Evaluation, Bus Backend, Task Queue, Migration | Pluggable distributed backend design, NATS JetStream first implementation, distributed task queue hook into TaskEngine |
 | [Task & Workflow Engine](design/engine.md) | Task Engine | Task lifecycle, execution loops, routing, recovery, shutdown, workflow definitions, blueprints, versioning, workflow execution |
-| [Memory & Persistence](design/memory.md) | Memory & Persistence | Memory types, backends, retrieval, operational data |
+| [Memory](design/memory.md) | Memory | Memory types, backends, retrieval, consolidation, procedural generation |
+| [Persistence](design/persistence.md) | Persistence | Repository protocol, SQLite/Postgres backends, time-series tables, TimescaleDB, migrations |
 | [Multi-Agent Memory Consistency](design/memory-consistency.md) | Consistency Model | Append-only writes, MVCC snapshot reads, conflict handling, deployment rollout |
 | [Semantic Ontology](design/ontology.md) | Entity Definitions, Versioning, Drift | Shared vocabulary, decorator, backend, bootstrap, drift detection |
 | [Operations](design/operations.md) | Providers, Budget, Tools, Security, Human Interaction | Provider layer, cost management, sandboxing, security, API |

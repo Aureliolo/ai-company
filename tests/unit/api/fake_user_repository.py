@@ -4,6 +4,8 @@ Enforces the same invariants as the real Postgres/SQLite backends:
 unique username, at most one CEO, at least one CEO, at least one owner.
 """
 
+import copy
+
 from synthorg.api.auth.models import OrgRole, User
 from synthorg.api.auth.system_user import is_system_user
 from synthorg.api.guards import HumanRole
@@ -79,19 +81,22 @@ class FakeUserRepository:
                     msg,
                     constraint=LAST_OWNER_TRIGGER,
                 )
-        self._users[user.id] = user
+        self._users[user.id] = copy.deepcopy(user)
 
     async def get(self, user_id: str) -> User | None:
-        return self._users.get(user_id)
+        user = self._users.get(user_id)
+        return copy.deepcopy(user) if user is not None else None
 
     async def get_by_username(self, username: str) -> User | None:
         for user in self._users.values():
             if user.username == username:
-                return user
+                return copy.deepcopy(user)
         return None
 
     async def list_users(self) -> tuple[User, ...]:
-        return tuple(u for u in self._users.values() if u.role != HumanRole.SYSTEM)
+        return tuple(
+            copy.deepcopy(u) for u in self._users.values() if u.role != HumanRole.SYSTEM
+        )
 
     async def count(self) -> int:
         return sum(1 for u in self._users.values() if u.role != HumanRole.SYSTEM)

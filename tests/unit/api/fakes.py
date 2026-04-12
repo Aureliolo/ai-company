@@ -592,7 +592,6 @@ class FakeSettingsRepository:
         if not items:
             return True
         cas_map = expected_updated_at_map or {}
-        snapshot = dict(self._store)
         draft = dict(self._store)
         for namespace, key, value, updated_at in items:
             expected = cas_map.get((namespace, key))
@@ -600,10 +599,8 @@ class FakeSettingsRepository:
                 current = draft.get((namespace, key))
                 if current is None:
                     if expected != "":
-                        self._store = snapshot
                         return False
                 elif current[1] != expected:
-                    self._store = snapshot
                     return False
             draft[(namespace, key)] = (value, updated_at)
         self._store = draft

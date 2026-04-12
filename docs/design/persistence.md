@@ -92,7 +92,7 @@ a best-effort hint and the backend logs a warning rather than failing the
 migration -- this lets operators leave the flag true in shared config and have
 it degrade gracefully on clusters that do not support it.
 
-**Scope: Apache-2.0 features only.**  SynthOrg's Postgres backend only uses
+**Scope: Apache-2.0 features only.**  The Postgres backend uses exclusively
 TimescaleDB features that ship under Apache-2.0: core hypertables,
 `create_hypertable`, chunk management, and `drop_chunks`.  Retention policies,
 compression, and continuous aggregates are under the Timescale License and are

@@ -275,9 +275,6 @@ class SettingsService:
 
         setting_value = await self._resolve_db(definition)
         if setting_value is not None:
-            # Cache only non-sensitive values to avoid holding
-            # plaintext secrets in memory.
-            #
             # Direct dict mutation is intentional: the previous
             # copy-on-write pattern {**self._cache, k: v} had a
             # TOCTOU race under concurrent TaskGroup reads (the

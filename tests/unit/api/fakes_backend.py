@@ -1,8 +1,8 @@
 """In-memory ``PersistenceBackend`` fake for tests.
 
 Extracted from ``tests/unit/api/fakes.py`` to keep that module under
-the 800-line budget.  Re-exported from ``fakes`` for backwards
-compatibility so existing test imports keep working.
+the 800-line budget.  Imports point directly at the extracted modules
+(``fake_user_repository``, ``fakes``).
 """
 
 from typing import Any

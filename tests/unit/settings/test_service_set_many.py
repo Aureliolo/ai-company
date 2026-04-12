@@ -49,7 +49,7 @@ def _plain_def() -> SettingDefinition:
 def _sensitive_def() -> SettingDefinition:
     return SettingDefinition(
         namespace=SettingNamespace.PROVIDERS,
-        key="openai_api_key",
+        key="example_provider_api_key",
         type=SettingType.STRING,
         default=None,
         description="test",
@@ -123,8 +123,8 @@ class TestSetManyEncryption:
         encryptor: SettingsEncryptor,
     ) -> None:
         await service.set_many(
-            [("providers", "openai_api_key", "sk-secret-plaintext")],
-            expected_updated_at_map={("providers", "openai_api_key"): ""},
+            [("providers", "example_provider_api_key", "sk-secret-plaintext")],
+            expected_updated_at_map={("providers", "example_provider_api_key"): ""},
         )
         mock_repo.set_many.assert_awaited_once()
         call_args = mock_repo.set_many.await_args
@@ -156,8 +156,8 @@ class TestSetManyEncryption:
     ) -> None:
         with pytest.raises(SettingsEncryptionError, match="without encryption"):
             await service_no_encryptor.set_many(
-                [("providers", "openai_api_key", "sk-secret")],
-                expected_updated_at_map={("providers", "openai_api_key"): ""},
+                [("providers", "example_provider_api_key", "sk-secret")],
+                expected_updated_at_map={("providers", "example_provider_api_key"): ""},
             )
         mock_repo.set_many.assert_not_awaited()
 

@@ -47,11 +47,11 @@ CREATE INDEX idx_tasks_project ON tasks(project);
 -- ── Cost records ──────────────────────────────────────────────
 -- Composite (rowid, timestamp) primary key: TimescaleDB hypertables
 -- require the partitioning column to appear in every unique index.
--- The sidecar migration ``timescaledb_hypertables.sql`` converts this
--- table to a hypertable on deployments where the extension is
--- available; on vanilla Postgres the composite PK is functionally
--- equivalent to the old ``PRIMARY KEY (rowid)`` because ``rowid`` is
--- still globally unique via the IDENTITY sequence.
+-- On deployments where TimescaleDB is available, the Postgres backend
+-- converts this table to a hypertable at runtime during its
+-- post-Atlas setup step; on vanilla Postgres the composite PK is
+-- functionally equivalent to the old ``PRIMARY KEY (rowid)`` because
+-- ``rowid`` is still globally unique via the IDENTITY sequence.
 CREATE TABLE cost_records (
     rowid BIGINT GENERATED ALWAYS AS IDENTITY,
     agent_id TEXT NOT NULL,
