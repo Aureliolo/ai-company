@@ -328,6 +328,10 @@ func TestGenerateWithSandboxAndPostgres(t *testing.T) {
 	// Postgres service is still generated alongside the sandbox wiring.
 	assertContains(t, yaml, "postgres:18-alpine")
 	assertContains(t, yaml, "SYNTHORG_DATABASE_URL")
+	// SQLite path must not appear when postgres is active.
+	if strings.Contains(yaml, "SYNTHORG_DB_PATH") {
+		t.Error("SYNTHORG_DB_PATH must not appear when persistence_backend is postgres")
+	}
 	// No standalone sandbox service.
 	if strings.Contains(yaml, "\n  sandbox:\n") {
 		t.Error("sandbox must not be a compose service")

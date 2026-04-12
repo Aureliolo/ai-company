@@ -66,6 +66,7 @@ func DefaultState() State {
 		BackendPort:        3001,
 		WebPort:            3000,
 		Sandbox:            true,
+		DockerSockGID:      -1,
 		LogLevel:           "info",
 		PersistenceBackend: "sqlite",
 		MemoryBackend:      "mem0",

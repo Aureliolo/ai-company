@@ -78,7 +78,8 @@ class DockerSandboxConfig(BaseModel):
         default_factory=_default_sandbox_image,
         description=(
             "Docker image for sandbox containers. Precedence: explicit YAML, "
-            "SYNTHORG_SANDBOX_IMAGE env var, synthorg-sandbox:latest fallback."
+            "SYNTHORG_SANDBOX_IMAGE env var, "
+            "ghcr.io/aureliolo/synthorg-sandbox:latest fallback."
         ),
     )
     network: Literal["none", "bridge", "host"] = Field(

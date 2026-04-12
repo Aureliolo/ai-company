@@ -43,7 +43,7 @@ type Params struct {
 	SettingsKey        string
 	Sandbox            bool
 	DockerSock         string
-	DockerSockGID      int // host GID owning DockerSock; 0 skips group_add
+	DockerSockGID      int // host GID owning DockerSock; -1 skips group_add
 	PersistenceBackend string
 	MemoryBackend      string
 	BusBackend         string
