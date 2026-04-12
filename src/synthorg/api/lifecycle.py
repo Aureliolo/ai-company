@@ -328,6 +328,12 @@ async def _safe_startup(  # noqa: PLR0913, PLR0912, PLR0915, C901
                 service="distributed_task_queue",
                 phase="started",
             )
+        # ``is not True`` (rather than ``not obj._running``) is deliberate:
+        # unit tests pass ``MagicMock`` instances whose attributes return
+        # truthy ``MagicMock`` objects.  ``not MagicMock()`` evaluates to
+        # ``False`` (skipping start and breaking those tests), while
+        # ``MagicMock() is not True`` correctly evaluates to ``True``.
+        # For real services ``_running`` is a bool, so both forms agree.
         if bridge is not None and getattr(bridge, "_running", None) is not True:
             try:
                 await bridge.start()

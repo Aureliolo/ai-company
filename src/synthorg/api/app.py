@@ -978,6 +978,15 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
         trust_service: Pre-built trust service.
         coordination_metrics_store: Pre-built metrics store
             (auto-wired if None).
+        _skip_lifecycle_shutdown: Test-only flag.  When ``True``, the
+            Litestar app is built with an empty ``on_shutdown`` list so
+            the lifespan exit is a no-op.  Used by the session-scoped
+            test fixture in ``tests/unit/api/conftest.py`` to reuse the
+            same app across tests without tearing down the task engine,
+            message bus, and persistence between each one.  Never use
+            in production: shutdown hooks perform critical cleanup
+            (task-engine drain, persistence disconnect, health prober
+            stop, etc.).
 
     Returns:
         Configured Litestar application.

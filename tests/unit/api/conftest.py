@@ -392,11 +392,20 @@ def _shared_app(  # noqa: PLR0913
 def _restore_instance_patches(obj: object) -> None:
     """Remove instance-level method patches from session-scoped services.
 
+    Session-scoped fixtures are shared across tests within an xdist
+    worker.  Without this cleanup, monkeypatches applied by one test
+    leak into subsequent tests and silently corrupt their behaviour.
+    ``clear()`` resets service data but does not undo method patches.
+
     Tests like ``test_degraded_tool_tracker`` patch methods directly
     on session-scoped instances (``tracker.get_records = _raise``).
-    ``clear()`` resets data but not patched methods.  This function
-    removes any instance attribute that shadows a class-level
-    callable, restoring the original method from the class.
+    This function removes any instance attribute that shadows a
+    class-level callable, restoring the original method from the
+    class so the next test sees the unpatched implementation.
+
+    Skips ``__slots__``-only classes: they have no ``__dict__``, and
+    ``__slots__`` prevents arbitrary attribute assignment, so they
+    cannot carry instance-level patches to begin with.
     """
     obj_dict = getattr(obj, "__dict__", None)
     if obj_dict is None:
@@ -513,7 +522,7 @@ def test_client(  # noqa: PLR0913
         client.headers.update(make_auth_headers("ceo"))
         yield client
 
-    # 7. Restore AppState refs (undo test mutations)
+    # 8. Restore AppState refs (undo test mutations)
     for attr, value in saved.items():
         setattr(app_state, attr, value)
 
