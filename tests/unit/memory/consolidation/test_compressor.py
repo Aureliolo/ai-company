@@ -17,13 +17,14 @@ def _make_compressed(
     *,
     decisions: tuple[str, ...] = ("Used caching for repeated lookups",),
     ratio: float = 0.3,
+    source_artifact_ids: tuple[str, ...] = ("det-1",),
 ) -> CompressedExperience:
     return CompressedExperience(
         id="comp-1",
         agent_id="agent-1",
         strategic_decisions=decisions,
         applicable_contexts=("When dealing with database queries",),
-        source_artifact_ids=("det-1",),
+        source_artifact_ids=source_artifact_ids,
         compression_ratio=ratio,
         compressor_version="llm-v1",
         metadata=MemoryMetadata(tags=("compressed_experience",)),
@@ -106,6 +107,14 @@ class TestCompressedExperience:
             match="strategic_decisions must contain at least one entry",
         ):
             _make_compressed(decisions=())
+
+    @pytest.mark.unit
+    def test_empty_source_artifact_ids_rejected(self) -> None:
+        with pytest.raises(
+            ValidationError,
+            match="source_artifact_ids must contain at least one entry",
+        ):
+            _make_compressed(source_artifact_ids=())
 
     @pytest.mark.unit
     def test_compression_ratio_bounds(self) -> None:

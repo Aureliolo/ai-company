@@ -180,7 +180,15 @@ class DefaultHierarchicalRetriever:
                     retry_workers,
                     retry_query,
                 )
-                # Merge retry results with existing
+                # Design: we intentionally accumulate all attempts
+                # (initial + every retry) in ``all_candidates`` and
+                # ``worker_results`` rather than replacing stale
+                # output.  ``_deduplicate_candidates`` dedups by
+                # ``entry.id`` and keeps the highest
+                # ``combined_score``, so the final ``candidates``
+                # surface only the best-scored hit per entry.
+                # Accumulating preserves the full per-attempt audit
+                # trail in ``worker_results`` for observability.
                 for wr in retry_results:
                     all_candidates.extend(wr.candidates)
                 merged = _deduplicate_candidates(

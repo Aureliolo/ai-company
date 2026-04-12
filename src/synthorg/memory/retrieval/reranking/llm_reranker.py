@@ -16,7 +16,6 @@ from synthorg.observability.events.memory import (
 )
 from synthorg.providers.enums import MessageRole
 from synthorg.providers.models import ChatMessage
-from synthorg.providers.resilience.errors import RetryExhaustedError
 
 if TYPE_CHECKING:
     from synthorg.core.types import NotBlankStr
@@ -92,15 +91,18 @@ class LLMQuerySpecificReranker:
         if len(candidates) <= 1:
             return candidates
 
-        # Check cache
+        by_id = {c.entry.id: c for c in candidates}
+
+        # Check cache -- returns stored ID ordering, we reapply to
+        # the current candidate set so fresh state always wins.
         if self._cache is not None:
             cache_key = _build_cache_key(
                 query.text,
                 tuple(c.entry.id for c in candidates),
             )
-            cached = await self._cache.get(cache_key)
-            if cached is not None:
-                return cached
+            cached_ids = await self._cache.get(cache_key)
+            if cached_ids is not None and set(cached_ids) == set(by_id):
+                return tuple(by_id[cid] for cid in cached_ids)
         else:
             cache_key = ""
 
@@ -108,9 +110,12 @@ class LLMQuerySpecificReranker:
             reranked = await self._rerank_via_llm(query, candidates)
         except builtins.MemoryError, RecursionError:
             raise
-        except RetryExhaustedError:
-            raise
         except Exception as exc:
+            # Reranking is optional post-fusion enhancement -- degrade
+            # to the pre-rerank order on any provider failure
+            # (including ``RetryExhaustedError``) rather than aborting
+            # retrieval.  The parent pipeline's ranked results are
+            # still usable.
             logger.warning(
                 MEMORY_RERANK_FAILED,
                 error=str(exc),
@@ -120,7 +125,10 @@ class LLMQuerySpecificReranker:
             return candidates
         else:
             if self._cache is not None and cache_key:
-                await self._cache.put(cache_key, reranked)
+                await self._cache.put(
+                    cache_key,
+                    tuple(c.entry.id for c in reranked),
+                )
             logger.info(
                 MEMORY_RERANK_COMPLETE,
                 candidate_count=len(reranked),

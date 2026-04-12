@@ -1,20 +1,22 @@
 """Reranker cache with TTL and LRU eviction.
 
 Thread-safe in-memory cache for query-specific re-ranking results.
+
+The cache stores only the ordered sequence of candidate IDs produced
+by the LLM (not the full ``RetrievalCandidate`` objects).  Callers
+reapply the cached ordering to the current candidate set, ensuring
+fresh candidate state (content, scores) is always used on cache
+hits -- stale tuples never leak back.
 """
 
 import asyncio
 import time
-from typing import TYPE_CHECKING
 
 from synthorg.observability import get_logger
 from synthorg.observability.events.memory import (
     MEMORY_RERANK_CACHE_HIT,
     MEMORY_RERANK_CACHE_MISS,
 )
-
-if TYPE_CHECKING:
-    from synthorg.memory.retrieval.models import RetrievalCandidate
 
 logger = get_logger(__name__)
 
@@ -25,10 +27,12 @@ _DEFAULT_MAX_SIZE = 1000
 class RerankerCache:
     """LRU cache with TTL for re-ranked retrieval results.
 
-    Stores ``(candidates, timestamp, last_access)`` triples keyed by
-    a hash of the query text and candidate entry IDs.  Expired entries
-    are evicted on access; when ``max_size`` is exceeded, the least
-    recently accessed entry is evicted.
+    Stores ``(id_ordering, timestamp, last_access)`` triples keyed by
+    a hash of the query text and candidate entry IDs.  Only the ordered
+    sequence of entry IDs is retained; callers reapply this ordering
+    to fresh candidate objects on cache hits to prevent stale object
+    leaks.  Expired entries are evicted on access; when ``max_size``
+    is exceeded, the least recently accessed entry is evicted.
 
     Thread-safe via ``asyncio.Lock``.
 
@@ -53,21 +57,21 @@ class RerankerCache:
         self._max_size = max_size
         self._store: dict[
             str,
-            tuple[tuple[RetrievalCandidate, ...], float, float],
+            tuple[tuple[str, ...], float, float],
         ] = {}
         self._lock = asyncio.Lock()
 
     async def get(
         self,
         key: str,
-    ) -> tuple[RetrievalCandidate, ...] | None:
-        """Retrieve cached candidates, or ``None`` on miss/expiry.
+    ) -> tuple[str, ...] | None:
+        """Retrieve cached ID ordering, or ``None`` on miss/expiry.
 
         Args:
             key: Cache key (hash of query + candidate IDs).
 
         Returns:
-            Cached candidates or ``None``.
+            Cached ordering of candidate IDs or ``None``.
         """
         async with self._lock:
             entry = self._store.get(key)
@@ -77,7 +81,7 @@ class RerankerCache:
                     key=key[:16],
                 )
                 return None
-            candidates, created_at, _ = entry
+            id_order, created_at, _ = entry
             if time.monotonic() - created_at > self._ttl:
                 del self._store[key]
                 logger.debug(
@@ -87,30 +91,30 @@ class RerankerCache:
                 )
                 return None
             # Update last access time
-            self._store[key] = (candidates, created_at, time.monotonic())
+            self._store[key] = (id_order, created_at, time.monotonic())
             logger.debug(
                 MEMORY_RERANK_CACHE_HIT,
                 key=key[:16],
             )
-            return candidates
+            return id_order
 
     async def put(
         self,
         key: str,
-        candidates: tuple[RetrievalCandidate, ...],
+        id_order: tuple[str, ...],
     ) -> None:
-        """Store re-ranked candidates in the cache.
+        """Store reranked ID ordering in the cache.
 
         Evicts the least recently accessed entry when ``max_size``
         is exceeded.
 
         Args:
             key: Cache key.
-            candidates: Re-ranked candidates to cache.
+            id_order: Ordered sequence of candidate entry IDs.
         """
         async with self._lock:
             now = time.monotonic()
-            self._store[key] = (candidates, now, now)
+            self._store[key] = (id_order, now, now)
             if len(self._store) > self._max_size:
                 self._evict_lru()
 

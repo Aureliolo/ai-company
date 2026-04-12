@@ -61,6 +61,7 @@ def create_hierarchical_retriever(
         max_workers_per_query=config.max_workers_per_query,
         reflective_retry_enabled=config.reflective_retry_enabled,
         max_retry_count=config.max_retry_count,
+        quality_threshold=config.min_relevance,
     )
     workers: dict[str, RetrievalWorker] = {
         "semantic": SemanticWorker(

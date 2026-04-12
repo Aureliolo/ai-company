@@ -56,7 +56,7 @@ Respond with JSON: {{"retry": true/false, "corrected_query": "..." \
 or null, "alternative_strategy": "..." or null, "reason": "..."}}
 """
 
-_QUALITY_THRESHOLD = 0.3
+_DEFAULT_QUALITY_THRESHOLD = 0.3
 _DEFAULT_FALLBACK_WORKERS = ("semantic",)
 
 
@@ -69,9 +69,11 @@ class SupervisorRouter:
         max_workers_per_query: Maximum workers per query.
         reflective_retry_enabled: Whether retry evaluation is active.
         max_retry_count: Maximum retry attempts.
+        quality_threshold: Average score below which retry is considered
+            (derived from ``MemoryRetrievalConfig.min_relevance``).
     """
 
-    def __init__(
+    def __init__(  # noqa: PLR0913
         self,
         *,
         provider: CompletionProvider,
@@ -79,12 +81,14 @@ class SupervisorRouter:
         max_workers_per_query: int = 2,
         reflective_retry_enabled: bool = True,
         max_retry_count: int = 2,
+        quality_threshold: float = _DEFAULT_QUALITY_THRESHOLD,
     ) -> None:
         self._provider = provider
         self._model = model
         self._max_workers = max_workers_per_query
         self._retry_enabled = reflective_retry_enabled
         self._max_retries = max_retry_count
+        self._quality_threshold = quality_threshold
 
     @property
     def reflective_retry_enabled(self) -> bool:
@@ -153,7 +157,7 @@ class SupervisorRouter:
         avg_score = sum(c.combined_score for c in result.candidates) / len(
             result.candidates
         )
-        if avg_score >= _QUALITY_THRESHOLD:
+        if avg_score >= self._quality_threshold:
             return None
         try:
             return await self._evaluate_via_llm(query, result)
@@ -242,7 +246,16 @@ class SupervisorRouter:
         )
         if response.content is None:
             return None
-        parsed = json.loads(response.content)
+        try:
+            parsed = json.loads(response.content)
+        except json.JSONDecodeError as exc:
+            logger.warning(
+                MEMORY_HIERARCHICAL_RETRY,
+                action="json_parse_failed",
+                raw_content=response.content[:200],
+                error=str(exc),
+            )
+            return None
         if not parsed.get("retry", False):
             return None
 

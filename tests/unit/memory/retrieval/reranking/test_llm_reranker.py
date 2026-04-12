@@ -190,14 +190,21 @@ class TestLLMQuerySpecificReranker:
         query = _make_query()
 
         # First call: cache miss, calls LLM
-        result1 = await reranker.rerank(query, (c1, c2))
+        await reranker.rerank(query, (c1, c2))
         assert provider.complete.await_count == 1
         assert cache.size == 1
 
-        # Second call: cache hit, no LLM call
-        result2 = await reranker.rerank(query, (c1, c2))
+        # Second call with fresh candidate instances having the same
+        # IDs but different combined_score values: the cache must
+        # preserve the LLM ordering while reflecting fresh candidate
+        # state.
+        new_c1 = _make_candidate("mem-1", 0.42)
+        new_c2 = _make_candidate("mem-2", 0.13)
+        result2 = await reranker.rerank(query, (new_c1, new_c2))
         assert provider.complete.await_count == 1
-        assert result1[0].entry.id == result2[0].entry.id
+        assert cache.size == 1
+        # Cached ranking [1, 0] => expect reordered (mem-2, mem-1)
+        assert [c.entry.id for c in result2] == ["mem-2", "mem-1"]
 
     @pytest.mark.unit
     async def test_rerank_empty_returns_empty(self) -> None:

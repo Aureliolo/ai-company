@@ -120,7 +120,7 @@ class LLMExperienceCompressor:
         self._model = model
         self._config = config
 
-    async def compress(  # noqa: PLR0913
+    async def compress(  # noqa: PLR0913, PLR0915, C901
         self,
         prompt: NotBlankStr,
         output: NotBlankStr,
@@ -178,11 +178,21 @@ class LLMExperienceCompressor:
             temperature=self._config.temperature,
             max_tokens=self._config.max_tokens,
         )
-        response = await self._provider.complete(
-            messages,
-            self._model,
-            config=completion_config,
-        )
+        try:
+            response = await self._provider.complete(
+                messages,
+                self._model,
+                config=completion_config,
+            )
+        except Exception as exc:
+            logger.warning(
+                EXPERIENCE_COMPRESSION_FAILED,
+                error=f"provider call failed: {exc}",
+                model=self._model,
+                agent_id=agent_id,
+                source_artifact_ids=list(source_artifact_ids),
+            )
+            raise
         if response.content is None:
             msg = "LLM returned empty content for compression"
             logger.warning(EXPERIENCE_COMPRESSION_FAILED, error=msg)
