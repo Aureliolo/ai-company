@@ -137,12 +137,13 @@ class ProgressLedgerMiddleware(BaseCoordinationMiddleware):
         # Determine round number
         round_number = (existing.round_number + 1) if existing else 1
 
-        # Analyze progress from rollup contents (not just existence).
-        # Check if the rollup reports any completed subtasks.
-        progress_made = False
+        # Analyze progress via monotonic comparison of completed_count.
         if rollup is not None:
             completed = getattr(rollup, "completed_count", 0) or 0
-            progress_made = completed > 0
+        else:
+            completed = 0
+        prev_completed = existing.completed_count if existing else 0
+        progress_made = completed > prev_completed
 
         # Stall detection
         prev_stall = existing.stall_count if existing else 0
@@ -168,6 +169,7 @@ class ProgressLedgerMiddleware(BaseCoordinationMiddleware):
         ledger = ProgressLedger(
             round_number=round_number,
             progress_made=progress_made,
+            completed_count=completed,
             stall_count=stall_count,
             reset_count=prev_reset,
             blocking_issues=tuple(blocking),

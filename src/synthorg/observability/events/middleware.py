@@ -98,3 +98,6 @@ MIDDLEWARE_UNKNOWN: str = "middleware.registry.unknown"
 
 MIDDLEWARE_DEFAULTS_REGISTERED: str = "middleware.defaults.registered"
 """Default middleware factories registered."""
+
+MIDDLEWARE_DUPLICATE_CHAIN: str = "middleware.chain.duplicate"
+"""Duplicate middleware names detected during chain construction."""

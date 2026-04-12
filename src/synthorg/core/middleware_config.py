@@ -35,7 +35,7 @@ class AuthorityDeferenceConfig(BaseModel):
         default=True,
         description="Whether authority cue stripping is active",
     )
-    patterns: tuple[str, ...] = Field(
+    patterns: tuple[NotBlankStr, ...] = Field(
         default=(
             r"(?i)\byou\s+must\b",
             r"(?i)\bi(?:'m| am)\s+instructing\s+you\b",
@@ -90,7 +90,7 @@ class ClarificationGateConfig(BaseModel):
         ge=1,
         description="Minimum character length per criterion",
     )
-    generic_patterns: tuple[str, ...] = Field(
+    generic_patterns: tuple[NotBlankStr, ...] = Field(
         default=("done", "complete", "works", "finished"),
         description="Patterns for overly generic criteria text",
     )

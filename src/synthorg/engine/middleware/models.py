@@ -291,6 +291,8 @@ class ProgressLedger(BaseModel):
     Attributes:
         round_number: 1-indexed coordination round.
         progress_made: Whether any subtask advanced since last round.
+        completed_count: Snapshot of completed subtask count this round
+            (used for monotonic progress comparison across rounds).
         stall_count: Consecutive rounds with no progress.
         reset_count: Number of replan cycles executed.
         blocking_issues: Descriptions of blocking failures.
@@ -305,6 +307,11 @@ class ProgressLedger(BaseModel):
     )
     progress_made: bool = Field(
         description="Whether any subtask advanced",
+    )
+    completed_count: int = Field(
+        default=0,
+        ge=0,
+        description="Snapshot of completed subtask count this round",
     )
     stall_count: int = Field(
         default=0,

@@ -251,8 +251,7 @@ class ClarificationGateMiddleware(BaseCoordinationMiddleware):
         super().__init__(name="clarification_gate")
         self._config = config or ClarificationGateConfig()
         self._compiled_generic = tuple(
-            re.compile(rf"\b{re.escape(p)}\b", re.IGNORECASE)
-            for p in self._config.generic_patterns
+            re.compile(p, re.IGNORECASE) for p in self._config.generic_patterns
         )
 
     async def before_decompose(

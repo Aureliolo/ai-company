@@ -256,9 +256,16 @@ class CoordinationMiddlewareChain:
             from synthorg.engine.middleware.errors import (  # noqa: PLC0415
                 MiddlewareConfigError,
             )
+            from synthorg.observability.events.middleware import (  # noqa: PLC0415
+                MIDDLEWARE_DUPLICATE_CHAIN,
+            )
 
             msg = f"Duplicate middleware names in chain: {sorted(set(dupes))}"
-            logger.warning(msg, duplicates=sorted(set(dupes)))
+            logger.warning(
+                MIDDLEWARE_DUPLICATE_CHAIN,
+                message=msg,
+                duplicates=sorted(set(dupes)),
+            )
             raise MiddlewareConfigError(msg)
         self._middleware = middleware
 
