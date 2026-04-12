@@ -50,6 +50,7 @@ from synthorg.observability.events.budget import (
     BUDGET_SUMMARY_BUILT,
     BUDGET_TIME_RANGE_INVALID,
     BUDGET_TOTAL_COST_QUERIED,
+    BUDGET_TRACKER_CLEARED,
     BUDGET_TRACKER_CREATED,
 )
 
@@ -585,6 +586,23 @@ class CostTracker:
                 alert_level=result.alert_level.value,
             )
         return result
+
+    def clear(self) -> None:
+        """Reset all recorded cost data for test isolation.
+
+        Deliberately synchronous and does **not** acquire ``_lock``.
+        ``record()`` and ``_snapshot()`` serialise concurrent async
+        readers/writers via ``async with self._lock``; ``clear()`` is
+        the test-only counterpart, called from sync test-fixture
+        setup *after* the previous event loop has closed and cancelled
+        any in-flight tasks.  Under that invariant no async coroutine
+        can race with this method, and ``list.clear()`` is a single
+        atomic C-level operation under the GIL.  Calling this method
+        from production / async code is unsupported.
+        """
+        cleared_count = len(self._records)
+        self._records.clear()
+        logger.info(BUDGET_TRACKER_CLEARED, cleared_count=cleared_count)
 
     # ── Private helpers ──────────────────────────────────────────────
 

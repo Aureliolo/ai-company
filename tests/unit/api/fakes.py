@@ -1,6 +1,7 @@
 """In-memory fake implementations for API unit tests."""
 
 import asyncio
+import contextlib
 from collections.abc import Mapping, Sequence
 from datetime import datetime
 from typing import Any
@@ -662,8 +663,25 @@ class FakeMessageBus:
         *,
         timeout: float | None = None,  # noqa: ASYNC109
     ) -> Any:
-        # Yield to event loop without real delay (deterministic in tests)
-        await asyncio.sleep(0)
+        """Block up to *timeout* seconds before returning ``None``.
+
+        The real ``MessageBus.receive`` blocks on an internal queue
+        until a message arrives or *timeout* elapses.  Returning
+        ``None`` immediately makes the API bridge's polling loop
+        (``bus_bridge._poll_channel``) a busy-wait that spins at
+        max speed, scheduling hundreds of thousands of
+        ``asyncio.sleep(0)`` continuations per second and inflating
+        event-loop teardown cost.  ``asyncio.Event().wait()`` with
+        ``wait_for`` yields cleanly for the full timeout, so the
+        loop runs at most once per timeout window and cancellation
+        is a single ``asyncio.CancelledError`` on a suspended task.
+        """
+        if timeout is None:
+            # No timeout -- block forever (until cancelled).
+            await asyncio.Event().wait()
+            return None
+        with contextlib.suppress(TimeoutError):
+            await asyncio.wait_for(asyncio.Event().wait(), timeout=timeout)
         return None
 
     async def create_channel(self, channel: Channel) -> Channel:

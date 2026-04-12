@@ -345,12 +345,20 @@ class TestBackupGuards:
     """HTTP-level guard tests for backup controller access control."""
 
     @pytest.fixture(autouse=True)
-    def _mock_backup_service(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def _mock_backup_service(
+        self,
+        test_client: TestClient[Any],
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> Any:
         """Override the API-wide backup disable.
 
         Guard tests need a backup service instance in ``app_state``
         so the list-backups endpoint responds instead of crashing,
         but we still want to avoid real filesystem I/O.
+
+        Also sets the mock directly on AppState to support
+        session-scoped apps where the factory patch cannot affect
+        the already-created app.
         """
         mock_svc = MagicMock()
         mock_svc.on_startup = False
@@ -364,6 +372,11 @@ class TestBackupGuards:
             "synthorg.api.app.build_backup_service",
             lambda *_a, **_kw: mock_svc,
         )
+        app_state = test_client.app.state.app_state
+        old = app_state._backup_service
+        app_state._backup_service = mock_svc
+        yield
+        app_state._backup_service = old
 
     def test_ceo_can_access(
         self,

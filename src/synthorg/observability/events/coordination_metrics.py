@@ -38,3 +38,4 @@ COORD_METRICS_BASELINE_INSUFFICIENT: Final[str] = (
     "coordination.metrics.baseline_insufficient"
 )
 COORD_METRICS_ALERT_FIRED: Final[str] = "coordination.metrics.alert_fired"
+COORD_METRICS_STORE_CLEARED: Final[str] = "coordination.metrics.store_cleared"

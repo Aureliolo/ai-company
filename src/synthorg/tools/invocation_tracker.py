@@ -14,6 +14,7 @@ from synthorg.observability.events.tool import (
     TOOL_INVOCATION_EVICTED,
     TOOL_INVOCATION_RECORDED,
     TOOL_INVOCATION_TIME_RANGE_INVALID,
+    TOOL_INVOCATION_TRACKER_CLEARED,
     TOOL_INVOCATIONS_QUERIED,
 )
 
@@ -55,6 +56,16 @@ class ToolInvocationTracker:
         )
         self._lock: asyncio.Lock = asyncio.Lock()
         self._eviction_warned: bool = False
+
+    def clear(self) -> None:
+        """Reset all invocation records for test isolation."""
+        cleared_count = len(self._records)
+        self._records.clear()
+        self._eviction_warned = False
+        logger.info(
+            TOOL_INVOCATION_TRACKER_CLEARED,
+            cleared_count=cleared_count,
+        )
 
     async def record(self, invocation: ToolInvocationRecord) -> None:
         """Append a tool invocation record.

@@ -7,6 +7,7 @@ from pydantic import AwareDatetime  # noqa: TC002
 from synthorg.core.enums import ApprovalRiskLevel  # noqa: TC001
 from synthorg.observability import get_logger
 from synthorg.observability.events.security import (
+    SECURITY_AUDIT_CLEARED,
     SECURITY_AUDIT_CONFIG_ERROR,
     SECURITY_AUDIT_EVICTION,
     SECURITY_AUDIT_RECORDED,
@@ -45,6 +46,18 @@ class AuditLog:
         self._max_entries = max_entries
         self._entries: deque[AuditEntry] = deque(maxlen=max_entries)
         self._total_recorded: int = 0
+
+    def clear(self) -> None:
+        """Reset all audit entries for test isolation."""
+        previous_count = len(self._entries)
+        previous_total = self._total_recorded
+        self._entries.clear()
+        self._total_recorded = 0
+        logger.info(
+            SECURITY_AUDIT_CLEARED,
+            previous_count=previous_count,
+            previous_total=previous_total,
+        )
 
     def record(self, entry: AuditEntry) -> None:
         """Append an audit entry.

@@ -7,6 +7,7 @@ and are passed as the first argument to structured log calls.
 from typing import Final
 
 PERF_METRIC_RECORDED: Final[str] = "perf.metric.recorded"
+PERF_TRACKER_CLEARED: Final[str] = "perf.tracker.cleared"
 PERF_QUALITY_SCORED: Final[str] = "perf.quality.scored"
 PERF_COLLABORATION_SCORED: Final[str] = "perf.collaboration.scored"
 PERF_SNAPSHOT_COMPUTED: Final[str] = "perf.snapshot.computed"
