@@ -208,6 +208,12 @@ class PostgresConfig(BaseModel):
                 "Expected format: '<number> <unit>' "
                 "(e.g. '1 day', '12 hours', '7 days')."
             )
+            logger.warning(
+                CONFIG_VALIDATION_FAILED,
+                field="chunk_interval",
+                value=value,
+                reason=msg,
+            )
             raise ValueError(msg)
         return value
 

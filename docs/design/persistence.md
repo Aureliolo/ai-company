@@ -71,8 +71,9 @@ count) rather than O(row count).
 The feature is **off by default** and gated behind
 `PostgresConfig.enable_timescaledb`.  Operators running vanilla Postgres or a
 managed service without TimescaleDB leave it off and the tables stay regular
-relational tables with a composite primary key -- same behaviour as before,
-no migration impact.
+relational tables with a composite primary key.  Note: the composite-primary-key
+schema change and its Atlas migration run unconditionally (they are valid on
+vanilla Postgres); only the `create_hypertable` step is gated behind the flag.
 
 ```python
 PostgresConfig(

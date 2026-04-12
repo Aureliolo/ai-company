@@ -636,7 +636,13 @@ class SettingsService:
         """
         prepared: list[tuple[NotBlankStr, NotBlankStr, str, str]] = []
         definitions: list[tuple[str, str, SettingDefinition]] = []
+        seen: set[tuple[str, str]] = set()
         for namespace, key, value in items:
+            pair = (namespace, key)
+            if pair in seen:
+                msg = f"Duplicate setting in batch: {namespace}/{key}"
+                raise SettingValidationError(msg)
+            seen.add(pair)
             definition = self._registry.get(namespace, key)
             if definition is None:
                 logger.warning(SETTINGS_NOT_FOUND, namespace=namespace, key=key)
@@ -687,7 +693,16 @@ class SettingsService:
                 f"without encryption key"
             )
             raise SettingsEncryptionError(msg)
-        return self._encryptor.encrypt(value)
+        try:
+            return self._encryptor.encrypt(value)
+        except SettingsEncryptionError:
+            logger.exception(
+                SETTINGS_ENCRYPTION_ERROR,
+                namespace=definition.namespace,
+                key=definition.key,
+                reason="encrypt_failed",
+            )
+            raise
 
     async def delete(self, namespace: str, key: str) -> None:
         """Delete a DB override, reverting to the next source in chain.

@@ -271,8 +271,8 @@ class PostgresSettingsRepository:
             async with self._pool.connection() as conn:
                 try:
                     async with conn.transaction(), conn.cursor() as cur:
-                        updated_at_dt = _parse_iso(items[0][3])
-                        for namespace, key, value, _ts in items:
+                        for namespace, key, value, updated_at in items:
+                            updated_at_dt = _parse_iso(updated_at)
                             expected = cas_map.get((str(namespace), str(key)))
                             if expected is None:
                                 await cur.execute(

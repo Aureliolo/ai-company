@@ -1,6 +1,7 @@
 """In-memory fake implementations for API unit tests."""
 
 import asyncio
+from collections.abc import Mapping, Sequence
 from datetime import datetime
 from typing import Any
 
@@ -585,9 +586,9 @@ class FakeSettingsRepository:
 
     async def set_many(
         self,
-        items: Any,
+        items: Sequence[tuple[str, str, str, str]],
         *,
-        expected_updated_at_map: Any = None,
+        expected_updated_at_map: Mapping[tuple[str, str], str] | None = None,
     ) -> bool:
         if not items:
             return True
