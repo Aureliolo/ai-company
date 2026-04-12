@@ -68,7 +68,7 @@ def _token_usage() -> TokenUsage:
     return TokenUsage(input_tokens=10, output_tokens=5, cost_usd=0.01)
 
 
-async def _dummy_model_call(ctx):
+async def _dummy_model_call(ctx: AgentMiddlewareContext) -> ModelCallResult:
     return ModelCallResult(
         response_text="hello",
         token_usage=_token_usage(),
@@ -76,7 +76,7 @@ async def _dummy_model_call(ctx):
     )
 
 
-async def _dummy_tool_call(ctx):
+async def _dummy_tool_call(ctx: AgentMiddlewareContext) -> ToolCallResult:
     return ToolCallResult(tool_name="test_tool", output="result")
 
 
@@ -98,7 +98,7 @@ class TestBuiltinProtocolCompliance:
             (CheckpointResumeMiddleware, {}),
         ],
     )
-    def test_satisfies_protocol(self, cls, kwargs) -> None:
+    def test_satisfies_protocol(self, cls: type, kwargs: dict[str, object]) -> None:
         mw = cls(**kwargs)
         assert isinstance(mw, AgentMiddleware)
 

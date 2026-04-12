@@ -20,24 +20,24 @@ from synthorg.engine.middleware.registry import (
 
 
 @pytest.fixture(autouse=True)
-def _clean_registries():
+def _clean_registries() -> None:  # type: ignore[misc]
     """Clear registries before and after each test."""
     clear_agent_registry()
     clear_coordination_registry()
-    yield
+    yield  # type: ignore[misc]
     clear_agent_registry()
     clear_coordination_registry()
 
 
-def _make_agent_mw(**_kwargs):
+def _make_agent_mw(**_kwargs: object) -> BaseAgentMiddleware:
     return BaseAgentMiddleware(name="test")
 
 
-def _make_agent_mw_other(**_kwargs):
+def _make_agent_mw_other(**_kwargs: object) -> BaseAgentMiddleware:
     return BaseAgentMiddleware(name="test_other")
 
 
-def _make_coord_mw(**_kwargs):
+def _make_coord_mw(**_kwargs: object) -> BaseCoordinationMiddleware:
     return BaseCoordinationMiddleware(name="test")
 
 
@@ -102,7 +102,7 @@ class TestCoordinationRegistry:
         assert names == ("test",)
 
     def test_conflicting_raises(self) -> None:
-        def _other(**_kw):
+        def _other(**_kw: object) -> BaseCoordinationMiddleware:
             return BaseCoordinationMiddleware(name="other")
 
         register_coordination_middleware("test", _make_coord_mw)

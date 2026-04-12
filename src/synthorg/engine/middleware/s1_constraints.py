@@ -74,7 +74,7 @@ class AuthorityDeferenceGuard(BaseAgentMiddleware):
         stripped_count = 0
         for msg in ctx.agent_context.conversation:
             for pattern in self._compiled:
-                matches = pattern.findall(msg.content)
+                matches = pattern.findall(msg.content or "")
                 stripped_count += len(matches)
 
         if stripped_count > 0:

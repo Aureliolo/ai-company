@@ -264,7 +264,12 @@ class MagenticReplanHook:
         # Budget affordability check
         if self._budget_enforcer is not None:
             try:
-                can_afford = await self._budget_enforcer.check_affordability()
+                can_afford = (
+                    await self._budget_enforcer.check_can_execute(
+                        agent_id="coordination-replan",
+                    )
+                    is not None
+                )
             except MemoryError, RecursionError:
                 raise
             except Exception:

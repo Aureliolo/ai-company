@@ -189,17 +189,25 @@ class _TrackingMiddleware(BaseAgentMiddleware):
         self._log.append(f"{self.name}:after_agent")
         return ctx
 
-    async def wrap_model_call(self, ctx, call):
+    async def wrap_model_call(
+        self,
+        ctx: AgentMiddlewareContext,
+        call: object,
+    ) -> ModelCallResult:
         self._log.append(f"{self.name}:wrap_model_call:enter")
-        result = await call(ctx)
+        result = await call(ctx)  # type: ignore[misc]
         self._log.append(f"{self.name}:wrap_model_call:exit")
-        return result
+        return result  # type: ignore[return-value]
 
-    async def wrap_tool_call(self, ctx, call):
+    async def wrap_tool_call(
+        self,
+        ctx: AgentMiddlewareContext,
+        call: object,
+    ) -> ToolCallResult:
         self._log.append(f"{self.name}:wrap_tool_call:enter")
-        result = await call(ctx)
+        result = await call(ctx)  # type: ignore[misc]
         self._log.append(f"{self.name}:wrap_tool_call:exit")
-        return result
+        return result  # type: ignore[return-value]
 
 
 @pytest.mark.unit
@@ -353,7 +361,7 @@ class TestAgentMiddlewareChain:
 class _ErrorMiddleware(BaseAgentMiddleware):
     """Raises in before_agent to test error propagation."""
 
-    async def before_agent(self, ctx):
+    async def before_agent(self, ctx: AgentMiddlewareContext) -> AgentMiddlewareContext:
         msg = f"Error from {self.name}"
         raise RuntimeError(msg)
 
@@ -370,7 +378,9 @@ class TestChainErrorPropagation:
 
     async def test_wrap_model_call_error_propagates(self) -> None:
         class _WrapError(BaseAgentMiddleware):
-            async def wrap_model_call(self, ctx, call):
+            async def wrap_model_call(
+                self, ctx: AgentMiddlewareContext, call: object
+            ) -> ModelCallResult:
                 msg = "wrap error"
                 raise ValueError(msg)
 

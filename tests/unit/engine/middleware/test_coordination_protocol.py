@@ -125,23 +125,33 @@ class _TrackingCoordMiddleware(BaseCoordinationMiddleware):
         super().__init__(name=name)
         self._log = log
 
-    async def before_decompose(self, ctx):
+    async def before_decompose(
+        self, ctx: CoordinationMiddlewareContext
+    ) -> CoordinationMiddlewareContext:
         self._log.append(f"{self.name}:before_decompose")
         return ctx
 
-    async def after_decompose(self, ctx):
+    async def after_decompose(
+        self, ctx: CoordinationMiddlewareContext
+    ) -> CoordinationMiddlewareContext:
         self._log.append(f"{self.name}:after_decompose")
         return ctx
 
-    async def before_dispatch(self, ctx):
+    async def before_dispatch(
+        self, ctx: CoordinationMiddlewareContext
+    ) -> CoordinationMiddlewareContext:
         self._log.append(f"{self.name}:before_dispatch")
         return ctx
 
-    async def after_rollup(self, ctx):
+    async def after_rollup(
+        self, ctx: CoordinationMiddlewareContext
+    ) -> CoordinationMiddlewareContext:
         self._log.append(f"{self.name}:after_rollup")
         return ctx
 
-    async def before_update_parent(self, ctx):
+    async def before_update_parent(
+        self, ctx: CoordinationMiddlewareContext
+    ) -> CoordinationMiddlewareContext:
         self._log.append(f"{self.name}:before_update_parent")
         return ctx
 
@@ -247,7 +257,9 @@ class TestCoordinationMiddlewareChain:
 class _ErrorCoordMiddleware(BaseCoordinationMiddleware):
     """Raises in before_decompose."""
 
-    async def before_decompose(self, ctx):
+    async def before_decompose(
+        self, ctx: CoordinationMiddlewareContext
+    ) -> CoordinationMiddlewareContext:
         msg = f"Error from {self.name}"
         raise RuntimeError(msg)
 

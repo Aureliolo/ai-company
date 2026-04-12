@@ -165,7 +165,7 @@ class MultiAgentCoordinator:
 
             # Middleware: after_decompose
             if mw_chain is not None:
-                mw_ctx = mw_ctx.model_copy(  # type: ignore[possibly-undefined]
+                mw_ctx = mw_ctx.model_copy(
                     update={
                         "decomposition_result": decomp_result,
                         "phases": tuple(phases),
@@ -184,7 +184,7 @@ class MultiAgentCoordinator:
 
             # Middleware: before_dispatch
             if mw_chain is not None:
-                mw_ctx = mw_ctx.model_copy(  # type: ignore[possibly-undefined]
+                mw_ctx = mw_ctx.model_copy(
                     update={
                         "routing_result": routing_result,
                         "phases": tuple(phases),
@@ -207,7 +207,7 @@ class MultiAgentCoordinator:
 
             # Middleware: after_rollup
             if mw_chain is not None:
-                mw_ctx = mw_ctx.model_copy(  # type: ignore[possibly-undefined]
+                mw_ctx = mw_ctx.model_copy(
                     update={
                         "dispatch_result": dispatch_result,
                         "status_rollup": rollup,
@@ -219,7 +219,7 @@ class MultiAgentCoordinator:
             # Middleware: before_update_parent
             if mw_chain is not None:
                 mw_ctx = await mw_chain.run_before_update_parent(
-                    mw_ctx,  # type: ignore[possibly-undefined]
+                    mw_ctx,
                 )
 
             # Phase 7: Update parent task

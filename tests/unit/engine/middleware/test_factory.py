@@ -25,11 +25,11 @@ from synthorg.engine.middleware.registry import (
 
 
 @pytest.fixture(autouse=True)
-def _clean_registries():
+def _clean_registries() -> None:  # type: ignore[misc]
     """Clear registries before and after each test."""
     clear_agent_registry()
     clear_coordination_registry()
-    yield
+    yield  # type: ignore[misc]
     clear_agent_registry()
     clear_coordination_registry()
 
@@ -47,10 +47,10 @@ class TestBuildAgentMiddlewareChain:
         assert len(chain) == 0
 
     def test_builds_chain_from_registered(self) -> None:
-        def _factory_a(**_kw):
+        def _factory_a(**_kw: object) -> BaseAgentMiddleware:
             return BaseAgentMiddleware(name="a")
 
-        def _factory_b(**_kw):
+        def _factory_b(**_kw: object) -> BaseAgentMiddleware:
             return BaseAgentMiddleware(name="b")
 
         register_agent_middleware("a", _factory_a)
@@ -61,7 +61,7 @@ class TestBuildAgentMiddlewareChain:
         assert chain.names == ("a", "b")
 
     def test_skips_unregistered(self) -> None:
-        def _factory(**_kw):
+        def _factory(**_kw: object) -> BaseAgentMiddleware:
             return BaseAgentMiddleware(name="a")
 
         register_agent_middleware("a", _factory)
@@ -71,7 +71,7 @@ class TestBuildAgentMiddlewareChain:
         assert chain.names == ("a",)
 
     def test_skips_on_missing_dependency(self) -> None:
-        def _factory(*, required_dep):
+        def _factory(*, required_dep: str) -> BaseAgentMiddleware:
             return BaseAgentMiddleware(name="needs_dep")
 
         register_agent_middleware("needs_dep", _factory)
@@ -82,9 +82,9 @@ class TestBuildAgentMiddlewareChain:
         assert len(chain) == 0
 
     def test_passes_deps_to_factory(self) -> None:
-        received: dict = {}
+        received: dict[str, object] = {}
 
-        def _factory(**kw):
+        def _factory(**kw: object) -> BaseAgentMiddleware:
             received.update(kw)
             return BaseAgentMiddleware(name="dep_aware")
 
@@ -100,7 +100,7 @@ class TestBuildAgentMiddlewareChain:
     def test_preserves_chain_order(self) -> None:
         for name in ("c", "b", "a"):
 
-            def _factory(n=name, **_kw):
+            def _factory(n: str = name, **_kw: object) -> BaseAgentMiddleware:
                 return BaseAgentMiddleware(name=n)
 
             register_agent_middleware(name, _factory)
@@ -123,7 +123,7 @@ class TestBuildCoordinationMiddlewareChain:
         assert len(chain) == 0
 
     def test_builds_chain_from_registered(self) -> None:
-        def _factory(**_kw):
+        def _factory(**_kw: object) -> BaseCoordinationMiddleware:
             return BaseCoordinationMiddleware(name="gate")
 
         register_coordination_middleware("gate", _factory)
@@ -140,7 +140,7 @@ class TestBuildCoordinationMiddlewareChain:
         assert len(chain) == 0
 
     def test_skips_on_missing_dependency(self) -> None:
-        def _factory(*, required):
+        def _factory(*, required: str) -> BaseCoordinationMiddleware:
             return BaseCoordinationMiddleware(name="x")
 
         register_coordination_middleware("x", _factory)

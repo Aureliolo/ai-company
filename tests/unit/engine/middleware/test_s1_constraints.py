@@ -75,7 +75,7 @@ def _mw_context(
     *,
     messages: tuple[ChatMessage, ...] = (),
     task: Task | None = None,
-    metadata: dict | None = None,
+    metadata: dict[str, object] | None = None,
 ) -> AgentMiddlewareContext:
     identity = _identity()
     ctx = AgentContext.from_identity(identity)
