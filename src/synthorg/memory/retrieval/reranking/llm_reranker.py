@@ -121,6 +121,15 @@ class LLMQuerySpecificReranker:
         try:
             reranked = await self._rerank_via_llm(query, candidates)
         except builtins.MemoryError, RecursionError:
+            # Emit failure telemetry before re-raising so operators
+            # can correlate system-level reranker aborts with the
+            # triggering query/candidate set.
+            logger.exception(
+                MEMORY_RERANK_FAILED,
+                error="system_error",
+                candidate_count=len(candidates),
+                query_length=len(query.text),
+            )
             raise
         except Exception as exc:
             # Reranking is optional post-fusion enhancement -- degrade

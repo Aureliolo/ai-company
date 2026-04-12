@@ -272,6 +272,11 @@ class LLMExperienceCompressor:
         compressed_len = len(response.content)
         ratio = compressed_len / max(raw_len, 1)
         ratio = min(ratio, 1.0)
+        # ``CompressedExperience.compression_ratio`` requires ``gt=0``.
+        # Clamp extreme compressions (e.g. empty raw artifact) to a
+        # 0.01 floor to satisfy that invariant without discarding
+        # legitimate aggressive compressions.
+        compression_ratio = max(ratio, 0.01)
 
         try:
             experience = CompressedExperience(
@@ -280,7 +285,7 @@ class LLMExperienceCompressor:
                 strategic_decisions=decisions,
                 applicable_contexts=contexts,
                 source_artifact_ids=source_artifact_ids,
-                compression_ratio=max(ratio, 0.01),
+                compression_ratio=compression_ratio,
                 compressor_version=_COMPRESSOR_VERSION,
                 metadata=MemoryMetadata(
                     tags=("compressed_experience",),

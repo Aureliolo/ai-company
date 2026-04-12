@@ -271,11 +271,16 @@ class EpisodicWorker:
             since = datetime.now(UTC) - timedelta(
                 hours=self._time_window_hours,
             )
+            # Fetch a wider pool than ``query.max_results`` so the
+            # recency-aware ranking below can see the full time
+            # window before truncation.  A 4x multiplier matches the
+            # candidate pool multiplier used by the flat retriever.
+            pool_limit = max(query.max_results * 4, query.max_results)
             mem_query = MemoryQuery(
                 text=query.text,
                 categories=frozenset({MemoryCategory.EPISODIC}),
                 since=since,
-                limit=query.max_results,
+                limit=pool_limit,
             )
             entries = await _safe_retrieve(
                 self._backend,
@@ -304,7 +309,15 @@ class EpisodicWorker:
                         source_worker=self.name,
                     )
                 )
-            candidates = tuple(candidates_list)
+            # Sort by combined_score (descending), then trim to the
+            # caller's requested max_results.  Trimming AFTER ranking
+            # ensures recent-but-low-relevance items can compete for
+            # slots against older-but-high-relevance items.
+            candidates_list.sort(
+                key=lambda c: c.combined_score,
+                reverse=True,
+            )
+            candidates = tuple(candidates_list[: query.max_results])
             elapsed_ms = int((time.monotonic() - start) * 1000)
             logger.info(
                 MEMORY_HIERARCHICAL_WORKER_COMPLETE,
