@@ -74,9 +74,9 @@ class TestSeniorityInfo:
 class TestBuiltinRoles:
     """Tests for the BUILTIN_ROLES tuple completeness and invariants."""
 
-    def test_has_31_roles(self) -> None:
-        """Verify BUILTIN_ROLES contains exactly 31 roles."""
-        assert len(BUILTIN_ROLES) == 31
+    def test_has_32_roles(self) -> None:
+        """Verify BUILTIN_ROLES contains exactly 32 roles."""
+        assert len(BUILTIN_ROLES) == 32
 
     def test_all_entries_are_role(self) -> None:
         """Verify every entry is a Role instance."""
