@@ -206,7 +206,7 @@ via `SQUASH_THRESHOLD`), the oldest files beyond the **newest 50**
 
 The "before squash point" case is safe because the threshold (100) and keep
 count (50) guarantee that by the time a squash runs, all production databases
-have had at least 50 releases to catch up past the squash boundary.
+have had at least 50 migration versions to catch up past the squash boundary.
 
 ### Dual-backend squashing
 
