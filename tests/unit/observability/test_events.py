@@ -212,6 +212,7 @@ class TestEventConstants:
             "meeting",
             "memory",
             "metrics",
+            "middleware",
             "org_memory",
             "parallel",
             "performance",

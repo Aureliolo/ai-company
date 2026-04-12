@@ -150,9 +150,11 @@ class TestAssumptionViolationEvent:
 
     def test_enum_values(self) -> None:
         assert len(AssumptionViolationType) == 3
-        assert AssumptionViolationType.PRECONDITION_CHANGED == "precondition_changed"
-        assert AssumptionViolationType.CRITERIA_CONFLICT == "criteria_conflict"
-        assert AssumptionViolationType.DEPENDENCY_FAILED == "dependency_failed"
+        assert (
+            AssumptionViolationType.PRECONDITION_CHANGED.value == "precondition_changed"
+        )
+        assert AssumptionViolationType.CRITERIA_CONFLICT.value == "criteria_conflict"
+        assert AssumptionViolationType.DEPENDENCY_FAILED.value == "dependency_failed"
 
 
 # ── TaskLedger ────────────────────────────────────────────────────

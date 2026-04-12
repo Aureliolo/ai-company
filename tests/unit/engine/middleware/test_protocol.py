@@ -19,6 +19,8 @@ from synthorg.engine.middleware.protocol import (
     AgentMiddleware,
     AgentMiddlewareChain,
     BaseAgentMiddleware,
+    ModelCallable,
+    ToolCallable,
 )
 from synthorg.providers.models import TokenUsage
 
@@ -192,22 +194,22 @@ class _TrackingMiddleware(BaseAgentMiddleware):
     async def wrap_model_call(
         self,
         ctx: AgentMiddlewareContext,
-        call: object,
+        call: ModelCallable,
     ) -> ModelCallResult:
         self._log.append(f"{self.name}:wrap_model_call:enter")
-        result = await call(ctx)  # type: ignore[misc]
+        result = await call(ctx)
         self._log.append(f"{self.name}:wrap_model_call:exit")
-        return result  # type: ignore[return-value]
+        return result
 
     async def wrap_tool_call(
         self,
         ctx: AgentMiddlewareContext,
-        call: object,
+        call: ToolCallable,
     ) -> ToolCallResult:
         self._log.append(f"{self.name}:wrap_tool_call:enter")
-        result = await call(ctx)  # type: ignore[misc]
+        result = await call(ctx)
         self._log.append(f"{self.name}:wrap_tool_call:exit")
-        return result  # type: ignore[return-value]
+        return result
 
 
 @pytest.mark.unit
@@ -296,7 +298,9 @@ class TestAgentMiddlewareChain:
         )
         ctx = _mw_context()
 
-        async def core_call(ctx):
+        async def core_model_call(
+            _ctx: AgentMiddlewareContext,
+        ) -> ModelCallResult:
             log.append("core")
             return ModelCallResult(
                 response_text="ok",
@@ -304,7 +308,7 @@ class TestAgentMiddlewareChain:
                 finish_reason="stop",
             )
 
-        await chain.run_wrap_model_call(ctx, core_call)
+        await chain.run_wrap_model_call(ctx, core_model_call)
         assert log == [
             "outer:wrap_model_call:enter",
             "inner:wrap_model_call:enter",
@@ -323,11 +327,13 @@ class TestAgentMiddlewareChain:
         )
         ctx = _mw_context()
 
-        async def core_call(ctx):
+        async def core_tool_call(
+            _ctx: AgentMiddlewareContext,
+        ) -> ToolCallResult:
             log.append("core")
             return ToolCallResult(tool_name="t", output="ok")
 
-        await chain.run_wrap_tool_call(ctx, core_call)
+        await chain.run_wrap_tool_call(ctx, core_tool_call)
         assert log == [
             "outer:wrap_tool_call:enter",
             "inner:wrap_tool_call:enter",
@@ -379,7 +385,9 @@ class TestChainErrorPropagation:
     async def test_wrap_model_call_error_propagates(self) -> None:
         class _WrapError(BaseAgentMiddleware):
             async def wrap_model_call(
-                self, ctx: AgentMiddlewareContext, call: object
+                self,
+                ctx: AgentMiddlewareContext,
+                call: ModelCallable,
             ) -> ModelCallResult:
                 msg = "wrap error"
                 raise ValueError(msg)

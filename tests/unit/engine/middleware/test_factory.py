@@ -1,5 +1,7 @@
 """Tests for middleware chain factories."""
 
+from collections.abc import Generator
+
 import pytest
 
 from synthorg.core.middleware_config import (
@@ -25,11 +27,11 @@ from synthorg.engine.middleware.registry import (
 
 
 @pytest.fixture(autouse=True)
-def _clean_registries() -> None:  # type: ignore[misc]
+def _clean_registries() -> Generator[None]:
     """Clear registries before and after each test."""
     clear_agent_registry()
     clear_coordination_registry()
-    yield  # type: ignore[misc]
+    yield
     clear_agent_registry()
     clear_coordination_registry()
 
