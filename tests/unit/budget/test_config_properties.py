@@ -1,7 +1,7 @@
 """Property-based tests for budget configuration validation constraints."""
 
 import pytest
-from hypothesis import assume, given, settings
+from hypothesis import assume, given
 from hypothesis import strategies as st
 from pydantic import ValidationError
 
@@ -19,7 +19,6 @@ _not_blank = st.text(min_size=1, max_size=20).filter(lambda s: s.strip())
 
 class TestBudgetAlertConfigProperties:
     @given(warn=_pct, critical=_pct, hard_stop=_pct)
-    @settings(max_examples=200)
     def test_threshold_ordering_invariant(
         self,
         warn: int,
@@ -50,7 +49,6 @@ class TestBudgetAlertConfigProperties:
         .map(sorted)
         .filter(lambda xs: xs[0] < xs[1] < xs[2]),
     )
-    @settings(max_examples=100)
     def test_valid_config_roundtrip(self, data: list[int]) -> None:
         warn, critical, hard_stop = data
         cfg = BudgetAlertConfig(
@@ -68,7 +66,6 @@ class TestAutoDowngradeConfigProperties:
         enabled=st.booleans(),
         threshold=_pct,
     )
-    @settings(max_examples=50)
     def test_basic_config_roundtrip(
         self,
         enabled: bool,
@@ -80,7 +77,6 @@ class TestAutoDowngradeConfigProperties:
         assert restored == cfg
 
     @given(source=_not_blank)
-    @settings(max_examples=50)
     def test_self_downgrade_rejected(self, source: str) -> None:
         with pytest.raises(ValidationError, match="Self-downgrade"):
             AutoDowngradeConfig(
@@ -89,7 +85,6 @@ class TestAutoDowngradeConfigProperties:
             )
 
     @given(source=_not_blank, target1=_not_blank, target2=_not_blank)
-    @settings(max_examples=50)
     def test_duplicate_source_rejected(
         self,
         source: str,
@@ -111,7 +106,6 @@ class TestAutoDowngradeConfigProperties:
             max_size=5,
         ),
     )
-    @settings(max_examples=100)
     def test_valid_map_accepted_or_expected_rejection(
         self,
         pairs: list[tuple[str, str]],
@@ -158,7 +152,6 @@ class TestBudgetConfigProperties:
         ),
         reset_day=st.integers(min_value=1, max_value=28),
     )
-    @settings(max_examples=100)
     def test_budget_config_validation(
         self,
         total: float,
@@ -191,7 +184,6 @@ class TestBudgetConfigProperties:
         total=st.floats(min_value=10.0, max_value=1000.0, allow_nan=False),
         reset_day=st.integers(min_value=1, max_value=28),
     )
-    @settings(max_examples=50)
     def test_valid_budget_roundtrip(
         self,
         total: float,

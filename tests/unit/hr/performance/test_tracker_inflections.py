@@ -90,7 +90,8 @@ class TestInflectionDetection:
                 _make_task_record(days_ago=i, quality=8.0),
             )
         await tracker.get_snapshot("agent-1")
-        await asyncio.sleep(0.05)
+        if tasks := list(tracker._background_tasks):
+            await asyncio.gather(*tasks)
 
         # Force a different direction by manipulating the cache.
         for key in list(tracker._trend_direction_cache.keys()):
@@ -99,7 +100,8 @@ class TestInflectionDetection:
 
         # Second snapshot should detect the change.
         await tracker.get_snapshot("agent-1")
-        await asyncio.sleep(0.05)
+        if tasks := list(tracker._background_tasks):
+            await asyncio.gather(*tasks)
 
         # At least one inflection should have been emitted.
         if sink.emit.call_count > 0:
@@ -127,7 +129,13 @@ class TestInflectionDetection:
 
         # Should not raise.
         await tracker.get_snapshot("agent-1")
-        await asyncio.sleep(0.05)
+        if tasks := list(tracker._background_tasks):
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+            # Verify only the expected sink error propagated, not
+            # unexpected failures that would indicate a real bug.
+            for result in results:
+                if isinstance(result, BaseException):
+                    assert isinstance(result, RuntimeError)
 
     @pytest.mark.unit
     async def test_cache_is_updated(self) -> None:
@@ -140,7 +148,8 @@ class TestInflectionDetection:
                 _make_task_record(days_ago=i),
             )
         await tracker.get_snapshot("agent-1")
-        await asyncio.sleep(0.05)
+        if tasks := list(tracker._background_tasks):
+            await asyncio.gather(*tasks)
 
         # Cache should have entries.
         assert len(tracker._trend_direction_cache) > 0

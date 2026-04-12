@@ -1,7 +1,7 @@
 """Property-based tests for API DTO validation constraints."""
 
 import pytest
-from hypothesis import given, settings
+from hypothesis import given
 from hypothesis import strategies as st
 from pydantic import ValidationError
 
@@ -38,7 +38,6 @@ class TestCoordinateTaskRequestProperties:
             max_size=10,
         ),
     )
-    @settings(max_examples=100)
     def test_case_insensitive_uniqueness(
         self,
         names: list[str],
@@ -54,7 +53,6 @@ class TestCoordinateTaskRequestProperties:
             assert req.agent_names == tuple(names)
 
     @given(name=_not_blank)
-    @settings(max_examples=50)
     def test_single_agent_always_valid(self, name: str) -> None:
         req = CoordinateTaskRequest(agent_names=(name,))
         assert req.agent_names == (name,)
@@ -64,7 +62,6 @@ class TestCoordinateTaskRequestProperties:
         assert req.agent_names is None
 
     @given(name=_not_blank)
-    @settings(max_examples=50)
     def test_duplicate_same_case_rejected(self, name: str) -> None:
         with pytest.raises(ValidationError, match="Duplicate agent name"):
             CoordinateTaskRequest(agent_names=(name, name))
@@ -76,7 +73,6 @@ class TestCoordinateTaskRequestProperties:
             max_size=20,
         ),
     )
-    @settings(max_examples=50)
     def test_duplicate_different_case_rejected(self, name: str) -> None:
         with pytest.raises(ValidationError, match="Duplicate agent name"):
             CoordinateTaskRequest(
@@ -91,7 +87,6 @@ class TestCoordinateTaskRequestProperties:
         ),
         fail_fast=st.one_of(st.none(), st.booleans()),
     )
-    @settings(max_examples=50)
     def test_valid_config_roundtrip(
         self,
         max_subtasks: int,
@@ -115,7 +110,6 @@ class TestCreateApprovalRequestProperties:
         description=_not_blank,
         risk_level=_risk_levels,
     )
-    @settings(max_examples=50)
     def test_valid_request_roundtrip(
         self,
         action_type: str,
@@ -141,7 +135,6 @@ class TestCreateApprovalRequestProperties:
             max_value=_MAX_METADATA_KEYS + 5,
         ),
     )
-    @settings(max_examples=10)
     def test_too_many_metadata_keys_rejected(self, num_keys: int) -> None:
         metadata = {f"key-{i}": f"val-{i}" for i in range(num_keys)}
         with pytest.raises(
@@ -162,7 +155,6 @@ class TestCreateApprovalRequestProperties:
             max_value=_MAX_METADATA_STR_LEN + 50,
         ),
     )
-    @settings(max_examples=10)
     def test_long_metadata_key_rejected(self, key_len: int) -> None:
         long_key = "k" * key_len
         with pytest.raises(
@@ -183,7 +175,6 @@ class TestCreateApprovalRequestProperties:
             max_value=_MAX_METADATA_STR_LEN + 50,
         ),
     )
-    @settings(max_examples=10)
     def test_long_metadata_value_rejected(self, val_len: int) -> None:
         long_val = "v" * val_len
         with pytest.raises(
@@ -214,7 +205,6 @@ class TestCreateApprovalRequestProperties:
             max_size=_MAX_METADATA_KEYS,
         ),
     )
-    @settings(max_examples=50)
     def test_valid_metadata_accepted(self, metadata: dict[str, str]) -> None:
         req = CreateApprovalRequest(
             action_type="test:action",
@@ -266,7 +256,6 @@ def _error_detail_strategy() -> st.SearchStrategy[ErrorDetail]:
 
 class TestErrorDetailProperties:
     @given(detail=_error_detail_strategy())
-    @settings(max_examples=100)
     def test_roundtrip(self, detail: ErrorDetail) -> None:
         dumped = detail.model_dump()
         restored = ErrorDetail.model_validate(dumped)
@@ -276,7 +265,6 @@ class TestErrorDetailProperties:
         error_category=st.sampled_from(list(ErrorCategory)),
         retryable=st.booleans(),
     )
-    @settings(max_examples=50)
     def test_retryable_and_category_preserved(
         self,
         error_category: ErrorCategory,
@@ -350,7 +338,6 @@ def _problem_detail_strategy() -> st.SearchStrategy[ProblemDetail]:
 
 class TestProblemDetailProperties:
     @given(problem=_problem_detail_strategy())
-    @settings(max_examples=100)
     def test_roundtrip(self, problem: ProblemDetail) -> None:
         dumped = problem.model_dump()
         restored = ProblemDetail.model_validate(dumped)

@@ -124,6 +124,16 @@ See `web/CLAUDE.md` for the full component inventory, design token rules, and po
 - **`RetryExhaustedError`** signals that all retries failed -- the engine layer catches this to trigger fallback chains
 - **Rate limiter** respects `RateLimitError.retry_after` from providers -- automatically pauses future requests
 
+## Test Regression (MANDATORY)
+
+When tests fail due to timeout, slowness, or xdist resource contention:
+- **NEVER** delete tests, skip tests, or mark them `xfail` to "fix" slowness
+- **NEVER** use `--no-verify` to bypass pre-push hooks
+- **FIRST** run: `uv run python -m pytest tests/unit/ -m unit -n 8 --durations=50 --durations-min=0.5 -q --no-header` to identify the slow tests
+- **THEN** compare against `tests/baselines/unit_timing.json` (the known-good baseline)
+- **IF** suite time exceeds `baseline * 1.3`: this is a **source code regression**, not a test bug -- fix the source code that caused the regression, not the tests
+- The `pytest_sessionfinish` hook in `tests/conftest.py` will warn loudly if a regression is detected -- trust the warning
+
 ## Testing
 
 - **Markers**: `@pytest.mark.unit`, `@pytest.mark.integration`, `@pytest.mark.e2e`, `@pytest.mark.slow`

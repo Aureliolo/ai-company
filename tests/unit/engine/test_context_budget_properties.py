@@ -1,7 +1,7 @@
 """Property-based tests for context budget indicators."""
 
 import pytest
-from hypothesis import given, settings
+from hypothesis import given
 from hypothesis import strategies as st
 
 from synthorg.engine.context_budget import ContextBudgetIndicator
@@ -22,7 +22,6 @@ class TestContextBudgetIndicatorProperties:
         ),
         archived=st.integers(min_value=0, max_value=100),
     )
-    @settings(max_examples=200)
     def test_format_never_crashes(
         self,
         fill: int,
@@ -42,7 +41,6 @@ class TestContextBudgetIndicatorProperties:
         fill=st.integers(min_value=0, max_value=1_000_000),
         capacity=st.integers(min_value=1, max_value=1_000_000),
     )
-    @settings(max_examples=200)
     def test_fill_percent_non_negative(
         self,
         fill: int,
@@ -57,7 +55,6 @@ class TestContextBudgetIndicatorProperties:
         assert pct >= 0.0
 
     @given(fill=st.integers(min_value=0, max_value=1_000_000))
-    @settings(max_examples=200)
     def test_fill_percent_none_without_capacity(
         self,
         fill: int,
@@ -77,7 +74,6 @@ class TestEstimateConversationTokensProperties:
             max_size=50,
         ),
     )
-    @settings(max_examples=200)
     def test_estimate_non_negative(
         self,
         contents: list[str],

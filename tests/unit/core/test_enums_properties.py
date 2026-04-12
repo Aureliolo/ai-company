@@ -1,7 +1,7 @@
 """Property-based tests for enum comparator algebraic properties."""
 
 import pytest
-from hypothesis import given, settings
+from hypothesis import given
 from hypothesis import strategies as st
 
 from synthorg.core.enums import (
@@ -19,12 +19,10 @@ _autonomy_levels = st.sampled_from(AutonomyLevel)
 
 class TestCompareSeniorityProperties:
     @given(a=_seniority_levels)
-    @settings(max_examples=50)
     def test_reflexive_zero(self, a: SeniorityLevel) -> None:
         assert compare_seniority(a, a) == 0
 
     @given(a=_seniority_levels, b=_seniority_levels)
-    @settings(max_examples=200)
     def test_anti_symmetry(self, a: SeniorityLevel, b: SeniorityLevel) -> None:
         assert compare_seniority(a, b) == -compare_seniority(b, a)
 
@@ -33,7 +31,6 @@ class TestCompareSeniorityProperties:
         b=_seniority_levels,
         c=_seniority_levels,
     )
-    @settings(max_examples=200)
     def test_transitivity(
         self,
         a: SeniorityLevel,
@@ -49,7 +46,6 @@ class TestCompareSeniorityProperties:
             assert ac <= 0
 
     @given(a=_seniority_levels, b=_seniority_levels)
-    @settings(max_examples=100)
     def test_totality(self, a: SeniorityLevel, b: SeniorityLevel) -> None:
         result = compare_seniority(a, b)
         assert isinstance(result, int)
@@ -61,12 +57,10 @@ class TestCompareSeniorityProperties:
 
 class TestCompareAutonomyProperties:
     @given(a=_autonomy_levels)
-    @settings(max_examples=50)
     def test_reflexive_zero(self, a: AutonomyLevel) -> None:
         assert compare_autonomy(a, a) == 0
 
     @given(a=_autonomy_levels, b=_autonomy_levels)
-    @settings(max_examples=200)
     def test_anti_symmetry(self, a: AutonomyLevel, b: AutonomyLevel) -> None:
         assert compare_autonomy(a, b) == -compare_autonomy(b, a)
 
@@ -75,7 +69,6 @@ class TestCompareAutonomyProperties:
         b=_autonomy_levels,
         c=_autonomy_levels,
     )
-    @settings(max_examples=200)
     def test_transitivity(
         self,
         a: AutonomyLevel,
@@ -91,7 +84,6 @@ class TestCompareAutonomyProperties:
             assert ac <= 0
 
     @given(a=_autonomy_levels, b=_autonomy_levels)
-    @settings(max_examples=100)
     def test_totality(self, a: AutonomyLevel, b: AutonomyLevel) -> None:
         result = compare_autonomy(a, b)
         assert isinstance(result, int)

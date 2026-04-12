@@ -1,7 +1,7 @@
 """Property-based tests for task transition validation invariants."""
 
 import pytest
-from hypothesis import given, settings
+from hypothesis import given
 from hypothesis import strategies as st
 
 from synthorg.core.enums import TaskStatus
@@ -17,7 +17,6 @@ _TRANSITION_ERR = r"Invalid task status transition|has no entry"
 
 class TestValidateTransitionProperties:
     @given(current=_all_statuses, target=_all_statuses)
-    @settings(max_examples=200)
     def test_matches_valid_transitions_map(
         self,
         current: TaskStatus,
@@ -37,7 +36,6 @@ class TestValidateTransitionProperties:
         status=st.sampled_from(list(_TERMINAL_STATES)),
         target=_all_statuses,
     )
-    @settings(max_examples=100)
     def test_terminal_states_have_no_outgoing(
         self,
         status: TaskStatus,
@@ -51,7 +49,6 @@ class TestValidateTransitionProperties:
             validate_transition(status, target)
 
     @given(current=_all_statuses)
-    @settings(max_examples=50)
     def test_every_status_has_transition_entry(
         self,
         current: TaskStatus,
@@ -63,7 +60,6 @@ class TestValidateTransitionProperties:
             lambda s: len(VALID_TRANSITIONS[s]) > 0,
         ),
     )
-    @settings(max_examples=50)
     def test_all_valid_transitions_succeed(
         self,
         current: TaskStatus,
@@ -72,7 +68,6 @@ class TestValidateTransitionProperties:
             validate_transition(current, target)
 
     @given(current=_all_statuses)
-    @settings(max_examples=50)
     def test_invalid_transitions_raise(
         self,
         current: TaskStatus,

@@ -45,7 +45,6 @@ class TestSubstituteEnvVarsProperties:
             max_size=5,
         ),
     )
-    @settings(max_examples=100)
     def test_no_env_vars_passes_through(self, data: dict[str, Any]) -> None:
         has_env_pattern = any(
             isinstance(v, str) and "${" in v and "}" in v for v in data.values()
@@ -57,7 +56,6 @@ class TestSubstituteEnvVarsProperties:
         assert result is not data
 
     @given(text=_env_var_text)
-    @settings(max_examples=100)
     def test_arbitrary_text_with_patterns_no_crash(self, text: str) -> None:
         """Crash-safety: _substitute_env_vars must only raise ConfigValidationError."""
         data = {"key": text}
@@ -78,7 +76,6 @@ class TestSubstituteEnvVarsProperties:
             max_size=5,
         ),
     )
-    @settings(max_examples=50)
     def test_non_string_values_unchanged(self, data: dict[str, Any]) -> None:
         result = _substitute_env_vars(data)
         assert result == data
@@ -91,7 +88,7 @@ class TestSubstituteEnvVarsProperties:
 
 class TestParseYamlStringProperties:
     @given(text=_yaml_text)
-    @settings(max_examples=100, deadline=None)
+    @settings(deadline=None)
     def test_arbitrary_text_no_unhandled_exception(self, text: str) -> None:
         """Crash-safety: _parse_yaml_string must only raise ConfigParseError."""
         try:
@@ -124,7 +121,6 @@ class TestParseYamlStringProperties:
             max_size=50,
         ),
     )
-    @settings(max_examples=100)
     def test_garbled_yaml_raises_or_returns_dict(self, text: str) -> None:
         """Crash-safety: garbled input must only raise ConfigParseError."""
         try:

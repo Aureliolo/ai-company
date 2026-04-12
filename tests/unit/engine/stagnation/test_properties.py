@@ -1,7 +1,7 @@
 """Property-based tests for stagnation detection (Hypothesis)."""
 
 import pytest
-from hypothesis import given, settings
+from hypothesis import given
 from hypothesis import strategies as st
 
 from synthorg.engine.loop_helpers import compute_fingerprints
@@ -55,7 +55,6 @@ class TestFingerprintProperties:
         name=_tool_name,
         args=_args_strategy,
     )
-    @settings(max_examples=50)
     def test_determinism(
         self,
         name: str,
@@ -71,7 +70,6 @@ class TestFingerprintProperties:
         name=_tool_name,
         args=_args_strategy,
     )
-    @settings(max_examples=50)
     def test_format(
         self,
         name: str,
@@ -97,7 +95,6 @@ class TestDetectorProperties:
     @given(
         n_unique=st.integers(min_value=2, max_value=10),
     )
-    @settings(max_examples=100)
     async def test_unique_fingerprints_no_stagnation(
         self,
         n_unique: int,
@@ -118,7 +115,6 @@ class TestDetectorProperties:
         window_size=st.integers(min_value=2, max_value=20),
         n_turns=st.integers(min_value=5, max_value=50),
     )
-    @settings(max_examples=100)
     async def test_window_bounded(
         self,
         window_size: int,

@@ -79,7 +79,7 @@ class TestMCPClientConnection:
         client = MCPClient(config)
 
         async def hang_forever(*_a: object, **_kw: object) -> None:
-            await asyncio.sleep(100)
+            await asyncio.Event().wait()
 
         with (
             patch.object(
