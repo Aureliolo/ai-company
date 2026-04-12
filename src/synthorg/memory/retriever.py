@@ -24,6 +24,10 @@ from synthorg.memory.ranking import (
     fuse_ranked_lists,
     rank_memories,
 )
+from synthorg.memory.retrieval.models import (
+    RetrievalCandidate,
+    RetrievalQuery,
+)
 from synthorg.observability import get_logger
 from synthorg.observability.events.memory import (
     MEMORY_FILTER_INIT,
@@ -41,6 +45,10 @@ if TYPE_CHECKING:
     from synthorg.memory.filter import MemoryFilterStrategy
     from synthorg.memory.models import MemoryEntry
     from synthorg.memory.protocol import MemoryBackend
+    from synthorg.memory.retrieval.protocol import HierarchicalRetriever
+    from synthorg.memory.retrieval.reranking.protocol import (
+        QuerySpecificReranker,
+    )
     from synthorg.memory.retrieval_config import MemoryRetrievalConfig
     from synthorg.memory.shared import SharedKnowledgeStore
     from synthorg.providers.models import ChatMessage, ToolDefinition
@@ -110,7 +118,7 @@ class ContextInjectionStrategy:
     the full pipeline: retrieve → rank → budget-fit → format.
     """
 
-    def __init__(
+    def __init__(  # noqa: PLR0913
         self,
         *,
         backend: MemoryBackend,
@@ -118,6 +126,8 @@ class ContextInjectionStrategy:
         shared_store: SharedKnowledgeStore | None = None,
         token_estimator: TokenEstimator | None = None,
         memory_filter: MemoryFilterStrategy | None = None,
+        hierarchical_retriever: HierarchicalRetriever | None = None,
+        reranker: QuerySpecificReranker | None = None,
     ) -> None:
         """Initialise the context injection strategy.
 
@@ -132,6 +142,10 @@ class ContextInjectionStrategy:
                 ``TagBasedMemoryFilter`` is auto-created.  When ``None``
                 and ``non_inferable_only`` is ``False``, all ranked
                 memories are injected (backward-compatible).
+            hierarchical_retriever: Optional hierarchical retriever
+                (used when ``config.retriever == "hierarchical"``).
+            reranker: Optional query-specific re-ranker (used when
+                ``config.query_specific_rerank_enabled`` is ``True``).
         """
         self._backend = backend
         self._config = config
@@ -148,6 +162,8 @@ class ContextInjectionStrategy:
         self._estimator = (
             token_estimator if token_estimator is not None else DefaultTokenEstimator()
         )
+        self._hierarchical_retriever = hierarchical_retriever
+        self._reranker = reranker
 
     async def prepare_messages(
         self,
@@ -247,17 +263,34 @@ class ContextInjectionStrategy:
         token_budget: int,
         categories: frozenset[MemoryCategory] | None,
     ) -> tuple[ChatMessage, ...]:
-        """Execute the retrieval → rank → filter → diversity → format pipeline."""
-        pool_limit = self._compute_pool_limit()
-        query = MemoryQuery(
-            text=query_text,
-            categories=categories,
-            limit=pool_limit,
-        )
-        if self._config.fusion_strategy == FusionStrategy.RRF:
-            ranked = await self._execute_rrf_pipeline(agent_id=agent_id, query=query)
+        """Execute the retrieval -> rank -> filter -> diversity -> format pipeline."""
+        if (
+            self._config.retriever == "hierarchical"
+            and self._hierarchical_retriever is not None
+        ):
+            ranked = await self._execute_hierarchical_pipeline(
+                agent_id=agent_id,
+                query_text=query_text,
+                categories=categories,
+            )
         else:
-            ranked = await self._execute_linear_pipeline(agent_id=agent_id, query=query)
+            pool_limit = self._compute_pool_limit()
+            query = MemoryQuery(
+                text=query_text,
+                categories=categories,
+                limit=pool_limit,
+            )
+            if self._config.fusion_strategy == FusionStrategy.RRF:
+                ranked = await self._execute_rrf_pipeline(
+                    agent_id=agent_id,
+                    query=query,
+                )
+            else:
+                ranked = await self._execute_linear_pipeline(
+                    agent_id=agent_id,
+                    query=query,
+                )
+
         if not ranked:
             logger.info(
                 MEMORY_RETRIEVAL_SKIPPED,
@@ -265,6 +298,15 @@ class ContextInjectionStrategy:
                 reason="all below min_relevance",
             )
             return ()
+
+        # Post-ranking: query-specific re-ranking (opt-in)
+        if self._config.query_specific_rerank_enabled and self._reranker is not None:
+            ranked = await self._apply_reranking(
+                query_text=query_text,
+                agent_id=agent_id,
+                ranked=ranked,
+            )
+
         ranked = self._filter_or_fail_closed(ranked, agent_id=agent_id)
         if not ranked:
             return ()
@@ -288,6 +330,64 @@ class ContextInjectionStrategy:
             fusion_strategy=self._config.fusion_strategy.value,
         )
         return result
+
+    async def _execute_hierarchical_pipeline(
+        self,
+        *,
+        agent_id: NotBlankStr,
+        query_text: NotBlankStr,
+        categories: frozenset[MemoryCategory] | None,
+    ) -> tuple[ScoredMemory, ...]:
+        """Delegate to hierarchical retriever and convert results."""
+        query = RetrievalQuery(
+            text=query_text,
+            agent_id=agent_id,
+            categories=categories,
+            max_results=self._config.max_memories,
+        )
+        result = await self._hierarchical_retriever.retrieve(query)  # type: ignore[union-attr]
+        return tuple(
+            ScoredMemory(
+                entry=c.entry,
+                relevance_score=c.relevance_score,
+                recency_score=c.recency_score,
+                combined_score=c.combined_score,
+                is_shared=c.is_shared,
+            )
+            for c in result.candidates
+        )
+
+    async def _apply_reranking(
+        self,
+        *,
+        query_text: NotBlankStr,
+        agent_id: NotBlankStr,
+        ranked: tuple[ScoredMemory, ...],
+    ) -> tuple[ScoredMemory, ...]:
+        """Apply query-specific re-ranking to scored memories."""
+        query = RetrievalQuery(text=query_text, agent_id=agent_id)
+        candidates = tuple(
+            RetrievalCandidate(
+                entry=s.entry,
+                relevance_score=s.relevance_score,
+                recency_score=s.recency_score,
+                combined_score=s.combined_score,
+                source_worker="flat",
+                is_shared=s.is_shared,
+            )
+            for s in ranked
+        )
+        reranked = await self._reranker.rerank(query, candidates)  # type: ignore[union-attr]
+        return tuple(
+            ScoredMemory(
+                entry=c.entry,
+                relevance_score=c.relevance_score,
+                recency_score=c.recency_score,
+                combined_score=c.combined_score,
+                is_shared=c.is_shared,
+            )
+            for c in reranked
+        )
 
     def _compute_pool_limit(self) -> int:
         """Compute the backend query limit for the candidate pool.
