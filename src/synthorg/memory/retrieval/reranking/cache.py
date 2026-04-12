@@ -43,6 +43,12 @@ class RerankerCache:
         ttl_seconds: int = _DEFAULT_TTL_SECONDS,
         max_size: int = _DEFAULT_MAX_SIZE,
     ) -> None:
+        if ttl_seconds <= 0:
+            msg = "ttl_seconds must be positive"
+            raise ValueError(msg)
+        if max_size <= 0:
+            msg = "max_size must be positive"
+            raise ValueError(msg)
         self._ttl = ttl_seconds
         self._max_size = max_size
         self._store: dict[

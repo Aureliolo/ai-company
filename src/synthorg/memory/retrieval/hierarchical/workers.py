@@ -128,7 +128,15 @@ class SemanticWorker:
                         mem_query,
                         exclude_agent=query.agent_id,
                     )
-                except Exception:
+                except builtins.MemoryError, RecursionError:
+                    raise
+                except Exception as exc:
+                    logger.warning(
+                        MEMORY_HIERARCHICAL_WORKER_FAILED,
+                        worker=self.name,
+                        source="shared_store",
+                        error=str(exc),
+                    )
                     shared = ()
 
             if self._config.fusion_strategy == FusionStrategy.RRF:

@@ -4,6 +4,7 @@ Serializes consolidated org memory and compressed experiences to a
 three-view filesystem tree: ``raw/``, ``wiki/``, and ``index.md``.
 """
 
+import builtins
 import json
 from datetime import UTC, datetime
 from pathlib import Path
@@ -136,6 +137,8 @@ class WikiExporter:
         )
         try:
             entries = await self._backend.retrieve(agent_id, query)
+        except builtins.MemoryError, RecursionError:
+            raise
         except Exception as exc:
             logger.warning(
                 WIKI_EXPORT_FAILED,
@@ -172,6 +175,8 @@ class WikiExporter:
         )
         try:
             entries = await self._backend.retrieve(agent_id, query)
+        except builtins.MemoryError, RecursionError:
+            raise
         except Exception as exc:
             logger.warning(
                 WIKI_EXPORT_FAILED,
@@ -188,6 +193,11 @@ class WikiExporter:
                 decisions = data.get("strategic_decisions", [])
                 contexts = data.get("applicable_contexts", [])
             except json.JSONDecodeError, TypeError:
+                logger.debug(
+                    WIKI_EXPORT_FAILED,
+                    tier="compressed_parse",
+                    entry_id=entry.id,
+                )
                 decisions = []
                 contexts = []
 

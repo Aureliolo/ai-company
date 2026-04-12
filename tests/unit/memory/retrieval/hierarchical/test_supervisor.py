@@ -119,6 +119,33 @@ class TestSupervisorRouterRouting:
         assert "fallback" in decision.reason.lower()
 
     @pytest.mark.unit
+    async def test_route_fallback_on_malformed_json(self) -> None:
+        provider = _mock_provider("not valid json at all")
+        supervisor = SupervisorRouter(
+            provider=provider,
+            model="test-small-001",
+        )
+        decision = await supervisor.route(_make_query())
+        assert decision.selected_workers == ("semantic",)
+        assert "fallback" in decision.reason.lower()
+
+    @pytest.mark.unit
+    async def test_evaluate_fallback_on_malformed_json(self) -> None:
+        provider = _mock_provider("not valid json")
+        supervisor = SupervisorRouter(
+            provider=provider,
+            model="test-small-001",
+        )
+        result = FinalRetrievalResult(
+            candidates=(_make_candidate(0.1),),
+        )
+        correction = await supervisor.evaluate_for_retry(
+            _make_query(),
+            result,
+        )
+        assert correction is None
+
+    @pytest.mark.unit
     async def test_route_fallback_on_empty_response(self) -> None:
         provider = _mock_provider(
             json.dumps({"workers": [], "reason": "none"}),

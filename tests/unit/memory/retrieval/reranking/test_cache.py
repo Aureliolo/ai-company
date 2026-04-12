@@ -98,3 +98,13 @@ class TestRerankerCache:
         cache = RerankerCache()
         await cache.invalidate("nonexistent")
         assert cache.size == 0
+
+    @pytest.mark.unit
+    def test_rejects_non_positive_ttl(self) -> None:
+        with pytest.raises(ValueError, match="ttl_seconds must be positive"):
+            RerankerCache(ttl_seconds=0)
+
+    @pytest.mark.unit
+    def test_rejects_non_positive_max_size(self) -> None:
+        with pytest.raises(ValueError, match="max_size must be positive"):
+            RerankerCache(max_size=0)

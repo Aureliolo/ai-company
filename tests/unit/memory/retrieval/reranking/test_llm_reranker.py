@@ -146,6 +146,34 @@ class TestLLMQuerySpecificReranker:
         assert result[1].entry.id == "mem-2"
 
     @pytest.mark.unit
+    async def test_rerank_fallback_on_out_of_bounds(self) -> None:
+        provider = _mock_provider([0, 5])  # Invalid: index 5 out of range
+        reranker = LLMQuerySpecificReranker(
+            provider=provider,
+            model="test-small-001",
+        )
+        c1 = _make_candidate("mem-1", 0.9)
+        c2 = _make_candidate("mem-2", 0.7)
+        result = await reranker.rerank(_make_query(), (c1, c2))
+        # Falls back to original order
+        assert result[0].entry.id == "mem-1"
+        assert result[1].entry.id == "mem-2"
+
+    @pytest.mark.unit
+    async def test_rerank_fallback_on_missing_indices(self) -> None:
+        provider = _mock_provider([0])  # Invalid: missing index 1
+        reranker = LLMQuerySpecificReranker(
+            provider=provider,
+            model="test-small-001",
+        )
+        c1 = _make_candidate("mem-1", 0.9)
+        c2 = _make_candidate("mem-2", 0.7)
+        result = await reranker.rerank(_make_query(), (c1, c2))
+        # Falls back to original order
+        assert result[0].entry.id == "mem-1"
+        assert result[1].entry.id == "mem-2"
+
+    @pytest.mark.unit
     async def test_rerank_with_cache(self) -> None:
         provider = _mock_provider([1, 0])
         cache = RerankerCache()

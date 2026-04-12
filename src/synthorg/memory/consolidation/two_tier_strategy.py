@@ -94,12 +94,10 @@ class TwoTierCompressionStrategy:
         # Fetch context memories for compression
         context_entries = await self._fetch_context(agent_id)
 
-        removed_ids: list[str] = []
-        summary_ids: list[str] = []
-
-        async def _compress_one(entry: MemoryEntry) -> None:
+        async def _compress_one(
+            entry: MemoryEntry,
+        ) -> tuple[str, str] | None:
             try:
-                # Extract structured data from entry content
                 prompt, output, feedback, trace = self._parse_detailed_content(
                     entry.content
                 )
@@ -110,7 +108,6 @@ class TwoTierCompressionStrategy:
                     reasoning_trace=trace,
                     memory_context=context_entries,
                 )
-                # Store compressed experience as new entry
                 content = json.dumps(
                     {
                         "strategic_decisions": list(
@@ -136,17 +133,6 @@ class TwoTierCompressionStrategy:
                     agent_id,
                     store_request,
                 )
-                removed_ids.append(entry.id)
-                summary_ids.append(new_id)
-                logger.debug(
-                    EXPERIENCE_COMPRESSED,
-                    agent_id=agent_id,
-                    original_id=entry.id,
-                    compressed_id=new_id,
-                    decisions_count=len(
-                        compressed.strategic_decisions,
-                    ),
-                )
             except builtins.MemoryError, RecursionError:
                 raise
             except Exception as exc:
@@ -156,10 +142,29 @@ class TwoTierCompressionStrategy:
                     entry_id=entry.id,
                     error=str(exc),
                 )
+                return None
+            else:
+                logger.debug(
+                    EXPERIENCE_COMPRESSED,
+                    agent_id=agent_id,
+                    original_id=entry.id,
+                    compressed_id=new_id,
+                    decisions_count=len(
+                        compressed.strategic_decisions,
+                    ),
+                )
+                return (entry.id, new_id)
 
         async with asyncio.TaskGroup() as tg:
-            for candidate in candidates:
-                tg.create_task(_compress_one(candidate))
+            tasks = [tg.create_task(_compress_one(c)) for c in candidates]
+
+        removed_ids: list[str] = []
+        summary_ids: list[str] = []
+        for task in tasks:
+            pair = task.result()
+            if pair is not None:
+                removed_ids.append(pair[0])
+                summary_ids.append(pair[1])
 
         logger.info(
             TWO_TIER_COMPRESSION_COMPLETE,
@@ -180,7 +185,15 @@ class TwoTierCompressionStrategy:
         try:
             query = MemoryQuery(limit=_MAX_CONTEXT_ENTRIES)
             return await self._backend.retrieve(agent_id, query)
-        except Exception:
+        except builtins.MemoryError, RecursionError:
+            raise
+        except Exception as exc:
+            logger.warning(
+                TWO_TIER_COMPRESSION_FAILED,
+                agent_id=agent_id,
+                source="context_fetch",
+                error=str(exc),
+            )
             return ()
 
     def _parse_detailed_content(

@@ -742,13 +742,8 @@ class KnowledgeArchitectReadTool(BaseTool):
         """Read an org memory entry by ID."""
         entry_id = arguments["entry_id"]
         try:
-            facts = await self._org_backend.query(
-                type(
-                    "_Q",
-                    (),
-                    {"context": None, "categories": None, "limit": 100},
-                )(),
-            )
+            query = OrgMemoryQuery(limit=100)
+            facts = await self._org_backend.query(query)
             match = next(
                 (f for f in facts if f.id == entry_id),
                 None,
