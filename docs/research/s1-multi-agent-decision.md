@@ -121,7 +121,13 @@ Paper 3 challenges multi-agent's value claim by showing single-agent matches or 
 - `DissentRecord` must become a first-class message type on the bus, not just a persistence artifact.
 - Authority cues in message metadata must be strippable per-subscriber, not global.
 
-**None of R1/R2/R4 should finalize their shape** until the two high-priority mitigation hooks (`AuthorityDeferenceGuard`, `EvidenceWeightedSynthesizer`) have at least an accepted design sketch, because both require structural hooks (pluggable stage, pluggable synthesizer, first-class signal propagation) that the RFCs need to accommodate.
+**Implementation status (updated via [#1260](https://github.com/Aureliolo/synthorg/issues/1260)):**
+
+- `AuthorityDeferenceGuard` -- **IMPLEMENTED** as agent middleware (`before_agent`) + coordination middleware (`before_update_parent`) in `engine/middleware/s1_constraints.py`.
+- `AssumptionViolationSignal` -- **IMPLEMENTED** as agent middleware (`after_model`) in `engine/middleware/s1_constraints.py`.
+- Pre-decomposition clarification gate -- **IMPLEMENTED** as coordination middleware (`before_decompose`) in `engine/middleware/s1_constraints.py`.
+- Delegation-chain content hash -- **IMPLEMENTED** as agent middleware (`before_agent`) in `engine/middleware/s1_constraints.py`.
+- `EvidenceWeightedSynthesizer` -- not yet implemented (blocked on R2 verification stages).
 
 ---
 
@@ -137,4 +143,4 @@ This PR lands the minimum required edits:
 - [`docs/design/organization.md`](../design/organization.md) Company Types table -- footnote distinguishing company size from per-task coordination-group size.
 - [`docs/research/multi-agent-failure-audit.md`](multi-agent-failure-audit.md) -- appendix enumerating the 15-risk taxonomy with coverage table.
 
-The follow-up implementation work (`AuthorityDeferenceGuard`, `EvidenceWeightedSynthesizer`, pre-decomposition clarification gate, `AssumptionViolationSignal`, content-hash drift detection) is **not filed as standalone issues**. Each mitigation is a structural hook that the existing R1/R2/R4 RFCs must design around, and filing them as independent tickets would create zombie work that depends on RFCs that have not yet landed. Constraint comments have been posted on [#1250](https://github.com/Aureliolo/synthorg/issues/1250), [#1251](https://github.com/Aureliolo/synthorg/issues/1251), and [#1253](https://github.com/Aureliolo/synthorg/issues/1253) referencing the relevant sections of this document.
+The S1 mitigation hooks (`AuthorityDeferenceGuard`, `AssumptionViolationSignal`, pre-decomposition clarification gate, content-hash drift detection) are **implemented** in [#1260](https://github.com/Aureliolo/synthorg/issues/1260) as engine middleware. `EvidenceWeightedSynthesizer` remains blocked on R2 verification stages (#1251).

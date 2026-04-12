@@ -159,6 +159,10 @@ class Task(BaseModel):
         default=None,
         description="Origin of this task (internal, client, or simulation)",
     )
+    middleware_override: tuple[NotBlankStr, ...] | None = Field(
+        default=None,
+        description=("Per-task middleware chain override (None = use company default)"),
+    )
 
     @model_validator(mode="after")
     def _validate_deadline_format(self) -> Self:

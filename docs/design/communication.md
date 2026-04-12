@@ -414,11 +414,15 @@ department, or per conflict type.
         partial defense because downstream consumers override evidence anyway.
 
         This strategy is safe for **1-2 downstream agents**. For deliberation
-        stacks with more than two downstream agents, the planned
-        `AuthorityDeferenceGuard` (blind-aggregation mode + mandatory
-        justification when overriding evidence + telemetry) is required. See
-        [S1 Multi-Agent Architecture Decision §3](../research/s1-multi-agent-decision.md#section-3--risk-mitigation-register-15-emergent-risks-from-paper-1)
-        and the constraint on [#1251](https://github.com/Aureliolo/synthorg/issues/1251).
+        stacks with more than two downstream agents, `AuthorityDeferenceGuard`
+        is **implemented** as agent middleware (`engine/middleware/s1_constraints.py`):
+        strips authority cues from transcripts via regex patterns, injects a
+        mandatory-justification header into the system prompt, and logs all
+        stripping actions for audit. Coordination-level analog scans rollup
+        summaries before parent-task updates. See
+        [S1 Multi-Agent Architecture Decision §3](../research/s1-multi-agent-decision.md#section-3--risk-mitigation-register-15-emergent-risks-from-paper-1),
+        [Engine Design -- Harness Middleware Layer](engine.md#harness-middleware-layer),
+        and [#1260](https://github.com/Aureliolo/synthorg/issues/1260).
 
 === "Strategy 2: Structured Debate + Judge"
 

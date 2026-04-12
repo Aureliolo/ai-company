@@ -44,6 +44,9 @@ if TYPE_CHECKING:
         SubtaskStatusRollup,
     )
     from synthorg.engine.decomposition.service import DecompositionService
+    from synthorg.engine.middleware.coordination_protocol import (
+        CoordinationMiddlewareChain,
+    )
     from synthorg.engine.parallel import ParallelExecutor
     from synthorg.engine.routing.models import RoutingResult
     from synthorg.engine.routing.service import TaskRoutingService
@@ -78,6 +81,7 @@ class MultiAgentCoordinator:
     """
 
     __slots__ = (
+        "_coordination_chain",
         "_decomposition_service",
         "_parallel_executor",
         "_performance_tracker",
@@ -95,6 +99,7 @@ class MultiAgentCoordinator:
         workspace_service: WorkspaceIsolationService | None = None,
         task_engine: TaskEngine | None = None,
         performance_tracker: PerformanceTracker | None = None,
+        coordination_chain: CoordinationMiddlewareChain | None = None,
     ) -> None:
         self._decomposition_service = decomposition_service
         self._routing_service = routing_service
@@ -102,8 +107,9 @@ class MultiAgentCoordinator:
         self._workspace_service = workspace_service
         self._task_engine = task_engine
         self._performance_tracker = performance_tracker
+        self._coordination_chain = coordination_chain
 
-    async def coordinate(
+    async def coordinate(  # noqa: PLR0912, PLR0915, C901
         self,
         context: CoordinationContext,
     ) -> CoordinationResultWithAttribution:
@@ -139,9 +145,33 @@ class MultiAgentCoordinator:
             agent_count=len(context.available_agents),
         )
 
+        # Build coordination middleware context if chain is wired.
+        mw_chain = self._coordination_chain
+
         try:
+            # Middleware: before_decompose
+            if mw_chain is not None:
+                from synthorg.engine.middleware.coordination_protocol import (  # noqa: PLC0415
+                    CoordinationMiddlewareContext,
+                )
+
+                mw_ctx = CoordinationMiddlewareContext(
+                    coordination_context=context,
+                )
+                mw_ctx = await mw_chain.run_before_decompose(mw_ctx)
+
             # Phase 1: Decompose
             decomp_result = await self._phase_decompose(context, phases)
+
+            # Middleware: after_decompose
+            if mw_chain is not None:
+                mw_ctx = mw_ctx.model_copy(  # type: ignore[possibly-undefined]
+                    update={
+                        "decomposition_result": decomp_result,
+                        "phases": tuple(phases),
+                    },
+                )
+                mw_ctx = await mw_chain.run_after_decompose(mw_ctx)
 
             # Phase 2: Route
             routing_result = self._phase_route(context, decomp_result, phases)
@@ -152,7 +182,17 @@ class MultiAgentCoordinator:
             # Phase 4: Validate -- fail if all unroutable
             self._validate_routing(routing_result, phases)
 
-            # Phase 5: Dispatch (workspace setup → execute → merge)
+            # Middleware: before_dispatch
+            if mw_chain is not None:
+                mw_ctx = mw_ctx.model_copy(  # type: ignore[possibly-undefined]
+                    update={
+                        "routing_result": routing_result,
+                        "phases": tuple(phases),
+                    },
+                )
+                mw_ctx = await mw_chain.run_before_dispatch(mw_ctx)
+
+            # Phase 5: Dispatch (workspace setup -> execute -> merge)
             dispatch_result = await self._phase_dispatch(
                 topology,
                 decomp_result,
@@ -164,6 +204,23 @@ class MultiAgentCoordinator:
 
             # Phase 6: Rollup
             rollup = self._phase_rollup(context, dispatch_result, decomp_result, phases)
+
+            # Middleware: after_rollup
+            if mw_chain is not None:
+                mw_ctx = mw_ctx.model_copy(  # type: ignore[possibly-undefined]
+                    update={
+                        "dispatch_result": dispatch_result,
+                        "status_rollup": rollup,
+                        "phases": tuple(phases),
+                    },
+                )
+                mw_ctx = await mw_chain.run_after_rollup(mw_ctx)
+
+            # Middleware: before_update_parent
+            if mw_chain is not None:
+                mw_ctx = await mw_chain.run_before_update_parent(
+                    mw_ctx,  # type: ignore[possibly-undefined]
+                )
 
             # Phase 7: Update parent task
             await self._phase_update_parent(context, rollup, phases)

@@ -1652,6 +1652,72 @@ routing decisions and wave outcomes:
 
 ---
 
+## Harness Middleware Layer
+
+The engine uses a composable middleware layer for cross-cutting concerns that span agent execution and multi-agent coordination. Two separate protocols serve two distinct pipelines.
+
+### Agent Middleware
+
+Protocol: `AgentMiddleware` (`engine/middleware/protocol.py`). Six async hooks in declared order:
+
+| Hook | Runs | Purpose |
+|------|------|---------|
+| `before_agent` | Once on invocation | Load memory, validate input, record hashes |
+| `before_model` | Before each model call | Trim history, redact PII, inject context |
+| `wrap_model_call` | Around model call | Caching, dynamic tools, model swap |
+| `wrap_tool_call` | Around tool execution | Inject context, gate tools |
+| `after_model` | After model responds | Human-in-loop, assumption-violation checks |
+| `after_agent` | Once on completion | Save results, notify, cleanup |
+
+Composition: `before_*` left-to-right, `after_*` right-to-left, `wrap_*` onion-style (each wraps the next). Exceptions propagate to the classification pipeline.
+
+Default chain: `checkpoint_resume`, `delegation_chain_hash`, `authority_deference`, `sanitize_message`, `security_interceptor`, `approval_gate`, `assumption_violation`, `classification`, `cost_recording`.
+
+### Coordination Middleware
+
+Protocol: `CoordinationMiddleware` (`engine/middleware/coordination_protocol.py`). Five async hooks:
+
+| Hook | Pipeline Position | Purpose |
+|------|-------------------|---------|
+| `before_decompose` | Before Phase 1 | Clarification gate |
+| `after_decompose` | After Phase 1 | Post-decomposition analysis |
+| `before_dispatch` | Before Phase 3-5 | Plan review gate, task ledger |
+| `after_rollup` | After Phase 6 | Progress ledger, replan hook |
+| `before_update_parent` | Before Phase 7 | Authority deference scan |
+
+Default chain: `clarification_gate`, `task_ledger`, `plan_review_gate`, `progress_ledger`, `coordination_replan`, `authority_deference_coordination`.
+
+### S1 Constraint Hooks
+
+| Middleware | Hook | S1 Risk | Behavior |
+|-----------|------|---------|----------|
+| `AuthorityDeferenceGuard` | `before_agent` | 2.2 | Strips authority cues from transcripts, injects justification header |
+| `AssumptionViolationMiddleware` | `after_model` | 3.2 | Detects broken assumptions, emits escalation events |
+| `ClarificationGateMiddleware` | `before_decompose` | 3.3 | Validates acceptance criteria specificity |
+| `DelegationChainHashMiddleware` | `before_agent` | 4.3 | Records SHA-256 content hash for delegation drift detection |
+
+### #1257 Constraint Hooks
+
+| Middleware | Protocol | Purpose |
+|-----------|----------|---------|
+| `TaskLedger` | Model | Frozen plan snapshot with known facts and educated guesses |
+| `ProgressLedger` | Model | Per-round progress tracking with stall detection |
+| `CoordinationReplanHook` | Protocol | Stall-detect then replan with budget guards |
+| `PlanReviewGate` | Middleware | Per-autonomy-level dispatch gating |
+| `OrchestratorStrategy` | Protocol | Subtask selection within CentralizedDispatcher |
+
+### Configuration
+
+Per-company: `CompanyConfig.middleware` (`MiddlewareConfig`) with agent and coordination sub-configs.
+
+Per-task: `Task.middleware_override` replaces the company-level chain when set.
+
+### Error Semantics
+
+Middleware exceptions propagate to the classification pipeline. `ClassificationResult.action` decides: retry, escalate, or fail. No silent swallowing.
+
+---
+
 ## ACG Vocabulary Cross-Reference
 
 *Research findings from #848. See also: `docs/research/acg-formalism-evaluation.md`.*

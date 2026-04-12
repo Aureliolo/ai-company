@@ -130,6 +130,32 @@ from synthorg.engine.loop_selector import (
     select_loop_type,
 )
 from synthorg.engine.metrics import TaskCompletionMetrics
+from synthorg.engine.middleware.coordination_protocol import (
+    BaseCoordinationMiddleware,
+    CoordinationMiddleware,
+    CoordinationMiddlewareChain,
+    CoordinationMiddlewareContext,
+)
+from synthorg.engine.middleware.errors import (
+    ClarificationRequiredError,
+    MiddlewareConfigError,
+    MiddlewareError,
+    MiddlewareRegistryError,
+)
+from synthorg.engine.middleware.models import (
+    AgentMiddlewareContext,
+    AssumptionViolationEvent,
+    AssumptionViolationType,
+    ModelCallResult,
+    ProgressLedger,
+    TaskLedger,
+    ToolCallResult,
+)
+from synthorg.engine.middleware.protocol import (
+    AgentMiddleware,
+    AgentMiddlewareChain,
+    BaseAgentMiddleware,
+)
 from synthorg.engine.parallel import ParallelExecutor, ProgressCallback
 from synthorg.engine.parallel_models import (
     AgentAssignment,

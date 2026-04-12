@@ -1,0 +1,315 @@
+"""Middleware domain models.
+
+Frozen Pydantic models for middleware context, call results,
+ledger state, and assumption-violation signals.
+"""
+
+import copy
+from enum import StrEnum
+from typing import Any, Self
+
+from pydantic import (
+    AwareDatetime,
+    BaseModel,
+    ConfigDict,
+    Field,
+    model_validator,
+)
+
+from synthorg.core.agent import AgentIdentity  # noqa: TC001
+from synthorg.core.task import Task  # noqa: TC001
+from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.engine.context import AgentContext  # noqa: TC001
+from synthorg.providers.models import TokenUsage  # noqa: TC001
+from synthorg.security.autonomy.models import (
+    EffectiveAutonomy,  # noqa: TC001
+)
+
+# ── Agent middleware context ──────────────────────────────────────
+
+
+class AgentMiddlewareContext(BaseModel):
+    """Execution state carried through the agent middleware chain.
+
+    Immutable-via-copy: middleware returns a new context with
+    ``model_copy(update=...)`` when it needs to modify state.
+
+    Attributes:
+        agent_context: Mutable-via-copy runtime execution state.
+        identity: Frozen agent configuration.
+        task: Frozen task definition.
+        agent_id: Agent identifier (string form of UUID).
+        task_id: Task identifier.
+        execution_id: Unique execution run identifier.
+        effective_autonomy: Resolved autonomy for this run.
+        metadata: Middleware-to-middleware data pass-through.
+            Keyed by middleware name to avoid collisions.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+
+    agent_context: AgentContext = Field(
+        description="Mutable-via-copy runtime execution state",
+    )
+    identity: AgentIdentity = Field(
+        description="Frozen agent configuration",
+    )
+    task: Task = Field(description="Frozen task definition")
+    agent_id: NotBlankStr = Field(
+        description="Agent identifier (string UUID)",
+    )
+    task_id: NotBlankStr = Field(description="Task identifier")
+    execution_id: NotBlankStr = Field(
+        description="Unique execution run identifier",
+    )
+    effective_autonomy: EffectiveAutonomy | None = Field(
+        default=None,
+        description="Resolved autonomy for this run",
+    )
+    metadata: dict[str, Any] = Field(
+        default_factory=dict,
+        description="Middleware-to-middleware data pass-through",
+    )
+
+    @model_validator(mode="after")
+    def _deepcopy_metadata(self) -> AgentMiddlewareContext:
+        """Defensive copy so callers cannot mutate the frozen model."""
+        if self.metadata:
+            object.__setattr__(
+                self,
+                "metadata",
+                copy.deepcopy(self.metadata),
+            )
+        return self
+
+    def with_metadata(
+        self,
+        key: str,
+        value: Any,
+    ) -> AgentMiddlewareContext:
+        """Return a copy with an additional metadata entry.
+
+        Args:
+            key: Metadata key (typically the middleware name).
+            value: Metadata value.
+
+        Returns:
+            New context with the entry added.
+        """
+        updated = copy.deepcopy(self.metadata)
+        updated[key] = value
+        return self.model_copy(update={"metadata": updated})
+
+
+# ── Model and tool call results ───────────────────────────────────
+
+
+class ModelCallResult(BaseModel):
+    """Result of a model (LLM) call passed through middleware.
+
+    Attributes:
+        response_text: The model's text response.
+        token_usage: Token counts and cost for this call.
+        finish_reason: Why the model stopped generating.
+        error: Error description if the call failed.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+
+    response_text: str = Field(
+        default="",
+        description="Model text response",
+    )
+    token_usage: TokenUsage = Field(
+        description="Token counts and cost",
+    )
+    finish_reason: str = Field(description="Why the model stopped")
+    error: str | None = Field(
+        default=None,
+        description="Error description on failure",
+    )
+
+
+class ToolCallResult(BaseModel):
+    """Result of a tool invocation passed through middleware.
+
+    Attributes:
+        tool_name: Name of the tool that was invoked.
+        output: Serialized tool output.
+        success: Whether the tool call succeeded.
+        error: Error description if the call failed.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+
+    tool_name: NotBlankStr = Field(
+        description="Name of the invoked tool",
+    )
+    output: str = Field(
+        default="",
+        description="Serialized tool output",
+    )
+    success: bool = Field(
+        default=True,
+        description="Whether the tool call succeeded",
+    )
+    error: str | None = Field(
+        default=None,
+        description="Error description on failure",
+    )
+
+    @model_validator(mode="after")
+    def _validate_error_consistency(self) -> Self:
+        """Ensure success and error fields are consistent."""
+        if self.success and self.error is not None:
+            msg = "successful tool call must not have an error"
+            raise ValueError(msg)
+        if not self.success and self.error is None:
+            msg = "failed tool call must have an error description"
+            raise ValueError(msg)
+        return self
+
+
+# ── Assumption violation signal ───────────────────────────────────
+
+
+class AssumptionViolationType(StrEnum):
+    """Classification of an assumption violation."""
+
+    PRECONDITION_CHANGED = "precondition_changed"
+    CRITERIA_CONFLICT = "criteria_conflict"
+    DEPENDENCY_FAILED = "dependency_failed"
+
+
+class AssumptionViolationEvent(BaseModel):
+    """Signal emitted when an agent detects a broken assumption.
+
+    Propagated as an escalation event (not a retry trigger).
+    Recorded in ``AgentMiddlewareContext.metadata["assumption_violations"]``.
+
+    Attributes:
+        agent_id: Agent that detected the violation.
+        task_id: Task being executed.
+        violation_type: Classification of the violation.
+        description: Human-readable summary.
+        evidence: Supporting evidence from the model response.
+        turn_number: Turn in which the violation was detected.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+
+    agent_id: NotBlankStr = Field(
+        description="Agent that detected the violation",
+    )
+    task_id: NotBlankStr = Field(
+        description="Task being executed",
+    )
+    violation_type: AssumptionViolationType = Field(
+        description="Classification of the violation",
+    )
+    description: NotBlankStr = Field(
+        description="Human-readable summary",
+    )
+    evidence: NotBlankStr = Field(
+        description="Supporting evidence from the model response",
+    )
+    turn_number: int = Field(
+        gt=0,
+        description="Turn in which the violation was detected",
+    )
+
+
+# ── TaskLedger and ProgressLedger (#1257) ─────────────────────────
+
+
+class TaskLedger(BaseModel):
+    """Frozen wrapper around a decomposition plan for coordination.
+
+    Captures the plan text, known facts, and educated guesses at
+    a point in time.  Versioned to track replan cycles.
+
+    Attributes:
+        plan_text: Serialized decomposition plan text.
+        known_facts: Verified facts from the task context.
+        educated_guesses: Inferred but unverified facts.
+        plan_version: Monotonically increasing version counter.
+        created_at: When this ledger version was created.
+        superseded_at: When this version was replaced (None if current).
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+
+    plan_text: NotBlankStr = Field(
+        description="Serialized decomposition plan text",
+    )
+    known_facts: tuple[NotBlankStr, ...] = Field(
+        default=(),
+        description="Verified facts from the task context",
+    )
+    educated_guesses: tuple[NotBlankStr, ...] = Field(
+        default=(),
+        description="Inferred but unverified facts",
+    )
+    plan_version: int = Field(
+        default=1,
+        ge=1,
+        description="Monotonically increasing version counter",
+    )
+    created_at: AwareDatetime = Field(
+        description="When this ledger version was created",
+    )
+    superseded_at: AwareDatetime | None = Field(
+        default=None,
+        description="When replaced by a newer version (None if current)",
+    )
+
+
+class ProgressLedger(BaseModel):
+    """Per-round coordination progress snapshot.
+
+    Emitted by the ``after_rollup`` coordination middleware to
+    track stall detection and replan decisions.
+
+    Attributes:
+        round_number: 1-indexed coordination round.
+        progress_made: Whether any subtask advanced since last round.
+        stall_count: Consecutive rounds with no progress.
+        reset_count: Number of replan cycles executed.
+        blocking_issues: Descriptions of blocking failures.
+        next_action: Recommended action (continue, replan, escalate).
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+
+    round_number: int = Field(
+        ge=1,
+        description="1-indexed coordination round",
+    )
+    progress_made: bool = Field(
+        description="Whether any subtask advanced",
+    )
+    stall_count: int = Field(
+        default=0,
+        ge=0,
+        description="Consecutive rounds with no progress",
+    )
+    reset_count: int = Field(
+        default=0,
+        ge=0,
+        description="Number of replan cycles executed",
+    )
+    blocking_issues: tuple[NotBlankStr, ...] = Field(
+        default=(),
+        description="Descriptions of blocking failures",
+    )
+    next_action: NotBlankStr = Field(
+        description="Recommended action: continue, replan, or escalate",
+    )
+
+    @model_validator(mode="after")
+    def _validate_stall_progress_consistency(self) -> Self:
+        """Stall count must be zero when progress was made."""
+        if self.progress_made and self.stall_count > 0:
+            msg = "stall_count must be 0 when progress_made is True"
+            raise ValueError(msg)
+        return self

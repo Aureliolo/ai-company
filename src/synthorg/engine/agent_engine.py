@@ -135,6 +135,7 @@ if TYPE_CHECKING:
         ExecutionLoop,
         ShutdownChecker,
     )
+    from synthorg.engine.middleware.protocol import AgentMiddlewareChain
     from synthorg.engine.plan_models import PlanExecuteConfig
     from synthorg.engine.stagnation.protocol import StagnationDetector
     from synthorg.engine.task_engine import TaskEngine
@@ -354,7 +355,9 @@ class AgentEngine:
         coordination_metrics_collector: CoordinationMetricsCollector | None = None,
         audit_log: AuditLog | None = None,
         project_repo: ProjectRepository | None = None,
+        agent_middleware_chain: AgentMiddlewareChain | None = None,
     ) -> None:
+        self._agent_middleware_chain = agent_middleware_chain
         if execution_loop is not None and auto_loop_config is not None:
             msg = "execution_loop and auto_loop_config are mutually exclusive"
             logger.warning(
