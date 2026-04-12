@@ -13,6 +13,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.observability import get_logger
+from synthorg.observability.events.config import CONFIG_VALIDATION_FAILED
 
 logger = get_logger(__name__)
 
@@ -62,7 +63,7 @@ class AuthorityDeferenceConfig(BaseModel):
             except re.error as exc:
                 msg = f"Invalid regex pattern {pattern!r}: {exc}"
                 logger.warning(
-                    "config.validation.invalid_regex",
+                    CONFIG_VALIDATION_FAILED,
                     message=msg,
                     pattern=pattern,
                     error=str(exc),
@@ -105,7 +106,7 @@ class ClarificationGateConfig(BaseModel):
             except re.error as exc:
                 msg = f"Invalid generic pattern {pattern!r}: {exc}"
                 logger.warning(
-                    "config.validation.invalid_regex",
+                    CONFIG_VALIDATION_FAILED,
                     message=msg,
                     pattern=pattern,
                     error=str(exc),

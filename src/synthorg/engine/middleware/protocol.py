@@ -345,7 +345,16 @@ class AgentMiddlewareChain:
         wrapped = call
         for mw in reversed(self._middleware):
             wrapped = _make_model_wrapper(mw, wrapped)
-        return await wrapped(ctx)
+        try:
+            return await wrapped(ctx)
+        except Exception:
+            logger.warning(
+                MIDDLEWARE_HOOK_ERROR,
+                hook="wrap_model_call",
+                chain_length=len(self._middleware),
+                chain_names=self.names,
+            )
+            raise
 
     async def run_wrap_tool_call(
         self,
@@ -364,7 +373,16 @@ class AgentMiddlewareChain:
         wrapped = call
         for mw in reversed(self._middleware):
             wrapped = _make_tool_wrapper(mw, wrapped)
-        return await wrapped(ctx)
+        try:
+            return await wrapped(ctx)
+        except Exception:
+            logger.warning(
+                MIDDLEWARE_HOOK_ERROR,
+                hook="wrap_tool_call",
+                chain_length=len(self._middleware),
+                chain_names=self.names,
+            )
+            raise
 
 
 # ── Wrapper factories (avoid closure variable capture issues) ─────
