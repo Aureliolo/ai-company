@@ -46,8 +46,8 @@ MIDDLEWARE_COORDINATION_SKIPPED: str = "middleware.coordination.skipped"
 
 # ── S1 constraint events ──────────────────────────────────────────
 
-MIDDLEWARE_AUTHORITY_DEFERENCE_STRIPPED: str = "middleware.authority_deference.stripped"
-"""Authority cues stripped from transcript by AuthorityDeferenceGuard."""
+MIDDLEWARE_AUTHORITY_DEFERENCE_DETECTED: str = "middleware.authority_deference.detected"
+"""Authority cues detected in transcript by AuthorityDeferenceGuard."""
 
 MIDDLEWARE_ASSUMPTION_VIOLATION_DETECTED: str = (
     "middleware.assumption_violation.detected"
@@ -87,3 +87,14 @@ COORDINATION_REPLAN_BUDGET_BLOCKED: str = (
 
 COORDINATION_REPLAN_CAP_REACHED: str = "middleware.coordination.replan_cap_reached"
 """Replan skipped because stall or reset cap was reached."""
+
+# ── Registry events ──────────────────────────────────────────────
+
+MIDDLEWARE_REGISTRATION_CONFLICT: str = "middleware.registry.conflict"
+"""Conflicting middleware registration attempted."""
+
+MIDDLEWARE_UNKNOWN: str = "middleware.registry.unknown"
+"""Unknown middleware name requested from registry."""
+
+MIDDLEWARE_DEFAULTS_REGISTERED: str = "middleware.defaults.registered"
+"""Default middleware factories registered."""

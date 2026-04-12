@@ -124,6 +124,9 @@ class BaseAgentMiddleware:
     __slots__ = ("_name",)
 
     def __init__(self, *, name: str) -> None:
+        if not name or not name.strip():
+            msg = "middleware name cannot be blank"
+            raise ValueError(msg)
         self._name = name
 
     @property

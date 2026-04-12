@@ -82,6 +82,11 @@ def build_agent_middleware_chain(
             # Only skip if the TypeError is from missing factory args,
             # not from internal bugs in the factory
             if "argument" not in str(exc) and "parameter" not in str(exc):
+                logger.exception(
+                    MIDDLEWARE_SKIPPED,
+                    middleware=name,
+                    reason=f"factory_error: {exc}",
+                )
                 raise
             logger.debug(
                 MIDDLEWARE_SKIPPED,
@@ -145,6 +150,11 @@ def build_coordination_middleware_chain(
             mw = factory(**effective_deps)
         except TypeError as exc:
             if "argument" not in str(exc) and "parameter" not in str(exc):
+                logger.exception(
+                    MIDDLEWARE_COORDINATION_SKIPPED,
+                    middleware=name,
+                    reason=f"factory_error: {exc}",
+                )
                 raise
             logger.debug(
                 MIDDLEWARE_COORDINATION_SKIPPED,

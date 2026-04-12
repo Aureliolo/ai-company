@@ -29,7 +29,7 @@ from synthorg.engine.middleware.protocol import BaseAgentMiddleware
 from synthorg.observability import get_logger
 from synthorg.observability.events.middleware import (
     MIDDLEWARE_ASSUMPTION_VIOLATION_DETECTED,
-    MIDDLEWARE_AUTHORITY_DEFERENCE_STRIPPED,
+    MIDDLEWARE_AUTHORITY_DEFERENCE_DETECTED,
     MIDDLEWARE_CLARIFICATION_REQUIRED,
     MIDDLEWARE_DELEGATION_HASH_DRIFT,
     MIDDLEWARE_DELEGATION_HASH_RECORDED,
@@ -81,7 +81,7 @@ class AuthorityDeferenceGuard(BaseAgentMiddleware):
 
         if detected_count > 0:
             logger.info(
-                MIDDLEWARE_AUTHORITY_DEFERENCE_STRIPPED,
+                MIDDLEWARE_AUTHORITY_DEFERENCE_DETECTED,
                 agent_id=ctx.agent_id,
                 task_id=ctx.task_id,
                 stripped_count=detected_count,
@@ -139,7 +139,7 @@ class AuthorityDeferenceCoordinationMiddleware(
         if stripped_count > 0:
             task = ctx.coordination_context.task
             logger.info(
-                MIDDLEWARE_AUTHORITY_DEFERENCE_STRIPPED,
+                MIDDLEWARE_AUTHORITY_DEFERENCE_DETECTED,
                 task_id=task.id,
                 stripped_count=stripped_count,
                 context="coordination_rollup",

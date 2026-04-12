@@ -71,7 +71,6 @@ class TestAgentMiddlewareConfig:
     def test_sub_configs_default(self) -> None:
         cfg = AgentMiddlewareConfig()
         assert cfg.authority_deference.enabled is True
-        assert cfg.clarification_gate.enabled is True
 
 
 @pytest.mark.unit
@@ -82,6 +81,10 @@ class TestCoordinationMiddlewareConfig:
         cfg = CoordinationMiddlewareConfig()
         assert cfg.chain == DEFAULT_COORDINATION_CHAIN
         assert "clarification_gate" in cfg.chain
+
+    def test_sub_configs_default(self) -> None:
+        cfg = CoordinationMiddlewareConfig()
+        assert cfg.clarification_gate.enabled is True
 
     def test_custom_chain(self) -> None:
         cfg = CoordinationMiddlewareConfig(

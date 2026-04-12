@@ -129,7 +129,6 @@ class AgentMiddlewareConfig(BaseModel):
     Attributes:
         chain: Middleware names in execution order.
         authority_deference: AuthorityDeferenceGuard settings.
-        clarification_gate: ClarificationGate settings.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
@@ -142,10 +141,6 @@ class AgentMiddlewareConfig(BaseModel):
         default_factory=AuthorityDeferenceConfig,
         description="AuthorityDeferenceGuard settings",
     )
-    clarification_gate: ClarificationGateConfig = Field(
-        default_factory=ClarificationGateConfig,
-        description="ClarificationGate settings",
-    )
 
 
 class CoordinationMiddlewareConfig(BaseModel):
@@ -153,6 +148,7 @@ class CoordinationMiddlewareConfig(BaseModel):
 
     Attributes:
         chain: Middleware names in execution order.
+        clarification_gate: ClarificationGate settings.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
@@ -160,6 +156,10 @@ class CoordinationMiddlewareConfig(BaseModel):
     chain: tuple[NotBlankStr, ...] = Field(
         default=DEFAULT_COORDINATION_CHAIN,
         description="Coordination middleware names in execution order",
+    )
+    clarification_gate: ClarificationGateConfig = Field(
+        default_factory=ClarificationGateConfig,
+        description="ClarificationGate settings",
     )
 
 

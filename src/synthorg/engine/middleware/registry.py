@@ -14,6 +14,10 @@ from synthorg.engine.middleware.coordination_protocol import (
 from synthorg.engine.middleware.errors import MiddlewareRegistryError
 from synthorg.engine.middleware.protocol import AgentMiddleware
 from synthorg.observability import get_logger
+from synthorg.observability.events.middleware import (
+    MIDDLEWARE_REGISTRATION_CONFLICT,
+    MIDDLEWARE_UNKNOWN,
+)
 
 logger = get_logger(__name__)
 
@@ -48,8 +52,9 @@ def register_agent_middleware(
         if existing is factory:
             return  # idempotent
         logger.warning(
-            "conflicting_agent_middleware_registration",
+            MIDDLEWARE_REGISTRATION_CONFLICT,
             name=name,
+            registry_type="agent",
         )
         raise MiddlewareRegistryError(
             name,
@@ -75,8 +80,9 @@ def get_agent_middleware_factory(
     factory = _AGENT_REGISTRY.get(name)
     if factory is None:
         logger.warning(
-            "unknown_agent_middleware",
+            MIDDLEWARE_UNKNOWN,
             name=name,
+            registry_type="agent",
         )
         raise MiddlewareRegistryError(
             name,
@@ -129,8 +135,9 @@ def register_coordination_middleware(
         if existing is factory:
             return
         logger.warning(
-            "conflicting_coordination_middleware_registration",
+            MIDDLEWARE_REGISTRATION_CONFLICT,
             name=name,
+            registry_type="coordination",
         )
         raise MiddlewareRegistryError(
             name,
@@ -156,8 +163,9 @@ def get_coordination_middleware_factory(
     factory = _COORDINATION_REGISTRY.get(name)
     if factory is None:
         logger.warning(
-            "unknown_coordination_middleware",
+            MIDDLEWARE_UNKNOWN,
             name=name,
+            registry_type="coordination",
         )
         raise MiddlewareRegistryError(
             name,

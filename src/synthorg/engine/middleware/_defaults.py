@@ -9,6 +9,8 @@ Call ``register_default_middleware()`` once at application startup
 (e.g. from ``AgentEngine.__init__`` or the app entrypoint).
 """
 
+from typing import Any
+
 from synthorg.engine.middleware.builtin import (
     ApprovalGateMiddleware,
     CheckpointResumeMiddleware,
@@ -35,10 +37,39 @@ from synthorg.engine.middleware.s1_constraints import (
     DelegationChainHashMiddleware,
 )
 from synthorg.observability import get_logger
+from synthorg.observability.events.middleware import (
+    MIDDLEWARE_DEFAULTS_REGISTERED,
+)
 
 logger = get_logger(__name__)
 
 _registered = False
+
+# ── Default middleware tables ─────────────────────────────────────
+
+_AGENT_DEFAULTS: tuple[tuple[str, Any], ...] = (
+    ("checkpoint_resume", CheckpointResumeMiddleware),
+    ("delegation_chain_hash", DelegationChainHashMiddleware),
+    ("authority_deference", AuthorityDeferenceGuard),
+    ("sanitize_message", SanitizeMessageMiddleware),
+    ("security_interceptor", SecurityInterceptorMiddleware),
+    ("approval_gate", ApprovalGateMiddleware),
+    ("assumption_violation", AssumptionViolationMiddleware),
+    ("classification", ClassificationMiddleware),
+    ("cost_recording", CostRecordingMiddleware),
+)
+
+_COORDINATION_DEFAULTS: tuple[tuple[str, Any], ...] = (
+    ("clarification_gate", ClarificationGateMiddleware),
+    ("task_ledger", TaskLedgerMiddleware),
+    ("plan_review_gate", PlanReviewGateMiddleware),
+    ("progress_ledger", ProgressLedgerMiddleware),
+    ("coordination_replan", ReplanMiddleware),
+    (
+        "authority_deference_coordination",
+        AuthorityDeferenceCoordinationMiddleware,
+    ),
+)
 
 
 def register_default_middleware() -> None:
@@ -51,73 +82,15 @@ def register_default_middleware() -> None:
     if _registered:
         return
 
-    # ── Agent middleware ──────────────────────────────────────
-    register_agent_middleware(
-        "checkpoint_resume",
-        CheckpointResumeMiddleware,
-    )
-    register_agent_middleware(
-        "delegation_chain_hash",
-        DelegationChainHashMiddleware,
-    )
-    register_agent_middleware(
-        "authority_deference",
-        AuthorityDeferenceGuard,
-    )
-    register_agent_middleware(
-        "sanitize_message",
-        SanitizeMessageMiddleware,
-    )
-    register_agent_middleware(
-        "security_interceptor",
-        SecurityInterceptorMiddleware,
-    )
-    register_agent_middleware(
-        "approval_gate",
-        ApprovalGateMiddleware,
-    )
-    register_agent_middleware(
-        "assumption_violation",
-        AssumptionViolationMiddleware,
-    )
-    register_agent_middleware(
-        "classification",
-        ClassificationMiddleware,
-    )
-    register_agent_middleware(
-        "cost_recording",
-        CostRecordingMiddleware,
-    )
+    for name, factory in _AGENT_DEFAULTS:
+        register_agent_middleware(name, factory)
 
-    # ── Coordination middleware ───────────────────────────────
-    register_coordination_middleware(
-        "clarification_gate",
-        ClarificationGateMiddleware,
-    )
-    register_coordination_middleware(
-        "task_ledger",
-        TaskLedgerMiddleware,
-    )
-    register_coordination_middleware(
-        "plan_review_gate",
-        PlanReviewGateMiddleware,
-    )
-    register_coordination_middleware(
-        "progress_ledger",
-        ProgressLedgerMiddleware,
-    )
-    register_coordination_middleware(
-        "coordination_replan",
-        ReplanMiddleware,
-    )
-    register_coordination_middleware(
-        "authority_deference_coordination",
-        AuthorityDeferenceCoordinationMiddleware,
-    )
+    for name, factory in _COORDINATION_DEFAULTS:
+        register_coordination_middleware(name, factory)
 
     _registered = True
     logger.debug(
-        "default_middleware_registered",
-        agent_count=9,
-        coordination_count=6,
+        MIDDLEWARE_DEFAULTS_REGISTERED,
+        agent_count=len(_AGENT_DEFAULTS),
+        coordination_count=len(_COORDINATION_DEFAULTS),
     )

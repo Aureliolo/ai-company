@@ -76,7 +76,11 @@ class TaskLedgerMiddleware(BaseCoordinationMiddleware):
         known_facts: list[str] = []
         if task.description:
             known_facts.append(task.description)
-        known_facts.extend(c.description for c in task.acceptance_criteria)
+        known_facts.extend(
+            c.description
+            for c in task.acceptance_criteria
+            if c.description and c.description.strip()
+        )
 
         # Determine version from existing ledger
         existing = ctx.task_ledger
@@ -133,21 +137,12 @@ class ProgressLedgerMiddleware(BaseCoordinationMiddleware):
         # Determine round number
         round_number = (existing.round_number + 1) if existing else 1
 
-        # Analyze progress from rollup contents (not just existence)
+        # Analyze progress from rollup contents (not just existence).
+        # Check if the rollup reports any completed subtasks.
         progress_made = False
         if rollup is not None:
-            completed = getattr(rollup, "completed_count", None)
-            prev_completed = (
-                getattr(existing, "_prev_completed", None) if existing else None
-            )
-            if completed is not None and prev_completed is not None:
-                progress_made = completed > prev_completed
-            elif completed is not None and completed > 0:
-                progress_made = True
-            else:
-                # Fallback: any non-None rollup with no count info
-                # is treated as no progress (conservative)
-                progress_made = False
+            completed = getattr(rollup, "completed_count", 0) or 0
+            progress_made = completed > 0
 
         # Stall detection
         prev_stall = existing.stall_count if existing else 0
