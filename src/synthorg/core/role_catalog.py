@@ -346,6 +346,27 @@ _GROWTH_MARKETER = Role(
     description="Campaigns, analytics, conversion optimization",
 )
 
+# ── Knowledge Management ──────────────────────────────────────────
+
+_KNOWLEDGE_ARCHITECT = Role(
+    name="Knowledge Architect",
+    department=DepartmentName.ENGINEERING,
+    required_skills=("research", "synthesis", "writing"),
+    authority_level=SeniorityLevel.SENIOR,
+    tool_access=(
+        "memory.guide",
+        "memory.search",
+        "memory.read",
+        "memory.write",
+        "memory.delete",
+        "memory.browse_wiki",
+    ),
+    description=(
+        "Maintains organizational memory: curates wiki pages, "
+        "synthesizes cross-project knowledge, maintains ADRs"
+    ),
+)
+
 # ── Aggregated Catalog ─────────────────────────────────────────────
 
 BUILTIN_ROLES: tuple[Role, ...] = (
@@ -387,6 +408,8 @@ BUILTIN_ROLES: tuple[Role, ...] = (
     _CONTENT_WRITER,
     _BRAND_STRATEGIST,
     _GROWTH_MARKETER,
+    # Knowledge Management
+    _KNOWLEDGE_ARCHITECT,
 )
 
 

@@ -1,10 +1,11 @@
 """Memory retrieval pipeline configuration.
 
 Frozen Pydantic config for the retrieval pipeline -- weights,
-thresholds, and strategy selection.
+thresholds, strategy selection, hierarchical retriever, and
+query-specific re-ranking.
 """
 
-from typing import Self
+from typing import Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -19,6 +20,9 @@ _WEIGHT_SUM_TOLERANCE = 1e-6
 _DEFAULT_RRF_K = 60
 _DEFAULT_DIVERSITY_LAMBDA = 0.7
 _DEFAULT_CANDIDATE_POOL_MULTIPLIER = 3
+_DEFAULT_MAX_WORKERS_PER_QUERY = 2
+_DEFAULT_RERANK_CACHE_TTL_SECONDS = 3600
+_DEFAULT_MAX_RETRY_COUNT = 2
 
 
 class MemoryRetrievalConfig(BaseModel):
@@ -186,6 +190,57 @@ class MemoryRetrievalConfig(BaseModel):
             "loop when ``query_reformulation_enabled`` is True (1-5)."
         ),
     )
+    retriever: Literal["flat", "hierarchical"] = Field(
+        default="flat",
+        description=(
+            "Retriever topology: ``flat`` uses the existing single-pass "
+            "pipeline, ``hierarchical`` uses supervisor-worker routing "
+            "with semantic, episodic, and procedural workers."
+        ),
+    )
+    max_workers_per_query: int = Field(
+        default=_DEFAULT_MAX_WORKERS_PER_QUERY,
+        ge=1,
+        le=4,
+        description=(
+            "Maximum workers the supervisor may invoke per query "
+            "(only used when retriever is ``hierarchical``)."
+        ),
+    )
+    reflective_retry_enabled: bool = Field(
+        default=True,
+        description=(
+            "When True, the hierarchical supervisor evaluates result "
+            "quality and retries with corrected queries on poor results."
+        ),
+    )
+    max_retry_count: int = Field(
+        default=_DEFAULT_MAX_RETRY_COUNT,
+        ge=0,
+        le=5,
+        description=(
+            "Maximum reflective retry attempts (only used when "
+            "retriever is ``hierarchical`` and "
+            "``reflective_retry_enabled`` is True)."
+        ),
+    )
+    query_specific_rerank_enabled: bool = Field(
+        default=False,
+        description=(
+            "When True, apply query-specific LLM-based re-ranking "
+            "after RRF/linear fusion.  Works with both flat and "
+            "hierarchical retrievers.  Adds an LLM call per retrieve."
+        ),
+    )
+    rerank_cache_ttl_seconds: int = Field(
+        default=_DEFAULT_RERANK_CACHE_TTL_SECONDS,
+        ge=60,
+        le=86400,
+        description=(
+            "TTL in seconds for the re-ranker cache "
+            "(only used when ``query_specific_rerank_enabled`` is True)."
+        ),
+    )
 
     @model_validator(mode="after")
     def _validate_weight_sum(self) -> Self:
@@ -347,4 +402,78 @@ class MemoryRetrievalConfig(BaseModel):
                 reason=msg,
             )
             raise ValueError(msg)
+        return self
+
+    @model_validator(mode="after")
+    def _validate_hierarchical_requires_context(self) -> Self:
+        """Hierarchical retriever only works with CONTEXT strategy."""
+        if (
+            self.retriever == "hierarchical"
+            and self.strategy != InjectionStrategy.CONTEXT
+        ):
+            msg = (
+                "retriever='hierarchical' requires strategy='context'; "
+                f"got strategy={self.strategy.value!r}"
+            )
+            logger.warning(
+                CONFIG_VALIDATION_FAILED,
+                field="retriever",
+                value=self.retriever,
+                strategy=self.strategy.value,
+                reason=msg,
+            )
+            raise ValueError(msg)
+        return self
+
+    @model_validator(mode="after")
+    def _validate_hierarchical_field_consistency(self) -> Self:
+        """Warn when hierarchical fields are set but retriever is flat."""
+        if self.retriever != "flat":
+            return self
+        if (
+            "max_workers_per_query" in self.model_fields_set
+            and self.max_workers_per_query != _DEFAULT_MAX_WORKERS_PER_QUERY
+        ):
+            logger.warning(
+                CONFIG_VALIDATION_FAILED,
+                field="max_workers_per_query",
+                value=self.max_workers_per_query,
+                reason=("max_workers_per_query is ignored when retriever is 'flat'"),
+            )
+        if "reflective_retry_enabled" in self.model_fields_set:
+            logger.warning(
+                CONFIG_VALIDATION_FAILED,
+                field="reflective_retry_enabled",
+                value=self.reflective_retry_enabled,
+                reason=("reflective_retry_enabled is ignored when retriever is 'flat'"),
+            )
+        if (
+            "max_retry_count" in self.model_fields_set
+            and self.max_retry_count != _DEFAULT_MAX_RETRY_COUNT
+        ):
+            logger.warning(
+                CONFIG_VALIDATION_FAILED,
+                field="max_retry_count",
+                value=self.max_retry_count,
+                reason=("max_retry_count is ignored when retriever is 'flat'"),
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _validate_rerank_cache_ttl_consistency(self) -> Self:
+        """Warn when rerank_cache_ttl_seconds is set but reranking off."""
+        if (
+            not self.query_specific_rerank_enabled
+            and "rerank_cache_ttl_seconds" in self.model_fields_set
+            and self.rerank_cache_ttl_seconds != _DEFAULT_RERANK_CACHE_TTL_SECONDS
+        ):
+            logger.warning(
+                CONFIG_VALIDATION_FAILED,
+                field="rerank_cache_ttl_seconds",
+                value=self.rerank_cache_ttl_seconds,
+                reason=(
+                    "rerank_cache_ttl_seconds is ignored when "
+                    "query_specific_rerank_enabled is False"
+                ),
+            )
         return self

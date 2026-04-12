@@ -201,10 +201,14 @@ def pytest_sessionfinish(
         baseline = json.loads(_BASELINE_PATH.read_text(encoding="utf-8"))
         baseline_secs = float(baseline["unit_suite_seconds"])
         baseline_count = int(baseline.get("test_count", 0))
-        # Absolute tolerance in seconds -- only small increases are
-        # allowed.  Any regression beyond this is a real bug that
-        # must be fixed before merging.
+        # Two complementary tolerances:
+        # - ``regression_threshold_secs`` bounds small absolute drift
+        #   (runner noise, single flaky test).
+        # - ``regression_threshold_ratio`` bounds per-test cost growth,
+        #   so a PR adding a few hundred legitimate tests does not
+        #   trip the guard just because total wall-clock grew.
         threshold_secs = float(baseline.get("regression_threshold_secs", 10))
+        threshold_ratio = float(baseline.get("regression_threshold_ratio", 1.3))
     except json.JSONDecodeError, KeyError, ValueError, OSError:
         return  # Malformed baseline -- skip check, don't block.
     # Only compare against baseline when the session is (roughly) the
@@ -220,6 +224,15 @@ def pytest_sessionfinish(
         return
     if non_unit_count > 0:
         return
+    # Per-test cost check: a PR adding a few hundred tests legitimately
+    # grows wall-clock.  Only flag when elapsed/test_count exceeds the
+    # baseline per-test cost by ``threshold_ratio``.
+    if baseline_count > 0 and unit_count > 0:
+        baseline_per_test = baseline_secs / baseline_count
+        current_per_test = elapsed / unit_count
+        per_test_ok = current_per_test <= baseline_per_test * threshold_ratio
+    else:
+        per_test_ok = True
     max_allowed = baseline_secs + threshold_secs
     # Allow override for optimization work where the suite is
     # intentionally being re-measured at a new (lower) baseline.
@@ -227,14 +240,25 @@ def pytest_sessionfinish(
     if env_override is not None:
         with contextlib.suppress(ValueError):
             max_allowed = float(env_override)
-    if elapsed > max_allowed:
+    absolute_breach = elapsed > max_allowed
+    # Fail when EITHER absolute tolerance exceeded OR per-test cost
+    # grew beyond the ratio.  Both checks are independent
+    # regression signals: the absolute gate catches catastrophic
+    # growth, the per-test gate catches quality regressions that
+    # would otherwise hide in healthy test-count growth.
+    if absolute_breach or not per_test_ok:
         delta = elapsed - baseline_secs
+        baseline_per_test = baseline_secs / max(baseline_count, 1)
+        current_per_test = elapsed / max(unit_count, 1)
         border = "!" * 60
         msg = (
             f"\n{border}\n"
             f"REGRESSION DETECTED: suite took {elapsed:.0f}s, "
             f"baseline is {baseline_secs:.0f}s (+{delta:.0f}s, "
             f"tolerance {threshold_secs:.0f}s)\n"
+            f"Per-test cost: {current_per_test * 1000:.1f}ms vs "
+            f"baseline {baseline_per_test * 1000:.1f}ms "
+            f"(ratio cap {threshold_ratio:.2f}x)\n"
             f"Run A/B against origin/main before fixing anything.\n"
             f"Do NOT delete tests or use --no-verify.\n"
             f"If the new baseline is intentional, update "

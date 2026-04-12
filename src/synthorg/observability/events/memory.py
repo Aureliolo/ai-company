@@ -156,3 +156,28 @@ MEMORY_SELF_EDIT_ARCHIVAL_WRITE: Final[str] = "memory.self_edit.archival.write"
 MEMORY_SELF_EDIT_RECALL_READ: Final[str] = "memory.self_edit.recall.read"
 MEMORY_SELF_EDIT_RECALL_WRITE: Final[str] = "memory.self_edit.recall.write"
 MEMORY_SELF_EDIT_WRITE_FAILED: Final[str] = "memory.self_edit.write.failed"
+
+# ── Hierarchical retrieval ──────────────────────────────────────
+
+MEMORY_HIERARCHICAL_ROUTING: Final[str] = "memory.hierarchical.routing"
+MEMORY_HIERARCHICAL_WORKER_START: Final[str] = "memory.hierarchical.worker_start"
+MEMORY_HIERARCHICAL_WORKER_COMPLETE: Final[str] = "memory.hierarchical.worker_complete"
+MEMORY_HIERARCHICAL_WORKER_FAILED: Final[str] = "memory.hierarchical.worker_failed"
+MEMORY_HIERARCHICAL_WORKER_DEGRADED: Final[str] = "memory.hierarchical.worker_degraded"
+MEMORY_HIERARCHICAL_MERGE: Final[str] = "memory.hierarchical.merge"
+MEMORY_HIERARCHICAL_RETRY: Final[str] = "memory.hierarchical.retry"
+MEMORY_HIERARCHICAL_COMPLETE: Final[str] = "memory.hierarchical.complete"
+
+# ── Query-specific re-ranking ──────────────────────────────────
+
+MEMORY_RERANK_CACHE_HIT: Final[str] = "memory.rerank.cache_hit"
+MEMORY_RERANK_CACHE_MISS: Final[str] = "memory.rerank.cache_miss"
+MEMORY_RERANK_COMPLETE: Final[str] = "memory.rerank.complete"
+MEMORY_RERANK_FAILED: Final[str] = "memory.rerank.failed"
+
+# ── Knowledge Architect ─────────────────────────────────────────
+
+KNOWLEDGE_ARCHITECT_WRITE: Final[str] = "memory.architect.write"
+KNOWLEDGE_ARCHITECT_DELETE: Final[str] = "memory.architect.delete"
+KNOWLEDGE_ARCHITECT_APPROVAL_CREATED: Final[str] = "memory.architect.approval_created"
+KNOWLEDGE_ARCHITECT_WRITE_DENIED: Final[str] = "memory.architect.write_denied"

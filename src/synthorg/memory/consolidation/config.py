@@ -1,10 +1,12 @@
 """Memory consolidation configuration models.
 
 Frozen Pydantic models for consolidation interval, retention,
-archival, and LLM consolidation strategy settings.
+archival, LLM consolidation strategy, experience compressor,
+and wiki export settings.
 """
 
-from typing import Self
+from pathlib import PurePosixPath, PureWindowsPath
+from typing import Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -171,6 +173,129 @@ class ArchivalConfig(BaseModel):
     )
 
 
+class ExperienceCompressorConfig(BaseModel):
+    """Configuration for the GEMS two-tier experience compressor.
+
+    Controls whether raw execution traces (``DetailedExperience``) are
+    compressed into strategic learnings (``CompressedExperience``).
+
+    Attributes:
+        enabled: Whether two-tier compression is active.
+        model: Model identifier for the compressor LLM call
+            (``None`` = use medium-tier default).
+        temperature: Sampling temperature for compression.
+        max_tokens: Token budget for the compressor response.
+        min_compression_ratio: Discard compressions with a ratio below
+            this threshold (0.0 = keep all, closer to 1.0 = stricter).
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+
+    enabled: bool = Field(
+        default=False,
+        description="Whether two-tier compression is active",
+    )
+    model: NotBlankStr | None = Field(
+        default=None,
+        description=(
+            "Model identifier for the compressor LLM call "
+            "(None = use medium-tier default)"
+        ),
+    )
+    temperature: float = Field(
+        default=0.3,
+        ge=0.0,
+        le=1.0,
+        description="Sampling temperature for compression",
+    )
+    max_tokens: int = Field(
+        default=1000,
+        ge=100,
+        le=4000,
+        description="Token budget for the compressor response",
+    )
+    min_compression_ratio: float = Field(
+        default=0.0,
+        ge=0.0,
+        lt=1.0,
+        description=(
+            "Discard compressions with a ratio below this threshold (0.0 = keep all)"
+        ),
+    )
+
+
+class WikiExportConfig(BaseModel):
+    """Configuration for post-consolidation wiki filesystem export.
+
+    Three-view export: ``raw/`` (Tier 1 raw artifacts), ``wiki/``
+    (Tier 2 compressed experiences), and ``index.md`` (navigation).
+
+    Attributes:
+        enabled: Whether wiki export is enabled.
+        export_root: Root directory for the wiki filesystem export.
+        trigger: When to trigger export (``"on_consolidation"`` or
+            ``"manual"``).
+        include_raw_tier: Export Tier 1 (DetailedExperience) to
+            ``raw/`` view.
+        include_compressed_tier: Export Tier 2 (CompressedExperience)
+            to ``wiki/`` view.
+        max_entries_per_view: Maximum entries per view (``None`` = all).
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+
+    enabled: bool = Field(
+        default=False,
+        description="Whether wiki export is enabled",
+    )
+    export_root: NotBlankStr = Field(
+        default="/data/wiki",
+        description="Root directory for the wiki filesystem export",
+    )
+    trigger: Literal["on_consolidation", "manual"] = Field(
+        default="manual",
+        description="When to trigger export",
+    )
+    include_raw_tier: bool = Field(
+        default=True,
+        description="Export Tier 1 raw artifacts to raw/ view",
+    )
+    include_compressed_tier: bool = Field(
+        default=True,
+        description="Export Tier 2 compressed experiences to wiki/ view",
+    )
+    max_entries_per_view: int | None = Field(
+        default=None,
+        ge=1,
+        le=1000,
+        description=(
+            "Maximum entries per view.  ``None`` means 'use the "
+            "backend's maximum page size' (``MemoryQuery.limit`` is "
+            "capped at 1000 by schema).  Multi-page exports for "
+            "collections larger than 1000 are not yet supported."
+        ),
+    )
+
+    @model_validator(mode="after")
+    def _reject_traversal(self) -> Self:
+        """Reject parent-directory traversal in export_root."""
+        parts = (
+            PureWindowsPath(self.export_root).parts
+            + PurePosixPath(self.export_root).parts
+        )
+        if ".." in parts:
+            msg = "export_root must not contain parent-directory traversal (..)"
+            logger.warning(
+                CONFIG_VALIDATION_FAILED,
+                model="WikiExportConfig",
+                field="export_root",
+                value=self.export_root,
+                reason=msg,
+            )
+            raise ValueError(msg)
+        return self
+
+
 class ConsolidationConfig(BaseModel):
     """Top-level memory consolidation configuration.
 
@@ -179,6 +304,8 @@ class ConsolidationConfig(BaseModel):
         max_memories_per_agent: Upper bound on memories per agent.
         retention: Per-category retention settings.
         archival: Archival settings.
+        experience_compressor: GEMS two-tier compressor settings.
+        wiki_export: Wiki filesystem export settings.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
@@ -199,6 +326,14 @@ class ConsolidationConfig(BaseModel):
     archival: ArchivalConfig = Field(
         default_factory=ArchivalConfig,
         description="Archival settings",
+    )
+    experience_compressor: ExperienceCompressorConfig = Field(
+        default_factory=ExperienceCompressorConfig,
+        description="GEMS two-tier experience compressor settings",
+    )
+    wiki_export: WikiExportConfig = Field(
+        default_factory=WikiExportConfig,
+        description="Wiki filesystem export settings",
     )
 
 

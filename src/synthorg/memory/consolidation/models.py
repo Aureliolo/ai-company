@@ -1,7 +1,8 @@
 """Memory consolidation domain models.
 
 Frozen Pydantic models for consolidation results, archival entries,
-retention rules, and dual-mode archival types.
+retention rules, dual-mode archival types, and GEMS two-tier
+compressed/detailed experience models.
 """
 
 from enum import StrEnum
@@ -258,3 +259,160 @@ class RetentionRule(BaseModel):
         ge=1,
         description="Number of days to retain memories",
     )
+
+
+# ── GEMS two-tier experience models ───────────────────────────────
+
+
+class ContentDensity(StrEnum):
+    """Content density classification for archival mode selection.
+
+    Attributes:
+        SPARSE: Conversational, narrative, low information density.
+        DENSE: Code, structured data, identifiers, high density.
+    """
+
+    SPARSE = "sparse"
+    DENSE = "dense"
+
+
+class DetailedExperience(BaseModel):
+    """Tier 1 raw artifact -- append-only execution trace.
+
+    Stores the complete raw execution context for a single turn or
+    task.  Retrieved by ``entry.id`` only (audit/debug), NOT used
+    for context injection.
+
+    Attributes:
+        id: Unique identifier.
+        agent_id: Owning agent identifier.
+        prompt: Raw prompt sent to the agent.
+        output: Raw output produced by the agent.
+        verification_feedback: Verification result text (``None``
+            when no verification was performed).
+        reasoning_trace: Step-by-step reasoning trace entries.
+        metadata: Associated metadata (tags include
+            ``"detailed_experience"``).
+        created_at: When the experience was captured.
+        source_task_id: Optional originating task identifier.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+
+    id: NotBlankStr = Field(description="Unique identifier")
+    agent_id: NotBlankStr = Field(description="Owning agent identifier")
+    prompt: NotBlankStr = Field(description="Raw prompt sent to the agent")
+    output: NotBlankStr = Field(
+        description="Raw output produced by the agent",
+    )
+    verification_feedback: NotBlankStr | None = Field(
+        default=None,
+        description="Verification result text",
+    )
+    reasoning_trace: tuple[NotBlankStr, ...] = Field(
+        default=(),
+        description="Step-by-step reasoning trace entries",
+    )
+    metadata: MemoryMetadata = Field(
+        default_factory=MemoryMetadata,
+        description="Associated metadata",
+    )
+    created_at: AwareDatetime = Field(
+        description="When the experience was captured",
+    )
+    source_task_id: NotBlankStr | None = Field(
+        default=None,
+        description="Optional originating task identifier",
+    )
+
+    @model_validator(mode="after")
+    def _validate_tier_tag(self) -> Self:
+        """Require the ``detailed_experience`` tag in metadata.tags."""
+        if "detailed_experience" not in self.metadata.tags:
+            msg = (
+                "DetailedExperience.metadata.tags must contain "
+                "'detailed_experience' (tier marker required by the "
+                "two-tier pipeline)"
+            )
+            raise ValueError(msg)
+        return self
+
+
+class CompressedExperience(BaseModel):
+    """Tier 2 compressed learning -- retrieval-primary.
+
+    Distilled from one or more ``DetailedExperience`` entries by the
+    ``ExperienceCompressor``.  These are the entries agents see during
+    context injection -- raw traces are NOT injected.
+
+    GEMS ablation shows compressed experiences outperform raw reasoning
+    traces by 2.5x (GEMS section 4.3).
+
+    Attributes:
+        id: Unique identifier.
+        agent_id: Owning agent identifier.
+        strategic_decisions: Distilled "what worked, what didn't"
+            learnings.
+        applicable_contexts: When and where this experience applies.
+        source_artifact_ids: Links back to ``DetailedExperience`` IDs.
+        compression_ratio: ``compressed_len / raw_len`` (0.0-1.0).
+        compressor_version: Version stamp for the compressor that
+            produced this entry.
+        metadata: Associated metadata (tags include
+            ``"compressed_experience"``).
+        created_at: When the compression was performed.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+
+    id: NotBlankStr = Field(description="Unique identifier")
+    agent_id: NotBlankStr = Field(description="Owning agent identifier")
+    strategic_decisions: tuple[NotBlankStr, ...] = Field(
+        description="Distilled strategic learnings",
+    )
+    applicable_contexts: tuple[NotBlankStr, ...] = Field(
+        default=(),
+        description="When and where this experience applies",
+    )
+    source_artifact_ids: tuple[NotBlankStr, ...] = Field(
+        description=(
+            "Links back to DetailedExperience IDs "
+            "(must contain at least one entry -- provenance required)"
+        ),
+    )
+    compression_ratio: float = Field(
+        gt=0.0,
+        le=1.0,
+        description="compressed_len / raw_len",
+    )
+    compressor_version: NotBlankStr = Field(
+        description="Compressor version stamp",
+    )
+    metadata: MemoryMetadata = Field(
+        default_factory=MemoryMetadata,
+        description="Associated metadata",
+    )
+    created_at: AwareDatetime = Field(
+        description="When the compression was performed",
+    )
+
+    @model_validator(mode="after")
+    def _validate_non_empty(self) -> Self:
+        """Require strategic decisions, provenance, and tier marker."""
+        if not self.strategic_decisions:
+            msg = "strategic_decisions must contain at least one entry"
+            raise ValueError(msg)
+        if not self.source_artifact_ids:
+            msg = (
+                "source_artifact_ids must contain at least one entry "
+                "(provenance required to prevent orphan experiences)"
+            )
+            raise ValueError(msg)
+        if "compressed_experience" not in self.metadata.tags:
+            msg = (
+                "CompressedExperience.metadata.tags must contain "
+                "'compressed_experience' (tier marker required by the "
+                "two-tier pipeline)"
+            )
+            raise ValueError(msg)
+        return self

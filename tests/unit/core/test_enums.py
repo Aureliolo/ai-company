@@ -403,13 +403,24 @@ class TestCompareSeniority:
         assert compare_seniority(b, a) < 0
 
 
-# ── __all__ exports ──────────────────────────────────────────────
+# ── Package layout ───────────────────────────────────────────────
 
 
 @pytest.mark.unit
-class TestCoreExports:
-    def test_all_exports_importable(self) -> None:
+class TestCoreLayout:
+    def test_core_package_is_lean(self) -> None:
+        """``synthorg.core`` must not eagerly import submodules.
+
+        Historically ``synthorg.core/__init__.py`` eagerly re-exported
+        everything from agent, company, tools, etc., adding ~2s to
+        every import path that needed a leaf type from
+        ``synthorg.core.types``.  Keep the package ``__init__`` lean
+        and require callers to import from the defining submodule.
+        """
         import synthorg.core as core_module
 
-        for name in core_module.__all__:
-            assert hasattr(core_module, name), f"{name} in __all__ but not importable"
+        # Must not define __all__ (no re-exports) and must not have
+        # heavy submodule attributes attached at package init.
+        assert not hasattr(core_module, "__all__")
+        assert not hasattr(core_module, "AgentIdentity")
+        assert not hasattr(core_module, "Company")
