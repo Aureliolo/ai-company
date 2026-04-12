@@ -591,6 +591,7 @@ class PostgresPersistenceBackend:
                     await conn.commit()
                     return
 
+                await cur.execute("SET LOCAL statement_timeout = 0")
                 await cur.execute("CREATE EXTENSION IF NOT EXISTS timescaledb")
                 await self._create_hypertable(
                     cur,

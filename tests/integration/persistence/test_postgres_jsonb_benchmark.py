@@ -140,6 +140,7 @@ class TestJsonbBenchmark:
                 if force_seqscan:
                     await cur.execute("SET LOCAL enable_indexscan = off")
                     await cur.execute("SET LOCAL enable_bitmapscan = off")
+                    await cur.execute("SET LOCAL enable_indexonlyscan = off")
                 start = time.perf_counter()
                 await cur.execute(bench_sql, bench_param)
                 _ = await cur.fetchall()

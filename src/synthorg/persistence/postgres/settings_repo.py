@@ -257,6 +257,19 @@ class PostgresSettingsRepository:
         )
         return True
 
+    @staticmethod
+    def _safe_parse_iso(
+        value: str,
+        namespace: str,
+        key: str,
+    ) -> datetime:
+        """Parse ISO timestamp, raising QueryError on bad input."""
+        try:
+            return _parse_iso(value)
+        except ValueError as exc:
+            msg = f"Invalid timestamp for {namespace}/{key}: {value!r}"
+            raise QueryError(msg) from exc
+
     async def set_many(
         self,
         items: Sequence[tuple[NotBlankStr, NotBlankStr, str, str]],
@@ -272,7 +285,11 @@ class PostgresSettingsRepository:
                 try:
                     async with conn.transaction(), conn.cursor() as cur:
                         for namespace, key, value, updated_at in items:
-                            updated_at_dt = _parse_iso(updated_at)
+                            updated_at_dt = self._safe_parse_iso(
+                                updated_at,
+                                str(namespace),
+                                str(key),
+                            )
                             expected = cas_map.get((str(namespace), str(key)))
                             if expected is None:
                                 await cur.execute(

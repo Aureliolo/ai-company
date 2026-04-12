@@ -98,9 +98,11 @@ async def on_disk_backend(
     """
     backend = SQLitePersistenceBackend(SQLiteConfig(path=db_path))
     await backend.connect()
-    await _isolated_sqlite_migrate(db_path, tmp_path)
-    yield backend
-    await backend.disconnect()
+    try:
+        await _isolated_sqlite_migrate(db_path, tmp_path)
+        yield backend
+    finally:
+        await backend.disconnect()
 
 
 def _docker_available() -> bool:

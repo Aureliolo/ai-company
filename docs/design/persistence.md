@@ -112,8 +112,9 @@ grows a backend-owned retention policy that stays within Apache-2.0.
 ### Managed-service compatibility
 
 TimescaleDB is a self-hosted-only feature.  The major managed Postgres offerings
-(AWS RDS, Google Cloud SQL, Azure Database for PostgreSQL) do not allow custom
-extensions; operators cannot install `timescaledb` there.  SynthOrg runs
+(AWS RDS, Google Cloud SQL) do not allow custom extensions; operators
+cannot install `timescaledb` there.  Azure Database for PostgreSQL
+Flexible Server is an exception -- it supports TimescaleDB as an extension.  SynthOrg runs
 cleanly on all of them -- leave `enable_timescaledb=False` and the schema stays
 fully relational.  The composite primary keys on `cost_records` and
 `audit_entries` are valid on vanilla Postgres and do not require TimescaleDB to
@@ -125,7 +126,7 @@ deployment moves to self-hosted.
 | Self-hosted Postgres 18+     | Operator-installed  | `enable_timescaledb=True` |
 | AWS RDS / Aurora Postgres    | Not available       | `enable_timescaledb=False` |
 | Google Cloud SQL Postgres    | Not available       | `enable_timescaledb=False` |
-| Azure Database for Postgres  | Not available       | `enable_timescaledb=False` |
+| Azure Database for Postgres (Flexible Server) | Supported (extension) | `enable_timescaledb=True` |
 | Docker / local dev           | `timescale/timescaledb:latest-pg18-oss` | `enable_timescaledb=True` |
 
 ## Extension strategy
