@@ -478,17 +478,23 @@ def test_client(  # noqa: C901, PLR0913
     #    create fresh tasks on the new event loop.
     fake_persistence._connected = True
     app_state: AppState = _shared_app.state.app_state
-    # Reset the task engine for the new event loop.  asyncio.Queue
-    # objects are bound to the loop where they were created, so
-    # the session-scoped engine's queues become invalid when
-    # the previous TestClient's loop closes.  Recreate them and
-    # reset the running flag so the next startup creates fresh
+    # Reset the task engine for the new event loop.  The session-
+    # scoped engine's queues accumulate pending-put/get futures bound
+    # to the *previous* TestClient's event loop; once that loop
+    # closes those futures are permanently unusable and block any
+    # further async interaction with the queue.  Recreate the queues
+    # and reset the running flag so the next startup creates fresh
     # processing tasks on the new loop.
     te = app_state._task_engine
     if te is not None:
         import asyncio as _aio
 
         te._running = False
+        # asyncio.Queue (Python 3.10+) lazily binds to the running
+        # event loop on first ``put``/``get``; constructing it here
+        # in sync context does *not* bind it to this thread's loop,
+        # so the next async consumer inside the new TestClient picks
+        # up the fresh loop correctly.
         te._queue = _aio.Queue(maxsize=te._config.max_queue_size)
         te._observer_queue = _aio.Queue(
             maxsize=te._config.effective_observer_queue_size,
