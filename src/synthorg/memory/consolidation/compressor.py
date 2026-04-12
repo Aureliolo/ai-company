@@ -184,6 +184,7 @@ class LLMExperienceCompressor:
         )
         if response.content is None:
             msg = "LLM returned empty content for compression"
+            logger.warning(EXPERIENCE_COMPRESSED, error=msg)
             raise ValueError(msg)
 
         try:
