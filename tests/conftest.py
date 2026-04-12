@@ -241,10 +241,12 @@ def pytest_sessionfinish(
         with contextlib.suppress(ValueError):
             max_allowed = float(env_override)
     absolute_breach = elapsed > max_allowed
-    # Fail only when BOTH absolute tolerance exceeded AND per-test
-    # cost grew beyond the ratio.  Pure test-count growth alone
-    # never trips the guard.
-    if absolute_breach and not per_test_ok:
+    # Fail when EITHER absolute tolerance exceeded OR per-test cost
+    # grew beyond the ratio.  Both checks are independent
+    # regression signals: the absolute gate catches catastrophic
+    # growth, the per-test gate catches quality regressions that
+    # would otherwise hide in healthy test-count growth.
+    if absolute_breach or not per_test_ok:
         delta = elapsed - baseline_secs
         baseline_per_test = baseline_secs / max(baseline_count, 1)
         current_per_test = elapsed / max(unit_count, 1)

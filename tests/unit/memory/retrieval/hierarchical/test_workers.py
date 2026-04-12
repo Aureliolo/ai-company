@@ -115,20 +115,20 @@ class TestEpisodicWorker:
     @pytest.mark.unit
     def test_is_retrieval_worker(self) -> None:
         backend = _mock_backend()
-        worker = EpisodicWorker(backend=backend)
+        worker = EpisodicWorker(backend=backend, config=MemoryRetrievalConfig())
         assert isinstance(worker, RetrievalWorker)
 
     @pytest.mark.unit
     def test_name(self) -> None:
         backend = _mock_backend()
-        worker = EpisodicWorker(backend=backend)
+        worker = EpisodicWorker(backend=backend, config=MemoryRetrievalConfig())
         assert worker.name == "episodic"
 
     @pytest.mark.unit
     async def test_retrieve_filters_episodic(self) -> None:
         entries = (_make_entry("ep-1", MemoryCategory.EPISODIC),)
         backend = _mock_backend(entries)
-        worker = EpisodicWorker(backend=backend)
+        worker = EpisodicWorker(backend=backend, config=MemoryRetrievalConfig())
         result = await worker.retrieve(_make_query())
         assert len(result.candidates) == 1
         assert result.candidates[0].source_worker == "episodic"
@@ -147,7 +147,7 @@ class TestEpisodicWorker:
         backend.retrieve = AsyncMock(
             side_effect=RuntimeError("timeout"),
         )
-        worker = EpisodicWorker(backend=backend)
+        worker = EpisodicWorker(backend=backend, config=MemoryRetrievalConfig())
         result = await worker.retrieve(_make_query())
         assert result.candidates == ()
         assert result.error is not None
@@ -160,20 +160,20 @@ class TestProceduralWorker:
     @pytest.mark.unit
     def test_is_retrieval_worker(self) -> None:
         backend = _mock_backend()
-        worker = ProceduralWorker(backend=backend)
+        worker = ProceduralWorker(backend=backend, config=MemoryRetrievalConfig())
         assert isinstance(worker, RetrievalWorker)
 
     @pytest.mark.unit
     def test_name(self) -> None:
         backend = _mock_backend()
-        worker = ProceduralWorker(backend=backend)
+        worker = ProceduralWorker(backend=backend, config=MemoryRetrievalConfig())
         assert worker.name == "procedural"
 
     @pytest.mark.unit
     async def test_retrieve_filters_procedural(self) -> None:
         entries = (_make_entry("proc-1", MemoryCategory.PROCEDURAL),)
         backend = _mock_backend(entries)
-        worker = ProceduralWorker(backend=backend)
+        worker = ProceduralWorker(backend=backend, config=MemoryRetrievalConfig())
         result = await worker.retrieve(_make_query())
         assert len(result.candidates) == 1
         assert result.candidates[0].source_worker == "procedural"
@@ -192,7 +192,7 @@ class TestProceduralWorker:
         backend.retrieve = AsyncMock(
             side_effect=RuntimeError("backend down"),
         )
-        worker = ProceduralWorker(backend=backend)
+        worker = ProceduralWorker(backend=backend, config=MemoryRetrievalConfig())
         result = await worker.retrieve(_make_query())
         assert result.candidates == ()
         assert result.error is not None

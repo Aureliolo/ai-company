@@ -255,7 +255,28 @@ class TestKnowledgeArchitectBrowseWikiTool:
             wiki_exporter=exporter,
             agent_id="agent-1",
         )
-        result = await tool.execute(arguments={})
+        result = await tool.execute(arguments={"include_raw": True})
         assert not result.is_error
         assert "Raw entries: 2" in result.content
+        assert "Compressed entries: 3" in result.content
+
+    @pytest.mark.unit
+    async def test_include_raw_false_omits_raw_count(self) -> None:
+        from types import SimpleNamespace
+
+        exporter = AsyncMock()
+        exporter.export = AsyncMock(
+            return_value=SimpleNamespace(
+                raw_count=2,
+                compressed_count=3,
+                export_root="/data/wiki",
+            ),
+        )
+        tool = KnowledgeArchitectBrowseWikiTool(
+            wiki_exporter=exporter,
+            agent_id="agent-1",
+        )
+        result = await tool.execute(arguments={"include_raw": False})
+        assert not result.is_error
+        assert "Raw entries" not in result.content
         assert "Compressed entries: 3" in result.content

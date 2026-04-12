@@ -69,8 +69,8 @@ def create_hierarchical_retriever(
             config=config,
             shared_store=shared_store,
         ),
-        "episodic": EpisodicWorker(backend=backend),
-        "procedural": ProceduralWorker(backend=backend),
+        "episodic": EpisodicWorker(backend=backend, config=config),
+        "procedural": ProceduralWorker(backend=backend, config=config),
     }
     logger.info(
         MEMORY_HIERARCHICAL_ROUTING,

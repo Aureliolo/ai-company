@@ -1075,9 +1075,16 @@ class KnowledgeArchitectBrowseWikiTool(BaseTool):
     async def execute(
         self,
         *,
-        arguments: dict[str, Any],  # noqa: ARG002
+        arguments: dict[str, Any],
     ) -> ToolExecutionResult:
-        """Trigger wiki export and return summary."""
+        """Trigger wiki export and return summary.
+
+        The ``include_raw`` argument controls whether the raw-tier
+        count is surfaced in the human-readable summary.  Raw
+        artifact content is always exported; the flag only toggles
+        how the summary is presented to the agent.
+        """
+        include_raw = bool(arguments.get("include_raw", False))
         if self._wiki_exporter is None:
             return ToolExecutionResult(
                 content="Wiki export is not configured.",
@@ -1090,12 +1097,12 @@ class KnowledgeArchitectBrowseWikiTool(BaseTool):
                 content=f"Wiki export failed: {exc}",
                 is_error=True,
             )
+        lines = ["Wiki exported:"]
+        if include_raw:
+            lines.append(f"- Raw entries: {result.raw_count}")
+        lines.append(f"- Compressed entries: {result.compressed_count}")
+        lines.append(f"- Location: {result.export_root}")
         return ToolExecutionResult(
-            content=(
-                f"Wiki exported:\n"
-                f"- Raw entries: {result.raw_count}\n"
-                f"- Compressed entries: {result.compressed_count}\n"
-                f"- Location: {result.export_root}"
-            ),
+            content="\n".join(lines),
             is_error=False,
         )

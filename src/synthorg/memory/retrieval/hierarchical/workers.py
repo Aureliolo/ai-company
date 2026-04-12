@@ -62,12 +62,23 @@ async def _safe_retrieve(
     backend: MemoryBackend,
     agent_id: str,
     query: MemoryQuery,
+    *,
+    worker: str,
 ) -> tuple[MemoryEntry, ...]:
     """Retrieve from backend, returning ``()`` on domain errors.
 
     Only domain-specific ``MemoryError`` (from ``memory.errors``) is
     swallowed as a non-fatal empty result.  Unexpected exceptions
     propagate so the caller's error isolation captures them.
+
+    Args:
+        backend: Memory backend to query.
+        agent_id: Agent identifier for scoped retrieval.
+        query: Query parameters.
+        worker: Worker name for observability attribution (so
+            telemetry can distinguish semantic/episodic/procedural
+            backend degradations rather than collapsing them into
+            a single ``_safe_retrieve`` bucket).
     """
     try:
         return await backend.retrieve(agent_id, query)
@@ -78,7 +89,7 @@ async def _safe_retrieve(
         # empty result is distinguishable from "no memories matched".
         logger.warning(
             MEMORY_HIERARCHICAL_WORKER_DEGRADED,
-            worker="_safe_retrieve",
+            worker=worker,
             agent_id=agent_id,
             error=str(exc),
         )
@@ -132,6 +143,7 @@ class SemanticWorker:
                 self._backend,
                 query.agent_id,
                 mem_query,
+                worker=self.name,
             )
             shared: tuple[MemoryEntry, ...] = ()
             if self._shared_store is not None and self._config.include_shared:
@@ -247,6 +259,8 @@ class EpisodicWorker:
 
     Args:
         backend: Memory backend for personal memories.
+        config: Retrieval pipeline configuration (for
+            ``default_relevance`` fallback).
         time_window_hours: Lookback window in hours.
     """
 
@@ -254,12 +268,14 @@ class EpisodicWorker:
         self,
         *,
         backend: MemoryBackend,
+        config: MemoryRetrievalConfig,
         time_window_hours: int = _DEFAULT_EPISODIC_WINDOW_HOURS,
     ) -> None:
         if time_window_hours <= 0:
             msg = f"time_window_hours must be positive, got {time_window_hours}"
             raise ValueError(msg)
         self._backend = backend
+        self._config = config
         self._time_window_hours = time_window_hours
 
     @property
@@ -275,6 +291,17 @@ class EpisodicWorker:
             worker=self.name,
             query_length=len(query.text),
         )
+        # Respect caller's category filter: skip entirely if EPISODIC
+        # is excluded by the query.
+        if (
+            query.categories is not None
+            and MemoryCategory.EPISODIC not in query.categories
+        ):
+            elapsed_ms = int((time.monotonic() - start) * 1000)
+            return RetrievalResult(
+                worker_name=self.name,
+                execution_ms=elapsed_ms,
+            )
         try:
             since = datetime.now(UTC) - timedelta(
                 hours=self._time_window_hours,
@@ -294,12 +321,18 @@ class EpisodicWorker:
                 self._backend,
                 query.agent_id,
                 mem_query,
+                worker=self.name,
             )
             now = datetime.now(UTC)
             window_seconds = self._time_window_hours * 3600
             candidates_list: list[RetrievalCandidate] = []
+            fallback_relevance = self._config.default_relevance
             for e in entries:
-                relevance = e.relevance_score if e.relevance_score is not None else 0.5
+                relevance = (
+                    e.relevance_score
+                    if e.relevance_score is not None
+                    else fallback_relevance
+                )
                 recency = min(
                     1.0,
                     max(
@@ -362,10 +395,18 @@ class ProceduralWorker:
 
     Args:
         backend: Memory backend for personal memories.
+        config: Retrieval pipeline configuration (for
+            ``default_relevance`` fallback).
     """
 
-    def __init__(self, *, backend: MemoryBackend) -> None:
+    def __init__(
+        self,
+        *,
+        backend: MemoryBackend,
+        config: MemoryRetrievalConfig,
+    ) -> None:
         self._backend = backend
+        self._config = config
 
     @property
     def name(self) -> str:
@@ -380,6 +421,16 @@ class ProceduralWorker:
             worker=self.name,
             query_length=len(query.text),
         )
+        # Respect caller's category filter: skip if PROCEDURAL excluded.
+        if (
+            query.categories is not None
+            and MemoryCategory.PROCEDURAL not in query.categories
+        ):
+            elapsed_ms = int((time.monotonic() - start) * 1000)
+            return RetrievalResult(
+                worker_name=self.name,
+                execution_ms=elapsed_ms,
+            )
         try:
             mem_query = MemoryQuery(
                 text=query.text,
@@ -390,10 +441,16 @@ class ProceduralWorker:
                 self._backend,
                 query.agent_id,
                 mem_query,
+                worker=self.name,
             )
             candidates_list: list[RetrievalCandidate] = []
+            fallback_relevance = self._config.default_relevance
             for e in entries:
-                relevance = e.relevance_score if e.relevance_score is not None else 0.5
+                relevance = (
+                    e.relevance_score
+                    if e.relevance_score is not None
+                    else fallback_relevance
+                )
                 candidates_list.append(
                     RetrievalCandidate(
                         entry=e,
