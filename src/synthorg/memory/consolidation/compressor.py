@@ -182,9 +182,21 @@ class LLMExperienceCompressor:
             msg = "LLM returned empty content for compression"
             raise ValueError(msg)
 
-        parsed = json.loads(response.content)
+        try:
+            parsed = json.loads(response.content)
+        except json.JSONDecodeError as exc:
+            logger.warning(
+                EXPERIENCE_COMPRESSED,
+                error=f"JSON decode failed: {exc}",
+                raw_content=response.content[:200],
+            )
+            raise
         if not isinstance(parsed, dict):
             msg = f"LLM returned non-dict: {type(parsed).__name__}"
+            logger.warning(
+                EXPERIENCE_COMPRESSED,
+                error=msg,
+            )
             raise TypeError(msg)
         raw_decisions = parsed.get("strategic_decisions", [])
         raw_contexts = parsed.get("applicable_contexts", [])
@@ -192,17 +204,20 @@ class LLMExperienceCompressor:
             isinstance(d, str) for d in raw_decisions
         ):
             msg = "strategic_decisions must be a list of strings"
+            logger.warning(EXPERIENCE_COMPRESSED, error=msg)
             raise ValueError(msg)
         if not isinstance(raw_contexts, list) or not all(
             isinstance(c, str) for c in raw_contexts
         ):
             msg = "applicable_contexts must be a list of strings"
+            logger.warning(EXPERIENCE_COMPRESSED, error=msg)
             raise ValueError(msg)
         decisions = tuple(raw_decisions)
         contexts = tuple(raw_contexts)
 
         if not decisions:
             msg = "LLM produced no strategic decisions"
+            logger.warning(EXPERIENCE_COMPRESSED, error=msg)
             raise ValueError(msg)
 
         compressed_len = len(response.content)

@@ -101,8 +101,21 @@ class WikiExporter:
         root = Path(self._config.export_root)
         raw_dir = root / "raw"
         wiki_dir = root / "wiki"
-        raw_dir.mkdir(parents=True, exist_ok=True)
-        wiki_dir.mkdir(parents=True, exist_ok=True)
+        try:
+            raw_dir.mkdir(parents=True, exist_ok=True)
+            wiki_dir.mkdir(parents=True, exist_ok=True)
+        except OSError as exc:
+            logger.warning(
+                WIKI_EXPORT_FAILED,
+                tier="setup",
+                export_root=self._config.export_root,
+                error=str(exc),
+            )
+            return WikiExportResult(
+                raw_count=0,
+                compressed_count=0,
+                export_root=self._config.export_root,
+            )
 
         raw_count = 0
         compressed_count = 0
@@ -226,6 +239,9 @@ class WikiExporter:
             # Parse structured content for rich markdown
             try:
                 data = json.loads(entry.content)
+                if not isinstance(data, dict):
+                    msg = f"expected dict, got {type(data).__name__}"
+                    raise TypeError(msg)  # noqa: TRY301
                 decisions = data.get("strategic_decisions", [])
                 contexts = data.get("applicable_contexts", [])
             except json.JSONDecodeError, TypeError:
