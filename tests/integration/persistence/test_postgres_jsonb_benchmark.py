@@ -37,9 +37,12 @@ async def _seed_audit_entries(
 ) -> None:
     """Bulk-insert *count* audit entries with randomised matched_rules.
 
-    Uses a single executemany call via the connection pool rather than
-    looping through ``repo.save()``, which would take ~5 minutes at 100k
-    rows due to per-row connection overhead.
+    Uses ``COPY FROM STDIN`` rather than ``executemany`` for bulk
+    performance: COPY is typically 10-20x faster on 100k-row inserts
+    because it avoids per-row statement parsing and network
+    round-trips.  At 100k rows, executemany was taking 25-30s on CI
+    runners (flaking against the 30s pytest-timeout); COPY runs in
+    2-4s on the same hardware.
     """
     pool = backend._pool
     assert pool is not None
@@ -48,53 +51,47 @@ async def _seed_audit_entries(
     # 10% of rows contain 'rule-target', making the selectivity 10%.
     # Without an index, Postgres must scan all 100k rows; with GIN,
     # it can jump straight to the matching rows.
-    rows: list[tuple[object, ...]] = []
-    for i in range(count):
-        rules: tuple[str, ...] = (
-            ("rule-target", f"rule-{i}") if i % 10 == 0 else (f"rule-noise-{i}",)
-        )
-        rows.append(
-            (
-                f"bench-{i}",
-                now,
-                "agent-1",
-                "task-1",
-                "test-tool",
-                ToolCategory.TERMINAL.value,
-                "execute",
-                "0" * 64,
-                "allow",
-                ApprovalRiskLevel.LOW.value,
-                "bench",
-                Jsonb(list(rules)),
-                1.0,
-                None,
-            ),
-        )
-
+    copy_sql = (
+        "COPY audit_entries ("
+        "id, timestamp, agent_id, task_id, tool_name, "
+        "tool_category, action_type, arguments_hash, verdict, "
+        "risk_level, reason, matched_rules, "
+        "evaluation_duration_ms, approval_id"
+        ") FROM STDIN"
+    )
     async with pool.connection() as conn, conn.cursor() as cur:
-        await cur.executemany(
-            """
-            INSERT INTO audit_entries (
-                id, timestamp, agent_id, task_id, tool_name,
-                tool_category, action_type, arguments_hash, verdict,
-                risk_level, reason, matched_rules,
-                evaluation_duration_ms, approval_id
-            ) VALUES (
-                %s, %s, %s, %s, %s,
-                %s, %s, %s, %s,
-                %s, %s, %s,
-                %s, %s
-            )
-            """,
-            rows,
-        )
+        async with cur.copy(copy_sql) as copy:
+            for i in range(count):
+                rules: tuple[str, ...] = (
+                    ("rule-target", f"rule-{i}")
+                    if i % 10 == 0
+                    else (f"rule-noise-{i}",)
+                )
+                await copy.write_row(
+                    (
+                        f"bench-{i}",
+                        now,
+                        "agent-1",
+                        "task-1",
+                        "test-tool",
+                        ToolCategory.TERMINAL.value,
+                        "execute",
+                        "0" * 64,
+                        "allow",
+                        ApprovalRiskLevel.LOW.value,
+                        "bench",
+                        Jsonb(list(rules)),
+                        1.0,
+                        None,
+                    ),
+                )
         await conn.commit()
         await cur.execute("ANALYZE audit_entries")
 
 
 @pytest.mark.integration
 @pytest.mark.slow
+@pytest.mark.timeout(120)
 class TestJsonbBenchmark:
     """GIN index must outperform sequential scan on 100k rows."""
 
