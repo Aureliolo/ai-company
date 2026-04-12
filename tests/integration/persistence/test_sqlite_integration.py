@@ -1,5 +1,6 @@
 """Integration tests for SQLite persistence (on-disk)."""
 
+from collections.abc import Awaitable, Callable
 from pathlib import Path
 
 import aiosqlite
@@ -13,11 +14,15 @@ pytestmark = pytest.mark.integration
 
 
 class TestSQLiteOnDisk:
-    async def test_wal_mode_enabled(self, db_path: str) -> None:
+    async def test_wal_mode_enabled(
+        self,
+        db_path: str,
+        sqlite_migrate: Callable[[str], Awaitable[None]],
+    ) -> None:
         """WAL journal mode is enabled for the on-disk SQLite database."""
         backend = SQLitePersistenceBackend(SQLiteConfig(path=db_path))
         await backend.connect()
-        await backend.migrate()
+        await sqlite_migrate(db_path)
 
         # Write some data to force WAL file creation
         task = make_task()
@@ -33,11 +38,15 @@ class TestSQLiteOnDisk:
             assert row is not None
             assert row[0] == "wal"
 
-    async def test_data_persists_across_reconnect(self, db_path: str) -> None:
+    async def test_data_persists_across_reconnect(
+        self,
+        db_path: str,
+        sqlite_migrate: Callable[[str], Awaitable[None]],
+    ) -> None:
         """Data written before disconnect is readable after reconnect."""
         backend = SQLitePersistenceBackend(SQLiteConfig(path=db_path))
         await backend.connect()
-        await backend.migrate()
+        await sqlite_migrate(db_path)
 
         task = make_task(task_id="persist-test")
         await backend.tasks.save(task)
@@ -46,7 +55,6 @@ class TestSQLiteOnDisk:
         # Reconnect and verify data
         backend2 = SQLitePersistenceBackend(SQLiteConfig(path=db_path))
         await backend2.connect()
-        await backend2.migrate()
 
         result = await backend2.tasks.get("persist-test")
         assert result is not None
@@ -93,14 +101,18 @@ class TestSQLiteOnDisk:
         history = await backend.messages.get_history("test-channel")
         assert len(history) == 1
 
-    async def test_concurrent_reads(self, db_path: str) -> None:
+    async def test_concurrent_reads(
+        self,
+        db_path: str,
+        sqlite_migrate: Callable[[str], Awaitable[None]],
+    ) -> None:
         """Multiple connections can read concurrently with WAL mode."""
         import asyncio
 
         # Set up data
         backend = SQLitePersistenceBackend(SQLiteConfig(path=db_path))
         await backend.connect()
-        await backend.migrate()
+        await sqlite_migrate(db_path)
         for i in range(10):
             await backend.tasks.save(make_task(task_id=f"conc-{i}"))
         await backend.disconnect()

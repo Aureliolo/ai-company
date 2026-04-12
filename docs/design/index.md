@@ -218,6 +218,13 @@ Queue: Hiring Queue
     External service connection catalog, OAuth 2.1, webhooks, health checks, rate
     limiting, MCP catalog, and tunnel.
 
+-   [**Persistence**](persistence.md)
+
+    ---
+
+    Repository protocol abstraction, SQLite and Postgres backends, append-only
+    time-series tables, TimescaleDB hypertables, and extension strategy.
+
 -   [**Brand Identity & UX**](brand-and-ux.md)
 
     ---

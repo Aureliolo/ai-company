@@ -1,5 +1,6 @@
 """Tests for persistence protocol compliance."""
 
+from collections.abc import Mapping, Sequence
 from typing import TYPE_CHECKING, Any
 
 import pytest
@@ -323,6 +324,14 @@ class _FakeSettingsRepository:
 
     async def set(self, namespace: str, key: str, value: str, updated_at: str) -> None:
         pass
+
+    async def set_many(
+        self,
+        items: Sequence[tuple[NotBlankStr, NotBlankStr, str, str]],
+        *,
+        expected_updated_at_map: Mapping[tuple[str, str], str] | None = None,
+    ) -> bool:
+        return True
 
     async def delete(self, namespace: str, key: str) -> bool:
         return False

@@ -9,7 +9,10 @@ on version conflict.
 
 import json
 import math
+from collections.abc import Sequence  # noqa: TC003
 from typing import TYPE_CHECKING, Any
+
+from pydantic import BaseModel  # noqa: TC002
 
 from synthorg.api.concurrency import check_if_match, compute_etag
 from synthorg.api.dto_org import (  # noqa: TC001
@@ -63,6 +66,14 @@ _BUDGET_PERCENT_CAP = 100.0
 
 # Maximum CAS retry attempts for read-modify-write mutations.
 _MAX_CAS_ATTEMPTS = 2
+
+
+def _json_dump_models(models: Sequence[BaseModel]) -> str:
+    """Serialize a sequence of Pydantic models to compact JSON."""
+    return json.dumps(
+        [m.model_dump(mode="json") for m in models],
+        separators=(",", ":"),
+    )
 
 
 class OrgMutationService:
@@ -371,52 +382,43 @@ class OrgMutationService:
         self,
         data: UpdateCompanyRequest,
     ) -> dict[str, Any]:
-        """Write each company scalar with CAS protection."""
+        """Atomically write all changed company scalars via set_many.
+
+        Preflights the version for every scalar that is about to
+        change, then persists them in a single transaction.  If any
+        CAS check fails the whole batch rolls back so ``update_company``
+        sees a consistent ``VersionConflictError`` and retries.
+        """
+        items: list[tuple[str, str, str]] = []
         updated: dict[str, Any] = {}
         if data.company_name is not None:
-            await self._set_versioned(
-                "company",
-                "company_name",
-                data.company_name,
-            )
+            items.append(("company", "company_name", data.company_name))
             updated["company_name"] = data.company_name
         if data.autonomy_level is not None:
-            await self._set_versioned(
-                "company",
-                "autonomy_level",
-                data.autonomy_level.value,
-            )
+            items.append(("company", "autonomy_level", data.autonomy_level.value))
             updated["autonomy_level"] = data.autonomy_level.value
         if data.budget_monthly is not None:
-            await self._set_versioned(
-                "company",
-                "total_monthly",
-                str(data.budget_monthly),
-            )
+            items.append(("company", "total_monthly", str(data.budget_monthly)))
             updated["budget_monthly"] = data.budget_monthly
         if data.communication_pattern is not None:
-            await self._set_versioned(
-                "company",
-                "communication_pattern",
-                data.communication_pattern,
+            items.append(
+                ("company", "communication_pattern", data.communication_pattern),
             )
             updated["communication_pattern"] = data.communication_pattern
-        return updated
 
-    async def _set_versioned(
-        self,
-        namespace: str,
-        key: str,
-        value: str,
-    ) -> None:
-        """Read version then write with CAS in one step."""
-        _, version = await self._read_setting_versioned(namespace, key)
-        await self._settings.set(
-            namespace,
-            key,
-            value,
-            expected_updated_at=version,
+        if not items:
+            return updated
+
+        expected_map: dict[tuple[str, str], str] = {}
+        for namespace, key, _value in items:
+            _, version = await self._read_setting_versioned(namespace, key)
+            expected_map[(namespace, key)] = version
+
+        await self._settings.set_many(
+            items,
+            expected_updated_at_map=expected_map,
         )
+        return updated
 
     # ── Departments ───────────────────────────────────────────
 
@@ -595,46 +597,7 @@ class OrgMutationService:
         """
         for attempt in range(_MAX_CAS_ATTEMPTS):
             try:
-                _, version = await self._read_setting_versioned(
-                    "company",
-                    "departments",
-                )
-                departments = await self._read_departments()
-                existing = self._find_department(departments, name)
-                if existing is None:
-                    msg = f"Department {name!r} not found"
-                    logger.warning(
-                        API_RESOURCE_NOT_FOUND,
-                        reason=msg,
-                        department=name,
-                    )
-                    raise NotFoundError(msg)
-
-                agents = await self._read_agents()
-                attached = tuple(
-                    a for a in agents if a.department.lower() == name.lower()
-                )
-                if attached:
-                    msg = (
-                        f"Cannot delete department {name!r}: "
-                        f"{len(attached)} agents attached"
-                    )
-                    logger.warning(
-                        API_RESOURCE_CONFLICT,
-                        reason=msg,
-                        department=name,
-                        agent_count=len(attached),
-                    )
-                    raise ConflictError(msg)
-
-                new_departments = tuple(
-                    d for d in departments if d.name.lower() != name.lower()
-                )
-                await self._write_departments(
-                    new_departments,
-                    expected_updated_at=version,
-                )
-                await self._snapshot_company(saved_by=saved_by)
+                await self._try_delete_department(name, saved_by=saved_by)
                 break
             except VersionConflictError:
                 if attempt == _MAX_CAS_ATTEMPTS - 1:
@@ -653,6 +616,62 @@ class OrgMutationService:
                 continue
 
         logger.info(API_DEPARTMENT_DELETED, department=name)
+
+    async def _try_delete_department(
+        self,
+        name: str,
+        *,
+        saved_by: str,
+    ) -> None:
+        """One TOCTOU-safe attempt: CAS on BOTH departments and agents."""
+        _, dept_version = await self._read_setting_versioned("company", "departments")
+        _, agents_version = await self._read_setting_versioned("company", "agents")
+        departments = await self._read_departments()
+        if self._find_department(departments, name) is None:
+            msg = f"Department {name!r} not found"
+            logger.warning(API_RESOURCE_NOT_FOUND, reason=msg, department=name)
+            raise NotFoundError(msg)
+
+        agents = await self._read_agents()
+        self._check_no_attached_agents(name, agents)
+
+        new_departments = tuple(
+            d for d in departments if d.name.lower() != name.lower()
+        )
+        await self._settings.set_many(
+            [
+                ("company", "departments", _json_dump_models(new_departments)),
+                ("company", "agents", _json_dump_models(agents)),
+            ],
+            expected_updated_at_map={
+                ("company", "departments"): dept_version,
+                ("company", "agents"): agents_version,
+            },
+        )
+        await self._snapshot_company(saved_by=saved_by)
+
+    def _check_no_attached_agents(
+        self,
+        department_name: str,
+        agents: Sequence[AgentConfig],
+    ) -> None:
+        """Raise ConflictError when any agent references the department."""
+        attached = tuple(
+            a for a in agents if a.department.lower() == department_name.lower()
+        )
+        if not attached:
+            return
+        msg = (
+            f"Cannot delete department {department_name!r}: "
+            f"{len(attached)} agents attached"
+        )
+        logger.warning(
+            API_RESOURCE_CONFLICT,
+            reason=msg,
+            department=department_name,
+            agent_count=len(attached),
+        )
+        raise ConflictError(msg)
 
     async def reorder_departments(
         self,

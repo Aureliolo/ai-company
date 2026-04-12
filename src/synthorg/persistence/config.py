@@ -4,10 +4,18 @@ Frozen Pydantic models for persistence backend selection and
 backend-specific settings.
 """
 
+import re
 from pathlib import PurePosixPath, PureWindowsPath
 from typing import ClassVar, Literal, Self
 
-from pydantic import BaseModel, ConfigDict, Field, SecretStr, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    SecretStr,
+    field_validator,
+    model_validator,
+)
 
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.observability import get_logger
@@ -156,6 +164,58 @@ class PostgresConfig(BaseModel):
         gt=0.0,
         description="Initial connection timeout in seconds",
     )
+    enable_timescaledb: bool = Field(
+        default=False,
+        description=(
+            "Enable TimescaleDB hypertable conversion for "
+            "append-only time-series tables (cost_records, "
+            "audit_entries). Uses Apache-2.0 licensed hypertable "
+            "features only; retention policies and compression "
+            "are Timescale-License features and are not used. "
+            "Requires the timescaledb extension on the Postgres "
+            "server. Not supported on managed Postgres providers "
+            "(AWS RDS, Cloud SQL, Azure Postgres)."
+        ),
+    )
+    cost_records_chunk_interval: NotBlankStr = Field(
+        default="1 day",
+        description=(
+            "Hypertable chunk interval for cost_records. Ignored "
+            "when enable_timescaledb is False."
+        ),
+    )
+    audit_entries_chunk_interval: NotBlankStr = Field(
+        default="1 day",
+        description=(
+            "Hypertable chunk interval for audit_entries. Ignored "
+            "when enable_timescaledb is False."
+        ),
+    )
+
+    _INTERVAL_RE: ClassVar[re.Pattern[str]] = re.compile(
+        r"^\d+\s+"
+        r"(microseconds?|milliseconds?|seconds?|minutes?|hours?|days?|weeks?|months?|years?)$",
+        re.IGNORECASE,
+    )
+
+    @field_validator("cost_records_chunk_interval", "audit_entries_chunk_interval")
+    @classmethod
+    def _validate_chunk_interval(cls, value: str) -> str:
+        """Reject malformed Postgres interval literals at config time."""
+        if not cls._INTERVAL_RE.match(value.strip()):
+            msg = (
+                f"Invalid Postgres interval: {value!r}. "
+                "Expected format: '<number> <unit>' "
+                "(e.g. '1 day', '12 hours', '7 days')."
+            )
+            logger.warning(
+                CONFIG_VALIDATION_FAILED,
+                field="chunk_interval",
+                value=value,
+                reason=msg,
+            )
+            raise ValueError(msg)
+        return value
 
     @model_validator(mode="after")
     def _validate_pool_sizes(self) -> Self:

@@ -45,8 +45,15 @@ CREATE INDEX idx_tasks_assigned_to ON tasks(assigned_to);
 CREATE INDEX idx_tasks_project ON tasks(project);
 
 -- ── Cost records ──────────────────────────────────────────────
+-- Composite (rowid, timestamp) primary key: TimescaleDB hypertables
+-- require the partitioning column to appear in every unique index.
+-- On deployments where TimescaleDB is available, the Postgres backend
+-- converts this table to a hypertable at runtime during its
+-- post-Atlas setup step; on vanilla Postgres the composite PK is
+-- functionally equivalent to the old ``PRIMARY KEY (rowid)`` because
+-- ``rowid`` is still globally unique via the IDENTITY sequence.
 CREATE TABLE cost_records (
-    rowid BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    rowid BIGINT GENERATED ALWAYS AS IDENTITY,
     agent_id TEXT NOT NULL,
     task_id TEXT NOT NULL REFERENCES tasks(id),
     provider TEXT NOT NULL,
@@ -55,7 +62,8 @@ CREATE TABLE cost_records (
     output_tokens BIGINT NOT NULL,
     cost_usd DOUBLE PRECISION NOT NULL,
     timestamp TIMESTAMPTZ NOT NULL,
-    call_category TEXT
+    call_category TEXT,
+    PRIMARY KEY (rowid, timestamp)
 );
 
 CREATE INDEX idx_cost_records_agent_id ON cost_records(agent_id);
@@ -153,8 +161,10 @@ CREATE INDEX idx_pc_agent_id ON parked_contexts(agent_id);
 CREATE INDEX idx_pc_approval_id ON parked_contexts(approval_id);
 
 -- ── Audit entries ─────────────────────────────────────────────
+-- Composite (id, timestamp) primary key for TimescaleDB compatibility
+-- (see ``cost_records`` above for the rationale).
 CREATE TABLE audit_entries (
-    id TEXT NOT NULL PRIMARY KEY,
+    id TEXT NOT NULL,
     timestamp TIMESTAMPTZ NOT NULL,
     agent_id TEXT,
     task_id TEXT,
@@ -167,7 +177,8 @@ CREATE TABLE audit_entries (
     reason TEXT NOT NULL,
     matched_rules JSONB NOT NULL DEFAULT '[]'::jsonb,
     evaluation_duration_ms DOUBLE PRECISION NOT NULL,
-    approval_id TEXT
+    approval_id TEXT,
+    PRIMARY KEY (id, timestamp)
 );
 
 CREATE INDEX idx_ae_timestamp ON audit_entries(timestamp);
@@ -204,8 +215,15 @@ CREATE INDEX idx_users_role ON users(role);
 CREATE UNIQUE INDEX idx_single_ceo ON users(role) WHERE role = 'ceo';
 
 -- Prevent removing the last CEO via role change.
+--
+-- Takes a transaction-scoped advisory lock so two concurrent
+-- transactions cannot both see each other's pre-commit CEO row
+-- as still-present.  The lock id (42_001) is arbitrary but stable;
+-- the sibling enforce_owner_minimum uses a disjoint id so the two
+-- triggers never contend with each other.
 CREATE FUNCTION enforce_ceo_minimum() RETURNS TRIGGER AS $$
 BEGIN
+    PERFORM pg_advisory_xact_lock(42001);
     IF NOT EXISTS (SELECT 1 FROM users WHERE role = 'ceo') THEN
         RAISE EXCEPTION 'Cannot remove the last CEO'
             USING ERRCODE = '23514';
@@ -222,8 +240,13 @@ CREATE CONSTRAINT TRIGGER trg_enforce_ceo_minimum
     EXECUTE FUNCTION enforce_ceo_minimum();
 
 -- Prevent removing the last owner via org_roles change.
+--
+-- See ``enforce_ceo_minimum`` above for the rationale.  Uses a
+-- disjoint advisory-lock id so the two triggers do not serialise
+-- against one another unnecessarily.
 CREATE FUNCTION enforce_owner_minimum() RETURNS TRIGGER AS $$
 BEGIN
+    PERFORM pg_advisory_xact_lock(42002);
     IF NOT EXISTS (
         SELECT 1 FROM users WHERE org_roles @> '["owner"]'::jsonb
     ) THEN

@@ -20,7 +20,14 @@ if [[ -z "$COMMAND" ]]; then
     exit 0
 fi
 
-if [[ "$COMMAND" =~ atlas[[:space:]]+migrate[[:space:]]+hash ]]; then
+# Match direct invocation AND subprocess-based bypasses:
+#   - atlas migrate hash ...
+#   - python -c "subprocess.run(['atlas', 'migrate', 'hash', ...])"
+#   - subprocess.run(...atlas...migrate...hash...)
+#   - Any command containing "atlas" + "migrate" + "hash" in any wrapper
+if [[ "$COMMAND" =~ atlas.*migrate.*hash ]] || \
+   [[ "$COMMAND" =~ migrate_hash ]] || \
+   [[ "$COMMAND" =~ migrate\.hash ]]; then
     REASON="Do not rehash Atlas migrations. Delete the migration and regenerate: atlas migrate diff --env sqlite <name>"
     cat <<ENDJSON
 {

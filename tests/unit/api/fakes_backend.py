@@ -1,8 +1,8 @@
 """In-memory ``PersistenceBackend`` fake for tests.
 
 Extracted from ``tests/unit/api/fakes.py`` to keep that module under
-the 800-line budget.  Re-exported from ``fakes`` for backwards
-compatibility so existing test imports keep working.
+the 800-line budget.  Imports point directly at the extracted modules
+(``fake_user_repository``, ``fakes``).
 """
 
 from typing import Any
@@ -20,6 +20,7 @@ from synthorg.persistence.integration_stubs import (
 from synthorg.security.rules.risk_override import RiskTierOverride
 from synthorg.security.ssrf_violation import SsrfViolation, SsrfViolationStatus
 from synthorg.versioning.models import VersionSnapshot
+from tests.unit.api.fake_user_repository import FakeUserRepository
 from tests.unit.api.fakes import (
     FakeAgentStateRepository,
     FakeApiKeyRepository,
@@ -38,7 +39,6 @@ from tests.unit.api.fakes import (
     FakeSettingsRepository,
     FakeTaskMetricRepository,
     FakeTaskRepository,
-    FakeUserRepository,
 )
 from tests.unit.api.fakes_workflow import (
     FakeSubworkflowRepository,
