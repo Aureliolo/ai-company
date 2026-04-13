@@ -31,6 +31,7 @@ jobs:
         run: >-
           uv run python -m pytest tests/evals/
           -n 8
+          --run-agent-evals
           --eval-timeout=300
           -v
           --tb=short

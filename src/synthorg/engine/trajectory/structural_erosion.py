@@ -13,6 +13,9 @@ quality metrics to tool-integrated reasoning traces.
 """
 
 from synthorg.engine.loop_protocol import TurnRecord  # noqa: TC001
+from synthorg.observability import get_logger
+
+logger = get_logger(__name__)
 
 # Composite weights (sum to 1.0).
 _WEIGHT_DUPLICATED: float = 0.4

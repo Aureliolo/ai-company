@@ -5,7 +5,9 @@ implementations.  Provides a centralized run method for
 executing benchmarks within evaluation cycles.
 """
 
+import copy
 from datetime import UTC, datetime
+from types import MappingProxyType
 
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.loop_protocol import BehaviorTag  # noqa: TC001
@@ -28,10 +30,14 @@ class ExternalBenchmarkRegistry:
     """Registry for pluggable external benchmarks.
 
     Supports registration, lookup, and benchmark execution.
+    Internal storage is read-only (``MappingProxyType``) and
+    mutated via copy-on-write in ``register()``.
     """
 
     def __init__(self) -> None:
-        self._benchmarks: dict[str, ExternalBenchmark] = {}
+        self._benchmarks: MappingProxyType[str, ExternalBenchmark] = MappingProxyType(
+            {}
+        )
 
     def register(self, benchmark: ExternalBenchmark) -> None:
         """Register a benchmark by name.
@@ -51,7 +57,9 @@ class ExternalBenchmarkRegistry:
             )
             logger.warning(msg)
             raise ValueError(msg)
-        self._benchmarks[benchmark.name] = benchmark
+        updated = copy.deepcopy(dict(self._benchmarks))
+        updated[benchmark.name] = benchmark
+        self._benchmarks = MappingProxyType(updated)
 
     def get(self, name: str) -> ExternalBenchmark:
         """Retrieve a benchmark by name.
@@ -101,10 +109,19 @@ class ExternalBenchmarkRegistry:
         ):
             # In a real run, agent_output_fn would execute the agent.
             # For now, grade against the expected output as a baseline.
-            grade: BenchmarkGrade = await benchmark.grade(
-                case=case,
-                agent_output=case.expected_output,
-            )
+            try:
+                grade: BenchmarkGrade = await benchmark.grade(
+                    case=case,
+                    agent_output=case.expected_output,
+                )
+            except Exception:
+                logger.exception(
+                    EVAL_LOOP_BENCHMARK_EXECUTED,
+                    benchmark_name=name,
+                    case_id=getattr(case, "id", "unknown"),
+                    context="grading_error",
+                )
+                raise
             cases_run += 1
             if grade.passed:
                 passed_count += 1

@@ -42,6 +42,7 @@ from synthorg.providers.models import (
 )
 
 from .loop_protocol import (
+    BehaviorTag,
     BudgetChecker,
     ExecutionResult,
     NodeType,
@@ -509,13 +510,16 @@ def response_to_message(response: CompletionResponse) -> ChatMessage:
     )
 
 
-def make_turn_record(
+def make_turn_record(  # noqa: PLR0913
     turn_number: int,
     response: CompletionResponse,
     *,
     call_category: LLMCallCategory | None = None,
     provider_metadata: dict[str, object] | None = None,
     extra_node_types: tuple[NodeType, ...] = (),
+    behavior_tags: tuple[BehaviorTag, ...] = (),
+    prior_tool_call_count: int = 0,
+    tool_response_tokens: int = 0,
 ) -> TurnRecord:
     """Create a ``TurnRecord`` from a provider response.
 
@@ -535,6 +539,11 @@ def make_turn_record(
             are extracted when present.
         extra_node_types: Additional node types beyond the
             auto-derived LLM_CALL and TOOL_INVOCATION.
+        behavior_tags: Tags inferred by BehaviorTaggerMiddleware.
+        prior_tool_call_count: Cumulative tool calls before this
+            turn (for PTE computation).
+        tool_response_tokens: Tokens from tool responses this
+            turn (for PTE computation).
     """
     md = provider_metadata or {}
     latency_ms_raw = md.get("_synthorg_latency_ms")
@@ -578,6 +587,9 @@ def make_turn_record(
         retry_count=retry_count,
         retry_reason=retry_reason,
         node_types=node_types,
+        behavior_tags=behavior_tags,
+        prior_tool_call_count=prior_tool_call_count,
+        tool_response_tokens=tool_response_tokens,
     )
 
 

@@ -1,8 +1,8 @@
 """Dogfooding dataset builder.
 
 Filters production execution traces from the ``PerformanceTracker``
-by behavior tag, quality score, and failure category, and emits
-typed ``EvalDataset`` payloads for agent evaluation testing.
+by behavior tag and quality score, and emits typed ``EvalDataset``
+payloads for agent evaluation testing.
 """
 
 from datetime import UTC, datetime

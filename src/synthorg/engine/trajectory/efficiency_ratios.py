@@ -16,6 +16,9 @@ from pydantic import (
 )
 
 from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.observability import get_logger
+
+logger = get_logger(__name__)
 
 
 class IdealTrajectoryBaseline(BaseModel):
@@ -93,6 +96,9 @@ class EfficiencyRatios(BaseModel):
     Attributes:
         step_ratio: Observed steps / ideal steps.
         tool_call_ratio: Observed tool calls / ideal calls.
+            When ideal is 0 and observed is also 0, returns 0.0.
+            When ideal is 0 but observed > 0, returns the raw
+            observed count to signal unexpected extra calls.
         latency_ratio: Observed latency / ideal latency.
         verbosity_ratio: Observed output tokens / ideal tokens.
         structural_erosion_score: Composite erosion (0.0-1.0).

@@ -44,7 +44,7 @@ class NodeType(StrEnum):
 class BehaviorTag(StrEnum):
     """Behavior category for trace capture and eval routing.
 
-    Starting taxonomy derived from LangChain Deep Agents evals.
+    Starting taxonomy derived from agent evaluation patterns.
     Extend as usage patterns reveal category fragmentation or
     generalization.
     """
