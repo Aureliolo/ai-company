@@ -60,7 +60,7 @@ class ApprovalGate:
             resume is not possible.
     """
 
-    def __init__(
+    def __init__(  # noqa: PLR0913
         self,
         *,
         park_service: ParkService,
@@ -68,12 +68,14 @@ class ApprovalGate:
         notification_dispatcher: NotificationDispatcher | None = None,
         event_hub: EventStreamHub | None = None,
         interrupt_store: InterruptStore | None = None,
+        interrupt_timeout_seconds: float = 300.0,
     ) -> None:
         self._park_service = park_service
         self._parked_context_repo = parked_context_repo
         self._notification_dispatcher = notification_dispatcher
         self._event_hub = event_hub
         self._interrupt_store = interrupt_store
+        self._interrupt_timeout_seconds = interrupt_timeout_seconds
         logger.debug(
             APPROVAL_GATE_INITIALIZED,
             has_parked_context_repo=parked_context_repo is not None,
@@ -174,7 +176,7 @@ class ApprovalGate:
                     session_id=session_id,
                     agent_id=agent_id,
                     created_at=datetime.now(UTC),
-                    timeout_seconds=300.0,
+                    timeout_seconds=self._interrupt_timeout_seconds,
                     tool_name=escalation.tool_name,
                     evidence_package_id=None,
                 )

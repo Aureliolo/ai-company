@@ -8,6 +8,7 @@ import pytest
 from synthorg.core.enums import ApprovalRiskLevel
 from synthorg.core.evidence import (
     EvidencePackage,
+    EvidencePackageSignature,
     RecommendedAction,
 )
 from synthorg.core.structured_artifact import StructuredArtifact
@@ -140,10 +141,6 @@ class TestEvidencePackage:
             _make_evidence(recommended_actions=actions)
 
     def test_duplicate_signature_approver_rejected(self) -> None:
-        from datetime import UTC, datetime
-
-        from synthorg.core.evidence import EvidencePackageSignature
-
         sig = EvidencePackageSignature(
             approver_id="approver-1",
             algorithm="ed25519",
@@ -155,10 +152,6 @@ class TestEvidencePackage:
             _make_evidence(signatures=(sig, sig))
 
     def test_is_fully_signed_uses_distinct_approvers(self) -> None:
-        from datetime import UTC, datetime
-
-        from synthorg.core.evidence import EvidencePackageSignature
-
         sig_a = EvidencePackageSignature(
             approver_id="approver-a",
             algorithm="ed25519",
