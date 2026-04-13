@@ -213,7 +213,17 @@ class ToolInvoker:
         """
         try:
             tool = self._registry.get(tool_name)
+        except ToolNotFoundError:
+            return None
+        except MemoryError, RecursionError:
+            raise
         except Exception:
+            logger.warning(
+                TOOL_INVOKE_NOT_FOUND,
+                tool_name=tool_name,
+                note="unexpected error during disclosure lookup",
+                exc_info=True,
+            )
             return None
         if (
             self._permission_checker is not None
@@ -239,7 +249,18 @@ class ToolInvoker:
         """
         try:
             tool = self._registry.get(tool_name)
+        except ToolNotFoundError:
+            return None
+        except MemoryError, RecursionError:
+            raise
         except Exception:
+            logger.warning(
+                TOOL_INVOKE_NOT_FOUND,
+                tool_name=tool_name,
+                resource_id=resource_id,
+                note="unexpected error during disclosure lookup",
+                exc_info=True,
+            )
             return None
         if (
             self._permission_checker is not None

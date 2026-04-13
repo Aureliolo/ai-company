@@ -15,6 +15,10 @@ from synthorg.observability.events.tool import (
     TOOL_L3_FETCHED,
 )
 from synthorg.tools.disclosure_config import ToolDisclosureConfig
+from synthorg.tools.discovery import (
+    METADATA_SHOULD_LOAD_RESOURCE,
+    METADATA_SHOULD_LOAD_TOOL,
+)
 
 from .models import AgentMiddlewareContext, ToolCallResult  # noqa: TC001
 from .protocol import BaseAgentMiddleware, ToolCallable
@@ -55,9 +59,16 @@ class DisclosureMiddleware(BaseAgentMiddleware):
         agent_ctx = ctx.agent_context
 
         if result.tool_name == "load_tool":
-            tool_name = result.metadata.get("should_load_tool")
+            tool_name = result.metadata.get(METADATA_SHOULD_LOAD_TOOL)
             if not tool_name:
                 tool_name = self._extract_tool_name(result.output)
+            if not tool_name:
+                logger.warning(
+                    TOOL_L2_LOADED,
+                    execution_id=agent_ctx.execution_id,
+                    note="could not extract tool name from metadata or output",
+                    turn=agent_ctx.turn_count,
+                )
             if tool_name and tool_name not in agent_ctx.loaded_tools:
                 agent_ctx = agent_ctx.with_tool_loaded(tool_name)
                 logger.info(
@@ -69,7 +80,7 @@ class DisclosureMiddleware(BaseAgentMiddleware):
                 ctx = ctx.model_copy(update={"agent_context": agent_ctx})
 
         elif result.tool_name == "load_tool_resource":
-            pair = result.metadata.get("should_load_resource")
+            pair = result.metadata.get(METADATA_SHOULD_LOAD_RESOURCE)
             if pair and len(pair) == 2:  # noqa: PLR2004
                 tool_name, resource_id = pair
                 if (tool_name, resource_id) not in agent_ctx.loaded_resources:
@@ -112,7 +123,20 @@ class DisclosureMiddleware(BaseAgentMiddleware):
         """Extract loaded tool name from load_tool JSON output."""
         try:
             data = json.loads(output)
-            name = data.get("name")
-            return name if isinstance(name, str) and name.strip() else None
         except json.JSONDecodeError, AttributeError:
+            logger.debug(
+                TOOL_L2_LOADED,
+                note="failed to parse load_tool output as JSON",
+                output_preview=output[:200],
+                exc_info=True,
+            )
             return None
+        name = data.get("name") if isinstance(data, dict) else None
+        if isinstance(name, str) and name.strip():
+            return name
+        logger.debug(
+            TOOL_L2_LOADED,
+            note="JSON output missing valid 'name' key",
+            output_preview=output[:200],
+        )
+        return None

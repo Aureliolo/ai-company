@@ -192,6 +192,21 @@ class AgentContext(BaseModel):
         description="Insertion-ordered tool names for FIFO unload",
     )
 
+    @model_validator(mode="after")
+    def _validate_disclosure_consistency(self) -> AgentContext:
+        """Ensure loaded_tools and tool_load_order are consistent."""
+        order_set = set(self.tool_load_order)
+        if order_set != self.loaded_tools:
+            msg = (
+                f"loaded_tools={self.loaded_tools} and "
+                f"tool_load_order={self.tool_load_order} are inconsistent"
+            )
+            raise ValueError(msg)
+        if len(self.tool_load_order) != len(order_set):
+            msg = f"tool_load_order contains duplicates: {self.tool_load_order}"
+            raise ValueError(msg)
+        return self
+
     @computed_field(  # type: ignore[prop-decorator]
         description="Context fill percentage",
     )

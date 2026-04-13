@@ -4,7 +4,7 @@ Controls token budgets and auto-unload behavior for the L1/L2/L3
 disclosure system.
 """
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class ToolDisclosureConfig(BaseModel):
@@ -46,3 +46,14 @@ class ToolDisclosureConfig(BaseModel):
         le=99.0,
         description="Context fill % triggering auto-unload",
     )
+
+    @model_validator(mode="after")
+    def _validate_budget_order(self) -> ToolDisclosureConfig:
+        """Ensure L2 budget is at least as large as L1 budget."""
+        if self.l2_token_budget < self.l1_token_budget:
+            msg = (
+                f"l2_token_budget ({self.l2_token_budget}) must be "
+                f">= l1_token_budget ({self.l1_token_budget})"
+            )
+            raise ValueError(msg)
+        return self

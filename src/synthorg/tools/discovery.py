@@ -61,6 +61,13 @@ _DISCOVERY_NAMES: frozenset[str] = frozenset(
 )
 """Names of the three built-in discovery tools."""
 
+# Metadata keys for discovery tool -> middleware signaling
+METADATA_SHOULD_LOAD_TOOL: str = "should_load_tool"
+"""Set by ``LoadToolTool`` to signal ``DisclosureMiddleware``."""
+
+METADATA_SHOULD_LOAD_RESOURCE: str = "should_load_resource"
+"""Set by ``LoadToolResourceTool`` to signal ``DisclosureMiddleware``."""
+
 
 class ListToolsTool(BaseTool):
     """Return L1 metadata for all permitted tools.
@@ -148,7 +155,7 @@ class LoadToolTool(BaseTool):
         }
         return ToolExecutionResult(
             content=json.dumps(payload, indent=2),
-            metadata={"should_load_tool": tool_name},
+            metadata={METADATA_SHOULD_LOAD_TOOL: tool_name},
         )
 
 
@@ -200,20 +207,68 @@ class LoadToolResourceTool(BaseTool):
         return ToolExecutionResult(
             content=resource.content,
             metadata={
-                "should_load_resource": (tool_name, resource_id),
+                METADATA_SHOULD_LOAD_RESOURCE: (tool_name, resource_id),
                 "content_type": resource.content_type,
                 "size_bytes": resource.size_bytes,
             },
         )
 
 
+class DeferredDisclosureManager:
+    """Late-binding wrapper for ``ToolDisclosureManager``.
+
+    Allows discovery tools to be created before the
+    ``ToolInvoker`` exists.  Call ``bind(invoker)`` after
+    invoker construction to activate the manager.
+
+    Raises:
+        RuntimeError: If a method is called before ``bind``.
+    """
+
+    __slots__ = ("_delegate",)
+
+    def __init__(self) -> None:
+        self._delegate: ToolDisclosureManager | None = None
+
+    def bind(self, delegate: ToolDisclosureManager) -> None:
+        """Set the real disclosure manager."""
+        self._delegate = delegate
+
+    def _require_bound(self) -> ToolDisclosureManager:
+        if self._delegate is None:
+            msg = "DeferredDisclosureManager not yet bound"
+            raise RuntimeError(msg)
+        return self._delegate
+
+    def get_l1_summaries(self) -> tuple[ToolL1Metadata, ...]:
+        """Delegate to bound manager."""
+        return self._require_bound().get_l1_summaries()
+
+    def get_l2_body(self, tool_name: str) -> ToolL2Body | None:
+        """Delegate to bound manager."""
+        return self._require_bound().get_l2_body(tool_name)
+
+    def get_l3_resource(
+        self,
+        tool_name: str,
+        resource_id: str,
+    ) -> ToolL3Resource | None:
+        """Delegate to bound manager."""
+        return self._require_bound().get_l3_resource(
+            tool_name,
+            resource_id,
+        )
+
+
 def build_discovery_tools(
-    manager: ToolDisclosureManager,
+    manager: ToolDisclosureManager | DeferredDisclosureManager,
 ) -> tuple[BaseTool, ...]:
     """Create the three built-in discovery tools.
 
     Args:
         manager: Disclosure manager providing L1/L2/L3 queries.
+            Can be a ``DeferredDisclosureManager`` that is bound
+            after invoker construction.
 
     Returns:
         Tuple of ``(ListToolsTool, LoadToolTool, LoadToolResourceTool)``.

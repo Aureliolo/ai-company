@@ -1875,9 +1875,24 @@ class AgentEngine:
                     )
                     existing = [_copy.deepcopy(t) for t in registry.all_tools()]
                     registry = _ToolRegistry([*existing, ontology_tool])
+        # Add discovery tools with a deferred manager that binds
+        # to the invoker after construction.
+        from synthorg.tools.discovery import (  # noqa: PLC0415
+            DeferredDisclosureManager,
+            build_discovery_tools,
+        )
+        from synthorg.tools.registry import (  # noqa: PLC0415
+            ToolRegistry as _ToolRegistry2,
+        )
+
+        deferred = DeferredDisclosureManager()
+        discovery = build_discovery_tools(deferred)
+        existing = list(registry.all_tools())
+        registry = _ToolRegistry2([*existing, *discovery])
+
         checker = ToolPermissionChecker.from_permissions(identity.tools)
         interceptor = self._make_security_interceptor(effective_autonomy)
-        return ToolInvoker(
+        invoker = ToolInvoker(
             registry,
             permission_checker=checker,
             security_interceptor=interceptor,
@@ -1885,6 +1900,8 @@ class AgentEngine:
             task_id=task_id,
             invocation_tracker=self._tool_invocation_tracker,
         )
+        deferred.bind(invoker)
+        return invoker
 
     def _log_completion(
         self,

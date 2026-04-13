@@ -43,7 +43,7 @@ class TestToolDisclosureConfig:
             ToolDisclosureConfig(l1_token_budget=499)
 
     def test_l1_budget_max(self) -> None:
-        config = ToolDisclosureConfig(l1_token_budget=20000)
+        config = ToolDisclosureConfig(l1_token_budget=20000, l2_token_budget=20000)
         assert config.l1_token_budget == 20000
 
     def test_l1_budget_above_max_rejected(self) -> None:
@@ -51,7 +51,7 @@ class TestToolDisclosureConfig:
             ToolDisclosureConfig(l1_token_budget=20001)
 
     def test_l2_budget_min(self) -> None:
-        config = ToolDisclosureConfig(l2_token_budget=1000)
+        config = ToolDisclosureConfig(l1_token_budget=500, l2_token_budget=1000)
         assert config.l2_token_budget == 1000
 
     def test_l2_budget_below_min_rejected(self) -> None:
@@ -81,3 +81,15 @@ class TestToolDisclosureConfig:
     def test_threshold_above_max_rejected(self) -> None:
         with pytest.raises(ValidationError):
             ToolDisclosureConfig(unload_threshold_percent=99.1)
+
+    def test_l2_less_than_l1_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="l2_token_budget"):
+            ToolDisclosureConfig(l1_token_budget=5000, l2_token_budget=3000)
+
+    def test_l2_equal_to_l1_accepted(self) -> None:
+        config = ToolDisclosureConfig(
+            l1_token_budget=5000,
+            l2_token_budget=5000,
+        )
+        assert config.l1_token_budget == 5000
+        assert config.l2_token_budget == 5000

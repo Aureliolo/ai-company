@@ -60,6 +60,7 @@ from synthorg.observability.events.prompt import (
     PROMPT_POLICY_VALIDATION_FAILED,
     PROMPT_PROFILE_SELECTED,
 )
+from synthorg.observability.events.tool import TOOL_L1_INJECTED
 
 if TYPE_CHECKING:
     from synthorg.core.agent import AgentIdentity
@@ -458,8 +459,8 @@ def _build_template_context(  # noqa: PLR0913
         if available_tools
         else None
     )
-    context["l1_tools"] = (
-        tuple(
+    if l1_summaries:
+        context["l1_tools"] = tuple(
             {
                 "name": s.name,
                 "short_description": s.short_description,
@@ -468,9 +469,13 @@ def _build_template_context(  # noqa: PLR0913
             }
             for s in l1_summaries
         )
-        if l1_summaries
-        else None
-    )
+        logger.debug(
+            TOOL_L1_INJECTED,
+            tool_count=len(l1_summaries),
+            tool_names=tuple(s.name for s in l1_summaries),
+        )
+    else:
+        context["l1_tools"] = None
 
     if company is not None:
         context["company"] = {"name": company.name}
