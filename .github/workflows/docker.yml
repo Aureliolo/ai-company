@@ -774,18 +774,26 @@ jobs:
           docker push "${REPO}:${SHA_TAG}-amd64"
           docker push "${REPO}:${SHA_TAG}-arm64"
 
-          # Collect all manifest tags
-          MANIFEST_TAGS=("${SHA_TAG}")
-          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
-            TAG="${GITHUB_REF_NAME#v}"
-            MANIFEST_TAGS+=("${TAG}")
-            if [[ "$TAG" != *-dev.* ]]; then
-              MANIFEST_TAGS+=("${TAG%.*}")
-              MANIFEST_TAGS+=("${APP_VERSION}")
-            else
-              MANIFEST_TAGS+=("dev")
+          # Collect manifest tags (deduplicated -- TAG and APP_VERSION can match)
+          declare -A SEEN_TAGS
+          MANIFEST_TAGS=()
+          for candidate in "${SHA_TAG}" $(
+            if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+              TAG="${GITHUB_REF_NAME#v}"
+              echo "${TAG}"
+              if [[ "$TAG" != *-dev.* ]]; then
+                echo "${TAG%.*}"
+                echo "${APP_VERSION}"
+              else
+                echo "dev"
+              fi
             fi
-          fi
+          ); do
+            if [ -z "${SEEN_TAGS[$candidate]+x}" ]; then
+              SEEN_TAGS[$candidate]=1
+              MANIFEST_TAGS+=("$candidate")
+            fi
+          done
 
           # Create and push multi-arch manifest for each tag
           DIGEST=""
