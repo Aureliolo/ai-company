@@ -18,11 +18,12 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from synthorg.api.auth.models import AuthenticatedUser
 from synthorg.api.dto import ApiResponse
-from synthorg.api.errors import NotFoundError, UnauthorizedError
+from synthorg.api.errors import ApiValidationError, NotFoundError, UnauthorizedError
 from synthorg.api.guards import require_approval_roles, require_read_access
 from synthorg.api.path_params import QUERY_MAX_LENGTH, PathId
 from synthorg.api.state import AppState  # noqa: TC001
 from synthorg.communication.event_stream.interrupt import (
+    Interrupt,
     InterruptResolution,
     InterruptStore,
     InterruptType,
@@ -107,6 +108,75 @@ def _require_auth(request: Request[Any, Any, Any]) -> AuthenticatedUser:
         msg = "Authentication required"
         raise UnauthorizedError(msg)
     return auth_user
+
+
+def _validate_resume_payload(
+    interrupt: Interrupt,
+    data: ResumeInterruptRequest,
+) -> None:
+    """Validate resume payload matches the interrupt type.
+
+    Args:
+        interrupt: The pending interrupt being resumed.
+        data: The client's resume payload.
+
+    Raises:
+        ApiValidationError: If required fields are missing.
+    """
+    if interrupt.type == InterruptType.TOOL_APPROVAL and data.decision is None:
+        msg = "TOOL_APPROVAL interrupts require a decision"
+        raise ApiValidationError(msg)
+    if interrupt.type == InterruptType.INFO_REQUEST and data.response is None:
+        msg = "INFO_REQUEST interrupts require a response"
+        raise ApiValidationError(msg)
+
+
+async def _resolve_interrupt(
+    store: InterruptStore,
+    interrupt_id: str,
+    data: ResumeInterruptRequest,
+    resolved_by: str,
+) -> ApiResponse[dict[str, str]]:
+    """Shared logic for both resume endpoints.
+
+    Args:
+        store: The interrupt store.
+        interrupt_id: The interrupt to resume.
+        data: The resume payload.
+        resolved_by: Identity of the resolver.
+
+    Returns:
+        Confirmation envelope.
+
+    Raises:
+        NotFoundError: If interrupt doesn't exist or is no longer pending.
+        ApiValidationError: If payload doesn't match interrupt type.
+    """
+    interrupt = await store.get(interrupt_id)
+    if interrupt is None:
+        logger.warning(
+            EVENT_STREAM_INTERRUPT_NOT_FOUND,
+            interrupt_id=interrupt_id,
+        )
+        msg = f"Interrupt {interrupt_id!r} not found"
+        raise NotFoundError(msg)
+
+    _validate_resume_payload(interrupt, data)
+
+    resolution = InterruptResolution(
+        interrupt_id=interrupt_id,
+        decision=data.decision,
+        feedback=data.feedback,
+        response=data.response,
+        resolved_at=datetime.now(UTC),
+        resolved_by=resolved_by,
+    )
+    resolved = await store.resolve(resolution)
+    if resolved is None:
+        msg = f"Interrupt {interrupt_id!r} is no longer pending"
+        raise NotFoundError(msg)
+
+    return ApiResponse(data={"status": "resumed"})
 
 
 # ── SSE stream ───────────────────────────────────────────────────
@@ -214,27 +284,12 @@ class EventStreamController(Controller):
         app_state: AppState = state.app_state
         store = _require_interrupt_store(app_state)
         auth_user = _require_auth(request)
-
-        interrupt = await store.get(interrupt_id)
-        if interrupt is None:
-            logger.warning(
-                EVENT_STREAM_INTERRUPT_NOT_FOUND,
-                interrupt_id=interrupt_id,
-            )
-            msg = f"Interrupt {interrupt_id!r} not found"
-            raise NotFoundError(msg)
-
-        resolution = InterruptResolution(
-            interrupt_id=interrupt_id,
-            decision=data.decision,
-            feedback=data.feedback,
-            response=data.response,
-            resolved_at=datetime.now(UTC),
-            resolved_by=auth_user.username,
+        return await _resolve_interrupt(
+            store,
+            interrupt_id,
+            data,
+            auth_user.username,
         )
-        await store.resolve(resolution)
-
-        return ApiResponse(data={"status": "resumed"})
 
 
 class InterruptController(Controller):
@@ -307,24 +362,9 @@ class InterruptController(Controller):
         app_state: AppState = state.app_state
         store = _require_interrupt_store(app_state)
         auth_user = _require_auth(request)
-
-        interrupt = await store.get(interrupt_id)
-        if interrupt is None:
-            logger.warning(
-                EVENT_STREAM_INTERRUPT_NOT_FOUND,
-                interrupt_id=interrupt_id,
-            )
-            msg = f"Interrupt {interrupt_id!r} not found"
-            raise NotFoundError(msg)
-
-        resolution = InterruptResolution(
-            interrupt_id=interrupt_id,
-            decision=data.decision,
-            feedback=data.feedback,
-            response=data.response,
-            resolved_at=datetime.now(UTC),
-            resolved_by=auth_user.username,
+        return await _resolve_interrupt(
+            store,
+            interrupt_id,
+            data,
+            auth_user.username,
         )
-        await store.resolve(resolution)
-
-        return ApiResponse(data={"status": "resumed"})

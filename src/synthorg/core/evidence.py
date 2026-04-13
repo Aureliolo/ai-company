@@ -13,9 +13,10 @@ references it as a field type, and ``core`` must not depend on
 """
 
 import copy
-from typing import Self
+from datetime import datetime  # noqa: TC003
+from typing import Literal, Self
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
 
 from synthorg.core.enums import ApprovalRiskLevel  # noqa: TC001
 from synthorg.core.structured_artifact import StructuredArtifact
@@ -41,6 +42,34 @@ class RecommendedAction(BaseModel):
     confirmation_required: bool = Field(
         default=False,
         description="Whether to show a confirmation dialog",
+    )
+
+
+class EvidencePackageSignature(BaseModel):
+    """Approver signature over an EvidencePackage.
+
+    Produced by the audit chain (new module in #1268) using
+    ML-DSA-65 (FIPS 204) or equivalent quantum-safe signature scheme.
+
+    Attributes:
+        approver_id: Identity of the approver.
+        algorithm: Signature algorithm used.
+        signature_bytes: Raw signature bytes.
+        signed_at: When the signature was produced.
+        chain_position: Position in the append-only audit chain.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+
+    approver_id: NotBlankStr = Field(description="Approver identity")
+    algorithm: Literal["ml-dsa-65", "ed25519"] = Field(
+        description="Signature algorithm",
+    )
+    signature_bytes: bytes = Field(description="Raw signature bytes")
+    signed_at: datetime = Field(description="Signature timestamp")
+    chain_position: int = Field(
+        ge=0,
+        description="Position in the append-only audit chain",
     )
 
 
@@ -73,6 +102,7 @@ class EvidencePackage(StructuredArtifact):
     )
     recommended_actions: tuple[RecommendedAction, ...] = Field(
         min_length=1,
+        max_length=3,
         description="Action options for the approver (1-3)",
     )
     source_agent_id: NotBlankStr = Field(
@@ -89,6 +119,22 @@ class EvidencePackage(StructuredArtifact):
         default_factory=dict,
         description="Additional key-value metadata",
     )
+    signature_threshold: int = Field(
+        default=1,
+        ge=1,
+        le=10,
+        description="Minimum signatures required before action executes",
+    )
+    signatures: tuple[EvidencePackageSignature, ...] = Field(
+        default=(),
+        description="Collected approver signatures",
+    )
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def is_fully_signed(self) -> bool:
+        """Whether the required signature threshold has been met."""
+        return len(self.signatures) >= self.signature_threshold
 
     @model_validator(mode="after")
     def _deep_copy_metadata(self) -> Self:

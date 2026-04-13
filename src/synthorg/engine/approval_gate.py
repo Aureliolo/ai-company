@@ -149,8 +149,10 @@ class ApprovalGate:
         session_id: str | None,
     ) -> None:
         """Create an interrupt and emit an APPROVAL_INTERRUPT event."""
-        if session_id is None or self._event_hub is None:
+        if session_id is None:
             return
+
+        interrupt_id: str | None = None
 
         if self._interrupt_store is not None:
             interrupt = Interrupt(
@@ -165,6 +167,7 @@ class ApprovalGate:
             )
             try:
                 await self._interrupt_store.create(interrupt)
+                interrupt_id = interrupt.id
             except MemoryError, RecursionError:
                 raise
             except Exception:
@@ -175,6 +178,9 @@ class ApprovalGate:
                     exc_info=True,
                 )
 
+        if self._event_hub is None:
+            return
+
         try:
             await self._event_hub.publish_raw(
                 session_id=session_id,
@@ -182,6 +188,7 @@ class ApprovalGate:
                 agent_id=agent_id,
                 payload={
                     "approval_id": escalation.approval_id,
+                    "interrupt_id": interrupt_id,
                     "tool_name": escalation.tool_name,
                     "action_type": escalation.action_type,
                     "risk_level": escalation.risk_level.value,

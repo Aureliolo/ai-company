@@ -380,7 +380,7 @@ def _shared_app(  # noqa: PLR0913
         config=root_config,
     )
 
-    app = create_app(
+    return create_app(
         config=root_config,
         persistence=fake_persistence,
         message_bus=fake_message_bus,
@@ -398,14 +398,10 @@ def _shared_app(  # noqa: PLR0913
         audit_log=audit_log,
         trust_service=trust_service,
         coordination_metrics_store=coordination_metrics_store,
+        event_stream_hub=event_stream_hub,
+        interrupt_store=interrupt_store,
         _skip_lifecycle_shutdown=True,
     )
-    # Wire event stream services into AppState (not yet accepted by
-    # create_app -- wired post-hoc for test coverage).
-    app_state: AppState = app.state.app_state
-    app_state._event_stream_hub = event_stream_hub
-    app_state._interrupt_store = interrupt_store
-    return app
 
 
 # ── Function-scoped test_client with per-test reset ────────────
@@ -445,7 +441,7 @@ def _restore_instance_patches(obj: object) -> None:
 
 
 @pytest.fixture
-def test_client(  # noqa: C901, PLR0913
+def test_client(  # noqa: C901, PLR0913, PLR0915
     _shared_app: Litestar,  # noqa: PT019
     fake_persistence: FakePersistenceBackend,
     fake_message_bus: FakeMessageBus,
@@ -539,6 +535,8 @@ def test_client(  # noqa: C901, PLR0913
         app_state._interrupt_store._pending.clear()
         app_state._interrupt_store._events.clear()
         app_state._interrupt_store._results.clear()
+    if app_state._event_stream_hub is not None:
+        app_state._event_stream_hub._subscribers.clear()
     if app_state._settings_service is not None:
         app_state._settings_service._cache.clear()
 

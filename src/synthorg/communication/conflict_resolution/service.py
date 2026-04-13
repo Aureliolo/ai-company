@@ -19,6 +19,7 @@ from synthorg.communication.conflict_resolution.models import (
     Conflict,
     ConflictPosition,
     ConflictResolution,
+    DissentPayload,
     DissentRecord,
 )
 from synthorg.communication.conflict_resolution.protocol import (  # noqa: TC001
@@ -37,6 +38,7 @@ from synthorg.communication.message import DataPart, Message
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.observability import get_logger
 from synthorg.observability.events.communication import (
+    COMM_DISSENT_EMITTED,
     COMM_DISSENT_PUBLISH_FAILED,
     COMM_DISSENT_PUBLISHED,
 )
@@ -50,6 +52,10 @@ from synthorg.observability.events.conflict import (
     CONFLICT_RESOLVED,
     CONFLICT_VALIDATION_ERROR,
 )
+
+# Channel for dissent bus messages.  Mirrors api.channels.CHANNEL_DISSENT
+# but defined here to avoid a communication -> api dependency.
+CHANNEL_DISSENT: str = "#dissent"
 
 logger = get_logger(__name__)
 
@@ -282,10 +288,10 @@ class ConflictResolutionService:
             return
 
         for record in records:
-            self._publish_dissent_message(record, conflict_id)
+            await self._publish_dissent_message(record, conflict_id)
             await self._publish_dissent_sse(record, conflict_id)
 
-    def _publish_dissent_message(
+    async def _publish_dissent_message(
         self,
         record: DissentRecord,
         conflict_id: str,
@@ -294,40 +300,31 @@ class ConflictResolutionService:
         if self._message_bus is None:
             return
         try:
+            payload = DissentPayload.from_record(record, conflict_id)
             msg = Message(
                 timestamp=record.timestamp,
                 sender=record.dissenting_agent_id,
-                to="#dissent",
+                to=CHANNEL_DISSENT,
                 type=MessageType.DISSENT,
                 priority=MessagePriority.NORMAL,
-                channel="#dissent",
+                channel=CHANNEL_DISSENT,
                 parts=(
                     DataPart(
-                        data={  # type: ignore[arg-type]
-                            "dissent_id": record.id,
-                            "conflict_id": conflict_id,
-                            "dissenting_agent_id": record.dissenting_agent_id,
-                            "conflict_type": record.conflict.type.value,
-                            "strategy_used": record.strategy_used.value,
-                        },
+                        data=payload.model_dump(mode="json"),  # type: ignore[arg-type]
                     ),
                 ),
             )
+            # message_bus is typed as object to avoid circular import;
+            # runtime type is MessageBus which has publish().
+            _bus: object = self._message_bus
+            if hasattr(_bus, "publish"):
+                await _bus.publish(msg)  # type: ignore[attr-defined]
             logger.info(
                 COMM_DISSENT_PUBLISHED,
                 dissent_id=record.id,
                 conflict_id=conflict_id,
                 transport="bus",
             )
-            # message_bus is typed as object to avoid circular import;
-            # runtime type is MessageBus which has publish().
-            _bus: object = self._message_bus
-            if hasattr(_bus, "publish"):
-                import asyncio  # noqa: PLC0415
-
-                asyncio.get_event_loop().create_task(
-                    _bus.publish(msg),
-                )
         except MemoryError, RecursionError:
             raise
         except Exception:
@@ -347,21 +344,21 @@ class ConflictResolutionService:
         """Publish a synthorg:dissent SSE event via the hub."""
         if self._event_hub is None:
             return
+        session_id = getattr(record.conflict, "session_id", None) or (
+            record.conflict.task_id
+        )
+        if not session_id:
+            return
         try:
+            payload = DissentPayload.from_record(record, conflict_id)
             await self._event_hub.publish_raw(
-                session_id=record.conflict.task_id or "global",
+                session_id=session_id,
                 event_type=AgUiEventType.DISSENT,
                 agent_id=record.dissenting_agent_id,
-                payload={
-                    "dissent_id": record.id,
-                    "conflict_id": conflict_id,
-                    "dissenting_agent_id": record.dissenting_agent_id,
-                    "conflict_type": record.conflict.type.value,
-                    "strategy_used": record.strategy_used.value,
-                },
+                payload=payload.model_dump(mode="json"),  # type: ignore[arg-type]
             )
             logger.info(
-                COMM_DISSENT_PUBLISHED,
+                COMM_DISSENT_EMITTED,
                 dissent_id=record.id,
                 conflict_id=conflict_id,
                 transport="sse",

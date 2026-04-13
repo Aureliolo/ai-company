@@ -159,6 +159,10 @@ class TestInterruptResolution:
         assert resolution.response == "Use the staging database."
         assert resolution.decision is None
 
+    def test_empty_payload_rejected(self) -> None:
+        with pytest.raises(ValueError, match="decision or response is required"):
+            _make_resolution(decision=None, response=None)
+
     def test_blank_interrupt_id_rejected(self) -> None:
         with pytest.raises(ValueError, match="at least 1"):
             _make_resolution(interrupt_id="")

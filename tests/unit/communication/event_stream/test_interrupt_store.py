@@ -105,11 +105,12 @@ class TestInterruptStore:
         store = InterruptStore()
         await store.create(_make_interrupt())
 
-        async def _resolve_after_delay() -> None:
-            await asyncio.sleep(0.01)
+        async def _resolve_after_yield() -> None:
+            # Yield control so the waiter can start, then resolve.
+            await asyncio.sleep(0)
             await store.resolve(_make_resolution())
 
-        task = asyncio.create_task(_resolve_after_delay())
+        task = asyncio.create_task(_resolve_after_yield())
         result = await store.wait_for_resolution("int-001", timeout=5.0)
         await task
         assert result is not None
@@ -118,7 +119,10 @@ class TestInterruptStore:
     async def test_wait_for_resolution_timeout(self) -> None:
         store = InterruptStore()
         await store.create(_make_interrupt())
-        result = await store.wait_for_resolution("int-001", timeout=0.01)
+        # No resolution is provided, so wait_for_resolution always
+        # times out deterministically (asyncio.wait_for on an unset
+        # Event fires TimeoutError after the timeout elapses).
+        result = await store.wait_for_resolution("int-001", timeout=0)
         assert result is None
 
     async def test_wait_for_nonexistent_returns_none(self) -> None:

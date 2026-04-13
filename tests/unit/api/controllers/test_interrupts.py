@@ -45,7 +45,8 @@ class TestListInterrupts:
         resp = test_client.get(_BASE, headers=_READ_HEADERS)
         assert resp.status_code == 200
         body = resp.json()
-        assert len(body["data"]) >= 1
+        ids = [item["id"] for item in body["data"]]
+        assert "int-list-001" in ids
 
     async def test_list_filtered_by_session(
         self,

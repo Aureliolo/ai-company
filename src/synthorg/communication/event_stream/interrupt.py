@@ -82,7 +82,11 @@ class Interrupt(BaseModel):
     created_at: AwareDatetime = Field(description="Creation timestamp")
     timeout_seconds: float = Field(
         gt=0,
-        description="Auto-expiry timeout in seconds",
+        description=(
+            "Suggested expiry timeout in seconds.  Advisory: the caller"
+            " of InterruptStore.wait_for_resolution() supplies the actual"
+            " timeout; this field is informational for UI display."
+        ),
     )
     tool_name: NotBlankStr | None = Field(
         default=None,
@@ -159,6 +163,14 @@ class InterruptResolution(BaseModel):
     )
     resolved_at: AwareDatetime = Field(description="Resolution timestamp")
     resolved_by: NotBlankStr = Field(description="Resolver identity")
+
+    @model_validator(mode="after")
+    def _validate_payload(self) -> Self:
+        """Ensure at least one semantic field is provided."""
+        if self.decision is None and self.response is None:
+            msg = "decision or response is required"
+            raise ValueError(msg)
+        return self
 
 
 class InterruptStore:

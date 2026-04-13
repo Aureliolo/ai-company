@@ -224,13 +224,16 @@ a bidirectional reference for the gateway translation layer.
 ### SSE Streaming
 
 External task update delivery uses **Server-Sent Events** per the A2A specification.
-This is distinct from the internal WebSocket transport used by the dashboard:
+The dashboard also uses SSE for observability and the HITL interrupt/resume protocol
+(see [Event Stream & HITL Surface](#event-stream--hitl-surface) below).
 
 | Consumer | Transport | Protocol | Use Case |
 |----------|-----------|----------|----------|
-| Web dashboard | WebSocket | Custom events | Real-time UI updates |
+| Web dashboard | SSE | AG-UI projected events | Observability + HITL interrupt/resume |
+| Web dashboard | WebSocket | Custom events | Bidirectional UI actions (chat, settings) |
 | External A2A client | SSE | `tasks/sendSubscribe` | Task progress streaming |
 
+The `EventStreamHub` is the single event source for all SSE consumers.
 The gateway translates internal MessageBus events for subscribed tasks into SSE events
 with A2A-formatted payloads. Only task-related events for explicitly subscribed tasks
 are forwarded -- no internal channel traffic leaks to external consumers.

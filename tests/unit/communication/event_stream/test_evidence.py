@@ -93,10 +93,15 @@ class TestEvidencePackage:
             ep.title = "Changed"  # type: ignore[misc]
 
     def test_metadata_deep_copied(self) -> None:
-        original: dict[str, object] = {"key": "value"}
+        original: dict[str, object] = {
+            "key": "value",
+            "nested": {"a": 1},
+        }
         ep = _make_evidence(metadata=original)
         original["key"] = "mutated"
+        original["nested"]["a"] = 2  # type: ignore[index]
         assert ep.metadata["key"] == "value"
+        assert ep.metadata["nested"]["a"] == 1  # type: ignore[index]
 
     def test_empty_recommended_actions_rejected(self) -> None:
         with pytest.raises(ValueError, match="at least 1"):

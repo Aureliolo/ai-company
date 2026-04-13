@@ -7,12 +7,18 @@ external-facing projection only.
 """
 
 from datetime import UTC, datetime
+from types import MappingProxyType
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping
 from uuid import uuid4
 
 from synthorg.communication.event_stream.types import (
     AgUiEventType,
     StreamEvent,
 )
+from synthorg.observability import get_logger
 from synthorg.observability.events.approval_gate import (
     APPROVAL_GATE_CONTEXT_PARKED,
     APPROVAL_GATE_CONTEXT_RESUMED,
@@ -30,26 +36,30 @@ from synthorg.observability.events.execution import (
     EXECUTION_PLAN_STEP_START,
 )
 
-PROJECTION_MAP: dict[str, AgUiEventType] = {
-    # Run lifecycle
-    EXECUTION_ENGINE_START: AgUiEventType.RUN_STARTED,
-    EXECUTION_ENGINE_COMPLETE: AgUiEventType.RUN_FINISHED,
-    EXECUTION_ENGINE_ERROR: AgUiEventType.RUN_ERROR,
-    # Plan steps
-    EXECUTION_PLAN_STEP_START: AgUiEventType.STEP_STARTED,
-    EXECUTION_PLAN_STEP_COMPLETE: AgUiEventType.STEP_FINISHED,
-    EXECUTION_PLAN_STEP_FAILED: AgUiEventType.STEP_FAILED,
-    # Model response turns
-    EXECUTION_LOOP_TURN_START: AgUiEventType.TEXT_MESSAGE_START,
-    EXECUTION_LOOP_TURN_COMPLETE: AgUiEventType.TEXT_MESSAGE_END,
-    # Tool invocations
-    EXECUTION_LOOP_TOOL_CALLS: AgUiEventType.TOOL_CALL_START,
-    # Approval gate
-    APPROVAL_GATE_CONTEXT_PARKED: AgUiEventType.APPROVAL_INTERRUPT,
-    APPROVAL_GATE_CONTEXT_RESUMED: AgUiEventType.APPROVAL_RESUMED,
-    # Dissent
-    CONFLICT_DISSENT_RECORDED: AgUiEventType.DISSENT,
-}
+logger = get_logger(__name__)
+
+PROJECTION_MAP: Mapping[str, AgUiEventType] = MappingProxyType(
+    {
+        # Run lifecycle
+        EXECUTION_ENGINE_START: AgUiEventType.RUN_STARTED,
+        EXECUTION_ENGINE_COMPLETE: AgUiEventType.RUN_FINISHED,
+        EXECUTION_ENGINE_ERROR: AgUiEventType.RUN_ERROR,
+        # Plan steps
+        EXECUTION_PLAN_STEP_START: AgUiEventType.STEP_STARTED,
+        EXECUTION_PLAN_STEP_COMPLETE: AgUiEventType.STEP_FINISHED,
+        EXECUTION_PLAN_STEP_FAILED: AgUiEventType.STEP_FAILED,
+        # Model response turns
+        EXECUTION_LOOP_TURN_START: AgUiEventType.TEXT_MESSAGE_START,
+        EXECUTION_LOOP_TURN_COMPLETE: AgUiEventType.TEXT_MESSAGE_END,
+        # Tool invocations
+        EXECUTION_LOOP_TOOL_CALLS: AgUiEventType.TOOL_CALL_START,
+        # Approval gate
+        APPROVAL_GATE_CONTEXT_PARKED: AgUiEventType.APPROVAL_INTERRUPT,
+        APPROVAL_GATE_CONTEXT_RESUMED: AgUiEventType.APPROVAL_RESUMED,
+        # Dissent
+        CONFLICT_DISSENT_RECORDED: AgUiEventType.DISSENT,
+    }
+)
 """Mapping from internal observability event constants to AG-UI types.
 
 Events not in this map are not projected to the SSE stream.
