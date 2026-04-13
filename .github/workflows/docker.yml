@@ -78,7 +78,9 @@ jobs:
           persist-credentials: false
 
       - name: Set up apko
-        run: go install chainguard.dev/apko@v1.2.3
+        run: |
+          go install chainguard.dev/apko@v1.2.3
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
 
       - name: Log in to GHCR
         if: github.event_name != 'pull_request'
@@ -195,7 +197,9 @@ jobs:
           persist-credentials: false
 
       - name: Set up apko
-        run: go install chainguard.dev/apko@v1.2.3
+        run: |
+          go install chainguard.dev/apko@v1.2.3
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
 
       - name: Log in to GHCR
         if: github.event_name != 'pull_request'
@@ -563,13 +567,16 @@ jobs:
         run: melange keygen
 
       - name: Build web-assets apk
+        env:
+          APP_VERSION: ${{ needs.version.outputs.app_version }}
         run: |
+          printf 'version: %s\n' "$APP_VERSION" > /tmp/melange-vars.yaml
           melange build docker/web/melange.yaml \
             --arch amd64 \
             --source-dir . \
             --signing-key melange.rsa \
             --out-dir packages/ \
-            --envvar VERSION=${{ needs.version.outputs.app_version }}
+            --vars-file /tmp/melange-vars.yaml
 
       - name: Upload packages artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -604,7 +611,9 @@ jobs:
           path: /work
 
       - name: Set up apko
-        run: go install chainguard.dev/apko@v1.2.3
+        run: |
+          go install chainguard.dev/apko@v1.2.3
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
 
       - name: Log in to GHCR
         if: github.event_name != 'pull_request'

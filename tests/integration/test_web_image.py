@@ -18,7 +18,11 @@ from synthorg.observability import get_logger
 
 logger = get_logger(__name__)
 
+_IMAGE_REF_PATTERN = re.compile(r"^[\w.:/@-]+$")
 WEB_IMAGE = os.environ.get("SYNTHORG_WEB_IMAGE", "ghcr.io/aureliolo/synthorg-web:test")
+if not _IMAGE_REF_PATTERN.match(WEB_IMAGE):
+    msg = f"Invalid image reference: {WEB_IMAGE}"
+    raise ValueError(msg)
 CONTAINER_NAME = "synthorg-web-test"
 HOST_PORT = 18080
 
@@ -49,6 +53,8 @@ def web_container() -> Generator[str]:
     except FileNotFoundError:
         pytest.skip("Docker binary not found on PATH")
     except subprocess.CalledProcessError as exc:
+        if "manifest unknown" in exc.stderr or "not found" in exc.stderr:
+            pytest.skip(f"Web image not available: {exc.stderr.strip()}")
         pytest.fail(f"Web container failed to start: {exc.stderr}")
 
     base_url = f"http://127.0.0.1:{HOST_PORT}"

@@ -21,7 +21,9 @@ jobs:
           persist-credentials: false
 
       - name: Set up apko
-        run: go install chainguard.dev/apko@v1.2.3
+        run: |
+          go install chainguard.dev/apko@v1.2.3
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
 
       - name: Update lockfiles
         run: |

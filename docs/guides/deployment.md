@@ -5,7 +5,7 @@ description: Run SynthOrg in production with Docker, hardening, and image verifi
 
 # Deployment (Docker)
 
-SynthOrg runs as two Docker containers -- a Python backend API and an Nginx + React web dashboard. This guide covers production deployment, environment configuration, security hardening, and operations.
+SynthOrg runs as two Docker containers -- a Python backend API and a Caddy + React web dashboard. This guide covers production deployment, environment configuration, security hardening, and operations.
 
 ---
 
