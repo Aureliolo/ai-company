@@ -6,13 +6,17 @@ import (
 	"bufio"
 	"encoding/binary"
 	"fmt"
+	"io"
 	"net"
 	"os"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/Aureliolo/synthorg/sidecar/internal/allowlist"
 )
+
+const dnsDialTimeout = 3 * time.Second
 
 // Logger is the minimal logging interface.
 type Logger interface {
@@ -111,7 +115,11 @@ func (s *Server) serveUDP() {
 		}
 		query := make([]byte, n)
 		copy(query, buf[:n])
-		go s.handleUDP(query, addr)
+		s.wg.Add(1)
+		go func() {
+			defer s.wg.Done()
+			s.handleUDP(query, addr)
+		}()
 	}
 }
 
@@ -126,7 +134,11 @@ func (s *Server) serveTCP() {
 				continue
 			}
 		}
-		go s.handleTCP(conn)
+		s.wg.Add(1)
+		go func() {
+			defer s.wg.Done()
+			s.handleTCP(conn)
+		}()
 	}
 }
 
@@ -141,14 +153,15 @@ func (s *Server) handleTCP(conn net.Conn) {
 	defer conn.Close()
 	reader := bufio.NewReader(conn)
 
-	// TCP DNS: 2-byte length prefix.
+	// TCP DNS: 2-byte length prefix. Use io.ReadFull to ensure
+	// partial reads don't cause misparsed messages.
 	var lenBuf [2]byte
-	if _, err := reader.Read(lenBuf[:]); err != nil {
+	if _, err := io.ReadFull(reader, lenBuf[:]); err != nil {
 		return
 	}
 	msgLen := binary.BigEndian.Uint16(lenBuf[:])
 	query := make([]byte, msgLen)
-	if _, err := reader.Read(query); err != nil {
+	if _, err := io.ReadFull(reader, query); err != nil {
 		return
 	}
 
@@ -166,8 +179,9 @@ func (s *Server) handleTCP(conn net.Conn) {
 func (s *Server) processQuery(query []byte) []byte {
 	hostname := extractQueryHostname(query)
 	if hostname == "" {
-		// Can't parse -- forward as-is.
-		return s.forwardToUpstream(query)
+		// Can't parse -- return NXDOMAIN instead of forwarding
+		// to prevent unparseable queries from bypassing the allowlist.
+		return buildNXDOMAIN(query)
 	}
 
 	if s.al.IsAllowedHostname(hostname) {
@@ -188,11 +202,12 @@ func (s *Server) forwardToUpstream(query []byte) []byte {
 		return buildNXDOMAIN(query)
 	}
 
-	conn, err := net.Dial("udp", s.upstream)
+	conn, err := net.DialTimeout("udp", s.upstream, dnsDialTimeout)
 	if err != nil {
 		return buildNXDOMAIN(query)
 	}
 	defer conn.Close()
+	_ = conn.SetDeadline(time.Now().Add(dnsDialTimeout))
 
 	if _, err := conn.Write(query); err != nil {
 		return buildNXDOMAIN(query)
@@ -286,7 +301,12 @@ func findUpstreamDNS() string {
 		if strings.HasPrefix(line, "nameserver") {
 			fields := strings.Fields(line)
 			if len(fields) >= 2 {
-				return fields[1] + ":53"
+				ns := fields[1]
+				// Skip IPv6 nameservers -- sidecar is IPv4-only.
+				if strings.Contains(ns, ":") {
+					continue
+				}
+				return ns + ":53"
 			}
 		}
 	}

@@ -2,6 +2,7 @@ package dns_test
 
 import (
 	"encoding/binary"
+	"strings"
 	"testing"
 
 	"github.com/Aureliolo/synthorg/sidecar/internal/allowlist"
@@ -116,7 +117,10 @@ func TestNewServer(t *testing.T) {
 	}, false, 0)
 	srv, err := dns.NewServer(al, true, nil)
 	if err != nil {
-		t.Skipf("no upstream DNS available: %v", err)
+		if strings.Contains(err.Error(), "no upstream DNS found") {
+			t.Skipf("no upstream DNS available: %v", err)
+		}
+		t.Fatalf("failed to create DNS server: %v", err)
 	}
 	if srv == nil {
 		t.Fatal("expected non-nil server")

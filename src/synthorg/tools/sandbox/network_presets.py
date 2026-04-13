@@ -6,7 +6,11 @@ into ``DockerSandboxConfig.allowed_hosts`` via the
 flattened list -- presets are a Python-side convenience.
 """
 
-from typing import Final
+from types import MappingProxyType
+from typing import TYPE_CHECKING, Final
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping
 
 PRESET_PYTHON_DEV: Final[tuple[str, ...]] = (
     "pypi.org:443",
@@ -21,8 +25,10 @@ PRESET_GIT: Final[tuple[str, ...]] = (
     "bitbucket.org:443",
 )
 
-PRESETS: Final[dict[str, tuple[str, ...]]] = {
-    "python-dev": PRESET_PYTHON_DEV,
-    "node-dev": PRESET_NODE_DEV,
-    "git": PRESET_GIT,
-}
+PRESETS: Final[Mapping[str, tuple[str, ...]]] = MappingProxyType(
+    {
+        "python-dev": PRESET_PYTHON_DEV,
+        "node-dev": PRESET_NODE_DEV,
+        "git": PRESET_GIT,
+    },
+)

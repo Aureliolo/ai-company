@@ -61,7 +61,7 @@ func (s *Server) Handler() http.Handler {
 
 // Start begins listening on the configured port.
 func (s *Server) Start() error {
-	listener, err := net.Listen("tcp", fmt.Sprintf("0.0.0.0:%d", s.port))
+	listener, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", s.port))
 	if err != nil {
 		return fmt.Errorf("health listener: %w", err)
 	}
@@ -94,7 +94,7 @@ func (s *Server) handleHealthz(w http.ResponseWriter, _ *http.Request) {
 		"status":         "healthy",
 		"uptime_seconds": uptime,
 	}
-	json.NewEncoder(w).Encode(resp) //nolint:errcheck
+	json.NewEncoder(w).Encode(resp) //nolint:errcheck // HTTP response write errors are non-actionable in handlers
 }
 
 func (s *Server) handleGetRules(w http.ResponseWriter, _ *http.Request) {
@@ -109,7 +109,7 @@ func (s *Server) handleGetRules(w http.ResponseWriter, _ *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]any{ //nolint:errcheck
+	json.NewEncoder(w).Encode(map[string]any{ //nolint:errcheck // HTTP response write errors are non-actionable in handlers
 		"allowed_hosts": hostStrs,
 		"allow_all":     allowAll,
 	})
@@ -131,17 +131,21 @@ func (s *Server) handlePutRules(w http.ResponseWriter, r *http.Request) {
 	for _, entry := range req.AllowedHosts {
 		idx := strings.LastIndex(entry, ":")
 		if idx < 1 {
-			continue
+			s.jsonError(w, fmt.Sprintf("invalid allowed_hosts entry: %q", entry), http.StatusBadRequest)
+			return
 		}
 		host := strings.ToLower(strings.TrimSpace(entry[:idx]))
 		portStr := strings.TrimSpace(entry[idx+1:])
 		port, err := strconv.ParseUint(portStr, 10, 16)
 		if err != nil || port < 1 || port > 65535 {
-			continue
+			s.jsonError(w, fmt.Sprintf("invalid allowed_hosts entry: %q", entry), http.StatusBadRequest)
+			return
 		}
 		hosts = append(hosts, config.HostPort{Host: host, Port: uint16(port)})
 	}
 
+	// Update atomically: hold lock for both rawRules and allowAll,
+	// then update the allowlist outside the lock.
 	s.mu.Lock()
 	s.rawRules = hosts
 	s.allowAll = req.AllowAll
@@ -154,7 +158,7 @@ func (s *Server) handlePutRules(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{"status": "ok"}) //nolint:errcheck
+	json.NewEncoder(w).Encode(map[string]string{"status": "ok"}) //nolint:errcheck // HTTP response write errors are non-actionable in handlers
 }
 
 func (s *Server) requireAuth(next http.HandlerFunc) http.HandlerFunc {
@@ -176,5 +180,5 @@ func (s *Server) requireAuth(next http.HandlerFunc) http.HandlerFunc {
 func (s *Server) jsonError(w http.ResponseWriter, msg string, code int) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(code)
-	json.NewEncoder(w).Encode(map[string]string{"error": msg}) //nolint:errcheck
+	json.NewEncoder(w).Encode(map[string]string{"error": msg}) //nolint:errcheck // HTTP response write errors are non-actionable in handlers
 }

@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"os"
 	"os/exec"
 	"strings"
 	"sync"
@@ -29,11 +30,25 @@ func NewDNATManager(proxyPort uint16, dnsAllowed bool) *DNATManager {
 }
 
 // Setup installs iptables DNAT rules to redirect all outbound TCP
-// (except loopback) to the proxy listener.
+// (except loopback and sidecar-originated traffic) to the proxy listener.
+// The sidecar process (identified by UID) is excluded from DNAT to
+// prevent self-interception of the proxy's own upstream connections.
 func (m *DNATManager) Setup(ctx context.Context) error {
 	// Verify iptables is available.
 	if err := exec.CommandContext(ctx, "iptables", "-V").Run(); err != nil {
 		return fmt.Errorf("iptables unavailable (NET_ADMIN required): %w", err)
+	}
+
+	sidecarUID := os.Geteuid()
+
+	// Exclude sidecar process from DNAT to prevent the proxy's own
+	// outbound dials from being redirected back to itself.
+	skipRule := fmt.Sprintf(
+		"-t nat -A OUTPUT -p tcp -m owner --uid-owner %d -j RETURN",
+		sidecarUID,
+	)
+	if err := m.installRule(ctx, skipRule); err != nil {
+		return fmt.Errorf("DNAT skip rule: %w", err)
 	}
 
 	// Redirect all non-loopback TCP OUTPUT to the proxy.
@@ -45,9 +60,17 @@ func (m *DNATManager) Setup(ctx context.Context) error {
 		return fmt.Errorf("DNAT rule: %w", err)
 	}
 
-	// Block DNS if not allowed.
+	// Block DNS if not allowed, but exempt sidecar process so it can
+	// still resolve hostnames for the allowlist and forward queries.
 	if !m.dnsAllowed {
 		for _, proto := range []string{"udp", "tcp"} {
+			acceptRule := fmt.Sprintf(
+				"-A OUTPUT -p %s --dport 53 -m owner --uid-owner %d -j ACCEPT",
+				proto, sidecarUID,
+			)
+			if err := m.installRule(ctx, acceptRule); err != nil {
+				return fmt.Errorf("DNS accept rule (%s): %w", proto, err)
+			}
 			dnsRule := fmt.Sprintf("-A OUTPUT -p %s --dport 53 -j DROP", proto)
 			if err := m.installRule(ctx, dnsRule); err != nil {
 				return fmt.Errorf("DNS block rule (%s): %w", proto, err)
@@ -68,7 +91,12 @@ func (m *DNATManager) Cleanup(ctx context.Context) error {
 
 	var firstErr error
 	for i := len(m.rules) - 1; i >= 0; i-- {
-		delRule := strings.Replace(m.rules[i], " -A ", " -D ", 1)
+		delRule := m.rules[i]
+		if strings.HasPrefix(delRule, "-A ") {
+			delRule = "-D " + delRule[3:]
+		} else {
+			delRule = strings.Replace(delRule, " -A ", " -D ", 1)
+		}
 		args := strings.Fields(delRule)
 		if err := exec.CommandContext(ctx, "iptables", args...).Run(); err != nil {
 			if firstErr == nil {

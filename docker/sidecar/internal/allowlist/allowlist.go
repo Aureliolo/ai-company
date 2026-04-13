@@ -32,11 +32,14 @@ type Allowlist struct {
 // New creates an Allowlist from the given host:port entries.
 // IP entries are added directly; hostnames are resolved on first call.
 // Set resolveInterval to 0 to disable background re-resolution.
-func New(hosts []config.HostPort, loopback bool, resolveIntervalSec int) *Allowlist {
+func New(hosts []config.HostPort, loopback bool, resolveIntervalSec int, allowAll ...bool) *Allowlist {
 	al := &Allowlist{
 		raw:      hosts,
 		loopback: loopback,
 		stopCh:   make(chan struct{}),
+	}
+	if len(allowAll) > 0 {
+		al.allowAll.Store(allowAll[0])
 	}
 	if resolveIntervalSec > 0 {
 		al.resolveInterval = time.Duration(resolveIntervalSec) * time.Second

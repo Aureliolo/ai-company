@@ -49,7 +49,7 @@ func New(port uint16, al *allowlist.Allowlist, allowAll bool, dnat *DNATManager,
 
 // Start begins accepting TCP connections.
 func (p *Proxy) Start() error {
-	ln, err := net.Listen("tcp", fmt.Sprintf("0.0.0.0:%d", p.port))
+	ln, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", p.port))
 	if err != nil {
 		return fmt.Errorf("proxy listen: %w", err)
 	}
@@ -125,6 +125,11 @@ func (p *Proxy) handleConn(conn net.Conn) {
 				"reason", "not in allowlist",
 			)
 		}
+		// Send TCP RST instead of graceful close so the sandbox
+		// gets an immediate connection refused, not a timeout.
+		if tc, ok := conn.(*net.TCPConn); ok {
+			_ = tc.SetLinger(0)
+		}
 		return
 	}
 
@@ -157,13 +162,17 @@ func (p *Proxy) handleConn(conn net.Conn) {
 	copyWg.Add(1)
 	go func() {
 		defer copyWg.Done()
-		_, _ = io.Copy(upstream, conn)
+		if _, err := io.Copy(upstream, conn); err != nil && p.logger != nil {
+			p.logger.Warn("proxy.copy.upstream.error", "error", err.Error())
+		}
 		// Signal the other direction to stop.
 		if tc, ok := upstream.(*net.TCPConn); ok {
 			_ = tc.CloseWrite()
 		}
 	}()
-	_, _ = io.Copy(conn, upstream)
+	if _, err := io.Copy(conn, upstream); err != nil && p.logger != nil {
+		p.logger.Warn("proxy.copy.downstream.error", "error", err.Error())
+	}
 	if tc, ok := conn.(*net.TCPConn); ok {
 		_ = tc.CloseWrite()
 	}

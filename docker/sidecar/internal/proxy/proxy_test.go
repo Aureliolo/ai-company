@@ -31,9 +31,10 @@ func TestProxyStartStop(t *testing.T) {
 
 	// Verify we can connect to the proxy port.
 	conn, err := net.DialTimeout("tcp", ln.Addr().String(), time.Second)
-	if err == nil {
-		conn.Close()
+	if err != nil {
+		t.Fatalf("DialTimeout: %v", err)
 	}
+	conn.Close()
 
 	_ = p
 	if err := p2.Shutdown(t.Context()); err != nil {

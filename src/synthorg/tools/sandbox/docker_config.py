@@ -258,6 +258,9 @@ class DockerSandboxConfig(BaseModel):
     def _validate_network_allow_all(self) -> Self:
         """Reject ``network_allow_all`` with non-empty ``allowed_hosts``.
 
+        Also rejects ``network_allow_all`` with host networking since
+        the sidecar would silently override the requested network mode.
+
         Runs after ``_validate_network_presets`` so preset-merged
         hosts are included in the mutual exclusion check.
         """
@@ -265,6 +268,17 @@ class DockerSandboxConfig(BaseModel):
             msg = (
                 "network_allow_all=True is mutually exclusive with "
                 "allowed_hosts -- set one or the other"
+            )
+            logger.warning(
+                CONFIG_VALIDATION_FAILED,
+                field="network_allow_all",
+                reason=msg,
+            )
+            raise ValueError(msg)
+        if self.network_allow_all and self.network == "host":
+            msg = (
+                "network_allow_all=True is incompatible with "
+                "network='host' -- sidecar would override host networking"
             )
             logger.warning(
                 CONFIG_VALIDATION_FAILED,

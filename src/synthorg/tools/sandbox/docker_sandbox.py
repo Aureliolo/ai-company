@@ -395,7 +395,10 @@ class DockerSandbox:
                 "CapDrop": ["ALL"],
                 "CapAdd": ["NET_ADMIN"],
                 "ReadonlyRootfs": True,
-                "Tmpfs": {"/tmp": "size=8m,noexec,nosuid"},  # noqa: S108
+                "Tmpfs": {
+                    "/tmp": "size=8m,noexec,nosuid",  # noqa: S108
+                    "/run": "size=1m,nosuid",  # iptables needs /run/xtables.lock
+                },
                 "Memory": memory_bytes,
                 "NanoCpus": nano_cpus,
                 "PidsLimit": _SIDECAR_PIDS,
@@ -605,6 +608,9 @@ class DockerSandbox:
 
         if self._needs_sidecar():
             sidecar_id = await self._create_sidecar(docker)
+            # Track sidecar immediately so cleanup() can find it
+            # even if start/health-check fails or is cancelled.
+            self._tracked_containers[f"_sidecar:{sidecar_id}"] = None
             try:
                 sidecar_obj = docker.containers.container(sidecar_id)  # pyright: ignore[reportAttributeAccessIssue]
                 await sidecar_obj.start()
@@ -613,9 +619,19 @@ class DockerSandbox:
                     sidecar_id=sidecar_id[:12],
                 )
                 await self._wait_sidecar_healthy(docker, sidecar_id)
-            except Exception:
+            except BaseException:
+                # Catch BaseException to handle CancelledError too --
+                # sidecar must be cleaned up even on task cancellation.
                 await self._remove_container(docker, sidecar_id)
+                self._tracked_containers.pop(
+                    f"_sidecar:{sidecar_id}",
+                    None,
+                )
                 raise
+            self._tracked_containers.pop(
+                f"_sidecar:{sidecar_id}",
+                None,
+            )
             network_mode = f"container:{sidecar_id}"
 
         config = self._build_container_config(
