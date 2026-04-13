@@ -27,6 +27,8 @@ from synthorg.core.enums import (
     SkillPattern,
     TaskStatus,
     TaskType,
+    WorkflowEdgeType,
+    WorkflowNodeType,
     compare_seniority,
 )
 
@@ -113,6 +115,12 @@ class TestEnumMemberCounts:
             "pipeline",
         }
         assert {sp.value for sp in SkillPattern} == expected
+
+    def test_workflow_node_type_has_9_members(self) -> None:
+        assert len(WorkflowNodeType) == 9
+
+    def test_workflow_edge_type_has_7_members(self) -> None:
+        assert len(WorkflowEdgeType) == 7
 
     def test_action_type_has_26_members(self) -> None:
         assert len(ActionType) == 26
@@ -291,6 +299,22 @@ class TestEnumStringValues:
         ],
     )
     def test_action_type_values(self, member: ActionType, value: str) -> None:
+        assert member.value == value
+
+    def test_workflow_node_type_verification_value(self) -> None:
+        assert WorkflowNodeType.VERIFICATION.value == "verification"
+
+    @pytest.mark.parametrize(
+        ("member", "value"),
+        [
+            (WorkflowEdgeType.VERIFICATION_PASS, "verification_pass"),
+            (WorkflowEdgeType.VERIFICATION_FAIL, "verification_fail"),
+            (WorkflowEdgeType.VERIFICATION_REFER, "verification_refer"),
+        ],
+    )
+    def test_workflow_edge_type_verification_values(
+        self, member: WorkflowEdgeType, value: str
+    ) -> None:
         assert member.value == value
 
     def test_action_type_uses_colon_format(self) -> None:

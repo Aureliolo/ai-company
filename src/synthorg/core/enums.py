@@ -337,6 +337,7 @@ class WorkflowNodeType(StrEnum):
     PARALLEL_SPLIT = "parallel_split"
     PARALLEL_JOIN = "parallel_join"
     SUBWORKFLOW = "subworkflow"
+    VERIFICATION = "verification"
 
 
 class WorkflowValueType(StrEnum):
@@ -366,6 +367,9 @@ class WorkflowEdgeType(StrEnum):
     CONDITIONAL_TRUE = "conditional_true"
     CONDITIONAL_FALSE = "conditional_false"
     PARALLEL_BRANCH = "parallel_branch"
+    VERIFICATION_PASS = "verification_pass"  # noqa: S105
+    VERIFICATION_FAIL = "verification_fail"
+    VERIFICATION_REFER = "verification_refer"
 
 
 class WorkflowExecutionStatus(StrEnum):
