@@ -26,6 +26,8 @@ from synthorg.budget.tracker import CostTracker
 from synthorg.communication.delegation.record_store import (
     DelegationRecordStore,
 )
+from synthorg.communication.event_stream.interrupt import InterruptStore
+from synthorg.communication.event_stream.stream import EventStreamHub
 from synthorg.config.schema import RootConfig
 from synthorg.core.approval import ApprovalItem
 from synthorg.core.enums import (
@@ -267,6 +269,16 @@ def approval_store() -> ApprovalStore:
 
 
 @pytest.fixture(scope="session")
+def event_stream_hub() -> EventStreamHub:
+    return EventStreamHub()
+
+
+@pytest.fixture(scope="session")
+def interrupt_store() -> InterruptStore:
+    return InterruptStore()
+
+
+@pytest.fixture(scope="session")
 def root_config() -> RootConfig:
     from synthorg.integrations.config import IntegrationsConfig
 
@@ -352,6 +364,8 @@ def _shared_app(  # noqa: PLR0913
     audit_log: AuditLog,
     trust_service: TrustService,
     coordination_metrics_store: CoordinationMetricsStore,
+    event_stream_hub: EventStreamHub,
+    interrupt_store: InterruptStore,
 ) -> Litestar:
     """Build the Litestar app ONCE per xdist worker.
 
@@ -384,6 +398,8 @@ def _shared_app(  # noqa: PLR0913
         audit_log=audit_log,
         trust_service=trust_service,
         coordination_metrics_store=coordination_metrics_store,
+        event_stream_hub=event_stream_hub,
+        interrupt_store=interrupt_store,
         _skip_lifecycle_shutdown=True,
     )
 
@@ -425,7 +441,7 @@ def _restore_instance_patches(obj: object) -> None:
 
 
 @pytest.fixture
-def test_client(  # noqa: C901, PLR0913
+def test_client(  # noqa: C901, PLR0913, PLR0915
     _shared_app: Litestar,  # noqa: PT019
     fake_persistence: FakePersistenceBackend,
     fake_message_bus: FakeMessageBus,
@@ -515,6 +531,12 @@ def test_client(  # noqa: C901, PLR0913
         app_state._lockout_store._locked.clear()
     app_state._ticket_store._tickets.clear()
     app_state._user_presence._counts.clear()
+    if app_state._interrupt_store is not None:
+        app_state._interrupt_store._pending.clear()
+        app_state._interrupt_store._events.clear()
+        app_state._interrupt_store._results.clear()
+    if app_state._event_stream_hub is not None:
+        app_state._event_stream_hub._subscribers.clear()
     if app_state._settings_service is not None:
         app_state._settings_service._cache.clear()
 

@@ -122,6 +122,8 @@ if TYPE_CHECKING:
     from synthorg.budget.degradation import PreFlightResult
     from synthorg.budget.enforcer import BudgetEnforcer
     from synthorg.budget.tracker import CostTracker
+    from synthorg.communication.event_stream.interrupt import InterruptStore
+    from synthorg.communication.event_stream.stream import EventStreamHub
     from synthorg.config.schema import ProviderConfig
     from synthorg.core.agent import AgentIdentity
     from synthorg.core.task import Task
@@ -369,9 +371,13 @@ class AgentEngine:
         project_repo: ProjectRepository | None = None,
         agent_middleware_chain: AgentMiddlewareChain | None = None,
         event_reader: EventReader | None = None,
+        event_stream_hub: EventStreamHub | None = None,
+        interrupt_store: InterruptStore | None = None,
     ) -> None:
         self._agent_middleware_chain = agent_middleware_chain
         self._event_reader = event_reader
+        self._event_stream_hub = event_stream_hub
+        self._interrupt_store = interrupt_store
         if execution_loop is not None and auto_loop_config is not None:
             msg = "execution_loop and auto_loop_config are mutually exclusive"
             logger.warning(
@@ -1726,6 +1732,8 @@ class AgentEngine:
         return ApprovalGate(
             park_service=ParkService(),
             parked_context_repo=self._parked_context_repo,
+            event_hub=self._event_stream_hub,
+            interrupt_store=self._interrupt_store,
         )
 
     def _make_default_loop(self) -> ReactLoop:

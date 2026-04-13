@@ -103,6 +103,10 @@ class WsEventType(StrEnum):
     REVIEW_STAGE_DECIDED = "review.stage_decided"
     REVIEW_PIPELINE_COMPLETED = "review.pipeline_completed"
 
+    INTERRUPT_CREATED = "interrupt.created"
+    INTERRUPT_RESUMED = "interrupt.resumed"
+    DISSENT_PUBLISHED = "dissent.published"
+
 
 class WsEvent(BaseModel):
     """A real-time event pushed over WebSocket.

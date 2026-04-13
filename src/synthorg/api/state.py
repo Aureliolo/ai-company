@@ -25,6 +25,10 @@ from synthorg.communication.bus_protocol import MessageBus  # noqa: TC001
 from synthorg.communication.delegation.record_store import (
     DelegationRecordStore,  # noqa: TC001
 )
+from synthorg.communication.event_stream.interrupt import (
+    InterruptStore,  # noqa: TC001
+)
+from synthorg.communication.event_stream.stream import EventStreamHub  # noqa: TC001
 from synthorg.communication.meeting.orchestrator import (
     MeetingOrchestrator,  # noqa: TC001
 )
@@ -117,8 +121,10 @@ class AppState:
         "_distributed_task_queue",
         "_drift_detection_service",
         "_drift_report_store",
+        "_event_stream_hub",
         "_fine_tune_orchestrator",
         "_health_prober_service",
+        "_interrupt_store",
         "_lockout_store",
         "_mcp_catalog_service",
         "_mcp_installations_repo",
@@ -178,6 +184,8 @@ class AppState:
         provider_health_tracker: ProviderHealthTracker | None = None,
         tool_invocation_tracker: ToolInvocationTracker | None = None,
         delegation_record_store: DelegationRecordStore | None = None,
+        event_stream_hub: EventStreamHub | None = None,
+        interrupt_store: InterruptStore | None = None,
         artifact_storage: ArtifactStorageBackend | None = None,
         notification_dispatcher: NotificationDispatcher | None = None,
         ontology_service: OntologyService | None = None,
@@ -226,6 +234,8 @@ class AppState:
         self._tool_invocation_tracker = tool_invocation_tracker
         self._training_service = training_service
         self._delegation_record_store = delegation_record_store
+        self._event_stream_hub = event_stream_hub
+        self._interrupt_store = interrupt_store
         self._connection_catalog = connection_catalog
         self._oauth_token_manager = oauth_token_manager
         self._health_prober_service = health_prober_service
@@ -453,6 +463,16 @@ class AppState:
     def approval_gate(self) -> ApprovalGate | None:
         """Return approval gate, or None if not configured."""
         return self._approval_gate
+
+    @property
+    def event_stream_hub(self) -> EventStreamHub | None:
+        """Return event stream hub, or None if not configured."""
+        return self._event_stream_hub
+
+    @property
+    def interrupt_store(self) -> InterruptStore | None:
+        """Return interrupt store, or None if not configured."""
+        return self._interrupt_store
 
     @property
     def review_gate_service(self) -> ReviewGateService | None:

@@ -11,8 +11,20 @@ it, and returns the restored context along with a decision message
 that the caller can inject into the conversation.
 """
 
+import contextlib
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING
+from uuid import uuid4
 
+from synthorg.communication.event_stream.interrupt import (
+    Interrupt,
+    InterruptResolution,
+    InterruptStore,
+    InterruptType,
+    ResumeDecision,
+)
+from synthorg.communication.event_stream.stream import EventStreamHub  # noqa: TC001
+from synthorg.communication.event_stream.types import AgUiEventType
 from synthorg.notifications.dispatcher import NotificationDispatcher  # noqa: TC001
 from synthorg.observability import get_logger
 from synthorg.observability.events.approval_gate import (
@@ -49,16 +61,32 @@ class ApprovalGate:
             resume is not possible.
     """
 
-    def __init__(
+    def __init__(  # noqa: PLR0913
         self,
         *,
         park_service: ParkService,
         parked_context_repo: ParkedContextRepository | None = None,
         notification_dispatcher: NotificationDispatcher | None = None,
+        event_hub: EventStreamHub | None = None,
+        interrupt_store: InterruptStore | None = None,
+        interrupt_timeout_seconds: float = 300.0,
     ) -> None:
         self._park_service = park_service
         self._parked_context_repo = parked_context_repo
         self._notification_dispatcher = notification_dispatcher
+        self._event_hub = event_hub
+        self._interrupt_store = interrupt_store
+        import math  # noqa: PLC0415
+
+        if interrupt_timeout_seconds <= 0 or not math.isfinite(
+            interrupt_timeout_seconds,
+        ):
+            msg = (
+                "interrupt_timeout_seconds must be finite and > 0,"
+                f" got {interrupt_timeout_seconds}"
+            )
+            raise ValueError(msg)
+        self._interrupt_timeout_seconds = interrupt_timeout_seconds
         logger.debug(
             APPROVAL_GATE_INITIALIZED,
             has_parked_context_repo=parked_context_repo is not None,
@@ -100,6 +128,7 @@ class ApprovalGate:
         context: AgentContext,
         agent_id: str,
         task_id: str | None = None,
+        session_id: str | None = None,
     ) -> ParkedContext:
         """Serialize context via ParkService and persist if repo available.
 
@@ -108,6 +137,7 @@ class ApprovalGate:
             context: The agent context to park.
             agent_id: Agent identifier.
             task_id: Task identifier, or ``None`` for taskless agents.
+            session_id: Session identifier for event stream, or ``None``.
 
         Returns:
             The created ``ParkedContext``.
@@ -116,15 +146,105 @@ class ApprovalGate:
             ValueError: If context serialization fails.
             PersistenceError: If persisting the parked context fails.
         """
-        parked = self._serialize_context(
+        interrupt_id = await self._emit_interrupt(
             escalation,
-            context,
             agent_id,
-            task_id,
+            session_id,
         )
-        await self._persist_parked(parked, escalation)
+        try:
+            parked = self._serialize_context(
+                escalation,
+                context,
+                agent_id,
+                task_id,
+                interrupt_id=interrupt_id,
+            )
+            await self._persist_parked(parked, escalation)
+        except BaseException:
+            # Compensate: resolve the interrupt so it doesn't
+            # dangle without a persisted parked context.
+            if interrupt_id is not None and self._interrupt_store is not None:
+                resolution = InterruptResolution(
+                    interrupt_id=interrupt_id,
+                    decision=ResumeDecision.REJECT,
+                    resolved_at=datetime.now(UTC),
+                    resolved_by="approval_gate_compensation",
+                )
+                with contextlib.suppress(Exception):
+                    await self._interrupt_store.resolve(resolution)
+            raise
         await self._notify_approval_required(escalation, agent_id, task_id)
         return parked
+
+    async def _emit_interrupt(
+        self,
+        escalation: EscalationInfo,
+        agent_id: str,
+        session_id: str | None,
+    ) -> str | None:
+        """Create an interrupt and emit an APPROVAL_INTERRUPT event.
+
+        Returns:
+            The created interrupt ID, or ``None`` if no interrupt
+            was created.
+        """
+        if session_id is None:
+            return None
+
+        interrupt_id: str | None = None
+
+        if self._interrupt_store is not None:
+            try:
+                interrupt = Interrupt(
+                    id=f"int-{uuid4().hex}",
+                    type=InterruptType.TOOL_APPROVAL,
+                    session_id=session_id,
+                    agent_id=agent_id,
+                    created_at=datetime.now(UTC),
+                    timeout_seconds=self._interrupt_timeout_seconds,
+                    tool_name=escalation.tool_name,
+                    evidence_package_id=None,
+                )
+                await self._interrupt_store.create(interrupt)
+                interrupt_id = interrupt.id
+            except MemoryError, RecursionError:
+                raise
+            except Exception:
+                logger.warning(
+                    APPROVAL_GATE_NOTIFICATION_FAILED,
+                    approval_id=escalation.approval_id,
+                    note="Failed to create interrupt in store",
+                    exc_info=True,
+                )
+
+        if self._event_hub is None or interrupt_id is None:
+            return interrupt_id
+
+        try:
+            await self._event_hub.publish_raw(
+                session_id=session_id,
+                event_type=AgUiEventType.APPROVAL_INTERRUPT,
+                agent_id=agent_id,
+                payload={
+                    "approval_id": escalation.approval_id,
+                    "interrupt_id": interrupt_id,
+                    "tool_name": escalation.tool_name,
+                    "action_type": escalation.action_type,
+                    "risk_level": escalation.risk_level.value,
+                    "reason": escalation.reason,
+                },
+            )
+        except MemoryError, RecursionError:
+            raise
+        except Exception:
+            logger.warning(
+                APPROVAL_GATE_NOTIFICATION_FAILED,
+                approval_id=escalation.approval_id,
+                note="Failed to publish APPROVAL_INTERRUPT event",
+                exc_info=True,
+            )
+
+        return interrupt_id
 
     async def _notify_approval_required(
         self,
@@ -171,19 +291,24 @@ class ApprovalGate:
         context: AgentContext,
         agent_id: str,
         task_id: str | None,
+        *,
+        interrupt_id: str | None = None,
     ) -> ParkedContext:
         """Serialize the agent context via ParkService."""
+        metadata = {
+            "tool_name": escalation.tool_name,
+            "action_type": escalation.action_type,
+            "risk_level": escalation.risk_level.value,
+        }
+        if interrupt_id is not None:
+            metadata["interrupt_id"] = interrupt_id
         try:
             parked = self._park_service.park(
                 context=context,
                 approval_id=escalation.approval_id,
                 agent_id=agent_id,
                 task_id=task_id,
-                metadata={
-                    "tool_name": escalation.tool_name,
-                    "action_type": escalation.action_type,
-                    "risk_level": escalation.risk_level.value,
-                },
+                metadata=metadata,
             )
         except MemoryError, RecursionError:
             raise
@@ -228,11 +353,14 @@ class ApprovalGate:
     async def resume_context(
         self,
         approval_id: str,
+        *,
+        session_id: str | None = None,
     ) -> tuple[AgentContext, str] | None:
         """Load parked context, deserialize, and delete.
 
         Args:
             approval_id: The approval item identifier.
+            session_id: Session identifier for event stream, or ``None``.
 
         Returns:
             ``(AgentContext, parked_id)`` on success, or ``None`` if
@@ -248,13 +376,61 @@ class ApprovalGate:
 
         context = self._deserialize_context(parked, approval_id)
         await self._cleanup_parked(parked, approval_id)
+        await self._resolve_interrupt_from_metadata(parked)
 
         logger.info(
             APPROVAL_GATE_CONTEXT_RESUMED,
             approval_id=approval_id,
             parked_id=parked.id,
         )
+
+        if session_id is not None and self._event_hub is not None:
+            try:
+                await self._event_hub.publish_raw(
+                    session_id=session_id,
+                    event_type=AgUiEventType.APPROVAL_RESUMED,
+                    agent_id=parked.agent_id,
+                    payload={"approval_id": approval_id},
+                )
+            except MemoryError, RecursionError:
+                raise
+            except Exception:
+                logger.warning(
+                    APPROVAL_GATE_NOTIFICATION_FAILED,
+                    approval_id=approval_id,
+                    note="Failed to publish APPROVAL_RESUMED event",
+                    exc_info=True,
+                )
+
         return context, parked.id
+
+    async def _resolve_interrupt_from_metadata(
+        self,
+        parked: ParkedContext,
+    ) -> None:
+        """Resolve the interrupt stored in parked metadata, if any."""
+        if self._interrupt_store is None:
+            return
+        iid = parked.metadata.get("interrupt_id")
+        if not iid:
+            return
+        resolution = InterruptResolution(
+            interrupt_id=iid,
+            decision=ResumeDecision.APPROVE,
+            resolved_at=datetime.now(UTC),
+            resolved_by="approval_gate",
+        )
+        try:
+            await self._interrupt_store.resolve(resolution)
+        except MemoryError, RecursionError:
+            raise
+        except Exception:
+            logger.warning(
+                APPROVAL_GATE_NOTIFICATION_FAILED,
+                approval_id=parked.approval_id,
+                note="Failed to resolve interrupt on resume",
+                exc_info=True,
+            )
 
     async def _load_parked(
         self,

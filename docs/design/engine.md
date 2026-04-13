@@ -803,7 +803,12 @@ async run(
    `ToolInvoker.pending_escalations`), the `ApprovalGate` evaluates whether
    parking is needed. If so, the context is serialized via `ParkService`
    and persisted when a `ParkedContextRepository` is configured; the loop
-   then returns a `PARKED` result.
+   then returns a `PARKED` result. When an `EventStreamHub` is configured,
+   the gate also emits an `APPROVAL_INTERRUPT` SSE event and creates an
+   `Interrupt` record for real-time HITL resolution. On resume, an
+   `APPROVAL_RESUMED` event is emitted. See
+   [Communication: Event Stream](communication.md#event-stream--hitl-surface)
+   for the full interrupt/resume protocol and `EvidencePackage` schema.
 11. **Record costs** -- records accumulated `TokenUsage` to `CostTracker` (if
     available), tagged with `project_id` for project-level cost aggregation.
     Cost recording failures are logged but do not affect the result.

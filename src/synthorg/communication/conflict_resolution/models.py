@@ -234,3 +234,49 @@ class DissentRecord(BaseModel):
             )
             raise ValueError(msg)
         return self
+
+
+class DissentPayload(BaseModel):
+    """Typed payload for DISSENT bus messages.
+
+    Extracts the key fields from a ``DissentRecord`` into a
+    structured, serializable payload suitable for the internal
+    message bus and SSE event stream.
+
+    Attributes:
+        dissent_id: Unique dissent record identifier.
+        conflict_id: Identifier of the originating conflict.
+        dissenting_agent_id: Agent whose position was overruled.
+        conflict_type: Type of the originating conflict.
+        strategy_used: Resolution strategy that was applied.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+
+    dissent_id: NotBlankStr = Field(description="Dissent record ID")
+    conflict_id: NotBlankStr = Field(description="Originating conflict ID")
+    dissenting_agent_id: NotBlankStr = Field(
+        description="Agent whose position was overruled",
+    )
+    conflict_type: ConflictType = Field(description="Conflict type")
+    strategy_used: ConflictResolutionStrategy = Field(
+        description="Resolution strategy",
+    )
+
+    @classmethod
+    def from_record(cls, record: DissentRecord) -> DissentPayload:
+        """Build a payload from a dissent record.
+
+        Args:
+            record: The dissent record.
+
+        Returns:
+            A typed dissent payload.
+        """
+        return cls(
+            dissent_id=record.id,
+            conflict_id=record.conflict.id,
+            dissenting_agent_id=record.dissenting_agent_id,
+            conflict_type=record.conflict.type,
+            strategy_used=record.strategy_used,
+        )

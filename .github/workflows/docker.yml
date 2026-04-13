@@ -196,13 +196,13 @@ jobs:
 
       - name: Install security scanners
         run: |
-          curl -sfL "https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz" -o "/tmp/trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz"
-          curl -sfL "https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/trivy_${TRIVY_VERSION}_checksums.txt" -o /tmp/trivy_checksums.txt
+          curl -sfL --retry 3 --retry-delay 5 "https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz" -o "/tmp/trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz"
+          curl -sfL --retry 3 --retry-delay 5 "https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/trivy_${TRIVY_VERSION}_checksums.txt" -o /tmp/trivy_checksums.txt
           (cd /tmp && grep "trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz" trivy_checksums.txt | sha256sum -c -)
           tar -xzf "/tmp/trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz" -C /usr/local/bin trivy
 
-          curl -sfL "https://github.com/anchore/grype/releases/download/v${GRYPE_VERSION}/grype_${GRYPE_VERSION}_linux_amd64.tar.gz" -o "/tmp/grype_${GRYPE_VERSION}_linux_amd64.tar.gz"
-          curl -sfL "https://github.com/anchore/grype/releases/download/v${GRYPE_VERSION}/grype_${GRYPE_VERSION}_checksums.txt" -o /tmp/grype_checksums.txt
+          curl -sfL --retry 3 --retry-delay 5 "https://github.com/anchore/grype/releases/download/v${GRYPE_VERSION}/grype_${GRYPE_VERSION}_linux_amd64.tar.gz" -o "/tmp/grype_${GRYPE_VERSION}_linux_amd64.tar.gz"
+          curl -sfL --retry 3 --retry-delay 5 "https://github.com/anchore/grype/releases/download/v${GRYPE_VERSION}/grype_${GRYPE_VERSION}_checksums.txt" -o /tmp/grype_checksums.txt
           (cd /tmp && grep "grype_${GRYPE_VERSION}_linux_amd64.tar.gz" grype_checksums.txt | sha256sum -c -)
           tar -xzf "/tmp/grype_${GRYPE_VERSION}_linux_amd64.tar.gz" -C /usr/local/bin grype
 
@@ -332,13 +332,13 @@ jobs:
 
       - name: Install security scanners
         run: |
-          curl -sfL "https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz" -o "/tmp/trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz"
-          curl -sfL "https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/trivy_${TRIVY_VERSION}_checksums.txt" -o /tmp/trivy_checksums.txt
+          curl -sfL --retry 3 --retry-delay 5 "https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz" -o "/tmp/trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz"
+          curl -sfL --retry 3 --retry-delay 5 "https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/trivy_${TRIVY_VERSION}_checksums.txt" -o /tmp/trivy_checksums.txt
           (cd /tmp && grep "trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz" trivy_checksums.txt | sha256sum -c -)
           tar -xzf "/tmp/trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz" -C /usr/local/bin trivy
 
-          curl -sfL "https://github.com/anchore/grype/releases/download/v${GRYPE_VERSION}/grype_${GRYPE_VERSION}_linux_amd64.tar.gz" -o "/tmp/grype_${GRYPE_VERSION}_linux_amd64.tar.gz"
-          curl -sfL "https://github.com/anchore/grype/releases/download/v${GRYPE_VERSION}/grype_${GRYPE_VERSION}_checksums.txt" -o /tmp/grype_checksums.txt
+          curl -sfL --retry 3 --retry-delay 5 "https://github.com/anchore/grype/releases/download/v${GRYPE_VERSION}/grype_${GRYPE_VERSION}_linux_amd64.tar.gz" -o "/tmp/grype_${GRYPE_VERSION}_linux_amd64.tar.gz"
+          curl -sfL --retry 3 --retry-delay 5 "https://github.com/anchore/grype/releases/download/v${GRYPE_VERSION}/grype_${GRYPE_VERSION}_checksums.txt" -o /tmp/grype_checksums.txt
           (cd /tmp && grep "grype_${GRYPE_VERSION}_linux_amd64.tar.gz" grype_checksums.txt | sha256sum -c -)
           tar -xzf "/tmp/grype_${GRYPE_VERSION}_linux_amd64.tar.gz" -C /usr/local/bin grype
 
@@ -644,7 +644,7 @@ jobs:
 
       - name: Install D2
         run: |
-          curl -fsSL "https://github.com/terrastruct/d2/releases/download/v0.7.1/d2-v0.7.1-linux-amd64.tar.gz" -o /tmp/d2.tar.gz
+          curl -fsSL --retry 3 --retry-delay 5 "https://github.com/terrastruct/d2/releases/download/v0.7.1/d2-v0.7.1-linux-amd64.tar.gz" -o /tmp/d2.tar.gz
           echo "eb172adf59f38d1e5a70ab177591356754ffaf9bebb84e0ca8b767dfb421dad7  /tmp/d2.tar.gz" | sha256sum --check --strict -
           tar -xzf /tmp/d2.tar.gz -C /tmp
           sudo mv /tmp/d2-v0.7.1/bin/d2 /usr/local/bin/d2

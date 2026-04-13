@@ -224,16 +224,21 @@ a bidirectional reference for the gateway translation layer.
 ### SSE Streaming
 
 External task update delivery uses **Server-Sent Events** per the A2A specification.
-This is distinct from the internal WebSocket transport used by the dashboard:
+The dashboard also uses SSE for observability and the HITL interrupt/resume protocol
+(see [Event Stream & HITL Surface](#event-stream--hitl-surface) below).
 
 | Consumer | Transport | Protocol | Use Case |
 |----------|-----------|----------|----------|
-| Web dashboard | WebSocket | Custom events | Real-time UI updates |
+| Web dashboard | SSE | AG-UI projected events | Observability + HITL interrupt/resume |
+| Web dashboard | WebSocket | Custom events | Bidirectional UI actions (chat, settings) |
 | External A2A client | SSE | `tasks/sendSubscribe` | Task progress streaming |
 
-The gateway translates internal MessageBus events for subscribed tasks into SSE events
-with A2A-formatted payloads. Only task-related events for explicitly subscribed tasks
-are forwarded -- no internal channel traffic leaks to external consumers.
+The `EventStreamHub` is the single event source for all SSE consumers (hub-driven
+architecture). Both the AG-UI dashboard and the future A2A gateway (#1164) subscribe
+to the hub and apply per-consumer projection layers. The gateway applies an A2A
+projection that filters to task-related events for explicitly subscribed tasks and
+formats payloads per the A2A specification -- no internal channel traffic leaks to
+external consumers.
 
 ### A2A Client (Outbound)
 
@@ -722,3 +727,114 @@ limiter remain in-memory (short-lived by design).
 | Distributed monolith | None -- async pull message bus, no synchronous coupling | |
 | Ownership ambiguity | None -- TaskEngine single-writer actor | |
 | Cascading failure | Low -- `fail_fast` bounds wave propagation | No upstream contamination detection |
+
+---
+
+## Event Stream & HITL Surface
+
+*Implemented in #1263. SSE event stream for dashboard observability and
+human-in-the-loop (HITL) interrupt/resume protocol.*
+
+### AG-UI Projection Model
+
+Internal observability events (from `observability/events/`) are projected
+one-way to [AG-UI protocol](https://github.com/ag-ui-protocol/ag-ui)
+standard types for external consumers. The internal event namespace remains
+canonical -- AG-UI is the external-facing projection only.
+
+The `EventProjector` in `communication/event_stream/projector.py` maps
+internal event constants to `AgUiEventType` values:
+
+| Internal Event | AG-UI Type |
+|---|---|
+| `execution.engine.start` | `run_started` |
+| `execution.engine.complete` | `run_finished` |
+| `execution.engine.error` | `run_error` |
+| `execution.plan.step_start` | `step_started` |
+| `execution.plan.step_complete` | `step_finished` |
+| `execution.plan.step_failed` | `step_failed` |
+| `execution.loop.turn_start` | `text_message_start` |
+| `execution.loop.turn_complete` | `text_message_end` |
+| `execution.loop.tool_calls` | `tool_call_start` |
+| `approval_gate.context.parked` | `approval_interrupt` |
+| `approval_gate.context.resumed` | `approval_resumed` |
+Streaming events (`text_message_content`, `tool_call_args`, `tool_call_end`,
+`info_request_interrupt`, `info_request_resumed`) and `synthorg:dissent` are
+emitted directly by their services via `EventStreamHub.publish_raw()`, not via
+the EventProjector log projection, because they carry structured payloads that
+don't originate from a single log call.
+
+### SSE Endpoint
+
+`GET /api/v1/events/stream?session_id={id}` returns a `text/event-stream`
+response. Each SSE event has:
+
+```json
+{
+  "id": "evt-<uuid>",
+  "type": "<AgUiEventType>",
+  "timestamp": "<ISO 8601>",
+  "session_id": "<session>",
+  "correlation_id": "<optional>",
+  "agent_id": "<optional>",
+  "payload": { ... }
+}
+```
+
+The `EventStreamHub` (`communication/event_stream/stream.py`) is the single
+pub/sub source. Both the AG-UI dashboard and the future A2A gateway consume
+from this hub, each applying their own projection layer.
+
+### Interrupt / Resume Protocol
+
+Two blocking interrupt types:
+
+**Tool Approval Interrupt** -- emitted when `ApprovalGate` parks execution:
+
+- Payload: `interrupt_id`, `tool_name`, `tool_args`, `evidence_package_id`,
+  `timeout_seconds`
+- Resume: `POST /api/v1/events/resume/{interrupt_id}` with
+  `{decision, feedback}`
+
+**Information Request Interrupt** -- emitted when an agent needs
+mid-task clarification:
+
+- Payload: `interrupt_id`, `question`, `context_snippet`, `timeout_seconds`
+- Resume: `POST /api/v1/events/resume/{interrupt_id}` with `{response}`
+
+Non-SSE polling fallback for CLI/integration tests:
+`GET /api/v1/interrupts` + `POST /api/v1/interrupts/{id}/resume`.
+
+### EvidencePackage Schema
+
+`EvidencePackage` (in `core/evidence.py`, re-exported from
+`communication/event_stream/evidence.py`) is the structured HITL approval
+payload. It extends `StructuredArtifact` (shared base with
+`HandoffArtifact` from R2 #1262):
+
+- `id`, `title`, `narrative` -- human-readable summary
+- `reasoning_trace` -- compressed reasoning steps
+- `recommended_actions` -- 1-3 `RecommendedAction` options
+- `risk_level` -- `ApprovalRiskLevel`
+- `source_agent_id`, `task_id`, `metadata`
+
+`ApprovalItem.evidence_package` (optional) carries the package; existing
+approval paths can adopt incrementally.
+
+### DissentRecord as First-Class Message Type
+
+`MessageType.DISSENT` promotes `DissentRecord` from a persistence-only
+artifact to a typed message on the bus (S1 #1254 constraint). When
+a conflict is resolved:
+
+1. Dissent records are built for overruled positions (existing)
+2. A `synthorg:dissent` SSE event is published via the `EventStreamHub`
+3. `COMM_DISSENT_PUBLISHED` observability event is logged
+
+### A2A Projection Consolidation
+
+The `EventStreamHub` is designed as the single event source for all
+consumers. The existing A2A gateway (design-only, not yet implemented)
+will subscribe to the same hub and apply A2A-specific state mapping
+(see [A2A External Gateway](#a2a-external-gateway) above) as a separate
+projection layer. No second SSE backend is needed.
