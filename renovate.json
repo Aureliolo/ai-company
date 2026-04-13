@@ -6,6 +6,9 @@
     "helpers:pinGitHubActionDigests",
     "docker:pinDigests"
   ],
+  "pre-commit": {
+    "enabled": true
+  },
   "schedule": ["before 7am"],
   "timezone": "Etc/UTC",
   "labels": ["dependencies"],
