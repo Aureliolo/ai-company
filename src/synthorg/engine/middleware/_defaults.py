@@ -11,6 +11,9 @@ Call ``register_default_middleware()`` once at application startup
 
 from typing import Any
 
+from synthorg.engine.middleware.behavior_tagger import (
+    BehaviorTaggerMiddleware,
+)
 from synthorg.engine.middleware.builtin import (
     ApprovalGateMiddleware,
     CheckpointResumeMiddleware,
@@ -61,6 +64,13 @@ _AGENT_DEFAULTS: tuple[tuple[str, Any], ...] = (
     ("disclosure", DisclosureMiddleware),
 )
 
+# Opt-in middleware: registered in the factory but NOT in the
+# default agent chain.  Enable by adding the name to the
+# company's AgentMiddlewareConfig.chain.
+_AGENT_OPT_IN: tuple[tuple[str, Any], ...] = (
+    ("behavior_tagger", BehaviorTaggerMiddleware),
+)
+
 _COORDINATION_DEFAULTS: tuple[tuple[str, Any], ...] = (
     ("clarification_gate", ClarificationGateMiddleware),
     ("task_ledger", TaskLedgerMiddleware),
@@ -87,12 +97,15 @@ def register_default_middleware() -> None:
     for name, factory in _AGENT_DEFAULTS:
         register_agent_middleware(name, factory)
 
+    for name, factory in _AGENT_OPT_IN:
+        register_agent_middleware(name, factory)
+
     for name, factory in _COORDINATION_DEFAULTS:
         register_coordination_middleware(name, factory)
 
     _registered = True
     logger.debug(
         MIDDLEWARE_DEFAULTS_REGISTERED,
-        agent_count=len(_AGENT_DEFAULTS),
+        agent_count=len(_AGENT_DEFAULTS) + len(_AGENT_OPT_IN),
         coordination_count=len(_COORDINATION_DEFAULTS),
     )

@@ -20,6 +20,7 @@ from synthorg.engine.context import AgentContext
 from synthorg.providers.enums import FinishReason
 
 if TYPE_CHECKING:
+    from synthorg.engine.trajectory.efficiency_ratios import EfficiencyRatios
     from synthorg.providers.models import CompletionConfig
     from synthorg.providers.protocol import CompletionProvider
     from synthorg.tools.invoker import ToolInvoker
@@ -38,6 +39,25 @@ class NodeType(StrEnum):
     QUALITY_CHECK = "quality_check"
     BUDGET_CHECK = "budget_check"
     STAGNATION_CHECK = "stagnation_check"
+
+
+class BehaviorTag(StrEnum):
+    """Behavior category for trace capture and eval routing.
+
+    Starting taxonomy derived from agent evaluation patterns.
+    Extend as usage patterns reveal category fragmentation or
+    generalization.
+    """
+
+    FILE_OPERATIONS = "file_operations"
+    RETRIEVAL = "retrieval"
+    TOOL_USE = "tool_use"
+    MEMORY = "memory"
+    CONVERSATION = "conversation"
+    SUMMARIZATION = "summarization"
+    DELEGATION = "delegation"
+    COORDINATION = "coordination"
+    VERIFICATION = "verification"
 
 
 class TerminationReason(StrEnum):
@@ -74,6 +94,10 @@ class TurnRecord(BaseModel):
         node_types: Node types that executed in this turn (e.g.
             LLM_CALL, TOOL_INVOCATION). Defaults to empty for
             deserialization of legacy data.
+        behavior_tags: Behavior categories inferred by BehaviorTaggerMiddleware.
+        efficiency_delta: Efficiency ratios against an ideal baseline.
+        prior_tool_call_count: Cumulative tool calls before this turn (for PTE).
+        tool_response_tokens: Tokens from tool responses this turn (for PTE).
         success: Whether this turn completed without error or content filter (computed).
     """
 
@@ -119,6 +143,24 @@ class TurnRecord(BaseModel):
     node_types: tuple[NodeType, ...] = Field(
         default=(),
         description="Node types that executed in this turn",
+    )
+    behavior_tags: tuple[BehaviorTag, ...] = Field(
+        default=(),
+        description="Behavior categories inferred by BehaviorTaggerMiddleware",
+    )
+    efficiency_delta: EfficiencyRatios | None = Field(
+        default=None,
+        description="Efficiency ratios against an ideal baseline",
+    )
+    prior_tool_call_count: int = Field(
+        default=0,
+        ge=0,
+        description="Cumulative tool calls before this turn (for PTE)",
+    )
+    tool_response_tokens: int = Field(
+        default=0,
+        ge=0,
+        description="Tokens from tool responses this turn (for PTE)",
     )
 
     @model_validator(mode="after")

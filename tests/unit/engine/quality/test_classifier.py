@@ -5,7 +5,11 @@ import pytest
 from synthorg.engine.loop_protocol import TerminationReason, TurnRecord
 from synthorg.engine.quality.classifier import RuleBasedStepClassifier
 from synthorg.engine.quality.models import StepQuality
-from synthorg.engine.stagnation.models import StagnationResult, StagnationVerdict
+from synthorg.engine.stagnation.models import (
+    StagnationReason,
+    StagnationResult,
+    StagnationVerdict,
+)
 from synthorg.providers.enums import FinishReason
 
 
@@ -199,6 +203,7 @@ class TestRuleBasedStepClassifier:
         """Stagnation (definitive) should take priority over error termination."""
         stagnation = StagnationResult(
             verdict=StagnationVerdict.TERMINATE,
+            reason=StagnationReason.TOOL_REPETITION,
             repetition_ratio=0.9,
         )
         signal = await classifier.classify(

@@ -5,6 +5,7 @@ from pydantic import ValidationError
 
 from synthorg.engine.stagnation.models import (
     StagnationConfig,
+    StagnationReason,
     StagnationResult,
     StagnationVerdict,
 )
@@ -131,6 +132,7 @@ class TestStagnationResult:
     def test_inject_prompt_with_message(self) -> None:
         result = StagnationResult(
             verdict=StagnationVerdict.INJECT_PROMPT,
+            reason=StagnationReason.TOOL_REPETITION,
             corrective_message="Try different tools.",
             repetition_ratio=0.7,
         )
@@ -143,6 +145,7 @@ class TestStagnationResult:
         ):
             StagnationResult(
                 verdict=StagnationVerdict.TERMINATE,
+                reason=StagnationReason.TOOL_REPETITION,
                 corrective_message="should not be here",
             )
 
@@ -159,6 +162,7 @@ class TestStagnationResult:
     def test_terminate_without_message(self) -> None:
         result = StagnationResult(
             verdict=StagnationVerdict.TERMINATE,
+            reason=StagnationReason.CYCLE_DETECTION,
             repetition_ratio=0.9,
             cycle_length=2,
         )
@@ -196,6 +200,7 @@ class TestStagnationResult:
     def test_details_forward_compatible(self) -> None:
         result = StagnationResult(
             verdict=StagnationVerdict.TERMINATE,
+            reason=StagnationReason.TOOL_REPETITION,
             repetition_ratio=0.8,
             details={"repeated_tools": ["search:abc123"]},
         )

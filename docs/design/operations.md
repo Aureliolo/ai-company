@@ -608,6 +608,29 @@ or on a schedule.
 | `POST` | `/api/v1/reports/generate` | Generate an on-demand report for a given period |
 | `GET` | `/api/v1/reports/periods` | List available report periods |
 
+### Prefill Token Equivalents (PTE)
+
+PTE is an additional hardware-aware efficiency metric (from
+[arXiv:2604.05404](https://arxiv.org/abs/2604.05404)) that accounts for KV-cache
+eviction between tool calls and tool-response inflation. Unlike raw token counts,
+PTE correlates better with wall-clock latency for tool-integrated reasoning.
+
+**Formula approximation** (no internal KV state required):
+
+    PTE = input_tokens * (1 + eviction_penalty * prior_tool_call_count)
+        + output_tokens
+        + tool_response_tokens * tool_inflation_factor
+
+Default tuning: ``eviction_penalty = 0.3``, ``tool_inflation_factor = 1.5``.
+``PTEConfig`` defines these tuning parameters where
+``prefill_token_equivalents(..., config=...)`` is called.
+
+**Integration**: PTE is **additive, not a replacement** for token budgets. Token
+budgets continue to drive per-task spend caps; PTE drives efficiency analysis via
+``EfficiencyRatios.pte`` and ``pte_ratio``.
+
+**Configuration**: ``budget.pte_tracking_enabled: bool = False`` (opt-in).
+
 ---
 
 ## Tool and Capability System

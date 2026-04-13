@@ -54,12 +54,19 @@ def _make_handler(
     batch_size: int = 5,
     flush_interval: float = 60.0,
     start_flusher: bool = False,
+    timeout: float = 0.1,
 ) -> OtlpHandler:
-    """Create a handler with no background flusher (deterministic tests)."""
+    """Create a handler with no background flusher (deterministic tests).
+
+    When ``start_flusher`` is True, a higher timeout floor is
+    enforced so the flusher thread has time for a clean shutdown.
+    """
+    effective_timeout = max(timeout, 1.0) if start_flusher else timeout
     handler = OtlpHandler(
         endpoint="http://localhost:4318",
         batch_size=batch_size,
         flush_interval=flush_interval,
+        timeout=effective_timeout,
         _start_flusher=start_flusher,
     )
     handler.setFormatter(_JsonFormatter())

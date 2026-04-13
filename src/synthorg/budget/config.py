@@ -212,6 +212,10 @@ class BudgetConfig(BaseModel):
         default_factory=RiskBudgetConfig,
         description="Cumulative risk-unit action budget configuration",
     )
+    pte_tracking_enabled: bool = Field(
+        default=False,
+        description="Enable Prefill Token Equivalents tracking (observability-only)",
+    )
 
     @model_validator(mode="after")
     def _validate_per_task_limit_within_monthly(self) -> Self:

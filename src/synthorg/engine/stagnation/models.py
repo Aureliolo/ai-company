@@ -20,6 +20,18 @@ class StagnationVerdict(StrEnum):
     TERMINATE = "terminate"
 
 
+class StagnationReason(StrEnum):
+    """Why stagnation was detected.
+
+    Classifies the underlying cause (separate from ``StagnationVerdict``
+    which says what action to take).
+    """
+
+    TOOL_REPETITION = "tool_repetition"
+    CYCLE_DETECTION = "cycle_detection"
+    QUALITY_EROSION = "quality_erosion"
+
+
 class StagnationConfig(BaseModel):
     """Configuration for stagnation detection.
 
@@ -102,6 +114,10 @@ class StagnationResult(BaseModel):
     verdict: StagnationVerdict = Field(
         description="What action to take",
     )
+    reason: StagnationReason | None = Field(
+        default=None,
+        description="Why stagnation was detected (None when no stagnation)",
+    )
     corrective_message: str | None = Field(
         default=None,
         description="Corrective prompt to inject (INJECT_PROMPT only)",
@@ -136,6 +152,14 @@ class StagnationResult(BaseModel):
                 raise ValueError(msg)
         elif self.corrective_message is not None:
             msg = "corrective_message must be None when verdict is not INJECT_PROMPT"
+            raise ValueError(msg)
+        return self
+
+    @model_validator(mode="after")
+    def _validate_reason_with_verdict(self) -> Self:
+        """Ensure reason is None when no stagnation detected."""
+        if self.verdict == StagnationVerdict.NO_STAGNATION and self.reason is not None:
+            msg = "reason must be None when verdict is NO_STAGNATION"
             raise ValueError(msg)
         return self
 

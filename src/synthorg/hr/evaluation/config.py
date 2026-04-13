@@ -221,6 +221,38 @@ class ExperienceConfig(BaseModel):
         return self
 
 
+class EvalLoopConfig(BaseModel):
+    """Configuration for the closed-loop evaluation coordinator.
+
+    Attributes:
+        enabled: Whether evaluation cycles are active.
+        pattern_identifier_enabled: Enable pattern detection (stub).
+        benchmark_on_cycle: Run external benchmarks each cycle.
+        max_concurrent_benchmarks: Limit parallel benchmark execution.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+
+    enabled: bool = Field(
+        default=True,
+        description="Whether evaluation cycles are active",
+    )
+    pattern_identifier_enabled: bool = Field(
+        default=False,
+        description="Enable pattern detection (stub, future enhancement)",
+    )
+    benchmark_on_cycle: bool = Field(
+        default=False,
+        description="Run external benchmarks each cycle",
+    )
+    max_concurrent_benchmarks: int = Field(
+        default=2,
+        ge=1,
+        le=10,
+        description="Limit parallel benchmark execution",
+    )
+
+
 class EvaluationConfig(BaseModel):
     """Five-pillar evaluation framework configuration.
 
@@ -238,6 +270,7 @@ class EvaluationConfig(BaseModel):
         experience: User Experience pillar configuration.
         calibration_drift_threshold: LLM calibration drift threshold
             for confidence reduction (0.0-10.0).
+        eval_loop: Closed-loop evaluation coordinator configuration.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
@@ -262,6 +295,10 @@ class EvaluationConfig(BaseModel):
         ge=0.0,
         le=10.0,
         description="LLM calibration drift threshold for confidence reduction",
+    )
+    eval_loop: EvalLoopConfig = Field(
+        default_factory=EvalLoopConfig,
+        description="Closed-loop evaluation coordinator configuration",
     )
 
     @model_validator(mode="after")
