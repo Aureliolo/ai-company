@@ -23,7 +23,4 @@ COPY --chown=10001:10001 --chmod=755 docker/sandbox/sandbox-init.sh /usr/local/b
 WORKDIR /workspace
 USER 10001
 
-HEALTHCHECK --interval=10s --timeout=3s --retries=2 --start-period=5s \
-    CMD ["true"]
-
 CMD ["sleep", "infinity"]

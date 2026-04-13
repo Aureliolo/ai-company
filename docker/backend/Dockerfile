@@ -41,6 +41,10 @@ RUN --mount=type=cache,target=/home/build/.cache/uv,uid=65532,gid=65532 \
 
 RUN find /app/src -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
 
+# Strip cached wheels only. Keep *.dist-info so Syft and other SBOM tooling
+# can detect actual installed Python packages (not just declared dependencies).
+RUN find /app/.venv -type d -name 'wheels' -exec rm -rf {} + 2>/dev/null || true
+
 # Point venv Python symlink at Wolfi's path (/usr/bin/python) instead of
 # the builder's (/usr/local/bin/python3.14).  Creates a dangling symlink
 # in the builder that resolves when COPY'd to the Wolfi runtime stage.
