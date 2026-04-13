@@ -1,0 +1,34 @@
+# syntax=docker/dockerfile:1.10
+# =============================================================================
+# SynthOrg Sidecar -- transparent network proxy for sandbox containers
+# =============================================================================
+# Multi-stage build: Go builder + apko-composed Wolfi base with iptables.
+# The sidecar enforces allowed_hosts via dual-layer DNS + DNAT transparent
+# proxy. It shares a network namespace with the sandbox container.
+# =============================================================================
+
+FROM golang:1.26-alpine AS builder
+
+WORKDIR /build
+COPY go.mod go.sum ./
+RUN go mod download
+COPY . .
+RUN CGO_ENABLED=0 go build -ldflags="-s -w" -trimpath -o sidecar .
+
+# -----------------------------------------------------------------------------
+ARG BASE_IMAGE
+FROM ${BASE_IMAGE}
+
+LABEL org.opencontainers.image.title="synthorg-sidecar" \
+      org.opencontainers.image.description="SynthOrg transparent network proxy sidecar" \
+      org.opencontainers.image.url="https://github.com/Aureliolo/synthorg" \
+      org.opencontainers.image.source="https://github.com/Aureliolo/synthorg" \
+      org.opencontainers.image.licenses="BUSL-1.1" \
+      org.opencontainers.image.vendor="Aureliolo"
+
+COPY --from=builder /build/sidecar /usr/local/bin/sidecar
+
+HEALTHCHECK --interval=2s --timeout=2s --retries=3 --start-period=2s \
+    CMD wget -qO- http://localhost:15000/healthz || exit 1
+
+ENTRYPOINT ["/usr/local/bin/sidecar"]

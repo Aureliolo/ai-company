@@ -82,6 +82,7 @@ services:
       SYNTHORG_LOG_LEVEL: {{yamlStr .LogLevel}}
 {{- if .Sandbox}}
       SYNTHORG_SANDBOX_IMAGE: {{yamlStr (sandboxImageRef .ImageTag)}}
+      SYNTHORG_SIDECAR_IMAGE: {{yamlStr (sidecarImageRef .ImageTag)}}
 {{- end}}
 {{- if .JWTSecret}}
       SYNTHORG_JWT_SECRET: {{yamlStr .JWTSecret}}

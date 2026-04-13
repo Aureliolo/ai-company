@@ -1,0 +1,50 @@
+# SynthOrg sidecar base image -- Wolfi, composed by apko.
+# Produces: ghcr.io/aureliolo/synthorg-sidecar-base
+# Consumed by: docker/sidecar/Dockerfile (thin FROM wrapper).
+#
+# Includes iptables for DNAT transparent proxy setup and busybox
+# for HEALTHCHECK wget. UID 10002 must not collide with sandbox
+# UID 10001.
+
+contents:
+  repositories:
+    - https://packages.wolfi.dev/os
+  keyring:
+    - https://packages.wolfi.dev/os/wolfi-signing.rsa.pub
+  packages:
+    - wolfi-baselayout
+    - ca-certificates-bundle
+    - iptables
+    - busybox
+
+accounts:
+  groups:
+    - groupname: sidecar
+      gid: 10002
+  users:
+    - username: sidecar
+      uid: 10002
+      gid: 10002
+  run-as: "0"
+
+paths:
+  - path: /tmp
+    type: directory
+    uid: 10002
+    gid: 10002
+    permissions: 0o1777
+
+environment:
+  PATH: /usr/sbin:/usr/bin:/sbin:/bin
+
+archs:
+  - x86_64
+  - aarch64
+
+annotations:
+  org.opencontainers.image.title: synthorg-sidecar-base
+  org.opencontainers.image.description: Wolfi-based apko-composed base for synthorg-sidecar
+  org.opencontainers.image.url: https://github.com/Aureliolo/synthorg
+  org.opencontainers.image.source: https://github.com/Aureliolo/synthorg
+  org.opencontainers.image.licenses: BUSL-1.1
+  org.opencontainers.image.vendor: Aureliolo

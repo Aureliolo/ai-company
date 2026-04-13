@@ -421,14 +421,14 @@ class TestDockerSandboxCleanup:
         mock_docker = _make_mock_docker()
         sandbox = DockerSandbox(workspace=tmp_path)
         sandbox._docker = mock_docker
-        sandbox._tracked_containers = ["container1", "container2"]
+        sandbox._tracked_containers = {"container1": None, "container2": None}
 
         await sandbox.cleanup()
 
         container_obj = mock_docker.containers.container.return_value
         assert container_obj.stop.await_count == 2
         assert container_obj.delete.await_count == 2
-        assert sandbox._tracked_containers == []
+        assert sandbox._tracked_containers == {}
 
 
 # ── Health check ────────────────────────────────────────────────
@@ -635,7 +635,7 @@ class TestDockerSandboxContainerErrorHandling:
             await sandbox.execute(command="echo", args=("hi",))
 
         # Container should be removed from tracking after execute
-        assert sandbox._tracked_containers == []
+        assert sandbox._tracked_containers == {}
 
     async def test_start_failure_raises_sandbox_start_error(
         self,

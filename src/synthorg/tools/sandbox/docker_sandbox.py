@@ -7,6 +7,7 @@ Uses ``aiodocker`` for asynchronous Docker daemon communication.
 
 import asyncio
 import platform
+import secrets
 from pathlib import Path, PurePosixPath
 from typing import TYPE_CHECKING, Any, Final
 
@@ -32,6 +33,10 @@ from synthorg.observability.events.docker import (
 from synthorg.observability.events.sandbox import (
     SANDBOX_NETWORK_ENFORCEMENT,
     SANDBOX_RUNTIME_RESOLVER_ATTACHED,
+    SANDBOX_SIDECAR_CREATED,
+    SANDBOX_SIDECAR_HEALTH_FAILED,
+    SANDBOX_SIDECAR_HEALTHY,
+    SANDBOX_SIDECAR_STARTED,
 )
 from synthorg.tools.sandbox.credential_manager import SandboxCredentialManager
 from synthorg.tools.sandbox.docker_config import DockerSandboxConfig
@@ -45,11 +50,22 @@ if TYPE_CHECKING:
 
 _RESERVED_ENV_KEYS: Final[frozenset[str]] = frozenset(
     {
+        "SIDECAR_ALLOWED_HOSTS",
+        "SIDECAR_DNS_ALLOWED",
+        "SIDECAR_LOOPBACK_ALLOWED",
+        "SIDECAR_ALLOW_ALL",
+        "SIDECAR_ADMIN_TOKEN",
         "SANDBOX_ALLOWED_HOSTS",
         "SANDBOX_DNS_ALLOWED",
         "SANDBOX_LOOPBACK_ALLOWED",
     }
 )
+
+_SIDECAR_HEALTH_POLL_INTERVAL: Final[float] = 0.2
+_SIDECAR_HEALTH_TIMEOUT: Final[float] = 15.0
+_SIDECAR_MEMORY: Final[str] = "64m"
+_SIDECAR_CPU: Final[float] = 0.5
+_SIDECAR_PIDS: Final[int] = 32
 
 logger = get_logger(__name__)
 
@@ -121,7 +137,7 @@ class DockerSandbox:
         self._config = config or _DEFAULT_CONFIG
         self._workspace = resolved
         self._docker: aiodocker.Docker | None = None
-        self._tracked_containers: list[str] = []
+        self._tracked_containers: dict[str, str | None] = {}
         self._lock = asyncio.Lock()
         self._credential_manager = SandboxCredentialManager()
         self._runtime_resolver: SandboxRuntimeResolver | None = None
@@ -215,7 +231,7 @@ class DockerSandbox:
         rel = cwd.resolve().relative_to(self._workspace)
         return str(PurePosixPath(_CONTAINER_WORKSPACE) / rel)
 
-    def _build_container_config(
+    def _build_container_config(  # noqa: PLR0913
         self,
         *,
         command: str,
@@ -223,6 +239,7 @@ class DockerSandbox:
         container_cwd: str,
         env_overrides: Mapping[str, str] | None,
         category: str = "",
+        network_mode: str | None = None,
     ) -> dict[str, Any]:
         """Build the Docker container creation config.
 
@@ -232,6 +249,9 @@ class DockerSandbox:
             container_cwd: Working directory inside the container.
             env_overrides: Environment variables for the container.
             category: Tool category for runtime resolution.
+            network_mode: Override the default network mode. Used to
+                set ``container:<sidecar_id>`` when sidecar
+                enforcement is active.
 
         Returns:
             A dict suitable for ``aiodocker`` container creation.
@@ -243,6 +263,8 @@ class DockerSandbox:
         )
         env_list = self._validate_env(sanitized)
         host_config = self._build_host_config(category=category)
+        if network_mode is not None:
+            host_config["NetworkMode"] = network_mode
         container_config: dict[str, Any] = {
             "Image": self._config.image,
             "Cmd": [command, *args],
@@ -252,11 +274,6 @@ class DockerSandbox:
             "AttachStdout": True,
             "AttachStderr": True,
         }
-        self._apply_network_enforcement(
-            container_config,
-            host_config,
-            env_list,
-        )
         return container_config
 
     def _validate_env(
@@ -320,44 +337,153 @@ class DockerSandbox:
             return self._runtime_resolver.resolve_runtime(category)
         return self._config.runtime
 
-    def _apply_network_enforcement(
-        self,
-        container_config: dict[str, Any],
-        host_config: dict[str, Any],
-        env_list: list[str],
-    ) -> None:
-        """Apply allowed_hosts iptables enforcement if configured.
+    def _needs_sidecar(self) -> bool:
+        """Return ``True`` if sidecar-based network enforcement is needed.
 
-        Modifies *container_config*, *host_config*, and *env_list*
-        in place when ``allowed_hosts`` is non-empty and network is
-        not ``"none"``.  When active, adds the ``NET_ADMIN``
-        capability, sets the container user to ``root``, and
-        replaces the entrypoint with ``sandbox-init`` (which applies
-        iptables rules then drops privileges via ``setpriv``).
+        Enforcement activates when ``allowed_hosts`` is non-empty (or
+        ``network_allow_all`` is set) and the default network is not
+        ``"none"``.
         """
-        if not self._config.allowed_hosts:
-            return
-        if self._config.network == "none":
-            return
+        has_rules = bool(
+            self._config.allowed_hosts or self._config.network_allow_all,
+        )
+        return has_rules and self._config.network != "none"
 
-        hosts_csv = ",".join(self._config.allowed_hosts)
-        env_list.append(f"SANDBOX_ALLOWED_HOSTS={hosts_csv}")
+    async def _create_sidecar(
+        self,
+        docker: aiodocker.Docker,
+    ) -> str:
+        """Create a sidecar proxy container.
+
+        The sidecar enforces ``allowed_hosts`` via dual-layer DNS +
+        DNAT transparent proxy.  It runs on bridge network with
+        ``NET_ADMIN`` capability (for iptables DNAT rules).
+
+        Args:
+            docker: Docker client.
+
+        Returns:
+            The sidecar container ID.
+
+        Raises:
+            SandboxStartError: If container creation fails.
+        """
+        admin_token = secrets.token_urlsafe(32)
+        env_list: list[str] = [f"SIDECAR_ADMIN_TOKEN={admin_token}"]
+
+        if self._config.network_allow_all:
+            env_list.append("SIDECAR_ALLOW_ALL=1")
+        else:
+            hosts_csv = ",".join(self._config.allowed_hosts)
+            env_list.append(f"SIDECAR_ALLOWED_HOSTS={hosts_csv}")
+
         dns_flag = "1" if self._config.dns_allowed else "0"
         lo_flag = "1" if self._config.loopback_allowed else "0"
-        env_list.append(f"SANDBOX_DNS_ALLOWED={dns_flag}")
-        env_list.append(f"SANDBOX_LOOPBACK_ALLOWED={lo_flag}")
-        host_config["CapAdd"] = ["NET_ADMIN"]
-        # iptables needs /run/xtables.lock which requires a writable /run.
-        # ReadonlyRootfs is True, so mount a tmpfs on /run.
-        host_config["Tmpfs"]["/run"] = "size=1m,nosuid,noexec"
-        container_config["User"] = "root"
-        container_config["Entrypoint"] = ["/usr/local/bin/sandbox-init"]
+        env_list.append(f"SIDECAR_DNS_ALLOWED={dns_flag}")
+        env_list.append(f"SIDECAR_LOOPBACK_ALLOWED={lo_flag}")
+
+        memory_bytes = self._parse_memory_limit(_SIDECAR_MEMORY)
+        nano_cpus = int(_SIDECAR_CPU * _NANO_CPUS_MULTIPLIER)
+
+        config: dict[str, Any] = {
+            "Image": self._config.sidecar_image,
+            "Env": env_list,
+            "HostConfig": {
+                "NetworkMode": "bridge",
+                "CapDrop": ["ALL"],
+                "CapAdd": ["NET_ADMIN"],
+                "ReadonlyRootfs": True,
+                "Tmpfs": {"/tmp": "size=8m,noexec,nosuid"},  # noqa: S108
+                "Memory": memory_bytes,
+                "NanoCpus": nano_cpus,
+                "PidsLimit": _SIDECAR_PIDS,
+                "AutoRemove": False,
+            },
+        }
+
+        try:
+            container = await docker.containers.create(config)  # pyright: ignore[reportAttributeAccessIssue]
+        except Exception as exc:
+            msg = f"Failed to create sidecar container: {exc}"
+            logger.exception(
+                DOCKER_EXECUTE_FAILED,
+                command="sidecar",
+                error=msg,
+            )
+            raise SandboxStartError(msg) from exc
+
+        sidecar_id = container.id
+        logger.debug(
+            SANDBOX_SIDECAR_CREATED,
+            sidecar_id=sidecar_id[:12],
+            image=self._config.sidecar_image,
+        )
+
+        allowed = (
+            "allow_all"
+            if self._config.network_allow_all
+            else ",".join(self._config.allowed_hosts)
+        )
         logger.debug(
             SANDBOX_NETWORK_ENFORCEMENT,
-            allowed_hosts=hosts_csv,
+            allowed_hosts=allowed,
             dns_allowed=self._config.dns_allowed,
             loopback_allowed=self._config.loopback_allowed,
         )
+        return sidecar_id
+
+    async def _wait_sidecar_healthy(
+        self,
+        docker: aiodocker.Docker,
+        sidecar_id: str,
+    ) -> None:
+        """Wait for the sidecar container to report healthy.
+
+        Polls Docker's built-in health check status every 200ms
+        until ``healthy`` or timeout.
+
+        Args:
+            docker: Docker client.
+            sidecar_id: Sidecar container ID.
+
+        Raises:
+            SandboxStartError: On timeout or unhealthy status.
+        """
+        deadline = asyncio.get_event_loop().time() + _SIDECAR_HEALTH_TIMEOUT
+        container_obj = docker.containers.container(sidecar_id)  # pyright: ignore[reportAttributeAccessIssue]
+
+        while asyncio.get_event_loop().time() < deadline:
+            try:
+                info = await container_obj.show()
+            except Exception:
+                await asyncio.sleep(_SIDECAR_HEALTH_POLL_INTERVAL)
+                continue
+
+            health_status = info.get("State", {}).get("Health", {}).get("Status")
+            if health_status == "healthy":
+                logger.debug(
+                    SANDBOX_SIDECAR_HEALTHY,
+                    sidecar_id=sidecar_id[:12],
+                )
+                return
+            if health_status == "unhealthy":
+                msg = "Sidecar health check reported unhealthy"
+                logger.warning(
+                    SANDBOX_SIDECAR_HEALTH_FAILED,
+                    sidecar_id=sidecar_id[:12],
+                    status=health_status,
+                )
+                raise SandboxStartError(msg)
+
+            await asyncio.sleep(_SIDECAR_HEALTH_POLL_INTERVAL)
+
+        msg = "Sidecar health check timed out"
+        logger.warning(
+            SANDBOX_SIDECAR_HEALTH_FAILED,
+            sidecar_id=sidecar_id[:12],
+            timeout=_SIDECAR_HEALTH_TIMEOUT,
+        )
+        raise SandboxStartError(msg)
 
     @staticmethod
     def _parse_memory_limit(limit: str) -> int:
@@ -470,17 +596,39 @@ class DockerSandbox:
         Returns:
             A ``SandboxResult`` with captured output and exit status.
         """
+        # Create sidecar if network enforcement is needed.
+        sidecar_id: str | None = None
+        network_mode: str | None = None
+
+        if self._needs_sidecar():
+            sidecar_id = await self._create_sidecar(docker)
+            try:
+                sidecar_obj = docker.containers.container(sidecar_id)  # pyright: ignore[reportAttributeAccessIssue]
+                await sidecar_obj.start()
+                logger.debug(
+                    SANDBOX_SIDECAR_STARTED,
+                    sidecar_id=sidecar_id[:12],
+                )
+                await self._wait_sidecar_healthy(docker, sidecar_id)
+            except Exception:
+                await self._remove_container(docker, sidecar_id)
+                raise
+            network_mode = f"container:{sidecar_id}"
+
         config = self._build_container_config(
             command=command,
             args=args,
             container_cwd=container_cwd,
             env_overrides=env_overrides,
             category=category,
+            network_mode=network_mode,
         )
 
         try:
             container = await docker.containers.create(config)  # pyright: ignore[reportAttributeAccessIssue]
         except Exception as exc:
+            if sidecar_id:
+                await self._remove_container(docker, sidecar_id)
             msg = f"Failed to create container: {exc}"
             logger.exception(
                 DOCKER_EXECUTE_FAILED,
@@ -490,10 +638,7 @@ class DockerSandbox:
             raise SandboxStartError(msg) from exc
 
         container_id = container.id
-        self._tracked_containers = [
-            *self._tracked_containers,
-            container_id,
-        ]
+        self._tracked_containers[container_id] = sidecar_id
         logger.debug(
             DOCKER_CONTAINER_CREATED,
             container_id=container_id[:12],
@@ -510,9 +655,9 @@ class DockerSandbox:
             )
         finally:
             await self._remove_container(docker, container_id)
-            self._tracked_containers = [
-                c for c in self._tracked_containers if c != container_id
-            ]
+            if sidecar_id:
+                await self._remove_container(docker, sidecar_id)
+            self._tracked_containers.pop(container_id, None)
 
     async def _start_and_wait(
         self,
@@ -725,15 +870,24 @@ class DockerSandbox:
             )
 
     async def cleanup(self) -> None:
-        """Stop and remove tracked containers, then close the Docker session."""
+        """Stop and remove tracked containers, then close the Docker session.
+
+        Removes sandbox containers first, then their paired sidecars,
+        to allow graceful network shutdown.
+        """
         logger.debug(
             DOCKER_CLEANUP,
             tracked_count=len(self._tracked_containers),
         )
         if self._docker is not None:
-            for cid in self._tracked_containers:
-                await self._stop_container(self._docker, cid)
-                await self._remove_container(self._docker, cid)
+            for sandbox_id, sidecar_id in list(
+                self._tracked_containers.items(),
+            ):
+                await self._stop_container(self._docker, sandbox_id)
+                await self._remove_container(self._docker, sandbox_id)
+                if sidecar_id:
+                    await self._stop_container(self._docker, sidecar_id)
+                    await self._remove_container(self._docker, sidecar_id)
             try:
                 await self._docker.close()
             except Exception as exc:
@@ -743,7 +897,7 @@ class DockerSandbox:
                 )
             finally:
                 self._docker = None
-        self._tracked_containers = []
+        self._tracked_containers = {}
 
     async def health_check(self) -> bool:
         """Return ``True`` if the Docker daemon is reachable.

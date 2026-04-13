@@ -12,6 +12,7 @@ from synthorg.observability.events.config import (
     CONFIG_ENV_VAR_RESOLVED,
     CONFIG_VALIDATION_FAILED,
 )
+from synthorg.tools.sandbox.network_presets import PRESETS
 from synthorg.tools.sandbox.policy import SandboxPolicy  # noqa: TC001
 
 logger = get_logger(__name__)
@@ -22,6 +23,8 @@ _MAX_PORT = 65535
 _HOST_PORT_PARTS = 2
 _SANDBOX_IMAGE_ENV_VAR = "SYNTHORG_SANDBOX_IMAGE"
 _FALLBACK_SANDBOX_IMAGE = "ghcr.io/aureliolo/synthorg-sandbox:latest"
+_SIDECAR_IMAGE_ENV_VAR = "SYNTHORG_SIDECAR_IMAGE"
+_FALLBACK_SIDECAR_IMAGE = "ghcr.io/aureliolo/synthorg-sidecar:latest"
 
 
 def _default_sandbox_image() -> str:
@@ -50,6 +53,29 @@ def _default_sandbox_image() -> str:
         reason="env var unset or whitespace-only",
     )
     return _FALLBACK_SANDBOX_IMAGE
+
+
+def _default_sidecar_image() -> str:
+    """Resolve the default sidecar image from ``SYNTHORG_SIDECAR_IMAGE``.
+
+    Same resolution pattern as :func:`_default_sandbox_image`.
+    """
+    raw = os.environ.get(_SIDECAR_IMAGE_ENV_VAR, "")
+    value = raw.strip()
+    if value:
+        logger.debug(
+            CONFIG_ENV_VAR_RESOLVED,
+            var=_SIDECAR_IMAGE_ENV_VAR,
+            resolved=value,
+        )
+        return value
+    logger.debug(
+        CONFIG_ENV_VAR_FALLBACK,
+        var=_SIDECAR_IMAGE_ENV_VAR,
+        fallback=_FALLBACK_SIDECAR_IMAGE,
+        reason="env var unset or whitespace-only",
+    )
+    return _FALLBACK_SIDECAR_IMAGE
 
 
 class DockerSandboxConfig(BaseModel):
@@ -123,6 +149,28 @@ class DockerSandboxConfig(BaseModel):
         default=None,
         description="Optional container runtime (e.g. 'runsc' for gVisor)",
     )
+    sidecar_image: NotBlankStr = Field(
+        default_factory=_default_sidecar_image,
+        description=(
+            "Docker image for network sidecar containers. Precedence: "
+            "explicit YAML, SYNTHORG_SIDECAR_IMAGE env var, "
+            "ghcr.io/aureliolo/synthorg-sidecar:latest fallback."
+        ),
+    )
+    network_allow_all: bool = Field(
+        default=False,
+        description=(
+            "Allow all outbound connections (bypasses allowlist). "
+            "WARNING: disables network isolation."
+        ),
+    )
+    network_presets: tuple[NotBlankStr, ...] = Field(
+        default=(),
+        description=(
+            "Named rule presets to include (e.g. 'python-dev', 'git'). "
+            "Merged with allowed_hosts at validation time."
+        ),
+    )
     policy: SandboxPolicy | None = Field(
         default=None,
         description=(
@@ -176,12 +224,55 @@ class DockerSandboxConfig(BaseModel):
         return self
 
     @model_validator(mode="after")
+    def _validate_network_allow_all(self) -> Self:
+        """Reject ``network_allow_all`` with non-empty ``allowed_hosts``."""
+        if self.network_allow_all and self.allowed_hosts:
+            msg = (
+                "network_allow_all=True is mutually exclusive with "
+                "allowed_hosts -- set one or the other"
+            )
+            logger.warning(
+                CONFIG_VALIDATION_FAILED,
+                field="network_allow_all",
+                reason=msg,
+            )
+            raise ValueError(msg)
+        return self
+
+    @model_validator(mode="after")
+    def _validate_network_presets(self) -> Self:
+        """Resolve preset names and merge into ``allowed_hosts``."""
+        if not self.network_presets:
+            return self
+        merged = list(self.allowed_hosts)
+        existing = set(self.allowed_hosts)
+        for preset_name in self.network_presets:
+            if preset_name not in PRESETS:
+                msg = (
+                    f"Unknown network preset {preset_name!r}; "
+                    f"available: {sorted(PRESETS)}"
+                )
+                logger.warning(
+                    CONFIG_VALIDATION_FAILED,
+                    field="network_presets",
+                    reason=msg,
+                )
+                raise ValueError(msg)
+            for entry in PRESETS[preset_name]:
+                if entry not in existing:
+                    merged.append(entry)
+                    existing.add(entry)
+        # Pydantic frozen model: use object.__setattr__ for validator mutation.
+        object.__setattr__(self, "allowed_hosts", tuple(merged))
+        return self
+
+    @model_validator(mode="after")
     def _validate_allowed_hosts(self) -> Self:
         """Validate that allowed_hosts entries use ``host:port`` format.
 
         Only IPv4 addresses and hostnames are supported; IPv6
-        addresses are not supported by the iptables enforcement
-        script.
+        addresses are not supported by the sidecar transparent
+        proxy.
         """
         for entry in self.allowed_hosts:
             parts = entry.split(":")
@@ -244,7 +335,7 @@ class DockerSandboxConfig(BaseModel):
         if self.network == "host":
             msg = (
                 "allowed_hosts cannot be used with network='host' -- "
-                "iptables rules would affect the host system"
+                "sidecar would affect the host network stack"
             )
             logger.warning(
                 CONFIG_VALIDATION_FAILED,
@@ -260,7 +351,7 @@ class DockerSandboxConfig(BaseModel):
                 "allowed_hosts cannot be used with "
                 "network_overrides containing 'host' "
                 f"(categories: {sorted(host_overrides)}) -- "
-                "iptables rules would affect the host system"
+                "sidecar would affect the host network stack"
             )
             logger.warning(
                 CONFIG_VALIDATION_FAILED,
