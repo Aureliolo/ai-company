@@ -11,6 +11,8 @@
 # top. No setup stage needed -- the symlink fix is done in the builder itself.
 # =============================================================================
 
+ARG BASE_IMAGE
+
 # ---------------------------------------------------------------------------
 # Stage 1 -- Builder (ephemeral: compiles deps, fixes venv symlink)
 # ---------------------------------------------------------------------------
@@ -48,7 +50,6 @@ RUN rm -f /app/.venv/bin/python \
 # ---------------------------------------------------------------------------
 # Stage 2 -- Runtime (apko-composed Wolfi base: no shell, no package manager)
 # ---------------------------------------------------------------------------
-ARG BASE_IMAGE
 FROM ${BASE_IMAGE}
 
 LABEL org.opencontainers.image.title="synthorg-backend" \

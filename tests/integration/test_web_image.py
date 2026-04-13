@@ -61,7 +61,11 @@ def web_container() -> Generator[str]:
             pytest.skip("Docker binary not found on PATH")
         except subprocess.CalledProcessError as exc:
             stderr = exc.stderr.lower()
-            if "manifest unknown" in stderr or "not found" in stderr:
+            if (
+                "manifest unknown" in stderr
+                or "pull access denied" in stderr
+                or "repository does not exist" in stderr
+            ):
                 pytest.skip(f"Web image not available: {exc.stderr.strip()}")
             if (
                 "cannot connect to the docker daemon" in stderr

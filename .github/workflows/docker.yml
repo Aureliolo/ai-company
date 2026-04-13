@@ -60,6 +60,8 @@ jobs:
               - 'web/**'
               - 'docs/**'
               - 'mkdocs.yml'
+              - 'scripts/export_openapi.py'
+              - 'src/synthorg/api/**'
               - '.github/workflows/docker.yml'
 
   # Extract app version from pyproject.toml (single source of truth)
@@ -691,7 +693,7 @@ jobs:
       - name: Trivy scan
         uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # v0.35.0
         with:
-          image-ref: ${{ steps.scan-ref.outputs.ref }}
+          input: web.tar
           format: json
           output: trivy-web.json
           exit-code: "0"
@@ -710,7 +712,7 @@ jobs:
       - name: Grype scan
         uses: anchore/scan-action@e1165082ffb1fe366ebaf02d8526e7c4989ea9d2 # v7.4.0
         with:
-          image: ${{ steps.scan-ref.outputs.ref }}
+          image: docker-archive:web.tar
           fail-build: true
           severity-cutoff: critical
           config: .github/.grype.yaml

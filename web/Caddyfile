@@ -124,6 +124,11 @@
 		}
 	}
 
+	# --- Bare /docs redirect to /docs/ for consistent trailing slash ---
+	handle /docs {
+		redir /docs/ permanent
+	}
+
 	# --- Static MkDocs documentation (no nonce) ---
 	handle /docs/* {
 		header {

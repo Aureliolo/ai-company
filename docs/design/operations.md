@@ -1688,7 +1688,7 @@ Reconciliation mechanisms:
 | Mechanism | Target | Cadence |
 |-----------|--------|---------|
 | Dependabot (Docker ecosystem) | Thin Dockerfile `FROM` lines (apko-base digest) | Per-upstream-publish |
-| `apko lock --update` cron (`.github/workflows/apko-lock.yml`) | `docker/*/apko.lock.json` lockfiles | Weekly (Mon 06:00 UTC) |
+| `apko lock --update` cron (`.github/workflows/apko-lock.yml`) | `docker/backend/apko.lock.json`, `docker/sandbox/apko.lock.json` | Weekly (Mon 06:00 UTC) |
 
 ### Image verification at launch
 

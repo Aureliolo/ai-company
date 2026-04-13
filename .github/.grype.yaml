@@ -53,6 +53,9 @@ ignore:
   # Audit: 2026-04-11 -- Review-by: 2026-07-10
   # Revisit when Wolfi ships python-3.14 >= 3.14.3-r3 or 3.14.4
   - vulnerability: CVE-2026-4519
+    package:
+      name: python-3.14
+      type: apk
     reason: >-
       Python webbrowser module command-line option injection. Our images
       never invoke webbrowser.open() -- the module is not imported or used.

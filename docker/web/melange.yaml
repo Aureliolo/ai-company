@@ -4,7 +4,7 @@
 # Produces: synthorg-web-assets-${VERSION}.apk with
 #   /usr/share/caddy/html/          -- Vite SPA bundle + pre-gzipped siblings
 #   /usr/share/caddy/html/docs/     -- zensical-built MkDocs output + pre-gzipped
-#   /etc/caddy/Caddyfile            -- the server config
+#   /etc/synthorg/Caddyfile          -- the server config
 #
 # Built in CI by .github/workflows/docker.yml build-web-assets job with
 # `melange build --source-dir <repo-root>`; the CI job first runs
