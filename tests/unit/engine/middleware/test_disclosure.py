@@ -108,9 +108,8 @@ class TestLoadToolObservation:
             return result
 
         returned = await mw.wrap_tool_call(ctx, call)
-        assert returned is result
-        # Context should NOT be mutated (ctx is immutable);
-        # but the middleware creates a new ctx internally
+        assert returned.updated_agent_context is not None
+        assert "read_file" in returned.updated_agent_context.loaded_tools
 
     async def test_loads_tool_from_output_json(self) -> None:
         mw = DisclosureMiddleware()
@@ -123,8 +122,9 @@ class TestLoadToolObservation:
         async def call(_ctx: AgentMiddlewareContext) -> ToolCallResult:
             return result
 
-        await mw.wrap_tool_call(ctx, call)
-        # The middleware internally updates ctx, but returns result unchanged
+        returned = await mw.wrap_tool_call(ctx, call)
+        assert returned.updated_agent_context is not None
+        assert "read_file" in returned.updated_agent_context.loaded_tools
 
     async def test_does_not_load_on_error(self) -> None:
         mw = DisclosureMiddleware()
@@ -175,7 +175,9 @@ class TestLoadToolResourceObservation:
         async def call(_ctx: AgentMiddlewareContext) -> ToolCallResult:
             return result
 
-        await mw.wrap_tool_call(ctx, call)
+        returned = await mw.wrap_tool_call(ctx, call)
+        assert returned.updated_agent_context is not None
+        assert ("read_file", "guide") in returned.updated_agent_context.loaded_resources
 
     async def test_does_not_load_without_metadata(self) -> None:
         mw = DisclosureMiddleware()
@@ -317,75 +319,27 @@ class TestPassThrough:
 class TestExtractToolNameEdgeCases:
     """Tests for _extract_tool_name with malformed inputs."""
 
-    async def test_malformed_json_falls_back(self) -> None:
+    @pytest.mark.parametrize(
+        "output",
+        [
+            pytest.param("not json at all", id="malformed-json"),
+            pytest.param('["array", "not", "dict"]', id="non-dict-json"),
+            pytest.param('{"data": "read_file"}', id="missing-name-key"),
+            pytest.param('{"name": 123}', id="non-string-name"),
+            pytest.param('{"name": "   "}', id="whitespace-only-name"),
+        ],
+    )
+    async def test_bad_output_does_not_load(self, output: str) -> None:
+        """load_tool with malformed output must not update context."""
         mw = DisclosureMiddleware()
         ctx = _make_context()
-        result = _success_result(
-            "load_tool",
-            output="not json at all",
-        )
+        result = _success_result("load_tool", output=output)
 
         async def call(_ctx: AgentMiddlewareContext) -> ToolCallResult:
             return result
 
         returned = await mw.wrap_tool_call(ctx, call)
-        assert returned is result
-
-    async def test_non_dict_json_ignored(self) -> None:
-        mw = DisclosureMiddleware()
-        ctx = _make_context()
-        result = _success_result(
-            "load_tool",
-            output='["array", "not", "dict"]',
-        )
-
-        async def call(_ctx: AgentMiddlewareContext) -> ToolCallResult:
-            return result
-
-        returned = await mw.wrap_tool_call(ctx, call)
-        assert returned is result
-
-    async def test_missing_name_key_ignored(self) -> None:
-        mw = DisclosureMiddleware()
-        ctx = _make_context()
-        result = _success_result(
-            "load_tool",
-            output='{"data": "read_file"}',
-        )
-
-        async def call(_ctx: AgentMiddlewareContext) -> ToolCallResult:
-            return result
-
-        returned = await mw.wrap_tool_call(ctx, call)
-        assert returned is result
-
-    async def test_non_string_name_ignored(self) -> None:
-        mw = DisclosureMiddleware()
-        ctx = _make_context()
-        result = _success_result(
-            "load_tool",
-            output='{"name": 123}',
-        )
-
-        async def call(_ctx: AgentMiddlewareContext) -> ToolCallResult:
-            return result
-
-        returned = await mw.wrap_tool_call(ctx, call)
-        assert returned is result
-
-    async def test_whitespace_only_name_ignored(self) -> None:
-        mw = DisclosureMiddleware()
-        ctx = _make_context()
-        result = _success_result(
-            "load_tool",
-            output='{"name": "   "}',
-        )
-
-        async def call(_ctx: AgentMiddlewareContext) -> ToolCallResult:
-            return result
-
-        returned = await mw.wrap_tool_call(ctx, call)
-        assert returned is result
+        assert returned.updated_agent_context is None
 
     async def test_empty_string_returns_none(self) -> None:
         """Empty string produces no tool name."""
@@ -449,62 +403,30 @@ class TestAutoUnloadBoundary:
 class TestMetadataTupleValidation:
     """Tests for metadata pair validation in resource loading."""
 
-    async def test_non_tuple_pair_ignored(self) -> None:
+    @pytest.mark.parametrize(
+        "metadata_value",
+        [
+            pytest.param("not-a-tuple", id="string-not-tuple"),
+            pytest.param((123, "guide"), id="non-string-tool-name"),
+            pytest.param(("tool", 456), id="non-string-resource-id"),
+            pytest.param(("only_one",), id="wrong-length-tuple"),
+        ],
+    )
+    async def test_invalid_pair_does_not_load(
+        self,
+        metadata_value: object,
+    ) -> None:
+        """Invalid metadata pairs must not update context."""
         mw = DisclosureMiddleware()
         ctx = _make_context()
         result = _success_result(
             "load_tool_resource",
             output="content",
-            metadata={"should_load_resource": "not-a-tuple"},
+            metadata={"should_load_resource": metadata_value},
         )
 
         async def call(_ctx: AgentMiddlewareContext) -> ToolCallResult:
             return result
 
         returned = await mw.wrap_tool_call(ctx, call)
-        assert returned is result
-
-    async def test_non_string_tool_name_ignored(self) -> None:
-        mw = DisclosureMiddleware()
-        ctx = _make_context()
-        result = _success_result(
-            "load_tool_resource",
-            output="content",
-            metadata={"should_load_resource": (123, "guide")},
-        )
-
-        async def call(_ctx: AgentMiddlewareContext) -> ToolCallResult:
-            return result
-
-        returned = await mw.wrap_tool_call(ctx, call)
-        assert returned is result
-
-    async def test_non_string_resource_id_ignored(self) -> None:
-        mw = DisclosureMiddleware()
-        ctx = _make_context()
-        result = _success_result(
-            "load_tool_resource",
-            output="content",
-            metadata={"should_load_resource": ("tool", 456)},
-        )
-
-        async def call(_ctx: AgentMiddlewareContext) -> ToolCallResult:
-            return result
-
-        returned = await mw.wrap_tool_call(ctx, call)
-        assert returned is result
-
-    async def test_wrong_length_tuple_ignored(self) -> None:
-        mw = DisclosureMiddleware()
-        ctx = _make_context()
-        result = _success_result(
-            "load_tool_resource",
-            output="content",
-            metadata={"should_load_resource": ("only_one",)},
-        )
-
-        async def call(_ctx: AgentMiddlewareContext) -> ToolCallResult:
-            return result
-
-        returned = await mw.wrap_tool_call(ctx, call)
-        assert returned is result
+        assert returned.updated_agent_context is None

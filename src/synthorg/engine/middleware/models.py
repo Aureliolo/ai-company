@@ -140,6 +140,11 @@ class ToolCallResult(BaseModel):
         output: Serialized tool output.
         success: Whether the tool call succeeded.
         error: Error description if the call failed.
+        metadata: Tool execution metadata (not forwarded to LLM).
+        updated_agent_context: When set by middleware (e.g.
+            ``DisclosureMiddleware``), carries the updated
+            ``AgentContext`` back to the engine so state changes
+            (loaded tools, resources, auto-unload) persist.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
@@ -163,6 +168,20 @@ class ToolCallResult(BaseModel):
         default_factory=dict,
         description="Tool execution metadata (not forwarded to LLM)",
     )
+    updated_agent_context: AgentContext | None = Field(
+        default=None,
+        description="Updated agent context from middleware (disclosure state)",
+    )
+
+    @model_validator(mode="after")
+    def _deepcopy_metadata(self) -> Self:
+        """Defensive copy so callers cannot mutate the frozen model."""
+        object.__setattr__(
+            self,
+            "metadata",
+            copy.deepcopy(self.metadata),
+        )
+        return self
 
     @model_validator(mode="after")
     def _validate_error_consistency(self) -> Self:

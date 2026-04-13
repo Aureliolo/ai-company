@@ -21,6 +21,10 @@ from synthorg.core.tool_disclosure import (  # noqa: TC001
     ToolL3Resource,
 )
 from synthorg.observability import get_logger
+from synthorg.observability.events.tool import (
+    TOOL_DISCLOSURE_MANAGER_BOUND,
+    TOOL_DISCLOSURE_MANAGER_NOT_BOUND,
+)
 
 from .base import BaseTool, ToolExecutionResult
 
@@ -204,12 +208,16 @@ class LoadToolResourceTool(BaseTool):
                 content=(f"Resource {resource_id!r} not found for tool {tool_name!r}"),
                 is_error=True,
             )
+        payload = {
+            "resource_id": resource.resource_id,
+            "content_type": resource.content_type,
+            "content": resource.content,
+            "size_bytes": resource.size_bytes,
+        }
         return ToolExecutionResult(
-            content=resource.content,
+            content=json.dumps(payload),
             metadata={
                 METADATA_SHOULD_LOAD_RESOURCE: (tool_name, resource_id),
-                "content_type": resource.content_type,
-                "size_bytes": resource.size_bytes,
             },
         )
 
@@ -234,7 +242,7 @@ class DeferredDisclosureManager:
         """Set the real disclosure manager."""
         self._delegate = delegate
         logger.info(
-            "deferred_disclosure_manager.bound",
+            TOOL_DISCLOSURE_MANAGER_BOUND,
             delegate_type=type(delegate).__name__,
         )
 
@@ -242,7 +250,7 @@ class DeferredDisclosureManager:
         if self._delegate is None:
             msg = "DeferredDisclosureManager not yet bound"
             logger.error(
-                "deferred_disclosure_manager.not_bound",
+                TOOL_DISCLOSURE_MANAGER_NOT_BOUND,
                 note=msg,
             )
             raise RuntimeError(msg)

@@ -11,6 +11,7 @@ import json
 from synthorg.observability import get_logger
 from synthorg.observability.events.tool import (
     TOOL_AUTO_UNLOADED,
+    TOOL_DISCLOSURE_LOAD_FAILED,
     TOOL_L2_LOADED,
     TOOL_L3_FETCHED,
 )
@@ -32,7 +33,8 @@ class DisclosureMiddleware(BaseAgentMiddleware):
     Observes successful ``load_tool`` and ``load_tool_resource``
     calls and updates ``AgentContext.loaded_tools`` and
     ``loaded_resources`` via ``model_copy``.  Triggers FIFO
-    auto-unload when context fill exceeds the threshold.
+    auto-unload when ``auto_unload_on_budget_pressure`` is enabled
+    and context fill exceeds ``unload_threshold_percent``.
     """
 
     __slots__ = ("_config",)
@@ -57,6 +59,8 @@ class DisclosureMiddleware(BaseAgentMiddleware):
             return result
 
         agent_ctx = ctx.agent_context
+        original_agent_ctx = agent_ctx
+        just_loaded: str | None = None
 
         if result.tool_name == "load_tool":
             tool_name = result.metadata.get(METADATA_SHOULD_LOAD_TOOL)
@@ -64,13 +68,14 @@ class DisclosureMiddleware(BaseAgentMiddleware):
                 tool_name = self._extract_tool_name(result.output)
             if not tool_name:
                 logger.warning(
-                    TOOL_L2_LOADED,
+                    TOOL_DISCLOSURE_LOAD_FAILED,
                     execution_id=agent_ctx.execution_id,
                     note="could not extract tool name from metadata or output",
                     turn=agent_ctx.turn_count,
                 )
             if tool_name and tool_name not in agent_ctx.loaded_tools:
                 agent_ctx = agent_ctx.with_tool_loaded(tool_name)
+                just_loaded = tool_name
                 logger.info(
                     TOOL_L2_LOADED,
                     execution_id=agent_ctx.execution_id,
@@ -104,9 +109,6 @@ class DisclosureMiddleware(BaseAgentMiddleware):
 
         # Auto-unload under budget pressure (skip tool just loaded)
         agent_ctx = ctx.agent_context
-        just_loaded: str | None = None
-        if result.tool_name == "load_tool":
-            just_loaded = result.metadata.get(METADATA_SHOULD_LOAD_TOOL)
         if (
             self._config.auto_unload_on_budget_pressure
             and agent_ctx.context_fill_percent is not None
@@ -120,7 +122,7 @@ class DisclosureMiddleware(BaseAgentMiddleware):
                 oldest = None  # type: ignore[assignment]
             if oldest:
                 agent_ctx = agent_ctx.with_tool_unloaded(oldest)
-                logger.warning(
+                logger.info(
                     TOOL_AUTO_UNLOADED,
                     execution_id=agent_ctx.execution_id,
                     tool_name=oldest,
@@ -128,6 +130,12 @@ class DisclosureMiddleware(BaseAgentMiddleware):
                     turn=agent_ctx.turn_count,
                 )
                 ctx = ctx.model_copy(update={"agent_context": agent_ctx})
+
+        # Propagate updated context via result so callers can apply it
+        if ctx.agent_context is not original_agent_ctx:
+            result = result.model_copy(
+                update={"updated_agent_context": ctx.agent_context},
+            )
 
         return result
 
@@ -138,7 +146,7 @@ class DisclosureMiddleware(BaseAgentMiddleware):
             data = json.loads(output)
         except json.JSONDecodeError, TypeError, AttributeError:
             logger.debug(
-                TOOL_L2_LOADED,
+                TOOL_DISCLOSURE_LOAD_FAILED,
                 note="failed to parse load_tool output as JSON",
                 output_preview=output[:200],
                 exc_info=True,
@@ -148,7 +156,7 @@ class DisclosureMiddleware(BaseAgentMiddleware):
         if isinstance(name, str) and name.strip():
             return name
         logger.debug(
-            TOOL_L2_LOADED,
+            TOOL_DISCLOSURE_LOAD_FAILED,
             note="JSON output missing valid 'name' key",
             output_preview=output[:200],
         )

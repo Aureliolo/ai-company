@@ -199,14 +199,20 @@ class TestLoadToolTool:
 class TestLoadToolResourceTool:
     """Tests for LoadToolResourceTool."""
 
-    async def test_returns_resource_content(self) -> None:
+    async def test_returns_resource_payload(self) -> None:
         invoker = _make_invoker()
         tool = LoadToolResourceTool(invoker)
         result = await tool.execute(
             arguments={"tool_name": "rich_tool", "resource_id": "guide"},
         )
         assert not result.is_error
-        assert "Usage guide here" in result.content
+        import json
+
+        payload = json.loads(result.content)
+        assert payload["resource_id"] == "guide"
+        assert payload["content_type"] == "markdown"
+        assert "Usage guide here" in payload["content"]
+        assert payload["size_bytes"] > 0
 
     async def test_signals_should_load_resource(self) -> None:
         invoker = _make_invoker()
@@ -215,7 +221,6 @@ class TestLoadToolResourceTool:
             arguments={"tool_name": "rich_tool", "resource_id": "guide"},
         )
         assert result.metadata["should_load_resource"] == ("rich_tool", "guide")
-        assert result.metadata["content_type"] == "markdown"
 
     async def test_not_found_returns_error(self) -> None:
         invoker = _make_invoker()

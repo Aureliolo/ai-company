@@ -163,14 +163,47 @@ class ToolInvoker:
 
         For system prompt injection -- lightweight summaries that
         let the agent discover available tools without loading
-        full definitions.
+        full definitions.  Malformed tools are logged and skipped.
 
         Returns:
             Sorted tuple of L1 metadata for permitted tools.
         """
-        if self._permission_checker is None:
-            return self._registry.to_l1_summaries()
-        return self._permission_checker.filter_l1_summaries(self._registry)
+        from synthorg.observability.events.tool import (  # noqa: PLC0415
+            TOOL_DISCLOSURE_L1_SUMMARY_ERROR,
+        )
+
+        result: list[ToolL1Metadata] = []
+        for name in self._registry.list_tools():
+            try:
+                tool = self._registry.get(name)
+            except MemoryError, RecursionError:
+                raise
+            except Exception:
+                logger.warning(
+                    TOOL_DISCLOSURE_L1_SUMMARY_ERROR,
+                    tool_name=name,
+                    note="registry lookup failed during L1 summary",
+                    exc_info=True,
+                )
+                continue
+            if (
+                self._permission_checker is not None
+                and not self._permission_checker.is_permitted(name, tool.category)
+            ):
+                continue
+            try:
+                result.append(tool.to_l1_metadata())
+            except MemoryError, RecursionError:
+                raise
+            except Exception:
+                logger.warning(
+                    TOOL_DISCLOSURE_L1_SUMMARY_ERROR,
+                    tool_name=name,
+                    note="to_l1_metadata() failed",
+                    exc_info=True,
+                )
+        result.sort(key=lambda m: m.name)
+        return tuple(result)
 
     def get_loaded_definitions(
         self,

@@ -192,6 +192,13 @@ def build_system_prompt(  # noqa: PLR0913
     _validate_max_tokens(agent, max_tokens)
     _validate_org_policies(agent, org_policies)
 
+    if l1_summaries:
+        logger.info(
+            TOOL_L1_INJECTED,
+            tool_count=len(l1_summaries),
+            tool_names=tuple(s.name for s in l1_summaries),
+        )
+
     profile = get_prompt_profile(model_tier)
     if max_personality_tokens_override is not None:
         if max_personality_tokens_override > 0:
@@ -468,11 +475,6 @@ def _build_template_context(  # noqa: PLR0913
                 "cost_tier": s.typical_cost_tier,
             }
             for s in l1_summaries
-        )
-        logger.info(
-            TOOL_L1_INJECTED,
-            tool_count=len(l1_summaries),
-            tool_names=tuple(s.name for s in l1_summaries),
         )
     else:
         context["l1_tools"] = None
