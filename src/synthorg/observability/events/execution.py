@@ -110,3 +110,8 @@ EXECUTION_METRICS_UNEXPECTED_TYPE: Final[str] = "execution.metrics.unexpected_ty
 
 # -- Project validation events --
 EXECUTION_PROJECT_VALIDATION_FAILED: Final[str] = "execution.project.validation_failed"
+
+# -- Credential isolation events --
+EXECUTION_CREDENTIAL_ISOLATION_VIOLATION: Final[str] = (
+    "execution.credential_isolation.violation"
+)

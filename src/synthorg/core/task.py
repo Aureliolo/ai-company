@@ -1,5 +1,6 @@
 """Task domain model and acceptance criteria."""
 
+import copy
 from collections import Counter
 from datetime import datetime
 from typing import Any, Self
@@ -79,6 +80,9 @@ class Task(BaseModel):
             execution (defaults to ``AUTO``).
         middleware_override: Per-task middleware chain override
             (``None`` uses company default chain).
+        metadata: Arbitrary key-value metadata for pipeline tracking,
+            labels, and operator-defined context.  Deep-copied at
+            construction to prevent external mutation.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
@@ -165,6 +169,16 @@ class Task(BaseModel):
         default=None,
         description=("Per-task middleware chain override (None = use company default)"),
     )
+    metadata: dict[str, Any] = Field(
+        default_factory=dict,
+        description="Arbitrary key-value metadata for pipeline tracking and labels",
+    )
+
+    @model_validator(mode="after")
+    def _deepcopy_metadata(self) -> Self:
+        """Defensive copy so callers cannot mutate the frozen model."""
+        object.__setattr__(self, "metadata", copy.deepcopy(self.metadata))
+        return self
 
     @model_validator(mode="after")
     def _validate_deadline_format(self) -> Self:

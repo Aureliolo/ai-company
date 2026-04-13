@@ -228,6 +228,7 @@ class TestEventConstants:
             "blueprint",
             "sandbox",
             "security",
+            "session",
             "stagnation",
             "strategy",
             "task",

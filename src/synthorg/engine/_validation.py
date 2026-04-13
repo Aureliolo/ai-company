@@ -4,12 +4,14 @@ Pure validation functions extracted from :mod:`agent_engine` to keep
 the main orchestrator under the 800-line limit.
 """
 
-from typing import TYPE_CHECKING
+import re
+from typing import TYPE_CHECKING, Final
 
 from synthorg.core.enums import AgentStatus, TaskStatus
 from synthorg.engine.errors import ExecutionStateError
 from synthorg.observability import get_logger
 from synthorg.observability.events.execution import (
+    EXECUTION_CREDENTIAL_ISOLATION_VIOLATION,
     EXECUTION_ENGINE_INVALID_INPUT,
 )
 
@@ -18,6 +20,14 @@ if TYPE_CHECKING:
     from synthorg.core.task import Task
 
 logger = get_logger(__name__)
+
+_CREDENTIAL_KEY_PATTERNS: Final[tuple[re.Pattern[str], ...]] = (
+    re.compile(r"(?i)token"),
+    re.compile(r"(?i)secret"),
+    re.compile(r"(?i)api[_-]?key"),
+    re.compile(r"(?i)password"),
+    re.compile(r"(?i)bearer"),
+)
 
 _EXECUTABLE_STATUSES = frozenset(
     {TaskStatus.ASSIGNED, TaskStatus.IN_PROGRESS},
@@ -28,6 +38,69 @@ CREATED tasks lack an assignee; terminal statuses (COMPLETED, CANCELLED),
 BLOCKED, IN_REVIEW, FAILED, and INTERRUPTED are not executable.  FAILED
 and INTERRUPTED tasks must be reassigned (-> ASSIGNED) before re-execution.
 """
+
+
+def _collect_credential_keys(
+    data: object,
+    prefix: str,
+    violations: list[str],
+) -> None:
+    """Recursively scan dict keys for credential patterns."""
+    if isinstance(data, dict):
+        for key in data:
+            if not isinstance(key, str):
+                continue
+            path = f"{prefix}.{key}" if prefix else key
+            if any(p.search(key) for p in _CREDENTIAL_KEY_PATTERNS):
+                violations.append(path)
+            _collect_credential_keys(data[key], path, violations)
+    elif isinstance(data, list | tuple):
+        for i, item in enumerate(data):
+            _collect_credential_keys(
+                item,
+                f"{prefix}[{i}]",
+                violations,
+            )
+
+
+def validate_task_metadata(
+    task: Task,
+    agent_id: str,
+    task_id: str,
+) -> None:
+    """Reject task metadata keys that match credential patterns.
+
+    Recursively scans all dict keys in ``task.metadata`` (including
+    nested dicts and dicts inside lists) so credentials cannot hide
+    inside nested structures.
+
+    Args:
+        task: The task to validate.
+        agent_id: Agent identifier for logging.
+        task_id: Task identifier for logging.
+
+    Raises:
+        ExecutionStateError: If any metadata key matches a credential
+            pattern.
+    """
+    if not task.metadata:
+        return
+    violations: list[str] = []
+    _collect_credential_keys(task.metadata, "", violations)
+    violations.sort()
+    if violations:
+        msg = (
+            f"Task {task_id!r} metadata contains credential-like keys: "
+            f"{violations}; credentials must flow through the sandbox "
+            f"credential proxy, not task metadata"
+        )
+        logger.error(
+            EXECUTION_CREDENTIAL_ISOLATION_VIOLATION,
+            agent_id=agent_id,
+            task_id=task_id,
+            violating_keys=violations,
+        )
+        raise ExecutionStateError(msg)
 
 
 def validate_run_inputs(
