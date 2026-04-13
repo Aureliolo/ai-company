@@ -3,7 +3,7 @@
 #
 # Produces: synthorg-web-assets-${VERSION}.apk with
 #   /usr/share/caddy/html/          -- Vite SPA bundle + pre-compressed siblings (.gz + .br)
-#   /usr/share/caddy/html/docs/     -- zensical-built MkDocs output + pre-gzipped
+#   /usr/share/caddy/html/docs/     -- zensical-built MkDocs output + pre-compressed (.gz + .br)
 #   /etc/synthorg/Caddyfile          -- the server config
 #
 # Built in CI by .github/workflows/docker.yml build-web-assets job with

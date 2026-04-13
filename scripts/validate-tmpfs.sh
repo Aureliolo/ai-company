@@ -41,7 +41,6 @@ for service in "${!SERVICES[@]}"; do
     }
     size=$(echo "$df_line" | awk '{print $2}')
     used=$(echo "$df_line" | awk '{print $3}')
-    avail=$(echo "$df_line" | awk '{print $4}')
     pct=$(echo "$df_line" | awk '{print $5}' | tr -d '%')
 
     if [ "$pct" -ge "$THRESHOLD" ]; then
