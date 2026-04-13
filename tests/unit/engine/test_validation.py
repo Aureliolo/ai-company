@@ -143,6 +143,7 @@ class TestValidateTask:
         self,
         sample_task_with_criteria: Task,
     ) -> None:
+        assert sample_task_with_criteria.assigned_to is not None
         validate_task(
             sample_task_with_criteria,
             agent_id=sample_task_with_criteria.assigned_to,
@@ -156,6 +157,7 @@ class TestValidateTask:
         task = sample_task_with_criteria.model_copy(
             update={"status": TaskStatus.IN_PROGRESS},
         )
+        assert task.assigned_to is not None
         validate_task(
             task,
             agent_id=task.assigned_to,
