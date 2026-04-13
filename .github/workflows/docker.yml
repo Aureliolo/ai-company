@@ -158,15 +158,10 @@ jobs:
           persist-credentials: false
 
       - name: Set up apko
-        env:
+        uses: ./.github/actions/setup-apko
+        with:
           # renovate: datasource=github-releases depName=chainguard-dev/apko
-          APKO_VERSION: v1.2.3
-        run: |
-          curl -fsSL --retry 3 --retry-delay 5 "https://github.com/chainguard-dev/apko/releases/download/${APKO_VERSION}/apko_${APKO_VERSION#v}_linux_amd64.tar.gz" -o /tmp/apko.tar.gz
-          curl -fsSL --retry 3 --retry-delay 5 "https://github.com/chainguard-dev/apko/releases/download/${APKO_VERSION}/checksums.txt" -o /tmp/apko-checksums.txt
-          grep "apko_${APKO_VERSION#v}_linux_amd64.tar.gz" /tmp/apko-checksums.txt | (cd /tmp && sha256sum -c -)
-          tar -xzf /tmp/apko.tar.gz -C /usr/local/bin apko
-          rm -f /tmp/apko.tar.gz /tmp/apko-checksums.txt
+          version: v1.2.3
 
       - name: Log in to GHCR
         if: github.event_name != 'pull_request'
@@ -300,15 +295,10 @@ jobs:
           persist-credentials: false
 
       - name: Set up apko
-        env:
+        uses: ./.github/actions/setup-apko
+        with:
           # renovate: datasource=github-releases depName=chainguard-dev/apko
-          APKO_VERSION: v1.2.3
-        run: |
-          curl -fsSL --retry 3 --retry-delay 5 "https://github.com/chainguard-dev/apko/releases/download/${APKO_VERSION}/apko_${APKO_VERSION#v}_linux_amd64.tar.gz" -o /tmp/apko.tar.gz
-          curl -fsSL --retry 3 --retry-delay 5 "https://github.com/chainguard-dev/apko/releases/download/${APKO_VERSION}/checksums.txt" -o /tmp/apko-checksums.txt
-          grep "apko_${APKO_VERSION#v}_linux_amd64.tar.gz" /tmp/apko-checksums.txt | (cd /tmp && sha256sum -c -)
-          tar -xzf /tmp/apko.tar.gz -C /usr/local/bin apko
-          rm -f /tmp/apko.tar.gz /tmp/apko-checksums.txt
+          version: v1.2.3
 
       - name: Log in to GHCR
         if: github.event_name != 'pull_request'
@@ -660,6 +650,10 @@ jobs:
       - name: Set up Python + uv (docs build)
         uses: ./.github/actions/setup-python-uv
 
+      # D2 does not publish checksums or signatures in its releases --
+      # integrity relies on HTTPS transport from GitHub. Accepted tradeoff:
+      # D2 is a docs-only diagramming tool (not a security scanner).
+      # Version managed by Renovate (regex manager in renovate.json).
       - name: Install D2
         env:
           # renovate: datasource=github-releases depName=terrastruct/d2
@@ -740,15 +734,10 @@ jobs:
           path: /work
 
       - name: Set up apko
-        env:
+        uses: ./.github/actions/setup-apko
+        with:
           # renovate: datasource=github-releases depName=chainguard-dev/apko
-          APKO_VERSION: v1.2.3
-        run: |
-          curl -fsSL --retry 3 --retry-delay 5 "https://github.com/chainguard-dev/apko/releases/download/${APKO_VERSION}/apko_${APKO_VERSION#v}_linux_amd64.tar.gz" -o /tmp/apko.tar.gz
-          curl -fsSL --retry 3 --retry-delay 5 "https://github.com/chainguard-dev/apko/releases/download/${APKO_VERSION}/checksums.txt" -o /tmp/apko-checksums.txt
-          grep "apko_${APKO_VERSION#v}_linux_amd64.tar.gz" /tmp/apko-checksums.txt | (cd /tmp && sha256sum -c -)
-          tar -xzf /tmp/apko.tar.gz -C /usr/local/bin apko
-          rm -f /tmp/apko.tar.gz /tmp/apko-checksums.txt
+          version: v1.2.3
 
       - name: Log in to GHCR
         if: github.event_name != 'pull_request'

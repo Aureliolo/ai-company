@@ -1,0 +1,26 @@
+name: Set up apko
+description: Download, verify, and install the apko binary from GitHub releases
+
+inputs:
+  version:
+    description: "apko version to install (e.g. v1.2.3)"
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Install apko
+      shell: bash
+      env:
+        APKO_VERSION: ${{ inputs.version }}
+      run: |
+        APKO_ARCHIVE="apko_${APKO_VERSION#v}_linux_amd64.tar.gz"
+        curl -fsSL --retry 3 --retry-delay 5 \
+          "https://github.com/chainguard-dev/apko/releases/download/${APKO_VERSION}/${APKO_ARCHIVE}" \
+          -o "/tmp/${APKO_ARCHIVE}"
+        curl -fsSL --retry 3 --retry-delay 5 \
+          "https://github.com/chainguard-dev/apko/releases/download/${APKO_VERSION}/checksums.txt" \
+          -o /tmp/apko-checksums.txt
+        grep "${APKO_ARCHIVE}" /tmp/apko-checksums.txt | (cd /tmp && sha256sum -c -)
+        tar -xzf "/tmp/${APKO_ARCHIVE}" -C /usr/local/bin apko
+        rm -f "/tmp/${APKO_ARCHIVE}" /tmp/apko-checksums.txt

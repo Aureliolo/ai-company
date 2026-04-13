@@ -6,7 +6,7 @@
     ":pinGitHubActionDigests",
     "docker:pinDigests"
   ],
-  "schedule": ["before 7am every weekday"],
+  "schedule": ["before 7am every day"],
   "timezone": "Etc/UTC",
   "labels": ["dependencies"],
   "reviewers": ["Aureliolo"],
@@ -41,9 +41,11 @@
     {
       "description": "CLI tool version inputs (golangci-lint, GoReleaser, govulncheck)",
       "matchManagers": ["regex"],
-      "matchDepNames": ["golangci/golangci-lint", "goreleaser/goreleaser", "golang/vuln"],
+      "matchDepNames": ["golangci/golangci-lint", "goreleaser/goreleaser", "golang.org/x/vuln/cmd/govulncheck"],
       "groupName": "CLI dependencies",
-      "groupSlug": "cli"
+      "groupSlug": "cli",
+      "commitMessagePrefix": "chore:",
+      "labels": ["dependencies", "type:chore", "scope:cli"]
     },
     {
       "description": "Container dependencies (Docker images, Compose, apko)",
@@ -66,14 +68,18 @@
       "matchManagers": ["regex"],
       "matchDepNames": ["aquasecurity/trivy", "anchore/grype", "gitleaks/gitleaks", "terrastruct/d2"],
       "groupName": "CI tool dependencies",
-      "groupSlug": "ci-tools"
+      "groupSlug": "ci-tools",
+      "commitMessagePrefix": "ci:",
+      "labels": ["dependencies", "type:infra"]
     },
     {
       "description": "apko binary version (binary download in CI)",
       "matchManagers": ["regex"],
       "matchDepNames": ["chainguard-dev/apko"],
       "groupName": "Container dependencies",
-      "groupSlug": "container"
+      "groupSlug": "container",
+      "commitMessagePrefix": "chore:",
+      "labels": ["dependencies", "type:chore", "scope:docker"]
     },
     {
       "description": "Block Python 3.15+ in Docker images (policy decision)",

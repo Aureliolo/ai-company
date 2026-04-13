@@ -19,7 +19,7 @@ on:
   workflow_dispatch:
     inputs:
       pr_number:
-        description: "PR number to build and deploy a preview for (use for Dependabot PRs)"
+        description: "PR number to build and deploy a preview for (use for dependency update PRs)"
         required: true
         type: string
 
@@ -110,7 +110,9 @@ jobs:
         uses: astral-sh/setup-uv@cec208311dfd045dd5311c1add060b2062131d57 # v8.0.0
 
       # D2 binary -- required by d2_fence.py at build time.
-      # D2 does not publish checksums -- integrity relies on HTTPS transport.
+      # D2 does not publish checksums or signatures in its releases --
+      # integrity relies on HTTPS transport from GitHub. Accepted tradeoff:
+      # D2 is a docs-only diagramming tool (not a security scanner).
       # Version managed by Renovate (regex manager in renovate.json).
       - name: Install D2
         env:

@@ -209,9 +209,9 @@ shell, no package manager, minimal attack surface. The build uses a 2-stage Dock
 1. **Builder** -- compiles dependencies via uv, fixes venv symlink for Wolfi's Python path
 2. **Runtime** -- apko-composed Wolfi base (no shell, UID 65532)
 
-Base images are declared in `docker/*/apko.yaml` with exact package version pins
-(e.g. `python-3.14=3.14.3-r0`). Transitive dependencies are locked in
-`docker/*/apko.lock.json` and refreshed weekly by `.github/workflows/apko-lock.yml`.
+Base images are declared in `docker/*/apko.yaml` with relaxed package specs
+(e.g. `python-3.14`). Exact patch versions are resolved and pinned by
+`docker/*/apko.lock.json`, refreshed weekly by `.github/workflows/apko-lock.yml`.
 
 ### CIS Docker Benchmark
 

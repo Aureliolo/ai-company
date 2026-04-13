@@ -96,7 +96,7 @@ For each dependency, get the full changelog between the old and new versions.
 
 ### Strategy 1: PR body
 
-Dependabot PRs include release notes in the body. Extract and parse these first.
+Dependency update PRs include release notes in the body. Dependabot uses prose-style sections; Renovate uses a markdown table (`| Package | Type | Update | Change |`). Extract and parse these first.
 
 ### Strategy 2: GitHub releases
 
@@ -107,7 +107,7 @@ gh api repos/<owner>/<repo>/releases --paginate --jq '.[] | {tag: .tag_name, bod
 
 After fetching, apply semver-aware filtering in your reasoning step: parse each tag into numeric (major, minor, patch) components and select only releases within the from→to range. Do not rely on jq string comparison for version filtering -- `"v2.10.0" >= "v2.9.0"` is false lexicographically but true semantically.
 
-**Detect missing intermediate releases:** Dependabot PR bodies often truncate release notes for multi-version jumps. Compare the tags in the from→to range against what's already in the PR body. Fetch individual release notes for any versions NOT covered in the PR body -- these may contain important changes (features, deprecations, bugfixes) that were omitted from the truncated view.
+**Detect missing intermediate releases:** Dependency update PR bodies may truncate release notes for multi-version jumps (common with Dependabot; Renovate tables typically only show from/to). Compare the tags in the from→to range against what's already in the PR body. Fetch individual release notes for any versions NOT covered in the PR body -- these may contain important changes (features, deprecations, bugfixes) that were omitted.
 
 ### Strategy 3: WebFetch
 
@@ -294,10 +294,10 @@ For each PR based on user's choice:
 1. Check out the PR branch using `gh pr checkout <number>`
 2. Make the recommended changes (config improvements, workaround removal, etc.)
 3. Commit with descriptive message
-4. Push to the PR branch. **Note:** Dependabot branches may reject pushes depending on repo permissions. If push fails:
+4. Push to the PR branch. **Note:** Some bot branches (Dependabot, Renovate) may reject pushes depending on repo permissions. If push fails:
    - Create a new branch with your changes and push it
    - Open a replacement PR targeting the original base branch, linking to the original PR in the description
-   - Close the original Dependabot PR with a comment pointing to the replacement
+   - Close the original bot PR with a comment pointing to the replacement
    - **Use the replacement PR number for all remaining steps** (CI wait, merge)
 5. Wait for CI to pass using `gh pr checks <active-number> --watch` (use the Bash tool's `timeout` parameter set to 600000ms to cap the wait -- if it expires, warn the user that CI may be stuck and ask how to proceed). Use the replacement PR number if step 4 created one.
 6. Merge the active PR
@@ -307,7 +307,7 @@ For each PR based on user's choice:
 1. Check out the PR branch using `gh pr checkout <number>` (same dirty-tree check as above)
 2. Investigate the CI failure
 3. Fix the issue
-4. Commit and push (same Dependabot fallback applies -- if push fails, open a replacement PR and use that PR number for remaining steps)
+4. Commit and push (same bot branch fallback applies -- if push fails, open a replacement PR and use that PR number for remaining steps)
 5. Wait for CI to pass using `gh pr checks <active-number> --watch` (use the Bash tool's `timeout` parameter set to 600000ms to cap the wait -- if it expires, warn the user that CI may be stuck and ask how to proceed)
 6. Merge the active PR when green
 
@@ -327,7 +327,7 @@ After all merges complete, if any PRs were merged, automatically run `/post-merg
 - **Be specific about what affects us** -- don't just list changelog items, cross-reference each one against our actual config and code usage.
 - **Major version bumps get extra scrutiny** -- check for a migration guide. Always fetch it if breaking changes are ambiguous or potentially affect our usage; skip only when all breaking changes are clearly in internal APIs we don't use.
 - **Don't merge with failing CI** -- if CI fails, investigate and fix first.
-- **Grouped updates (Dependabot groups)**: analyze each package in the group separately, then present as one combined report.
+- **Grouped updates (Renovate domain groups or Dependabot groups)**: analyze each package in the group separately, then present as one combined report.
 - **Preserve existing config** -- when making improvements, don't refactor unrelated config. Only touch what's relevant to the update.
 - **If you can't fetch release notes** (private repo, deleted releases, etc.), say so explicitly and recommend the user check manually before merging.
 - **After merging**: automatically run `/post-merge-cleanup` to sync local branches -- do not just remind the user.
