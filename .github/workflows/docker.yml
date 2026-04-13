@@ -667,12 +667,17 @@ jobs:
           APP_VERSION: ${{ needs.version.outputs.app_version }}
         run: |
           printf 'version: %s\n' "$APP_VERSION" > /tmp/melange-vars.yaml
-          melange build docker/web/melange.yaml \
-            --arch x86_64,aarch64 \
-            --source-dir . \
-            --signing-key melange.rsa \
-            --out-dir packages/ \
-            --vars-file /tmp/melange-vars.yaml
+          # Build arches sequentially -- melange v0.49.0 bubblewrap
+          # runner has a bind-mount race when building multiple arches
+          # in parallel, causing web/dist/ to be invisible in one guest.
+          for arch in x86_64 aarch64; do
+            melange build docker/web/melange.yaml \
+              --arch "$arch" \
+              --source-dir . \
+              --signing-key melange.rsa \
+              --out-dir packages/ \
+              --vars-file /tmp/melange-vars.yaml
+          done
 
       - name: Upload packages artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
