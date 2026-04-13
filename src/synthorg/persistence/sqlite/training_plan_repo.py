@@ -6,9 +6,10 @@ Provides ``SQLiteTrainingPlanRepository`` which persists
 
 import json
 import sqlite3
-from datetime import UTC
+from datetime import UTC, datetime
 
 import aiosqlite
+from pydantic import ValidationError
 
 from synthorg.core.enums import SeniorityLevel
 from synthorg.core.types import NotBlankStr
@@ -25,6 +26,29 @@ from synthorg.observability.events.training import (
 from synthorg.persistence.errors import QueryError
 
 logger = get_logger(__name__)
+
+_UPSERT_SQL = """\
+INSERT INTO training_plans (
+    id, new_agent_id, new_agent_role, new_agent_level,
+    new_agent_department, source_selector_type,
+    enabled_content_types, curation_strategy_type,
+    volume_caps, override_sources, skip_training,
+    require_review, status, created_at, executed_at
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+ON CONFLICT(id) DO UPDATE SET
+    new_agent_id=excluded.new_agent_id,
+    new_agent_role=excluded.new_agent_role,
+    new_agent_level=excluded.new_agent_level,
+    new_agent_department=excluded.new_agent_department,
+    source_selector_type=excluded.source_selector_type,
+    enabled_content_types=excluded.enabled_content_types,
+    curation_strategy_type=excluded.curation_strategy_type,
+    volume_caps=excluded.volume_caps,
+    override_sources=excluded.override_sources,
+    skip_training=excluded.skip_training,
+    require_review=excluded.require_review,
+    status=excluded.status,
+    executed_at=excluded.executed_at"""
 
 
 def _serialize_content_types(
@@ -48,6 +72,31 @@ def _serialize_sources(
     return json.dumps([str(s) for s in sources])
 
 
+def _plan_to_params(plan: TrainingPlan) -> tuple[object, ...]:
+    """Build the parameter tuple for the upsert SQL statement."""
+    return (
+        str(plan.id),
+        str(plan.new_agent_id),
+        str(plan.new_agent_role),
+        plan.new_agent_level.value,
+        str(plan.new_agent_department)
+        if plan.new_agent_department is not None
+        else None,
+        str(plan.source_selector_type),
+        _serialize_content_types(plan.enabled_content_types),
+        str(plan.curation_strategy_type),
+        _serialize_volume_caps(plan.volume_caps),
+        _serialize_sources(plan.override_sources),
+        int(plan.skip_training),
+        int(plan.require_review),
+        plan.status.value,
+        plan.created_at.astimezone(UTC).isoformat(),
+        plan.executed_at.astimezone(UTC).isoformat()
+        if plan.executed_at is not None
+        else None,
+    )
+
+
 def _row_to_plan(row: aiosqlite.Row) -> TrainingPlan:
     """Reconstruct a ``TrainingPlan`` from a database row.
 
@@ -56,34 +105,53 @@ def _row_to_plan(row: aiosqlite.Row) -> TrainingPlan:
 
     Returns:
         Validated ``TrainingPlan`` model instance.
+
+    Raises:
+        QueryError: If deserialization fails.
     """
     data = dict(row)
-    data["new_agent_level"] = SeniorityLevel(data["new_agent_level"])
-    data["enabled_content_types"] = frozenset(
-        ContentType(ct) for ct in json.loads(data["enabled_content_types"])
-    )
-    data["volume_caps"] = tuple(
-        (ContentType(ct), count) for ct, count in json.loads(data["volume_caps"])
-    )
-    data["override_sources"] = tuple(
-        NotBlankStr(s) for s in json.loads(data["override_sources"])
-    )
-    data["skip_training"] = bool(data["skip_training"])
-    data["require_review"] = bool(data["require_review"])
-    data["status"] = TrainingPlanStatus(data["status"])
-    from datetime import datetime  # noqa: PLC0415
-
-    data["created_at"] = datetime.fromisoformat(data["created_at"])
-    if data["executed_at"] is not None:
-        data["executed_at"] = datetime.fromisoformat(data["executed_at"])
-    return TrainingPlan.model_validate(data)
+    try:
+        data["new_agent_level"] = SeniorityLevel(data["new_agent_level"])
+        data["enabled_content_types"] = frozenset(
+            ContentType(ct) for ct in json.loads(data["enabled_content_types"])
+        )
+        data["volume_caps"] = tuple(
+            (ContentType(ct), count) for ct, count in json.loads(data["volume_caps"])
+        )
+        data["override_sources"] = tuple(
+            NotBlankStr(s) for s in json.loads(data["override_sources"])
+        )
+        data["skip_training"] = bool(data["skip_training"])
+        data["require_review"] = bool(data["require_review"])
+        data["status"] = TrainingPlanStatus(data["status"])
+        data["created_at"] = datetime.fromisoformat(data["created_at"])
+        if data["executed_at"] is not None:
+            data["executed_at"] = datetime.fromisoformat(
+                data["executed_at"],
+            )
+        return TrainingPlan.model_validate(data)
+    except (
+        json.JSONDecodeError,
+        ValueError,
+        TypeError,
+        KeyError,
+        ValidationError,
+    ) as exc:
+        plan_id = data.get("id", "<unknown>")
+        msg = f"Failed to deserialize training plan {plan_id!r}"
+        logger.exception(
+            HR_TRAINING_PERSISTENCE_ERROR,
+            plan_id=str(plan_id),
+            error=str(exc),
+        )
+        raise QueryError(msg) from exc
 
 
 class SQLiteTrainingPlanRepository:
     """SQLite-backed training plan repository.
 
-    Provides CRUD operations for ``TrainingPlan`` models using a
-    shared ``aiosqlite.Connection``.
+    Provides upsert-based persistence for ``TrainingPlan`` models
+    using a shared ``aiosqlite.Connection``.
 
     Args:
         db: An open aiosqlite connection with ``row_factory``
@@ -102,55 +170,8 @@ class SQLiteTrainingPlanRepository:
         Raises:
             QueryError: If the database operation fails.
         """
-        executed_at = (
-            plan.executed_at.astimezone(UTC).isoformat()
-            if plan.executed_at is not None
-            else None
-        )
         try:
-            await self._db.execute(
-                """\
-INSERT INTO training_plans (
-    id, new_agent_id, new_agent_role, new_agent_level,
-    new_agent_department, source_selector_type,
-    enabled_content_types, curation_strategy_type,
-    volume_caps, override_sources, skip_training,
-    require_review, status, created_at, executed_at
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-ON CONFLICT(id) DO UPDATE SET
-    new_agent_id=excluded.new_agent_id,
-    new_agent_role=excluded.new_agent_role,
-    new_agent_level=excluded.new_agent_level,
-    new_agent_department=excluded.new_agent_department,
-    source_selector_type=excluded.source_selector_type,
-    enabled_content_types=excluded.enabled_content_types,
-    curation_strategy_type=excluded.curation_strategy_type,
-    volume_caps=excluded.volume_caps,
-    override_sources=excluded.override_sources,
-    skip_training=excluded.skip_training,
-    require_review=excluded.require_review,
-    status=excluded.status,
-    executed_at=excluded.executed_at""",
-                (
-                    str(plan.id),
-                    str(plan.new_agent_id),
-                    str(plan.new_agent_role),
-                    plan.new_agent_level.value,
-                    str(plan.new_agent_department)
-                    if plan.new_agent_department is not None
-                    else None,
-                    str(plan.source_selector_type),
-                    _serialize_content_types(plan.enabled_content_types),
-                    str(plan.curation_strategy_type),
-                    _serialize_volume_caps(plan.volume_caps),
-                    _serialize_sources(plan.override_sources),
-                    int(plan.skip_training),
-                    int(plan.require_review),
-                    plan.status.value,
-                    plan.created_at.astimezone(UTC).isoformat(),
-                    executed_at,
-                ),
-            )
+            await self._db.execute(_UPSERT_SQL, _plan_to_params(plan))
             await self._db.commit()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = f"Failed to save training plan {plan.id!r}"

@@ -256,6 +256,8 @@ class TrainingController(Controller):
 
         try:
             result = await service.execute(plan)
+        except MemoryError, RecursionError:
+            raise
         except Exception as exc:
             # Transition plan to FAILED on pipeline error.
             failed_plan = plan.model_copy(
@@ -264,7 +266,17 @@ class TrainingController(Controller):
                     "executed_at": datetime.now(UTC),
                 }
             )
-            await app_state.persistence.training_plans.save(failed_plan)
+            try:
+                await app_state.persistence.training_plans.save(
+                    failed_plan,
+                )
+            except Exception as save_exc:
+                logger.exception(
+                    HR_TRAINING_PLAN_FAILED,
+                    plan_id=str(plan.id),
+                    error="Failed to persist FAILED status",
+                    persistence_error=str(save_exc),
+                )
             logger.exception(
                 HR_TRAINING_PLAN_FAILED,
                 plan_id=str(plan.id),

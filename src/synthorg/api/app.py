@@ -515,6 +515,7 @@ def _build_lifecycle(  # noqa: PLR0913, PLR0915, C901
     _ticket_cleanup_task: asyncio.Task[None] | None = None
     _auto_wired_dispatcher: SettingsChangeDispatcher | None = None
     _health_prober: ProviderHealthProber | None = None
+    _training_memory_backend: object | None = None
 
     def _on_cleanup_task_done(task: asyncio.Task[None]) -> None:
         """Log unexpected cleanup-task death."""
@@ -529,7 +530,8 @@ def _build_lifecycle(  # noqa: PLR0913, PLR0915, C901
             )
 
     async def on_startup() -> None:  # noqa: C901, PLR0912, PLR0915
-        nonlocal _ticket_cleanup_task, _auto_wired_dispatcher, _health_prober
+        nonlocal _ticket_cleanup_task, _auto_wired_dispatcher
+        nonlocal _health_prober, _training_memory_backend
         logger.info(API_APP_STARTUP, version=__version__)
         await _safe_startup(
             persistence,
@@ -655,6 +657,7 @@ def _build_lifecycle(  # noqa: PLR0913, PLR0915, C901
                         tool_tracker=app_state.tool_invocation_tracker,
                     )
                     app_state.set_training_service(_ts)
+                    _training_memory_backend = _mem
             except MemoryError, RecursionError:
                 raise
             except Exception:
@@ -735,8 +738,19 @@ def _build_lifecycle(  # noqa: PLR0913, PLR0915, C901
                     exc_info=True,
                 )
 
-    async def on_shutdown() -> None:
-        nonlocal _ticket_cleanup_task, _auto_wired_dispatcher, _health_prober
+    async def on_shutdown() -> None:  # noqa: C901
+        nonlocal _ticket_cleanup_task, _auto_wired_dispatcher
+        nonlocal _health_prober, _training_memory_backend
+        # Disconnect training memory backend if auto-wired.
+        if _training_memory_backend is not None:
+            disconnect = getattr(_training_memory_backend, "disconnect", None)
+            if callable(disconnect):
+                await _try_stop(
+                    disconnect(),
+                    API_APP_SHUTDOWN,
+                    "Failed to disconnect training memory backend",
+                )
+            _training_memory_backend = None
         if _ticket_cleanup_task is not None:
             _ticket_cleanup_task.cancel()
             with contextlib.suppress(asyncio.CancelledError):

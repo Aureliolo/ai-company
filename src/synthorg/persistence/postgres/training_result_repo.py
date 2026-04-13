@@ -28,6 +28,31 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
+_UPSERT_SQL = """\
+INSERT INTO training_results (
+    id, plan_id, new_agent_id, source_agents_used,
+    items_extracted, items_after_curation,
+    items_after_guards, items_stored,
+    approval_item_id, pending_approvals,
+    review_pending, errors, started_at, completed_at
+) VALUES (
+    %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
+)
+ON CONFLICT(id) DO UPDATE SET
+    plan_id=EXCLUDED.plan_id,
+    new_agent_id=EXCLUDED.new_agent_id,
+    source_agents_used=EXCLUDED.source_agents_used,
+    items_extracted=EXCLUDED.items_extracted,
+    items_after_curation=EXCLUDED.items_after_curation,
+    items_after_guards=EXCLUDED.items_after_guards,
+    items_stored=EXCLUDED.items_stored,
+    approval_item_id=EXCLUDED.approval_item_id,
+    pending_approvals=EXCLUDED.pending_approvals,
+    review_pending=EXCLUDED.review_pending,
+    errors=EXCLUDED.errors,
+    started_at=EXCLUDED.started_at,
+    completed_at=EXCLUDED.completed_at"""
+
 
 def _deserialize_count_tuples(
     raw: list[list[Any]],
@@ -55,28 +80,70 @@ def _row_to_result(row: dict[str, Any]) -> TrainingResult:
 
     Postgres returns JSONB as Python lists/dicts, TIMESTAMPTZ as
     aware datetimes, and BOOLEAN as bool.
+
+    Raises:
+        QueryError: If deserialization fails.
     """
     data = dict(row)
-    data["source_agents_used"] = tuple(
-        NotBlankStr(s) for s in data["source_agents_used"]
+    try:
+        data["source_agents_used"] = tuple(
+            NotBlankStr(s) for s in data["source_agents_used"]
+        )
+        data["items_extracted"] = _deserialize_count_tuples(
+            data["items_extracted"],
+        )
+        data["items_after_curation"] = _deserialize_count_tuples(
+            data["items_after_curation"],
+        )
+        data["items_after_guards"] = _deserialize_count_tuples(
+            data["items_after_guards"],
+        )
+        data["items_stored"] = _deserialize_count_tuples(
+            data["items_stored"],
+        )
+        data["pending_approvals"] = _deserialize_approvals(
+            data["pending_approvals"],
+        )
+        data["errors"] = tuple(data["errors"])
+        return TrainingResult.model_validate(data)
+    except (ValueError, TypeError, KeyError) as exc:
+        result_id = data.get("id", "<unknown>")
+        msg = f"Failed to deserialize training result {result_id!r}"
+        logger.exception(
+            HR_TRAINING_PERSISTENCE_ERROR,
+            result_id=str(result_id),
+            error=str(exc),
+        )
+        raise QueryError(msg) from exc
+
+
+def _result_to_params(result: TrainingResult) -> tuple[object, ...]:
+    """Build the parameter tuple for the upsert SQL statement."""
+    return (
+        str(result.id),
+        str(result.plan_id),
+        str(result.new_agent_id),
+        Jsonb([str(s) for s in result.source_agents_used]),
+        Jsonb([[ct.value, n] for ct, n in result.items_extracted]),
+        Jsonb([[ct.value, n] for ct, n in result.items_after_curation]),
+        Jsonb([[ct.value, n] for ct, n in result.items_after_guards]),
+        Jsonb([[ct.value, n] for ct, n in result.items_stored]),
+        str(result.approval_item_id) if result.approval_item_id is not None else None,
+        Jsonb(
+            [
+                {
+                    "approval_item_id": str(h.approval_item_id),
+                    "content_type": h.content_type.value,
+                    "item_count": h.item_count,
+                }
+                for h in result.pending_approvals
+            ]
+        ),
+        result.review_pending,
+        Jsonb(list(result.errors)),
+        result.started_at,
+        result.completed_at,
     )
-    data["items_extracted"] = _deserialize_count_tuples(
-        data["items_extracted"],
-    )
-    data["items_after_curation"] = _deserialize_count_tuples(
-        data["items_after_curation"],
-    )
-    data["items_after_guards"] = _deserialize_count_tuples(
-        data["items_after_guards"],
-    )
-    data["items_stored"] = _deserialize_count_tuples(
-        data["items_stored"],
-    )
-    data["pending_approvals"] = _deserialize_approvals(
-        data["pending_approvals"],
-    )
-    data["errors"] = tuple(data["errors"])
-    return TrainingResult.model_validate(data)
 
 
 class PostgresTrainingResultRepository:
@@ -99,61 +166,13 @@ class PostgresTrainingResultRepository:
             QueryError: If the database operation fails.
         """
         try:
-            async with self._pool.connection() as conn, conn.cursor() as cur:
+            async with (
+                self._pool.connection() as conn,
+                conn.cursor() as cur,
+            ):
                 await cur.execute(
-                    """\
-INSERT INTO training_results (
-    id, plan_id, new_agent_id, source_agents_used,
-    items_extracted, items_after_curation,
-    items_after_guards, items_stored,
-    approval_item_id, pending_approvals,
-    review_pending, errors, started_at, completed_at
-) VALUES (
-    %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
-)
-ON CONFLICT(id) DO UPDATE SET
-    plan_id=EXCLUDED.plan_id,
-    new_agent_id=EXCLUDED.new_agent_id,
-    source_agents_used=EXCLUDED.source_agents_used,
-    items_extracted=EXCLUDED.items_extracted,
-    items_after_curation=EXCLUDED.items_after_curation,
-    items_after_guards=EXCLUDED.items_after_guards,
-    items_stored=EXCLUDED.items_stored,
-    approval_item_id=EXCLUDED.approval_item_id,
-    pending_approvals=EXCLUDED.pending_approvals,
-    review_pending=EXCLUDED.review_pending,
-    errors=EXCLUDED.errors,
-    started_at=EXCLUDED.started_at,
-    completed_at=EXCLUDED.completed_at""",
-                    (
-                        str(result.id),
-                        str(result.plan_id),
-                        str(result.new_agent_id),
-                        Jsonb([str(s) for s in result.source_agents_used]),
-                        Jsonb([[ct.value, n] for ct, n in result.items_extracted]),
-                        Jsonb([[ct.value, n] for ct, n in result.items_after_curation]),
-                        Jsonb([[ct.value, n] for ct, n in result.items_after_guards]),
-                        Jsonb([[ct.value, n] for ct, n in result.items_stored]),
-                        str(result.approval_item_id)
-                        if result.approval_item_id is not None
-                        else None,
-                        Jsonb(
-                            [
-                                {
-                                    "approval_item_id": str(
-                                        h.approval_item_id,
-                                    ),
-                                    "content_type": h.content_type.value,
-                                    "item_count": h.item_count,
-                                }
-                                for h in result.pending_approvals
-                            ]
-                        ),
-                        result.review_pending,
-                        Jsonb(list(result.errors)),
-                        result.started_at,
-                        result.completed_at,
-                    ),
+                    _UPSERT_SQL,
+                    _result_to_params(result),
                 )
                 await conn.commit()
         except psycopg.Error as exc:
