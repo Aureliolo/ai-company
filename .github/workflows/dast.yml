@@ -37,7 +37,7 @@ jobs:
       - name: Build backend image
         run: docker compose -f docker/compose.yml build backend
 
-      # Start backend only (no web/nginx needed for API scan)
+      # Start backend only (no web/caddy needed for API scan)
       - name: Start backend
         run: docker compose -f docker/compose.yml up -d backend
 

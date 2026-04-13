@@ -14,6 +14,8 @@ on:
       - "uv.lock"
       - ".dockerignore"
       - ".github/workflows/docker.yml"
+      - "docs/**"
+      - "mkdocs.yml"
   workflow_dispatch:
 
 permissions: {}
@@ -54,9 +56,217 @@ jobs:
           echo "app_version=${VERSION}" >> "$GITHUB_OUTPUT"
           echo "App version: ${VERSION}"
 
+  # =========================================================================
+  # apko base images -- Wolfi-composed bases for backend + sandbox
+  # =========================================================================
+  build-backend-base:
+    name: Build Backend Base (apko)
+    needs: [version]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
+    outputs:
+      digest: ${{ steps.push.outputs.digest }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
+
+      - name: Set up apko
+        uses: chainguard-dev/actions/setup-apko@main
+
+      - name: Log in to GHCR
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121 # v4.1.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build base image
+        run: |
+          apko build docker/backend/apko.yaml \
+            ghcr.io/aureliolo/synthorg-backend-base:sha-${GITHUB_SHA::7} \
+            backend-base.tar
+
+      - name: Load image for scanning
+        run: docker load -i backend-base.tar
+
+      - name: Compute scan image ref
+        id: scan-ref
+        run: echo "ref=ghcr.io/aureliolo/synthorg-backend-base:sha-${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+
+      - name: Trivy scan
+        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # v0.35.0
+        with:
+          image-ref: ${{ steps.scan-ref.outputs.ref }}
+          format: json
+          output: trivy-backend-base.json
+          exit-code: "0"
+          severity: CRITICAL,HIGH
+          trivyignores: .github/.trivyignore.yaml
+
+      - name: Evaluate Trivy results
+        run: |
+          if [ ! -f trivy-backend-base.json ]; then
+            echo "::error::trivy-backend-base.json not found"
+            exit 1
+          fi
+          CRITICAL=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity == "CRITICAL")] | length' trivy-backend-base.json)
+          HIGH=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity == "HIGH")] | length' trivy-backend-base.json)
+          echo "Critical: $CRITICAL, High: $HIGH"
+          if [ "$HIGH" -gt 0 ]; then echo "::warning::Found $HIGH HIGH severity vulnerabilities"; fi
+          if [ "$CRITICAL" -gt 0 ]; then echo "::error::Found $CRITICAL CRITICAL vulnerabilities"; exit 1; fi
+
+      - name: Grype scan
+        uses: anchore/scan-action@e1165082ffb1fe366ebaf02d8526e7c4989ea9d2 # v7.4.0
+        with:
+          image: ${{ steps.scan-ref.outputs.ref }}
+          fail-build: true
+          severity-cutoff: critical
+          config: .github/.grype.yaml
+
+      - name: Push base image
+        if: github.event_name != 'pull_request'
+        id: push
+        run: |
+          docker push ghcr.io/aureliolo/synthorg-backend-base:sha-${GITHUB_SHA::7}
+          DIGEST=$(docker inspect --format='{{index .RepoDigests 0}}' ghcr.io/aureliolo/synthorg-backend-base:sha-${GITHUB_SHA::7} | cut -d'@' -f2)
+          echo "digest=${DIGEST}" >> "$GITHUB_OUTPUT"
+
+      - name: Install cosign
+        if: github.event_name != 'pull_request'
+        uses: sigstore/cosign-installer@cad07c2e89fa2edd6e2d7bab4c1aa38e53f76003 # v4.1.1
+
+      - name: Sign image
+        if: github.event_name != 'pull_request'
+        env:
+          DIGEST: ${{ steps.push.outputs.digest }}
+        run: |
+          if [ -z "$DIGEST" ]; then echo "::error::No digest"; exit 1; fi
+          set -o pipefail
+          if ! cosign sign --yes ghcr.io/aureliolo/synthorg-backend-base@${DIGEST} 2>&1 | tee /tmp/cosign-out; then
+            if grep -q 'createLogEntryConflict' /tmp/cosign-out; then
+              echo "::notice::Image already signed -- skipping"
+            else cat /tmp/cosign-out; exit 1; fi
+          fi
+
+      - name: Attest build provenance (SLSA Level 3)
+        if: github.event_name != 'pull_request'
+        uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32 # v4.1.0
+        with:
+          subject-name: ghcr.io/aureliolo/synthorg-backend-base
+          subject-digest: ${{ steps.push.outputs.digest }}
+          push-to-registry: true
+
+  build-sandbox-base:
+    name: Build Sandbox Base (apko)
+    needs: [version]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
+    outputs:
+      digest: ${{ steps.push.outputs.digest }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
+
+      - name: Set up apko
+        uses: chainguard-dev/actions/setup-apko@main
+
+      - name: Log in to GHCR
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121 # v4.1.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build base image
+        run: |
+          apko build docker/sandbox/apko.yaml \
+            ghcr.io/aureliolo/synthorg-sandbox-base:sha-${GITHUB_SHA::7} \
+            sandbox-base.tar
+
+      - name: Load image for scanning
+        run: docker load -i sandbox-base.tar
+
+      - name: Compute scan image ref
+        id: scan-ref
+        run: echo "ref=ghcr.io/aureliolo/synthorg-sandbox-base:sha-${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+
+      - name: Trivy scan
+        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # v0.35.0
+        with:
+          image-ref: ${{ steps.scan-ref.outputs.ref }}
+          format: json
+          output: trivy-sandbox-base.json
+          exit-code: "0"
+          severity: CRITICAL,HIGH
+          trivyignores: .github/.trivyignore.yaml
+
+      - name: Evaluate Trivy results
+        run: |
+          if [ ! -f trivy-sandbox-base.json ]; then echo "::error::Missing Trivy output"; exit 1; fi
+          CRITICAL=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity == "CRITICAL")] | length' trivy-sandbox-base.json)
+          if [ "$CRITICAL" -gt 0 ]; then echo "::error::Found $CRITICAL CRITICAL vulnerabilities"; exit 1; fi
+
+      - name: Grype scan
+        uses: anchore/scan-action@e1165082ffb1fe366ebaf02d8526e7c4989ea9d2 # v7.4.0
+        with:
+          image: ${{ steps.scan-ref.outputs.ref }}
+          fail-build: true
+          severity-cutoff: critical
+          config: .github/.grype.yaml
+
+      - name: Push base image
+        if: github.event_name != 'pull_request'
+        id: push
+        run: |
+          docker push ghcr.io/aureliolo/synthorg-sandbox-base:sha-${GITHUB_SHA::7}
+          DIGEST=$(docker inspect --format='{{index .RepoDigests 0}}' ghcr.io/aureliolo/synthorg-sandbox-base:sha-${GITHUB_SHA::7} | cut -d'@' -f2)
+          echo "digest=${DIGEST}" >> "$GITHUB_OUTPUT"
+
+      - name: Install cosign
+        if: github.event_name != 'pull_request'
+        uses: sigstore/cosign-installer@cad07c2e89fa2edd6e2d7bab4c1aa38e53f76003 # v4.1.1
+
+      - name: Sign image
+        if: github.event_name != 'pull_request'
+        env:
+          DIGEST: ${{ steps.push.outputs.digest }}
+        run: |
+          if [ -z "$DIGEST" ]; then echo "::error::No digest"; exit 1; fi
+          set -o pipefail
+          if ! cosign sign --yes ghcr.io/aureliolo/synthorg-sandbox-base@${DIGEST} 2>&1 | tee /tmp/cosign-out; then
+            if grep -q 'createLogEntryConflict' /tmp/cosign-out; then
+              echo "::notice::Image already signed -- skipping"
+            else cat /tmp/cosign-out; exit 1; fi
+          fi
+
+      - name: Attest build provenance (SLSA Level 3)
+        if: github.event_name != 'pull_request'
+        uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32 # v4.1.0
+        with:
+          subject-name: ghcr.io/aureliolo/synthorg-sandbox-base
+          subject-digest: ${{ steps.push.outputs.digest }}
+          push-to-registry: true
+
+  # =========================================================================
+  # Application images -- thin Dockerfile wrappers over apko bases
+  # =========================================================================
   build-backend:
     name: Build Backend
-    needs: [version]
+    needs: [version, build-backend-base]
     runs-on: ubuntu-latest
     timeout-minutes: 60
     permissions:
@@ -96,7 +306,6 @@ jobs:
             type=raw,value=dev,enable=${{ startsWith(github.ref, 'refs/tags/v') && contains(github.ref, '-dev.') }}
             type=sha,prefix=sha-
 
-      # Build locally first, scan, then push only if scans pass
       - name: Build image
         uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f # v7.1.0
         with:
@@ -106,11 +315,12 @@ jobs:
           load: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            BASE_DIGEST=${{ needs.build-backend-base.outputs.digest }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
           platforms: linux/amd64
 
-      # SHA tag always exists (version/semver tags only on v* tags)
       - name: Compute scan image ref
         id: scan-ref
         run: echo "ref=ghcr.io/aureliolo/synthorg-backend:sha-${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
@@ -264,11 +474,76 @@ jobs:
           path: sbom-backend.cdx.json
           retention-days: 30
 
-  build-web:
-    name: Build Web
-    needs: [version]
+  # =========================================================================
+  # Web image -- melange-packaged assets + pure apko (no Dockerfile)
+  # =========================================================================
+  build-web-assets:
+    name: Build Web Assets (melange)
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@1a4442cacd436585916f2a8e5a157982768e594e # v4.2.0
+        with:
+          node-version-file: web/.nvmrc
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install frontend deps and build SPA
+        working-directory: web
+        run: npm ci --ignore-scripts && npm run build
+
+      - name: Set up Python + uv (docs build)
+        uses: ./.github/actions/setup-python-uv
+
+      - name: Install D2
+        run: |
+          curl -fsSL "https://github.com/terrastruct/d2/releases/download/v0.7.1/d2-v0.7.1-linux-amd64.tar.gz" -o /tmp/d2.tar.gz
+          echo "eb172adf59f38d1e5a70ab177591356754ffaf9bebb84e0ca8b767dfb421dad7  /tmp/d2.tar.gz" | sha256sum --check --strict -
+          tar -xzf /tmp/d2.tar.gz -C /tmp
+          sudo mv /tmp/d2-v0.7.1/bin/d2 /usr/local/bin/d2
+
+      - name: Build documentation
+        env:
+          PYTHONPATH: .
+        run: |
+          uv run python scripts/export_openapi.py
+          uv run zensical build
+
+      - name: Set up melange
+        uses: chainguard-dev/actions/setup-melange@main
+
+      - name: Generate melange signing key
+        run: melange keygen
+
+      - name: Build web-assets apk
+        run: |
+          melange build docker/web/melange.yaml \
+            --arch amd64 \
+            --source-dir . \
+            --signing-key melange.rsa \
+            --out-dir packages/
+
+      - name: Upload packages artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: web-apk-packages
+          path: |
+            packages/
+            melange.rsa.pub
+          retention-days: 1
+
+  build-web:
+    name: Build Web (apko)
+    needs: [version, build-web-assets]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
     permissions:
       contents: read
       packages: write
@@ -281,10 +556,14 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd # v4.0.0
+      - name: Download web-assets apk
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
-          cache-binary: false
+          name: web-apk-packages
+          path: /work
+
+      - name: Set up apko
+        uses: chainguard-dev/actions/setup-apko@main
 
       - name: Log in to GHCR
         if: github.event_name != 'pull_request'
@@ -294,38 +573,19 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Extract metadata
-        id: meta
-        uses: docker/metadata-action@030e881283bb7a6894de51c315a6bfe6a94e05cf # v6.0.0
-        with:
-          images: ghcr.io/aureliolo/synthorg-web
-          tags: |
-            type=raw,value=${{ needs.version.outputs.app_version }},enable=${{ startsWith(github.ref, 'refs/tags/v') && !contains(github.ref, '-dev.') }}
-            type=semver,pattern={{version}},enable=${{ startsWith(github.ref, 'refs/tags/v') }}
-            type=semver,pattern={{major}}.{{minor}},enable=${{ startsWith(github.ref, 'refs/tags/v') && !contains(github.ref, '-dev.') }}
-            type=raw,value=dev,enable=${{ startsWith(github.ref, 'refs/tags/v') && contains(github.ref, '-dev.') }}
-            type=sha,prefix=sha-
+      - name: Build web image
+        run: |
+          apko build docker/web/apko.yaml \
+            ghcr.io/aureliolo/synthorg-web:sha-${GITHUB_SHA::7} \
+            web.tar
 
-      # Build locally first, scan, then push only if scans pass
-      - name: Build image
-        uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f # v7.1.0
-        with:
-          context: .
-          file: docker/web/Dockerfile
-          push: false
-          load: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-          platforms: linux/amd64
+      - name: Load image for scanning
+        run: docker load -i web.tar
 
-      # SHA tag always exists (version/semver tags only on v* tags)
       - name: Compute scan image ref
         id: scan-ref
         run: echo "ref=ghcr.io/aureliolo/synthorg-web:sha-${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
 
-      # Single Trivy run for CRITICAL + HIGH (saves ~12s vs two separate runs).
       - name: Trivy scan
         uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # v0.35.0
         with:
@@ -338,48 +598,14 @@ jobs:
 
       - name: Evaluate Trivy results
         run: |
-          if [ ! -f trivy-web.json ]; then
-            echo "::error::trivy-web.json not found -- Trivy scan may have failed to produce output"
-            exit 1
-          fi
-          echo "## Trivy Scan -- Web"
-          TOTAL=$(jq '[.Results[]?.Vulnerabilities[]?] | length' trivy-web.json)
-          if [ "$TOTAL" -eq 0 ]; then
-            echo "No CRITICAL or HIGH vulnerabilities found."
-            echo "## Trivy Scan -- Web: No CRITICAL or HIGH vulnerabilities found." >> "$GITHUB_STEP_SUMMARY"
-          else
-            TABLE=$(jq -r '
-              ["SEVERITY","CVE","PACKAGE","VERSION","TITLE"],
-              (.Results[]?.Vulnerabilities[]? |
-                [.Severity, .VulnerabilityID, .PkgName, .InstalledVersion, (.Title // "")[0:60]]) |
-              @tsv
-            ' trivy-web.json | column -t -s$'\t')
-            echo "$TABLE"
-            printf '## Trivy Scan -- Web\n```\n%s\n```\n' "$TABLE" >> "$GITHUB_STEP_SUMMARY"
-          fi
-
+          if [ ! -f trivy-web.json ]; then echo "::error::Missing Trivy output"; exit 1; fi
           CRITICAL=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity == "CRITICAL")] | length' trivy-web.json)
           HIGH=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity == "HIGH")] | length' trivy-web.json)
           echo "Critical: $CRITICAL, High: $HIGH"
-          echo "**Critical: $CRITICAL, High: $HIGH**" >> "$GITHUB_STEP_SUMMARY"
-          if [ "$HIGH" -gt 0 ]; then
-            echo "::warning::Found $HIGH HIGH severity vulnerabilities"
-          fi
-          if [ "$CRITICAL" -gt 0 ]; then
-            echo "::error::Found $CRITICAL CRITICAL vulnerabilities -- failing build"
-            exit 1
-          fi
-
-      - name: Upload Trivy report (web)
-        if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: trivy-web-report
-          path: trivy-web.json
-          retention-days: 30
+          if [ "$HIGH" -gt 0 ]; then echo "::warning::Found $HIGH HIGH severity vulnerabilities"; fi
+          if [ "$CRITICAL" -gt 0 ]; then echo "::error::Found $CRITICAL CRITICAL vulnerabilities"; exit 1; fi
 
       - name: Grype scan
-        id: grype-web
         uses: anchore/scan-action@e1165082ffb1fe366ebaf02d8526e7c4989ea9d2 # v7.4.0
         with:
           image: ${{ steps.scan-ref.outputs.ref }}
@@ -387,41 +613,13 @@ jobs:
           severity-cutoff: critical
           config: .github/.grype.yaml
 
-      - name: Grype table (diagnosis on failure)
-        if: failure() && steps.grype-web.outcome == 'failure'
-        uses: anchore/scan-action@e1165082ffb1fe366ebaf02d8526e7c4989ea9d2 # v7.4.0
-        with:
-          image: ${{ steps.scan-ref.outputs.ref }}
-          fail-build: false
-          severity-cutoff: critical
-          output-format: table
-          config: .github/.grype.yaml
-
-      - name: CIS Docker Benchmark (web)
-        continue-on-error: true
-        env:
-          IMAGE_REF: ${{ steps.scan-ref.outputs.ref }}
-        run: |
-          command -v trivy >/dev/null 2>&1 || { echo "::warning::trivy not on PATH, skipping CIS scan"; exit 0; }
-          trivy image --compliance docker-cis-1.6.0 --format table "$IMAGE_REF"
-
-      # Push only after scans pass -- prevents publishing vulnerable images.
-      # NOTE: Separate build invocation; GHA cache ensures deterministic layers,
-      # but manifest digest differs due to SBOM + provenance attestation layers.
-      - name: Push image
+      - name: Push web image
         if: github.event_name != 'pull_request'
         id: push
-        uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f # v7.1.0
-        with:
-          context: .
-          file: docker/web/Dockerfile
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
-          platforms: linux/amd64
-          sbom: true
-          provenance: true
+        run: |
+          docker push ghcr.io/aureliolo/synthorg-web:sha-${GITHUB_SHA::7}
+          DIGEST=$(docker inspect --format='{{index .RepoDigests 0}}' ghcr.io/aureliolo/synthorg-web:sha-${GITHUB_SHA::7} | cut -d'@' -f2)
+          echo "digest=${DIGEST}" >> "$GITHUB_OUTPUT"
 
       - name: Install cosign
         if: github.event_name != 'pull_request'
@@ -432,18 +630,12 @@ jobs:
         env:
           DIGEST: ${{ steps.push.outputs.digest }}
         run: |
-          if [ -z "$DIGEST" ]; then
-            echo "::error::Push step did not produce a digest -- cannot sign image"
-            exit 1
-          fi
+          if [ -z "$DIGEST" ]; then echo "::error::No digest"; exit 1; fi
           set -o pipefail
           if ! cosign sign --yes ghcr.io/aureliolo/synthorg-web@${DIGEST} 2>&1 | tee /tmp/cosign-out; then
             if grep -q 'createLogEntryConflict' /tmp/cosign-out; then
-              echo "::notice::Image already signed in transparency log -- skipping"
-            else
-              cat /tmp/cosign-out
-              exit 1
-            fi
+              echo "::notice::Image already signed -- skipping"
+            else cat /tmp/cosign-out; exit 1; fi
           fi
 
       - name: Attest build provenance (SLSA Level 3)
@@ -472,7 +664,7 @@ jobs:
 
   build-sandbox:
     name: Build Sandbox
-    needs: [version]
+    needs: [version, build-sandbox-base]
     runs-on: ubuntu-latest
     timeout-minutes: 60
     permissions:
@@ -522,6 +714,8 @@ jobs:
           load: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            BASE_DIGEST=${{ needs.build-sandbox-base.outputs.digest }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
           platforms: linux/amd64
@@ -624,6 +818,8 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            BASE_DIGEST=${{ needs.build-sandbox-base.outputs.digest }}
           cache-from: type=gha
           platforms: linux/amd64
           sbom: true
@@ -680,7 +876,7 @@ jobs:
   update-release:
     name: Update Release Notes
     if: startsWith(github.ref, 'refs/tags/v') && github.event_name != 'pull_request'
-    needs: [version, build-backend, build-web, build-sandbox]
+    needs: [version, build-backend-base, build-sandbox-base, build-backend, build-web, build-sandbox]
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:

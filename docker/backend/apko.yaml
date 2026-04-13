@@ -1,0 +1,44 @@
+# SynthOrg backend base image -- Wolfi, composed by apko.
+# Produces: ghcr.io/aureliolo/synthorg-backend-base
+# Consumed by: docker/backend/Dockerfile (thin FROM wrapper).
+#
+# Exact Python pin: python-3.14=3.14.3-r0 (issue #1267 acceptance criterion).
+# Transitive apks are resolved and digest-pinned by apko.lock.json, which is
+# refreshed weekly by .github/workflows/apko-lock.yml.
+
+contents:
+  repositories:
+    - https://packages.wolfi.dev/os
+  keyring:
+    - https://packages.wolfi.dev/os/wolfi-signing.rsa.pub
+  packages:
+    - wolfi-baselayout
+    - ca-certificates-bundle
+    - tzdata
+    - python-3.14=3.14.3-r0
+
+accounts:
+  groups:
+    - groupname: nonroot
+      gid: 65532
+  users:
+    - username: nonroot
+      uid: 65532
+      gid: 65532
+  run-as: "65532"
+
+environment:
+  PATH: /usr/sbin:/usr/bin:/sbin:/bin
+  PYTHONUNBUFFERED: "1"
+  PYTHONDONTWRITEBYTECODE: "1"
+
+archs:
+  - x86_64
+
+annotations:
+  org.opencontainers.image.title: synthorg-backend-base
+  org.opencontainers.image.description: Wolfi-based apko-composed base for synthorg-backend
+  org.opencontainers.image.url: https://github.com/Aureliolo/synthorg
+  org.opencontainers.image.source: https://github.com/Aureliolo/synthorg
+  org.opencontainers.image.licenses: BUSL-1.1
+  org.opencontainers.image.vendor: Aureliolo

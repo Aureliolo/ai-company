@@ -1,0 +1,57 @@
+# SynthOrg sandbox base image -- Wolfi, composed by apko.
+# Produces: ghcr.io/aureliolo/synthorg-sandbox-base
+# Consumed by: docker/sandbox/Dockerfile (thin FROM wrapper).
+#
+# Non-distroless on purpose: keeps busybox + git + iptables so that
+# docker/sandbox/sandbox-init.sh can enforce per-host:port allowed_hosts
+# using iptables (D16 design decision, permanent per docs/design/sandbox.md).
+#
+# UID 10001 must match setpriv --reuid in docker/sandbox/sandbox-init.sh.
+
+contents:
+  repositories:
+    - https://packages.wolfi.dev/os
+  keyring:
+    - https://packages.wolfi.dev/os/wolfi-signing.rsa.pub
+  packages:
+    - wolfi-baselayout
+    - ca-certificates-bundle
+    - tzdata
+    - busybox
+    - git
+    - iptables
+    - nodejs-25
+    - npm
+    - python-3.14=3.14.3-r0
+
+accounts:
+  groups:
+    - groupname: sandbox
+      gid: 10001
+  users:
+    - username: sandbox
+      uid: 10001
+      gid: 10001
+  run-as: "10001"
+
+paths:
+  - path: /workspace
+    type: directory
+    uid: 10001
+    gid: 10001
+    permissions: 0o755
+
+environment:
+  PATH: /usr/sbin:/usr/bin:/sbin:/bin
+  PYTHONUNBUFFERED: "1"
+
+archs:
+  - x86_64
+
+annotations:
+  org.opencontainers.image.title: synthorg-sandbox-base
+  org.opencontainers.image.description: Wolfi-based apko-composed base for synthorg-sandbox
+  org.opencontainers.image.url: https://github.com/Aureliolo/synthorg
+  org.opencontainers.image.source: https://github.com/Aureliolo/synthorg
+  org.opencontainers.image.licenses: BUSL-1.1
+  org.opencontainers.image.vendor: Aureliolo

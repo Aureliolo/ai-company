@@ -56,10 +56,10 @@ describe('getCspNonce', () => {
     expect(getCspNonce()).toBeUndefined()
   })
 
-  it('returns undefined for un-substituted __CSP_NONCE__ placeholder', async () => {
+  it('returns undefined for un-substituted Caddy template placeholder', async () => {
     const meta = document.createElement('meta')
     meta.name = 'csp-nonce'
-    meta.content = '__CSP_NONCE__'
+    meta.content = '{{placeholder "http.request.uuid"}}'
     document.head.appendChild(meta)
 
     const { getCspNonce } = await import('@/lib/csp')

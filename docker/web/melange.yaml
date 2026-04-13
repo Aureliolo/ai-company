@@ -1,0 +1,60 @@
+# SynthOrg web static bundle packaged as a Wolfi apk.
+# Consumed by: docker/web/apko.yaml (as @local synthorg-web-assets).
+#
+# Produces: synthorg-web-assets-${VERSION}.apk with
+#   /usr/share/caddy/html/          -- Vite SPA bundle + pre-gzipped siblings
+#   /usr/share/caddy/html/docs/     -- zensical-built MkDocs output + pre-gzipped
+#   /etc/caddy/Caddyfile            -- the server config
+#
+# Built in CI by .github/workflows/docker.yml build-web-assets job with
+# `melange build --source-dir <repo-root>`; the CI job first runs
+# `npm -C web run build` and `uv run zensical build` so the inputs
+# (web/dist/, _site/docs/) exist on disk before melange runs.
+#
+# The apk version is injected from the git commit SHA at build time
+# (--envvar VERSION=${GITHUB_SHA::7}) so every build is uniquely identifiable
+# in the SBOM.
+
+package:
+  name: synthorg-web-assets
+  version: ${{vars.version}}
+  epoch: 0
+  description: SynthOrg web dashboard static assets (SPA + docs + Caddyfile)
+  copyright:
+    - license: BUSL-1.1
+
+vars:
+  version: 0.0.0
+
+environment:
+  contents:
+    packages:
+      - busybox
+      - gzip
+
+pipeline:
+  - name: Install Vite SPA bundle
+    runs: |
+      set -eu
+      mkdir -p "${{targets.destdir}}/usr/share/caddy/html"
+      cp -R /home/build/web/dist/. "${{targets.destdir}}/usr/share/caddy/html/"
+
+  - name: Install zensical docs output
+    runs: |
+      set -eu
+      mkdir -p "${{targets.destdir}}/usr/share/caddy/html/docs"
+      cp -R /home/build/_site/docs/. "${{targets.destdir}}/usr/share/caddy/html/docs/"
+
+  - name: Install Caddyfile
+    runs: |
+      set -eu
+      mkdir -p "${{targets.destdir}}/etc/caddy"
+      install -m 0644 /home/build/web/Caddyfile "${{targets.destdir}}/etc/caddy/Caddyfile"
+
+  - name: Pre-compress static assets
+    runs: |
+      set -eu
+      find "${{targets.destdir}}/usr/share/caddy/html" -type f \
+        \( -name '*.js' -o -name '*.css' -o -name '*.html' \
+           -o -name '*.svg' -o -name '*.json' -o -name '*.xml' \) \
+        -size +256c -exec gzip -9 -k -n {} \;

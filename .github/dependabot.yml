@@ -162,10 +162,6 @@ updates:
     open-pull-requests-limit: 3
     reviewers:
       - Aureliolo
-    ignore:
-      - dependency-name: chainguard/python
-      - dependency-name: python
-        versions: ["3.15.*", "3.16.*"]
     labels:
       - dependencies
       - type:chore
@@ -185,9 +181,6 @@ updates:
     open-pull-requests-limit: 3
     reviewers:
       - Aureliolo
-    ignore:
-      - dependency-name: python
-        versions: ["3.15.*", "3.16.*"]
     labels:
       - dependencies
       - type:chore

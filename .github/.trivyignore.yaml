@@ -7,8 +7,6 @@ vulnerabilities:
       in contrib/, not core zlib compression. Our images do not ship or
       invoke untgz. Upstream disputes CVE validity:
       https://github.com/madler/zlib/issues/1148
-      nginx-unprivileged maintainer closed as not-zlib:
-      https://github.com/nginx/docker-nginx-unprivileged/issues/381
 
   - id: CVE-2026-25210
     purls:
@@ -38,35 +36,24 @@ vulnerabilities:
 
   - id: CVE-2026-4519
     purls:
-      - "pkg:apk/chainguard/python-3.14"
+      - "pkg:apk/wolfi/python-3.14"
     expired_at: "2026-07-10T00:00:00Z"
     statement: >-
       Python webbrowser module command-line option injection (CVE-2026-4519).
       Our backend never invokes webbrowser.open() -- the module is not
-      imported or used. Fixed in CPython 3.14.4 but Chainguard image pins
-      3.14.3-r2. Risk accepted: no code path reaches the vulnerable function.
-
-  - id: CVE-2026-32767
-    purls:
-      - "pkg:apk/alpine/libexpat"
-    expired_at: "2026-06-17T00:00:00Z"
-    statement: >-
-      False positive: CVE-2026-32767 is a SiYuan Note authorization bypass
-      (CWE-863, arbitrary SQL execution in /api/search/fullTextSearchBlock),
-      not a libexpat vulnerability. Trivy incorrectly maps this CVE to
-      libexpat 2.7.4. Our nginx-unprivileged web image does not run SiYuan,
-      execute SQL, or use libexpat for security-critical operations.
+      imported or used. Fixed in CPython 3.14.4 but Wolfi apko base pins
+      3.14.3-r0. Risk accepted: no code path reaches the vulnerable function.
 
   - id: CVE-2026-28386
     purls:
-      - "pkg:apk/chainguard/openssl"
-      - "pkg:apk/chainguard/libcrypto3"
-      - "pkg:apk/chainguard/libssl3"
+      - "pkg:apk/wolfi/openssl"
+      - "pkg:apk/wolfi/libcrypto3"
+      - "pkg:apk/wolfi/libssl3"
     expired_at: "2026-07-10T00:00:00Z"
     statement: >-
       OpenSSL AES-CFB128 out-of-bounds read on x86-64 with AVX-512 and
       VAES support (CVSS 9.1). Requires partial block processing at page
       boundary with unmapped following page. CFB mode is not used in
       TLS/DTLS and our application does not use AES-CFB128. No patched
-      Chainguard package available yet. EPSS < 0.1%.
+      Wolfi package available yet. EPSS < 0.1%.
       Risk accepted: attack vector is unreachable in our images.

@@ -1657,43 +1657,36 @@ and pre-pulls the sandbox image on demand.
 
 ### Images we publish
 
-| Image | Purpose | Current base |
-|-------|---------|--------------|
-| `backend` | SynthOrg orchestration engine (Litestar + uvicorn) | `docker/backend/Dockerfile` layering the uv-built venv on a `cgr.dev/chainguard/python` runtime stage |
-| `web` | React SPA and built docs, served by **nginx** | `docker/web/Dockerfile` running `nginxinc/nginx-unprivileged:1.29.5-alpine` with `web/nginx.conf` + `web/security-headers.conf` |
-| `sandbox` | Ephemeral agent code execution image spawned on demand by the backend | `docker/sandbox/Dockerfile` with `busybox`, `git`, `iptables`, and `sandbox-init.sh`; not distroless |
+| Image | Purpose | Base |
+|-------|---------|------|
+| `backend` | SynthOrg orchestration engine (Litestar + uvicorn) | apko-composed Wolfi base (`docker/backend/apko.yaml`, `python-3.14=3.14.3-r0` pinned); thin `docker/backend/Dockerfile` layers the uv-built venv on top |
+| `web` | React SPA and built docs, served by **Caddy** | Pure apko (no Dockerfile); composes `caddy` + `ca-certificates-bundle` + melange-built `synthorg-web-assets` apk + `/etc/caddy/Caddyfile` |
+| `sandbox` | Ephemeral agent code execution image spawned on demand by the backend | apko-composed Wolfi base (`docker/sandbox/apko.yaml`) with `busybox`, `git`, `iptables` for D16 `allowed_hosts` enforcement; thin `docker/sandbox/Dockerfile` adds `sandbox-init.sh` |
 
 Each published image is signed with **cosign keyless** via GitHub OIDC in
 `.github/workflows/docker.yml`, attested with **SLSA Level 3 provenance**, and ships a
-**CycloneDX SBOM** as an attestation. These are already wired up and enforced at start
-time by `cli/internal/verify/verify.go`.
+**CycloneDX SBOM** as an attestation. These are wired up and enforced at start time by
+`cli/internal/verify/verify.go`.
 
-### Planned: apko-composed base images (tracked in #1267)
+### apko-composed base images
 
-The following is **planned** work, not the current repository state. No `docker/*/apko.yaml`,
-`.github/workflows/apko-lock.yml`, or `web/Caddyfile` exists in the repo yet; this section
-captures the target architecture so the current Dockerfile layout can be evaluated against it.
-
-The backend and sandbox images will migrate to a **Hybrid A** pattern: apko composes the
-base image declaratively from exact-versioned Wolfi packages (`python-3.14=3.14.3-r0`,
-`git`, `iptables`, and so on), and a ~10-line Dockerfile layers the application on top
-(`FROM apko-base`, `COPY .venv`, `COPY src`, `ENTRYPOINT`). The web image will become
-**pure apko** -- no Dockerfile -- composing Caddy plus the static site bundle.
+The backend and sandbox images use a **Hybrid A** pattern: apko composes the base image
+declaratively from exact-versioned Wolfi packages (`python-3.14=3.14.3-r0`, `git`,
+`iptables`, and so on), and a thin Dockerfile layers the application on top (`FROM
+apko-base@sha256:...`, `COPY .venv`, `COPY src`, `ENTRYPOINT`). The web image is **pure
+apko** -- no Dockerfile -- composing Caddy plus a melange-packaged static site bundle.
 
 Wolfi is a separate distribution from Alpine. It reuses the `apk` package format but is
 built against **glibc**, not musl, so Python `manylinux` wheels install natively without
 source rebuilds and `uv` runs at full speed. This is the decisive reason Wolfi wins over
 both Alpine and Debian-slim for our workload.
 
-Planned reconciliation once the apko migration lands:
+Reconciliation mechanisms:
 
 | Mechanism | Target | Cadence |
 |-----------|--------|---------|
 | Dependabot (Docker ecosystem) | Thin Dockerfile `FROM` lines (apko-base digest) | Per-upstream-publish |
-| `apko lock --update` cron (planned `.github/workflows/apko-lock.yml`) | Planned `docker/*/apko.yaml` lockfiles | Weekly |
-
-Today, only Dependabot reconciles the existing Dockerfile `FROM` lines. The `apko lock`
-cron is future work; there is no second bot (no Renovate) and no custom reconciler.
+| `apko lock --update` cron (`.github/workflows/apko-lock.yml`) | `docker/*/apko.lock.json` lockfiles | Weekly (Mon 06:00 UTC) |
 
 ### Image verification at launch
 
@@ -1738,14 +1731,13 @@ host boundary.
 
 ### Web server
 
-The web image is currently built from `docker/web/Dockerfile` and runs **nginx**
-(`nginxinc/nginx-unprivileged:1.29.5-alpine`). nginx serves the React SPA at `/` and
-the built documentation at `/docs`, handles SPA fallback for client-side routes, and
-applies the CSP, HSTS, and Permissions-Policy headers configured in `web/nginx.conf`
-and `web/security-headers.conf`.
-
-A future migration of the web image to a Caddy-based, pure-apko model is tracked in
-issue #1267.
+The web image runs **Caddy** inside a pure-apko Wolfi image. Caddy serves the React SPA
+at `/`, the built documentation at `/docs`, proxies REST requests at `/api/` and WebSocket
+connections at `/api/v1/ws` to the backend, and emits a per-request CSP nonce via the
+`templates` directive + `{http.request.uuid}` placeholder. The full security-header set
+(CSP, HSTS, X-Frame-Options, Referrer-Policy, Permissions-Policy) is configured in
+`web/Caddyfile`. Pre-compressed `.gz` siblings built by melange are served via Caddy's
+`precompressed gzip` file_server option.
 
 ## Performance Tracking Configuration
 

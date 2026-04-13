@@ -14,7 +14,7 @@ SynthOrg runs as two Docker containers -- a Python backend API and an Nginx + Re
 ```mermaid
 graph LR
     User["Browser"]
-    Web["web<br/><small>nginx:8080</small><br/><small>UID 101</small>"]
+    Web["web<br/><small>caddy:8080</small><br/><small>UID 65532</small>"]
     Backend["backend<br/><small>uvicorn:3001</small><br/><small>UID 65532</small>"]
     Volume["synthorg-data<br/><small>SQLite + Memory</small>"]
 
@@ -93,18 +93,18 @@ After the containers are running, open `http://localhost:3000`. The setup wizard
 
 ### Backend
 
-- **Base image**: Chainguard Python distroless (no shell, continuously scanned)
-- **Build**: 3-stage (builder -> setup -> runtime) for minimal attack surface
+- **Base image**: Wolfi apko-composed distroless (no shell, continuously scanned)
+- **Build**: 2-stage (builder -> apko runtime) for minimal attack surface
 - **User**: UID 65532 (distroless non-root)
 - **Health check**: `GET /api/v1/health` (10s interval, 5s timeout, 3 retries, 30s start period)
 - **Entry point**: `uvicorn synthorg.api.app:create_app --factory --no-access-log`
 
 ### Web
 
-- **Base image**: `nginxinc/nginx-unprivileged` (Alpine-based)
-- **User**: UID 101 (nginx)
-- **Health check**: `wget --spider http://127.0.0.1:8080/` (10s interval, 3s timeout, 3 retries)
-- **Routing**: SPA routing (`try_files $uri /index.html`), API proxy to backend, WebSocket proxy
+- **Base image**: Pure apko Wolfi (Caddy + melange-packaged static assets, no Dockerfile)
+- **User**: UID 65532 (caddy)
+- **Health check**: Caddy built-in (10s interval, 3s timeout, 3 retries)
+- **Routing**: SPA routing (`try_files`), API proxy to backend, WebSocket proxy, per-request CSP nonce
 - **Caching**: `/index.html` is no-cache; `/assets/*` is immutable with 1-year max-age (content-hashed filenames)
 - **Static compression**: pre-compressed `.gz` files served via `gzip_static on`
 

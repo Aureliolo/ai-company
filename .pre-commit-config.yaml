@@ -2,7 +2,7 @@ ci:
   autoupdate_schedule: never
   autofix_prs: true
   autofix_commit_msg: "style: auto-fix pre-commit hooks"
-  skip: [commitizen, gitleaks, hadolint-docker, no-em-dashes, no-redundant-timeout, mypy, pytest-unit, golangci-lint, go-vet, go-test, eslint-web, check-push-rebased, check-single-migration-per-pr, check-no-modify-migration]
+  skip: [commitizen, gitleaks, hadolint-docker, caddy-validate, no-em-dashes, no-redundant-timeout, mypy, pytest-unit, golangci-lint, go-vet, go-test, eslint-web, check-push-rebased, check-single-migration-per-pr, check-no-modify-migration]
 
 default_install_hook_types: [pre-commit, commit-msg, pre-push]
 
@@ -87,6 +87,14 @@ repos:
 
   - repo: local
     hooks:
+      - id: caddy-validate
+        name: caddy validate (Caddyfile)
+        entry: caddy validate --config web/Caddyfile --adapter caddyfile
+        language: system
+        files: ^web/Caddyfile$
+        pass_filenames: false
+        stages: [pre-commit, pre-push]
+
       - id: no-em-dashes
         name: no em-dashes (U+2014)
         entry: uv

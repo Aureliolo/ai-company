@@ -8,11 +8,12 @@ let cached: string | undefined | typeof UNREAD = UNREAD
 /**
  * Read the CSP nonce from the `<meta name="csp-nonce">` tag in `index.html`.
  *
- * The nonce is injected at serve time by nginx `sub_filter` (substituting
- * `__CSP_NONCE__` with the per-request `$request_id` value). At runtime,
- * this reader parses the meta tag and returns the nonce string, which is
- * passed to Base UI's `CSPProvider` and Framer Motion's `MotionConfig` so
- * every dynamically injected `<style>` element carries the nonce.
+ * The nonce is injected at serve time by Caddy's `templates` directive
+ * (substituting `{{placeholder "http.request.uuid"}}` with a per-request
+ * UUID). At runtime, this reader parses the meta tag and returns the nonce
+ * string, which is passed to Base UI's `CSPProvider` and Framer Motion's
+ * `MotionConfig` so every dynamically injected `<style>` element carries
+ * the nonce.
  *
  * See `docs/security.md#csp-nonce-infrastructure` for the full flow.
  *
@@ -20,11 +21,12 @@ let cached: string | undefined | typeof UNREAD = UNREAD
  * page -- both present and absent results are cached. Missing or invalid
  * values are logged so deployment misconfigurations are visible:
  *
- * - In production, the literal `__CSP_NONCE__` placeholder reaching the
- *   client indicates nginx `sub_filter` is broken -- this is logged at
- *   ERROR level because the CSP will block every injected `<style>` tag.
+ * - In production, the un-substituted Go template placeholder reaching
+ *   the client indicates Caddy's `templates` directive is broken -- this
+ *   is logged at ERROR level because the CSP will block every injected
+ *   `<style>` tag.
  * - In the Vite dev server (`import.meta.env.DEV`), the placeholder is
- *   always present (nginx never runs), so the same condition is logged at
+ *   always present (Caddy never runs), so the same condition is logged at
  *   DEBUG level to avoid false-positive noise on every local page load.
  *
  * **Threat model note:** The nonce is readable by all same-origin JavaScript,
@@ -32,8 +34,8 @@ let cached: string | undefined | typeof UNREAD = UNREAD
  * reusing it. Its purpose is to permit Base UI and Framer Motion's
  * dynamically injected `<style>` tags under a CSP that forbids
  * `'unsafe-inline'` on `style-src-elem`. The nonce must be per-request and
- * unpredictable (nginx `sub_filter` substituting `$request_id`, a 128-bit
- * pseudo-random identifier) to prevent replay across requests.
+ * unpredictable (Caddy's `{http.request.uuid}` placeholder, a 128-bit
+ * UUID generated per request) to prevent replay across requests.
  */
 export function getCspNonce(): string | undefined {
   if (cached !== UNREAD) return cached
@@ -49,27 +51,27 @@ export function getCspNonce(): string | undefined {
     log.warn('CSP nonce meta tag missing', {
       impact: 'inline <style> elements will not carry a nonce',
     })
-  } else if (value === '__CSP_NONCE__') {
-    // Placeholder survived: in production this means nginx sub_filter is
-    // misconfigured and the CSP will block every injected <style>. In the
-    // Vite dev server the placeholder is always present because nginx never
-    // runs, so downgrade to DEBUG to avoid false-positive error noise.
+  } else if (value?.includes('{{placeholder')) {
+    // Go template placeholder survived: in production this means Caddy's
+    // templates directive is misconfigured and the CSP will block every
+    // injected <style>. In the Vite dev server the placeholder is always
+    // present because Caddy never runs, so downgrade to DEBUG.
     if (import.meta.env.DEV) {
       log.debug('CSP nonce placeholder present (dev server)', {
-        note: 'expected outside nginx; styles unsigned in dev',
+        note: 'expected outside Caddy; styles unsigned in dev',
       })
     } else {
       log.error('CSP nonce placeholder not substituted', {
-        impact: 'nginx sub_filter is misconfigured -- CSP will block inline styles',
+        impact: 'Caddy templates directive is misconfigured -- CSP will block inline styles',
       })
     }
   } else if (!value) {
     log.warn('CSP nonce meta tag present but empty')
   }
 
-  // Reject the un-substituted nginx placeholder: if __CSP_NONCE__ appears
-  // literally, sub_filter is misconfigured (or we are in dev), and the
-  // value is not a real nonce.
-  cached = value && value !== '__CSP_NONCE__' ? value : undefined
+  // Reject the un-substituted Caddy template placeholder: if {{placeholder
+  // "..."}} appears literally, the templates directive is misconfigured (or
+  // we are in dev), and the value is not a real nonce.
+  cached = value && !value.includes('{{placeholder') ? value : undefined
   return cached
 }

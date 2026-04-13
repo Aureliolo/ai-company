@@ -50,26 +50,16 @@ ignore:
       Same as libncursesw6 entry above -- ncurses infocmp -i overflow.
 
   # Audit: 2026-04-11 -- Review-by: 2026-07-10
-  # Revisit when Chainguard ships python-3.14 >= 3.14.3-r3 or 3.14.4
+  # Revisit when Wolfi ships python-3.14 >= 3.14.3-r3 or 3.14.4
   - vulnerability: CVE-2026-4519
     reason: >-
       Python webbrowser module command-line option injection. Our images
       never invoke webbrowser.open() -- the module is not imported or used.
-      Fixed in CPython 3.14.4 but Chainguard image pins 3.14.3-r2.
+      Fixed in CPython 3.14.4 but Wolfi apko base pins 3.14.3-r0.
       Risk accepted: no code path reaches the vulnerable function.
 
-  # Audit: 2026-06-17 -- review after 90 days (no native expiration in Grype)
-  - vulnerability: CVE-2026-32767
-    package:
-      name: libexpat
-      type: apk
-    reason: >-
-      False positive: SiYuan Note auth bypass, not a libexpat vulnerability.
-      Trivy incorrectly maps this CVE to libexpat. Web image is nginx
-      serving static files -- SiYuan and SQL are not present.
-
   # Audit: 2026-04-11 -- Review-by: 2026-07-10
-  # Revisit when Chainguard ships openssl >= 3.6.1-r3 or a patched FIPS module
+  # Revisit when Wolfi ships openssl >= 3.6.1-r3 or a patched FIPS module
   - vulnerability: CVE-2026-28386
     package:
       name: libcrypto3
@@ -78,7 +68,7 @@ ignore:
       OpenSSL AES-CFB128 out-of-bounds read on x86-64 with AVX-512/VAES.
       Requires partial block processing at page boundary with unmapped
       following page. CFB mode is not used in TLS/DTLS and our application
-      does not use AES-CFB128. No patched Chainguard package available yet.
+      does not use AES-CFB128. No patched Wolfi package available yet.
       EPSS < 0.1%. Risk accepted: attack vector is unreachable.
   - vulnerability: CVE-2026-28386
     package:

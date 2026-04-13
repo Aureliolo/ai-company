@@ -28,7 +28,7 @@ curl http://localhost:3001/api/v1/health   # backend (direct)
 curl http://localhost:3000/api/v1/health   # backend (via web proxy)
 ```
 
-- **Images**: backend (Chainguard distroless, non-root), web (nginx-unprivileged, SPA + API proxy + embedded docs), sandbox (Python + Node.js, non-root)
+- **Images**: backend (Wolfi apko-composed distroless, non-root), web (Caddy pure-apko, SPA + API proxy + embedded docs), sandbox (Python + Node.js Wolfi, non-root)
 - **Config**: all Docker files in `docker/` -- Dockerfiles, compose, `.env.example`. Single root `.dockerignore` (all images build with `context: .`)
 - **Verification**: CLI verifies cosign signatures + SLSA provenance at pull time; bypass with `--skip-verify`
 - **Tags**: version from `pyproject.toml`, semver, SHA, plus dev tags (`v0.4.7-dev.3`, `dev` rolling) for dev channel builds

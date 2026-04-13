@@ -1,0 +1,55 @@
+name: Update apko lockfiles
+
+on:
+  schedule:
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  update-lockfiles:
+    name: apko lock --update
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - name: Set up apko
+        uses: chainguard-dev/actions/setup-apko@main
+
+      - name: Update lockfiles
+        run: |
+          for config in docker/backend/apko.yaml docker/sandbox/apko.yaml docker/web/apko.yaml; do
+            echo "Updating lockfile for ${config}..."
+            apko lock --update "${config}" || true
+          done
+
+      - name: Check for changes
+        id: diff
+        run: |
+          if git diff --quiet -- 'docker/*/apko.lock.json'; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create PR
+        if: steps.diff.outputs.changed == 'true'
+        uses: peter-evans/create-pull-request@271a8d0340265f705b14b6d32b9829c1cb33d45e # v7.0.8
+        with:
+          commit-message: "ci: update apko lockfiles"
+          title: "ci: update apko lockfiles"
+          body: |
+            Automated weekly update of apko lockfiles via `.github/workflows/apko-lock.yml`.
+
+            Wolfi package digests and transitive dependencies have been refreshed.
+          branch: ci/apko-lock-update
+          labels: |
+            dependencies
+            type:ci
+            scope:docker
+          reviewers: Aureliolo

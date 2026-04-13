@@ -1,6 +1,15 @@
-FROM node:25-slim@sha256:435f3537a088a01fd208bb629a4b69c28d85deb9a60af8a710cafc3befd6e3be AS node-base
+# syntax=docker/dockerfile:1.10
+# =============================================================================
+# SynthOrg Sandbox -- thin wrapper over apko-composed Wolfi base
+# =============================================================================
+# The base image (ghcr.io/aureliolo/synthorg-sandbox-base) is composed
+# declaratively by docker/sandbox/apko.yaml and published by CI.  It includes
+# busybox, git, iptables, python-3.14, and nodejs-25 -- everything the
+# sandbox-init.sh entrypoint needs for allowed_hosts enforcement (D16).
+# =============================================================================
 
-FROM python:3.14.3-slim@sha256:5e59aae31ff0e87511226be8e2b94d78c58f05216efda3b07dbbed938ec8583b
+ARG BASE_DIGEST
+FROM ghcr.io/aureliolo/synthorg-sandbox-base@${BASE_DIGEST}
 
 LABEL org.opencontainers.image.title="synthorg-sandbox" \
       org.opencontainers.image.description="SynthOrg agent code execution sandbox" \
@@ -9,29 +18,14 @@ LABEL org.opencontainers.image.title="synthorg-sandbox" \
       org.opencontainers.image.licenses="BUSL-1.1" \
       org.opencontainers.image.vendor="Aureliolo"
 
-COPY --from=node-base /usr/local/bin/node /usr/local/bin/node
-COPY --from=node-base /usr/local/lib/node_modules /usr/local/lib/node_modules
-
-# git version tracks base image; updated via Dependabot base image bumps.
-# Symlink npm, install git + iptables, create sandbox user -- single layer.
-# iptables is needed for allowed_hosts network enforcement via sandbox-init.
-# hadolint ignore=DL3008
-RUN ln -s /usr/local/lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm \
-    && apt-get update && apt-get install -y --no-install-recommends git iptables \
-    && apt-get clean && rm -rf /var/lib/apt/lists/* \
-    && useradd --uid 10001 --no-create-home --shell /usr/sbin/nologin sandbox `# IMPORTANT: UID must match setpriv --reuid in docker/sandbox/sandbox-init.sh` \
-    && mkdir -p /workspace \
-    && chown sandbox:sandbox /workspace
-
-# Entrypoint for allowed_hosts enforcement (iptables + privilege drop).
-# Only activated via container config override; default USER remains sandbox.
-COPY --chmod=755 docker/sandbox/sandbox-init.sh /usr/local/bin/sandbox-init
+COPY --chown=10001:10001 docker/sandbox/sandbox-init.sh /usr/local/bin/sandbox-init
+RUN chmod +x /usr/local/bin/sandbox-init
 
 WORKDIR /workspace
-
-USER sandbox
+USER 10001
 
 HEALTHCHECK --interval=10s --timeout=3s --retries=2 --start-period=5s \
-  CMD ["true"]
+    CMD ["true"]
 
+ENTRYPOINT ["/usr/local/bin/sandbox-init"]
 CMD ["sleep", "infinity"]

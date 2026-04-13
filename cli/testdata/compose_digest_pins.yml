@@ -51,7 +51,7 @@ services:
     depends_on:
       backend:
         condition: service_healthy
-    user: "101:101"
+    user: "65532:65532"
     security_opt:
       - no-new-privileges:true
     cap_drop:
@@ -59,8 +59,8 @@ services:
     read_only: true
     tmpfs:
       - /tmp:noexec,nosuid,nodev,size=16m
-      - /var/cache/nginx:noexec,nosuid,nodev,size=32m
-      - /var/run:noexec,nosuid,nodev,size=1m
+      - /config/caddy:noexec,nosuid,nodev,size=8m
+      - /data/caddy:noexec,nosuid,nodev,size=16m
     restart: unless-stopped
     deploy:
       resources:
