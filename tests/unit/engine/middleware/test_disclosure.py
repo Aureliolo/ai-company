@@ -387,11 +387,14 @@ class TestExtractToolNameEdgeCases:
         returned = await mw.wrap_tool_call(ctx, call)
         assert returned is result
 
-    async def test_non_string_input_handled(self) -> None:
-        """json.loads raises TypeError on non-string input."""
-        # The middleware receives output as str from ToolCallResult,
-        # but _extract_tool_name handles TypeError defensively
+    async def test_empty_string_returns_none(self) -> None:
+        """Empty string produces no tool name."""
         name = DisclosureMiddleware._extract_tool_name("")
+        assert name is None
+
+    async def test_empty_json_object_returns_none(self) -> None:
+        """Empty JSON object has no name key."""
+        name = DisclosureMiddleware._extract_tool_name("{}")
         assert name is None
 
 

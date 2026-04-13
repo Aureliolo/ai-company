@@ -215,7 +215,17 @@ class ToolInvoker:
                 and not self._permission_checker.is_permitted(name, tool.category)
             ):
                 continue
-            included.append(tool.to_definition())
+            try:
+                included.append(tool.to_definition())
+            except MemoryError, RecursionError:
+                raise
+            except Exception:
+                logger.warning(
+                    TOOL_INVOKE_NOT_FOUND,
+                    tool_name=name,
+                    note="to_definition() failed during loaded definition lookup",
+                    exc_info=True,
+                )
         return tuple(included)
 
     # ── ToolDisclosureManager protocol ────────────────────────────
@@ -259,7 +269,18 @@ class ToolInvoker:
                 note="permission denied during L2 disclosure query",
             )
             return None
-        return tool.to_l2_body()
+        try:
+            return tool.to_l2_body()
+        except MemoryError, RecursionError:
+            raise
+        except Exception:
+            logger.warning(
+                TOOL_INVOKE_NOT_FOUND,
+                tool_name=tool_name,
+                note="to_l2_body() failed during disclosure query",
+                exc_info=True,
+            )
+            return None
 
     def get_l3_resource(
         self,
@@ -308,7 +329,19 @@ class ToolInvoker:
                 note="permission denied during L3 disclosure query",
             )
             return None
-        resources = tool.get_l3_resources()
+        try:
+            resources = tool.get_l3_resources()
+        except MemoryError, RecursionError:
+            raise
+        except Exception:
+            logger.warning(
+                TOOL_INVOKE_NOT_FOUND,
+                tool_name=tool_name,
+                resource_id=resource_id,
+                note="get_l3_resources() failed during disclosure query",
+                exc_info=True,
+            )
+            return None
         return next(
             (r for r in resources if r.resource_id == resource_id),
             None,

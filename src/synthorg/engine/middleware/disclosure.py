@@ -45,7 +45,7 @@ class DisclosureMiddleware(BaseAgentMiddleware):
         super().__init__(name="disclosure")
         self._config = config or ToolDisclosureConfig()
 
-    async def wrap_tool_call(
+    async def wrap_tool_call(  # noqa: C901, PLR0912
         self,
         ctx: AgentMiddlewareContext,
         call: ToolCallable,
@@ -102,8 +102,11 @@ class DisclosureMiddleware(BaseAgentMiddleware):
                     )
                     ctx = ctx.model_copy(update={"agent_context": agent_ctx})
 
-        # Auto-unload under budget pressure
+        # Auto-unload under budget pressure (skip tool just loaded)
         agent_ctx = ctx.agent_context
+        just_loaded: str | None = None
+        if result.tool_name == "load_tool":
+            just_loaded = result.metadata.get(METADATA_SHOULD_LOAD_TOOL)
         if (
             self._config.auto_unload_on_budget_pressure
             and agent_ctx.context_fill_percent is not None
@@ -111,15 +114,20 @@ class DisclosureMiddleware(BaseAgentMiddleware):
             and agent_ctx.tool_load_order
         ):
             oldest = agent_ctx.tool_load_order[0]
-            agent_ctx = agent_ctx.with_tool_unloaded(oldest)
-            logger.warning(
-                TOOL_AUTO_UNLOADED,
-                execution_id=agent_ctx.execution_id,
-                tool_name=oldest,
-                context_fill_percent=agent_ctx.context_fill_percent,
-                turn=agent_ctx.turn_count,
-            )
-            ctx = ctx.model_copy(update={"agent_context": agent_ctx})
+            if oldest == just_loaded and len(agent_ctx.tool_load_order) > 1:
+                oldest = agent_ctx.tool_load_order[1]
+            elif oldest == just_loaded:
+                oldest = None  # type: ignore[assignment]
+            if oldest:
+                agent_ctx = agent_ctx.with_tool_unloaded(oldest)
+                logger.warning(
+                    TOOL_AUTO_UNLOADED,
+                    execution_id=agent_ctx.execution_id,
+                    tool_name=oldest,
+                    context_fill_percent=agent_ctx.context_fill_percent,
+                    turn=agent_ctx.turn_count,
+                )
+                ctx = ctx.model_copy(update={"agent_context": agent_ctx})
 
         return result
 

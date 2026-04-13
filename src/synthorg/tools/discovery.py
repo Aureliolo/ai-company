@@ -233,10 +233,18 @@ class DeferredDisclosureManager:
     def bind(self, delegate: ToolDisclosureManager) -> None:
         """Set the real disclosure manager."""
         self._delegate = delegate
+        logger.info(
+            "deferred_disclosure_manager.bound",
+            delegate_type=type(delegate).__name__,
+        )
 
     def _require_bound(self) -> ToolDisclosureManager:
         if self._delegate is None:
             msg = "DeferredDisclosureManager not yet bound"
+            logger.error(
+                "deferred_disclosure_manager.not_bound",
+                note=msg,
+            )
             raise RuntimeError(msg)
         return self._delegate
 

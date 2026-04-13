@@ -469,7 +469,7 @@ def _build_template_context(  # noqa: PLR0913
             }
             for s in l1_summaries
         )
-        logger.debug(
+        logger.info(
             TOOL_L1_INJECTED,
             tool_count=len(l1_summaries),
             tool_names=tuple(s.name for s in l1_summaries),
