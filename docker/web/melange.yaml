@@ -11,9 +11,8 @@
 # `npm -C web run build` and `uv run zensical build` so the inputs
 # (web/dist/, _site/docs/) exist on disk before melange runs.
 #
-# The apk version is injected from the git commit SHA at build time
-# (--envvar VERSION=${GITHUB_SHA::7}) so every build is uniquely identifiable
-# in the SBOM.
+# The apk version is injected from pyproject.toml at build time via
+# --vars-file (see .github/workflows/docker.yml build-web-assets job).
 
 package:
   name: synthorg-web-assets

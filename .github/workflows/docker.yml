@@ -140,7 +140,7 @@ jobs:
       - name: Grype scan
         uses: anchore/scan-action@e1165082ffb1fe366ebaf02d8526e7c4989ea9d2 # v7.4.0
         with:
-          path: backend-base.tar
+          image: docker-archive:backend-base.tar
           fail-build: true
           severity-cutoff: critical
           config: .github/.grype.yaml
@@ -256,7 +256,7 @@ jobs:
       - name: Grype scan
         uses: anchore/scan-action@e1165082ffb1fe366ebaf02d8526e7c4989ea9d2 # v7.4.0
         with:
-          path: sandbox-base.tar
+          image: docker-archive:sandbox-base.tar
           fail-build: true
           severity-cutoff: critical
           config: .github/.grype.yaml
@@ -536,12 +536,9 @@ jobs:
           persist-credentials: false
 
       - name: Set up Node.js
-        # zizmor: ignore[cache-poisoning] -- npm cache is branch-scoped; only affects package installs, not code
         uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6.3.0
         with:
           node-version: "22"
-          cache: npm
-          cache-dependency-path: web/package-lock.json
 
       - name: Install frontend deps and build SPA
         working-directory: web
@@ -607,6 +604,9 @@ jobs:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
           persist-credentials: false
+
+      - name: Prepare work directory
+        run: sudo mkdir -p /work && sudo chown "$(id -u):$(id -g)" /work
 
       - name: Download web-assets apk
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8

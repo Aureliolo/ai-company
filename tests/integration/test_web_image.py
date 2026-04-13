@@ -7,7 +7,6 @@ These tests require a locally-built web image (docker load from apko output).
 
 import os
 import re
-import socket
 import subprocess
 import time
 from collections.abc import Generator
@@ -20,26 +19,22 @@ from synthorg.observability import get_logger
 logger = get_logger(__name__)
 
 _IMAGE_REF_PATTERN = re.compile(r"^[\w.:/@-]+$")
+_SAFE_NAME_PATTERN = re.compile(r"^[\w-]+$")
 WEB_IMAGE = os.environ.get("SYNTHORG_WEB_IMAGE", "ghcr.io/aureliolo/synthorg-web:test")
 if not _IMAGE_REF_PATTERN.match(WEB_IMAGE):
     msg = f"Invalid image reference: {WEB_IMAGE}"
     raise ValueError(msg)
 
 
-def _free_port() -> int:
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-        s.bind(("", 0))
-        port: int = s.getsockname()[1]
-        return port
-
-
 @pytest.fixture(scope="module")
 def web_container() -> Generator[str]:
-    """Start the web image on a unique port and yield the base URL."""
+    """Start the web image with Docker-assigned port and yield the base URL."""
     docker = "docker"
     worker = os.environ.get("PYTEST_XDIST_WORKER", "gw0")
     container_name = f"synthorg-web-test-{worker}-{os.getpid()}"
-    host_port = _free_port()
+    if not _SAFE_NAME_PATTERN.match(container_name):
+        msg = f"Invalid container name: {container_name}"
+        raise ValueError(msg)
     started = False
     try:
         cmd = [
@@ -49,7 +44,7 @@ def web_container() -> Generator[str]:
             "--name",
             container_name,
             "-p",
-            f"{host_port}:8080",
+            "127.0.0.1::8080",
             "--read-only",
             "--tmpfs",
             "/tmp:noexec,nosuid,nodev,size=16m",  # noqa: S108
@@ -69,6 +64,14 @@ def web_container() -> Generator[str]:
                 pytest.skip(f"Web image not available: {exc.stderr.strip()}")
             pytest.fail(f"Web container failed to start: {exc.stderr}")
 
+        fmt = '{{(index (index .NetworkSettings.Ports "8080/tcp") 0).HostPort}}'
+        port_info = subprocess.run(  # noqa: S603
+            [docker, "inspect", "--format", fmt, container_name],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        host_port = port_info.stdout.strip()
         base_url = f"http://127.0.0.1:{host_port}"
         for _ in range(30):
             try:
