@@ -24,7 +24,7 @@ contents:
     - ca-certificates-bundle
     - tzdata
     - caddy
-    - '@local synthorg-web-assets'
+    - synthorg-web-assets@local
 
 accounts:
   groups:

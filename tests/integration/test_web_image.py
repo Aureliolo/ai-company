@@ -158,3 +158,17 @@ class TestWebImage:
     def test_cache_control_no_cache_on_root(self, web_container: str) -> None:
         resp = httpx.get(f"{web_container}/")
         assert "no-cache" in resp.headers.get("cache-control", "")
+
+    def test_precompressed_asset_served(self, web_container: str) -> None:
+        root = httpx.get(f"{web_container}/")
+        match = re.search(r'src="(/assets/[^"]+\.js)"', root.text)
+        if not match:
+            pytest.fail("No hashed JS asset found in root HTML")
+        asset_path = match.group(1)
+        resp = httpx.get(
+            f"{web_container}{asset_path}",
+            headers={"Accept-Encoding": "gzip"},
+        )
+        assert resp.status_code == 200
+        assert resp.headers.get("content-encoding") == "gzip"
+        assert "immutable" in resp.headers.get("cache-control", "")

@@ -25,6 +25,43 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Detect which domains changed so docs-only PRs skip backend/sandbox builds
+  changes:
+    name: Detect Docker Changes
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      backend: ${{ steps.filter.outputs.backend }}
+      sandbox: ${{ steps.filter.outputs.sandbox }}
+      web: ${{ steps.filter.outputs.web }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
+      - uses: dorny/paths-filter@fbd0ab8f3e69293af611ebaee6363fc25e6d187d # v4.0.1
+        id: filter
+        with:
+          filters: |
+            backend:
+              - 'docker/backend/**'
+              - 'src/**'
+              - 'pyproject.toml'
+              - 'uv.lock'
+              - '.github/workflows/docker.yml'
+            sandbox:
+              - 'docker/sandbox/**'
+              - '.github/workflows/docker.yml'
+            web:
+              - 'docker/web/**'
+              - 'web/**'
+              - 'docs/**'
+              - 'mkdocs.yml'
+              - '.github/workflows/docker.yml'
+
   # Extract app version from pyproject.toml (single source of truth)
   version:
     name: Extract Version
@@ -61,7 +98,10 @@ jobs:
   # =========================================================================
   build-backend-base:
     name: Build Backend Base (apko)
-    needs: [version]
+    needs: [version, changes]
+    if: >-
+      !cancelled() && needs.version.result == 'success' &&
+      (needs.changes.result == 'skipped' || needs.changes.outputs.backend == 'true')
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
@@ -180,7 +220,10 @@ jobs:
 
   build-sandbox-base:
     name: Build Sandbox Base (apko)
-    needs: [version]
+    needs: [version, changes]
+    if: >-
+      !cancelled() && needs.version.result == 'success' &&
+      (needs.changes.result == 'skipped' || needs.changes.outputs.sandbox == 'true')
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
@@ -317,6 +360,7 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd # v4.0.0
         with:
+          driver: ${{ github.event_name == 'pull_request' && 'docker' || 'docker-container' }}
           cache-binary: false
 
       - name: Download base image artifact (PR only)
@@ -525,7 +569,10 @@ jobs:
   # =========================================================================
   build-web-assets:
     name: Build Web Assets (melange)
-    needs: [version]
+    needs: [version, changes]
+    if: >-
+      !cancelled() && needs.version.result == 'success' &&
+      (needs.changes.result == 'skipped' || needs.changes.outputs.web == 'true')
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
@@ -539,6 +586,7 @@ jobs:
         uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6.3.0
         with:
           node-version: "22"
+          cache: ""
 
       - name: Install frontend deps and build SPA
         working-directory: web
@@ -756,6 +804,7 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd # v4.0.0
         with:
+          driver: ${{ github.event_name == 'pull_request' && 'docker' || 'docker-container' }}
           cache-binary: false
 
       - name: Download base image artifact (PR only)
