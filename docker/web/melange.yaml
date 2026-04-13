@@ -51,8 +51,8 @@ pipeline:
   - name: Install Caddyfile
     runs: |
       set -eu
-      mkdir -p "${{targets.destdir}}/etc/caddy"
-      install -m 0644 /home/build/web/Caddyfile "${{targets.destdir}}/etc/caddy/Caddyfile"
+      mkdir -p "${{targets.destdir}}/etc/synthorg"
+      install -m 0644 /home/build/web/Caddyfile "${{targets.destdir}}/etc/synthorg/Caddyfile"
 
   - name: Pre-compress static assets
     runs: |

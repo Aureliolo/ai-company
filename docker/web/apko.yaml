@@ -57,7 +57,7 @@ archs:
   - x86_64
 
 entrypoint:
-  command: /usr/sbin/caddy run --config /etc/caddy/Caddyfile --adapter caddyfile
+  command: /usr/sbin/caddy run --config /etc/synthorg/Caddyfile --adapter caddyfile
 
 annotations:
   org.opencontainers.image.title: synthorg-web

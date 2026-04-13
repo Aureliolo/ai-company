@@ -60,8 +60,15 @@ def web_container() -> Generator[str]:
         except FileNotFoundError:
             pytest.skip("Docker binary not found on PATH")
         except subprocess.CalledProcessError as exc:
-            if "manifest unknown" in exc.stderr or "not found" in exc.stderr:
+            stderr = exc.stderr.lower()
+            if "manifest unknown" in stderr or "not found" in stderr:
                 pytest.skip(f"Web image not available: {exc.stderr.strip()}")
+            if (
+                "cannot connect to the docker daemon" in stderr
+                or "is the docker daemon running" in stderr
+                or "error during connect" in stderr
+            ):
+                pytest.skip(f"Docker daemon unavailable: {exc.stderr.strip()}")
             pytest.fail(f"Web container failed to start: {exc.stderr}")
 
         fmt = '{{(index (index .NetworkSettings.Ports "8080/tcp") 0).HostPort}}'

@@ -405,8 +405,8 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
             BASE_IMAGE=${{ needs.build-backend-base.outputs.digest != '' && format('ghcr.io/aureliolo/synthorg-backend-base@{0}', needs.build-backend-base.outputs.digest) || format('ghcr.io/aureliolo/synthorg-backend-base:{0}', needs.build-backend-base.outputs.tag) }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: ${{ github.event_name != 'pull_request' && 'type=gha' || '' }}
+          cache-to: ${{ github.event_name != 'pull_request' && 'type=gha,mode=max' || '' }}
           platforms: linux/amd64
 
       - name: Compute scan image ref
@@ -586,7 +586,7 @@ jobs:
         uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6.3.0
         with:
           node-version: "22"
-          cache: ""
+          package-manager-cache: false
 
       - name: Install frontend deps and build SPA
         working-directory: web
@@ -850,8 +850,8 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
             BASE_IMAGE=${{ needs.build-sandbox-base.outputs.digest != '' && format('ghcr.io/aureliolo/synthorg-sandbox-base@{0}', needs.build-sandbox-base.outputs.digest) || format('ghcr.io/aureliolo/synthorg-sandbox-base:{0}', needs.build-sandbox-base.outputs.tag) }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: ${{ github.event_name != 'pull_request' && 'type=gha' || '' }}
+          cache-to: ${{ github.event_name != 'pull_request' && 'type=gha,mode=max' || '' }}
           platforms: linux/amd64
 
       # SHA tag always exists (version/semver tags only on v* tags)
