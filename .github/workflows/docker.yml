@@ -16,6 +16,7 @@ on:
       - ".github/workflows/docker.yml"
       - "docs/**"
       - "mkdocs.yml"
+      - "scripts/export_openapi.py"
   workflow_dispatch:
 
 permissions: {}
@@ -374,7 +375,9 @@ jobs:
 
       - name: Load base image (PR only)
         if: github.event_name == 'pull_request'
-        run: docker load -i /tmp/backend-base.tar
+        run: |
+          docker load -i /tmp/backend-base.tar
+          docker tag "ghcr.io/aureliolo/synthorg-backend-base:${{ needs.build-backend-base.outputs.tag }}-amd64" "ghcr.io/aureliolo/synthorg-backend-base:${{ needs.build-backend-base.outputs.tag }}"
 
       - name: Log in to GHCR
         if: github.event_name != 'pull_request'
@@ -818,7 +821,9 @@ jobs:
 
       - name: Load base image (PR only)
         if: github.event_name == 'pull_request'
-        run: docker load -i /tmp/sandbox-base.tar
+        run: |
+          docker load -i /tmp/sandbox-base.tar
+          docker tag "ghcr.io/aureliolo/synthorg-sandbox-base:${{ needs.build-sandbox-base.outputs.tag }}-amd64" "ghcr.io/aureliolo/synthorg-sandbox-base:${{ needs.build-sandbox-base.outputs.tag }}"
 
       - name: Log in to GHCR
         if: github.event_name != 'pull_request'

@@ -1,5 +1,5 @@
 # SynthOrg web dashboard -- served by Caddy from a pure-apko Wolfi image.
-# Installed at /etc/caddy/Caddyfile by docker/web/melange.yaml.
+# Installed at /etc/synthorg/Caddyfile by docker/web/melange.yaml.
 #
 # Replicates every behavior of the previous web/nginx.conf:
 #   - :8080 unprivileged listen

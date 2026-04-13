@@ -18,7 +18,7 @@ from synthorg.observability import get_logger
 
 logger = get_logger(__name__)
 
-_IMAGE_REF_PATTERN = re.compile(r"^[\w.:/@-]+$")
+_IMAGE_REF_PATTERN = re.compile(r"^[a-zA-Z0-9][\w.:/@-]*$")
 _SAFE_NAME_PATTERN = re.compile(r"^[\w-]+$")
 WEB_IMAGE = os.environ.get("SYNTHORG_WEB_IMAGE", "ghcr.io/aureliolo/synthorg-web:test")
 if not _IMAGE_REF_PATTERN.match(WEB_IMAGE):

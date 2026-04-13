@@ -1660,7 +1660,7 @@ and pre-pulls the sandbox image on demand.
 | Image | Purpose | Base |
 |-------|---------|------|
 | `backend` | SynthOrg orchestration engine (Litestar + uvicorn) | apko-composed Wolfi base (`docker/backend/apko.yaml`, `python-3.14=3.14.3-r0` pinned); thin `docker/backend/Dockerfile` layers the uv-built venv on top |
-| `web` | React SPA and built docs, served by **Caddy** | Pure apko (no Dockerfile); composes `caddy` + `ca-certificates-bundle` + melange-built `synthorg-web-assets` apk + `/etc/caddy/Caddyfile` |
+| `web` | React SPA and built docs, served by **Caddy** | Pure apko (no Dockerfile); composes `caddy` + `ca-certificates-bundle` + melange-built `synthorg-web-assets` apk + `/etc/synthorg/Caddyfile` |
 | `sandbox` | Ephemeral agent code execution image spawned on demand by the backend | apko-composed Wolfi base (`docker/sandbox/apko.yaml`) with `busybox`, `git`, `iptables` for D16 `allowed_hosts` enforcement; thin `docker/sandbox/Dockerfile` adds `sandbox-init.sh` |
 
 Each published image is signed with **cosign keyless** via GitHub OIDC in
