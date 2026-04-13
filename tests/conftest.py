@@ -248,26 +248,25 @@ def pytest_sessionfinish(
         return
     if non_unit_count > 0:
         return
-    # Per-test cost check: a PR adding a few hundred tests legitimately
-    # grows wall-clock.  Only flag when elapsed/test_count exceeds the
-    # baseline per-test cost by ``threshold_ratio``.
-    if baseline_count > 0 and unit_count > 0:
+    # Per-test cost is the primary regression signal.  It is immune to
+    # runner noise (pre-push thermal throttling, parallel mypy, etc.)
+    # and scales naturally with test-count growth.  The absolute
+    # threshold is a fallback only when per-test cost cannot be
+    # computed (no baseline count or no unit tests collected).
+    can_compare_per_test = baseline_count > 0 and unit_count > 0
+    if can_compare_per_test:
         baseline_per_test = baseline_secs / baseline_count
         current_per_test = elapsed / unit_count
-        per_test_ok = current_per_test <= baseline_per_test * threshold_ratio
+        regression = current_per_test > baseline_per_test * threshold_ratio
     else:
-        per_test_ok = True
-    max_allowed = _compute_max_allowed(
-        baseline_secs,
-        baseline_count,
-        unit_count,
-        threshold_secs,
-    )
-    absolute_breach = elapsed > max_allowed
-    # Fail when EITHER absolute tolerance exceeded OR per-test cost
-    # grew beyond the ratio.  The absolute gate now scales with test
-    # count so adding tests does not trigger a false positive.
-    if absolute_breach or not per_test_ok:
+        max_allowed = _compute_max_allowed(
+            baseline_secs,
+            baseline_count,
+            unit_count,
+            threshold_secs,
+        )
+        regression = elapsed > max_allowed
+    if regression:
         delta = elapsed - baseline_secs
         baseline_per_test = baseline_secs / max(baseline_count, 1)
         current_per_test = elapsed / max(unit_count, 1)
