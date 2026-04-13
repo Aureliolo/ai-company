@@ -5,6 +5,7 @@ from pydantic import ValidationError
 
 from synthorg.observability.config import (
     DEFAULT_SINKS,
+    ContainerLogShippingConfig,
     LogConfig,
     RotationConfig,
     SinkConfig,
@@ -880,3 +881,77 @@ class TestSinkConfigCrossTypeRejectionNewTypes:
                 syslog_host="localhost",
                 otlp_endpoint="http://localhost:4318",
             )
+
+
+# ── ContainerLogShippingConfig ────────────────────────────────────
+
+
+@pytest.mark.unit
+class TestContainerLogShippingConfig:
+    """Tests for ContainerLogShippingConfig defaults and validation."""
+
+    def test_defaults(self) -> None:
+        cfg = ContainerLogShippingConfig()
+        assert cfg.enabled is True
+        assert cfg.collection_timeout_seconds == 5.0
+        assert cfg.max_log_bytes == 10 * 1024 * 1024
+
+    def test_frozen(self) -> None:
+        cfg = ContainerLogShippingConfig()
+        with pytest.raises(ValidationError):
+            cfg.enabled = False  # type: ignore[misc]
+
+    def test_disabled(self) -> None:
+        cfg = ContainerLogShippingConfig(enabled=False)
+        assert cfg.enabled is False
+
+    def test_custom_timeout(self) -> None:
+        cfg = ContainerLogShippingConfig(collection_timeout_seconds=15.0)
+        assert cfg.collection_timeout_seconds == 15.0
+
+    def test_timeout_too_low(self) -> None:
+        with pytest.raises(ValidationError, match="collection_timeout"):
+            ContainerLogShippingConfig(
+                collection_timeout_seconds=0.01,
+            )
+
+    def test_timeout_too_high(self) -> None:
+        with pytest.raises(ValidationError, match="collection_timeout"):
+            ContainerLogShippingConfig(
+                collection_timeout_seconds=60.0,
+            )
+
+    def test_max_log_bytes_must_be_positive(self) -> None:
+        with pytest.raises(ValidationError, match="max_log_bytes"):
+            ContainerLogShippingConfig(max_log_bytes=0)
+
+    def test_custom_max_log_bytes(self) -> None:
+        cfg = ContainerLogShippingConfig(max_log_bytes=5_000_000)
+        assert cfg.max_log_bytes == 5_000_000
+
+    def test_rejects_nan(self) -> None:
+        with pytest.raises(ValidationError):
+            ContainerLogShippingConfig(
+                collection_timeout_seconds=float("nan"),
+            )
+
+
+@pytest.mark.unit
+class TestLogConfigContainerLogShipping:
+    """LogConfig includes container_log_shipping field."""
+
+    def test_default_container_log_shipping(self) -> None:
+        cfg = LogConfig(sinks=DEFAULT_SINKS)
+        assert cfg.container_log_shipping.enabled is True
+        assert cfg.container_log_shipping.collection_timeout_seconds == 5.0
+
+    def test_custom_container_log_shipping(self) -> None:
+        cfg = LogConfig(
+            sinks=DEFAULT_SINKS,
+            container_log_shipping=ContainerLogShippingConfig(
+                enabled=False,
+                collection_timeout_seconds=10.0,
+            ),
+        )
+        assert cfg.container_log_shipping.enabled is False
+        assert cfg.container_log_shipping.collection_timeout_seconds == 10.0

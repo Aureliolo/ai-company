@@ -6,8 +6,10 @@ Uses ``aiodocker`` for asynchronous Docker daemon communication.
 """
 
 import asyncio
+import json
 import platform
 import secrets
+import time
 from pathlib import Path, PurePosixPath
 from typing import TYPE_CHECKING, Any, Final
 
@@ -31,6 +33,9 @@ from synthorg.observability.events.docker import (
     DOCKER_HEALTH_CHECK,
 )
 from synthorg.observability.events.sandbox import (
+    SANDBOX_CONTAINER_LOGS_COLLECTED,
+    SANDBOX_CONTAINER_LOGS_SHIP_FAILED,
+    SANDBOX_CONTAINER_LOGS_SHIPPED,
     SANDBOX_NETWORK_ENFORCEMENT,
     SANDBOX_RUNTIME_RESOLVER_ATTACHED,
     SANDBOX_SIDECAR_CREATED,
@@ -48,6 +53,7 @@ from synthorg.tools.sandbox.result import SandboxResult
 if TYPE_CHECKING:
     from collections.abc import Mapping
 
+    from synthorg.observability.config import ContainerLogShippingConfig
     from synthorg.tools.sandbox.runtime_resolver import SandboxRuntimeResolver
 
 _RESERVED_ENV_KEYS: Final[frozenset[str]] = frozenset(
@@ -117,12 +123,15 @@ class DockerSandbox:
         *,
         config: DockerSandboxConfig | None = None,
         workspace: Path,
+        log_shipping_config: ContainerLogShippingConfig | None = None,
     ) -> None:
         """Initialize the Docker sandbox.
 
         Args:
             config: Docker sandbox configuration (defaults to standard).
             workspace: Absolute path to the workspace root. Must exist.
+            log_shipping_config: Container log shipping configuration.
+                Default-constructed if not provided.
 
         Raises:
             ValueError: If *workspace* is not absolute or does not exist.
@@ -143,6 +152,13 @@ class DockerSandbox:
         self._lock = asyncio.Lock()
         self._credential_manager = SandboxCredentialManager()
         self._runtime_resolver: SandboxRuntimeResolver | None = None
+        if log_shipping_config is None:
+            from synthorg.observability.config import (  # noqa: PLC0415
+                ContainerLogShippingConfig as _Cfg,
+            )
+
+            log_shipping_config = _Cfg()
+        self._log_shipping_config = log_shipping_config
 
     @property
     def config(self) -> DockerSandboxConfig:
@@ -264,6 +280,8 @@ class DockerSandbox:
             else None
         )
         env_list = self._validate_env(sanitized)
+        correlation_env = self._build_correlation_env()
+        env_list = env_list + correlation_env
         host_config = self._build_host_config(category=category)
         if network_mode is not None:
             host_config["NetworkMode"] = network_mode
@@ -299,6 +317,26 @@ class DockerSandbox:
                 )
                 raise SandboxError(msg)
         return [f"{k}={v}" for k, v in (env_overrides or {}).items()]
+
+    @staticmethod
+    def _build_correlation_env() -> list[str]:
+        """Build SYNTHORG_* env vars from structlog contextvars.
+
+        Reads ``agent_id``, ``task_id``, and ``request_id`` from the
+        current structlog context and returns Docker env list entries.
+        Missing keys default to empty strings.
+
+        Returns:
+            List of ``KEY=value`` strings for container env injection.
+        """
+        import structlog.contextvars  # noqa: PLC0415
+
+        ctx = structlog.contextvars.get_contextvars()
+        return [
+            f"SYNTHORG_AGENT_ID={ctx.get('agent_id', '')}",
+            f"SYNTHORG_TASK_ID={ctx.get('task_id', '')}",
+            f"SYNTHORG_REQUEST_ID={ctx.get('request_id', '')}",
+        ]
 
     def _build_host_config(
         self,
@@ -595,7 +633,7 @@ class DockerSandbox:
             category=category,
         )
 
-    async def _run_container(  # noqa: C901, PLR0913
+    async def _run_container(  # noqa: C901, PLR0912, PLR0913, PLR0915
         self,
         *,
         docker: aiodocker.Docker,
@@ -699,8 +737,9 @@ class DockerSandbox:
             image=self._config.image,
         )
 
+        sidecar_logs: tuple[Mapping[str, Any], ...] = ()
         try:
-            return await self._start_and_wait(
+            result = await self._start_and_wait(
                 docker=docker,
                 container_id=container_id,
                 command=command,
@@ -708,6 +747,12 @@ class DockerSandbox:
                 timeout=timeout,
             )
         finally:
+            # Collect sidecar logs BEFORE container removal.
+            if sidecar_id:
+                sidecar_logs = await self._collect_sidecar_logs(
+                    docker,
+                    sidecar_id,
+                )
             sandbox_removed = await self._remove_container(
                 docker,
                 container_id,
@@ -730,6 +775,30 @@ class DockerSandbox:
                         sidecar_id=sidecar_id[:12],
                         error="removal failed, sidecar remains tracked",
                     )
+
+        # Enrich result with sidecar data and agent context.
+        import structlog.contextvars  # noqa: PLC0415
+
+        ctx = structlog.contextvars.get_contextvars()
+        enriched = result.model_copy(
+            update={
+                "sidecar_id": sidecar_id[:12] if sidecar_id else None,
+                "sidecar_logs": sidecar_logs,
+                "agent_id": ctx.get("agent_id"),
+            },
+        )
+
+        # Ship container logs (non-blocking, failure-tolerant).
+        await self._ship_container_logs(
+            container_id=container_id,
+            sidecar_id=sidecar_id,
+            stdout=enriched.stdout,
+            stderr=enriched.stderr,
+            sidecar_logs=sidecar_logs,
+            execution_time_ms=enriched.execution_time_ms or 0,
+        )
+
+        return enriched
 
     async def _start_and_wait(
         self,
@@ -764,12 +833,15 @@ class DockerSandbox:
             )
             raise SandboxStartError(msg) from exc
 
+        start_mono = time.monotonic()
         timed_out, returncode = await self._wait_for_exit(
             docker=docker,
             container_obj=container_obj,
             container_id=container_id,
             timeout=timeout,
         )
+        elapsed_ms = int((time.monotonic() - start_mono) * 1000)
+
         stdout, stderr = await self._safe_collect_logs(
             container_obj,
             container_id,
@@ -787,11 +859,15 @@ class DockerSandbox:
                 stderr=stderr or f"Container timed out after {timeout}s",
                 returncode=returncode,
                 timed_out=True,
+                container_id=container_id,
+                execution_time_ms=elapsed_ms,
             )
         return SandboxResult(
             stdout=stdout,
             stderr=stderr,
             returncode=returncode,
+            container_id=container_id,
+            execution_time_ms=elapsed_ms,
         )
 
     async def _wait_for_exit(
@@ -888,6 +964,127 @@ class DockerSandbox:
         stdout = "".join(stdout_logs)
         stderr = "".join(stderr_logs)
         return stdout, stderr
+
+    async def _collect_sidecar_logs(
+        self,
+        docker: aiodocker.Docker,
+        sidecar_id: str,
+        *,
+        config: ContainerLogShippingConfig | None = None,
+    ) -> tuple[Mapping[str, Any], ...]:
+        """Collect and parse structured JSON logs from a sidecar container.
+
+        Reads sidecar stdout before container removal. Each line is
+        parsed as JSON; malformed lines are skipped. Collection is
+        bounded by ``config.collection_timeout_seconds`` and
+        ``config.max_log_bytes``.
+
+        Args:
+            docker: Docker client.
+            sidecar_id: Sidecar container ID.
+            config: Log shipping config (falls back to instance config).
+
+        Returns:
+            Tuple of parsed JSON dicts. Empty on any failure.
+        """
+        cfg = config or self._log_shipping_config
+        try:
+            container_obj = docker.containers.container(sidecar_id)  # pyright: ignore[reportAttributeAccessIssue]
+            raw_lines: list[str] = await asyncio.wait_for(
+                container_obj.log(stdout=True, stderr=False),
+                timeout=cfg.collection_timeout_seconds,
+            )
+        except TimeoutError:
+            logger.debug(
+                SANDBOX_CONTAINER_LOGS_COLLECTED,
+                sidecar_id=sidecar_id[:12],
+                status="timeout",
+            )
+            return ()
+        except Exception as exc:
+            logger.debug(
+                SANDBOX_CONTAINER_LOGS_COLLECTED,
+                sidecar_id=sidecar_id[:12],
+                status="error",
+                error=str(exc),
+            )
+            return ()
+
+        parsed: list[Mapping[str, Any]] = []
+        cumulative_bytes = 0
+        for line in raw_lines:
+            stripped = line.strip()
+            if not stripped:
+                continue
+            cumulative_bytes += len(stripped.encode())
+            if cumulative_bytes > cfg.max_log_bytes:
+                break
+            try:
+                parsed.append(json.loads(stripped))
+            except json.JSONDecodeError, ValueError:
+                logger.debug(
+                    SANDBOX_CONTAINER_LOGS_COLLECTED,
+                    sidecar_id=sidecar_id[:12],
+                    status="malformed_line",
+                )
+                continue
+
+        logger.debug(
+            SANDBOX_CONTAINER_LOGS_COLLECTED,
+            sidecar_id=sidecar_id[:12],
+            status="ok",
+            log_count=len(parsed),
+        )
+        return tuple(parsed)
+
+    async def _ship_container_logs(  # noqa: PLR0913
+        self,
+        *,
+        config: ContainerLogShippingConfig | None = None,
+        container_id: str,
+        sidecar_id: str | None,
+        stdout: str,
+        stderr: str,
+        sidecar_logs: tuple[Mapping[str, Any], ...],
+        execution_time_ms: int,
+    ) -> None:
+        """Ship container logs through the structlog pipeline.
+
+        Non-blocking and failure-tolerant: shipping errors are logged
+        at debug level and never propagated.
+
+        Args:
+            config: Log shipping config (falls back to instance config).
+            container_id: Sandbox container ID.
+            sidecar_id: Sidecar container ID (may be None).
+            stdout: Sandbox stdout output.
+            stderr: Sandbox stderr output.
+            sidecar_logs: Parsed sidecar log entries.
+            execution_time_ms: Execution time in milliseconds.
+        """
+        cfg = config or self._log_shipping_config
+        if not cfg.enabled:
+            return
+        try:
+            max_bytes = cfg.max_log_bytes
+            logger.info(
+                SANDBOX_CONTAINER_LOGS_SHIPPED,
+                container_id=container_id[:12],
+                sidecar_id=sidecar_id[:12] if sidecar_id else None,
+                stdout=stdout[:max_bytes],
+                stderr=stderr[:max_bytes],
+                stdout_size=len(stdout),
+                stderr_size=len(stderr),
+                sidecar_log_count=len(sidecar_logs),
+                sidecar_logs=sidecar_logs,
+                execution_time_ms=execution_time_ms,
+            )
+        except Exception as exc:
+            logger.debug(
+                SANDBOX_CONTAINER_LOGS_SHIP_FAILED,
+                container_id=container_id[:12],
+                error=str(exc),
+            )
 
     @staticmethod
     async def _stop_container(
