@@ -57,21 +57,22 @@ class TestRecommendedAction:
         with pytest.raises(Exception, match="frozen"):
             action.label = "Changed"  # type: ignore[misc]
 
-    def test_blank_action_type_rejected(self) -> None:
-        with pytest.raises(ValueError, match="at least 1"):
-            _make_action(action_type="")
-
-    def test_blank_label_rejected(self) -> None:
-        with pytest.raises(ValueError, match="at least 1"):
-            _make_action(label="")
-
-    def test_blank_description_rejected(self) -> None:
-        with pytest.raises(ValueError, match="at least 1"):
-            _make_action(description="")
-
-    def test_whitespace_label_rejected(self) -> None:
-        with pytest.raises(ValueError, match="whitespace"):
-            _make_action(label="   ")
+    @pytest.mark.parametrize(
+        ("kwargs", "match"),
+        [
+            ({"action_type": ""}, "at least 1"),
+            ({"label": ""}, "at least 1"),
+            ({"description": ""}, "at least 1"),
+            ({"label": "   "}, "whitespace"),
+        ],
+    )
+    def test_blank_fields_rejected(
+        self,
+        kwargs: dict[str, str],
+        match: str,
+    ) -> None:
+        with pytest.raises(ValueError, match=match):
+            _make_action(**kwargs)
 
 
 @pytest.mark.unit

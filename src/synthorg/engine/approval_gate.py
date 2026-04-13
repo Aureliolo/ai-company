@@ -11,6 +11,7 @@ it, and returns the restored context along with a decision message
 that the caller can inject into the conversation.
 """
 
+import contextlib
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 from uuid import uuid4
@@ -75,6 +76,16 @@ class ApprovalGate:
         self._notification_dispatcher = notification_dispatcher
         self._event_hub = event_hub
         self._interrupt_store = interrupt_store
+        import math  # noqa: PLC0415
+
+        if interrupt_timeout_seconds <= 0 or not math.isfinite(
+            interrupt_timeout_seconds,
+        ):
+            msg = (
+                "interrupt_timeout_seconds must be finite and > 0,"
+                f" got {interrupt_timeout_seconds}"
+            )
+            raise ValueError(msg)
         self._interrupt_timeout_seconds = interrupt_timeout_seconds
         logger.debug(
             APPROVAL_GATE_INITIALIZED,
@@ -140,14 +151,28 @@ class ApprovalGate:
             agent_id,
             session_id,
         )
-        parked = self._serialize_context(
-            escalation,
-            context,
-            agent_id,
-            task_id,
-            interrupt_id=interrupt_id,
-        )
-        await self._persist_parked(parked, escalation)
+        try:
+            parked = self._serialize_context(
+                escalation,
+                context,
+                agent_id,
+                task_id,
+                interrupt_id=interrupt_id,
+            )
+            await self._persist_parked(parked, escalation)
+        except BaseException:
+            # Compensate: resolve the interrupt so it doesn't
+            # dangle without a persisted parked context.
+            if interrupt_id is not None and self._interrupt_store is not None:
+                resolution = InterruptResolution(
+                    interrupt_id=interrupt_id,
+                    decision=ResumeDecision.REJECT,
+                    resolved_at=datetime.now(UTC),
+                    resolved_by="approval_gate_compensation",
+                )
+                with contextlib.suppress(Exception):
+                    await self._interrupt_store.resolve(resolution)
+            raise
         await self._notify_approval_required(escalation, agent_id, task_id)
         return parked
 
@@ -193,7 +218,7 @@ class ApprovalGate:
                 )
 
         if self._event_hub is None or interrupt_id is None:
-            return None
+            return interrupt_id
 
         try:
             await self._event_hub.publish_raw(
