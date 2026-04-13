@@ -4,7 +4,7 @@ import copy
 from datetime import UTC, datetime
 
 import pytest
-from hypothesis import given, settings
+from hypothesis import given
 from hypothesis import strategies as st
 from pydantic import ValidationError
 
@@ -86,7 +86,6 @@ class TestHandoffArtifact:
     @given(
         agent_name=st.text(min_size=1, max_size=20).filter(lambda s: s.strip()),
     )
-    @settings(max_examples=50)
     def test_self_handoff_always_rejected_property(self, agent_name: str) -> None:
         with pytest.raises(ValidationError, match="Self-handoff"):
             _minimal_handoff(from_agent_id=agent_name, to_agent_id=agent_name)

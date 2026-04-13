@@ -36,11 +36,11 @@ class VerificationConfig(BaseModel):
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     decomposer: DecomposerVariant = Field(
-        default=DecomposerVariant.LLM,
+        default=DecomposerVariant.IDENTITY,
         description="Decomposition strategy",
     )
     grader: GraderVariant = Field(
-        default=GraderVariant.LLM,
+        default=GraderVariant.HEURISTIC,
         description="Grading strategy",
     )
     decomposer_model_tier: ModelTier = Field(

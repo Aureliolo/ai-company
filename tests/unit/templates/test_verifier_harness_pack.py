@@ -38,7 +38,7 @@ class TestVerifierHarnessPack:
         agents = data["template"]["agents"]
         evaluator = next(a for a in agents if a["role"] == "Evaluator")
         generator = next(a for a in agents if a["role"] == "Generator")
-        assert evaluator["role"] != generator["role"]
+        assert evaluator["personality_preset"] != generator["personality_preset"]
 
     def test_has_verification_tag(self) -> None:
         data = _load_pack()

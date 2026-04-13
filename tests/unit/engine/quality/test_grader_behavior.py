@@ -87,7 +87,7 @@ class TestHeuristicGraderBehavior:
         )
         assert result.verdict == VerificationVerdict.REFER
 
-    async def test_empty_probes_pass(self) -> None:
+    async def test_empty_probes_refer(self) -> None:
         grader = HeuristicRubricGrader()
         result = await grader.grade(
             artifact=_artifact(),
@@ -96,7 +96,7 @@ class TestHeuristicGraderBehavior:
             generator_agent_id="gen-agent",
             evaluator_agent_id="eval-agent",
         )
-        assert result.verdict == VerificationVerdict.PASS
+        assert result.verdict == VerificationVerdict.REFER
 
     async def test_per_criterion_grades_populated(self) -> None:
         grader = HeuristicRubricGrader()

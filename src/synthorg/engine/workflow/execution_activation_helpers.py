@@ -457,6 +457,14 @@ def process_verification_node(  # noqa: PLR0913
         taken_target=taken_target,
     )
 
+    if taken_target is None:
+        logger.warning(
+            VERIFICATION_VERDICT_ROUTED,
+            execution_id=execution_id,
+            node_id=nid,
+            note=f"verification node missing {verdict.value} edge",
+        )
+
     if taken_target is not None:
         for untaken in untaken_targets:
             skipped_nodes.update(

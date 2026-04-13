@@ -479,7 +479,7 @@ class WorkflowExecutionService:
             )
 
         if node.type is WorkflowNodeType.VERIFICATION:
-            verdict_str = str(node.config.get("_verdict_override", "pass"))
+            verdict_str = str(node.config.get("_verdict_override", "refer"))
             try:
                 verdict = VerificationVerdict(verdict_str)
             except ValueError:

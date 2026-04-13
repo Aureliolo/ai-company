@@ -1683,11 +1683,11 @@ Acceptance criteria are decomposed into atomic binary probes (`AtomicProbe`) via
 
 ### Structured Handoff Artifacts
 
-`HandoffArtifact` carries the payload, artifact references, probes, and optional rubric between stages. A model validator rejects self-handoff (`from_agent_id == to_agent_id`). Deep copy is applied at handoff boundaries.
+`HandoffArtifact` carries the payload, artifact references, probes, and optional rubric between stages. A model validator rejects self-handoff (`from_agent_id == to_agent_id`). Immutability is enforced by the frozen Pydantic model (`frozen=True`).
 
 ### Self-Evaluation Rejection
 
-> Self-evaluation -- where the generator also judges its own output -- is explicitly rejected. Prior research documents that self-evaluation produces over-confidence and fails to catch the generator's own blind spots. `VerificationResult.evaluator_agent_id` MUST differ from the generator agent ID -- enforced by model validator at construction and by a runtime guard before the grader is called.
+> Self-evaluation -- where the generator also judges its own output -- is explicitly rejected. Prior research documents that self-evaluation produces over-confidence and fails to catch the generator's own blind spots. `VerificationResult.evaluator_agent_id` MUST differ from the generator agent ID -- enforced by model validator at construction.
 
 ### Pluggable Grading
 

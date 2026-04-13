@@ -18,6 +18,10 @@ from synthorg.engine.quality.verification_config import (
     VerificationConfig,
 )
 from synthorg.observability import get_logger
+from synthorg.observability.events.verification import (
+    VERIFICATION_FACTORY_UNKNOWN_DECOMPOSER,
+    VERIFICATION_FACTORY_UNKNOWN_GRADER,
+)
 
 logger = get_logger(__name__)
 
@@ -57,7 +61,7 @@ def build_decomposer(config: VerificationConfig) -> CriteriaDecomposer:
         valid = sorted(v.value for v in DecomposerVariant)
         msg = f"Unknown decomposer variant {config.decomposer!r}, valid: {valid}"
         logger.error(
-            "verification.factory.unknown_decomposer",
+            VERIFICATION_FACTORY_UNKNOWN_DECOMPOSER,
             variant=str(config.decomposer),
             valid=valid,
         )
@@ -82,7 +86,7 @@ def build_grader(config: VerificationConfig) -> RubricGrader:
         valid = sorted(v.value for v in GraderVariant)
         msg = f"Unknown grader variant {config.grader!r}, valid: {valid}"
         logger.error(
-            "verification.factory.unknown_grader",
+            VERIFICATION_FACTORY_UNKNOWN_GRADER,
             variant=str(config.grader),
             valid=valid,
         )

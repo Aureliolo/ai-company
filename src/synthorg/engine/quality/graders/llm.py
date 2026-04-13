@@ -26,11 +26,11 @@ _PASS_THRESHOLD = 0.5
 
 
 class LLMRubricGrader:
-    """Grader that uses an LLM to evaluate artifacts against rubrics.
+    """LLM-targeted grader (stub -- returns fixed grades).
 
-    Uses ``asyncio.TaskGroup`` for parallel probe evaluation.
-    Each probe worker is wrapped to catch exceptions and return
-    a neutral grade so one failure does not abort the group.
+    Intended to evaluate artifacts via LLM with parallel probe
+    workers.  Currently returns deterministic placeholder grades
+    (0.7 per criterion); verdicts are PASS or REFER only.
     """
 
     @property

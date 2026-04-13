@@ -553,3 +553,31 @@ class TestVerificationConfigValidation:
         assert not result.valid
         codes = {err.code for err in result.errors}
         assert ValidationErrorCode.VERIFICATION_MISSING_CONFIG in codes
+
+    @pytest.mark.unit
+    def test_blank_evaluator_agent_id(self) -> None:
+        result = validate_workflow(
+            _verification_wf(
+                verify_config={
+                    "rubric_name": "test-rubric",
+                    "evaluator_agent_id": "  ",
+                },
+            ),
+        )
+        assert not result.valid
+        codes = {err.code for err in result.errors}
+        assert ValidationErrorCode.VERIFICATION_MISSING_CONFIG in codes
+
+    @pytest.mark.unit
+    def test_non_string_rubric_name_rejected(self) -> None:
+        result = validate_workflow(
+            _verification_wf(
+                verify_config={
+                    "rubric_name": 123,
+                    "evaluator_agent_id": "eval-agent",
+                },
+            ),
+        )
+        assert not result.valid
+        codes = {err.code for err in result.errors}
+        assert ValidationErrorCode.VERIFICATION_MISSING_CONFIG in codes

@@ -2,6 +2,7 @@
 
 from types import MappingProxyType
 
+from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.engine.quality.verification import (
     FRONTEND_DESIGN_RUBRIC,
     GradeType,
@@ -50,7 +51,7 @@ BUILTIN_RUBRICS: MappingProxyType[str, VerificationRubric] = MappingProxyType(
 """Immutable registry of built-in rubrics keyed by name."""
 
 
-def get_rubric(name: str) -> VerificationRubric:
+def get_rubric(name: NotBlankStr) -> VerificationRubric:
     """Look up a rubric by name.
 
     Args:

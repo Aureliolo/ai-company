@@ -5,12 +5,13 @@ context passed between workflow stages -- particularly from a
 generator to a verification evaluator.
 """
 
+import json
 from collections.abc import Mapping  # noqa: TC003
-from datetime import datetime  # noqa: TC003
 from typing import Self
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import Field, model_validator
 
+from synthorg.core.structured_artifact import StructuredArtifact
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.engine.quality.verification import (
     AtomicProbe,  # noqa: TC001
@@ -18,7 +19,7 @@ from synthorg.engine.quality.verification import (
 )
 
 
-class HandoffArtifact(BaseModel):
+class HandoffArtifact(StructuredArtifact):
     """Structured data transferred between workflow stages.
 
     Carries the payload from one agent to the next, along with
@@ -36,10 +37,7 @@ class HandoffArtifact(BaseModel):
         artifact_refs: IDs of artifacts in the artifact store.
         acceptance_probes: Atomic probes from criteria decomposition.
         rubric: Optional rubric included for evaluator handoffs.
-        created_at: When the handoff was created.
     """
-
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     from_agent_id: NotBlankStr = Field(
         description="Producing agent identifier",
@@ -65,7 +63,6 @@ class HandoffArtifact(BaseModel):
         default=None,
         description="Rubric for evaluator handoffs",
     )
-    created_at: datetime = Field(description="Handoff creation timestamp")
 
     @model_validator(mode="after")
     def _reject_self_handoff(self) -> Self:
@@ -73,4 +70,9 @@ class HandoffArtifact(BaseModel):
         if self.from_agent_id == self.to_agent_id:
             msg = "Self-handoff rejected: from_agent_id must differ from to_agent_id"
             raise ValueError(msg)
+        try:
+            json.dumps(dict(self.payload))
+        except (TypeError, ValueError) as exc:
+            msg = f"Payload must be JSON-serializable: {exc}"
+            raise ValueError(msg) from exc
         return self

@@ -53,7 +53,7 @@ class TestVerificationPipelineIntegration:
         )
 
         assert result.verdict == VerificationVerdict.PASS
-        assert result.confidence > 0.0
+        assert 0.0 < result.confidence <= 1.0
         assert len(result.per_criterion_grades) == len(rubric.criteria)
         assert result.evaluator_agent_id != result.generator_agent_id
 
@@ -87,10 +87,7 @@ class TestVerificationPipelineIntegration:
             evaluator_agent_id="eval-agent",
         )
 
-        assert result.verdict in {
-            VerificationVerdict.FAIL,
-            VerificationVerdict.REFER,
-        }
+        assert result.verdict == VerificationVerdict.REFER
 
     async def test_refer_flow_with_high_confidence_threshold(self) -> None:
         decomposer = IdentityCriteriaDecomposer()
@@ -161,6 +158,6 @@ class TestVerificationPipelineIntegration:
             evaluator_agent_id="eval-agent",
         )
 
-        assert result.verdict in VerificationVerdict
+        assert result.verdict == VerificationVerdict.PASS
         assert len(result.per_criterion_grades) == 4
         assert result.rubric_name == "frontend-design"

@@ -27,9 +27,10 @@ _PASS_THRESHOLD = 0.5
 class HeuristicRubricGrader:
     """Rule-based grader for testing and deterministic fallback.
 
-    Grades binary probes by checking whether the probe text
-    appears (case-insensitive) in the payload values.  Scores
+    Grades binary probes by checking whether the source criterion
+    text appears (case-insensitive) in the payload values.  Scores
     each rubric criterion at a fixed 0.8 for PASS, 0.3 for FAIL.
+    Empty probes produce a REFER verdict (cannot verify).
     """
 
     @property
@@ -55,10 +56,29 @@ class HeuristicRubricGrader:
         )
         payload_text = " ".join(str(v) for v in artifact.payload.values()).lower()
 
+        if not probes:
+            result = VerificationResult(
+                verdict=VerificationVerdict.REFER,
+                confidence=0.0,
+                per_criterion_grades={c.name: 0.0 for c in rubric.criteria},
+                findings=("Heuristic: no probes to evaluate",),
+                evaluator_agent_id=evaluator_agent_id,
+                generator_agent_id=generator_agent_id,
+                rubric_name=rubric.name,
+                timestamp=datetime.now(UTC),
+            )
+            logger.info(
+                VERIFICATION_GRADING_COMPLETED,
+                rubric_name=rubric.name,
+                verdict=result.verdict.value,
+                confidence=result.confidence,
+            )
+            return result
+
         probe_pass_count = sum(
             1 for p in probes if p.source_criterion.lower() in payload_text
         )
-        probe_ratio = probe_pass_count / len(probes) if probes else 1.0
+        probe_ratio = probe_pass_count / len(probes)
 
         per_criterion_grades: dict[str, float] = {}
         for criterion in rubric.criteria:

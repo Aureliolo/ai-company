@@ -16,10 +16,11 @@ logger = get_logger(__name__)
 
 
 class LLMCriteriaDecomposer:
-    """Decomposer that uses an LLM to generate atomic binary probes.
+    """LLM-targeted decomposer (stub -- currently identity fallback).
 
-    Calls the medium-tier provider through ``BaseCompletionProvider``
-    for automatic retry and rate limiting.
+    Intended to call the medium-tier provider for multi-probe
+    decomposition.  Currently uses identity decomposition
+    (one probe per criterion) as a placeholder.
     """
 
     @property
@@ -34,10 +35,10 @@ class LLMCriteriaDecomposer:
         task_id: NotBlankStr,
         agent_id: NotBlankStr,
     ) -> tuple[AtomicProbe, ...]:
-        """Decompose criteria into atomic probes via LLM.
+        """Decompose criteria into atomic probes.
 
-        Falls back to identity decomposition when the provider is
-        not available (e.g. in integration tests without LLM).
+        LLM-based decomposition not yet wired; currently uses
+        identity decomposition (one probe per criterion).
         """
         probes: list[AtomicProbe] = []
         for i, criterion in enumerate(criteria):

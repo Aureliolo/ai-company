@@ -88,8 +88,8 @@ class TestFactory:
 class TestVerificationConfig:
     def test_default_config(self) -> None:
         cfg = VerificationConfig()
-        assert cfg.decomposer == DecomposerVariant.LLM
-        assert cfg.grader == GraderVariant.LLM
+        assert cfg.decomposer == DecomposerVariant.IDENTITY
+        assert cfg.grader == GraderVariant.HEURISTIC
         assert cfg.decomposer_model_tier == "medium"
         assert cfg.grader_model_tier == "medium"
 
@@ -130,3 +130,22 @@ class TestRubricCatalog:
     def test_catalog_is_immutable(self) -> None:
         with pytest.raises(TypeError):
             BUILTIN_RUBRICS["new"] = None  # type: ignore[index]
+
+
+@pytest.mark.unit
+class TestFactoryErrorPaths:
+    def test_unknown_decomposer_variant_raises(self) -> None:
+        cfg = VerificationConfig(decomposer=DecomposerVariant.IDENTITY)
+        valid_cfg = cfg.model_copy(
+            update={"decomposer": "nonexistent"},
+        )
+        with pytest.raises(ValueError, match="Unknown decomposer"):
+            build_decomposer(valid_cfg)
+
+    def test_unknown_grader_variant_raises(self) -> None:
+        cfg = VerificationConfig(grader=GraderVariant.HEURISTIC)
+        valid_cfg = cfg.model_copy(
+            update={"grader": "nonexistent"},
+        )
+        with pytest.raises(ValueError, match="Unknown grader"):
+            build_grader(valid_cfg)

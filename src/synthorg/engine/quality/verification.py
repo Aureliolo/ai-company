@@ -9,7 +9,7 @@ import math
 from collections.abc import Mapping  # noqa: TC003
 from datetime import datetime  # noqa: TC003
 from enum import StrEnum
-from typing import Self
+from typing import Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
 
@@ -72,7 +72,7 @@ class CalibrationExample(BaseModel):
     rationale: NotBlankStr = Field(
         description="Why this verdict is correct",
     )
-    expected_grades: Mapping[str, float] | None = Field(
+    expected_grades: Mapping[NotBlankStr, float] | None = Field(
         default=None,
         description="Optional per-criterion expected grades",
     )
@@ -120,6 +120,10 @@ class VerificationRubric(BaseModel):
         ge=0.0,
         le=1.0,
         description="Minimum confidence for non-REFER verdict",
+    )
+    grading_style: Literal["absolute", "relative", "pairwise"] = Field(
+        default="absolute",
+        description="Grading style (absolute/relative/pairwise)",
     )
 
     @model_validator(mode="after")
@@ -186,7 +190,7 @@ class VerificationResult(BaseModel):
         le=1.0,
         description="Grader confidence",
     )
-    per_criterion_grades: Mapping[str, float] = Field(
+    per_criterion_grades: Mapping[NotBlankStr, float] = Field(
         description="Criterion name to grade",
     )
     findings: tuple[NotBlankStr, ...] = Field(

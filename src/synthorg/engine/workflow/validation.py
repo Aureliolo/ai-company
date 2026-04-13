@@ -395,9 +395,7 @@ def _check_verification_configs(
         if node.type != WorkflowNodeType.VERIFICATION:
             continue
         rubric_name = node.config.get("rubric_name")
-        if not rubric_name or (
-            isinstance(rubric_name, str) and not rubric_name.strip()
-        ):
+        if not isinstance(rubric_name, str) or not rubric_name.strip():
             errors.append(
                 WorkflowValidationError(
                     code=ValidationErrorCode.VERIFICATION_MISSING_CONFIG,
@@ -408,7 +406,7 @@ def _check_verification_configs(
                 )
             )
         evaluator = node.config.get("evaluator_agent_id")
-        if not evaluator or (isinstance(evaluator, str) and not evaluator.strip()):
+        if not isinstance(evaluator, str) or not evaluator.strip():
             errors.append(
                 WorkflowValidationError(
                     code=ValidationErrorCode.VERIFICATION_MISSING_CONFIG,
