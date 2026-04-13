@@ -1,0 +1,12 @@
+"""Observability event constants for the verification subsystem."""
+
+VERIFICATION_NODE_STARTED = "verification.node.started"
+VERIFICATION_CRITERIA_DECOMPOSED = "verification.criteria.decomposed"
+VERIFICATION_HANDOFF_BUILT = "verification.handoff.built"
+VERIFICATION_GRADING_STARTED = "verification.grading.started"
+VERIFICATION_GRADING_COMPLETED = "verification.grading.completed"
+VERIFICATION_SELF_EVAL_REJECTED = "verification.self_eval.rejected"
+VERIFICATION_RUBRIC_NOT_FOUND = "verification.rubric.not_found"
+VERIFICATION_GRADER_FAILED = "verification.grader.failed"
+VERIFICATION_PROBE_FAILED = "verification.probe.failed"
+VERIFICATION_VERDICT_OVERRIDDEN_TO_REFER = "verification.verdict.overridden_to_refer"
