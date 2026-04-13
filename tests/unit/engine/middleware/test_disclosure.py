@@ -152,8 +152,9 @@ class TestLoadToolObservation:
         async def call(_ctx: AgentMiddlewareContext) -> ToolCallResult:
             return result
 
-        await mw.wrap_tool_call(ctx, call)
-        # Should not crash or double-load
+        returned = await mw.wrap_tool_call(ctx, call)
+        # Idempotent: already-loaded tool produces no state change
+        assert returned.updated_agent_context is None
 
 
 # ── load_tool_resource observation ───────────────────────────────
@@ -215,8 +216,11 @@ class TestAutoUnload:
         async def call(_ctx: AgentMiddlewareContext) -> ToolCallResult:
             return result
 
-        await mw.wrap_tool_call(ctx, call)
-        # Auto-unload should trigger for tool_a (FIFO oldest)
+        returned = await mw.wrap_tool_call(ctx, call)
+        assert returned.updated_agent_context is not None
+        assert "tool_a" not in returned.updated_agent_context.loaded_tools
+        assert "tool_b" in returned.updated_agent_context.loaded_tools
+        assert returned.updated_agent_context.tool_load_order == ("tool_b",)
 
     async def test_no_unload_below_threshold(self) -> None:
         config = ToolDisclosureConfig(unload_threshold_percent=80.0)
@@ -233,7 +237,8 @@ class TestAutoUnload:
         async def call(_ctx: AgentMiddlewareContext) -> ToolCallResult:
             return result
 
-        await mw.wrap_tool_call(ctx, call)
+        returned = await mw.wrap_tool_call(ctx, call)
+        assert returned.updated_agent_context is None
 
     async def test_no_unload_when_disabled(self) -> None:
         config = ToolDisclosureConfig(auto_unload_on_budget_pressure=False)
@@ -249,7 +254,8 @@ class TestAutoUnload:
         async def call(_ctx: AgentMiddlewareContext) -> ToolCallResult:
             return result
 
-        await mw.wrap_tool_call(ctx, call)
+        returned = await mw.wrap_tool_call(ctx, call)
+        assert returned.updated_agent_context is None
 
     async def test_no_unload_when_no_capacity(self) -> None:
         config = ToolDisclosureConfig()
@@ -265,7 +271,8 @@ class TestAutoUnload:
         async def call(_ctx: AgentMiddlewareContext) -> ToolCallResult:
             return result
 
-        await mw.wrap_tool_call(ctx, call)
+        returned = await mw.wrap_tool_call(ctx, call)
+        assert returned.updated_agent_context is None
 
     async def test_no_unload_when_no_loaded_tools(self) -> None:
         config = ToolDisclosureConfig(unload_threshold_percent=80.0)
@@ -279,7 +286,8 @@ class TestAutoUnload:
         async def call(_ctx: AgentMiddlewareContext) -> ToolCallResult:
             return result
 
-        await mw.wrap_tool_call(ctx, call)
+        returned = await mw.wrap_tool_call(ctx, call)
+        assert returned.updated_agent_context is None
 
 
 # ── Non-discovery tools pass through ────────────────────────────

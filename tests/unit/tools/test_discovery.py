@@ -206,8 +206,6 @@ class TestLoadToolResourceTool:
             arguments={"tool_name": "rich_tool", "resource_id": "guide"},
         )
         assert not result.is_error
-        import json
-
         payload = json.loads(result.content)
         assert payload["resource_id"] == "guide"
         assert payload["content_type"] == "markdown"
