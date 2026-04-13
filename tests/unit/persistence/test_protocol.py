@@ -36,6 +36,10 @@ from synthorg.persistence.repositories import (
     TaskRepository,
     UserRepository,
 )
+from synthorg.persistence.training_repos import (
+    TrainingPlanRepository,
+    TrainingResultRepository,
+)
 from synthorg.persistence.workflow_definition_repo import WorkflowDefinitionRepository
 from synthorg.persistence.workflow_execution_repo import WorkflowExecutionRepository
 
@@ -626,6 +630,14 @@ class _FakeBackend:
     def webhook_receipts(self) -> Any:
         return object()
 
+    @property
+    def training_plans(self) -> Any:
+        return _FakeTrainingPlanRepository()
+
+    @property
+    def training_results(self) -> Any:
+        return _FakeTrainingResultRepository()
+
     async def get_setting(self, key: str) -> str | None:
         return None
 
@@ -720,3 +732,44 @@ class TestProtocolCompliance:
             _FakeWorkflowExecutionRepository(),
             WorkflowExecutionRepository,
         )
+
+    def test_fake_training_plan_repo_is_training_plan_repository(
+        self,
+    ) -> None:
+        assert isinstance(
+            _FakeTrainingPlanRepository(),
+            TrainingPlanRepository,
+        )
+
+    def test_fake_training_result_repo_is_training_result_repository(
+        self,
+    ) -> None:
+        assert isinstance(
+            _FakeTrainingResultRepository(),
+            TrainingResultRepository,
+        )
+
+
+class _FakeTrainingPlanRepository:
+    async def save(self, plan: Any) -> None:
+        pass
+
+    async def get(self, plan_id: Any) -> Any | None:
+        return None
+
+    async def latest_pending(self, agent_id: Any) -> Any | None:
+        return None
+
+    async def list_by_agent(self, agent_id: Any) -> tuple[Any, ...]:
+        return ()
+
+
+class _FakeTrainingResultRepository:
+    async def save(self, result: Any) -> None:
+        pass
+
+    async def get_by_plan(self, plan_id: Any) -> Any | None:
+        return None
+
+    async def get_latest(self, agent_id: Any) -> Any | None:
+        return None

@@ -50,3 +50,9 @@ HR_TRAINING_SELECTOR_CONFIG_INVALID: Final[str] = "hr.training.selector_config_i
 HR_TRAINING_EXTRACTOR_CONFIG_INVALID: Final[str] = (
     "hr.training.extractor_config_invalid"
 )
+
+# -- Persistence --------------------------------------------------
+
+HR_TRAINING_PLAN_PERSISTED: Final[str] = "hr.training.plan_persisted"
+HR_TRAINING_RESULT_PERSISTED: Final[str] = "hr.training.result_persisted"
+HR_TRAINING_PERSISTENCE_ERROR: Final[str] = "hr.training.persistence_error"

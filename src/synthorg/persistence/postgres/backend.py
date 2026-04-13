@@ -100,6 +100,12 @@ from synthorg.persistence.postgres.ssrf_violation_repo import (
 from synthorg.persistence.postgres.subworkflow_repo import (
     PostgresSubworkflowRepository,
 )
+from synthorg.persistence.postgres.training_plan_repo import (
+    PostgresTrainingPlanRepository,
+)
+from synthorg.persistence.postgres.training_result_repo import (
+    PostgresTrainingResultRepository,
+)
 from synthorg.persistence.postgres.user_repo import (
     PostgresApiKeyRepository,
     PostgresUserRepository,
@@ -229,6 +235,8 @@ class PostgresPersistenceBackend:
         self._risk_overrides: RiskOverrideRepository | None = None
         self._ssrf_violations: SsrfViolationRepository | None = None
         self._circuit_breaker_state: CircuitBreakerStateRepository | None = None
+        self._training_plans: PostgresTrainingPlanRepository | None = None
+        self._training_results: PostgresTrainingResultRepository | None = None
         self._connections_stub = StubConnectionRepository()
         self._connection_secrets_stub = StubConnectionSecretRepository()
         self._oauth_states_stub = StubOAuthStateRepository()
@@ -271,6 +279,8 @@ class PostgresPersistenceBackend:
         self._ssrf_violations = None
         self._circuit_breaker_state = None
         self._project_cost_aggregates = None
+        self._training_plans = None
+        self._training_results = None
 
     async def _configure_connection(
         self,
@@ -430,6 +440,8 @@ class PostgresPersistenceBackend:
         self._ssrf_violations = PostgresSsrfViolationRepository(pool)
         self._circuit_breaker_state = PostgresCircuitBreakerStateRepository(pool)
         self._project_cost_aggregates = PostgresProjectCostAggregateRepository(pool)
+        self._training_plans = PostgresTrainingPlanRepository(pool)
+        self._training_results = PostgresTrainingResultRepository(pool)
 
     def get_db(self) -> AsyncConnectionPool:
         """Return the shared connection pool.
@@ -866,6 +878,22 @@ class PostgresPersistenceBackend:
     def webhook_receipts(self) -> StubWebhookReceiptRepository:
         """Repository for webhook receipt log persistence."""
         return self._webhook_receipts_stub
+
+    @property
+    def training_plans(self) -> PostgresTrainingPlanRepository:
+        """Repository for training plan persistence."""
+        return self._require_connected(
+            self._training_plans,
+            "training_plans",
+        )
+
+    @property
+    def training_results(self) -> PostgresTrainingResultRepository:
+        """Repository for training result persistence."""
+        return self._require_connected(
+            self._training_results,
+            "training_results",
+        )
 
     async def get_setting(self, key: NotBlankStr) -> str | None:
         """Retrieve a setting value by key from the ``_system`` namespace.

@@ -89,6 +89,7 @@ from synthorg.hr.performance.quality_protocol import (
 )
 from synthorg.hr.performance.tracker import PerformanceTracker
 from synthorg.hr.registry import AgentRegistryService  # noqa: TC001
+from synthorg.hr.training.service import TrainingService  # noqa: TC001
 from synthorg.notifications.factory import build_notification_dispatcher
 from synthorg.observability import get_logger
 from synthorg.observability.config import DEFAULT_SINKS, LogConfig
@@ -514,6 +515,7 @@ def _build_lifecycle(  # noqa: PLR0913, PLR0915, C901
     _ticket_cleanup_task: asyncio.Task[None] | None = None
     _auto_wired_dispatcher: SettingsChangeDispatcher | None = None
     _health_prober: ProviderHealthProber | None = None
+    _training_memory_backend: object | None = None
 
     def _on_cleanup_task_done(task: asyncio.Task[None]) -> None:
         """Log unexpected cleanup-task death."""
@@ -528,7 +530,8 @@ def _build_lifecycle(  # noqa: PLR0913, PLR0915, C901
             )
 
     async def on_startup() -> None:  # noqa: C901, PLR0912, PLR0915
-        nonlocal _ticket_cleanup_task, _auto_wired_dispatcher, _health_prober
+        nonlocal _ticket_cleanup_task, _auto_wired_dispatcher
+        nonlocal _health_prober, _training_memory_backend
         logger.info(API_APP_STARTUP, version=__version__)
         await _safe_startup(
             persistence,
@@ -621,6 +624,56 @@ def _build_lifecycle(  # noqa: PLR0913, PLR0915, C901
                     distributed_task_queue=app_state.distributed_task_queue,
                 )
                 raise
+        # Phase 3 auto-wire: TrainingService.
+        # Needs agent_registry, tool_invocation_tracker, and
+        # performance_tracker (all wired in Phase 1).  Uses
+        # InMemoryBackend for the memory layer; production callers
+        # inject a real Mem0 backend via the training_service param.
+        if (
+            not app_state.has_training_service
+            and effective_config is not None
+            and effective_config.training.enabled
+            and app_state.has_agent_registry
+            and app_state.has_tool_invocation_tracker
+        ):
+            try:
+                from synthorg.hr.training.factory import (  # noqa: PLC0415
+                    build_training_service,
+                )
+                from synthorg.memory.backends.inmemory import (  # noqa: PLC0415
+                    InMemoryBackend,
+                )
+
+                _perf = app_state._performance_tracker  # noqa: SLF001
+                if _perf is not None:
+                    _mem = InMemoryBackend()
+                    await _mem.connect()
+                    try:
+                        _ts = build_training_service(
+                            config=effective_config.training,
+                            memory_backend=_mem,
+                            tracker=_perf,
+                            registry=app_state.agent_registry,
+                            approval_store=app_state.approval_store,
+                            tool_tracker=app_state.tool_invocation_tracker,
+                        )
+                        app_state.set_training_service(_ts)
+                    except MemoryError, RecursionError:
+                        await _mem.disconnect()
+                        raise
+                    except Exception:
+                        await _mem.disconnect()
+                        raise
+                    _training_memory_backend = _mem
+            except MemoryError, RecursionError:
+                raise
+            except Exception:
+                logger.warning(
+                    API_APP_STARTUP,
+                    error="Training service auto-wire failed (non-fatal)",
+                    exc_info=True,
+                )
+
         await _maybe_bootstrap_agents(app_state)
         await _maybe_promote_first_owner(app_state)
         # Idempotent: a prior ticket-cleanup task from a previous
@@ -692,8 +745,19 @@ def _build_lifecycle(  # noqa: PLR0913, PLR0915, C901
                     exc_info=True,
                 )
 
-    async def on_shutdown() -> None:
-        nonlocal _ticket_cleanup_task, _auto_wired_dispatcher, _health_prober
+    async def on_shutdown() -> None:  # noqa: C901
+        nonlocal _ticket_cleanup_task, _auto_wired_dispatcher
+        nonlocal _health_prober, _training_memory_backend
+        # Disconnect training memory backend if auto-wired.
+        if _training_memory_backend is not None:
+            disconnect = getattr(_training_memory_backend, "disconnect", None)
+            if callable(disconnect):
+                await _try_stop(
+                    disconnect(),
+                    API_APP_SHUTDOWN,
+                    "Failed to disconnect training memory backend",
+                )
+            _training_memory_backend = None
         if _ticket_cleanup_task is not None:
             _ticket_cleanup_task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
@@ -982,6 +1046,7 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
     audit_log: AuditLog | None = None,
     trust_service: TrustService | None = None,
     coordination_metrics_store: CoordinationMetricsStore | None = None,
+    training_service: TrainingService | None = None,
     _skip_lifecycle_shutdown: bool = False,
 ) -> Litestar:
     """Create and configure the Litestar application.
@@ -1013,6 +1078,8 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
         trust_service: Pre-built trust service.
         coordination_metrics_store: Pre-built metrics store
             (auto-wired if None).
+        training_service: Pre-built training service (auto-wired
+            in startup if None and dependencies are available).
         _skip_lifecycle_shutdown: Test-only flag.  When ``True``, the
             Litestar app is built with an empty ``on_shutdown`` list so
             the lifespan exit is a no-op.  Used by the session-scoped
@@ -1409,6 +1476,7 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
         webhook_event_bridge=webhook_event_bridge,
         mcp_catalog_service=mcp_catalog_service,
         mcp_installations_repo=mcp_installations_repo,
+        training_service=training_service,
         startup_time=time.monotonic(),
     )
     if distributed_task_queue is not None:

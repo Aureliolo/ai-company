@@ -4,9 +4,7 @@ Provides endpoints for creating, executing, previewing, and
 querying training plans for agent onboarding.
 """
 
-import asyncio
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING
 
 from litestar import Controller, get, post, put
 from litestar.status_codes import HTTP_200_OK
@@ -20,8 +18,8 @@ from synthorg.api.dto_training import (
 )
 from synthorg.api.errors import (
     ApiValidationError,
+    ConflictError,
     NotFoundError,
-    ServiceUnavailableError,
 )
 from synthorg.api.guards import require_org_mutation, require_read_access
 from synthorg.api.path_params import PathName  # noqa: TC001
@@ -31,6 +29,8 @@ from synthorg.core.types import NotBlankStr
 from synthorg.hr.training.models import (
     ContentType,
     TrainingPlan,
+    TrainingPlanStatus,
+    TrainingResult,
 )
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import (
@@ -39,101 +39,11 @@ from synthorg.observability.events.api import (
 )
 from synthorg.observability.events.training import (
     HR_TRAINING_PLAN_CREATED,
+    HR_TRAINING_PLAN_EXECUTED,
+    HR_TRAINING_PLAN_FAILED,
 )
 
-if TYPE_CHECKING:
-    from collections.abc import Mapping
-
 logger = get_logger(__name__)
-
-
-class _TrainingPlanStore:
-    """Async-safe in-memory store for training plans and results.
-
-    This is a placeholder until training plan persistence lands
-    (tracked as a follow-up).  It is ``asyncio``-safe within a
-    single process; multi-worker deployments will need a real
-    persistence backend exposed via ``AppState``.
-    """
-
-    def __init__(self) -> None:
-        self._plans: dict[str, TrainingPlan] = {}
-        # Results are keyed by plan_id so results for different plans
-        # on the same agent are never overwritten. A second map tracks
-        # the latest plan_id per agent to support the "get latest
-        # result by agent" endpoint semantics.
-        self._results: dict[str, TrainingResultResponse] = {}
-        self._latest_plan_by_agent: dict[str, str] = {}
-        self._lock = asyncio.Lock()
-
-    async def save_plan(self, plan: TrainingPlan) -> None:
-        """Persist a training plan by id."""
-        async with self._lock:
-            self._plans[str(plan.id)] = plan
-
-    async def get_plan(self, plan_id: str) -> TrainingPlan | None:
-        """Fetch a training plan by id."""
-        async with self._lock:
-            return self._plans.get(plan_id)
-
-    async def latest_pending_plan(self, agent_id: str) -> TrainingPlan | None:
-        """Return the most recently created PENDING plan for an agent."""
-        from synthorg.hr.training.models import TrainingPlanStatus  # noqa: PLC0415
-
-        async with self._lock:
-            pending = [
-                plan
-                for plan in self._plans.values()
-                if str(plan.new_agent_id) == agent_id
-                and plan.status == TrainingPlanStatus.PENDING
-            ]
-        if not pending:
-            return None
-        return max(pending, key=lambda p: p.created_at)
-
-    async def snapshot_plans(self) -> Mapping[str, TrainingPlan]:
-        """Return a read-only snapshot of all plans."""
-        async with self._lock:
-            return dict(self._plans)
-
-    async def save_result(
-        self,
-        agent_id: str,
-        plan_id: str,
-        result: TrainingResultResponse,
-    ) -> None:
-        """Persist a training result by plan id.
-
-        Also records ``plan_id`` as the latest result for
-        ``agent_id`` so the agent-scoped lookup can resolve it.
-        """
-        async with self._lock:
-            self._results[plan_id] = result
-            self._latest_plan_by_agent[agent_id] = plan_id
-
-    async def get_result_by_plan(
-        self,
-        plan_id: str,
-    ) -> TrainingResultResponse | None:
-        """Fetch a stored training result by plan id."""
-        async with self._lock:
-            return self._results.get(plan_id)
-
-    async def get_latest_result(
-        self,
-        agent_id: str,
-    ) -> TrainingResultResponse | None:
-        """Fetch the latest training result for an agent."""
-        async with self._lock:
-            plan_id = self._latest_plan_by_agent.get(agent_id)
-            if plan_id is None:
-                return None
-            return self._results.get(plan_id)
-
-
-# Process-local store singleton. Will be replaced with persistence
-# in a follow-up issue (see CodeRabbit #1232 review).
-_store = _TrainingPlanStore()
 
 
 async def _resolve_agent(
@@ -203,6 +113,43 @@ def _coerce_override_sources(
     return tuple(coerced)
 
 
+def _result_to_response(result: TrainingResult) -> TrainingResultResponse:
+    """Convert a domain ``TrainingResult`` to the API response DTO.
+
+    Maps ``ContentType`` enums to string values in the count tuples
+    and ``TrainingApprovalHandle`` instances to serializable tuples.
+    """
+    return TrainingResultResponse(
+        id=result.id,
+        plan_id=result.plan_id,
+        new_agent_id=result.new_agent_id,
+        source_agents_used=result.source_agents_used,
+        items_extracted=tuple(
+            (NotBlankStr(ct.value), n) for ct, n in result.items_extracted
+        ),
+        items_after_curation=tuple(
+            (NotBlankStr(ct.value), n) for ct, n in result.items_after_curation
+        ),
+        items_after_guards=tuple(
+            (NotBlankStr(ct.value), n) for ct, n in result.items_after_guards
+        ),
+        items_stored=tuple((NotBlankStr(ct.value), n) for ct, n in result.items_stored),
+        approval_item_id=result.approval_item_id,
+        pending_approvals=tuple(
+            (
+                h.approval_item_id,
+                NotBlankStr(h.content_type.value),
+                h.item_count,
+            )
+            for h in result.pending_approvals
+        ),
+        review_pending=result.review_pending,
+        errors=result.errors,
+        started_at=result.started_at,
+        completed_at=result.completed_at,
+    )
+
+
 class TrainingController(Controller):
     """Training mode API endpoints."""
 
@@ -259,7 +206,7 @@ class TrainingController(Controller):
             plan_kwargs["volume_caps"] = caps
 
         plan = TrainingPlan(**plan_kwargs)  # type: ignore[arg-type]
-        await _store.save_plan(plan)
+        await app_state.persistence.training_plans.save(plan)
 
         logger.info(
             HR_TRAINING_PLAN_CREATED,
@@ -293,7 +240,9 @@ class TrainingController(Controller):
         identity = await _resolve_agent(app_state, agent_name)
         agent_id = str(identity.id)
 
-        plan = await _store.latest_pending_plan(agent_id)
+        plan = await app_state.persistence.training_plans.latest_pending(
+            NotBlankStr(agent_id),
+        )
         if plan is None:
             logger.warning(
                 API_RESOURCE_NOT_FOUND,
@@ -303,12 +252,56 @@ class TrainingController(Controller):
             msg = "No pending training plan found"
             raise NotFoundError(msg)
 
-        # TrainingService is not yet exposed on AppState (tracked in
-        # a follow-up issue). Return 503 so callers can distinguish
-        # "agent exists but service unavailable" from "resource missing".
-        msg = "Training execution service is not yet wired for this deployment"
-        logger.warning(API_REQUEST_ERROR, error=msg, plan_id=str(plan.id))
-        raise ServiceUnavailableError(msg)
+        # Raises 503 ServiceUnavailableError when not wired.
+        service = app_state.training_service
+
+        try:
+            result = await service.execute(plan)
+        except MemoryError, RecursionError:
+            raise
+        except Exception as exc:
+            # Transition plan to FAILED on pipeline error.
+            failed_plan = plan.model_copy(
+                update={
+                    "status": TrainingPlanStatus.FAILED,
+                    "executed_at": datetime.now(UTC),
+                }
+            )
+            try:
+                await app_state.persistence.training_plans.save(
+                    failed_plan,
+                )
+            except Exception as save_exc:
+                logger.exception(
+                    HR_TRAINING_PLAN_FAILED,
+                    plan_id=str(plan.id),
+                    error="Failed to persist FAILED status",
+                    persistence_error=str(save_exc),
+                )
+            logger.exception(
+                HR_TRAINING_PLAN_FAILED,
+                plan_id=str(plan.id),
+                error=str(exc),
+            )
+            raise
+
+        # Transition plan to EXECUTED and persist the result.
+        executed_plan = plan.model_copy(
+            update={
+                "status": TrainingPlanStatus.EXECUTED,
+                "executed_at": result.completed_at,
+            }
+        )
+        await app_state.persistence.training_plans.save(executed_plan)
+        await app_state.persistence.training_results.save(result)
+
+        logger.info(
+            HR_TRAINING_PLAN_EXECUTED,
+            plan_id=str(plan.id),
+            agent_id=agent_id,
+        )
+
+        return ApiResponse(data=_result_to_response(result))
 
     @get(
         "/result",
@@ -332,7 +325,9 @@ class TrainingController(Controller):
         identity = await _resolve_agent(app_state, agent_name)
         agent_id = str(identity.id)
 
-        result = await _store.get_latest_result(agent_id)
+        result = await app_state.persistence.training_results.get_latest(
+            NotBlankStr(agent_id),
+        )
         if result is None:
             logger.warning(
                 API_RESOURCE_NOT_FOUND,
@@ -342,7 +337,7 @@ class TrainingController(Controller):
             msg = "No training result found"
             raise NotFoundError(msg)
 
-        return ApiResponse(data=result)
+        return ApiResponse(data=_result_to_response(result))
 
     @post(
         "/preview",
@@ -368,7 +363,9 @@ class TrainingController(Controller):
         identity = await _resolve_agent(app_state, agent_name)
         agent_id = str(identity.id)
 
-        plan = await _store.latest_pending_plan(agent_id)
+        plan = await app_state.persistence.training_plans.latest_pending(
+            NotBlankStr(agent_id),
+        )
         if plan is None:
             logger.warning(
                 API_RESOURCE_NOT_FOUND,
@@ -378,9 +375,9 @@ class TrainingController(Controller):
             msg = "No pending training plan found"
             raise NotFoundError(msg)
 
-        msg = "Training preview service is not yet wired for this deployment"
-        logger.warning(API_REQUEST_ERROR, error=msg, plan_id=str(plan.id))
-        raise ServiceUnavailableError(msg)
+        # Raises 503 when not wired; preview does NOT persist.
+        result = await app_state.training_service.preview(plan)
+        return ApiResponse(data=_result_to_response(result))
 
     @put(
         "/plan/{plan_id:str}/overrides",
@@ -412,7 +409,9 @@ class TrainingController(Controller):
         """
         identity = await _resolve_agent(app_state, agent_name)
 
-        plan = await _store.get_plan(plan_id)
+        plan = await app_state.persistence.training_plans.get(
+            NotBlankStr(plan_id),
+        )
         if plan is None:
             logger.warning(
                 API_RESOURCE_NOT_FOUND,
@@ -432,6 +431,17 @@ class TrainingController(Controller):
             msg = "Training plan does not belong to this agent"
             raise NotFoundError(msg)
 
+        if plan.status != TrainingPlanStatus.PENDING:
+            logger.warning(
+                API_REQUEST_ERROR,
+                plan_id=str(plan.id),
+                agent_id=str(identity.id),
+                status=plan.status.value,
+                error="Attempt to modify non-pending training plan",
+            )
+            msg = "Cannot modify plan after execution or failure"
+            raise ConflictError(msg)
+
         updates: dict[str, object] = {}
         if data.override_sources is not None:
             updates["override_sources"] = _coerce_override_sources(
@@ -446,7 +456,7 @@ class TrainingController(Controller):
             updates["skip_training"] = data.skip_training
 
         updated = plan.model_copy(update=updates)
-        await _store.save_plan(updated)
+        await app_state.persistence.training_plans.save(updated)
 
         return ApiResponse(data=_plan_to_response(updated))
 

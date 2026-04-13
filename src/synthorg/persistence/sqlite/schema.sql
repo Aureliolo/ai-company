@@ -878,3 +878,59 @@ CREATE TABLE mcp_installations (
 
 CREATE INDEX idx_mcp_installations_connection
     ON mcp_installations(connection_name);
+
+-- ── Training plans ──────────────────────────────────────────────
+-- Stores training plan configuration for agent onboarding.
+-- Plans transition from pending -> executed|failed after execution.
+CREATE TABLE training_plans (
+    id TEXT NOT NULL PRIMARY KEY,
+    new_agent_id TEXT NOT NULL,
+    new_agent_role TEXT NOT NULL,
+    new_agent_level TEXT NOT NULL,
+    new_agent_department TEXT,
+    source_selector_type TEXT NOT NULL DEFAULT 'role_top_performers',
+    enabled_content_types TEXT NOT NULL DEFAULT '[]',
+    curation_strategy_type TEXT NOT NULL DEFAULT 'relevance',
+    volume_caps TEXT NOT NULL DEFAULT '[]',
+    override_sources TEXT NOT NULL DEFAULT '[]',
+    skip_training INTEGER NOT NULL DEFAULT 0,
+    require_review INTEGER NOT NULL DEFAULT 1,
+    status TEXT NOT NULL DEFAULT 'pending'
+        CHECK(status IN ('pending', 'executed', 'failed')),
+    created_at TEXT NOT NULL,
+    executed_at TEXT,
+    CHECK(
+        (status = 'pending' AND executed_at IS NULL)
+        OR (status <> 'pending' AND executed_at IS NOT NULL)
+    )
+);
+
+CREATE INDEX idx_training_plans_agent_status
+    ON training_plans(new_agent_id, status);
+CREATE INDEX idx_training_plans_created
+    ON training_plans(created_at);
+
+-- ── Training results ────────────────────────────────────────────
+-- Stores training execution outcomes with per-stage pipeline counts.
+CREATE TABLE training_results (
+    id TEXT NOT NULL PRIMARY KEY,
+    plan_id TEXT NOT NULL REFERENCES training_plans(id),
+    new_agent_id TEXT NOT NULL,
+    source_agents_used TEXT NOT NULL DEFAULT '[]',
+    items_extracted TEXT NOT NULL DEFAULT '[]',
+    items_after_curation TEXT NOT NULL DEFAULT '[]',
+    items_after_guards TEXT NOT NULL DEFAULT '[]',
+    items_stored TEXT NOT NULL DEFAULT '[]',
+    approval_item_id TEXT,
+    pending_approvals TEXT NOT NULL DEFAULT '[]',
+    review_pending INTEGER NOT NULL DEFAULT 0,
+    errors TEXT NOT NULL DEFAULT '[]',
+    started_at TEXT NOT NULL,
+    completed_at TEXT NOT NULL,
+    CHECK(completed_at >= started_at)
+);
+
+CREATE UNIQUE INDEX idx_training_results_plan
+    ON training_results(plan_id);
+CREATE INDEX idx_training_results_agent
+    ON training_results(new_agent_id, completed_at DESC);

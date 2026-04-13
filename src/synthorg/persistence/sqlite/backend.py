@@ -92,6 +92,12 @@ from synthorg.persistence.sqlite.ssrf_violation_repo import (
 from synthorg.persistence.sqlite.subworkflow_repo import (
     SQLiteSubworkflowRepository,
 )
+from synthorg.persistence.sqlite.training_plan_repo import (
+    SQLiteTrainingPlanRepository,
+)
+from synthorg.persistence.sqlite.training_result_repo import (
+    SQLiteTrainingResultRepository,
+)
 from synthorg.persistence.sqlite.user_repo import (
     SQLiteApiKeyRepository,
     SQLiteUserRepository,
@@ -167,6 +173,8 @@ class SQLitePersistenceBackend:
         self._project_cost_aggregates: SQLiteProjectCostAggregateRepository | None = (
             None
         )
+        self._training_plans: SQLiteTrainingPlanRepository | None = None
+        self._training_results: SQLiteTrainingResultRepository | None = None
         self._connections_stub = StubConnectionRepository()
         self._connection_secrets_stub = StubConnectionSecretRepository()
         self._oauth_states_stub = StubOAuthStateRepository()
@@ -206,6 +214,8 @@ class SQLitePersistenceBackend:
         self._ssrf_violations = None
         self._circuit_breaker_state = None
         self._project_cost_aggregates = None
+        self._training_plans = None
+        self._training_results = None
 
     async def connect(self) -> None:
         """Open the SQLite database and configure WAL mode."""
@@ -351,6 +361,8 @@ class SQLitePersistenceBackend:
             self._db,
             write_lock=self._shared_write_lock,
         )
+        self._training_plans = SQLiteTrainingPlanRepository(self._db)
+        self._training_results = SQLiteTrainingResultRepository(self._db)
 
     async def _cleanup_failed_connect(self, exc: sqlite3.Error | OSError) -> None:
         """Log failure, close partial connection, and raise.
@@ -686,6 +698,22 @@ class SQLitePersistenceBackend:
     def webhook_receipts(self) -> StubWebhookReceiptRepository:
         """Repository for webhook receipt log persistence."""
         return self._webhook_receipts_stub
+
+    @property
+    def training_plans(self) -> SQLiteTrainingPlanRepository:
+        """Repository for training plan persistence."""
+        return self._require_connected(
+            self._training_plans,
+            "training_plans",
+        )
+
+    @property
+    def training_results(self) -> SQLiteTrainingResultRepository:
+        """Repository for training result persistence."""
+        return self._require_connected(
+            self._training_results,
+            "training_results",
+        )
 
     async def get_setting(self, key: NotBlankStr) -> str | None:
         """Retrieve a setting value by key from the ``_system`` namespace.
