@@ -2,7 +2,7 @@
 # Consumed by: docker/web/apko.yaml (as @local synthorg-web-assets).
 #
 # Produces: synthorg-web-assets-${VERSION}.apk with
-#   /usr/share/caddy/html/          -- Vite SPA bundle + pre-gzipped siblings
+#   /usr/share/caddy/html/          -- Vite SPA bundle + pre-compressed siblings (.gz + .br)
 #   /usr/share/caddy/html/docs/     -- zensical-built MkDocs output + pre-gzipped
 #   /etc/synthorg/Caddyfile          -- the server config
 #
@@ -33,6 +33,7 @@ environment:
       - https://packages.wolfi.dev/os/wolfi-signing.rsa.pub
     packages:
       - busybox
+      - brotli
       - gzip
 
 pipeline:
@@ -61,3 +62,7 @@ pipeline:
         \( -name '*.js' -o -name '*.css' -o -name '*.html' \
            -o -name '*.svg' -o -name '*.json' -o -name '*.xml' \) \
         -size +256c -exec gzip -9 -k -n {} \;
+      find "${{targets.destdir}}/usr/share/caddy/html" -type f \
+        \( -name '*.js' -o -name '*.css' -o -name '*.html' \
+           -o -name '*.svg' -o -name '*.json' -o -name '*.xml' \) \
+        -size +256c -exec brotli -9 -k {} \;

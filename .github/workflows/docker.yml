@@ -136,7 +136,7 @@ jobs:
   # =========================================================================
   build-backend-base:
     name: Build Backend Base (apko)
-    needs: [version, changes]
+    needs: [version, changes, validate-compose]
     if: >-
       !cancelled() && needs.version.result == 'success' &&
       (needs.changes.result == 'skipped' || needs.changes.outputs.backend == 'true')
@@ -263,7 +263,7 @@ jobs:
 
   build-sandbox-base:
     name: Build Sandbox Base (apko)
-    needs: [version, changes]
+    needs: [version, changes, validate-compose]
     if: >-
       !cancelled() && needs.version.result == 'success' &&
       (needs.changes.result == 'skipped' || needs.changes.outputs.sandbox == 'true')
@@ -408,6 +408,12 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Set up QEMU (ARM64 emulation)
+        if: github.event_name != 'pull_request'
+        uses: docker/setup-qemu-action@29109295f81e9208d7d86ff1c6c12d2833863392 # v3.6.0
+        with:
+          platforms: arm64
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd # v4.0.0
         with:
@@ -536,7 +542,7 @@ jobs:
           build-args: |
             BASE_IMAGE=${{ needs.build-backend-base.outputs.digest != '' && format('ghcr.io/aureliolo/synthorg-backend-base@{0}', needs.build-backend-base.outputs.digest) || format('ghcr.io/aureliolo/synthorg-backend-base:{0}', needs.build-backend-base.outputs.tag) }}
           cache-from: type=gha
-          platforms: linux/amd64
+          platforms: linux/amd64,linux/arm64
           sbom: true
           provenance: true
 
@@ -592,7 +598,7 @@ jobs:
   # =========================================================================
   build-web-assets:
     name: Build Web Assets (melange)
-    needs: [version, changes]
+    needs: [version, changes, validate-compose]
     if: >-
       !cancelled() && needs.version.result == 'success' &&
       (needs.changes.result == 'skipped' || needs.changes.outputs.web == 'true')
@@ -644,7 +650,7 @@ jobs:
         run: |
           printf 'version: %s\n' "$APP_VERSION" > /tmp/melange-vars.yaml
           melange build docker/web/melange.yaml \
-            --arch amd64 \
+            --arch amd64,arm64 \
             --source-dir . \
             --signing-key melange.rsa \
             --out-dir packages/ \
@@ -823,6 +829,12 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Set up QEMU (ARM64 emulation)
+        if: github.event_name != 'pull_request'
+        uses: docker/setup-qemu-action@29109295f81e9208d7d86ff1c6c12d2833863392 # v3.6.0
+        with:
+          platforms: arm64
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd # v4.0.0
         with:
@@ -951,7 +963,7 @@ jobs:
           build-args: |
             BASE_IMAGE=${{ needs.build-sandbox-base.outputs.digest != '' && format('ghcr.io/aureliolo/synthorg-sandbox-base@{0}', needs.build-sandbox-base.outputs.digest) || format('ghcr.io/aureliolo/synthorg-sandbox-base:{0}', needs.build-sandbox-base.outputs.tag) }}
           cache-from: type=gha
-          platforms: linux/amd64
+          platforms: linux/amd64,linux/arm64
           sbom: true
           provenance: true
 

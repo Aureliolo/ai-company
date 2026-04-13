@@ -12,7 +12,7 @@ IMAGE_REF="${1:?Usage: report-image-size.sh <image-ref> <label>}"
 LABEL="${2:?Usage: report-image-size.sh <image-ref> <label>}"
 
 SIZE_BYTES=$(docker image inspect --format='{{.Size}}' "$IMAGE_REF")
-SIZE_MB=$(awk "BEGIN {printf \"%.1f\", ${SIZE_BYTES} / 1048576}")
+SIZE_MB=$(awk -v bytes="$SIZE_BYTES" 'BEGIN {printf "%.1f", bytes / 1048576}')
 
 echo "Image size (${LABEL}): ${SIZE_MB} MB"
 

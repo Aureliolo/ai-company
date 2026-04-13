@@ -15,6 +15,14 @@
 
 set -euo pipefail
 
+if ! command -v jq >/dev/null 2>&1; then
+  echo "::error::jq not on PATH, required for scan evaluation"
+  exit 1
+fi
+
+# Ensure GITHUB_STEP_SUMMARY is defined for local runs
+: "${GITHUB_STEP_SUMMARY:=/dev/null}"
+
 VERBOSE=0
 if [ "${1:-}" = "--verbose" ]; then
   VERBOSE=1
@@ -36,7 +44,7 @@ echo "## Trivy Scan -- ${LABEL}"
 echo "Critical: ${CRITICAL}, High: ${HIGH}"
 
 if [ "$VERBOSE" -eq 1 ]; then
-  TOTAL=$(jq '[.Results[]?.Vulnerabilities[]?] | length' "$TRIVY_JSON")
+  TOTAL=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity == "CRITICAL" or .Severity == "HIGH")] | length' "$TRIVY_JSON")
   if [ "$TOTAL" -eq 0 ]; then
     echo "No CRITICAL or HIGH vulnerabilities found."
     echo "## Trivy Scan -- ${LABEL}: No CRITICAL or HIGH vulnerabilities found." >> "$GITHUB_STEP_SUMMARY"
@@ -44,6 +52,7 @@ if [ "$VERBOSE" -eq 1 ]; then
     TABLE=$(jq -r '
       ["SEVERITY","CVE","PACKAGE","VERSION","TITLE"],
       (.Results[]?.Vulnerabilities[]? |
+        select(.Severity == "CRITICAL" or .Severity == "HIGH") |
         [.Severity, .VulnerabilityID, .PkgName, .InstalledVersion, (.Title // "")[0:60]]) |
       @tsv
     ' "$TRIVY_JSON" | column -t -s$'\t')

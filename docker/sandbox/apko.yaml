@@ -48,6 +48,7 @@ environment:
 
 archs:
   - x86_64
+  - aarch64
 
 annotations:
   org.opencontainers.image.title: synthorg-sandbox-base

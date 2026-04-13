@@ -3,7 +3,7 @@
 #
 # Replicates every behavior of the previous web/nginx.conf:
 #   - :8080 unprivileged listen
-#   - precompressed gzip (Caddy's file_server directive replaces gzip_static)
+#   - precompressed br gzip (Caddy's file_server directive replaces gzip_static)
 #   - per-request CSP nonce via the templates directive +
 #     {{placeholder "http.request.uuid"}} (replaces nginx sub_filter + $request_id)
 #   - SPA fallback to /index.html (replaces try_files)
@@ -120,7 +120,7 @@
 			-Server
 		}
 		file_server {
-			precompressed gzip
+			precompressed br gzip
 		}
 	}
 
@@ -143,7 +143,7 @@
 			defer
 		}
 		file_server {
-			precompressed gzip
+			precompressed br gzip
 		}
 	}
 
