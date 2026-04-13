@@ -21,7 +21,7 @@ RUN npm run build \
     && find /app/dist -type f \( -name '*.js' -o -name '*.css' -o -name '*.html' -o -name '*.svg' -o -name '*.json' \) -size +256c -exec gzip -9 -k {} \;
 
 # Stage 2: Build MkDocs documentation (non-root for defense-in-depth)
-FROM python:3.14.3-slim@sha256:5e59aae31ff0e87511226be8e2b94d78c58f05216efda3b07dbbed938ec8583b AS docs-builder
+FROM python:3.15.0a8-slim@sha256:a28758f9978680d6aa6145e75cb3032b1b9fe4dcd3abc46471b3a6bda57f0daf AS docs-builder
 
 COPY --from=ghcr.io/astral-sh/uv:0.10.9@sha256:10902f58a1606787602f303954cea099626a4adb02acbac4c69920fe9d278f82 /uv /uvx /bin/
 
@@ -77,7 +77,7 @@ RUN find /app/_site/docs -type f \
     -size +256c -exec gzip -9 -k {} \;
 
 # Stage 3: Serve with nginx
-FROM nginxinc/nginx-unprivileged:1.29.5-alpine@sha256:601c823234c474696ded03d619e67f1e59538802731543099c691aea67e4a553
+FROM nginxinc/nginx-unprivileged:1.29.5-alpine@sha256:42a7d7f2ee23e9f5a1dcdf3647ba5c585bbd18f79e79cd817e70e8cd61c55779
 
 LABEL org.opencontainers.image.title="synthorg-web" \
       org.opencontainers.image.description="SynthOrg web dashboard" \
