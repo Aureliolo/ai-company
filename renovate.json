@@ -3,10 +3,10 @@
   "extends": [
     "config:recommended",
     ":pinVersions",
-    ":pinGitHubActionDigests",
+    "helpers:pinGitHubActionDigests",
     "docker:pinDigests"
   ],
-  "schedule": ["before 7am every day"],
+  "schedule": ["before 7am"],
   "timezone": "Etc/UTC",
   "labels": ["dependencies"],
   "reviewers": ["Aureliolo"],
@@ -40,7 +40,7 @@
     },
     {
       "description": "CLI tool version inputs (golangci-lint, GoReleaser, govulncheck)",
-      "matchManagers": ["regex"],
+      "matchManagers": ["custom.regex"],
       "matchDepNames": ["golangci/golangci-lint", "goreleaser/goreleaser", "golang.org/x/vuln/cmd/govulncheck"],
       "groupName": "CLI dependencies",
       "groupSlug": "cli",
@@ -65,7 +65,7 @@
     },
     {
       "description": "CI binary tool versions (Trivy, Grype, Gitleaks, D2)",
-      "matchManagers": ["regex"],
+      "matchManagers": ["custom.regex"],
       "matchDepNames": ["aquasecurity/trivy", "anchore/grype", "gitleaks/gitleaks", "terrastruct/d2"],
       "groupName": "CI tool dependencies",
       "groupSlug": "ci-tools",
@@ -74,7 +74,7 @@
     },
     {
       "description": "apko binary version (binary download in CI)",
-      "matchManagers": ["regex"],
+      "matchManagers": ["custom.regex"],
       "matchDepNames": ["chainguard-dev/apko"],
       "groupName": "Container dependencies",
       "groupSlug": "container",
@@ -92,7 +92,7 @@
     {
       "customType": "regex",
       "description": "Binary tool version env vars in CI workflows (Trivy, Grype, Gitleaks, D2, apko)",
-      "fileMatch": ["\\.github/.*\\.ya?ml$"],
+      "managerFilePatterns": ["/\\.github/.*\\.ya?ml$/"],
       "matchStrings": [
         "# renovate: datasource=github-releases depName=(?<depName>[^\\s]+)\\n\\s+[A-Z_]+_VERSION:\\s*[\"']?(?<currentValue>[^\"'\\s]+)[\"']?"
       ],
@@ -102,7 +102,7 @@
     {
       "customType": "regex",
       "description": "go install binary versions in CI workflows",
-      "fileMatch": ["\\.github/.*\\.ya?ml$"],
+      "managerFilePatterns": ["/\\.github/.*\\.ya?ml$/"],
       "matchStrings": [
         "go install (?<depName>[^@]+)@(?<currentValue>v[^\\s\"]+)"
       ],
@@ -112,7 +112,7 @@
     {
       "customType": "regex",
       "description": "GitHub Action version: input parameters",
-      "fileMatch": ["\\.github/.*\\.ya?ml$"],
+      "managerFilePatterns": ["/\\.github/.*\\.ya?ml$/"],
       "matchStrings": [
         "# renovate: datasource=github-releases depName=(?<depName>[^\\s]+)\\n\\s+version:\\s*(?<currentValue>[^\\s]+)"
       ],
