@@ -33,6 +33,7 @@ from synthorg.memory.org.config import OrgMemoryConfig
 from synthorg.persistence.config import PersistenceConfig
 from synthorg.security.config import SecurityConfig
 from synthorg.security.trust.config import TrustConfig
+from synthorg.tools.disclosure_config import ToolDisclosureConfig
 from synthorg.tools.mcp.config import MCPConfig
 from synthorg.tools.sandbox.sandboxing_config import SandboxingConfig
 from synthorg.workers.config import QueueConfig
@@ -109,6 +110,7 @@ class RootConfigFactory(ModelFactory[RootConfig]):
     strategy = StrategyConfig()
     backup = BackupConfig()
     workflow = WorkflowConfig()
+    tool_disclosure = ToolDisclosureConfig()
     design_tools = None
     communication_tools = None
     analytics_tools = None
