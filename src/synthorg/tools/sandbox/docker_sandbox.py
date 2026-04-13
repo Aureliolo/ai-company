@@ -467,7 +467,23 @@ class DockerSandbox:
                 await asyncio.sleep(_SIDECAR_HEALTH_POLL_INTERVAL)
                 continue
 
-            health_status = info.get("State", {}).get("Health", {}).get("Status")
+            state = info.get("State", {})
+
+            # Fail fast if sidecar exited before becoming healthy.
+            container_status = state.get("Status", "")
+            if container_status in ("exited", "dead"):
+                msg = (
+                    f"Sidecar exited before becoming healthy"
+                    f" (status={container_status})"
+                )
+                logger.warning(
+                    SANDBOX_SIDECAR_HEALTH_FAILED,
+                    sidecar_id=sidecar_id[:12],
+                    status=container_status,
+                )
+                raise SandboxStartError(msg)
+
+            health_status = state.get("Health", {}).get("Status")
             if health_status == "healthy":
                 logger.debug(
                     SANDBOX_SIDECAR_HEALTHY,
@@ -579,7 +595,7 @@ class DockerSandbox:
             category=category,
         )
 
-    async def _run_container(  # noqa: PLR0913
+    async def _run_container(  # noqa: C901, PLR0913
         self,
         *,
         docker: aiodocker.Docker,
@@ -621,7 +637,7 @@ class DockerSandbox:
                     sidecar_id=sidecar_id[:12],
                 )
                 await self._wait_sidecar_healthy(docker, sidecar_id)
-            except BaseException:
+            except BaseException as exc:
                 # Catch BaseException to handle CancelledError too --
                 # sidecar must be cleaned up even on task cancellation.
                 removed = await self._remove_container(
@@ -633,11 +649,10 @@ class DockerSandbox:
                         f"_sidecar:{sidecar_id}",
                         None,
                     )
-                raise
-            self._tracked_containers.pop(
-                f"_sidecar:{sidecar_id}",
-                None,
-            )
+                msg = f"Sidecar startup failed: {exc}"
+                raise SandboxStartError(msg) from exc
+            # Don't pop the _sidecar: temp key yet -- keep it tracked
+            # until the sandbox container is created and takes over.
             network_mode = f"container:{sidecar_id}"
 
         config = self._build_container_config(
@@ -653,7 +668,15 @@ class DockerSandbox:
             container = await docker.containers.create(config)  # pyright: ignore[reportAttributeAccessIssue]
         except Exception as exc:
             if sidecar_id:
-                await self._remove_container(docker, sidecar_id)
+                removed = await self._remove_container(
+                    docker,
+                    sidecar_id,
+                )
+                if removed:
+                    self._tracked_containers.pop(
+                        f"_sidecar:{sidecar_id}",
+                        None,
+                    )
             msg = f"Failed to create container: {exc}"
             logger.exception(
                 DOCKER_EXECUTE_FAILED,
@@ -664,6 +687,12 @@ class DockerSandbox:
 
         container_id = container.id
         self._tracked_containers[container_id] = sidecar_id
+        # Sandbox now tracks the sidecar -- remove the temp key.
+        if sidecar_id:
+            self._tracked_containers.pop(
+                f"_sidecar:{sidecar_id}",
+                None,
+            )
         logger.debug(
             DOCKER_CONTAINER_CREATED,
             container_id=container_id[:12],

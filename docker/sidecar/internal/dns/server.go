@@ -175,7 +175,9 @@ func (s *Server) handleTCP(conn net.Conn) {
 	if _, err := conn.Write(lenBuf[:]); err != nil {
 		return
 	}
-	_, _ = conn.Write(resp)
+	if _, err := conn.Write(resp); err != nil {
+		return
+	}
 }
 
 func (s *Server) processQuery(query []byte) []byte {
@@ -183,6 +185,16 @@ func (s *Server) processQuery(query []byte) []byte {
 	if hostname == "" {
 		// Can't parse -- return NXDOMAIN instead of forwarding
 		// to prevent unparseable queries from bypassing the allowlist.
+		return buildNXDOMAIN(query)
+	}
+
+	// When DNS is disabled (SIDECAR_DNS_ALLOWED=0), deny all queries
+	// regardless of allowlist. DNAT DROP rules are the primary gate
+	// but this acts as defense-in-depth for loopback queries.
+	if !s.dnsAllowed {
+		if s.logger != nil {
+			s.logger.Info("dns.query.denied", "host", hostname, "reason", "dns disabled")
+		}
 		return buildNXDOMAIN(query)
 	}
 

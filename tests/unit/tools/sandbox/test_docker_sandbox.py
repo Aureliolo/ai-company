@@ -888,7 +888,7 @@ class TestSidecarLifecycle:
 
         with (
             _patch_aiodocker(mock_docker),
-            pytest.raises(RuntimeError, match="port conflict"),
+            pytest.raises(SandboxStartError, match="port conflict"),
         ):
             await sandbox.execute(command="echo", args=("test",))
 

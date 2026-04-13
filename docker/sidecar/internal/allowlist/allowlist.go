@@ -100,14 +100,18 @@ func (a *Allowlist) IsAllowedHostname(hostname string) bool {
 // UpdateRules atomically replaces the allowlist with new rules.
 // DNS resolution runs on the new hosts before swapping so
 // IsAllowedIP/IsAllowedHostname never see a stale-allow window.
+// Acquires resolveMu to prevent backgroundResolve from overwriting
+// the fresh maps with stale ones.
 func (a *Allowlist) UpdateRules(hosts []config.HostPort, allowAll bool) {
 	resolved, hostnames := resolveHosts(hosts)
 
+	a.resolveMu.Lock()
 	a.mu.Lock()
 	a.raw = hosts
 	a.resolved = resolved
 	a.hostnames = hostnames
 	a.mu.Unlock()
+	a.resolveMu.Unlock()
 	a.allowAll.Store(allowAll)
 }
 
@@ -136,7 +140,7 @@ func resolveHosts(hosts []config.HostPort) (map[string]bool, map[string]bool) {
 	hostnames := make(map[string]bool)
 
 	for _, hp := range hosts {
-		hostnames[hp.Host] = true
+		hostnames[strings.ToLower(hp.Host)] = true
 
 		// If already an IP, add directly.
 		if ip := net.ParseIP(hp.Host); ip != nil {
