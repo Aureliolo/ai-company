@@ -40,6 +40,29 @@ and INTERRUPTED tasks must be reassigned (-> ASSIGNED) before re-execution.
 """
 
 
+def _collect_credential_keys(
+    data: object,
+    prefix: str,
+    violations: list[str],
+) -> None:
+    """Recursively scan dict keys for credential patterns."""
+    if isinstance(data, dict):
+        for key in data:
+            if not isinstance(key, str):
+                continue
+            path = f"{prefix}.{key}" if prefix else key
+            if any(p.search(key) for p in _CREDENTIAL_KEY_PATTERNS):
+                violations.append(path)
+            _collect_credential_keys(data[key], path, violations)
+    elif isinstance(data, list | tuple):
+        for i, item in enumerate(data):
+            _collect_credential_keys(
+                item,
+                f"{prefix}[{i}]",
+                violations,
+            )
+
+
 def validate_task_metadata(
     task: Task,
     agent_id: str,
@@ -47,8 +70,9 @@ def validate_task_metadata(
 ) -> None:
     """Reject task metadata keys that match credential patterns.
 
-    Credentials must flow exclusively through the sandbox credential
-    proxy, never through task metadata into the agent context.
+    Recursively scans all dict keys in ``task.metadata`` (including
+    nested dicts and dicts inside lists) so credentials cannot hide
+    inside nested structures.
 
     Args:
         task: The task to validate.
@@ -61,11 +85,9 @@ def validate_task_metadata(
     """
     if not task.metadata:
         return
-    violations = sorted(
-        key
-        for key in task.metadata
-        if any(p.search(key) for p in _CREDENTIAL_KEY_PATTERNS)
-    )
+    violations: list[str] = []
+    _collect_credential_keys(task.metadata, "", violations)
+    violations.sort()
     if violations:
         msg = (
             f"Task {task_id!r} metadata contains credential-like keys: "

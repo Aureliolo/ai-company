@@ -743,7 +743,7 @@ jobs:
       - name: Trivy scan
         uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # v0.35.0
         with:
-          input: web.tar
+          image-ref: ${{ steps.scan-ref.outputs.ref }}
           format: json
           output: trivy-web.json
           exit-code: "0"

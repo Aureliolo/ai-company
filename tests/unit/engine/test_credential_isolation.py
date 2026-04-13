@@ -64,6 +64,20 @@ class TestCredentialIsolationValidator:
             validate_task_metadata(task, agent_id="a1", task_id="t1")
         assert "password" in str(exc_info.value)
 
+    def test_rejects_nested_credential_key(self) -> None:
+        task = _make_task({"config": {"db_password": "leaked"}})
+        with pytest.raises(ExecutionStateError, match="db_password"):
+            validate_task_metadata(task, agent_id="a1", task_id="t1")
+
+    def test_rejects_deeply_nested_credential_key(self) -> None:
+        task = _make_task({"a": {"b": [{"api_key": "leaked"}]}})
+        with pytest.raises(ExecutionStateError, match="api_key"):
+            validate_task_metadata(task, agent_id="a1", task_id="t1")
+
+    def test_accepts_safe_nested_metadata(self) -> None:
+        task = _make_task({"config": {"retries": 3, "timeout": 30}})
+        validate_task_metadata(task, agent_id="a1", task_id="t1")
+
     def test_logs_violation_event(self) -> None:
         task = _make_task({"api_token": "leaked"})
         with (

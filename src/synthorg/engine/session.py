@@ -77,7 +77,7 @@ class SessionEvent(BaseModel):
     )
 
     @model_validator(mode="after")
-    def _deepcopy_data(self) -> SessionEvent:
+    def _deepcopy_data(self) -> Self:
         """Defensive copy so callers cannot mutate the frozen model."""
         object.__setattr__(self, "data", copy.deepcopy(self.data))
         return self

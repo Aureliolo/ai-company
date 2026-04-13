@@ -54,10 +54,16 @@ def _check_model_recursive(
         field_path = f"{path}.{name}"
         annotation = info.annotation
 
-        # Check the field name itself against credential patterns.
-        if _could_carry_credential(annotation) and _matches_credential_pattern(
-            name,
-        ):
+        # Check the field name if the type could carry credentials.
+        # BaseModel fields are included: a field named "api_key" is
+        # suspicious even if wrapped in a Pydantic model.
+        is_model = isinstance(annotation, type) and issubclass(
+            annotation,
+            BaseModel,
+        )
+        if (
+            _could_carry_credential(annotation) or is_model
+        ) and _matches_credential_pattern(name):
             violations.append(
                 f"{field_path} (type={annotation}) matches a credential pattern",
             )

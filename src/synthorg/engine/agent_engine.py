@@ -640,9 +640,12 @@ class AgentEngine:
                 if replay_ctx is not None:
                     # Merge replayed execution state into the prepared
                     # context so system prompt, memory messages, and
-                    # task instruction are preserved.
+                    # task instruction are preserved.  Also restore
+                    # the original execution lineage (ID + start time).
                     ctx = ctx.model_copy(
                         update={
+                            "execution_id": replay_ctx.execution_id,
+                            "started_at": replay_ctx.started_at,
                             "conversation": (
                                 *ctx.conversation,
                                 *replay_ctx.conversation,
