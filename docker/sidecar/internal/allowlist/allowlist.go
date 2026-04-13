@@ -98,12 +98,17 @@ func (a *Allowlist) IsAllowedHostname(hostname string) bool {
 }
 
 // UpdateRules atomically replaces the allowlist with new rules.
+// DNS resolution runs on the new hosts before swapping so
+// IsAllowedIP/IsAllowedHostname never see a stale-allow window.
 func (a *Allowlist) UpdateRules(hosts []config.HostPort, allowAll bool) {
+	resolved, hostnames := resolveHosts(hosts)
+
 	a.mu.Lock()
 	a.raw = hosts
+	a.resolved = resolved
+	a.hostnames = hostnames
 	a.mu.Unlock()
 	a.allowAll.Store(allowAll)
-	a.resolve()
 }
 
 func (a *Allowlist) resolve() {
@@ -111,15 +116,26 @@ func (a *Allowlist) resolve() {
 	a.resolveMu.Lock()
 	defer a.resolveMu.Unlock()
 
-	resolved := make(map[string]bool)
-	hostnames := make(map[string]bool)
-
 	a.mu.RLock()
 	raw := make([]config.HostPort, len(a.raw))
 	copy(raw, a.raw)
 	a.mu.RUnlock()
 
-	for _, hp := range raw {
+	resolved, hostnames := resolveHosts(raw)
+
+	a.mu.Lock()
+	a.resolved = resolved
+	a.hostnames = hostnames
+	a.mu.Unlock()
+}
+
+// resolveHosts builds resolved IP:port and hostname maps from the
+// given host entries. DNS lookups run outside any lock.
+func resolveHosts(hosts []config.HostPort) (map[string]bool, map[string]bool) {
+	resolved := make(map[string]bool)
+	hostnames := make(map[string]bool)
+
+	for _, hp := range hosts {
 		hostnames[hp.Host] = true
 
 		// If already an IP, add directly.
@@ -139,11 +155,7 @@ func (a *Allowlist) resolve() {
 			resolved[fmt.Sprintf("%s:%d", ip, hp.Port)] = true
 		}
 	}
-
-	a.mu.Lock()
-	a.resolved = resolved
-	a.hostnames = hostnames
-	a.mu.Unlock()
+	return resolved, hostnames
 }
 
 func (a *Allowlist) backgroundResolve() {

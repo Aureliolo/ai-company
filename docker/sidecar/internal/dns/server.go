@@ -56,14 +56,14 @@ func NewServer(al *allowlist.Allowlist, dnsAllowed bool, logger Logger) (*Server
 
 // Start begins listening on UDP and TCP port 53.
 func (s *Server) Start() error {
-	udpAddr := &net.UDPAddr{Port: 53}
+	udpAddr := &net.UDPAddr{IP: net.ParseIP("127.0.0.1"), Port: 53}
 	udpConn, err := net.ListenUDP("udp", udpAddr)
 	if err != nil {
 		return fmt.Errorf("dns udp listen: %w", err)
 	}
 	s.udpConn = udpConn
 
-	tcpLn, err := net.Listen("tcp", ":53")
+	tcpLn, err := net.Listen("tcp", "127.0.0.1:53")
 	if err != nil {
 		udpConn.Close()
 		return fmt.Errorf("dns tcp listen: %w", err)
@@ -170,9 +170,11 @@ func (s *Server) handleTCP(conn net.Conn) {
 		return
 	}
 
-	// Write response with length prefix.
+	// Write response with length prefix -- use full writes.
 	binary.BigEndian.PutUint16(lenBuf[:], uint16(len(resp)))
-	_, _ = conn.Write(lenBuf[:])
+	if _, err := conn.Write(lenBuf[:]); err != nil {
+		return
+	}
 	_, _ = conn.Write(resp)
 }
 

@@ -10,9 +10,9 @@
 FROM golang:1.26-alpine3.21 AS builder
 
 WORKDIR /build
-COPY go.mod ./
+COPY docker/sidecar/go.mod ./
+COPY docker/sidecar/ .
 # Sidecar uses only stdlib -- no external dependencies, no go.sum needed.
-COPY . .
 RUN CGO_ENABLED=0 go build -ldflags="-s -w" -trimpath -o sidecar .
 
 # -----------------------------------------------------------------------------

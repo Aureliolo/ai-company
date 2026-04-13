@@ -56,10 +56,10 @@ func main() {
 	// Start health + admin API.
 	adminServer := health.NewServer(cfg.HealthPort, al, cfg.AdminToken, cfg.AllowedHosts, cfg.AllowAll, logger)
 	if err := adminServer.Start(); err != nil {
-		logger.Warn("health.start.failed", "error", err.Error())
-	} else {
-		logger.Info("health.started", "port", cfg.HealthPort)
+		logger.Error("health.start.failed", "error", err.Error())
+		os.Exit(1)
 	}
+	logger.Info("health.started", "port", cfg.HealthPort)
 
 	// Setup DNAT rules.
 	dnatMgr := proxy.NewDNATManager(cfg.ProxyPort, cfg.DNSAllowed)

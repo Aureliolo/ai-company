@@ -806,15 +806,41 @@ class TestSidecarLifecycle:
         config = _make_sidecar_config()
         sandbox = DockerSandbox(config=config, workspace=tmp_path)
 
-        with (
-            _patch_aiodocker(mock_docker),
-            patch(
-                "synthorg.tools.sandbox.docker_sandbox._SIDECAR_HEALTH_TIMEOUT",
-                0.3,
-            ),
-            pytest.raises(SandboxStartError, match="timed out"),
-        ):
-            await sandbox.execute(command="echo", args=("test",))
+        # Mock the event loop time so the test is deterministic
+        # instead of relying on real wall-clock sleep.
+        fake_time = 0.0
+
+        def _fake_loop_time() -> float:
+            return fake_time
+
+        async def _fake_sleep(_: float) -> None:
+            nonlocal fake_time
+            # Each sleep call advances past the timeout.
+            fake_time += 20.0
+
+        loop = asyncio.get_running_loop()
+        original_time = loop.time
+
+        loop.time = _fake_loop_time  # type: ignore[assignment]
+        try:
+            with (
+                _patch_aiodocker(mock_docker),
+                patch(
+                    "synthorg.tools.sandbox.docker_sandbox._SIDECAR_HEALTH_TIMEOUT",
+                    15.0,
+                ),
+                patch(
+                    "synthorg.tools.sandbox.docker_sandbox.asyncio.sleep",
+                    _fake_sleep,
+                ),
+                pytest.raises(SandboxStartError, match="timed out"),
+            ):
+                await sandbox.execute(
+                    command="echo",
+                    args=("test",),
+                )
+        finally:
+            loop.time = original_time  # type: ignore[assignment]
 
     async def test_sidecar_create_failure(
         self,

@@ -323,6 +323,7 @@ class DockerSandbox:
             "PidsLimit": 64,
             "ReadonlyRootfs": True,
             "CapDrop": ["ALL"],
+            "SecurityOpt": ["no-new-privileges"],
         }
         runtime = self._resolve_runtime(category)
         if runtime is not None:
@@ -403,6 +404,7 @@ class DockerSandbox:
                 "NanoCpus": nano_cpus,
                 "PidsLimit": _SIDECAR_PIDS,
                 "AutoRemove": False,
+                "SecurityOpt": ["no-new-privileges"],
             },
         }
 
@@ -622,11 +624,15 @@ class DockerSandbox:
             except BaseException:
                 # Catch BaseException to handle CancelledError too --
                 # sidecar must be cleaned up even on task cancellation.
-                await self._remove_container(docker, sidecar_id)
-                self._tracked_containers.pop(
-                    f"_sidecar:{sidecar_id}",
-                    None,
+                removed = await self._remove_container(
+                    docker,
+                    sidecar_id,
                 )
+                if removed:
+                    self._tracked_containers.pop(
+                        f"_sidecar:{sidecar_id}",
+                        None,
+                    )
                 raise
             self._tracked_containers.pop(
                 f"_sidecar:{sidecar_id}",
@@ -673,21 +679,28 @@ class DockerSandbox:
                 timeout=timeout,
             )
         finally:
-            await self._remove_container(docker, container_id)
+            sandbox_removed = await self._remove_container(
+                docker,
+                container_id,
+            )
+            if sandbox_removed:
+                self._tracked_containers.pop(container_id, None)
             if sidecar_id:
-                try:
-                    await self._remove_container(docker, sidecar_id)
+                sidecar_removed = await self._remove_container(
+                    docker,
+                    sidecar_id,
+                )
+                if sidecar_removed:
                     logger.debug(
                         SANDBOX_SIDECAR_REMOVED,
                         sidecar_id=sidecar_id[:12],
                     )
-                except Exception as exc:
+                else:
                     logger.warning(
                         SANDBOX_SIDECAR_REMOVE_FAILED,
                         sidecar_id=sidecar_id[:12],
-                        error=str(exc),
+                        error="removal failed, sidecar remains tracked",
                     )
-            self._tracked_containers.pop(container_id, None)
 
     async def _start_and_wait(
         self,
@@ -878,12 +891,15 @@ class DockerSandbox:
     async def _remove_container(
         docker: aiodocker.Docker,
         container_id: str,
-    ) -> None:
+    ) -> bool:
         """Remove a container, forcing removal if necessary.
 
         Args:
             docker: Docker client.
             container_id: Container ID to remove.
+
+        Returns:
+            ``True`` if removal succeeded, ``False`` on failure.
         """
         try:
             container_obj = docker.containers.container(container_id)  # pyright: ignore[reportAttributeAccessIssue]
@@ -898,6 +914,8 @@ class DockerSandbox:
                 container_id=container_id[:12],
                 error=str(exc),
             )
+            return False
+        return True
 
     async def cleanup(self) -> None:
         """Stop and remove tracked containers, then close the Docker session.

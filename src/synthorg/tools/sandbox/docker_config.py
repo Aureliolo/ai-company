@@ -275,7 +275,10 @@ class DockerSandboxConfig(BaseModel):
                 reason=msg,
             )
             raise ValueError(msg)
-        if self.network_allow_all and self.network == "host":
+        has_host = self.network == "host" or any(
+            v == "host" for v in self.network_overrides.values()
+        )
+        if self.network_allow_all and has_host:
             msg = (
                 "network_allow_all=True is incompatible with "
                 "network='host' -- sidecar would override host networking"
