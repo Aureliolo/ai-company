@@ -249,7 +249,7 @@ Resource limits (`deploy.resources.limits`) cap memory, CPU, and PIDs per contai
 | Python | Renovate | Daily updates, `==` pinned versions, grouped by domain |
 | Node.js | `npm audit` | Per-PR, blocks on critical/high |
 | Node.js | Renovate | Daily updates via lockfile (`/web`, `/site`, `/.github`) |
-| GitHub Actions | Renovate | Daily updates, pinned by SHA + digest |
+| GitHub Actions | Renovate | Daily updates, pinned by commit SHA |
 | Pre-commit hooks | Renovate | Daily updates, version-pinned `rev:` tags |
 | CI binary tools | Renovate | Daily updates via regex managers (Trivy, Grype, Gitleaks, D2, apko) |
 | License | `dependency-review-action` | Permissive-only allowlist (MIT, Apache-2.0, BSD, ISC, etc.) |

@@ -96,7 +96,7 @@ For each dependency, get the full changelog between the old and new versions.
 
 ### Strategy 1: PR body
 
-Dependency update PRs include release notes in the body. Dependabot uses prose-style sections; Renovate uses a markdown table (`| Package | Type | Update | Change |`). Extract and parse these first.
+Dependency update PRs include release notes in the body. Dependabot uses prose-style sections; Renovate uses a Markdown table (`| Package | Type | Update | Change |`). Extract and parse these first.
 
 ### Strategy 2: GitHub releases
 
