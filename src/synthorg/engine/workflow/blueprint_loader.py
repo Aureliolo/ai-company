@@ -43,6 +43,7 @@ BUILTIN_BLUEPRINTS: MappingProxyType[str, str] = MappingProxyType(
         "research-sprint": "research-sprint.yaml",
         "code-review-pipeline": "code-review-pipeline.yaml",
         "onboarding-workflow": "onboarding-workflow.yaml",
+        "verification-pipeline": "verification-pipeline.yaml",
     }
 )
 

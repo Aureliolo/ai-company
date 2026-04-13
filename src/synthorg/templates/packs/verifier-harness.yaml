@@ -1,0 +1,61 @@
+template:
+  name: "Verifier Harness"
+  description: >-
+    Three-agent harness implementing the Planner/Generator/Evaluator
+    pattern with calibrated rubric grading.  The evaluator operates
+    with its own context, grading generator output against atomic
+    acceptance probes.  Self-evaluation is structurally prevented.
+  version: "1.0.0"
+  min_agents: 3
+  max_agents: 3
+  tags:
+    - "verification"
+    - "quality"
+    - "three-agent"
+
+  company:
+    type: "custom"
+    autonomy:
+      level: "semi"
+
+  departments:
+    - name: "engineering"
+      budget_percent: 100
+      head_role: "Planner"
+      reporting_lines:
+        - subordinate: "Generator"
+          supervisor: "Planner"
+        - subordinate: "Evaluator"
+          supervisor: "Planner"
+
+  agents:
+    - role: "Planner"
+      name: ""
+      level: "senior"
+      model:
+        tier: "large"
+        priority: "quality"
+        min_context: 100000
+      personality_preset: "strategic_thinker"
+      department: "engineering"
+    - role: "Generator"
+      name: ""
+      level: "mid"
+      model:
+        tier: "medium"
+        priority: "balanced"
+        min_context: 50000
+      personality_preset: "creative_builder"
+      department: "engineering"
+    - role: "Evaluator"
+      name: ""
+      level: "senior"
+      model:
+        tier: "medium"
+        priority: "quality"
+        min_context: 50000
+      personality_preset: "quality_guardian"
+      department: "engineering"
+
+  workflow: "sequential_pipeline"
+  communication: "structured"

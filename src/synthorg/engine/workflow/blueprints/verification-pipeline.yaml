@@ -1,0 +1,159 @@
+blueprint:
+  name: "verification-pipeline"
+  display_name: "Verification Pipeline"
+  description: >-
+    Three-stage pipeline with planner, generator, and evaluator agents.
+    The evaluator verifies generator output via calibrated rubric grading
+    with PASS/FAIL/REFER routing.  FAIL routes to a regeneration task;
+    REFER escalates to a human review task.
+  workflow_type: "sequential_pipeline"
+  tags:
+    - "verification"
+    - "quality"
+    - "three-agent"
+
+  nodes:
+    - id: "start"
+      type: "start"
+      label: "Start"
+      position_x: 0.0
+      position_y: 200.0
+
+    - id: "assign-planner"
+      type: "agent_assignment"
+      label: "Assign Planner"
+      position_x: 150.0
+      position_y: 200.0
+      config:
+        agent_name: "planner-agent"
+
+    - id: "task-plan"
+      type: "task"
+      label: "Plan"
+      position_x: 350.0
+      position_y: 200.0
+      config:
+        title: "Create task plan and acceptance probes"
+        task_type: "research"
+        priority: "high"
+        complexity: "medium"
+
+    - id: "assign-generator"
+      type: "agent_assignment"
+      label: "Assign Generator"
+      position_x: 550.0
+      position_y: 200.0
+      config:
+        agent_name: "generator-agent"
+
+    - id: "task-generate"
+      type: "task"
+      label: "Generate"
+      position_x: 750.0
+      position_y: 200.0
+      config:
+        title: "Execute plan and produce output artifact"
+        task_type: "development"
+        priority: "high"
+        complexity: "complex"
+
+    - id: "assign-evaluator"
+      type: "agent_assignment"
+      label: "Assign Evaluator"
+      position_x: 950.0
+      position_y: 200.0
+      config:
+        agent_name: "evaluator-agent"
+
+    - id: "verify"
+      type: "verification"
+      label: "Verify"
+      position_x: 1150.0
+      position_y: 200.0
+      config:
+        rubric_name: "default-task"
+        evaluator_agent_id: "evaluator-agent"
+
+    - id: "task-regenerate"
+      type: "task"
+      label: "Regenerate"
+      position_x: 1350.0
+      position_y: 350.0
+      config:
+        title: "Address verification feedback and regenerate"
+        task_type: "development"
+        priority: "high"
+        complexity: "medium"
+
+    - id: "task-human-escalation"
+      type: "task"
+      label: "Human Escalation"
+      position_x: 1350.0
+      position_y: 50.0
+      config:
+        title: "Escalate to human reviewer (low confidence)"
+        task_type: "review"
+        priority: "critical"
+        complexity: "simple"
+
+    - id: "end"
+      type: "end"
+      label: "End"
+      position_x: 1550.0
+      position_y: 200.0
+
+  edges:
+    - id: "e-start-planner"
+      source_node_id: "start"
+      target_node_id: "assign-planner"
+      type: "sequential"
+
+    - id: "e-planner-plan"
+      source_node_id: "assign-planner"
+      target_node_id: "task-plan"
+      type: "sequential"
+
+    - id: "e-plan-gen-assign"
+      source_node_id: "task-plan"
+      target_node_id: "assign-generator"
+      type: "sequential"
+
+    - id: "e-gen-assign-gen"
+      source_node_id: "assign-generator"
+      target_node_id: "task-generate"
+      type: "sequential"
+
+    - id: "e-gen-eval-assign"
+      source_node_id: "task-generate"
+      target_node_id: "assign-evaluator"
+      type: "sequential"
+
+    - id: "e-eval-assign-verify"
+      source_node_id: "assign-evaluator"
+      target_node_id: "verify"
+      type: "sequential"
+
+    - id: "e-verify-pass"
+      source_node_id: "verify"
+      target_node_id: "end"
+      type: "verification_pass"
+
+    - id: "e-verify-fail"
+      source_node_id: "verify"
+      target_node_id: "task-regenerate"
+      type: "verification_fail"
+
+    - id: "e-verify-refer"
+      source_node_id: "verify"
+      target_node_id: "task-human-escalation"
+      type: "verification_refer"
+
+    - id: "e-regenerate-end"
+      source_node_id: "task-regenerate"
+      target_node_id: "end"
+      type: "sequential"
+
+    - id: "e-escalation-end"
+      source_node_id: "task-human-escalation"
+      target_node_id: "end"
+      type: "sequential"
