@@ -165,6 +165,23 @@ class TaskInternalError(TaskEngineError):
     """
 
 
+class DelegationRoundLimitError(EngineError):
+    """Hard abort when delegation rounds exceed 2x the soft cap.
+
+    Attributes:
+        current_round: The round number that triggered the abort.
+        soft_limit: The configured soft cap on delegation rounds.
+    """
+
+    def __init__(self, current_round: int, soft_limit: int) -> None:
+        self.current_round = current_round
+        self.soft_limit = soft_limit
+        super().__init__(
+            f"Delegation round {current_round} exceeds hard limit "
+            f"({soft_limit * 2}, soft cap {soft_limit})"
+        )
+
+
 class CoordinationError(EngineError):
     """Base exception for multi-agent coordination failures."""
 

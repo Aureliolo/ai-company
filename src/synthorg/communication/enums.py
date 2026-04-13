@@ -20,6 +20,7 @@ class MessageType(StrEnum):
     MEETING_CONTRIBUTION = "meeting_contribution"
     HR_NOTIFICATION = "hr_notification"
     DISSENT = "dissent"
+    CONTEXT_INJECTION = "context_injection"
 
 
 class MessagePriority(StrEnum):

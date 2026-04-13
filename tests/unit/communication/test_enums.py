@@ -14,7 +14,7 @@ from synthorg.communication.enums import (
 @pytest.mark.unit
 class TestMessageType:
     def test_member_count(self) -> None:
-        assert len(MessageType) == 11
+        assert len(MessageType) == 12
 
     def test_values(self) -> None:
         assert MessageType.TASK_UPDATE.value == "task_update"

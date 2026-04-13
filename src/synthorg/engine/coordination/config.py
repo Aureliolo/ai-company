@@ -63,3 +63,12 @@ class CoordinationConfig(BaseModel):
         default="naive",
         description="Subtask selection strategy for centralized dispatch",
     )
+    max_delegation_rounds: int = Field(
+        default=3,
+        ge=1,
+        le=20,
+        description=(
+            "Soft cap on delegation rounds. Warning emitted at this "
+            "limit; hard abort at 2x (default: abort at 6)."
+        ),
+    )
