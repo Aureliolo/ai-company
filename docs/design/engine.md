@@ -1653,6 +1653,48 @@ routing decisions and wave outcomes:
 
 ---
 
+## Verification Stage
+
+Verification is a first-class stage in the workflow engine. Three converging research sources -- Marco DeepResearch (verification-centric agent frameworks), GEMS (five-stage agent loop with explicit Verifier), and the Anthropic three-agent harness (Planner/Generator/Evaluator with calibrated grading) -- all converge on verification as a **separate agent with its own context**, not a self-evaluation inside the generator step.
+
+### Workflow Node and Edge Types
+
+`WorkflowNodeType.VERIFICATION` is a control-flow node like `CONDITIONAL`. Three dedicated edge types route verification outcomes:
+
+- `VERIFICATION_PASS` -- artifact accepted
+- `VERIFICATION_FAIL` -- artifact rejected, routed to regeneration
+- `VERIFICATION_REFER` -- confidence below threshold, escalated to human review
+
+Blueprint validation enforces exactly one of each edge type per verification node.
+
+### Calibrated Rubric Grading
+
+Each verification node references a `VerificationRubric` by name. A rubric contains:
+
+- **Criteria** (`RubricCriterion`) -- weighted dimensions with `binary`, `ternary`, or `score` grade types
+- **Calibration examples** -- few-shot demonstrations for LLM graders
+- **Minimum confidence** -- below this threshold, the verdict is overridden to `REFER`
+
+Built-in rubrics: `frontend-design` (four criteria: design/originality/craft/functionality) and `default-task` (correctness/completeness/probe-adherence).
+
+### Atomic Criteria Decomposition
+
+Acceptance criteria are decomposed into atomic binary probes (`AtomicProbe`) via a pluggable `CriteriaDecomposer` protocol. The default `LLMCriteriaDecomposer` uses the medium-tier provider. An `IdentityCriteriaDecomposer` maps each criterion to one probe for deterministic testing.
+
+### Structured Handoff Artifacts
+
+`HandoffArtifact` carries the payload, artifact references, probes, and optional rubric between stages. A model validator rejects self-handoff (`from_agent_id == to_agent_id`). Deep copy is applied at handoff boundaries.
+
+### Self-Evaluation Rejection
+
+> Self-evaluation -- where the generator also judges its own output -- is explicitly rejected. Prior research documents that self-evaluation produces over-confidence and fails to catch the generator's own blind spots. `VerificationResult.evaluator_agent_id` MUST differ from the generator agent ID -- enforced by model validator at construction and by a runtime guard before the grader is called.
+
+### Pluggable Grading
+
+The `RubricGrader` protocol follows the standard protocol + strategy + factory + config discriminator pattern (mirroring `engine/classification/`). Variants: `LLM` (production) and `HEURISTIC` (testing/fallback). Configuration via `VerificationConfig`.
+
+---
+
 ## Harness Middleware Layer
 
 The engine uses a composable middleware layer for cross-cutting concerns that span agent execution and multi-agent coordination. Two separate protocols serve two distinct pipelines.

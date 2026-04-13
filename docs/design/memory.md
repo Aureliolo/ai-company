@@ -646,6 +646,7 @@ persistence:
 | `AgentRuntimeState` | `engine/agent_state.py` | `AgentStateRepository` | by agent_id, active agents |
 | Setting | `settings/models.py` | `SettingsRepository` | by namespace+key, by namespace, all |
 | `Artifact` | `core/artifact.py` | `ArtifactRepository` | by task_id, by created_by, by artifact_type |
+| `HandoffArtifact` | `engine/workflow/handoff.py` | (in-memory, per-execution frame) | Structured inter-stage handoff; `artifact_refs` resolve through `ArtifactRepository`. See [engine.md Verification Stage](engine.md#verification-stage) |
 | `Project` | `core/project.py` | `ProjectRepository` | by status, by lead |
 | `DecisionRecord` | `engine/decisions.py` | `DecisionRepository` | by task_id (version ASC), by agent (role=executor or reviewer, recorded_at DESC) |
 | Custom preset | `templates/preset_service.py` | `PersonalityPresetRepository` | by name |

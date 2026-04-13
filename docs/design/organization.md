@@ -429,6 +429,7 @@ via the `uses_packs` field.
 | `qa-pipeline` | QA Lead, QA Engineer, Automation Engineer | Quality assurance |
 | `creative-marketing` | Content Writer, Brand Strategist | Content and brand |
 | `design-team` | UX Designer, UX Researcher | Design and user research |
+| `verifier-harness` | Planner, Generator, Evaluator | Three-agent verification with calibrated rubric grading (see [engine.md Verification Stage](engine.md#verification-stage)) |
 
 **User packs** live in `~/.synthorg/template-packs/` (YAML files). User packs
 override built-in packs of the same name.

@@ -109,7 +109,7 @@ Paper 3 challenges multi-agent's value claim by showing single-agent matches or 
 - `AssumptionViolationSignal` propagation from loop → engine → parent coordinator as an escalation event, not a retry.
 - The brain/hands/session decoupling R1 designs must preserve role attribution in all delegation frames -- `DelegationChain` cannot be flattened.
 
-**R2 ([#1251](https://github.com/Aureliolo/synthorg/issues/1251), verification stages)** inherits:
+**R2 ([#1251](https://github.com/Aureliolo/synthorg/issues/1251), verification stages)** -- **IMPLEMENTED** via [#1262](https://github.com/Aureliolo/synthorg/issues/1262). Inherits:
 
 - Deliberation-stage synthesis hook as a first-class stage hosting `AuthorityDeferenceGuard` + `EvidenceWeightedSynthesizer`.
 - High-stakes task classes require a centralized verification stage even if the task was executed decentralized (paper 2 theorem applies to decisions, not executions).
@@ -143,4 +143,4 @@ The following edits have been applied:
 - [`docs/design/organization.md`](../design/organization.md) Company Types table -- footnote distinguishing company size from per-task coordination-group size.
 - [`docs/research/multi-agent-failure-audit.md`](multi-agent-failure-audit.md) -- appendix enumerating the 15-risk taxonomy with coverage table.
 
-The S1 mitigation hooks (`AuthorityDeferenceGuard`, `AssumptionViolationMiddleware`, pre-decomposition clarification gate, content-hash drift detection) are **implemented** in [#1260](https://github.com/Aureliolo/synthorg/issues/1260) as engine middleware. `EvidenceWeightedSynthesizer` remains blocked on R2 verification stages (#1251).
+The S1 mitigation hooks (`AuthorityDeferenceGuard`, `AssumptionViolationMiddleware`, pre-decomposition clarification gate, content-hash drift detection) are **implemented** in [#1260](https://github.com/Aureliolo/synthorg/issues/1260) as engine middleware. `EvidenceWeightedSynthesizer` is now unblocked -- R2 verification stages landed in [#1262](https://github.com/Aureliolo/synthorg/issues/1262).
