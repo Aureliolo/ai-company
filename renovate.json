@@ -92,7 +92,7 @@
     {
       "customType": "regex",
       "description": "Binary tool version env vars in CI workflows (Trivy, Grype, Gitleaks, D2, apko)",
-      "fileMatch": ["\\.github/workflows/.*\\.ya?ml$"],
+      "fileMatch": ["\\.github/.*\\.ya?ml$"],
       "matchStrings": [
         "# renovate: datasource=github-releases depName=(?<depName>[^\\s]+)\\n\\s+[A-Z_]+_VERSION:\\s*[\"']?(?<currentValue>[^\"'\\s]+)[\"']?"
       ],
@@ -102,7 +102,7 @@
     {
       "customType": "regex",
       "description": "go install binary versions in CI workflows",
-      "fileMatch": ["\\.github/workflows/.*\\.ya?ml$"],
+      "fileMatch": ["\\.github/.*\\.ya?ml$"],
       "matchStrings": [
         "go install (?<depName>[^@]+)@(?<currentValue>v[^\\s\"]+)"
       ],
@@ -112,7 +112,7 @@
     {
       "customType": "regex",
       "description": "GitHub Action version: input parameters",
-      "fileMatch": ["\\.github/workflows/.*\\.ya?ml$"],
+      "fileMatch": ["\\.github/.*\\.ya?ml$"],
       "matchStrings": [
         "# renovate: datasource=github-releases depName=(?<depName>[^\\s]+)\\n\\s+version:\\s*(?<currentValue>[^\\s]+)"
       ],

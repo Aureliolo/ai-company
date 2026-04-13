@@ -7,7 +7,7 @@
 # proxy. It shares a network namespace with the sandbox container.
 # =============================================================================
 
-FROM golang:1.26-alpine3.21 AS builder
+FROM golang:1.26-alpine@sha256:c2a1f7b2095d046ae14b286b18413a05bb82c9bca9b25fe7ff5efef0f0826166 AS builder
 
 WORKDIR /build
 COPY docker/sidecar/go.mod ./

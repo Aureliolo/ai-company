@@ -28,7 +28,7 @@ jobs:
 
       - name: Update lockfiles
         run: |
-          for config in docker/backend/apko.yaml docker/sandbox/apko.yaml; do
+          for config in docker/*/apko.yaml; do
             echo "Updating lockfile for ${config}..."
             apko lock --update "${config}"
           done
