@@ -48,8 +48,8 @@ RUN rm -f /app/.venv/bin/python \
 # ---------------------------------------------------------------------------
 # Stage 2 -- Runtime (apko-composed Wolfi base: no shell, no package manager)
 # ---------------------------------------------------------------------------
-ARG BASE_DIGEST
-FROM ghcr.io/aureliolo/synthorg-backend-base@${BASE_DIGEST}
+ARG BASE_IMAGE=ghcr.io/aureliolo/synthorg-backend-base:latest
+FROM ${BASE_IMAGE}
 
 LABEL org.opencontainers.image.title="synthorg-backend" \
       org.opencontainers.image.description="SynthOrg orchestration backend" \

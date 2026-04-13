@@ -104,9 +104,7 @@ services:
     logging: *logging
 
   web:
-    build:
-      context: ..
-      dockerfile: docker/web/Dockerfile
+    image: ghcr.io/aureliolo/synthorg-web:${SYNTHORG_IMAGE_TAG:-latest}
     ports:
       - "${WEB_PORT:-3000}:8080"
     depends_on:

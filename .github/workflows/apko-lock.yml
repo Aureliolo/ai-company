@@ -19,13 +19,13 @@ jobs:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
       - name: Set up apko
-        uses: chainguard-dev/actions/setup-apko@main
+        uses: chainguard-dev/actions/setup-apko@de68b87302e6266db5fb5220246f8aa46fe94b67 # v1.6.14
 
       - name: Update lockfiles
         run: |
           for config in docker/backend/apko.yaml docker/sandbox/apko.yaml docker/web/apko.yaml; do
             echo "Updating lockfile for ${config}..."
-            apko lock --update "${config}" || true
+            apko lock --update "${config}"
           done
 
       - name: Check for changes
@@ -39,7 +39,7 @@ jobs:
 
       - name: Create PR
         if: steps.diff.outputs.changed == 'true'
-        uses: peter-evans/create-pull-request@271a8d0340265f705b14b6d32b9829c1cb33d45e # v7.0.8
+        uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1 # v8.1.1
         with:
           commit-message: "ci: update apko lockfiles"
           title: "ci: update apko lockfiles"

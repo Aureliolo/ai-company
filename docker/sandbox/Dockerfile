@@ -8,8 +8,8 @@
 # sandbox-init.sh entrypoint needs for allowed_hosts enforcement (D16).
 # =============================================================================
 
-ARG BASE_DIGEST
-FROM ghcr.io/aureliolo/synthorg-sandbox-base@${BASE_DIGEST}
+ARG BASE_IMAGE=ghcr.io/aureliolo/synthorg-sandbox-base:latest
+FROM ${BASE_IMAGE}
 
 LABEL org.opencontainers.image.title="synthorg-sandbox" \
       org.opencontainers.image.description="SynthOrg agent code execution sandbox" \

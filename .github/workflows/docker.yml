@@ -77,7 +77,7 @@ jobs:
           persist-credentials: false
 
       - name: Set up apko
-        uses: chainguard-dev/actions/setup-apko@main
+        uses: chainguard-dev/actions/setup-apko@de68b87302e6266db5fb5220246f8aa46fe94b67 # v1.6.14
 
       - name: Log in to GHCR
         if: github.event_name != 'pull_request'
@@ -181,7 +181,7 @@ jobs:
           persist-credentials: false
 
       - name: Set up apko
-        uses: chainguard-dev/actions/setup-apko@main
+        uses: chainguard-dev/actions/setup-apko@de68b87302e6266db5fb5220246f8aa46fe94b67 # v1.6.14
 
       - name: Log in to GHCR
         if: github.event_name != 'pull_request'
@@ -316,7 +316,7 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
-            BASE_DIGEST=${{ needs.build-backend-base.outputs.digest }}
+            BASE_IMAGE=${{ needs.build-backend-base.outputs.digest != '' && format('ghcr.io/aureliolo/synthorg-backend-base@{0}', needs.build-backend-base.outputs.digest) || format('ghcr.io/aureliolo/synthorg-backend-base:sha-{0}', github.sha) }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
           platforms: linux/amd64
@@ -489,7 +489,7 @@ jobs:
           persist-credentials: false
 
       - name: Set up Node.js
-        uses: actions/setup-node@1a4442cacd436585916f2a8e5a157982768e594e # v4.2.0
+        uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6.3.0
         with:
           node-version-file: web/.nvmrc
           cache: npm
@@ -517,7 +517,7 @@ jobs:
           uv run zensical build
 
       - name: Set up melange
-        uses: chainguard-dev/actions/setup-melange@main
+        uses: chainguard-dev/actions/setup-melange@de68b87302e6266db5fb5220246f8aa46fe94b67 # v1.6.14
 
       - name: Generate melange signing key
         run: melange keygen
@@ -563,7 +563,7 @@ jobs:
           path: /work
 
       - name: Set up apko
-        uses: chainguard-dev/actions/setup-apko@main
+        uses: chainguard-dev/actions/setup-apko@de68b87302e6266db5fb5220246f8aa46fe94b67 # v1.6.14
 
       - name: Log in to GHCR
         if: github.event_name != 'pull_request'
@@ -715,7 +715,7 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
-            BASE_DIGEST=${{ needs.build-sandbox-base.outputs.digest }}
+            BASE_IMAGE=${{ needs.build-sandbox-base.outputs.digest != '' && format('ghcr.io/aureliolo/synthorg-sandbox-base@{0}', needs.build-sandbox-base.outputs.digest) || format('ghcr.io/aureliolo/synthorg-sandbox-base:sha-{0}', github.sha) }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
           platforms: linux/amd64
@@ -819,7 +819,7 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
-            BASE_DIGEST=${{ needs.build-sandbox-base.outputs.digest }}
+            BASE_IMAGE=${{ needs.build-sandbox-base.outputs.digest != '' && format('ghcr.io/aureliolo/synthorg-sandbox-base@{0}', needs.build-sandbox-base.outputs.digest) || format('ghcr.io/aureliolo/synthorg-sandbox-base:sha-{0}', github.sha) }}
           cache-from: type=gha
           platforms: linux/amd64
           sbom: true
