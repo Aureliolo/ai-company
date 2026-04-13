@@ -1740,7 +1740,7 @@ and pre-pulls the sandbox image on demand.
 
 | Image | Purpose | Base |
 |-------|---------|------|
-| `backend` | SynthOrg orchestration engine (Litestar + uvicorn) | apko-composed Wolfi base (`docker/backend/apko.yaml`, `python-3.14=3.14.3-r0` pinned); thin `docker/backend/Dockerfile` layers the uv-built venv on top |
+| `backend` | SynthOrg orchestration engine (Litestar + uvicorn) | apko-composed Wolfi base (`docker/backend/apko.yaml`, `python-3.14` resolved via apko lockfile); thin `docker/backend/Dockerfile` layers the uv-built venv on top |
 | `web` | React SPA and built docs, served by **Caddy** | Pure apko (no Dockerfile); composes `caddy` + `ca-certificates-bundle` + melange-built `synthorg-web-assets` apk + `/etc/synthorg/Caddyfile` |
 | `sandbox` | Ephemeral agent code execution image spawned on demand by the backend | apko-composed Wolfi base (`docker/sandbox/apko.yaml`) with `busybox` and `git`; fully rootless (UID 10001, cap_drop: ALL). Network enforcement handled by a separate sidecar proxy container |
 | `sidecar` | Transparent network proxy sidecar for sandbox containers | apko-composed Wolfi base (`docker/sidecar/apko.yaml`) with `iptables` and `busybox`; Go binary providing dual-layer DNS + DNAT enforcement of `allowed_hosts` |
@@ -1755,8 +1755,8 @@ runtime.
 ### apko-composed base images
 
 The backend, sandbox, and sidecar images use a **Hybrid A** pattern: apko composes the
-base image declaratively from exact-versioned Wolfi packages (`python-3.14=3.14.3-r0`,
-`git`, and so on), and a thin Dockerfile layers the application on top (`FROM
+base image declaratively from Wolfi packages (`python-3.14`, `git`, etc.) with exact
+versions resolved via `apko.lock.json`, and a thin Dockerfile layers the application on top (`FROM
 apko-base@sha256:...`, `COPY .venv`, `COPY src`, `ENTRYPOINT`). The sidecar image adds
 `iptables` for DNAT setup but the sandbox image is minimal (no iptables, no elevated
 privileges). The web image is **pure apko** -- no Dockerfile -- composing Caddy plus a
@@ -1772,7 +1772,7 @@ Reconciliation mechanisms:
 | Mechanism | Target | Cadence |
 |-----------|--------|---------|
 | Renovate (Docker ecosystem + digest pinning) | Thin Dockerfile `FROM` lines (apko-base digest) | Daily |
-| `apko lock --update` cron (`.github/workflows/apko-lock.yml`) | `docker/backend/apko.lock.json`, `docker/sandbox/apko.lock.json` | Weekly (Mon 06:00 UTC) |
+| `apko lock --update` cron (`.github/workflows/apko-lock.yml`) | `docker/*/apko.lock.json` (backend, sandbox, sidecar, web) | Weekly (Mon 06:00 UTC) |
 
 ### Image verification at launch
 

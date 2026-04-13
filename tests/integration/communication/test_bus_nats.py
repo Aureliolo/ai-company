@@ -93,7 +93,7 @@ def nats_url() -> Iterator[str]:
     except ImportError:
         pytest.skip("testcontainers not installed")
 
-    container = DockerContainer("nats:2.10-alpine")
+    container = DockerContainer("nats:2.12.6-alpine")
     container.with_command("-js")
     container.with_exposed_ports(4222)
     try:
