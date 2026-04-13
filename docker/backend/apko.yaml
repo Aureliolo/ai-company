@@ -2,7 +2,7 @@
 # Produces: ghcr.io/aureliolo/synthorg-backend-base
 # Consumed by: docker/backend/Dockerfile (thin FROM wrapper).
 #
-# Exact Python pin: python-3.14=3.14.3-r0 (issue #1267 acceptance criterion).
+# Python 3.14 -- exact patch version pinned by apko.lock.json (refreshed weekly).
 # Transitive apks are resolved and digest-pinned by apko.lock.json, which is
 # refreshed weekly by .github/workflows/apko-lock.yml.
 
@@ -15,7 +15,7 @@ contents:
     - wolfi-baselayout
     - ca-certificates-bundle
     - tzdata
-    - python-3.14=3.14.3-r0
+    - python-3.14
 
 accounts:
   groups:

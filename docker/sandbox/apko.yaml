@@ -21,7 +21,7 @@ contents:
     - git
     - nodejs-25
     - npm
-    - python-3.14=3.14.3-r0
+    - python-3.14
 
 accounts:
   groups:

@@ -68,6 +68,7 @@ jobs:
       - name: golangci-lint
         uses: golangci/golangci-lint-action@1e7e51e771db61008b38414a730f564565cf7c20 # v9.2.0
         with:
+          # renovate: datasource=github-releases depName=golangci/golangci-lint
           version: v2.11.3
           working-directory: cli
 
@@ -305,6 +306,7 @@ jobs:
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@ec59f474b9834571250b370d4735c50f8e2d1e29 # v7.0.0
         with:
+          # renovate: datasource=github-releases depName=goreleaser/goreleaser
           version: v2.14.3
           args: release --clean
           workdir: cli

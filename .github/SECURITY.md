@@ -28,7 +28,7 @@ This project is designed to handle LLM API keys, sandboxed code execution, and a
 - Sandboxed code execution boundaries
 - Agent permission and approval gates
 - Input validation on all external boundaries
-- Dependency supply chain (monitored via Dependabot and dependency review)
+- Dependency supply chain (monitored via Renovate and dependency review)
 
 ## Security Features
 
@@ -41,7 +41,7 @@ This project is designed to handle LLM API keys, sandboxed code execution, and a
 
 ### Dependency & Supply Chain Scanning
 
-- **Dependabot** monitors dependencies for known vulnerabilities (daily, uv + github-actions + docker)
+- **Renovate** monitors dependencies for known vulnerabilities (daily, all ecosystems + CI binary tools via regex managers)
 - **Dependency review** runs on every pull request (license allow-list, PR comment summaries)
 - **pip-audit** scans Python dependencies for known vulnerabilities (every PR + weekly scheduled workflow)
 - **npm audit** scans Node.js dependencies for known vulnerabilities (every PR, critical + high severity)

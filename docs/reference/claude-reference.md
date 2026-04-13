@@ -85,7 +85,7 @@ data/             # Shared data files (competitors.yaml for comparison page)
 - **PR Preview**: `pages-preview.yml` -- Cloudflare Pages deploy per PR (`pr-<number>.synthorg-pr-preview.pages.dev`), cleanup on PR close
 - **Docker**: `docker.yml` -- build + Trivy/Grype scan + push to GHCR + cosign sign + SLSA L3 provenance. CVE triage: `.github/.trivyignore.yaml`, `.github/.grype.yaml`
 - **CLI**: `cli.yml` -- Go lint/test/build (cross-compile) + govulncheck + fuzz. GoReleaser release on `v*` tags with cosign signing + SLSA provenance
-- **Dependabot**: daily updates (uv, github-actions, npm, pre-commit, docker, gomod), all updates grouped into 1 PR per ecosystem, no auto-merge. Use `/review-dep-pr` before merging
+- **Renovate**: daily dependency updates via Mend GitHub App. 5 domain groups (Python, Web, CLI, Container, CI tools), no auto-merge. Regex managers handle binary tool versions (Trivy, Grype, Gitleaks, D2, apko), go install pins (govulncheck), and action version inputs (golangci-lint, GoReleaser). Config: `renovate.json`. Use `/review-dep-pr` before merging
 - **Security scanning**: gitleaks (push/PR + weekly), zizmor (workflow analysis), OSSF Scorecard (weekly), Socket.dev (PR supply chain), ZAP DAST (weekly + manual, rules: `.github/zap-rules.tsv`)
 - **Coverage**: Codecov (best-effort, CI not gated on availability)
 - **Dependency review**: `dependency-review.yml` -- license allow-list (permissive + weak-copyleft), per-package GPL exemptions for dev-only tool deps (golangci-lint), PR comment summaries

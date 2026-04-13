@@ -162,7 +162,7 @@ When tests fail due to timeout, slowness, or xdist resource contention:
   - `no-cd-prefix`: blocks `cd` prefix in Bash commands
   - `no-local-coverage`: blocks `--cov` flags locally (CI handles coverage)
 - **Pre-push hooks**: mypy type-check (affected modules only) + pytest unit tests (affected modules only) + golangci-lint + go vet + go test (CLI, conditional on `cli/**/*.go`) + eslint-web (web dashboard) (fast gate before push, skipped in pre-commit.ci -- dedicated CI jobs already run these). Foundational module changes (core, config, observability) or conftest changes trigger full runs.
-- **Pre-commit.ci**: autoupdate disabled (`autoupdate_schedule: never`) -- Dependabot owns hook version bumps via `pre-commit` ecosystem
+- **Pre-commit.ci**: autoupdate disabled (`autoupdate_schedule: never`) -- Renovate owns hook version bumps via `pre-commit` manager
 - **GitHub issue queries**: use `gh issue list` via Bash (not MCP tools) -- MCP `list_issues` has unreliable field data
 - **Merge strategy**: squash merge -- PR body becomes the squash commit message on main. Trailers (e.g. `Release-As`, `Closes #N`) must be in the PR body to land in the final commit.
 - **PR issue references**: preserve existing `Closes #NNN` references -- never remove unless explicitly asked

@@ -1,0 +1,117 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:recommended",
+    ":pinVersions",
+    ":pinGitHubActionDigests",
+    "docker:pinDigests"
+  ],
+  "schedule": ["before 7am every weekday"],
+  "timezone": "Etc/UTC",
+  "labels": ["dependencies"],
+  "reviewers": ["Aureliolo"],
+  "platformAutomerge": false,
+  "prConcurrentLimit": 10,
+  "packageRules": [
+    {
+      "description": "Python dependencies (uv + pre-commit)",
+      "matchManagers": ["uv", "pre-commit"],
+      "groupName": "Python dependencies",
+      "groupSlug": "python",
+      "additionalBranchPrefix": "",
+      "commitMessagePrefix": "chore:",
+      "labels": ["dependencies", "type:chore"]
+    },
+    {
+      "description": "Web dependencies (npm: web, site, .github)",
+      "matchManagers": ["npm"],
+      "groupName": "Web dependencies",
+      "groupSlug": "web",
+      "commitMessagePrefix": "chore:",
+      "labels": ["dependencies", "type:chore", "scope:web"]
+    },
+    {
+      "description": "CLI dependencies (Go modules + CLI tools)",
+      "matchManagers": ["gomod"],
+      "groupName": "CLI dependencies",
+      "groupSlug": "cli",
+      "commitMessagePrefix": "chore:",
+      "labels": ["dependencies", "type:chore", "scope:cli"]
+    },
+    {
+      "description": "CLI tool version inputs (golangci-lint, GoReleaser, govulncheck)",
+      "matchManagers": ["regex"],
+      "matchDepNames": ["golangci/golangci-lint", "goreleaser/goreleaser", "golang/vuln"],
+      "groupName": "CLI dependencies",
+      "groupSlug": "cli"
+    },
+    {
+      "description": "Container dependencies (Docker images, Compose, apko)",
+      "matchManagers": ["dockerfile", "docker-compose"],
+      "groupName": "Container dependencies",
+      "groupSlug": "container",
+      "commitMessagePrefix": "chore:",
+      "labels": ["dependencies", "type:chore", "scope:docker"]
+    },
+    {
+      "description": "CI tool dependencies (Actions SHAs + binary tools)",
+      "matchManagers": ["github-actions"],
+      "groupName": "CI tool dependencies",
+      "groupSlug": "ci-tools",
+      "commitMessagePrefix": "ci:",
+      "labels": ["dependencies", "type:infra"]
+    },
+    {
+      "description": "CI binary tool versions (Trivy, Grype, Gitleaks, D2)",
+      "matchManagers": ["regex"],
+      "matchDepNames": ["aquasecurity/trivy", "anchore/grype", "gitleaks/gitleaks", "terrastruct/d2"],
+      "groupName": "CI tool dependencies",
+      "groupSlug": "ci-tools"
+    },
+    {
+      "description": "apko binary version (binary download in CI)",
+      "matchManagers": ["regex"],
+      "matchDepNames": ["chainguard-dev/apko"],
+      "groupName": "Container dependencies",
+      "groupSlug": "container"
+    },
+    {
+      "description": "Block Python 3.15+ in Docker images (policy decision)",
+      "matchDepNames": ["python"],
+      "matchManagers": ["dockerfile"],
+      "allowedVersions": "<3.15"
+    }
+  ],
+  "customManagers": [
+    {
+      "customType": "regex",
+      "description": "Binary tool version env vars in CI workflows (Trivy, Grype, Gitleaks, D2, apko)",
+      "fileMatch": ["\\.github/workflows/.*\\.ya?ml$"],
+      "matchStrings": [
+        "# renovate: datasource=github-releases depName=(?<depName>[^\\s]+)\\n\\s+[A-Z_]+_VERSION:\\s*[\"']?(?<currentValue>[^\"'\\s]+)[\"']?"
+      ],
+      "datasourceTemplate": "github-releases",
+      "versioningTemplate": "semver"
+    },
+    {
+      "customType": "regex",
+      "description": "go install binary versions in CI workflows",
+      "fileMatch": ["\\.github/workflows/.*\\.ya?ml$"],
+      "matchStrings": [
+        "go install (?<depName>[^@]+)@(?<currentValue>v[^\\s\"]+)"
+      ],
+      "datasourceTemplate": "go",
+      "versioningTemplate": "semver"
+    },
+    {
+      "customType": "regex",
+      "description": "GitHub Action version: input parameters",
+      "fileMatch": ["\\.github/workflows/.*\\.ya?ml$"],
+      "matchStrings": [
+        "# renovate: datasource=github-releases depName=(?<depName>[^\\s]+)\\n\\s+version:\\s*(?<currentValue>[^\\s]+)"
+      ],
+      "datasourceTemplate": "github-releases",
+      "versioningTemplate": "semver"
+    }
+  ]
+}
