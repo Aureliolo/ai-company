@@ -26,8 +26,8 @@ graph LR
 
 | Container | Image | Purpose |
 |-----------|-------|---------|
-| **backend** | `ghcr.io/aureliolo/synthorg-backend` | Litestar API server (Chainguard distroless, non-root) |
-| **web** | `ghcr.io/aureliolo/synthorg-web` | Nginx + React 19 SPA (proxies API and WebSocket) |
+| **backend** | `ghcr.io/aureliolo/synthorg-backend` | Litestar API server (Wolfi apko-composed distroless, non-root) |
+| **web** | `ghcr.io/aureliolo/synthorg-web` | Caddy + React 19 SPA (proxies API and WebSocket) |
 
 ---
 
@@ -103,10 +103,10 @@ After the containers are running, open `http://localhost:3000`. The setup wizard
 
 - **Base image**: Pure apko Wolfi (Caddy + melange-packaged static assets, no Dockerfile)
 - **User**: UID 65532 (caddy)
-- **Health check**: Caddy built-in (10s interval, 3s timeout, 3 retries)
-- **Routing**: SPA routing (`try_files`), API proxy to backend, WebSocket proxy, per-request CSP nonce
+- **Health check**: none (stateless static server; container readiness determined by TCP port availability)
+- **Routing**: SPA routing (`try_files {path} /index.html`), API proxy to backend, WebSocket proxy, per-request CSP nonce via Caddy `templates` directive
 - **Caching**: `/index.html` is no-cache; `/assets/*` is immutable with 1-year max-age (content-hashed filenames)
-- **Static compression**: pre-compressed `.gz` files served via `gzip_static on`
+- **Static compression**: pre-compressed `.gz` files served via `file_server { precompressed gzip }`
 
 ---
 
@@ -125,7 +125,7 @@ The Docker Compose configuration follows the [CIS Docker Benchmark v1.6.0](https
 | Log rotation | json-file, 10MB max, 3 files | -- |
 | Tmpfs security | `noexec,nosuid,nodev` on `/tmp` | -- |
 
-### Security Headers (Nginx)
+### Security Headers (Caddy)
 
 The web container sets the following response headers:
 
@@ -136,7 +136,7 @@ The web container sets the following response headers:
 - `Content-Security-Policy: default-src 'self'; script-src 'self'; style-src-elem 'self' 'nonce-$csp_nonce'; style-src-attr 'unsafe-inline'; connect-src 'self'; img-src 'self' data:; font-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'`
 - `Strict-Transport-Security: max-age=63072000` (2 years)
 
-The CSP uses Level 3 directive splitting: `style-src-elem` locks `<style>` elements to the per-request nonce (injected by nginx `sub_filter` substituting `$request_id` into `<meta name="csp-nonce">`), while `style-src-attr 'unsafe-inline'` covers the transient inline positioning styles set by Floating UI (used internally by Base UI). See [`docs/security.md` → CSP Nonce Infrastructure](../security.md#csp-nonce-infrastructure) for the full flow -- any reverse proxy in front of the web container must preserve `sub_filter` substitution and the matching CSP header, otherwise inline styles will be blocked.
+The CSP uses Level 3 directive splitting: `style-src-elem` locks `<style>` elements to the per-request nonce (injected by Caddy's `templates` directive substituting `{http.request.uuid}` into `<meta name="csp-nonce">`), while `style-src-attr 'unsafe-inline'` covers the transient inline positioning styles set by Floating UI (used internally by Base UI). See [`docs/security.md` → CSP Nonce Infrastructure](../security.md#csp-nonce-infrastructure) for the full flow -- any reverse proxy in front of the web container must preserve Caddy's template substitution and the matching CSP header, otherwise inline styles will be blocked.
 
 ---
 

@@ -20,6 +20,7 @@ contents:
     - busybox
     - git
     - iptables
+    - util-linux
     - nodejs-25
     - npm
     - python-3.14=3.14.3-r0

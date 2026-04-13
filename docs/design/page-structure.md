@@ -226,7 +226,7 @@ System-managed settings (e.g. `api/setup_complete`) are hidden from the GUI. Env
 
 #### Documentation (`/docs/`)
 
-Served as static MkDocs HTML by nginx -- not a React page. The `/docs/` Caddy handle block serves pre-built documentation directly, bypassing the SPA's `try_files` fallback. The sidebar "Docs" link renders a plain `<a href>` (full-page navigation) instead of a React Router `<NavLink>`. MkDocs Material's own search, navigation, and dark mode function independently of the React app. Theme colors are customized via `docs/overrides/extra.css` to match the dashboard design system.
+Served as static MkDocs HTML by Caddy -- not a React page. The `/docs/` Caddy handle block serves pre-built documentation directly, bypassing the SPA's `try_files` fallback. The sidebar "Docs" link renders a plain `<a href>` (full-page navigation) instead of a React Router `<NavLink>`. MkDocs Material's own search, navigation, and dark mode function independently of the React app. Theme colors are customized via `docs/overrides/extra.css` to match the dashboard design system.
 
 **API endpoints**: (none -- static HTML served by Caddy)
 **WS channels**: (none)

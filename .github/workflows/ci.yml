@@ -245,11 +245,6 @@ jobs:
         with:
           dockerfile: docker/backend/Dockerfile
 
-      - name: Lint web Dockerfile
-        uses: hadolint/hadolint-action@2332a7b74a6de0dda2e2221d575162eba76ba5e5 # v3.3.0
-        with:
-          dockerfile: docker/web/Dockerfile
-
       - name: Lint sandbox Dockerfile
         uses: hadolint/hadolint-action@2332a7b74a6de0dda2e2221d575162eba76ba5e5 # v3.3.0
         with:

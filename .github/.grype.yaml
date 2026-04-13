@@ -2,6 +2,7 @@
 # Kept in sync with .github/.trivyignore.yaml.
 
 ignore:
+  # Audit: 2026-04-11 -- Review-by: 2026-07-10
   - vulnerability: CVE-2026-22184
     reason: >-
       Disputed zlib vulnerability affecting only the untgz demo utility

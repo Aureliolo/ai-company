@@ -1664,9 +1664,11 @@ and pre-pulls the sandbox image on demand.
 | `sandbox` | Ephemeral agent code execution image spawned on demand by the backend | apko-composed Wolfi base (`docker/sandbox/apko.yaml`) with `busybox`, `git`, `iptables` for D16 `allowed_hosts` enforcement; thin `docker/sandbox/Dockerfile` adds `sandbox-init.sh` |
 
 Each published image is signed with **cosign keyless** via GitHub OIDC in
-`.github/workflows/docker.yml`, attested with **SLSA Level 3 provenance**, and ships a
-**CycloneDX SBOM** as an attestation. These are wired up and enforced at start time by
-`cli/internal/verify/verify.go`.
+`.github/workflows/docker.yml` and attested with **SLSA Level 3 provenance**.
+**CycloneDX SBOMs** are generated per image and uploaded as GitHub Release artifacts.
+At pull/start time, `cli/internal/verify/verify.go` verifies cosign signatures and
+SLSA provenance (bypassable with `--skip-verify`); SBOM contents are not validated at
+runtime.
 
 ### apko-composed base images
 

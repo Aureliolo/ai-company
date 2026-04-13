@@ -86,7 +86,7 @@ NATS JetStream wins on three dimensions that matter most for a first distributed
 
 1. **Protocol fit without impedance mismatch.** The pull-model `receive()` Protocol was written before NATS was considered, yet JetStream pull consumers are a one-line mapping to the same semantics. Every other candidate requires adapter code to bridge the push/pull gap, and at least one (Kafka) requires partition planning that has no analogue in the current Protocol.
 
-2. **Operational smallness.** The single ~20 MB Go binary is a rounding error against the Chainguard Python base image. Users who flip the switch pay for one more service to operate, not four. This matters for an opt-in feature most users do not need, because the expected value of "trying distribution once" has to be high enough to survive the friction of adding a container.
+2. **Operational smallness.** The single ~20 MB Go binary is a rounding error against the Wolfi Python base image. Users who flip the switch pay for one more service to operate, not four. This matters for an opt-in feature most users do not need, because the expected value of "trying distribution once" has to be high enough to survive the friction of adding a container.
 
 3. **Future-proof without lock-in.** JetStream's primitives (streams, durable consumers, KV buckets, work queues) map naturally onto what the design needs today *and* leave room for what the project will want later (leaf nodes for multi-region, KV for distributed config). Apache 2.0 license, official asyncio client, active project.
 

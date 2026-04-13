@@ -5,6 +5,7 @@ pre-compressed assets, static docs, and applies per-request CSP nonces.
 These tests require a locally-built web image (docker load from apko output).
 """
 
+import os
 import re
 import subprocess
 import time
@@ -17,7 +18,7 @@ from synthorg.observability import get_logger
 
 logger = get_logger(__name__)
 
-WEB_IMAGE = "ghcr.io/aureliolo/synthorg-web:test"
+WEB_IMAGE = os.environ.get("SYNTHORG_WEB_IMAGE", "ghcr.io/aureliolo/synthorg-web:test")
 CONTAINER_NAME = "synthorg-web-test"
 HOST_PORT = 18080
 
@@ -25,7 +26,7 @@ HOST_PORT = 18080
 @pytest.fixture(scope="module")
 def web_container() -> Generator[str]:
     """Start the web image on a random port and yield the base URL."""
-    docker = "/usr/bin/docker"
+    docker = "docker"
     cmd = [
         docker,
         "run",
@@ -45,8 +46,10 @@ def web_container() -> Generator[str]:
     ]
     try:
         subprocess.run(cmd, check=True, capture_output=True, text=True)  # noqa: S603
+    except FileNotFoundError:
+        pytest.skip("Docker binary not found on PATH")
     except subprocess.CalledProcessError as exc:
-        pytest.skip(f"Cannot start web container: {exc.stderr}")
+        pytest.fail(f"Web container failed to start: {exc.stderr}")
 
     base_url = f"http://127.0.0.1:{HOST_PORT}"
     for _ in range(30):
@@ -111,8 +114,7 @@ class TestWebImage:
 
     def test_docs_has_static_csp(self, web_container: str) -> None:
         resp = httpx.get(f"{web_container}/docs/")
-        if resp.status_code == 404:
-            pytest.skip("Docs not present in test image")
+        assert resp.status_code == 200, f"Docs route returned {resp.status_code}"
         csp = resp.headers.get("content-security-policy", "")
         assert "nonce-" not in csp, "Docs CSP must not contain a per-request nonce"
         assert "worker-src 'self' blob:" in csp
@@ -123,6 +125,8 @@ class TestWebImage:
         assert resp.headers.get("x-frame-options") == "DENY"
         assert "strict-origin" in resp.headers.get("referrer-policy", "")
         assert "63072000" in resp.headers.get("strict-transport-security", "")
+        assert "geolocation=()" in resp.headers.get("permissions-policy", "")
+        assert resp.headers.get("server") in (None, "")
 
     def test_spa_fallback(self, web_container: str) -> None:
         resp = httpx.get(f"{web_container}/agents")

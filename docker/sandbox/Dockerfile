@@ -8,7 +8,7 @@
 # sandbox-init.sh entrypoint needs for allowed_hosts enforcement (D16).
 # =============================================================================
 
-ARG BASE_IMAGE=ghcr.io/aureliolo/synthorg-sandbox-base:latest
+ARG BASE_IMAGE
 FROM ${BASE_IMAGE}
 
 LABEL org.opencontainers.image.title="synthorg-sandbox" \
@@ -18,8 +18,7 @@ LABEL org.opencontainers.image.title="synthorg-sandbox" \
       org.opencontainers.image.licenses="BUSL-1.1" \
       org.opencontainers.image.vendor="Aureliolo"
 
-COPY --chown=10001:10001 docker/sandbox/sandbox-init.sh /usr/local/bin/sandbox-init
-RUN chmod +x /usr/local/bin/sandbox-init
+COPY --chown=10001:10001 --chmod=755 docker/sandbox/sandbox-init.sh /usr/local/bin/sandbox-init
 
 WORKDIR /workspace
 USER 10001
@@ -27,5 +26,4 @@ USER 10001
 HEALTHCHECK --interval=10s --timeout=3s --retries=2 --start-period=5s \
     CMD ["true"]
 
-ENTRYPOINT ["/usr/local/bin/sandbox-init"]
 CMD ["sleep", "infinity"]
