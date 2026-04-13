@@ -389,6 +389,7 @@ class ApprovalGate:
                 await self._event_hub.publish_raw(
                     session_id=session_id,
                     event_type=AgUiEventType.APPROVAL_RESUMED,
+                    agent_id=parked.agent_id,
                     payload={"approval_id": approval_id},
                 )
             except MemoryError, RecursionError:

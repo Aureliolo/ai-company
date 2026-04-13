@@ -115,6 +115,9 @@ class TestApprovalGateEventStream:
         park_service = MagicMock()
         parked = MagicMock()
         parked.id = "parked-001"
+        parked.agent_id = "agent-eng-001"
+        parked.approval_id = "approval-001"
+        parked.metadata = {}
         park_service.resume.return_value = MagicMock()
 
         repo = AsyncMock()

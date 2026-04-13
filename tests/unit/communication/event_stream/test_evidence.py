@@ -4,6 +4,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 import pytest
+from pydantic import ValidationError
 
 from synthorg.core.enums import ApprovalRiskLevel
 from synthorg.core.evidence import (
@@ -54,7 +55,7 @@ class TestRecommendedAction:
 
     def test_frozen(self) -> None:
         action = _make_action()
-        with pytest.raises(Exception, match="frozen"):
+        with pytest.raises(ValidationError, match="frozen"):
             action.label = "Changed"  # type: ignore[misc]
 
     @pytest.mark.parametrize(
@@ -91,7 +92,7 @@ class TestEvidencePackage:
 
     def test_frozen(self) -> None:
         ep = _make_evidence()
-        with pytest.raises(Exception, match="frozen"):
+        with pytest.raises(ValidationError, match="frozen"):
             ep.title = "Changed"  # type: ignore[misc]
 
     def test_metadata_deep_copied(self) -> None:
@@ -122,17 +123,13 @@ class TestEvidencePackage:
         ep = _make_evidence(task_id=None)
         assert ep.task_id is None
 
-    def test_blank_id_rejected(self) -> None:
+    @pytest.mark.parametrize(
+        "field",
+        ["id", "title", "narrative", "source_agent_id"],
+    )
+    def test_blank_fields_rejected(self, field: str) -> None:
         with pytest.raises(ValueError, match="at least 1"):
-            _make_evidence(id="")
-
-    def test_blank_title_rejected(self) -> None:
-        with pytest.raises(ValueError, match="at least 1"):
-            _make_evidence(title="")
-
-    def test_blank_narrative_rejected(self) -> None:
-        with pytest.raises(ValueError, match="at least 1"):
-            _make_evidence(narrative="")
+            _make_evidence(**{field: ""})
 
     def test_too_many_recommended_actions_rejected(self) -> None:
         actions = tuple(
