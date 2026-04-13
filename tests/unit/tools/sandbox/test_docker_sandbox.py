@@ -821,7 +821,7 @@ class TestSidecarLifecycle:
         loop = asyncio.get_running_loop()
         original_time = loop.time
 
-        loop.time = _fake_loop_time  # type: ignore[assignment]
+        loop.time = _fake_loop_time  # type: ignore[method-assign]
         try:
             with (
                 _patch_aiodocker(mock_docker),
@@ -840,7 +840,7 @@ class TestSidecarLifecycle:
                     args=("test",),
                 )
         finally:
-            loop.time = original_time  # type: ignore[assignment]
+            loop.time = original_time  # type: ignore[method-assign]
 
     async def test_sidecar_create_failure(
         self,
