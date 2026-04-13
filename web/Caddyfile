@@ -79,7 +79,7 @@
 		log_skip
 		reverse_proxy backend:3001 {
 			header_up Host {host}
-			header_up X-Real-IP {remote_host}
+			header_up X-Real-IP {client_ip}
 			header_up X-Forwarded-For {client_ip}
 
 			transport http {
@@ -95,7 +95,7 @@
 		import api_security_headers
 		reverse_proxy backend:3001 {
 			header_up Host {host}
-			header_up X-Real-IP {remote_host}
+			header_up X-Real-IP {client_ip}
 			header_up X-Forwarded-For {client_ip}
 
 			transport http {

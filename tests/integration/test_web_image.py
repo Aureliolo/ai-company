@@ -89,8 +89,9 @@ def web_container() -> Generator[str]:
                 resp = httpx.get(f"{base_url}/", timeout=2)
                 if resp.status_code == 200:
                     break
-            except httpx.ConnectError:
-                time.sleep(0.5)
+            except httpx.ConnectError, httpx.ReadError:
+                pass
+            time.sleep(0.5)
         else:
             pytest.fail("Web container did not become healthy within 15s")
 

@@ -375,9 +375,11 @@ jobs:
 
       - name: Load base image (PR only)
         if: github.event_name == 'pull_request'
+        env:
+          BASE_TAG: ${{ needs.build-backend-base.outputs.tag }}
         run: |
           docker load -i /tmp/backend-base.tar
-          docker tag "ghcr.io/aureliolo/synthorg-backend-base:${{ needs.build-backend-base.outputs.tag }}-amd64" "ghcr.io/aureliolo/synthorg-backend-base:${{ needs.build-backend-base.outputs.tag }}"
+          docker tag "ghcr.io/aureliolo/synthorg-backend-base:${BASE_TAG}-amd64" "ghcr.io/aureliolo/synthorg-backend-base:${BASE_TAG}"
 
       - name: Log in to GHCR
         if: github.event_name != 'pull_request'
@@ -687,7 +689,9 @@ jobs:
             web.tar
 
       - name: Load image for scanning
-        run: docker load -i web.tar
+        run: |
+          docker load -i web.tar
+          docker tag "ghcr.io/aureliolo/synthorg-web:sha-${GITHUB_SHA::7}-amd64" "ghcr.io/aureliolo/synthorg-web:sha-${GITHUB_SHA::7}" 2>/dev/null || true
 
       - name: Compute scan image ref
         id: scan-ref
@@ -821,9 +825,11 @@ jobs:
 
       - name: Load base image (PR only)
         if: github.event_name == 'pull_request'
+        env:
+          BASE_TAG: ${{ needs.build-sandbox-base.outputs.tag }}
         run: |
           docker load -i /tmp/sandbox-base.tar
-          docker tag "ghcr.io/aureliolo/synthorg-sandbox-base:${{ needs.build-sandbox-base.outputs.tag }}-amd64" "ghcr.io/aureliolo/synthorg-sandbox-base:${{ needs.build-sandbox-base.outputs.tag }}"
+          docker tag "ghcr.io/aureliolo/synthorg-sandbox-base:${BASE_TAG}-amd64" "ghcr.io/aureliolo/synthorg-sandbox-base:${BASE_TAG}"
 
       - name: Log in to GHCR
         if: github.event_name != 'pull_request'
