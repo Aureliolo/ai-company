@@ -38,6 +38,8 @@ from synthorg.hr.performance.tracker import PerformanceTracker  # noqa: TC001
 from synthorg.hr.training.service import TrainingService  # noqa: TC001
 from synthorg.observability import get_logger
 from synthorg.observability.events.eval_loop import (
+    EVAL_LOOP_AGENT_EVAL_FAILED,
+    EVAL_LOOP_BENCHMARK_FAILED,
     EVAL_LOOP_CYCLE_COMPLETE,
     EVAL_LOOP_CYCLE_FAILED,
     EVAL_LOOP_CYCLE_START,
@@ -206,14 +208,13 @@ class EvalLoopCoordinator:
         self,
         agent_id: NotBlankStr,
     ) -> EvaluationReport | None:
-        """Evaluate a single agent, catching failures."""
+        """Evaluate a single agent, isolating failures."""
         try:
             return await self._evaluation.evaluate(agent_id)
         except Exception:
-            logger.warning(
-                EVAL_LOOP_CYCLE_FAILED,
+            logger.exception(
+                EVAL_LOOP_AGENT_EVAL_FAILED,
                 agent_id=agent_id,
-                context="single_agent_evaluation",
             )
             return None
 
@@ -246,7 +247,12 @@ class EvalLoopCoordinator:
         return ()
 
     async def _run_benchmarks(self) -> tuple[BenchmarkRunResult, ...]:
-        """Run all registered benchmarks concurrently."""
+        """Run all registered benchmarks concurrently.
+
+        Each benchmark is isolated: one failure does not cancel
+        siblings (per CLAUDE.md TaskGroup convention for independent
+        workers).
+        """
         names = self._benchmarks.list_registered()
         if not names:
             return ()
@@ -254,11 +260,23 @@ class EvalLoopCoordinator:
         max_concurrent = self._config.max_concurrent_benchmarks
         semaphore = asyncio.Semaphore(max_concurrent)
 
-        async def _run_one(name: str) -> BenchmarkRunResult:
-            async with semaphore:
-                return await self._benchmarks.run_benchmark(name)
+        async def _run_one(name: str) -> BenchmarkRunResult | None:
+            try:
+                async with semaphore:
+                    return await self._benchmarks.run_benchmark(name)
+            except Exception:
+                logger.exception(
+                    EVAL_LOOP_BENCHMARK_FAILED,
+                    benchmark_name=name,
+                )
+                return None
 
         async with asyncio.TaskGroup() as tg:
             tasks = [tg.create_task(_run_one(n)) for n in names]
 
-        return tuple(task.result() for task in tasks)
+        completed: list[BenchmarkRunResult] = []
+        for task in tasks:
+            result = task.result()
+            if result is not None:
+                completed.append(result)
+        return tuple(completed)

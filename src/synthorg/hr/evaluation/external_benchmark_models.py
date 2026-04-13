@@ -6,9 +6,9 @@ evaluation cycle reports.
 """
 
 import copy
-from typing import Literal
+from typing import Literal, Self
 
-from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.engine.loop_protocol import BehaviorTag  # noqa: TC001
@@ -102,6 +102,17 @@ class BenchmarkRunResult(BaseModel):
     completed_at: AwareDatetime = Field(
         description="When the run finished",
     )
+
+    @model_validator(mode="after")
+    def _validate_passed_within_total(self) -> Self:
+        """Ensure passed_count does not exceed cases_run."""
+        if self.passed_count > self.cases_run:
+            msg = (
+                f"passed_count ({self.passed_count}) cannot exceed "
+                f"cases_run ({self.cases_run})"
+            )
+            raise ValueError(msg)
+        return self
 
 
 class EvalDataset(BaseModel):
@@ -210,3 +221,14 @@ class EvalCycleReport(BaseModel):
     created_at: AwareDatetime = Field(
         description="When cycle completed",
     )
+
+    @model_validator(mode="after")
+    def _validate_window_order(self) -> Self:
+        """Ensure window_start is not after window_end."""
+        if self.window_start > self.window_end:
+            msg = (
+                f"window_start ({self.window_start}) cannot be "
+                f"after window_end ({self.window_end})"
+            )
+            raise ValueError(msg)
+        return self

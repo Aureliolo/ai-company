@@ -155,6 +155,14 @@ class StagnationResult(BaseModel):
             raise ValueError(msg)
         return self
 
+    @model_validator(mode="after")
+    def _validate_reason_with_verdict(self) -> Self:
+        """Ensure reason is None when no stagnation detected."""
+        if self.verdict == StagnationVerdict.NO_STAGNATION and self.reason is not None:
+            msg = "reason must be None when verdict is NO_STAGNATION"
+            raise ValueError(msg)
+        return self
+
 
 NO_STAGNATION_RESULT = StagnationResult(
     verdict=StagnationVerdict.NO_STAGNATION,

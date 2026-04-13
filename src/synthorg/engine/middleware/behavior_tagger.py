@@ -97,7 +97,7 @@ class BehaviorTaggerMiddleware(BaseAgentMiddleware):
         try:
             tags = self._infer_tags(ctx)
         except Exception:
-            logger.warning(
+            logger.exception(
                 BEHAVIOR_TAGGER_ERROR,
                 agent_id=ctx.agent_id,
                 task_id=ctx.task_id,
@@ -151,19 +151,22 @@ class BehaviorTaggerMiddleware(BaseAgentMiddleware):
             if tag is not None:
                 tags.add(tag)
 
-        # If no tools matched, infer from text content.
-        if not tags:
-            output_tokens: int = ctx.metadata.get("output_tokens", 0)
-            if output_tokens >= _SUMMARIZATION_TOKEN_THRESHOLD:
+        has_tools = bool(pending_tools or tool_calls_made)
+
+        if not tags and has_tools:
+            # Tools were called but none matched a specific category.
+            tags.add(BehaviorTag.TOOL_USE)
+        elif not tags:
+            # No tools at all -- infer from text content.
+            output_tokens = ctx.metadata.get("output_tokens", 0)
+            is_long = (
+                isinstance(output_tokens, int)
+                and output_tokens >= _SUMMARIZATION_TOKEN_THRESHOLD
+            )
+            if is_long:
                 tags.add(BehaviorTag.SUMMARIZATION)
             else:
                 tags.add(BehaviorTag.CONVERSATION)
-
-        # If tools matched but no specific category, add TOOL_USE.
-        if tags and not tags - {BehaviorTag.TOOL_USE}:
-            pass  # Already have TOOL_USE
-        elif (pending_tools or tool_calls_made) and not tags:
-            tags.add(BehaviorTag.TOOL_USE)
 
         return tuple(sorted(tags, key=lambda t: t.value))
 
@@ -177,11 +180,10 @@ class BehaviorTaggerMiddleware(BaseAgentMiddleware):
         if tool_name in self._tool_tag_map:
             return self._tool_tag_map[tool_name]
 
-        # Prefix match: strip namespace prefixes.
-        base = tool_name.rsplit("__", maxsplit=1)[-1]
-        if "__" not in tool_name:
-            base = tool_name
-        if base in self._tool_tag_map:
-            return self._tool_tag_map[base]
+        # Prefix match: strip namespace prefixes (e.g. mcp__server__tool).
+        if "__" in tool_name:
+            base = tool_name.rsplit("__", maxsplit=1)[-1]
+            if base in self._tool_tag_map:
+                return self._tool_tag_map[base]
 
         return None
