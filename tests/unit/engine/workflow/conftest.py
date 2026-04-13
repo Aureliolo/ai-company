@@ -24,6 +24,7 @@ __all__ = [
     "make_start_node",
     "make_task_node",
     "make_task_node_full",
+    "make_verification_node",
     "make_workflow",
 ]
 
@@ -190,6 +191,23 @@ def make_assignment_node(
         type=WorkflowNodeType.AGENT_ASSIGNMENT,
         label="Assign",
         config={"agent_name": agent_name},
+    )
+
+
+def make_verification_node(
+    node_id: str = "verify-1",
+    rubric_name: str = "test-rubric",
+    evaluator_agent_id: str = "eval-agent",
+) -> WorkflowNode:
+    """Build a VERIFICATION node."""
+    return WorkflowNode(
+        id=node_id,
+        type=WorkflowNodeType.VERIFICATION,
+        label="Verify",
+        config={
+            "rubric_name": rubric_name,
+            "evaluator_agent_id": evaluator_agent_id,
+        },
     )
 
 

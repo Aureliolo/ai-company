@@ -47,6 +47,14 @@ _CONDITIONAL_EDGE_TYPES = frozenset(
     }
 )
 
+_VERIFICATION_EDGE_TYPES = frozenset(
+    {
+        WorkflowEdgeType.VERIFICATION_PASS,
+        WorkflowEdgeType.VERIFICATION_FAIL,
+        WorkflowEdgeType.VERIFICATION_REFER,
+    }
+)
+
 
 class ValidationErrorCode(StrEnum):
     """Codes for workflow validation errors."""
@@ -69,6 +77,13 @@ class ValidationErrorCode(StrEnum):
     SUBWORKFLOW_OUTPUT_UNKNOWN = "subworkflow_output_unknown"
     SUBWORKFLOW_OUTPUT_TYPE_MISMATCH = "subworkflow_output_type_mismatch"
     SUBWORKFLOW_CYCLE_DETECTED = "subworkflow_cycle_detected"
+    VERIFICATION_MISSING_PASS = "verification_missing_pass"  # noqa: S105
+    VERIFICATION_MISSING_FAIL = "verification_missing_fail"
+    VERIFICATION_MISSING_REFER = "verification_missing_refer"
+    VERIFICATION_DUPLICATE_EDGE = "verification_duplicate_edge"
+    VERIFICATION_EXTRA_OUTGOING = "verification_extra_outgoing"
+    VERIFICATION_EDGE_OUTSIDE = "verification_edge_outside"
+    VERIFICATION_MISSING_CONFIG = "verification_missing_config"
 
 
 class WorkflowValidationError(BaseModel):
@@ -285,6 +300,128 @@ def _check_task_configs(
     return errors
 
 
+def _check_verification_edges(
+    definition: WorkflowDefinition,
+    outgoing: dict[str, list[WorkflowEdgeType]],
+) -> list[WorkflowValidationError]:
+    """Validate verification node edge constraints."""
+    errors: list[WorkflowValidationError] = []
+    for node in definition.nodes:
+        if node.type != WorkflowNodeType.VERIFICATION:
+            continue
+        out_types = outgoing.get(node.id, [])
+        if WorkflowEdgeType.VERIFICATION_PASS not in out_types:
+            errors.append(
+                WorkflowValidationError(
+                    code=ValidationErrorCode.VERIFICATION_MISSING_PASS,
+                    message=f"Verification node {node.id!r} missing PASS edge",
+                    node_id=node.id,
+                )
+            )
+        if WorkflowEdgeType.VERIFICATION_FAIL not in out_types:
+            errors.append(
+                WorkflowValidationError(
+                    code=ValidationErrorCode.VERIFICATION_MISSING_FAIL,
+                    message=f"Verification node {node.id!r} missing FAIL edge",
+                    node_id=node.id,
+                )
+            )
+        if WorkflowEdgeType.VERIFICATION_REFER not in out_types:
+            errors.append(
+                WorkflowValidationError(
+                    code=ValidationErrorCode.VERIFICATION_MISSING_REFER,
+                    message=f"Verification node {node.id!r} missing REFER edge",
+                    node_id=node.id,
+                )
+            )
+        errors.extend(
+            WorkflowValidationError(
+                code=ValidationErrorCode.VERIFICATION_DUPLICATE_EDGE,
+                message=(
+                    f"Verification node {node.id!r} has duplicate "
+                    f"{edge_type.value} edge"
+                ),
+                node_id=node.id,
+            )
+            for edge_type in _VERIFICATION_EDGE_TYPES
+            if out_types.count(edge_type) > 1
+        )
+        extra = [t for t in out_types if t not in _VERIFICATION_EDGE_TYPES]
+        if extra:
+            errors.append(
+                WorkflowValidationError(
+                    code=ValidationErrorCode.VERIFICATION_EXTRA_OUTGOING,
+                    message=(
+                        f"Verification node {node.id!r} has "
+                        f"non-verification outgoing edges: {extra}"
+                    ),
+                    node_id=node.id,
+                )
+            )
+    return errors
+
+
+def _check_verification_edge_scope(
+    definition: WorkflowDefinition,
+    outgoing: dict[str, list[WorkflowEdgeType]],
+) -> list[WorkflowValidationError]:
+    """Reject verification edges leaving non-verification nodes."""
+    errors: list[WorkflowValidationError] = []
+    for node in definition.nodes:
+        if node.type == WorkflowNodeType.VERIFICATION:
+            continue
+        out_types = outgoing.get(node.id, [])
+        bad = [t for t in out_types if t in _VERIFICATION_EDGE_TYPES]
+        if bad:
+            errors.append(
+                WorkflowValidationError(
+                    code=ValidationErrorCode.VERIFICATION_EDGE_OUTSIDE,
+                    message=(
+                        f"Non-verification node {node.id!r} has "
+                        f"verification edge(s): {bad}"
+                    ),
+                    node_id=node.id,
+                )
+            )
+    return errors
+
+
+def _check_verification_configs(
+    definition: WorkflowDefinition,
+) -> list[WorkflowValidationError]:
+    """Validate verification nodes have required config fields."""
+    errors: list[WorkflowValidationError] = []
+    for node in definition.nodes:
+        if node.type != WorkflowNodeType.VERIFICATION:
+            continue
+        rubric_name = node.config.get("rubric_name")
+        if not rubric_name or (
+            isinstance(rubric_name, str) and not rubric_name.strip()
+        ):
+            errors.append(
+                WorkflowValidationError(
+                    code=ValidationErrorCode.VERIFICATION_MISSING_CONFIG,
+                    message=(
+                        f"Verification node {node.id!r} missing rubric_name in config"
+                    ),
+                    node_id=node.id,
+                )
+            )
+        evaluator = node.config.get("evaluator_agent_id")
+        if not evaluator or (isinstance(evaluator, str) and not evaluator.strip()):
+            errors.append(
+                WorkflowValidationError(
+                    code=ValidationErrorCode.VERIFICATION_MISSING_CONFIG,
+                    message=(
+                        f"Verification node {node.id!r} missing "
+                        f"evaluator_agent_id in config"
+                    ),
+                    node_id=node.id,
+                )
+            )
+    return errors
+
+
 def validate_workflow(
     definition: WorkflowDefinition,
 ) -> WorkflowValidationResult:
@@ -311,6 +448,13 @@ def validate_workflow(
         _check_parallel_splits(definition, outgoing_types),
     )
     errors.extend(_check_task_configs(definition))
+    errors.extend(
+        _check_verification_edges(definition, outgoing_types),
+    )
+    errors.extend(
+        _check_verification_edge_scope(definition, outgoing_types),
+    )
+    errors.extend(_check_verification_configs(definition))
 
     all_ids = frozenset(n.id for n in definition.nodes)
     if _has_cycle(all_ids, adjacency):
