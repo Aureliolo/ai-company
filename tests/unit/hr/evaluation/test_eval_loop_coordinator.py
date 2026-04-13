@@ -134,7 +134,7 @@ class TestEvalLoopCoordinatorEvaluateOne:
 
     async def test_evaluate_one_failure_returns_none(self) -> None:
         coordinator = _make_coordinator()
-        coordinator._evaluation.evaluate = AsyncMock(
+        coordinator._evaluation.evaluate = AsyncMock(  # type: ignore[method-assign]
             side_effect=RuntimeError("eval failed"),
         )
         result = await coordinator._evaluate_one("agent-1")
