@@ -127,6 +127,17 @@ class VerificationRubric(BaseModel):
     )
 
     @model_validator(mode="after")
+    def _validate_grading_style(self) -> Self:
+        """Reject non-absolute grading styles until implemented."""
+        if self.grading_style != "absolute":
+            msg = (
+                f"Grading style {self.grading_style!r} is not yet "
+                f"implemented; only 'absolute' is supported"
+            )
+            raise ValueError(msg)
+        return self
+
+    @model_validator(mode="after")
     def _validate_criteria(self) -> Self:
         """Require non-empty criteria whose weights sum to 1.0."""
         if not self.criteria:

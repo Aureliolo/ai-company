@@ -56,11 +56,10 @@ class TestFactory:
         assert isinstance(d, IdentityCriteriaDecomposer)
         assert d.name == "identity"
 
-    def test_build_llm_decomposer(self) -> None:
+    def test_build_llm_decomposer_rejected(self) -> None:
         cfg = VerificationConfig(decomposer=DecomposerVariant.LLM)
-        d = build_decomposer(cfg)
-        assert isinstance(d, LLMCriteriaDecomposer)
-        assert d.name == "llm"
+        with pytest.raises(ValueError, match="Unknown decomposer"):
+            build_decomposer(cfg)
 
     def test_build_heuristic_grader(self) -> None:
         cfg = VerificationConfig(grader=GraderVariant.HEURISTIC)
@@ -68,11 +67,10 @@ class TestFactory:
         assert isinstance(g, HeuristicRubricGrader)
         assert g.name == "heuristic"
 
-    def test_build_llm_grader(self) -> None:
+    def test_build_llm_grader_rejected(self) -> None:
         cfg = VerificationConfig(grader=GraderVariant.LLM)
-        g = build_grader(cfg)
-        assert isinstance(g, LLMRubricGrader)
-        assert g.name == "llm"
+        with pytest.raises(ValueError, match="Unknown grader"):
+            build_grader(cfg)
 
     def test_each_build_produces_fresh_instance(self) -> None:
         cfg = VerificationConfig(decomposer=DecomposerVariant.IDENTITY)

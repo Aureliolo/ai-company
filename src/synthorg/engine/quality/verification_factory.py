@@ -8,10 +8,8 @@ from synthorg.engine.quality.decomposer_protocol import (
 from synthorg.engine.quality.decomposers.identity import (
     IdentityCriteriaDecomposer,
 )
-from synthorg.engine.quality.decomposers.llm import LLMCriteriaDecomposer
 from synthorg.engine.quality.grader_protocol import RubricGrader  # noqa: TC001
 from synthorg.engine.quality.graders.heuristic import HeuristicRubricGrader
-from synthorg.engine.quality.graders.llm import LLMRubricGrader
 from synthorg.engine.quality.verification_config import (
     DecomposerVariant,
     GraderVariant,
@@ -28,7 +26,6 @@ logger = get_logger(__name__)
 _DECOMPOSER_FACTORIES: MappingProxyType[DecomposerVariant, type[CriteriaDecomposer]] = (
     MappingProxyType(
         {
-            DecomposerVariant.LLM: LLMCriteriaDecomposer,
             DecomposerVariant.IDENTITY: IdentityCriteriaDecomposer,
         }
     )
@@ -37,7 +34,6 @@ _DECOMPOSER_FACTORIES: MappingProxyType[DecomposerVariant, type[CriteriaDecompos
 _GRADER_FACTORIES: MappingProxyType[GraderVariant, type[RubricGrader]] = (
     MappingProxyType(
         {
-            GraderVariant.LLM: LLMRubricGrader,
             GraderVariant.HEURISTIC: HeuristicRubricGrader,
         }
     )

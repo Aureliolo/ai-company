@@ -7,7 +7,7 @@ generator to a verification evaluator.
 
 import copy
 import json
-from collections.abc import Mapping  # noqa: TC003
+from collections.abc import Mapping
 from typing import Self
 
 from pydantic import Field, field_validator, model_validator
@@ -68,8 +68,8 @@ class HandoffArtifact(StructuredArtifact):
     @field_validator("payload", mode="before")
     @classmethod
     def _deepcopy_payload(cls, v: object) -> object:
-        """Deep-copy dict payloads to prevent external mutation."""
-        if isinstance(v, dict):
+        """Deep-copy mutable mapping payloads to prevent aliasing."""
+        if isinstance(v, Mapping):
             return copy.deepcopy(v)
         return v
 

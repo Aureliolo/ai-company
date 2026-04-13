@@ -36,7 +36,7 @@ template:
         tier: "large"
         priority: "quality"
         min_context: 100000
-      personality_preset: "strategic_thinker"
+      personality_preset: "strategic_planner"
       department: "engineering"
     - role: "Generator"
       name: ""
@@ -45,7 +45,7 @@ template:
         tier: "medium"
         priority: "balanced"
         min_context: 50000
-      personality_preset: "creative_builder"
+      personality_preset: "pragmatic_builder"
       department: "engineering"
     - role: "Evaluator"
       name: ""

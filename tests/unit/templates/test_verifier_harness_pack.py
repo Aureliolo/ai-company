@@ -55,3 +55,13 @@ class TestVerifierHarnessPack:
         agents = data["template"]["agents"]
         evaluator = next(a for a in agents if a["role"] == "Evaluator")
         assert evaluator["personality_preset"] == "quality_guardian"
+
+    def test_all_presets_are_valid(self) -> None:
+        from synthorg.templates.presets import PERSONALITY_PRESETS
+
+        data = _load_pack()
+        for agent in data["template"]["agents"]:
+            preset = agent["personality_preset"]
+            assert preset in PERSONALITY_PRESETS, (
+                f"Agent {agent['role']!r} uses unknown preset {preset!r}"
+            )
