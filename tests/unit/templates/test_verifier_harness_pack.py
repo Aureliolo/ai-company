@@ -1,12 +1,13 @@
 """Tests for the verifier-harness template pack."""
 
 from pathlib import Path
+from typing import Any
 
 import pytest
 import yaml
 
 
-def _load_pack() -> dict:
+def _load_pack() -> dict[str, Any]:
     pack_path = (
         Path(__file__).resolve().parents[3]
         / "src"
@@ -16,7 +17,8 @@ def _load_pack() -> dict:
         / "verifier-harness.yaml"
     )
     with pack_path.open() as f:
-        return yaml.safe_load(f)
+        result: dict[str, Any] = yaml.safe_load(f)
+    return result
 
 
 @pytest.mark.unit
