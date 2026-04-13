@@ -1,5 +1,7 @@
 """Tests for BehaviorTag enum and TurnRecord behavior extensions."""
 
+from typing import Any
+
 import pytest
 
 from synthorg.engine.loop_protocol import BehaviorTag, TurnRecord
@@ -37,8 +39,8 @@ class TestBehaviorTag:
 class TestTurnRecordBehaviorExtensions:
     """TurnRecord behavior_tags and related fields."""
 
-    def _make_turn(self, **overrides: object) -> TurnRecord:
-        defaults = {
+    def _make_turn(self, **overrides: Any) -> TurnRecord:
+        defaults: dict[str, Any] = {
             "turn_number": 1,
             "input_tokens": 100,
             "output_tokens": 50,

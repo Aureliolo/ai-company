@@ -38,12 +38,15 @@ class ExternalBenchmark(Protocol):
         """License identifier (e.g. 'MIT', 'CC-BY-4.0')."""
         ...
 
-    async def load_test_cases(
+    def load_test_cases(
         self,
         *,
         behavior_tags: frozenset[BehaviorTag] | None = None,
     ) -> AsyncIterator[EvalTestCase]:
         """Stream test cases, optionally filtered by behavior tags.
+
+        Implementations should be async generators (``async def``
+        with ``yield``).
 
         Args:
             behavior_tags: Filter to these tags (``None`` = all).

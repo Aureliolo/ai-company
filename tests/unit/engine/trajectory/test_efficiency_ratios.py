@@ -1,6 +1,7 @@
 """Tests for efficiency ratio models and computation."""
 
 from datetime import UTC, datetime
+from typing import Any
 
 import pytest
 from pydantic import ValidationError
@@ -12,8 +13,8 @@ from synthorg.engine.trajectory.efficiency_ratios import (
 )
 
 
-def _make_baseline(**overrides: object) -> IdealTrajectoryBaseline:
-    defaults = {
+def _make_baseline(**overrides: Any) -> IdealTrajectoryBaseline:
+    defaults: dict[str, Any] = {
         "task_type": "test-task",
         "ideal_step_count": 10,
         "ideal_tool_call_count": 5,
@@ -43,7 +44,7 @@ class TestIdealTrajectoryBaseline:
     def test_frozen(self) -> None:
         baseline = _make_baseline()
         with pytest.raises(ValidationError):
-            baseline.task_type = "changed"
+            baseline.task_type = "changed"  # type: ignore[misc]
 
     def test_step_count_must_be_positive(self) -> None:
         with pytest.raises(ValidationError):
@@ -73,8 +74,8 @@ class TestIdealTrajectoryBaseline:
 class TestEfficiencyRatios:
     """EfficiencyRatios frozen model validation."""
 
-    def _make_ratios(self, **overrides: object) -> EfficiencyRatios:
-        defaults = {
+    def _make_ratios(self, **overrides: Any) -> EfficiencyRatios:
+        defaults: dict[str, Any] = {
             "step_ratio": 1.0,
             "tool_call_ratio": 1.0,
             "latency_ratio": 1.0,
@@ -95,7 +96,7 @@ class TestEfficiencyRatios:
     def test_frozen(self) -> None:
         ratios = self._make_ratios()
         with pytest.raises(ValidationError):
-            ratios.step_ratio = 2.0
+            ratios.step_ratio = 2.0  # type: ignore[misc]
 
     def test_erosion_score_bounds(self) -> None:
         self._make_ratios(structural_erosion_score=0.0)
