@@ -18,6 +18,7 @@ from synthorg.api.dto_training import (
 )
 from synthorg.api.errors import (
     ApiValidationError,
+    ConflictError,
     NotFoundError,
 )
 from synthorg.api.guards import require_org_mutation, require_read_access
@@ -429,6 +430,10 @@ class TrainingController(Controller):
             )
             msg = "Training plan does not belong to this agent"
             raise NotFoundError(msg)
+
+        if plan.status != TrainingPlanStatus.PENDING:
+            msg = "Cannot modify plan after execution or failure"
+            raise ConflictError(msg)
 
         updates: dict[str, object] = {}
         if data.override_sources is not None:

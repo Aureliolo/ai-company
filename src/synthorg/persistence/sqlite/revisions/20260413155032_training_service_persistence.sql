@@ -43,7 +43,8 @@ CREATE TABLE `training_results` (
   `started_at` text NOT NULL,
   `completed_at` text NOT NULL,
   PRIMARY KEY (`id`),
-  CONSTRAINT `0` FOREIGN KEY (`plan_id`) REFERENCES `training_plans` (`id`) ON UPDATE NO ACTION ON DELETE NO ACTION
+  CONSTRAINT `0` FOREIGN KEY (`plan_id`) REFERENCES `training_plans` (`id`) ON UPDATE NO ACTION ON DELETE NO ACTION,
+  CHECK (completed_at >= started_at)
 );
 -- Create index "idx_training_results_plan" to table: "training_results"
 CREATE UNIQUE INDEX `idx_training_results_plan` ON `training_results` (`plan_id`);

@@ -648,15 +648,22 @@ def _build_lifecycle(  # noqa: PLR0913, PLR0915, C901
                 if _perf is not None:
                     _mem = InMemoryBackend()
                     await _mem.connect()
-                    _ts = build_training_service(
-                        config=effective_config.training,
-                        memory_backend=_mem,
-                        tracker=_perf,
-                        registry=app_state.agent_registry,
-                        approval_store=app_state.approval_store,
-                        tool_tracker=app_state.tool_invocation_tracker,
-                    )
-                    app_state.set_training_service(_ts)
+                    try:
+                        _ts = build_training_service(
+                            config=effective_config.training,
+                            memory_backend=_mem,
+                            tracker=_perf,
+                            registry=app_state.agent_registry,
+                            approval_store=app_state.approval_store,
+                            tool_tracker=app_state.tool_invocation_tracker,
+                        )
+                        app_state.set_training_service(_ts)
+                    except MemoryError, RecursionError:
+                        await _mem.disconnect()
+                        raise
+                    except Exception:
+                        await _mem.disconnect()
+                        raise
                     _training_memory_backend = _mem
             except MemoryError, RecursionError:
                 raise

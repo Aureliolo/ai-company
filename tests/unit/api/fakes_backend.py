@@ -273,6 +273,11 @@ class FakeTrainingResultRepository:
         self._results: dict[str, TrainingResult] = {}
 
     async def save(self, result: TrainingResult) -> None:
+        plan_key = str(result.plan_id)
+        for rid, r in self._results.items():
+            if str(r.plan_id) == plan_key and rid != str(result.id):
+                msg = f"UNIQUE constraint: plan_id {plan_key!r} already exists"
+                raise ValueError(msg)
         self._results[str(result.id)] = result
 
     async def get_by_plan(

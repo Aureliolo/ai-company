@@ -926,7 +926,8 @@ CREATE TABLE training_results (
     review_pending INTEGER NOT NULL DEFAULT 0,
     errors TEXT NOT NULL DEFAULT '[]',
     started_at TEXT NOT NULL,
-    completed_at TEXT NOT NULL
+    completed_at TEXT NOT NULL,
+    CHECK(completed_at >= started_at)
 );
 
 CREATE UNIQUE INDEX idx_training_results_plan

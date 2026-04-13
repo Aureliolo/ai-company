@@ -40,7 +40,8 @@ CREATE TABLE "training_results" (
   "started_at" timestamptz NOT NULL,
   "completed_at" timestamptz NOT NULL,
   PRIMARY KEY ("id"),
-  CONSTRAINT "training_results_plan_id_fkey" FOREIGN KEY ("plan_id") REFERENCES "training_plans" ("id") ON UPDATE NO ACTION ON DELETE NO ACTION
+  CONSTRAINT "training_results_plan_id_fkey" FOREIGN KEY ("plan_id") REFERENCES "training_plans" ("id") ON UPDATE NO ACTION ON DELETE NO ACTION,
+  CONSTRAINT "training_results_check" CHECK (completed_at >= started_at)
 );
 -- Create index "idx_training_results_agent" to table: "training_results"
 CREATE INDEX "idx_training_results_agent" ON "training_results" ("new_agent_id", "completed_at" DESC);

@@ -951,7 +951,8 @@ CREATE TABLE training_results (
     review_pending BOOLEAN NOT NULL DEFAULT false,
     errors JSONB NOT NULL DEFAULT '[]'::jsonb,
     started_at TIMESTAMPTZ NOT NULL,
-    completed_at TIMESTAMPTZ NOT NULL
+    completed_at TIMESTAMPTZ NOT NULL,
+    CHECK(completed_at >= started_at)
 );
 
 CREATE UNIQUE INDEX idx_training_results_plan
