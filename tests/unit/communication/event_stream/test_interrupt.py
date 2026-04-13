@@ -16,10 +16,10 @@ from synthorg.communication.event_stream.interrupt import (
 @pytest.mark.unit
 class TestInterruptType:
     def test_tool_approval_value(self) -> None:
-        assert InterruptType.TOOL_APPROVAL == "tool_approval"
+        assert InterruptType.TOOL_APPROVAL.value == "tool_approval"
 
     def test_info_request_value(self) -> None:
-        assert InterruptType.INFO_REQUEST == "info_request"
+        assert InterruptType.INFO_REQUEST.value == "info_request"
 
     def test_member_count(self) -> None:
         assert len(InterruptType) == 2
@@ -28,13 +28,13 @@ class TestInterruptType:
 @pytest.mark.unit
 class TestResumeDecision:
     def test_approve_value(self) -> None:
-        assert ResumeDecision.APPROVE == "approve"
+        assert ResumeDecision.APPROVE.value == "approve"
 
     def test_reject_value(self) -> None:
-        assert ResumeDecision.REJECT == "reject"
+        assert ResumeDecision.REJECT.value == "reject"
 
     def test_revise_value(self) -> None:
-        assert ResumeDecision.REVISE == "revise"
+        assert ResumeDecision.REVISE.value == "revise"
 
     def test_member_count(self) -> None:
         assert len(ResumeDecision) == 3

@@ -24,7 +24,7 @@ from synthorg.core.enums import SeniorityLevel
 @pytest.mark.unit
 class TestMessageTypeDissent:
     def test_dissent_exists(self) -> None:
-        assert MessageType.DISSENT == "dissent"
+        assert MessageType.DISSENT.value == "dissent"
 
     def test_dissent_is_string_enum(self) -> None:
         assert isinstance(MessageType.DISSENT, str)
