@@ -1,7 +1,7 @@
 {
-  "unit_suite_seconds": 107,
-  "test_count": 18855,
-  "commit": "9704ab17",
+  "unit_suite_seconds": 94,
+  "test_count": 19112,
+  "commit": "6319679c",
   "measured_at": "2026-04-13",
   "regression_threshold_secs": 10,
   "regression_threshold_ratio": 1.3

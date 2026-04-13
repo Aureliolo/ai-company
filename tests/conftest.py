@@ -169,6 +169,30 @@ _BASELINE_PATH = Path(__file__).parent / "baselines" / "unit_timing.json"
 _suite_start: float | None = None
 
 
+def _compute_max_allowed(
+    baseline_secs: float,
+    baseline_count: int,
+    unit_count: int,
+    threshold_secs: float,
+) -> float:
+    """Scale absolute threshold by test-count growth.
+
+    When a PR adds tests, expected wall-clock grows proportionally.
+    The absolute threshold is scaled so legitimate test additions
+    do not trip the guard when per-test cost is unchanged.
+    """
+    if baseline_count > 0 and unit_count > baseline_count:
+        count_ratio = unit_count / baseline_count
+        max_allowed = baseline_secs * count_ratio + threshold_secs
+    else:
+        max_allowed = baseline_secs + threshold_secs
+    env_override = os.environ.get("UNIT_SUITE_MAX_SECONDS")
+    if env_override is not None:
+        with contextlib.suppress(ValueError):
+            max_allowed = float(env_override)
+    return max_allowed
+
+
 @pytest.hookimpl(tryfirst=True)
 def pytest_sessionstart(session: pytest.Session) -> None:
     """Record suite start time for regression detection."""
@@ -233,19 +257,16 @@ def pytest_sessionfinish(
         per_test_ok = current_per_test <= baseline_per_test * threshold_ratio
     else:
         per_test_ok = True
-    max_allowed = baseline_secs + threshold_secs
-    # Allow override for optimization work where the suite is
-    # intentionally being re-measured at a new (lower) baseline.
-    env_override = os.environ.get("UNIT_SUITE_MAX_SECONDS")
-    if env_override is not None:
-        with contextlib.suppress(ValueError):
-            max_allowed = float(env_override)
+    max_allowed = _compute_max_allowed(
+        baseline_secs,
+        baseline_count,
+        unit_count,
+        threshold_secs,
+    )
     absolute_breach = elapsed > max_allowed
     # Fail when EITHER absolute tolerance exceeded OR per-test cost
-    # grew beyond the ratio.  Both checks are independent
-    # regression signals: the absolute gate catches catastrophic
-    # growth, the per-test gate catches quality regressions that
-    # would otherwise hide in healthy test-count growth.
+    # grew beyond the ratio.  The absolute gate now scales with test
+    # count so adding tests does not trigger a false positive.
     if absolute_breach or not per_test_ok:
         delta = elapsed - baseline_secs
         baseline_per_test = baseline_secs / max(baseline_count, 1)
