@@ -24,11 +24,13 @@ from synthorg.engine.errors import (
     WorkflowExecutionError,
     WorkflowExecutionNotFoundError,
 )
+from synthorg.engine.quality.verification import VerificationVerdict
 from synthorg.engine.workflow import execution_lifecycle as lifecycle
 from synthorg.engine.workflow.execution_activation_helpers import (
     find_downstream_task_ids,
     process_conditional_node,
     process_task_node,
+    process_verification_node,
 )
 from synthorg.engine.workflow.execution_models import (
     ExecutionFrame,
@@ -474,6 +476,25 @@ class WorkflowExecutionService:
                 node_id=qualified_id,
                 node_type=node.type,
                 status=WorkflowNodeExecutionStatus.COMPLETED,
+            )
+
+        if node.type is WorkflowNodeType.VERIFICATION:
+            verdict_str = str(node.config.get("_verdict_override", "pass"))
+            try:
+                verdict = VerificationVerdict(verdict_str)
+            except ValueError:
+                verdict = VerificationVerdict.REFER
+            verification_execution = process_verification_node(
+                nid,
+                node,
+                outgoing,
+                adjacency,
+                skipped_nodes,
+                execution_id,
+                verdict,
+            )
+            return verification_execution.model_copy(
+                update={"node_id": qualified_id},
             )
 
         if node.type is WorkflowNodeType.CONDITIONAL:

@@ -16,6 +16,7 @@ from synthorg.core.enums import (
     WorkflowNodeType,
 )
 from synthorg.engine.errors import WorkflowConditionEvalError
+from synthorg.engine.quality.verification import VerificationVerdict
 from synthorg.engine.task_engine_models import CreateTaskData
 from synthorg.engine.workflow.condition_eval import evaluate_condition
 from synthorg.engine.workflow.execution_models import WorkflowNodeExecution
@@ -45,6 +46,7 @@ CONTROL_NODE_TYPES = frozenset(
         WorkflowNodeType.CONDITIONAL,
         WorkflowNodeType.PARALLEL_SPLIT,
         WorkflowNodeType.PARALLEL_JOIN,
+        WorkflowNodeType.VERIFICATION,
     }
 )
 
@@ -397,4 +399,69 @@ async def process_task_node(  # noqa: PLR0913
         node_type=node.type,
         status=WorkflowNodeExecutionStatus.TASK_CREATED,
         task_id=task.id,
+    )
+
+
+def process_verification_node(  # noqa: PLR0913
+    nid: str,
+    node: WorkflowNode,
+    outgoing: dict[str, list[tuple[str, WorkflowEdgeType]]],
+    adjacency: dict[str, list[str]],
+    skipped_nodes: set[str],
+    execution_id: str,
+    verdict: VerificationVerdict,
+) -> WorkflowNodeExecution:
+    """Route a verification node based on a grader verdict.
+
+    Selects the outgoing edge matching *verdict*, marks the other
+    two branches as skipped via ``find_skipped_nodes``.
+
+    Args:
+        nid: Node identifier.
+        node: The verification node.
+        outgoing: Adjacency map of (target_id, edge_type) tuples.
+        adjacency: Full graph adjacency for skipped-node BFS.
+        skipped_nodes: Mutable set updated with skipped branch nodes.
+        execution_id: Execution identifier for logging.
+        verdict: The verification verdict (PASS/FAIL/REFER).
+
+    Returns:
+        A completed node execution.
+    """
+    edge_map: dict[VerificationVerdict, str | None] = {
+        VerificationVerdict.PASS: None,
+        VerificationVerdict.FAIL: None,
+        VerificationVerdict.REFER: None,
+    }
+    verdict_to_edge = {
+        WorkflowEdgeType.VERIFICATION_PASS: VerificationVerdict.PASS,
+        WorkflowEdgeType.VERIFICATION_FAIL: VerificationVerdict.FAIL,
+        WorkflowEdgeType.VERIFICATION_REFER: VerificationVerdict.REFER,
+    }
+    for target_id, edge_type in outgoing.get(nid, []):
+        v = verdict_to_edge.get(edge_type)
+        if v is not None:
+            edge_map[v] = target_id
+
+    taken_target = edge_map.get(verdict)
+    untaken_targets = [t for v, t in edge_map.items() if v != verdict and t is not None]
+
+    logger.info(
+        WORKFLOW_EXEC_CONDITION_EVALUATED,
+        execution_id=execution_id,
+        node_id=nid,
+        expression=f"verification_verdict={verdict.value}",
+        result=verdict.value,
+    )
+
+    if taken_target is not None:
+        for untaken in untaken_targets:
+            skipped_nodes.update(
+                find_skipped_nodes(untaken, taken_target, adjacency),
+            )
+
+    return WorkflowNodeExecution(
+        node_id=nid,
+        node_type=node.type,
+        status=WorkflowNodeExecutionStatus.COMPLETED,
     )
