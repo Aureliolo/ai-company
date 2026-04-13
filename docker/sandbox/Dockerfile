@@ -1,6 +1,6 @@
 FROM node:25-slim@sha256:435f3537a088a01fd208bb629a4b69c28d85deb9a60af8a710cafc3befd6e3be AS node-base
 
-FROM python:3.14.3-slim@sha256:5e59aae31ff0e87511226be8e2b94d78c58f05216efda3b07dbbed938ec8583b
+FROM python:3.15.0a8-slim@sha256:a28758f9978680d6aa6145e75cb3032b1b9fe4dcd3abc46471b3a6bda57f0daf
 
 LABEL org.opencontainers.image.title="synthorg-sandbox" \
       org.opencontainers.image.description="SynthOrg agent code execution sandbox" \
