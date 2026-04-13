@@ -69,45 +69,40 @@ def _check_model_recursive(
                 f"{field_path} (type={annotation}) matches a credential pattern",
             )
 
-        # Recurse into nested BaseModel subclasses.
-        origin = get_origin(annotation)
-        targets: list[Any] = []
-        if origin is not None:
-            targets.extend(get_args(annotation))
-        else:
-            targets.append(annotation)
-
-        for target in targets:
-            if (
-                isinstance(target, type)
-                and issubclass(target, BaseModel)
-                and target not in visited
+        # Recurse into nested BaseModel subclasses, fully unpacking
+        # generic containers (e.g. list[list[SomeModel]]).
+        stack: list[Any] = [annotation]
+        while stack:
+            item = stack.pop()
+            item_origin = get_origin(item)
+            if item_origin is not None:
+                stack.extend(get_args(item))
+            elif (
+                isinstance(item, type)
+                and issubclass(item, BaseModel)
+                and item not in visited
             ):
-                _check_model_recursive(target, field_path, visited, violations)
+                _check_model_recursive(item, field_path, visited, violations)
 
 
 @pytest.mark.unit
 class TestCredentialSchemaAudit:
     """Ensure sensitive models have no credential-bearing fields."""
 
-    def test_agent_context_has_no_credential_fields(self) -> None:
+    @pytest.mark.parametrize(
+        ("model_cls", "display_name"),
+        [
+            pytest.param(AgentContext, "AgentContext", id="agent_context"),
+            pytest.param(TurnRecord, "TurnRecord", id="turn_record"),
+        ],
+    )
+    def test_no_credential_fields(
+        self,
+        model_cls: type[BaseModel],
+        display_name: str,
+    ) -> None:
         violations: list[str] = []
-        _check_model_recursive(
-            AgentContext,
-            "AgentContext",
-            set(),
-            violations,
-        )
-        assert not violations, f"Credential-bearing fields found: {violations}"
-
-    def test_turn_record_has_no_credential_fields(self) -> None:
-        violations: list[str] = []
-        _check_model_recursive(
-            TurnRecord,
-            "TurnRecord",
-            set(),
-            violations,
-        )
+        _check_model_recursive(model_cls, display_name, set(), violations)
         assert not violations, f"Credential-bearing fields found: {violations}"
 
     def test_task_metadata_is_the_extensibility_point(
