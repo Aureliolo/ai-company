@@ -36,7 +36,8 @@ for service in "${!SERVICES[@]}"; do
   for mount in ${SERVICES[$service]}; do
     # df output: Filesystem Size Used Available Use% Mounted
     df_line=$(docker exec "$container" df -h "$mount" 2>/dev/null | tail -1) || {
-      echo "  ${mount}: unable to read (no df in image?)"
+      echo "  ${mount}: FAIL -- unable to read (no df in image?)"
+      FAILED=1
       continue
     }
     size=$(echo "$df_line" | awk '{print $2}')
