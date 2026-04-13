@@ -220,13 +220,16 @@ class InterruptStore:
     async def get(self, interrupt_id: str) -> Interrupt | None:
         """Get a pending interrupt by ID.
 
+        Returns a deep copy so callers cannot mutate in-store state.
+
         Args:
             interrupt_id: The interrupt identifier.
 
         Returns:
-            The interrupt, or ``None`` if not found.
+            A copy of the interrupt, or ``None`` if not found.
         """
-        return self._pending.get(interrupt_id)
+        interrupt = self._pending.get(interrupt_id)
+        return copy.deepcopy(interrupt) if interrupt is not None else None
 
     async def list_pending(
         self,
@@ -234,15 +237,18 @@ class InterruptStore:
     ) -> tuple[Interrupt, ...]:
         """List pending interrupts, optionally filtered by session.
 
+        Returns deep copies so callers cannot mutate in-store state.
+
         Args:
             session_id: Filter by session, or ``None`` for all.
 
         Returns:
-            Tuple of pending interrupts.
+            Tuple of copied pending interrupts.
         """
-        if session_id is None:
-            return tuple(self._pending.values())
-        return tuple(i for i in self._pending.values() if i.session_id == session_id)
+        items = self._pending.values()
+        if session_id is not None:
+            items = (i for i in items if i.session_id == session_id)
+        return tuple(copy.deepcopy(i) for i in items)
 
     async def resolve(
         self,

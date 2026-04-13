@@ -37,6 +37,7 @@ from synthorg.observability.events.event_stream import (
     EVENT_STREAM_CLIENT_CONNECTED,
     EVENT_STREAM_CLIENT_DISCONNECTED,
     EVENT_STREAM_INTERRUPT_NOT_FOUND,
+    EVENT_STREAM_PROJECTION_FAILED,
 )
 
 logger = get_logger(__name__)
@@ -205,7 +206,7 @@ async def _sse_event_stream(
                     raise
                 except Exception:
                     logger.warning(
-                        EVENT_STREAM_CLIENT_DISCONNECTED,
+                        EVENT_STREAM_PROJECTION_FAILED,
                         session_id=session_id,
                         event_id=event.id,
                         note="Failed to serialize event, skipping",
@@ -241,7 +242,7 @@ class EventStreamController(Controller):
         self,
         state: State,
         session_id: Annotated[
-            str,
+            NotBlankStr,
             Parameter(max_length=QUERY_MAX_LENGTH),
         ],
     ) -> ServerSentEvent:

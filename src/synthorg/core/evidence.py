@@ -133,8 +133,13 @@ class EvidencePackage(StructuredArtifact):
     @computed_field  # type: ignore[prop-decorator]
     @property
     def is_fully_signed(self) -> bool:
-        """Whether the required signature threshold has been met."""
-        return len(self.signatures) >= self.signature_threshold
+        """Whether the required signature threshold has been met.
+
+        Counts distinct approvers so a single approver cannot be
+        counted multiple times.
+        """
+        distinct = {sig.approver_id for sig in self.signatures}
+        return len(distinct) >= self.signature_threshold
 
     @model_validator(mode="after")
     def _deep_copy_metadata(self) -> Self:

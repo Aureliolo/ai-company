@@ -300,7 +300,7 @@ class ConflictResolutionService:
         if self._message_bus is None:
             return
         try:
-            payload = DissentPayload.from_record(record, conflict_id)
+            payload = DissentPayload.from_record(record)
             msg = Message(
                 timestamp=record.timestamp,
                 sender=record.dissenting_agent_id,
@@ -319,12 +319,12 @@ class ConflictResolutionService:
             _bus: object = self._message_bus
             if hasattr(_bus, "publish"):
                 await _bus.publish(msg)
-            logger.info(
-                COMM_DISSENT_PUBLISHED,
-                dissent_id=record.id,
-                conflict_id=conflict_id,
-                transport="bus",
-            )
+                logger.info(
+                    COMM_DISSENT_PUBLISHED,
+                    dissent_id=record.id,
+                    conflict_id=conflict_id,
+                    transport="bus",
+                )
         except MemoryError, RecursionError:
             raise
         except Exception:
@@ -350,7 +350,7 @@ class ConflictResolutionService:
         if not session_id:
             return
         try:
-            payload = DissentPayload.from_record(record, conflict_id)
+            payload = DissentPayload.from_record(record)
             await self._event_hub.publish_raw(
                 session_id=session_id,
                 event_type=AgUiEventType.DISSENT,

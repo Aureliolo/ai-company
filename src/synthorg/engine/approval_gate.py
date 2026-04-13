@@ -155,17 +155,17 @@ class ApprovalGate:
         interrupt_id: str | None = None
 
         if self._interrupt_store is not None:
-            interrupt = Interrupt(
-                id=f"int-{uuid4().hex}",
-                type=InterruptType.TOOL_APPROVAL,
-                session_id=session_id,
-                agent_id=agent_id,
-                created_at=datetime.now(UTC),
-                timeout_seconds=300.0,
-                tool_name=escalation.tool_name,
-                evidence_package_id=None,
-            )
             try:
+                interrupt = Interrupt(
+                    id=f"int-{uuid4().hex}",
+                    type=InterruptType.TOOL_APPROVAL,
+                    session_id=session_id,
+                    agent_id=agent_id,
+                    created_at=datetime.now(UTC),
+                    timeout_seconds=300.0,
+                    tool_name=escalation.tool_name,
+                    evidence_package_id=None,
+                )
                 await self._interrupt_store.create(interrupt)
                 interrupt_id = interrupt.id
             except MemoryError, RecursionError:
@@ -178,7 +178,7 @@ class ApprovalGate:
                     exc_info=True,
                 )
 
-        if self._event_hub is None:
+        if self._event_hub is None or interrupt_id is None:
             return
 
         try:

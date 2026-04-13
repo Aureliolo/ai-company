@@ -71,9 +71,10 @@ class TestProjectionMap:
         expected = AgUiEventType.APPROVAL_RESUMED
         assert PROJECTION_MAP[APPROVAL_GATE_CONTEXT_RESUMED] == expected
 
-    def test_dissent(self) -> None:
-        expected = AgUiEventType.DISSENT
-        assert PROJECTION_MAP[CONFLICT_DISSENT_RECORDED] == expected
+    def test_dissent_not_in_projection_map(self) -> None:
+        # Dissent is emitted directly by ConflictResolutionService
+        # via EventStreamHub.publish_raw(), not through projection.
+        assert CONFLICT_DISSENT_RECORDED not in PROJECTION_MAP
 
 
 @pytest.mark.unit

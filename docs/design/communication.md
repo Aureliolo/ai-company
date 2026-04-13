@@ -233,10 +233,12 @@ The dashboard also uses SSE for observability and the HITL interrupt/resume prot
 | Web dashboard | WebSocket | Custom events | Bidirectional UI actions (chat, settings) |
 | External A2A client | SSE | `tasks/sendSubscribe` | Task progress streaming |
 
-The `EventStreamHub` is the single event source for all SSE consumers.
-The gateway translates internal MessageBus events for subscribed tasks into SSE events
-with A2A-formatted payloads. Only task-related events for explicitly subscribed tasks
-are forwarded -- no internal channel traffic leaks to external consumers.
+The `EventStreamHub` is the single event source for all SSE consumers (hub-driven
+architecture). Both the AG-UI dashboard and the future A2A gateway (#1164) subscribe
+to the hub and apply per-consumer projection layers. The gateway applies an A2A
+projection that filters to task-related events for explicitly subscribed tasks and
+formats payloads per the A2A specification -- no internal channel traffic leaks to
+external consumers.
 
 ### A2A Client (Outbound)
 
@@ -756,11 +758,11 @@ internal event constants to `AgUiEventType` values:
 | `execution.loop.tool_calls` | `tool_call_start` |
 | `approval_gate.context.parked` | `approval_interrupt` |
 | `approval_gate.context.resumed` | `approval_resumed` |
-| `conflict.dissent.recorded` | `synthorg:dissent` |
-
 Streaming events (`text_message_content`, `tool_call_args`, `tool_call_end`,
-`info_request_interrupt`, `info_request_resumed`) are emitted directly by
-their services, not via log projection.
+`info_request_interrupt`, `info_request_resumed`) and `synthorg:dissent` are
+emitted directly by their services via `EventStreamHub.publish_raw()`, not via
+the EventProjector log projection, because they carry structured payloads that
+don't originate from a single log call.
 
 ### SSE Endpoint
 

@@ -262,23 +262,18 @@ class DissentPayload(BaseModel):
     strategy_used: str = Field(description="Resolution strategy value")
 
     @classmethod
-    def from_record(
-        cls,
-        record: DissentRecord,
-        conflict_id: str,
-    ) -> DissentPayload:
+    def from_record(cls, record: DissentRecord) -> DissentPayload:
         """Build a payload from a dissent record.
 
         Args:
             record: The dissent record.
-            conflict_id: Identifier of the originating conflict.
 
         Returns:
             A typed dissent payload.
         """
         return cls(
             dissent_id=record.id,
-            conflict_id=conflict_id,
+            conflict_id=record.conflict.id,
             dissenting_agent_id=record.dissenting_agent_id,
             conflict_type=record.conflict.type.value,
             strategy_used=record.strategy_used.value,
