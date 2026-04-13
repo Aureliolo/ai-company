@@ -116,11 +116,16 @@ class TestInterrupt:
         assert interrupt.context_snippet == "some context"
 
     def test_tool_args_deep_copied(self) -> None:
-        original: dict[str, object] = {"key": "value"}
+        original: dict[str, object] = {
+            "key": "value",
+            "nested": {"inner": "original"},
+        }
         interrupt = _make_interrupt(tool_args=original)
         original["key"] = "mutated"
+        original["nested"]["inner"] = "mutated"  # type: ignore[index]
         assert interrupt.tool_args is not None
         assert interrupt.tool_args["key"] == "value"
+        assert interrupt.tool_args["nested"]["inner"] == "original"  # type: ignore[index]
 
 
 def _make_resolution(**overrides: Any) -> InterruptResolution:

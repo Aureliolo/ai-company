@@ -79,6 +79,7 @@ class InterruptResponse(BaseModel):
     created_at: str
     timeout_seconds: float
     tool_name: NotBlankStr | None = None
+    tool_args: dict[str, object] | None = None
     evidence_package_id: NotBlankStr | None = None
     question: NotBlankStr | None = None
     context_snippet: NotBlankStr | None = None
@@ -329,6 +330,7 @@ class InterruptController(Controller):
                 created_at=i.created_at.isoformat(),
                 timeout_seconds=i.timeout_seconds,
                 tool_name=i.tool_name,
+                tool_args=i.tool_args,
                 evidence_package_id=i.evidence_package_id,
                 question=i.question,
                 context_snippet=i.context_snippet,

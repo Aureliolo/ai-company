@@ -68,7 +68,9 @@ class TestStreamEvent:
         original: dict[str, object] = {"key": "value", "nested": {"a": 1}}
         event = self._make_event(payload=original)
         original["key"] = "mutated"
+        original["nested"]["a"] = 99  # type: ignore[index]
         assert event.payload["key"] == "value"
+        assert event.payload["nested"]["a"] == 1  # type: ignore[index]
 
     def test_optional_fields(self) -> None:
         event = self._make_event(

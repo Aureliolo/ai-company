@@ -132,6 +132,52 @@ class TestEvidencePackage:
         with pytest.raises(ValueError, match="at least 1"):
             _make_evidence(narrative="")
 
+    def test_too_many_recommended_actions_rejected(self) -> None:
+        actions = tuple(
+            _make_action(action_type=f"act-{i}", label=f"Act {i}") for i in range(4)
+        )
+        with pytest.raises(ValueError, match="at most 3"):
+            _make_evidence(recommended_actions=actions)
+
+    def test_duplicate_signature_approver_rejected(self) -> None:
+        from datetime import UTC, datetime
+
+        from synthorg.core.evidence import EvidencePackageSignature
+
+        sig = EvidencePackageSignature(
+            approver_id="approver-1",
+            algorithm="ed25519",
+            signature_bytes=b"\x00",
+            signed_at=datetime(2026, 4, 13, tzinfo=UTC),
+            chain_position=0,
+        )
+        with pytest.raises(ValueError, match="unique approver_id"):
+            _make_evidence(signatures=(sig, sig))
+
+    def test_is_fully_signed_uses_distinct_approvers(self) -> None:
+        from datetime import UTC, datetime
+
+        from synthorg.core.evidence import EvidencePackageSignature
+
+        sig_a = EvidencePackageSignature(
+            approver_id="approver-a",
+            algorithm="ed25519",
+            signature_bytes=b"\x01",
+            signed_at=datetime(2026, 4, 13, tzinfo=UTC),
+            chain_position=0,
+        )
+        sig_b = EvidencePackageSignature(
+            approver_id="approver-b",
+            algorithm="ed25519",
+            signature_bytes=b"\x02",
+            signed_at=datetime(2026, 4, 13, tzinfo=UTC),
+            chain_position=1,
+        )
+        ep = _make_evidence(signature_threshold=2, signatures=(sig_a, sig_b))
+        assert ep.is_fully_signed is True
+        ep_one = _make_evidence(signature_threshold=2, signatures=(sig_a,))
+        assert ep_one.is_fully_signed is False
+
     def test_blank_source_agent_id_rejected(self) -> None:
         with pytest.raises(ValueError, match="at least 1"):
             _make_evidence(source_agent_id="")

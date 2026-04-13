@@ -25,6 +25,7 @@ from synthorg.observability.events.event_stream import (
     EVENT_STREAM_INTERRUPT_EXPIRED,
     EVENT_STREAM_INTERRUPT_NOT_FOUND,
     EVENT_STREAM_INTERRUPT_RESUMED,
+    EVENT_STREAM_INVALID_RESUME_PAYLOAD,
 )
 
 logger = get_logger(__name__)
@@ -205,7 +206,11 @@ class InterruptStore:
         Raises:
             ValueError: If an interrupt with the same ID already exists.
         """
-        if interrupt.id in self._pending:
+        if (
+            interrupt.id in self._pending
+            or interrupt.id in self._events
+            or interrupt.id in self._results
+        ):
             msg = f"Interrupt {interrupt.id!r} already exists"
             raise ValueError(msg)
         self._pending[interrupt.id] = copy.deepcopy(interrupt)
@@ -277,7 +282,7 @@ class InterruptStore:
         is_tool = interrupt.type == InterruptType.TOOL_APPROVAL
         if is_tool and resolution.decision is None:
             logger.warning(
-                EVENT_STREAM_INTERRUPT_NOT_FOUND,
+                EVENT_STREAM_INVALID_RESUME_PAYLOAD,
                 interrupt_id=resolution.interrupt_id,
                 note="TOOL_APPROVAL requires decision",
             )
@@ -285,7 +290,7 @@ class InterruptStore:
         is_info = interrupt.type == InterruptType.INFO_REQUEST
         if is_info and resolution.response is None:
             logger.warning(
-                EVENT_STREAM_INTERRUPT_NOT_FOUND,
+                EVENT_STREAM_INVALID_RESUME_PAYLOAD,
                 interrupt_id=resolution.interrupt_id,
                 note="INFO_REQUEST requires response",
             )
