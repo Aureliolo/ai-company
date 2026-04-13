@@ -1246,9 +1246,10 @@ Strategies that only have an error string (`FailAndReassignStrategy`, `Checkpoin
     from the observability event log rather than from a persisted checkpoint
     snapshot.
 
-    - **Read-only reconstruction**: replays turn count, accumulated cost, and
-      task status -- but not full conversation history (events do not store
-      message content).
+    - **Read-only reconstruction**: replays turn count, accumulated cost,
+      and task status transitions -- but not full conversation history
+      (events do not store message content; turns are represented as
+      placeholder messages).
     - **No persistence dependency**: relies on whichever observability sink
       the operator configured (structlog file, OTLP backend, Postgres).
     - **Best-effort**: `ReplayResult.replay_completeness` (0.0--1.0) indicates

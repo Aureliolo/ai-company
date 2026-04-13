@@ -33,34 +33,21 @@ def _make_task(metadata: dict[str, object]) -> Task:
 class TestCredentialIsolationValidator:
     """validate_task_metadata rejects credential-like keys."""
 
-    def test_rejects_token_key(self) -> None:
-        task = _make_task({"api_token": "leaked"})
-        with pytest.raises(ExecutionStateError, match="api_token"):
-            validate_task_metadata(task, agent_id="a1", task_id="t1")
-
-    def test_rejects_secret_key(self) -> None:
-        task = _make_task({"my_secret": "leaked"})
-        with pytest.raises(ExecutionStateError, match="my_secret"):
-            validate_task_metadata(task, agent_id="a1", task_id="t1")
-
-    def test_rejects_api_key(self) -> None:
-        task = _make_task({"API_KEY": "leaked"})
-        with pytest.raises(ExecutionStateError, match="API_KEY"):
-            validate_task_metadata(task, agent_id="a1", task_id="t1")
-
-    def test_rejects_api_key_with_hyphen(self) -> None:
-        task = _make_task({"api-key": "leaked"})
-        with pytest.raises(ExecutionStateError, match="api-key"):
-            validate_task_metadata(task, agent_id="a1", task_id="t1")
-
-    def test_rejects_password_key(self) -> None:
-        task = _make_task({"db_password": "leaked"})
-        with pytest.raises(ExecutionStateError, match="db_password"):
-            validate_task_metadata(task, agent_id="a1", task_id="t1")
-
-    def test_rejects_bearer_key(self) -> None:
-        task = _make_task({"bearer_token": "leaked"})
-        with pytest.raises(ExecutionStateError, match="bearer"):
+    @pytest.mark.parametrize(
+        ("key", "match"),
+        [
+            pytest.param("api_token", "api_token", id="token"),
+            pytest.param("my_secret", "my_secret", id="secret"),
+            pytest.param("API_KEY", "API_KEY", id="api_key"),
+            pytest.param("api-key", "api-key", id="api_key_hyphen"),
+            pytest.param("db_password", "db_password", id="password"),
+            pytest.param("bearer_token", "bearer", id="bearer"),
+            pytest.param("SECRET_VALUE", "SECRET_VALUE", id="case_insensitive"),
+        ],
+    )
+    def test_rejects_credential_key(self, key: str, match: str) -> None:
+        task = _make_task({key: "leaked"})
+        with pytest.raises(ExecutionStateError, match=match):
             validate_task_metadata(task, agent_id="a1", task_id="t1")
 
     def test_accepts_safe_metadata(self) -> None:
@@ -76,11 +63,6 @@ class TestCredentialIsolationValidator:
         with pytest.raises(ExecutionStateError, match="api_token") as exc_info:
             validate_task_metadata(task, agent_id="a1", task_id="t1")
         assert "password" in str(exc_info.value)
-
-    def test_case_insensitive_matching(self) -> None:
-        task = _make_task({"SECRET_VALUE": "leaked"})
-        with pytest.raises(ExecutionStateError, match="SECRET_VALUE"):
-            validate_task_metadata(task, agent_id="a1", task_id="t1")
 
     def test_logs_violation_event(self) -> None:
         task = _make_task({"api_token": "leaked"})

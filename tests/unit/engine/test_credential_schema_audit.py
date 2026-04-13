@@ -3,6 +3,7 @@
 from typing import Any, get_args, get_origin
 
 import pytest
+from pydantic import BaseModel
 
 from synthorg.core.task import Task
 from synthorg.engine._validation import _CREDENTIAL_KEY_PATTERNS
@@ -38,27 +39,69 @@ def _could_carry_credential(annotation: Any) -> bool:
     )
 
 
+def _check_model_recursive(
+    model_cls: type[BaseModel],
+    path: str,
+    visited: set[type],
+    violations: list[str],
+) -> None:
+    """Recursively check a Pydantic model for credential-bearing fields."""
+    if model_cls in visited:
+        return
+    visited.add(model_cls)
+
+    for name, info in model_cls.model_fields.items():
+        field_path = f"{path}.{name}"
+        annotation = info.annotation
+
+        # Check the field name itself against credential patterns.
+        if _could_carry_credential(annotation) and _matches_credential_pattern(
+            name,
+        ):
+            violations.append(
+                f"{field_path} (type={annotation}) matches a credential pattern",
+            )
+
+        # Recurse into nested BaseModel subclasses.
+        origin = get_origin(annotation)
+        targets: list[Any] = []
+        if origin is not None:
+            targets.extend(get_args(annotation))
+        else:
+            targets.append(annotation)
+
+        for target in targets:
+            if (
+                isinstance(target, type)
+                and issubclass(target, BaseModel)
+                and target not in visited
+            ):
+                _check_model_recursive(target, field_path, visited, violations)
+
+
 @pytest.mark.unit
 class TestCredentialSchemaAudit:
     """Ensure sensitive models have no credential-bearing fields."""
 
     def test_agent_context_has_no_credential_fields(self) -> None:
-        for name, info in AgentContext.model_fields.items():
-            if not _could_carry_credential(info.annotation):
-                continue
-            assert not _matches_credential_pattern(name), (
-                f"AgentContext.{name} (type={info.annotation}) "
-                f"matches a credential pattern"
-            )
+        violations: list[str] = []
+        _check_model_recursive(
+            AgentContext,
+            "AgentContext",
+            set(),
+            violations,
+        )
+        assert not violations, f"Credential-bearing fields found: {violations}"
 
     def test_turn_record_has_no_credential_fields(self) -> None:
-        for name, info in TurnRecord.model_fields.items():
-            if not _could_carry_credential(info.annotation):
-                continue
-            assert not _matches_credential_pattern(name), (
-                f"TurnRecord.{name} (type={info.annotation}) "
-                f"matches a credential pattern"
-            )
+        violations: list[str] = []
+        _check_model_recursive(
+            TurnRecord,
+            "TurnRecord",
+            set(),
+            violations,
+        )
+        assert not violations, f"Credential-bearing fields found: {violations}"
 
     def test_task_metadata_is_the_extensibility_point(
         self,

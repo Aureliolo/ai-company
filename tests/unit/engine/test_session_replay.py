@@ -180,6 +180,8 @@ class TestSessionReplay:
         assert result.replay_completeness == 0.0
         assert result.events_processed == 0
         assert result.context.turn_count == 0
+        # Execution lineage preserved even with no events.
+        assert result.context.execution_id == EXEC_ID
 
     async def test_replay_full_event_stream(
         self,
@@ -217,6 +219,11 @@ class TestSessionReplay:
         assert result.replay_completeness >= 0.85
         assert result.events_processed == 6
         assert result.events_total == 6
+        # Execution lineage preserved.
+        assert result.context.execution_id == EXEC_ID
+        # Task transition replayed.
+        assert result.context.task_execution is not None
+        assert result.context.task_execution.status == TaskStatus.IN_PROGRESS
 
     async def test_replay_partial_event_stream(
         self,
@@ -323,19 +330,45 @@ class TestSessionReplayErrorHandling:
                 identity=sample_agent_with_personality,
             )
 
+    @pytest.mark.parametrize(
+        ("data", "error_id"),
+        [
+            pytest.param(
+                {"turn": "not-a-number", "cost_usd": 0.01},
+                "non_numeric_turn",
+                id="non_numeric_turn",
+            ),
+            pytest.param(
+                {"cost_usd": 0.01},
+                "missing_turn",
+                id="missing_turn_key",
+            ),
+            pytest.param(
+                {"turn": 0, "cost_usd": 0.01},
+                "zero_turn",
+                id="zero_turn_number",
+            ),
+            pytest.param(
+                {"turn": 1, "cost_usd": "invalid"},
+                "non_numeric_cost",
+                id="non_numeric_cost",
+            ),
+        ],
+    )
     async def test_malformed_turn_event_skipped(
         self,
         sample_agent_with_personality: AgentIdentity,
+        data: dict[str, object],
+        error_id: str,
     ) -> None:
         """Malformed turn event is skipped; valid events processed."""
         events = (
             _event(EXECUTION_ENGINE_START, EXEC_ID, 0),
-            _event(
-                EXECUTION_CONTEXT_TURN,
-                EXEC_ID,
-                1,
-                turn="not-a-number",
-                cost_usd=0.01,
+            SessionEvent(
+                event_name=EXECUTION_CONTEXT_TURN,
+                timestamp=_ts(1),
+                execution_id=EXEC_ID,
+                data=data,
             ),
             _event(
                 EXECUTION_CONTEXT_TURN,
@@ -356,3 +389,51 @@ class TestSessionReplayErrorHandling:
         assert result.context.accumulated_cost.cost_usd == pytest.approx(
             0.02,
         )
+
+
+@pytest.mark.unit
+class TestSessionReplayTaskNone:
+    """Session.replay() with task=None."""
+
+    async def test_replay_without_task(
+        self,
+        sample_agent_with_personality: AgentIdentity,
+    ) -> None:
+        """Replay works when task is None (no task_execution)."""
+        events = (
+            _event(EXECUTION_ENGINE_START, EXEC_ID, 0),
+            _event(EXECUTION_CONTEXT_TURN, EXEC_ID, 1, turn=1, cost_usd=0.01),
+        )
+        reader = StubEventReader(events)
+        result = await Session.replay(
+            execution_id=EXEC_ID,
+            event_reader=reader,
+            identity=sample_agent_with_personality,
+            task=None,
+        )
+        assert result.context.task_execution is None
+        assert result.context.turn_count == 1
+        assert result.context.accumulated_cost.cost_usd == pytest.approx(0.01)
+        assert result.context.execution_id == EXEC_ID
+
+
+@pytest.mark.unit
+class TestSessionReplayExecutionLineage:
+    """Execution lineage preservation during replay."""
+
+    async def test_started_at_from_earliest_event(
+        self,
+        sample_agent_with_personality: AgentIdentity,
+    ) -> None:
+        """Replayed context started_at comes from earliest event."""
+        events = (
+            _event(EXECUTION_ENGINE_START, EXEC_ID, 5),
+            _event(EXECUTION_CONTEXT_TURN, EXEC_ID, 10, turn=1, cost_usd=0.01),
+        )
+        reader = StubEventReader(events)
+        result = await Session.replay(
+            execution_id=EXEC_ID,
+            event_reader=reader,
+            identity=sample_agent_with_personality,
+        )
+        assert result.context.started_at == _ts(5)

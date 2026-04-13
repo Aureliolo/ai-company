@@ -5,7 +5,7 @@ recorded during a previous execution.  This is a lighter-weight
 alternative to full checkpoint/resume: read-only reconstruction
 that enables brain-failure recovery without persistence dependencies.
 
-Terminology follows the Anthropic managed-agents engineering post:
+Terminology follows the managed-agents engineering pattern:
 
 - **Brain**: inference loop (``agent_engine.py``, ``AgentContext``, loop protocol)
 - **Hands**: tool execution (``ToolInvoker``, ``tools/sandbox/``, credential proxy)
@@ -24,6 +24,7 @@ from pydantic import (
 )
 
 from synthorg.core.agent import AgentIdentity  # noqa: TC001
+from synthorg.core.enums import TaskStatus
 from synthorg.core.task import Task  # noqa: TC001
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.engine.context import DEFAULT_MAX_TURNS, AgentContext
@@ -42,7 +43,7 @@ from synthorg.observability.events.session import (
     SESSION_REPLAY_START,
 )
 from synthorg.providers.enums import MessageRole
-from synthorg.providers.models import ChatMessage, TokenUsage
+from synthorg.providers.models import ChatMessage, TokenUsage, add_token_usage
 
 logger = get_logger(__name__)
 
@@ -205,6 +206,8 @@ class Session:
                 task=task,
                 max_turns=max_turns,
             )
+            # Preserve original execution lineage even with no events.
+            ctx = ctx.model_copy(update={"execution_id": execution_id})
             return ReplayResult(
                 context=ctx,
                 replay_completeness=0.0,
@@ -220,6 +223,64 @@ class Session:
             max_turns=max_turns,
             execution_id=execution_id,
         )
+
+
+# ── Internal replay helpers ───────────────────────────────────────
+
+
+def _apply_turn_event(
+    ctx: AgentContext,
+    event: SessionEvent,
+) -> tuple[AgentContext, int, float]:
+    """Apply a single turn event to the context.
+
+    Returns:
+        Tuple of (updated context, turn number, cost_usd).
+
+    Raises:
+        KeyError: If ``turn`` key is missing.
+        ValueError: If ``turn`` < 1 or non-numeric.
+    """
+    turn = event.data.get("turn")
+    if turn is None:
+        msg = "Missing 'turn' in EXECUTION_CONTEXT_TURN event"
+        raise KeyError(msg)
+    turn = int(turn)
+    if turn < 1:
+        msg = f"Turn number must be >= 1, got {turn}"
+        raise ValueError(msg)
+    cost_usd = float(event.data.get("cost_usd", 0.0))
+
+    usage = TokenUsage(input_tokens=0, output_tokens=0, cost_usd=cost_usd)
+    replay_msg = ChatMessage(
+        role=MessageRole.ASSISTANT,
+        content=f"[replayed turn {turn}]",
+    )
+    updates: dict[str, object] = {
+        "turn_count": ctx.turn_count + 1,
+        "conversation": (*ctx.conversation, replay_msg),
+        "accumulated_cost": add_token_usage(ctx.accumulated_cost, usage),
+    }
+    if ctx.task_execution is not None:
+        updates["task_execution"] = ctx.task_execution.with_cost(usage)
+    return ctx.model_copy(update=updates), turn, cost_usd
+
+
+def _apply_transition_event(
+    ctx: AgentContext,
+    event: SessionEvent,
+) -> AgentContext:
+    """Apply a task-transition event to the context."""
+    target = event.data.get("target_status")
+    if target is not None and ctx.task_execution is not None:
+        ctx = ctx.model_copy(
+            update={
+                "task_execution": ctx.task_execution.model_copy(
+                    update={"status": TaskStatus(str(target))},
+                ),
+            },
+        )
+    return ctx
 
 
 # ── Internal replay logic ─────────────────────────────────────────
@@ -238,6 +299,14 @@ def _replay_from_events(
         identity,
         task=task,
         max_turns=max_turns,
+    )
+    # Preserve original execution lineage and seed started_at from
+    # the earliest event timestamp.
+    ctx = ctx.model_copy(
+        update={
+            "execution_id": execution_id,
+            "started_at": sorted_events[0].timestamp,
+        },
     )
 
     # Tracking for completeness scoring.
@@ -260,24 +329,13 @@ def _replay_from_events(
                 found_context_created = True
 
             elif name == EXECUTION_CONTEXT_TURN:
-                turn = event.data.get("turn", 0)
-                cost_usd = float(event.data.get("cost_usd", 0.0))
-                turn_numbers.append(int(turn))
+                ctx, turn, cost_usd = _apply_turn_event(ctx, event)
+                turn_numbers.append(turn)
                 total_cost += cost_usd
-
-                usage = TokenUsage(
-                    input_tokens=0,
-                    output_tokens=0,
-                    cost_usd=cost_usd,
-                )
-                replay_msg = ChatMessage(
-                    role=MessageRole.ASSISTANT,
-                    content=f"[replayed turn {turn}]",
-                )
-                ctx = ctx.with_turn_completed(usage, replay_msg)
 
             elif name == EXECUTION_TASK_TRANSITION:
                 found_transition = True
+                ctx = _apply_transition_event(ctx, event)
 
         except MemoryError, RecursionError:
             raise
@@ -354,9 +412,11 @@ def _compute_completeness(
         score += 0.10
     if turn_numbers:
         score += 0.20
-        # Check contiguity: turns should be 1, 2, 3, ...
-        expected = list(range(1, len(turn_numbers) + 1))
-        if sorted(turn_numbers) == expected:
+        # Deduplicate before contiguity check so duplicate turn
+        # events (e.g. retransmitted events) don't penalize the score.
+        unique_turns = sorted(set(turn_numbers))
+        expected = list(range(1, len(unique_turns) + 1))
+        if unique_turns == expected:
             score += 0.25
     if total_cost > 0.0:
         score += 0.15

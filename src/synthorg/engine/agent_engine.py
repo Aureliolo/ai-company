@@ -597,7 +597,11 @@ class AgentEngine:
                 # Session replay: reconstruct context from event log
                 # when resuming a previous (crashed) execution.
                 replay_ctx: AgentContext | None = None
-                if resume_execution_id is not None and self._event_reader is not None:
+                if (
+                    identity.company_config.session_replay_on_start
+                    and resume_execution_id is not None
+                    and self._event_reader is not None
+                ):
                     from synthorg.engine.session import Session  # noqa: PLC0415
 
                     replay_result = await Session.replay(
@@ -634,7 +638,22 @@ class AgentEngine:
                     effective_autonomy=effective_autonomy,
                 )
                 if replay_ctx is not None:
-                    ctx = replay_ctx
+                    # Merge replayed execution state into the prepared
+                    # context so system prompt, memory messages, and
+                    # task instruction are preserved.
+                    ctx = ctx.model_copy(
+                        update={
+                            "conversation": (
+                                *ctx.conversation,
+                                *replay_ctx.conversation,
+                            ),
+                            "accumulated_cost": replay_ctx.accumulated_cost,
+                            "turn_count": replay_ctx.turn_count,
+                            "task_execution": (
+                                replay_ctx.task_execution or ctx.task_execution
+                            ),
+                        },
+                    )
                 return await self._execute(
                     identity=identity,
                     task=task,

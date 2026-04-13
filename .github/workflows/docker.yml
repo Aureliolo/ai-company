@@ -668,7 +668,7 @@ jobs:
         run: |
           printf 'version: %s\n' "$APP_VERSION" > /tmp/melange-vars.yaml
           melange build docker/web/melange.yaml \
-            --arch amd64,arm64 \
+            --arch x86_64,aarch64 \
             --source-dir . \
             --signing-key melange.rsa \
             --out-dir packages/ \
