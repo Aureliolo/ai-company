@@ -118,7 +118,7 @@ jobs:
       - name: Trivy scan
         uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # v0.35.0
         with:
-          image-ref: ${{ steps.scan-ref.outputs.ref }}
+          input: backend-base.tar
           format: json
           output: trivy-backend-base.json
           exit-code: "0"
@@ -140,7 +140,7 @@ jobs:
       - name: Grype scan
         uses: anchore/scan-action@e1165082ffb1fe366ebaf02d8526e7c4989ea9d2 # v7.4.0
         with:
-          image: ${{ steps.scan-ref.outputs.ref }}
+          path: backend-base.tar
           fail-build: true
           severity-cutoff: critical
           config: .github/.grype.yaml
@@ -237,7 +237,7 @@ jobs:
       - name: Trivy scan
         uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # v0.35.0
         with:
-          image-ref: ${{ steps.scan-ref.outputs.ref }}
+          input: sandbox-base.tar
           format: json
           output: trivy-sandbox-base.json
           exit-code: "0"
@@ -248,12 +248,15 @@ jobs:
         run: |
           if [ ! -f trivy-sandbox-base.json ]; then echo "::error::Missing Trivy output"; exit 1; fi
           CRITICAL=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity == "CRITICAL")] | length' trivy-sandbox-base.json)
+          HIGH=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity == "HIGH")] | length' trivy-sandbox-base.json)
+          echo "Critical: $CRITICAL, High: $HIGH"
+          if [ "$HIGH" -gt 0 ]; then echo "::warning::Found $HIGH HIGH severity vulnerabilities"; fi
           if [ "$CRITICAL" -gt 0 ]; then echo "::error::Found $CRITICAL CRITICAL vulnerabilities"; exit 1; fi
 
       - name: Grype scan
         uses: anchore/scan-action@e1165082ffb1fe366ebaf02d8526e7c4989ea9d2 # v7.4.0
         with:
-          image: ${{ steps.scan-ref.outputs.ref }}
+          path: sandbox-base.tar
           fail-build: true
           severity-cutoff: critical
           config: .github/.grype.yaml
@@ -533,6 +536,7 @@ jobs:
           persist-credentials: false
 
       - name: Set up Node.js
+        # zizmor: ignore[cache-poisoning] -- npm cache is branch-scoped; only affects package installs, not code
         uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6.3.0
         with:
           node-version: "22"

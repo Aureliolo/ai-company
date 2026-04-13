@@ -7,6 +7,7 @@ These tests require a locally-built web image (docker load from apko output).
 
 import os
 import re
+import socket
 import subprocess
 import time
 from collections.abc import Generator
@@ -23,58 +24,70 @@ WEB_IMAGE = os.environ.get("SYNTHORG_WEB_IMAGE", "ghcr.io/aureliolo/synthorg-web
 if not _IMAGE_REF_PATTERN.match(WEB_IMAGE):
     msg = f"Invalid image reference: {WEB_IMAGE}"
     raise ValueError(msg)
-CONTAINER_NAME = "synthorg-web-test"
-HOST_PORT = 18080
+
+
+def _free_port() -> int:
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.bind(("", 0))
+        port: int = s.getsockname()[1]
+        return port
 
 
 @pytest.fixture(scope="module")
 def web_container() -> Generator[str]:
-    """Start the web image on a random port and yield the base URL."""
+    """Start the web image on a unique port and yield the base URL."""
     docker = "docker"
-    cmd = [
-        docker,
-        "run",
-        "-d",
-        "--name",
-        CONTAINER_NAME,
-        "-p",
-        f"{HOST_PORT}:8080",
-        "--read-only",
-        "--tmpfs",
-        "/tmp:noexec,nosuid,nodev,size=16m",  # noqa: S108
-        "--tmpfs",
-        "/config/caddy:noexec,nosuid,nodev,size=8m",
-        "--tmpfs",
-        "/data/caddy:noexec,nosuid,nodev,size=16m",
-        WEB_IMAGE,
-    ]
+    worker = os.environ.get("PYTEST_XDIST_WORKER", "gw0")
+    container_name = f"synthorg-web-test-{worker}-{os.getpid()}"
+    host_port = _free_port()
+    started = False
     try:
-        subprocess.run(cmd, check=True, capture_output=True, text=True)  # noqa: S603
-    except FileNotFoundError:
-        pytest.skip("Docker binary not found on PATH")
-    except subprocess.CalledProcessError as exc:
-        if "manifest unknown" in exc.stderr or "not found" in exc.stderr:
-            pytest.skip(f"Web image not available: {exc.stderr.strip()}")
-        pytest.fail(f"Web container failed to start: {exc.stderr}")
-
-    base_url = f"http://127.0.0.1:{HOST_PORT}"
-    for _ in range(30):
+        cmd = [
+            docker,
+            "run",
+            "-d",
+            "--name",
+            container_name,
+            "-p",
+            f"{host_port}:8080",
+            "--read-only",
+            "--tmpfs",
+            "/tmp:noexec,nosuid,nodev,size=16m",  # noqa: S108
+            "--tmpfs",
+            "/config/caddy:noexec,nosuid,nodev,size=8m",
+            "--tmpfs",
+            "/data/caddy:noexec,nosuid,nodev,size=16m",
+            WEB_IMAGE,
+        ]
         try:
-            resp = httpx.get(f"{base_url}/", timeout=2)
-            if resp.status_code == 200:
-                break
-        except httpx.ConnectError:
-            time.sleep(0.5)
-    else:
-        pytest.fail("Web container did not become healthy within 15s")
+            subprocess.run(cmd, check=True, capture_output=True, text=True)  # noqa: S603
+            started = True
+        except FileNotFoundError:
+            pytest.skip("Docker binary not found on PATH")
+        except subprocess.CalledProcessError as exc:
+            if "manifest unknown" in exc.stderr or "not found" in exc.stderr:
+                pytest.skip(f"Web image not available: {exc.stderr.strip()}")
+            pytest.fail(f"Web container failed to start: {exc.stderr}")
 
-    yield base_url
+        base_url = f"http://127.0.0.1:{host_port}"
+        for _ in range(30):
+            try:
+                resp = httpx.get(f"{base_url}/", timeout=2)
+                if resp.status_code == 200:
+                    break
+            except httpx.ConnectError:
+                time.sleep(0.5)
+        else:
+            pytest.fail("Web container did not become healthy within 15s")
 
-    subprocess.run(  # noqa: S603
-        [docker, "rm", "-f", CONTAINER_NAME],
-        capture_output=True,
-        check=False,
-    )
+        yield base_url
+    finally:
+        if started:
+            subprocess.run(  # noqa: S603
+                [docker, "rm", "-f", container_name],
+                capture_output=True,
+                check=False,
+            )
 
 
 @pytest.mark.integration

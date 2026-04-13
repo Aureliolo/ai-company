@@ -16,9 +16,3 @@ rules:
       # persist-credentials required to push the Change Date commit back
       # to the release PR branch.
       - release.yml
-
-  cache-poisoning:
-    ignore:
-      # setup-node npm cache in build-web-assets job. Low confidence:
-      # GHA cache is branch-scoped; only affects npm packages, not code.
-      - docker.yml
