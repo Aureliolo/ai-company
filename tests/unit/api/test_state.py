@@ -323,3 +323,26 @@ class TestAppStateConfigResolver:
         mock_svc = AsyncMock()
         state = _make_state(settings_service=mock_svc)
         assert state.has_config_resolver is True
+
+    def test_training_service_raises_when_none(self) -> None:
+        state = _make_state(training_service=None)
+        with pytest.raises(ServiceUnavailableError):
+            _ = state.training_service
+
+    def test_has_training_service_false_when_none(self) -> None:
+        state = _make_state(training_service=None)
+        assert state.has_training_service is False
+
+    def test_set_training_service_once(self) -> None:
+        state = _make_state()
+        mock_svc = AsyncMock()
+        state.set_training_service(mock_svc)
+        assert state.training_service is mock_svc
+        assert state.has_training_service is True
+
+    def test_set_training_service_twice_raises(self) -> None:
+        state = _make_state()
+        mock_svc = AsyncMock()
+        state.set_training_service(mock_svc)
+        with pytest.raises(RuntimeError, match="already configured"):
+            state.set_training_service(mock_svc)

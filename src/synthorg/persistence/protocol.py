@@ -55,6 +55,10 @@ from synthorg.persistence.ssrf_violation_repo import (
 from synthorg.persistence.subworkflow_repo import (
     SubworkflowRepository,  # noqa: TC001
 )
+from synthorg.persistence.training_repos import (
+    TrainingPlanRepository,  # noqa: TC001
+    TrainingResultRepository,  # noqa: TC001
+)
 from synthorg.persistence.version_repo import (
     VersionRepository,  # noqa: TC001
 )
@@ -347,6 +351,16 @@ class PersistenceBackend(Protocol):
     @property
     def webhook_receipts(self) -> WebhookReceiptRepository:
         """Repository for webhook receipt log persistence."""
+        ...
+
+    @property
+    def training_plans(self) -> TrainingPlanRepository:
+        """Repository for training plan persistence."""
+        ...
+
+    @property
+    def training_results(self) -> TrainingResultRepository:
+        """Repository for training result persistence."""
         ...
 
     async def get_setting(self, key: NotBlankStr) -> str | None:

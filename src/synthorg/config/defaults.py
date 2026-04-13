@@ -39,6 +39,7 @@ def default_config_dict() -> dict[str, object]:
         "trust": {},
         "promotion": {},
         "performance": {},
+        "training": {},
         "task_engine": {},
         "queue": {},
         "coordination": {},

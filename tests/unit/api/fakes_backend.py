@@ -10,6 +10,7 @@ from typing import Any
 from pydantic import AwareDatetime
 
 from synthorg.core.types import NotBlankStr
+from synthorg.hr.training.models import TrainingPlan, TrainingPlanStatus, TrainingResult
 from synthorg.persistence.errors import DuplicateRecordError
 from synthorg.persistence.integration_stubs import (
     StubConnectionRepository,
@@ -229,6 +230,72 @@ class FakeVersionRepository:
         return len(to_delete)
 
 
+class FakeTrainingPlanRepository:
+    """In-memory fake for ``TrainingPlanRepository``."""
+
+    def __init__(self) -> None:
+        self._plans: dict[str, TrainingPlan] = {}
+
+    async def save(self, plan: TrainingPlan) -> None:
+        self._plans[str(plan.id)] = plan
+
+    async def get(self, plan_id: NotBlankStr) -> TrainingPlan | None:
+        return self._plans.get(str(plan_id))
+
+    async def latest_pending(
+        self,
+        agent_id: NotBlankStr,
+    ) -> TrainingPlan | None:
+        pending = [
+            p
+            for p in self._plans.values()
+            if str(p.new_agent_id) == str(agent_id)
+            and p.status == TrainingPlanStatus.PENDING
+        ]
+        if not pending:
+            return None
+        return max(pending, key=lambda p: p.created_at)
+
+    async def list_by_agent(
+        self,
+        agent_id: NotBlankStr,
+    ) -> tuple[TrainingPlan, ...]:
+        plans = [
+            p for p in self._plans.values() if str(p.new_agent_id) == str(agent_id)
+        ]
+        return tuple(sorted(plans, key=lambda p: p.created_at, reverse=True))
+
+
+class FakeTrainingResultRepository:
+    """In-memory fake for ``TrainingResultRepository``."""
+
+    def __init__(self) -> None:
+        self._results: dict[str, TrainingResult] = {}
+
+    async def save(self, result: TrainingResult) -> None:
+        self._results[str(result.id)] = result
+
+    async def get_by_plan(
+        self,
+        plan_id: NotBlankStr,
+    ) -> TrainingResult | None:
+        for r in self._results.values():
+            if str(r.plan_id) == str(plan_id):
+                return r
+        return None
+
+    async def get_latest(
+        self,
+        agent_id: NotBlankStr,
+    ) -> TrainingResult | None:
+        agent_results = [
+            r for r in self._results.values() if str(r.new_agent_id) == str(agent_id)
+        ]
+        if not agent_results:
+            return None
+        return max(agent_results, key=lambda r: r.completed_at)
+
+
 class FakePersistenceBackend:
     """In-memory persistence backend for tests."""
 
@@ -265,6 +332,8 @@ class FakePersistenceBackend:
         self._heartbeats = FakeHeartbeatRepository()
         self._agent_states = FakeAgentStateRepository()
         self._settings_repo = FakeSettingsRepository()
+        self._training_plans_repo = FakeTrainingPlanRepository()
+        self._training_results_repo = FakeTrainingResultRepository()
         self._connections_stub = StubConnectionRepository()
         self._connection_secrets_stub = StubConnectionSecretRepository()
         self._oauth_states_stub = StubOAuthStateRepository()
@@ -457,6 +526,16 @@ class FakePersistenceBackend:
     def webhook_receipts(self) -> StubWebhookReceiptRepository:
         """Stub webhook receipt repository."""
         return self._webhook_receipts_stub
+
+    @property
+    def training_plans(self) -> FakeTrainingPlanRepository:
+        """Fake training plan repository."""
+        return self._training_plans_repo
+
+    @property
+    def training_results(self) -> FakeTrainingResultRepository:
+        """Fake training result repository."""
+        return self._training_results_repo
 
     async def get_setting(self, key: str) -> str | None:
         return self._settings.get(key)

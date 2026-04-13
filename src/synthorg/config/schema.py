@@ -33,6 +33,7 @@ from synthorg.engine.task_engine_config import TaskEngineConfig
 from synthorg.engine.workflow.config import WorkflowConfig
 from synthorg.hr.performance.config import PerformanceConfig
 from synthorg.hr.promotion.config import PromotionConfig
+from synthorg.hr.training.config import TrainingConfig
 from synthorg.integrations.config import IntegrationsConfig
 from synthorg.memory.config import CompanyMemoryConfig
 from synthorg.memory.org.config import OrgMemoryConfig
@@ -776,6 +777,10 @@ class RootConfig(BaseModel):
     performance: PerformanceConfig = Field(
         default_factory=PerformanceConfig,
         description="Performance tracking configuration",
+    )
+    training: TrainingConfig = Field(
+        default_factory=TrainingConfig,
+        description="Training pipeline configuration",
     )
     task_engine: TaskEngineConfig = Field(
         default_factory=TaskEngineConfig,

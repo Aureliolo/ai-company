@@ -626,6 +626,14 @@ class _FakeBackend:
     def webhook_receipts(self) -> Any:
         return object()
 
+    @property
+    def training_plans(self) -> Any:
+        return object()
+
+    @property
+    def training_results(self) -> Any:
+        return object()
+
     async def get_setting(self, key: str) -> str | None:
         return None
 

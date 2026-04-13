@@ -38,6 +38,7 @@ from synthorg.engine.workflow.ceremony_scheduler import CeremonyScheduler  # noq
 from synthorg.hr.performance.tracker import PerformanceTracker  # noqa: TC001
 from synthorg.hr.registry import AgentRegistryService  # noqa: TC001
 from synthorg.hr.scaling.service import ScalingService  # noqa: TC001
+from synthorg.hr.training.service import TrainingService  # noqa: TC001
 from synthorg.memory.embedding.fine_tune_orchestrator import (
     FineTuneOrchestrator,  # noqa: TC001
 )
@@ -143,6 +144,7 @@ class AppState:
         "_task_engine",
         "_ticket_store",
         "_tool_invocation_tracker",
+        "_training_service",
         "_trust_service",
         "_tunnel_provider",
         "_user_presence",
@@ -189,6 +191,7 @@ class AppState:
         webhook_event_bridge: WebhookEventBridge | None = None,
         mcp_catalog_service: CatalogService | None = None,
         mcp_installations_repo: McpInstallationRepository | None = None,
+        training_service: TrainingService | None = None,
         startup_time: float = 0.0,
     ) -> None:
         self.config = config
@@ -221,6 +224,7 @@ class AppState:
         self._model_router = model_router
         self._provider_health_tracker = provider_health_tracker
         self._tool_invocation_tracker = tool_invocation_tracker
+        self._training_service = training_service
         self._delegation_record_store = delegation_record_store
         self._connection_catalog = connection_catalog
         self._oauth_token_manager = oauth_token_manager
@@ -667,6 +671,23 @@ class AppState:
             self._tool_invocation_tracker,
             "tool_invocation_tracker",
         )
+
+    @property
+    def has_training_service(self) -> bool:
+        """Check whether the training service is configured."""
+        return self._training_service is not None
+
+    @property
+    def training_service(self) -> TrainingService:
+        """Return training service or raise 503."""
+        return self._require_service(
+            self._training_service,
+            "training_service",
+        )
+
+    def set_training_service(self, service: TrainingService) -> None:
+        """Attach the training service (once-only)."""
+        self._set_once("_training_service", service, "Training service")
 
     @property
     def has_delegation_record_store(self) -> bool:
