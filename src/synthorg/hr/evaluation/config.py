@@ -270,6 +270,7 @@ class EvaluationConfig(BaseModel):
         experience: User Experience pillar configuration.
         calibration_drift_threshold: LLM calibration drift threshold
             for confidence reduction (0.0-10.0).
+        eval_loop: Closed-loop evaluation coordinator configuration.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)

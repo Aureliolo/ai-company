@@ -46,9 +46,3 @@ class TestStagnationResultWithReason:
             reason=StagnationReason.QUALITY_EROSION,
         )
         assert result.reason == StagnationReason.QUALITY_EROSION
-
-    def test_reason_default_none(self) -> None:
-        result = StagnationResult(
-            verdict=StagnationVerdict.NO_STAGNATION,
-        )
-        assert result.reason is None

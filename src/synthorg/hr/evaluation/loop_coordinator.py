@@ -211,6 +211,8 @@ class EvalLoopCoordinator:
         """Evaluate a single agent, isolating failures."""
         try:
             return await self._evaluation.evaluate(agent_id)
+        except MemoryError, RecursionError:
+            raise
         except Exception:
             logger.exception(
                 EVAL_LOOP_AGENT_EVAL_FAILED,
@@ -264,6 +266,8 @@ class EvalLoopCoordinator:
             try:
                 async with semaphore:
                     return await self._benchmarks.run_benchmark(name)
+            except MemoryError, RecursionError:
+                raise
             except Exception:
                 logger.exception(
                     EVAL_LOOP_BENCHMARK_FAILED,

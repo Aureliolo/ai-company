@@ -16,6 +16,9 @@ Formula approximation (no internal KV state required):
 from pydantic import BaseModel, ConfigDict, Field
 
 from synthorg.engine.loop_protocol import TurnRecord  # noqa: TC001
+from synthorg.observability import get_logger
+
+logger = get_logger(__name__)
 
 
 class PTEConfig(BaseModel):

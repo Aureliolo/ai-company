@@ -51,6 +51,7 @@ class QualityErosionDetector:
     ) -> None:
         if not 0.0 <= threshold <= 1.0:
             msg = f"threshold must be in [0.0, 1.0], got {threshold}"
+            logger.warning(msg, threshold=threshold)
             raise ValueError(msg)
         if not _MIN_WINDOW_SIZE <= window_size <= _MAX_WINDOW_SIZE:
             msg = (
@@ -58,6 +59,7 @@ class QualityErosionDetector:
                 f"[{_MIN_WINDOW_SIZE}, {_MAX_WINDOW_SIZE}], "
                 f"got {window_size}"
             )
+            logger.warning(msg, window_size=window_size)
             raise ValueError(msg)
         self._threshold = threshold
         self._window_size = window_size

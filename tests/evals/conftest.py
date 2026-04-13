@@ -72,3 +72,17 @@ def pytest_collection_modifyitems(
                         reason=f"eval category {category!r} != {eval_category!r}",
                     ),
                 )
+
+    # Fail fast when --eval-category matched zero tests (typo guard).
+    if eval_category is not None:
+        selected = sum(
+            1
+            for item in items
+            if item.get_closest_marker("agent_eval") is not None
+            and not item.get_closest_marker("skip")
+        )
+        if selected == 0:
+            pytest.exit(
+                f"--eval-category={eval_category!r} matched no tests",
+                returncode=1,
+            )

@@ -149,11 +149,9 @@ class TestAfterModel:
         result = await mw.after_model(ctx)
         assert result is ctx
 
-    async def test_skip_when_no_tags(self) -> None:
+    async def test_fallback_to_conversation_tag(self) -> None:
         mw = BehaviorTaggerMiddleware()
-        # _infer_tags always returns at least one tag (CONVERSATION fallback)
-        # so this tests the logging path
+        # No tool calls -> falls back to CONVERSATION tag.
         ctx = _make_ctx()
         await mw.after_model(ctx)
-        # Should still attach CONVERSATION tag
         ctx.with_metadata.assert_called_once()
