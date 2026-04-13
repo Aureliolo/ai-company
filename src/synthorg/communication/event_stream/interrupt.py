@@ -245,10 +245,13 @@ class InterruptStore:
         Returns:
             Tuple of copied pending interrupts.
         """
-        items = self._pending.values()
-        if session_id is not None:
-            items = (i for i in items if i.session_id == session_id)
-        return tuple(copy.deepcopy(i) for i in items)
+        if session_id is None:
+            return tuple(copy.deepcopy(i) for i in self._pending.values())
+        return tuple(
+            copy.deepcopy(i)
+            for i in self._pending.values()
+            if i.session_id == session_id
+        )
 
     async def resolve(
         self,
