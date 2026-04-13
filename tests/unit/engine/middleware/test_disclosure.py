@@ -67,7 +67,7 @@ def _make_context(
 def _success_result(
     tool_name: str,
     output: str = "",
-    metadata: dict | None = None,
+    metadata: dict[str, object] | None = None,
 ) -> ToolCallResult:
     """Build a successful ToolCallResult."""
     return ToolCallResult(

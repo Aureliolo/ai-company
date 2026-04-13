@@ -1,5 +1,6 @@
 """Tests for ToolInvoker disclosure-aware methods."""
 
+from collections.abc import Sequence
 from typing import Any
 
 import pytest
@@ -33,7 +34,7 @@ class _FakeTool(BaseTool):
 
 def _build_invoker(
     *,
-    tools: list[BaseTool] | None = None,
+    tools: Sequence[BaseTool] | None = None,
     checker: ToolPermissionChecker | None = None,
 ) -> ToolInvoker:
     """Build a ToolInvoker with given tools and optional permission checker."""
