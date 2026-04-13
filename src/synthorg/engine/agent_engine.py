@@ -596,12 +596,12 @@ class AgentEngine:
 
                 # Session replay: reconstruct context from event log
                 # when resuming a previous (crashed) execution.
+                # NOTE: CompanyConfig.session_replay_on_start gates this
+                # at the middleware layer (Issue A). The engine trusts
+                # that the caller only passes resume_execution_id when
+                # the flag is enabled.
                 replay_ctx: AgentContext | None = None
-                if (
-                    identity.company_config.session_replay_on_start
-                    and resume_execution_id is not None
-                    and self._event_reader is not None
-                ):
+                if resume_execution_id is not None and self._event_reader is not None:
                     from synthorg.engine.session import Session  # noqa: PLC0415
 
                     replay_result = await Session.replay(

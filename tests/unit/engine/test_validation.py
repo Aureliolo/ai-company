@@ -2,7 +2,9 @@
 
 import pytest
 
+from synthorg.core.agent import AgentIdentity
 from synthorg.core.enums import AgentStatus, TaskStatus
+from synthorg.core.task import Task
 from synthorg.engine._validation import (
     validate_agent,
     validate_run_inputs,
@@ -74,7 +76,7 @@ class TestValidateAgent:
 
     def test_rejects_onboarding_agent(
         self,
-        sample_agent_with_personality,
+        sample_agent_with_personality: AgentIdentity,
     ) -> None:
         agent = sample_agent_with_personality.model_copy(
             update={"status": AgentStatus.ONBOARDING},
@@ -84,7 +86,7 @@ class TestValidateAgent:
 
     def test_rejects_terminated_agent(
         self,
-        sample_agent_with_personality,
+        sample_agent_with_personality: AgentIdentity,
     ) -> None:
         agent = sample_agent_with_personality.model_copy(
             update={"status": AgentStatus.TERMINATED},
@@ -94,7 +96,7 @@ class TestValidateAgent:
 
     def test_accepts_active_agent(
         self,
-        sample_agent_with_personality,
+        sample_agent_with_personality: AgentIdentity,
     ) -> None:
         validate_agent(
             sample_agent_with_personality,
@@ -108,7 +110,7 @@ class TestValidateTask:
 
     def test_rejects_created_task(
         self,
-        sample_task_with_criteria,
+        sample_task_with_criteria: Task,
     ) -> None:
         task = sample_task_with_criteria.model_copy(
             update={"status": TaskStatus.CREATED},
@@ -118,7 +120,7 @@ class TestValidateTask:
 
     def test_rejects_completed_task(
         self,
-        sample_task_with_criteria,
+        sample_task_with_criteria: Task,
     ) -> None:
         task = sample_task_with_criteria.model_copy(
             update={"status": TaskStatus.COMPLETED},
@@ -128,7 +130,7 @@ class TestValidateTask:
 
     def test_rejects_wrong_assignee(
         self,
-        sample_task_with_criteria,
+        sample_task_with_criteria: Task,
     ) -> None:
         with pytest.raises(ExecutionStateError, match="not to agent"):
             validate_task(
@@ -139,7 +141,7 @@ class TestValidateTask:
 
     def test_accepts_assigned_task(
         self,
-        sample_task_with_criteria,
+        sample_task_with_criteria: Task,
     ) -> None:
         validate_task(
             sample_task_with_criteria,
@@ -149,7 +151,7 @@ class TestValidateTask:
 
     def test_accepts_in_progress_task(
         self,
-        sample_task_with_criteria,
+        sample_task_with_criteria: Task,
     ) -> None:
         task = sample_task_with_criteria.model_copy(
             update={"status": TaskStatus.IN_PROGRESS},
