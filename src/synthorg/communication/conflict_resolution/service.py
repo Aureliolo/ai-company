@@ -318,7 +318,7 @@ class ConflictResolutionService:
             # runtime type is MessageBus which has publish().
             _bus: object = self._message_bus
             if hasattr(_bus, "publish"):
-                await _bus.publish(msg)  # type: ignore[attr-defined]
+                await _bus.publish(msg)
             logger.info(
                 COMM_DISSENT_PUBLISHED,
                 dissent_id=record.id,
@@ -355,7 +355,7 @@ class ConflictResolutionService:
                 session_id=session_id,
                 event_type=AgUiEventType.DISSENT,
                 agent_id=record.dissenting_agent_id,
-                payload=payload.model_dump(mode="json"),  # type: ignore[arg-type]
+                payload=payload.model_dump(mode="json"),
             )
             logger.info(
                 COMM_DISSENT_EMITTED,
