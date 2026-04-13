@@ -82,6 +82,8 @@ class HeuristicRubricGrader:
 
         per_criterion_grades: dict[str, float] = {}
         for criterion in rubric.criteria:
+            # All criteria share the global probe_ratio because the
+            # data model has no probe-to-criterion mapping yet.
             per_criterion_grades[criterion.name] = (
                 0.8 if probe_ratio >= _PASS_THRESHOLD else 0.3
             )

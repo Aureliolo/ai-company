@@ -33,7 +33,7 @@ class TestVerifierHarnessPack:
         roles = {a["role"] for a in data["template"]["agents"]}
         assert roles == {"Planner", "Generator", "Evaluator"}
 
-    def test_evaluator_is_not_generator(self) -> None:
+    def test_evaluator_and_generator_have_different_presets(self) -> None:
         data = _load_pack()
         agents = data["template"]["agents"]
         evaluator = next(a for a in agents if a["role"] == "Evaluator")

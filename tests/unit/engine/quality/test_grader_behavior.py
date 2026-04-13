@@ -54,38 +54,45 @@ def _probe(text: str = "Feature complete") -> AtomicProbe:
 
 @pytest.mark.unit
 class TestHeuristicGraderBehavior:
-    async def test_pass_when_probes_match(self) -> None:
+    @pytest.mark.parametrize(
+        ("payload_text", "min_confidence", "probe_text", "expected"),
+        [
+            (
+                "feature complete and done",
+                0.7,
+                "feature complete",
+                VerificationVerdict.PASS,
+            ),
+            (
+                "something unrelated",
+                0.0,
+                "completely different",
+                VerificationVerdict.FAIL,
+            ),
+            (
+                "something unrelated",
+                0.95,
+                "completely different",
+                VerificationVerdict.REFER,
+            ),
+        ],
+    )
+    async def test_verdict_routing(
+        self,
+        payload_text: str,
+        min_confidence: float,
+        probe_text: str,
+        expected: VerificationVerdict,
+    ) -> None:
         grader = HeuristicRubricGrader()
         result = await grader.grade(
-            artifact=_artifact("feature complete and done"),
-            rubric=_rubric(),
-            probes=(_probe("feature complete"),),
+            artifact=_artifact(payload_text),
+            rubric=_rubric(min_confidence=min_confidence),
+            probes=(_probe(probe_text),),
             generator_agent_id="gen-agent",
             evaluator_agent_id="eval-agent",
         )
-        assert result.verdict == VerificationVerdict.PASS
-
-    async def test_fail_when_no_probes_match(self) -> None:
-        grader = HeuristicRubricGrader()
-        result = await grader.grade(
-            artifact=_artifact("something unrelated"),
-            rubric=_rubric(min_confidence=0.0),
-            probes=(_probe("completely different"),),
-            generator_agent_id="gen-agent",
-            evaluator_agent_id="eval-agent",
-        )
-        assert result.verdict == VerificationVerdict.FAIL
-
-    async def test_refer_when_confidence_below_threshold(self) -> None:
-        grader = HeuristicRubricGrader()
-        result = await grader.grade(
-            artifact=_artifact("something unrelated"),
-            rubric=_rubric(min_confidence=0.95),
-            probes=(_probe("completely different"),),
-            generator_agent_id="gen-agent",
-            evaluator_agent_id="eval-agent",
-        )
-        assert result.verdict == VerificationVerdict.REFER
+        assert result.verdict == expected
 
     async def test_empty_probes_refer(self) -> None:
         grader = HeuristicRubricGrader()
@@ -124,17 +131,16 @@ class TestHeuristicGraderBehavior:
 
 @pytest.mark.unit
 class TestLLMGraderBehavior:
-    async def test_produces_result(self) -> None:
+    async def test_grade_raises_not_implemented(self) -> None:
         grader = LLMRubricGrader()
-        result = await grader.grade(
-            artifact=_artifact(),
-            rubric=_rubric(),
-            probes=(_probe(),),
-            generator_agent_id="gen-agent",
-            evaluator_agent_id="eval-agent",
-        )
-        assert result.verdict in VerificationVerdict
-        assert 0.0 <= result.confidence <= 1.0
+        with pytest.raises(NotImplementedError, match="LLM-based"):
+            await grader.grade(
+                artifact=_artifact(),
+                rubric=_rubric(),
+                probes=(_probe(),),
+                generator_agent_id="gen-agent",
+                evaluator_agent_id="eval-agent",
+            )
 
     async def test_name_property(self) -> None:
         assert LLMRubricGrader().name == "llm"

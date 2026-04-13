@@ -409,46 +409,40 @@ class TestVerificationEdgeValidation:
         assert result.valid
 
     @pytest.mark.unit
-    def test_missing_pass_edge(self) -> None:
-        result = validate_workflow(
-            _verification_wf(
-                verify_edges=(
+    @pytest.mark.parametrize(
+        ("verify_edges", "expected_code"),
+        [
+            (
+                (
                     WorkflowEdgeType.VERIFICATION_FAIL,
                     WorkflowEdgeType.VERIFICATION_REFER,
                 ),
+                ValidationErrorCode.VERIFICATION_MISSING_PASS,
             ),
-        )
-        assert not result.valid
-        codes = {err.code for err in result.errors}
-        assert ValidationErrorCode.VERIFICATION_MISSING_PASS in codes
-
-    @pytest.mark.unit
-    def test_missing_fail_edge(self) -> None:
-        result = validate_workflow(
-            _verification_wf(
-                verify_edges=(
+            (
+                (
                     WorkflowEdgeType.VERIFICATION_PASS,
                     WorkflowEdgeType.VERIFICATION_REFER,
                 ),
+                ValidationErrorCode.VERIFICATION_MISSING_FAIL,
             ),
-        )
-        assert not result.valid
-        codes = {err.code for err in result.errors}
-        assert ValidationErrorCode.VERIFICATION_MISSING_FAIL in codes
-
-    @pytest.mark.unit
-    def test_missing_refer_edge(self) -> None:
-        result = validate_workflow(
-            _verification_wf(
-                verify_edges=(
+            (
+                (
                     WorkflowEdgeType.VERIFICATION_PASS,
                     WorkflowEdgeType.VERIFICATION_FAIL,
                 ),
+                ValidationErrorCode.VERIFICATION_MISSING_REFER,
             ),
-        )
+        ],
+    )
+    def test_missing_required_verification_edge(
+        self,
+        verify_edges: tuple[WorkflowEdgeType, ...],
+        expected_code: ValidationErrorCode,
+    ) -> None:
+        result = validate_workflow(_verification_wf(verify_edges=verify_edges))
         assert not result.valid
-        codes = {err.code for err in result.errors}
-        assert ValidationErrorCode.VERIFICATION_MISSING_REFER in codes
+        assert expected_code in {err.code for err in result.errors}
 
     @pytest.mark.unit
     def test_duplicate_pass_edge(self) -> None:

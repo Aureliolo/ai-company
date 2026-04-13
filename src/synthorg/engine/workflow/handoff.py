@@ -5,11 +5,12 @@ context passed between workflow stages -- particularly from a
 generator to a verification evaluator.
 """
 
+import copy
 import json
 from collections.abc import Mapping  # noqa: TC003
 from typing import Self
 
-from pydantic import Field, model_validator
+from pydantic import Field, field_validator, model_validator
 
 from synthorg.core.structured_artifact import StructuredArtifact
 from synthorg.core.types import NotBlankStr  # noqa: TC001
@@ -64,6 +65,14 @@ class HandoffArtifact(StructuredArtifact):
         description="Rubric for evaluator handoffs",
     )
 
+    @field_validator("payload", mode="before")
+    @classmethod
+    def _deepcopy_payload(cls, v: object) -> object:
+        """Deep-copy dict payloads to prevent external mutation."""
+        if isinstance(v, dict):
+            return copy.deepcopy(v)
+        return v
+
     @model_validator(mode="after")
     def _reject_self_handoff(self) -> Self:
         """Reject handoffs where sender and receiver are the same."""
@@ -71,7 +80,7 @@ class HandoffArtifact(StructuredArtifact):
             msg = "Self-handoff rejected: from_agent_id must differ from to_agent_id"
             raise ValueError(msg)
         try:
-            json.dumps(dict(self.payload))
+            json.dumps(dict(self.payload), allow_nan=False)
         except (TypeError, ValueError) as exc:
             msg = f"Payload must be JSON-serializable: {exc}"
             raise ValueError(msg) from exc

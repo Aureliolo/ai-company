@@ -64,17 +64,11 @@ class TestIdentityDecomposerBehavior:
 
 @pytest.mark.unit
 class TestLLMDecomposerBehavior:
-    async def test_produces_probes(self) -> None:
+    async def test_decompose_raises_not_implemented(self) -> None:
         decomposer = LLMCriteriaDecomposer()
         criteria = (AcceptanceCriterion(description="Done"),)
-        result = await decomposer.decompose(criteria, task_id="t1", agent_id="a1")
-        assert len(result) == 1
-        assert result[0].source_criterion == "Done"
-
-    async def test_empty_criteria(self) -> None:
-        decomposer = LLMCriteriaDecomposer()
-        result = await decomposer.decompose((), task_id="t1", agent_id="a1")
-        assert result == ()
+        with pytest.raises(NotImplementedError, match="LLM-based"):
+            await decomposer.decompose(criteria, task_id="t1", agent_id="a1")
 
     async def test_name_property(self) -> None:
         assert LLMCriteriaDecomposer().name == "llm"

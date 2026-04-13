@@ -140,6 +140,16 @@ class VerificationRubric(BaseModel):
         if len(names) != len(set(names)):
             msg = "Duplicate criterion names"
             raise ValueError(msg)
+        allowed = set(names)
+        for ex in self.calibration_examples:
+            if ex.expected_grades is not None:
+                unknown = set(ex.expected_grades.keys()) - allowed
+                if unknown:
+                    msg = (
+                        f"Calibration example references unknown "
+                        f"criteria: {sorted(unknown)}"
+                    )
+                    raise ValueError(msg)
         return self
 
 
