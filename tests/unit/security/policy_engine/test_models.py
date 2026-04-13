@@ -35,7 +35,9 @@ class TestPolicyActionRequest:
             req.action_type = "delegation"  # type: ignore[misc]
 
     def test_blank_action_type_rejected(self) -> None:
-        with pytest.raises(ValueError, match="blank"):
+        with pytest.raises(
+            ValueError, match=r"at least 1 character|must not be blank|whitespace-only"
+        ):
             PolicyActionRequest(
                 action_type="   ",
                 principal="agent-001",
@@ -43,7 +45,9 @@ class TestPolicyActionRequest:
             )
 
     def test_blank_principal_rejected(self) -> None:
-        with pytest.raises(ValueError, match="blank"):
+        with pytest.raises(
+            ValueError, match=r"at least 1 character|must not be blank|whitespace-only"
+        ):
             PolicyActionRequest(
                 action_type="tool_invoke",
                 principal="",
@@ -60,7 +64,7 @@ class TestPolicyActionRequest:
         )
         # Mutate original -- should not affect the request.
         original_ctx["nested"]["key"] = "mutated"
-        assert req.context["nested"]["key"] == "value"  # type: ignore[index]
+        assert req.context["nested"]["key"] == "value"
 
     def test_default_context_is_empty(self) -> None:
         req = PolicyActionRequest(
@@ -104,7 +108,9 @@ class TestPolicyDecision:
             decision.allow = False  # type: ignore[misc]
 
     def test_blank_reason_rejected(self) -> None:
-        with pytest.raises(ValueError, match="blank"):
+        with pytest.raises(
+            ValueError, match=r"at least 1 character|must not be blank|whitespace-only"
+        ):
             PolicyDecision(
                 allow=True,
                 reason="",

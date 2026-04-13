@@ -20,7 +20,7 @@ from synthorg.tools.integrity_check import (
 def _make_mock_tool(
     name: str = "test_tool",
     description: str = "A test tool",
-    parameters_schema: dict | None = None,
+    parameters_schema: dict[str, object] | None = None,
 ) -> MagicMock:
     """Create a mock BaseTool with a to_definition() method."""
     from synthorg.providers.models import ToolDefinition

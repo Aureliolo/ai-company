@@ -10,6 +10,7 @@ not a middleware.
 """
 
 import re
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -151,11 +152,11 @@ class HTMLParseGuard:
 
         doc = lxml_html.fromstring(raw)
         stripped_count = self._strip_dangerous_elements(doc)
-        cleaned_text = doc.text_content().strip()
+        cleaned_text = doc.text_content().strip()  # type: ignore[attr-defined]
 
         # Compute gap ratio against the original.
         original_doc = lxml_html.fromstring(raw)
-        original_text = original_doc.text_content().strip()
+        original_text = original_doc.text_content().strip()  # type: ignore[attr-defined]
         gap_ratio = self._compute_gap_ratio(original_text, cleaned_text)
         gap_detected = gap_ratio > self._config.gap_threshold_ratio
 
@@ -176,7 +177,7 @@ class HTMLParseGuard:
         )
 
     @staticmethod
-    def _strip_dangerous_elements(doc: object) -> int:
+    def _strip_dangerous_elements(doc: Any) -> int:
         """Strip scripts, styles, comments, and hidden elements.
 
         Returns the count of stripped elements.
@@ -186,15 +187,15 @@ class HTMLParseGuard:
         stripped = 0
 
         for tag in _STRIP_TAGS:
-            for element in doc.iter(tag):  # type: ignore[union-attr]
+            for element in doc.iter(tag):
                 element.drop_tree()
                 stripped += 1
 
-        for comment in doc.iter(etree.Comment):  # type: ignore[union-attr]
+        for comment in doc.iter(etree.Comment):
             comment.drop_tree()
 
         elements_to_drop: list[object] = []
-        for element in doc.iter():  # type: ignore[union-attr]
+        for element in doc.iter():
             if not hasattr(element, "tag") or not isinstance(element.tag, str):
                 continue
             if element.get("aria-hidden", "").lower() == "true":
@@ -205,7 +206,7 @@ class HTMLParseGuard:
                 elements_to_drop.append(element)
 
         for element in elements_to_drop:
-            element.drop_tree()  # type: ignore[union-attr]
+            element.drop_tree()  # type: ignore[attr-defined]
             stripped += 1
 
         return stripped

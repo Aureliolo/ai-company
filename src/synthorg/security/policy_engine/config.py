@@ -99,6 +99,5 @@ def build_policy_engine(
             fail_closed=config.fail_closed,
         )
 
-    # Unreachable due to Literal type, but guard defensively.
-    msg = f"Unknown policy engine: {config.engine!r}"
+    msg = f"Unknown policy engine: {config.engine!r}"  # type: ignore[unreachable]
     raise ValueError(msg)

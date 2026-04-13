@@ -102,7 +102,7 @@ class TestSemanticDriftDetector:
         config = SemanticDriftConfig(enabled=True, threshold=0.99)
         # Mock embedding function to return orthogonal vectors.
         detector = SemanticDriftDetector(config=config)
-        detector._compute_similarity = AsyncMock(return_value=0.1)  # type: ignore[attr-defined]
+        detector._compute_similarity = AsyncMock(return_value=0.1)  # type: ignore[method-assign]
 
         ctx = _make_ctx()
         expected = _make_model_result()
@@ -117,7 +117,7 @@ class TestSemanticDriftDetector:
         """When similarity is above threshold, no annotation."""
         config = SemanticDriftConfig(enabled=True, threshold=0.1)
         detector = SemanticDriftDetector(config=config)
-        detector._compute_similarity = AsyncMock(return_value=0.9)  # type: ignore[attr-defined]
+        detector._compute_similarity = AsyncMock(return_value=0.9)  # type: ignore[method-assign]
 
         ctx = _make_ctx()
         expected = _make_model_result()
@@ -132,7 +132,7 @@ class TestSemanticDriftDetector:
         """Embedding errors should not propagate -- fail soft."""
         config = SemanticDriftConfig(enabled=True)
         detector = SemanticDriftDetector(config=config)
-        detector._compute_similarity = AsyncMock(  # type: ignore[attr-defined]
+        detector._compute_similarity = AsyncMock(  # type: ignore[method-assign]
             side_effect=RuntimeError("embedding failed"),
         )
 
@@ -148,7 +148,7 @@ class TestSemanticDriftDetector:
         """Inner call is always made, even when drift detected."""
         config = SemanticDriftConfig(enabled=True, threshold=0.99)
         detector = SemanticDriftDetector(config=config)
-        detector._compute_similarity = AsyncMock(return_value=0.01)  # type: ignore[attr-defined]
+        detector._compute_similarity = AsyncMock(return_value=0.01)  # type: ignore[method-assign]
 
         ctx = _make_ctx()
         expected = _make_model_result()
