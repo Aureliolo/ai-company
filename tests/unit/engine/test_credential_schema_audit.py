@@ -40,6 +40,20 @@ def _could_carry_credential(annotation: Any) -> bool:
     )
 
 
+def _contains_base_model(annotation: Any) -> bool:
+    """Return True if the annotation contains a BaseModel subclass.
+
+    Walks into unions, optionals, and generic containers so that
+    ``SomeModel | None`` and ``list[SomeModel]`` are detected.
+    """
+    if isinstance(annotation, type) and issubclass(annotation, BaseModel):
+        return True
+    origin = get_origin(annotation)
+    if origin is not None:
+        return any(_contains_base_model(a) for a in get_args(annotation))
+    return False
+
+
 def _check_model_recursive(
     model_cls: type[BaseModel],
     path: str,
@@ -56,14 +70,11 @@ def _check_model_recursive(
         annotation = info.annotation
 
         # Check the field name if the type could carry credentials.
-        # BaseModel fields are included: a field named "api_key" is
-        # suspicious even if wrapped in a Pydantic model.
-        is_model = isinstance(annotation, type) and issubclass(
-            annotation,
-            BaseModel,
-        )
+        # BaseModel fields are included (even wrapped in unions or
+        # containers): a field named "api_key" is suspicious whether
+        # typed as SomeModel, SomeModel | None, or list[SomeModel].
         if (
-            _could_carry_credential(annotation) or is_model
+            _could_carry_credential(annotation) or _contains_base_model(annotation)
         ) and _matches_credential_pattern(name):
             violations.append(
                 f"{field_path} (type={annotation}) matches a credential pattern",
