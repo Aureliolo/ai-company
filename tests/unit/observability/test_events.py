@@ -267,6 +267,7 @@ class TestEventConstants:
             "telemetry",
             "terminal",
             "training",
+            "verification",
             "versioning",
             "web",
         }
