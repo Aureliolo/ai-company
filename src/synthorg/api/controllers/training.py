@@ -432,6 +432,13 @@ class TrainingController(Controller):
             raise NotFoundError(msg)
 
         if plan.status != TrainingPlanStatus.PENDING:
+            logger.warning(
+                API_REQUEST_ERROR,
+                plan_id=str(plan.id),
+                agent_id=str(identity.id),
+                status=plan.status.value,
+                error="Attempt to modify non-pending training plan",
+            )
             msg = "Cannot modify plan after execution or failure"
             raise ConflictError(msg)
 
