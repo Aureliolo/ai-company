@@ -175,18 +175,28 @@ class ApprovalGate:
                     exc_info=True,
                 )
 
-        await self._event_hub.publish_raw(
-            session_id=session_id,
-            event_type=AgUiEventType.APPROVAL_INTERRUPT,
-            agent_id=agent_id,
-            payload={
-                "approval_id": escalation.approval_id,
-                "tool_name": escalation.tool_name,
-                "action_type": escalation.action_type,
-                "risk_level": escalation.risk_level.value,
-                "reason": escalation.reason,
-            },
-        )
+        try:
+            await self._event_hub.publish_raw(
+                session_id=session_id,
+                event_type=AgUiEventType.APPROVAL_INTERRUPT,
+                agent_id=agent_id,
+                payload={
+                    "approval_id": escalation.approval_id,
+                    "tool_name": escalation.tool_name,
+                    "action_type": escalation.action_type,
+                    "risk_level": escalation.risk_level.value,
+                    "reason": escalation.reason,
+                },
+            )
+        except MemoryError, RecursionError:
+            raise
+        except Exception:
+            logger.warning(
+                APPROVAL_GATE_NOTIFICATION_FAILED,
+                approval_id=escalation.approval_id,
+                note="Failed to publish APPROVAL_INTERRUPT event",
+                exc_info=True,
+            )
 
     async def _notify_approval_required(
         self,
@@ -321,11 +331,21 @@ class ApprovalGate:
         )
 
         if session_id is not None and self._event_hub is not None:
-            await self._event_hub.publish_raw(
-                session_id=session_id,
-                event_type=AgUiEventType.APPROVAL_RESUMED,
-                payload={"approval_id": approval_id},
-            )
+            try:
+                await self._event_hub.publish_raw(
+                    session_id=session_id,
+                    event_type=AgUiEventType.APPROVAL_RESUMED,
+                    payload={"approval_id": approval_id},
+                )
+            except MemoryError, RecursionError:
+                raise
+            except Exception:
+                logger.warning(
+                    APPROVAL_GATE_NOTIFICATION_FAILED,
+                    approval_id=approval_id,
+                    note="Failed to publish APPROVAL_RESUMED event",
+                    exc_info=True,
+                )
 
         return context, parked.id
 

@@ -167,6 +167,14 @@ class InterruptStore:
     Each interrupt gets an ``asyncio.Event`` that is set when the
     interrupt is resolved.  Callers can await resolution via
     :meth:`wait_for_resolution`.
+
+    .. warning::
+
+       This implementation is **not persistent**.  On server restart,
+       all pending interrupts and their resolutions are lost.  For
+       production deployments that require durability, implement a
+       persistent backend (e.g. SQL-backed) behind the same interface.
+       See also: ``A2A gateway implementation`` (#1164).
     """
 
     __slots__ = ("_events", "_pending", "_results")
@@ -279,9 +287,10 @@ class InterruptStore:
         try:
             await asyncio.wait_for(event.wait(), timeout=timeout)
         except TimeoutError:
-            # Clean up expired interrupt
+            # Clean up expired interrupt and any orphaned result
             self._pending.pop(interrupt_id, None)
             self._events.pop(interrupt_id, None)
+            self._results.pop(interrupt_id, None)
             logger.info(
                 EVENT_STREAM_INTERRUPT_EXPIRED,
                 interrupt_id=interrupt_id,

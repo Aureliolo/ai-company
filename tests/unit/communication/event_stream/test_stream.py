@@ -53,7 +53,6 @@ class TestEventStreamHub:
         q_xyz = hub.subscribe("session-xyz")
         event = _make_event(session_id="session-abc")
         await hub.publish(event)
-        assert q_xyz.empty() is not False or q_xyz.qsize() == 0
         assert q_abc.get_nowait().id == "evt-001"
         assert q_xyz.empty()
 

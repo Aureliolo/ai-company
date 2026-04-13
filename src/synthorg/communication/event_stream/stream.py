@@ -96,7 +96,7 @@ class EventStreamHub:
         queues = self._subscribers.get(event.session_id)
         if not queues:
             return
-        for queue in queues:
+        for queue in list(queues):
             try:
                 queue.put_nowait(event)
             except asyncio.QueueFull:

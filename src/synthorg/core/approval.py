@@ -4,6 +4,7 @@ Represents an action that requires human approval before proceeding.
 Used by the approval queue API and referenced by engine and security subsystems.
 """
 
+import copy
 from typing import Self
 
 from pydantic import (
@@ -64,6 +65,12 @@ class ApprovalItem(BaseModel):
         description="Structured evidence for HITL approval",
     )
     metadata: dict[str, str] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def _deep_copy_metadata(self) -> Self:
+        """Deep-copy metadata to prevent external mutation."""
+        object.__setattr__(self, "metadata", copy.deepcopy(self.metadata))
+        return self
 
     @model_validator(mode="after")
     def _validate_decision_fields(self) -> Self:

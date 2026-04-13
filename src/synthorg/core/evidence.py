@@ -67,7 +67,7 @@ class EvidencePackage(StructuredArtifact):
     narrative: NotBlankStr = Field(
         description="Plain-English explanation (2-5 sentences)",
     )
-    reasoning_trace: tuple[str, ...] = Field(
+    reasoning_trace: tuple[NotBlankStr, ...] = Field(
         default=(),
         description="Compressed reasoning steps",
     )

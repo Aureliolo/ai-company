@@ -25,6 +25,7 @@ from synthorg.api.state import AppState  # noqa: TC001
 from synthorg.communication.event_stream.interrupt import (
     InterruptResolution,
     InterruptStore,
+    InterruptType,
     ResumeDecision,
 )
 from synthorg.communication.event_stream.stream import EventStreamHub  # noqa: TC001
@@ -70,7 +71,7 @@ class InterruptResponse(BaseModel):
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     id: NotBlankStr
-    type: str
+    type: InterruptType
     session_id: NotBlankStr
     agent_id: NotBlankStr
     created_at: str
@@ -128,10 +129,20 @@ async def _sse_event_stream(
                     queue.get(),
                     timeout=_SSE_KEEPALIVE_SECONDS,
                 )
-                yield {
-                    "event": event.type.value,
-                    "data": _json.dumps(event.model_dump(mode="json")),
-                }
+                try:
+                    data = _json.dumps(event.model_dump(mode="json"))
+                except MemoryError, RecursionError:
+                    raise
+                except Exception:
+                    logger.warning(
+                        EVENT_STREAM_CLIENT_DISCONNECTED,
+                        session_id=session_id,
+                        event_id=event.id,
+                        note="Failed to serialize event, skipping",
+                        exc_info=True,
+                    )
+                    continue
+                yield {"event": event.type.value, "data": data}
             except TimeoutError:
                 yield {"event": "keepalive", "data": "{}"}
     finally:
@@ -256,7 +267,7 @@ class InterruptController(Controller):
         items = tuple(
             InterruptResponse(
                 id=i.id,
-                type=i.type.value,
+                type=i.type,
                 session_id=i.session_id,
                 agent_id=i.agent_id,
                 created_at=i.created_at.isoformat(),
