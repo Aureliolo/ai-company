@@ -29,6 +29,7 @@ from .models import (
 logger = get_logger(__name__)
 
 _MIN_WINDOW_SIZE: int = 2
+_MAX_WINDOW_SIZE: int = 50
 
 
 class QualityErosionDetector:
@@ -51,8 +52,12 @@ class QualityErosionDetector:
         if not 0.0 <= threshold <= 1.0:
             msg = f"threshold must be in [0.0, 1.0], got {threshold}"
             raise ValueError(msg)
-        if window_size < _MIN_WINDOW_SIZE:
-            msg = f"window_size must be >= 2, got {window_size}"
+        if not _MIN_WINDOW_SIZE <= window_size <= _MAX_WINDOW_SIZE:
+            msg = (
+                f"window_size must be in "
+                f"[{_MIN_WINDOW_SIZE}, {_MAX_WINDOW_SIZE}], "
+                f"got {window_size}"
+            )
             raise ValueError(msg)
         self._threshold = threshold
         self._window_size = window_size

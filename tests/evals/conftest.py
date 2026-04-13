@@ -12,6 +12,12 @@ def pytest_addoption(parser: pytest.Parser) -> None:
     """Add pytest CLI options for agent-eval tests."""
     group = parser.getgroup("agent_eval", "Agent evaluation options")
     group.addoption(
+        "--run-agent-evals",
+        action="store_true",
+        default=False,
+        help="Include agent-eval tests (excluded by default)",
+    )
+    group.addoption(
         "--eval-category",
         action="store",
         default=None,
@@ -30,13 +36,28 @@ def pytest_collection_modifyitems(
     config: pytest.Config,
     items: list[pytest.Item],
 ) -> None:
-    """Apply eval-specific filtering and timeout overrides."""
+    """Apply eval-specific filtering and timeout overrides.
+
+    Agent-eval tests are excluded from the default suite unless
+    ``--run-agent-evals`` is passed.  The ``--eval-category``
+    flag further narrows within the eval suite.
+    """
+    run_evals = config.getoption("--run-agent-evals", default=False)
     eval_category = config.getoption("--eval-category", default=None)
     eval_timeout = config.getoption("--eval-timeout", default=300)
 
     for item in items:
         marker = item.get_closest_marker("agent_eval")
         if marker is None:
+            continue
+
+        # Skip unless explicitly opted-in.
+        if not run_evals and eval_category is None:
+            item.add_marker(
+                pytest.mark.skip(
+                    reason="agent-eval tests require --run-agent-evals",
+                ),
+            )
             continue
 
         # Apply eval timeout.

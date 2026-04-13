@@ -20,6 +20,7 @@ from synthorg.engine.context import AgentContext
 from synthorg.providers.enums import FinishReason
 
 if TYPE_CHECKING:
+    from synthorg.engine.trajectory.efficiency_ratios import EfficiencyRatios
     from synthorg.providers.models import CompletionConfig
     from synthorg.providers.protocol import CompletionProvider
     from synthorg.tools.invoker import ToolInvoker
@@ -93,6 +94,10 @@ class TurnRecord(BaseModel):
         node_types: Node types that executed in this turn (e.g.
             LLM_CALL, TOOL_INVOCATION). Defaults to empty for
             deserialization of legacy data.
+        behavior_tags: Behavior categories inferred by BehaviorTaggerMiddleware.
+        efficiency_delta: Efficiency ratios against an ideal baseline.
+        prior_tool_call_count: Cumulative tool calls before this turn (for PTE).
+        tool_response_tokens: Tokens from tool responses this turn (for PTE).
         success: Whether this turn completed without error or content filter (computed).
     """
 
@@ -143,7 +148,7 @@ class TurnRecord(BaseModel):
         default=(),
         description="Behavior categories inferred by BehaviorTaggerMiddleware",
     )
-    efficiency_delta: object | None = Field(
+    efficiency_delta: EfficiencyRatios | None = Field(
         default=None,
         description="Efficiency ratios against an ideal baseline",
     )

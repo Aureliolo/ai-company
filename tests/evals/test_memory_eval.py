@@ -5,6 +5,7 @@ import pytest
 from synthorg.engine.loop_protocol import BehaviorTag
 
 
+@pytest.mark.integration
 @pytest.mark.agent_eval(category="memory")
 async def test_agent_memory_behavior() -> None:
     """Verify agent correctly categorizes memory operations."""

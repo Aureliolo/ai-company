@@ -617,19 +617,17 @@ PTE correlates better with wall-clock latency for tool-integrated reasoning.
 
 **Formula approximation** (no internal KV state required):
 
-```
-PTE = input_tokens * (1 + eviction_penalty * prior_tool_call_count)
-    + output_tokens
-    + tool_response_tokens * tool_inflation_factor
-```
+    PTE = input_tokens * (1 + eviction_penalty * prior_tool_call_count)
+        + output_tokens
+        + tool_response_tokens * tool_inflation_factor
 
 Default tuning: ``eviction_penalty = 0.3``, ``tool_inflation_factor = 1.5``.
-Configurable per-provider via ``PTEConfig``.
+``PTEConfig`` defines these tuning parameters where
+``prefill_token_equivalents(..., config=...)`` is called.
 
 **Integration**: PTE is **additive, not a replacement** for token budgets. Token
 budgets continue to drive per-task spend caps; PTE drives efficiency analysis via
-``EfficiencyRatios.pte`` and ``pte_ratio``. Exposed in observability events for
-correlation with wall-clock latency.
+``EfficiencyRatios.pte`` and ``pte_ratio``.
 
 **Configuration**: ``budget.pte_tracking_enabled: bool = False`` (opt-in).
 

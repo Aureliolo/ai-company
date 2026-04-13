@@ -49,6 +49,7 @@ class ExternalBenchmarkRegistry:
                 f"Benchmark {benchmark.name!r} already registered "
                 f"with a different instance"
             )
+            logger.warning(msg)
             raise ValueError(msg)
         self._benchmarks[benchmark.name] = benchmark
 
@@ -63,6 +64,7 @@ class ExternalBenchmarkRegistry:
         """
         if name not in self._benchmarks:
             msg = f"Benchmark {name!r} not registered"
+            logger.warning(msg)
             raise KeyError(msg)
         return self._benchmarks[name]
 
@@ -74,15 +76,16 @@ class ExternalBenchmarkRegistry:
         self,
         name: str,
         *,
-        _agent_output_fn: object | None = None,
         behavior_tags: frozenset[BehaviorTag] | None = None,
     ) -> BenchmarkRunResult:
         """Run a single benchmark and collect results.
 
+        Grades each test case against its expected output as a
+        baseline self-check.  A real agent execution callback will
+        be added when the eval loop wires up live agent runs.
+
         Args:
             name: Registered benchmark name.
-            agent_output_fn: Callable that produces agent output
-                for a test case (placeholder for agent execution).
             behavior_tags: Filter test cases by behavior tags.
 
         Returns:

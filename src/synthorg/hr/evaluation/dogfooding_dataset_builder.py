@@ -135,13 +135,15 @@ class DogfoodingDatasetBuilder:
             )
         )
 
+        now = datetime.now(UTC)
+
         return EvalDataset(
             name=NotBlankStr(dataset_name),
             source="dogfooding",
             behavior_tags=all_tags,
             test_cases=tuple(cases),
-            created_at=datetime.now(UTC),
-            version=NotBlankStr(f"v{datetime.now(UTC):%Y%m%d}"),
+            created_at=now,
+            version=NotBlankStr(f"v{now:%Y%m%d}"),
         )
 
 
@@ -155,7 +157,6 @@ def _task_type_to_behavior_tag(task_type: str) -> BehaviorTag:
         "research": BehaviorTag.RETRIEVAL,
         "review": BehaviorTag.VERIFICATION,
         "design": BehaviorTag.TOOL_USE,
-        "documentation": BehaviorTag.SUMMARIZATION,
         "meeting": BehaviorTag.CONVERSATION,
         "admin": BehaviorTag.COORDINATION,
     }

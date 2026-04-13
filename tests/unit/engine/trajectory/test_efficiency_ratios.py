@@ -104,6 +104,10 @@ class TestEfficiencyRatios:
         with pytest.raises(ValidationError):
             self._make_ratios(structural_erosion_score=1.1)
 
+    def test_erosion_score_negative_rejected(self) -> None:
+        with pytest.raises(ValidationError):
+            self._make_ratios(structural_erosion_score=-0.1)
+
     def test_verbosity_deltas(self) -> None:
         ratios = self._make_ratios(
             verbosity_delta_per_iteration=(0.1, 0.2, 0.3),
@@ -151,12 +155,29 @@ class TestComputeEfficiencyRatios:
         assert ratios.verbosity_ratio == 2.0
         assert ratios.pte_ratio == 2.0
 
-    def test_zero_ideal_tool_calls(self) -> None:
+    def test_zero_ideal_tool_calls_with_observed(self) -> None:
+        """When baseline expects zero tool calls but agent used tools,
+        ratio equals the raw observed count to signal unexpected calls."""
         baseline = _make_baseline(ideal_tool_call_count=0)
         ratios = compute_efficiency_ratios(
             baseline=baseline,
             observed_steps=10,
             observed_tool_calls=3,
+            observed_latency_seconds=30.0,
+            observed_output_tokens=500,
+            structural_erosion_score=0.0,
+            verbosity_deltas=(),
+            observed_pte=1000.0,
+        )
+        assert ratios.tool_call_ratio == 3.0
+
+    def test_zero_ideal_and_zero_observed_tool_calls(self) -> None:
+        """When both baseline and observed are zero, ratio is 0.0."""
+        baseline = _make_baseline(ideal_tool_call_count=0)
+        ratios = compute_efficiency_ratios(
+            baseline=baseline,
+            observed_steps=10,
+            observed_tool_calls=0,
             observed_latency_seconds=30.0,
             observed_output_tokens=500,
             structural_erosion_score=0.0,

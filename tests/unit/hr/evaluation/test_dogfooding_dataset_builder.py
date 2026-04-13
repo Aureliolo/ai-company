@@ -60,7 +60,6 @@ class TestTaskTypeToBehaviorTag:
             ("research", BehaviorTag.RETRIEVAL),
             ("review", BehaviorTag.VERIFICATION),
             ("design", BehaviorTag.TOOL_USE),
-            ("documentation", BehaviorTag.SUMMARIZATION),
             ("meeting", BehaviorTag.CONVERSATION),
             ("admin", BehaviorTag.COORDINATION),
             ("unknown", BehaviorTag.TOOL_USE),

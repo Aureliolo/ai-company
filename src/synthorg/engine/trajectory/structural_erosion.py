@@ -127,15 +127,10 @@ def detect_dead_branches(
     for i, turn in enumerate(window[:-1]):
         for tool_name in turn.tool_calls_made:
             total_calls += 1
-            # Check if any subsequent turn references a tool
-            # with the same base name (prefix before ':').
-            base_name = tool_name.split(":")[0] if ":" in tool_name else tool_name
+            # Check if any subsequent turn references the same tool.
+            # tool_calls_made contains plain tool names (not fingerprints).
             consumed = any(
-                any(
-                    (n.split(":")[0] if ":" in n else n) == base_name
-                    for n in later.tool_calls_made
-                )
-                for later in window[i + 1 :]
+                tool_name in later.tool_calls_made for later in window[i + 1 :]
             )
             if not consumed:
                 dead_calls += 1

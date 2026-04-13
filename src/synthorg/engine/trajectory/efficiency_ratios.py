@@ -169,13 +169,18 @@ def compute_efficiency_ratios(  # noqa: PLR0913
     Returns:
         Computed efficiency ratios.
     """
+    if baseline.ideal_tool_call_count > 0:
+        tool_call_ratio = observed_tool_calls / baseline.ideal_tool_call_count
+    elif observed_tool_calls == 0:
+        tool_call_ratio = 0.0
+    else:
+        # Baseline expects zero tool calls but agent used tools --
+        # use raw count as ratio to signal unexpected extra calls.
+        tool_call_ratio = float(observed_tool_calls)
+
     return EfficiencyRatios(
         step_ratio=observed_steps / baseline.ideal_step_count,
-        tool_call_ratio=(
-            observed_tool_calls / baseline.ideal_tool_call_count
-            if baseline.ideal_tool_call_count > 0
-            else 0.0
-        ),
+        tool_call_ratio=tool_call_ratio,
         latency_ratio=observed_latency_seconds / baseline.ideal_latency_seconds,
         verbosity_ratio=observed_output_tokens / baseline.ideal_output_tokens,
         structural_erosion_score=structural_erosion_score,

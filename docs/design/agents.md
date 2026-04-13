@@ -819,7 +819,7 @@ from the default unit suite:
 uv run python -m pytest tests/evals/ -n 8 --eval-timeout=300
 ```
 
-``N1PrefixReplay`` utility replays first N-1 turns of a recorded trace and lets
+``n1_prefix_replay`` utility replays first N-1 turns of a recorded trace and lets
 the agent generate only the final turn for regression testing.
 
 CI: ``evals.yml`` runs nightly and on ``run-evals`` label.

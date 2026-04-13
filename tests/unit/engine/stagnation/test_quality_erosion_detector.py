@@ -47,9 +47,13 @@ class TestQualityErosionDetectorInit:
         with pytest.raises(ValueError, match="threshold"):
             QualityErosionDetector(threshold=1.5)
 
-    def test_invalid_window_size(self) -> None:
+    def test_invalid_window_size_too_small(self) -> None:
         with pytest.raises(ValueError, match="window_size"):
             QualityErosionDetector(window_size=1)
+
+    def test_invalid_window_size_too_large(self) -> None:
+        with pytest.raises(ValueError, match="window_size"):
+            QualityErosionDetector(window_size=51)
 
 
 @pytest.mark.unit

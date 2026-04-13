@@ -5,7 +5,8 @@ agent behavior by replaying the first N-1 turns of a recorded
 trace and letting the agent generate only the final turn.
 """
 
-from collections.abc import Callable
+import inspect
+from collections.abc import Awaitable, Callable
 
 from synthorg.engine.loop_protocol import ExecutionResult, TurnRecord
 
@@ -13,7 +14,10 @@ from synthorg.engine.loop_protocol import ExecutionResult, TurnRecord
 async def n1_prefix_replay(
     trace: ExecutionResult,
     *,
-    replay_fn: Callable[[tuple[TurnRecord, ...]], TurnRecord],
+    replay_fn: Callable[
+        [tuple[TurnRecord, ...]],
+        TurnRecord | Awaitable[TurnRecord],
+    ],
 ) -> TurnRecord:
     """Replay first N-1 turns, let agent generate turn N only.
 
@@ -24,7 +28,8 @@ async def n1_prefix_replay(
     Args:
         trace: Complete execution result with N turns.
         replay_fn: Callable that takes the prefix turns (0..N-2)
-            and returns the agent's generated final turn.
+            and returns the agent's generated final turn.  May be
+            sync or async.
 
     Returns:
         The agent's generated final turn, for comparison against
@@ -38,4 +43,7 @@ async def n1_prefix_replay(
         raise ValueError(msg)
 
     prefix = trace.turns[:-1]
-    return replay_fn(prefix)
+    result = replay_fn(prefix)
+    if inspect.isawaitable(result):
+        return await result
+    return result
