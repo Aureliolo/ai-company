@@ -12,7 +12,8 @@ from synthorg.communication.async_tasks.models import (
 from synthorg.core.agent import AgentIdentity
 from synthorg.engine.compaction.models import CompressionMetadata
 from synthorg.engine.context import AgentContext
-from synthorg.providers.models import ZERO_TOKEN_USAGE, ChatMessage, MessageRole
+from synthorg.providers.enums import MessageRole
+from synthorg.providers.models import ZERO_TOKEN_USAGE, ChatMessage
 
 
 def _make_record(**overrides: object) -> AsyncTaskRecord:

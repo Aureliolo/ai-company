@@ -18,10 +18,10 @@ class TestProceduralMemoryScope:
         assert values == {"agent", "role", "department", "org"}
 
     def test_agent_is_default(self) -> None:
-        assert ProceduralMemoryScope.AGENT == "agent"
+        assert ProceduralMemoryScope.AGENT.value == "agent"
 
     def test_org_value(self) -> None:
-        assert ProceduralMemoryScope.ORG == "org"
+        assert ProceduralMemoryScope.ORG.value == "org"
 
 
 def _make_proposal(**overrides: object) -> ProceduralMemoryProposal:
