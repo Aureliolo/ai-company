@@ -379,12 +379,8 @@ def _verification_wf(
     )
     edge_list: list[WorkflowEdge] = [_edge("e1", "s", "v")]
     target_nodes: list[WorkflowNode] = []
-    seen_targets: set[str] = set()
     for i, et in enumerate(verify_edges):
         tid = f"target-{i}"
-        if tid in seen_targets:
-            tid = f"target-{i}-dup"
-        seen_targets.add(tid)
         edge_list.append(_edge(f"ev{i}", "v", tid, et))
         target_nodes.append(_node(tid, WorkflowNodeType.TASK, title=tid))
     edge_list.extend(_edge(f"e-{tn.id}-end", tn.id, "e") for tn in target_nodes)

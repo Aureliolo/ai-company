@@ -54,7 +54,7 @@ def build_decomposer(config: VerificationConfig) -> CriteriaDecomposer:
     """
     factory = _DECOMPOSER_FACTORIES.get(config.decomposer)
     if factory is None:
-        valid = sorted(v.value for v in DecomposerVariant)
+        valid = sorted(v.value for v in _DECOMPOSER_FACTORIES)
         msg = f"Unknown decomposer variant {config.decomposer!r}, valid: {valid}"
         logger.error(
             VERIFICATION_FACTORY_UNKNOWN_DECOMPOSER,
@@ -79,7 +79,7 @@ def build_grader(config: VerificationConfig) -> RubricGrader:
     """
     factory = _GRADER_FACTORIES.get(config.grader)
     if factory is None:
-        valid = sorted(v.value for v in GraderVariant)
+        valid = sorted(v.value for v in _GRADER_FACTORIES)
         msg = f"Unknown grader variant {config.grader!r}, valid: {valid}"
         logger.error(
             VERIFICATION_FACTORY_UNKNOWN_GRADER,

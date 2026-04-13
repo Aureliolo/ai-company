@@ -56,6 +56,11 @@ class TestVerifierHarnessPack:
         evaluator = next(a for a in agents if a["role"] == "Evaluator")
         assert evaluator["personality_preset"] == "quality_guardian"
 
+    def test_harness_contract_fields(self) -> None:
+        data = _load_pack()
+        assert data["template"]["workflow"] == "sequential_pipeline"
+        assert data["template"]["communication"] == "structured"
+
     def test_all_presets_are_valid(self) -> None:
         from synthorg.templates.presets import PERSONALITY_PRESETS
 

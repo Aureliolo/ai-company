@@ -5,13 +5,21 @@ criteria decomposition.  Evaluator agents use these to produce
 structured verdicts (pass/fail/refer) over handoff artifacts.
 """
 
+import copy
 import math
-from collections.abc import Mapping  # noqa: TC003
+from collections.abc import Mapping
 from datetime import datetime  # noqa: TC003
 from enum import StrEnum
 from typing import Literal, Self
 
-from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    computed_field,
+    field_validator,
+    model_validator,
+)
 
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 
@@ -76,6 +84,14 @@ class CalibrationExample(BaseModel):
         default=None,
         description="Optional per-criterion expected grades",
     )
+
+    @field_validator("expected_grades", mode="before")
+    @classmethod
+    def _deepcopy_expected_grades(cls, v: object) -> object:
+        """Deep-copy to prevent external mutation."""
+        if isinstance(v, Mapping):
+            return copy.deepcopy(v)
+        return v
 
     @model_validator(mode="after")
     def _validate_expected_grades(self) -> Self:
@@ -214,6 +230,15 @@ class VerificationResult(BaseModel):
     per_criterion_grades: Mapping[NotBlankStr, float] = Field(
         description="Criterion name to grade",
     )
+
+    @field_validator("per_criterion_grades", mode="before")
+    @classmethod
+    def _deepcopy_grades(cls, v: object) -> object:
+        """Deep-copy to prevent external mutation."""
+        if isinstance(v, Mapping):
+            return copy.deepcopy(v)
+        return v
+
     findings: tuple[NotBlankStr, ...] = Field(
         default=(),
         description="Human-readable feedback",
