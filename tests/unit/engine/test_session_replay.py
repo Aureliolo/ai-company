@@ -296,3 +296,63 @@ class TestSessionReplay:
             f"completeness={result.replay_completeness:.2f} "
             f"not in [{expected_min}, {expected_max}]"
         )
+
+
+@pytest.mark.unit
+class TestSessionReplayErrorHandling:
+    """Error handling in Session.replay()."""
+
+    async def test_event_reader_exception_propagates(
+        self,
+        sample_agent_with_personality: AgentIdentity,
+    ) -> None:
+        """EventReader exception is logged and re-raised."""
+
+        class FailingReader:
+            async def read_events(
+                self,
+                execution_id: str,
+            ) -> tuple[SessionEvent, ...]:
+                msg = "connection failed"
+                raise OSError(msg)
+
+        with pytest.raises(OSError, match="connection failed"):
+            await Session.replay(
+                execution_id=EXEC_ID,
+                event_reader=FailingReader(),
+                identity=sample_agent_with_personality,
+            )
+
+    async def test_malformed_turn_event_skipped(
+        self,
+        sample_agent_with_personality: AgentIdentity,
+    ) -> None:
+        """Malformed turn event is skipped; valid events processed."""
+        events = (
+            _event(EXECUTION_ENGINE_START, EXEC_ID, 0),
+            _event(
+                EXECUTION_CONTEXT_TURN,
+                EXEC_ID,
+                1,
+                turn="not-a-number",
+                cost_usd=0.01,
+            ),
+            _event(
+                EXECUTION_CONTEXT_TURN,
+                EXEC_ID,
+                2,
+                turn=2,
+                cost_usd=0.02,
+            ),
+        )
+        reader = StubEventReader(events)
+        result = await Session.replay(
+            execution_id=EXEC_ID,
+            event_reader=reader,
+            identity=sample_agent_with_personality,
+        )
+        assert result.events_processed == 3
+        assert result.context.turn_count == 1
+        assert result.context.accumulated_cost.cost_usd == pytest.approx(
+            0.02,
+        )

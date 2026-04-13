@@ -7,13 +7,13 @@ that enables brain-failure recovery without persistence dependencies.
 
 Terminology follows the Anthropic managed-agents engineering post:
 
-- **Brain**: inference loop (``harness.py``, ``AgentContext``, loop protocol)
+- **Brain**: inference loop (``agent_engine.py``, ``AgentContext``, loop protocol)
 - **Hands**: tool execution (``ToolInvoker``, ``tools/sandbox/``, credential proxy)
 - **Session**: durable event history (``observability/events/``, replay)
 """
 
 import copy
-from typing import Any, Protocol, runtime_checkable
+from typing import Any, Protocol, Self, runtime_checkable
 
 from pydantic import (
     AwareDatetime,
@@ -65,7 +65,7 @@ class SessionEvent(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
-    event_name: str = Field(description="Dotted event constant")
+    event_name: NotBlankStr = Field(description="Dotted event constant")
     timestamp: AwareDatetime = Field(description="Event timestamp")
     execution_id: NotBlankStr = Field(
         description="Execution run this event belongs to",
@@ -111,6 +111,17 @@ class ReplayResult(BaseModel):
         ge=0,
         description="Total events found for this execution",
     )
+
+    @model_validator(mode="after")
+    def _validate_processed_le_total(self) -> Self:
+        """Ensure events_processed does not exceed events_total."""
+        if self.events_processed > self.events_total:
+            msg = (
+                f"events_processed ({self.events_processed}) "
+                f"cannot exceed events_total ({self.events_total})"
+            )
+            raise ValueError(msg)
+        return self
 
 
 # ── Protocol ──────────────────────────────────────────────────────
@@ -175,11 +186,12 @@ class Session:
 
         try:
             events = await event_reader.read_events(execution_id)
-        except Exception:
+        except Exception as exc:
             logger.exception(
                 SESSION_REPLAY_ERROR,
                 execution_id=execution_id,
-                reason="failed to read events",
+                reason="failed to read events from event_reader",
+                error_type=type(exc).__name__,
             )
             raise
 
@@ -267,12 +279,23 @@ def _replay_from_events(
             elif name == EXECUTION_TASK_TRANSITION:
                 found_transition = True
 
-        except Exception:
+        except MemoryError, RecursionError:
+            raise
+        except (ValueError, TypeError, KeyError) as exc:
             logger.warning(
                 SESSION_REPLAY_ERROR,
                 execution_id=execution_id,
                 event_name=event.event_name,
-                reason="failed to process event",
+                reason="malformed event data",
+                error_type=type(exc).__name__,
+                error=str(exc),
+            )
+        except Exception:
+            logger.exception(
+                SESSION_REPLAY_ERROR,
+                execution_id=execution_id,
+                event_name=event.event_name,
+                reason="unexpected error processing event",
             )
 
     completeness = _compute_completeness(
@@ -312,15 +335,16 @@ def _compute_completeness(
     total_cost: float,
     found_transition: bool,
 ) -> float:
-    """Compute replay completeness as a weighted score.
+    """Compute replay completeness as a weighted additive score.
 
-    Weights:
-        Engine start event:          0.15
-        Context created event:       0.10
-        At least one turn event:     0.20
-        Contiguous turn sequence:    0.25
-        Cost data in turn events:    0.15
-        Task transition events:      0.15
+    Each condition contributes independently (capped at 1.0):
+
+        Engine start event:          +0.15
+        Context created event:       +0.10
+        At least one turn event:     +0.20
+        Contiguous turn sequence:    +0.25 (bonus on top of turn)
+        Cost data in turn events:    +0.15
+        Task transition events:      +0.15
     """
     score = 0.0
 

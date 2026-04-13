@@ -1790,7 +1790,7 @@ The engine's architecture maps onto three decoupled planes.  Each plane has a di
 
 | Plane | SynthOrg Modules | Purpose |
 |-------|-----------------|---------|
-| **Brain** | `engine/harness.py`, `AgentContext`, loop protocol (`ReactLoop`, `PlanExecuteLoop`, `HybridLoop`) | Inference loop, middleware, decision-making.  Stateless between turns -- all state lives in the immutable `AgentContext`. |
+| **Brain** | `engine/agent_engine.py`, `AgentContext`, loop protocol (`ReactLoop`, `PlanExecuteLoop`, `HybridLoop`) | Inference loop, middleware, decision-making.  Stateless between turns -- all state lives in the immutable `AgentContext`. |
 | **Hands** | `ToolInvoker`, `tools/sandbox/`, `SandboxCredentialManager`, auth proxy | Tool execution, side effects, credential scope.  Credentials flow exclusively through the sandbox credential proxy -- never through the agent context or turn records. |
 | **Session** | `observability/events/`, `engine/session.py` (`Session.replay`), checkpoint/resume | Durable event history, replay, audit.  Every significant action emits a structured event; the event stream is the session's source of truth. |
 
