@@ -5,7 +5,7 @@ go 1.26
 require (
 	github.com/charmbracelet/huh v1.0.0
 	github.com/charmbracelet/lipgloss v1.1.0
-	github.com/google/go-containerregistry v0.21.4
+	github.com/google/go-containerregistry v0.21.5
 	github.com/mattn/go-isatty v0.0.21
 	github.com/mattn/go-runewidth v0.0.23
 	github.com/muesli/termenv v0.16.0
@@ -278,7 +278,7 @@ require (
 	golang.org/x/sys v0.43.0 // indirect
 	golang.org/x/term v0.42.0 // indirect
 	golang.org/x/text v0.36.0 // indirect
-	golang.org/x/tools v0.43.0 // indirect
+	golang.org/x/tools v0.44.0 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20260406210006-6f92a3bedf2d // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260406210006-6f92a3bedf2d // indirect
 	google.golang.org/grpc v1.80.0 // indirect
