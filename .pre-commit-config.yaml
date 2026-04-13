@@ -89,7 +89,8 @@ repos:
     hooks:
       - id: caddy-validate
         name: caddy validate (Caddyfile)
-        entry: caddy validate --config web/Caddyfile --adapter caddyfile
+        entry: bash
+        args: ["scripts/caddy-validate.sh"]
         language: system
         files: ^web/Caddyfile$
         pass_filenames: false
