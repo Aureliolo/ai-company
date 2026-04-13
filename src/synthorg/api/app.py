@@ -644,10 +644,10 @@ def _build_lifecycle(  # noqa: PLR0913, PLR0915, C901
                     InMemoryBackend,
                 )
 
-                _mem = InMemoryBackend()
-                await _mem.connect()
                 _perf = app_state._performance_tracker  # noqa: SLF001
                 if _perf is not None:
+                    _mem = InMemoryBackend()
+                    await _mem.connect()
                     _ts = build_training_service(
                         config=effective_config.training,
                         memory_backend=_mem,

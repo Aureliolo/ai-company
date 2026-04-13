@@ -230,17 +230,21 @@ class SQLiteTrainingResultRepository:
         self,
         plan_id: NotBlankStr,
     ) -> TrainingResult | None:
-        """Retrieve a result by plan ID.
+        """Retrieve the latest result by plan ID.
 
         Args:
             plan_id: Training plan identifier.
 
         Returns:
-            The result, or ``None`` if not found.
+            The most recent matching result, or ``None`` if not found.
         """
         try:
             cursor = await self._db.execute(
-                "SELECT * FROM training_results WHERE plan_id = ?",
+                """\
+SELECT * FROM training_results
+WHERE plan_id = ?
+ORDER BY completed_at DESC, id DESC
+LIMIT 1""",
                 (str(plan_id),),
             )
             row = await cursor.fetchone()

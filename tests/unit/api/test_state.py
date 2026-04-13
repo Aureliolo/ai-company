@@ -324,6 +324,11 @@ class TestAppStateConfigResolver:
         state = _make_state(settings_service=mock_svc)
         assert state.has_config_resolver is True
 
+
+@pytest.mark.unit
+class TestAppStateTrainingService:
+    """Tests for training_service property and set_training_service."""
+
     def test_training_service_raises_when_none(self) -> None:
         state = _make_state(training_service=None)
         with pytest.raises(ServiceUnavailableError):

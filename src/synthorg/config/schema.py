@@ -645,6 +645,7 @@ class RootConfig(BaseModel):
         promotion: Promotion/demotion configuration.
         performance: Performance tracking configuration (quality judge,
             CI/LLM weights, trend thresholds).
+        training: Training pipeline configuration.
         task_engine: Task engine configuration.
         queue: Distributed task queue configuration (opt-in, requires
             a distributed bus backend such as NATS).

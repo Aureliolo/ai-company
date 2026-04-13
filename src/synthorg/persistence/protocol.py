@@ -124,6 +124,8 @@ class PersistenceBackend(Protocol):
             state persistence.
         webhook_receipts: Repository for webhook receipt log
             persistence.
+        training_plans: Repository for training plan persistence.
+        training_results: Repository for training result persistence.
     """
 
     async def connect(self) -> None:

@@ -754,13 +754,13 @@ class _FakeTrainingPlanRepository:
     async def save(self, plan: Any) -> None:
         pass
 
-    async def get(self, plan_id: Any) -> None:
+    async def get(self, plan_id: Any) -> Any | None:
         return None
 
-    async def latest_pending(self, agent_id: Any) -> None:
+    async def latest_pending(self, agent_id: Any) -> Any | None:
         return None
 
-    async def list_by_agent(self, agent_id: Any) -> tuple[()]:
+    async def list_by_agent(self, agent_id: Any) -> tuple[Any, ...]:
         return ()
 
 
@@ -768,8 +768,8 @@ class _FakeTrainingResultRepository:
     async def save(self, result: Any) -> None:
         pass
 
-    async def get_by_plan(self, plan_id: Any) -> None:
+    async def get_by_plan(self, plan_id: Any) -> Any | None:
         return None
 
-    async def get_latest(self, agent_id: Any) -> None:
+    async def get_latest(self, agent_id: Any) -> Any | None:
         return None

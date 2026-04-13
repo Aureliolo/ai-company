@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, Any
 import psycopg
 from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
+from pydantic import ValidationError
 
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.training.models import (
@@ -106,7 +107,7 @@ def _row_to_result(row: dict[str, Any]) -> TrainingResult:
         )
         data["errors"] = tuple(data["errors"])
         return TrainingResult.model_validate(data)
-    except (ValueError, TypeError, KeyError) as exc:
+    except (ValueError, TypeError, KeyError, ValidationError) as exc:
         result_id = data.get("id", "<unknown>")
         msg = f"Failed to deserialize training result {result_id!r}"
         logger.exception(
@@ -194,14 +195,25 @@ class PostgresTrainingResultRepository:
         self,
         plan_id: NotBlankStr,
     ) -> TrainingResult | None:
-        """Retrieve a result by plan ID."""
+        """Retrieve the latest result by plan ID.
+
+        Args:
+            plan_id: Training plan identifier.
+
+        Returns:
+            The most recent matching result, or ``None`` if not found.
+        """
         try:
             async with (
                 self._pool.connection() as conn,
                 conn.cursor(row_factory=dict_row) as cur,
             ):
                 await cur.execute(
-                    "SELECT * FROM training_results WHERE plan_id = %s",
+                    """\
+SELECT * FROM training_results
+WHERE plan_id = %s
+ORDER BY completed_at DESC, id DESC
+LIMIT 1""",
                     (str(plan_id),),
                 )
                 row = await cur.fetchone()
@@ -221,7 +233,14 @@ class PostgresTrainingResultRepository:
         self,
         agent_id: NotBlankStr,
     ) -> TrainingResult | None:
-        """Retrieve the latest result for an agent."""
+        """Retrieve the latest result for an agent.
+
+        Args:
+            agent_id: Agent identifier.
+
+        Returns:
+            The most recent result, or ``None`` if not found.
+        """
         try:
             async with (
                 self._pool.connection() as conn,

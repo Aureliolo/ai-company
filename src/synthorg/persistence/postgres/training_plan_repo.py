@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, Any
 import psycopg
 from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
+from pydantic import ValidationError
 
 from synthorg.core.enums import SeniorityLevel
 from synthorg.core.types import NotBlankStr
@@ -55,7 +56,7 @@ def _row_to_plan(row: dict[str, Any]) -> TrainingPlan:
         )
         data["status"] = TrainingPlanStatus(data["status"])
         return TrainingPlan.model_validate(data)
-    except (ValueError, TypeError, KeyError) as exc:
+    except (ValueError, TypeError, KeyError, ValidationError) as exc:
         plan_id = data.get("id", "<unknown>")
         msg = f"Failed to deserialize training plan {plan_id!r}"
         logger.exception(
@@ -158,7 +159,14 @@ class PostgresTrainingPlanRepository:
         self,
         plan_id: NotBlankStr,
     ) -> TrainingPlan | None:
-        """Retrieve a training plan by ID."""
+        """Retrieve a training plan by ID.
+
+        Args:
+            plan_id: Training plan identifier.
+
+        Returns:
+            The plan, or ``None`` if not found.
+        """
         try:
             async with (
                 self._pool.connection() as conn,
@@ -185,7 +193,14 @@ class PostgresTrainingPlanRepository:
         self,
         agent_id: NotBlankStr,
     ) -> TrainingPlan | None:
-        """Return the most recently created PENDING plan for an agent."""
+        """Return the most recently created PENDING plan for an agent.
+
+        Args:
+            agent_id: Agent identifier.
+
+        Returns:
+            The latest pending plan, or ``None`` if none exists.
+        """
         try:
             async with (
                 self._pool.connection() as conn,
@@ -216,7 +231,14 @@ LIMIT 1""",
         self,
         agent_id: NotBlankStr,
     ) -> tuple[TrainingPlan, ...]:
-        """Return all plans for an agent ordered by created_at desc."""
+        """Return all plans for an agent ordered by created_at desc.
+
+        Args:
+            agent_id: Agent identifier.
+
+        Returns:
+            Tuple of plans ordered by ``created_at`` descending.
+        """
         try:
             async with (
                 self._pool.connection() as conn,
