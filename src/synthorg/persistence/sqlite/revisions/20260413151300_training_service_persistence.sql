@@ -16,7 +16,11 @@ CREATE TABLE `training_plans` (
   `created_at` text NOT NULL,
   `executed_at` text NULL,
   PRIMARY KEY (`id`),
-  CHECK (status IN ('pending', 'executed', 'failed'))
+  CHECK (status IN ('pending', 'executed', 'failed')),
+  CHECK (
+        (status = 'pending' AND executed_at IS NULL)
+        OR (status <> 'pending' AND executed_at IS NOT NULL)
+    )
 );
 -- Create index "idx_training_plans_agent_status" to table: "training_plans"
 CREATE INDEX `idx_training_plans_agent_status` ON `training_plans` (`new_agent_id`, `status`);
@@ -42,6 +46,6 @@ CREATE TABLE `training_results` (
   CONSTRAINT `0` FOREIGN KEY (`plan_id`) REFERENCES `training_plans` (`id`) ON UPDATE NO ACTION ON DELETE NO ACTION
 );
 -- Create index "idx_training_results_plan" to table: "training_results"
-CREATE INDEX `idx_training_results_plan` ON `training_results` (`plan_id`);
+CREATE UNIQUE INDEX `idx_training_results_plan` ON `training_results` (`plan_id`);
 -- Create index "idx_training_results_agent" to table: "training_results"
 CREATE INDEX `idx_training_results_agent` ON `training_results` (`new_agent_id`, `completed_at` DESC);

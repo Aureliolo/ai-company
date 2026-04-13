@@ -16,6 +16,7 @@ CREATE TABLE "training_plans" (
   "created_at" timestamptz NOT NULL,
   "executed_at" timestamptz NULL,
   PRIMARY KEY ("id"),
+  CONSTRAINT "training_plans_check" CHECK (((status = 'pending'::text) AND (executed_at IS NULL)) OR ((status <> 'pending'::text) AND (executed_at IS NOT NULL))),
   CONSTRAINT "training_plans_status_check" CHECK (status = ANY (ARRAY['pending'::text, 'executed'::text, 'failed'::text]))
 );
 -- Create index "idx_training_plans_agent_status" to table: "training_plans"
@@ -44,4 +45,4 @@ CREATE TABLE "training_results" (
 -- Create index "idx_training_results_agent" to table: "training_results"
 CREATE INDEX "idx_training_results_agent" ON "training_results" ("new_agent_id", "completed_at" DESC);
 -- Create index "idx_training_results_plan" to table: "training_results"
-CREATE INDEX "idx_training_results_plan" ON "training_results" ("plan_id");
+CREATE UNIQUE INDEX "idx_training_results_plan" ON "training_results" ("plan_id");

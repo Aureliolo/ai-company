@@ -923,7 +923,11 @@ CREATE TABLE training_plans (
     status TEXT NOT NULL DEFAULT 'pending'
         CHECK(status IN ('pending', 'executed', 'failed')),
     created_at TIMESTAMPTZ NOT NULL,
-    executed_at TIMESTAMPTZ
+    executed_at TIMESTAMPTZ,
+    CHECK(
+        (status = 'pending' AND executed_at IS NULL)
+        OR (status <> 'pending' AND executed_at IS NOT NULL)
+    )
 );
 
 CREATE INDEX idx_training_plans_agent_status
@@ -950,7 +954,7 @@ CREATE TABLE training_results (
     completed_at TIMESTAMPTZ NOT NULL
 );
 
-CREATE INDEX idx_training_results_plan
+CREATE UNIQUE INDEX idx_training_results_plan
     ON training_results(plan_id);
 CREATE INDEX idx_training_results_agent
     ON training_results(new_agent_id, completed_at DESC);

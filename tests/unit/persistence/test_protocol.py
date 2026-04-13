@@ -632,11 +632,11 @@ class _FakeBackend:
 
     @property
     def training_plans(self) -> Any:
-        return object()
+        return _FakeTrainingPlanRepository()
 
     @property
     def training_results(self) -> Any:
-        return object()
+        return _FakeTrainingResultRepository()
 
     async def get_setting(self, key: str) -> str | None:
         return None
