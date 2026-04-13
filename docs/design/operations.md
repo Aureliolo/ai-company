@@ -1272,6 +1272,13 @@ feedback arrives.
       calls (`request_human_approval`). Approval decision returned as `ToolResult` --
       semantically correct (approval IS the tool's return value).
 
+!!! info "EvidencePackage (HITL Approval Payload)"
+    `ApprovalItem.evidence_package` (optional `EvidencePackage | None`) carries a structured
+    approval payload for human review. See
+    [Communication: EvidencePackage Schema](communication.md#evidencepackage-schema) for the
+    full model specification. Existing approval paths (hiring, promotion, pruning) can adopt
+    the package incrementally -- the field defaults to `None`.
+
 ---
 
 ## A2A Security

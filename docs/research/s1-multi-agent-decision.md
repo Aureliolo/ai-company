@@ -118,7 +118,7 @@ Paper 3 challenges multi-agent's value claim by showing single-agent matches or 
 **R4 ([#1253](https://github.com/Aureliolo/synthorg/issues/1253), inter-agent comms)** inherits:
 
 - Prefer broadcast / direct addressing over relay chains where topology permits. Where relay is structurally required, integrity hashing of the original task formulation is the mitigation.
-- `DissentRecord` must become a first-class message type on the bus, not just a persistence artifact.
+- `DissentRecord` must become a first-class message type on the bus, not just a persistence artifact. -- **IMPLEMENTED** via [#1263](https://github.com/Aureliolo/synthorg/issues/1263) (`MessageType.DISSENT` + SSE `synthorg:dissent` event).
 - Authority cues in message metadata must be strippable per-subscriber, not global.
 
 **Implementation status (updated via [#1260](https://github.com/Aureliolo/synthorg/issues/1260)):**

@@ -203,6 +203,7 @@ class TestEventConstants:
             "design",
             "docker",
             "evaluation",
+            "event_stream",
             "evolution",
             "execution",
             "git",

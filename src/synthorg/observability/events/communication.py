@@ -102,3 +102,6 @@ COMM_TOOL_TEMPLATE_RENDER_FAILED: Final[str] = (
 COMM_TOOL_TEMPLATE_RENDER_INVALID: Final[str] = (
     "communication.tool.template.render_invalid"
 )
+
+# Dissent publication
+COMM_DISSENT_PUBLISHED: Final[str] = "communication.dissent.published"

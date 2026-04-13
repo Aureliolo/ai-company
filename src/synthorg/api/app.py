@@ -69,6 +69,8 @@ from synthorg.communication.bus_protocol import MessageBus  # noqa: TC001
 from synthorg.communication.delegation.record_store import (
     DelegationRecordStore,  # noqa: TC001
 )
+from synthorg.communication.event_stream.interrupt import InterruptStore
+from synthorg.communication.event_stream.stream import EventStreamHub
 from synthorg.communication.meeting.orchestrator import (
     MeetingOrchestrator,  # noqa: TC001
 )
@@ -1047,6 +1049,8 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
     trust_service: TrustService | None = None,
     coordination_metrics_store: CoordinationMetricsStore | None = None,
     training_service: TrainingService | None = None,
+    event_stream_hub: EventStreamHub | None = None,
+    interrupt_store: InterruptStore | None = None,
     _skip_lifecycle_shutdown: bool = False,
 ) -> Litestar:
     """Create and configure the Litestar application.
@@ -1080,6 +1084,10 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
             (auto-wired if None).
         training_service: Pre-built training service (auto-wired
             in startup if None and dependencies are available).
+        event_stream_hub: Pre-built event stream hub (auto-created
+            if None).
+        interrupt_store: Pre-built interrupt store (auto-created
+            if None).
         _skip_lifecycle_shutdown: Test-only flag.  When ``True``, the
             Litestar app is built with an empty ``on_shutdown`` list so
             the lifespan exit is a no-op.  Used by the session-scoped
@@ -1469,6 +1477,8 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
         audit_log=audit_log,
         trust_service=trust_service,
         coordination_metrics_store=coordination_metrics_store,
+        event_stream_hub=event_stream_hub or EventStreamHub(),
+        interrupt_store=interrupt_store or InterruptStore(),
         connection_catalog=connection_catalog,
         oauth_token_manager=oauth_token_manager,
         health_prober_service=health_prober_service,

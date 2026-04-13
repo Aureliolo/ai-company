@@ -1,0 +1,293 @@
+"""Interrupt models and in-memory interrupt store.
+
+Defines the ``Interrupt`` and ``InterruptResolution`` models for the
+HITL interrupt/resume protocol, plus the ``InterruptStore`` that holds
+pending interrupts with async resolution signaling.
+"""
+
+import asyncio
+import copy
+from enum import StrEnum
+from typing import Self
+
+from pydantic import (
+    AwareDatetime,
+    BaseModel,
+    ConfigDict,
+    Field,
+    model_validator,
+)
+
+from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.observability import get_logger
+from synthorg.observability.events.event_stream import (
+    EVENT_STREAM_INTERRUPT_CREATED,
+    EVENT_STREAM_INTERRUPT_EXPIRED,
+    EVENT_STREAM_INTERRUPT_NOT_FOUND,
+    EVENT_STREAM_INTERRUPT_RESUMED,
+)
+
+logger = get_logger(__name__)
+
+
+class InterruptType(StrEnum):
+    """Type of blocking interrupt.
+
+    Members:
+        TOOL_APPROVAL: Approval gate parked execution for HITL review.
+        INFO_REQUEST: Agent needs clarification mid-task.
+    """
+
+    TOOL_APPROVAL = "tool_approval"
+    INFO_REQUEST = "info_request"
+
+
+class ResumeDecision(StrEnum):
+    """Human decision for a tool approval interrupt.
+
+    Members:
+        APPROVE: Allow the tool execution to proceed.
+        REJECT: Deny the tool execution.
+        REVISE: Request changes before re-attempting.
+    """
+
+    APPROVE = "approve"
+    REJECT = "reject"
+    REVISE = "revise"
+
+
+class Interrupt(BaseModel):
+    """A blocking interrupt awaiting human resolution.
+
+    Attributes:
+        id: Unique interrupt identifier.
+        type: Interrupt classification.
+        session_id: Session this interrupt belongs to.
+        agent_id: Agent that triggered the interrupt.
+        created_at: When the interrupt was created.
+        timeout_seconds: Seconds before the interrupt auto-expires.
+        tool_name: Tool that triggered the interrupt (TOOL_APPROVAL).
+        tool_args: Arguments to the tool (TOOL_APPROVAL).
+        evidence_package_id: Associated evidence package (TOOL_APPROVAL).
+        question: Clarification question (INFO_REQUEST).
+        context_snippet: Context for the question (INFO_REQUEST).
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+
+    id: NotBlankStr = Field(description="Unique interrupt identifier")
+    type: InterruptType = Field(description="Interrupt classification")
+    session_id: NotBlankStr = Field(description="Owning session")
+    agent_id: NotBlankStr = Field(description="Triggering agent")
+    created_at: AwareDatetime = Field(description="Creation timestamp")
+    timeout_seconds: float = Field(
+        gt=0,
+        description="Auto-expiry timeout in seconds",
+    )
+    tool_name: NotBlankStr | None = Field(
+        default=None,
+        description="Tool name (TOOL_APPROVAL only)",
+    )
+    tool_args: dict[str, object] | None = Field(
+        default=None,
+        description="Tool arguments (TOOL_APPROVAL only)",
+    )
+    evidence_package_id: NotBlankStr | None = Field(
+        default=None,
+        description="Evidence package ID (TOOL_APPROVAL only)",
+    )
+    question: NotBlankStr | None = Field(
+        default=None,
+        description="Clarification question (INFO_REQUEST only)",
+    )
+    context_snippet: NotBlankStr | None = Field(
+        default=None,
+        description="Context for the question (INFO_REQUEST only)",
+    )
+
+    @model_validator(mode="after")
+    def _validate_type_fields(self) -> Self:
+        """Enforce required fields per interrupt type."""
+        if self.type == InterruptType.TOOL_APPROVAL and self.tool_name is None:
+            msg = "tool_name is required for TOOL_APPROVAL interrupts"
+            raise ValueError(msg)
+        if self.type == InterruptType.INFO_REQUEST and self.question is None:
+            msg = "question is required for INFO_REQUEST interrupts"
+            raise ValueError(msg)
+        return self
+
+    @model_validator(mode="after")
+    def _deep_copy_tool_args(self) -> Self:
+        """Deep-copy tool_args to prevent external mutation."""
+        if self.tool_args is not None:
+            object.__setattr__(
+                self,
+                "tool_args",
+                copy.deepcopy(self.tool_args),
+            )
+        return self
+
+
+class InterruptResolution(BaseModel):
+    """Human response to an interrupt.
+
+    Attributes:
+        interrupt_id: The interrupt being resolved.
+        decision: Approval decision (TOOL_APPROVAL interrupts).
+        feedback: Optional feedback text (TOOL_APPROVAL interrupts).
+        response: Clarification response (INFO_REQUEST interrupts).
+        resolved_at: When the resolution was provided.
+        resolved_by: Who provided the resolution.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+
+    interrupt_id: NotBlankStr = Field(
+        description="Interrupt being resolved",
+    )
+    decision: ResumeDecision | None = Field(
+        default=None,
+        description="Approval decision (TOOL_APPROVAL only)",
+    )
+    feedback: NotBlankStr | None = Field(
+        default=None,
+        description="Feedback text (TOOL_APPROVAL only)",
+    )
+    response: NotBlankStr | None = Field(
+        default=None,
+        description="Clarification response (INFO_REQUEST only)",
+    )
+    resolved_at: AwareDatetime = Field(description="Resolution timestamp")
+    resolved_by: NotBlankStr = Field(description="Resolver identity")
+
+
+class InterruptStore:
+    """In-memory store for pending interrupts with async resolution.
+
+    Each interrupt gets an ``asyncio.Event`` that is set when the
+    interrupt is resolved.  Callers can await resolution via
+    :meth:`wait_for_resolution`.
+    """
+
+    __slots__ = ("_events", "_pending", "_results")
+
+    def __init__(self) -> None:
+        self._pending: dict[str, Interrupt] = {}
+        self._events: dict[str, asyncio.Event] = {}
+        self._results: dict[str, InterruptResolution] = {}
+
+    async def create(self, interrupt: Interrupt) -> None:
+        """Register a new pending interrupt.
+
+        Args:
+            interrupt: The interrupt to register.
+
+        Raises:
+            ValueError: If an interrupt with the same ID already exists.
+        """
+        if interrupt.id in self._pending:
+            msg = f"Interrupt {interrupt.id!r} already exists"
+            raise ValueError(msg)
+        self._pending[interrupt.id] = interrupt
+        self._events[interrupt.id] = asyncio.Event()
+        logger.info(
+            EVENT_STREAM_INTERRUPT_CREATED,
+            interrupt_id=interrupt.id,
+            interrupt_type=interrupt.type.value,
+            session_id=interrupt.session_id,
+        )
+
+    async def get(self, interrupt_id: str) -> Interrupt | None:
+        """Get a pending interrupt by ID.
+
+        Args:
+            interrupt_id: The interrupt identifier.
+
+        Returns:
+            The interrupt, or ``None`` if not found.
+        """
+        return self._pending.get(interrupt_id)
+
+    async def list_pending(
+        self,
+        session_id: str | None = None,
+    ) -> tuple[Interrupt, ...]:
+        """List pending interrupts, optionally filtered by session.
+
+        Args:
+            session_id: Filter by session, or ``None`` for all.
+
+        Returns:
+            Tuple of pending interrupts.
+        """
+        if session_id is None:
+            return tuple(self._pending.values())
+        return tuple(i for i in self._pending.values() if i.session_id == session_id)
+
+    async def resolve(
+        self,
+        resolution: InterruptResolution,
+    ) -> Interrupt | None:
+        """Resolve a pending interrupt and signal waiters.
+
+        Args:
+            resolution: The resolution to apply.
+
+        Returns:
+            The resolved interrupt, or ``None`` if not found.
+        """
+        interrupt = self._pending.pop(resolution.interrupt_id, None)
+        if interrupt is None:
+            logger.warning(
+                EVENT_STREAM_INTERRUPT_NOT_FOUND,
+                interrupt_id=resolution.interrupt_id,
+            )
+            return None
+
+        self._results[resolution.interrupt_id] = resolution
+        event = self._events.get(resolution.interrupt_id)
+        if event is not None:
+            event.set()
+
+        logger.info(
+            EVENT_STREAM_INTERRUPT_RESUMED,
+            interrupt_id=resolution.interrupt_id,
+            resolved_by=resolution.resolved_by,
+        )
+        return interrupt
+
+    async def wait_for_resolution(
+        self,
+        interrupt_id: str,
+        *,
+        timeout: float | None = None,  # noqa: ASYNC109
+    ) -> InterruptResolution | None:
+        """Block until the interrupt is resolved or timeout expires.
+
+        Args:
+            interrupt_id: The interrupt to wait on.
+            timeout: Seconds to wait, or ``None`` for indefinite.
+
+        Returns:
+            The resolution, or ``None`` on timeout or if the
+            interrupt does not exist.
+        """
+        event = self._events.get(interrupt_id)
+        if event is None:
+            return None
+
+        try:
+            await asyncio.wait_for(event.wait(), timeout=timeout)
+        except TimeoutError:
+            # Clean up expired interrupt
+            self._pending.pop(interrupt_id, None)
+            self._events.pop(interrupt_id, None)
+            logger.info(
+                EVENT_STREAM_INTERRUPT_EXPIRED,
+                interrupt_id=interrupt_id,
+            )
+            return None
+
+        result = self._results.pop(interrupt_id, None)
+        self._events.pop(interrupt_id, None)
+        return result

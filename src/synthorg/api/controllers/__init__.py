@@ -33,6 +33,10 @@ from synthorg.api.controllers.departments import DepartmentController
 from synthorg.api.controllers.evaluation_config_versions import (
     EvaluationConfigVersionController,
 )
+from synthorg.api.controllers.events import (
+    EventStreamController,
+    InterruptController,
+)
 from synthorg.api.controllers.health import HealthController
 from synthorg.api.controllers.integration_health import (
     IntegrationHealthController,
@@ -100,6 +104,8 @@ BASE_CONTROLLERS: tuple[type[Controller], ...] = (
     CollaborationController,
     CeremonyPolicyController,
     CoordinationController,
+    EventStreamController,
+    InterruptController,
     AuditController,
     CoordinationMetricsController,
     SettingsController,
@@ -174,8 +180,10 @@ __all__ = [
     "CoordinationMetricsController",
     "DepartmentController",
     "EvaluationConfigVersionController",
+    "EventStreamController",
     "HealthController",
     "IntegrationHealthController",
+    "InterruptController",
     "MCPCatalogController",
     "MeetingController",
     "MemoryAdminController",

@@ -29,8 +29,11 @@ from synthorg.communication.enums import (
     ConflictType,  # noqa: TC001
 )
 from synthorg.communication.errors import ConflictResolutionError
+from synthorg.communication.event_stream.stream import EventStreamHub  # noqa: TC001
+from synthorg.communication.event_stream.types import AgUiEventType
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.observability import get_logger
+from synthorg.observability.events.communication import COMM_DISSENT_PUBLISHED
 from synthorg.observability.events.conflict import (
     CONFLICT_DETECTED,
     CONFLICT_DISSENT_QUERIED,
@@ -57,19 +60,21 @@ class ConflictResolutionService:
         resolvers: Strategy → resolver mapping.
     """
 
-    __slots__ = ("_audit_trail", "_config", "_resolvers")
+    __slots__ = ("_audit_trail", "_config", "_event_hub", "_resolvers")
 
     def __init__(
         self,
         *,
         config: ConflictResolutionConfig,
         resolvers: Mapping[ConflictResolutionStrategy, ConflictResolver],
+        event_hub: EventStreamHub | None = None,
     ) -> None:
         self._config = config
         self._resolvers: MappingProxyType[
             ConflictResolutionStrategy, ConflictResolver
         ] = MappingProxyType(dict(resolvers))
         self._audit_trail: list[DissentRecord] = []
+        self._event_hub = event_hub
 
     def create_conflict(
         self,
@@ -199,6 +204,8 @@ class ConflictResolutionService:
                 dissenting_agent=record.dissenting_agent_id,
             )
 
+        await self._publish_dissent_events(dissent_records, conflict.id)
+
         return resolution, dissent_records
 
     def get_dissent_records(self) -> tuple[DissentRecord, ...]:
@@ -247,3 +254,45 @@ class ConflictResolutionService:
             and (strategy is None or r.strategy_used == strategy)
             and (since is None or r.timestamp >= since)
         )
+
+    async def _publish_dissent_events(
+        self,
+        records: tuple[DissentRecord, ...],
+        conflict_id: str,
+    ) -> None:
+        """Publish dissent SSE events via the event hub.
+
+        Best-effort: failures are logged but do not propagate.
+        """
+        if self._event_hub is None or not records:
+            return
+
+        for record in records:
+            try:
+                await self._event_hub.publish_raw(
+                    session_id=record.conflict.task_id or "global",
+                    event_type=AgUiEventType.DISSENT,
+                    agent_id=record.dissenting_agent_id,
+                    payload={
+                        "dissent_id": record.id,
+                        "conflict_id": conflict_id,
+                        "dissenting_agent_id": record.dissenting_agent_id,
+                        "conflict_type": record.conflict.type.value,
+                        "strategy_used": record.strategy_used.value,
+                    },
+                )
+                logger.info(
+                    COMM_DISSENT_PUBLISHED,
+                    dissent_id=record.id,
+                    conflict_id=conflict_id,
+                )
+            except MemoryError, RecursionError:
+                raise
+            except Exception:
+                logger.warning(
+                    COMM_DISSENT_PUBLISHED,
+                    dissent_id=record.id,
+                    conflict_id=conflict_id,
+                    note="Failed to publish dissent event",
+                    exc_info=True,
+                )

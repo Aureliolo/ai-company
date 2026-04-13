@@ -11,8 +11,17 @@ it, and returns the restored context along with a decision message
 that the caller can inject into the conversation.
 """
 
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING
+from uuid import uuid4
 
+from synthorg.communication.event_stream.interrupt import (
+    Interrupt,
+    InterruptStore,
+    InterruptType,
+)
+from synthorg.communication.event_stream.stream import EventStreamHub  # noqa: TC001
+from synthorg.communication.event_stream.types import AgUiEventType
 from synthorg.notifications.dispatcher import NotificationDispatcher  # noqa: TC001
 from synthorg.observability import get_logger
 from synthorg.observability.events.approval_gate import (
@@ -55,10 +64,14 @@ class ApprovalGate:
         park_service: ParkService,
         parked_context_repo: ParkedContextRepository | None = None,
         notification_dispatcher: NotificationDispatcher | None = None,
+        event_hub: EventStreamHub | None = None,
+        interrupt_store: InterruptStore | None = None,
     ) -> None:
         self._park_service = park_service
         self._parked_context_repo = parked_context_repo
         self._notification_dispatcher = notification_dispatcher
+        self._event_hub = event_hub
+        self._interrupt_store = interrupt_store
         logger.debug(
             APPROVAL_GATE_INITIALIZED,
             has_parked_context_repo=parked_context_repo is not None,
@@ -100,6 +113,7 @@ class ApprovalGate:
         context: AgentContext,
         agent_id: str,
         task_id: str | None = None,
+        session_id: str | None = None,
     ) -> ParkedContext:
         """Serialize context via ParkService and persist if repo available.
 
@@ -108,6 +122,7 @@ class ApprovalGate:
             context: The agent context to park.
             agent_id: Agent identifier.
             task_id: Task identifier, or ``None`` for taskless agents.
+            session_id: Session identifier for event stream, or ``None``.
 
         Returns:
             The created ``ParkedContext``.
@@ -124,7 +139,54 @@ class ApprovalGate:
         )
         await self._persist_parked(parked, escalation)
         await self._notify_approval_required(escalation, agent_id, task_id)
+        await self._emit_interrupt(escalation, agent_id, session_id)
         return parked
+
+    async def _emit_interrupt(
+        self,
+        escalation: EscalationInfo,
+        agent_id: str,
+        session_id: str | None,
+    ) -> None:
+        """Create an interrupt and emit an APPROVAL_INTERRUPT event."""
+        if session_id is None or self._event_hub is None:
+            return
+
+        if self._interrupt_store is not None:
+            interrupt = Interrupt(
+                id=f"int-{uuid4().hex}",
+                type=InterruptType.TOOL_APPROVAL,
+                session_id=session_id,
+                agent_id=agent_id,
+                created_at=datetime.now(UTC),
+                timeout_seconds=300.0,
+                tool_name=escalation.tool_name,
+                evidence_package_id=None,
+            )
+            try:
+                await self._interrupt_store.create(interrupt)
+            except MemoryError, RecursionError:
+                raise
+            except Exception:
+                logger.warning(
+                    APPROVAL_GATE_NOTIFICATION_FAILED,
+                    approval_id=escalation.approval_id,
+                    note="Failed to create interrupt in store",
+                    exc_info=True,
+                )
+
+        await self._event_hub.publish_raw(
+            session_id=session_id,
+            event_type=AgUiEventType.APPROVAL_INTERRUPT,
+            agent_id=agent_id,
+            payload={
+                "approval_id": escalation.approval_id,
+                "tool_name": escalation.tool_name,
+                "action_type": escalation.action_type,
+                "risk_level": escalation.risk_level.value,
+                "reason": escalation.reason,
+            },
+        )
 
     async def _notify_approval_required(
         self,
@@ -228,11 +290,14 @@ class ApprovalGate:
     async def resume_context(
         self,
         approval_id: str,
+        *,
+        session_id: str | None = None,
     ) -> tuple[AgentContext, str] | None:
         """Load parked context, deserialize, and delete.
 
         Args:
             approval_id: The approval item identifier.
+            session_id: Session identifier for event stream, or ``None``.
 
         Returns:
             ``(AgentContext, parked_id)`` on success, or ``None`` if
@@ -254,6 +319,14 @@ class ApprovalGate:
             approval_id=approval_id,
             parked_id=parked.id,
         )
+
+        if session_id is not None and self._event_hub is not None:
+            await self._event_hub.publish_raw(
+                session_id=session_id,
+                event_type=AgUiEventType.APPROVAL_RESUMED,
+                payload={"approval_id": approval_id},
+            )
+
         return context, parked.id
 
     async def _load_parked(

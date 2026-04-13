@@ -18,6 +18,7 @@ from synthorg.core.enums import (
     ApprovalRiskLevel,
     ApprovalStatus,
 )
+from synthorg.core.evidence import EvidencePackage  # noqa: TC001
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.ontology.decorator import ontology_entity
 
@@ -58,6 +59,10 @@ class ApprovalItem(BaseModel):
     decided_by: NotBlankStr | None = None
     decision_reason: NotBlankStr | None = None
     task_id: NotBlankStr | None = None
+    evidence_package: EvidencePackage | None = Field(
+        default=None,
+        description="Structured evidence for HITL approval",
+    )
     metadata: dict[str, str] = Field(default_factory=dict)
 
     @model_validator(mode="after")
