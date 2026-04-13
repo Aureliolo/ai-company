@@ -26,8 +26,8 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  TRIVY_VERSION: "0.62.2"
-  GRYPE_VERSION: "0.92.1"
+  TRIVY_VERSION: "0.69.3"
+  GRYPE_VERSION: "0.111.0"
 
 jobs:
   # Detect which domains changed so docs-only PRs skip backend/sandbox builds
