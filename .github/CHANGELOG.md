@@ -1,5 +1,61 @@
 # Changelog
 
+## [0.6.7](https://github.com/Aureliolo/synthorg/compare/v0.6.6...v0.6.7) (2026-04-13)
+
+
+### Features
+
+* **engine:** introduce middleware layer + coordination middleware split ([#1276](https://github.com/Aureliolo/synthorg/issues/1276)) ([4353e78](https://github.com/Aureliolo/synthorg/commit/4353e781fc09a7c06ce67e8dbbbbef9856fc600e))
+* **engine:** verification stage node type + calibrated rubric + criteria decomposition ([#1286](https://github.com/Aureliolo/synthorg/issues/1286)) ([76e308f](https://github.com/Aureliolo/synthorg/commit/76e308fec7cebc1fb112b9fb91cbb771bf516fda)), closes [#1262](https://github.com/Aureliolo/synthorg/issues/1262)
+* implement agent evolution and improvement over time ([#1229](https://github.com/Aureliolo/synthorg/issues/1229)) ([aad186f](https://github.com/Aureliolo/synthorg/commit/aad186f1f296aa8d6f027650c7230caa28fe397f)), closes [#243](https://github.com/Aureliolo/synthorg/issues/243)
+* implement dynamic company scaling ([#1235](https://github.com/Aureliolo/synthorg/issues/1235)) ([19f07dd](https://github.com/Aureliolo/synthorg/commit/19f07dd8459c5ad83f367c3753b08c7b0dbaac21))
+* implement external service integration APIs ([#1240](https://github.com/Aureliolo/synthorg/issues/1240)) ([94e8343](https://github.com/Aureliolo/synthorg/commit/94e834381e9e3598f41c5eab3bcbe073a0576c83))
+* implement semantic analysis detectors for error taxonomy ([#1233](https://github.com/Aureliolo/synthorg/issues/1233)) ([6e4eb6d](https://github.com/Aureliolo/synthorg/commit/6e4eb6d245a2ec6eb018230923d79e787a75cfb4)), closes [#228](https://github.com/Aureliolo/synthorg/issues/228)
+* implement training mode for agent learning ([#249](https://github.com/Aureliolo/synthorg/issues/249)) ([#1232](https://github.com/Aureliolo/synthorg/issues/1232)) ([b9fbcfb](https://github.com/Aureliolo/synthorg/commit/b9fbcfb240fce65852adfbaac2b2b6e80abb2275))
+* **memory:** hierarchical retriever + knowledge architect role + GEMS two-tier compressor ([#1275](https://github.com/Aureliolo/synthorg/issues/1275)) ([5495053](https://github.com/Aureliolo/synthorg/commit/5495053d02248c4b2905821fde44286ee93eff99)), closes [#1266](https://github.com/Aureliolo/synthorg/issues/1266)
+* migrate container supply chain to Wolfi/apko and replace nginx with Caddy ([#1285](https://github.com/Aureliolo/synthorg/issues/1285)) ([4b9f00a](https://github.com/Aureliolo/synthorg/commit/4b9f00a3a98995fc56aac75921c77fff359294e9)), closes [#1267](https://github.com/Aureliolo/synthorg/issues/1267)
+* Postgres production readiness -- DB atomic ops, JSONB analytics, CLI orchestration ([#1239](https://github.com/Aureliolo/synthorg/issues/1239)) ([4796ffb](https://github.com/Aureliolo/synthorg/commit/4796ffb3f564b98c7bcbb0f7c037f8c0e1dfb12f)), closes [#1216](https://github.com/Aureliolo/synthorg/issues/1216) [#1211](https://github.com/Aureliolo/synthorg/issues/1211) [#1210](https://github.com/Aureliolo/synthorg/issues/1210)
+* **web:** integrations dashboard (Connections, OAuth Apps, MCP Catalog, tunnel) ([#1270](https://github.com/Aureliolo/synthorg/issues/1270)) ([1ee110c](https://github.com/Aureliolo/synthorg/commit/1ee110cb44e88b1aad7c5d5d1bc8d7da6251c16d))
+
+
+### Bug Fixes
+
+* **ci:** use scan-action for grype diagnostic output ([#1231](https://github.com/Aureliolo/synthorg/issues/1231)) ([18d7de9](https://github.com/Aureliolo/synthorg/commit/18d7de985fc61ae2bddab06f300c3b5dbaa70a5f))
+* **cli:** mount docker.sock on backend, drop zombie sandbox service ([#1269](https://github.com/Aureliolo/synthorg/issues/1269)) ([c87afb5](https://github.com/Aureliolo/synthorg/commit/c87afb5f2e3582131fba8685c4b22737d413d0d7))
+* subworkflow follow-up fixes + dashboard UI + integration tests ([#1223](https://github.com/Aureliolo/synthorg/issues/1223), [#1218](https://github.com/Aureliolo/synthorg/issues/1218)) ([#1230](https://github.com/Aureliolo/synthorg/issues/1230)) ([36e3062](https://github.com/Aureliolo/synthorg/commit/36e3062128d31464c9497fa19b6494202cb2bfe2))
+
+
+### Performance
+
+* reusable test_client fixture (195s to 81s, 58% faster) ([#1277](https://github.com/Aureliolo/synthorg/issues/1277)) ([68aa9c2](https://github.com/Aureliolo/synthorg/commit/68aa9c2b8ee3a6226eb78eb9299c3892f71df190)), closes [#1272](https://github.com/Aureliolo/synthorg/issues/1272)
+
+
+### Refactoring
+
+* evaluate nats-core + split bus/nats.py into focused modules ([#1228](https://github.com/Aureliolo/synthorg/issues/1228)) ([3bc57bf](https://github.com/Aureliolo/synthorg/commit/3bc57bfa7fba5d15aff2741a1acf96b46b909436)), closes [#1217](https://github.com/Aureliolo/synthorg/issues/1217) [#1221](https://github.com/Aureliolo/synthorg/issues/1221)
+* persistence cleanup -- TestClient fix + migration squash strategy ([#1274](https://github.com/Aureliolo/synthorg/issues/1274)) ([95b684c](https://github.com/Aureliolo/synthorg/commit/95b684c1f4cc27be07564d4eb40ee523c96778dc))
+* **persistence:** postgres followups + TimescaleDB hypertable support ([#1271](https://github.com/Aureliolo/synthorg/issues/1271)) ([be0cf09](https://github.com/Aureliolo/synthorg/commit/be0cf09f52e3aa86f98950e9ee7bf5dac2cef7e2))
+
+
+### Documentation
+
+* replace ASCII/Unicode box diagrams with Mermaid + D2 hybrid tooling ([#1234](https://github.com/Aureliolo/synthorg/issues/1234)) ([88ce189](https://github.com/Aureliolo/synthorg/commit/88ce189282a9369dfb16e690a5ff62994421f24b))
+* S1 multi-agent architecture decision + 15-risk register ([#1259](https://github.com/Aureliolo/synthorg/issues/1259)) ([3d580f2](https://github.com/Aureliolo/synthorg/commit/3d580f2b8ea75dc93b66f8fc7ddb73c4822f4ce2)), closes [#1254](https://github.com/Aureliolo/synthorg/issues/1254)
+
+
+### Tests
+
+* audit + clean up unit test suite (regression guard, sleeps, hypothesis, resource leaks) ([#1273](https://github.com/Aureliolo/synthorg/issues/1273)) ([fddcb22](https://github.com/Aureliolo/synthorg/commit/fddcb222466bcb9dea3b5232bdcd4cb4b9c006b9)), closes [#1243](https://github.com/Aureliolo/synthorg/issues/1243)
+
+
+### Maintenance
+
+* bump @tanstack/react-query from 5.97.0 to 5.99.0 in /web in the all group ([#1283](https://github.com/Aureliolo/synthorg/issues/1283)) ([5acedda](https://github.com/Aureliolo/synthorg/commit/5acedda328762b6a4c4146cd0ae47b89252c2a0a))
+* bump github.com/google/go-containerregistry from 0.21.4 to 0.21.5 in /cli in the all group ([#1282](https://github.com/Aureliolo/synthorg/issues/1282)) ([7260335](https://github.com/Aureliolo/synthorg/commit/72603355f8769b6e43677ad33836bafe9f603c30))
+* bump https://github.com/commitizen-tools/commitizen from v4.13.9 to 4.13.10 in the all group across 1 directory ([#1281](https://github.com/Aureliolo/synthorg/issues/1281)) ([3a5fd65](https://github.com/Aureliolo/synthorg/commit/3a5fd65e83f295d1f2025bf10390a24f6cfbc415))
+* bump the all group across 1 directory with 5 updates ([#1289](https://github.com/Aureliolo/synthorg/issues/1289)) ([1af1ba7](https://github.com/Aureliolo/synthorg/commit/1af1ba7741972cb4640ad891a7724d44bd00da4d))
+* **ci:** audit and update GitHub Actions from v0.6.6 release ([#1225](https://github.com/Aureliolo/synthorg/issues/1225)) ([6251227](https://github.com/Aureliolo/synthorg/commit/6251227802a31cd75ed1290a79124ca6457dca7f)), closes [#1224](https://github.com/Aureliolo/synthorg/issues/1224)
+
 ## [0.6.6](https://github.com/Aureliolo/synthorg/compare/v0.6.5...v0.6.6) (2026-04-10)
 
 
