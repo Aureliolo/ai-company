@@ -23,6 +23,7 @@ from synthorg.engine._validation import (
     validate_agent,
     validate_run_inputs,
     validate_task,
+    validate_task_metadata,
 )
 from synthorg.engine.approval_gate import ApprovalGate
 from synthorg.engine.checkpoint.models import CheckpointConfig
@@ -101,6 +102,9 @@ from synthorg.observability.events.prompt import (
     PROMPT_PERSONALITY_TRIMMED,
     PROMPT_TOKEN_RATIO_HIGH,
 )
+from synthorg.observability.events.session import (
+    SESSION_REPLAY_LOW_COMPLETENESS,
+)
 from synthorg.providers.enums import MessageRole
 from synthorg.providers.errors import DriverNotRegisteredError
 from synthorg.providers.models import ChatMessage
@@ -137,6 +141,7 @@ if TYPE_CHECKING:
     )
     from synthorg.engine.middleware.protocol import AgentMiddlewareChain
     from synthorg.engine.plan_models import PlanExecuteConfig
+    from synthorg.engine.session import EventReader
     from synthorg.engine.stagnation.protocol import StagnationDetector
     from synthorg.engine.task_engine import TaskEngine
     from synthorg.memory.injection import MemoryInjectionStrategy
@@ -166,6 +171,9 @@ logger = get_logger(__name__)
 
 _PROMPT_TOKEN_RATIO_THRESHOLD: float = 0.3
 """Prompt-to-total token ratio above which a warning is emitted."""
+
+_REPLAY_LOW_COMPLETENESS_THRESHOLD: float = 0.5
+"""Log a warning when session replay completeness is below this."""
 
 _DEFAULT_RECOVERY_STRATEGY = FailAndReassignStrategy()
 
@@ -315,6 +323,10 @@ class AgentEngine:
         audit_log: Optional audit log for recording security
             evaluations and tool invocation verdicts.  When ``None``,
             a fresh :class:`AuditLog` is created internally.
+        event_reader: Optional event reader for session replay.
+            When provided alongside ``resume_execution_id`` in
+            :meth:`run`, enables stateless recovery from a crashed
+            execution via :meth:`Session.replay`.
     """
 
     def __init__(  # noqa: PLR0913, PLR0915
@@ -356,8 +368,10 @@ class AgentEngine:
         audit_log: AuditLog | None = None,
         project_repo: ProjectRepository | None = None,
         agent_middleware_chain: AgentMiddlewareChain | None = None,
+        event_reader: EventReader | None = None,
     ) -> None:
         self._agent_middleware_chain = agent_middleware_chain
+        self._event_reader = event_reader
         if execution_loop is not None and auto_loop_config is not None:
             msg = "execution_loop and auto_loop_config are mutually exclusive"
             logger.warning(
@@ -496,7 +510,7 @@ class AgentEngine:
             raise ExecutionStateError(msg)
         return await self._coordinator.coordinate(context)
 
-    async def run(  # noqa: PLR0913
+    async def run(  # noqa: PLR0913, C901
         self,
         *,
         identity: AgentIdentity,
@@ -506,6 +520,7 @@ class AgentEngine:
         memory_messages: tuple[ChatMessage, ...] = (),
         timeout_seconds: float | None = None,
         effective_autonomy: EffectiveAutonomy | None = None,
+        resume_execution_id: str | None = None,
     ) -> AgentRunResult:
         """Execute an agent on a task.
 
@@ -526,6 +541,7 @@ class AgentEngine:
         )
         validate_agent(identity, agent_id)
         validate_task(task, agent_id, task_id)
+        validate_task_metadata(task, agent_id, task_id)
 
         with correlation_scope(agent_id=agent_id, task_id=task_id):
             start = time.monotonic()
@@ -578,6 +594,30 @@ class AgentEngine:
                         reason="project_repo_not_configured",
                     )
 
+                # Session replay: reconstruct context from event log
+                # when resuming a previous (crashed) execution.
+                replay_ctx: AgentContext | None = None
+                if resume_execution_id is not None and self._event_reader is not None:
+                    from synthorg.engine.session import Session  # noqa: PLC0415
+
+                    replay_result = await Session.replay(
+                        execution_id=resume_execution_id,
+                        event_reader=self._event_reader,
+                        identity=identity,
+                        task=task,
+                        max_turns=max_turns,
+                    )
+                    if (
+                        replay_result.replay_completeness
+                        < _REPLAY_LOW_COMPLETENESS_THRESHOLD
+                    ):
+                        logger.warning(
+                            SESSION_REPLAY_LOW_COMPLETENESS,
+                            execution_id=resume_execution_id,
+                            replay_completeness=replay_result.replay_completeness,
+                        )
+                    replay_ctx = replay_result.context
+
                 tool_invoker = self._make_tool_invoker(
                     identity,
                     task_id=task_id,
@@ -593,6 +633,8 @@ class AgentEngine:
                     tool_invoker=tool_invoker,
                     effective_autonomy=effective_autonomy,
                 )
+                if replay_ctx is not None:
+                    ctx = replay_ctx
                 return await self._execute(
                     identity=identity,
                     task=task,

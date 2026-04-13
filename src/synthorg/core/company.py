@@ -493,6 +493,9 @@ class CompanyConfig(BaseModel):
         communication_pattern: Default communication pattern name.
         tool_access_default: Default tool access for all agents.
         middleware: Agent and coordination middleware configuration.
+        session_replay_on_start: When ``True``, replay the previous
+            session from the event log on agent start (requires an
+            ``EventReader`` and ``resume_execution_id``).
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
@@ -522,6 +525,10 @@ class CompanyConfig(BaseModel):
     middleware: MiddlewareConfig = Field(
         default_factory=MiddlewareConfig,
         description="Agent and coordination middleware configuration",
+    )
+    session_replay_on_start: bool = Field(
+        default=False,
+        description="Replay session from event log on agent start",
     )
 
 

@@ -116,6 +116,7 @@ task:
   parent_task_id: null           # parent task ID when created via delegation
   delegation_chain: []           # ordered agent IDs of delegators (root first)
   middleware_override: null       # per-task middleware chain override (null = company default)
+  metadata: {}                    # arbitrary key-value metadata (pipeline tracking, labels)
 ```
 
 `task_structure` and `coordination_topology` are described in
@@ -1238,6 +1239,26 @@ Strategies that only have an error string (`FailAndReassignStrategy`, `Checkpoin
     progress and adapt.  Richer reconciliation (e.g. workspace change
     detection) is planned for a future iteration.
 
+=== "Lightweight Alternative: Session Replay"
+
+    `Session.replay()` (`engine/session.py`) provides a lighter-weight
+    alternative to full checkpoint/resume.  It reconstructs `AgentContext`
+    from the observability event log rather than from a persisted checkpoint
+    snapshot.
+
+    - **Read-only reconstruction**: replays turn count, accumulated cost, and
+      task status -- but not full conversation history (events do not store
+      message content).
+    - **No persistence dependency**: relies on whichever observability sink
+      the operator configured (structlog file, OTLP backend, Postgres).
+    - **Best-effort**: `ReplayResult.replay_completeness` (0.0--1.0) indicates
+      how much state was recovered.
+    - **Use case**: recovery after brain failure when checkpoint persistence
+      is not configured or the checkpoint is stale.
+
+    See [Brain / Hands / Session](#brain--hands--session) for the full
+    architecture.
+
 ---
 
 ## Graceful Shutdown Protocol
@@ -1758,6 +1779,38 @@ Per-task: `Task.middleware_override` replaces the company-level chain when set.
 ### Error Semantics
 
 Middleware exceptions propagate to the classification pipeline. `ClassificationResult.action` decides: retry, escalate, or fail. No silent swallowing.
+
+---
+
+## Brain / Hands / Session
+
+*Vocabulary adopted from the [Anthropic managed-agents engineering post](https://www.anthropic.com/engineering/managed-agents).  See also: #1261.*
+
+The engine's architecture maps onto three decoupled planes.  Each plane has a distinct responsibility, failure mode, and persistence story.
+
+| Plane | SynthOrg Modules | Purpose |
+|-------|-----------------|---------|
+| **Brain** | `engine/harness.py`, `AgentContext`, loop protocol (`ReactLoop`, `PlanExecuteLoop`, `HybridLoop`) | Inference loop, middleware, decision-making.  Stateless between turns -- all state lives in the immutable `AgentContext`. |
+| **Hands** | `ToolInvoker`, `tools/sandbox/`, `SandboxCredentialManager`, auth proxy | Tool execution, side effects, credential scope.  Credentials flow exclusively through the sandbox credential proxy -- never through the agent context or turn records. |
+| **Session** | `observability/events/`, `engine/session.py` (`Session.replay`), checkpoint/resume | Durable event history, replay, audit.  Every significant action emits a structured event; the event stream is the session's source of truth. |
+
+### Resilience Property
+
+The brain can fail (crash, OOM, timeout) without losing session state.  Because every turn emits structured events (`execution.context.turn`, `execution.task.transition`, etc.) to the configured observability sinks, a new brain instance can reconstruct the execution context via `Session.replay(execution_id)`.
+
+`Session.replay()` walks the event log for a given execution and reconstructs `AgentContext` (turn count, accumulated cost, task status).  It is a **best-effort** read-only reconstruction -- conversation message content is not stored in events, so the replayed context has synthetic placeholder messages.  The `ReplayResult.replay_completeness` field (0.0--1.0) indicates how much state was recovered, scored by event coverage (engine start, context creation, turn contiguity, cost data, task transitions).
+
+This is lighter-weight than full checkpoint/resume (`checkpoint/resume.py`), which persists complete `AgentContext` snapshots and supports mid-execution suspend/resume with full message history.  Use session replay for recovery after brain failure; use checkpoint/resume for deliberate pause/resume of long-running tasks.
+
+### Credential Isolation Boundary
+
+Credentials never enter the brain or session planes.  Three enforcement points:
+
+1. **Task metadata validator** (`engine/_validation.py::validate_task_metadata`) -- rejects `Task.metadata` keys matching credential patterns (token, secret, api_key, password, bearer) at the engine input boundary before execution starts.
+2. **Sandbox credential manager** (`tools/sandbox/credential_manager.py`) -- strips credential-like environment variables before they enter sandbox containers.
+3. **Auth proxy** (`tools/sandbox/auth_proxy.py`) -- injects authentication headers at tool execution time via a local HTTP proxy, so credentials never transit through the agent context.
+
+See also: [Operations > Security > Credential Isolation Boundary](operations.md#credential-isolation-boundary).
 
 ---
 
