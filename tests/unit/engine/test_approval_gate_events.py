@@ -1,11 +1,13 @@
 """Tests for ApprovalGate event stream integration."""
 
+from datetime import UTC, datetime
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
 from synthorg.communication.event_stream.interrupt import (
+    Interrupt,
     InterruptStore,
     InterruptType,
 )
@@ -142,3 +144,43 @@ class TestApprovalGateEventStream:
         event = queue.get_nowait()
         assert event.type == AgUiEventType.APPROVAL_RESUMED
         assert event.payload["approval_id"] == "approval-001"
+
+    async def test_resume_resolves_interrupt(self) -> None:
+        park_service = MagicMock()
+        parked = MagicMock()
+        parked.id = "parked-001"
+        parked.agent_id = "agent-eng-001"
+        parked.approval_id = "approval-001"
+        parked.metadata = {"interrupt_id": "int-resume-001"}
+        park_service.resume.return_value = MagicMock()
+
+        repo = AsyncMock()
+        repo.get_by_approval.return_value = parked
+        repo.delete.return_value = True
+
+        store = InterruptStore()
+        interrupt = Interrupt(
+            id="int-resume-001",
+            type=InterruptType.TOOL_APPROVAL,
+            session_id="session-abc",
+            agent_id="agent-eng-001",
+            created_at=datetime(2026, 4, 13, tzinfo=UTC),
+            timeout_seconds=300.0,
+            tool_name="deploy",
+        )
+        await store.create(interrupt)
+        assert len(await store.list_pending()) == 1
+
+        gate = ApprovalGate(
+            park_service=park_service,
+            parked_context_repo=repo,
+            interrupt_store=store,
+        )
+
+        await gate.resume_context(
+            "approval-001",
+            session_id="session-abc",
+        )
+
+        pending = await store.list_pending(session_id="session-abc")
+        assert len(pending) == 0

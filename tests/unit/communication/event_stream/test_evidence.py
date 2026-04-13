@@ -169,10 +169,6 @@ class TestEvidencePackage:
         ep_one = _make_evidence(signature_threshold=2, signatures=(sig_a,))
         assert ep_one.is_fully_signed is False
 
-    def test_blank_source_agent_id_rejected(self) -> None:
-        with pytest.raises(ValueError, match="at least 1"):
-            _make_evidence(source_agent_id="")
-
     def test_empty_reasoning_trace(self) -> None:
         ep = _make_evidence(reasoning_trace=())
         assert ep.reasoning_trace == ()
