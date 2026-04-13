@@ -172,8 +172,8 @@ class CitationManager(BaseModel):
             Reconstructed ``CitationManager`` with all citations
             and the URL-to-number index rebuilt.
         """
-        raw_list = data.get("citations", [])
-        raw_citations: list[dict[str, Any]] = list(raw_list)  # type: ignore[arg-type]
+        raw_list: Any = data.get("citations", [])
+        raw_citations: list[dict[str, Any]] = list(raw_list)
 
         citations: list[Citation] = []
         url_map: dict[str, int] = {}
