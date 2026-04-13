@@ -22,5 +22,6 @@ runs:
           "https://github.com/chainguard-dev/apko/releases/download/${APKO_VERSION}/checksums.txt" \
           -o /tmp/apko-checksums.txt
         grep "${APKO_ARCHIVE}" /tmp/apko-checksums.txt | (cd /tmp && sha256sum -c -)
-        tar -xzf "/tmp/${APKO_ARCHIVE}" -C /usr/local/bin apko
-        rm -f "/tmp/${APKO_ARCHIVE}" /tmp/apko-checksums.txt
+        tar -xzf "/tmp/${APKO_ARCHIVE}" -C /tmp
+        mv "/tmp/apko_${APKO_VERSION#v}_linux_amd64/apko" /usr/local/bin/apko
+        rm -rf "/tmp/${APKO_ARCHIVE}" /tmp/apko-checksums.txt "/tmp/apko_${APKO_VERSION#v}_linux_amd64"
