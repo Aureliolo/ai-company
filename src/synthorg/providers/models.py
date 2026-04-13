@@ -111,6 +111,17 @@ class ToolDefinition(BaseModel):
         description="L3 explicit-request resources",
     )
 
+    @model_validator(mode="after")
+    def _validate_l1_name_matches(self) -> ToolDefinition:
+        """Ensure l1_metadata.name matches the tool name."""
+        if self.l1_metadata is not None and self.l1_metadata.name != self.name:
+            msg = (
+                f"l1_metadata.name ({self.l1_metadata.name!r}) must "
+                f"match tool name ({self.name!r})"
+            )
+            raise ValueError(msg)
+        return self
+
 
 class ToolCall(BaseModel):
     """A tool invocation requested by the model.

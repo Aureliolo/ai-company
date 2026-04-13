@@ -68,7 +68,10 @@ class ToolL2Body(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
-    full_description: str = Field(description="Detailed usage instructions")
+    full_description: str = Field(
+        min_length=1,
+        description="Detailed usage instructions",
+    )
     parameter_schema: dict[str, object] = Field(
         default_factory=dict,
         description="JSON Schema for tool parameters",

@@ -101,7 +101,7 @@ class ListToolsTool(BaseTool):
             for s in summaries
         ]
         return ToolExecutionResult(
-            content=json.dumps(payload, indent=2),
+            content=json.dumps(payload),
             metadata={"tool_count": len(payload)},
         )
 
@@ -149,12 +149,12 @@ class LoadToolTool(BaseTool):
         payload = {
             "name": tool_name,
             "full_description": l2.full_description,
-            "parameters": dict(l2.parameter_schema),
+            "parameter_schema": dict(l2.parameter_schema),
             "usage_examples": list(l2.usage_examples),
             "failure_modes": list(l2.failure_modes),
         }
         return ToolExecutionResult(
-            content=json.dumps(payload, indent=2),
+            content=json.dumps(payload),
             metadata={METADATA_SHOULD_LOAD_TOOL: tool_name},
         )
 

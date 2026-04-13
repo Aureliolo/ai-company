@@ -192,11 +192,30 @@ class ToolInvoker:
         """
         from .discovery import _DISCOVERY_NAMES  # noqa: PLC0415
 
-        all_defs = self.get_permitted_definitions()
-        included = [
-            d for d in all_defs if d.name in loaded_tools or d.name in _DISCOVERY_NAMES
-        ]
-        included.sort(key=lambda d: d.name)
+        target_names = set(loaded_tools) | _DISCOVERY_NAMES
+        included: list[ToolDefinition] = []
+        for name in sorted(target_names):
+            try:
+                tool = self._registry.get(name)
+            except ToolNotFoundError:
+                continue
+            except MemoryError, RecursionError:
+                raise
+            except Exception:
+                logger.warning(
+                    TOOL_INVOKE_NOT_FOUND,
+                    tool_name=name,
+                    note="unexpected error during loaded definition lookup",
+                    exc_info=True,
+                )
+                continue
+            # Discovery tools bypass permission checks
+            if name not in _DISCOVERY_NAMES and (
+                self._permission_checker is not None
+                and not self._permission_checker.is_permitted(name, tool.category)
+            ):
+                continue
+            included.append(tool.to_definition())
         return tuple(included)
 
     # ── ToolDisclosureManager protocol ────────────────────────────
@@ -214,6 +233,11 @@ class ToolInvoker:
         try:
             tool = self._registry.get(tool_name)
         except ToolNotFoundError:
+            logger.debug(
+                TOOL_INVOKE_NOT_FOUND,
+                tool_name=tool_name,
+                note="tool not found during L2 disclosure query",
+            )
             return None
         except MemoryError, RecursionError:
             raise
@@ -229,6 +253,11 @@ class ToolInvoker:
             self._permission_checker is not None
             and not self._permission_checker.is_permitted(tool_name, tool.category)
         ):
+            logger.debug(
+                TOOL_PERMISSION_DENIED,
+                tool_name=tool_name,
+                note="permission denied during L2 disclosure query",
+            )
             return None
         return tool.to_l2_body()
 
@@ -250,6 +279,12 @@ class ToolInvoker:
         try:
             tool = self._registry.get(tool_name)
         except ToolNotFoundError:
+            logger.debug(
+                TOOL_INVOKE_NOT_FOUND,
+                tool_name=tool_name,
+                resource_id=resource_id,
+                note="tool not found during L3 disclosure query",
+            )
             return None
         except MemoryError, RecursionError:
             raise
@@ -266,6 +301,12 @@ class ToolInvoker:
             self._permission_checker is not None
             and not self._permission_checker.is_permitted(tool_name, tool.category)
         ):
+            logger.debug(
+                TOOL_PERMISSION_DENIED,
+                tool_name=tool_name,
+                resource_id=resource_id,
+                note="permission denied during L3 disclosure query",
+            )
             return None
         resources = tool.get_l3_resources()
         return next(

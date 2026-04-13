@@ -11,10 +11,12 @@ class ToolDisclosureConfig(BaseModel):
     """Configuration for progressive tool disclosure.
 
     Attributes:
-        l1_token_budget: Maximum tokens for L1 metadata across all
-            tools in the system prompt.
-        l2_token_budget: Maximum tokens for loaded L2 bodies in
-            the provider API tools parameter.
+        l1_token_budget: Advisory maximum tokens for L1 metadata
+            across all tools in the system prompt.  Used for
+            capacity planning; not enforced at runtime.
+        l2_token_budget: Advisory maximum tokens for loaded L2
+            bodies in the provider API tools parameter.  Used for
+            capacity planning; not enforced at runtime.
         auto_unload_on_budget_pressure: When ``True``, the oldest
             loaded L2 body is unloaded when context fill exceeds
             ``unload_threshold_percent``.

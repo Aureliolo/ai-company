@@ -81,8 +81,13 @@ class DisclosureMiddleware(BaseAgentMiddleware):
 
         elif result.tool_name == "load_tool_resource":
             pair = result.metadata.get(METADATA_SHOULD_LOAD_RESOURCE)
-            if pair and len(pair) == 2:  # noqa: PLR2004
-                tool_name, resource_id = pair
+            if (
+                isinstance(pair, (tuple, list))
+                and len(pair) == 2  # noqa: PLR2004
+                and isinstance(pair[0], str)
+                and isinstance(pair[1], str)
+            ):
+                tool_name, resource_id = pair[0], pair[1]
                 if (tool_name, resource_id) not in agent_ctx.loaded_resources:
                     agent_ctx = agent_ctx.with_resource_loaded(
                         tool_name,
@@ -111,7 +116,7 @@ class DisclosureMiddleware(BaseAgentMiddleware):
                 TOOL_AUTO_UNLOADED,
                 execution_id=agent_ctx.execution_id,
                 tool_name=oldest,
-                context_fill_percent=ctx.agent_context.context_fill_percent,
+                context_fill_percent=agent_ctx.context_fill_percent,
                 turn=agent_ctx.turn_count,
             )
             ctx = ctx.model_copy(update={"agent_context": agent_ctx})
@@ -123,7 +128,7 @@ class DisclosureMiddleware(BaseAgentMiddleware):
         """Extract loaded tool name from load_tool JSON output."""
         try:
             data = json.loads(output)
-        except json.JSONDecodeError, AttributeError:
+        except json.JSONDecodeError, TypeError, AttributeError:
             logger.debug(
                 TOOL_L2_LOADED,
                 note="failed to parse load_tool output as JSON",

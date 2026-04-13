@@ -157,6 +157,9 @@ class ReactLoop:
             if budget_result is not None:
                 return budget_result
 
+            # Refresh tool defs each turn so newly loaded tools appear
+            tool_defs = get_tool_definitions(tool_invoker, ctx.loaded_tools)
+
             turn_number = ctx.turn_count + 1
             response = await call_provider(
                 ctx,

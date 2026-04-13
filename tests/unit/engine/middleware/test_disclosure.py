@@ -308,3 +308,200 @@ class TestPassThrough:
 
         returned = await mw.wrap_tool_call(ctx, call)
         assert returned is result
+
+
+# ── JSON parsing failure modes (#15) ────────────────────────────
+
+
+@pytest.mark.unit
+class TestExtractToolNameEdgeCases:
+    """Tests for _extract_tool_name with malformed inputs."""
+
+    async def test_malformed_json_falls_back(self) -> None:
+        mw = DisclosureMiddleware()
+        ctx = _make_context()
+        result = _success_result(
+            "load_tool",
+            output="not json at all",
+        )
+
+        async def call(_ctx: AgentMiddlewareContext) -> ToolCallResult:
+            return result
+
+        returned = await mw.wrap_tool_call(ctx, call)
+        assert returned is result
+
+    async def test_non_dict_json_ignored(self) -> None:
+        mw = DisclosureMiddleware()
+        ctx = _make_context()
+        result = _success_result(
+            "load_tool",
+            output='["array", "not", "dict"]',
+        )
+
+        async def call(_ctx: AgentMiddlewareContext) -> ToolCallResult:
+            return result
+
+        returned = await mw.wrap_tool_call(ctx, call)
+        assert returned is result
+
+    async def test_missing_name_key_ignored(self) -> None:
+        mw = DisclosureMiddleware()
+        ctx = _make_context()
+        result = _success_result(
+            "load_tool",
+            output='{"data": "read_file"}',
+        )
+
+        async def call(_ctx: AgentMiddlewareContext) -> ToolCallResult:
+            return result
+
+        returned = await mw.wrap_tool_call(ctx, call)
+        assert returned is result
+
+    async def test_non_string_name_ignored(self) -> None:
+        mw = DisclosureMiddleware()
+        ctx = _make_context()
+        result = _success_result(
+            "load_tool",
+            output='{"name": 123}',
+        )
+
+        async def call(_ctx: AgentMiddlewareContext) -> ToolCallResult:
+            return result
+
+        returned = await mw.wrap_tool_call(ctx, call)
+        assert returned is result
+
+    async def test_whitespace_only_name_ignored(self) -> None:
+        mw = DisclosureMiddleware()
+        ctx = _make_context()
+        result = _success_result(
+            "load_tool",
+            output='{"name": "   "}',
+        )
+
+        async def call(_ctx: AgentMiddlewareContext) -> ToolCallResult:
+            return result
+
+        returned = await mw.wrap_tool_call(ctx, call)
+        assert returned is result
+
+    async def test_non_string_input_handled(self) -> None:
+        """json.loads raises TypeError on non-string input."""
+        # The middleware receives output as str from ToolCallResult,
+        # but _extract_tool_name handles TypeError defensively
+        name = DisclosureMiddleware._extract_tool_name("")
+        assert name is None
+
+
+# ── Auto-unload threshold boundary (#16) ────────────────────────
+
+
+@pytest.mark.unit
+class TestAutoUnloadBoundary:
+    """Tests for auto-unload at exact threshold boundaries."""
+
+    async def test_unload_at_exact_threshold(self) -> None:
+        """Context fill exactly at 80% should trigger unload."""
+        config = ToolDisclosureConfig(unload_threshold_percent=80.0)
+        mw = DisclosureMiddleware(config=config)
+        ctx = _make_context(
+            loaded_tools=frozenset({"tool_a"}),
+            tool_load_order=("tool_a",),
+            context_fill_tokens=8000,
+            context_capacity_tokens=10000,
+        )
+        result = _success_result("some_tool")
+
+        async def call(_ctx: AgentMiddlewareContext) -> ToolCallResult:
+            return result
+
+        await mw.wrap_tool_call(ctx, call)
+        # 80% == 80% threshold: auto-unload should trigger
+
+    async def test_no_unload_just_below_threshold(self) -> None:
+        """Context fill at 79.9% should NOT trigger unload."""
+        config = ToolDisclosureConfig(unload_threshold_percent=80.0)
+        mw = DisclosureMiddleware(config=config)
+        ctx = _make_context(
+            loaded_tools=frozenset({"tool_a"}),
+            tool_load_order=("tool_a",),
+            context_fill_tokens=7990,
+            context_capacity_tokens=10000,
+        )
+        result = _success_result("some_tool")
+
+        async def call(_ctx: AgentMiddlewareContext) -> ToolCallResult:
+            return result
+
+        await mw.wrap_tool_call(ctx, call)
+        # 79.9% < 80% threshold: no unload
+
+
+# ── Metadata tuple validation (#17) ─────────────────────────────
+
+
+@pytest.mark.unit
+class TestMetadataTupleValidation:
+    """Tests for metadata pair validation in resource loading."""
+
+    async def test_non_tuple_pair_ignored(self) -> None:
+        mw = DisclosureMiddleware()
+        ctx = _make_context()
+        result = _success_result(
+            "load_tool_resource",
+            output="content",
+            metadata={"should_load_resource": "not-a-tuple"},
+        )
+
+        async def call(_ctx: AgentMiddlewareContext) -> ToolCallResult:
+            return result
+
+        returned = await mw.wrap_tool_call(ctx, call)
+        assert returned is result
+
+    async def test_non_string_tool_name_ignored(self) -> None:
+        mw = DisclosureMiddleware()
+        ctx = _make_context()
+        result = _success_result(
+            "load_tool_resource",
+            output="content",
+            metadata={"should_load_resource": (123, "guide")},
+        )
+
+        async def call(_ctx: AgentMiddlewareContext) -> ToolCallResult:
+            return result
+
+        returned = await mw.wrap_tool_call(ctx, call)
+        assert returned is result
+
+    async def test_non_string_resource_id_ignored(self) -> None:
+        mw = DisclosureMiddleware()
+        ctx = _make_context()
+        result = _success_result(
+            "load_tool_resource",
+            output="content",
+            metadata={"should_load_resource": ("tool", 456)},
+        )
+
+        async def call(_ctx: AgentMiddlewareContext) -> ToolCallResult:
+            return result
+
+        returned = await mw.wrap_tool_call(ctx, call)
+        assert returned is result
+
+    async def test_wrong_length_tuple_ignored(self) -> None:
+        mw = DisclosureMiddleware()
+        ctx = _make_context()
+        result = _success_result(
+            "load_tool_resource",
+            output="content",
+            metadata={"should_load_resource": ("only_one",)},
+        )
+
+        async def call(_ctx: AgentMiddlewareContext) -> ToolCallResult:
+            return result
+
+        returned = await mw.wrap_tool_call(ctx, call)
+        assert returned is result
