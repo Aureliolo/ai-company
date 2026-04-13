@@ -25,6 +25,10 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+env:
+  TRIVY_VERSION: "0.62.2"
+  GRYPE_VERSION: "0.92.1"
+
 jobs:
   # Detect which domains changed so docs-only PRs skip backend/sandbox builds
   changes:
@@ -97,6 +101,37 @@ jobs:
           echo "App version: ${VERSION}"
 
   # =========================================================================
+  # Compose file validation -- catches syntax errors early
+  # =========================================================================
+  validate-compose:
+    name: Validate Compose Files
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
+
+      - name: Validate compose files
+        run: |
+          touch docker/.env
+          docker compose -f docker/compose.yml config --quiet
+          docker compose -f docker/compose.yml -f docker/compose.distributed.yml --profile distributed config --quiet
+          docker compose -f docker/compose.yml -f docker/compose.override.yml config --quiet
+
+      - name: Report tmpfs allocations
+        run: |
+          echo "## tmpfs Allocations" >> "$GITHUB_STEP_SUMMARY"
+          for f in docker/compose.yml docker/compose.distributed.yml docker/compose.override.yml; do
+            echo "### $f" >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+            grep -E 'tmpfs:|^\s+- /.*size=' "$f" >> "$GITHUB_STEP_SUMMARY" || echo "_none_" >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+          done
+
+  # =========================================================================
   # apko base images -- Wolfi-composed bases for backend + sandbox
   # =========================================================================
   build-backend-base:
@@ -146,6 +181,9 @@ jobs:
       - name: Load image for scanning
         run: docker load -i backend-base.tar
 
+      - name: Report image size
+        run: scripts/report-image-size.sh "ghcr.io/aureliolo/synthorg-backend-base:sha-${GITHUB_SHA::7}" "Backend Base"
+
       - name: Upload base image artifact (PR only)
         if: github.event_name == 'pull_request'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -154,39 +192,34 @@ jobs:
           path: backend-base.tar
           retention-days: 1
 
-      - name: Compute scan image ref
-        id: scan-ref
-        run: echo "ref=ghcr.io/aureliolo/synthorg-backend-base:sha-${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
-
-      - name: Trivy scan
-        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # v0.35.0
-        with:
-          input: backend-base.tar
-          format: json
-          output: trivy-backend-base.json
-          exit-code: "0"
-          severity: CRITICAL,HIGH
-          trivyignores: .github/.trivyignore.yaml
-
-      - name: Evaluate Trivy results
+      - name: Install security scanners
         run: |
-          if [ ! -f trivy-backend-base.json ]; then
-            echo "::error::trivy-backend-base.json not found"
+          curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin "v${TRIVY_VERSION}"
+          curl -sSfL https://raw.githubusercontent.com/anchore/grype/main/install.sh | sh -s -- -b /usr/local/bin "v${GRYPE_VERSION}"
+
+      - name: Security scans (parallel)
+        run: |
+          trivy image --input backend-base.tar --format json --output trivy-backend-base.json \
+            --exit-code 0 --severity CRITICAL,HIGH --ignorefile .github/.trivyignore.yaml &
+          TRIVY_PID=$!
+
+          grype docker-archive:backend-base.tar --fail-on critical -c .github/.grype.yaml &
+          GRYPE_PID=$!
+
+          TRIVY_RC=0; wait "$TRIVY_PID" || TRIVY_RC=$?
+          GRYPE_RC=0; wait "$GRYPE_PID" || GRYPE_RC=$?
+
+          if [ "$TRIVY_RC" -ne 0 ]; then
+            echo "::error::Trivy scan failed (exit code ${TRIVY_RC})"
             exit 1
           fi
-          CRITICAL=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity == "CRITICAL")] | length' trivy-backend-base.json)
-          HIGH=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity == "HIGH")] | length' trivy-backend-base.json)
-          echo "Critical: $CRITICAL, High: $HIGH"
-          if [ "$HIGH" -gt 0 ]; then echo "::warning::Found $HIGH HIGH severity vulnerabilities"; fi
-          if [ "$CRITICAL" -gt 0 ]; then echo "::error::Found $CRITICAL CRITICAL vulnerabilities"; exit 1; fi
+          if [ "$GRYPE_RC" -ne 0 ]; then
+            echo "::error::Grype scan found critical vulnerabilities"
+            exit 1
+          fi
 
-      - name: Grype scan
-        uses: anchore/scan-action@e1165082ffb1fe366ebaf02d8526e7c4989ea9d2 # v7.4.0
-        with:
-          image: docker-archive:backend-base.tar
-          fail-build: true
-          severity-cutoff: critical
-          config: .github/.grype.yaml
+      - name: Evaluate Trivy results
+        run: scripts/evaluate-scan.sh trivy-backend-base.json "Backend Base"
 
       - name: Push base image
         if: github.event_name != 'pull_request'
@@ -268,6 +301,9 @@ jobs:
       - name: Load image for scanning
         run: docker load -i sandbox-base.tar
 
+      - name: Report image size
+        run: scripts/report-image-size.sh "ghcr.io/aureliolo/synthorg-sandbox-base:sha-${GITHUB_SHA::7}" "Sandbox Base"
+
       - name: Upload base image artifact (PR only)
         if: github.event_name == 'pull_request'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -276,36 +312,34 @@ jobs:
           path: sandbox-base.tar
           retention-days: 1
 
-      - name: Compute scan image ref
-        id: scan-ref
-        run: echo "ref=ghcr.io/aureliolo/synthorg-sandbox-base:sha-${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+      - name: Install security scanners
+        run: |
+          curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin "v${TRIVY_VERSION}"
+          curl -sSfL https://raw.githubusercontent.com/anchore/grype/main/install.sh | sh -s -- -b /usr/local/bin "v${GRYPE_VERSION}"
 
-      - name: Trivy scan
-        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # v0.35.0
-        with:
-          input: sandbox-base.tar
-          format: json
-          output: trivy-sandbox-base.json
-          exit-code: "0"
-          severity: CRITICAL,HIGH
-          trivyignores: .github/.trivyignore.yaml
+      - name: Security scans (parallel)
+        run: |
+          trivy image --input sandbox-base.tar --format json --output trivy-sandbox-base.json \
+            --exit-code 0 --severity CRITICAL,HIGH --ignorefile .github/.trivyignore.yaml &
+          TRIVY_PID=$!
+
+          grype docker-archive:sandbox-base.tar --fail-on critical -c .github/.grype.yaml &
+          GRYPE_PID=$!
+
+          TRIVY_RC=0; wait "$TRIVY_PID" || TRIVY_RC=$?
+          GRYPE_RC=0; wait "$GRYPE_PID" || GRYPE_RC=$?
+
+          if [ "$TRIVY_RC" -ne 0 ]; then
+            echo "::error::Trivy scan failed (exit code ${TRIVY_RC})"
+            exit 1
+          fi
+          if [ "$GRYPE_RC" -ne 0 ]; then
+            echo "::error::Grype scan found critical vulnerabilities"
+            exit 1
+          fi
 
       - name: Evaluate Trivy results
-        run: |
-          if [ ! -f trivy-sandbox-base.json ]; then echo "::error::Missing Trivy output"; exit 1; fi
-          CRITICAL=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity == "CRITICAL")] | length' trivy-sandbox-base.json)
-          HIGH=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity == "HIGH")] | length' trivy-sandbox-base.json)
-          echo "Critical: $CRITICAL, High: $HIGH"
-          if [ "$HIGH" -gt 0 ]; then echo "::warning::Found $HIGH HIGH severity vulnerabilities"; fi
-          if [ "$CRITICAL" -gt 0 ]; then echo "::error::Found $CRITICAL CRITICAL vulnerabilities"; exit 1; fi
-
-      - name: Grype scan
-        uses: anchore/scan-action@e1165082ffb1fe366ebaf02d8526e7c4989ea9d2 # v7.4.0
-        with:
-          image: docker-archive:sandbox-base.tar
-          fail-build: true
-          severity-cutoff: critical
-          config: .github/.grype.yaml
+        run: scripts/evaluate-scan.sh trivy-sandbox-base.json "Sandbox Base"
 
       - name: Push base image
         if: github.event_name != 'pull_request'
@@ -420,6 +454,9 @@ jobs:
         id: scan-ref
         run: echo "ref=ghcr.io/aureliolo/synthorg-backend:sha-${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
 
+      - name: Report image size
+        run: scripts/report-image-size.sh "${{ steps.scan-ref.outputs.ref }}" "Backend"
+
       # Single Trivy run for CRITICAL + HIGH (saves ~30s vs two separate runs).
       # JSON output lets us fail on CRITICAL only while still reporting HIGH.
       - name: Trivy scan
@@ -433,38 +470,7 @@ jobs:
           trivyignores: .github/.trivyignore.yaml
 
       - name: Evaluate Trivy results
-        run: |
-          if [ ! -f trivy-backend.json ]; then
-            echo "::error::trivy-backend.json not found -- Trivy scan may have failed to produce output"
-            exit 1
-          fi
-          echo "## Trivy Scan -- Backend"
-          TOTAL=$(jq '[.Results[]?.Vulnerabilities[]?] | length' trivy-backend.json)
-          if [ "$TOTAL" -eq 0 ]; then
-            echo "No CRITICAL or HIGH vulnerabilities found."
-            echo "## Trivy Scan -- Backend: No CRITICAL or HIGH vulnerabilities found." >> "$GITHUB_STEP_SUMMARY"
-          else
-            TABLE=$(jq -r '
-              ["SEVERITY","CVE","PACKAGE","VERSION","TITLE"],
-              (.Results[]?.Vulnerabilities[]? |
-                [.Severity, .VulnerabilityID, .PkgName, .InstalledVersion, (.Title // "")[0:60]]) |
-              @tsv
-            ' trivy-backend.json | column -t -s$'\t')
-            echo "$TABLE"
-            printf '## Trivy Scan -- Backend\n```\n%s\n```\n' "$TABLE" >> "$GITHUB_STEP_SUMMARY"
-          fi
-
-          CRITICAL=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity == "CRITICAL")] | length' trivy-backend.json)
-          HIGH=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity == "HIGH")] | length' trivy-backend.json)
-          echo "Critical: $CRITICAL, High: $HIGH"
-          echo "**Critical: $CRITICAL, High: $HIGH**" >> "$GITHUB_STEP_SUMMARY"
-          if [ "$HIGH" -gt 0 ]; then
-            echo "::warning::Found $HIGH HIGH severity vulnerabilities"
-          fi
-          if [ "$CRITICAL" -gt 0 ]; then
-            echo "::error::Found $CRITICAL CRITICAL vulnerabilities -- failing build"
-            exit 1
-          fi
+        run: scripts/evaluate-scan.sh --verbose trivy-backend.json "Backend"
 
       - name: Upload Trivy report (backend)
         if: always()
@@ -493,15 +499,11 @@ jobs:
           output-format: table
           config: .github/.grype.yaml
 
-      # CIS Docker Benchmark v1.6.0 compliance check (uses trivy installed above).
+      # CIS Docker Benchmark v1.6.0 compliance check.
       # Informational for now -- remove continue-on-error once baseline is clean.
       - name: CIS Docker Benchmark (backend)
         continue-on-error: true
-        env:
-          IMAGE_REF: ${{ steps.scan-ref.outputs.ref }}
-        run: |
-          command -v trivy >/dev/null 2>&1 || { echo "::warning::trivy not on PATH, skipping CIS scan"; exit 0; }
-          trivy image --compliance docker-cis-1.6.0 --format table "$IMAGE_REF"
+        run: scripts/cis-scan.sh "${{ steps.scan-ref.outputs.ref }}"
 
       # Push only after scans pass -- prevents publishing vulnerable images.
       # NOTE: This is a separate build invocation from the scan step. GHA cache
@@ -697,6 +699,9 @@ jobs:
         id: scan-ref
         run: echo "ref=ghcr.io/aureliolo/synthorg-web:sha-${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
 
+      - name: Report image size
+        run: scripts/report-image-size.sh "${{ steps.scan-ref.outputs.ref }}" "Web"
+
       - name: Trivy scan
         uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # v0.35.0
         with:
@@ -708,13 +713,7 @@ jobs:
           trivyignores: .github/.trivyignore.yaml
 
       - name: Evaluate Trivy results
-        run: |
-          if [ ! -f trivy-web.json ]; then echo "::error::Missing Trivy output"; exit 1; fi
-          CRITICAL=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity == "CRITICAL")] | length' trivy-web.json)
-          HIGH=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity == "HIGH")] | length' trivy-web.json)
-          echo "Critical: $CRITICAL, High: $HIGH"
-          if [ "$HIGH" -gt 0 ]; then echo "::warning::Found $HIGH HIGH severity vulnerabilities"; fi
-          if [ "$CRITICAL" -gt 0 ]; then echo "::error::Found $CRITICAL CRITICAL vulnerabilities"; exit 1; fi
+        run: scripts/evaluate-scan.sh trivy-web.json "Web"
 
       - name: Grype scan
         uses: anchore/scan-action@e1165082ffb1fe366ebaf02d8526e7c4989ea9d2 # v7.4.0
@@ -872,6 +871,9 @@ jobs:
         id: scan-ref
         run: echo "ref=ghcr.io/aureliolo/synthorg-sandbox:sha-${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
 
+      - name: Report image size
+        run: scripts/report-image-size.sh "${{ steps.scan-ref.outputs.ref }}" "Sandbox"
+
       # Single Trivy run for CRITICAL + HIGH.
       - name: Trivy scan
         uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # v0.35.0
@@ -884,38 +886,7 @@ jobs:
           trivyignores: .github/.trivyignore.yaml
 
       - name: Evaluate Trivy results
-        run: |
-          if [ ! -f trivy-sandbox.json ]; then
-            echo "::error::trivy-sandbox.json not found -- Trivy scan may have failed to produce output"
-            exit 1
-          fi
-          echo "## Trivy Scan -- Sandbox"
-          TOTAL=$(jq '[.Results[]?.Vulnerabilities[]?] | length' trivy-sandbox.json)
-          if [ "$TOTAL" -eq 0 ]; then
-            echo "No CRITICAL or HIGH vulnerabilities found."
-            echo "## Trivy Scan -- Sandbox: No CRITICAL or HIGH vulnerabilities found." >> "$GITHUB_STEP_SUMMARY"
-          else
-            TABLE=$(jq -r '
-              ["SEVERITY","CVE","PACKAGE","VERSION","TITLE"],
-              (.Results[]?.Vulnerabilities[]? |
-                [.Severity, .VulnerabilityID, .PkgName, .InstalledVersion, (.Title // "")[0:60]]) |
-              @tsv
-            ' trivy-sandbox.json | column -t -s$'\t')
-            echo "$TABLE"
-            printf '## Trivy Scan -- Sandbox\n```\n%s\n```\n' "$TABLE" >> "$GITHUB_STEP_SUMMARY"
-          fi
-
-          CRITICAL=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity == "CRITICAL")] | length' trivy-sandbox.json)
-          HIGH=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity == "HIGH")] | length' trivy-sandbox.json)
-          echo "Critical: $CRITICAL, High: $HIGH"
-          echo "**Critical: $CRITICAL, High: $HIGH**" >> "$GITHUB_STEP_SUMMARY"
-          if [ "$HIGH" -gt 0 ]; then
-            echo "::warning::Found $HIGH HIGH severity vulnerabilities"
-          fi
-          if [ "$CRITICAL" -gt 0 ]; then
-            echo "::error::Found $CRITICAL CRITICAL vulnerabilities -- failing build"
-            exit 1
-          fi
+        run: scripts/evaluate-scan.sh --verbose trivy-sandbox.json "Sandbox"
 
       - name: Upload Trivy report (sandbox)
         if: always()
@@ -944,13 +915,11 @@ jobs:
           output-format: table
           config: .github/.grype.yaml
 
+      # CIS Docker Benchmark v1.6.0 compliance check.
+      # Informational for now -- remove continue-on-error once baseline is clean.
       - name: CIS Docker Benchmark (sandbox)
         continue-on-error: true
-        env:
-          IMAGE_REF: ${{ steps.scan-ref.outputs.ref }}
-        run: |
-          command -v trivy >/dev/null 2>&1 || { echo "::warning::trivy not on PATH, skipping CIS scan"; exit 0; }
-          trivy image --compliance docker-cis-1.6.0 --format table "$IMAGE_REF"
+        run: scripts/cis-scan.sh "${{ steps.scan-ref.outputs.ref }}"
 
       # Push only after scans pass -- prevents publishing vulnerable images.
       # NOTE: Separate build invocation; GHA cache ensures deterministic layers,
