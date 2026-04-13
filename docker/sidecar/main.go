@@ -70,7 +70,7 @@ func main() {
 	logger.Info("dnat.setup.complete", "proxy_port", cfg.ProxyPort)
 
 	// Start TCP proxy.
-	tcpProxy := proxy.New(cfg.ProxyPort, al, cfg.AllowAll, dnatMgr, logger)
+	tcpProxy := proxy.New(cfg.ProxyPort, al, dnatMgr, logger)
 	if err := tcpProxy.Start(); err != nil {
 		logger.Error("proxy.start.failed", "error", err.Error())
 		os.Exit(1)

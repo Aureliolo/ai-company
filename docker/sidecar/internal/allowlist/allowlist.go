@@ -68,6 +68,11 @@ func (a *Allowlist) Stop() {
 	}
 }
 
+// IsAllowAll reports whether allow-all mode is currently active.
+func (a *Allowlist) IsAllowAll() bool {
+	return a.allowAll.Load()
+}
+
 // IsAllowedIP checks whether the given IP:port is permitted.
 func (a *Allowlist) IsAllowedIP(ip string, port uint16) bool {
 	if a.allowAll.Load() {

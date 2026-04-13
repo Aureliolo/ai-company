@@ -13,7 +13,6 @@ import (
 func TestProxyStartStop(t *testing.T) {
 	al := allowlist.New(nil, true, 0)
 	dnat := proxy.NewDNATManager(0, true)
-	p := proxy.New(0, al, false, dnat, nil)
 
 	// Use port 0 to get a random free port -- but our Start binds to
 	// the configured port. Use a free port listener instead.
@@ -24,8 +23,8 @@ func TestProxyStartStop(t *testing.T) {
 	port := ln.Addr().(*net.TCPAddr).Port
 	ln.Close()
 
-	p2 := proxy.New(uint16(port), al, false, dnat, nil)
-	if err := p2.Start(); err != nil {
+	p := proxy.New(uint16(port), al, dnat, nil)
+	if err := p.Start(); err != nil {
 		t.Fatalf("Start: %v", err)
 	}
 
@@ -36,8 +35,7 @@ func TestProxyStartStop(t *testing.T) {
 	}
 	conn.Close()
 
-	_ = p
-	if err := p2.Shutdown(t.Context()); err != nil {
+	if err := p.Shutdown(t.Context()); err != nil {
 		t.Errorf("Shutdown: %v", err)
 	}
 }
@@ -47,20 +45,31 @@ func TestProxyCreation(t *testing.T) {
 		{Host: "127.0.0.1", Port: 8080},
 	}, true, 0)
 	dnat := proxy.NewDNATManager(15001, true)
-	p := proxy.New(15001, al, false, dnat, nil)
+	p := proxy.New(15001, al, dnat, nil)
 	if p == nil {
 		t.Fatal("expected non-nil proxy")
 	}
 }
 
-func TestProxySetAllowAll(t *testing.T) {
+func TestProxyAllowAllDelegatedToAllowlist(t *testing.T) {
+	// allow-all state is owned by the Allowlist, not the Proxy.
+	// Toggling via Allowlist.UpdateRules should be reflected in the
+	// proxy's enforcement without any direct Proxy API call.
 	al := allowlist.New(nil, false, 0)
 	dnat := proxy.NewDNATManager(15001, true)
-	p := proxy.New(15001, al, false, dnat, nil)
+	p := proxy.New(15001, al, dnat, nil)
+	if p == nil {
+		t.Fatal("expected non-nil proxy")
+	}
 
-	p.SetAllowAll(true)
-	// No panic, state change accepted.
+	// Toggle allowAll via the allowlist (simulates admin API path).
+	al.UpdateRules(nil, true)
+	if !al.IsAllowAll() {
+		t.Error("expected allow-all to be true after UpdateRules")
+	}
 
-	p.SetAllowAll(false)
-	// Toggle back.
+	al.UpdateRules(nil, false)
+	if al.IsAllowAll() {
+		t.Error("expected allow-all to be false after UpdateRules")
+	}
 }

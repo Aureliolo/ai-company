@@ -6,7 +6,6 @@ import (
 	"io"
 	"net"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/Aureliolo/synthorg/sidecar/internal/allowlist"
@@ -22,29 +21,30 @@ type Logger interface {
 }
 
 // Proxy is a transparent TCP proxy that enforces an allowlist.
+// Allow-all state is owned by the Allowlist (updated atomically via
+// the admin API) -- the proxy does not keep a separate copy.
 type Proxy struct {
-	port     uint16
-	al       *allowlist.Allowlist
-	allowAll atomic.Bool
-	dnat     *DNATManager
-	logger   Logger
+	port   uint16
+	al     *allowlist.Allowlist
+	dnat   *DNATManager
+	logger Logger
 
 	listener net.Listener
 	wg       sync.WaitGroup
 	done     chan struct{}
 }
 
-// New creates a transparent TCP proxy.
-func New(port uint16, al *allowlist.Allowlist, allowAll bool, dnat *DNATManager, logger Logger) *Proxy {
-	p := &Proxy{
+// New creates a transparent TCP proxy. The allow-all state is read
+// from the Allowlist at connection time so admin API updates take
+// effect immediately.
+func New(port uint16, al *allowlist.Allowlist, dnat *DNATManager, logger Logger) *Proxy {
+	return &Proxy{
 		port:   port,
 		al:     al,
 		dnat:   dnat,
 		logger: logger,
 		done:   make(chan struct{}),
 	}
-	p.allowAll.Store(allowAll)
-	return p
 }
 
 // Start begins accepting TCP connections.
@@ -77,11 +77,6 @@ func (p *Proxy) Shutdown(ctx context.Context) error {
 	case <-ctx.Done():
 		return ctx.Err()
 	}
-}
-
-// SetAllowAll dynamically toggles allow-all mode.
-func (p *Proxy) SetAllowAll(v bool) {
-	p.allowAll.Store(v)
 }
 
 func (p *Proxy) acceptLoop() {
@@ -117,8 +112,8 @@ func (p *Proxy) handleConn(conn net.Conn) {
 		return
 	}
 
-	// Check allowlist.
-	if !p.allowAll.Load() && !p.al.IsAllowedIP(destIP, destPort) {
+	// Check allowlist (includes allow-all check internally).
+	if !p.al.IsAllowedIP(destIP, destPort) {
 		if p.logger != nil {
 			p.logger.Info("proxy.connection.blocked",
 				"dst_ip", destIP, "dst_port", destPort,
@@ -133,7 +128,7 @@ func (p *Proxy) handleConn(conn net.Conn) {
 		return
 	}
 
-	if p.allowAll.Load() && p.logger != nil {
+	if p.al.IsAllowAll() && p.logger != nil {
 		p.logger.Warn("proxy.connection.allow_all",
 			"dst_ip", destIP, "dst_port", destPort,
 		)
