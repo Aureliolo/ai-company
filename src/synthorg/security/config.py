@@ -12,6 +12,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from synthorg.core.enums import ActionType, ApprovalRiskLevel
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.security.models import SecurityVerdictType
+from synthorg.security.policy_engine.config import SecurityPolicyConfig
 
 
 class SecurityEnforcementMode(StrEnum):
@@ -327,6 +328,10 @@ class SecurityConfig(BaseModel):
     )
     uncertainty_check: UncertaintyCheckConfig = Field(
         default_factory=UncertaintyCheckConfig,
+    )
+    policy_engine: SecurityPolicyConfig = Field(
+        default_factory=SecurityPolicyConfig,
+        description="Runtime policy engine configuration",
     )
 
     @model_validator(mode="after")

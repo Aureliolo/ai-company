@@ -125,6 +125,7 @@ DEFAULT_AGENT_CHAIN: tuple[str, ...] = (
     "authority_deference",
     "sanitize_message",
     "security_interceptor",
+    "policy_gate",
     "approval_gate",
     "assumption_violation",
     "classification",

@@ -162,6 +162,12 @@ class TurnRecord(BaseModel):
         ge=0,
         description="Tokens from tool responses this turn (for PTE)",
     )
+    semantic_drift_score: float | None = Field(
+        default=None,
+        ge=0.0,
+        le=1.0,
+        description="Semantic drift similarity score (from SemanticDriftDetector)",
+    )
 
     @model_validator(mode="after")
     def _validate_retry_consistency(self) -> Self:

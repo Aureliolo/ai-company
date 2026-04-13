@@ -821,6 +821,14 @@ payload. It extends `StructuredArtifact` (shared base with
 `ApprovalItem.evidence_package` (optional) carries the package; existing
 approval paths can adopt incrementally.
 
+**Quantum-safe signing**: High-risk `EvidencePackage` approvals
+(`risk_level >= HIGH`) use m-of-n threshold signing via the
+[Quantum-Safe Audit Trail](operations.md#quantum-safe-audit-trail).
+`EvidencePackageSignature` carries ML-DSA-65 signatures; the
+`is_fully_signed` computed field checks the threshold.
+See `src/synthorg/observability/audit_chain/` for the signing
+infrastructure.
+
 ### DissentRecord as First-Class Message Type
 
 `MessageType.DISSENT` promotes `DissentRecord` from a persistence-only

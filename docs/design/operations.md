@@ -1365,6 +1365,88 @@ feedback arrives.
     full model specification. Existing approval paths (hiring, promotion, pruning) can adopt
     the package incrementally -- the field defaults to `None`.
 
+### Runtime Policy Engine
+
+A pluggable runtime pre-execution gate that evaluates structured action requests
+(tool invocations, delegations, approval executions) against loaded policy
+definitions *before* the action runs. This complements the existing post-hoc
+`security/rules/` rule engine which fires on completed events.
+
+**Cedar adapter** (primary): uses `cedarpy` for stateless embedded evaluation.
+Policies are loaded from files at company boot. No external process needed.
+
+**Configuration** (`SecurityConfig.policy_engine`):
+
+| Field | Default | Description |
+|-------|---------|-------------|
+| `engine` | `"none"` | Backend: `"cedar"` or `"none"` (opt-in) |
+| `policy_files` | `()` | Paths to Cedar policy files |
+| `evaluation_mode` | `"log_only"` | `"enforce"` blocks; `"log_only"` logs only |
+| `fail_closed` | `False` | Deny on evaluation errors if `True` |
+
+**Integration points** (via R1 middleware):
+
+- `wrap_tool_call` -- `PolicyGateMiddleware` with `action_type="tool_invoke"`
+- `before_decompose` -- coordination middleware with `action_type="delegation"`
+- `ApprovalGate.park_context()` -- with `action_type="approval_execute"`
+
+**Safety defaults**: engine defaults to `"none"` (disabled). When enabled,
+`evaluation_mode` defaults to `"log_only"` so first adoption never breaks
+existing flows. Operators graduate to `"enforce"` after observing decisions.
+
+**Module**: `src/synthorg/security/policy_engine/`
+
+### Quantum-Safe Audit Trail
+
+An observability sink that signs security events with ML-DSA-65 (FIPS 204)
+via the Asqav library and chains them in an append-only hash chain for
+tamper-evident audit. Wraps the existing `observability/sinks.py` logging
+handler protocol -- no changes to event producers.
+
+**Features**:
+
+- ML-DSA-65 post-quantum signatures per security event
+- SHA-256 hash chain linking each entry to its predecessor
+- RFC 3161 timestamping via public TSA with local-clock fallback
+  (emits `SECURITY_TIMESTAMP_FALLBACK` on fallback)
+- `AuditChainVerifier` for end-to-end chain integrity verification
+- m-of-n threshold signing for high-risk `EvidencePackage` approvals
+
+**Configuration** (`AuditChainConfig`, opt-in):
+
+| Field | Default | Description |
+|-------|---------|-------------|
+| `enabled` | `False` | Opt-in activation |
+| `backend` | `"asqav"` | Signing backend |
+| `tsa_url` | `None` | RFC 3161 TSA endpoint (None = local clock) |
+| `signing_key_path` | `None` | Path to signing key |
+
+**Module**: `src/synthorg/observability/audit_chain/`
+
+### OWASP Agentic Top 10 (ASI) Coverage Matrix
+
+This matrix maps SynthOrg security mechanisms to the
+[OWASP Top 10 for Agentic Applications (2026)](https://genai.owasp.org/resource/owasp-top-10-for-agentic-applications-for-2026/).
+Coverage is independently derived from codebase analysis and may not be fully
+aligned with OWASP ASI specifications. Operators should cross-reference with
+official OWASP documentation.
+
+| ASI | Risk | Coverage | Primary Modules |
+|-----|------|----------|----------------|
+| ASI01 | Agent Goal Hijack | Partial | `security/rules/` (credential/path detectors), `engine/classification/` (semantic detectors), `HTMLParseGuard` (tool output sanitization), `SemanticDriftDetector` (middleware) |
+| ASI02 | Tool Misuse and Exploitation | Covered | `PolicyEngine` (Cedar pre-exec gate), `security/rules/` (post-hoc rule engine), `tools/sandbox/` (Docker/subprocess isolation), `ApprovalGate` |
+| ASI03 | Identity and Privilege Abuse | Covered | Progressive trust (`security/trust/`), 4 autonomy levels, `AuthorityDeferenceGuard`, `ApprovalGate`, delegation budget, `ToolPermissionChecker` |
+| ASI04 | Agentic Supply Chain Vulnerabilities | Partial | `ToolRegistryIntegrityCheck` (boot-time hash verification), pip-audit/npm-audit/Trivy in CI, cosign signatures, SLSA provenance. **Gap**: no runtime plugin integrity verification beyond boot-time hash. |
+| ASI05 | Unexpected Code Execution (RCE) | Covered | `tools/sandbox/` (Docker with ephemeral containers, subprocess with env filtering), gVisor runtime for high-risk categories (`code_execution`, `terminal`), `SandboxCredentialManager`, workspace boundary enforcement |
+| ASI06 | Memory and Context Poisoning | Partial | Procedural memory generation guards, MVCC `SharedKnowledgeStore`, `SemanticDriftDetector`. **Gap**: no automated RAG-store integrity verification. |
+| ASI07 | Insecure Inter-Agent Communication | Partial | `DelegationChainHashMiddleware` (content hash on delegation chain), `AuthorityDeferenceGuard` (strips authority cues from transcripts). **Gap**: no message-level encryption (in-process agents, not needed currently). |
+| ASI08 | Cascading Failures | Covered | S1 15-risk register mitigations, circuit breakers (`BudgetEnforcer`), `StagnationDetector`, `CoordinationReplanHook` with `max_stall_count`/`max_reset_count` hard caps, team-size bounds (3-4 per group, 8 per meeting) |
+| ASI09 | Human-Agent Trust Exploitation | Partial | `EvidencePackage` (structured HITL artifacts with `RecommendedAction` options), `AuditChainSink` (tamper-evident decision trail), `ApprovalGate` with configurable timeout policies. **Gap**: no cognitive-bias-specific UI warnings. |
+| ASI10 | Rogue Agents | Covered | 4 autonomy levels (full/semi/supervised/locked), `PolicyEngine` (pre-exec gate), tool permissions (`ToolPermissionChecker`), sandbox isolation, `ToolRegistryIntegrityCheck`, budget limits, `AuthorityBreachDetector` |
+
+**Summary**: 5 covered, 5 partial, 0 uncovered. Partial gaps are documented
+above with specific module references.
+
 ---
 
 ## A2A Security

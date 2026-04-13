@@ -1502,6 +1502,26 @@ These are complementary systems handling different types of shared state:
 | Agent memory (personal) | Per-agent ownership | Each agent owns its memory exclusively |
 | Org memory (shared knowledge) | Single-writer (`OrgMemoryBackend`) | `OrgMemoryBackend` protocol with role-based write access control |
 
+### Worktree Disk Quota
+
+Per-worktree disk usage limits with a background watcher that emits warning
+and exceeded events when thresholds are crossed.
+
+**Configuration** (on `PlannerWorktreesConfig`):
+
+| Field | Default | Description |
+|-------|---------|-------------|
+| `max_disk_gb_per_worktree` | `5.0` | Maximum disk usage in GB per worktree |
+| `auto_cleanup_on_threshold` | `True` | Signal cleanup when limit exceeded |
+| `cleanup_warning_threshold` | `0.8` | Usage ratio for warning events (0.5-1.0) |
+
+**Watcher** (`DiskQuotaWatcher`): checks worktree disk usage via recursive
+directory size computation. Emits `WORKSPACE_DISK_WARNING` at the warning
+threshold and `WORKSPACE_DISK_EXCEEDED` at the limit. Does not delete
+worktrees directly -- signals the `WorkspaceManager` to act.
+
+**Module**: `src/synthorg/engine/workspace/disk_quota.py`
+
 ---
 
 ## Task Decomposability & Coordination Topology

@@ -681,6 +681,11 @@ class ToolInvoker:
         if isinstance(exec_result, ToolResult):
             return exec_result
 
+        # Sanitize HTML in tool output to strip hidden injection vectors
+        # (scripts, styles, display:none elements).  Runs before output
+        # scanning so the scanner sees only visible content.
+        exec_result = self._apply_html_guard(exec_result)
+
         # Detect parking metadata from tools like request_human_approval.
         # Returns an error ToolResult if tracking fails, preventing the
         # agent from silently bypassing the approval gate.
@@ -981,6 +986,38 @@ class ToolInvoker:
             tool_call_id=tool_call.id,
             content=result.content,
             is_error=result.is_error,
+        )
+
+    def _apply_html_guard(
+        self,
+        result: ToolExecutionResult,
+    ) -> ToolExecutionResult:
+        """Apply HTML parse guard to sanitize tool output.
+
+        Strips scripts, styles, hidden elements, and detects
+        render-gap injection attacks.  Returns the original result
+        unchanged if the output is not HTML or on parse errors.
+        """
+        if result.is_error or not result.content:
+            return result
+        from synthorg.tools.html_parse_guard import (  # noqa: PLC0415
+            HTMLParseGuard,
+        )
+
+        guard = HTMLParseGuard()
+        sanitized = guard.sanitize(result.content)
+        if sanitized.cleaned == result.content:
+            return result
+        metadata = dict(result.metadata)
+        metadata["html_guard"] = {
+            "gap_detected": sanitized.gap_detected,
+            "gap_ratio": sanitized.gap_ratio,
+            "stripped_element_count": sanitized.stripped_element_count,
+        }
+        return ToolExecutionResult(
+            content=sanitized.cleaned,
+            is_error=result.is_error,
+            metadata=metadata,
         )
 
     async def _run_guarded(

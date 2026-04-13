@@ -47,6 +47,22 @@ SECURITY_LLM_EVAL_SKIPPED_FULL_AUTONOMY: Final[str] = (
     "security.llm_eval.skipped_full_autonomy"
 )
 
+# ── Audit chain events ──────────────────────────────────────────
+SECURITY_AUDIT_CHAIN_SIGNED: Final[str] = "security.audit_chain.signed"
+SECURITY_AUDIT_CHAIN_VERIFY_START: Final[str] = "security.audit_chain.verify.start"
+SECURITY_AUDIT_CHAIN_VERIFY_COMPLETE: Final[str] = (
+    "security.audit_chain.verify.complete"
+)
+SECURITY_AUDIT_CHAIN_BREAK_DETECTED: Final[str] = "security.audit_chain.break_detected"
+SECURITY_TIMESTAMP_FALLBACK: Final[str] = "security.timestamp.fallback"
+
+# ── Policy engine events ────────────────────────────────────────
+SECURITY_POLICY_EVALUATE_START: Final[str] = "security.policy.evaluate.start"
+SECURITY_POLICY_DECISION_ALLOW: Final[str] = "security.policy.decision.allow"
+SECURITY_POLICY_DECISION_DENY: Final[str] = "security.policy.decision.deny"
+SECURITY_POLICY_ENGINE_ERROR: Final[str] = "security.policy.engine.error"
+SECURITY_POLICY_LOG_ONLY_DENY: Final[str] = "security.policy.log_only.deny"
+
 # Custom policy events.
 SECURITY_CUSTOM_POLICY_MATCHED: Final[str] = "security.custom_policy.matched"
 

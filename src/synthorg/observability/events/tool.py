@@ -76,5 +76,14 @@ TOOL_DISCLOSURE_MANAGER_NOT_BOUND: Final[str] = "tool.disclosure.manager_not_bou
 TOOL_DISCLOSURE_L1_SUMMARY_ERROR: Final[str] = "tool.disclosure.l1_summary_error"
 TOOL_DISCLOSURE_TOKEN_SAVINGS: Final[str] = "tool.disclosure.token_savings"  # noqa: S105
 
+# ── HTML parse guard events ────────────────────────────────────────
+TOOL_HTML_PARSE_GAP_DETECTED: Final[str] = "tool.html_parse.gap_detected"
+TOOL_HTML_PARSE_ERROR: Final[str] = "tool.html_parse.error"
+
+# ── Registry integrity check events ──────────────────────────────
+TOOL_REGISTRY_INTEGRITY_CHECK_START: Final[str] = "tool.registry.integrity.start"
+TOOL_REGISTRY_INTEGRITY_VIOLATION: Final[str] = "tool.registry.integrity.violation"
+TOOL_REGISTRY_INTEGRITY_CHECK_COMPLETE: Final[str] = "tool.registry.integrity.complete"
+
 # ── Memory tool events ────────────────────────────────────────────
 TOOL_MEMORY_AUGMENTATION_FAILED: Final[str] = "tool.memory.augmentation_failed"

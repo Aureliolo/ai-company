@@ -122,6 +122,22 @@ class PlannerWorktreesConfig(BaseModel):
         default=True,
         description="Whether to remove worktree after merge",
     )
+    max_disk_gb_per_worktree: float = Field(
+        default=5.0,
+        gt=0.0,
+        le=100.0,
+        description="Maximum disk usage in GB per worktree",
+    )
+    auto_cleanup_on_threshold: bool = Field(
+        default=True,
+        description="Auto-signal cleanup when disk limit exceeded",
+    )
+    cleanup_warning_threshold: float = Field(
+        default=0.8,
+        ge=0.5,
+        le=1.0,
+        description="Usage ratio at which to emit a warning (0.5-1.0)",
+    )
     semantic_analysis: SemanticAnalysisConfig = Field(
         default_factory=SemanticAnalysisConfig,
         description="Semantic conflict detection configuration",

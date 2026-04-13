@@ -29,6 +29,7 @@ from synthorg.engine.middleware.coordination_constraints import (
     TaskLedgerMiddleware,
 )
 from synthorg.engine.middleware.disclosure import DisclosureMiddleware
+from synthorg.engine.middleware.policy_gate import PolicyGateMiddleware
 from synthorg.engine.middleware.registry import (
     register_agent_middleware,
     register_coordination_middleware,
@@ -40,6 +41,7 @@ from synthorg.engine.middleware.s1_constraints import (
     ClarificationGateMiddleware,
     DelegationChainHashMiddleware,
 )
+from synthorg.engine.middleware.semantic_drift import SemanticDriftDetector
 from synthorg.observability import get_logger
 from synthorg.observability.events.middleware import (
     MIDDLEWARE_DEFAULTS_REGISTERED,
@@ -57,6 +59,7 @@ _AGENT_DEFAULTS: tuple[tuple[str, Any], ...] = (
     ("authority_deference", AuthorityDeferenceGuard),
     ("sanitize_message", SanitizeMessageMiddleware),
     ("security_interceptor", SecurityInterceptorMiddleware),
+    ("policy_gate", PolicyGateMiddleware),
     ("approval_gate", ApprovalGateMiddleware),
     ("assumption_violation", AssumptionViolationMiddleware),
     ("classification", ClassificationMiddleware),
@@ -69,6 +72,7 @@ _AGENT_DEFAULTS: tuple[tuple[str, Any], ...] = (
 # company's AgentMiddlewareConfig.chain.
 _AGENT_OPT_IN: tuple[tuple[str, Any], ...] = (
     ("behavior_tagger", BehaviorTaggerMiddleware),
+    ("semantic_drift_detector", SemanticDriftDetector),
 )
 
 _COORDINATION_DEFAULTS: tuple[tuple[str, Any], ...] = (

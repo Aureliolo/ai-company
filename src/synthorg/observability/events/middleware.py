@@ -101,3 +101,14 @@ MIDDLEWARE_DEFAULTS_REGISTERED: str = "middleware.defaults.registered"
 
 MIDDLEWARE_DUPLICATE_CHAIN: str = "middleware.chain.duplicate"
 """Duplicate middleware names detected during chain construction."""
+
+# ── Semantic drift detector events ──────────────────────────────
+
+MIDDLEWARE_SEMANTIC_DRIFT_DETECTED: str = "middleware.semantic_drift.detected"
+"""Semantic drift detected between model output and task criteria."""
+
+MIDDLEWARE_SEMANTIC_DRIFT_SKIPPED: str = "middleware.semantic_drift.skipped"
+"""Semantic drift check skipped (missing acceptance criteria)."""
+
+MIDDLEWARE_SEMANTIC_DRIFT_ERROR: str = "middleware.semantic_drift.error"
+"""Semantic drift computation failed (fail-soft)."""

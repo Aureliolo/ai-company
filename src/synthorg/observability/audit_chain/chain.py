@@ -1,0 +1,98 @@
+"""Hash chain for append-only tamper-evident audit trail."""
+
+import hashlib
+from datetime import datetime  # noqa: TC003
+
+from pydantic import BaseModel, ConfigDict, Field
+
+
+class ChainEntry(BaseModel):
+    """A single entry in the append-only hash chain.
+
+    Attributes:
+        position: Zero-based position in the chain.
+        event_hash: SHA-256 hex digest of the serialized event.
+        previous_hash: Hash of the prior entry (``"genesis"`` for first).
+        signature: Raw signature bytes over the event data.
+        timestamp: When the entry was created.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+
+    position: int = Field(ge=0, description="Chain position")
+    event_hash: str = Field(description="SHA-256 of event data")
+    previous_hash: str = Field(description="Hash of prior entry")
+    signature: bytes = Field(description="Signature over event data")
+    timestamp: datetime = Field(description="Entry creation time")
+
+
+class HashChain:
+    """Append-only hash chain for audit trail integrity.
+
+    Each entry links to the previous via a hash chain.  Integrity
+    verification walks the chain and re-computes hashes.
+
+    Args:
+        initial_hash: Genesis hash for the first entry.
+    """
+
+    def __init__(self, initial_hash: str = "genesis") -> None:
+        self._entries: list[ChainEntry] = []
+        self._tail_hash = initial_hash
+
+    @property
+    def entries(self) -> tuple[ChainEntry, ...]:
+        """Read-only view of all chain entries."""
+        return tuple(self._entries)
+
+    @property
+    def tail_hash(self) -> str:
+        """Hash of the most recent entry (or genesis)."""
+        return self._tail_hash
+
+    def append(
+        self,
+        event_data: bytes,
+        signature: bytes,
+        timestamp: datetime,
+    ) -> ChainEntry:
+        """Append a new entry to the chain.
+
+        Args:
+            event_data: Serialized event bytes.
+            signature: Signature over event_data.
+            timestamp: Entry timestamp.
+
+        Returns:
+            The newly created chain entry.
+        """
+        event_hash = hashlib.sha256(event_data).hexdigest()
+        # Chain hash links this entry to the previous.
+        chain_input = f"{self._tail_hash}:{event_hash}".encode()
+        chained_hash = hashlib.sha256(chain_input).hexdigest()
+
+        entry = ChainEntry(
+            position=len(self._entries),
+            event_hash=event_hash,
+            previous_hash=self._tail_hash,
+            signature=signature,
+            timestamp=timestamp,
+        )
+        self._entries.append(entry)
+        self._tail_hash = chained_hash
+        return entry
+
+    def verify_integrity(self) -> bool:
+        """Verify the entire chain's hash integrity.
+
+        Returns:
+            ``True`` if the chain is intact, ``False`` if any link
+            is broken.
+        """
+        expected_prev = "genesis"
+        for entry in self._entries:
+            if entry.previous_hash != expected_prev:
+                return False
+            chain_input = f"{expected_prev}:{entry.event_hash}".encode()
+            expected_prev = hashlib.sha256(chain_input).hexdigest()
+        return True
