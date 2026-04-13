@@ -36,6 +36,8 @@ from synthorg.observability.events.sandbox import (
     SANDBOX_SIDECAR_CREATED,
     SANDBOX_SIDECAR_HEALTH_FAILED,
     SANDBOX_SIDECAR_HEALTHY,
+    SANDBOX_SIDECAR_REMOVE_FAILED,
+    SANDBOX_SIDECAR_REMOVED,
     SANDBOX_SIDECAR_STARTED,
 )
 from synthorg.tools.sandbox.credential_manager import SandboxCredentialManager
@@ -449,13 +451,14 @@ class DockerSandbox:
         Raises:
             SandboxStartError: On timeout or unhealthy status.
         """
-        deadline = asyncio.get_event_loop().time() + _SIDECAR_HEALTH_TIMEOUT
+        loop = asyncio.get_running_loop()
+        deadline = loop.time() + _SIDECAR_HEALTH_TIMEOUT
         container_obj = docker.containers.container(sidecar_id)  # pyright: ignore[reportAttributeAccessIssue]
 
-        while asyncio.get_event_loop().time() < deadline:
+        while loop.time() < deadline:
             try:
                 info = await container_obj.show()
-            except Exception:
+            except TimeoutError, ConnectionError, OSError:
                 await asyncio.sleep(_SIDECAR_HEALTH_POLL_INTERVAL)
                 continue
 
@@ -656,7 +659,18 @@ class DockerSandbox:
         finally:
             await self._remove_container(docker, container_id)
             if sidecar_id:
-                await self._remove_container(docker, sidecar_id)
+                try:
+                    await self._remove_container(docker, sidecar_id)
+                    logger.debug(
+                        SANDBOX_SIDECAR_REMOVED,
+                        sidecar_id=sidecar_id[:12],
+                    )
+                except Exception as exc:
+                    logger.warning(
+                        SANDBOX_SIDECAR_REMOVE_FAILED,
+                        sidecar_id=sidecar_id[:12],
+                        error=str(exc),
+                    )
             self._tracked_containers.pop(container_id, None)
 
     async def _start_and_wait(

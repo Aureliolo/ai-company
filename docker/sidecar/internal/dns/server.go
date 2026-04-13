@@ -33,15 +33,21 @@ type Server struct {
 	wg         sync.WaitGroup
 }
 
-// NewServer creates a DNS server.
-func NewServer(al *allowlist.Allowlist, dnsAllowed bool, logger Logger) *Server {
+// NewServer creates a DNS server. Returns an error if no upstream
+// DNS server can be determined from /etc/resolv.conf -- the sidecar
+// must not start without a known upstream.
+func NewServer(al *allowlist.Allowlist, dnsAllowed bool, logger Logger) (*Server, error) {
+	upstream := findUpstreamDNS()
+	if upstream == "" {
+		return nil, fmt.Errorf("no upstream DNS found in /etc/resolv.conf -- sidecar cannot enforce DNS filtering")
+	}
 	return &Server{
 		al:         al,
 		dnsAllowed: dnsAllowed,
 		logger:     logger,
-		upstream:   findUpstreamDNS(),
+		upstream:   upstream,
 		done:       make(chan struct{}),
-	}
+	}, nil
 }
 
 // Start begins listening on UDP and TCP port 53.
@@ -60,11 +66,12 @@ func (s *Server) Start() error {
 	}
 	s.tcpLn = tcpLn
 
-	s.wg.Add(2)
+	s.wg.Add(1)
 	go func() {
 		defer s.wg.Done()
 		s.serveUDP()
 	}()
+	s.wg.Add(1)
 	go func() {
 		defer s.wg.Done()
 		s.serveTCP()
@@ -262,10 +269,14 @@ func buildNXDOMAIN(query []byte) []byte {
 }
 
 // findUpstreamDNS reads /etc/resolv.conf for the first nameserver.
+// Returns empty string if no nameserver is found -- the caller must
+// handle this as a startup failure. No fallback: if we can't
+// determine the upstream DNS, the sidecar cannot enforce DNS
+// filtering and must refuse to start.
 func findUpstreamDNS() string {
 	f, err := os.Open("/etc/resolv.conf")
 	if err != nil {
-		return "8.8.8.8:53"
+		return ""
 	}
 	defer f.Close()
 
@@ -279,5 +290,5 @@ func findUpstreamDNS() string {
 			}
 		}
 	}
-	return "8.8.8.8:53"
+	return ""
 }

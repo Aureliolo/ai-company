@@ -123,7 +123,7 @@ type rulesRequest struct {
 func (s *Server) handlePutRules(w http.ResponseWriter, r *http.Request) {
 	var req rulesRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, `{"error":"invalid JSON"}`, http.StatusBadRequest)
+		s.jsonError(w, "invalid JSON", http.StatusBadRequest)
 		return
 	}
 
@@ -161,14 +161,20 @@ func (s *Server) requireAuth(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		auth := r.Header.Get("Authorization")
 		if !strings.HasPrefix(auth, "Bearer ") {
-			http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
+			s.jsonError(w, "unauthorized", http.StatusUnauthorized)
 			return
 		}
-		token := strings.TrimPrefix(auth, "Bearer ")
-		if subtle.ConstantTimeCompare([]byte(token), []byte(s.adminToken)) != 1 {
-			http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
+		token := strings.TrimSpace(strings.TrimPrefix(auth, "Bearer "))
+		if token == "" || subtle.ConstantTimeCompare([]byte(token), []byte(s.adminToken)) != 1 {
+			s.jsonError(w, "unauthorized", http.StatusUnauthorized)
 			return
 		}
 		next(w, r)
 	}
+}
+
+func (s *Server) jsonError(w http.ResponseWriter, msg string, code int) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(code)
+	json.NewEncoder(w).Encode(map[string]string{"error": msg}) //nolint:errcheck
 }

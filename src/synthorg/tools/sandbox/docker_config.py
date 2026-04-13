@@ -224,24 +224,12 @@ class DockerSandboxConfig(BaseModel):
         return self
 
     @model_validator(mode="after")
-    def _validate_network_allow_all(self) -> Self:
-        """Reject ``network_allow_all`` with non-empty ``allowed_hosts``."""
-        if self.network_allow_all and self.allowed_hosts:
-            msg = (
-                "network_allow_all=True is mutually exclusive with "
-                "allowed_hosts -- set one or the other"
-            )
-            logger.warning(
-                CONFIG_VALIDATION_FAILED,
-                field="network_allow_all",
-                reason=msg,
-            )
-            raise ValueError(msg)
-        return self
-
-    @model_validator(mode="after")
     def _validate_network_presets(self) -> Self:
-        """Resolve preset names and merge into ``allowed_hosts``."""
+        """Resolve preset names and merge into ``allowed_hosts``.
+
+        Runs before ``_validate_network_allow_all`` so the mutual
+        exclusion check sees the final merged ``allowed_hosts``.
+        """
         if not self.network_presets:
             return self
         merged = list(self.allowed_hosts)
@@ -264,6 +252,26 @@ class DockerSandboxConfig(BaseModel):
                     existing.add(entry)
         # Pydantic frozen model: use object.__setattr__ for validator mutation.
         object.__setattr__(self, "allowed_hosts", tuple(merged))
+        return self
+
+    @model_validator(mode="after")
+    def _validate_network_allow_all(self) -> Self:
+        """Reject ``network_allow_all`` with non-empty ``allowed_hosts``.
+
+        Runs after ``_validate_network_presets`` so preset-merged
+        hosts are included in the mutual exclusion check.
+        """
+        if self.network_allow_all and self.allowed_hosts:
+            msg = (
+                "network_allow_all=True is mutually exclusive with "
+                "allowed_hosts -- set one or the other"
+            )
+            logger.warning(
+                CONFIG_VALIDATION_FAILED,
+                field="network_allow_all",
+                reason=msg,
+            )
+            raise ValueError(msg)
         return self
 
     @model_validator(mode="after")

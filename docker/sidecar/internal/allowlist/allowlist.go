@@ -23,8 +23,10 @@ type Allowlist struct {
 	loopback  bool
 	allowAll  atomic.Bool
 
+	resolveMu       sync.Mutex // serializes concurrent resolve() calls
 	resolveInterval time.Duration
 	stopCh          chan struct{}
+	startOnce       sync.Once
 }
 
 // New creates an Allowlist from the given host:port entries.
@@ -44,11 +46,14 @@ func New(hosts []config.HostPort, loopback bool, resolveIntervalSec int) *Allowl
 }
 
 // Start begins background re-resolution if an interval was configured.
+// Idempotent -- safe to call multiple times.
 func (a *Allowlist) Start() {
 	if a.resolveInterval <= 0 {
 		return
 	}
-	go a.backgroundResolve()
+	a.startOnce.Do(func() {
+		go a.backgroundResolve()
+	})
 }
 
 // Stop terminates the background re-resolution goroutine.
@@ -94,6 +99,10 @@ func (a *Allowlist) UpdateRules(hosts []config.HostPort, allowAll bool) {
 }
 
 func (a *Allowlist) resolve() {
+	// Serialize concurrent resolve() calls to avoid redundant DNS lookups.
+	a.resolveMu.Lock()
+	defer a.resolveMu.Unlock()
+
 	resolved := make(map[string]bool)
 	hostnames := make(map[string]bool)
 

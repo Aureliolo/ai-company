@@ -59,7 +59,11 @@ func (l *logger) log(lvl logLevel, levelStr, msg string, kvs []any) {
 
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	data, _ := json.Marshal(entry)
+	data, err := json.Marshal(entry)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "sidecar: log marshal failed: %v\n", err)
+		return
+	}
 	fmt.Fprintln(os.Stdout, string(data))
 }
 

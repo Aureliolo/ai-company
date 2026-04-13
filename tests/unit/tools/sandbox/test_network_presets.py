@@ -84,6 +84,15 @@ class TestAllowAllMutualExclusion:
                 allowed_hosts=("example.com:443",),
             )
 
+    def test_allow_all_with_presets_raises(self) -> None:
+        """Presets merge into allowed_hosts before allow_all check."""
+        with pytest.raises(ValueError, match="mutually exclusive"):
+            DockerSandboxConfig(
+                network="bridge",
+                network_allow_all=True,
+                network_presets=("git",),
+            )
+
     def test_allow_all_without_hosts_ok(self) -> None:
         config = DockerSandboxConfig(
             network="bridge",

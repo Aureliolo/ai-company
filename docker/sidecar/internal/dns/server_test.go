@@ -114,7 +114,10 @@ func TestNewServer(t *testing.T) {
 	al := allowlist.New([]config.HostPort{
 		{Host: "api.example.com", Port: 443},
 	}, false, 0)
-	srv := dns.NewServer(al, true, nil)
+	srv, err := dns.NewServer(al, true, nil)
+	if err != nil {
+		t.Skipf("no upstream DNS available: %v", err)
+	}
 	if srv == nil {
 		t.Fatal("expected non-nil server")
 	}

@@ -42,7 +42,11 @@ func main() {
 	al.Start()
 
 	// Start DNS server.
-	dnsServer := dns.NewServer(al, cfg.DNSAllowed, logger)
+	dnsServer, err := dns.NewServer(al, cfg.DNSAllowed, logger)
+	if err != nil {
+		logger.Error("dns.init.failed", "error", err.Error())
+		os.Exit(1)
+	}
 	if err := dnsServer.Start(); err != nil {
 		logger.Error("dns.start.failed", "error", err.Error())
 		os.Exit(1)
@@ -86,7 +90,7 @@ func main() {
 	if err := tcpProxy.Shutdown(ctx); err != nil {
 		logger.Error("proxy.shutdown.failed", "error", err.Error())
 	}
-	if err := dnatMgr.Cleanup(context.Background()); err != nil {
+	if err := dnatMgr.Cleanup(ctx); err != nil {
 		logger.Error("dnat.cleanup.failed", "error", err.Error())
 	}
 	dnsServer.Stop()
