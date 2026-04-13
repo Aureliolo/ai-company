@@ -289,6 +289,14 @@ filterwarnings = [
     # the C and Python warning implementations, making module-based
     # filters unreliable across CI environments.
     "ignore:'asyncio.iscoroutinefunction' is deprecated:DeprecationWarning",
+    # Python 3.14 + Windows + xdist: ProactorEventLoop and socket
+    # finalizers emit ResourceWarning during xdist worker teardown.
+    # These are GC-triggered cleanup warnings, not test failures.
+    # The ``unraisableexception`` plugin promotes them to errors
+    # which randomly crash xdist workers. Safe to ignore -- the
+    # underlying resources are cleaned up by the OS on process exit.
+    "ignore:unclosed event loop:ResourceWarning",
+    "ignore:unclosed.*socket:ResourceWarning",
 ]
 
 # ---------------------------------------------------------------------------
