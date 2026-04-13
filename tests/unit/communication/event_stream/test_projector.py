@@ -27,49 +27,24 @@ from synthorg.observability.events.execution import (
 
 @pytest.mark.unit
 class TestProjectionMap:
-    def test_engine_start(self) -> None:
-        expected = AgUiEventType.RUN_STARTED
-        assert PROJECTION_MAP[EXECUTION_ENGINE_START] == expected
-
-    def test_engine_complete(self) -> None:
-        expected = AgUiEventType.RUN_FINISHED
-        assert PROJECTION_MAP[EXECUTION_ENGINE_COMPLETE] == expected
-
-    def test_engine_error(self) -> None:
-        expected = AgUiEventType.RUN_ERROR
-        assert PROJECTION_MAP[EXECUTION_ENGINE_ERROR] == expected
-
-    def test_step_start(self) -> None:
-        expected = AgUiEventType.STEP_STARTED
-        assert PROJECTION_MAP[EXECUTION_PLAN_STEP_START] == expected
-
-    def test_step_complete(self) -> None:
-        expected = AgUiEventType.STEP_FINISHED
-        assert PROJECTION_MAP[EXECUTION_PLAN_STEP_COMPLETE] == expected
-
-    def test_step_failed(self) -> None:
-        expected = AgUiEventType.STEP_FAILED
-        assert PROJECTION_MAP[EXECUTION_PLAN_STEP_FAILED] == expected
-
-    def test_turn_start(self) -> None:
-        expected = AgUiEventType.TEXT_MESSAGE_START
-        assert PROJECTION_MAP[EXECUTION_LOOP_TURN_START] == expected
-
-    def test_turn_complete(self) -> None:
-        expected = AgUiEventType.TEXT_MESSAGE_END
-        assert PROJECTION_MAP[EXECUTION_LOOP_TURN_COMPLETE] == expected
-
-    def test_tool_calls(self) -> None:
-        expected = AgUiEventType.TOOL_CALL_START
-        assert PROJECTION_MAP[EXECUTION_LOOP_TOOL_CALLS] == expected
-
-    def test_approval_parked(self) -> None:
-        expected = AgUiEventType.APPROVAL_INTERRUPT
-        assert PROJECTION_MAP[APPROVAL_GATE_CONTEXT_PARKED] == expected
-
-    def test_approval_resumed(self) -> None:
-        expected = AgUiEventType.APPROVAL_RESUMED
-        assert PROJECTION_MAP[APPROVAL_GATE_CONTEXT_RESUMED] == expected
+    @pytest.mark.parametrize(
+        ("key", "expected"),
+        [
+            (EXECUTION_ENGINE_START, AgUiEventType.RUN_STARTED),
+            (EXECUTION_ENGINE_COMPLETE, AgUiEventType.RUN_FINISHED),
+            (EXECUTION_ENGINE_ERROR, AgUiEventType.RUN_ERROR),
+            (EXECUTION_PLAN_STEP_START, AgUiEventType.STEP_STARTED),
+            (EXECUTION_PLAN_STEP_COMPLETE, AgUiEventType.STEP_FINISHED),
+            (EXECUTION_PLAN_STEP_FAILED, AgUiEventType.STEP_FAILED),
+            (EXECUTION_LOOP_TURN_START, AgUiEventType.TEXT_MESSAGE_START),
+            (EXECUTION_LOOP_TURN_COMPLETE, AgUiEventType.TEXT_MESSAGE_END),
+            (EXECUTION_LOOP_TOOL_CALLS, AgUiEventType.TOOL_CALL_START),
+            (APPROVAL_GATE_CONTEXT_PARKED, AgUiEventType.APPROVAL_INTERRUPT),
+            (APPROVAL_GATE_CONTEXT_RESUMED, AgUiEventType.APPROVAL_RESUMED),
+        ],
+    )
+    def test_projection_mapping(self, key: str, expected: AgUiEventType) -> None:
+        assert PROJECTION_MAP[key] == expected
 
     def test_dissent_not_in_projection_map(self) -> None:
         # Dissent is emitted directly by ConflictResolutionService

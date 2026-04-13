@@ -322,8 +322,16 @@ class ConflictResolutionService:
                 logger.info(
                     COMM_DISSENT_PUBLISHED,
                     dissent_id=record.id,
-                    conflict_id=conflict_id,
+                    conflict_id=record.conflict.id,
                     transport="bus",
+                )
+            else:
+                logger.warning(
+                    COMM_DISSENT_PUBLISH_FAILED,
+                    dissent_id=record.id,
+                    conflict_id=record.conflict.id,
+                    transport="bus",
+                    note="Message bus missing publish method",
                 )
         except MemoryError, RecursionError:
             raise

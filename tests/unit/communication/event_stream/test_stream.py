@@ -86,7 +86,10 @@ class TestEventStreamHub:
         )
         await hub.publish(e1)
         await hub.publish(e2)  # queue full, should not block
-        assert queue.qsize() == 1  # first event kept, second dropped
+        assert queue.qsize() == 1
+        kept = queue.get_nowait()
+        assert kept.id == "evt-001"  # first event kept, second dropped
+        assert queue.empty()
 
     async def test_publish_raw_convenience(self) -> None:
         hub = EventStreamHub()

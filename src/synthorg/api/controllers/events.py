@@ -304,7 +304,7 @@ class InterruptController(Controller):
         self,
         state: State,
         session_id: Annotated[
-            str | None,
+            NotBlankStr | None,
             Parameter(max_length=QUERY_MAX_LENGTH),
         ] = None,
     ) -> ApiResponse[tuple[InterruptResponse, ...]]:

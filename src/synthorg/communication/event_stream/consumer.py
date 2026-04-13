@@ -4,9 +4,6 @@ The ``EventStreamConsumer`` protocol defines the interface for
 components that consume events from ``EventStreamHub``.  The AG-UI
 dashboard and the future A2A gateway (#1164) are the two primary
 consumers.
-
-This module also provides ``project_for_consumer`` which routes
-events through a consumer's projection before delivery.
 """
 
 from typing import TYPE_CHECKING, Protocol, runtime_checkable

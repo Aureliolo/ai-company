@@ -9,56 +9,30 @@ from synthorg.communication.event_stream.types import AgUiEventType, StreamEvent
 
 @pytest.mark.unit
 class TestAgUiEventType:
-    def test_run_started_value(self) -> None:
-        assert AgUiEventType.RUN_STARTED.value == "run_started"
-
-    def test_run_finished_value(self) -> None:
-        assert AgUiEventType.RUN_FINISHED.value == "run_finished"
-
-    def test_run_error_value(self) -> None:
-        assert AgUiEventType.RUN_ERROR.value == "run_error"
-
-    def test_step_started_value(self) -> None:
-        assert AgUiEventType.STEP_STARTED.value == "step_started"
-
-    def test_step_finished_value(self) -> None:
-        assert AgUiEventType.STEP_FINISHED.value == "step_finished"
-
-    def test_step_failed_value(self) -> None:
-        assert AgUiEventType.STEP_FAILED.value == "step_failed"
-
-    def test_text_message_start_value(self) -> None:
-        assert AgUiEventType.TEXT_MESSAGE_START.value == "text_message_start"
-
-    def test_text_message_content_value(self) -> None:
-        assert AgUiEventType.TEXT_MESSAGE_CONTENT.value == "text_message_content"
-
-    def test_text_message_end_value(self) -> None:
-        assert AgUiEventType.TEXT_MESSAGE_END.value == "text_message_end"
-
-    def test_tool_call_start_value(self) -> None:
-        assert AgUiEventType.TOOL_CALL_START.value == "tool_call_start"
-
-    def test_tool_call_args_value(self) -> None:
-        assert AgUiEventType.TOOL_CALL_ARGS.value == "tool_call_args"
-
-    def test_tool_call_end_value(self) -> None:
-        assert AgUiEventType.TOOL_CALL_END.value == "tool_call_end"
-
-    def test_approval_interrupt_value(self) -> None:
-        assert AgUiEventType.APPROVAL_INTERRUPT.value == "approval_interrupt"
-
-    def test_approval_resumed_value(self) -> None:
-        assert AgUiEventType.APPROVAL_RESUMED.value == "approval_resumed"
-
-    def test_info_request_interrupt_value(self) -> None:
-        assert AgUiEventType.INFO_REQUEST_INTERRUPT.value == "info_request_interrupt"
-
-    def test_info_request_resumed_value(self) -> None:
-        assert AgUiEventType.INFO_REQUEST_RESUMED.value == "info_request_resumed"
-
-    def test_dissent_value(self) -> None:
-        assert AgUiEventType.DISSENT.value == "synthorg:dissent"
+    @pytest.mark.parametrize(
+        ("member", "expected"),
+        [
+            (AgUiEventType.RUN_STARTED, "run_started"),
+            (AgUiEventType.RUN_FINISHED, "run_finished"),
+            (AgUiEventType.RUN_ERROR, "run_error"),
+            (AgUiEventType.STEP_STARTED, "step_started"),
+            (AgUiEventType.STEP_FINISHED, "step_finished"),
+            (AgUiEventType.STEP_FAILED, "step_failed"),
+            (AgUiEventType.TEXT_MESSAGE_START, "text_message_start"),
+            (AgUiEventType.TEXT_MESSAGE_CONTENT, "text_message_content"),
+            (AgUiEventType.TEXT_MESSAGE_END, "text_message_end"),
+            (AgUiEventType.TOOL_CALL_START, "tool_call_start"),
+            (AgUiEventType.TOOL_CALL_ARGS, "tool_call_args"),
+            (AgUiEventType.TOOL_CALL_END, "tool_call_end"),
+            (AgUiEventType.APPROVAL_INTERRUPT, "approval_interrupt"),
+            (AgUiEventType.APPROVAL_RESUMED, "approval_resumed"),
+            (AgUiEventType.INFO_REQUEST_INTERRUPT, "info_request_interrupt"),
+            (AgUiEventType.INFO_REQUEST_RESUMED, "info_request_resumed"),
+            (AgUiEventType.DISSENT, "synthorg:dissent"),
+        ],
+    )
+    def test_member_value(self, member: AgUiEventType, expected: str) -> None:
+        assert member.value == expected
 
     def test_all_members_count(self) -> None:
         assert len(AgUiEventType) == 17

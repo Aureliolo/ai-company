@@ -258,8 +258,10 @@ class DissentPayload(BaseModel):
     dissenting_agent_id: NotBlankStr = Field(
         description="Agent whose position was overruled",
     )
-    conflict_type: str = Field(description="Conflict type value")
-    strategy_used: str = Field(description="Resolution strategy value")
+    conflict_type: ConflictType = Field(description="Conflict type")
+    strategy_used: ConflictResolutionStrategy = Field(
+        description="Resolution strategy",
+    )
 
     @classmethod
     def from_record(cls, record: DissentRecord) -> DissentPayload:
@@ -275,6 +277,6 @@ class DissentPayload(BaseModel):
             dissent_id=record.id,
             conflict_id=record.conflict.id,
             dissenting_agent_id=record.dissenting_agent_id,
-            conflict_type=record.conflict.type.value,
-            strategy_used=record.strategy_used.value,
+            conflict_type=record.conflict.type,
+            strategy_used=record.strategy_used,
         )

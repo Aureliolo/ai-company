@@ -208,7 +208,7 @@ class InterruptStore:
         if interrupt.id in self._pending:
             msg = f"Interrupt {interrupt.id!r} already exists"
             raise ValueError(msg)
-        self._pending[interrupt.id] = interrupt
+        self._pending[interrupt.id] = copy.deepcopy(interrupt)
         self._events[interrupt.id] = asyncio.Event()
         logger.info(
             EVENT_STREAM_INTERRUPT_CREATED,
@@ -265,7 +265,7 @@ class InterruptStore:
         Returns:
             The resolved interrupt, or ``None`` if not found.
         """
-        interrupt = self._pending.pop(resolution.interrupt_id, None)
+        interrupt = self._pending.get(resolution.interrupt_id)
         if interrupt is None:
             logger.warning(
                 EVENT_STREAM_INTERRUPT_NOT_FOUND,
@@ -273,6 +273,26 @@ class InterruptStore:
             )
             return None
 
+        # Validate resolution payload matches interrupt type.
+        is_tool = interrupt.type == InterruptType.TOOL_APPROVAL
+        if is_tool and resolution.decision is None:
+            logger.warning(
+                EVENT_STREAM_INTERRUPT_NOT_FOUND,
+                interrupt_id=resolution.interrupt_id,
+                note="TOOL_APPROVAL requires decision",
+            )
+            return None
+        is_info = interrupt.type == InterruptType.INFO_REQUEST
+        if is_info and resolution.response is None:
+            logger.warning(
+                EVENT_STREAM_INTERRUPT_NOT_FOUND,
+                interrupt_id=resolution.interrupt_id,
+                note="INFO_REQUEST requires response",
+            )
+            return None
+
+        # Remove from pending only after validation succeeds.
+        del self._pending[resolution.interrupt_id]
         self._results[resolution.interrupt_id] = resolution
         event = self._events.get(resolution.interrupt_id)
         if event is not None:

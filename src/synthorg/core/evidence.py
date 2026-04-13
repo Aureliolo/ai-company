@@ -94,7 +94,7 @@ class EvidencePackage(StructuredArtifact):
     id: NotBlankStr = Field(description="Stable evidence package UUID")
     title: NotBlankStr = Field(description="Short human-readable summary")
     narrative: NotBlankStr = Field(
-        description="Plain-English explanation (2-5 sentences)",
+        description="Plain-English explanation of the approval context",
     )
     reasoning_trace: tuple[NotBlankStr, ...] = Field(
         default=(),
@@ -140,6 +140,15 @@ class EvidencePackage(StructuredArtifact):
         """
         distinct = {sig.approver_id for sig in self.signatures}
         return len(distinct) >= self.signature_threshold
+
+    @model_validator(mode="after")
+    def _validate_signature_uniqueness(self) -> Self:
+        """Reject duplicate approver_id values in signatures."""
+        ids = [sig.approver_id for sig in self.signatures]
+        if len(ids) != len(set(ids)):
+            msg = "signatures must contain unique approver_id values"
+            raise ValueError(msg)
+        return self
 
     @model_validator(mode="after")
     def _deep_copy_metadata(self) -> Self:
