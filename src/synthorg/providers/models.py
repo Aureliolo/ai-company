@@ -4,6 +4,11 @@ from typing import Any, Self
 
 from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
 
+from synthorg.core.tool_disclosure import (  # noqa: TC001
+    ToolL1Metadata,
+    ToolL2Body,
+    ToolL3Resource,
+)
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 
 from .enums import FinishReason, MessageRole, StreamEventType
@@ -91,6 +96,31 @@ class ToolDefinition(BaseModel):
         default_factory=dict,
         description="JSON Schema for tool parameters",
     )
+
+    # ── Progressive disclosure tiers ─────────────────────────────
+    l1_metadata: ToolL1Metadata | None = Field(
+        default=None,
+        description="L1 always-in-context summary",
+    )
+    l2_body: ToolL2Body | None = Field(
+        default=None,
+        description="L2 on-demand instruction body",
+    )
+    l3_resources: tuple[ToolL3Resource, ...] = Field(
+        default=(),
+        description="L3 explicit-request resources",
+    )
+
+    @model_validator(mode="after")
+    def _validate_l1_name_matches(self) -> ToolDefinition:
+        """Ensure l1_metadata.name matches the tool name."""
+        if self.l1_metadata is not None and self.l1_metadata.name != self.name:
+            msg = (
+                f"l1_metadata.name ({self.l1_metadata.name!r}) must "
+                f"match tool name ({self.name!r})"
+            )
+            raise ValueError(msg)
+        return self
 
 
 class ToolCall(BaseModel):

@@ -37,6 +37,9 @@ class ToolDefinitionFactory(ModelFactory[ToolDefinition]):
         "properties": {"location": {"type": "string"}},
         "required": ["location"],
     }
+    l1_metadata = None
+    l2_body = None
+    l3_resources = ()
 
 
 class ToolCallFactory(ModelFactory[ToolCall]):

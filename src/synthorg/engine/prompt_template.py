@@ -182,6 +182,19 @@ in the {{ agent_department }} department.
 {% if secondary_skills %}
 - **Secondary**: {{ secondary_skills | join(', ') }}
 {% endif %}
+{% if l1_tools %}
+
+## Available Tools
+
+You have access to {{ l1_tools | length }} tools. \
+Call `list_tools()` for details, \
+then `load_tool(tool_name)` before invoking a tool.
+
+{% for tool in l1_tools %}\
+- **{{ tool.name }}** ({{ tool.category }}, \
+{{ tool.cost_tier }}): {{ tool.short_description }}
+{% endfor %}
+{% endif %}
 
 ## Authority
 {% if can_approve %}

@@ -34,6 +34,7 @@ if TYPE_CHECKING:
     from collections.abc import Mapping
 
     from synthorg.core.agent import ToolPermissions
+    from synthorg.core.tool_disclosure import ToolL1Metadata
     from synthorg.providers.models import ToolDefinition
 
     from .registry import ToolRegistry
@@ -279,4 +280,28 @@ class ToolPermissionChecker:
                 permitted=len(result),
                 excluded=excluded,
             )
+        return tuple(result)
+
+    def filter_l1_summaries(
+        self,
+        registry: ToolRegistry,
+    ) -> tuple[ToolL1Metadata, ...]:
+        """Return L1 metadata for permitted tools only.
+
+        Lightweight variant of ``filter_definitions`` that returns
+        only L1 summaries for system prompt injection.
+
+        Args:
+            registry: Tool registry to filter.
+
+        Returns:
+            Sorted tuple of L1 metadata for permitted tools.
+        """
+        tool_names = registry.list_tools()
+        result: list[ToolL1Metadata] = []
+        for name in tool_names:
+            tool = registry.get(name)
+            if self.is_permitted(name, tool.category):
+                result.append(tool.to_l1_metadata())
+        result.sort(key=lambda m: m.name)
         return tuple(result)

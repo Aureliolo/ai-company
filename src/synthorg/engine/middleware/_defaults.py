@@ -25,6 +25,7 @@ from synthorg.engine.middleware.coordination_constraints import (
     ReplanMiddleware,
     TaskLedgerMiddleware,
 )
+from synthorg.engine.middleware.disclosure import DisclosureMiddleware
 from synthorg.engine.middleware.registry import (
     register_agent_middleware,
     register_coordination_middleware,
@@ -57,6 +58,7 @@ _AGENT_DEFAULTS: tuple[tuple[str, Any], ...] = (
     ("assumption_violation", AssumptionViolationMiddleware),
     ("classification", ClassificationMiddleware),
     ("cost_recording", CostRecordingMiddleware),
+    ("disclosure", DisclosureMiddleware),
 )
 
 _COORDINATION_DEFAULTS: tuple[tuple[str, Any], ...] = (

@@ -480,7 +480,10 @@ class TestGetToolDefinitions:
 
     def test_returns_definitions(self) -> None:
         invoker = _make_invoker("echo", "search")
-        defs = get_tool_definitions(invoker)
+        defs = get_tool_definitions(
+            invoker,
+            loaded_tools=frozenset({"echo", "search"}),
+        )
         assert defs is not None
         assert len(defs) == 2
 

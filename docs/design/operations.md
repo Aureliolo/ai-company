@@ -768,6 +768,45 @@ External tools are integrated via the **Model Context Protocol** (MCP).
   `isError` maps 1:1 to `is_error`
   ([Decision Log](../architecture/decisions.md) D18)
 
+### Progressive Tool Disclosure
+
+When the tool inventory exceeds ~30 tools, loading every full definition into the LLM
+context upfront becomes a major token tax. Progressive disclosure uses a three-level
+hierarchy inspired by Google ADK's skill loading pattern:
+
+| Level | Contents | When injected | Token cost |
+|-------|----------|---------------|------------|
+| **L1 metadata** | name, one-line description, category, cost tier | Always (system prompt) | ~100 tokens/tool |
+| **L2 body** | full description, JSON Schema, examples, failure modes | On demand via `load_tool()` | <5K tokens/tool |
+| **L3 resource** | markdown guides, code samples, example traces | Explicit via `load_tool_resource()` | Varies |
+
+**Discovery tools** (always available regardless of agent access level):
+
+- `list_tools()` -- returns L1 metadata for all permitted tools
+- `load_tool(tool_name)` -- returns L2 body; marks tool as loaded in `AgentContext`
+- `load_tool_resource(tool_name, resource_id)` -- returns specific L3 resource
+
+**Context injection:**
+
+1. L1 metadata is injected into the system prompt for all permitted tools
+2. Full `ToolDefinition` objects are sent via the provider API `tools` parameter
+   only for loaded tools + discovery tools
+3. L3 resources are never auto-injected; returned inline from `load_tool_resource`
+
+**Auto-unload:** When `AgentContext.context_fill_percent` exceeds
+`ToolDisclosureConfig.unload_threshold_percent` (default 80%), the oldest-loaded
+L2 body is unloaded (FIFO by insertion order). L1 metadata remains.
+
+**Configuration** (`ToolDisclosureConfig`):
+
+- `l1_token_budget` (default 3000) -- max tokens for L1 metadata
+- `l2_token_budget` (default 15000) -- max tokens for loaded L2 bodies
+- `auto_unload_on_budget_pressure` (default `true`)
+- `unload_threshold_percent` (default 80.0)
+
+Cross-reference: MCP integration above is the external tool integration pattern;
+progressive disclosure is the local analogue for managing context cost.
+
 ### Action Type System
 
 Action types classify agent actions for use by [autonomy presets](#autonomy-levels),

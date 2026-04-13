@@ -4,12 +4,11 @@ Translates agent configuration (personality, skills, authority, role) into
 contextually rich system prompts that shape agent behavior during LLM calls.
 
 **Non-inferable principle:** System prompts should contain only information
-that agents cannot discover by reading the codebase or environment.  Tool
-definitions, for example, are already delivered via the LLM provider's API
-``tools`` parameter, so repeating them in the system prompt would increase
-cost without benefit (per D22, arXiv:2602.11988).  The default template
-therefore omits the ``Available Tools`` section.  Custom templates may still
-reference ``{{ tools }}`` when explicitly needed.
+that agents cannot discover by reading the codebase or environment.  Full
+tool definitions are delivered via the LLM provider's API ``tools``
+parameter.  However, lightweight L1 metadata (name, category, cost tier,
+one-line description) IS injected into the system prompt so agents can
+discover what tools exist and decide which to load via ``load_tool()``.
 
 Example::
 
@@ -61,12 +60,14 @@ from synthorg.observability.events.prompt import (
     PROMPT_POLICY_VALIDATION_FAILED,
     PROMPT_PROFILE_SELECTED,
 )
+from synthorg.observability.events.tool import TOOL_L1_INJECTED
 
 if TYPE_CHECKING:
     from synthorg.core.agent import AgentIdentity
     from synthorg.core.company import Company
     from synthorg.core.role import Role
     from synthorg.core.task import Task
+    from synthorg.core.tool_disclosure import ToolL1Metadata
     from synthorg.core.types import ModelTier
     from synthorg.engine.strategy.models import StrategyConfig
     from synthorg.providers.models import ToolDefinition
@@ -128,6 +129,7 @@ def build_system_prompt(  # noqa: PLR0913
     role: Role | None = None,
     task: Task | None = None,
     available_tools: tuple[ToolDefinition, ...] = (),
+    l1_summaries: tuple[ToolL1Metadata, ...] = (),
     company: Company | None = None,
     org_policies: tuple[str, ...] = (),
     max_tokens: int | None = None,
@@ -154,6 +156,9 @@ def build_system_prompt(  # noqa: PLR0913
         available_tools: Tool definitions populated into template context
             for custom templates only; the default template omits tools
             per D22 (non-inferable principle).
+        l1_summaries: L1 metadata for system prompt injection.
+            Lightweight tool summaries rendered in the Available
+            Tools section of the default template.
         company: Opt-in. Non-inferable principle recommends omitting
             unless agents need org-level context they cannot discover.
         org_policies: Company-wide policy texts to inject into prompt.
@@ -186,6 +191,13 @@ def build_system_prompt(  # noqa: PLR0913
     """
     _validate_max_tokens(agent, max_tokens)
     _validate_org_policies(agent, org_policies)
+
+    if l1_summaries:
+        logger.info(
+            TOOL_L1_INJECTED,
+            tool_count=len(l1_summaries),
+            tool_names=tuple(s.name for s in l1_summaries),
+        )
 
     profile = get_prompt_profile(model_tier)
     if max_personality_tokens_override is not None:
@@ -242,6 +254,7 @@ def build_system_prompt(  # noqa: PLR0913
             role=role,
             task=task,
             available_tools=available_tools,
+            l1_summaries=l1_summaries,
             company=company,
             org_policies=org_policies,
             max_tokens=max_tokens,
@@ -374,6 +387,7 @@ def _build_template_context(  # noqa: PLR0913
     role: Role | None,
     task: Task | None,
     available_tools: tuple[ToolDefinition, ...],
+    l1_summaries: tuple[ToolL1Metadata, ...] = (),
     company: Company | None,
     org_policies: tuple[str, ...] = (),
     effective_autonomy: EffectiveAutonomy | None = None,
@@ -391,6 +405,7 @@ def _build_template_context(  # noqa: PLR0913
         role: Optional role with description.
         task: Optional task context.
         available_tools: Tool definitions.
+        l1_summaries: L1 metadata for system prompt injection.
         company: Optional company context.
         org_policies: Company-wide policy texts.
         effective_autonomy: Resolved autonomy for the current run.
@@ -451,6 +466,18 @@ def _build_template_context(  # noqa: PLR0913
         if available_tools
         else None
     )
+    if l1_summaries:
+        context["l1_tools"] = tuple(
+            {
+                "name": s.name,
+                "short_description": s.short_description,
+                "category": s.category,
+                "cost_tier": s.typical_cost_tier,
+            }
+            for s in l1_summaries
+        )
+    else:
+        context["l1_tools"] = None
 
     if company is not None:
         context["company"] = {"name": company.name}
@@ -491,6 +518,7 @@ def _trim_sections(  # noqa: PLR0913
     role: Role | None,
     task: Task | None,
     available_tools: tuple[ToolDefinition, ...],
+    l1_summaries: tuple[ToolL1Metadata, ...],
     company: Company | None,
     org_policies: tuple[str, ...],
     max_tokens: int,
@@ -527,6 +555,7 @@ def _trim_sections(  # noqa: PLR0913
             role,
             task,
             available_tools,
+            l1_summaries,
             company,
             org_policies,
             estimator,
@@ -564,6 +593,7 @@ def _trim_sections(  # noqa: PLR0913
             role,
             task,
             available_tools,
+            l1_summaries,
             company,
             org_policies,
             estimator,
@@ -611,6 +641,7 @@ def _render_with_trimming(  # noqa: PLR0913
     role: Role | None,
     task: Task | None,
     available_tools: tuple[ToolDefinition, ...],
+    l1_summaries: tuple[ToolL1Metadata, ...] = (),
     company: Company | None,
     org_policies: tuple[str, ...] = (),
     max_tokens: int | None,
@@ -629,6 +660,7 @@ def _render_with_trimming(  # noqa: PLR0913
         role,
         task,
         available_tools,
+        l1_summaries,
         company,
         org_policies,
         estimator,
@@ -648,6 +680,7 @@ def _render_with_trimming(  # noqa: PLR0913
                 role=role,
                 task=task,
                 available_tools=available_tools,
+                l1_summaries=l1_summaries,
                 company=company,
                 org_policies=org_policies,
                 max_tokens=max_tokens,
@@ -726,6 +759,7 @@ def _render_and_estimate(  # noqa: PLR0913
     role: Role | None,
     task: Task | None,
     available_tools: tuple[ToolDefinition, ...],
+    l1_summaries: tuple[ToolL1Metadata, ...],
     company: Company | None,
     org_policies: tuple[str, ...],
     estimator: PromptTokenEstimator,
@@ -745,6 +779,7 @@ def _render_and_estimate(  # noqa: PLR0913
         role: Optional role.
         task: Optional task context.
         available_tools: Tool definitions.
+        l1_summaries: L1 metadata for system prompt injection.
         company: Optional company context.
         org_policies: Company-wide policy texts.
         estimator: Token estimator.
@@ -764,6 +799,7 @@ def _render_and_estimate(  # noqa: PLR0913
         role=role,
         task=task,
         available_tools=available_tools,
+        l1_summaries=l1_summaries,
         company=company,
         org_policies=org_policies,
         effective_autonomy=effective_autonomy,

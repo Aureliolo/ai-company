@@ -10,6 +10,15 @@ from .database import (
     SchemaInspectTool,
     SqlQueryTool,
 )
+from .disclosure_config import ToolDisclosureConfig
+from .disclosure_metrics import ToolDisclosureMetrics
+from .discovery import (
+    ListToolsTool,
+    LoadToolResourceTool,
+    LoadToolTool,
+    ToolDisclosureManager,
+    build_discovery_tools,
+)
 from .errors import (
     ToolError,
     ToolExecutionError,
@@ -92,6 +101,9 @@ __all__ = [
     "HtmlParserTool",
     "HttpRequestTool",
     "ListDirectoryTool",
+    "ListToolsTool",
+    "LoadToolResourceTool",
+    "LoadToolTool",
     "NetworkPolicy",
     "PathValidator",
     "ReadFileTool",
@@ -109,6 +121,9 @@ __all__ = [
     "SubprocessSandbox",
     "SubprocessSandboxConfig",
     "TerminalConfig",
+    "ToolDisclosureConfig",
+    "ToolDisclosureManager",
+    "ToolDisclosureMetrics",
     "ToolError",
     "ToolExecutionError",
     "ToolExecutionResult",
@@ -125,4 +140,5 @@ __all__ = [
     "WriteFileTool",
     "build_default_tools",
     "build_default_tools_from_config",
+    "build_discovery_tools",
 ]

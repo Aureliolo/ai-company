@@ -174,7 +174,7 @@ class HybridLoop:
             temperature=ctx.identity.model.temperature,
             max_tokens=ctx.identity.model.max_tokens,
         )
-        tool_defs = get_tool_definitions(tool_invoker)
+        tool_defs = get_tool_definitions(tool_invoker, ctx.loaded_tools)
         turns: list[TurnRecord] = []
         all_plans: list[ExecutionPlan] = []
         replans_used = 0
@@ -602,6 +602,8 @@ class HybridLoop:
         max_step_turns = self._config.max_turns_per_step
 
         while ctx.has_turns_remaining and step_turns < max_step_turns:
+            # Refresh tool defs so newly loaded tools appear
+            tool_defs = get_tool_definitions(tool_invoker, ctx.loaded_tools)
             result = await self._run_step_turn(
                 ctx,
                 provider,

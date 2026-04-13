@@ -20,6 +20,7 @@ from .errors import ToolNotFoundError
 if TYPE_CHECKING:
     from collections.abc import Iterable
 
+    from synthorg.core.tool_disclosure import ToolL1Metadata
     from synthorg.providers.models import ToolDefinition
 
     from .base import BaseTool
@@ -120,6 +121,17 @@ class ToolRegistry:
             )
             return False
         return name in self._tools
+
+    def to_l1_summaries(self) -> tuple[ToolL1Metadata, ...]:
+        """Return L1 metadata for all tools, sorted by name.
+
+        Lightweight extraction for system prompt injection.  Does
+        not include L2 bodies or L3 resources.
+
+        Returns:
+            Sorted tuple of L1 metadata.
+        """
+        return tuple(self._tools[name].to_l1_metadata() for name in sorted(self._tools))
 
     def __len__(self) -> int:
         """Return the number of registered tools."""

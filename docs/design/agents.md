@@ -219,6 +219,11 @@ task completion history is a planned future enhancement.
         denied:
           - deployment
           - database_admin
+        # Progressive disclosure: list_tools, load_tool, and
+        # load_tool_resource are always available regardless of
+        # access_level.  L1 metadata is visible for all permitted
+        # tools; L2/L3 content respects the same permission rules
+        # as tool invocation.
       authority:
         can_approve: ["junior_dev_tasks", "code_reviews"]
         reports_to: "engineering_lead"

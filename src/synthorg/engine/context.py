@@ -123,6 +123,11 @@ class AgentContext(BaseModel):
             or ``None`` when unknown.
         compression_metadata: Metadata about conversation compression,
             set when compaction has occurred.
+        loaded_tools: Tool names with L2 bodies active in context.
+        loaded_resources: ``(tool_name, resource_id)`` pairs with
+            L3 resources fetched.
+        tool_load_order: Insertion-ordered tool names for FIFO
+            auto-unload under budget pressure.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
@@ -172,6 +177,35 @@ class AgentContext(BaseModel):
         default=None,
         description="Compression metadata when compacted",
     )
+
+    # ── Progressive tool disclosure state ─────────────────────────
+    loaded_tools: frozenset[str] = Field(
+        default=frozenset(),
+        description="Tool names with L2 body active in context",
+    )
+    loaded_resources: frozenset[tuple[str, str]] = Field(
+        default=frozenset(),
+        description="(tool_name, resource_id) pairs with L3 active",
+    )
+    tool_load_order: tuple[str, ...] = Field(
+        default=(),
+        description="Insertion-ordered tool names for FIFO unload",
+    )
+
+    @model_validator(mode="after")
+    def _validate_disclosure_consistency(self) -> AgentContext:
+        """Ensure loaded_tools and tool_load_order are consistent."""
+        order_set = set(self.tool_load_order)
+        if order_set != self.loaded_tools:
+            msg = (
+                f"loaded_tools={self.loaded_tools} and "
+                f"tool_load_order={self.tool_load_order} are inconsistent"
+            )
+            raise ValueError(msg)
+        if len(self.tool_load_order) != len(order_set):
+            msg = f"tool_load_order contains duplicates: {self.tool_load_order}"
+            raise ValueError(msg)
+        return self
 
     @computed_field(  # type: ignore[prop-decorator]
         description="Context fill percentage",
@@ -405,6 +439,81 @@ class AgentContext(BaseModel):
             execution_id=self.execution_id,
         )
         return snapshot
+
+    # ── Progressive disclosure state transitions ────────────────
+
+    def with_tool_loaded(self, tool_name: str) -> AgentContext:
+        """Mark a tool's L2 body as loaded.
+
+        Idempotent: loading an already-loaded tool is a no-op.
+
+        Args:
+            tool_name: Name of the tool to load.
+
+        Returns:
+            New ``AgentContext`` with the tool marked as loaded.
+        """
+        if tool_name in self.loaded_tools:
+            return self
+        new_loaded = self.loaded_tools | {tool_name}
+        new_order = (*self.tool_load_order, tool_name)
+        return self.model_copy(
+            update={
+                "loaded_tools": new_loaded,
+                "tool_load_order": new_order,
+            },
+        )
+
+    def with_tool_unloaded(self, tool_name: str) -> AgentContext:
+        """Mark a tool's L2 body as unloaded.
+
+        Also removes any L3 resources for the unloaded tool.
+        Idempotent: unloading an already-unloaded tool is a no-op.
+
+        Args:
+            tool_name: Name of the tool to unload.
+
+        Returns:
+            New ``AgentContext`` with the tool removed.
+        """
+        if tool_name not in self.loaded_tools:
+            return self
+        new_loaded = self.loaded_tools - {tool_name}
+        new_order = tuple(t for t in self.tool_load_order if t != tool_name)
+        new_resources = frozenset(
+            (t, r) for t, r in self.loaded_resources if t != tool_name
+        )
+        return self.model_copy(
+            update={
+                "loaded_tools": new_loaded,
+                "tool_load_order": new_order,
+                "loaded_resources": new_resources,
+            },
+        )
+
+    def with_resource_loaded(
+        self,
+        tool_name: str,
+        resource_id: str,
+    ) -> AgentContext:
+        """Mark an L3 resource as fetched.
+
+        Idempotent: loading an already-loaded resource is a no-op.
+
+        Args:
+            tool_name: Name of the tool owning the resource.
+            resource_id: Identifier of the resource.
+
+        Returns:
+            New ``AgentContext`` with the resource marked as loaded.
+        """
+        pair = (tool_name, resource_id)
+        if pair in self.loaded_resources:
+            return self
+        new_resources = self.loaded_resources | {pair}
+        return self.model_copy(
+            update={"loaded_resources": new_resources},
+        )
 
     @property
     def has_turns_remaining(self) -> bool:

@@ -27,6 +27,10 @@ from synthorg.observability.events.stagnation import (
     STAGNATION_CORRECTION_INJECTED,
     STAGNATION_TERMINATED,
 )
+from synthorg.observability.events.tool import (
+    TOOL_L2_LOADED,
+    TOOL_L3_FETCHED,
+)
 from synthorg.providers.enums import FinishReason, MessageRole
 from synthorg.providers.models import (
     ChatMessage,
@@ -251,7 +255,7 @@ def check_response_errors(
     )
 
 
-async def execute_tool_calls(  # noqa: PLR0913
+async def execute_tool_calls(  # noqa: PLR0913, C901
     ctx: AgentContext,
     tool_invoker: ToolInvoker | None,
     response: CompletionResponse,
@@ -339,6 +343,37 @@ async def execute_tool_calls(  # noqa: PLR0913
             tool_result=result,
         )
         ctx = ctx.with_message(tool_msg)
+
+    # Update disclosure state from discovery tool calls
+    for tc, result in zip(response.tool_calls, results, strict=True):
+        if result.is_error:
+            continue
+        if tc.name == "load_tool":
+            t_name = tc.arguments.get("tool_name")
+            if isinstance(t_name, str) and t_name not in ctx.loaded_tools:
+                ctx = ctx.with_tool_loaded(t_name)
+                logger.info(
+                    TOOL_L2_LOADED,
+                    execution_id=ctx.execution_id,
+                    tool_name=t_name,
+                    turn=turn_number,
+                )
+        elif tc.name == "load_tool_resource":
+            t_name = tc.arguments.get("tool_name")
+            r_id = tc.arguments.get("resource_id")
+            if (
+                isinstance(t_name, str)
+                and isinstance(r_id, str)
+                and (t_name, r_id) not in ctx.loaded_resources
+            ):
+                ctx = ctx.with_resource_loaded(t_name, r_id)
+                logger.info(
+                    TOOL_L3_FETCHED,
+                    execution_id=ctx.execution_id,
+                    tool_name=t_name,
+                    resource_id=r_id,
+                    turn=turn_number,
+                )
 
     # Check for escalations requiring parking.
     if approval_gate is not None:
@@ -444,11 +479,24 @@ def clear_last_turn_tool_calls(turns: list[TurnRecord]) -> None:
 
 def get_tool_definitions(
     tool_invoker: ToolInvoker | None,
+    loaded_tools: frozenset[str] = frozenset(),
 ) -> list[ToolDefinition] | None:
-    """Extract permitted tool definitions from the invoker, or return None."""
+    """Extract disclosure-aware tool definitions from the invoker.
+
+    Returns full ``ToolDefinition`` objects only for tools in
+    ``loaded_tools`` plus the three discovery tools.  When
+    ``loaded_tools`` is empty, only discovery tools are returned.
+
+    Args:
+        tool_invoker: Tool invoker (can be ``None``).
+        loaded_tools: Tool names with L2 active in context.
+
+    Returns:
+        List of tool definitions, or ``None`` if no invoker.
+    """
     if tool_invoker is None:
         return None
-    defs = tool_invoker.get_permitted_definitions()
+    defs = tool_invoker.get_loaded_definitions(loaded_tools)
     return list(defs) if defs else None
 
 

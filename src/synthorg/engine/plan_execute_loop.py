@@ -189,7 +189,7 @@ class PlanExecuteLoop:
             temperature=ctx.identity.model.temperature,
             max_tokens=ctx.identity.model.max_tokens,
         )
-        tool_defs = get_tool_definitions(tool_invoker)
+        tool_defs = get_tool_definitions(tool_invoker, ctx.loaded_tools)
         turns: list[TurnRecord] = []
         all_plans: list[ExecutionPlan] = []
         replans_used = 0
@@ -684,6 +684,8 @@ class PlanExecuteLoop:
         step_corrections = 0
 
         while ctx.has_turns_remaining:
+            # Refresh tool defs so newly loaded tools appear
+            tool_defs = get_tool_definitions(tool_invoker, ctx.loaded_tools)
             result = await self._run_step_turn(
                 ctx,
                 provider,
