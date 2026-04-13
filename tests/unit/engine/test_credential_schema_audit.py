@@ -1,5 +1,6 @@
 """Schema audit: credential-bearing fields never leak into context models."""
 
+from collections.abc import Mapping
 from typing import Any, get_args, get_origin
 
 import pytest
@@ -112,12 +113,22 @@ class TestCredentialSchemaAudit:
     def test_task_metadata_is_the_extensibility_point(
         self,
     ) -> None:
-        """Task.metadata is the only dict[str, Any] on Task."""
+        """Task.metadata is the only dict/Mapping field on Task."""
+
+        def _is_mapping_type(annotation: Any) -> bool:
+            origin = get_origin(annotation)
+            if origin is not None:
+                if isinstance(origin, type) and issubclass(origin, Mapping):
+                    return True
+                return any(_is_mapping_type(a) for a in get_args(annotation))
+            return isinstance(annotation, type) and issubclass(
+                annotation,
+                Mapping,
+            )
+
         dict_fields = [
-            n
-            for n, f in Task.model_fields.items()
-            if "dict" in str(f.annotation).lower()
+            n for n, f in Task.model_fields.items() if _is_mapping_type(f.annotation)
         ]
         assert dict_fields == ["metadata"], (
-            f"Expected only 'metadata' as dict field, found: {dict_fields}"
+            f"Expected only 'metadata' as mapping field, found: {dict_fields}"
         )

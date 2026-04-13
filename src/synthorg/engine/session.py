@@ -196,7 +196,19 @@ class Session:
             )
             raise
 
-        if not events:
+        # Filter out events that don't belong to this execution
+        # (defense-in-depth against buggy EventReader implementations).
+        valid_events = tuple(e for e in events if e.execution_id == execution_id)
+        if len(valid_events) < len(events):
+            logger.warning(
+                SESSION_REPLAY_ERROR,
+                execution_id=execution_id,
+                reason="event_reader returned events for other executions",
+                expected=len(events),
+                kept=len(valid_events),
+            )
+
+        if not valid_events:
             logger.info(
                 SESSION_REPLAY_NO_EVENTS,
                 execution_id=execution_id,
@@ -206,7 +218,6 @@ class Session:
                 task=task,
                 max_turns=max_turns,
             )
-            # Preserve original execution lineage even with no events.
             ctx = ctx.model_copy(update={"execution_id": execution_id})
             return ReplayResult(
                 context=ctx,
@@ -215,7 +226,7 @@ class Session:
                 events_total=0,
             )
 
-        sorted_events = sorted(events, key=lambda e: e.timestamp)
+        sorted_events = sorted(valid_events, key=lambda e: e.timestamp)
         return _replay_from_events(
             sorted_events=sorted_events,
             identity=identity,
@@ -312,6 +323,7 @@ def _replay_from_events(
     # Tracking for completeness scoring.
     found_engine_start = False
     found_context_created = False
+    seen_turns: set[int] = set()
     turn_numbers: list[int] = []
     total_cost = 0.0
     found_transition = False
@@ -329,7 +341,12 @@ def _replay_from_events(
                 found_context_created = True
 
             elif name == EXECUTION_CONTEXT_TURN:
+                # Parse turn number before applying to skip duplicates.
+                raw_turn = event.data.get("turn")
+                if raw_turn is not None and int(raw_turn) in seen_turns:
+                    continue
                 ctx, turn, cost_usd = _apply_turn_event(ctx, event)
+                seen_turns.add(turn)
                 turn_numbers.append(turn)
                 total_cost += cost_usd
 
