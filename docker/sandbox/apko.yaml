@@ -2,11 +2,11 @@
 # Produces: ghcr.io/aureliolo/synthorg-sandbox-base
 # Consumed by: docker/sandbox/Dockerfile (thin FROM wrapper).
 #
-# Non-distroless on purpose: keeps busybox + git + iptables so that
-# docker/sandbox/sandbox-init.sh can enforce per-host:port allowed_hosts
-# using iptables (D16 design decision, permanent per docs/design/sandbox.md).
+# Non-distroless on purpose: keeps busybox + git for agent code execution.
+# Network enforcement is handled by the sidecar proxy (docker/sidecar/),
+# not by the sandbox container.
 #
-# UID 10001 must match setpriv --reuid in docker/sandbox/sandbox-init.sh.
+# UID 10001 is the unprivileged sandbox user (cap_drop: ALL).
 
 contents:
   repositories:
@@ -19,8 +19,6 @@ contents:
     - tzdata
     - busybox
     - git
-    - iptables
-    - util-linux
     - nodejs-25
     - npm
     - python-3.14=3.14.3-r0

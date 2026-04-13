@@ -106,6 +106,7 @@ func Generate(p Params) ([]byte, error) {
 		"yamlStr":            yamlStr,
 		"digestPin":          digestPin(p.DigestPins),
 		"sandboxImageRef":    sandboxImageRef(p.DigestPins),
+		"sidecarImageRef":    sidecarImageRef(p.DigestPins),
 		"distributedEnabled": p.DistributedEnabled,
 		"postgresEnabled":    p.PostgresEnabled,
 		"pgDSN":              func() string { return pgDSN(p) },
@@ -235,6 +236,16 @@ func digestPin(pins map[string]string) func(name, repo, tag string) string {
 func sandboxImageRef(pins map[string]string) func(tag string) string {
 	return func(tag string) string {
 		return verify.FormatImageRef("sandbox", tag, pins["sandbox"])
+	}
+}
+
+// sidecarImageRef returns a template function that resolves the sidecar image
+// to its digest-pinned or tag-based reference. Wired into the backend's
+// SYNTHORG_SIDECAR_IMAGE env var so the backend creates version-locked
+// sidecar proxy containers for sandbox network enforcement.
+func sidecarImageRef(pins map[string]string) func(tag string) string {
+	return func(tag string) string {
+		return verify.FormatImageRef("sidecar", tag, pins["sidecar"])
 	}
 }
 

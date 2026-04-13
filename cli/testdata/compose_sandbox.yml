@@ -27,6 +27,7 @@ services:
       SYNTHORG_TELEMETRY: "false"
       SYNTHORG_LOG_LEVEL: "info"
       SYNTHORG_SANDBOX_IMAGE: "ghcr.io/aureliolo/synthorg-sandbox:latest"
+      SYNTHORG_SIDECAR_IMAGE: "ghcr.io/aureliolo/synthorg-sidecar:latest"
     user: "65532:65532"
     # CIS Docker Benchmark v1.6.0 hardening (5.3, 5.12, 5.25, 5.28)
     security_opt:

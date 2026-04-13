@@ -12,7 +12,6 @@
 
 # Docker configs (Dockerfiles read via -f, not from context)
 docker/
-!docker/sandbox/sandbox-init.sh
 
 # Tests
 tests/

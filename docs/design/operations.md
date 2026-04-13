@@ -658,7 +658,7 @@ isolation for high-risk tools.
 | Backend | Isolation | Latency | Dependencies | Status |
 |---------|-----------|---------|--------------|--------|
 | `SubprocessSandbox` | Process-level: env filtering (allowlist + denylist), restricted PATH (configurable via `extra_safe_path_prefixes`), workspace-scoped cwd, timeout + process-group kill, library injection var blocking, explicit transport cleanup on Windows | ~ms | None | Implemented |
-| `DockerSandbox` | Container-level: ephemeral container, mounted workspace, no network (default) or iptables-based host:port allowlist, resource limits (CPU/memory/time) | ~1-2s cold start | Docker | Implemented |
+| `DockerSandbox` | Container-level: ephemeral container, mounted workspace, no network (default) or sidecar-based host:port allowlist (dual-layer DNS + DNAT transparent proxy), resource limits (CPU/memory/time) | ~1-2s cold start | Docker | Implemented |
 | `K8sSandbox` | Pod-level: per-agent containers, namespace isolation, resource quotas, network policies | ~2-5s | Kubernetes | Future |
 
 ???+ note "Default Layered Sandbox Configuration"
@@ -1719,7 +1719,8 @@ and pre-pulls the sandbox image on demand.
 |-------|---------|------|
 | `backend` | SynthOrg orchestration engine (Litestar + uvicorn) | apko-composed Wolfi base (`docker/backend/apko.yaml`, `python-3.14=3.14.3-r0` pinned); thin `docker/backend/Dockerfile` layers the uv-built venv on top |
 | `web` | React SPA and built docs, served by **Caddy** | Pure apko (no Dockerfile); composes `caddy` + `ca-certificates-bundle` + melange-built `synthorg-web-assets` apk + `/etc/synthorg/Caddyfile` |
-| `sandbox` | Ephemeral agent code execution image spawned on demand by the backend | apko-composed Wolfi base (`docker/sandbox/apko.yaml`) with `busybox`, `git`, `iptables` for D16 `allowed_hosts` enforcement; thin `docker/sandbox/Dockerfile` adds `sandbox-init.sh` |
+| `sandbox` | Ephemeral agent code execution image spawned on demand by the backend | apko-composed Wolfi base (`docker/sandbox/apko.yaml`) with `busybox` and `git`; fully rootless (UID 10001, cap_drop: ALL). Network enforcement handled by a separate sidecar proxy container |
+| `sidecar` | Transparent network proxy sidecar for sandbox containers | apko-composed Wolfi base (`docker/sidecar/apko.yaml`) with `iptables` and `busybox`; Go binary providing dual-layer DNS + DNAT enforcement of `allowed_hosts` |
 
 Each published image is signed with **cosign keyless** via GitHub OIDC in
 `.github/workflows/docker.yml` and attested with **SLSA Level 3 provenance**.
@@ -1730,11 +1731,13 @@ runtime.
 
 ### apko-composed base images
 
-The backend and sandbox images use a **Hybrid A** pattern: apko composes the base image
-declaratively from exact-versioned Wolfi packages (`python-3.14=3.14.3-r0`, `git`,
-`iptables`, and so on), and a thin Dockerfile layers the application on top (`FROM
-apko-base@sha256:...`, `COPY .venv`, `COPY src`, `ENTRYPOINT`). The web image is **pure
-apko** -- no Dockerfile -- composing Caddy plus a melange-packaged static site bundle.
+The backend, sandbox, and sidecar images use a **Hybrid A** pattern: apko composes the
+base image declaratively from exact-versioned Wolfi packages (`python-3.14=3.14.3-r0`,
+`git`, and so on), and a thin Dockerfile layers the application on top (`FROM
+apko-base@sha256:...`, `COPY .venv`, `COPY src`, `ENTRYPOINT`). The sidecar image adds
+`iptables` for DNAT setup but the sandbox image is minimal (no iptables, no elevated
+privileges). The web image is **pure apko** -- no Dockerfile -- composing Caddy plus a
+melange-packaged static site bundle.
 
 Wolfi is a separate distribution from Alpine. It reuses the `apk` package format but is
 built against **glibc**, not musl, so Python `manylinux` wheels install natively without
@@ -1783,11 +1786,13 @@ set. This keeps the CLI pin and the backend pin version-locked.
 
 The backend gets `/var/run/docker.sock` mounted **read-write** (it needs `create`,
 `start`, `stop`, and `exec` on the daemon). The sandbox image retains a full shell plus
-`git` and `iptables` because the per-host:port `allowed_hosts` network enforcement in
-`sandbox-init.sh` is a permanent security control. The shell lives inside the blast
-radius of an ephemeral container running with `cap_drop: ALL`, `no-new-privileges`,
-a read-only root filesystem, and the iptables firewall applied at init -- not at the
-host boundary.
+`git` but no iptables -- it is fully rootless (UID 10001, `cap_drop: ALL`,
+`no-new-privileges`, read-only root filesystem). Per-host:port `allowed_hosts` network
+enforcement is handled by a separate sidecar proxy container that shares the sandbox's
+network namespace. The sidecar runs with `NET_ADMIN` (for iptables DNAT setup) and
+provides dual-layer enforcement: DNS filtering (allowed hostnames forwarded, denied get
+NXDOMAIN) and transparent TCP proxying (connections to unauthorized hosts are dropped
+with TCP RST).
 
 ### Web server
 

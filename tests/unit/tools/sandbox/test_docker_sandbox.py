@@ -421,14 +421,14 @@ class TestDockerSandboxCleanup:
         mock_docker = _make_mock_docker()
         sandbox = DockerSandbox(workspace=tmp_path)
         sandbox._docker = mock_docker
-        sandbox._tracked_containers = ["container1", "container2"]
+        sandbox._tracked_containers = {"container1": None, "container2": None}
 
         await sandbox.cleanup()
 
         container_obj = mock_docker.containers.container.return_value
         assert container_obj.stop.await_count == 2
         assert container_obj.delete.await_count == 2
-        assert sandbox._tracked_containers == []
+        assert sandbox._tracked_containers == {}
 
 
 # ── Health check ────────────────────────────────────────────────
@@ -635,7 +635,7 @@ class TestDockerSandboxContainerErrorHandling:
             await sandbox.execute(command="echo", args=("hi",))
 
         # Container should be removed from tracking after execute
-        assert sandbox._tracked_containers == []
+        assert sandbox._tracked_containers == {}
 
     async def test_start_failure_raises_sandbox_start_error(
         self,
@@ -656,3 +656,316 @@ class TestDockerSandboxContainerErrorHandling:
             ),
         ):
             await sandbox.execute(command="echo", args=("test",))
+
+
+# ── Sidecar lifecycle ──────────────────────────────────────────
+
+
+def _make_sidecar_config(
+    allowed_hosts: tuple[str, ...] = ("example.com:443",),
+    network_allow_all: bool = False,
+) -> DockerSandboxConfig:
+    """Create a config that triggers sidecar creation.
+
+    Sets ``network="bridge"`` so ``_needs_sidecar()`` returns True
+    (the default ``"none"`` disables sidecar enforcement).
+    """
+    return DockerSandboxConfig(
+        allowed_hosts=allowed_hosts,
+        network_allow_all=network_allow_all,
+        network="bridge",
+    )
+
+
+def _make_mock_docker_with_sidecar() -> MagicMock:
+    """Create a mock Docker client that supports sidecar containers."""
+    mock_docker = _make_mock_docker()
+
+    # Sidecar container (second call to create).
+    sidecar_container = MagicMock()
+    sidecar_container.id = "sidecar_999aaa"
+    sidecar_container.start = AsyncMock()
+    sidecar_container.show = AsyncMock(
+        return_value={
+            "State": {"Health": {"Status": "healthy"}},
+        },
+    )
+    sidecar_container.stop = AsyncMock()
+    sidecar_container.delete = AsyncMock()
+
+    # Sandbox container (first return from create in normal flow).
+    sandbox_container = MagicMock()
+    sandbox_container.id = "sandbox_abc123"
+    sandbox_container.start = AsyncMock()
+    sandbox_container.wait = AsyncMock(
+        return_value={"StatusCode": 0},
+    )
+    sandbox_container.log = AsyncMock(return_value=["sidecar ok\n"])
+    sandbox_container.stop = AsyncMock()
+    sandbox_container.delete = AsyncMock()
+
+    # create() returns sidecar first, then sandbox.
+    mock_docker.containers.create = AsyncMock(
+        side_effect=[sidecar_container, sandbox_container],
+    )
+
+    # container(id) returns the right object based on ID.
+    def _container_by_id(cid: str) -> MagicMock:
+        if cid == sidecar_container.id:
+            return sidecar_container
+        return sandbox_container
+
+    mock_docker.containers.container = MagicMock(
+        side_effect=_container_by_id,
+    )
+
+    return mock_docker
+
+
+class TestSidecarLifecycle:
+    """Sidecar creation, health check, and cleanup."""
+
+    async def test_sidecar_created_when_allowed_hosts(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        mock_docker = _make_mock_docker_with_sidecar()
+        config = _make_sidecar_config()
+        sandbox = DockerSandbox(config=config, workspace=tmp_path)
+
+        with _patch_aiodocker(mock_docker):
+            result = await sandbox.execute(
+                command="echo",
+                args=("hello",),
+            )
+
+        assert result.success
+        # Two create calls: sidecar + sandbox.
+        assert mock_docker.containers.create.await_count == 2
+
+    async def test_sidecar_health_check_unhealthy(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        # Set up a mock that reports unhealthy status.
+        sidecar_container = MagicMock()
+        sidecar_container.id = "sidecar_unhealthy"
+        sidecar_container.start = AsyncMock()
+        sidecar_container.show = AsyncMock(
+            return_value={
+                "State": {"Health": {"Status": "unhealthy"}},
+            },
+        )
+        sidecar_container.stop = AsyncMock()
+        sidecar_container.delete = AsyncMock()
+
+        mock_docker2 = _make_mock_docker()
+        mock_docker2.containers.create = AsyncMock(
+            return_value=sidecar_container,
+        )
+        mock_docker2.containers.container = MagicMock(
+            return_value=sidecar_container,
+        )
+
+        config = _make_sidecar_config()
+        sandbox = DockerSandbox(config=config, workspace=tmp_path)
+
+        with (
+            _patch_aiodocker(mock_docker2),
+            pytest.raises(
+                SandboxStartError,
+                match="unhealthy",
+            ),
+        ):
+            await sandbox.execute(command="echo", args=("test",))
+
+    async def test_sidecar_health_check_timeout(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        sidecar_container = MagicMock()
+        sidecar_container.id = "sidecar_timeout"
+        sidecar_container.start = AsyncMock()
+        # Health status never transitions to healthy.
+        sidecar_container.show = AsyncMock(
+            return_value={
+                "State": {"Health": {"Status": "starting"}},
+            },
+        )
+        sidecar_container.stop = AsyncMock()
+        sidecar_container.delete = AsyncMock()
+
+        mock_docker = _make_mock_docker()
+        mock_docker.containers.create = AsyncMock(
+            return_value=sidecar_container,
+        )
+        mock_docker.containers.container = MagicMock(
+            return_value=sidecar_container,
+        )
+
+        config = _make_sidecar_config()
+        sandbox = DockerSandbox(config=config, workspace=tmp_path)
+
+        # Mock the event loop time so the test is deterministic
+        # instead of relying on real wall-clock sleep.
+        fake_time = 0.0
+
+        def _fake_loop_time() -> float:
+            return fake_time
+
+        async def _fake_sleep(_: float) -> None:
+            nonlocal fake_time
+            # Each sleep call advances past the timeout.
+            fake_time += 20.0
+
+        loop = asyncio.get_running_loop()
+        original_time = loop.time
+
+        loop.time = _fake_loop_time  # type: ignore[method-assign]
+        try:
+            with (
+                _patch_aiodocker(mock_docker),
+                patch(
+                    "synthorg.tools.sandbox.docker_sandbox._SIDECAR_HEALTH_TIMEOUT",
+                    15.0,
+                ),
+                patch(
+                    "synthorg.tools.sandbox.docker_sandbox.asyncio.sleep",
+                    _fake_sleep,
+                ),
+                pytest.raises(SandboxStartError, match="timed out"),
+            ):
+                await sandbox.execute(
+                    command="echo",
+                    args=("test",),
+                )
+        finally:
+            loop.time = original_time  # type: ignore[method-assign]
+
+    async def test_sidecar_create_failure(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        mock_docker = _make_mock_docker()
+        mock_docker.containers.create = AsyncMock(
+            side_effect=RuntimeError("image not found"),
+        )
+
+        config = _make_sidecar_config()
+        sandbox = DockerSandbox(config=config, workspace=tmp_path)
+
+        with (
+            _patch_aiodocker(mock_docker),
+            pytest.raises(
+                SandboxStartError,
+                match="Failed to create sidecar container",
+            ),
+        ):
+            await sandbox.execute(command="echo", args=("test",))
+
+    async def test_sidecar_cleanup_on_start_failure(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        sidecar_container = MagicMock()
+        sidecar_container.id = "sidecar_startfail"
+        sidecar_container.start = AsyncMock(
+            side_effect=RuntimeError("port conflict"),
+        )
+        sidecar_container.stop = AsyncMock()
+        sidecar_container.delete = AsyncMock()
+
+        mock_docker = _make_mock_docker()
+        mock_docker.containers.create = AsyncMock(
+            return_value=sidecar_container,
+        )
+        mock_docker.containers.container = MagicMock(
+            return_value=sidecar_container,
+        )
+
+        config = _make_sidecar_config()
+        sandbox = DockerSandbox(config=config, workspace=tmp_path)
+
+        with (
+            _patch_aiodocker(mock_docker),
+            pytest.raises(SandboxStartError, match="port conflict"),
+        ):
+            await sandbox.execute(command="echo", args=("test",))
+
+        # Sidecar should be cleaned up despite failure.
+        sidecar_container.delete.assert_awaited()
+
+    async def test_sidecar_env_allow_all(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        sidecar_container = MagicMock()
+        sidecar_container.id = "sidecar_allowall"
+        sidecar_container.start = AsyncMock()
+        sidecar_container.show = AsyncMock(
+            return_value={
+                "State": {"Health": {"Status": "healthy"}},
+            },
+        )
+        sidecar_container.stop = AsyncMock()
+        sidecar_container.delete = AsyncMock()
+
+        sandbox_container = MagicMock()
+        sandbox_container.id = "sandbox_allowall"
+        sandbox_container.start = AsyncMock()
+        sandbox_container.wait = AsyncMock(
+            return_value={"StatusCode": 0},
+        )
+        sandbox_container.log = AsyncMock(return_value=["ok\n"])
+        sandbox_container.stop = AsyncMock()
+        sandbox_container.delete = AsyncMock()
+
+        mock_docker = _make_mock_docker()
+        mock_docker.containers.create = AsyncMock(
+            side_effect=[sidecar_container, sandbox_container],
+        )
+
+        def _container_by_id(cid: str) -> MagicMock:
+            if cid == sidecar_container.id:
+                return sidecar_container
+            return sandbox_container
+
+        mock_docker.containers.container = MagicMock(
+            side_effect=_container_by_id,
+        )
+
+        config = _make_sidecar_config(
+            allowed_hosts=(),
+            network_allow_all=True,
+        )
+        sandbox = DockerSandbox(config=config, workspace=tmp_path)
+
+        with _patch_aiodocker(mock_docker):
+            result = await sandbox.execute(
+                command="echo",
+                args=("hello",),
+            )
+
+        assert result.success
+        # Check sidecar was created with SIDECAR_ALLOW_ALL=1.
+        sidecar_create_call = mock_docker.containers.create.call_args_list[0]
+        env_list = sidecar_create_call[0][0]["Env"]
+        assert any("SIDECAR_ALLOW_ALL=1" in e for e in env_list)
+
+    async def test_no_sidecar_when_no_rules(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        mock_docker = _make_mock_docker()
+        config = DockerSandboxConfig()  # no allowed_hosts
+        sandbox = DockerSandbox(config=config, workspace=tmp_path)
+
+        with _patch_aiodocker(mock_docker):
+            result = await sandbox.execute(
+                command="echo",
+                args=("hello",),
+            )
+
+        assert result.success
+        # Only one create call (sandbox, no sidecar).
+        assert mock_docker.containers.create.await_count == 1
