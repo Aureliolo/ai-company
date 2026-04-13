@@ -62,7 +62,7 @@ All significant design and architecture decisions, organized by domain. Each ent
 | ID | Decision | Rationale | Alternatives considered |
 |----|----------|-----------|------------------------|
 | D16 | Docker MVP via `aiodocker`; `SandboxBackend` protocol for future backends | Docker cold start (1-2s) invisible against LLM latency (2-30s). Pre-built image + user config. Fail if Docker unavailable -- no unsafe subprocess fallback. gVisor as config-level hardening upgrade | Docker + WASM (CPython can't run pip packages in WASM), Docker + Firecracker (Linux-only, requires KVM), docker-py (sync, no 3.14 support). Precedents: E2B, major cloud providers, Daytona -- none offer unsandboxed fallback |
-| D17 | Official `mcp` Python SDK, exact-pinned (`==`), updated via Dependabot; `MCPBridgeTool` adapter | Used by every major framework (LangChain, CrewAI, major agent SDKs, Pydantic AI). Python 3.14 compatible. Pydantic v2 compatible. Thin adapter isolates codebase from SDK changes | Custom MCP client (must implement protocol handshake, track spec changes manually) |
+| D17 | Official `mcp` Python SDK, exact-pinned (`==`), updated via Renovate; `MCPBridgeTool` adapter | Used by every major framework (LangChain, CrewAI, major agent SDKs, Pydantic AI). Python 3.14 compatible. Pydantic v2 compatible. Thin adapter isolates codebase from SDK changes | Custom MCP client (must implement protocol handshake, track spec changes manually) |
 | D18 | MCP result mapping via adapter in `MCPBridgeTool` | Keep `ToolResult` as-is. Text concatenation for LLM path. Rich content in metadata. Zero disruption to existing codebase | Extend ToolResult for multi-modal (cascading changes across codebase; LLM providers consume as text anyway) |
 
 ## Timeout & Approval

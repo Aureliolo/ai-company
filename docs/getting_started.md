@@ -128,7 +128,7 @@ synthorg/
   docs/                 # Developer documentation
   docker/               # Dockerfiles, Compose, .env.example
   web/                  # React 19 web dashboard (shadcn/ui + Tailwind CSS)
-  .github/              # CI workflows, dependabot, actions
+  .github/              # CI workflows, renovate, actions
   pyproject.toml        # Project config (deps, tools, linters)
   docs/DESIGN_SPEC.md   # Pointer to design specification pages
   CLAUDE.md             # AI assistant quick reference

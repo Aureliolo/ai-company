@@ -135,7 +135,7 @@ tests/
 docs/                 # Developer documentation
 docker/               # Dockerfiles, Compose, .env.example
 web/                  # Web UI scaffold (nginx + placeholder)
-.github/              # CI, dependabot, actions
+.github/              # CI, renovate, actions
 ```
 
 See [docs/getting_started.md](../docs/getting_started.md) for descriptions of each sub-package.
