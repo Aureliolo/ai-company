@@ -159,6 +159,10 @@ class ToolCallResult(BaseModel):
         default=None,
         description="Error description on failure",
     )
+    metadata: dict[str, Any] = Field(
+        default_factory=dict,
+        description="Tool execution metadata (not forwarded to LLM)",
+    )
 
     @model_validator(mode="after")
     def _validate_error_consistency(self) -> Self:

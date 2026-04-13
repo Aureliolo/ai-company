@@ -54,6 +54,7 @@ from synthorg.tools.analytics.config import AnalyticsToolsConfig  # noqa: TC001
 from synthorg.tools.communication.config import CommunicationToolsConfig  # noqa: TC001
 from synthorg.tools.database.config import DatabaseConfig  # noqa: TC001
 from synthorg.tools.design.config import DesignToolsConfig  # noqa: TC001
+from synthorg.tools.disclosure_config import ToolDisclosureConfig
 from synthorg.tools.git_url_validator import GitCloneNetworkPolicy
 from synthorg.tools.mcp.config import MCPConfig
 from synthorg.tools.sandbox.sandboxing_config import SandboxingConfig
@@ -850,6 +851,10 @@ class RootConfig(BaseModel):
     analytics_tools: AnalyticsToolsConfig | None = Field(
         default=None,
         description="Analytics tool configuration (None = disabled)",
+    )
+    tool_disclosure: ToolDisclosureConfig = Field(
+        default_factory=ToolDisclosureConfig,
+        description="Progressive tool disclosure configuration",
     )
 
     @model_validator(mode="after")

@@ -50,6 +50,7 @@ from .scan_result_handler import handle_sensitive_scan
 if TYPE_CHECKING:
     from collections.abc import Iterable
 
+    from synthorg.core.tool_disclosure import ToolL1Metadata, ToolL2Body, ToolL3Resource
     from synthorg.engine.approval_gate_models import EscalationInfo
     from synthorg.providers.models import ToolDefinition
     from synthorg.security.protocol import SecurityInterceptionStrategy
@@ -156,6 +157,100 @@ class ToolInvoker:
         if self._permission_checker is None:
             return self._registry.to_definitions()
         return self._permission_checker.filter_definitions(self._registry)
+
+    def get_l1_summaries(self) -> tuple[ToolL1Metadata, ...]:
+        """Return L1 metadata for all permitted tools.
+
+        For system prompt injection -- lightweight summaries that
+        let the agent discover available tools without loading
+        full definitions.
+
+        Returns:
+            Sorted tuple of L1 metadata for permitted tools.
+        """
+        if self._permission_checker is None:
+            return self._registry.to_l1_summaries()
+        return self._permission_checker.filter_l1_summaries(self._registry)
+
+    def get_loaded_definitions(
+        self,
+        loaded_tools: frozenset[str],
+    ) -> tuple[ToolDefinition, ...]:
+        """Return full definitions for loaded tools + discovery tools.
+
+        Only tools in ``loaded_tools`` get their full
+        ``ToolDefinition`` (with L2 body) included.  The three
+        discovery tools (``list_tools``, ``load_tool``,
+        ``load_tool_resource``) are always included.
+
+        Args:
+            loaded_tools: Tool names with L2 active.
+
+        Returns:
+            Sorted tuple of full definitions for loaded and
+            discovery tools only.
+        """
+        from .discovery import _DISCOVERY_NAMES  # noqa: PLC0415
+
+        all_defs = self.get_permitted_definitions()
+        included = [
+            d for d in all_defs if d.name in loaded_tools or d.name in _DISCOVERY_NAMES
+        ]
+        included.sort(key=lambda d: d.name)
+        return tuple(included)
+
+    # ── ToolDisclosureManager protocol ────────────────────────────
+
+    def get_l2_body(self, tool_name: str) -> ToolL2Body | None:
+        """Return L2 body for a specific permitted tool.
+
+        Args:
+            tool_name: Name of the tool.
+
+        Returns:
+            The L2 body, or ``None`` if the tool is not found
+            or not permitted.
+        """
+        try:
+            tool = self._registry.get(tool_name)
+        except Exception:
+            return None
+        if (
+            self._permission_checker is not None
+            and not self._permission_checker.is_permitted(tool_name, tool.category)
+        ):
+            return None
+        return tool.to_l2_body()
+
+    def get_l3_resource(
+        self,
+        tool_name: str,
+        resource_id: str,
+    ) -> ToolL3Resource | None:
+        """Return a specific L3 resource for a permitted tool.
+
+        Args:
+            tool_name: Name of the tool.
+            resource_id: Identifier of the resource.
+
+        Returns:
+            The L3 resource, or ``None`` if not found or
+            not permitted.
+        """
+        try:
+            tool = self._registry.get(tool_name)
+        except Exception:
+            return None
+        if (
+            self._permission_checker is not None
+            and not self._permission_checker.is_permitted(tool_name, tool.category)
+        ):
+            return None
+        resources = tool.get_l3_resources()
+        return next(
+            (r for r in resources if r.resource_id == resource_id),
+            None,
+        )
 
     def _check_permission(
         self,

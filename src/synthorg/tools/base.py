@@ -15,6 +15,7 @@ from synthorg.observability import get_logger
 
 if TYPE_CHECKING:
     from synthorg.core.enums import ToolCategory
+from synthorg.core.tool_disclosure import ToolL1Metadata, ToolL2Body, ToolL3Resource
 from synthorg.observability.events.tool import TOOL_BASE_INVALID_NAME
 from synthorg.providers.models import ToolDefinition
 from synthorg.security.action_type_mapping import DEFAULT_CATEGORY_ACTION_MAP
@@ -150,16 +151,72 @@ class BaseTool(ABC):
         # dict() needed: MappingProxyType cannot be deep-copied directly
         return copy.deepcopy(dict(self._parameters_schema))
 
+    def to_l1_metadata(self) -> ToolL1Metadata:
+        """Return L1 always-in-context summary.
+
+        Default implementation derives metadata from existing
+        ``name``, ``description``, and ``category`` fields.
+        Override in subclasses for richer metadata.
+
+        Returns:
+            L1 metadata with name, short description, category,
+            and ``"medium"`` cost tier.
+        """
+        return ToolL1Metadata(
+            name=self._name,
+            short_description=self._description[:200],
+            category=self._category.value,
+            typical_cost_tier="medium",
+        )
+
+    def to_l2_body(self) -> ToolL2Body:
+        """Return L2 on-demand instruction body.
+
+        Default implementation derives from existing ``description``
+        and ``parameters_schema``.  Override in subclasses for richer
+        content (usage examples, failure modes).
+
+        Returns:
+            L2 body with full description, parameter schema, and
+            empty examples/failure modes.
+        """
+        return ToolL2Body(
+            full_description=self._description,
+            parameter_schema=self.parameters_schema or {},
+            usage_examples=(),
+            failure_modes=(),
+        )
+
+    def get_l3_resources(self) -> tuple[ToolL3Resource, ...]:
+        """Return L3 explicit-request resources.
+
+        Default implementation returns no resources.  Override in
+        subclasses to provide advanced documentation, code samples,
+        or example traces.
+
+        Returns:
+            Empty tuple (no resources by default).
+        """
+        return ()
+
     def to_definition(self) -> ToolDefinition:
         """Convert this tool to a ``ToolDefinition`` for LLM providers.
 
+        Populates both the flat provider-facing fields (``name``,
+        ``description``, ``parameters_schema``) and the tiered
+        disclosure fields (``l1_metadata``, ``l2_body``,
+        ``l3_resources``).
+
         Returns:
-            A ``ToolDefinition`` with name, description, and schema.
+            A ``ToolDefinition`` with all fields populated.
         """
         return ToolDefinition(
             name=self._name,
             description=self._description,
             parameters_schema=self.parameters_schema or {},
+            l1_metadata=self.to_l1_metadata(),
+            l2_body=self.to_l2_body(),
+            l3_resources=self.get_l3_resources(),
         )
 
     @abstractmethod

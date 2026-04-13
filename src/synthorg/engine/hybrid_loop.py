@@ -174,7 +174,7 @@ class HybridLoop:
             temperature=ctx.identity.model.temperature,
             max_tokens=ctx.identity.model.max_tokens,
         )
-        tool_defs = get_tool_definitions(tool_invoker)
+        tool_defs = get_tool_definitions(tool_invoker, ctx.loaded_tools)
         turns: list[TurnRecord] = []
         all_plans: list[ExecutionPlan] = []
         replans_used = 0

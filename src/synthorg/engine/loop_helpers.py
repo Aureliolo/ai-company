@@ -444,11 +444,24 @@ def clear_last_turn_tool_calls(turns: list[TurnRecord]) -> None:
 
 def get_tool_definitions(
     tool_invoker: ToolInvoker | None,
+    loaded_tools: frozenset[str] = frozenset(),
 ) -> list[ToolDefinition] | None:
-    """Extract permitted tool definitions from the invoker, or return None."""
+    """Extract disclosure-aware tool definitions from the invoker.
+
+    Returns full ``ToolDefinition`` objects only for tools in
+    ``loaded_tools`` plus the three discovery tools.  When
+    ``loaded_tools`` is empty, only discovery tools are returned.
+
+    Args:
+        tool_invoker: Tool invoker (can be ``None``).
+        loaded_tools: Tool names with L2 active in context.
+
+    Returns:
+        List of tool definitions, or ``None`` if no invoker.
+    """
     if tool_invoker is None:
         return None
-    defs = tool_invoker.get_permitted_definitions()
+    defs = tool_invoker.get_loaded_definitions(loaded_tools)
     return list(defs) if defs else None
 
 

@@ -64,5 +64,13 @@ TOOL_INVOCATION_EVICTED: Final[str] = "tool.invocation.evicted"
 TOOL_INVOCATION_TRACKER_CLEARED: Final[str] = "tool.invocation_tracker.cleared"
 TOOL_INVOCATION_TIME_RANGE_INVALID: Final[str] = "tool.invocation.time_range.invalid"
 
+# ── Progressive disclosure events ─────────────────────────────────
+TOOL_L1_INJECTED: Final[str] = "tool.disclosure.l1_injected"
+TOOL_L2_LOADED: Final[str] = "tool.disclosure.l2_loaded"
+TOOL_L3_FETCHED: Final[str] = "tool.disclosure.l3_fetched"
+TOOL_AUTO_UNLOADED: Final[str] = "tool.disclosure.auto_unloaded"
+TOOL_DISCLOSURE_COLLISION: Final[str] = "tool.disclosure.collision"
+TOOL_DISCLOSURE_TOKEN_SAVINGS: Final[str] = "tool.disclosure.token_savings"  # noqa: S105
+
 # ── Memory tool events ────────────────────────────────────────────
 TOOL_MEMORY_AUGMENTATION_FAILED: Final[str] = "tool.memory.augmentation_failed"

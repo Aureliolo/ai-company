@@ -1159,7 +1159,7 @@ class AgentEngine:
         effective_autonomy: EffectiveAutonomy | None = None,
     ) -> tuple[AgentContext, SystemPrompt]:
         """Build system prompt and prepare execution context."""
-        tool_defs = tool_invoker.get_permitted_definitions() if tool_invoker else ()
+        l1_summaries = tool_invoker.get_l1_summaries() if tool_invoker else ()
         cur_code = (
             self._budget_enforcer.currency
             if self._budget_enforcer is not None
@@ -1200,7 +1200,7 @@ class AgentEngine:
         system_prompt = build_system_prompt(
             agent=identity,
             task=task,
-            available_tools=tool_defs,
+            l1_summaries=l1_summaries,
             effective_autonomy=effective_autonomy,
             currency=cur_code,
             model_tier=identity.model.model_tier,
