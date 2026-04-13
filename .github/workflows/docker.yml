@@ -179,7 +179,9 @@ jobs:
             backend-base.tar
 
       - name: Load image for scanning
-        run: docker load -i backend-base.tar
+        run: |
+          docker load -i backend-base.tar
+          docker tag "ghcr.io/aureliolo/synthorg-backend-base:sha-${GITHUB_SHA::7}-amd64" "ghcr.io/aureliolo/synthorg-backend-base:sha-${GITHUB_SHA::7}" 2>/dev/null || true
 
       - name: Report image size
         run: scripts/report-image-size.sh "ghcr.io/aureliolo/synthorg-backend-base:sha-${GITHUB_SHA::7}" "Backend Base"
@@ -306,7 +308,9 @@ jobs:
             sandbox-base.tar
 
       - name: Load image for scanning
-        run: docker load -i sandbox-base.tar
+        run: |
+          docker load -i sandbox-base.tar
+          docker tag "ghcr.io/aureliolo/synthorg-sandbox-base:sha-${GITHUB_SHA::7}-amd64" "ghcr.io/aureliolo/synthorg-sandbox-base:sha-${GITHUB_SHA::7}" 2>/dev/null || true
 
       - name: Report image size
         run: scripts/report-image-size.sh "ghcr.io/aureliolo/synthorg-sandbox-base:sha-${GITHUB_SHA::7}" "Sandbox Base"
