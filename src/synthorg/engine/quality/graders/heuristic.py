@@ -8,11 +8,18 @@ from synthorg.engine.quality.verification import (
     VerificationRubric,
     VerificationVerdict,
 )
+from synthorg.observability import get_logger
+from synthorg.observability.events.verification import (
+    VERIFICATION_GRADING_COMPLETED,
+    VERIFICATION_GRADING_STARTED,
+)
 
 if TYPE_CHECKING:
     from synthorg.core.types import NotBlankStr
     from synthorg.engine.quality.verification import AtomicProbe
     from synthorg.engine.workflow.handoff import HandoffArtifact
+
+logger = get_logger(__name__)
 
 _PASS_THRESHOLD = 0.5
 
@@ -40,6 +47,12 @@ class HeuristicRubricGrader:
         evaluator_agent_id: NotBlankStr,
     ) -> VerificationResult:
         """Grade via simple heuristic matching."""
+        logger.info(
+            VERIFICATION_GRADING_STARTED,
+            rubric_name=rubric.name,
+            grader=self.name,
+            probe_count=len(probes),
+        )
         payload_text = " ".join(str(v) for v in artifact.payload.values()).lower()
 
         probe_pass_count = sum(
@@ -63,7 +76,7 @@ class HeuristicRubricGrader:
         else:
             verdict = VerificationVerdict.FAIL
 
-        return VerificationResult(
+        result = VerificationResult(
             verdict=verdict,
             confidence=confidence,
             per_criterion_grades=per_criterion_grades,
@@ -73,3 +86,10 @@ class HeuristicRubricGrader:
             rubric_name=rubric.name,
             timestamp=datetime.now(UTC),
         )
+        logger.info(
+            VERIFICATION_GRADING_COMPLETED,
+            rubric_name=rubric.name,
+            verdict=result.verdict.value,
+            confidence=result.confidence,
+        )
+        return result

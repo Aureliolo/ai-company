@@ -17,6 +17,9 @@ from synthorg.engine.quality.verification_config import (
     GraderVariant,
     VerificationConfig,
 )
+from synthorg.observability import get_logger
+
+logger = get_logger(__name__)
 
 _DECOMPOSER_FACTORIES: MappingProxyType[DecomposerVariant, type[CriteriaDecomposer]] = (
     MappingProxyType(
@@ -53,6 +56,11 @@ def build_decomposer(config: VerificationConfig) -> CriteriaDecomposer:
     if factory is None:
         valid = sorted(v.value for v in DecomposerVariant)
         msg = f"Unknown decomposer variant {config.decomposer!r}, valid: {valid}"
+        logger.error(
+            "verification.factory.unknown_decomposer",
+            variant=str(config.decomposer),
+            valid=valid,
+        )
         raise ValueError(msg)
     return factory()
 
@@ -73,5 +81,10 @@ def build_grader(config: VerificationConfig) -> RubricGrader:
     if factory is None:
         valid = sorted(v.value for v in GraderVariant)
         msg = f"Unknown grader variant {config.grader!r}, valid: {valid}"
+        logger.error(
+            "verification.factory.unknown_grader",
+            variant=str(config.grader),
+            valid=valid,
+        )
         raise ValueError(msg)
     return factory()

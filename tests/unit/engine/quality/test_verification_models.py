@@ -11,6 +11,7 @@ from synthorg.engine.quality.verification import (
     FRONTEND_DESIGN_RUBRIC,
     AtomicProbe,
     CalibrationExample,
+    GradeType,
     RubricCriterion,
     VerificationResult,
     VerificationRubric,
@@ -44,13 +45,15 @@ class TestRubricCriterion:
             name="design",
             description="Visual quality",
             weight=0.5,
-            grade_type="score",
+            grade_type=GradeType.SCORE,
         )
         assert c.name == "design"
         assert c.weight == 0.5
 
     def test_frozen(self) -> None:
-        c = RubricCriterion(name="x", description="y", weight=0.5, grade_type="binary")
+        c = RubricCriterion(
+            name="x", description="y", weight=0.5, grade_type=GradeType.BINARY
+        )
         with pytest.raises(ValidationError, match="frozen"):
             c.name = "z"  # type: ignore[misc]
 
@@ -60,7 +63,7 @@ class TestRubricCriterion:
                 name="x",
                 description="y",
                 weight=float("nan"),
-                grade_type="binary",
+                grade_type=GradeType.BINARY,
             )
 
     def test_rejects_inf_weight(self) -> None:
@@ -69,24 +72,32 @@ class TestRubricCriterion:
                 name="x",
                 description="y",
                 weight=float("inf"),
-                grade_type="binary",
+                grade_type=GradeType.BINARY,
             )
 
     def test_rejects_negative_weight(self) -> None:
         with pytest.raises(ValidationError, match="greater than or equal to 0"):
-            RubricCriterion(name="x", description="y", weight=-0.1, grade_type="binary")
+            RubricCriterion(
+                name="x", description="y", weight=-0.1, grade_type=GradeType.BINARY
+            )
 
     def test_rejects_weight_above_one(self) -> None:
         with pytest.raises(ValidationError, match="less than or equal to 1"):
-            RubricCriterion(name="x", description="y", weight=1.1, grade_type="binary")
+            RubricCriterion(
+                name="x", description="y", weight=1.1, grade_type=GradeType.BINARY
+            )
 
     def test_rejects_blank_name(self) -> None:
         with pytest.raises(ValidationError):
-            RubricCriterion(name="", description="y", weight=0.5, grade_type="binary")
+            RubricCriterion(
+                name="", description="y", weight=0.5, grade_type=GradeType.BINARY
+            )
 
     def test_rejects_blank_description(self) -> None:
         with pytest.raises(ValidationError):
-            RubricCriterion(name="x", description="", weight=0.5, grade_type="binary")
+            RubricCriterion(
+                name="x", description="", weight=0.5, grade_type=GradeType.BINARY
+            )
 
     @pytest.mark.parametrize("grade_type", ["binary", "ternary", "score"])
     def test_valid_grade_types(self, grade_type: str) -> None:
@@ -146,7 +157,7 @@ class TestCalibrationExample:
 
 def _criterion(name: str, weight: float) -> RubricCriterion:
     return RubricCriterion(
-        name=name, description=f"Test {name}", weight=weight, grade_type="score"
+        name=name, description=f"Test {name}", weight=weight, grade_type=GradeType.SCORE
     )
 
 

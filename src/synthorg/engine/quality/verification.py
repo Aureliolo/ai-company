@@ -9,7 +9,7 @@ import math
 from collections.abc import Mapping  # noqa: TC003
 from datetime import datetime  # noqa: TC003
 from enum import StrEnum
-from typing import Literal, Self
+from typing import Self
 
 from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
 
@@ -22,6 +22,14 @@ class VerificationVerdict(StrEnum):
     PASS = "pass"  # noqa: S105
     FAIL = "fail"
     REFER = "refer"
+
+
+class GradeType(StrEnum):
+    """Grading scale for a rubric criterion."""
+
+    BINARY = "binary"
+    TERNARY = "ternary"
+    SCORE = "score"
 
 
 class RubricCriterion(BaseModel):
@@ -40,9 +48,7 @@ class RubricCriterion(BaseModel):
     name: NotBlankStr = Field(description="Criterion identifier")
     description: NotBlankStr = Field(description="What is evaluated")
     weight: float = Field(ge=0.0, le=1.0, description="Relative weight")
-    grade_type: Literal["binary", "ternary", "score"] = Field(
-        description="Grading scale",
-    )
+    grade_type: GradeType = Field(description="Grading scale")
 
 
 class CalibrationExample(BaseModel):
@@ -70,6 +76,20 @@ class CalibrationExample(BaseModel):
         default=None,
         description="Optional per-criterion expected grades",
     )
+
+    @model_validator(mode="after")
+    def _validate_expected_grades(self) -> Self:
+        """Validate expected grade values are finite and in [0, 1]."""
+        if self.expected_grades is None:
+            return self
+        for name, grade in self.expected_grades.items():
+            if math.isnan(grade) or math.isinf(grade):
+                msg = f"Expected grade for {name!r} must be finite"
+                raise ValueError(msg)
+            if not (0.0 <= grade <= 1.0):
+                msg = f"Expected grade for {name!r} must be in [0, 1], got {grade}"
+                raise ValueError(msg)
+        return self
 
 
 class VerificationRubric(BaseModel):
@@ -189,8 +209,15 @@ class VerificationResult(BaseModel):
         return self.verdict == VerificationVerdict.PASS
 
     @model_validator(mode="after")
-    def _reject_self_evaluation(self) -> Self:
-        """Reject evaluator == generator (self-evaluation)."""
+    def _validate_grades_and_agents(self) -> Self:
+        """Validate grade values and reject self-evaluation."""
+        for name, grade in self.per_criterion_grades.items():
+            if math.isnan(grade) or math.isinf(grade):
+                msg = f"Grade for {name!r} must be finite"
+                raise ValueError(msg)
+            if not (0.0 <= grade <= 1.0):
+                msg = f"Grade for {name!r} must be in [0, 1], got {grade}"
+                raise ValueError(msg)
         if self.evaluator_agent_id == self.generator_agent_id:
             msg = (
                 "Self-evaluation rejected: evaluator_agent_id must "
@@ -204,25 +231,25 @@ _DESIGN_CRITERION = RubricCriterion(
     name="design",
     description="Visual design quality, layout, and aesthetics",
     weight=0.25,
-    grade_type="score",
+    grade_type=GradeType.SCORE,
 )
 _ORIGINALITY_CRITERION = RubricCriterion(
     name="originality",
     description="Creative originality and avoidance of generic patterns",
     weight=0.25,
-    grade_type="score",
+    grade_type=GradeType.SCORE,
 )
 _CRAFT_CRITERION = RubricCriterion(
     name="craft",
     description="Implementation craft, code quality, and attention to detail",
     weight=0.25,
-    grade_type="score",
+    grade_type=GradeType.SCORE,
 )
 _FUNCTIONALITY_CRITERION = RubricCriterion(
     name="functionality",
     description="Functional correctness and completeness",
     weight=0.25,
-    grade_type="score",
+    grade_type=GradeType.SCORE,
 )
 
 FRONTEND_DESIGN_RUBRIC = VerificationRubric(

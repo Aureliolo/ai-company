@@ -21,6 +21,9 @@ from synthorg.engine.task_engine_models import CreateTaskData
 from synthorg.engine.workflow.condition_eval import evaluate_condition
 from synthorg.engine.workflow.execution_models import WorkflowNodeExecution
 from synthorg.observability import get_logger
+from synthorg.observability.events.verification import (
+    VERIFICATION_VERDICT_ROUTED,
+)
 from synthorg.observability.events.workflow_execution import (
     WORKFLOW_EXEC_CONDITION_EVAL_FAILED,
     WORKFLOW_EXEC_CONDITION_EVALUATED,
@@ -447,11 +450,11 @@ def process_verification_node(  # noqa: PLR0913
     untaken_targets = [t for v, t in edge_map.items() if v != verdict and t is not None]
 
     logger.info(
-        WORKFLOW_EXEC_CONDITION_EVALUATED,
+        VERIFICATION_VERDICT_ROUTED,
         execution_id=execution_id,
         node_id=nid,
-        expression=f"verification_verdict={verdict.value}",
-        result=verdict.value,
+        verdict=verdict.value,
+        taken_target=taken_target,
     )
 
     if taken_target is not None:
