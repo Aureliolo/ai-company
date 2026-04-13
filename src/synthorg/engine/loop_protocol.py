@@ -40,6 +40,25 @@ class NodeType(StrEnum):
     STAGNATION_CHECK = "stagnation_check"
 
 
+class BehaviorTag(StrEnum):
+    """Behavior category for trace capture and eval routing.
+
+    Starting taxonomy derived from LangChain Deep Agents evals.
+    Extend as usage patterns reveal category fragmentation or
+    generalization.
+    """
+
+    FILE_OPERATIONS = "file_operations"
+    RETRIEVAL = "retrieval"
+    TOOL_USE = "tool_use"
+    MEMORY = "memory"
+    CONVERSATION = "conversation"
+    SUMMARIZATION = "summarization"
+    DELEGATION = "delegation"
+    COORDINATION = "coordination"
+    VERIFICATION = "verification"
+
+
 class TerminationReason(StrEnum):
     """Why the execution loop terminated."""
 
@@ -119,6 +138,24 @@ class TurnRecord(BaseModel):
     node_types: tuple[NodeType, ...] = Field(
         default=(),
         description="Node types that executed in this turn",
+    )
+    behavior_tags: tuple[BehaviorTag, ...] = Field(
+        default=(),
+        description="Behavior categories inferred by BehaviorTaggerMiddleware",
+    )
+    efficiency_delta: object | None = Field(
+        default=None,
+        description="Efficiency ratios against an ideal baseline",
+    )
+    prior_tool_call_count: int = Field(
+        default=0,
+        ge=0,
+        description="Cumulative tool calls before this turn (for PTE)",
+    )
+    tool_response_tokens: int = Field(
+        default=0,
+        ge=0,
+        description="Tokens from tool responses this turn (for PTE)",
     )
 
     @model_validator(mode="after")

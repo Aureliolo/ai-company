@@ -261,6 +261,18 @@ class CoordinationMetricsConfig(BaseModel):
         default_factory=OrchestrationAlertThresholds,
         description="Orchestration overhead alert thresholds",
     )
+    quality_erosion_threshold: float = Field(
+        default=0.5,
+        ge=0.0,
+        le=1.0,
+        description="Structural erosion score that triggers QUALITY_EROSION stagnation",
+    )
+    quality_erosion_window: int = Field(
+        default=10,
+        ge=2,
+        le=50,
+        description="Number of recent turns to analyze for quality erosion",
+    )
 
     @model_validator(mode="after")
     def _validate_unique_collect(self) -> Self:

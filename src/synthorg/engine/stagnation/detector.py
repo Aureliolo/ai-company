@@ -17,6 +17,7 @@ from synthorg.observability.events.stagnation import (
 from .models import (
     NO_STAGNATION_RESULT,
     StagnationConfig,
+    StagnationReason,
     StagnationResult,
     StagnationVerdict,
 )
@@ -184,6 +185,11 @@ def _build_stagnation_result(
 ) -> StagnationResult:
     """Build INJECT_PROMPT or TERMINATE result after stagnation detected."""
     repeated_tools = sorted({fp for fp, c in counts.items() if c > 1})
+    reason = (
+        StagnationReason.CYCLE_DETECTION
+        if cycle_length is not None
+        else StagnationReason.TOOL_REPETITION
+    )
 
     logger.info(
         STAGNATION_DETECTED,
@@ -192,11 +198,13 @@ def _build_stagnation_result(
         repeated_tools=repeated_tools,
         corrections_injected=corrections_injected,
         max_corrections=max_corrections,
+        reason=reason,
     )
 
     if corrections_injected < max_corrections:
         return StagnationResult(
             verdict=StagnationVerdict.INJECT_PROMPT,
+            reason=reason,
             corrective_message=_build_corrective_message(
                 repeated_tools,
             ),
@@ -207,6 +215,7 @@ def _build_stagnation_result(
 
     return StagnationResult(
         verdict=StagnationVerdict.TERMINATE,
+        reason=reason,
         repetition_ratio=repetition_ratio,
         cycle_length=cycle_length,
         details={"repeated_tools": repeated_tools},

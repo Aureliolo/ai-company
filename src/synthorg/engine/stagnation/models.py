@@ -20,6 +20,18 @@ class StagnationVerdict(StrEnum):
     TERMINATE = "terminate"
 
 
+class StagnationReason(StrEnum):
+    """Why stagnation was detected.
+
+    Classifies the underlying cause (separate from ``StagnationVerdict``
+    which says what action to take).
+    """
+
+    TOOL_REPETITION = "tool_repetition"
+    CYCLE_DETECTION = "cycle_detection"
+    QUALITY_EROSION = "quality_erosion"
+
+
 class StagnationConfig(BaseModel):
     """Configuration for stagnation detection.
 
@@ -101,6 +113,10 @@ class StagnationResult(BaseModel):
 
     verdict: StagnationVerdict = Field(
         description="What action to take",
+    )
+    reason: StagnationReason | None = Field(
+        default=None,
+        description="Why stagnation was detected (None when no stagnation)",
     )
     corrective_message: str | None = Field(
         default=None,

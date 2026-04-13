@@ -11,6 +11,9 @@ Call ``register_default_middleware()`` once at application startup
 
 from typing import Any
 
+from synthorg.engine.middleware.behavior_tagger import (
+    BehaviorTaggerMiddleware,
+)
 from synthorg.engine.middleware.builtin import (
     ApprovalGateMiddleware,
     CheckpointResumeMiddleware,
@@ -59,6 +62,7 @@ _AGENT_DEFAULTS: tuple[tuple[str, Any], ...] = (
     ("classification", ClassificationMiddleware),
     ("cost_recording", CostRecordingMiddleware),
     ("disclosure", DisclosureMiddleware),
+    ("behavior_tagger", BehaviorTaggerMiddleware),
 )
 
 _COORDINATION_DEFAULTS: tuple[tuple[str, Any], ...] = (
