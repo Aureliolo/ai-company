@@ -68,14 +68,8 @@ class ToolIntegrityViolation(BaseModel):
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     tool_name: NotBlankStr = Field(description="Tool with mismatch")
-    expected_hash: NotBlankStr = Field(
-        description="Prior recorded hash",
-        pattern=r"^[0-9a-f]{64}$",
-    )
-    actual_hash: NotBlankStr = Field(
-        description="Current computed hash",
-        pattern=r"^[0-9a-f]{64}$",
-    )
+    expected_hash: NotBlankStr = Field(description="Prior recorded hash")
+    actual_hash: NotBlankStr = Field(description="Current computed hash")
 
 
 class ToolIntegrityReport(BaseModel):
