@@ -31,9 +31,9 @@ function MockAside(props: React.ComponentProps<'aside'> & Record<string, unknown
   )
 }
 
-// Mock framer-motion to avoid animation timing issues in tests
-vi.mock('framer-motion', async () => {
-  const actual = await vi.importActual<typeof import('framer-motion')>('framer-motion')
+// Mock motion/react to avoid animation timing issues in tests
+vi.mock('motion/react', async () => {
+  const actual = await vi.importActual<typeof import('motion/react')>('motion/react')
   return {
     ...actual,
     AnimatePresence: MockAnimatePresence,

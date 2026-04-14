@@ -353,7 +353,7 @@ The frontend-reviewer agent checks React 19 + shadcn/ui dashboard code quality a
 7. Custom CSS that duplicates existing shadcn/ui components or Tailwind utilities (MEDIUM)
 8. Inline styles instead of Tailwind classes (MEDIUM)
 9. Hardcoded colors/spacing instead of design tokens (CSS variables) (MEDIUM)
-10. Hardcoded Framer Motion `transition: { duration: N }` instead of presets from `@/lib/motion` or `useAnimationPreset()` hook (MEDIUM)
+10. Hardcoded Motion `transition: { duration: N }` instead of presets from `@/lib/motion` or `useAnimationPreset()` hook (MEDIUM)
 11. Card containers (`bg-card` + border) using hardcoded `p-3`/`p-4`/`px-N py-N` instead of `p-card` (MEDIUM)
 12. Page-level section gaps using hardcoded `space-y-*`/`gap-*` (e.g. `space-y-4`, `space-y-6`, `gap-4`, `gap-6`) instead of `space-y-section-gap` or `gap-section-gap` (MEDIUM)
 13. Grid layouts using `gap-3`/`gap-4`/`gap-6` instead of `gap-grid-gap` (MEDIUM)

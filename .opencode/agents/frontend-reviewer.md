@@ -28,7 +28,7 @@ You review the SynthOrg React 19 web dashboard for code quality, accessibility, 
 - Missing or incorrect TypeScript prop types
 - Inline styles instead of Tailwind classes
 - Hardcoded hex colors, font-family, pixel spacing (must use design tokens)
-- Hardcoded Framer Motion transitions (must use `@/lib/motion` presets)
+- Hardcoded Motion transitions (must use `@/lib/motion` presets)
 
 ### 3. State Management (HIGH)
 - Local state for data that should be in Zustand store

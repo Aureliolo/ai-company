@@ -14,7 +14,7 @@ export interface StaggerGroupProps {
 export interface StaggerItemProps {
   children: React.ReactNode
   className?: string
-  /** Framer Motion layoutId for reorder animations. */
+  /** Motion layoutId for reorder animations. */
   layoutId?: string
   /** Enable layout animation for smooth size changes. */
   layout?: boolean
@@ -62,7 +62,7 @@ export function StaggerGroup({
  * Individual item within a StaggerGroup.
  *
  * Applies the cardEntrance animation variant (fade up from 8px below).
- * Supports Framer Motion layout animations for smooth reordering.
+ * Supports Motion layout animations for smooth reordering.
  */
 export function StaggerItem({
   children,

@@ -1654,7 +1654,7 @@ API -> CLI
     (diagnostics + bug report URL), `uninstall`, `version`, `config`, `completion-install`,
     `backup` (create/list/restore via backend API), `wipe` (factory-reset with interactive backup and restart prompts),
     `cleanup` (remove old container images to free disk space).
-    Built with Cobra + charmbracelet/huh. Distributed via GoReleaser + install scripts
+    Built with Cobra + charm.land/huh/v2 + charm.land/lipgloss/v2. Distributed via GoReleaser + install scripts
     (`curl | sh` for Linux/macOS, `irm | iex` for Windows).
     Global output modes: `--quiet` (errors only), `--verbose/-v` (verbose/trace), `--plain`
     (ASCII-only), `--json` (machine-readable), `--no-color`, `--yes` (non-interactive).

@@ -4,10 +4,10 @@ import type { ToastItem } from '@/stores/toast'
 import { useToastStore } from '@/stores/toast'
 import { Toast, ToastContainer } from '@/components/ui/toast'
 
-// Mock framer-motion
+// Mock motion/react
 
-vi.mock('framer-motion', async () => {
-  const actual = await vi.importActual<typeof import('framer-motion')>('framer-motion')
+vi.mock('motion/react', async () => {
+  const actual = await vi.importActual<typeof import('motion/react')>('motion/react')
   return {
     ...actual,
     AnimatePresence: ({ children }: { children: React.ReactNode }) => <>{children}</>,

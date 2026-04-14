@@ -363,7 +363,7 @@ Built with the `cmdk-base` library (cmdk port on Base UI Dialog).
 
 ## 4. Animation Language
 
-### 4.1 Framer Motion Presets
+### 4.1 Motion Presets
 
 All animation values are defined in `web/src/lib/motion.ts` and imported as constants. Never hardcode animation values in components.
 
@@ -636,7 +636,7 @@ The following `@theme` block contains all design tokens for Tailwind v4. This re
 
 Exported to `web/src/styles/design-tokens.css` for non-Tailwind contexts (e.g. inline styles, third-party library theming, SVG styling).
 
-### Framer Motion Config
+### Motion Config
 
 Exported to `web/src/lib/motion.ts` as TypeScript constants. Import and use:
 
@@ -658,7 +658,7 @@ import { springDefault, tweenDefault, cardEntrance, staggerChildren } from "@/li
 | Page structure and navigation | [Page Structure & IA](page-structure.md) |
 | WCAG verification script | `scripts/wcag_check.py` |
 | CSS design tokens | `web/src/styles/design-tokens.css` |
-| Framer Motion presets | `web/src/lib/motion.ts` |
+| Motion presets | `web/src/lib/motion.ts` |
 | CSP nonce reader | `web/src/lib/csp.ts` |
 | Structured logger factory | `web/src/lib/logger.ts` |
 | Winning prototype (visual reference) | `research/762-ux-mockups` branch, `mockups/direction-cd/` |

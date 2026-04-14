@@ -11,7 +11,7 @@ let cached: string | undefined | typeof UNREAD = UNREAD
  * The nonce is injected at serve time by Caddy's `templates` directive
  * (substituting `{{placeholder "http.request.uuid"}}` with a per-request
  * UUID). At runtime, this reader parses the meta tag and returns the nonce
- * string, which is passed to Base UI's `CSPProvider` and Framer Motion's
+ * string, which is passed to Base UI's `CSPProvider` and Motion's
  * `MotionConfig` so every dynamically injected `<style>` element carries
  * the nonce.
  *
@@ -31,7 +31,7 @@ let cached: string | undefined | typeof UNREAD = UNREAD
  *
  * **Threat model note:** The nonce is readable by all same-origin JavaScript,
  * so it does not prevent an attacker who has already achieved XSS from
- * reusing it. Its purpose is to permit Base UI and Framer Motion's
+ * reusing it. Its purpose is to permit Base UI and Motion's
  * dynamically injected `<style>` tags under a CSP that forbids
  * `'unsafe-inline'` on `style-src-elem`. The nonce must be per-request and
  * unpredictable (Caddy's `{http.request.uuid}` placeholder, a 128-bit

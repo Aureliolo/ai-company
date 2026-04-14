@@ -1,10 +1,10 @@
 import { render, screen } from '@testing-library/react'
 import { AnimatedPresence } from '@/components/ui/animated-presence'
 
-// Mock framer-motion to avoid animation timing issues in tests
+// Mock motion/react to avoid animation timing issues in tests
 
-vi.mock('framer-motion', async () => {
-  const actual = await vi.importActual<typeof import('framer-motion')>('framer-motion')
+vi.mock('motion/react', async () => {
+  const actual = await vi.importActual<typeof import('motion/react')>('motion/react')
   return {
     ...actual,
     useReducedMotion: () => false,

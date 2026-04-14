@@ -41,7 +41,7 @@ const pageVariants: Variants = {
 }
 
 /**
- * Page transition wrapper using Framer Motion's AnimatePresence.
+ * Page transition wrapper using Motion's AnimatePresence.
  *
  * Wraps children with enter/exit animations keyed by `routeKey`.
  * Automatically falls back to reduced-motion variants when the user

@@ -75,7 +75,7 @@ describe('App', () => {
     render(<App />)
     // Wait for lazy-loaded layout to render.  On CI with
     // `--detect-async-leaks` + coverage enabled, the initial import of
-    // AppLayout (which transitively pulls in framer-motion, cmdk-base,
+    // AppLayout (which transitively pulls in motion, cmdk-base,
     // Base UI primitives, and every lazy page) can take 5-9s before the
     // Suspense fallback resolves -- the 8000ms budget below has margin
     // over observed CI timings while staying under the outer 15s cap.

@@ -174,7 +174,7 @@ This was discovered during the design exploration (#765) and caused layout break
 ## Accessibility
 
 - WCAG AA contrast minimum on all text (4.5:1 on backgrounds, 3:1 for large text)
-- `prefers-reduced-motion` supported: `AnimatedPresence` uses `reducedPageVariants` (opacity-only fade), skeleton shimmer disabled via CSS media query, Framer Motion's `useReducedMotion()` hook used for runtime detection
+- `prefers-reduced-motion` supported: `AnimatedPresence` uses `reducedPageVariants` (opacity-only fade), skeleton shimmer disabled via CSS media query, Motion's `useReducedMotion()` hook used for runtime detection
 - Keyboard navigation for all interactive elements
 - `aria-hidden="true"` on decorative icons
 - Escape key closes overlays/drawers
@@ -216,14 +216,14 @@ The following shared components live in `web/src/components/ui/` and form the bu
 
 | Component | File | Props | Purpose |
 |-----------|------|-------|---------|
-| `Toast` / `ToastContainer` | `toast.tsx` | `toast` (ToastItem), `onDismiss`, `maxVisible?` | Notification toasts (success/error/warning/info) with auto-dismiss queue, Framer Motion animations. Mount `ToastContainer` once in AppLayout. |
+| `Toast` / `ToastContainer` | `toast.tsx` | `toast` (ToastItem), `onDismiss`, `maxVisible?` | Notification toasts (success/error/warning/info) with auto-dismiss queue, Motion animations. Mount `ToastContainer` once in AppLayout. |
 | `Skeleton` variants | `skeleton.tsx` | `shimmer?`, `lines?`, `rows?`, `columns?` | Loading placeholders: `Skeleton` (base), `SkeletonText`, `SkeletonCard`, `SkeletonMetric`, `SkeletonTable`. Shimmer respects `prefers-reduced-motion`. |
 | `EmptyState` | `empty-state.tsx` | `icon?`, `title`, `description?`, `action?` | No-data / no-results placeholder with optional action button. |
 | `ErrorBoundary` | `error-boundary.tsx` | `fallback?`, `onReset?`, `level?` | React error boundary with retry. Levels: `page` (full-height), `section` (card), `component` (inline). |
 | `ConfirmDialog` | `confirm-dialog.tsx` | `open`, `onOpenChange`, `title`, `onConfirm`, `variant?`, `loading?` | Confirmation modal built on Base UI AlertDialog. Variants: `default`, `destructive`. |
 | `CommandPalette` | `command-palette.tsx` | `className?` | Global Cmd+K search built with cmdk-base. Hosted inside a Base UI Dialog for focus trapping, fuzzy search, scope toggle, recent items. |
 | `InlineEdit` | `inline-edit.tsx` | `value`, `onSave`, `validate?`, `type?`, `disabled?` | Click-to-edit with Enter/Escape, inline validation, optimistic save via `useFlash`. |
-| `AnimatedPresence` | `animated-presence.tsx` | `routeKey`, `className?` | Page transition wrapper. Uses Framer Motion AnimatePresence with reduced-motion fallback. |
+| `AnimatedPresence` | `animated-presence.tsx` | `routeKey`, `className?` | Page transition wrapper. Uses Motion AnimatePresence with reduced-motion fallback. |
 | `StaggerGroup` / `StaggerItem` | `stagger-group.tsx` | `staggerDelay?`, `animate?`, `layoutId?`, `layout?` | Card entrance stagger container with configurable delay and layout animation support. |
 | `Drawer` | `drawer.tsx` | `open`, `onClose`, `title?`, `ariaLabel?`, `side?`, `contentClassName?`, `children`, `className?` | Slide-in panel (left or right via `side`, default right) with overlay, spring animation, focus trap, and Escape-to-close. At least one of `title` or `ariaLabel` must be provided for accessible naming. Header omitted when `title` is absent. |
 | `InputField` | `input-field.tsx` | `label`, `error?`, `hint?`, `multiline?`, `rows?`, `placeholder?`, `required?`, `disabled?`, `type?`, `value`, `onChange` | Labeled text input with inline error/hint display and optional textarea mode. Extends native input/textarea props. |

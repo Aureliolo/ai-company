@@ -1,5 +1,5 @@
 ---
-description: Audits web dashboard files for design token violations in animation (Framer Motion transitions) and density/spacing (card padding, section gaps, grid gaps, banner padding)
+description: Audits web dashboard files for design token violations in animation (Motion transitions) and density/spacing (card padding, section gaps, grid gaps, banner padding)
 mode: subagent
 permission:
   Read: allow
@@ -15,7 +15,7 @@ You are a design system compliance reviewer for the SynthOrg web dashboard. This
 
 For each changed `web/src/**/*.{tsx,ts}` file in the diff, check for these violations:
 
-### 1. Framer Motion transitions (MEDIUM)
+### 1. Motion transitions (MEDIUM)
 
 Hardcoded `transition: { duration: N }` or `transition={{ duration: N }}` instead of importing presets from `@/lib/motion` (`tweenDefault`, `tweenFast`, `tweenExitFast`, `springDefault`, etc.) or using the `useAnimationPreset()` hook.
 
@@ -52,7 +52,7 @@ For each violation found, report:
 - Severity: MEDIUM
 
 Only report violations with HIGH confidence. Do not flag:
-- Tailwind `duration-*` classes (CSS transition durations, not Framer Motion)
+- Tailwind `duration-*` classes (CSS transition durations, not Motion)
 - Internal component padding in sidebar, form fields, command palette
 - Table cell padding (`<td>`/`<th>` elements)
 - Storybook `.stories.tsx` demo wrappers

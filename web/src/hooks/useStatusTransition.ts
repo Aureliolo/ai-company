@@ -28,7 +28,7 @@ interface UseStatusTransitionReturn {
 /**
  * Animate between status colors when an agent's runtime status changes.
  *
- * Returns the resolved color and Framer Motion props for smooth transitions.
+ * Returns the resolved color and Motion props for smooth transitions.
  */
 export function useStatusTransition(
   status: AgentRuntimeStatus,

@@ -12,7 +12,7 @@ const VENDOR_CHUNKS: Record<string, readonly string[]> = {
   'vendor-charts': ['recharts'],
   'vendor-flow': ['@xyflow/react', '@dagrejs/dagre', 'd3-force'],
   'vendor-editor': ['@codemirror/commands', '@codemirror/lang-json', '@codemirror/lang-yaml', '@codemirror/language', '@codemirror/state', '@codemirror/view'],
-  'vendor-motion': ['framer-motion'],
+  'vendor-motion': ['motion'],
   'vendor-dnd': ['@dnd-kit/core', '@dnd-kit/sortable', '@dnd-kit/utilities'],
   'vendor-state': ['zustand', '@tanstack/react-query', 'axios'],
 } as const
