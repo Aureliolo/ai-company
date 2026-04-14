@@ -2,7 +2,7 @@
 
 import asyncio
 import contextlib
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, Sequence
 from datetime import UTC, datetime
 
 import pytest
@@ -165,7 +165,7 @@ class _FakeBus:
 
     async def publish_batch(
         self,
-        messages: object,
+        messages: Sequence[Message],
         *,
         ttl_seconds: float | None = None,
     ) -> None:

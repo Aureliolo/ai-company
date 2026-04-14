@@ -1,6 +1,7 @@
 """Shared fakes and helpers for TaskEngine tests."""
 
 import copy
+from collections.abc import Sequence
 from typing import TYPE_CHECKING
 
 from synthorg.core.task import Task
@@ -96,7 +97,7 @@ class FakeMessageBus:
 
     async def publish_batch(
         self,
-        messages: object,
+        messages: Sequence[object],
         *,
         ttl_seconds: float | None = None,
     ) -> None:

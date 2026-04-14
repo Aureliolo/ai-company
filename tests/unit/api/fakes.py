@@ -663,7 +663,7 @@ class FakeMessageBus:
 
     async def publish_batch(
         self,
-        messages: object,
+        messages: Sequence[Message],
         *,
         ttl_seconds: float | None = None,
     ) -> None:

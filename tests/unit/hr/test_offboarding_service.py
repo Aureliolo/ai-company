@@ -1,5 +1,6 @@
 """Tests for OffboardingService."""
 
+from collections.abc import Sequence
 from typing import Any
 
 import pytest
@@ -146,7 +147,7 @@ class FakeMessageBus:
 
     async def publish_batch(
         self,
-        messages: object,
+        messages: Sequence[Message],
         *,
         ttl_seconds: float | None = None,
     ) -> None:
