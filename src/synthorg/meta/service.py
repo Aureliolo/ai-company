@@ -1,0 +1,147 @@
+"""Self-improvement service orchestrator.
+
+Central service that ties together signal aggregation, rule
+evaluation, strategy dispatch, guard chain, and rollout execution.
+"""
+
+from typing import TYPE_CHECKING
+
+from synthorg.meta.factory import (
+    build_appliers,
+    build_guards,
+    build_regression_detector,
+    build_rollout_strategies,
+    build_rule_engine,
+    build_strategies,
+)
+from synthorg.meta.models import (
+    GuardVerdict,
+    ImprovementProposal,
+    OrgSignalSnapshot,
+    RolloutResult,
+)
+from synthorg.observability import get_logger
+from synthorg.observability.events.meta import (
+    META_CYCLE_COMPLETED,
+    META_CYCLE_NO_TRIGGERS,
+    META_CYCLE_STARTED,
+    META_PROPOSAL_GUARD_REJECTED,
+)
+
+if TYPE_CHECKING:
+    from synthorg.meta.config import SelfImprovementConfig
+
+logger = get_logger(__name__)
+
+
+class SelfImprovementService:
+    """Orchestrates the self-improvement meta-loop cycle.
+
+    1. Evaluates signal snapshot against rules.
+    2. Dispatches to strategies for matching altitudes.
+    3. Runs proposals through the guard chain.
+    4. Returns proposals that passed all guards (ready for approval).
+
+    Args:
+        config: Self-improvement configuration.
+    """
+
+    def __init__(self, *, config: SelfImprovementConfig) -> None:
+        self._config = config
+        self._rule_engine = build_rule_engine(config)
+        self._strategies = build_strategies(config)
+        self._guards = build_guards(config)
+        self._appliers = build_appliers()
+        self._detector = build_regression_detector()
+        self._rollout_strategies = build_rollout_strategies()
+
+    async def run_cycle(
+        self,
+        snapshot: OrgSignalSnapshot,
+    ) -> tuple[ImprovementProposal, ...]:
+        """Run a complete improvement cycle.
+
+        Evaluates rules, generates proposals, filters through
+        guards, and returns proposals ready for human approval.
+
+        Args:
+            snapshot: Current org-wide signal snapshot.
+
+        Returns:
+            Proposals that passed all guards (awaiting approval).
+        """
+        logger.info(META_CYCLE_STARTED)
+
+        # Step 1: Evaluate rules.
+        matches = self._rule_engine.evaluate(snapshot)
+        if not matches:
+            logger.info(META_CYCLE_NO_TRIGGERS)
+            return ()
+
+        # Step 2: Generate proposals from strategies.
+        all_proposals: list[ImprovementProposal] = []
+        for strategy in self._strategies:
+            relevant = tuple(
+                m for m in matches if strategy.altitude in m.suggested_altitudes
+            )
+            if relevant:
+                proposals = await strategy.propose(
+                    snapshot=snapshot,
+                    triggered_rules=relevant,
+                )
+                all_proposals.extend(proposals)
+
+        # Step 3: Filter through guard chain.
+        approved: list[ImprovementProposal] = []
+        for proposal in all_proposals:
+            passed = True
+            for guard in self._guards:
+                result = await guard.evaluate(proposal)
+                if result.verdict == GuardVerdict.REJECTED:
+                    logger.info(
+                        META_PROPOSAL_GUARD_REJECTED,
+                        guard=guard.name,
+                        proposal_id=str(proposal.id),
+                        reason=result.reason,
+                    )
+                    passed = False
+                    break
+            if passed:
+                approved.append(proposal)
+
+        logger.info(
+            META_CYCLE_COMPLETED,
+            total_matches=len(matches),
+            proposals_generated=len(all_proposals),
+            proposals_approved=len(approved),
+        )
+        return tuple(approved)
+
+    async def execute_rollout(
+        self,
+        proposal: ImprovementProposal,
+    ) -> RolloutResult:
+        """Execute a rollout for an approved proposal.
+
+        Args:
+            proposal: The human-approved proposal.
+
+        Returns:
+            Rollout result.
+        """
+        applier = self._appliers.get(proposal.altitude)
+        if applier is None:
+            msg = f"No applier for altitude {proposal.altitude}"
+            raise ValueError(msg)
+
+        strategy_name = proposal.rollout_strategy.value
+        rollout = self._rollout_strategies.get(strategy_name)
+        if rollout is None:
+            msg = f"No rollout strategy '{strategy_name}'"
+            raise ValueError(msg)
+
+        return await rollout.execute(
+            proposal=proposal,
+            applier=applier,
+            detector=self._detector,
+        )
