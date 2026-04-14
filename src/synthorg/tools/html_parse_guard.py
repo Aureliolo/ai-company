@@ -194,7 +194,7 @@ class HTMLParseGuard:
 
     def _sanitize_html(self, raw: str) -> HTMLSanitizeResult:
         """Parse and sanitize HTML content using lxml."""
-        from lxml import html as lxml_html  # type: ignore  # noqa: PLC0415
+        from lxml import html as lxml_html  # noqa: PLC0415
 
         doc = lxml_html.fromstring(raw)
         # Capture original text before stripping (single parse).
@@ -239,7 +239,7 @@ class HTMLParseGuard:
 
         Returns the count of stripped elements.
         """
-        from lxml import etree  # type: ignore  # noqa: PLC0415
+        from lxml import etree  # noqa: PLC0415
 
         stripped = 0
 

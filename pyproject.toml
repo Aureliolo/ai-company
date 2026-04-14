@@ -234,6 +234,10 @@ ignore_missing_imports = true
 module = "testcontainers.*"
 ignore_missing_imports = true
 
+[[tool.mypy.overrides]]
+module = "lxml.*"
+ignore_missing_imports = true
+
 [tool.pydantic-mypy]
 init_forbid_extra = true
 init_typed = true
