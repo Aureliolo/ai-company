@@ -90,6 +90,11 @@
       "matchDepNames": ["python"],
       "matchManagers": ["dockerfile"],
       "allowedVersions": "<3.15"
+    },
+    {
+      "description": "Block litellm 1.83.1+ (hard-pins pydantic==2.12.5, jsonschema==4.23.0). Upstream: BerriAI/litellm#25280. Re-enable when upstream reverts exact pins.",
+      "matchDepNames": ["litellm"],
+      "allowedVersions": "<=1.83.0"
     }
   ],
   "customManagers": [

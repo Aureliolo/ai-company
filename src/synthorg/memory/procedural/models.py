@@ -1,16 +1,43 @@
 """Domain models for procedural memory auto-generation.
 
 Defines the failure analysis payload (input to the proposer),
-the procedural memory proposal (output from the proposer), and
-the configuration model for the procedural memory pipeline.
+the procedural memory proposal (output from the proposer), the
+scope enum, and the configuration model for the pipeline.
 """
 
+from enum import StrEnum
 from typing import Self
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import (
+    AwareDatetime,
+    BaseModel,
+    ConfigDict,
+    Field,
+    field_validator,
+    model_validator,
+)
 
 from synthorg.core.enums import TaskType  # noqa: TC001
 from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.observability import get_logger
+
+logger = get_logger(__name__)
+
+
+class ProceduralMemoryScope(StrEnum):
+    """Scope for procedural memory skill distribution.
+
+    Members:
+        AGENT: Per-agent private (existing default).
+        ROLE: Shared with agents in the same role.
+        DEPARTMENT: Shared within a department.
+        ORG: Organization-wide shared skill pool.
+    """
+
+    AGENT = "agent"
+    ROLE = "role"
+    DEPARTMENT = "department"
+    ORG = "org"
 
 
 class FailureAnalysisPayload(BaseModel):
@@ -137,6 +164,29 @@ class ProceduralMemoryProposal(BaseModel):
         description="Semantic tags for filtering",
     )
 
+    # ── Cross-agent skill pool fields (Stage 3, #1246) ────────────
+    scope: ProceduralMemoryScope = Field(
+        default=ProceduralMemoryScope.AGENT,
+        description="Distribution scope for this skill",
+    )
+    supersedes: tuple[NotBlankStr, ...] = Field(
+        default=(),
+        description="IDs of proposals this one supersedes",
+    )
+    superseded_by: NotBlankStr | None = Field(
+        default=None,
+        description=("ID of proposal that superseded this (tombstone marker)"),
+    )
+    application_count: int = Field(
+        default=0,
+        ge=0,
+        description="Times this proposal was successfully applied",
+    )
+    last_applied_at: AwareDatetime | None = Field(
+        default=None,
+        description="Last time an agent applied this proposal",
+    )
+
     @field_validator("tags", mode="before")
     @classmethod
     def _deduplicate_tags(cls, v: object) -> object:
@@ -146,6 +196,14 @@ class ProceduralMemoryProposal(BaseModel):
             max_tags = 20
             return deduped if len(deduped) <= max_tags else deduped[:max_tags]
         return v
+
+    @model_validator(mode="after")
+    def _validate_supersession_consistency(self) -> Self:
+        """Ensure supersedes and superseded_by are not self-referential."""
+        if self.superseded_by is not None and self.superseded_by in self.supersedes:
+            msg = f"Cannot both supersede and be superseded by {self.superseded_by}"
+            raise ValueError(msg)
+        return self
 
 
 class ProceduralMemoryConfig(BaseModel):

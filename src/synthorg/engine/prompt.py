@@ -26,6 +26,9 @@ from jinja2.sandbox import SandboxedEnvironment
 from pydantic import BaseModel, ConfigDict, Field
 
 from synthorg.budget.currency import DEFAULT_CURRENCY, format_cost, get_currency_symbol
+from synthorg.communication.async_tasks.models import (  # noqa: TC001
+    AsyncTaskStateChannel,
+)
 from synthorg.engine._prompt_helpers import SECTION_COMPANY as _SECTION_COMPANY
 from synthorg.engine._prompt_helpers import (
     SECTION_ORG_POLICIES as _SECTION_ORG_POLICIES,
@@ -123,7 +126,7 @@ class SystemPrompt(BaseModel):
 # ── Public API ───────────────────────────────────────────────────
 
 
-def build_system_prompt(  # noqa: PLR0913
+def build_system_prompt(  # noqa: PLR0913, C901, PLR0912
     *,
     agent: AgentIdentity,
     role: Role | None = None,
@@ -142,6 +145,7 @@ def build_system_prompt(  # noqa: PLR0913
     personality_trimming_enabled: bool = True,
     max_personality_tokens_override: int | None = None,
     strategy_config: StrategyConfig | None = None,
+    async_task_state: AsyncTaskStateChannel | None = None,
 ) -> SystemPrompt:
     """Build a system prompt from agent identity and optional context.
 
@@ -182,6 +186,9 @@ def build_system_prompt(  # noqa: PLR0913
             When provided and the agent qualifies (C-suite/VP/Director
             or has explicit ``strategic_output_mode``), strategic
             analysis sections are injected into the prompt.
+        async_task_state: Optional async task state channel.
+            When non-empty, appends an ``Active Async Tasks``
+            section to the prompt (survives trimming).
 
     Returns:
         Immutable :class:`SystemPrompt` with rendered content and metadata.
@@ -288,7 +295,68 @@ def build_system_prompt(  # noqa: PLR0913
         msg = f"Unexpected error building prompt for agent '{agent.name}': {detail}"
         raise PromptBuildError(msg) from exc
 
+    # Inject async task state section (survives trimming -- appended
+    # after the main render since it must never be trimmed away).
+    try:
+        if async_task_state is not None and async_task_state.records:
+            result = _inject_async_task_section(
+                result,
+                async_task_state,
+                estimator,
+            )
+    except MemoryError, RecursionError:
+        raise
+    except Exception as exc:
+        logger.exception(
+            PROMPT_BUILD_ERROR,
+            agent_id=str(agent.id),
+            agent_name=agent.name,
+            error=str(exc),
+        )
+        detail = sanitize_message(str(exc))
+        msg = f"Error injecting async task state for agent '{agent.name}': {detail}"
+        raise PromptBuildError(msg) from exc
+
     return _log_and_return(agent, result)
+
+
+def _inject_async_task_section(
+    prompt: SystemPrompt,
+    state: AsyncTaskStateChannel,
+    estimator: PromptTokenEstimator,
+) -> SystemPrompt:
+    """Append an async task state section to a rendered prompt.
+
+    This section is appended after trimming so it is never trimmed away.
+    Recomputes ``estimated_tokens`` to reflect the injected content.
+
+    Args:
+        prompt: The rendered system prompt.
+        state: Async task state channel with records.
+        estimator: Token estimator for recomputing the count.
+
+    Returns:
+        Updated ``SystemPrompt`` with the async tasks section appended.
+    """
+    lines = [
+        "\n\n## Active Async Tasks\n",
+        *(
+            f"- **{r.task_id}** ({r.agent_name}): "
+            f"{r.status.value} "
+            f"(started {r.created_at.isoformat()}, "
+            f"updated {r.updated_at.isoformat()})"
+            for r in state.records
+        ),
+    ]
+    section = "\n".join(lines)
+    new_content = prompt.content + section
+    return prompt.model_copy(
+        update={
+            "content": new_content,
+            "estimated_tokens": estimator.estimate_tokens(new_content),
+            "sections": (*prompt.sections, "async_tasks"),
+        },
+    )
 
 
 def _validate_max_tokens(

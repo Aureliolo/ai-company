@@ -846,3 +846,72 @@ consumers. The existing A2A gateway (design-only, not yet implemented)
 will subscribe to the same hub and apply A2A-specific state mapping
 (see [A2A External Gateway](#a2a-external-gateway) above) as a separate
 projection layer. No second SSE backend is needed.
+
+## Async Delegation
+
+Supervisor agents manage background subagent tasks without blocking their own
+execution loop. The async task protocol provides five steering tools that wrap
+the existing `TaskEngine` -- no parallel task system is created.
+
+### Steering Tools
+
+| Tool | Service Method | Effect |
+|------|---------------|--------|
+| `start_async_task` | `AsyncTaskService.start_async_task()` | Creates + assigns a task via `TaskEngine`, returns task ID |
+| `check_async_task` | `AsyncTaskService.check_async_task()` | Projects `TaskEngine` state to `AsyncTaskStatus` |
+| `update_async_task` | `AsyncTaskService.update_async_task()` | Posts `CONTEXT_INJECTION` message to executing agent via `MessageBus` |
+| `cancel_async_task` | `AsyncTaskService.cancel_async_task()` | Cancels task via `TaskEngine` with reason `ASYNC_CANCEL` |
+| `list_async_tasks` | `AsyncTaskService.list_async_tasks()` | Returns `(task_id, status)` pairs for child tasks by `parent_task_id` |
+
+All five are registered under the `communication.async_tasks` namespace
+and gated by `ToolPermission.DELEGATION`.
+
+### State Channel Pattern
+
+`AgentContext.async_task_state` is a dedicated `AsyncTaskStateChannel`
+that holds `AsyncTaskRecord` entries. It is structurally separate from
+`AgentContext.conversation` -- compaction strategies and
+`ContextResetMiddleware` (R1 #1260) do not touch it. The state channel
+is projected into the agent's system prompt on each turn via
+`_inject_async_task_section()`, appended after trimming so it is never
+trimmed away.
+
+### AsyncTaskService Wraps TaskEngine
+
+`AsyncTaskService` is a thin facade over `TaskEngine`:
+
+- Tasks are created via `TaskEngine.create_task()` with `parent_task_id`
+  for lineage, then transitioned to `ASSIGNED` with the target agent
+- Status is projected through `_STATUS_MAP` (internal `TaskStatus` to
+  supervisor-facing `AsyncTaskStatus`)
+- Context injection uses `MessageBus.send_direct()` with
+  `MessageType.CONTEXT_INJECTION`
+- Listing filters `TaskEngine.list_tasks()` by `parent_task_id`
+
+### `max_delegation_rounds` on `CoordinationConfig`
+
+Soft cap (default 3) emits `DELEGATION_ROUND_SOFT_LIMIT` warning.
+Hard abort at 2x soft cap (default 6) raises `DelegationRoundLimitError`.
+Prevents delegation runaway in multi-hop delegation chains.
+
+### Citation Tracking
+
+Research tasks need deduplicated citation tracking across parallel
+sub-agent findings.
+
+`Citation` is a frozen Pydantic model with `url` (canonical normalized
+form), `title`, `first_seen_at`, `first_seen_by_agent_id`, and
+`accessed_via` (tool/memory/file).
+
+`CitationManager` is immutable (each operation returns a new instance).
+It tracks citations by normalized URL, deduplicating across agents:
+
+- `add()` normalizes the URL and deduplicates against existing entries
+- `render_inline()` returns `[N]` for a tracked URL
+- `render_sources_section()` renders the final `## Sources` block
+- `to_handoff_payload()` / `from_handoff_payload()` enable propagation
+  through delegation chains via `HandoffArtifact`
+
+URL normalization (`normalize_url()`) lowercases scheme + host, strips
+default ports, drops fragment and credentials, sorts query parameters,
+strips trailing slash, and wraps IPv6 addresses in brackets.

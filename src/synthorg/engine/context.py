@@ -17,6 +17,9 @@ from pydantic import (
     model_validator,
 )
 
+from synthorg.communication.async_tasks.models import (
+    AsyncTaskStateChannel,
+)
 from synthorg.core.agent import AgentIdentity  # noqa: TC001
 from synthorg.core.enums import TaskStatus  # noqa: TC001
 from synthorg.core.task import Task  # noqa: TC001
@@ -123,6 +126,9 @@ class AgentContext(BaseModel):
             or ``None`` when unknown.
         compression_metadata: Metadata about conversation compression,
             set when compaction has occurred.
+        async_task_state: Dedicated state channel for tracked async
+            tasks.  Separate from ``conversation`` -- not touched by
+            compaction or context reset.
         loaded_tools: Tool names with L2 bodies active in context.
         loaded_resources: ``(tool_name, resource_id)`` pairs with
             L3 resources fetched.
@@ -176,6 +182,14 @@ class AgentContext(BaseModel):
     compression_metadata: CompressionMetadata | None = Field(
         default=None,
         description="Compression metadata when compacted",
+    )
+
+    # ── Async task state channel ────────────────────────────────
+    async_task_state: AsyncTaskStateChannel = Field(
+        default_factory=AsyncTaskStateChannel,
+        description=(
+            "Async task tracking state (survives compaction and context reset)"
+        ),
     )
 
     # ── Progressive tool disclosure state ─────────────────────────
@@ -338,6 +352,20 @@ class AgentContext(BaseModel):
         return self.model_copy(
             update={"context_fill_tokens": fill_tokens},
         )
+
+    def with_async_task_state(
+        self,
+        state: AsyncTaskStateChannel,
+    ) -> AgentContext:
+        """Replace the async task state channel.
+
+        Args:
+            state: New state channel.
+
+        Returns:
+            New ``AgentContext`` with updated state channel.
+        """
+        return self.model_copy(update={"async_task_state": state})
 
     def with_compression(
         self,

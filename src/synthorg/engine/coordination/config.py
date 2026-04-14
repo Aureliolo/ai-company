@@ -24,6 +24,9 @@ class CoordinationConfig(BaseModel):
         replan_strategy: Replan hook implementation to use.
         orchestrator_strategy: Subtask selection strategy within
             ``CentralizedDispatcher``.
+        max_delegation_rounds: Soft cap on delegation rounds
+            (default 3, ge=1, le=20). Warning emitted at this
+            limit; hard abort at 2x the value.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
@@ -62,4 +65,13 @@ class CoordinationConfig(BaseModel):
     orchestrator_strategy: Literal["naive", "magentic_dynamic"] = Field(
         default="naive",
         description="Subtask selection strategy for centralized dispatch",
+    )
+    max_delegation_rounds: int = Field(
+        default=3,
+        ge=1,
+        le=20,
+        description=(
+            "Soft cap on delegation rounds. Warning emitted at this "
+            "limit; hard abort at 2x (default: abort at 6)."
+        ),
     )
