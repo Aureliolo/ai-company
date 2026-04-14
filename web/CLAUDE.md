@@ -74,7 +74,7 @@ web/src/
 | `InlineEdit` | `@/components/ui/inline-edit` | Click-to-edit text with Enter/Escape, validation, optimistic save with rollback |
 | `AnimatedPresence` | `@/components/ui/animated-presence` | Page transition wrapper (Motion AnimatePresence keyed by route) |
 | `StaggerGroup` / `StaggerItem` | `@/components/ui/stagger-group` | Card entrance stagger container with configurable delay |
-| `Drawer` | `@/components/ui/drawer` | Slide-in panel (`side` prop: left or right, default right) with overlay, spring animation, focus trap, Escape-to-close, optional header (`title`), `ariaLabel` for accessible name (one of `title` or `ariaLabel` required), and `contentClassName` override |
+| `Drawer` | `@/components/ui/drawer` | Slide-in panel (Base UI Drawer, `side`: left or right, default right) with overlay, CSS transitions, focus management + swipe-to-dismiss via Base UI, Escape-to-close, optional header (`title`), `ariaLabel` for accessible name (one of `title` or `ariaLabel` required), and `contentClassName` override |
 | `InputField` | `@/components/ui/input-field` | Labeled text input with error/hint display, optional multiline textarea mode |
 | `SelectField` | `@/components/ui/select-field` | Labeled select dropdown with error/hint and placeholder support |
 | `SliderField` | `@/components/ui/slider-field` | Labeled range slider with custom value formatter and aria-live display |
@@ -112,10 +112,10 @@ When a new shared component is needed (not covered by the inventory above):
 3. Export props as a TypeScript interface
 4. Use design tokens exclusively -- no hardcoded colors, fonts, or spacing
 5. Import `cn` from `@/lib/utils` for conditional class merging
-6. **For primitives backed by Base UI** (Dialog, AlertDialog, Popover, Menu, Tabs -- see the Adoption Decisions table below for the canonical list; `Select`, `Toast`, `Drawer`, `Meter`, `Combobox`, `Tooltip` are intentionally **not** adopted):
+6. **For primitives backed by Base UI** (Dialog, AlertDialog, Popover, Menu, Tabs, Drawer -- see the Adoption Decisions table below for the canonical list; `Select`, `Toast`, `Meter`, `Combobox`, `Tooltip` are intentionally **not** adopted):
    - Import from the specific subpath: `import { Dialog } from '@base-ui/react/dialog'`
    - Use the component's `render` prop for polymorphism: `<Dialog.Trigger render={<Button>Open</Button>} />`. Never spread props manually.
-   - For Dialog/AlertDialog/Popover: compose with `Portal` + `Backdrop` + `Popup`. Popover and Menu additionally require a `Positioner` wrapper that owns `side` / `align` / `sideOffset`.
+   - For Dialog/AlertDialog/Popover/Drawer: compose with `Portal` + `Backdrop` + `Popup`. Popover and Menu additionally require a `Positioner` wrapper that owns `side` / `align` / `sideOffset`. Drawer additionally supports `swipeDirection` on `Root` and `SwipeArea` for swipe-to-dismiss.
    - Animation state attributes are `data-[open]`, `data-[closed]`, `data-[starting-style]`, `data-[ending-style]` (not `data-[state=open]` / `data-[state=closed]`). Tabs Tab uses `data-[active]` (not `data-[state=active]`).
    - In Tailwind v4, `translate-*` and `scale-*` compile to the dedicated CSS `translate:` and `scale:` properties, not `transform:`. Transition property lists must name each one explicitly: `transition-[opacity,translate]` or `transition-[opacity,scale]`, not just `transition-[opacity,transform]`.
    - The local `<Slot>` helper in `components/ui/slot.tsx` is reserved for `<Button asChild>` -- all other polymorphism goes through Base UI's `render` prop.
@@ -151,12 +151,13 @@ The dashboard's primitive layer is [Base UI](https://base-ui.com).  `components.
 | `CSPProvider` | **Adopted** | Wired in `App.tsx` alongside `MotionConfig` for end-to-end nonce propagation. |
 | `merge-props` | **Adopted** | Powers the local `<Slot>` helper in `components/ui/slot.tsx` (preserves the `asChild` ergonomic for `<Button>`). |
 | `Toast` | **Not adopted** | Our custom `components/ui/toast.tsx` is a Zustand-backed queue that integrates with the rest of the state stack; Base UI's Toast doesn't couple to external stores. |
-| `Drawer` | **Not adopted** | Our custom `components/ui/drawer.tsx` is Motion-based and uses the `@/lib/motion` design-token presets enforced by the PostToolUse hook. Switching would break the motion-token enforcement. |
+| `Drawer` | **Adopted** | Switched from custom Motion-based implementation to Base UI 1.4.0 stable Drawer. Base UI provides focus management (initialFocus/finalFocus), swipe-to-dismiss, modal trap focus, and CSS transitions via `data-[closed]`/`data-[starting-style]`/`data-[ending-style]` selectors (consistent with Dialog, AlertDialog, Popover). Eliminates ~100 lines of hand-rolled a11y code (focus trap, Escape handler, portal). |
 | `Meter` | **Not adopted** | `ProgressGauge` already emits `role="meter"` + `aria-valuenow`/`valuemin`/`valuemax`. Base UI's Meter is a raw primitive without the styled circular/linear variants we need. |
 | `Select` | **Not adopted** | `SelectField` is a native `<select>` -- we intentionally keep the native mobile picker for iOS/Android UX. Replacing with a custom dropdown would lose that. |
-| `Combobox`, `Autocomplete` | **Not adopted (for now)** | No current typeahead call sites in the dashboard that would benefit. Re-evaluate when filterable selects become a feature requirement. |
+| `Combobox`, `Autocomplete` | **Not adopted (for now)** | v1.4.0 adds passive keyboard nav + autofill improvements. No current typeahead call sites in the dashboard (connections page uses button grid, SelectField uses native `<select>`). Re-evaluate when filterable selects become a feature requirement. |
+| `OTP Field` | **Not adopted (preview)** | v1.4.0 preview component for one-time password / verification code input. Evaluate when auth/2FA flows are built (post-v0.7). |
 
-When adding new dashboard primitives, prefer Base UI components for accessibility (Dialog, AlertDialog, Popover, Tabs, Menu) and keep the existing custom components (`SelectField`, `Drawer`, `Toast`, `ProgressGauge`, animations) where they are -- see the Adoption Decisions table above for the canonical rationale.  Tooltip is not yet adopted; reach for an existing primitive first and add a row to the table above if a real Tooltip requirement appears.
+When adding new dashboard primitives, prefer Base UI components for accessibility (Dialog, AlertDialog, Popover, Tabs, Menu, Drawer) and keep the existing custom components (`SelectField`, `Toast`, `ProgressGauge`, animations) where they are -- see the Adoption Decisions table above for the canonical rationale.  Tooltip is not yet adopted; reach for an existing primitive first and add a row to the table above if a real Tooltip requirement appears.
 
 ## Post-Training Reference (TypeScript 6 & Storybook 10)
 
