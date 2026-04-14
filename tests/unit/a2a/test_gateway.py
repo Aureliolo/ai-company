@@ -115,3 +115,94 @@ class TestSupportedMethods:
             "tasks/cancel",
         }
         assert expected == _SUPPORTED_METHODS
+
+
+class TestMethodHandlers:
+    """Method handler registration."""
+
+    @pytest.mark.unit
+    def test_handler_registry_matches_supported_methods(self) -> None:
+        """Every supported method has a registered handler."""
+        from synthorg.a2a.gateway import _METHOD_HANDLERS, _SUPPORTED_METHODS
+
+        assert set(_METHOD_HANDLERS.keys()) == _SUPPORTED_METHODS
+
+    @pytest.mark.unit
+    def test_handler_functions_are_callable(self) -> None:
+        """All handler values are async callables."""
+        from synthorg.a2a.gateway import _METHOD_HANDLERS
+
+        for method, handler in _METHOD_HANDLERS.items():
+            assert callable(handler), f"Handler for {method} is not callable"
+
+
+class TestParseJsonrpc:
+    """JSON-RPC request parsing."""
+
+    @pytest.mark.unit
+    def test_valid_request(self) -> None:
+        """Valid JSON-RPC request is parsed successfully."""
+        from synthorg.a2a.gateway import _parse_jsonrpc
+
+        body = b'{"jsonrpc":"2.0","id":"1","method":"message/send","params":{}}'
+        result = _parse_jsonrpc(body)
+        assert result is not None
+        assert result.method == "message/send"
+
+    @pytest.mark.unit
+    def test_invalid_json(self) -> None:
+        """Invalid JSON returns None."""
+        from synthorg.a2a.gateway import _parse_jsonrpc
+
+        result = _parse_jsonrpc(b"not json {{{")
+        assert result is None
+
+    @pytest.mark.unit
+    def test_missing_method(self) -> None:
+        """Missing method field returns None."""
+        from synthorg.a2a.gateway import _parse_jsonrpc
+
+        result = _parse_jsonrpc(b'{"jsonrpc":"2.0","id":"1","params":{}}')
+        assert result is None
+
+    @pytest.mark.unit
+    def test_empty_body(self) -> None:
+        """Empty body returns None."""
+        from synthorg.a2a.gateway import _parse_jsonrpc
+
+        result = _parse_jsonrpc(b"")
+        assert result is None
+
+
+class TestA2AMethodError:
+    """Internal method error."""
+
+    @pytest.mark.unit
+    def test_default_http_status(self) -> None:
+        """Default HTTP status is 400."""
+        from synthorg.a2a.gateway import _A2AMethodError
+
+        err = _A2AMethodError(-32602, "Invalid params")
+        assert err.http_status == 400
+        assert err.code == -32602
+        assert err.message == "Invalid params"
+
+    @pytest.mark.unit
+    def test_custom_http_status(self) -> None:
+        """Custom HTTP status is respected."""
+        from synthorg.a2a.gateway import _A2AMethodError
+
+        err = _A2AMethodError(-32001, "Not found", http_status=404)
+        assert err.http_status == 404
+
+
+class TestValidateTaskOwnership:
+    """Task ownership validation stub."""
+
+    @pytest.mark.unit
+    def test_ownership_check_is_noop(self) -> None:
+        """Phase 1: ownership check accepts any authenticated peer."""
+        from synthorg.a2a.gateway import _validate_task_ownership
+
+        # Should not raise
+        _validate_task_ownership(object(), "any-peer")

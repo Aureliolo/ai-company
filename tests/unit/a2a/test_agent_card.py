@@ -183,3 +183,37 @@ class TestAgentCardBuilder:
         )
         assert card.skills == ()
         assert "0 agents" in card.description
+
+    @pytest.mark.unit
+    def test_company_card_dedup_across_agents(self) -> None:
+        """Same skill name across different agents is deduplicated."""
+        builder = AgentCardBuilder()
+        agent_a = _make_identity(
+            name="agent-a",
+            primary_skills=("python",),
+            secondary_skills=(),
+        )
+        agent_b = _make_identity(
+            name="agent-b",
+            primary_skills=("python",),
+            secondary_skills=(),
+        )
+        card = builder.build_company_card(
+            [agent_a, agent_b],
+            "https://example.com/a2a",
+            "Test Corp",
+        )
+        # Both agents have "python" -> capability-centric ID dedup -> 1
+        assert len(card.skills) == 1
+        assert card.skills[0].name == "python"
+
+    @pytest.mark.unit
+    def test_skill_ids_are_capability_centric(self) -> None:
+        """Skill IDs are based on skill name, not agent ID."""
+        identity = _make_identity(
+            primary_skills=("python",),
+            secondary_skills=("docker",),
+        )
+        skills = _identity_to_skills(identity)
+        assert skills[0].id == "skill-python"
+        assert skills[1].id == "skill-docker"

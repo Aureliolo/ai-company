@@ -90,7 +90,7 @@ curl http://localhost:3001/api/v1/health
 
 **[Memory](https://synthorg.io/docs/design/memory/)** -- 5 memory types (episodic, semantic, procedural, working, organizational) with hybrid retrieval, three injection strategies (context, tool-based, and self-editing memory), query reformulation, procedural memory auto-generation from failures, consolidation, and pluggable backends.
 
-**[Communication](https://synthorg.io/docs/design/communication/)** -- Message bus, hierarchical delegation with loop prevention, conflict resolution (4 strategies), and meeting protocols (round-robin, position papers, structured phases).
+**[Communication](https://synthorg.io/docs/design/communication/)** -- Message bus, hierarchical delegation with loop prevention, conflict resolution (4 strategies), meeting protocols (round-robin, position papers, structured phases), and A2A federation with external agent systems.
 
 **[Tools & MCP](https://synthorg.io/docs/guides/mcp-tools/)** -- Built-in tools (file system, git, sandbox, code runner) plus MCP bridge for external tools. Layered sandboxing with subprocess and Docker backends. SSRF prevention with configurable allowlists.
 

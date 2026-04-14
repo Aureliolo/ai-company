@@ -180,3 +180,61 @@ class TestA2APushVerifier:
 
         verifier = get_verifier(ConnectionType.A2A_PEER)
         assert isinstance(verifier, A2APushVerifier)
+
+    @pytest.mark.unit
+    async def test_expired_timestamp_with_signed_ts(self) -> None:
+        """Expired timestamp is rejected even with valid HMAC."""
+        verifier = A2APushVerifier(clock_skew_seconds=60)
+        body = b"data"
+        secret = "test-secret"
+        ts = str(time.time() - 120)
+        sig = _sign(body, secret, timestamp=ts)
+
+        result = await verifier.verify(
+            body=body,
+            headers={
+                "x-a2a-signature": sig,
+                "x-a2a-timestamp": ts,
+            },
+            secret=secret,
+        )
+        assert result is False
+
+    @pytest.mark.unit
+    async def test_zero_clock_skew_skips_timestamp(self) -> None:
+        """Clock skew of 0 accepts requests without timestamp."""
+        verifier = A2APushVerifier(clock_skew_seconds=0)
+        body = b"payload"
+        secret = "test-secret"
+        sig = _sign(body, secret)
+
+        result = await verifier.verify(
+            body=body,
+            headers={"x-a2a-signature": sig},
+            secret=secret,
+        )
+        assert result is True
+
+
+class TestA2APushVerifierFactory:
+    """Push verifier factory."""
+
+    @pytest.mark.unit
+    def test_negative_clock_skew_rejected(self) -> None:
+        """Factory rejects negative clock_skew_seconds."""
+        from synthorg.a2a.connection_types.a2a_peer import (
+            get_a2a_push_verifier,
+        )
+
+        with pytest.raises(ValueError, match="clock_skew_seconds must be >= 0"):
+            get_a2a_push_verifier(clock_skew_seconds=-1)
+
+    @pytest.mark.unit
+    def test_zero_clock_skew_accepted(self) -> None:
+        """Factory accepts clock_skew_seconds=0."""
+        from synthorg.a2a.connection_types.a2a_peer import (
+            get_a2a_push_verifier,
+        )
+
+        verifier = get_a2a_push_verifier(clock_skew_seconds=0)
+        assert isinstance(verifier, A2APushVerifier)

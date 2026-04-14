@@ -196,3 +196,214 @@ class TestA2AClient:
         err = A2AClientError("test error", peer_name="p1")
         assert str(err) == "test error"
         assert err.peer_name == "p1"
+
+    @pytest.mark.unit
+    @respx.mock
+    async def test_bearer_auth_scheme(self) -> None:
+        """Bearer auth scheme injects Authorization header."""
+        route = respx.post(
+            "https://peer.example.com/api/v1/a2a",
+        ).mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "jsonrpc": "2.0",
+                    "id": "1",
+                    "result": {"id": "t-1", "state": "submitted"},
+                },
+            ),
+        )
+        catalog = _mock_catalog(
+            credentials={
+                "auth_scheme": "bearer",
+                "access_token": "tok-123",
+            },
+        )
+        client = _make_client(catalog)
+        await client.send_message("peer-a", {})
+        assert route.called
+        req = route.calls[0].request
+        assert req.headers["authorization"] == "Bearer tok-123"
+
+    @pytest.mark.unit
+    @respx.mock
+    async def test_oauth2_auth_scheme(self) -> None:
+        """OAuth2 auth scheme injects Bearer token."""
+        route = respx.post(
+            "https://peer.example.com/api/v1/a2a",
+        ).mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "jsonrpc": "2.0",
+                    "id": "1",
+                    "result": {"id": "t-1", "state": "submitted"},
+                },
+            ),
+        )
+        catalog = _mock_catalog(
+            credentials={
+                "auth_scheme": "oauth2",
+                "access_token": "oauth-tok",
+            },
+        )
+        client = _make_client(catalog)
+        await client.send_message("peer-a", {})
+        assert route.called
+        req = route.calls[0].request
+        assert req.headers["authorization"] == "Bearer oauth-tok"
+
+    @pytest.mark.unit
+    @respx.mock
+    async def test_mtls_auth_scheme_no_header(self) -> None:
+        """mTLS auth scheme does not inject an auth header."""
+        route = respx.post(
+            "https://peer.example.com/api/v1/a2a",
+        ).mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "jsonrpc": "2.0",
+                    "id": "1",
+                    "result": {"id": "t-1", "state": "submitted"},
+                },
+            ),
+        )
+        catalog = _mock_catalog(
+            credentials={"auth_scheme": "mtls"},
+        )
+        client = _make_client(catalog)
+        await client.send_message("peer-a", {})
+        assert route.called
+        req = route.calls[0].request
+        assert "authorization" not in req.headers
+        assert "x-api-key" not in req.headers
+
+    @pytest.mark.unit
+    @respx.mock
+    async def test_malformed_response_missing_id(self) -> None:
+        """Peer result without 'id' raises A2AClientError."""
+        respx.post("https://peer.example.com/api/v1/a2a").mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "jsonrpc": "2.0",
+                    "id": "1",
+                    "result": {"state": "submitted"},
+                },
+            ),
+        )
+        catalog = _mock_catalog()
+        client = _make_client(catalog)
+        with pytest.raises(A2AClientError, match="malformed response"):
+            await client.send_message("peer-a", {})
+
+    @pytest.mark.unit
+    @respx.mock
+    async def test_null_result_raises(self) -> None:
+        """Peer result that is null raises A2AClientError."""
+        respx.post("https://peer.example.com/api/v1/a2a").mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "jsonrpc": "2.0",
+                    "id": "1",
+                    "result": {},
+                },
+            ),
+        )
+        catalog = _mock_catalog()
+        client = _make_client(catalog)
+        with pytest.raises(A2AClientError, match="malformed response"):
+            await client.send_message("peer-a", {})
+
+    @pytest.mark.unit
+    @respx.mock
+    async def test_invalid_json_response(self) -> None:
+        """Non-JSON response raises A2AClientError."""
+        respx.post("https://peer.example.com/api/v1/a2a").mock(
+            return_value=httpx.Response(
+                200,
+                text="not json",
+                headers={"content-type": "text/plain"},
+            ),
+        )
+        catalog = _mock_catalog()
+        client = _make_client(catalog)
+        with pytest.raises(A2AClientError, match="invalid JSON"):
+            await client.send_message("peer-a", {})
+
+    @pytest.mark.unit
+    @respx.mock
+    async def test_connection_timeout_raises(self) -> None:
+        """Connection timeout raises A2AClientError."""
+        respx.post("https://peer.example.com/api/v1/a2a").mock(
+            side_effect=httpx.ConnectError("Connection refused"),
+        )
+        catalog = _mock_catalog()
+        client = _make_client(catalog)
+        with pytest.raises(A2AClientError, match=r"Connection.*failed"):
+            await client.send_message("peer-a", {})
+
+    @pytest.mark.unit
+    async def test_aclose_closes_http_client(self) -> None:
+        """aclose() closes the injected HTTP client."""
+        http_client = AsyncMock(spec=httpx.AsyncClient)
+        client = A2AClient(
+            _mock_catalog(),
+            http_client=http_client,
+        )
+        await client.aclose()
+        http_client.aclose.assert_called_once()
+
+    @pytest.mark.unit
+    async def test_aclose_none_client(self) -> None:
+        """aclose() is a no-op when no HTTP client."""
+        client = A2AClient(_mock_catalog())
+        await client.aclose()  # should not raise
+
+    @pytest.mark.unit
+    async def test_ssrf_blocks_private_url(self) -> None:
+        """SSRF validator blocks private/internal URLs."""
+        from unittest.mock import patch
+
+        catalog = _mock_catalog(base_url="http://169.254.169.254")
+        validator = MagicMock()
+        client = A2AClient(
+            catalog,
+            network_validator=validator,
+        )
+
+        with (
+            patch(
+                "synthorg.tools.network_validator.validate_url_host",
+                side_effect=ValueError("SSRF blocked"),
+            ),
+            patch(
+                "synthorg.tools.network_validator.extract_hostname",
+                return_value="169.254.169.254",
+            ),
+            pytest.raises(A2AClientError, match="SSRF"),
+        ):
+            await client.send_message("peer-a", {})
+
+    @pytest.mark.unit
+    async def test_ssrf_unparseable_url(self) -> None:
+        """Unparseable URL raises SSRF error."""
+        from unittest.mock import patch
+
+        catalog = _mock_catalog(base_url="not-a-url://???")
+        validator = MagicMock()
+        client = A2AClient(
+            catalog,
+            network_validator=validator,
+        )
+
+        with (
+            patch(
+                "synthorg.tools.network_validator.extract_hostname",
+                return_value=None,
+            ),
+            pytest.raises(A2AClientError, match=r"SSRF.*cannot parse"),
+        ):
+            await client.send_message("peer-a", {})

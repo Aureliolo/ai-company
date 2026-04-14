@@ -217,3 +217,56 @@ class TestFromA2A:
         )
         assert isinstance(msg.parts[0], FilePart)
         assert msg.parts[0].uri == "https://example.com/file.txt"
+
+
+class TestMappingBoundary:
+    """Deep copy and immutability at the protocol boundary."""
+
+    @pytest.mark.unit
+    def test_outbound_data_part_deep_copied(self) -> None:
+        """Outbound DataPart data is deep-copied (not shared)."""
+        from types import MappingProxyType
+
+        original_data = {"key": "value", "count": 42}
+        part = DataPart(data=MappingProxyType(original_data))
+        msg = _make_message(parts=(part,))
+        a2a = to_a2a(msg)
+        a2a_data = a2a.parts[0]
+        assert isinstance(a2a_data, A2ADataPart)
+        assert a2a_data.data["key"] == "value"
+        assert a2a_data.data["count"] == 42
+        # Deep-copy: A2A dict is a distinct object from the original
+        assert a2a_data.data is not original_data
+
+    @pytest.mark.unit
+    def test_inbound_data_part_wrapped_in_proxy(self) -> None:
+        """Inbound A2ADataPart data is re-wrapped in MappingProxyType."""
+        from types import MappingProxyType
+
+        a2a = A2AMessage(
+            role=A2AMessageRole.AGENT,
+            parts=(A2ADataPart(data={"result": "ok"}),),
+        )
+        msg = from_a2a(
+            a2a,
+            channel="test",
+            sender="s",
+            recipient="r",
+        )
+        assert isinstance(msg.parts[0], DataPart)
+        assert isinstance(msg.parts[0].data, MappingProxyType)
+        assert msg.parts[0].data["result"] == "ok"
+
+    @pytest.mark.unit
+    def test_question_maps_to_agent_role(self) -> None:
+        """QUESTION message type maps to agent (not user) role."""
+        msg = _make_message(msg_type=MessageType.QUESTION)
+        a2a = to_a2a(msg)
+        assert a2a.role == A2AMessageRole.AGENT
+
+    @pytest.mark.unit
+    def test_module_has_logger(self) -> None:
+        """message_mapper module has the required logger."""
+        from synthorg.a2a import message_mapper
+
+        assert hasattr(message_mapper, "logger")
