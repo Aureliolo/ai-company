@@ -174,9 +174,12 @@ class AuditChainVerifier:
             return False
 
         for sig in signatures:
+            sig_bytes = getattr(sig, "signature_bytes", None)
+            if not isinstance(sig_bytes, bytes):
+                return False
             valid = await self._signer.verify(
                 canonical,
-                sig.signature_bytes,
+                sig_bytes,
             )
             if not valid:
                 return False

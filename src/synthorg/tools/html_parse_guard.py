@@ -257,10 +257,19 @@ class HTMLParseGuard:
             stripped += 1
 
         stripped += HTMLParseGuard._strip_event_handlers(doc)
+        stripped += HTMLParseGuard._strip_hidden_elements(doc)
 
+        return stripped
+
+    @staticmethod
+    def _strip_hidden_elements(doc: Any) -> int:
+        """Strip elements hidden via attributes or CSS."""
         elements_to_drop: list[object] = []
         for element in doc.iter():
             if not hasattr(element, "tag") or not isinstance(element.tag, str):
+                continue
+            if element.get("hidden") is not None:
+                elements_to_drop.append(element)
                 continue
             if element.get("aria-hidden", "").lower() == "true":
                 elements_to_drop.append(element)
@@ -271,9 +280,8 @@ class HTMLParseGuard:
 
         for element in elements_to_drop:
             element.drop_tree()  # type: ignore[attr-defined]
-            stripped += 1
 
-        return stripped
+        return len(elements_to_drop)
 
     @staticmethod
     def _compute_gap_ratio(original: str, cleaned: str) -> float:

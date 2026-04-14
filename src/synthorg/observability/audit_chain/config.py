@@ -20,7 +20,7 @@ class AuditChainConfig(BaseModel):
         chain_storage_path: Path for chain persistence.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
 
     enabled: bool = Field(
         default=False,

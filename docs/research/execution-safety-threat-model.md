@@ -91,14 +91,16 @@ task acceptance criteria.
 
 **New mitigation**: `SemanticDriftDetector` middleware
 (`src/synthorg/engine/middleware/semantic_drift.py`) compares model output
-embedding against task acceptance_criteria using cosine similarity. Drift
-below threshold (default 0.35) logs `MIDDLEWARE_SEMANTIC_DRIFT_DETECTED`
-at WARN and annotates `TurnRecord.semantic_drift_score`. Fail-soft: never
-blocks execution. Opt-in via `AgentMiddlewareConfig.semantic_drift.enabled`.
+against task acceptance_criteria using a token-overlap similarity heuristic
+(shipped default). Drift below threshold (default 0.35) logs
+`MIDDLEWARE_SEMANTIC_DRIFT_DETECTED` at WARN and annotates
+`TurnRecord.semantic_drift_score`. Fail-soft: never blocks execution.
+Opt-in via `AgentMiddlewareConfig.semantic_drift.enabled`.
 
-**Residual risk**: Token-overlap heuristic in default implementation has
-limited semantic understanding. Production deployments should override
-`_compute_similarity` with embedding-based similarity.
+**Residual risk**: The shipped token-overlap heuristic has limited semantic
+understanding. Production deployments should override `_compute_similarity`
+with embedding-based cosine similarity (configure via
+`SemanticDriftConfig.embedding_model`).
 
 ---
 

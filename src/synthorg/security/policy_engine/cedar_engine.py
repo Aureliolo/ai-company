@@ -67,10 +67,13 @@ class CedarPolicyEngine:
 
         # Use json.dumps for proper escaping of all special characters
         # in Cedar entity UIDs to prevent syntax injection.
+        def _esc(v: object) -> str:
+            return json.dumps(str(v), ensure_ascii=False)
+
         cedar_request = {
-            "principal": f"Principal::{json.dumps(str(request.principal))}",
-            "action": f"Action::{json.dumps(str(request.action_type))}",
-            "resource": f"Resource::{json.dumps(str(request.resource))}",
+            "principal": f"Principal::{_esc(request.principal)}",
+            "action": f"Action::{_esc(request.action_type)}",
+            "resource": f"Resource::{_esc(request.resource)}",
             "context": dict(request.context),
         }
 

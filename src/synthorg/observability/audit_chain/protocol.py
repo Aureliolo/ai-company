@@ -18,7 +18,7 @@ class SignedPayload(BaseModel):
         signed_at: Timestamp of signature creation.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
 
     signature: bytes = Field(description="Raw signature bytes")
     algorithm: NotBlankStr = Field(description="Signature algorithm")

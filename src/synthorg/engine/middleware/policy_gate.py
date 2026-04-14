@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING
 from synthorg.engine.middleware.protocol import BaseAgentMiddleware, ToolCallable
 from synthorg.observability import get_logger
 from synthorg.observability.events.security import (
+    SECURITY_POLICY_DECISION_DENY,
     SECURITY_POLICY_LOG_ONLY_DENY,
 )
 
@@ -105,6 +106,15 @@ class PolicyGateMiddleware(BaseAgentMiddleware):
 
         if not decision.allow:
             if self._evaluation_mode == "enforce":
+                logger.warning(
+                    SECURITY_POLICY_DECISION_DENY,
+                    action_type=request.action_type,
+                    principal=request.principal,
+                    resource=request.resource,
+                    reason=decision.reason,
+                    latency_ms=decision.latency_ms,
+                    mode="enforce",
+                )
                 return ToolCallResult(
                     tool_name=tool_name,
                     output="",
