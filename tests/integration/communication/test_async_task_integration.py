@@ -104,7 +104,7 @@ class TestAsyncTaskSupervisorFlow:
             assert tid.startswith("task-")
             assert status == AsyncTaskStatus.RUNNING
 
-    async def test_citation_consolidation_across_subagents(self) -> None:
+    def test_citation_consolidation_across_subagents(self) -> None:
         """3 subagents contribute citations, orchestrator deduplicates."""
         manager = CitationManager()
 
@@ -155,7 +155,7 @@ class TestAsyncTaskSupervisorFlow:
         assert "[1]" in sources
         assert "[4]" in sources
 
-    async def test_citation_handoff_roundtrip(self) -> None:
+    def test_citation_handoff_roundtrip(self) -> None:
         """CitationManager survives handoff serialization roundtrip."""
         manager = CitationManager()
         manager = manager.add(

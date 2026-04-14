@@ -6,8 +6,10 @@ access to org memory. All proposals are emitted as ``ApprovalItem``
 entries for human approval.
 """
 
+import copy
 import json
 from datetime import UTC, datetime, timedelta
+from types import MappingProxyType
 from uuid import uuid4
 
 from synthorg.core.approval import ApprovalItem
@@ -81,7 +83,9 @@ class AutonomousSkillEvolver:
         self._aggregator = trajectory_aggregator
         self._proposer = proposer
         self._config = config
-        self._existing_org_proposals = existing_org_proposals or {}
+        self._existing_org_proposals: MappingProxyType[
+            str, ProceduralMemoryProposal
+        ] = MappingProxyType(copy.deepcopy(existing_org_proposals or {}))
 
     async def evolve_cycle(
         self,
@@ -152,7 +156,32 @@ class AutonomousSkillEvolver:
     ) -> EvolverReport:
         """Internal cycle logic."""
         patterns = self._aggregator.aggregate(trajectories)
+        proposals, conflicts, supersessions, skipped = self._collect_proposals(
+            patterns, cycle_id
+        )
+        return self._assemble_report(
+            cycle_id,
+            window,
+            now,
+            trajectories,
+            patterns,
+            proposals,
+            conflicts,
+            supersessions,
+            skipped,
+        )
 
+    def _collect_proposals(
+        self,
+        patterns: tuple[TrajectoryPattern, ...],
+        cycle_id: str,
+    ) -> tuple[
+        list[ApprovalItem],
+        list[SupersessionResult],
+        list[SupersessionResult],
+        int,
+    ]:
+        """Evaluate patterns and build approval proposals."""
         proposals: list[ApprovalItem] = []
         conflicts: list[SupersessionResult] = []
         supersessions: list[SupersessionResult] = []
@@ -166,7 +195,6 @@ class AutonomousSkillEvolver:
                 skipped_low_confidence += 1
                 continue
 
-            # Check supersession against existing org entries
             candidate_id = f"{cycle_id}:{pattern.pattern_id}"
             skip_pattern = False
             supersedes_ids: list[str] = []
@@ -199,12 +227,7 @@ class AutonomousSkillEvolver:
                     update={"supersedes": tuple(supersedes_ids)},
                 )
 
-            # Emit as ApprovalItem (NOT direct org memory write)
-            approval = self._build_approval_item(
-                proposal,
-                pattern,
-                cycle_id,
-            )
+            approval = self._build_approval_item(proposal, pattern, cycle_id)
             proposals.append(approval)
             logger.info(
                 SKILL_EVOLVER_PROPOSAL_EMITTED,
@@ -213,6 +236,21 @@ class AutonomousSkillEvolver:
                 pattern_description=pattern.description,
             )
 
+        return proposals, conflicts, supersessions, skipped_low_confidence
+
+    def _assemble_report(  # noqa: PLR0913
+        self,
+        cycle_id: str,
+        window: timedelta,
+        now: datetime,
+        trajectories: tuple[AggregatedTrajectory, ...],
+        patterns: tuple[TrajectoryPattern, ...],
+        proposals: list[ApprovalItem],
+        conflicts: list[SupersessionResult],
+        supersessions: list[SupersessionResult],
+        skipped_low_confidence: int,
+    ) -> EvolverReport:
+        """Build the cycle report and log completion."""
         report = EvolverReport(
             cycle_id=cycle_id,
             window_start=now - window,
