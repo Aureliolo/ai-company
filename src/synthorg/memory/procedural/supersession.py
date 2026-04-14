@@ -5,6 +5,8 @@ to determine if the candidate supersedes, conflicts with, or
 partially overlaps the existing one.
 """
 
+import re
+from collections.abc import Callable  # noqa: TC003
 from enum import StrEnum
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -25,6 +27,8 @@ _OVERLAP_THRESHOLD: float = 0.5
 
 # Minimum word overlap ratio for conditions to be a "superset".
 _SUPERSET_THRESHOLD: float = 0.8
+
+_WORD_RE = re.compile(r"\w+")
 
 
 class SupersessionVerdict(StrEnum):
@@ -71,8 +75,8 @@ _MIN_TOKEN_LENGTH: int = 2
 
 
 def _tokenize(text: str) -> set[str]:
-    """Extract lowercase word tokens from text."""
-    return {w.lower() for w in text.split() if len(w) > _MIN_TOKEN_LENGTH}
+    """Extract lowercase alphanumeric word tokens from text."""
+    return {w.lower() for w in _WORD_RE.findall(text) if len(w) >= _MIN_TOKEN_LENGTH}
 
 
 def _overlap_ratio(a: set[str], b: set[str]) -> float:
@@ -90,6 +94,30 @@ def _similarity(a: set[str], b: set[str]) -> float:
     if not union:
         return 0.0
     return len(a & b) / len(union)
+
+
+def _emit_result(  # noqa: PLR0913
+    verdict: SupersessionVerdict,
+    event: str,
+    log_fn: Callable[..., object],
+    candidate_id: NotBlankStr,
+    existing_id: NotBlankStr,
+    reason: str,
+    **log_kwargs: str,
+) -> SupersessionResult:
+    """Log an event and build a ``SupersessionResult``."""
+    log_fn(
+        event,
+        candidate_id=candidate_id,
+        existing_id=existing_id,
+        **log_kwargs,
+    )
+    return SupersessionResult(
+        verdict=verdict,
+        candidate_id=candidate_id,
+        existing_id=existing_id,
+        reason=reason,
+    )
 
 
 def evaluate_supersession(
@@ -121,54 +149,44 @@ def evaluate_supersession(
     cond_candidate = _tokenize(candidate.condition)
     cond_existing = _tokenize(existing.condition)
 
-    # Short-circuit when either condition yields no tokens --
-    # ratios are meaningless with empty token sets.
+    # Short-circuit when either condition yields no tokens.
     if not cond_candidate or not cond_existing:
-        logger.debug(
+        return _emit_result(
+            SupersessionVerdict.PARTIAL,
             SUPERSESSION_PARTIAL,
-            candidate_id=candidate_id,
-            existing_id=existing_id,
+            logger.debug,
+            candidate_id,
+            existing_id,
+            "Insufficient condition tokens for comparison",
             condition_similarity="n/a",
             action_similarity="n/a",
-        )
-        return SupersessionResult(
-            verdict=SupersessionVerdict.PARTIAL,
-            candidate_id=candidate_id,
-            existing_id=existing_id,
-            reason="Insufficient condition tokens for comparison",
         )
 
     act_candidate = _tokenize(candidate.action)
     act_existing = _tokenize(existing.action)
 
-    # How much of existing's condition is covered by candidate?
     condition_coverage = _overlap_ratio(cond_candidate, cond_existing)
     condition_similarity = _similarity(cond_candidate, cond_existing)
     action_similarity = _similarity(act_candidate, act_existing)
 
+    cs = f"{condition_similarity:.0%}"
+    as_ = f"{action_similarity:.0%}"
+
     # CONFLICT: high condition overlap + low action similarity
-    # (checked BEFORE FULL to prevent contradictory supersession)
     if (
         condition_similarity >= _OVERLAP_THRESHOLD
         and action_similarity < _OVERLAP_THRESHOLD
     ):
-        logger.info(
+        return _emit_result(
+            SupersessionVerdict.CONFLICT,
             SUPERSESSION_CONFLICT,
-            candidate_id=candidate_id,
-            existing_id=existing_id,
-            condition_similarity=f"{condition_similarity:.0%}",
-            action_similarity=f"{action_similarity:.0%}",
-        )
-        return SupersessionResult(
-            verdict=SupersessionVerdict.CONFLICT,
-            candidate_id=candidate_id,
-            existing_id=existing_id,
-            reason=(
-                f"Condition similarity {condition_similarity:.0%} "
-                f"but action similarity only "
-                f"{action_similarity:.0%} "
-                f"(contradictory approaches)"
-            ),
+            logger.info,
+            candidate_id,
+            existing_id,
+            f"Condition similarity {cs} but action similarity "
+            f"only {as_} (contradictory approaches)",
+            condition_similarity=cs,
+            action_similarity=as_,
         )
 
     # FULL: condition superset + compatible actions + higher confidence
@@ -177,39 +195,26 @@ def evaluate_supersession(
         and action_similarity >= _OVERLAP_THRESHOLD
         and candidate.confidence > existing.confidence
     ):
-        logger.info(
+        return _emit_result(
+            SupersessionVerdict.FULL,
             SUPERSESSION_FULL,
-            candidate_id=candidate_id,
-            existing_id=existing_id,
+            logger.info,
+            candidate_id,
+            existing_id,
+            f"Candidate covers {condition_coverage:.0%} of existing "
+            f"condition with higher confidence "
+            f"({candidate.confidence:.2f} > {existing.confidence:.2f})",
             condition_coverage=f"{condition_coverage:.0%}",
-        )
-        return SupersessionResult(
-            verdict=SupersessionVerdict.FULL,
-            candidate_id=candidate_id,
-            existing_id=existing_id,
-            reason=(
-                f"Candidate covers {condition_coverage:.0%} of "
-                f"existing condition with higher confidence "
-                f"({candidate.confidence:.2f} > "
-                f"{existing.confidence:.2f})"
-            ),
         )
 
     # PARTIAL: everything else
-    logger.debug(
+    return _emit_result(
+        SupersessionVerdict.PARTIAL,
         SUPERSESSION_PARTIAL,
-        candidate_id=candidate_id,
-        existing_id=existing_id,
-        condition_similarity=f"{condition_similarity:.0%}",
-        action_similarity=f"{action_similarity:.0%}",
-    )
-    return SupersessionResult(
-        verdict=SupersessionVerdict.PARTIAL,
-        candidate_id=candidate_id,
-        existing_id=existing_id,
-        reason=(
-            f"Partial overlap: condition similarity "
-            f"{condition_similarity:.0%}, action similarity "
-            f"{action_similarity:.0%}"
-        ),
+        logger.debug,
+        candidate_id,
+        existing_id,
+        f"Partial overlap: condition similarity {cs}, action similarity {as_}",
+        condition_similarity=cs,
+        action_similarity=as_,
     )

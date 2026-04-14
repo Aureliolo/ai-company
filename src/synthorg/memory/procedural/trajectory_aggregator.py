@@ -110,7 +110,9 @@ def _group_key(trajectory: AggregatedTrajectory) -> str:
 class TrajectoryAggregator:
     """Identifies cross-agent patterns from execution trajectories.
 
-    Stateless service: receives trajectories, returns patterns.
+    Stateful: ``last_skipped_count`` is updated on each
+    ``aggregate()`` call so the evolver can report how many groups
+    fell below the agent threshold.
 
     Args:
         min_agents_for_pattern: Minimum distinct agents required
