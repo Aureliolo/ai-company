@@ -5,9 +5,9 @@ disabled by default, mandatory approval gate, conservative
 thresholds.
 """
 
-from typing import Literal
+from typing import Literal, Self
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.core.types import NotBlankStr
 from synthorg.meta.models import EvolutionMode, RolloutStrategyType
@@ -45,6 +45,14 @@ class RolloutConfig(BaseModel):
     default_strategy: RolloutStrategyType = RolloutStrategyType.BEFORE_AFTER
     observation_window_hours: int = Field(default=48, ge=1)
     regression_check_interval_hours: int = Field(default=4, ge=1)
+
+    @model_validator(mode="after")
+    def _validate_interval_within_window(self) -> Self:
+        """Regression check interval must fit within observation window."""
+        if self.regression_check_interval_hours > self.observation_window_hours:
+            msg = "regression_check_interval_hours must be <= observation_window_hours"
+            raise ValueError(msg)
+        return self
 
 
 class RegressionConfig(BaseModel):

@@ -19,6 +19,7 @@ from synthorg.meta.models import (
     GuardVerdict,
     ImprovementProposal,
     OrgSignalSnapshot,
+    ProposalStatus,
     RolloutResult,
 )
 from synthorg.observability import get_logger
@@ -122,6 +123,14 @@ class SelfImprovementService:
         Returns:
             Rollout result.
         """
+        if proposal.status is not ProposalStatus.APPROVED:
+            msg = (
+                f"Proposal {proposal.id} must be approved before "
+                f"rollout; current status is {proposal.status.value}"
+            )
+            logger.error(msg, proposal_id=str(proposal.id))
+            raise ValueError(msg)
+
         applier = self._appliers.get(proposal.altitude)
         if applier is None:
             msg = f"No applier for altitude {proposal.altitude}"

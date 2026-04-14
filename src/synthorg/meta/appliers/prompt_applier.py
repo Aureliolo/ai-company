@@ -51,6 +51,8 @@ class PromptApplier:
                 proposal_id=str(proposal.id),
             )
             return ApplyResult(success=True, changes_applied=count)
+        except MemoryError, RecursionError:
+            raise
         except Exception:
             logger.exception(
                 META_APPLY_FAILED,
@@ -75,5 +77,10 @@ class PromptApplier:
         Returns:
             Result indicating whether apply would succeed.
         """
-        _ = proposal  # Will validate principles in real impl.
-        return ApplyResult(success=True, changes_applied=0)
+        # Fail closed until real validation is implemented.
+        _ = proposal
+        return ApplyResult(
+            success=False,
+            changes_applied=0,
+            error_message="dry_run not yet implemented",
+        )

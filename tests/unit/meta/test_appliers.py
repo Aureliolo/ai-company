@@ -97,8 +97,9 @@ class TestConfigApplier:
             confidence=0.8,
         )
         result = await applier.dry_run(proposal)
-        assert result.success
+        assert not result.success
         assert result.changes_applied == 0
+        assert result.error_message == "dry_run not yet implemented"
 
 
 class TestArchitectureApplier:
@@ -176,4 +177,5 @@ class TestPromptApplier:
             confidence=0.8,
         )
         result = await applier.dry_run(proposal)
-        assert result.success
+        assert not result.success
+        assert result.error_message == "dry_run not yet implemented"

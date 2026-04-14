@@ -9,10 +9,6 @@ from typing import TYPE_CHECKING
 from synthorg.core.types import NotBlankStr
 from synthorg.meta.models import OrgScalingSummary
 from synthorg.observability import get_logger
-from synthorg.observability.events.meta import (
-    META_SIGNAL_AGGREGATION_COMPLETED,
-    META_SIGNAL_AGGREGATION_FAILED,
-)
 
 if TYPE_CHECKING:
     from datetime import datetime
@@ -46,14 +42,8 @@ class ScalingSignalAggregator:
             Org-wide scaling summary.
         """
         _ = since, until  # Will be used by real implementation.
-        try:
-            logger.info(
-                META_SIGNAL_AGGREGATION_COMPLETED,
-                domain="scaling",
-            )
-        except Exception:
-            logger.exception(
-                META_SIGNAL_AGGREGATION_FAILED,
-                domain="scaling",
-            )
+        logger.debug(
+            "meta.signals.placeholder",
+            domain="scaling",
+        )
         return _EMPTY

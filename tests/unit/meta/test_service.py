@@ -13,6 +13,7 @@ from synthorg.meta.models import (
     OrgSignalSnapshot,
     OrgTelemetrySummary,
     ProposalAltitude,
+    ProposalStatus,
     RolloutOutcome,
 )
 from synthorg.meta.service import SelfImprovementService
@@ -112,12 +113,8 @@ class TestSelfImprovementService:
         svc = self._svc()
         proposals = await svc.run_cycle(_snap(quality=4.0))
         assert len(proposals) >= 1
-        rollout_result = await svc.execute_rollout(proposals[0])
+        approved = proposals[0].model_copy(
+            update={"status": ProposalStatus.APPROVED},
+        )
+        rollout_result = await svc.execute_rollout(approved)
         assert rollout_result.outcome == RolloutOutcome.SUCCESS
-
-    async def test_rollout_succeeds_for_valid_altitude(self) -> None:
-        svc = self._svc()
-        proposals = await svc.run_cycle(_snap(quality=4.0))
-        assert len(proposals) >= 1
-        result = await svc.execute_rollout(proposals[0])
-        assert result.outcome == RolloutOutcome.SUCCESS

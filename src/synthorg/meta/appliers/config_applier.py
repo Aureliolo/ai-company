@@ -53,6 +53,8 @@ class ConfigApplier:
                 proposal_id=str(proposal.id),
             )
             return ApplyResult(success=True, changes_applied=count)
+        except MemoryError, RecursionError:
+            raise
         except Exception:
             logger.exception(
                 META_APPLY_FAILED,
@@ -77,9 +79,11 @@ class ConfigApplier:
         Returns:
             Result indicating whether apply would succeed.
         """
-        _ = proposal  # Will validate config paths in real impl.
-        # Placeholder: validate the config diffs are valid paths.
+        # Placeholder: validate config paths against schema.
+        # Fail closed until real validation is implemented.
+        _ = proposal
         return ApplyResult(
-            success=True,
+            success=False,
             changes_applied=0,
+            error_message="dry_run not yet implemented",
         )

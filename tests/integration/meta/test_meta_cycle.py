@@ -118,7 +118,10 @@ class TestMetaCycleIntegration:
             if p.source_rule == "quality_declining"
             and p.altitude == ProposalAltitude.CONFIG_TUNING
         )
-        result = await svc.execute_rollout(proposal)
+        approved = proposal.model_copy(
+            update={"status": ProposalStatus.APPROVED},
+        )
+        result = await svc.execute_rollout(approved)
         assert result.outcome == RolloutOutcome.SUCCESS
 
     async def test_disabled_altitude_blocks_proposals(self) -> None:

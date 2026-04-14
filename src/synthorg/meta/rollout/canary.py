@@ -37,6 +37,9 @@ class CanarySubsetRollout:
     """
 
     def __init__(self, *, canary_fraction: float = 0.2) -> None:
+        if canary_fraction <= 0.0 or canary_fraction > 1.0:
+            msg = "canary_fraction must be in the range (0, 1]."
+            raise ValueError(msg)
         self._canary_fraction = canary_fraction
 
     @property
