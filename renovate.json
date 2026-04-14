@@ -86,6 +86,12 @@
       "labels": ["dependencies", "type:chore", "scope:docker"]
     },
     {
+      "description": "Do not pin requires-python -- it is a compatibility range, not a dependency",
+      "matchDepNames": ["python"],
+      "matchDepTypes": ["requires-python"],
+      "enabled": false
+    },
+    {
       "description": "Block Python 3.15+ in Docker images (policy decision)",
       "matchDepNames": ["python"],
       "matchManagers": ["dockerfile"],
