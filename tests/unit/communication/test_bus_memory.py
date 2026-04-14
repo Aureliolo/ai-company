@@ -813,3 +813,110 @@ class TestIdleSummary:
         monkeypatch.setattr(_time, "monotonic", lambda: clock)
         await bus.start()
         assert bus._idle_poll_count == 0
+
+
+# ── Batch Publishing ──────────────────────────────────────────────
+
+
+class TestPublishBatch:
+    """Tests for InMemoryMessageBus.publish_batch()."""
+
+    async def test_empty_batch_is_noop(self) -> None:
+        bus = InMemoryMessageBus(config=_make_config(channels=("#test",)))
+        await bus.start()
+        await bus.publish_batch([])
+        await bus.stop()
+
+    async def test_single_message(self) -> None:
+        bus = InMemoryMessageBus(config=_make_config(channels=("#test",)))
+        await bus.start()
+        await bus.subscribe("#test", "sub")
+        msg = _make_message(channel="#test", content="solo")
+        await bus.publish_batch([msg])
+
+        envelope = await bus.receive("#test", "sub", timeout=1.0)
+        assert envelope is not None
+        assert envelope.message.parts[0].text == "solo"  # type: ignore[union-attr]
+        await bus.stop()
+
+    async def test_multiple_messages_in_order(self) -> None:
+        bus = InMemoryMessageBus(config=_make_config(channels=("#test",)))
+        await bus.start()
+        await bus.subscribe("#test", "sub")
+        messages = [
+            _make_message(channel="#test", content=f"msg-{i}") for i in range(5)
+        ]
+        await bus.publish_batch(messages)
+
+        for i in range(5):
+            envelope = await bus.receive("#test", "sub", timeout=1.0)
+            assert envelope is not None
+            assert envelope.message.parts[0].text == f"msg-{i}"  # type: ignore[union-attr]
+        await bus.stop()
+
+    async def test_ttl_accepted_but_ignored(self) -> None:
+        """ttl_seconds is accepted for protocol conformance."""
+        bus = InMemoryMessageBus(config=_make_config(channels=("#test",)))
+        await bus.start()
+        await bus.subscribe("#test", "sub")
+        msg = _make_message(channel="#test", content="with-ttl")
+        await bus.publish_batch([msg], ttl_seconds=10.0)
+
+        envelope = await bus.receive("#test", "sub", timeout=1.0)
+        assert envelope is not None
+        assert envelope.message.parts[0].text == "with-ttl"  # type: ignore[union-attr]
+        await bus.stop()
+
+    async def test_partial_failure_stops_on_first_error(self) -> None:
+        """If one message fails, remaining are not attempted."""
+        bus = InMemoryMessageBus(config=_make_config(channels=("#test",)))
+        await bus.start()
+        await bus.subscribe("#test", "sub")
+        good = _make_message(channel="#test", content="good")
+        bad = _make_message(channel="#missing", content="bad")
+
+        with pytest.raises(ChannelNotFoundError):
+            await bus.publish_batch([good, bad])
+
+        # The first message was published before the error
+        envelope = await bus.receive("#test", "sub", timeout=0.1)
+        assert envelope is not None
+        assert envelope.message.parts[0].text == "good"  # type: ignore[union-attr]
+        await bus.stop()
+
+    async def test_not_running_raises(self) -> None:
+        bus = InMemoryMessageBus(config=_make_config(channels=("#test",)))
+        msg = _make_message(channel="#test")
+
+        with pytest.raises(MessageBusNotRunningError):
+            await bus.publish_batch([msg])
+
+
+# ── TTL Protocol Conformance ─────────────────────────────────────
+
+
+class TestTTLProtocolConformance:
+    """Verify ttl_seconds is accepted on publish/send_direct."""
+
+    async def test_publish_accepts_ttl(self) -> None:
+        bus = InMemoryMessageBus(config=_make_config(channels=("#test",)))
+        await bus.start()
+        await bus.subscribe("#test", "sub")
+        msg = _make_message(channel="#test")
+
+        await bus.publish(msg, ttl_seconds=30.0)
+
+        envelope = await bus.receive("#test", "sub", timeout=1.0)
+        assert envelope is not None
+        await bus.stop()
+
+    async def test_send_direct_accepts_ttl(self) -> None:
+        bus = InMemoryMessageBus(config=_make_config())
+        await bus.start()
+        msg = _make_message(sender="a", to="b", channel="#test")
+
+        await bus.send_direct(msg, recipient="b", ttl_seconds=60.0)
+
+        envelope = await bus.receive("@a:b", "a", timeout=1.0)
+        assert envelope is not None
+        await bus.stop()

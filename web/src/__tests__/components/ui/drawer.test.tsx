@@ -40,16 +40,10 @@ describe('Drawer', () => {
   })
 
   it('renders as a modal dialog', () => {
-    render(
-      <>
-        <button type="button" data-testid="outside">Outside</button>
-        <Drawer open={true} onClose={() => {}} title="Test">Content</Drawer>
-      </>,
-    )
-    // Base UI enforces modality via `inert` on siblings (modern approach)
-    // rather than `aria-modal`.  Verify dialog role is present.
-    const dialog = screen.getByRole('dialog')
-    expect(dialog).toBeInTheDocument()
+    render(<Drawer open={true} onClose={() => {}} title="Test">Content</Drawer>)
+    // Modality (focus trap, inert siblings) is Base UI's responsibility.
+    // We verify the public contract: dialog role is present.
+    expect(screen.getByRole('dialog')).toBeInTheDocument()
   })
 
   it('has accessible name matching title', () => {
@@ -130,6 +124,27 @@ describe('Drawer', () => {
     it('ariaLabel takes precedence over title when both are provided', () => {
       render(<Drawer open={true} onClose={() => {}} title="Visible Title" ariaLabel="Screen Reader Label">Content</Drawer>)
       expect(screen.getByRole('dialog')).toHaveAttribute('aria-label', 'Screen Reader Label')
+    })
+
+    it('renders plain heading when ariaLabel overrides title', () => {
+      render(<Drawer open={true} onClose={() => {}} title="Visible" ariaLabel="Override">Content</Drawer>)
+      // Should render a plain <h2>, not BaseDrawer.Title (which would add aria-labelledby)
+      const heading = screen.getByRole('heading', { name: 'Visible' })
+      expect(heading.tagName).toBe('H2')
+    })
+
+    it('renders BaseDrawer.Title when only title is given', () => {
+      render(<Drawer open={true} onClose={() => {}} title="Only Title">Content</Drawer>)
+      // BaseDrawer.Title provides the accessible name via aria-labelledby
+      expect(screen.getByRole('dialog', { name: 'Only Title' })).toBeInTheDocument()
+    })
+  })
+
+  describe('className prop', () => {
+    it('merges className into the popup element', () => {
+      render(<Drawer open={true} onClose={() => {}} title="Test" className="custom-class">Content</Drawer>)
+      const dialog = screen.getByRole('dialog')
+      expect(dialog.className).toMatch(/custom-class/)
     })
   })
 

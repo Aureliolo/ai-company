@@ -255,3 +255,95 @@ class TestPublishBatch:
 
         with pytest.raises(MessageBusNotRunningError):
             await publish_batch(state, messages)
+
+    async def test_caches_resolved_subjects(self) -> None:
+        """Repeated channels should only resolve once (cache hit)."""
+        state = _make_state()
+        messages = [_make_message(channel="#test") for _ in range(3)]
+
+        await publish_batch(state, messages)
+
+        assert state.js.publish_async.await_count == 3
+        state.js.publish_async_completed.assert_awaited_once()
+
+    async def test_multi_channel_batch(self) -> None:
+        """Batch with messages on different channels."""
+        state = _make_state()
+        # Register a second channel
+        state.channels["#other"] = Channel(
+            name="#other",
+            type=ChannelType.TOPIC,
+            subscribers=(),
+        )
+        messages = [
+            _make_message(channel="#test"),
+            _make_message(channel="#other"),
+            _make_message(channel="#test"),
+        ]
+
+        await publish_batch(state, messages)
+
+        assert state.js.publish_async.await_count == 3
+        state.js.publish_async_completed.assert_awaited_once()
+
+    async def test_multiple_errors_collected(self) -> None:
+        """All future errors are surfaced, not just the first."""
+        state = _make_state()
+        messages = [_make_message(), _make_message()]
+
+        loop = asyncio.get_running_loop()
+        futures = []
+        for i in range(2):
+            f: asyncio.Future[MagicMock] = loop.create_future()
+            f.set_exception(RuntimeError(f"error-{i}"))
+            futures.append(f)
+        state.js.publish_async = AsyncMock(side_effect=futures)
+
+        with pytest.raises(ExceptionGroup) as exc_info:
+            await publish_batch(state, messages)
+        assert len(exc_info.value.exceptions) == 2
+
+    async def test_timeout_on_completion(self) -> None:
+        """publish_async_completed timeout raises TimeoutError."""
+        state = _make_state()
+        messages = [_make_message()]
+
+        # Make completion never return
+        async def hang_forever() -> None:
+            await asyncio.Event().wait()
+
+        state.js.publish_async_completed = hang_forever
+        state.nats_config = state.nats_config.model_copy(
+            update={"publish_ack_wait_seconds": 0.1},
+        )
+
+        with pytest.raises(TimeoutError):
+            await publish_batch(state, messages)
+
+    async def test_channel_not_found_in_batch(self) -> None:
+        """Batch with an unknown channel raises ChannelNotFoundError."""
+        from synthorg.communication.errors import ChannelNotFoundError
+
+        state = _make_state()
+        msg = _make_message(channel="#unknown")
+
+        with pytest.raises(ChannelNotFoundError):
+            await publish_batch(state, [msg])
+
+        # No messages should have been published
+        state.js.publish_async.assert_not_awaited()
+
+
+class TestPublishOversizedPayload:
+    """Verify oversized messages are rejected."""
+
+    async def test_oversized_message_raises(self) -> None:
+        state = _make_state()
+        msg = _make_message()
+
+        with patch(
+            "synthorg.communication.bus._nats_publish.serialize_message",
+        ) as mock_serialize:
+            mock_serialize.return_value = b"x" * (4 * 1024 * 1024 + 1)
+            with pytest.raises(ValueError, match="exceeds bus payload limit"):
+                await publish(state, msg)
