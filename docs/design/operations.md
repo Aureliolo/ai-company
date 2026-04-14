@@ -753,10 +753,11 @@ fails with a clear error -- no unsafe subprocess fallback for code execution
 before removal and ships them through the backend's observability pipeline.
 Sidecar JSON stdout is parsed line-by-line; malformed lines are skipped.
 Sandbox stdout/stderr are shipped alongside the sidecar entries.  All shipped
-events carry correlation context (`agent_id`, `task_id`, `request_id`) injected
-via structlog contextvars, and the same IDs are set as `SYNTHORG_AGENT_ID`,
-`SYNTHORG_TASK_ID`, `SYNTHORG_REQUEST_ID` environment variables in both
-containers so container-side logs can self-correlate.
+events carry correlation context (`agent_id`, `session_id`, `task_id`,
+`request_id`) injected via structlog contextvars, and the same IDs are set as
+`SYNTHORG_AGENT_ID`, `SYNTHORG_SESSION_ID`, `SYNTHORG_TASK_ID`,
+`SYNTHORG_REQUEST_ID` environment variables in both containers so
+container-side logs can self-correlate.
 
 `SandboxResult` includes optional Docker-specific fields: `container_id`,
 `sidecar_id`, `sidecar_logs`, `agent_id`, and `execution_time_ms`.  These
@@ -764,7 +765,10 @@ default to `None`/empty for non-Docker backends.
 
 Log shipping is failure-tolerant (errors are logged at debug level, never
 propagated) and bounded by `ContainerLogShippingConfig.collection_timeout_seconds`
-and `max_log_bytes`.  Configuration lives on `LogConfig.container_log_shipping`
+and `max_log_bytes`.  By default only metadata (sizes, counts, timing) is
+shipped; raw stdout/stderr/sidecar payloads require explicit opt-in via
+`ship_raw_logs=True` to prevent secrets from bypassing key-name-based
+redaction.  Configuration lives on `LogConfig.container_log_shipping`
 (default: enabled).
 
 !!! info "Scaling Path"

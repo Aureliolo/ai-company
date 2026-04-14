@@ -6,7 +6,6 @@ Uses ``aiodocker`` for asynchronous Docker daemon communication.
 """
 
 import asyncio
-import json
 import platform
 import secrets
 import time
@@ -33,9 +32,6 @@ from synthorg.observability.events.docker import (
     DOCKER_HEALTH_CHECK,
 )
 from synthorg.observability.events.sandbox import (
-    SANDBOX_CONTAINER_LOGS_COLLECTED,
-    SANDBOX_CONTAINER_LOGS_SHIP_FAILED,
-    SANDBOX_CONTAINER_LOGS_SHIPPED,
     SANDBOX_NETWORK_ENFORCEMENT,
     SANDBOX_RUNTIME_RESOLVER_ATTACHED,
     SANDBOX_SIDECAR_CREATED,
@@ -44,6 +40,11 @@ from synthorg.observability.events.sandbox import (
     SANDBOX_SIDECAR_REMOVE_FAILED,
     SANDBOX_SIDECAR_REMOVED,
     SANDBOX_SIDECAR_STARTED,
+)
+from synthorg.tools.sandbox.container_log_shipper import (
+    build_correlation_env,
+    collect_sidecar_logs,
+    ship_container_logs,
 )
 from synthorg.tools.sandbox.credential_manager import SandboxCredentialManager
 from synthorg.tools.sandbox.docker_config import DockerSandboxConfig
@@ -280,8 +281,16 @@ class DockerSandbox:
             else None
         )
         env_list = self._validate_env(sanitized)
-        correlation_env = self._build_correlation_env()
-        env_list = env_list + correlation_env
+        correlation_env = build_correlation_env()
+        # Merge: correlation IDs override user-supplied duplicates.
+        merged: dict[str, str] = {}
+        for entry in env_list:
+            key, _, value = entry.partition("=")
+            merged[key] = value
+        for entry in correlation_env:
+            key, _, value = entry.partition("=")
+            merged[key] = value
+        env_list = [f"{k}={v}" for k, v in merged.items()]
         host_config = self._build_host_config(category=category)
         if network_mode is not None:
             host_config["NetworkMode"] = network_mode
@@ -317,26 +326,6 @@ class DockerSandbox:
                 )
                 raise SandboxError(msg)
         return [f"{k}={v}" for k, v in (env_overrides or {}).items()]
-
-    @staticmethod
-    def _build_correlation_env() -> list[str]:
-        """Build SYNTHORG_* env vars from structlog contextvars.
-
-        Reads ``agent_id``, ``task_id``, and ``request_id`` from the
-        current structlog context and returns Docker env list entries.
-        Missing keys default to empty strings.
-
-        Returns:
-            List of ``KEY=value`` strings for container env injection.
-        """
-        import structlog.contextvars  # noqa: PLC0415
-
-        ctx = structlog.contextvars.get_contextvars()
-        return [
-            f"SYNTHORG_AGENT_ID={ctx.get('agent_id', '')}",
-            f"SYNTHORG_TASK_ID={ctx.get('task_id', '')}",
-            f"SYNTHORG_REQUEST_ID={ctx.get('request_id', '')}",
-        ]
 
     def _build_host_config(
         self,
@@ -424,7 +413,7 @@ class DockerSandbox:
         env_list.append(f"SIDECAR_LOOPBACK_ALLOWED={lo_flag}")
 
         # Inject correlation env vars so sidecar logs can self-correlate.
-        env_list.extend(self._build_correlation_env())
+        env_list.extend(build_correlation_env())
 
         memory_bytes = self._parse_memory_limit(_SIDECAR_MEMORY)
         nano_cpus = int(_SIDECAR_CPU * _NANO_CPUS_MULTIPLIER)
@@ -740,7 +729,9 @@ class DockerSandbox:
             image=self._config.image,
         )
 
-        sidecar_logs: tuple[Mapping[str, Any], ...] = ()
+        cfg = self._log_shipping_config
+        sidecar_logs: tuple[dict[str, Any], ...] = ()
+        result: SandboxResult | None = None
         try:
             result = await self._start_and_wait(
                 docker=docker,
@@ -750,12 +741,35 @@ class DockerSandbox:
                 timeout=timeout,
             )
         finally:
-            # Collect sidecar logs BEFORE container removal.
-            if sidecar_id:
-                sidecar_logs = await self._collect_sidecar_logs(
-                    docker,
-                    sidecar_id,
-                )
+            # Collect sidecar logs BEFORE container removal
+            # (best-effort -- never blocks cleanup).
+            if sidecar_id and cfg.enabled:
+                try:
+                    sidecar_logs = await collect_sidecar_logs(
+                        docker,
+                        sidecar_id,
+                        config=cfg,
+                    )
+                except MemoryError, RecursionError:
+                    raise
+                except Exception:  # noqa: S110
+                    pass  # collection failed; proceed to cleanup
+
+            # Ship collected logs even on execution failure so
+            # sidecar network decisions are always observable.
+            _stdout = result.stdout if result is not None else ""
+            _stderr = result.stderr if result is not None else ""
+            _ms = (result.execution_time_ms or 0) if result is not None else 0
+            await ship_container_logs(
+                config=cfg,
+                container_id=container_id,
+                sidecar_id=sidecar_id,
+                stdout=_stdout,
+                stderr=_stderr,
+                sidecar_logs=sidecar_logs,
+                execution_time_ms=_ms,
+            )
+
             sandbox_removed = await self._remove_container(
                 docker,
                 container_id,
@@ -780,28 +794,19 @@ class DockerSandbox:
                     )
 
         # Enrich result with sidecar data and agent context.
+        # (Unreachable when _start_and_wait raises -- exception
+        # propagates through finally.)
+        assert result is not None  # noqa: S101
         import structlog.contextvars  # noqa: PLC0415
 
         ctx = structlog.contextvars.get_contextvars()
-        enriched = result.model_copy(
+        return result.model_copy(
             update={
-                "sidecar_id": sidecar_id[:12] if sidecar_id else None,
+                "sidecar_id": sidecar_id,
                 "sidecar_logs": sidecar_logs,
                 "agent_id": ctx.get("agent_id"),
             },
         )
-
-        # Ship container logs (non-blocking, failure-tolerant).
-        await self._ship_container_logs(
-            container_id=container_id,
-            sidecar_id=sidecar_id,
-            stdout=enriched.stdout,
-            stderr=enriched.stderr,
-            sidecar_logs=sidecar_logs,
-            execution_time_ms=enriched.execution_time_ms or 0,
-        )
-
-        return enriched
 
     async def _start_and_wait(
         self,
@@ -967,155 +972,6 @@ class DockerSandbox:
         stdout = "".join(stdout_logs)
         stderr = "".join(stderr_logs)
         return stdout, stderr
-
-    @staticmethod
-    def _parse_json_log_lines(
-        raw_lines: list[str],
-        *,
-        max_log_bytes: int,
-        sidecar_id_short: str,
-    ) -> tuple[Mapping[str, Any], ...]:
-        """Parse raw log lines as JSON, skipping malformed entries.
-
-        Args:
-            raw_lines: Raw stdout lines from the sidecar container.
-            max_log_bytes: Cumulative byte cap before truncation.
-            sidecar_id_short: Short sidecar ID for logging.
-
-        Returns:
-            Tuple of successfully parsed JSON dicts.
-        """
-        parsed: list[Mapping[str, Any]] = []
-        cumulative_bytes = 0
-        for line in raw_lines:
-            stripped = line.strip()
-            if not stripped:
-                continue
-            cumulative_bytes += len(stripped.encode())
-            if cumulative_bytes > max_log_bytes:
-                break
-            try:
-                parsed.append(json.loads(stripped))
-            except json.JSONDecodeError:
-                logger.debug(
-                    SANDBOX_CONTAINER_LOGS_COLLECTED,
-                    sidecar_id=sidecar_id_short,
-                    status="malformed_line",
-                )
-                continue
-        return tuple(parsed)
-
-    async def _collect_sidecar_logs(
-        self,
-        docker: aiodocker.Docker,
-        sidecar_id: str,
-        *,
-        config: ContainerLogShippingConfig | None = None,
-    ) -> tuple[Mapping[str, Any], ...]:
-        """Collect and parse structured JSON logs from a sidecar.
-
-        Reads sidecar stdout before container removal.  Each line is
-        parsed as JSON; malformed lines are logged and skipped.
-        Returns empty tuple if log retrieval itself fails (timeout,
-        I/O error); partial results are returned when only some
-        lines fail to parse.
-
-        Args:
-            docker: Docker client.
-            sidecar_id: Sidecar container ID.
-            config: Log shipping config (falls back to instance config).
-
-        Returns:
-            Tuple of parsed JSON dicts.  Empty if collection fails.
-        """
-        cfg = config or self._log_shipping_config
-        try:
-            container_obj = docker.containers.container(sidecar_id)  # pyright: ignore[reportAttributeAccessIssue]
-            raw_lines: list[str] = await asyncio.wait_for(
-                container_obj.log(stdout=True, stderr=False),
-                timeout=cfg.collection_timeout_seconds,
-            )
-        except TimeoutError:
-            logger.debug(
-                SANDBOX_CONTAINER_LOGS_COLLECTED,
-                sidecar_id=sidecar_id[:12],
-                status="timeout",
-            )
-            return ()
-        except MemoryError, RecursionError:
-            raise
-        except Exception as exc:
-            logger.debug(
-                SANDBOX_CONTAINER_LOGS_COLLECTED,
-                sidecar_id=sidecar_id[:12],
-                status="error",
-                error=str(exc),
-            )
-            return ()
-
-        parsed = self._parse_json_log_lines(
-            raw_lines,
-            max_log_bytes=cfg.max_log_bytes,
-            sidecar_id_short=sidecar_id[:12],
-        )
-        logger.debug(
-            SANDBOX_CONTAINER_LOGS_COLLECTED,
-            sidecar_id=sidecar_id[:12],
-            status="ok",
-            log_count=len(parsed),
-        )
-        return parsed
-
-    async def _ship_container_logs(  # noqa: PLR0913
-        self,
-        *,
-        config: ContainerLogShippingConfig | None = None,
-        container_id: str,
-        sidecar_id: str | None,
-        stdout: str,
-        stderr: str,
-        sidecar_logs: tuple[Mapping[str, Any], ...],
-        execution_time_ms: int,
-    ) -> None:
-        """Ship container logs through the structlog pipeline.
-
-        Failure-tolerant: shipping errors are logged at debug level
-        and never propagated.
-
-        Args:
-            config: Log shipping config (falls back to instance config).
-            container_id: Sandbox container ID.
-            sidecar_id: Sidecar container ID (may be None).
-            stdout: Sandbox stdout output.
-            stderr: Sandbox stderr output.
-            sidecar_logs: Parsed sidecar log entries.
-            execution_time_ms: Execution time in milliseconds.
-        """
-        cfg = config or self._log_shipping_config
-        if not cfg.enabled:
-            return
-        try:
-            max_bytes = cfg.max_log_bytes
-            logger.info(
-                SANDBOX_CONTAINER_LOGS_SHIPPED,
-                container_id=container_id[:12],
-                sidecar_id=sidecar_id[:12] if sidecar_id else None,
-                stdout=stdout[:max_bytes],
-                stderr=stderr[:max_bytes],
-                stdout_size=len(stdout),
-                stderr_size=len(stderr),
-                sidecar_log_count=len(sidecar_logs),
-                sidecar_logs=sidecar_logs,
-                execution_time_ms=execution_time_ms,
-            )
-        except MemoryError, RecursionError:
-            raise
-        except Exception as exc:
-            logger.debug(
-                SANDBOX_CONTAINER_LOGS_SHIP_FAILED,
-                container_id=container_id[:12],
-                error=str(exc),
-            )
 
     @staticmethod
     async def _stop_container(

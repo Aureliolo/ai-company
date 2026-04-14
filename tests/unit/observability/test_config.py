@@ -893,6 +893,7 @@ class TestContainerLogShippingConfig:
     def test_defaults(self) -> None:
         cfg = ContainerLogShippingConfig()
         assert cfg.enabled is True
+        assert cfg.ship_raw_logs is False
         assert cfg.collection_timeout_seconds == 5.0
         assert cfg.max_log_bytes == 10 * 1024 * 1024
 
@@ -934,6 +935,22 @@ class TestContainerLogShippingConfig:
             ContainerLogShippingConfig(
                 collection_timeout_seconds=float("nan"),
             )
+
+    def test_ship_raw_logs_default_false(self) -> None:
+        cfg = ContainerLogShippingConfig()
+        assert cfg.ship_raw_logs is False
+
+    def test_ship_raw_logs_opt_in(self) -> None:
+        cfg = ContainerLogShippingConfig(ship_raw_logs=True)
+        assert cfg.ship_raw_logs is True
+
+    def test_timeout_boundary_min(self) -> None:
+        cfg = ContainerLogShippingConfig(collection_timeout_seconds=0.1)
+        assert cfg.collection_timeout_seconds == 0.1
+
+    def test_timeout_boundary_max(self) -> None:
+        cfg = ContainerLogShippingConfig(collection_timeout_seconds=30.0)
+        assert cfg.collection_timeout_seconds == 30.0
 
 
 @pytest.mark.unit

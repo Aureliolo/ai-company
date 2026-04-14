@@ -1,7 +1,5 @@
 """Tests for SandboxResult model."""
 
-from collections.abc import Mapping
-from types import MappingProxyType
 from typing import Any
 
 import pytest
@@ -95,8 +93,8 @@ class TestSandboxResultContainerFields:
         assert result.success is False
 
     def test_all_container_fields_populated(self) -> None:
-        logs: tuple[Mapping[str, Any], ...] = (
-            MappingProxyType({"ts": "2026-04-14T00:00:00Z", "msg": "hello"}),
+        logs: tuple[dict[str, Any], ...] = (
+            {"ts": "2026-04-14T00:00:00Z", "msg": "hello"},
         )
         result = SandboxResult(
             stdout="output",
@@ -175,6 +173,15 @@ class TestSandboxResultContainerFields:
                 stderr="",
                 returncode=0,
                 sidecar_id="",
+            )
+
+    def test_blank_agent_id_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="agent_id"):
+            SandboxResult(
+                stdout="",
+                stderr="",
+                returncode=0,
+                agent_id="   ",
             )
 
     def test_negative_execution_time_rejected(self) -> None:

@@ -1,6 +1,5 @@
 """Sandbox execution result model."""
 
-from collections.abc import Mapping  # noqa: TC003 -- needed at runtime for Pydantic
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, computed_field
@@ -34,7 +33,7 @@ class SandboxResult(BaseModel):
     # Docker-specific fields (optional, backward compat with SubprocessSandbox)
     container_id: NotBlankStr | None = None
     sidecar_id: NotBlankStr | None = None
-    sidecar_logs: tuple[Mapping[str, Any], ...] = ()
+    sidecar_logs: tuple[dict[str, Any], ...] = ()
     agent_id: NotBlankStr | None = None
     execution_time_ms: int | None = Field(default=None, ge=0)
 
