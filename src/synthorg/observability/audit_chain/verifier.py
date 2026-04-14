@@ -25,7 +25,7 @@ class ChainVerificationResult(BaseModel):
         first_break_position: Position of first broken link, if any.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
 
     valid: bool = Field(description="Whether the chain is intact")
     entries_checked: int = Field(
@@ -163,17 +163,20 @@ class AuditChainVerifier:
         if not getattr(pkg, "is_fully_signed", False):
             return False
 
-        canonical: bytes = getattr(pkg, "canonical_bytes", None) or b""
-        if not canonical:
-            canonical = getattr(pkg, "signed_bytes", b"")
-        if not canonical:
-            return False
-
+        canonical: bytes = (
+            getattr(pkg, "canonical_bytes", None)
+            or getattr(pkg, "signed_bytes", b"")
+            or b""
+        )
         signatures = getattr(pkg, "signatures", ())
-        if not signatures:
+        if not canonical or not signatures:
+            return False
+        try:
+            sig_iter = iter(signatures)
+        except TypeError:
             return False
 
-        for sig in signatures:
+        for sig in sig_iter:
             sig_bytes = getattr(sig, "signature_bytes", None)
             if not isinstance(sig_bytes, bytes):
                 return False

@@ -44,6 +44,12 @@ class PolicyGateMiddleware(BaseAgentMiddleware):
         **_kwargs: object,
     ) -> None:
         super().__init__(name="policy_gate")
+        if evaluation_mode not in ("enforce", "log_only"):
+            msg = (
+                f"evaluation_mode must be 'enforce' or 'log_only', "
+                f"got {evaluation_mode!r}"
+            )
+            raise ValueError(msg)
         self._engine = policy_engine
         self._evaluation_mode = evaluation_mode
 

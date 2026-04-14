@@ -190,7 +190,14 @@ class HTMLParseGuard:
                 content_length=len(raw),
                 exc_info=True,
             )
-            return _passthrough_result(raw)
+            # Return safe empty result instead of raw attacker-
+            # controlled content.
+            return HTMLSanitizeResult(
+                cleaned="",
+                gap_detected=True,
+                gap_ratio=1.0,
+                stripped_element_count=0,
+            )
 
     def _sanitize_html(self, raw: str) -> HTMLSanitizeResult:
         """Parse and sanitize HTML content using lxml."""
@@ -278,10 +285,13 @@ class HTMLParseGuard:
             if style and any(p.search(style) for p in _HIDDEN_STYLE_PATTERNS):
                 elements_to_drop.append(element)
 
+        dropped = 0
         for element in elements_to_drop:
-            element.drop_tree()  # type: ignore[attr-defined]
+            if getattr(element, "getparent", lambda: None)() is not None:
+                element.drop_tree()  # type: ignore[attr-defined]
+                dropped += 1
 
-        return len(elements_to_drop)
+        return dropped
 
     @staticmethod
     def _compute_gap_ratio(original: str, cleaned: str) -> float:

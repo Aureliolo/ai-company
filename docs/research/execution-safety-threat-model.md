@@ -27,7 +27,7 @@ cite the paper directly and verify alignment with the original taxonomy.
 |---|-------|----------|-----|----------------|
 | 1 | Content Injection | Partial | Render-time parse gap | `HTMLParseGuard` |
 | 2 | Semantic Manipulation | Partial | No per-turn drift detection | `SemanticDriftDetector` |
-| 3 | Cognitive State / Memory Poisoning | Strong | Document vectors | Threat model only |
+| 3 | Cognitive State / Memory Poisoning | Strong | RAG / vector-store integrity verification | Threat model only |
 | 4 | Behavioural Control / Tool Hijacking | Strong | No registry integrity check | `ToolRegistryIntegrityCheck` |
 | 5 | Systemic / Cascading Failure | Covered | None | S1 cross-reference |
 | 6 | HITL Cognitive Bias Exploitation | Partial | No bias-specific UI | Threat model only |
