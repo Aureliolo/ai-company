@@ -53,13 +53,18 @@ class PerAgentStrategy:
         owner_id: str,
         create_fn: Callable[[], Awaitable[ContainerHandle]],
     ) -> ContainerHandle:
-        """Return an existing container or create a new one."""
+        """Return an existing container or create a new one.
+
+        Args:
+            owner_id: Opaque identifier for the lifecycle owner.
+            create_fn: Async factory that creates a fresh container.
+
+        Returns:
+            A ``ContainerHandle`` ready for command execution.
+        """
         async with self._lock:
             self._cancel_timer(owner_id)
-            # Cancel idle timer -- container is now checked out.
-            old_idle = self._idle_timers.pop(owner_id, None)
-            if old_idle is not None and not old_idle.done():
-                old_idle.cancel()
+            self._cancel_idle_timer(owner_id)
 
             if owner_id in self._containers:
                 logger.info(
@@ -81,6 +86,9 @@ class PerAgentStrategy:
             # Re-check: a concurrent acquire may have won the race.
             if owner_id in self._containers:
                 existing = self._containers[owner_id]
+                # Cancel any grace/idle timers from an interleaved release.
+                self._cancel_timer(owner_id)
+                self._cancel_idle_timer(owner_id)
                 logger.info(
                     SANDBOX_LIFECYCLE_ACQUIRE,
                     strategy="per-agent",
@@ -103,15 +111,24 @@ class PerAgentStrategy:
                 )
 
         # Destroy the losing handle outside the lock.
-        if loser is not None and loser_destroy is not None:
-            try:
-                await loser_destroy(loser)
-            except Exception:
+        if loser is not None:
+            if loser_destroy is not None:
+                try:
+                    await loser_destroy(loser)
+                except Exception:
+                    logger.warning(
+                        SANDBOX_LIFECYCLE_DESTROY_FAILED,
+                        strategy="per-agent",
+                        owner_id=owner_id,
+                        container_id=loser.container_id,
+                    )
+            else:
                 logger.warning(
                     SANDBOX_LIFECYCLE_DESTROY_FAILED,
                     strategy="per-agent",
                     owner_id=owner_id,
                     container_id=loser.container_id,
+                    reason="no destroy_fn available for losing handle",
                 )
 
         return existing if existing is not None else handle
@@ -122,7 +139,12 @@ class PerAgentStrategy:
         owner_id: str,
         destroy_fn: Callable[[ContainerHandle], Awaitable[None]],
     ) -> None:
-        """Start a grace-period timer; destroy after expiry."""
+        """Start a grace-period timer; destroy after expiry.
+
+        Args:
+            owner_id: The same identifier passed to ``acquire``.
+            destroy_fn: Async callback to stop and remove the container.
+        """
         async with self._lock:
             if owner_id not in self._containers:
                 return
@@ -176,7 +198,11 @@ class PerAgentStrategy:
         *,
         destroy_fn: Callable[[ContainerHandle], Awaitable[None]],
     ) -> None:
-        """Cancel all timers, destroy all containers."""
+        """Cancel all timers, destroy all containers.
+
+        Args:
+            destroy_fn: Async callback to stop and remove each container.
+        """
         async with self._lock:
             all_tasks = list(self._timers.values()) + list(
                 self._idle_timers.values(),
@@ -221,6 +247,12 @@ class PerAgentStrategy:
     def _cancel_timer(self, owner_id: str) -> None:
         """Cancel a pending grace timer (must hold ``_lock``)."""
         timer = self._timers.pop(owner_id, None)
+        if timer is not None and not timer.done():
+            timer.cancel()
+
+    def _cancel_idle_timer(self, owner_id: str) -> None:
+        """Cancel a pending idle timer (must hold ``_lock``)."""
+        timer = self._idle_timers.pop(owner_id, None)
         if timer is not None and not timer.done():
             timer.cancel()
 
