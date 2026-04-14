@@ -8,6 +8,8 @@ All thresholds are configurable via constructor arguments
 with sensible defaults.
 """
 
+from typing import TYPE_CHECKING
+
 from synthorg.core.types import NotBlankStr
 from synthorg.meta.models import (
     OrgSignalSnapshot,
@@ -15,6 +17,12 @@ from synthorg.meta.models import (
     RuleMatch,
     RuleSeverity,
 )
+from synthorg.observability import get_logger
+
+if TYPE_CHECKING:
+    from synthorg.meta.protocol import SignalRule
+
+logger = get_logger(__name__)
 
 # ── Performance rules ──────────────────────────────────────────────
 
@@ -448,18 +456,7 @@ class ErrorSpikeRule:
 # ── Default rule set ───────────────────────────────────────────────
 
 
-def default_rules() -> tuple[
-    QualityDecliningRule
-    | SuccessRateDropRule
-    | BudgetOverrunRule
-    | CoordinationCostRatioRule
-    | CoordinationOverheadRule
-    | StragglerBottleneckRule
-    | RedundancyRule
-    | ScalingFailureRule
-    | ErrorSpikeRule,
-    ...,
-]:
+def default_rules() -> tuple[SignalRule, ...]:
     """Create the default set of built-in rules with default thresholds.
 
     Returns:

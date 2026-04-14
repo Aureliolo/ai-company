@@ -31,7 +31,7 @@ def get_server_config() -> dict[str, object]:
         "name": SERVER_NAME,
         "description": SERVER_DESCRIPTION,
         "transport": "stdio",
-        "enabled": True,
+        "enabled": False,
         "enabled_tools": tool_names,
         "tool_prefix": TOOL_PREFIX,
         "tool_count": len(tools),

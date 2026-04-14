@@ -15,7 +15,14 @@ from synthorg.meta.models import (
     ApplyResult,  # noqa: TC001
     GuardResult,  # noqa: TC001
     ImprovementProposal,  # noqa: TC001
+    OrgBudgetSummary,  # noqa: TC001
+    OrgCoordinationSummary,  # noqa: TC001
+    OrgErrorSummary,  # noqa: TC001
+    OrgEvolutionSummary,  # noqa: TC001
+    OrgPerformanceSummary,  # noqa: TC001
+    OrgScalingSummary,  # noqa: TC001
     OrgSignalSnapshot,  # noqa: TC001
+    OrgTelemetrySummary,  # noqa: TC001
     ProposalAltitude,  # noqa: TC001
     RegressionResult,  # noqa: TC001
     RegressionThresholds,  # noqa: TC001
@@ -43,7 +50,15 @@ class SignalAggregator(Protocol):
         *,
         since: datetime,
         until: datetime,
-    ) -> dict[str, object]:
+    ) -> (
+        OrgPerformanceSummary
+        | OrgBudgetSummary
+        | OrgCoordinationSummary
+        | OrgScalingSummary
+        | OrgErrorSummary
+        | OrgEvolutionSummary
+        | OrgTelemetrySummary
+    ):
         """Collect and aggregate signals for the time window.
 
         Args:

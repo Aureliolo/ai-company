@@ -9,7 +9,11 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from synthorg.core.types import NotBlankStr
 from synthorg.meta.models import EvolutionMode, RolloutStrategyType
+from synthorg.observability import get_logger
+
+logger = get_logger(__name__)
 
 
 class RuleConfig(BaseModel):
@@ -22,8 +26,8 @@ class RuleConfig(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
-    disabled_rules: tuple[str, ...] = ()
-    custom_rule_modules: tuple[str, ...] = ()
+    disabled_rules: tuple[NotBlankStr, ...] = ()
+    custom_rule_modules: tuple[NotBlankStr, ...] = ()
 
 
 class RolloutConfig(BaseModel):
@@ -164,8 +168,8 @@ class SelfImprovementConfig(BaseModel):
         default_factory=PromptTuningConfig,
     )
 
-    analysis_model: str = Field(
-        default="example-small-001",
+    analysis_model: NotBlankStr = Field(
+        default=NotBlankStr("example-small-001"),
         description="Model for proposal analysis LLM calls",
     )
     analysis_temperature: float = Field(default=0.3, ge=0.0, le=2.0)

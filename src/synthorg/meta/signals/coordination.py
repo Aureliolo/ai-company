@@ -9,10 +9,7 @@ from typing import TYPE_CHECKING
 from synthorg.core.types import NotBlankStr
 from synthorg.meta.models import OrgCoordinationSummary
 from synthorg.observability import get_logger
-from synthorg.observability.events.meta import (
-    META_SIGNAL_AGGREGATION_COMPLETED,
-    META_SIGNAL_AGGREGATION_FAILED,
-)
+from synthorg.observability.events.meta import META_SIGNAL_AGGREGATION_COMPLETED
 
 if TYPE_CHECKING:
     from datetime import datetime
@@ -46,14 +43,8 @@ class CoordinationSignalAggregator:
             Org-wide coordination summary.
         """
         _ = since, until  # Will be used by real implementation.
-        try:
-            logger.info(
-                META_SIGNAL_AGGREGATION_COMPLETED,
-                domain="coordination",
-            )
-        except Exception:
-            logger.exception(
-                META_SIGNAL_AGGREGATION_FAILED,
-                domain="coordination",
-            )
+        logger.info(
+            META_SIGNAL_AGGREGATION_COMPLETED,
+            domain="coordination",
+        )
         return _EMPTY

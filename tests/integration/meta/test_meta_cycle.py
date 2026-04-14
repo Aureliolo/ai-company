@@ -77,10 +77,13 @@ class TestMetaCycleIntegration:
         proposals = await svc.run_cycle(_snap(quality=4.0))
 
         assert len(proposals) >= 1
-        proposal = proposals[0]
-        assert proposal.altitude == ProposalAltitude.CONFIG_TUNING
+        proposal = next(
+            p
+            for p in proposals
+            if p.source_rule == "quality_declining"
+            and p.altitude == ProposalAltitude.CONFIG_TUNING
+        )
         assert proposal.status == ProposalStatus.PENDING
-        assert proposal.source_rule == "quality_declining"
         assert proposal.rollback_plan.operations
         assert proposal.confidence > 0.0
 
@@ -109,8 +112,13 @@ class TestMetaCycleIntegration:
         )
         proposals = await svc.run_cycle(_snap(quality=4.0))
         assert len(proposals) >= 1
-
-        result = await svc.execute_rollout(proposals[0])
+        proposal = next(
+            p
+            for p in proposals
+            if p.source_rule == "quality_declining"
+            and p.altitude == ProposalAltitude.CONFIG_TUNING
+        )
+        result = await svc.execute_rollout(proposal)
         assert result.outcome == RolloutOutcome.SUCCESS
 
     async def test_disabled_altitude_blocks_proposals(self) -> None:

@@ -131,9 +131,7 @@ class SnapshotBuilder:
             """Run aggregator, store result on success."""
             try:
                 results[name] = await coro  # type: ignore[misc]
-            except MemoryError:
-                raise
-            except RecursionError:
+            except MemoryError, RecursionError:
                 raise
             except Exception:
                 logger.exception(

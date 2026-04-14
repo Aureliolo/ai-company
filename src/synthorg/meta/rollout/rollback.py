@@ -38,9 +38,13 @@ class RollbackExecutor:
         """
         plan = proposal.rollback_plan
         try:
-            # Placeholder: real implementation applies each operation
-            # in order (revert config, delete role, remove principle).
-            count = len(plan.operations)
+            # Placeholder: real implementation iterates operations
+            # and applies each inverse action (revert config, delete
+            # role, remove principle).  For now, count + log.
+            count = 0
+            for _operation in plan.operations:
+                # TODO: dispatch to operation handler per type.
+                count += 1
             logger.info(
                 META_ROLLBACK_COMPLETED,
                 proposal_id=str(proposal.id),

@@ -71,7 +71,7 @@ class StatisticalDetector:
                     breached_metric="quality",
                     baseline_value=base_q,
                     current_value=curr_q,
-                    p_value=0.01,
+                    p_value=None,  # TODO: compute via Welch's t-test
                 )
 
         return RegressionResult(

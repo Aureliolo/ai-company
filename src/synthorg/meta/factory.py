@@ -5,6 +5,8 @@ and regression detectors from configuration, filtering by
 enabled altitudes and disabled rules.
 """
 
+from copy import deepcopy
+from types import MappingProxyType
 from typing import TYPE_CHECKING
 
 from synthorg.meta.appliers.architecture_applier import (
@@ -36,6 +38,8 @@ from synthorg.observability.events.meta import (
 )
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping
+
     from synthorg.meta.config import SelfImprovementConfig
     from synthorg.meta.protocol import (
         ImprovementStrategy,
@@ -129,17 +133,21 @@ def build_guards(
     )
 
 
-def build_appliers() -> dict[ProposalAltitude, ProposalApplier]:
+def build_appliers() -> Mapping[ProposalAltitude, ProposalApplier]:
     """Build proposal appliers for each altitude.
 
     Returns:
-        Mapping of altitude to applier.
+        Read-only mapping of altitude to applier.
     """
-    return {
-        ProposalAltitude.CONFIG_TUNING: ConfigApplier(),
-        ProposalAltitude.ARCHITECTURE: ArchitectureApplier(),
-        ProposalAltitude.PROMPT_TUNING: PromptApplier(),
-    }
+    return MappingProxyType(
+        deepcopy(
+            {
+                ProposalAltitude.CONFIG_TUNING: ConfigApplier(),
+                ProposalAltitude.ARCHITECTURE: ArchitectureApplier(),
+                ProposalAltitude.PROMPT_TUNING: PromptApplier(),
+            }
+        )
+    )
 
 
 def build_regression_detector() -> TieredRegressionDetector:
@@ -151,13 +159,19 @@ def build_regression_detector() -> TieredRegressionDetector:
     return TieredRegressionDetector()
 
 
-def build_rollout_strategies() -> dict[str, BeforeAfterRollout | CanarySubsetRollout]:
+def build_rollout_strategies() -> Mapping[
+    str, BeforeAfterRollout | CanarySubsetRollout
+]:
     """Build available rollout strategies.
 
     Returns:
-        Mapping of strategy name to rollout strategy.
+        Read-only mapping of strategy name to rollout strategy.
     """
-    return {
-        "before_after": BeforeAfterRollout(),
-        "canary": CanarySubsetRollout(),
-    }
+    return MappingProxyType(
+        deepcopy(
+            {
+                "before_after": BeforeAfterRollout(),
+                "canary": CanarySubsetRollout(),
+            }
+        )
+    )

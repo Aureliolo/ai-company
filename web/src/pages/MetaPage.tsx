@@ -6,7 +6,7 @@ import { ErrorBoundary } from '@/components/ui/error-boundary'
 import { MetricCard } from '@/components/ui/metric-card'
 import { SectionCard } from '@/components/ui/section-card'
 
-import { MetaProposalList } from './meta/MetaProposalList'
+import { MetaProposalList, type ProposalSummary } from './meta/MetaProposalList'
 import { MetaRuleStatus } from './meta/MetaRuleStatus'
 import { MetaSignalOverview } from './meta/MetaSignalOverview'
 
@@ -14,7 +14,7 @@ export default function MetaPage() {
   // Placeholder: real implementation wires up useMetaData() hook.
   const loading = false
   const enabled = false
-  const proposals: { id: string; title: string; altitude: string; status: string; confidence: number }[] = []
+  const proposals: ProposalSummary[] = []
 
   if (!enabled) {
     return (

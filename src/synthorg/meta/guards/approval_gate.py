@@ -70,7 +70,7 @@ class ApprovalGateGuard:
             guard=self.name,
             proposal_id=str(proposal.id),
             risk_level=risk,
-            altitude=proposal.altitude,
+            altitude=proposal.altitude.value,
         )
         return GuardResult(
             guard_name=self.name,

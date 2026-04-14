@@ -5,6 +5,7 @@ Staff agent (and external users) can invoke to query org health
 signals. This is the first slice of the broader API-as-MCP vision.
 """
 
+from copy import deepcopy
 from typing import Any
 
 from synthorg.observability import get_logger
@@ -156,6 +157,6 @@ def get_tool_definitions() -> tuple[dict[str, Any], ...]:
     """Return all MCP tool definitions for the signal server.
 
     Returns:
-        Tuple of tool definition dicts (name, description, parameters).
+        Deep-copied tuple of tool definition dicts.
     """
-    return SIGNAL_TOOLS
+    return deepcopy(SIGNAL_TOOLS)

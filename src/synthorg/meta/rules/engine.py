@@ -74,7 +74,7 @@ class RuleEngine:
                     logger.info(
                         META_RULE_FIRED,
                         rule=rule.name,
-                        severity=match.severity,
+                        severity=match.severity.value,
                         description=match.description,
                     )
                     matches.append(match)

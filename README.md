@@ -102,6 +102,8 @@ curl http://localhost:3001/api/v1/health
 
 **[Integrations](https://synthorg.io/docs/design/integrations/)** -- Typed connection catalog (GitHub, Slack, SMTP, database, generic HTTP, OAuth apps) with pluggable secret backends (Fernet-encrypted SQLite default, env-var, Vault/AWS/Azure stubs). Full OAuth 2.1 (authorization code + PKCE, device flow, client credentials) with proactive token refresh. Webhook receiver with pluggable signature verifiers (GitHub HMAC, Slack signing, generic HMAC) and replay protection. Per-connection health checks with background prober and status smoothing. Tool-side `@with_connection_rate_limit` decorator backed by a bus-coordinated sliding window. Bundled MCP server catalog and local-dev ngrok tunnel.
 
+**[Self-Improvement](https://synthorg.io/docs/design/self-improvement/)** -- Company-level meta-loop that observes 7 signal domains (performance, budget, coordination, scaling, errors, evolution, telemetry), evaluates 9 built-in rules, and produces improvement proposals at 3 altitudes (config tuning, architecture, prompt tuning). Mandatory human approval, concrete rollback plans, staged rollout with canary selection, and tiered regression detection (threshold + statistical). Feature is disabled by default.
+
 **[CLI](https://synthorg.io/get/)** -- Go binary with init, start, stop, status, doctor, config, wipe, cleanup commands. Cosign signature and SLSA provenance verification at pull time.
 
 ## Architecture
@@ -117,7 +119,11 @@ graph TB
     Engine --> Security[Security & Trust]
     Engine --> Budget[Budget & Cost]
     Engine --> HR[HR Engine]
+    Meta[Meta-Loop] --> Engine
+    Meta --> HR
+    Meta --> Budget
     API[REST & WebSocket API] --> Engine
+    API --> Meta
     Dashboard[React Dashboard] --> API
     CLI[Go CLI] --> API
     Observability[Observability] -.-> Engine

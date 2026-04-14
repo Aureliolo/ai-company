@@ -272,22 +272,33 @@ class ImprovementProposal(BaseModel):
                 "must all be set or all be None"
             )
             raise ValueError(msg)
+        terminal = {
+            ProposalStatus.APPROVED,
+            ProposalStatus.REJECTED,
+            ProposalStatus.APPLIED,
+        }
+        if self.status in terminal and not all(decided):
+            msg = "non-pending proposals must include decision metadata"
+            raise ValueError(msg)
         return self
 
     @model_validator(mode="after")
     def _validate_changes_match_altitude(self) -> Self:
-        """Ensure at least one change exists for the declared altitude."""
-        if self.altitude == ProposalAltitude.CONFIG_TUNING and not self.config_changes:
-            msg = "config_tuning proposals must have at least one config_change"
-            raise ValueError(msg)
-        if (
-            self.altitude == ProposalAltitude.ARCHITECTURE
-            and not self.architecture_changes
+        """Ensure only the declared altitude carries changes."""
+        if self.altitude == ProposalAltitude.CONFIG_TUNING and (
+            not self.config_changes or self.architecture_changes or self.prompt_changes
         ):
-            msg = "architecture proposals must have at least one architecture_change"
+            msg = "config_tuning proposals must contain only config_changes"
             raise ValueError(msg)
-        if self.altitude == ProposalAltitude.PROMPT_TUNING and not self.prompt_changes:
-            msg = "prompt_tuning proposals must have at least one prompt_change"
+        if self.altitude == ProposalAltitude.ARCHITECTURE and (
+            not self.architecture_changes or self.config_changes or self.prompt_changes
+        ):
+            msg = "architecture proposals must contain only architecture_changes"
+            raise ValueError(msg)
+        if self.altitude == ProposalAltitude.PROMPT_TUNING and (
+            not self.prompt_changes or self.config_changes or self.architecture_changes
+        ):
+            msg = "prompt_tuning proposals must contain only prompt_changes"
             raise ValueError(msg)
         return self
 
@@ -385,6 +396,14 @@ class RolloutResult(BaseModel):
     completed_at: AwareDatetime = Field(
         default_factory=lambda: datetime.now(UTC),
     )
+
+    @model_validator(mode="after")
+    def _validate_regressed_has_verdict(self) -> Self:
+        """Regressed outcomes must include a regression verdict."""
+        if self.outcome == RolloutOutcome.REGRESSED and not self.regression_verdict:
+            msg = "regressed outcomes must include regression_verdict"
+            raise ValueError(msg)
+        return self
 
 
 # ── Apply result ───────────────────────────────────────────────────
@@ -659,6 +678,19 @@ class OrgErrorSummary(BaseModel):
     total_findings: int = Field(default=0, ge=0)
     categories: tuple[ErrorCategorySummary, ...] = ()
     most_severe_category: NotBlankStr | None = None
+
+    @model_validator(mode="after")
+    def _validate_severe_category_exists(self) -> Self:
+        """Ensure most_severe_category references an actual category."""
+        if self.most_severe_category:
+            names = {c.category for c in self.categories}
+            if self.most_severe_category not in names:
+                msg = (
+                    f"most_severe_category '{self.most_severe_category}' "
+                    f"not found in categories"
+                )
+                raise ValueError(msg)
+        return self
 
 
 class EvolutionOutcomeSummary(BaseModel):

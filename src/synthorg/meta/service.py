@@ -4,6 +4,7 @@ Central service that ties together signal aggregation, rule
 evaluation, strategy dispatch, guard chain, and rollout execution.
 """
 
+import asyncio
 from typing import TYPE_CHECKING
 
 from synthorg.meta.factory import (
@@ -78,18 +79,8 @@ class SelfImprovementService:
             logger.info(META_CYCLE_NO_TRIGGERS)
             return ()
 
-        # Step 2: Generate proposals from strategies.
-        all_proposals: list[ImprovementProposal] = []
-        for strategy in self._strategies:
-            relevant = tuple(
-                m for m in matches if strategy.altitude in m.suggested_altitudes
-            )
-            if relevant:
-                proposals = await strategy.propose(
-                    snapshot=snapshot,
-                    triggered_rules=relevant,
-                )
-                all_proposals.extend(proposals)
+        # Step 2: Generate proposals from strategies (parallel).
+        all_proposals = await self._dispatch_strategies(snapshot, matches)
 
         # Step 3: Filter through guard chain.
         approved: list[ImprovementProposal] = []
@@ -132,12 +123,14 @@ class SelfImprovementService:
         applier = self._appliers.get(proposal.altitude)
         if applier is None:
             msg = f"No applier for altitude {proposal.altitude}"
+            logger.error(msg, altitude=proposal.altitude.value)
             raise ValueError(msg)
 
         strategy_name = proposal.rollout_strategy.value
         rollout = self._rollout_strategies.get(strategy_name)
         if rollout is None:
             msg = f"No rollout strategy '{strategy_name}'"
+            logger.error(msg, strategy=strategy_name)
             raise ValueError(msg)
 
         return await rollout.execute(
@@ -145,3 +138,38 @@ class SelfImprovementService:
             applier=applier,
             detector=self._detector,
         )
+
+    async def _dispatch_strategies(
+        self,
+        snapshot: OrgSignalSnapshot,
+        matches: tuple[object, ...],
+    ) -> list[ImprovementProposal]:
+        """Run strategies in parallel via TaskGroup."""
+        results: list[ImprovementProposal] = []
+
+        async def _run(
+            strategy: object,
+            relevant: tuple[object, ...],
+        ) -> tuple[ImprovementProposal, ...]:
+            return await strategy.propose(  # type: ignore[union-attr]
+                snapshot=snapshot,
+                triggered_rules=relevant,
+            )
+
+        pairs: list[tuple[object, tuple[object, ...]]] = []
+        for strategy in self._strategies:
+            relevant = tuple(
+                m
+                for m in matches
+                if strategy.altitude in m.suggested_altitudes  # type: ignore[attr-defined]
+            )
+            if relevant:
+                pairs.append((strategy, relevant))
+
+        if pairs:
+            async with asyncio.TaskGroup() as tg:
+                tasks = [tg.create_task(_run(s, r)) for s, r in pairs]
+            for task in tasks:
+                results.extend(task.result())
+
+        return results

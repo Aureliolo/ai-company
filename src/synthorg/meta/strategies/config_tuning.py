@@ -261,7 +261,7 @@ class ConfigTuningStrategy:
             title="Reduce coordination overhead spend",
             description=(
                 f"Coordination cost ratio at "
-                f"{ctx.get('coordination_ratio', '?'):.1%}. "
+                f"{ctx.get('coordination_ratio', 0.0):.1%}. "
                 f"Reduce max parallel tasks to lower overhead."
             ),
             rationale=ProposalRationale(
@@ -307,7 +307,7 @@ class ConfigTuningStrategy:
             title="Reduce coordination overhead percentage",
             description=(
                 f"Coordination overhead at "
-                f"{ctx.get('overhead_pct', '?')}%. "
+                f"{ctx.get('overhead_pct', 0.0)}%. "
                 f"Switch more tasks to single-agent execution."
             ),
             rationale=ProposalRationale(

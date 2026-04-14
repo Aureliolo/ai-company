@@ -56,11 +56,9 @@ META_APPLY_STARTED: Final[str] = "meta.apply.started"
 META_APPLY_COMPLETED: Final[str] = "meta.apply.completed"
 META_APPLY_FAILED: Final[str] = "meta.apply.failed"
 
-# -- Factory/config events ----------------------------------------------
+# -- Rule/factory/config events -----------------------------------------
 
 META_RULE_EVALUATION_FAILED: Final[str] = "meta.rule.evaluation_failed"
-
-# -- Factory/config events ----------------------------------------------
 
 META_CONFIG_LOADED: Final[str] = "meta.config.loaded"
 META_STRATEGY_REGISTERED: Final[str] = "meta.strategy.registered"

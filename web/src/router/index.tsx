@@ -121,7 +121,7 @@ export const router = createBrowserRouter([
               { path: 'budget/forecast', element: <BudgetForecastPage /> },
               { path: 'approvals', element: <ApprovalsPage /> },
               { path: 'scaling', element: <ScalingPage /> },
-              { path: 'meta', element: <MetaPage /> },
+              { path: ROUTES.META.slice(1), element: <MetaPage /> },
               { path: 'agents', element: <AgentsPage /> },
               { path: 'agents/:agentId', element: <AgentDetailPage /> },
               { path: 'messages', element: <MessagesPage /> },

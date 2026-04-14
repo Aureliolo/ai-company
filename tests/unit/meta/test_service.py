@@ -77,13 +77,13 @@ class TestSelfImprovementService:
     async def test_quality_declining_produces_proposal(self) -> None:
         svc = self._svc()
         result = await svc.run_cycle(_snap(quality=4.0))
-        assert len(result) >= 1
+        assert len(result) == 1
         assert all(p.altitude == ProposalAltitude.CONFIG_TUNING for p in result)
 
     async def test_budget_overrun_produces_critical(self) -> None:
         svc = self._svc()
         result = await svc.run_cycle(_snap(days_left=7))
-        assert len(result) >= 1
+        assert len(result) == 1
         sources = {p.source_rule for p in result}
         assert "budget_overrun" in sources
 
@@ -115,12 +115,9 @@ class TestSelfImprovementService:
         rollout_result = await svc.execute_rollout(proposals[0])
         assert rollout_result.outcome == RolloutOutcome.SUCCESS
 
-    async def test_rollout_invalid_altitude_raises(self) -> None:
+    async def test_rollout_succeeds_for_valid_altitude(self) -> None:
         svc = self._svc()
         proposals = await svc.run_cycle(_snap(quality=4.0))
         assert len(proposals) >= 1
-        # Manually create a proposal with unknown altitude would fail
-        # at model validation, so instead test that rollout works for
-        # known altitudes.
         result = await svc.execute_rollout(proposals[0])
         assert result.outcome == RolloutOutcome.SUCCESS

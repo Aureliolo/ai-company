@@ -33,8 +33,13 @@ pytestmark = pytest.mark.unit
 
 # ── Helpers ────────────────────────────────────────────────────────
 
-_NOW = datetime.now(UTC)
-_WEEK_AGO = _NOW - timedelta(days=7)
+
+def _now() -> datetime:
+    return datetime.now(UTC)
+
+
+def _week_ago() -> datetime:
+    return _now() - timedelta(days=7)
 
 
 def _make_mock_tracker(
@@ -87,7 +92,7 @@ class TestPerformanceSignalAggregator:
             tracker=tracker,
             agent_ids_provider=list,
         )
-        result = await agg.aggregate(since=_WEEK_AGO, until=_NOW)
+        result = await agg.aggregate(since=_week_ago(), until=_now())
         assert isinstance(result, OrgPerformanceSummary)
         assert result.agent_count == 0
 
@@ -97,7 +102,7 @@ class TestPerformanceSignalAggregator:
             tracker=tracker,
             agent_ids_provider=lambda: ["agent-1"],
         )
-        result = await agg.aggregate(since=_WEEK_AGO, until=_NOW)
+        result = await agg.aggregate(since=_week_ago(), until=_now())
         assert result.agent_count == 1
         assert result.avg_quality_score == 7.5
         assert result.avg_success_rate == 0.85
@@ -129,7 +134,7 @@ class TestPerformanceSignalAggregator:
             tracker=tracker,
             agent_ids_provider=lambda: ["agent-1", "agent-2"],
         )
-        result = await agg.aggregate(since=_WEEK_AGO, until=_NOW)
+        result = await agg.aggregate(since=_week_ago(), until=_now())
         assert result.agent_count == 2
         assert result.avg_quality_score == 7.0
         assert result.avg_success_rate == 0.85
@@ -146,7 +151,7 @@ class TestPerformanceSignalAggregator:
             tracker=tracker,
             agent_ids_provider=lambda: ["agent-1"],
         )
-        result = await agg.aggregate(since=_WEEK_AGO, until=_NOW)
+        result = await agg.aggregate(since=_week_ago(), until=_now())
         metric_names = {m.name for m in result.metrics}
         assert "success_rate_7d" in metric_names
         assert "success_rate_30d" in metric_names
@@ -167,7 +172,7 @@ class TestPerformanceSignalAggregator:
             tracker=tracker,
             agent_ids_provider=lambda: ["agent-1"],
         )
-        result = await agg.aggregate(since=_WEEK_AGO, until=_NOW)
+        result = await agg.aggregate(since=_week_ago(), until=_now())
         assert result.agent_count == 0
 
 
@@ -183,7 +188,7 @@ class TestBudgetSignalAggregator:
 
     async def test_returns_budget_summary(self) -> None:
         agg = BudgetSignalAggregator(cost_record_provider=list)
-        result = await agg.aggregate(since=_WEEK_AGO, until=_NOW)
+        result = await agg.aggregate(since=_week_ago(), until=_now())
         assert isinstance(result, OrgBudgetSummary)
 
 
@@ -192,7 +197,7 @@ class TestCoordinationSignalAggregator:
 
     async def test_returns_coordination_summary(self) -> None:
         agg = CoordinationSignalAggregator()
-        result = await agg.aggregate(since=_WEEK_AGO, until=_NOW)
+        result = await agg.aggregate(since=_week_ago(), until=_now())
         assert isinstance(result, OrgCoordinationSummary)
 
 
@@ -201,7 +206,7 @@ class TestScalingSignalAggregator:
 
     async def test_returns_scaling_summary(self) -> None:
         agg = ScalingSignalAggregator()
-        result = await agg.aggregate(since=_WEEK_AGO, until=_NOW)
+        result = await agg.aggregate(since=_week_ago(), until=_now())
         assert isinstance(result, OrgScalingSummary)
 
 
@@ -210,7 +215,7 @@ class TestErrorSignalAggregator:
 
     async def test_returns_error_summary(self) -> None:
         agg = ErrorSignalAggregator()
-        result = await agg.aggregate(since=_WEEK_AGO, until=_NOW)
+        result = await agg.aggregate(since=_week_ago(), until=_now())
         assert isinstance(result, OrgErrorSummary)
 
 
@@ -219,7 +224,7 @@ class TestEvolutionSignalAggregator:
 
     async def test_returns_evolution_summary(self) -> None:
         agg = EvolutionSignalAggregator()
-        result = await agg.aggregate(since=_WEEK_AGO, until=_NOW)
+        result = await agg.aggregate(since=_week_ago(), until=_now())
         assert isinstance(result, OrgEvolutionSummary)
 
 
@@ -228,7 +233,7 @@ class TestTelemetrySignalAggregator:
 
     async def test_returns_telemetry_summary(self) -> None:
         agg = TelemetrySignalAggregator()
-        result = await agg.aggregate(since=_WEEK_AGO, until=_NOW)
+        result = await agg.aggregate(since=_week_ago(), until=_now())
         assert isinstance(result, OrgTelemetrySummary)
 
 
@@ -256,7 +261,7 @@ class TestSnapshotBuilder:
 
     async def test_build_returns_snapshot(self) -> None:
         builder = self._make_builder()
-        snapshot = await builder.build(since=_WEEK_AGO)
+        snapshot = await builder.build(since=_week_ago())
         assert isinstance(snapshot, OrgSignalSnapshot)
         assert isinstance(snapshot.performance, OrgPerformanceSummary)
         assert isinstance(snapshot.budget, OrgBudgetSummary)
@@ -268,12 +273,12 @@ class TestSnapshotBuilder:
 
     async def test_build_with_explicit_until(self) -> None:
         builder = self._make_builder()
-        snapshot = await builder.build(since=_WEEK_AGO, until=_NOW)
+        snapshot = await builder.build(since=_week_ago(), until=_now())
         assert snapshot.collected_at is not None
 
-    async def test_build_parallel_execution(self) -> None:
-        """All aggregators should run in parallel."""
+    async def test_build_returns_snapshot_with_performance(self) -> None:
+        """Build returns a snapshot with aggregated performance data."""
         builder = self._make_builder()
-        snapshot = await builder.build(since=_WEEK_AGO)
+        snapshot = await builder.build(since=_week_ago())
         # Performance aggregator should have been called.
         assert snapshot.performance.agent_count == 1

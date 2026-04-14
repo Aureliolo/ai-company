@@ -90,7 +90,5 @@ class CanarySubsetRollout:
             proposal_id=proposal.id,
             outcome=RolloutOutcome.SUCCESS,
             regression_verdict=RegressionVerdict.NO_REGRESSION,
-            observation_hours_elapsed=float(
-                proposal.observation_window_hours,
-            ),
+            observation_hours_elapsed=0.0,  # TODO: actual observation pending
         )

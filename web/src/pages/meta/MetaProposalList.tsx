@@ -2,7 +2,7 @@ import { EmptyState } from '@/components/ui/empty-state'
 import { Brain } from 'lucide-react'
 
 /** Minimal proposal shape for display purposes. */
-interface ProposalSummary {
+export interface ProposalSummary {
   id: string
   title: string
   altitude: string

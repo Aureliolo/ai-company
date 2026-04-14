@@ -33,7 +33,9 @@ class PromptTuningStrategy:
 
     Proposes org-wide prompt policies as constitutional principles
     that get injected into agent prompts. The evolution mode
-    determines how these interact with per-agent evolution (#243).
+    determines how these interact with per-agent evolution:
+    ORG_WIDE applies to all agents, OVERRIDE replaces per-agent
+    settings, ADVISORY suggests but lets per-agent evolution decide.
 
     Args:
         config: Self-improvement configuration.

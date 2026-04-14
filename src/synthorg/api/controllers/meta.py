@@ -33,6 +33,8 @@ class MetaController(Controller):
         Returns:
             Current SelfImprovementConfig as dict.
         """
+        # TODO: inject runtime config via Litestar DI once persistence
+        # layer is wired. Until then, returns defaults.
         config = SelfImprovementConfig()
         return ApiResponse[dict[str, Any]](
             data=config.model_dump(),
@@ -48,6 +50,7 @@ class MetaController(Controller):
         from synthorg.meta.rules.builtin import default_rules  # noqa: PLC0415
 
         rules = default_rules()
+        # TODO: inject runtime config via Litestar DI.
         config = SelfImprovementConfig()
         disabled = set(config.rules.disabled_rules)
         rule_list = [
