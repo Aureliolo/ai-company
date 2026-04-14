@@ -29,7 +29,7 @@ class TestSandboxLifecycleConfigValidation:
 
     @pytest.mark.parametrize("strategy", ["per-agent", "per-task", "per-call"])
     def test_valid_strategies(self, strategy: str) -> None:
-        config = SandboxLifecycleConfig(strategy=strategy)
+        config = SandboxLifecycleConfig(strategy=strategy)  # type: ignore[arg-type]
         assert config.strategy == strategy
 
     def test_invalid_strategy_rejected(self) -> None:
