@@ -271,6 +271,7 @@ class TestEventConstants:
             "call_classification",
             "coordination_metrics",
             "database",
+            "meta",
             "sub_constraint",
             "telemetry",
             "terminal",
