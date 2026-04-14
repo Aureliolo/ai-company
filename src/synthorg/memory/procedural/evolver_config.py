@@ -54,7 +54,11 @@ class EvolverConfig(BaseModel):
     max_org_entries: int = Field(
         default=10000,
         ge=1,
-        description="Ceiling on org-scope entries",
+        description=(
+            "Ceiling on org-scope entries. Reserved for future "
+            "org-memory pruning -- AutonomousSkillEvolver is "
+            "proposal-only and does not enforce this limit"
+        ),
     )
     requires_human_approval: Literal[True] = Field(
         default=True,

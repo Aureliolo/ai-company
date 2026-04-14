@@ -19,6 +19,9 @@ from pydantic import (
 
 from synthorg.core.enums import TaskType  # noqa: TC001
 from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.observability import get_logger
+
+logger = get_logger(__name__)
 
 
 class ProceduralMemoryScope(StrEnum):

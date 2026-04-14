@@ -6,6 +6,10 @@ resolving to the same resource share a single citation number.
 
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
+from synthorg.observability import get_logger
+
+logger = get_logger(__name__)
+
 _DEFAULT_PORTS: dict[str, int] = {"http": 80, "https": 443}
 
 
@@ -35,12 +39,12 @@ def normalize_url(raw: str) -> str:
     if port is not None and _DEFAULT_PORTS.get(scheme) == port:
         port = None
 
-    netloc = hostname
-    if parts.username:
-        user_info = parts.username
-        if parts.password:
-            user_info += f":{parts.password}"
-        netloc = f"{user_info}@{netloc}"
+    # Wrap IPv6 addresses in brackets for valid netloc
+    if ":" in hostname and not hostname.startswith("["):
+        netloc = f"[{hostname}]"
+    else:
+        netloc = hostname
+    # Strip userinfo (credentials) -- security risk and dedup noise
     if port is not None:
         netloc = f"{netloc}:{port}"
 

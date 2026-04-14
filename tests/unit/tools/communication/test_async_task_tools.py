@@ -135,10 +135,13 @@ class TestListAsyncTasksTool:
     async def test_with_tasks(self) -> None:
         svc = _make_service()
         svc.list_async_tasks.return_value = (
-            AsyncTaskStatus.RUNNING,
-            AsyncTaskStatus.COMPLETED,
+            ("task-1", AsyncTaskStatus.RUNNING),
+            ("task-2", AsyncTaskStatus.COMPLETED),
         )
         tool = ListAsyncTasksTool(service=svc)
         result = await tool.execute(arguments={})
         data = json.loads(result.content)
-        assert data["tasks"] == ["running", "completed"]
+        assert data["tasks"] == [
+            {"task_id": "task-1", "status": "running"},
+            {"task_id": "task-2", "status": "completed"},
+        ]

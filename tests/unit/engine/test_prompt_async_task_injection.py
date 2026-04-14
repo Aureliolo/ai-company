@@ -42,24 +42,19 @@ class TestAsyncTaskPromptInjection:
         assert "running" in prompt.content
         assert "async_tasks" in prompt.sections
 
-    def test_section_absent_when_empty(
+    @pytest.mark.parametrize(
+        "state",
+        [AsyncTaskStateChannel(), None],
+        ids=["empty_channel", "none"],
+    )
+    def test_section_absent_for_empty_or_none(
         self,
         sample_agent_with_personality: AgentIdentity,
-    ) -> None:
-        channel = AsyncTaskStateChannel()
-        prompt = build_system_prompt(
-            agent=sample_agent_with_personality,
-            async_task_state=channel,
-        )
-        assert "Active Async Tasks" not in prompt.content
-
-    def test_section_absent_when_none(
-        self,
-        sample_agent_with_personality: AgentIdentity,
+        state: AsyncTaskStateChannel | None,
     ) -> None:
         prompt = build_system_prompt(
             agent=sample_agent_with_personality,
-            async_task_state=None,
+            async_task_state=state,
         )
         assert "Active Async Tasks" not in prompt.content
 

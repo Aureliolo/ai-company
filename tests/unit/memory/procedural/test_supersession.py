@@ -78,10 +78,10 @@ class TestEvaluateSupersession:
     def test_partial_overlap(self) -> None:
         """Conditions overlap but neither is a superset."""
         existing = _make_proposal(
-            condition="When database connections fail",
+            condition="When database connections fail due to timeouts",
         )
         candidate = _make_proposal(
-            condition="When API rate limits are exceeded",
+            condition="When database connections fail intermittently under load",
         )
         result = evaluate_supersession(
             candidate=candidate,

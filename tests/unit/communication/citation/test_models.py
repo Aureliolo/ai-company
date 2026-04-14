@@ -41,7 +41,7 @@ class TestCitation:
         with pytest.raises(ValidationError, match="greater than or equal to 1"):
             self._make_citation(number=0)
 
-    def test_number_zero_rejected(self) -> None:
+    def test_number_negative_rejected(self) -> None:
         with pytest.raises(ValidationError):
             self._make_citation(number=-1)
 

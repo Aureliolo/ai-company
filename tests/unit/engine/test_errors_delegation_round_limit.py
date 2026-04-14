@@ -23,6 +23,6 @@ class TestDelegationRoundLimitError:
         assert "6" in msg  # hard limit = 2 * soft
         assert "3" in msg  # soft limit
 
-    def test_default_soft_limit(self) -> None:
+    def test_explicit_soft_limit(self) -> None:
         err = DelegationRoundLimitError(current_round=6, soft_limit=3)
         assert err.soft_limit == 3

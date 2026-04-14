@@ -88,7 +88,7 @@ class AsyncTaskService:
             type=TaskType.RESEARCH,
             project="default",
             created_by=supervisor_id,
-            assigned_to=task_spec.agent_id,
+            parent_task_id=task_spec.parent_task_id,
         )
         try:
             task = await self._engine.create_task(
@@ -100,6 +100,9 @@ class AsyncTaskService:
                 TaskStatus.ASSIGNED,
                 requested_by=supervisor_id,
                 reason="async_task_start",
+                transition_overrides={
+                    "assigned_to": task_spec.agent_id,
+                },
             )
         except Exception:
             logger.exception(
@@ -134,7 +137,7 @@ class AsyncTaskService:
             msg = f"Async task {task_id} not found"
             raise LookupError(msg)
 
-        status = _STATUS_MAP.get(task.status, AsyncTaskStatus.PENDING)
+        status = self._map_status(task.status)
         logger.debug(
             ASYNC_TASK_CHECKED,
             task_id=task_id,
@@ -166,7 +169,18 @@ class AsyncTaskService:
             msg = f"Async task {task_id} not found"
             raise LookupError(msg)
 
-        recipient = task.assigned_to or task.created_by
+        recipient = task.assigned_to
+        if recipient is None:
+            msg = (
+                f"Cannot update async task {task_id}: "
+                f"no assigned agent (task still in {task.status.value} state)"
+            )
+            logger.warning(
+                ASYNC_TASK_UPDATED,
+                task_id=task_id,
+                error=msg,
+            )
+            raise LookupError(msg)
         message = Message(
             timestamp=datetime.now(UTC),
             sender="async_task_service",
@@ -178,7 +192,7 @@ class AsyncTaskService:
         )
         await self._bus.send_direct(message, recipient=recipient)
 
-        status = _STATUS_MAP.get(task.status, AsyncTaskStatus.PENDING)
+        status = self._map_status(task.status)
         logger.info(
             ASYNC_TASK_UPDATED,
             task_id=task_id,
@@ -205,7 +219,7 @@ class AsyncTaskService:
             requested_by=supervisor_id,
             reason="ASYNC_CANCEL",
         )
-        status = _STATUS_MAP.get(task.status, AsyncTaskStatus.CANCELLED)
+        status = self._map_status(task.status)
         logger.info(
             ASYNC_TASK_CANCELLED,
             task_id=task_id,
@@ -213,11 +227,23 @@ class AsyncTaskService:
         )
         return status
 
+    def _map_status(self, task_status: TaskStatus) -> AsyncTaskStatus:
+        """Map TaskEngine status to AsyncTaskStatus with warning on unknown."""
+        result = _STATUS_MAP.get(task_status)
+        if result is None:
+            logger.warning(
+                ASYNC_TASK_CHECKED,
+                unknown_status=task_status.value,
+                fallback="pending",
+            )
+            return AsyncTaskStatus.PENDING
+        return result
+
     async def list_async_tasks(
         self,
         supervisor_task_id: str,
-    ) -> tuple[AsyncTaskStatus, ...]:
-        """List statuses of tasks under a supervisor task.
+    ) -> tuple[tuple[str, AsyncTaskStatus], ...]:
+        """List task ID + status pairs under a supervisor task.
 
         Filters TaskEngine tasks by ``parent_task_id``.
 
@@ -225,19 +251,19 @@ class AsyncTaskService:
             supervisor_task_id: The supervisor's own task ID.
 
         Returns:
-            Tuple of statuses for all child tasks.
+            Tuple of ``(task_id, status)`` pairs for all child tasks.
         """
         # TaskEngine.list_tasks doesn't filter by parent_task_id
         # directly, so we fetch and filter in-memory.
         tasks, _count = await self._engine.list_tasks()
-        child_statuses = tuple(
-            _STATUS_MAP.get(t.status, AsyncTaskStatus.PENDING)
+        children = tuple(
+            (t.id, self._map_status(t.status))
             for t in tasks
             if t.parent_task_id == supervisor_task_id
         )
         logger.debug(
             ASYNC_TASK_LISTED,
             supervisor_task_id=supervisor_task_id,
-            count=len(child_statuses),
+            count=len(children),
         )
-        return child_statuses
+        return children

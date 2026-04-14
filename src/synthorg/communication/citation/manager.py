@@ -79,7 +79,7 @@ class CitationManager(BaseModel):
         number = len(self.citations) + 1
         citation = Citation(
             number=number,
-            url=normalized,  # type: ignore[arg-type]
+            url=normalized,  # type: ignore[arg-type]  # normalize_url returns str; Pydantic coerces to AnyHttpUrl
             title=title,
             first_seen_at=datetime.now(UTC),
             first_seen_by_agent_id=agent_id,

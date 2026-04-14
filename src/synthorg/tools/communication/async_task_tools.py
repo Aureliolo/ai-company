@@ -11,6 +11,12 @@ from synthorg.communication.async_tasks.models import TaskSpec
 from synthorg.communication.async_tasks.service import AsyncTaskService  # noqa: TC001
 from synthorg.core.enums import ToolCategory
 from synthorg.observability import get_logger
+from synthorg.observability.events.async_task import (
+    ASYNC_TASK_TOOL_CANCEL_FAILED,
+    ASYNC_TASK_TOOL_CHECK_FAILED,
+    ASYNC_TASK_TOOL_START_FAILED,
+    ASYNC_TASK_TOOL_UPDATE_FAILED,
+)
 from synthorg.tools.base import BaseTool, ToolExecutionResult
 
 logger = get_logger(__name__)
@@ -73,7 +79,12 @@ _CANCEL_SCHEMA: Final[dict[str, Any]] = {
 
 _LIST_SCHEMA: Final[dict[str, Any]] = {
     "type": "object",
-    "properties": {},
+    "properties": {
+        "supervisor_task_id": {
+            "type": "string",
+            "description": "Supervisor task ID (optional, uses default if omitted)",
+        },
+    },
 }
 
 
@@ -113,7 +124,7 @@ class StartAsyncTaskTool(BaseTool):
             )
         except Exception as exc:
             logger.exception(
-                "async_task.tool.start_failed",
+                ASYNC_TASK_TOOL_START_FAILED,
                 error=str(exc),
             )
             return ToolExecutionResult(
@@ -149,7 +160,7 @@ class CheckAsyncTaskTool(BaseTool):
             )
         except LookupError as exc:
             logger.warning(
-                "async_task.tool.check_failed",
+                ASYNC_TASK_TOOL_CHECK_FAILED,
                 error=str(exc),
             )
             return ToolExecutionResult(
@@ -186,7 +197,7 @@ class UpdateAsyncTaskTool(BaseTool):
             )
         except LookupError as exc:
             logger.warning(
-                "async_task.tool.update_failed",
+                ASYNC_TASK_TOOL_UPDATE_FAILED,
                 error=str(exc),
             )
             return ToolExecutionResult(
@@ -229,7 +240,7 @@ class CancelAsyncTaskTool(BaseTool):
             )
         except Exception as exc:
             logger.exception(
-                "async_task.tool.cancel_failed",
+                ASYNC_TASK_TOOL_CANCEL_FAILED,
                 error=str(exc),
             )
             return ToolExecutionResult(
@@ -262,14 +273,20 @@ class ListAsyncTasksTool(BaseTool):
     async def execute(
         self,
         *,
-        arguments: dict[str, Any],  # noqa: ARG002
+        arguments: dict[str, Any],
     ) -> ToolExecutionResult:
         """List async tasks."""
-        statuses = await self._service.list_async_tasks(
+        task_id = arguments.get(
+            "supervisor_task_id",
             self._supervisor_task_id,
         )
+        children = await self._service.list_async_tasks(task_id)
         return ToolExecutionResult(
             content=json.dumps(
-                {"tasks": [s.value for s in statuses]},
+                {
+                    "tasks": [
+                        {"task_id": tid, "status": s.value} for tid, s in children
+                    ],
+                },
             ),
         )

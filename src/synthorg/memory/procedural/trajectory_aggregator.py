@@ -132,6 +132,8 @@ class TrajectoryAggregator:
             agents, sorted by occurrence count descending.
         """
         if not trajectories:
+            self.last_skipped_count = 0
+            logger.debug("trajectory.aggregate.empty_input")
             return ()
 
         groups: dict[str, list[AggregatedTrajectory]] = defaultdict(list)
@@ -164,4 +166,10 @@ class TrajectoryAggregator:
 
         self.last_skipped_count = skipped
         patterns.sort(key=lambda p: p.occurrence_count, reverse=True)
+        logger.debug(
+            "trajectory.aggregate.complete",
+            groups=len(groups),
+            patterns=len(patterns),
+            skipped=skipped,
+        )
         return tuple(patterns)

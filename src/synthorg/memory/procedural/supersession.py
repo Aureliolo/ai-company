@@ -123,28 +123,19 @@ def evaluate_supersession(
     condition_similarity = _similarity(cond_candidate, cond_existing)
     action_similarity = _similarity(act_candidate, act_existing)
 
-    # FULL: candidate covers existing condition + higher confidence
-    if (
-        condition_coverage >= _SUPERSET_THRESHOLD
-        and candidate.confidence > existing.confidence
-    ):
-        return SupersessionResult(
-            verdict=SupersessionVerdict.FULL,
-            candidate_id=candidate_id,
-            existing_id=existing_id,
-            reason=(
-                f"Candidate covers {condition_coverage:.0%} of "
-                f"existing condition with higher confidence "
-                f"({candidate.confidence:.2f} > "
-                f"{existing.confidence:.2f})"
-            ),
-        )
-
     # CONFLICT: high condition overlap + low action similarity
+    # (checked BEFORE FULL to prevent contradictory supersession)
     if (
         condition_similarity >= _OVERLAP_THRESHOLD
         and action_similarity < _OVERLAP_THRESHOLD
     ):
+        logger.info(
+            "supersession.conflict",
+            candidate_id=candidate_id,
+            existing_id=existing_id,
+            condition_similarity=f"{condition_similarity:.0%}",
+            action_similarity=f"{action_similarity:.0%}",
+        )
         return SupersessionResult(
             verdict=SupersessionVerdict.CONFLICT,
             candidate_id=candidate_id,
@@ -157,7 +148,38 @@ def evaluate_supersession(
             ),
         )
 
+    # FULL: candidate covers existing condition + compatible action + higher confidence
+    if (
+        condition_coverage >= _SUPERSET_THRESHOLD
+        and action_similarity >= _OVERLAP_THRESHOLD
+        and candidate.confidence > existing.confidence
+    ):
+        logger.info(
+            "supersession.full",
+            candidate_id=candidate_id,
+            existing_id=existing_id,
+            condition_coverage=f"{condition_coverage:.0%}",
+        )
+        return SupersessionResult(
+            verdict=SupersessionVerdict.FULL,
+            candidate_id=candidate_id,
+            existing_id=existing_id,
+            reason=(
+                f"Candidate covers {condition_coverage:.0%} of "
+                f"existing condition with higher confidence "
+                f"({candidate.confidence:.2f} > "
+                f"{existing.confidence:.2f})"
+            ),
+        )
+
     # PARTIAL: everything else
+    logger.debug(
+        "supersession.partial",
+        candidate_id=candidate_id,
+        existing_id=existing_id,
+        condition_similarity=f"{condition_similarity:.0%}",
+        action_similarity=f"{action_similarity:.0%}",
+    )
     return SupersessionResult(
         verdict=SupersessionVerdict.PARTIAL,
         candidate_id=candidate_id,

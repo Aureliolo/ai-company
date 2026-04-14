@@ -41,10 +41,14 @@ class TestEvolverConfig:
         with pytest.raises(ValidationError):
             config.enabled = True  # type: ignore[misc]
 
-    def test_confidence_out_of_range(self) -> None:
+    @pytest.mark.parametrize(
+        ("field", "value"),
+        [
+            ("min_confidence_for_org_promotion", 1.5),
+            ("min_agents_seen_pattern", 0),
+        ],
+        ids=["confidence_out_of_range", "min_agents_zero"],
+    )
+    def test_invalid_field_rejected(self, field: str, value: object) -> None:
         with pytest.raises(ValidationError):
-            EvolverConfig(min_confidence_for_org_promotion=1.5)
-
-    def test_min_agents_zero_rejected(self) -> None:
-        with pytest.raises(ValidationError):
-            EvolverConfig(min_agents_seen_pattern=0)
+            EvolverConfig(**{field: value})

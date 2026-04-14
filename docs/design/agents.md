@@ -128,6 +128,17 @@ Currently, the scorer uses string-based skill overlap only.
 default skill sets per role) and human-editable via the REST API. Auto-derivation from
 task completion history is a planned future enhancement.
 
+### Tool Namespaces
+
+Tools are grouped by namespace and gated by `ToolPermission`:
+
+| Namespace | Permission | Tools |
+|-----------|-----------|-------|
+| `communication.async_tasks` | `DELEGATION` | `start_async_task`, `check_async_task`, `update_async_task`, `cancel_async_task`, `list_async_tasks` |
+
+The `communication.async_tasks` tools provide supervisor-facing async task
+management wrapping `TaskEngine` (see [Async Delegation](communication.md#async-delegation)).
+
 ### Agent Configuration Example
 
 ???+ example "Full agent identity YAML"

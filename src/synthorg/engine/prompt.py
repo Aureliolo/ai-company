@@ -298,7 +298,7 @@ def build_system_prompt(  # noqa: PLR0913, C901
     # Inject async task state section (survives trimming -- appended
     # after the main render since it must never be trimmed away).
     if async_task_state is not None and async_task_state.records:
-        result = _inject_async_task_section(result, async_task_state)
+        result = _inject_async_task_section(result, async_task_state, estimator)
 
     return _log_and_return(agent, result)
 
@@ -306,14 +306,17 @@ def build_system_prompt(  # noqa: PLR0913, C901
 def _inject_async_task_section(
     prompt: SystemPrompt,
     state: AsyncTaskStateChannel,
+    estimator: PromptTokenEstimator,
 ) -> SystemPrompt:
     """Append an async task state section to a rendered prompt.
 
     This section is appended after trimming so it is never trimmed away.
+    Recomputes ``estimated_tokens`` to reflect the injected content.
 
     Args:
         prompt: The rendered system prompt.
         state: Async task state channel with records.
+        estimator: Token estimator for recomputing the count.
 
     Returns:
         Updated ``SystemPrompt`` with the async tasks section appended.
@@ -333,6 +336,7 @@ def _inject_async_task_section(
     return prompt.model_copy(
         update={
             "content": new_content,
+            "estimated_tokens": estimator.estimate_tokens(new_content),
             "sections": (*prompt.sections, "async_tasks"),
         },
     )

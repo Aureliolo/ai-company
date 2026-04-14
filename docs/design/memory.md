@@ -847,6 +847,56 @@ implementations in ``memory/procedural/propagation/``:
 All propagation strategies respect ``max_propagation_targets`` (default 10) and exclude
 the source agent.
 
+### Cross-Agent Skill Pool (Stage 3)
+
+Organization-wide shared skills extend procedural memory with an `ORG` scope.
+
+**`ProceduralMemoryScope` enum**: `AGENT` (per-agent private), `ROLE`,
+`DEPARTMENT`, `ORG` (organization-wide shared pool).
+
+**Extended `ProceduralMemoryProposal`** adds fields for org-scope lifecycle:
+
+- `scope: ProceduralMemoryScope` -- distribution scope
+- `supersedes: tuple[NotBlankStr, ...]` -- IDs of entries this supersedes
+- `superseded_by: NotBlankStr | None` -- tombstone marker (filtered from retrieval)
+- `application_count: int` -- how many times applied
+- `last_applied_at: AwareDatetime | None` -- last application timestamp
+
+**`AutonomousSkillEvolver`** runs on the consolidation schedule:
+
+1. Collects trajectories across all agents in a window via `TrajectoryAggregator`
+2. Groups by error category or tool call sequence
+3. Filters patterns seen by >= `min_agents_for_pattern` distinct agents
+4. Builds org-scope proposals with confidence proportional to failure rate
+5. Checks supersession against existing org entries (FULL/PARTIAL/CONFLICT)
+6. Emits proposals as `ApprovalItem` entries for human review
+
+**Proposal-only, structurally enforced**: `EvolverConfig.requires_human_approval`
+is `Literal[True]` and cannot be set to `False`. The evolver has no write access
+to org memory. Proposals land in the existing `ApprovalItem` queue.
+
+**Supersession rules** (checked before proposal emission):
+
+| Verdict | Condition | Action |
+|---------|-----------|--------|
+| CONFLICT | High condition overlap + low action similarity | Skipped, escalated to human |
+| FULL | Condition superset + compatible action + higher confidence | Supersedes existing (post-approval) |
+| PARTIAL | Everything else | Both coexist |
+
+CONFLICT is checked before FULL to prevent contradictory actions from
+being accepted as supersessions.
+
+**`EvolverConfig` safety rails**: `enabled` (default False, opt-in),
+`min_confidence_for_org_promotion` (0.8), `min_agents_seen_pattern` (3),
+`max_proposals_per_cycle` (10), `max_org_entries` (10000, reserved for
+future pruning).
+
+**Observability**: `SKILL_EVOLVER_CYCLE_START`, `SKILL_EVOLVER_CYCLE_COMPLETE`,
+`SKILL_EVOLVER_CYCLE_FAILED`, `SKILL_EVOLVER_PROPOSAL_EMITTED`,
+`SKILL_EVOLVER_CONFLICT_DETECTED`, `ORG_SKILL_SUPERSEDED`, `SKILL_EVOLVER_DISABLED`.
+
+`EvolverReport` is consumed by R3 #1265 eval loop.
+
 ---
 
 ## Memory Injection Strategies

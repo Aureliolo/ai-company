@@ -111,7 +111,13 @@ class AsyncTaskStateChannel(BaseModel):
         """Ensure task_ids are unique within the channel."""
         task_ids = [r.task_id for r in self.records]
         if len(task_ids) != len(set(task_ids)):
-            dupes = {tid for tid in task_ids if task_ids.count(tid) > 1}
+            seen: set[str] = set()
+            dupes: set[str] = set()
+            for tid in task_ids:
+                if tid in seen:
+                    dupes.add(tid)
+                else:
+                    seen.add(tid)
             msg = f"Duplicate task_ids in records: {dupes}"
             raise ValueError(msg)
         return self

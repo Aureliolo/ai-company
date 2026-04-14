@@ -157,19 +157,23 @@ class AutonomousSkillEvolver:
         supersessions: list[SupersessionResult] = []
         skipped_low_confidence = 0
 
-        for pattern in patterns[: self._config.max_proposals_per_cycle]:
+        for pattern in patterns:
+            if len(proposals) >= self._config.max_proposals_per_cycle:
+                break
             proposal = self._build_proposal_from_pattern(pattern)
             if proposal.confidence < self._config.min_confidence_for_org_promotion:
                 skipped_low_confidence += 1
                 continue
 
             # Check supersession against existing org entries
+            candidate_id = f"{cycle_id}:{pattern.pattern_id}"
             skip_pattern = False
+            supersedes_ids: list[str] = []
             for eid, existing in self._existing_org_proposals.items():
                 result = evaluate_supersession(
                     candidate=proposal,
                     existing=existing,
-                    candidate_id=cycle_id,
+                    candidate_id=candidate_id,
                     existing_id=eid,
                 )
                 if result.verdict == SupersessionVerdict.CONFLICT:
@@ -184,9 +188,15 @@ class AutonomousSkillEvolver:
                     break
                 if result.verdict == SupersessionVerdict.FULL:
                     supersessions.append(result)
+                    supersedes_ids.append(eid)
 
             if skip_pattern:
                 continue
+
+            if supersedes_ids:
+                proposal = proposal.model_copy(
+                    update={"supersedes": tuple(supersedes_ids)},
+                )
 
             # Emit as ApprovalItem (NOT direct org memory write)
             approval = self._build_approval_item(
@@ -243,9 +253,7 @@ class AutonomousSkillEvolver:
                 f"Pattern seen by {len(pattern.agent_ids)} distinct "
                 f"agents, indicating a systemic issue"
             ),
-            confidence=1.0 - pattern.failure_rate
-            if pattern.failure_rate < 1.0
-            else 0.5,
+            confidence=0.5 + 0.5 * pattern.failure_rate,
             tags=("evolver-generated", "org-scope"),
             scope=ProceduralMemoryScope.ORG,
         )
@@ -277,5 +285,8 @@ class AutonomousSkillEvolver:
                 "cycle_id": cycle_id,
                 "pattern_id": pattern.pattern_id,
                 "scope": ProceduralMemoryScope.ORG.value,
+                "supersedes": ",".join(proposal.supersedes)
+                if proposal.supersedes
+                else "",
             },
         )

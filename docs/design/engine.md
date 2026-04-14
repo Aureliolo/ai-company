@@ -1579,6 +1579,7 @@ coordination:
     # mixed tasks -> SAS backbone for sequential phases, delegates parallel sub-tasks
     mixed_default: "context_dependent"  # hybrid: not a single topology -- engine selects per-phase
   max_concurrency_per_wave: null        # None = unlimited
+  max_delegation_rounds: 3             # soft cap; hard abort at 2x (6)
   fail_fast: false
   enable_workspace_isolation: true
   base_branch: main

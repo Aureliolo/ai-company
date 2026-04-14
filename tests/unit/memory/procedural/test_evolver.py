@@ -123,8 +123,11 @@ class TestEvolverCycle:
         assert len(report.proposals_emitted) <= 1
 
     async def test_low_confidence_skipped(self) -> None:
-        """Proposals below min_confidence are skipped."""
-        # All-failure pattern has confidence 0.5, threshold is 0.8
+        """Proposals below min_confidence are skipped.
+
+        All-success patterns produce confidence 0.5 (below 0.8 threshold),
+        since confidence is proportional to failure_rate.
+        """
         evolver = _make_evolver(
             min_agents=3,
             min_confidence=0.8,
@@ -133,7 +136,8 @@ class TestEvolverCycle:
             _make_trajectory(
                 agent_id=f"a-{i}",
                 task_id=f"t-{i}",
-                error_category="fatal_error",
+                outcome="success",
+                error_category=None,
             )
             for i in range(3)
         )
@@ -183,10 +187,10 @@ class TestEvolverNoOrgWrite:
     """Critical: evolver must NEVER write to org memory."""
 
     async def test_org_memory_store_never_called(self) -> None:
-        """Regression test: evolver never calls store on org memory."""
-        org_memory = AsyncMock()
+        """Regression test: evolver never calls store on memory backend."""
+        memory_backend = AsyncMock()
         evolver = AutonomousSkillEvolver(
-            memory_backend=AsyncMock(),
+            memory_backend=memory_backend,
             trajectory_aggregator=TrajectoryAggregator(
                 min_agents_for_pattern=3,
             ),
@@ -204,6 +208,5 @@ class TestEvolverNoOrgWrite:
             timedelta(days=1),
             trajectories=trajectories,
         )
-        # org_memory is a separate mock; verify evolver doesn't
-        # reference it for writes
-        org_memory.store.assert_not_called()
+        # Verify evolver does not write to memory backend directly
+        memory_backend.store.assert_not_called()
