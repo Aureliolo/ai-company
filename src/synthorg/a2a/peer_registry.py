@@ -41,13 +41,16 @@ class PeerRegistry:
     ) -> None:
         """Register or update an external peer.
 
+        Deep-copies the card at insertion time so callers cannot
+        mutate registry state after registration.
+
         Args:
             peer_name: Peer identifier (case-insensitive).
             card: The peer's Agent Card.
         """
         key = peer_name.lower()
         async with self._lock:
-            self._peers[key] = card
+            self._peers[key] = copy.deepcopy(card)
         logger.info(
             A2A_PEER_REGISTERED,
             peer_name=peer_name,
@@ -65,8 +68,7 @@ class PeerRegistry:
         """
         key = peer_name.lower()
         async with self._lock:
-            card = self._peers.get(key)
-        return copy.deepcopy(card) if card is not None else None
+            return self._peers.get(key)
 
     async def remove(self, peer_name: str) -> bool:
         """Remove a peer from the registry.

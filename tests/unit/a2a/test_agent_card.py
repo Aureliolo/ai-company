@@ -6,7 +6,7 @@ from uuid import uuid4
 import pytest
 
 from synthorg.a2a.agent_card import AgentCardBuilder, _identity_to_skills
-from synthorg.a2a.models import A2AAuthScheme
+from synthorg.a2a.models import A2AAuthSchemeInfo
 from synthorg.core.agent import (
     AgentIdentity,
     ModelConfig,
@@ -118,7 +118,7 @@ class TestAgentCardBuilder:
     @pytest.mark.unit
     def test_build_with_auth_schemes(self) -> None:
         """Builder passes through configured auth schemes."""
-        auth = (A2AAuthScheme(scheme="api_key"),)
+        auth = (A2AAuthSchemeInfo(scheme="api_key"),)
         builder = AgentCardBuilder(default_auth_schemes=auth)
         identity = _make_identity()
         card = builder.build(identity, "https://example.com/a2a")

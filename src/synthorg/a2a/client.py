@@ -12,7 +12,6 @@ import httpx
 
 from synthorg.a2a.models import (
     A2ATask,
-    A2ATaskState,
     JsonRpcRequest,
     JsonRpcResponse,
 )
@@ -68,6 +67,12 @@ class A2AClient:
         self._network_validator = network_validator
         self._timeout = timeout_seconds
         self._http_client = http_client
+
+    async def aclose(self) -> None:
+        """Close the underlying HTTP client if present."""
+        if self._http_client is not None:
+            await self._http_client.aclose()
+            self._http_client = None
 
     async def send_message(
         self,
@@ -138,7 +143,7 @@ class A2AClient:
             {"id": task_id},
         )
 
-    async def _call_method(
+    async def _call_method(  # noqa: C901
         self,
         peer_name: str,
         method: str,
@@ -171,18 +176,34 @@ class A2AClient:
         if self._network_validator is not None:
             from synthorg.tools.network_validator import (  # noqa: PLC0415
                 extract_hostname,
+                validate_url_host,
             )
 
-            hostname = extract_hostname(str(base_url))
+            url_str = str(base_url)
+            hostname = extract_hostname(url_str)
             if hostname is None:
                 logger.warning(
                     A2A_OUTBOUND_SSRF_BLOCKED,
                     peer_name=peer_name,
-                    url=str(base_url),
+                    url=url_str,
                     reason="unparseable URL",
                 )
                 msg = f"SSRF: cannot parse URL for peer '{peer_name}'"
                 raise A2AClientError(msg, peer_name=peer_name)
+            try:
+                validate_url_host(self._network_validator, url_str)
+            except Exception as ssrf_exc:
+                logger.warning(
+                    A2A_OUTBOUND_SSRF_BLOCKED,
+                    peer_name=peer_name,
+                    url=url_str,
+                    reason=str(ssrf_exc),
+                )
+                msg = f"SSRF: blocked outbound URL for peer '{peer_name}'"
+                raise A2AClientError(
+                    msg,
+                    peer_name=peer_name,
+                ) from ssrf_exc
 
         # Build JSON-RPC request
         rpc_req = JsonRpcRequest(
@@ -191,14 +212,24 @@ class A2AClient:
             params=params,
         )
 
-        # Pull credentials
+        # Pull credentials and inject auth headers per scheme.
         credentials = await self._catalog.get_credentials(peer_name)
         headers: dict[str, str] = {
             "Content-Type": "application/json",
         }
-        api_key = credentials.get("api_key", "")
-        if api_key:
-            headers["Authorization"] = f"Bearer {api_key}"
+        auth_scheme = credentials.get("auth_scheme", "api_key")
+        if auth_scheme == "bearer" or (
+            auth_scheme == "oauth2" and "access_token" in credentials
+        ):
+            token = credentials.get("access_token", "")
+            if token:
+                headers["Authorization"] = f"Bearer {token}"
+        elif auth_scheme == "api_key":
+            api_key = credentials.get("api_key", "")
+            header_name = credentials.get("header_name", "X-API-Key")
+            if api_key:
+                headers[header_name] = api_key
+        # mTLS: no auth header needed -- rely on client certificates
 
         url = f"{str(base_url).rstrip('/')}/api/v1/a2a"
         response = await self._send_request(
@@ -217,13 +248,15 @@ class A2AClient:
             )
             raise A2AClientError(msg, peer_name=peer_name)
 
-        result = rpc_resp.result or {}
-        return A2ATask(
-            id=result.get("id", str(uuid4())),
-            state=A2ATaskState(
-                result.get("state", "submitted"),
-            ),
-        )
+        result = rpc_resp.result
+        if not result or "id" not in result:
+            msg = f"Peer '{peer_name}' returned malformed response (missing task id)"
+            raise A2AClientError(msg, peer_name=peer_name)
+        try:
+            return A2ATask.model_validate(result)
+        except Exception as exc:
+            msg = f"Peer '{peer_name}' returned invalid task payload"
+            raise A2AClientError(msg, peer_name=peer_name) from exc
 
     async def _send_request(
         self,

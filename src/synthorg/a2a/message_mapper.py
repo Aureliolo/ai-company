@@ -5,6 +5,7 @@ Maps ``synthorg.communication.message.Message`` to/from
 directly; ``UriPart`` (no A2A equivalent) is converted to text.
 """
 
+import copy
 from datetime import UTC, datetime
 from types import MappingProxyType
 from uuid import uuid4
@@ -25,6 +26,9 @@ from synthorg.communication.message import (
     Part,
     TextPart,
 )
+from synthorg.observability import get_logger
+
+logger = get_logger(__name__)
 
 
 def _internal_part_to_a2a(part: Part) -> A2AMessagePart:
@@ -39,8 +43,9 @@ def _internal_part_to_a2a(part: Part) -> A2AMessagePart:
     if isinstance(part, TextPart):
         return A2ATextPart(text=part.text)
     if isinstance(part, DataPart):
-        data = dict(part.data) if isinstance(part.data, MappingProxyType) else part.data
-        return A2ADataPart(data=data)
+        raw = part.data
+        source = dict(raw) if isinstance(raw, MappingProxyType) else raw
+        return A2ADataPart(data=copy.deepcopy(source))
     if isinstance(part, FilePart):
         return A2AFilePart(
             uri=part.uri,
@@ -62,7 +67,7 @@ def _a2a_part_to_internal(part: A2AMessagePart) -> Part:
     if isinstance(part, A2ATextPart):
         return TextPart(text=part.text)
     if isinstance(part, A2ADataPart):
-        return DataPart(data=part.data)  # type: ignore[arg-type]
+        return DataPart(data=MappingProxyType(copy.deepcopy(part.data)))
     # A2AFilePart
     return FilePart(uri=part.uri, mime_type=part.mime_type)
 
@@ -71,8 +76,8 @@ def to_a2a(message: Message) -> A2AMessage:
     """Map an internal Message to an A2A Message.
 
     The sender's role is inferred from the message type:
-    ``TASK_ASSIGNMENT`` and ``DELEGATION`` map to ``user``,
-    everything else maps to ``agent``.
+    ``DELEGATION`` maps to ``user``, everything else maps to
+    ``agent``.
 
     Args:
         message: Internal message.
@@ -80,8 +85,11 @@ def to_a2a(message: Message) -> A2AMessage:
     Returns:
         A2A message.
     """
-    user_types = {MessageType.DELEGATION, MessageType.QUESTION}
-    role = A2AMessageRole.USER if message.type in user_types else A2AMessageRole.AGENT
+    role = (
+        A2AMessageRole.USER
+        if message.type == MessageType.DELEGATION
+        else A2AMessageRole.AGENT
+    )
     parts = tuple(_internal_part_to_a2a(p) for p in message.parts)
     return A2AMessage(role=role, parts=parts)
 

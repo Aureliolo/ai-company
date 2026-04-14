@@ -18,9 +18,10 @@ async def test_a2a_push_verified_end_to_end() -> None:
     body = b'{"event":"task.state_changed","task_id":"t-123"}'
     timestamp = str(time.time())
 
+    # Timestamp is included in the signed payload when clock_skew > 0.
     sig = hmac.new(
         secret.encode("utf-8"),
-        body,
+        timestamp.encode("utf-8") + body,
         hashlib.sha256,
     ).hexdigest()
 
@@ -48,7 +49,7 @@ async def test_a2a_push_tampered_body_rejected() -> None:
     ).hexdigest()
 
     tampered_body = b'{"event":"task.deleted"}'
-    verifier = A2APushVerifier()
+    verifier = A2APushVerifier(clock_skew_seconds=0)
     result = await verifier.verify(
         body=tampered_body,
         headers={"x-a2a-signature": sig},

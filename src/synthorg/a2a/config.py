@@ -19,7 +19,7 @@ A2AAuthScheme = Literal[
 ]
 """Supported A2A authentication schemes."""
 
-A2ASignatureAlgorithm = Literal["hmac-sha256", "hmac-sha512"]
+A2ASignatureAlgorithm = Literal["hmac-sha256"]
 """Supported push notification signature algorithms."""
 
 
@@ -45,7 +45,9 @@ class A2AAuthConfig(BaseModel):
     )
     outbound_scheme: A2AAuthScheme = Field(
         default="bearer",
-        description=("Default outbound auth scheme (api_key, oauth2, bearer, mtls)"),
+        description=(
+            "Default outbound auth scheme (api_key, oauth2, bearer, mtls, none)"
+        ),
     )
 
 
@@ -100,8 +102,8 @@ class A2AAgentCardVerificationConfig(BaseModel):
 
     enabled: bool = False
     require_signatures: bool = False
-    trusted_jwks_urls: tuple[str, ...] = ()
-    trusted_public_keys: tuple[str, ...] = ()
+    trusted_jwks_urls: tuple[NotBlankStr, ...] = ()
+    trusted_public_keys: tuple[NotBlankStr, ...] = ()
 
     @model_validator(mode="after")
     def _validate_trust_sources(self) -> Self:

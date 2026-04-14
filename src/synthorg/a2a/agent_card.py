@@ -12,7 +12,7 @@ from synthorg.a2a.models import (
     A2AAgentCard,
     A2AAgentProvider,
     A2AAgentSkill,
-    A2AAuthScheme,
+    A2AAuthSchemeInfo,
 )
 from synthorg.core.agent import (
     AgentIdentity,  # noqa: TC001 -- runtime for type annotation
@@ -38,10 +38,9 @@ def _identity_to_skills(identity: AgentIdentity) -> tuple[A2AAgentSkill, ...]:
     Returns:
         Tuple of A2A agent skill descriptors.
     """
-    agent_prefix = str(identity.id)[:8]
     skills = [
         A2AAgentSkill(
-            id=f"{agent_prefix}-{skill_name}",
+            id=f"skill-{skill_name.lower().replace(' ', '-')}",
             name=skill_name,
             description=f"Primary skill: {skill_name}",
             tags=("primary",),
@@ -50,7 +49,7 @@ def _identity_to_skills(identity: AgentIdentity) -> tuple[A2AAgentSkill, ...]:
     ]
     skills.extend(
         A2AAgentSkill(
-            id=f"{agent_prefix}-{skill_name}",
+            id=f"skill-{skill_name.lower().replace(' ', '-')}",
             name=skill_name,
             description=f"Secondary skill: {skill_name}",
             tags=("secondary",),
@@ -75,7 +74,7 @@ class AgentCardBuilder:
 
     def __init__(
         self,
-        default_auth_schemes: tuple[A2AAuthScheme, ...] = (),
+        default_auth_schemes: tuple[A2AAuthSchemeInfo, ...] = (),
     ) -> None:
         self._default_auth_schemes = default_auth_schemes
 

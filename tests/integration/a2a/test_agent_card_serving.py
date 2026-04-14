@@ -10,7 +10,7 @@ from datetime import date
 import pytest
 
 from synthorg.a2a.agent_card import AgentCardBuilder
-from synthorg.a2a.models import A2AAuthScheme
+from synthorg.a2a.models import A2AAuthSchemeInfo
 from synthorg.core.agent import (
     AgentIdentity,
     ModelConfig,
@@ -46,7 +46,7 @@ def test_agent_card_safe_subset() -> None:
     )
 
     builder = AgentCardBuilder(
-        default_auth_schemes=(A2AAuthScheme(scheme="api_key"),),
+        default_auth_schemes=(A2AAuthSchemeInfo(scheme="api_key"),),
     )
     card = builder.build(identity, "https://example.com/a2a")
     card_json = card.model_dump_json()

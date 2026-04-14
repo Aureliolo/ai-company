@@ -111,7 +111,6 @@ class TestSupportedMethods:
 
         expected = {
             "message/send",
-            "message/stream",
             "tasks/get",
             "tasks/cancel",
         }

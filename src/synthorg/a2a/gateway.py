@@ -47,7 +47,6 @@ logger = get_logger(__name__)
 _SUPPORTED_METHODS = frozenset(
     {
         "message/send",
-        "message/stream",
         "tasks/get",
         "tasks/cancel",
     }
@@ -106,7 +105,7 @@ def _success_response(
 class A2AGatewayController(Controller):
     """A2A JSON-RPC 2.0 gateway endpoint."""
 
-    path = "/api/v1/a2a"
+    path = "/a2a"
     tags = ["A2A"]  # noqa: RUF012
 
     @post(
@@ -454,10 +453,12 @@ async def _handle_message_send(
     from uuid import uuid4 as _uuid4  # noqa: PLC0415
 
     from synthorg.core.enums import Priority, TaskType  # noqa: PLC0415
-    from synthorg.core.task import Task  # noqa: PLC0415
+    from synthorg.engine.task_engine_models import (  # noqa: PLC0415
+        CreateTaskData,
+        CreateTaskMutation,
+    )
 
-    task = Task(
-        id=f"a2a-{_uuid4().hex[:12]}",
+    task_data = CreateTaskData(
         title=f"A2A: {description[:80]}",
         description=description,
         type=TaskType.ADMIN,
@@ -465,8 +466,11 @@ async def _handle_message_send(
         project="a2a-inbound",
         created_by="a2a-gateway",
     )
-
-    created = await task_engine.submit(task)
+    mutation = CreateTaskMutation(
+        request_id=_uuid4().hex,
+        task_data=task_data,
+    )
+    created = await task_engine.submit(mutation)
 
     logger.info(
         A2A_TASK_CREATED,
@@ -628,7 +632,6 @@ _METHOD_HANDLERS: dict[
     Any,
 ] = {
     "message/send": _handle_message_send,
-    "message/stream": _handle_message_stream,
     "tasks/get": _handle_tasks_get,
     "tasks/cancel": _handle_tasks_cancel,
 }

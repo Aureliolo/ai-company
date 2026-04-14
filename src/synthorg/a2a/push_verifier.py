@@ -72,23 +72,15 @@ class A2APushVerifier:
             )
             return False
 
-        # Compute expected HMAC-SHA256
-        expected = hmac.new(
-            secret.encode("utf-8"),
-            body,
-            hashlib.sha256,
-        ).hexdigest()
-
-        if not hmac.compare_digest(signature, expected):
-            logger.warning(
-                A2A_PUSH_VERIFICATION_FAILED,
-                reason="signature mismatch",
-            )
-            return False
-
-        # Validate timestamp if present
+        # Validate and include timestamp in HMAC when clock skew is enabled.
         timestamp_str = headers.get("x-a2a-timestamp", "")
-        if timestamp_str and self._clock_skew_seconds > 0:
+        if self._clock_skew_seconds > 0:
+            if not timestamp_str:
+                logger.warning(
+                    A2A_PUSH_VERIFICATION_FAILED,
+                    reason="missing timestamp header",
+                )
+                return False
             try:
                 timestamp = float(timestamp_str)
             except ValueError:
@@ -106,6 +98,23 @@ class A2APushVerifier:
                     max_skew=self._clock_skew_seconds,
                 )
                 return False
+
+        # Compute expected HMAC-SHA256.
+        # When clock skew checking is enabled the timestamp is
+        # included in the signed payload to prevent replay attacks.
+        signed_payload = timestamp_str.encode("utf-8") + body if timestamp_str else body
+        expected = hmac.new(
+            secret.encode("utf-8"),
+            signed_payload,
+            hashlib.sha256,
+        ).hexdigest()
+
+        if not hmac.compare_digest(signature, expected):
+            logger.warning(
+                A2A_PUSH_VERIFICATION_FAILED,
+                reason="signature mismatch",
+            )
+            return False
 
         logger.debug(A2A_PUSH_VERIFIED)
         return True

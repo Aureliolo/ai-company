@@ -20,7 +20,7 @@ from pydantic import (
     model_validator,
 )
 
-from synthorg.core.types import NotBlankStr
+from synthorg.core.types import NotBlankStr  # noqa: TC001
 
 # ── JSON-RPC 2.0 Envelope ───────────────────────────────────────
 
@@ -215,7 +215,7 @@ class A2AFilePart(BaseModel):
         default=None,
         description="Optional MIME type",
     )
-    name: str | None = Field(
+    name: NotBlankStr | None = Field(
         default=None,
         description="Optional human-readable filename",
     )
@@ -282,7 +282,7 @@ class A2ATask(BaseModel):
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     id: NotBlankStr = Field(
-        default_factory=lambda: NotBlankStr(str(uuid4())),
+        default_factory=lambda: str(uuid4()),
         description="Unique task identifier",
     )
     state: A2ATaskState = Field(
@@ -345,7 +345,7 @@ class A2AAgentSkill(BaseModel):
 # ── A2A Agent Card ──────────────────────────────────────────────
 
 
-class A2AAuthScheme(BaseModel):
+class A2AAuthSchemeInfo(BaseModel):
     """Authentication scheme advertised in an Agent Card.
 
     Attributes:
@@ -410,7 +410,7 @@ class A2AAgentCard(BaseModel):
         default=(),
         description="Advertised capabilities",
     )
-    auth_schemes: tuple[A2AAuthScheme, ...] = Field(
+    auth_schemes: tuple[A2AAuthSchemeInfo, ...] = Field(
         default=(),
         description="Supported authentication schemes",
     )

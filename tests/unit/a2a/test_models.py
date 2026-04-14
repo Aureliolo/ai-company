@@ -14,7 +14,7 @@ from synthorg.a2a.models import (
     A2AAgentCard,
     A2AAgentProvider,
     A2AAgentSkill,
-    A2AAuthScheme,
+    A2AAuthSchemeInfo,
     A2ADataPart,
     A2AFilePart,
     A2AMessage,
@@ -369,8 +369,8 @@ class TestA2AAgentCard:
                 ),
             ),
             auth_schemes=(
-                A2AAuthScheme(scheme="api_key"),
-                A2AAuthScheme(
+                A2AAuthSchemeInfo(scheme="api_key"),
+                A2AAuthSchemeInfo(
                     scheme="oauth2",
                     service_url="https://auth.example.com/token",
                 ),

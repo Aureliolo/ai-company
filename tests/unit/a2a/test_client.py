@@ -157,8 +157,8 @@ class TestA2AClient:
 
     @pytest.mark.unit
     @respx.mock
-    async def test_credentials_injected_as_bearer(self) -> None:
-        """API key from catalog is injected as Bearer header."""
+    async def test_credentials_injected_as_api_key(self) -> None:
+        """API key from catalog is injected as X-API-Key header."""
         route = respx.post(
             "https://peer.example.com/api/v1/a2a",
         ).mock(
@@ -172,14 +172,14 @@ class TestA2AClient:
             ),
         )
         catalog = _mock_catalog(
-            credentials={"api_key": "secret-abc"},
+            credentials={"api_key": "secret-abc", "auth_scheme": "api_key"},
         )
         client = _make_client(catalog)
         await client.send_message("peer-a", {})
 
         assert route.called
         req = route.calls[0].request
-        assert req.headers["authorization"] == "Bearer secret-abc"
+        assert req.headers["x-api-key"] == "secret-abc"
 
     @pytest.mark.unit
     async def test_client_error_carries_peer_name(self) -> None:

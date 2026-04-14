@@ -9,11 +9,16 @@ import pytest
 from synthorg.a2a.push_verifier import A2APushVerifier
 
 
-def _sign(body: bytes, secret: str) -> str:
-    """Compute HMAC-SHA256 signature."""
+def _sign(body: bytes, secret: str, *, timestamp: str = "") -> str:
+    """Compute HMAC-SHA256 signature.
+
+    When *timestamp* is provided, it is prepended to the body
+    in the signed payload (matching the verifier behavior).
+    """
+    payload = timestamp.encode("utf-8") + body if timestamp else body
     return hmac.new(
         secret.encode("utf-8"),
-        body,
+        payload,
         hashlib.sha256,
     ).hexdigest()
 
@@ -22,9 +27,28 @@ class TestA2APushVerifier:
     """Push notification signature verification."""
 
     @pytest.mark.unit
-    async def test_valid_signature(self) -> None:
-        """Valid HMAC-SHA256 signature passes."""
-        verifier = A2APushVerifier()
+    async def test_valid_signature_with_timestamp(self) -> None:
+        """Valid HMAC-SHA256 signature with timestamp passes."""
+        verifier = A2APushVerifier(clock_skew_seconds=300)
+        body = b'{"event": "task.updated"}'
+        secret = "test-secret"
+        ts = str(time.time())
+        sig = _sign(body, secret, timestamp=ts)
+
+        result = await verifier.verify(
+            body=body,
+            headers={
+                "x-a2a-signature": sig,
+                "x-a2a-timestamp": ts,
+            },
+            secret=secret,
+        )
+        assert result is True
+
+    @pytest.mark.unit
+    async def test_valid_signature_no_clock_skew(self) -> None:
+        """Valid HMAC-SHA256 signature passes without clock skew."""
+        verifier = A2APushVerifier(clock_skew_seconds=0)
         body = b'{"event": "task.updated"}'
         secret = "test-secret"
         sig = _sign(body, secret)
@@ -39,7 +63,7 @@ class TestA2APushVerifier:
     @pytest.mark.unit
     async def test_invalid_signature(self) -> None:
         """Invalid signature fails."""
-        verifier = A2APushVerifier()
+        verifier = A2APushVerifier(clock_skew_seconds=0)
         result = await verifier.verify(
             body=b"data",
             headers={"x-a2a-signature": "bad-sig"},
@@ -50,7 +74,7 @@ class TestA2APushVerifier:
     @pytest.mark.unit
     async def test_missing_signature_header(self) -> None:
         """Missing signature header fails."""
-        verifier = A2APushVerifier()
+        verifier = A2APushVerifier(clock_skew_seconds=0)
         result = await verifier.verify(
             body=b"data",
             headers={},
@@ -70,13 +94,14 @@ class TestA2APushVerifier:
         verifier = A2APushVerifier(clock_skew_seconds=300)
         body = b"data"
         secret = "test-secret"
-        sig = _sign(body, secret)
+        ts = str(time.time())
+        sig = _sign(body, secret, timestamp=ts)
 
         result = await verifier.verify(
             body=body,
             headers={
                 "x-a2a-signature": sig,
-                "x-a2a-timestamp": str(time.time()),
+                "x-a2a-timestamp": ts,
             },
             secret=secret,
         )
@@ -103,7 +128,7 @@ class TestA2APushVerifier:
     @pytest.mark.unit
     async def test_malformed_timestamp(self) -> None:
         """Non-numeric timestamp fails."""
-        verifier = A2APushVerifier()
+        verifier = A2APushVerifier(clock_skew_seconds=300)
         body = b"data"
         secret = "test-secret"
         sig = _sign(body, secret)
@@ -119,8 +144,8 @@ class TestA2APushVerifier:
         assert result is False
 
     @pytest.mark.unit
-    async def test_no_timestamp_skips_check(self) -> None:
-        """Missing timestamp skips the clock skew check."""
+    async def test_missing_timestamp_rejected_when_skew_enabled(self) -> None:
+        """Missing timestamp is rejected when clock skew is enabled."""
         verifier = A2APushVerifier(clock_skew_seconds=1)
         body = b"data"
         secret = "test-secret"
@@ -131,7 +156,7 @@ class TestA2APushVerifier:
             headers={"x-a2a-signature": sig},
             secret=secret,
         )
-        assert result is True
+        assert result is False
 
     @pytest.mark.unit
     async def test_implements_protocol(self) -> None:

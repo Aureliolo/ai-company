@@ -103,11 +103,13 @@ class WellKnownAgentCardController(Controller):
         a2a_config = app_state.config.a2a
         ttl = a2a_config.agent_card_cache_ttl_seconds
 
-        cached = await _get_cached_card("__company__", ttl)
+        host_base = str(request.base_url).rstrip("/")
+        company_cache_key = f"__company__:{host_base}"
+        cached = await _get_cached_card(company_cache_key, ttl)
         if cached is not None:
             logger.debug(
                 A2A_AGENT_CARD_CACHE_HIT,
-                cache_key="__company__",
+                cache_key=company_cache_key,
             )
             return Response(
                 content=cached,
@@ -119,7 +121,7 @@ class WellKnownAgentCardController(Controller):
 
         logger.debug(
             A2A_AGENT_CARD_CACHE_MISS,
-            cache_key="__company__",
+            cache_key=company_cache_key,
         )
 
         builder: AgentCardBuilder = app_state.a2a_card_builder
@@ -127,29 +129,28 @@ class WellKnownAgentCardController(Controller):
 
         try:
             identities = await registry.list_active()
+            base_url = str(request.base_url).rstrip("/")
+            card = builder.build_company_card(
+                identities=identities,
+                base_url=f"{base_url}/api/v1/a2a",
+                company_name=str(app_state.config.company_name),
+            )
+            card_data = card.model_dump()
+            cache_key = f"__company__:{base_url}"
+            await _put_cached_card(cache_key, card_data, ttl)
         except MemoryError, RecursionError:
             raise
         except Exception:
             logger.exception(
                 A2A_AGENT_CARD_SERVED,
                 card_type="company",
-                error="Failed to list agents",
+                error="Failed to build company agent card",
             )
             return Response(
                 content={"error": "Service temporarily unavailable"},
                 media_type="application/json",
                 status_code=503,
             )
-
-        base_url = str(request.base_url).rstrip("/")
-        card = builder.build_company_card(
-            identities=identities,
-            base_url=f"{base_url}/api/v1/a2a",
-            company_name=str(app_state.config.company_name),
-        )
-
-        card_data = card.model_dump()
-        await _put_cached_card("__company__", card_data, ttl)
 
         logger.info(
             A2A_AGENT_CARD_SERVED,
@@ -184,11 +185,13 @@ class WellKnownAgentCardController(Controller):
         a2a_config = app_state.config.a2a
         ttl = a2a_config.agent_card_cache_ttl_seconds
 
-        cached = await _get_cached_card(agent_id, ttl)
+        host_base = str(request.base_url).rstrip("/")
+        agent_cache_key = f"{agent_id}:{host_base}"
+        cached = await _get_cached_card(agent_cache_key, ttl)
         if cached is not None:
             logger.debug(
                 A2A_AGENT_CARD_CACHE_HIT,
-                cache_key=agent_id,
+                cache_key=agent_cache_key,
             )
             return Response(
                 content=cached,
@@ -200,7 +203,7 @@ class WellKnownAgentCardController(Controller):
 
         logger.debug(
             A2A_AGENT_CARD_CACHE_MISS,
-            cache_key=agent_id,
+            cache_key=agent_cache_key,
         )
 
         registry = app_state.agent_registry
@@ -216,7 +219,7 @@ class WellKnownAgentCardController(Controller):
                 A2A_AGENT_CARD_SERVED,
                 card_type="agent",
                 agent_id=agent_id,
-                error="Registry lookup failed",
+                error="Failed to build agent card",
             )
             return Response(
                 content={"error": "Service temporarily unavailable"},
@@ -228,15 +231,28 @@ class WellKnownAgentCardController(Controller):
             msg = f"Agent '{agent_id}' not found"
             raise NotFoundError(msg)
 
-        builder: AgentCardBuilder = app_state.a2a_card_builder
-        base_url = str(request.base_url).rstrip("/")
-        card = builder.build(
-            identity=identity,
-            base_url=f"{base_url}/api/v1/a2a",
-        )
-
-        card_data = card.model_dump()
-        await _put_cached_card(agent_id, card_data, ttl)
+        try:
+            builder: AgentCardBuilder = app_state.a2a_card_builder
+            card = builder.build(
+                identity=identity,
+                base_url=f"{host_base}/api/v1/a2a",
+            )
+            card_data = card.model_dump()
+            await _put_cached_card(agent_cache_key, card_data, ttl)
+        except MemoryError, RecursionError:
+            raise
+        except Exception:
+            logger.exception(
+                A2A_AGENT_CARD_SERVED,
+                card_type="agent",
+                agent_id=agent_id,
+                error="Failed to build agent card",
+            )
+            return Response(
+                content={"error": "Service temporarily unavailable"},
+                media_type="application/json",
+                status_code=503,
+            )
 
         logger.info(
             A2A_AGENT_CARD_SERVED,

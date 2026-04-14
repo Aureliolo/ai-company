@@ -17,11 +17,17 @@ def get_a2a_push_verifier(
     """Create an A2A push notification verifier.
 
     Args:
-        clock_skew_seconds: Clock skew tolerance.
+        clock_skew_seconds: Clock skew tolerance (must be >= 0).
 
     Returns:
         A ``SignatureVerifier`` instance for A2A push events.
+
+    Raises:
+        ValueError: If clock_skew_seconds is negative.
     """
+    if clock_skew_seconds < 0:
+        msg = "clock_skew_seconds must be >= 0"
+        raise ValueError(msg)
     return A2APushVerifier(clock_skew_seconds=clock_skew_seconds)
 
 

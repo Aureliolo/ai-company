@@ -84,11 +84,11 @@ class TestPeerRegistry:
         assert card.name == "new"
 
     @pytest.mark.unit
-    async def test_get_returns_deep_copy(self) -> None:
-        """Get returns a deep copy (mutations don't affect registry)."""
+    async def test_register_deep_copies_input(self) -> None:
+        """Register stores a deep copy (input mutation is isolated)."""
         reg = PeerRegistry()
-        await reg.register("peer-a", _make_card())
+        card = _make_card()
+        await reg.register("peer-a", card)
 
-        card1 = await reg.get("peer-a")
-        card2 = await reg.get("peer-a")
-        assert card1 is not card2
+        retrieved = await reg.get("peer-a")
+        assert retrieved is not card
