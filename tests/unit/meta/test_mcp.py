@@ -47,6 +47,6 @@ class TestMCPServer:
         config = get_server_config()
         assert config["name"] == SERVER_NAME
         assert config["transport"] == "stdio"
-        assert config["enabled"] is True
+        assert config["enabled"] is False
         assert isinstance(config["enabled_tools"], list)
         assert config["tool_count"] == 9
