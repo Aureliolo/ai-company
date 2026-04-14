@@ -15,6 +15,7 @@
   "reviewers": ["Aureliolo"],
   "platformAutomerge": false,
   "prConcurrentLimit": 10,
+  "prHourlyLimit": 5,
   "packageRules": [
     {
       "description": "Python dependencies (uv + pre-commit)",
