@@ -309,8 +309,8 @@ class TestBeforeAfterRollout:
         rollout = BeforeAfterRollout()
         result = await rollout.execute(
             proposal=_proposal(),
-            applier=_StubApplier(),  # type: ignore[arg-type]
-            detector=_StubDetector(),  # type: ignore[arg-type]
+            applier=_StubApplier(),
+            detector=_StubDetector(),
         )
         assert result.outcome == RolloutOutcome.SUCCESS
 
@@ -318,8 +318,8 @@ class TestBeforeAfterRollout:
         rollout = BeforeAfterRollout()
         result = await rollout.execute(
             proposal=_proposal(),
-            applier=_FailApplier(),  # type: ignore[arg-type]
-            detector=_StubDetector(),  # type: ignore[arg-type]
+            applier=_FailApplier(),
+            detector=_StubDetector(),
         )
         assert result.outcome == RolloutOutcome.FAILED
 
@@ -334,8 +334,8 @@ class TestCanarySubsetRollout:
         rollout = CanarySubsetRollout(canary_fraction=0.2)
         result = await rollout.execute(
             proposal=_proposal(),
-            applier=_StubApplier(),  # type: ignore[arg-type]
-            detector=_StubDetector(),  # type: ignore[arg-type]
+            applier=_StubApplier(),
+            detector=_StubDetector(),
         )
         assert result.outcome == RolloutOutcome.SUCCESS
 
@@ -343,7 +343,7 @@ class TestCanarySubsetRollout:
         rollout = CanarySubsetRollout()
         result = await rollout.execute(
             proposal=_proposal(),
-            applier=_FailApplier(),  # type: ignore[arg-type]
-            detector=_StubDetector(),  # type: ignore[arg-type]
+            applier=_FailApplier(),
+            detector=_StubDetector(),
         )
         assert result.outcome == RolloutOutcome.FAILED

@@ -152,7 +152,7 @@ class TestConfigTuningStrategy:
 
     async def test_all_known_rules_produce_proposals(self) -> None:
         s = ConfigTuningStrategy(config=_DEFAULT_CONFIG)
-        known = [
+        known: list[tuple[str, dict[str, object]]] = [
             ("quality_declining", {"avg_quality": 4.0, "agent_count": 10}),
             ("success_rate_drop", {"avg_success_rate": 0.6}),
             ("budget_overrun", {"days_until_exhausted": 7, "total_spend": 150}),

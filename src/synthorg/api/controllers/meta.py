@@ -1,5 +1,7 @@
 """Meta improvement controller -- self-improvement proposals and signals."""
 
+from typing import Any
+
 from litestar import Controller, get, post
 
 from synthorg.api.dto import ApiResponse
@@ -23,20 +25,19 @@ class MetaController(Controller):
     tags = ["meta"]  # noqa: RUF012
 
     @get("/config")
-    async def get_config(self) -> ApiResponse:
+    async def get_config(self) -> ApiResponse[dict[str, Any]]:
         """Get current self-improvement configuration.
 
         Returns:
             Current SelfImprovementConfig as dict.
         """
         config = SelfImprovementConfig()
-        return ApiResponse(
-            success=True,
+        return ApiResponse[dict[str, Any]](
             data=config.model_dump(),
         )
 
     @get("/rules")
-    async def list_rules(self) -> ApiResponse:
+    async def list_rules(self) -> ApiResponse[list[dict[str, Any]]]:
         """List configured signal rules with enabled status.
 
         Returns:
@@ -55,47 +56,50 @@ class MetaController(Controller):
             }
             for r in rules
         ]
-        return ApiResponse(success=True, data=rule_list)
+        return ApiResponse[list[dict[str, Any]]](data=rule_list)
 
     @get("/mcp/tools")
-    async def list_mcp_tools(self) -> ApiResponse:
+    async def list_mcp_tools(
+        self,
+    ) -> ApiResponse[list[dict[str, str]]]:
         """List available MCP signal tools.
 
         Returns:
             MCP tool definitions.
         """
         tools = get_tool_definitions()
-        return ApiResponse(
-            success=True,
-            data=[{"name": t["name"], "description": t["description"]} for t in tools],
+        return ApiResponse[list[dict[str, str]]](
+            data=[
+                {
+                    "name": t["name"],
+                    "description": t["description"],
+                }
+                for t in tools
+            ],
         )
 
     @get("/mcp/server")
-    async def get_mcp_server_config(self) -> ApiResponse:
+    async def get_mcp_server_config(
+        self,
+    ) -> ApiResponse[dict[str, object]]:
         """Get MCP signal server configuration.
 
         Returns:
             Server config.
         """
-        return ApiResponse(
-            success=True,
+        return ApiResponse[dict[str, object]](
             data=get_server_config(),
         )
 
     @post("/cycle")
-    async def trigger_cycle(self) -> ApiResponse:
+    async def trigger_cycle(
+        self,
+    ) -> ApiResponse[dict[str, Any]]:
         """Trigger a manual improvement cycle.
-
-        Creates a signal snapshot, evaluates rules, and generates
-        proposals. Returns proposals ready for approval.
 
         Returns:
             Generated proposals.
         """
-        # Placeholder: real implementation wires up the
-        # SelfImprovementService with the SnapshotBuilder
-        # from AppState. For now, return empty.
-        return ApiResponse(
-            success=True,
+        return ApiResponse[dict[str, Any]](
             data={"proposals": [], "message": "Cycle triggered"},
         )

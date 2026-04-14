@@ -357,7 +357,7 @@ class TestRuleEngine:
 
         engine = RuleEngine(
             rules=(
-                BrokenRule(),  # type: ignore[arg-type]
+                BrokenRule(),
                 QualityDecliningRule(threshold=8.0),
             )
         )

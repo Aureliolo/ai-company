@@ -137,33 +137,33 @@ class TestEnums:
     """Enum value tests."""
 
     def test_proposal_altitude_values(self) -> None:
-        assert ProposalAltitude.CONFIG_TUNING == "config_tuning"
-        assert ProposalAltitude.ARCHITECTURE == "architecture"
-        assert ProposalAltitude.PROMPT_TUNING == "prompt_tuning"
+        assert ProposalAltitude.CONFIG_TUNING.value == "config_tuning"
+        assert ProposalAltitude.ARCHITECTURE.value == "architecture"
+        assert ProposalAltitude.PROMPT_TUNING.value == "prompt_tuning"
 
     def test_proposal_status_values(self) -> None:
-        assert ProposalStatus.PENDING == "pending"
-        assert ProposalStatus.APPLIED == "applied"
-        assert ProposalStatus.REGRESSED == "regressed"
+        assert ProposalStatus.PENDING.value == "pending"
+        assert ProposalStatus.APPLIED.value == "applied"
+        assert ProposalStatus.REGRESSED.value == "regressed"
 
     def test_rollout_strategy_type_values(self) -> None:
-        assert RolloutStrategyType.BEFORE_AFTER == "before_after"
-        assert RolloutStrategyType.CANARY == "canary"
+        assert RolloutStrategyType.BEFORE_AFTER.value == "before_after"
+        assert RolloutStrategyType.CANARY.value == "canary"
 
     def test_evolution_mode_values(self) -> None:
-        assert EvolutionMode.ORG_WIDE == "org_wide"
-        assert EvolutionMode.OVERRIDE == "override"
-        assert EvolutionMode.ADVISORY == "advisory"
+        assert EvolutionMode.ORG_WIDE.value == "org_wide"
+        assert EvolutionMode.OVERRIDE.value == "override"
+        assert EvolutionMode.ADVISORY.value == "advisory"
 
     def test_rule_severity_values(self) -> None:
-        assert RuleSeverity.INFO == "info"
-        assert RuleSeverity.WARNING == "warning"
-        assert RuleSeverity.CRITICAL == "critical"
+        assert RuleSeverity.INFO.value == "info"
+        assert RuleSeverity.WARNING.value == "warning"
+        assert RuleSeverity.CRITICAL.value == "critical"
 
     def test_trend_direction_values(self) -> None:
-        assert TrendDirection.IMPROVING == "improving"
-        assert TrendDirection.DECLINING == "declining"
-        assert TrendDirection.STABLE == "stable"
+        assert TrendDirection.IMPROVING.value == "improving"
+        assert TrendDirection.DECLINING.value == "declining"
+        assert TrendDirection.STABLE.value == "stable"
 
 
 # ── RollbackPlan ───────────────────────────────────────────────────
