@@ -11,23 +11,23 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@astrojs/react": "^5.0.2",
-    "@astrojs/sitemap": "^3.7.2",
-    "@tailwindcss/vite": "^4.2.2",
-    "astro": "^6.1.5",
-    "js-yaml": "^4.1.1",
-    "react": "^19.2.5",
-    "react-dom": "^19.2.5",
-    "tailwindcss": "^4.0.0"
+    "@astrojs/react": "5.0.3",
+    "@astrojs/sitemap": "3.7.2",
+    "@tailwindcss/vite": "4.2.2",
+    "astro": "6.1.5",
+    "js-yaml": "4.1.1",
+    "react": "19.2.5",
+    "react-dom": "19.2.5",
+    "tailwindcss": "4.2.2"
   },
   "devDependencies": {
-    "@testing-library/jest-dom": "^6.9.1",
-    "@testing-library/react": "^16.3.2",
-    "@types/grecaptcha": "^3.0.9",
-    "@types/js-yaml": "^4.0.9",
-    "@types/react": "^19.2.14",
-    "@types/react-dom": "^19.2.3",
-    "jsdom": "^29.0.2",
-    "vitest": "^4.1.4"
+    "@testing-library/jest-dom": "6.9.1",
+    "@testing-library/react": "16.3.2",
+    "@types/grecaptcha": "3.0.9",
+    "@types/js-yaml": "4.0.9",
+    "@types/react": "19.2.14",
+    "@types/react-dom": "19.2.3",
+    "jsdom": "29.0.2",
+    "vitest": "4.1.4"
   }
 }
