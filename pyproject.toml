@@ -40,7 +40,7 @@ requires = ["hatchling==1.29.0"]
 build-backend = "hatchling.build"
 
 [project.optional-dependencies]
-fine-tune = ["torch==2.11.0", "sentence-transformers==5.4.0"]
+fine-tune = ["torch==2.11.0", "sentence-transformers==5.4.1"]
 telemetry = ["logfire==4.32.0"]
 # Distributed runtime: first distributed MessageBus backend + task queue workers.
 # Opt in with `pip install synthorg[distributed]`. See docs/design/distributed-runtime.md.
