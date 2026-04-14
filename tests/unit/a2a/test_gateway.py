@@ -206,3 +206,243 @@ class TestValidateTaskOwnership:
 
         # Should not raise
         _validate_task_ownership(object(), "any-peer")
+
+
+class TestRequireTaskEngine:
+    """Task engine availability check."""
+
+    @pytest.mark.unit
+    def test_returns_engine_when_available(self) -> None:
+        """Returns the task engine when wired."""
+        from unittest.mock import MagicMock
+
+        from synthorg.a2a.gateway import _require_task_engine
+
+        app_state = MagicMock()
+        app_state.task_engine = MagicMock()
+        result = _require_task_engine(app_state)
+        assert result is app_state.task_engine
+
+    @pytest.mark.unit
+    def test_raises_method_error_when_unavailable(self) -> None:
+        """Raises _A2AMethodError when engine not wired."""
+        from unittest.mock import MagicMock, PropertyMock
+
+        from synthorg.a2a.gateway import _A2AMethodError, _require_task_engine
+        from synthorg.api.errors import ServiceUnavailableError
+
+        app_state = MagicMock()
+        type(app_state).task_engine = PropertyMock(
+            side_effect=ServiceUnavailableError("task_engine"),
+        )
+        with pytest.raises(_A2AMethodError) as exc_info:
+            _require_task_engine(app_state)
+        assert exc_info.value.http_status == 503
+
+
+class TestVerifyPeerCredentials:
+    """Peer credential verification against connection catalog."""
+
+    @pytest.mark.unit
+    async def test_no_catalog_returns_true(self) -> None:
+        """No catalog: graceful pass-through."""
+        from unittest.mock import MagicMock
+
+        from synthorg.a2a.gateway import _verify_peer_credentials
+
+        app_state = MagicMock()
+        app_state._connection_catalog = None
+        request = MagicMock()
+
+        result = await _verify_peer_credentials(
+            app_state,
+            request,
+            "peer-a",
+        )
+        assert result is True
+
+    @pytest.mark.unit
+    async def test_empty_credentials_returns_true(self) -> None:
+        """Peer has no stored credentials: pass-through."""
+        from unittest.mock import AsyncMock, MagicMock
+
+        from synthorg.a2a.gateway import _verify_peer_credentials
+
+        catalog = AsyncMock()
+        catalog.get_credentials = AsyncMock(return_value={})
+        app_state = MagicMock()
+        app_state._connection_catalog = catalog
+        request = MagicMock()
+
+        result = await _verify_peer_credentials(
+            app_state,
+            request,
+            "peer-a",
+        )
+        assert result is True
+
+    @pytest.mark.unit
+    async def test_api_key_match_returns_true(self) -> None:
+        """Matching API key passes."""
+        from unittest.mock import AsyncMock, MagicMock
+
+        from synthorg.a2a.gateway import _verify_peer_credentials
+
+        catalog = AsyncMock()
+        catalog.get_credentials = AsyncMock(
+            return_value={"auth_scheme": "api_key", "api_key": "secret-123"},
+        )
+        app_state = MagicMock()
+        app_state._connection_catalog = catalog
+        request = MagicMock()
+        request.headers = {"x-api-key": "secret-123"}
+
+        result = await _verify_peer_credentials(
+            app_state,
+            request,
+            "peer-a",
+        )
+        assert result is True
+
+    @pytest.mark.unit
+    async def test_api_key_mismatch_returns_false(self) -> None:
+        """Mismatched API key is rejected."""
+        from unittest.mock import AsyncMock, MagicMock
+
+        from synthorg.a2a.gateway import _verify_peer_credentials
+
+        catalog = AsyncMock()
+        catalog.get_credentials = AsyncMock(
+            return_value={"auth_scheme": "api_key", "api_key": "correct"},
+        )
+        app_state = MagicMock()
+        app_state._connection_catalog = catalog
+        request = MagicMock()
+        request.headers = {"x-api-key": "wrong"}
+
+        result = await _verify_peer_credentials(
+            app_state,
+            request,
+            "peer-a",
+        )
+        assert result is False
+
+    @pytest.mark.unit
+    async def test_missing_api_key_header_returns_false(self) -> None:
+        """Missing API key header when stored key exists."""
+        from unittest.mock import AsyncMock, MagicMock
+
+        from synthorg.a2a.gateway import _verify_peer_credentials
+
+        catalog = AsyncMock()
+        catalog.get_credentials = AsyncMock(
+            return_value={"auth_scheme": "api_key", "api_key": "stored"},
+        )
+        app_state = MagicMock()
+        app_state._connection_catalog = catalog
+        request = MagicMock()
+        request.headers = {}
+
+        result = await _verify_peer_credentials(
+            app_state,
+            request,
+            "peer-a",
+        )
+        assert result is False
+
+    @pytest.mark.unit
+    async def test_bearer_token_match(self) -> None:
+        """Matching bearer token passes."""
+        from unittest.mock import AsyncMock, MagicMock
+
+        from synthorg.a2a.gateway import _verify_peer_credentials
+
+        catalog = AsyncMock()
+        catalog.get_credentials = AsyncMock(
+            return_value={
+                "auth_scheme": "bearer",
+                "access_token": "tok-abc",
+            },
+        )
+        app_state = MagicMock()
+        app_state._connection_catalog = catalog
+        request = MagicMock()
+        request.headers = {"authorization": "Bearer tok-abc"}
+
+        result = await _verify_peer_credentials(
+            app_state,
+            request,
+            "peer-a",
+        )
+        assert result is True
+
+    @pytest.mark.unit
+    async def test_bearer_token_mismatch(self) -> None:
+        """Mismatched bearer token is rejected."""
+        from unittest.mock import AsyncMock, MagicMock
+
+        from synthorg.a2a.gateway import _verify_peer_credentials
+
+        catalog = AsyncMock()
+        catalog.get_credentials = AsyncMock(
+            return_value={
+                "auth_scheme": "bearer",
+                "access_token": "correct",
+            },
+        )
+        app_state = MagicMock()
+        app_state._connection_catalog = catalog
+        request = MagicMock()
+        request.headers = {"authorization": "Bearer wrong"}
+
+        result = await _verify_peer_credentials(
+            app_state,
+            request,
+            "peer-a",
+        )
+        assert result is False
+
+    @pytest.mark.unit
+    async def test_mtls_scheme_passes(self) -> None:
+        """mTLS scheme has no header-level check."""
+        from unittest.mock import AsyncMock, MagicMock
+
+        from synthorg.a2a.gateway import _verify_peer_credentials
+
+        catalog = AsyncMock()
+        catalog.get_credentials = AsyncMock(
+            return_value={"auth_scheme": "mtls"},
+        )
+        app_state = MagicMock()
+        app_state._connection_catalog = catalog
+        request = MagicMock()
+        request.headers = {}
+
+        result = await _verify_peer_credentials(
+            app_state,
+            request,
+            "peer-a",
+        )
+        assert result is True
+
+    @pytest.mark.unit
+    async def test_catalog_error_denies(self) -> None:
+        """Catalog errors result in denial."""
+        from unittest.mock import AsyncMock, MagicMock
+
+        from synthorg.a2a.gateway import _verify_peer_credentials
+
+        catalog = AsyncMock()
+        catalog.get_credentials = AsyncMock(
+            side_effect=RuntimeError("db down"),
+        )
+        app_state = MagicMock()
+        app_state._connection_catalog = catalog
+        request = MagicMock()
+
+        result = await _verify_peer_credentials(
+            app_state,
+            request,
+            "peer-a",
+        )
+        assert result is False

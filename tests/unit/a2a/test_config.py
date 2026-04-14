@@ -153,3 +153,148 @@ class TestRootConfigA2AField:
         )
         assert cfg.a2a.enabled is True
         assert cfg.a2a.allowed_peers == ("external-co",)
+
+
+class TestA2APeerAuthenticator:
+    """A2A peer connection authenticator (scheme-aware)."""
+
+    @pytest.mark.unit
+    def test_api_key_valid(self) -> None:
+        """Valid api_key credentials pass."""
+        from synthorg.integrations.connections.types.a2a_peer import (
+            A2APeerAuthenticator,
+        )
+
+        auth = A2APeerAuthenticator()
+        auth.validate_credentials({"api_key": "secret"})
+
+    @pytest.mark.unit
+    def test_api_key_missing(self) -> None:
+        """Missing api_key raises."""
+        from synthorg.integrations.connections.types.a2a_peer import (
+            A2APeerAuthenticator,
+        )
+        from synthorg.integrations.errors import InvalidConnectionAuthError
+
+        auth = A2APeerAuthenticator()
+        with pytest.raises(InvalidConnectionAuthError):
+            auth.validate_credentials({})
+
+    @pytest.mark.unit
+    def test_api_key_blank(self) -> None:
+        """Blank api_key raises."""
+        from synthorg.integrations.connections.types.a2a_peer import (
+            A2APeerAuthenticator,
+        )
+        from synthorg.integrations.errors import InvalidConnectionAuthError
+
+        auth = A2APeerAuthenticator()
+        with pytest.raises(InvalidConnectionAuthError):
+            auth.validate_credentials({"api_key": "  "})
+
+    @pytest.mark.unit
+    def test_bearer_scheme(self) -> None:
+        """Bearer scheme requires access_token."""
+        from synthorg.integrations.connections.types.a2a_peer import (
+            A2APeerAuthenticator,
+        )
+
+        auth = A2APeerAuthenticator()
+        auth.validate_credentials(
+            {
+                "auth_scheme": "bearer",
+                "access_token": "tok",
+            }
+        )
+
+    @pytest.mark.unit
+    def test_bearer_missing_token(self) -> None:
+        """Bearer scheme without token raises."""
+        from synthorg.integrations.connections.types.a2a_peer import (
+            A2APeerAuthenticator,
+        )
+        from synthorg.integrations.errors import InvalidConnectionAuthError
+
+        auth = A2APeerAuthenticator()
+        with pytest.raises(InvalidConnectionAuthError):
+            auth.validate_credentials({"auth_scheme": "bearer"})
+
+    @pytest.mark.unit
+    def test_oauth2_scheme(self) -> None:
+        """OAuth2 scheme requires client_id and client_secret."""
+        from synthorg.integrations.connections.types.a2a_peer import (
+            A2APeerAuthenticator,
+        )
+
+        auth = A2APeerAuthenticator()
+        auth.validate_credentials(
+            {
+                "auth_scheme": "oauth2",
+                "client_id": "id",
+                "client_secret": "secret",
+            }
+        )
+
+    @pytest.mark.unit
+    def test_oauth2_missing_secret(self) -> None:
+        """OAuth2 scheme without client_secret raises."""
+        from synthorg.integrations.connections.types.a2a_peer import (
+            A2APeerAuthenticator,
+        )
+        from synthorg.integrations.errors import InvalidConnectionAuthError
+
+        auth = A2APeerAuthenticator()
+        with pytest.raises(InvalidConnectionAuthError):
+            auth.validate_credentials(
+                {
+                    "auth_scheme": "oauth2",
+                    "client_id": "id",
+                }
+            )
+
+    @pytest.mark.unit
+    def test_mtls_scheme(self) -> None:
+        """mTLS scheme requires cert_path and key_path."""
+        from synthorg.integrations.connections.types.a2a_peer import (
+            A2APeerAuthenticator,
+        )
+
+        auth = A2APeerAuthenticator()
+        auth.validate_credentials(
+            {
+                "auth_scheme": "mtls",
+                "cert_path": "/certs/peer.crt",
+                "key_path": "/certs/peer.key",
+            }
+        )
+
+    @pytest.mark.unit
+    def test_none_scheme(self) -> None:
+        """None scheme requires no credentials."""
+        from synthorg.integrations.connections.types.a2a_peer import (
+            A2APeerAuthenticator,
+        )
+
+        auth = A2APeerAuthenticator()
+        auth.validate_credentials({"auth_scheme": "none"})
+
+    @pytest.mark.unit
+    def test_required_fields_default(self) -> None:
+        """Default required_fields returns api_key."""
+        from synthorg.integrations.connections.types.a2a_peer import (
+            A2APeerAuthenticator,
+        )
+
+        auth = A2APeerAuthenticator()
+        assert auth.required_fields() == ("api_key",)
+
+    @pytest.mark.unit
+    def test_connection_type(self) -> None:
+        """Authenticator handles A2A_PEER type."""
+        from synthorg.integrations.connections.models import ConnectionType
+        from synthorg.integrations.connections.types.a2a_peer import (
+            A2APeerAuthenticator,
+        )
+
+        auth = A2APeerAuthenticator()
+        assert auth.connection_type == ConnectionType.A2A_PEER

@@ -270,3 +270,50 @@ class TestMappingBoundary:
         from synthorg.a2a import message_mapper
 
         assert hasattr(message_mapper, "logger")
+
+    @pytest.mark.unit
+    def test_round_trip_preserves_message_type(self) -> None:
+        """Message type survives A2A round-trip via metadata."""
+        msg = _make_message(msg_type=MessageType.TASK_UPDATE)
+        a2a = to_a2a(msg)
+
+        # Metadata should carry original type
+        assert a2a.metadata.get("orig_message_type") == "task_update"
+
+        # Round-trip back restores TASK_UPDATE (not DELEGATION)
+        restored = from_a2a(
+            a2a,
+            channel="test",
+            sender="s",
+            recipient="r",
+        )
+        assert restored.type == MessageType.TASK_UPDATE
+
+    @pytest.mark.unit
+    def test_round_trip_delegation_preserved(self) -> None:
+        """DELEGATION type round-trips correctly."""
+        msg = _make_message(msg_type=MessageType.DELEGATION)
+        a2a = to_a2a(msg)
+        restored = from_a2a(
+            a2a,
+            channel="test",
+            sender="s",
+            recipient="r",
+        )
+        assert restored.type == MessageType.DELEGATION
+
+    @pytest.mark.unit
+    def test_from_a2a_without_metadata_uses_heuristic(self) -> None:
+        """External messages without metadata use role-based heuristic."""
+        a2a = A2AMessage(
+            role=A2AMessageRole.AGENT,
+            parts=(A2ATextPart(text="hi"),),
+        )
+        msg = from_a2a(
+            a2a,
+            channel="test",
+            sender="ext",
+            recipient="int",
+        )
+        # No metadata -> heuristic: agent -> TASK_UPDATE
+        assert msg.type == MessageType.TASK_UPDATE

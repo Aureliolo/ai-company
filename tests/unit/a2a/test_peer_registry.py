@@ -92,3 +92,32 @@ class TestPeerRegistry:
 
         retrieved = await reg.get("peer-a")
         assert retrieved is not card
+
+    @pytest.mark.unit
+    async def test_backing_store_is_immutable(self) -> None:
+        """Internal peers mapping is a MappingProxyType (read-only)."""
+        from types import MappingProxyType
+
+        reg = PeerRegistry()
+        await reg.register("peer-a", _make_card())
+        assert isinstance(reg._peers, MappingProxyType)
+
+    @pytest.mark.unit
+    async def test_cow_on_register(self) -> None:
+        """Register creates a new mapping (copy-on-write)."""
+        reg = PeerRegistry()
+        await reg.register("peer-a", _make_card("a"))
+        first_ref = reg._peers
+        await reg.register("peer-b", _make_card("b"))
+        second_ref = reg._peers
+        assert first_ref is not second_ref
+
+    @pytest.mark.unit
+    async def test_cow_on_remove(self) -> None:
+        """Remove creates a new mapping (copy-on-write)."""
+        reg = PeerRegistry()
+        await reg.register("peer-a", _make_card())
+        before = reg._peers
+        await reg.remove("peer-a")
+        after = reg._peers
+        assert before is not after
