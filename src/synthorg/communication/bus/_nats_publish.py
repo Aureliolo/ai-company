@@ -28,6 +28,8 @@ from synthorg.communication.message import Message
 from synthorg.observability import get_logger
 from synthorg.observability.events.communication import (
     COMM_BATCH_PUBLISHED,
+    COMM_BUS_MESSAGE_TOO_LARGE,
+    COMM_BUS_NOT_RUNNING,
     COMM_DIRECT_SENT,
     COMM_MESSAGE_PUBLISHED,
     COMM_SEND_DIRECT_INVALID,
@@ -59,9 +61,14 @@ async def publish_with_ack(
         subject: JetStream subject to publish to.
         payload: Serialized message bytes.
         msg_ttl: Per-message TTL in seconds (NATS 2.11+).
+
+    Raises:
+        MessageBusNotRunningError: If JetStream context is not
+            initialized.
     """
     if state.js is None:
         msg = "JetStream context not initialized"
+        logger.warning(COMM_BUS_NOT_RUNNING, error=msg, operation="publish_with_ack")
         raise MessageBusNotRunningError(msg)
     await asyncio.wait_for(
         state.js.publish(subject, payload, msg_ttl=msg_ttl),
@@ -72,6 +79,7 @@ async def publish_with_ack(
 async def publish(
     state: _NatsState,
     message: Message,
+    *,
     ttl_seconds: float | None = None,
 ) -> None:
     """Publish a message to its channel via the JetStream stream.
@@ -80,6 +88,12 @@ async def publish(
         state: NATS connection state.
         message: The message to publish.
         ttl_seconds: Optional per-message TTL in seconds.
+
+    Raises:
+        MessageBusNotRunningError: If the bus is not running.
+        ChannelNotFoundError: If the target channel does not exist.
+        ValueError: If the serialized message exceeds the payload
+            limit.
     """
     async with state.lock:
         require_running(state)
@@ -94,7 +108,7 @@ async def publish(
             f"Serialized message exceeds bus payload limit: "
             f"{len(payload)} > {MAX_BUS_PAYLOAD_BYTES}"
         )
-        logger.warning(COMM_SEND_DIRECT_INVALID, error=msg, channel=channel_name)
+        logger.warning(COMM_BUS_MESSAGE_TOO_LARGE, error=msg, channel=channel_name)
         raise ValueError(msg)
     await publish_with_ack(state, subject, payload, msg_ttl=ttl_seconds)
 
@@ -122,6 +136,12 @@ async def send_direct(
         message: The message to send.
         recipient: The recipient agent ID.
         ttl_seconds: Optional per-message TTL in seconds.
+
+    Raises:
+        MessageBusNotRunningError: If the bus is not running.
+        ValueError: If the recipient does not match ``message.to``,
+            an agent ID contains the DM separator, or the serialized
+            message exceeds the payload limit.
     """
     sender = message.sender
     if message.to != recipient:
@@ -175,6 +195,7 @@ async def send_direct(
 async def publish_batch(
     state: _NatsState,
     messages: Sequence[Message],
+    *,
     ttl_seconds: float | None = None,
 ) -> None:
     """Publish multiple messages using pipelined async publishes.
@@ -182,6 +203,10 @@ async def publish_batch(
     Validates all payloads first (fail-fast), then fires pipelined
     ``publish_async`` calls and waits for all acks via
     ``publish_async_completed``.
+
+    If cancelled mid-pipeline, some messages may already have been
+    acknowledged by the server.  Callers that need exactly-once
+    semantics should use idempotent message IDs.
 
     Args:
         state: NATS connection state.
@@ -191,24 +216,40 @@ async def publish_batch(
     Raises:
         MessageBusNotRunningError: If the bus is not running.
         ChannelNotFoundError: If any target channel does not exist.
+        ValueError: If any serialized message exceeds the payload
+            limit.
+        ExceptionGroup: If one or more publishes fail.
     """
     if not messages:
         return
 
-    if state.js is None:
-        msg = "JetStream context not initialized"
-        raise MessageBusNotRunningError(msg)
-
+    # Capture JetStream context under lock to avoid race with stop().
     async with state.lock:
         require_running(state)
+        js = state.js
+        if js is None:
+            msg = "JetStream context not initialized"
+            logger.warning(
+                COMM_BUS_NOT_RUNNING,
+                error=msg,
+                operation="publish_batch",
+            )
+            raise MessageBusNotRunningError(msg)
 
-    # Phase 1: resolve channels and validate payloads (fail-fast)
+    # Phase 1: resolve channels and validate payloads (fail-fast).
+    # Cache resolved subjects so repeated channels skip the KV lookup.
     subjects: list[str] = []
     payloads: list[bytes] = []
     prefix = state.nats_config.stream_name_prefix
+    subject_cache: dict[str, str] = {}
     for message in messages:
-        channel = await resolve_channel_or_raise(state, message.channel)
-        subject = subject_for_channel(prefix, channel)
+        ch_name = message.channel
+        if ch_name not in subject_cache:
+            channel = await resolve_channel_or_raise(state, ch_name)
+            subject_cache[ch_name] = subject_for_channel(
+                prefix,
+                channel,
+            )
         payload = serialize_message(message)
         if len(payload) > MAX_BUS_PAYLOAD_BYTES:
             msg = (
@@ -216,24 +257,34 @@ async def publish_batch(
                 f"{len(payload)} > {MAX_BUS_PAYLOAD_BYTES}"
             )
             logger.warning(
-                COMM_SEND_DIRECT_INVALID,
+                COMM_BUS_MESSAGE_TOO_LARGE,
                 error=msg,
-                channel=message.channel,
+                channel=ch_name,
             )
             raise ValueError(msg)
-        subjects.append(subject)
+        subjects.append(subject_cache[ch_name])
         payloads.append(payload)
 
     # Phase 2: fire pipelined async publishes
     futures = [
-        await state.js.publish_async(subject, payload, msg_ttl=ttl_seconds)
+        await js.publish_async(subject, payload, msg_ttl=ttl_seconds)
         for subject, payload in zip(subjects, payloads, strict=True)
     ]
 
     # Phase 3: wait for all acks and surface errors
-    await state.js.publish_async_completed()
+    await asyncio.wait_for(
+        js.publish_async_completed(),
+        timeout=state.nats_config.publish_ack_wait_seconds,
+    )
+    errors: list[Exception] = []
     for future in futures:
-        future.result()
+        try:
+            future.result()
+        except Exception as exc:
+            errors.append(exc)
+    if errors:
+        msg = "publish_batch: one or more publishes failed"
+        raise ExceptionGroup(msg, errors)
 
     logger.info(
         COMM_BATCH_PUBLISHED,

@@ -31,6 +31,7 @@ from synthorg.communication.subscription import (
 )
 from synthorg.observability import get_logger
 from synthorg.observability.events.communication import (
+    COMM_BATCH_PUBLISHED,
     COMM_BUS_ALREADY_RUNNING,
     COMM_BUS_NOT_RUNNING,
     COMM_BUS_SHUTDOWN_SIGNAL,
@@ -305,12 +306,27 @@ class InMemoryMessageBus:
         ``ttl_seconds`` is accepted for protocol conformance but
         ignored (retention is deque-based).
 
+        If any individual publish fails, the remaining messages in the
+        batch are not attempted and previously published messages are
+        not rolled back.
+
         Args:
             messages: Messages to publish.
             ttl_seconds: Ignored (protocol conformance).
+
+        Raises:
+            MessageBusNotRunningError: If the bus is not running.
+            ChannelNotFoundError: If any target channel does not exist.
         """
+        if not messages:
+            return
         for message in messages:
             await self.publish(message, ttl_seconds=ttl_seconds)
+        logger.debug(
+            COMM_BATCH_PUBLISHED,
+            count=len(messages),
+            backend="memory",
+        )
 
     def _ensure_direct_channel(
         self,

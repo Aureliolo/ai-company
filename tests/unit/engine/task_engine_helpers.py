@@ -90,7 +90,7 @@ class FakeMessageBus:
         self,
         message: object,
         *,
-        recipient: str = "",
+        recipient: str,
         ttl_seconds: float | None = None,
     ) -> None:
         pass
@@ -101,7 +101,8 @@ class FakeMessageBus:
         *,
         ttl_seconds: float | None = None,
     ) -> None:
-        pass
+        for msg in messages:
+            self.published.append(msg)
 
 
 class FailingMessageBus(FakeMessageBus):

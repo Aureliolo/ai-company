@@ -114,6 +114,23 @@ A single JetStream stream named `SYNTHORG_BUS` holds all message bus traffic.
 
 The Phase 4 task queue uses a **separate** stream `SYNTHORG_TASKS` with `WorkQueuePolicy` retention. Separation matters because the two streams have incompatible retention requirements: the bus retains the last N messages per subject, the task queue deletes messages after ack.
 
+### Per-message TTL (NATS 2.11+)
+
+The stream is configured with `allow_msg_ttl=True` so individual messages can expire independently of the stream-level retention policy. The `MessageBus.publish()` and `send_direct()` methods accept an optional `ttl_seconds` parameter; when set, the message expires after that duration on the server regardless of `MaxMsgsPerSubject`. When `None` (default), the stream's LimitsPolicy governs retention as before.
+
+- **Wire protocol**: uses nats-py's native `msg_ttl` parameter on `JetStreamContext.publish()` (nats-py 2.14.0+).
+- **In-memory backend**: accepts `ttl_seconds` for protocol conformance but ignores it (retention is deque-based).
+
+### Batch publishing
+
+`MessageBus.publish_batch()` publishes multiple messages using JetStream's pipelined async publish API for reduced round-trip overhead. The implementation is three-phased:
+
+1. **Validation (fail-fast)**: resolve all target channels and serialize all payloads. If any channel is missing or any payload exceeds `MAX_BUS_PAYLOAD_BYTES`, the batch fails before any message is sent.
+2. **Pipelined publish**: fire all `publish_async()` calls, buffering acknowledgments on the server side.
+3. **Ack collection**: `publish_async_completed()` waits for all server acks. Any individual publish failures are collected and surfaced as an `ExceptionGroup`.
+
+The stream is also configured with `allow_atomic=True` for future nats-py atomic batch support. The in-memory backend publishes each message sequentially for protocol conformance.
+
 ### Subscriber to durable consumer mapping
 
 Each `(channel_name, subscriber_id)` pair in the in-memory backend owns its own `asyncio.Queue`. The NATS backend replaces that with one JetStream durable pull consumer per pair.

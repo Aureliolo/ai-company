@@ -369,8 +369,8 @@ def test_build_message_bus_selects_nats(nats_url: str) -> None:
 # -- Per-Message TTL (NATS 2.11+) -------------------------------------
 
 
-async def test_publish_with_ttl_message_expires(bus: MessageBus) -> None:
-    """A message published with a short TTL should expire from the stream."""
+async def test_publish_with_ttl_succeeds(bus: MessageBus) -> None:
+    """Publishing with ``ttl_seconds`` is accepted and immediate delivery works."""
     await bus.subscribe("#general", "ttl-sub")
     msg = _make_message(channel="#general", content="ephemeral")
     await bus.publish(msg, ttl_seconds=1.0)

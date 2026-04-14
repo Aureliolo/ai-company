@@ -43,11 +43,12 @@ export function Drawer({ open, onClose, title, ariaLabel, side = 'right', conten
       open={open}
       onOpenChange={(nextOpen) => { if (!nextOpen) onClose() }}
       modal
+      // swipeDirection matches the `side` prop: swiping toward the edge dismisses the drawer
       swipeDirection={side}
     >
       <BaseDrawer.Portal>
         <BaseDrawer.Backdrop
-          className="fixed inset-0 z-50 bg-background/80 backdrop-blur-sm transition-opacity duration-150 ease-out data-[closed]:opacity-0 data-[starting-style]:opacity-0 data-[ending-style]:opacity-0"
+          className="fixed inset-0 z-50 bg-background/80 backdrop-blur-sm transition-opacity duration-200 ease-out data-[closed]:opacity-0 data-[starting-style]:opacity-0 data-[ending-style]:opacity-0"
           data-testid="drawer-overlay"
         />
         <BaseDrawer.Popup
@@ -56,6 +57,8 @@ export function Drawer({ open, onClose, title, ariaLabel, side = 'right', conten
             'fixed inset-y-0 z-50 flex w-[40vw] min-w-80 max-w-xl flex-col',
             side === 'left' ? 'left-0 border-r' : 'right-0 border-l',
             'border-border bg-card shadow-[var(--so-shadow-card-hover)]',
+            // Slide transition: 200ms matches tweenDefault duration; the custom easing
+            // curve (0.32, 0.72, 0, 1) decelerates into position for a fluid slide feel.
             'transition-[opacity,translate] duration-200 [transition-timing-function:cubic-bezier(0.32,0.72,0,1)]',
             side === 'right'
               ? 'data-[closed]:translate-x-full data-[starting-style]:translate-x-full data-[ending-style]:translate-x-full'
@@ -64,23 +67,36 @@ export function Drawer({ open, onClose, title, ariaLabel, side = 'right', conten
           )}
         >
           {trimmedTitle && (
-            <div className="flex items-center justify-between border-b border-border px-4 py-3">
-              <BaseDrawer.Title className="text-sm font-semibold text-foreground">
-                {trimmedTitle}
-              </BaseDrawer.Title>
+            <div className="flex items-center justify-between border-b border-border p-card">
+              {/* When explicitLabel is set, use a plain <h2> so BaseDrawer.Title
+                  doesn't add aria-labelledby which would override the aria-label
+                  on Popup per ARIA spec.  When no explicitLabel, BaseDrawer.Title
+                  provides the accessible name via aria-labelledby. */}
+              {explicitLabel ? (
+                <h2 className="text-sm font-semibold text-foreground">{trimmedTitle}</h2>
+              ) : (
+                <BaseDrawer.Title className="text-sm font-semibold text-foreground">
+                  {trimmedTitle}
+                </BaseDrawer.Title>
+              )}
               <BaseDrawer.Close
-                className={cn(
-                  'rounded-md p-1 text-muted-foreground transition-colors',
-                  'hover:bg-card-hover hover:text-foreground',
-                  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent',
-                )}
-                aria-label="Close"
+                render={
+                  <button
+                    type="button"
+                    className={cn(
+                      'rounded-md p-1 text-muted-foreground transition-colors',
+                      'hover:bg-card-hover hover:text-foreground',
+                      'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent',
+                    )}
+                    aria-label="Close"
+                  />
+                }
               >
                 <X className="size-4" />
               </BaseDrawer.Close>
             </div>
           )}
-          <div data-testid="drawer-content" className={cn('flex-1 overflow-y-auto p-4', contentClassName)}>
+          <div data-testid="drawer-content" className={cn('flex-1 overflow-y-auto p-card', contentClassName)}>
             {children}
           </div>
         </BaseDrawer.Popup>

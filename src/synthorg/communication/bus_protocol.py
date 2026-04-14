@@ -89,6 +89,9 @@ class MessageBus(Protocol):
 
         Raises:
             MessageBusNotRunningError: If the bus is not running.
+            ValueError: If the recipient does not match
+                ``message.to``, an agent ID contains the reserved
+                separator, or the message exceeds the payload limit.
         """
         ...
 

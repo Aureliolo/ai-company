@@ -40,10 +40,16 @@ describe('Drawer', () => {
   })
 
   it('renders as a modal dialog', () => {
-    render(<Drawer open={true} onClose={() => {}} title="Test">Content</Drawer>)
+    render(
+      <>
+        <button type="button" data-testid="outside">Outside</button>
+        <Drawer open={true} onClose={() => {}} title="Test">Content</Drawer>
+      </>,
+    )
     // Base UI enforces modality via `inert` on siblings (modern approach)
-    // rather than `aria-modal`. Verify the dialog role is present.
-    expect(screen.getByRole('dialog')).toBeInTheDocument()
+    // rather than `aria-modal`.  Verify dialog role is present.
+    const dialog = screen.getByRole('dialog')
+    expect(dialog).toBeInTheDocument()
   })
 
   it('has accessible name matching title', () => {

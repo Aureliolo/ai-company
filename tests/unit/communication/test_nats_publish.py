@@ -62,7 +62,7 @@ def _make_state(*, running: bool = True) -> _NatsState:
     # Set up publish to return a PubAck-like result
     state.js.publish = AsyncMock(return_value=MagicMock(seq=1))
     # Set up async publish pipeline
-    future: asyncio.Future[MagicMock] = asyncio.get_event_loop().create_future()
+    future: asyncio.Future[MagicMock] = asyncio.get_running_loop().create_future()
     future.set_result(MagicMock(seq=1))
     state.js.publish_async = AsyncMock(return_value=future)
     state.js.publish_async_completed = AsyncMock()
@@ -117,6 +117,23 @@ class TestPublishWithAckTTL:
 
         with pytest.raises(MessageBusNotRunningError):
             await publish_with_ack(state, "test.subject", b"payload", msg_ttl=10.0)
+
+    async def test_zero_ttl_passes_through(self) -> None:
+        state = _make_state()
+        await publish_with_ack(state, "test.subject", b"payload", msg_ttl=0.0)
+
+        state.js.publish.assert_awaited_once()
+        _, kwargs = state.js.publish.call_args
+        assert kwargs.get("msg_ttl") == 0.0
+
+    async def test_negative_ttl_passes_through(self) -> None:
+        """Negative TTL is passed to NATS; server decides validity."""
+        state = _make_state()
+        await publish_with_ack(state, "test.subject", b"payload", msg_ttl=-1.0)
+
+        state.js.publish.assert_awaited_once()
+        _, kwargs = state.js.publish.call_args
+        assert kwargs.get("msg_ttl") == -1.0
 
 
 class TestPublishTTL:
@@ -221,13 +238,16 @@ class TestPublishBatch:
         messages = [_make_message()]
 
         # Make the future resolve with an error
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         error_future: asyncio.Future[MagicMock] = loop.create_future()
         error_future.set_exception(RuntimeError("publish failed"))
         state.js.publish_async = AsyncMock(return_value=error_future)
 
-        with pytest.raises(RuntimeError, match="publish failed"):
+        with pytest.raises(ExceptionGroup) as exc_info:
             await publish_batch(state, messages)
+        assert len(exc_info.value.exceptions) == 1
+        assert isinstance(exc_info.value.exceptions[0], RuntimeError)
+        assert "publish failed" in str(exc_info.value.exceptions[0])
 
     async def test_raises_when_not_running(self) -> None:
         state = _make_state(running=False)
