@@ -26,6 +26,7 @@ A2A_INBOUND_RATE_LIMITED: Final[str] = "a2a.inbound.rate_limited"
 
 A2A_OUTBOUND_SENT: Final[str] = "a2a.outbound.sent"
 A2A_OUTBOUND_FAILED: Final[str] = "a2a.outbound.failed"
+A2A_OUTBOUND_RESPONSE_INVALID: Final[str] = "a2a.outbound.response_invalid"
 A2A_OUTBOUND_SSRF_BLOCKED: Final[str] = "a2a.outbound.ssrf_blocked"
 
 # -- Agent Card operations -------------------------------------------------

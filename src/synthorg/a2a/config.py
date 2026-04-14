@@ -1,8 +1,26 @@
 """A2A external gateway configuration."""
 
-from pydantic import BaseModel, ConfigDict, Field
+from typing import Literal, Self
+
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.observability import get_logger
+from synthorg.observability.events.config import CONFIG_VALIDATION_FAILED
+
+logger = get_logger(__name__)
+
+A2AAuthScheme = Literal[
+    "api_key",
+    "oauth2",
+    "bearer",
+    "mtls",
+    "none",
+]
+"""Supported A2A authentication schemes."""
+
+A2ASignatureAlgorithm = Literal["hmac-sha256", "hmac-sha512"]
+"""Supported push notification signature algorithms."""
 
 
 class A2AAuthConfig(BaseModel):
@@ -19,13 +37,13 @@ class A2AAuthConfig(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
-    inbound_scheme: str = Field(
+    inbound_scheme: A2AAuthScheme = Field(
         default="api_key",
         description=(
             "Default inbound auth scheme (api_key, oauth2, bearer, mtls, none)"
         ),
     )
-    outbound_scheme: str = Field(
+    outbound_scheme: A2AAuthScheme = Field(
         default="bearer",
         description=("Default outbound auth scheme (api_key, oauth2, bearer, mtls)"),
     )
@@ -50,7 +68,7 @@ class A2APushConfig(BaseModel):
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     enabled: bool = False
-    signature_algorithm: str = Field(
+    signature_algorithm: A2ASignatureAlgorithm = Field(
         default="hmac-sha256",
         description="HMAC algorithm for push signature verification",
     )
@@ -84,6 +102,27 @@ class A2AAgentCardVerificationConfig(BaseModel):
     require_signatures: bool = False
     trusted_jwks_urls: tuple[str, ...] = ()
     trusted_public_keys: tuple[str, ...] = ()
+
+    @model_validator(mode="after")
+    def _validate_trust_sources(self) -> Self:
+        """Ensure at least one trust source when signatures required."""
+        if (
+            self.require_signatures
+            and not self.trusted_jwks_urls
+            and not self.trusted_public_keys
+        ):
+            msg = (
+                "require_signatures is True but no trust sources "
+                "provided (trusted_jwks_urls and trusted_public_keys "
+                "are both empty)"
+            )
+            logger.warning(
+                CONFIG_VALIDATION_FAILED,
+                model="A2AAgentCardVerificationConfig",
+                reason=msg,
+            )
+            raise ValueError(msg)
+        return self
 
 
 class A2AConfig(BaseModel):
@@ -147,3 +186,17 @@ class A2AConfig(BaseModel):
         default_factory=A2AAgentCardVerificationConfig,
         description="Agent Card signature verification",
     )
+
+    @model_validator(mode="after")
+    def _validate_enabled_has_peers(self) -> Self:
+        """Warn when gateway is enabled but no peers are allowed."""
+        if self.enabled and not self.allowed_peers:
+            logger.warning(
+                CONFIG_VALIDATION_FAILED,
+                model="A2AConfig",
+                reason=(
+                    "A2A gateway is enabled but allowed_peers is "
+                    "empty -- no peers will be accepted"
+                ),
+            )
+        return self

@@ -14,6 +14,7 @@ from litestar.datastructures import State  # noqa: TC002
 from litestar.response import Response
 
 from synthorg.a2a.models import (
+    A2A_AUTH_REQUIRED,
     A2A_PAYLOAD_TOO_LARGE,
     A2A_PEER_NOT_ALLOWED,
     A2A_TASK_NOT_CANCELABLE,
@@ -30,9 +31,11 @@ from synthorg.a2a.security import validate_payload_size, validate_peer
 from synthorg.a2a.task_mapper import to_a2a
 from synthorg.observability import get_logger
 from synthorg.observability.events.a2a import (
+    A2A_INBOUND_AUTH_FAILED,
     A2A_INBOUND_DISPATCHED,
     A2A_INBOUND_RECEIVED,
     A2A_INBOUND_REJECTED,
+    A2A_JSONRPC_INVALID_PARAMS,
     A2A_JSONRPC_METHOD_NOT_FOUND,
     A2A_JSONRPC_PARSE_ERROR,
     A2A_TASK_CANCELLED,
@@ -49,6 +52,9 @@ _SUPPORTED_METHODS = frozenset(
         "tasks/cancel",
     }
 )
+
+# Maximum number of message parts in a single message/send request.
+_MAX_MESSAGE_PARTS = 100
 
 
 def _error_response(
@@ -121,6 +127,21 @@ class A2AGatewayController(Controller):
         app_state = state["app_state"]
         a2a_config = app_state.config.a2a
 
+        # Validate Content-Type
+        content_type = (
+            request.headers.get("content-type", "").split(";")[0].strip().lower()
+        )
+        if content_type != "application/json":
+            return Response(
+                content=_error_response(
+                    None,
+                    JSONRPC_PARSE_ERROR,
+                    "Content-Type must be application/json",
+                ),
+                media_type="application/json",
+                status_code=415,
+            )
+
         # Read and validate body size
         body = await request.body()
         if not validate_payload_size(
@@ -157,9 +178,24 @@ class A2AGatewayController(Controller):
             request_id=request_id,
         )
 
-        # Validate peer from auth header
+        # Require peer identification -- mandatory
         peer_name = _extract_peer_name(request)
-        if peer_name and not validate_peer(
+        if not peer_name:
+            logger.warning(
+                A2A_INBOUND_AUTH_FAILED,
+                reason="missing peer identification",
+            )
+            return Response(
+                content=_error_response(
+                    request_id,
+                    A2A_AUTH_REQUIRED,
+                    "Peer identification required (X-A2A-Peer-Name header)",
+                ),
+                media_type="application/json",
+                status_code=401,
+            )
+
+        if not validate_peer(
             peer_name,
             tuple(str(p) for p in a2a_config.allowed_peers),
         ):
@@ -176,6 +212,7 @@ class A2AGatewayController(Controller):
         return await _dispatch_method(
             app_state,
             rpc_request,
+            peer_name,
         )
 
 
@@ -191,25 +228,36 @@ def _parse_jsonrpc(body: bytes) -> JsonRpcRequest | None:
     try:
         raw = json.loads(body)
         return JsonRpcRequest.model_validate(raw)
-    except json.JSONDecodeError, UnicodeDecodeError:
-        logger.warning(A2A_JSONRPC_PARSE_ERROR)
+    except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+        logger.warning(
+            A2A_JSONRPC_PARSE_ERROR,
+            reason="json_decode_error",
+            error=str(exc),
+        )
         return None
     except MemoryError, RecursionError:
         raise
-    except Exception:
-        logger.warning(A2A_JSONRPC_PARSE_ERROR, exc_info=True)
+    except Exception as exc:
+        logger.warning(
+            A2A_JSONRPC_PARSE_ERROR,
+            reason="validation_error",
+            error=str(exc),
+            exc_info=True,
+        )
         return None
 
 
 async def _dispatch_method(
     app_state: Any,
     rpc_request: JsonRpcRequest,
+    peer_name: str,
 ) -> Response[dict[str, Any]]:
     """Dispatch a validated JSON-RPC request to its handler.
 
     Args:
         app_state: Application state container.
         rpc_request: Validated JSON-RPC request.
+        peer_name: Authenticated peer name.
 
     Returns:
         JSON-RPC response wrapped in an HTTP response.
@@ -232,6 +280,7 @@ async def _dispatch_method(
         A2A_INBOUND_DISPATCHED,
         method=method,
         request_id=request_id,
+        peer_name=peer_name,
     )
 
     handler = _METHOD_HANDLERS.get(method)
@@ -247,7 +296,7 @@ async def _dispatch_method(
         )
 
     try:
-        result = await handler(app_state, rpc_request)
+        result = await handler(app_state, rpc_request, peer_name)
         return Response(
             content=_success_response(request_id, result),
             media_type="application/json",
@@ -268,6 +317,7 @@ async def _dispatch_method(
         logger.exception(
             A2A_INBOUND_REJECTED,
             method=method,
+            peer_name=peer_name,
             reason="unhandled exception",
         )
         return Response(
@@ -286,14 +336,13 @@ def _extract_peer_name(
 ) -> str | None:
     """Extract the peer name from request headers.
 
-    Looks for ``X-A2A-Peer-Name`` header first, then falls back
-    to the ``Authorization`` header's bearer token prefix.
+    Looks for the ``X-A2A-Peer-Name`` header.
 
     Args:
         request: The inbound HTTP request.
 
     Returns:
-        Peer name string, or ``None`` if not identifiable.
+        Peer name string, or ``None`` if not provided.
     """
     peer = request.headers.get("x-a2a-peer-name")
     if peer:
@@ -317,15 +366,51 @@ class _A2AMethodError(Exception):
         self.http_status = http_status
 
 
+def _require_task_engine(app_state: Any) -> Any:
+    """Return the task engine or raise 503."""
+    task_engine = app_state.task_engine
+    if task_engine is None:
+        raise _A2AMethodError(
+            JSONRPC_INTERNAL_ERROR,
+            "Task engine unavailable",
+            http_status=503,
+        )
+    return task_engine
+
+
+def _validate_task_ownership(
+    task: Any,
+    peer_name: str,
+) -> None:
+    """Verify the peer created or is assigned this task.
+
+    Tasks created by the A2A gateway carry ``created_by =
+    "a2a-gateway"`` and are associated with the requesting peer
+    via the ``a2a-inbound`` project.  For now, all A2A tasks are
+    accessible to any authenticated peer (the peer allowlist is
+    the authorization boundary).  A stricter per-peer ownership
+    model can be layered on when multi-peer isolation is needed.
+
+    Args:
+        task: The task to check.
+        peer_name: Authenticated peer name.
+    """
+    # Phase 1: all authenticated peers share the a2a task namespace.
+    # Per-peer isolation (task.metadata["a2a_peer"] == peer_name)
+    # is a follow-up once task metadata propagation is wired.
+
+
 async def _handle_message_send(
     app_state: Any,
     rpc_request: JsonRpcRequest,
+    peer_name: str,
 ) -> dict[str, Any]:
-    """Handle ``message/send`` -- create a task from an inbound message.
+    """Handle ``message/send`` -- create a task.
 
     Args:
         app_state: Application state container.
         rpc_request: Parsed JSON-RPC request.
+        peer_name: Authenticated peer name.
 
     Returns:
         Task state dict.
@@ -338,8 +423,25 @@ async def _handle_message_send(
             "Missing or invalid 'message' parameter",
         )
 
-    # Extract text from message parts for task description
+    # Validate part count
     parts = message_data.get("parts", [])
+    if not isinstance(parts, list):
+        raise _A2AMethodError(
+            JSONRPC_INVALID_PARAMS,
+            "'parts' must be an array",
+        )
+    if len(parts) > _MAX_MESSAGE_PARTS:
+        logger.warning(
+            A2A_JSONRPC_INVALID_PARAMS,
+            reason="too many parts",
+            count=len(parts),
+            max=_MAX_MESSAGE_PARTS,
+        )
+        raise _A2AMethodError(
+            JSONRPC_INVALID_PARAMS,
+            f"Too many message parts (max {_MAX_MESSAGE_PARTS})",
+        )
+
     text_parts = [
         p.get("text", "")
         for p in parts
@@ -347,13 +449,7 @@ async def _handle_message_send(
     ]
     description = "\n".join(text_parts) or "A2A inbound task"
 
-    task_engine = app_state.task_engine
-    if task_engine is None:
-        raise _A2AMethodError(
-            JSONRPC_INTERNAL_ERROR,
-            "Task engine unavailable",
-            http_status=503,
-        )
+    task_engine = _require_task_engine(app_state)
 
     from uuid import uuid4 as _uuid4  # noqa: PLC0415
 
@@ -375,6 +471,7 @@ async def _handle_message_send(
     logger.info(
         A2A_TASK_CREATED,
         task_id=created.id,
+        peer_name=peer_name,
     )
 
     return {
@@ -386,12 +483,14 @@ async def _handle_message_send(
 async def _handle_tasks_get(
     app_state: Any,
     rpc_request: JsonRpcRequest,
+    peer_name: str,
 ) -> dict[str, Any]:
     """Handle ``tasks/get`` -- retrieve task state.
 
     Args:
         app_state: Application state container.
         rpc_request: Parsed JSON-RPC request.
+        peer_name: Authenticated peer name.
 
     Returns:
         Task state dict.
@@ -403,21 +502,16 @@ async def _handle_tasks_get(
             "Missing or invalid 'id' parameter",
         )
 
-    task_engine = app_state.task_engine
-    if task_engine is None:
-        raise _A2AMethodError(
-            JSONRPC_INTERNAL_ERROR,
-            "Task engine unavailable",
-            http_status=503,
-        )
-
+    task_engine = _require_task_engine(app_state)
     task = await task_engine.get(task_id)
     if task is None:
         raise _A2AMethodError(
             A2A_TASK_NOT_FOUND,
-            f"Task '{task_id}' not found",
+            "Task not found",
             http_status=404,
         )
+
+    _validate_task_ownership(task, peer_name)
 
     return {
         "id": task.id,
@@ -428,12 +522,14 @@ async def _handle_tasks_get(
 async def _handle_tasks_cancel(
     app_state: Any,
     rpc_request: JsonRpcRequest,
+    peer_name: str,
 ) -> dict[str, Any]:
     """Handle ``tasks/cancel`` -- cancel a running task.
 
     Args:
         app_state: Application state container.
         rpc_request: Parsed JSON-RPC request.
+        peer_name: Authenticated peer name.
 
     Returns:
         Updated task state dict.
@@ -445,21 +541,16 @@ async def _handle_tasks_cancel(
             "Missing or invalid 'id' parameter",
         )
 
-    task_engine = app_state.task_engine
-    if task_engine is None:
-        raise _A2AMethodError(
-            JSONRPC_INTERNAL_ERROR,
-            "Task engine unavailable",
-            http_status=503,
-        )
-
+    task_engine = _require_task_engine(app_state)
     task = await task_engine.get(task_id)
     if task is None:
         raise _A2AMethodError(
             A2A_TASK_NOT_FOUND,
-            f"Task '{task_id}' not found",
+            "Task not found",
             http_status=404,
         )
+
+    _validate_task_ownership(task, peer_name)
 
     from synthorg.core.enums import TaskStatus  # noqa: PLC0415
 
@@ -471,12 +562,16 @@ async def _handle_tasks_cancel(
     if task.status in terminal:
         raise _A2AMethodError(
             A2A_TASK_NOT_CANCELABLE,
-            f"Task '{task_id}' is in terminal state '{task.status.value}'",
+            "Task is in terminal state",
         )
 
     cancelled = await task_engine.cancel(task_id)
 
-    logger.info(A2A_TASK_CANCELLED, task_id=task_id)
+    logger.info(
+        A2A_TASK_CANCELLED,
+        task_id=task_id,
+        peer_name=peer_name,
+    )
 
     return {
         "id": cancelled.id,
@@ -487,6 +582,7 @@ async def _handle_tasks_cancel(
 async def _handle_message_stream(
     app_state: Any,
     rpc_request: JsonRpcRequest,
+    peer_name: str,
 ) -> dict[str, Any]:
     """Handle ``message/stream`` -- SSE streaming placeholder.
 
@@ -497,6 +593,7 @@ async def _handle_message_stream(
     Args:
         app_state: Application state container.
         rpc_request: Parsed JSON-RPC request.
+        peer_name: Authenticated peer name.
 
     Returns:
         Stream acknowledgement dict.
@@ -508,15 +605,16 @@ async def _handle_message_stream(
             "Missing or invalid 'id' parameter",
         )
 
-    task_engine = app_state.task_engine
-    if task_engine is not None:
-        task = await task_engine.get(task_id)
-        if task is None:
-            raise _A2AMethodError(
-                A2A_TASK_NOT_FOUND,
-                f"Task '{task_id}' not found",
-                http_status=404,
-            )
+    task_engine = _require_task_engine(app_state)
+    task = await task_engine.get(task_id)
+    if task is None:
+        raise _A2AMethodError(
+            A2A_TASK_NOT_FOUND,
+            "Task not found",
+            http_status=404,
+        )
+
+    _validate_task_ownership(task, peer_name)
 
     return {
         "id": task_id,

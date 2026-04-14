@@ -201,35 +201,14 @@ class A2AClient:
             headers["Authorization"] = f"Bearer {api_key}"
 
         url = f"{str(base_url).rstrip('/')}/api/v1/a2a"
-
-        try:
-            response = await self._do_post(url, rpc_req, headers)
-            response.raise_for_status()
-        except httpx.HTTPError as exc:
-            logger.exception(
-                A2A_OUTBOUND_FAILED,
-                peer_name=peer_name,
-                method=method,
-                error=str(exc),
-            )
-            msg = f"A2A outbound request to '{peer_name}' failed: {exc}"
-            raise A2AClientError(msg, peer_name=peer_name) from exc
-
-        logger.info(
-            A2A_OUTBOUND_SENT,
-            peer_name=peer_name,
-            method=method,
+        response = await self._send_request(
+            url,
+            rpc_req,
+            headers,
+            peer_name,
+            method,
         )
-
-        # Parse JSON-RPC response
-        try:
-            raw = response.json()
-            rpc_resp = JsonRpcResponse.model_validate(raw)
-        except MemoryError, RecursionError:
-            raise
-        except Exception as exc:
-            msg = f"Failed to parse response from '{peer_name}'"
-            raise A2AClientError(msg, peer_name=peer_name) from exc
+        rpc_resp = _parse_rpc_response(response, peer_name)
 
         if rpc_resp.error is not None:
             msg = (
@@ -246,13 +225,80 @@ class A2AClient:
             ),
         )
 
+    async def _send_request(
+        self,
+        url: str,
+        rpc_req: JsonRpcRequest,
+        headers: dict[str, str],
+        peer_name: str,
+        method: str,
+    ) -> httpx.Response:
+        """Send HTTP request with differentiated error handling.
+
+        Args:
+            url: Target URL.
+            rpc_req: JSON-RPC request to send.
+            headers: HTTP headers.
+            peer_name: Peer name for error context.
+            method: RPC method for error context.
+
+        Returns:
+            HTTP response.
+
+        Raises:
+            A2AClientError: On any HTTP failure.
+        """
+        try:
+            response = await self._do_post(
+                url,
+                rpc_req,
+                headers,
+            )
+            response.raise_for_status()
+        except (httpx.ConnectError, httpx.TimeoutException) as exc:
+            logger.warning(
+                A2A_OUTBOUND_FAILED,
+                peer_name=peer_name,
+                method=method,
+                error_type=type(exc).__name__,
+                error=str(exc),
+                transient=True,
+            )
+            msg = f"Connection to peer '{peer_name}' failed"
+            raise A2AClientError(msg, peer_name=peer_name) from exc
+        except httpx.HTTPStatusError as exc:
+            logger.warning(
+                A2A_OUTBOUND_FAILED,
+                peer_name=peer_name,
+                method=method,
+                status=exc.response.status_code,
+            )
+            msg = f"Peer '{peer_name}' returned {exc.response.status_code}"
+            raise A2AClientError(msg, peer_name=peer_name) from exc
+        except httpx.HTTPError as exc:
+            logger.exception(
+                A2A_OUTBOUND_FAILED,
+                peer_name=peer_name,
+                method=method,
+                error_type=type(exc).__name__,
+            )
+            msg = f"Request to peer '{peer_name}' failed"
+            raise A2AClientError(msg, peer_name=peer_name) from exc
+
+        logger.info(
+            A2A_OUTBOUND_SENT,
+            peer_name=peer_name,
+            method=method,
+        )
+        return response
+
     async def _do_post(
         self,
         url: str,
         rpc_req: JsonRpcRequest,
         headers: dict[str, str],
     ) -> httpx.Response:
-        """Execute the HTTP POST, reusing injected client if available.
+        """Execute the HTTP POST, reusing injected client.
 
         Args:
             url: Target URL.
@@ -274,3 +320,48 @@ class A2AClient:
                 json=rpc_req.model_dump(),
                 headers=headers,
             )
+
+
+def _parse_rpc_response(
+    response: httpx.Response,
+    peer_name: str,
+) -> JsonRpcResponse:
+    """Parse and validate a JSON-RPC response.
+
+    Args:
+        response: HTTP response from the peer.
+        peer_name: Peer name for error context.
+
+    Returns:
+        Validated JSON-RPC response.
+
+    Raises:
+        A2AClientError: On parse or validation failure.
+    """
+    try:
+        raw = response.json()
+    except MemoryError, RecursionError:
+        raise
+    except Exception as exc:
+        logger.warning(
+            A2A_OUTBOUND_FAILED,
+            peer_name=peer_name,
+            reason="response_json_decode_error",
+            error=str(exc),
+        )
+        msg = f"Peer '{peer_name}' returned invalid JSON"
+        raise A2AClientError(msg, peer_name=peer_name) from exc
+
+    try:
+        return JsonRpcResponse.model_validate(raw)
+    except MemoryError, RecursionError:
+        raise
+    except Exception as exc:
+        logger.warning(
+            A2A_OUTBOUND_FAILED,
+            peer_name=peer_name,
+            reason="response_validation_error",
+            error=str(exc),
+        )
+        msg = f"Peer '{peer_name}' returned invalid JSON-RPC"
+        raise A2AClientError(msg, peer_name=peer_name) from exc

@@ -9,6 +9,7 @@ Registered at the Litestar root level (outside ``/api/v1``) and
 only mounted when ``a2a.enabled = True``.
 """
 
+import asyncio
 import time
 from typing import Any
 
@@ -26,11 +27,12 @@ from synthorg.observability.events.a2a import (
 
 logger = get_logger(__name__)
 
-# Module-level cache: (card_json, expires_at) keyed by cache_key.
+# Module-level cache with lock for async safety.
 _card_cache: dict[str, tuple[dict[str, Any], float]] = {}
+_cache_lock = asyncio.Lock()
 
 
-def _get_cached_card(
+async def _get_cached_card(
     cache_key: str,
     ttl: int,
 ) -> dict[str, Any] | None:
@@ -45,17 +47,18 @@ def _get_cached_card(
     """
     if ttl <= 0:
         return None
-    entry = _card_cache.get(cache_key)
-    if entry is None:
-        return None
-    card_data, expires_at = entry
-    if time.monotonic() > expires_at:
-        del _card_cache[cache_key]
-        return None
-    return card_data
+    async with _cache_lock:
+        entry = _card_cache.get(cache_key)
+        if entry is None:
+            return None
+        card_data, expires_at = entry
+        if time.monotonic() > expires_at:
+            del _card_cache[cache_key]
+            return None
+        return card_data
 
 
-def _put_cached_card(
+async def _put_cached_card(
     cache_key: str,
     card_data: dict[str, Any],
     ttl: int,
@@ -69,7 +72,11 @@ def _put_cached_card(
     """
     if ttl <= 0:
         return
-    _card_cache[cache_key] = (card_data, time.monotonic() + ttl)
+    async with _cache_lock:
+        _card_cache[cache_key] = (
+            card_data,
+            time.monotonic() + ttl,
+        )
 
 
 class WellKnownAgentCardController(Controller):
@@ -96,20 +103,43 @@ class WellKnownAgentCardController(Controller):
         a2a_config = app_state.config.a2a
         ttl = a2a_config.agent_card_cache_ttl_seconds
 
-        cached = _get_cached_card("__company__", ttl)
+        cached = await _get_cached_card("__company__", ttl)
         if cached is not None:
-            logger.debug(A2A_AGENT_CARD_CACHE_HIT, cache_key="__company__")
+            logger.debug(
+                A2A_AGENT_CARD_CACHE_HIT,
+                cache_key="__company__",
+            )
             return Response(
                 content=cached,
                 media_type="application/json",
-                headers={"Cache-Control": f"public, max-age={ttl}"},
+                headers={
+                    "Cache-Control": f"public, max-age={ttl}",
+                },
             )
 
-        logger.debug(A2A_AGENT_CARD_CACHE_MISS, cache_key="__company__")
+        logger.debug(
+            A2A_AGENT_CARD_CACHE_MISS,
+            cache_key="__company__",
+        )
 
         builder: AgentCardBuilder = app_state.a2a_card_builder
         registry = app_state.agent_registry
-        identities = await registry.list_active()
+
+        try:
+            identities = await registry.list_active()
+        except MemoryError, RecursionError:
+            raise
+        except Exception:
+            logger.exception(
+                A2A_AGENT_CARD_SERVED,
+                card_type="company",
+                error="Failed to list agents",
+            )
+            return Response(
+                content={"error": "Service temporarily unavailable"},
+                media_type="application/json",
+                status_code=503,
+            )
 
         base_url = str(request.base_url).rstrip("/")
         card = builder.build_company_card(
@@ -119,7 +149,7 @@ class WellKnownAgentCardController(Controller):
         )
 
         card_data = card.model_dump()
-        _put_cached_card("__company__", card_data, ttl)
+        await _put_cached_card("__company__", card_data, ttl)
 
         logger.info(
             A2A_AGENT_CARD_SERVED,
@@ -129,7 +159,9 @@ class WellKnownAgentCardController(Controller):
         return Response(
             content=card_data,
             media_type="application/json",
-            headers={"Cache-Control": f"public, max-age={ttl}"},
+            headers={
+                "Cache-Control": f"public, max-age={ttl}",
+            },
         )
 
     @get(
@@ -152,22 +184,46 @@ class WellKnownAgentCardController(Controller):
         a2a_config = app_state.config.a2a
         ttl = a2a_config.agent_card_cache_ttl_seconds
 
-        cached = _get_cached_card(agent_id, ttl)
+        cached = await _get_cached_card(agent_id, ttl)
         if cached is not None:
-            logger.debug(A2A_AGENT_CARD_CACHE_HIT, cache_key=agent_id)
+            logger.debug(
+                A2A_AGENT_CARD_CACHE_HIT,
+                cache_key=agent_id,
+            )
             return Response(
                 content=cached,
                 media_type="application/json",
-                headers={"Cache-Control": f"public, max-age={ttl}"},
+                headers={
+                    "Cache-Control": f"public, max-age={ttl}",
+                },
             )
 
-        logger.debug(A2A_AGENT_CARD_CACHE_MISS, cache_key=agent_id)
+        logger.debug(
+            A2A_AGENT_CARD_CACHE_MISS,
+            cache_key=agent_id,
+        )
 
         registry = app_state.agent_registry
-        identity = await registry.get(agent_id)
-        if identity is None:
-            # Try by name as fallback
-            identity = await registry.get_by_name(agent_id)
+
+        try:
+            identity = await registry.get(agent_id)
+            if identity is None:
+                identity = await registry.get_by_name(agent_id)
+        except MemoryError, RecursionError:
+            raise
+        except Exception:
+            logger.exception(
+                A2A_AGENT_CARD_SERVED,
+                card_type="agent",
+                agent_id=agent_id,
+                error="Registry lookup failed",
+            )
+            return Response(
+                content={"error": "Service temporarily unavailable"},
+                media_type="application/json",
+                status_code=503,
+            )
+
         if identity is None:
             msg = f"Agent '{agent_id}' not found"
             raise NotFoundError(msg)
@@ -180,7 +236,7 @@ class WellKnownAgentCardController(Controller):
         )
 
         card_data = card.model_dump()
-        _put_cached_card(agent_id, card_data, ttl)
+        await _put_cached_card(agent_id, card_data, ttl)
 
         logger.info(
             A2A_AGENT_CARD_SERVED,
@@ -190,5 +246,7 @@ class WellKnownAgentCardController(Controller):
         return Response(
             content=card_data,
             media_type="application/json",
-            headers={"Cache-Control": f"public, max-age={ttl}"},
+            headers={
+                "Cache-Control": f"public, max-age={ttl}",
+            },
         )

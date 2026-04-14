@@ -152,7 +152,7 @@ class TestA2AClient:
         )
         catalog = _mock_catalog()
         client = _make_client(catalog)
-        with pytest.raises(A2AClientError, match="failed"):
+        with pytest.raises(A2AClientError, match="returned 500"):
             await client.send_message("peer-a", {})
 
     @pytest.mark.unit

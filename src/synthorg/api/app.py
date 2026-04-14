@@ -1599,6 +1599,8 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
         and connection_catalog is not None
     ):
         try:
+            import httpx  # noqa: PLC0415
+
             from synthorg.a2a.agent_card import (  # noqa: PLC0415
                 AgentCardBuilder,
             )
@@ -1625,8 +1627,10 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
                 default_auth_schemes=auth_schemes,
             )
             peer_registry = PeerRegistry()
+            a2a_http_client = httpx.AsyncClient(timeout=30.0)
             a2a_client = A2AClient(
                 connection_catalog,
+                http_client=a2a_http_client,
             )
 
             app_state.set_a2a_card_builder(card_builder)
