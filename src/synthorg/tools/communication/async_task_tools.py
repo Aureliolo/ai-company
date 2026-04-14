@@ -80,7 +80,12 @@ _LIST_SCHEMA: Final[dict[str, Any]] = {
 class StartAsyncTaskTool(BaseTool):
     """Start a new async task on a subagent."""
 
-    def __init__(self, *, service: AsyncTaskService) -> None:
+    def __init__(
+        self,
+        *,
+        service: AsyncTaskService,
+        supervisor_id: str = "supervisor",
+    ) -> None:
         super().__init__(
             name="start_async_task",
             description="Start a background task on a subagent",
@@ -88,6 +93,7 @@ class StartAsyncTaskTool(BaseTool):
             parameters_schema=_START_SCHEMA,
         )
         self._service = service
+        self._supervisor_id = supervisor_id
 
     async def execute(
         self,
@@ -102,10 +108,14 @@ class StartAsyncTaskTool(BaseTool):
                 agent_id=arguments["agent_id"],
             )
             task_id = await self._service.start_async_task(
-                supervisor_id="supervisor",
+                supervisor_id=self._supervisor_id,
                 task_spec=spec,
             )
         except Exception as exc:
+            logger.exception(
+                "async_task.tool.start_failed",
+                error=str(exc),
+            )
             return ToolExecutionResult(
                 content=f"Failed to start task: {exc}",
                 is_error=True,
@@ -138,6 +148,10 @@ class CheckAsyncTaskTool(BaseTool):
                 arguments["task_id"],
             )
         except LookupError as exc:
+            logger.warning(
+                "async_task.tool.check_failed",
+                error=str(exc),
+            )
             return ToolExecutionResult(
                 content=str(exc),
                 is_error=True,
@@ -171,6 +185,10 @@ class UpdateAsyncTaskTool(BaseTool):
                 instructions=arguments["instructions"],
             )
         except LookupError as exc:
+            logger.warning(
+                "async_task.tool.update_failed",
+                error=str(exc),
+            )
             return ToolExecutionResult(
                 content=str(exc),
                 is_error=True,
@@ -183,7 +201,12 @@ class UpdateAsyncTaskTool(BaseTool):
 class CancelAsyncTaskTool(BaseTool):
     """Cancel a running async task."""
 
-    def __init__(self, *, service: AsyncTaskService) -> None:
+    def __init__(
+        self,
+        *,
+        service: AsyncTaskService,
+        supervisor_id: str = "supervisor",
+    ) -> None:
         super().__init__(
             name="cancel_async_task",
             description="Cancel a running background task",
@@ -191,6 +214,7 @@ class CancelAsyncTaskTool(BaseTool):
             parameters_schema=_CANCEL_SCHEMA,
         )
         self._service = service
+        self._supervisor_id = supervisor_id
 
     async def execute(
         self,
@@ -201,9 +225,13 @@ class CancelAsyncTaskTool(BaseTool):
         try:
             status = await self._service.cancel_async_task(
                 task_id=arguments["task_id"],
-                supervisor_id="supervisor",
+                supervisor_id=self._supervisor_id,
             )
         except Exception as exc:
+            logger.exception(
+                "async_task.tool.cancel_failed",
+                error=str(exc),
+            )
             return ToolExecutionResult(
                 content=f"Failed to cancel: {exc}",
                 is_error=True,

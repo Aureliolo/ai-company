@@ -4,7 +4,9 @@ Contains the results of a single evolution cycle for R3 eval loop
 consumption and audit.
 """
 
-from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
+from typing import Self
+
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.core.approval import ApprovalItem  # noqa: TC001
 from synthorg.core.types import NotBlankStr  # noqa: TC001
@@ -73,3 +75,14 @@ class EvolverReport(BaseModel):
         ge=0,
         description="Proposals skipped (few agents)",
     )
+
+    @model_validator(mode="after")
+    def _validate_window_order(self) -> Self:
+        """Ensure window_end >= window_start."""
+        if self.window_end < self.window_start:
+            msg = (
+                f"window_end ({self.window_end}) must be >= "
+                f"window_start ({self.window_start})"
+            )
+            raise ValueError(msg)
+        return self

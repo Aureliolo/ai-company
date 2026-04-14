@@ -5,8 +5,9 @@ for supervisor-facing async task management.
 """
 
 from enum import StrEnum
+from typing import Self
 
-from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 
@@ -44,6 +45,17 @@ class AsyncTaskRecord(BaseModel):
     status: AsyncTaskStatus = Field(description="Current task status")
     created_at: AwareDatetime = Field(description="When task was started")
     updated_at: AwareDatetime = Field(description="Last status update")
+
+    @model_validator(mode="after")
+    def _validate_timestamp_order(self) -> Self:
+        """Ensure updated_at >= created_at."""
+        if self.updated_at < self.created_at:
+            msg = (
+                f"updated_at ({self.updated_at}) must be >= "
+                f"created_at ({self.created_at})"
+            )
+            raise ValueError(msg)
+        return self
 
 
 class TaskSpec(BaseModel):
@@ -93,6 +105,16 @@ class AsyncTaskStateChannel(BaseModel):
         default=(),
         description="Tracked async task records",
     )
+
+    @model_validator(mode="after")
+    def _validate_task_id_uniqueness(self) -> Self:
+        """Ensure task_ids are unique within the channel."""
+        task_ids = [r.task_id for r in self.records]
+        if len(task_ids) != len(set(task_ids)):
+            dupes = {tid for tid in task_ids if task_ids.count(tid) > 1}
+            msg = f"Duplicate task_ids in records: {dupes}"
+            raise ValueError(msg)
+        return self
 
     def with_record(
         self,

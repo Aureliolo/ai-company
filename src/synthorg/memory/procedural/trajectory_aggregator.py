@@ -5,10 +5,10 @@ across multiple distinct agents, enabling org-scope skill proposals.
 """
 
 from collections import defaultdict
-from typing import Literal
+from typing import Literal, Self
 from uuid import uuid4
 
-from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.observability import get_logger
@@ -48,6 +48,17 @@ class AggregatedTrajectory(BaseModel):
     recorded_at: AwareDatetime = Field(
         description="When trajectory was recorded",
     )
+
+    @model_validator(mode="after")
+    def _validate_error_consistency(self) -> Self:
+        """Ensure error_category presence matches outcome."""
+        if self.outcome == "failure" and self.error_category is None:
+            msg = "error_category required when outcome is 'failure'"
+            raise ValueError(msg)
+        if self.outcome == "success" and self.error_category is not None:
+            msg = "error_category must be None when outcome is 'success'"
+            raise ValueError(msg)
+        return self
 
 
 class TrajectoryPattern(BaseModel):
@@ -101,10 +112,11 @@ class TrajectoryAggregator:
             to form a pattern (default 3).
     """
 
-    __slots__ = ("_min_agents",)
+    __slots__ = ("_min_agents", "last_skipped_count")
 
     def __init__(self, *, min_agents_for_pattern: int = 3) -> None:
         self._min_agents = min_agents_for_pattern
+        self.last_skipped_count: int = 0
 
     def aggregate(
         self,
@@ -127,9 +139,11 @@ class TrajectoryAggregator:
             groups[_group_key(t)].append(t)
 
         patterns: list[TrajectoryPattern] = []
+        skipped = 0
         for key, trajs in groups.items():
             agent_ids = frozenset(t.agent_id for t in trajs)
             if len(agent_ids) < self._min_agents:
+                skipped += 1
                 continue
 
             failure_count = sum(1 for t in trajs if t.outcome == "failure")
@@ -148,5 +162,6 @@ class TrajectoryAggregator:
                 ),
             )
 
+        self.last_skipped_count = skipped
         patterns.sort(key=lambda p: p.occurrence_count, reverse=True)
         return tuple(patterns)

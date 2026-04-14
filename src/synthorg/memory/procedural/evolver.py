@@ -212,6 +212,7 @@ class AutonomousSkillEvolver:
             conflicts=tuple(conflicts),
             supersessions=tuple(supersessions),
             skipped_low_confidence=skipped_low_confidence,
+            skipped_below_agent_threshold=self._aggregator.last_skipped_count,
         )
         logger.info(
             SKILL_EVOLVER_CYCLE_COMPLETE,
