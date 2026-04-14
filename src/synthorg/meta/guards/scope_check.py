@@ -81,10 +81,10 @@ class ScopeCheckGuard:
 
     def _is_altitude_enabled(self, altitude: ProposalAltitude) -> bool:
         """Check if an altitude is enabled in config."""
-        if altitude == ProposalAltitude.CONFIG_TUNING:
-            return self._config.config_tuning_enabled
-        if altitude == ProposalAltitude.ARCHITECTURE:
-            return self._config.architecture_proposals_enabled
-        if altitude == ProposalAltitude.PROMPT_TUNING:
-            return self._config.prompt_tuning_enabled
-        return False
+        match altitude:
+            case ProposalAltitude.CONFIG_TUNING:
+                return self._config.config_tuning_enabled
+            case ProposalAltitude.ARCHITECTURE:
+                return self._config.architecture_proposals_enabled
+            case ProposalAltitude.PROMPT_TUNING:
+                return self._config.prompt_tuning_enabled
