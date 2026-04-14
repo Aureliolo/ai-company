@@ -81,13 +81,21 @@ def parse_json_log_lines(
         if cumulative > max_log_bytes:
             break
         try:
-            parsed.append(json.loads(stripped))
+            obj = json.loads(stripped)
         except json.JSONDecodeError:
             logger.debug(
                 SANDBOX_CONTAINER_LOGS_MALFORMED,
                 sidecar_id=sidecar_id_short,
             )
             continue
+        if not isinstance(obj, dict):
+            logger.debug(
+                SANDBOX_CONTAINER_LOGS_MALFORMED,
+                sidecar_id=sidecar_id_short,
+                status="not_object",
+            )
+            continue
+        parsed.append(obj)
     return tuple(parsed)
 
 

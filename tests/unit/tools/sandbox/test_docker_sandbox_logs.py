@@ -116,6 +116,23 @@ class TestParseJsonLogLines:
         )
         assert len(result) == 1
 
+    def test_non_dict_json_values_skipped(self) -> None:
+        lines = [
+            '{"msg":"good"}\n',
+            "42\n",
+            '"just a string"\n',
+            "[1, 2, 3]\n",
+            '{"msg":"also good"}\n',
+        ]
+        result = parse_json_log_lines(
+            lines,
+            max_log_bytes=10_000,
+            sidecar_id_short="side",
+        )
+        assert len(result) == 2
+        assert result[0]["msg"] == "good"
+        assert result[1]["msg"] == "also good"
+
     def test_byte_budget_truncation(self) -> None:
         # Each line: {"msg": "aaa..."} ≈ 45 chars.
         lines = _make_log_lines(
