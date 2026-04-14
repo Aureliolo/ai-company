@@ -1,0 +1,478 @@
+"""Built-in signal rules for the meta-loop.
+
+Each rule is a class implementing the SignalRule protocol.
+Rules detect specific patterns in OrgSignalSnapshot data
+and return a RuleMatch when the pattern is found.
+
+All thresholds are configurable via constructor arguments
+with sensible defaults.
+"""
+
+from synthorg.core.types import NotBlankStr
+from synthorg.meta.models import (
+    OrgSignalSnapshot,
+    ProposalAltitude,
+    RuleMatch,
+    RuleSeverity,
+)
+
+# ── Performance rules ──────────────────────────────────────────────
+
+
+class QualityDecliningRule:
+    """Fires when org-wide quality score is below threshold.
+
+    Checks if the average quality score across all agents
+    has dropped below a configurable threshold.
+
+    Args:
+        threshold: Minimum acceptable quality (0-10, default 5.0).
+    """
+
+    def __init__(self, *, threshold: float = 5.0) -> None:
+        self._threshold = threshold
+
+    @property
+    def name(self) -> NotBlankStr:
+        """Rule name."""
+        return NotBlankStr("quality_declining")
+
+    @property
+    def target_altitudes(self) -> tuple[ProposalAltitude, ...]:
+        """Suggests config tuning and prompt tuning."""
+        return (
+            ProposalAltitude.CONFIG_TUNING,
+            ProposalAltitude.PROMPT_TUNING,
+        )
+
+    def evaluate(self, snapshot: OrgSignalSnapshot) -> RuleMatch | None:
+        """Check if quality is below threshold."""
+        perf = snapshot.performance
+        if perf.agent_count == 0:
+            return None
+        if perf.avg_quality_score < self._threshold:
+            return RuleMatch(
+                rule_name=self.name,
+                severity=RuleSeverity.WARNING,
+                description=(
+                    f"Org quality {perf.avg_quality_score:.2f} "
+                    f"below threshold {self._threshold:.2f}"
+                ),
+                signal_context={
+                    "avg_quality": perf.avg_quality_score,
+                    "threshold": self._threshold,
+                    "agent_count": perf.agent_count,
+                },
+                suggested_altitudes=self.target_altitudes,
+            )
+        return None
+
+
+class SuccessRateDropRule:
+    """Fires when org-wide success rate drops below threshold.
+
+    Args:
+        threshold: Minimum acceptable success rate (0-1, default 0.7).
+    """
+
+    def __init__(self, *, threshold: float = 0.7) -> None:
+        self._threshold = threshold
+
+    @property
+    def name(self) -> NotBlankStr:
+        """Rule name."""
+        return NotBlankStr("success_rate_drop")
+
+    @property
+    def target_altitudes(self) -> tuple[ProposalAltitude, ...]:
+        """Suggests config tuning."""
+        return (ProposalAltitude.CONFIG_TUNING,)
+
+    def evaluate(self, snapshot: OrgSignalSnapshot) -> RuleMatch | None:
+        """Check if success rate is below threshold."""
+        perf = snapshot.performance
+        if perf.agent_count == 0:
+            return None
+        if perf.avg_success_rate < self._threshold:
+            return RuleMatch(
+                rule_name=self.name,
+                severity=RuleSeverity.WARNING,
+                description=(
+                    f"Success rate {perf.avg_success_rate:.2%} "
+                    f"below threshold {self._threshold:.2%}"
+                ),
+                signal_context={
+                    "avg_success_rate": perf.avg_success_rate,
+                    "threshold": self._threshold,
+                },
+                suggested_altitudes=self.target_altitudes,
+            )
+        return None
+
+
+# ── Budget rules ───────────────────────────────────────────────────
+
+
+class BudgetOverrunRule:
+    """Fires when budget exhaustion is imminent.
+
+    Args:
+        days_threshold: Warn when fewer than N days remain
+            (default 14).
+    """
+
+    def __init__(self, *, days_threshold: int = 14) -> None:
+        self._days_threshold = days_threshold
+
+    @property
+    def name(self) -> NotBlankStr:
+        """Rule name."""
+        return NotBlankStr("budget_overrun")
+
+    @property
+    def target_altitudes(self) -> tuple[ProposalAltitude, ...]:
+        """Suggests config tuning."""
+        return (ProposalAltitude.CONFIG_TUNING,)
+
+    def evaluate(self, snapshot: OrgSignalSnapshot) -> RuleMatch | None:
+        """Check if budget will be exhausted soon."""
+        budget = snapshot.budget
+        if (
+            budget.days_until_exhausted is not None
+            and budget.days_until_exhausted <= self._days_threshold
+        ):
+            return RuleMatch(
+                rule_name=self.name,
+                severity=RuleSeverity.CRITICAL,
+                description=(
+                    f"Budget exhaustion in "
+                    f"{budget.days_until_exhausted} days "
+                    f"(threshold: {self._days_threshold})"
+                ),
+                signal_context={
+                    "days_until_exhausted": budget.days_until_exhausted,
+                    "threshold": self._days_threshold,
+                    "total_spend": budget.total_spend_usd,
+                },
+                suggested_altitudes=self.target_altitudes,
+            )
+        return None
+
+
+class CoordinationCostRatioRule:
+    """Fires when coordination spend exceeds threshold.
+
+    Args:
+        threshold: Max acceptable coordination ratio (0-1, default 0.4).
+    """
+
+    def __init__(self, *, threshold: float = 0.4) -> None:
+        self._threshold = threshold
+
+    @property
+    def name(self) -> NotBlankStr:
+        """Rule name."""
+        return NotBlankStr("coordination_cost_ratio")
+
+    @property
+    def target_altitudes(self) -> tuple[ProposalAltitude, ...]:
+        """Suggests config tuning and architecture changes."""
+        return (
+            ProposalAltitude.CONFIG_TUNING,
+            ProposalAltitude.ARCHITECTURE,
+        )
+
+    def evaluate(self, snapshot: OrgSignalSnapshot) -> RuleMatch | None:
+        """Check if coordination costs are too high."""
+        budget = snapshot.budget
+        if budget.coordination_ratio > self._threshold:
+            return RuleMatch(
+                rule_name=self.name,
+                severity=RuleSeverity.WARNING,
+                description=(
+                    f"Coordination cost ratio "
+                    f"{budget.coordination_ratio:.1%} "
+                    f"exceeds threshold {self._threshold:.1%}"
+                ),
+                signal_context={
+                    "coordination_ratio": budget.coordination_ratio,
+                    "threshold": self._threshold,
+                },
+                suggested_altitudes=self.target_altitudes,
+            )
+        return None
+
+
+# ── Coordination rules ─────────────────────────────────────────────
+
+
+class CoordinationOverheadRule:
+    """Fires when coordination overhead percentage is too high.
+
+    Args:
+        threshold: Max acceptable overhead % (default 35.0).
+    """
+
+    def __init__(self, *, threshold: float = 35.0) -> None:
+        self._threshold = threshold
+
+    @property
+    def name(self) -> NotBlankStr:
+        """Rule name."""
+        return NotBlankStr("coordination_overhead")
+
+    @property
+    def target_altitudes(self) -> tuple[ProposalAltitude, ...]:
+        """Suggests config tuning."""
+        return (ProposalAltitude.CONFIG_TUNING,)
+
+    def evaluate(self, snapshot: OrgSignalSnapshot) -> RuleMatch | None:
+        """Check if coordination overhead is too high."""
+        coord = snapshot.coordination
+        if (
+            coord.coordination_overhead_pct is not None
+            and coord.coordination_overhead_pct > self._threshold
+        ):
+            return RuleMatch(
+                rule_name=self.name,
+                severity=RuleSeverity.WARNING,
+                description=(
+                    f"Coordination overhead "
+                    f"{coord.coordination_overhead_pct:.1f}% "
+                    f"exceeds threshold {self._threshold:.1f}%"
+                ),
+                signal_context={
+                    "overhead_pct": coord.coordination_overhead_pct,
+                    "threshold": self._threshold,
+                },
+                suggested_altitudes=self.target_altitudes,
+            )
+        return None
+
+
+class StragglerBottleneckRule:
+    """Fires when straggler gap ratio is consistently high.
+
+    Args:
+        threshold: Max acceptable straggler ratio (default 2.0).
+    """
+
+    def __init__(self, *, threshold: float = 2.0) -> None:
+        self._threshold = threshold
+
+    @property
+    def name(self) -> NotBlankStr:
+        """Rule name."""
+        return NotBlankStr("straggler_bottleneck")
+
+    @property
+    def target_altitudes(self) -> tuple[ProposalAltitude, ...]:
+        """Suggests config tuning and architecture changes."""
+        return (
+            ProposalAltitude.CONFIG_TUNING,
+            ProposalAltitude.ARCHITECTURE,
+        )
+
+    def evaluate(self, snapshot: OrgSignalSnapshot) -> RuleMatch | None:
+        """Check if straggler gap is too large."""
+        coord = snapshot.coordination
+        if (
+            coord.straggler_gap_ratio is not None
+            and coord.straggler_gap_ratio > self._threshold
+        ):
+            return RuleMatch(
+                rule_name=self.name,
+                severity=RuleSeverity.INFO,
+                description=(
+                    f"Straggler gap ratio "
+                    f"{coord.straggler_gap_ratio:.2f} "
+                    f"exceeds threshold {self._threshold:.2f}"
+                ),
+                signal_context={
+                    "straggler_gap_ratio": coord.straggler_gap_ratio,
+                    "threshold": self._threshold,
+                },
+                suggested_altitudes=self.target_altitudes,
+            )
+        return None
+
+
+class RedundancyRule:
+    """Fires when work redundancy rate is too high.
+
+    Args:
+        threshold: Max acceptable redundancy rate (0-1, default 0.3).
+    """
+
+    def __init__(self, *, threshold: float = 0.3) -> None:
+        self._threshold = threshold
+
+    @property
+    def name(self) -> NotBlankStr:
+        """Rule name."""
+        return NotBlankStr("redundancy")
+
+    @property
+    def target_altitudes(self) -> tuple[ProposalAltitude, ...]:
+        """Suggests config tuning."""
+        return (ProposalAltitude.CONFIG_TUNING,)
+
+    def evaluate(self, snapshot: OrgSignalSnapshot) -> RuleMatch | None:
+        """Check if redundancy rate is too high."""
+        coord = snapshot.coordination
+        if (
+            coord.redundancy_rate is not None
+            and coord.redundancy_rate > self._threshold
+        ):
+            return RuleMatch(
+                rule_name=self.name,
+                severity=RuleSeverity.INFO,
+                description=(
+                    f"Redundancy rate "
+                    f"{coord.redundancy_rate:.2f} "
+                    f"exceeds threshold {self._threshold:.2f}"
+                ),
+                signal_context={
+                    "redundancy_rate": coord.redundancy_rate,
+                    "threshold": self._threshold,
+                },
+                suggested_altitudes=self.target_altitudes,
+            )
+        return None
+
+
+# ── Scaling rules ──────────────────────────────────────────────────
+
+
+class ScalingFailureRule:
+    """Fires when scaling decisions have a high failure rate.
+
+    Args:
+        threshold: Max acceptable failure ratio (0-1, default 0.5).
+        min_decisions: Minimum decisions to evaluate (default 3).
+    """
+
+    def __init__(
+        self,
+        *,
+        threshold: float = 0.5,
+        min_decisions: int = 3,
+    ) -> None:
+        self._threshold = threshold
+        self._min_decisions = min_decisions
+
+    @property
+    def name(self) -> NotBlankStr:
+        """Rule name."""
+        return NotBlankStr("scaling_failure")
+
+    @property
+    def target_altitudes(self) -> tuple[ProposalAltitude, ...]:
+        """Suggests config tuning."""
+        return (ProposalAltitude.CONFIG_TUNING,)
+
+    def evaluate(self, snapshot: OrgSignalSnapshot) -> RuleMatch | None:
+        """Check if scaling decisions are failing too often."""
+        scaling = snapshot.scaling
+        if scaling.total_decisions < self._min_decisions:
+            return None
+        failure_rate = 1.0 - scaling.success_rate
+        if failure_rate > self._threshold:
+            return RuleMatch(
+                rule_name=self.name,
+                severity=RuleSeverity.WARNING,
+                description=(
+                    f"Scaling failure rate "
+                    f"{failure_rate:.1%} "
+                    f"exceeds threshold {self._threshold:.1%} "
+                    f"({scaling.total_decisions} decisions)"
+                ),
+                signal_context={
+                    "failure_rate": failure_rate,
+                    "success_rate": scaling.success_rate,
+                    "total_decisions": scaling.total_decisions,
+                    "threshold": self._threshold,
+                },
+                suggested_altitudes=self.target_altitudes,
+            )
+        return None
+
+
+# ── Error rules ────────────────────────────────────────────────────
+
+
+class ErrorSpikeRule:
+    """Fires when error findings exceed a threshold.
+
+    Args:
+        threshold: Max acceptable total findings (default 10).
+    """
+
+    def __init__(self, *, threshold: int = 10) -> None:
+        self._threshold = threshold
+
+    @property
+    def name(self) -> NotBlankStr:
+        """Rule name."""
+        return NotBlankStr("error_spike")
+
+    @property
+    def target_altitudes(self) -> tuple[ProposalAltitude, ...]:
+        """Suggests config tuning and prompt tuning."""
+        return (
+            ProposalAltitude.CONFIG_TUNING,
+            ProposalAltitude.PROMPT_TUNING,
+        )
+
+    def evaluate(self, snapshot: OrgSignalSnapshot) -> RuleMatch | None:
+        """Check if error count exceeds threshold."""
+        errors = snapshot.errors
+        if errors.total_findings > self._threshold:
+            return RuleMatch(
+                rule_name=self.name,
+                severity=RuleSeverity.WARNING,
+                description=(
+                    f"Error findings ({errors.total_findings}) "
+                    f"exceed threshold ({self._threshold})"
+                ),
+                signal_context={
+                    "total_findings": errors.total_findings,
+                    "threshold": self._threshold,
+                    "most_severe": errors.most_severe_category,
+                },
+                suggested_altitudes=self.target_altitudes,
+            )
+        return None
+
+
+# ── Default rule set ───────────────────────────────────────────────
+
+
+def default_rules() -> tuple[
+    QualityDecliningRule
+    | SuccessRateDropRule
+    | BudgetOverrunRule
+    | CoordinationCostRatioRule
+    | CoordinationOverheadRule
+    | StragglerBottleneckRule
+    | RedundancyRule
+    | ScalingFailureRule
+    | ErrorSpikeRule,
+    ...,
+]:
+    """Create the default set of built-in rules with default thresholds.
+
+    Returns:
+        Tuple of all built-in rules.
+    """
+    return (
+        QualityDecliningRule(),
+        SuccessRateDropRule(),
+        BudgetOverrunRule(),
+        CoordinationCostRatioRule(),
+        CoordinationOverheadRule(),
+        StragglerBottleneckRule(),
+        RedundancyRule(),
+        ScalingFailureRule(),
+        ErrorSpikeRule(),
+    )

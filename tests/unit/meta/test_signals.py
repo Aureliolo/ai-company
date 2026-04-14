@@ -37,17 +37,31 @@ _NOW = datetime.now(UTC)
 _WEEK_AGO = _NOW - timedelta(days=7)
 
 
-def _make_mock_tracker() -> MagicMock:
-    """Create a mock PerformanceTracker."""
+def _make_mock_tracker(
+    *,
+    quality: float = 7.5,
+    collab: float = 6.0,
+    windows: tuple[tuple[str, float, float], ...] = (("7d", 0.85, 7.5),),
+) -> MagicMock:
+    """Create a mock PerformanceTracker.
+
+    Args:
+        quality: Overall quality score.
+        collab: Overall collaboration score.
+        windows: Tuples of (window_size, success_rate, avg_quality).
+    """
     tracker = MagicMock()
-    # Mock get_snapshot to return a snapshot with windows and scores.
     snapshot = MagicMock()
-    snapshot.overall_quality_score = 7.5
-    snapshot.overall_collaboration_score = 6.0
-    window = MagicMock()
-    window.window_size = "7d"
-    window.success_rate = 0.85
-    snapshot.windows = (window,)
+    snapshot.overall_quality_score = quality
+    snapshot.overall_collaboration_score = collab
+    mock_windows = []
+    for ws, sr, aq in windows:
+        w = MagicMock()
+        w.window_size = ws
+        w.success_rate = sr
+        w.avg_quality_score = aq
+        mock_windows.append(w)
+    snapshot.windows = tuple(mock_windows)
     snapshot.trends = ()
     tracker.get_snapshot = AsyncMock(return_value=snapshot)
     return tracker
@@ -91,23 +105,25 @@ class TestPerformanceSignalAggregator:
 
     async def test_multiple_agents_averaged(self) -> None:
         tracker = MagicMock()
-        snapshot1 = MagicMock()
-        snapshot1.overall_quality_score = 8.0
-        snapshot1.overall_collaboration_score = 7.0
-        window1 = MagicMock()
-        window1.window_size = "7d"
-        window1.success_rate = 0.90
-        snapshot1.windows = (window1,)
+        s1 = MagicMock()
+        s1.overall_quality_score = 8.0
+        s1.overall_collaboration_score = 7.0
+        w1 = MagicMock()
+        w1.window_size = "7d"
+        w1.success_rate = 0.90
+        w1.avg_quality_score = 8.0
+        s1.windows = (w1,)
 
-        snapshot2 = MagicMock()
-        snapshot2.overall_quality_score = 6.0
-        snapshot2.overall_collaboration_score = 5.0
-        window2 = MagicMock()
-        window2.window_size = "7d"
-        window2.success_rate = 0.80
-        snapshot2.windows = (window2,)
+        s2 = MagicMock()
+        s2.overall_quality_score = 6.0
+        s2.overall_collaboration_score = 5.0
+        w2 = MagicMock()
+        w2.window_size = "7d"
+        w2.success_rate = 0.80
+        w2.avg_quality_score = 6.0
+        s2.windows = (w2,)
 
-        tracker.get_snapshot = AsyncMock(side_effect=[snapshot1, snapshot2])
+        tracker.get_snapshot = AsyncMock(side_effect=[s1, s2])
 
         agg = PerformanceSignalAggregator(
             tracker=tracker,
@@ -117,6 +133,32 @@ class TestPerformanceSignalAggregator:
         assert result.agent_count == 2
         assert result.avg_quality_score == 7.0
         assert result.avg_success_rate == 0.85
+
+    async def test_multi_window_metrics(self) -> None:
+        tracker = _make_mock_tracker(
+            windows=(
+                ("7d", 0.90, 8.0),
+                ("30d", 0.85, 7.5),
+                ("90d", 0.80, 7.0),
+            ),
+        )
+        agg = PerformanceSignalAggregator(
+            tracker=tracker,
+            agent_ids_provider=lambda: ["agent-1"],
+        )
+        result = await agg.aggregate(since=_WEEK_AGO, until=_NOW)
+        metric_names = {m.name for m in result.metrics}
+        assert "success_rate_7d" in metric_names
+        assert "success_rate_30d" in metric_names
+        assert "success_rate_90d" in metric_names
+        assert "quality_7d" in metric_names
+        assert "quality_30d" in metric_names
+        assert "quality_90d" in metric_names
+        # Check window_days are parsed correctly.
+        for m in result.metrics:
+            if m.name == "success_rate_30d":
+                assert m.window_days == 30
+                assert m.value == 0.85
 
     async def test_tracker_failure_returns_empty(self) -> None:
         tracker = MagicMock()
