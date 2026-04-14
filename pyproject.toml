@@ -272,7 +272,7 @@ markers = [
     "timescaledb: Integration tests that require the TimescaleDB extension (self-hosted Postgres only)",
     "agent_eval: Agent evaluation tests (skipped unless --run-agent-evals, 300s timeout)",
 ]
-addopts = ["--strict-markers", "--strict-config", "-ra", "--tb=short", "--dist=worksteal", "-n=8", "-p", "no:randomly"]
+addopts = ["--strict-markers", "--strict-config", "-ra", "--tb=short", "--dist=worksteal", "-n=8", "-p", "no:randomly", "-p", "no:unraisableexception"]
 filterwarnings = [
     "error",
     "ignore:Core Pydantic V1 functionality:UserWarning",
