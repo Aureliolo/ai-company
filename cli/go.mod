@@ -3,8 +3,8 @@ module github.com/Aureliolo/synthorg/cli
 go 1.26.2
 
 require (
-	github.com/charmbracelet/huh v1.0.0
-	github.com/charmbracelet/lipgloss v1.1.0
+	github.com/charmbracelet/huh/v2 v2.0.3
+	github.com/charmbracelet/lipgloss/v2 v2.0.3
 	github.com/google/go-containerregistry v0.21.5
 	github.com/mattn/go-isatty v0.0.21
 	github.com/mattn/go-runewidth v0.0.23
