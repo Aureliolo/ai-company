@@ -46,11 +46,6 @@ class ResilientTimestampProvider:
 
     def __init__(self, tsa_url: str) -> None:
         self._tsa_url = tsa_url
-        logger.warning(
-            SECURITY_TIMESTAMP_FALLBACK,
-            tsa_url=tsa_url,
-            reason="RFC 3161 TSA client is a stub; timestamps will use local clock",
-        )
 
     async def get_timestamp(self) -> datetime:
         """Get timestamp from TSA, falling back to local clock.

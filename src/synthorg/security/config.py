@@ -296,6 +296,8 @@ class SecurityConfig(BaseModel):
         output_scan_policy_type: Output scan response policy
             (default: ``AUTONOMY_TIERED``).
         custom_policies: User-defined policy rules.
+        policy_engine: Runtime policy engine configuration
+            (Cedar-based pre-execution gate, opt-in).
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)

@@ -106,6 +106,22 @@ class AuditChainVerifier:
                     entry.timestamp,
                 )
 
+            # No entry mismatch found but verify_integrity returned
+            # False -- tail hash corruption.
+            tail_pos = entries[-1].position + 1
+            logger.error(
+                SECURITY_AUDIT_CHAIN_BREAK_DETECTED,
+                position=tail_pos,
+                expected=expected_prev,
+                actual=chain.tail_hash,
+                reason="tail_hash_mismatch",
+            )
+            return ChainVerificationResult(
+                valid=False,
+                entries_checked=len(entries),
+                first_break_position=tail_pos,
+            )
+
         # Verify each entry's signature against its canonical payload.
         for entry in entries:
             sig_valid = await self._signer.verify(
@@ -150,8 +166,14 @@ class AuditChainVerifier:
         canonical: bytes = getattr(pkg, "canonical_bytes", None) or b""
         if not canonical:
             canonical = getattr(pkg, "signed_bytes", b"")
+        if not canonical:
+            return False
 
-        for sig in getattr(pkg, "signatures", ()):
+        signatures = getattr(pkg, "signatures", ())
+        if not signatures:
+            return False
+
+        for sig in signatures:
             valid = await self._signer.verify(
                 canonical,
                 sig.signature_bytes,

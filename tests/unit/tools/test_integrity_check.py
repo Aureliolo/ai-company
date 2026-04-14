@@ -201,7 +201,7 @@ class TestToolIntegrityChecker:
         checker = ToolIntegrityChecker(
             prior_hashes={
                 "tool_a": hash_a,
-                "tool_b": "wrong" * 10 + "wrong1234",  # 64 chars
+                "tool_b": "a" * 64,  # valid-length hex hash
             },
         )
         report = checker.check((tool_a, tool_b))

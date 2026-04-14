@@ -41,13 +41,26 @@ class PolicyActionRequest(BaseModel):
 
     @model_validator(mode="after")
     def _deep_copy_context(self) -> Self:
-        """Deep-copy and freeze context to prevent external mutation."""
+        """Deep-copy and recursively freeze context."""
         object.__setattr__(
             self,
             "context",
-            MappingProxyType(copy.deepcopy(dict(self.context))),
+            _recursive_freeze(copy.deepcopy(dict(self.context))),
         )
         return self
+
+
+def _recursive_freeze(obj: object) -> object:
+    """Recursively freeze mutable containers."""
+    if isinstance(obj, dict):
+        return MappingProxyType(
+            {k: _recursive_freeze(v) for k, v in obj.items()},
+        )
+    if isinstance(obj, list):
+        return tuple(_recursive_freeze(v) for v in obj)
+    if isinstance(obj, set):
+        return frozenset(obj)
+    return obj
 
 
 class PolicyDecision(BaseModel):

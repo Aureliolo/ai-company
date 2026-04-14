@@ -70,20 +70,21 @@ class PolicyGateMiddleware(BaseAgentMiddleware):
             PolicyActionRequest,
         )
 
-        # Extract tool name from context metadata.
-        tool_name = str(ctx.metadata.get("tool_name", "unknown"))
-
-        request = PolicyActionRequest(
-            action_type="tool_invoke",
-            principal=str(ctx.agent_id),
-            resource=tool_name,
-            context={
-                "task_id": str(ctx.task_id),
-                "execution_id": str(ctx.execution_id),
-            },
-        )
-
         try:
+            # Build request inside the guarded block so metadata/
+            # validation errors also follow the fallback path.
+            tool_name = str(ctx.metadata.get("tool_name", "unknown"))
+            request = PolicyActionRequest(
+                action_type="tool_invoke",
+                principal=str(getattr(ctx, "agent_id", "unknown")),
+                resource=tool_name,
+                context={
+                    "task_id": str(getattr(ctx, "task_id", "unknown")),
+                    "execution_id": str(
+                        getattr(ctx, "execution_id", "unknown"),
+                    ),
+                },
+            )
             decision = await self._engine.evaluate(request)
         except MemoryError, RecursionError:
             raise
@@ -94,8 +95,6 @@ class PolicyGateMiddleware(BaseAgentMiddleware):
 
             logger.error(
                 SECURITY_POLICY_ENGINE_ERROR,
-                tool_name=tool_name,
-                principal=str(ctx.agent_id),
                 exc_info=True,
             )
             # Fail-open: proceed to tool call on evaluation error.

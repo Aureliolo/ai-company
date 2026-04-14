@@ -13,7 +13,9 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from synthorg.observability import get_logger
 from synthorg.observability.events.workspace import (
+    WORKSPACE_DISK_CHECK_ERROR,
     WORKSPACE_DISK_EXCEEDED,
+    WORKSPACE_DISK_TRAVERSAL_ERROR,
     WORKSPACE_DISK_WARNING,
 )
 
@@ -55,13 +57,15 @@ def _compute_dir_size_bytes(path: Path) -> int:
     try:
         for entry in path.rglob("*"):
             try:
+                if entry.is_symlink():
+                    continue
                 if entry.is_file():
                     total += entry.stat().st_size
             except OSError:
                 continue
     except OSError:
         logger.debug(
-            "workspace.dir_traversal_error",
+            WORKSPACE_DISK_TRAVERSAL_ERROR,
             path=str(path),
         )
     return total
@@ -143,7 +147,7 @@ class DiskQuotaWatcher:
                 raise
             except Exception:
                 logger.warning(
-                    "workspace.disk_quota_check_error",
+                    WORKSPACE_DISK_CHECK_ERROR,
                     path=str(p),
                     exc_info=True,
                 )

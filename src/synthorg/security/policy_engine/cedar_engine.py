@@ -1,5 +1,6 @@
 """Cedar policy engine adapter using ``cedarpy``."""
 
+import json
 import time
 
 import cedarpy
@@ -64,16 +65,12 @@ class CedarPolicyEngine:
             resource=request.resource,
         )
 
-        # Escape double quotes in entity UIDs to prevent Cedar
-        # syntax injection.
-        principal = str(request.principal).replace('"', '\\"')
-        action = str(request.action_type).replace('"', '\\"')
-        resource = str(request.resource).replace('"', '\\"')
-
+        # Use json.dumps for proper escaping of all special characters
+        # in Cedar entity UIDs to prevent syntax injection.
         cedar_request = {
-            "principal": f'Principal::"{principal}"',
-            "action": f'Action::"{action}"',
-            "resource": f'Resource::"{resource}"',
+            "principal": f"Principal::{json.dumps(str(request.principal))}",
+            "action": f"Action::{json.dumps(str(request.action_type))}",
+            "resource": f"Resource::{json.dumps(str(request.resource))}",
             "context": dict(request.context),
         }
 
