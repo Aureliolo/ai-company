@@ -4,7 +4,7 @@
 services:
 
   backend:
-    image: ghcr.io/aureliolo/synthorg-backend:0.6.6@sha256:d19d44d9ee74bc1a2e7b9bb383a46c0a2e5ef79d8f92420da30f2b92d80ec5a8
+    image: ghcr.io/aureliolo/synthorg-backend:v0.2.0
     ports:
       - "9000:3001"
     volumes:
@@ -47,7 +47,7 @@ services:
     # Healthcheck defined in Dockerfile -- do not override here.
 
   web:
-    image: ghcr.io/aureliolo/synthorg-web:0.6.6@sha256:5398a64434b9a500e7cfa70d4dfd4447c8f03e549dad592b3575c0c3c3d24e65
+    image: ghcr.io/aureliolo/synthorg-web:v0.2.0
     ports:
       - "4000:8080"
     depends_on:
