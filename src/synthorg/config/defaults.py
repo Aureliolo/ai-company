@@ -49,6 +49,7 @@ def default_config_dict() -> dict[str, object]:
         "workflow": {},
         "notifications": {},
         "integrations": {},
+        "a2a": {},
         "ontology": {},
         "telemetry": {},
         "web": None,

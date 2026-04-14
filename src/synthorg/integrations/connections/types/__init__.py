@@ -10,6 +10,9 @@ from synthorg.integrations.connections.models import ConnectionType
 from synthorg.integrations.connections.protocol import (
     ConnectionAuthenticator,  # noqa: TC001
 )
+from synthorg.integrations.connections.types.a2a_peer import (
+    A2APeerAuthenticator,
+)
 from synthorg.integrations.connections.types.database import (
     DatabaseAuthenticator,
 )
@@ -38,6 +41,7 @@ CONNECTION_TYPE_REGISTRY: MappingProxyType[ConnectionType, ConnectionAuthenticat
             ConnectionType.DATABASE: DatabaseAuthenticator(),
             ConnectionType.GENERIC_HTTP: GenericHttpAuthenticator(),
             ConnectionType.OAUTH_APP: OAuthAppAuthenticator(),
+            ConnectionType.A2A_PEER: A2APeerAuthenticator(),
         },
     )
 )
