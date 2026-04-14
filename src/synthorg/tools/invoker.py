@@ -1009,7 +1009,7 @@ class ToolInvoker:
 
             self._html_guard = HTMLParseGuard()
 
-        sanitized = self._html_guard.sanitize(result.content)  # type: ignore[union-attr]
+        sanitized = self._html_guard.sanitize(result.content)  # type: ignore[attr-defined]
         if sanitized.cleaned == result.content:
             return result
         metadata = dict(result.metadata)

@@ -194,15 +194,13 @@ class HTMLParseGuard:
 
     def _sanitize_html(self, raw: str) -> HTMLSanitizeResult:
         """Parse and sanitize HTML content using lxml."""
-        from lxml import (  # noqa: PLC0415
-            html as lxml_html,  # type: ignore[import-untyped]
-        )
+        from lxml import html as lxml_html  # type: ignore  # noqa: PLC0415
 
         doc = lxml_html.fromstring(raw)
         # Capture original text before stripping (single parse).
-        original_text = doc.text_content().strip()
+        original_text = doc.text_content().strip()  # type: ignore[attr-defined]
         stripped_count = self._strip_dangerous_elements(doc)
-        cleaned_text = doc.text_content().strip()
+        cleaned_text = doc.text_content().strip()  # type: ignore[attr-defined]
         gap_ratio = self._compute_gap_ratio(original_text, cleaned_text)
         gap_detected = gap_ratio > self._config.gap_threshold_ratio
 
@@ -241,7 +239,7 @@ class HTMLParseGuard:
 
         Returns the count of stripped elements.
         """
-        from lxml import etree  # type: ignore[import-untyped]  # noqa: PLC0415
+        from lxml import etree  # type: ignore  # noqa: PLC0415
 
         stripped = 0
 
