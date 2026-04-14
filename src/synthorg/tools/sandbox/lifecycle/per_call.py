@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING
 from synthorg.observability import get_logger
 from synthorg.observability.events.sandbox import (
     SANDBOX_LIFECYCLE_ACQUIRE,
+    SANDBOX_LIFECYCLE_CLEANUP,
     SANDBOX_LIFECYCLE_RELEASE,
 )
 
@@ -31,7 +32,7 @@ class PerCallStrategy:
         create_fn: Callable[[], Awaitable[ContainerHandle]],
     ) -> ContainerHandle:
         """Create a fresh container (no reuse)."""
-        logger.debug(
+        logger.info(
             SANDBOX_LIFECYCLE_ACQUIRE,
             strategy="per-call",
             owner_id=owner_id,
@@ -39,14 +40,28 @@ class PerCallStrategy:
         )
         return await create_fn()
 
-    async def release(self, *, owner_id: str) -> None:
+    async def release(
+        self,
+        *,
+        owner_id: str,
+        destroy_fn: Callable[[ContainerHandle], Awaitable[None]],  # noqa: ARG002
+    ) -> None:
         """No-op -- the caller destroys the container."""
-        logger.debug(
+        logger.info(
             SANDBOX_LIFECYCLE_RELEASE,
             strategy="per-call",
             owner_id=owner_id,
             action="noop",
         )
 
-    async def cleanup_all(self) -> None:
+    async def cleanup_all(
+        self,
+        *,
+        destroy_fn: Callable[[ContainerHandle], Awaitable[None]],  # noqa: ARG002
+    ) -> None:
         """No-op -- nothing tracked."""
+        logger.info(
+            SANDBOX_LIFECYCLE_CLEANUP,
+            strategy="per-call",
+            action="noop",
+        )

@@ -795,6 +795,12 @@ Strategy selection via `sandboxing.docker.lifecycle.strategy` in `SandboxingConf
 The sidecar container shares the sandbox container's lifetime (created and destroyed
 together, since they share a network namespace).
 
+> **Status**: The lifecycle protocol, config, factory, and three strategy
+> implementations are complete. Integration into `DockerSandbox.execute()` is
+> in progress -- the `owner_id` parameter is accepted and the config field is
+> wired, but the Docker backend does not yet dispatch to the lifecycle strategy.
+> Until wired, all executions use the current per-call ephemeral behaviour.
+
 ### Git Clone SSRF Prevention
 
 The `git_clone` tool validates clone URLs against SSRF attacks via hostname/IP
@@ -1857,7 +1863,7 @@ Backup settings live in the `backup` namespace with runtime editability via `Bac
 
 ## Container Runtime
 
-SynthOrg ships as three container images to `ghcr.io/aureliolo/synthorg-{backend,web,sandbox}`.
+SynthOrg ships as five container images to `ghcr.io/aureliolo/synthorg-{backend,web,sandbox,sidecar,fine-tune}`.
 The CLI orchestrates them via Docker Compose, verifies their signatures before starting,
 and pre-pulls the sandbox image on demand.
 
@@ -1898,7 +1904,7 @@ Reconciliation mechanisms:
 | Mechanism | Target | Cadence |
 |-----------|--------|---------|
 | Renovate (Docker ecosystem + digest pinning) | Thin Dockerfile `FROM` lines (apko-base digest) | Daily |
-| `apko lock --update` cron (`.github/workflows/apko-lock.yml`) | `docker/*/apko.lock.json` (backend, sandbox, sidecar, web) | Weekly (Mon 06:00 UTC) |
+| `apko lock --update` cron (`.github/workflows/apko-lock.yml`) | `docker/*/apko.lock.json` (backend, sandbox, sidecar, fine-tune, web) | Weekly (Mon 06:00 UTC) |
 
 ### Image verification at launch
 

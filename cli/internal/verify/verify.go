@@ -93,9 +93,9 @@ func BuildImageRefs(tag string, sandbox bool, fineTuning bool) []ImageRef {
 	}
 	if sandbox {
 		refs = append(refs, NewImageRef("sandbox", tag), NewImageRef("sidecar", tag))
-	}
-	if fineTuning {
-		refs = append(refs, NewImageRef("fine-tune", tag))
+		if fineTuning {
+			refs = append(refs, NewImageRef("fine-tune", tag))
+		}
 	}
 	return refs
 }

@@ -66,10 +66,14 @@ jobs:
               - '.github/workflows/docker.yml'
             sidecar:
               - 'docker/sidecar/**'
+              - '.dockerignore'
               - '.github/workflows/docker.yml'
             fine-tune:
               - 'docker/fine-tune/**'
-              - 'src/synthorg/memory/embedding/fine_tune*.py'
+              - 'src/synthorg/memory/embedding/**'
+              - 'pyproject.toml'
+              - 'uv.lock'
+              - '.dockerignore'
               - '.github/workflows/docker.yml'
             web:
               - 'docker/web/**'
@@ -811,6 +815,7 @@ jobs:
           retention-days: 30
 
       - name: Trivy SARIF scan (backend)
+        if: always()
         uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # v0.35.0
         with:
           image-ref: ${{ steps.scan-ref.outputs.ref }}
@@ -1081,6 +1086,7 @@ jobs:
         run: scripts/evaluate-scan.sh --verbose trivy-web.json "Web"
 
       - name: Trivy SARIF scan (web)
+        if: always()
         uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # v0.35.0
         with:
           image-ref: ${{ steps.scan-ref.outputs.ref }}
@@ -1309,6 +1315,7 @@ jobs:
           retention-days: 30
 
       - name: Trivy SARIF scan (sandbox)
+        if: always()
         uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # v0.35.0
         with:
           image-ref: ${{ steps.scan-ref.outputs.ref }}
@@ -1530,6 +1537,7 @@ jobs:
           retention-days: 30
 
       - name: Trivy SARIF scan (sidecar)
+        if: always()
         uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # v0.35.0
         with:
           image-ref: ${{ steps.scan-ref.outputs.ref }}
@@ -1749,6 +1757,7 @@ jobs:
           retention-days: 30
 
       - name: Trivy SARIF scan (fine-tune)
+        if: always()
         uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # v0.35.0
         with:
           image-ref: ${{ steps.scan-ref.outputs.ref }}

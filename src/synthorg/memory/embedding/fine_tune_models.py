@@ -417,9 +417,10 @@ class FineTuneExecutionConfig(BaseModel):
     Attributes:
         backend: Execution backend -- ``"in-process"`` (default, lazy
             torch import) or ``"docker"`` (dedicated container).
-        image: Container image for the ``"docker"`` backend.  Resolved
-            from ``SYNTHORG_FINE_TUNE_IMAGE`` at runtime.  Required
-            when ``backend="docker"``, ignored for ``"in-process"``.
+        image: Container image for the ``"docker"`` backend.  Set by
+            the CLI via ``SYNTHORG_FINE_TUNE_IMAGE`` in the backend
+            container environment.  Required when ``backend="docker"``,
+            ignored for ``"in-process"``.
         gpu_enabled: Request GPU passthrough on the container.  Only
             applies to ``backend="docker"``; ignored for in-process.
         memory_limit: Container memory limit (Docker format).
@@ -431,7 +432,7 @@ class FineTuneExecutionConfig(BaseModel):
     backend: Literal["in-process", "docker"] = "in-process"
     image: NotBlankStr | None = None
     gpu_enabled: bool = False
-    memory_limit: str = "8g"
+    memory_limit: NotBlankStr = "8g"
     timeout_seconds: float = Field(default=7200.0, gt=0)
 
     @model_validator(mode="after")

@@ -124,6 +124,16 @@ func TestBuildImageRefsWithFineTuning(t *testing.T) {
 	}
 }
 
+func TestBuildImageRefsFineTuningWithoutSandbox(t *testing.T) {
+	refs := BuildImageRefs("0.3.0", false, true)
+	if len(refs) != 2 {
+		t.Fatalf("got %d refs, want 2 (fine-tune requires sandbox)", len(refs))
+	}
+	if refs[0].Name() != "backend" || refs[1].Name() != "web" {
+		t.Errorf("expected [backend, web], got [%s, %s]", refs[0].Name(), refs[1].Name())
+	}
+}
+
 func TestIsValidDigest(t *testing.T) {
 	tests := []struct {
 		digest string

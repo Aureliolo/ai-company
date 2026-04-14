@@ -264,7 +264,7 @@ type setupAnswers struct {
 	channel            string // optional override (empty = default "stable")
 	imageTag           string // optional override (empty = use CLI version)
 	telemetryOptIn     bool
-	fineTuning         bool
+	fineTuning         bool // enable fine-tuning pipeline (requires sandbox/Docker)
 }
 
 // validateInitFlags checks that provided CLI flag values are valid before
@@ -384,12 +384,6 @@ func buildAnswersFromFlags(dataDir string) setupAnswers {
 		postgresPort = defaults.PostgresPort
 	}
 	sandboxEnabled := initSandbox == "true"
-	if !sandboxEnabled {
-		fmt.Fprintln(os.Stderr,
-			"WARNING: Without sandbox, agents cannot execute code, "+
-				"run shell commands, or use file-system tools. "+
-				"These capabilities will be unavailable.")
-	}
 	a := setupAnswers{
 		dir:                dataDir,
 		backendPortStr:     strconv.Itoa(initBackendPort),

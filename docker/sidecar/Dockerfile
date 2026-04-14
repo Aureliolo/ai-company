@@ -7,6 +7,8 @@
 # proxy. It shares a network namespace with the sandbox container.
 # =============================================================================
 
+ARG BASE_IMAGE
+
 FROM golang:1.26-alpine@sha256:c2a1f7b2095d046ae14b286b18413a05bb82c9bca9b25fe7ff5efef0f0826166 AS builder
 
 WORKDIR /build
@@ -16,7 +18,6 @@ COPY docker/sidecar/ .
 RUN CGO_ENABLED=0 go build -ldflags="-s -w" -trimpath -o sidecar .
 
 # -----------------------------------------------------------------------------
-ARG BASE_IMAGE
 FROM ${BASE_IMAGE}
 
 LABEL org.opencontainers.image.title="synthorg-sidecar" \

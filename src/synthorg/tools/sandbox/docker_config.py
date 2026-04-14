@@ -1,7 +1,7 @@
 """Docker sandbox configuration model."""
 
 import os
-from typing import Literal, Self
+from typing import Any, Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -26,8 +26,6 @@ _SANDBOX_IMAGE_ENV_VAR = "SYNTHORG_SANDBOX_IMAGE"
 _FALLBACK_SANDBOX_IMAGE = "ghcr.io/aureliolo/synthorg-sandbox:latest"
 _SIDECAR_IMAGE_ENV_VAR = "SYNTHORG_SIDECAR_IMAGE"
 _FALLBACK_SIDECAR_IMAGE = "ghcr.io/aureliolo/synthorg-sidecar:latest"
-_FINE_TUNE_IMAGE_ENV_VAR = "SYNTHORG_FINE_TUNE_IMAGE"
-_FALLBACK_FINE_TUNE_IMAGE = "ghcr.io/aureliolo/synthorg-fine-tune:latest"
 
 
 def _default_sandbox_image() -> str:
@@ -233,18 +231,23 @@ class DockerSandboxConfig(BaseModel):
                 raise ValueError(msg)
         return self
 
-    @model_validator(mode="after")
-    def _validate_network_presets(self) -> Self:
+    @model_validator(mode="before")
+    @classmethod
+    def _resolve_network_presets(cls, data: Any) -> Any:
         """Resolve preset names and merge into ``allowed_hosts``.
 
-        Runs before ``_validate_network_allow_all`` so the mutual
-        exclusion check sees the final merged ``allowed_hosts``.
+        Runs as a before-validator so the frozen model is constructed
+        with the final merged ``allowed_hosts`` -- no post-construction
+        mutation needed.
         """
-        if not self.network_presets:
-            return self
-        merged = list(self.allowed_hosts)
-        existing = set(self.allowed_hosts)
-        for preset_name in self.network_presets:
+        if not isinstance(data, dict):
+            return data
+        presets = data.get("network_presets")
+        if not presets:
+            return data
+        allowed = list(data.get("allowed_hosts", ()))
+        existing = set(allowed)
+        for preset_name in presets:
             if preset_name not in PRESETS:
                 msg = (
                     f"Unknown network preset {preset_name!r}; "
@@ -258,11 +261,10 @@ class DockerSandboxConfig(BaseModel):
                 raise ValueError(msg)
             for entry in PRESETS[preset_name]:
                 if entry not in existing:
-                    merged.append(entry)
+                    allowed.append(entry)
                     existing.add(entry)
-        # Pydantic frozen model: use object.__setattr__ for validator mutation.
-        object.__setattr__(self, "allowed_hosts", tuple(merged))
-        return self
+        data["allowed_hosts"] = tuple(allowed)
+        return data
 
     @model_validator(mode="after")
     def _validate_network_allow_all(self) -> Self:

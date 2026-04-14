@@ -41,16 +41,44 @@ _EXECUTABLE_STAGES: frozenset[FineTuneStage] = frozenset(
 )
 
 
-def _run() -> int:
-    """Execute the fine-tune stage and return an exit code."""
+def _load_config() -> dict[str, Any] | None:
+    """Load and validate the stage config JSON.
+
+    Returns:
+        Parsed config dict, or ``None`` on failure.
+    """
     if not _CONFIG_PATH.exists():
         print(  # noqa: T201
             f"ERROR: config file not found at {_CONFIG_PATH}",
             file=sys.stderr,
         )
+        return None
+
+    try:
+        raw = _CONFIG_PATH.read_text(encoding="utf-8")
+        config = json.loads(raw)
+    except OSError as exc:
+        print(  # noqa: T201
+            f"ERROR: unable to read config file {_CONFIG_PATH}: {exc}",
+            file=sys.stderr,
+        )
+        return None
+    except json.JSONDecodeError as exc:
+        print(f"ERROR: invalid config JSON: {exc.msg}", file=sys.stderr)  # noqa: T201
+        return None
+
+    if not isinstance(config, dict):
+        print("ERROR: config must be a JSON object", file=sys.stderr)  # noqa: T201
+        return None
+    return config
+
+
+def _run() -> int:
+    """Execute the fine-tune stage and return an exit code."""
+    config = _load_config()
+    if config is None:
         return 1
 
-    config = json.loads(_CONFIG_PATH.read_text(encoding="utf-8"))
     stage_name = config.get("stage", "")
 
     try:
@@ -86,7 +114,16 @@ async def _dispatch_stage(
     config: dict[str, Any],
     token: CancellationToken,
 ) -> None:
-    """Dispatch a stage call with the correct kwargs from config JSON."""
+    """Dispatch a stage call with the correct kwargs from config JSON.
+
+    Args:
+        stage: The pipeline stage to execute.
+        config: Configuration dictionary with stage-specific keys.
+        token: Cancellation token for SIGTERM handling.
+
+    Raises:
+        KeyError: If required config keys are missing for the stage.
+    """
     # Lazy imports -- only load ML deps when actually running a stage.
     from synthorg.memory.embedding.fine_tune import (  # noqa: PLC0415
         contrastive_fine_tune,
