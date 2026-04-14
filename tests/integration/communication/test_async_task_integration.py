@@ -205,5 +205,6 @@ class TestAsyncTaskSupervisorFlow:
         assert task_1.status == AsyncTaskStatus.COMPLETED
 
         # Others still running
-        assert channel.get("task-0") is not None
-        assert channel.get("task-0").status == AsyncTaskStatus.RUNNING
+        task_0 = channel.get("task-0")
+        assert task_0 is not None
+        assert task_0.status == AsyncTaskStatus.RUNNING

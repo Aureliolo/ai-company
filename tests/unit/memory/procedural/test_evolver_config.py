@@ -51,4 +51,4 @@ class TestEvolverConfig:
     )
     def test_invalid_field_rejected(self, field: str, value: object) -> None:
         with pytest.raises(ValidationError):
-            EvolverConfig(**{field: value})
+            EvolverConfig(**{field: value})  # type: ignore[arg-type]

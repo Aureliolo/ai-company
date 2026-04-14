@@ -88,7 +88,6 @@ class AsyncTaskService:
             type=TaskType.RESEARCH,
             project="default",
             created_by=supervisor_id,
-            parent_task_id=task_spec.parent_task_id,
         )
         try:
             task = await self._engine.create_task(
@@ -100,9 +99,8 @@ class AsyncTaskService:
                 TaskStatus.ASSIGNED,
                 requested_by=supervisor_id,
                 reason="async_task_start",
-                transition_overrides={
-                    "assigned_to": task_spec.agent_id,
-                },
+                assigned_to=task_spec.agent_id,
+                parent_task_id=task_spec.parent_task_id,
             )
         except Exception:
             logger.exception(
