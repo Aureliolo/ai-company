@@ -101,6 +101,11 @@
       "description": "Block litellm 1.83.1+ (hard-pins pydantic==2.12.5, jsonschema==4.23.0). Upstream: BerriAI/litellm#25280. Re-enable when upstream reverts exact pins.",
       "matchDepNames": ["litellm"],
       "allowedVersions": "<=1.83.0"
+    },
+    {
+      "description": "Ignore test golden files -- not real compose configs",
+      "matchFileNames": ["cli/testdata/**"],
+      "enabled": false
     }
   ],
   "customManagers": [
