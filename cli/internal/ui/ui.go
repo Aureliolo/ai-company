@@ -15,10 +15,9 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/lipgloss/v2"
 	"github.com/mattn/go-isatty"
 	"github.com/mattn/go-runewidth"
-	"github.com/muesli/termenv"
 )
 
 // Color palette for CLI styling.
@@ -92,16 +91,32 @@ func NewUI(w io.Writer) *UI {
 
 // NewUIWithOptions creates a UI with the specified output mode options.
 func NewUIWithOptions(w io.Writer, opts Options) *UI {
-	var r *lipgloss.Renderer
-	if opts.NoColor || opts.Plain {
-		r = lipgloss.NewRenderer(w, termenv.WithProfile(termenv.Ascii))
-	} else {
-		r = lipgloss.NewRenderer(w)
-	}
-
 	hints := opts.Hints
 	if hints == "" {
 		hints = "auto"
+	}
+
+	// In no-color or plain mode, create unstyled (empty) styles so that
+	// Render() returns text without ANSI codes. In normal mode, apply
+	// foreground colors and bold attributes.
+	brand := lipgloss.NewStyle()
+	brandBold := lipgloss.NewStyle()
+	success := lipgloss.NewStyle()
+	warn := lipgloss.NewStyle()
+	errStyle := lipgloss.NewStyle()
+	muted := lipgloss.NewStyle()
+	label := lipgloss.NewStyle()
+	bold := lipgloss.NewStyle()
+
+	if !opts.NoColor && !opts.Plain && writerIsTTY(w) {
+		brand = brand.Foreground(colorBrand)
+		brandBold = brandBold.Foreground(colorBrand).Bold(true)
+		success = success.Foreground(colorSuccess)
+		warn = warn.Foreground(colorWarn)
+		errStyle = errStyle.Foreground(colorError)
+		muted = muted.Foreground(colorMuted)
+		label = label.Foreground(colorLabel)
+		bold = bold.Bold(true)
 	}
 
 	return &UI{
@@ -111,14 +126,14 @@ func NewUIWithOptions(w io.Writer, opts Options) *UI {
 		quiet:     opts.Quiet || opts.JSON,
 		jsonMode:  opts.JSON,
 		hints:     hints,
-		brand:     r.NewStyle().Foreground(colorBrand),
-		brandBold: r.NewStyle().Foreground(colorBrand).Bold(true),
-		success:   r.NewStyle().Foreground(colorSuccess),
-		warn:      r.NewStyle().Foreground(colorWarn),
-		err:       r.NewStyle().Foreground(colorError),
-		muted:     r.NewStyle().Foreground(colorMuted),
-		label:     r.NewStyle().Foreground(colorLabel),
-		bold:      r.NewStyle().Bold(true),
+		brand:     brand,
+		brandBold: brandBold,
+		success:   success,
+		warn:      warn,
+		err:       errStyle,
+		muted:     muted,
+		label:     label,
+		bold:      bold,
 	}
 }
 

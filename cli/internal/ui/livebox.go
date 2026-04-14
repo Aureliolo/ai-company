@@ -5,7 +5,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/lipgloss/v2"
 )
 
 // liveBoxLine holds the current state of a single line in a LiveBox.

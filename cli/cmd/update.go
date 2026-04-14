@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"charm.land/huh/v2"
 	"github.com/Aureliolo/synthorg/cli/internal/config"
 	"github.com/Aureliolo/synthorg/cli/internal/docker"
 	"github.com/Aureliolo/synthorg/cli/internal/health"
@@ -19,7 +20,6 @@ import (
 	"github.com/Aureliolo/synthorg/cli/internal/ui"
 	"github.com/Aureliolo/synthorg/cli/internal/verify"
 	"github.com/Aureliolo/synthorg/cli/internal/version"
-	"github.com/charmbracelet/huh"
 	"github.com/spf13/cobra"
 )
 

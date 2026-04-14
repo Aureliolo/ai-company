@@ -7,11 +7,11 @@ import (
 	"strings"
 	"time"
 
+	"charm.land/huh/v2"
 	"github.com/Aureliolo/synthorg/cli/internal/config"
 	"github.com/Aureliolo/synthorg/cli/internal/docker"
 	"github.com/Aureliolo/synthorg/cli/internal/images"
 	"github.com/Aureliolo/synthorg/cli/internal/ui"
-	"github.com/charmbracelet/huh"
 	"github.com/spf13/cobra"
 )
 

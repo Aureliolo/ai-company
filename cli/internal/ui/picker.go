@@ -26,7 +26,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/charmbracelet/huh"
+	"charm.land/huh/v2"
 	"github.com/mattn/go-isatty"
 )
 
@@ -137,7 +137,7 @@ func PickOne[T any](
 
 	form := huh.NewForm(huh.NewGroup(selectField))
 	if cfg.Plain {
-		form = form.WithTheme(huh.ThemeBase16())
+		form = form.WithTheme(huh.ThemeFunc(huh.ThemeBase16))
 	}
 	if cfg.Stdout != nil {
 		form = form.WithOutput(cfg.Stdout)
