@@ -19,6 +19,8 @@ synthorg[distributed]``). Importing this module raises
 ``ImportError`` if the package is not installed.
 """
 
+from collections.abc import Sequence  # noqa: TC003
+
 from synthorg.communication.bus import _nats_channels as _ch
 from synthorg.communication.bus import _nats_connection as _conn
 from synthorg.communication.bus import _nats_consumers as _cons
@@ -122,18 +124,42 @@ class JetStreamMessageBus:
         """Stop the bus gracefully. Idempotent."""
         await _conn.stop(self._state)
 
-    async def publish(self, message: Message) -> None:
+    async def publish(
+        self,
+        message: Message,
+        *,
+        ttl_seconds: float | None = None,
+    ) -> None:
         """Publish a message to its channel via JetStream."""
-        await _pub.publish(self._state, message)
+        await _pub.publish(self._state, message, ttl_seconds=ttl_seconds)
 
     async def send_direct(
         self,
         message: Message,
         *,
         recipient: str,
+        ttl_seconds: float | None = None,
     ) -> None:
         """Send a direct message, creating the DIRECT channel lazily."""
-        await _pub.send_direct(self._state, message, recipient=recipient)
+        await _pub.send_direct(
+            self._state,
+            message,
+            recipient=recipient,
+            ttl_seconds=ttl_seconds,
+        )
+
+    async def publish_batch(
+        self,
+        messages: Sequence[Message],
+        *,
+        ttl_seconds: float | None = None,
+    ) -> None:
+        """Publish multiple messages using pipelined async publishes."""
+        await _pub.publish_batch(
+            self._state,
+            messages,
+            ttl_seconds=ttl_seconds,
+        )
 
     async def subscribe(
         self,

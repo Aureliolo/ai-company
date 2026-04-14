@@ -30,6 +30,7 @@ COMM_CHANNEL_ALREADY_EXISTS: Final[str] = "communication.channel.already_exists"
 COMM_MESSAGE_PUBLISHED: Final[str] = "communication.message.published"
 COMM_MESSAGE_DELIVERED: Final[str] = "communication.message.delivered"
 COMM_DIRECT_SENT: Final[str] = "communication.message.direct_sent"
+COMM_BATCH_PUBLISHED: Final[str] = "communication.message.batch_published"
 
 # Subscriptions
 COMM_SUBSCRIPTION_CREATED: Final[str] = "communication.subscription.created"

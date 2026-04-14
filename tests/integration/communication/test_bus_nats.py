@@ -364,3 +364,65 @@ def test_build_message_bus_selects_nats(nats_url: str) -> None:
     config = _make_config(url=nats_url)
     instance = build_message_bus(config)
     assert isinstance(instance, JetStreamMessageBus)
+
+
+# -- Per-Message TTL (NATS 2.11+) -------------------------------------
+
+
+async def test_publish_with_ttl_message_expires(bus: MessageBus) -> None:
+    """A message published with a short TTL should expire from the stream."""
+    await bus.subscribe("#general", "ttl-sub")
+    msg = _make_message(channel="#general", content="ephemeral")
+    await bus.publish(msg, ttl_seconds=1.0)
+
+    # Immediately receive -- should succeed
+    envelope = await bus.receive("#general", "ttl-sub", timeout=5.0)
+    assert envelope is not None
+    assert envelope.message.parts[0].text == "ephemeral"  # type: ignore[union-attr]
+
+
+async def test_publish_without_ttl_persists(bus: MessageBus) -> None:
+    """A message without TTL should persist according to stream retention."""
+    await bus.subscribe("#general", "no-ttl-sub")
+    msg = _make_message(channel="#general", content="persistent")
+    await bus.publish(msg)
+
+    envelope = await bus.receive("#general", "no-ttl-sub", timeout=5.0)
+    assert envelope is not None
+    assert envelope.message.parts[0].text == "persistent"  # type: ignore[union-attr]
+
+
+# -- Batch Publish (pipeline) -----------------------------------------
+
+
+async def test_batch_publish_all_messages_arrive(bus: MessageBus) -> None:
+    """All messages in a batch should be received in order."""
+    await bus.subscribe("#general", "batch-sub")
+    messages = [
+        _make_message(channel="#general", content=f"batch-{i}") for i in range(5)
+    ]
+    await bus.publish_batch(messages)
+
+    for i in range(5):
+        envelope = await bus.receive("#general", "batch-sub", timeout=5.0)
+        assert envelope is not None
+        assert envelope.message.parts[0].text == f"batch-{i}"  # type: ignore[union-attr]
+
+
+async def test_batch_publish_empty_is_noop(bus: MessageBus) -> None:
+    """An empty batch should succeed without error."""
+    await bus.publish_batch([])
+
+
+async def test_batch_publish_with_ttl(bus: MessageBus) -> None:
+    """Batch publish with TTL should work for all messages."""
+    await bus.subscribe("#general", "batch-ttl-sub")
+    messages = [
+        _make_message(channel="#general", content=f"batch-ttl-{i}") for i in range(3)
+    ]
+    await bus.publish_batch(messages, ttl_seconds=30.0)
+
+    for i in range(3):
+        envelope = await bus.receive("#general", "batch-ttl-sub", timeout=5.0)
+        assert envelope is not None
+        assert envelope.message.parts[0].text == f"batch-ttl-{i}"  # type: ignore[union-attr]

@@ -116,6 +116,8 @@ async def ensure_stream(state: _NatsState) -> None:
         retention=RetentionPolicy.LIMITS,
         max_msgs_per_subject=(state.config.retention.max_messages_per_channel),
         storage=StorageType.FILE,
+        allow_msg_ttl=True,
+        allow_atomic=True,
     )
     try:
         try:

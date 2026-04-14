@@ -5,6 +5,7 @@ default implementation is :class:`InMemoryMessageBus` in
 ``bus_memory.py``.
 """
 
+from collections.abc import Sequence  # noqa: TC003
 from typing import Protocol, runtime_checkable
 
 from synthorg.communication.channel import Channel  # noqa: TC001
@@ -45,13 +46,22 @@ class MessageBus(Protocol):
         """Whether the bus is currently running."""
         ...
 
-    async def publish(self, message: Message) -> None:
+    async def publish(
+        self,
+        message: Message,
+        *,
+        ttl_seconds: float | None = None,
+    ) -> None:
         """Publish a message to its channel.
 
         The target channel is determined by ``message.channel``.
 
         Args:
             message: The message to publish.
+            ttl_seconds: Optional per-message TTL in seconds.  When set,
+                the message expires after this duration on the server.
+                Requires the NATS stream to have ``allow_msg_ttl=True``.
+                ``None`` (default) defers to stream retention policy.
 
         Raises:
             MessageBusNotRunningError: If the bus is not running.
@@ -64,6 +74,7 @@ class MessageBus(Protocol):
         message: Message,
         *,
         recipient: NotBlankStr,
+        ttl_seconds: float | None = None,
     ) -> None:
         """Send a direct message between two agents.
 
@@ -74,6 +85,7 @@ class MessageBus(Protocol):
             message: The message to send (``message.sender`` is the
                 sender).
             recipient: The recipient agent ID.
+            ttl_seconds: Optional per-message TTL in seconds.
 
         Raises:
             MessageBusNotRunningError: If the bus is not running.
@@ -176,6 +188,29 @@ class MessageBus(Protocol):
 
         Raises:
             ChannelNotFoundError: If the channel does not exist.
+        """
+        ...
+
+    async def publish_batch(
+        self,
+        messages: Sequence[Message],
+        *,
+        ttl_seconds: float | None = None,
+    ) -> None:
+        """Publish multiple messages in a batch.
+
+        Optimised for throughput.  In NATS backends, uses pipelined
+        async publishes for reduced round-trip overhead.
+
+        Args:
+            messages: Messages to publish.  An empty sequence is a
+                no-op.
+            ttl_seconds: Optional per-message TTL applied to every
+                message in the batch.
+
+        Raises:
+            MessageBusNotRunningError: If the bus is not running.
+            ChannelNotFoundError: If any target channel does not exist.
         """
         ...
 
