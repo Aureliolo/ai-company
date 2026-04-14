@@ -1019,14 +1019,14 @@ wheels = [
 
 [[package]]
 name = "hypothesis"
-version = "6.151.14"
+version = "6.152.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "sortedcontainers" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/83/77/3227982784ff12a74fc5b28823f3487f457640e6cc653afe16d090891334/hypothesis-6.151.14.tar.gz", hash = "sha256:14fffdfdb50e816cf114f9946aebbf533d7e0920c07ddc1531889f0a22ffaa20", size = 464375, upload-time = "2026-04-13T21:50:11.188Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/1a/84/0745a9d34f71394af0123fe9b66a2fa261555ea2b39cf5f52815889bf30f/hypothesis-6.152.0.tar.gz", hash = "sha256:c0a7619904f5c218c2a5eac1fed7889b1fdc22cf09d8970775c5b13c8cd57e97", size = 465087, upload-time = "2026-04-14T18:21:08.458Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/b7/60/1d19db13777148efb57c27a8ceea48afb80cba9ce6da85b57ccbe0e8f44f/hypothesis-6.151.14-py3-none-any.whl", hash = "sha256:0c27a1e1092752d8c424b7f1caeb6ecfbed9af87914f510b59c1be69945e85a5", size = 530046, upload-time = "2026-04-13T21:50:08.282Z" },
+    { url = "https://files.pythonhosted.org/packages/31/68/5c52f30714a1058879e72420bd599eef87ae01007db444619b03e50368fc/hypothesis-6.152.0-py3-none-any.whl", hash = "sha256:824037e8214559ad037362c6aaa51f6118f62e548e62b2ad215fbf52f2f45eb4", size = 530765, upload-time = "2026-04-14T18:21:05.594Z" },
 ]
 
 [[package]]
@@ -3269,7 +3269,7 @@ dev = [
     { name = "commitizen", specifier = "==4.13.10" },
     { name = "defusedxml", specifier = "==0.7.1" },
     { name = "griffe-pydantic", specifier = "==1.3.1" },
-    { name = "hypothesis", specifier = "==6.151.14" },
+    { name = "hypothesis", specifier = "==6.152.0" },
     { name = "mkdocs-d2-plugin", specifier = "==1.7.0" },
     { name = "mkdocstrings", extras = ["python"], specifier = "==1.0.3" },
     { name = "mypy", specifier = "==1.20.1" },
@@ -3301,7 +3301,7 @@ docs = [
     { name = "zensical", specifier = "==0.0.33" },
 ]
 test = [
-    { name = "hypothesis", specifier = "==6.151.14" },
+    { name = "hypothesis", specifier = "==6.152.0" },
     { name = "nats-py", specifier = "==2.14.0" },
     { name = "polyfactory", specifier = "==3.3.0" },
     { name = "psycopg", extras = ["binary"], specifier = "==3.3.3" },
