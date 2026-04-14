@@ -12,33 +12,33 @@ orchestrator parses from Docker container logs -- this is an entrypoint
 script, not application library code.
 """
 
+import asyncio
 import json
 import signal
 import sys
 from pathlib import Path
+from typing import Any
 
 from synthorg.memory.embedding.cancellation import CancellationToken
-from synthorg.memory.embedding.fine_tune import (
-    FineTuneStage,
-    contrastive_fine_tune,
-    deploy_checkpoint,
-    evaluate_checkpoint,
-    generate_training_data,
-    mine_hard_negatives,
-)
+from synthorg.memory.embedding.fine_tune import FineTuneStage
 from synthorg.observability import get_logger
 
 logger = get_logger(__name__)
 
 _CONFIG_PATH = Path("/etc/fine-tune/config.json")
 
-_STAGE_FUNCTIONS = {
-    FineTuneStage.GENERATING_DATA: generate_training_data,
-    FineTuneStage.MINING_NEGATIVES: mine_hard_negatives,
-    FineTuneStage.TRAINING: contrastive_fine_tune,
-    FineTuneStage.EVALUATING: evaluate_checkpoint,
-    FineTuneStage.DEPLOYING: deploy_checkpoint,
-}
+# Stage functions have different signatures; the runner dispatches by
+# unpacking config JSON into kwargs per stage.  Typed as Any because
+# mypy cannot narrow across the heterogeneous union.
+_EXECUTABLE_STAGES: frozenset[FineTuneStage] = frozenset(
+    {
+        FineTuneStage.GENERATING_DATA,
+        FineTuneStage.MINING_NEGATIVES,
+        FineTuneStage.TRAINING,
+        FineTuneStage.EVALUATING,
+        FineTuneStage.DEPLOYING,
+    }
+)
 
 
 def _run() -> int:
@@ -59,8 +59,7 @@ def _run() -> int:
         print(f"ERROR: unknown stage {stage_name!r}", file=sys.stderr)  # noqa: T201
         return 1
 
-    stage_fn = _STAGE_FUNCTIONS.get(stage)
-    if stage_fn is None:
+    if stage not in _EXECUTABLE_STAGES:
         print(f"ERROR: stage {stage_name!r} is not executable", file=sys.stderr)  # noqa: T201
         return 1
 
@@ -70,13 +69,63 @@ def _run() -> int:
 
     print(f"STAGE_START:{stage_name}", flush=True)  # noqa: T201
     try:
-        stage_fn(config=config, cancellation=token)
+        asyncio.run(_dispatch_stage(stage, config, token))
     except Exception as exc:
         print(f"ERROR: {stage_name} failed: {exc}", file=sys.stderr)  # noqa: T201
         return 1
 
     print(f"STAGE_COMPLETE:{stage_name}", flush=True)  # noqa: T201
     return 0
+
+
+async def _dispatch_stage(
+    stage: FineTuneStage,
+    config: dict[str, Any],
+    token: CancellationToken,
+) -> None:
+    """Dispatch a stage call with the correct kwargs from config JSON."""
+    # Lazy imports -- only load ML deps when actually running a stage.
+    from synthorg.memory.embedding.fine_tune import (  # noqa: PLC0415
+        contrastive_fine_tune,
+        deploy_checkpoint,
+        evaluate_checkpoint,
+        generate_training_data,
+        mine_hard_negatives,
+    )
+
+    match stage:
+        case FineTuneStage.GENERATING_DATA:
+            await generate_training_data(
+                source_dir=config["source_dir"],
+                output_dir=config["output_dir"],
+                cancellation=token,
+            )
+        case FineTuneStage.MINING_NEGATIVES:
+            await mine_hard_negatives(
+                training_data_path=config["training_data_path"],
+                base_model=config["base_model"],
+                output_dir=config["output_dir"],
+                cancellation=token,
+            )
+        case FineTuneStage.TRAINING:
+            await contrastive_fine_tune(
+                training_data_path=config["training_data_path"],
+                base_model=config["base_model"],
+                output_dir=config["output_dir"],
+                cancellation=token,
+            )
+        case FineTuneStage.EVALUATING:
+            await evaluate_checkpoint(
+                checkpoint_path=config["checkpoint_path"],
+                base_model=config["base_model"],
+                validation_data_path=config["validation_data_path"],
+                output_dir=config["output_dir"],
+                cancellation=token,
+            )
+        case FineTuneStage.DEPLOYING:
+            await deploy_checkpoint(
+                checkpoint_path=config["checkpoint_path"],
+            )
 
 
 if __name__ == "__main__":
