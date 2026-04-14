@@ -439,4 +439,4 @@ class TestFineTuneExecutionConfig:
 
     def test_invalid_backend_rejected(self) -> None:
         with pytest.raises(ValidationError):
-            FineTuneExecutionConfig(backend="kubernetes")  # type: ignore[call-arg]
+            FineTuneExecutionConfig(backend="kubernetes")  # type: ignore[arg-type]
