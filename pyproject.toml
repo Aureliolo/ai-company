@@ -4,7 +4,7 @@ dynamic = ["version"]
 description = "Framework for building synthetic organizations -- autonomous AI agents orchestrated as a virtual company"
 readme = "README.md"
 license = "BUSL-1.1"
-requires-python = ">=3.14"
+requires-python = "==3.14.4"
 authors = [{ name = "Aurelio" }]
 keywords = ["ai", "agents", "llm", "orchestration", "synthetic-organization", "synthorg"]
 classifiers = [
