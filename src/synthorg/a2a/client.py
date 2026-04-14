@@ -51,6 +51,7 @@ class A2AClient:
 
     __slots__ = (
         "_catalog",
+        "_http_client",
         "_network_validator",
         "_timeout",
     )
@@ -61,10 +62,12 @@ class A2AClient:
         *,
         network_validator: Any | None = None,
         timeout_seconds: float = 30.0,
+        http_client: httpx.AsyncClient | None = None,
     ) -> None:
         self._catalog = connection_catalog
         self._network_validator = network_validator
         self._timeout = timeout_seconds
+        self._http_client = http_client
 
     async def send_message(
         self,
@@ -200,15 +203,8 @@ class A2AClient:
         url = f"{str(base_url).rstrip('/')}/api/v1/a2a"
 
         try:
-            async with httpx.AsyncClient(
-                timeout=self._timeout,
-            ) as http:
-                response = await http.post(
-                    url,
-                    json=rpc_req.model_dump(),
-                    headers=headers,
-                )
-                response.raise_for_status()
+            response = await self._do_post(url, rpc_req, headers)
+            response.raise_for_status()
         except httpx.HTTPError as exc:
             logger.exception(
                 A2A_OUTBOUND_FAILED,
@@ -249,3 +245,32 @@ class A2AClient:
                 result.get("state", "submitted"),
             ),
         )
+
+    async def _do_post(
+        self,
+        url: str,
+        rpc_req: JsonRpcRequest,
+        headers: dict[str, str],
+    ) -> httpx.Response:
+        """Execute the HTTP POST, reusing injected client if available.
+
+        Args:
+            url: Target URL.
+            rpc_req: JSON-RPC request to send.
+            headers: HTTP headers.
+
+        Returns:
+            HTTP response.
+        """
+        if self._http_client is not None:
+            return await self._http_client.post(
+                url,
+                json=rpc_req.model_dump(),
+                headers=headers,
+            )
+        async with httpx.AsyncClient(timeout=self._timeout) as http:
+            return await http.post(
+                url,
+                json=rpc_req.model_dump(),
+                headers=headers,
+            )
