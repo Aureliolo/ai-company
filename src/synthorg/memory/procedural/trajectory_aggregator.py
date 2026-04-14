@@ -159,7 +159,7 @@ class TrajectoryAggregator:
                 continue
 
             failure_count = sum(1 for t in trajs if t.outcome == "failure")
-            failure_rate = failure_count / len(trajs) if trajs else 0.0
+            failure_rate = failure_count / len(trajs)
 
             patterns.append(
                 TrajectoryPattern(

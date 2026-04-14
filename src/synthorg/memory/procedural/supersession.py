@@ -95,19 +95,19 @@ def _similarity(a: set[str], b: set[str]) -> float:
 def evaluate_supersession(
     candidate: ProceduralMemoryProposal,
     existing: ProceduralMemoryProposal,
-    candidate_id: str,
-    existing_id: str,
+    candidate_id: NotBlankStr,
+    existing_id: NotBlankStr,
 ) -> SupersessionResult:
     """Classify the relationship between candidate and existing.
 
-    Rules:
-        - **FULL**: candidate.condition is a superset of
-          existing.condition AND candidate.confidence >
-          existing.confidence.
+    Rules (evaluated in this order):
         - **CONFLICT**: high condition overlap but low action
           similarity (contradictory approaches).
-        - **PARTIAL**: conditions overlap but neither is a
-          superset, or confidence is not strictly higher.
+        - **FULL**: candidate.condition is a superset of
+          existing.condition, actions are compatible, AND
+          candidate.confidence > existing.confidence.
+        - **PARTIAL**: everything else (insufficient overlap,
+          confidence not strictly higher, or empty conditions).
 
     Args:
         candidate: The new proposal.
@@ -120,6 +120,24 @@ def evaluate_supersession(
     """
     cond_candidate = _tokenize(candidate.condition)
     cond_existing = _tokenize(existing.condition)
+
+    # Short-circuit when either condition yields no tokens --
+    # ratios are meaningless with empty token sets.
+    if not cond_candidate or not cond_existing:
+        logger.debug(
+            SUPERSESSION_PARTIAL,
+            candidate_id=candidate_id,
+            existing_id=existing_id,
+            condition_similarity="n/a",
+            action_similarity="n/a",
+        )
+        return SupersessionResult(
+            verdict=SupersessionVerdict.PARTIAL,
+            candidate_id=candidate_id,
+            existing_id=existing_id,
+            reason="Insufficient condition tokens for comparison",
+        )
+
     act_candidate = _tokenize(candidate.action)
     act_existing = _tokenize(existing.action)
 
@@ -153,7 +171,7 @@ def evaluate_supersession(
             ),
         )
 
-    # FULL: candidate covers existing condition + compatible action + higher confidence
+    # FULL: condition superset + compatible actions + higher confidence
     if (
         condition_coverage >= _SUPERSET_THRESHOLD
         and action_similarity >= _OVERLAP_THRESHOLD
