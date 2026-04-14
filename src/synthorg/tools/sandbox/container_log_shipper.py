@@ -184,8 +184,10 @@ async def ship_container_logs(  # noqa: PLR0913
     This prevents secrets in container output from bypassing the
     key-name-based redaction layer.
 
-    The ``max_log_bytes`` budget is shared across stdout, stderr,
-    and sidecar logs combined.
+    The ``max_log_bytes`` budget is enforced across stdout, stderr,
+    and sidecar log entries combined.  Stdout is allocated first,
+    then stderr from the remainder, then sidecar entries from
+    whatever budget is left (each entry estimated via ``str()``).
 
     Args:
         config: Log shipping configuration.
@@ -219,10 +221,17 @@ async def ship_container_logs(  # noqa: PLR0913
             budget -= len(stderr_trunc)
             event_kwargs["stdout"] = stdout_trunc
             event_kwargs["stderr"] = stderr_trunc
-            # Sidecar logs are already byte-capped during collection,
-            # include them only if budget remains.
-            if budget > 0:
-                event_kwargs["sidecar_logs"] = sidecar_logs
+            # Include sidecar entries that fit within remaining budget.
+            if budget > 0 and sidecar_logs:
+                included: list[dict[str, Any]] = []
+                for entry in sidecar_logs:
+                    entry_est = len(str(entry))
+                    if entry_est > budget:
+                        break
+                    included.append(entry)
+                    budget -= entry_est
+                if included:
+                    event_kwargs["sidecar_logs"] = tuple(included)
         logger.info(SANDBOX_CONTAINER_LOGS_SHIPPED, **event_kwargs)
     except MemoryError, RecursionError:
         raise

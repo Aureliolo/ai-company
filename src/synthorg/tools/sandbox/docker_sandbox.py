@@ -32,6 +32,7 @@ from synthorg.observability.events.docker import (
     DOCKER_HEALTH_CHECK,
 )
 from synthorg.observability.events.sandbox import (
+    SANDBOX_CONTAINER_LOGS_COLLECTED,
     SANDBOX_NETWORK_ENFORCEMENT,
     SANDBOX_RUNTIME_RESOLVER_ATTACHED,
     SANDBOX_SIDECAR_CREATED,
@@ -752,8 +753,13 @@ class DockerSandbox:
                     )
                 except MemoryError, RecursionError:
                     raise
-                except Exception:  # noqa: S110
-                    pass  # collection failed; proceed to cleanup
+                except Exception:
+                    logger.debug(
+                        SANDBOX_CONTAINER_LOGS_COLLECTED,
+                        sidecar_id=sidecar_id[:12],
+                        status="collection_error_in_cleanup",
+                        exc_info=True,
+                    )
 
             # Ship collected logs even on execution failure so
             # sidecar network decisions are always observable.
