@@ -436,7 +436,7 @@ jobs:
 
       - name: Set up QEMU (ARM64 emulation)
         if: github.event_name != 'pull_request'
-        uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130 # v3.7.0
+        uses: docker/setup-qemu-action@ce360397dd3f832beb865e1373c09c0e9f86d70a # v4.0.0
         with:
           platforms: arm64
 
@@ -640,7 +640,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6.3.0
         with:
-          node-version: "22.22.2"
+          node-version: "24.14.1"
           package-manager-cache: false
 
       - name: Install frontend deps and build SPA
@@ -897,7 +897,7 @@ jobs:
 
       - name: Set up QEMU (ARM64 emulation)
         if: github.event_name != 'pull_request'
-        uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130 # v3.7.0
+        uses: docker/setup-qemu-action@ce360397dd3f832beb865e1373c09c0e9f86d70a # v4.0.0
         with:
           platforms: arm64
 
