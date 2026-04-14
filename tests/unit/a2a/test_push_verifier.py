@@ -231,11 +231,21 @@ class TestA2APushVerifierFactory:
             get_a2a_push_verifier(clock_skew_seconds=-1)
 
     @pytest.mark.unit
-    def test_zero_clock_skew_accepted(self) -> None:
-        """Factory accepts clock_skew_seconds=0."""
+    async def test_zero_clock_skew_accepted_and_works(self) -> None:
+        """Factory-created verifier with clock_skew=0 accepts valid sig."""
         from synthorg.a2a.connection_types.a2a_peer import (
             get_a2a_push_verifier,
         )
 
         verifier = get_a2a_push_verifier(clock_skew_seconds=0)
         assert isinstance(verifier, A2APushVerifier)
+
+        body = b'{"event": "test"}'
+        secret = "factory-test-secret"
+        sig = _sign(body, secret)
+        result = await verifier.verify(
+            body=body,
+            headers={"x-a2a-signature": sig},
+            secret=secret,
+        )
+        assert result is True

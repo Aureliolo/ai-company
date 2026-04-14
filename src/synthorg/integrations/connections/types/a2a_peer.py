@@ -55,9 +55,11 @@ class A2APeerAuthenticator:
                 )
                 raise InvalidConnectionAuthError(msg)
 
-    def required_fields(
-        self,
-        scheme: str = "api_key",
-    ) -> tuple[str, ...]:
-        """Return required credential field names for a scheme."""
-        return _SCHEME_REQUIRED_FIELDS.get(scheme, ("api_key",))
+    def required_fields(self) -> tuple[str, ...]:
+        """Return required credential field names.
+
+        Returns the default (api_key) required fields.  Scheme-aware
+        validation is performed by ``validate_credentials`` which
+        reads the scheme from the credentials dict.
+        """
+        return ("api_key",)

@@ -27,7 +27,7 @@ from synthorg.a2a.models import (
     JsonRpcRequest,
     JsonRpcResponse,
 )
-from synthorg.a2a.security import validate_payload_size, validate_peer
+from synthorg.a2a.security import validate_peer
 from synthorg.a2a.task_mapper import to_a2a
 from synthorg.observability import get_logger
 from synthorg.observability.events.a2a import (
@@ -156,21 +156,24 @@ class A2AGatewayController(Controller):
                     status_code=413,
                 )
 
-        # Read and validate actual body size
-        body = await request.body()
-        if not validate_payload_size(
-            body,
-            a2a_config.max_request_body_bytes,
-        ):
-            return Response(
-                content=_error_response(
-                    None,
-                    A2A_PAYLOAD_TOO_LARGE,
-                    "Request body exceeds maximum size",
-                ),
-                media_type="application/json",
-                status_code=413,
-            )
+        # Read body with incremental size enforcement.
+        max_bytes = a2a_config.max_request_body_bytes
+        chunks: list[bytes] = []
+        total = 0
+        async for chunk in request.stream():
+            total += len(chunk)
+            if total > max_bytes:
+                return Response(
+                    content=_error_response(
+                        None,
+                        A2A_PAYLOAD_TOO_LARGE,
+                        "Request body exceeds maximum size",
+                    ),
+                    media_type="application/json",
+                    status_code=413,
+                )
+            chunks.append(chunk)
+        body = b"".join(chunks)
 
         # Parse JSON-RPC envelope
         rpc_request = _parse_jsonrpc(body)
@@ -425,13 +428,13 @@ async def _verify_peer_credentials(  # noqa: PLR0911
     except MemoryError, RecursionError:
         raise
     except Exception:
-        logger.warning(
+        logger.error(
             A2A_INBOUND_AUTH_FAILED,
             peer_name=peer_name,
             reason="credential verification failed",
             exc_info=True,
         )
-        return True  # Graceful degradation: allowlist still enforced
+        return False
 
     return True
 
@@ -472,15 +475,23 @@ class _A2AMethodError(Exception):
 
 
 def _require_task_engine(app_state: Any) -> Any:
-    """Return the task engine or raise 503."""
-    task_engine = app_state.task_engine
-    if task_engine is None:
+    """Return the task engine or raise 503.
+
+    ``AppState.task_engine`` raises ``ServiceUnavailableError``
+    when the engine is not wired.  We catch that and re-raise
+    as ``_A2AMethodError`` so the JSON-RPC dispatcher can format
+    a proper error response.
+    """
+    from synthorg.api.errors import ServiceUnavailableError  # noqa: PLC0415
+
+    try:
+        return app_state.task_engine
+    except ServiceUnavailableError:
         raise _A2AMethodError(
             JSONRPC_INTERNAL_ERROR,
             "Task engine unavailable",
             http_status=503,
-        )
-    return task_engine
+        ) from None
 
 
 def _validate_task_ownership(

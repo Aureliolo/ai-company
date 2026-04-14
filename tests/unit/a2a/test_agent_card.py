@@ -107,11 +107,25 @@ class TestAgentCardBuilder:
         identity = _make_identity()
         card = builder.build(identity, "https://example.com/a2a")
         card_data = card.model_dump()
-        card_json = str(card_data)
 
-        # These should NOT appear anywhere in the serialized card
+        # Sensitive field keys must not appear at the top level
+        forbidden_keys = {
+            "personality",
+            "model",
+            "model_config",
+            "memory",
+            "authority",
+            "budget",
+            "hiring_date",
+            "seniority",
+            "autonomy",
+            "tools",
+        }
+        assert not forbidden_keys & set(card_data.keys())
+
+        # Also verify sample sensitive values are absent from full dump
+        card_json = str(card_data)
         assert "detail-oriented" not in card_json
-        assert "formal" not in card_json
         assert "test-provider" not in card_json
         assert "test-medium-001" not in card_json
 

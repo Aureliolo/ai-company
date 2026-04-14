@@ -3,10 +3,11 @@ import type { ConnectionType } from '@/api/types'
 export interface ConnectionFieldSpec {
   readonly key: string
   readonly label: string
-  readonly type: 'text' | 'password' | 'number' | 'url'
+  readonly type: 'text' | 'password' | 'number' | 'url' | 'select'
   readonly placeholder?: string
   readonly required: boolean
   readonly hint?: string
+  readonly options?: readonly string[]
 }
 
 export interface ConnectionTypeSpec {
@@ -149,10 +150,10 @@ export const CONNECTION_TYPE_FIELDS: Record<ConnectionType, ConnectionTypeSpec> 
       {
         key: 'auth_scheme',
         label: 'Auth Scheme',
-        type: 'text',
+        type: 'select',
         required: false,
-        placeholder: 'api_key',
-        hint: 'Authentication scheme: api_key, bearer, oauth2, mtls, or none',
+        options: ['api_key', 'bearer', 'oauth2', 'mtls', 'none'],
+        hint: 'Authentication scheme for this peer',
       },
     ],
     credentialFields: [
