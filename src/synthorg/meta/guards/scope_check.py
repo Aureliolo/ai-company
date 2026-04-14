@@ -88,5 +88,5 @@ class ScopeCheckGuard:
                 return self._config.architecture_proposals_enabled
             case ProposalAltitude.PROMPT_TUNING:
                 return self._config.prompt_tuning_enabled
-            case _:
+            case _:  # type: ignore[unreachable]
                 return False

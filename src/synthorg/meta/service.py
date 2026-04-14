@@ -31,6 +31,8 @@ from synthorg.observability.events.meta import (
 
 if TYPE_CHECKING:
     from synthorg.meta.config import SelfImprovementConfig
+    from synthorg.meta.models import RuleMatch
+    from synthorg.meta.protocol import ImprovementStrategy
 
 logger = get_logger(__name__)
 
@@ -142,26 +144,24 @@ class SelfImprovementService:
     async def _dispatch_strategies(
         self,
         snapshot: OrgSignalSnapshot,
-        matches: tuple[object, ...],
+        matches: tuple[RuleMatch, ...],
     ) -> list[ImprovementProposal]:
         """Run strategies in parallel via TaskGroup."""
         results: list[ImprovementProposal] = []
 
         async def _run(
-            strategy: object,
-            relevant: tuple[object, ...],
+            strategy: ImprovementStrategy,
+            relevant: tuple[RuleMatch, ...],
         ) -> tuple[ImprovementProposal, ...]:
-            return await strategy.propose(  # type: ignore[union-attr]
+            return await strategy.propose(
                 snapshot=snapshot,
                 triggered_rules=relevant,
             )
 
-        pairs: list[tuple[object, tuple[object, ...]]] = []
+        pairs: list[tuple[ImprovementStrategy, tuple[RuleMatch, ...]]] = []
         for strategy in self._strategies:
             relevant = tuple(
-                m
-                for m in matches
-                if strategy.altitude in m.suggested_altitudes  # type: ignore[attr-defined]
+                m for m in matches if strategy.altitude in m.suggested_altitudes
             )
             if relevant:
                 pairs.append((strategy, relevant))
