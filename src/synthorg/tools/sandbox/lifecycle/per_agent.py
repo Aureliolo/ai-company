@@ -31,6 +31,11 @@ class PerAgentStrategy:
     """Reuse a container per *owner_id*, destroy after grace period."""
 
     def __init__(self, config: SandboxLifecycleConfig) -> None:
+        """Initialize the per-agent lifecycle strategy.
+
+        Args:
+            config: Lifecycle configuration (grace period, max idle, etc.).
+        """
         self._grace_seconds = config.grace_period_seconds
         self._max_idle = config.max_idle_seconds
         self._containers: dict[str, ContainerHandle] = {}

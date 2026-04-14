@@ -26,6 +26,7 @@ class PerTaskStrategy:
     """Reuse a container per *owner_id*, destroy immediately on release."""
 
     def __init__(self) -> None:
+        """Initialize the per-task lifecycle strategy."""
         self._containers: dict[str, ContainerHandle] = {}
 
     async def acquire(
