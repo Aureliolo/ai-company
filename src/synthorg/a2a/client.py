@@ -191,7 +191,7 @@ class A2AClient:
                 msg = f"SSRF: cannot parse URL for peer '{peer_name}'"
                 raise A2AClientError(msg, peer_name=peer_name)
             try:
-                validate_url_host(self._network_validator, url_str)
+                await validate_url_host(url_str, self._network_validator)
             except Exception as ssrf_exc:
                 logger.warning(
                     A2A_OUTBOUND_SSRF_BLOCKED,

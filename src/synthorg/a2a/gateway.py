@@ -468,6 +468,7 @@ async def _handle_message_send(
     )
     mutation = CreateTaskMutation(
         request_id=_uuid4().hex,
+        requested_by=f"a2a-gateway:{peer_name}",
         task_data=task_data,
     )
     created = await task_engine.submit(mutation)
