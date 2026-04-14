@@ -397,3 +397,60 @@ class TestCorrelationEnvInjection:
         env_dict = dict(item.split("=", 1) for item in merged)
         assert env_dict["MY_VAR"] == "hello"
         assert env_dict["SYNTHORG_AGENT_ID"] == "agent-cto"
+
+
+# ── Instance Config Fallback ───────────────────────────────────
+
+
+class TestInstanceConfigFallback:
+    """Methods fall back to self._log_shipping_config when no config passed."""
+
+    async def test_collect_uses_instance_config(
+        self,
+        tmp_path: object,
+    ) -> None:
+        custom = ContainerLogShippingConfig(
+            collection_timeout_seconds=0.5,
+        )
+        sandbox = DockerSandbox(
+            workspace=tmp_path,  # type: ignore[arg-type]
+            log_shipping_config=custom,
+        )
+        mock_container = _make_mock_container(
+            log_stdout=['{"msg": "ok"}\n'],
+        )
+        mock_docker = MagicMock()
+        mock_docker.containers.container = MagicMock(
+            return_value=mock_container,
+        )
+
+        # Call WITHOUT explicit config= -- should use instance config.
+        result = await sandbox._collect_sidecar_logs(
+            mock_docker,
+            "sidecar123",
+        )
+        assert len(result) == 1
+
+    async def test_ship_uses_instance_config(
+        self,
+        tmp_path: object,
+    ) -> None:
+        custom = ContainerLogShippingConfig(enabled=False)
+        sandbox = DockerSandbox(
+            workspace=tmp_path,  # type: ignore[arg-type]
+            log_shipping_config=custom,
+        )
+
+        with structlog.testing.capture_logs() as cap:
+            # Call WITHOUT config= -- should use instance (disabled).
+            await sandbox._ship_container_logs(
+                container_id="abc123",
+                sidecar_id=None,
+                stdout="out",
+                stderr="",
+                sidecar_logs=(),
+                execution_time_ms=50,
+            )
+
+        shipped = [e for e in cap if e["event"] == SANDBOX_CONTAINER_LOGS_SHIPPED]
+        assert len(shipped) == 0  # disabled by instance config

@@ -423,6 +423,9 @@ class DockerSandbox:
         env_list.append(f"SIDECAR_DNS_ALLOWED={dns_flag}")
         env_list.append(f"SIDECAR_LOOPBACK_ALLOWED={lo_flag}")
 
+        # Inject correlation env vars so sidecar logs can self-correlate.
+        env_list.extend(self._build_correlation_env())
+
         memory_bytes = self._parse_memory_limit(_SIDECAR_MEMORY)
         nano_cpus = int(_SIDECAR_CPU * _NANO_CPUS_MULTIPLIER)
 
@@ -965,6 +968,43 @@ class DockerSandbox:
         stderr = "".join(stderr_logs)
         return stdout, stderr
 
+    @staticmethod
+    def _parse_json_log_lines(
+        raw_lines: list[str],
+        *,
+        max_log_bytes: int,
+        sidecar_id_short: str,
+    ) -> tuple[Mapping[str, Any], ...]:
+        """Parse raw log lines as JSON, skipping malformed entries.
+
+        Args:
+            raw_lines: Raw stdout lines from the sidecar container.
+            max_log_bytes: Cumulative byte cap before truncation.
+            sidecar_id_short: Short sidecar ID for logging.
+
+        Returns:
+            Tuple of successfully parsed JSON dicts.
+        """
+        parsed: list[Mapping[str, Any]] = []
+        cumulative_bytes = 0
+        for line in raw_lines:
+            stripped = line.strip()
+            if not stripped:
+                continue
+            cumulative_bytes += len(stripped.encode())
+            if cumulative_bytes > max_log_bytes:
+                break
+            try:
+                parsed.append(json.loads(stripped))
+            except json.JSONDecodeError:
+                logger.debug(
+                    SANDBOX_CONTAINER_LOGS_COLLECTED,
+                    sidecar_id=sidecar_id_short,
+                    status="malformed_line",
+                )
+                continue
+        return tuple(parsed)
+
     async def _collect_sidecar_logs(
         self,
         docker: aiodocker.Docker,
@@ -972,12 +1012,13 @@ class DockerSandbox:
         *,
         config: ContainerLogShippingConfig | None = None,
     ) -> tuple[Mapping[str, Any], ...]:
-        """Collect and parse structured JSON logs from a sidecar container.
+        """Collect and parse structured JSON logs from a sidecar.
 
-        Reads sidecar stdout before container removal. Each line is
-        parsed as JSON; malformed lines are skipped. Collection is
-        bounded by ``config.collection_timeout_seconds`` and
-        ``config.max_log_bytes``.
+        Reads sidecar stdout before container removal.  Each line is
+        parsed as JSON; malformed lines are logged and skipped.
+        Returns empty tuple if log retrieval itself fails (timeout,
+        I/O error); partial results are returned when only some
+        lines fail to parse.
 
         Args:
             docker: Docker client.
@@ -985,7 +1026,7 @@ class DockerSandbox:
             config: Log shipping config (falls back to instance config).
 
         Returns:
-            Tuple of parsed JSON dicts. Empty on any failure.
+            Tuple of parsed JSON dicts.  Empty if collection fails.
         """
         cfg = config or self._log_shipping_config
         try:
@@ -1001,6 +1042,8 @@ class DockerSandbox:
                 status="timeout",
             )
             return ()
+        except MemoryError, RecursionError:
+            raise
         except Exception as exc:
             logger.debug(
                 SANDBOX_CONTAINER_LOGS_COLLECTED,
@@ -1010,32 +1053,18 @@ class DockerSandbox:
             )
             return ()
 
-        parsed: list[Mapping[str, Any]] = []
-        cumulative_bytes = 0
-        for line in raw_lines:
-            stripped = line.strip()
-            if not stripped:
-                continue
-            cumulative_bytes += len(stripped.encode())
-            if cumulative_bytes > cfg.max_log_bytes:
-                break
-            try:
-                parsed.append(json.loads(stripped))
-            except json.JSONDecodeError, ValueError:
-                logger.debug(
-                    SANDBOX_CONTAINER_LOGS_COLLECTED,
-                    sidecar_id=sidecar_id[:12],
-                    status="malformed_line",
-                )
-                continue
-
+        parsed = self._parse_json_log_lines(
+            raw_lines,
+            max_log_bytes=cfg.max_log_bytes,
+            sidecar_id_short=sidecar_id[:12],
+        )
         logger.debug(
             SANDBOX_CONTAINER_LOGS_COLLECTED,
             sidecar_id=sidecar_id[:12],
             status="ok",
             log_count=len(parsed),
         )
-        return tuple(parsed)
+        return parsed
 
     async def _ship_container_logs(  # noqa: PLR0913
         self,
@@ -1050,8 +1079,8 @@ class DockerSandbox:
     ) -> None:
         """Ship container logs through the structlog pipeline.
 
-        Non-blocking and failure-tolerant: shipping errors are logged
-        at debug level and never propagated.
+        Failure-tolerant: shipping errors are logged at debug level
+        and never propagated.
 
         Args:
             config: Log shipping config (falls back to instance config).
@@ -1079,6 +1108,8 @@ class DockerSandbox:
                 sidecar_logs=sidecar_logs,
                 execution_time_ms=execution_time_ms,
             )
+        except MemoryError, RecursionError:
+            raise
         except Exception as exc:
             logger.debug(
                 SANDBOX_CONTAINER_LOGS_SHIP_FAILED,

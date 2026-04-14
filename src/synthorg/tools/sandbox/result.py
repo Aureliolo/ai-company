@@ -3,7 +3,9 @@
 from collections.abc import Mapping  # noqa: TC003 -- needed at runtime for Pydantic
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, computed_field
+from pydantic import BaseModel, ConfigDict, Field, computed_field
+
+from synthorg.core.types import NotBlankStr  # noqa: TC001
 
 
 class SandboxResult(BaseModel):
@@ -30,11 +32,11 @@ class SandboxResult(BaseModel):
     timed_out: bool = False
 
     # Docker-specific fields (optional, backward compat with SubprocessSandbox)
-    container_id: str | None = None
-    sidecar_id: str | None = None
+    container_id: NotBlankStr | None = None
+    sidecar_id: NotBlankStr | None = None
     sidecar_logs: tuple[Mapping[str, Any], ...] = ()
-    agent_id: str | None = None
-    execution_time_ms: int | None = None
+    agent_id: NotBlankStr | None = None
+    execution_time_ms: int | None = Field(default=None, ge=0)
 
     @computed_field  # type: ignore[prop-decorator]
     @property

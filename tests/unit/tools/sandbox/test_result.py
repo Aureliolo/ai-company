@@ -158,3 +158,30 @@ class TestSandboxResultContainerFields:
         )
         with pytest.raises(ValidationError):
             result.container_id = "new"  # type: ignore[misc]
+
+    def test_blank_container_id_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="container_id"):
+            SandboxResult(
+                stdout="",
+                stderr="",
+                returncode=0,
+                container_id="   ",
+            )
+
+    def test_blank_sidecar_id_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="sidecar_id"):
+            SandboxResult(
+                stdout="",
+                stderr="",
+                returncode=0,
+                sidecar_id="",
+            )
+
+    def test_negative_execution_time_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="execution_time_ms"):
+            SandboxResult(
+                stdout="",
+                stderr="",
+                returncode=0,
+                execution_time_ms=-1,
+            )
