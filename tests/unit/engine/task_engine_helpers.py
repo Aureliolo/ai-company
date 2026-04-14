@@ -77,14 +77,41 @@ class FakeMessageBus:
     def is_running(self) -> bool:
         return self._running
 
-    async def publish(self, message: object) -> None:
+    async def publish(
+        self,
+        message: object,
+        *,
+        ttl_seconds: float | None = None,
+    ) -> None:
         self.published.append(message)
+
+    async def send_direct(
+        self,
+        message: object,
+        *,
+        recipient: str = "",
+        ttl_seconds: float | None = None,
+    ) -> None:
+        pass
+
+    async def publish_batch(
+        self,
+        messages: object,
+        *,
+        ttl_seconds: float | None = None,
+    ) -> None:
+        pass
 
 
 class FailingMessageBus(FakeMessageBus):
     """Message bus that always fails on publish."""
 
-    async def publish(self, message: object) -> None:
+    async def publish(
+        self,
+        message: object,
+        *,
+        ttl_seconds: float | None = None,
+    ) -> None:
         msg = "Publish failed"
         raise RuntimeError(msg)
 

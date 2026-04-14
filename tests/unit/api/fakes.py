@@ -644,10 +644,29 @@ class FakeMessageBus:
     def is_running(self) -> bool:
         return self._running
 
-    async def publish(self, message: Message) -> None:
+    async def publish(
+        self,
+        message: Message,
+        *,
+        ttl_seconds: float | None = None,
+    ) -> None:
         pass
 
-    async def send_direct(self, message: Message, *, recipient: str) -> None:
+    async def send_direct(
+        self,
+        message: Message,
+        *,
+        recipient: str,
+        ttl_seconds: float | None = None,
+    ) -> None:
+        pass
+
+    async def publish_batch(
+        self,
+        messages: object,
+        *,
+        ttl_seconds: float | None = None,
+    ) -> None:
         pass
 
     async def subscribe(self, channel_name: str, subscriber_id: str) -> Any:

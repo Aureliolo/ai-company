@@ -146,10 +146,29 @@ class _FakeBus:
     async def list_channels(self) -> tuple[Channel, ...]:
         return ()
 
-    async def publish(self, message: Message) -> None:
+    async def publish(
+        self,
+        message: Message,
+        *,
+        ttl_seconds: float | None = None,
+    ) -> None:
         pass
 
-    async def send_direct(self, message: Message, *, recipient: str) -> None:
+    async def send_direct(
+        self,
+        message: Message,
+        *,
+        recipient: str,
+        ttl_seconds: float | None = None,
+    ) -> None:
+        pass
+
+    async def publish_batch(
+        self,
+        messages: object,
+        *,
+        ttl_seconds: float | None = None,
+    ) -> None:
         pass
 
     async def get_channel_history(
