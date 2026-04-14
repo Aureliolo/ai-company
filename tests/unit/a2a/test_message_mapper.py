@@ -25,7 +25,9 @@ from synthorg.communication.message import (
 def _make_message(
     *,
     msg_type: MessageType = MessageType.TASK_UPDATE,
-    parts: tuple = (TextPart(text="hello"),),
+    parts: tuple[TextPart | DataPart | FilePart | UriPart, ...] = (
+        TextPart(text="hello"),
+    ),
 ) -> Message:
     """Create a minimal internal Message for testing."""
     return Message(
@@ -53,7 +55,8 @@ class TestToA2A:
     @pytest.mark.unit
     def test_data_part(self) -> None:
         """DataPart maps to A2ADataPart."""
-        msg = _make_message(parts=(DataPart(data={"key": "value"}),))
+        part = DataPart(data={"key": "value"})  # type: ignore[arg-type]
+        msg = _make_message(parts=(part,))
         a2a = to_a2a(msg)
         assert len(a2a.parts) == 1
         assert isinstance(a2a.parts[0], A2ADataPart)
@@ -87,7 +90,7 @@ class TestToA2A:
         msg = _make_message(
             parts=(
                 TextPart(text="first"),
-                DataPart(data={"n": 1}),
+                DataPart(data={"n": 1}),  # type: ignore[arg-type]
                 TextPart(text="last"),
             ),
         )

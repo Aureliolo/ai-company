@@ -75,7 +75,8 @@ class TestExtractPeerName:
                 "x-a2a-peer-name": "peer-alpha",
             }
 
-        assert _extract_peer_name(FakeRequest()) == "peer-alpha"
+        result = _extract_peer_name(FakeRequest())  # type: ignore[arg-type]
+        assert result == "peer-alpha"
 
     @pytest.mark.unit
     def test_strips_whitespace(self) -> None:
@@ -86,7 +87,8 @@ class TestExtractPeerName:
                 "x-a2a-peer-name": "  peer-beta  ",
             }
 
-        assert _extract_peer_name(FakeRequest()) == "peer-beta"
+        result = _extract_peer_name(FakeRequest())  # type: ignore[arg-type]
+        assert result == "peer-beta"
 
     @pytest.mark.unit
     def test_missing_header(self) -> None:
@@ -95,7 +97,8 @@ class TestExtractPeerName:
         class FakeRequest:
             headers: ClassVar[dict[str, str]] = {}
 
-        assert _extract_peer_name(FakeRequest()) is None
+        result = _extract_peer_name(FakeRequest())  # type: ignore[arg-type]
+        assert result is None
 
 
 class TestSupportedMethods:

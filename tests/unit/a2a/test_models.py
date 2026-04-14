@@ -139,6 +139,7 @@ class TestJsonRpcResponse:
         original = {"nested": {"key": "value"}}
         resp = JsonRpcResponse(id="1", result=original)
         original["nested"]["key"] = "changed"
+        assert resp.result is not None
         assert resp.result["nested"]["key"] == "value"
 
 
@@ -184,8 +185,8 @@ class TestA2ATaskState:
     @pytest.mark.unit
     def test_string_value(self) -> None:
         """States are StrEnum with hyphenated values."""
-        assert A2ATaskState.INPUT_REQUIRED == "input-required"
-        assert A2ATaskState.AUTH_REQUIRED == "auth-required"
+        assert A2ATaskState.INPUT_REQUIRED.value == "input-required"
+        assert A2ATaskState.AUTH_REQUIRED.value == "auth-required"
 
 
 class TestA2AMessageParts:
@@ -412,7 +413,7 @@ class TestConnectionTypeA2APeer:
     @pytest.mark.unit
     def test_a2a_peer_exists(self) -> None:
         """A2A_PEER is a valid ConnectionType member."""
-        assert ConnectionType.A2A_PEER == "a2a_peer"
+        assert ConnectionType.A2A_PEER.value == "a2a_peer"
 
     @pytest.mark.unit
     def test_a2a_peer_in_values(self) -> None:
