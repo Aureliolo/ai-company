@@ -129,13 +129,7 @@ class ToolInvoker:
         self._invocation_tracker = invocation_tracker
 
         self._pending_escalations: list[EscalationInfo] = []
-
-        # Cached HTML parse guard (stateless, reusable).
-        from synthorg.tools.html_parse_guard import (  # noqa: PLC0415
-            HTMLParseGuard,
-        )
-
-        self._html_guard = HTMLParseGuard()
+        self._html_guard: object | None = None
 
     @property
     def registry(self) -> ToolRegistry:
@@ -1008,7 +1002,14 @@ class ToolInvoker:
         if result.is_error or not result.content:
             return result
 
-        sanitized = self._html_guard.sanitize(result.content)
+        if self._html_guard is None:
+            from synthorg.tools.html_parse_guard import (  # noqa: PLC0415
+                HTMLParseGuard,
+            )
+
+            self._html_guard = HTMLParseGuard()
+
+        sanitized = self._html_guard.sanitize(result.content)  # type: ignore[union-attr]
         if sanitized.cleaned == result.content:
             return result
         metadata = dict(result.metadata)
