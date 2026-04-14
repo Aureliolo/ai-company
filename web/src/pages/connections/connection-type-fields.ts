@@ -246,8 +246,9 @@ export function validateConnectionField(
       return `${spec.label} must be a valid URL`
     }
   }
-  if (spec.type === 'select' && value.trim()) {
-    if (spec.options && !spec.options.includes(value)) {
+  if (spec.type === 'select') {
+    const trimmed = value.trim()
+    if (trimmed && spec.options && !spec.options.includes(trimmed)) {
       return `${spec.label} must be one of: ${spec.options.join(', ')}`
     }
   }
