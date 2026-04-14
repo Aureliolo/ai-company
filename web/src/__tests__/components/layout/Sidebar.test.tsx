@@ -25,7 +25,12 @@ vi.mock('motion/react', async () => {
   return {
     ...actual,
     AnimatePresence: MockAnimatePresence,
-    motion: { ...actual.motion, div: MockMotionDiv },
+    motion: new Proxy(actual.motion as object, {
+      get(target, prop, receiver) {
+        if (prop === 'div') return MockMotionDiv
+        return Reflect.get(target, prop, receiver)
+      },
+    }) as typeof actual.motion,
   }
 })
 

@@ -1,4 +1,4 @@
-// Package ui provides a generic option picker built on charmbracelet/huh.
+// Package ui provides a generic option picker built on charm.land/huh/v2.
 //
 // The picker is intentionally data-driven: callers hand in a slice of
 // Option[T] structs describing each choice (label, summary, pros, cons,
