@@ -41,7 +41,7 @@ class DiskQuotaStatus(BaseModel):
     path: Path = Field(description="Worktree directory path")
     usage_gb: float = Field(ge=0.0, description="Current usage in GB")
     limit_gb: float = Field(gt=0.0, description="Configured limit in GB")
-    status: Literal["ok", "warning", "exceeded"] = Field(
+    status: Literal["ok", "warning", "exceeded", "error"] = Field(
         description="Quota status",
     )
 
@@ -62,6 +62,10 @@ def _compute_dir_size_bytes(path: Path) -> int:
                 if entry.is_file():
                     total += entry.stat().st_size
             except OSError:
+                logger.debug(
+                    WORKSPACE_DISK_TRAVERSAL_ERROR,
+                    path=str(entry),
+                )
                 continue
     except OSError:
         logger.debug(
@@ -100,7 +104,7 @@ class DiskQuotaWatcher:
         warning_gb = limit_gb * self._config.cleanup_warning_threshold
 
         if usage_gb >= limit_gb:
-            status: Literal["ok", "warning", "exceeded"] = "exceeded"
+            status: Literal["ok", "warning", "exceeded", "error"] = "exceeded"
             logger.warning(
                 WORKSPACE_DISK_EXCEEDED,
                 path=str(path),
@@ -155,7 +159,7 @@ class DiskQuotaWatcher:
                     path=p,
                     usage_gb=0.0,
                     limit_gb=self._config.max_disk_gb_per_worktree,
-                    status="ok",
+                    status="error",
                 )
 
         statuses: list[DiskQuotaStatus] = [

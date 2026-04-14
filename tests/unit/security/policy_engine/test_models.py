@@ -1,7 +1,7 @@
 """Tests for PolicyEngine models."""
 
 import pytest
-from hypothesis import given, settings
+from hypothesis import given
 from hypothesis import strategies as st
 from pydantic import ValidationError
 
@@ -140,7 +140,6 @@ class TestPolicyActionRequestProperties:
             max_size=50,
         ),
     )
-    @settings(max_examples=50)
     def test_always_constructs_valid_request(
         self,
         action_type: str,

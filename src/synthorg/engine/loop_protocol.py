@@ -98,6 +98,8 @@ class TurnRecord(BaseModel):
         efficiency_delta: Efficiency ratios against an ideal baseline.
         prior_tool_call_count: Cumulative tool calls before this turn (for PTE).
         tool_response_tokens: Tokens from tool responses this turn (for PTE).
+        semantic_drift_score: Similarity score (0.0--1.0) from
+            SemanticDriftDetector, or ``None`` if not measured.
         success: Whether this turn completed without error or content filter (computed).
     """
 

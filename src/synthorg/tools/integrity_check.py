@@ -10,11 +10,13 @@ The checker is invoked from ``tools/factory.py`` during company
 startup.
 """
 
+import copy
 import hashlib
 import json
 from collections.abc import Mapping  # noqa: TC003
 from datetime import UTC, datetime
 from pathlib import Path  # noqa: TC003
+from types import MappingProxyType
 from typing import Any, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -87,7 +89,7 @@ class ToolIntegrityReport(BaseModel):
         default=(),
         description="Detected hash mismatches",
     )
-    current_hashes: dict[str, str] = Field(
+    current_hashes: Mapping[str, str] = Field(
         default_factory=dict,
         description="Tool name to current SHA-256 hash",
     )
@@ -95,13 +97,11 @@ class ToolIntegrityReport(BaseModel):
 
     @model_validator(mode="after")
     def _deep_copy_hashes(self) -> Self:
-        """Deep-copy current_hashes to prevent external mutation."""
-        import copy as _copy  # noqa: PLC0415
-
+        """Deep-copy and freeze current_hashes."""
         object.__setattr__(
             self,
             "current_hashes",
-            _copy.deepcopy(self.current_hashes),
+            MappingProxyType(copy.deepcopy(dict(self.current_hashes))),
         )
         return self
 

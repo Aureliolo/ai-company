@@ -59,7 +59,7 @@ def _recursive_freeze(obj: object) -> object:
     if isinstance(obj, list):
         return tuple(_recursive_freeze(v) for v in obj)
     if isinstance(obj, set):
-        return frozenset(obj)
+        return frozenset(_recursive_freeze(v) for v in obj)
     return obj
 
 

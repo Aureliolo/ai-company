@@ -30,7 +30,8 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
-_SKIPPED_LOGGED: set[str] = set()
+_MAX_SKIPPED_LOGGED = 1024
+_SKIPPED_LOGGED: dict[str, None] = {}
 _SKIPPED_LOCK = threading.Lock()
 
 
@@ -110,7 +111,10 @@ class SemanticDriftDetector(BaseAgentMiddleware):
             with _SKIPPED_LOCK:
                 already_logged = task_key in _SKIPPED_LOGGED
                 if not already_logged:
-                    _SKIPPED_LOGGED.add(task_key)
+                    _SKIPPED_LOGGED[task_key] = None
+                    # Evict oldest entries when cache is full.
+                    while len(_SKIPPED_LOGGED) > _MAX_SKIPPED_LOGGED:
+                        _SKIPPED_LOGGED.pop(next(iter(_SKIPPED_LOGGED)))
             if not already_logged:
                 logger.debug(
                     MIDDLEWARE_SEMANTIC_DRIFT_SKIPPED,

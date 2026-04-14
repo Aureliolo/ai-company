@@ -8,9 +8,6 @@ from typing import TYPE_CHECKING
 
 from synthorg.observability import get_logger
 from synthorg.observability.audit_chain.chain import HashChain
-from synthorg.observability.events.security import (
-    SECURITY_AUDIT_CHAIN_SIGNED,
-)
 
 if TYPE_CHECKING:
     from synthorg.observability.audit_chain.config import AuditChainConfig
@@ -29,8 +26,9 @@ _SIGNING_EXECUTOR = ThreadPoolExecutor(max_workers=1, thread_name_prefix="audit-
 class AuditChainSink(logging.Handler):
     """Logging handler that signs security events and appends to a hash chain.
 
-    Only processes events whose message starts with ``"security."``.
-    Thread-safe via a lock around chain mutation.
+    Processes events whose message starts with ``"security."`` or
+    ``"tool.registry.integrity."``.  Thread-safe via a lock around
+    chain mutation.
 
     Uses a dedicated thread pool to bridge async signing into the
     synchronous ``emit()`` method, avoiding the ``run_until_complete``
@@ -76,20 +74,37 @@ class AuditChainSink(logging.Handler):
         Args:
             record: Log record from the logging framework.
         """
+        _AUDITED_PREFIXES = ("security.", "tool.registry.integrity.")  # noqa: N806
         msg = record.getMessage()
-        if not msg.startswith("security."):
+        if not any(msg.startswith(p) for p in _AUDITED_PREFIXES):
             return
 
         try:
+            payload: dict[str, object] = {
+                "event": msg,
+                "level": record.levelname,
+                "timestamp": record.created,
+                "module": record.module,
+            }
+            # Merge structured extras from the log record.
+            for key in (
+                "tool_name",
+                "expected_hash",
+                "actual_hash",
+                "correlation_id",
+                "principal",
+                "resource",
+                "action_type",
+                "error",
+            ):
+                val = getattr(record, key, None)
+                if val is not None:
+                    payload[key] = val
             data = json.dumps(
-                {
-                    "event": msg,
-                    "level": record.levelname,
-                    "timestamp": record.created,
-                    "module": record.module,
-                },
+                payload,
                 sort_keys=True,
                 ensure_ascii=True,
+                default=str,
             ).encode("utf-8")
 
             # Bridge async signing into sync emit via a dedicated
@@ -121,8 +136,9 @@ class AuditChainSink(logging.Handler):
         except MemoryError, RecursionError:
             raise
         except Exception:
+            # Use a non-security event to avoid re-entering this
+            # handler (all "security." events would loop back).
             logger.error(
-                SECURITY_AUDIT_CHAIN_SIGNED,
-                error_context="emit_error",
+                "audit_chain.emit_error",
                 exc_info=True,
             )

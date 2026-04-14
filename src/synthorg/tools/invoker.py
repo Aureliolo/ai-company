@@ -54,6 +54,7 @@ if TYPE_CHECKING:
     from synthorg.engine.approval_gate_models import EscalationInfo
     from synthorg.providers.models import ToolDefinition
     from synthorg.security.protocol import SecurityInterceptionStrategy
+    from synthorg.tools.html_parse_guard import HTMLParseGuard
 
     from .base import BaseTool
     from .invocation_tracker import ToolInvocationTracker
@@ -129,7 +130,7 @@ class ToolInvoker:
         self._invocation_tracker = invocation_tracker
 
         self._pending_escalations: list[EscalationInfo] = []
-        self._html_guard: object | None = None
+        self._html_guard: HTMLParseGuard | None = None
 
     @property
     def registry(self) -> ToolRegistry:
@@ -1009,7 +1010,7 @@ class ToolInvoker:
 
             self._html_guard = HTMLParseGuard()
 
-        sanitized = self._html_guard.sanitize(result.content)  # type: ignore[attr-defined]
+        sanitized = self._html_guard.sanitize(result.content)
         if sanitized.cleaned == result.content:
             return result
         metadata = dict(result.metadata)

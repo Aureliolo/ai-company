@@ -96,6 +96,12 @@ class PlannerWorktreesConfig(BaseModel):
         conflict_escalation: Strategy for handling merge conflicts.
         worktree_base_dir: Base directory for worktree creation.
         cleanup_on_merge: Whether to remove worktree after merge.
+        max_disk_gb_per_worktree: Maximum disk usage in GB per
+            worktree (default 5.0).
+        auto_cleanup_on_threshold: Whether to auto-signal cleanup
+            when disk limit is exceeded.
+        cleanup_warning_threshold: Usage ratio (0.5--1.0) at which
+            to emit a disk-space warning.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
