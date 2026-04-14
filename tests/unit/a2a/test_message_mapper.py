@@ -141,11 +141,22 @@ class TestFromA2A:
         assert msg.parts[0].text == "response"
 
     @pytest.mark.unit
-    def test_user_role_maps_to_delegation(self) -> None:
-        """User role maps to DELEGATION message type."""
+    @pytest.mark.parametrize(
+        ("role", "expected_type"),
+        [
+            (A2AMessageRole.USER, MessageType.DELEGATION),
+            (A2AMessageRole.AGENT, MessageType.TASK_UPDATE),
+        ],
+    )
+    def test_role_to_message_type(
+        self,
+        role: A2AMessageRole,
+        expected_type: MessageType,
+    ) -> None:
+        """A2A role maps to the correct internal MessageType."""
         a2a = A2AMessage(
-            role=A2AMessageRole.USER,
-            parts=(A2ATextPart(text="do this"),),
+            role=role,
+            parts=(A2ATextPart(text="test"),),
         )
         msg = from_a2a(
             a2a,
@@ -153,22 +164,7 @@ class TestFromA2A:
             sender="external",
             recipient="internal",
         )
-        assert msg.type == MessageType.DELEGATION
-
-    @pytest.mark.unit
-    def test_agent_role_maps_to_task_update(self) -> None:
-        """Agent role maps to TASK_UPDATE message type."""
-        a2a = A2AMessage(
-            role=A2AMessageRole.AGENT,
-            parts=(A2ATextPart(text="done"),),
-        )
-        msg = from_a2a(
-            a2a,
-            channel="test",
-            sender="external",
-            recipient="internal",
-        )
-        assert msg.type == MessageType.TASK_UPDATE
+        assert msg.type == expected_type
 
     @pytest.mark.unit
     def test_sender_and_recipient_set(self) -> None:
@@ -323,4 +319,20 @@ class TestMappingBoundary:
             recipient="int",
         )
         # No metadata -> heuristic: agent -> TASK_UPDATE
+        assert msg.type == MessageType.TASK_UPDATE
+
+    @pytest.mark.unit
+    def test_invalid_metadata_falls_back_to_heuristic(self) -> None:
+        """Invalid orig_message_type falls back to role heuristic."""
+        a2a = A2AMessage(
+            role=A2AMessageRole.AGENT,
+            parts=(A2ATextPart(text="hi"),),
+            metadata={"orig_message_type": "invalid_value"},
+        )
+        msg = from_a2a(
+            a2a,
+            channel="test",
+            sender="ext",
+            recipient="int",
+        )
         assert msg.type == MessageType.TASK_UPDATE

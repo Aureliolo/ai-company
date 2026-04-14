@@ -15,6 +15,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { InputField } from '@/components/ui/input-field'
+import { SelectField } from '@/components/ui/select-field'
 import { cn } from '@/lib/utils'
 import { useConnectionsStore } from '@/stores/connections'
 import {
@@ -75,11 +76,26 @@ function renderField(
   onChange: (value: string) => void,
   readOnly: boolean,
 ) {
+  if (spec.type === 'select' && spec.options) {
+    return (
+      <SelectField
+        key={spec.key}
+        label={spec.label}
+        value={value}
+        options={spec.options.map((o) => ({ value: o, label: o }))}
+        hint={spec.hint}
+        error={error ?? undefined}
+        required={spec.required}
+        disabled={readOnly}
+        onChange={onChange}
+      />
+    )
+  }
   return (
     <InputField
       key={spec.key}
       label={spec.label}
-      type={spec.type}
+      type={spec.type === 'select' ? 'text' : spec.type}
       value={value}
       placeholder={spec.placeholder}
       hint={spec.hint}

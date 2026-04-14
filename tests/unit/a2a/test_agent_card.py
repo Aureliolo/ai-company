@@ -123,6 +123,7 @@ class TestAgentCardBuilder:
         # Also verify sample sensitive values are absent from full dump
         card_json = str(card_data)
         assert "detail-oriented" not in card_json
+        assert "formal" not in card_json
         assert "test-provider" not in card_json
         assert "test-medium-001" not in card_json
 

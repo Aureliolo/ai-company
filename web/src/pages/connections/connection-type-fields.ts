@@ -169,7 +169,7 @@ export const CONNECTION_TYPE_FIELDS: Record<ConnectionType, ConnectionTypeSpec> 
         label: 'Bearer / OAuth2 Token',
         type: 'password',
         required: false,
-        hint: 'Access token (required for bearer or oauth2 scheme)',
+        hint: 'Access token (required for bearer scheme)',
       },
       {
         key: 'client_id',
