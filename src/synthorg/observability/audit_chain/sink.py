@@ -4,7 +4,6 @@ import json
 import logging
 import threading
 from concurrent.futures import ThreadPoolExecutor
-from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 from synthorg.observability import get_logger
@@ -106,16 +105,11 @@ class AuditChainSink(logging.Handler):
             signed = future.result(timeout=5.0)
 
             # Use the injected timestamp provider when available.
-            if self._timestamp_provider is not None:
-                import asyncio  # noqa: PLC0415 -- reuse import above
-
-                ts_future = _SIGNING_EXECUTOR.submit(
-                    asyncio.run,
-                    self._timestamp_provider.get_timestamp(),
-                )
-                timestamp = ts_future.result(timeout=5.0)
-            else:
-                timestamp = datetime.now(UTC)
+            ts_future = _SIGNING_EXECUTOR.submit(
+                asyncio.run,
+                self._timestamp_provider.get_timestamp(),
+            )
+            timestamp = ts_future.result(timeout=5.0)
 
             with self._lock:
                 self._chain.append(
@@ -129,6 +123,6 @@ class AuditChainSink(logging.Handler):
         except Exception:
             logger.error(
                 SECURITY_AUDIT_CHAIN_SIGNED,
-                event="emit_error",
+                error_context="emit_error",
                 exc_info=True,
             )

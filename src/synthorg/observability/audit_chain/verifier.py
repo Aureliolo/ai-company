@@ -147,8 +147,8 @@ class AuditChainVerifier:
         if not getattr(pkg, "is_fully_signed", False):
             return False
 
-        canonical = getattr(pkg, "canonical_bytes", None)
-        if canonical is None:
+        canonical: bytes = getattr(pkg, "canonical_bytes", None) or b""
+        if not canonical:
             canonical = getattr(pkg, "signed_bytes", b"")
 
         for sig in getattr(pkg, "signatures", ()):
