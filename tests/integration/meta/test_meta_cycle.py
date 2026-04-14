@@ -60,7 +60,7 @@ def _snap(
 class TestMetaCycleIntegration:
     """End-to-end cycle: signals -> rules -> proposals -> guards."""
 
-    async def test_quality_decline_produces_approved_proposal(
+    async def test_quality_decline_produces_pending_proposal(
         self,
     ) -> None:
         """Scenario: quality declining triggers config tuning proposal.
@@ -135,6 +135,7 @@ class TestMetaCycleIntegration:
         )
         # Coordination cost ratio suggests both config and architecture.
         proposals = await svc.run_cycle(_snap(coord_ratio=0.5))
+        assert proposals, "expected at least one proposal for coord_ratio=0.5"
         for p in proposals:
             assert p.altitude != ProposalAltitude.ARCHITECTURE
 

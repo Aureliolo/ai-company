@@ -1,7 +1,8 @@
-"""Scaling history signal aggregator.
+"""Scaling history signal aggregator (placeholder).
 
-Wraps the ScalingService to produce an OrgScalingSummary with
-recent decisions and their outcomes.
+Will wrap the ScalingService to produce an OrgScalingSummary with
+recent decisions and their outcomes. Currently returns an empty
+summary until the real ScalingService integration is wired.
 """
 
 from typing import TYPE_CHECKING
@@ -9,6 +10,7 @@ from typing import TYPE_CHECKING
 from synthorg.core.types import NotBlankStr
 from synthorg.meta.models import OrgScalingSummary
 from synthorg.observability import get_logger
+from synthorg.observability.events.meta import META_SIGNAL_AGGREGATION_COMPLETED
 
 if TYPE_CHECKING:
     from datetime import datetime
@@ -43,7 +45,8 @@ class ScalingSignalAggregator:
         """
         _ = since, until  # Will be used by real implementation.
         logger.debug(
-            "meta.signals.placeholder",
+            META_SIGNAL_AGGREGATION_COMPLETED,
             domain="scaling",
+            placeholder=True,
         )
         return _EMPTY
