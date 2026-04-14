@@ -1,8 +1,8 @@
 {
-  "unit_suite_seconds": 107,
-  "test_count": 19112,
-  "commit": "46abf4f2",
-  "measured_at": "2026-04-13",
+  "unit_suite_seconds": 126,
+  "test_count": 19267,
+  "commit": "c6d80567",
+  "measured_at": "2026-04-14",
   "regression_threshold_secs": 10,
   "regression_threshold_ratio": 1.3
 }
