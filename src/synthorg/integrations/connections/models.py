@@ -32,6 +32,7 @@ class ConnectionType(StrEnum):
     DATABASE = "database"
     GENERIC_HTTP = "generic_http"
     OAUTH_APP = "oauth_app"
+    A2A_PEER = "a2a_peer"
 
 
 class AuthMethod(StrEnum):

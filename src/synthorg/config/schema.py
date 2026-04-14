@@ -5,6 +5,7 @@ from typing import Any, ClassVar, Literal, Self
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
 
+from synthorg.a2a.config import A2AConfig
 from synthorg.api.config import ApiConfig
 from synthorg.backup.config import BackupConfig
 from synthorg.budget.config import BudgetConfig
@@ -656,6 +657,8 @@ class RootConfig(BaseModel):
         backup: Backup and restore configuration.
         workflow: Workflow type configuration.
         notifications: Notification subsystem configuration.
+        integrations: External service integrations configuration.
+        a2a: A2A external gateway configuration (disabled by default).
         ontology: Semantic ontology configuration.
         telemetry: Anonymous product telemetry configuration (opt-in,
             disabled by default).
@@ -819,6 +822,10 @@ class RootConfig(BaseModel):
     integrations: IntegrationsConfig = Field(
         default_factory=IntegrationsConfig,
         description="External service integrations configuration",
+    )
+    a2a: A2AConfig = Field(
+        default_factory=A2AConfig,
+        description="A2A external gateway configuration (disabled by default)",
     )
     ontology: OntologyConfig = Field(
         default_factory=OntologyConfig,

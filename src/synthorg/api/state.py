@@ -77,6 +77,9 @@ from synthorg.settings.service import SettingsService  # noqa: TC001
 from synthorg.tools.invocation_tracker import ToolInvocationTracker  # noqa: TC001
 
 if TYPE_CHECKING:
+    from synthorg.a2a.agent_card import AgentCardBuilder
+    from synthorg.a2a.client import A2AClient
+    from synthorg.a2a.peer_registry import PeerRegistry
     from synthorg.engine.workflow.webhook_bridge import WebhookEventBridge
     from synthorg.integrations.connections.catalog import ConnectionCatalog
     from synthorg.integrations.health.prober import HealthProberService
@@ -103,6 +106,9 @@ class AppState:
     """
 
     __slots__ = (
+        "_a2a_card_builder",
+        "_a2a_client",
+        "_a2a_peer_registry",
         "_agent_registry",
         "_approval_gate",
         "_approval_timeout_scheduler",
@@ -242,6 +248,9 @@ class AppState:
         self._tunnel_provider = tunnel_provider
         self._webhook_event_bridge = webhook_event_bridge
         self._webhook_replay_protector: object | None = None
+        self._a2a_card_builder: AgentCardBuilder | None = None
+        self._a2a_client: A2AClient | None = None
+        self._a2a_peer_registry: PeerRegistry | None = None
         self._mcp_catalog_service = mcp_catalog_service
         self._mcp_installations_repo = mcp_installations_repo
         self._prometheus_collector: PrometheusCollector | None = None
@@ -972,6 +981,50 @@ class AppState:
     def webhook_event_bridge(self) -> WebhookEventBridge | None:
         """Return webhook event bridge, or None if not configured."""
         return self._webhook_event_bridge
+
+    # -- A2A services ────────────────────────────────────────────────
+
+    @property
+    def a2a_card_builder(self) -> AgentCardBuilder:
+        """Return the A2A Agent Card builder or raise 503."""
+        return self._require_service(
+            self._a2a_card_builder,
+            "a2a_card_builder",
+        )
+
+    def set_a2a_card_builder(self, builder: AgentCardBuilder) -> None:
+        """Attach the A2A card builder (once-only)."""
+        self._set_once("_a2a_card_builder", builder, "A2A card builder")
+
+    @property
+    def a2a_client(self) -> A2AClient:
+        """Return the outbound A2A client or raise 503."""
+        return self._require_service(
+            self._a2a_client,
+            "a2a_client",
+        )
+
+    def set_a2a_client(self, client: A2AClient) -> None:
+        """Attach the outbound A2A client (once-only)."""
+        self._set_once("_a2a_client", client, "A2A client")
+
+    @property
+    def a2a_peer_registry(self) -> PeerRegistry:
+        """Return the A2A peer registry or raise 503."""
+        return self._require_service(
+            self._a2a_peer_registry,
+            "a2a_peer_registry",
+        )
+
+    def set_a2a_peer_registry(self, registry: PeerRegistry) -> None:
+        """Attach the A2A peer registry (once-only)."""
+        self._set_once(
+            "_a2a_peer_registry",
+            registry,
+            "A2A peer registry",
+        )
+
+    # -- MCP services ─────────────────────────────────────────────
 
     @property
     def mcp_catalog_service(self) -> CatalogService:

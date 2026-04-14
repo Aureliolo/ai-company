@@ -23,6 +23,11 @@
             "type": "command",
             "command": "bash scripts/check_no_edit_migration.sh",
             "timeout": 5000
+          },
+          {
+            "type": "command",
+            "command": "bash scripts/check_no_edit_baseline.sh",
+            "timeout": 5000
           }
         ]
       }

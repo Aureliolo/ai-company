@@ -15,6 +15,8 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { InputField } from '@/components/ui/input-field'
+import { SelectField } from '@/components/ui/select-field'
+import { validateA2APeerCredentials } from './connection-type-fields'
 import { cn } from '@/lib/utils'
 import { useConnectionsStore } from '@/stores/connections'
 import {
@@ -75,11 +77,26 @@ function renderField(
   onChange: (value: string) => void,
   readOnly: boolean,
 ) {
+  if (spec.type === 'select' && spec.options) {
+    return (
+      <SelectField
+        key={spec.key}
+        label={spec.label}
+        value={value}
+        options={spec.options.map((o) => ({ value: o, label: o }))}
+        hint={spec.hint}
+        error={error ?? undefined}
+        required={spec.required}
+        disabled={readOnly}
+        onChange={onChange}
+      />
+    )
+  }
   return (
     <InputField
       key={spec.key}
       label={spec.label}
-      type={spec.type}
+      type={spec.type === 'select' ? 'text' : spec.type}
       value={value}
       placeholder={spec.placeholder}
       hint={spec.hint}
@@ -169,6 +186,15 @@ export function ConnectionFormModal({
           form.credentials[field.key] ?? '',
           dialect,
         )
+      }
+    }
+    // A2A peer: scheme-aware credential validation.
+    if (form.type === 'a2a_peer' && mode === 'create') {
+      const scheme = form.credentials.auth_scheme ?? 'api_key'
+      const schemeErrors = validateA2APeerCredentials(scheme, form.credentials)
+      for (const [key, msg] of Object.entries(schemeErrors)) {
+        const errorKey = key === '_scheme' ? 'auth_scheme' : key
+        if (!nextErrors[errorKey]) nextErrors[errorKey] = msg
       }
     }
     setErrors(nextErrors)

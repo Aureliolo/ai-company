@@ -2073,6 +2073,7 @@ export type ConnectionType =
   | 'database'
   | 'generic_http'
   | 'oauth_app'
+  | 'a2a_peer'
 
 export const CONNECTION_TYPE_VALUES = [
   'github',
@@ -2081,6 +2082,7 @@ export const CONNECTION_TYPE_VALUES = [
   'database',
   'generic_http',
   'oauth_app',
+  'a2a_peer',
 ] as const satisfies readonly ConnectionType[]
 
 export type ConnectionAuthMethod =

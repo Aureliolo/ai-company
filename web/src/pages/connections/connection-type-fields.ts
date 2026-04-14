@@ -3,10 +3,11 @@ import type { ConnectionType } from '@/api/types'
 export interface ConnectionFieldSpec {
   readonly key: string
   readonly label: string
-  readonly type: 'text' | 'password' | 'number' | 'url'
+  readonly type: 'text' | 'password' | 'number' | 'url' | 'select'
   readonly placeholder?: string
   readonly required: boolean
   readonly hint?: string
+  readonly options?: readonly string[]
 }
 
 export interface ConnectionTypeSpec {
@@ -133,6 +134,80 @@ export const CONNECTION_TYPE_FIELDS: Record<ConnectionType, ConnectionTypeSpec> 
       { key: 'token_url', label: 'Token URL', type: 'url', required: true },
     ],
   },
+  a2a_peer: {
+    label: 'A2A Peer',
+    description: 'Federate with an external A2A-compatible agent system.',
+    defaultAuthMethod: 'api_key',
+    topLevelFields: [
+      {
+        key: 'base_url',
+        label: 'Peer URL',
+        type: 'url',
+        required: true,
+        placeholder: 'https://peer.example.com',
+        hint: 'Base URL of the external A2A endpoint',
+      },
+    ],
+    credentialFields: [
+      {
+        key: 'auth_scheme',
+        label: 'Auth Scheme',
+        type: 'select',
+        required: false,
+        options: ['api_key', 'bearer', 'oauth2', 'mtls', 'none'],
+        hint: 'Authentication scheme for this peer',
+      },
+      {
+        key: 'api_key',
+        label: 'API Key',
+        type: 'password',
+        required: false,
+        hint: 'Shared secret (required for api_key scheme)',
+      },
+      {
+        key: 'access_token',
+        label: 'Bearer / OAuth2 Token',
+        type: 'password',
+        required: false,
+        hint: 'Access token (required for bearer scheme)',
+      },
+      {
+        key: 'client_id',
+        label: 'OAuth2 Client ID',
+        type: 'text',
+        required: false,
+        hint: 'Client ID (required for oauth2 scheme)',
+      },
+      {
+        key: 'client_secret',
+        label: 'OAuth2 Client Secret',
+        type: 'password',
+        required: false,
+        hint: 'Client secret (required for oauth2 scheme)',
+      },
+      {
+        key: 'cert_path',
+        label: 'mTLS Certificate Path',
+        type: 'text',
+        required: false,
+        hint: 'Path to client certificate (required for mtls scheme)',
+      },
+      {
+        key: 'key_path',
+        label: 'mTLS Key Path',
+        type: 'text',
+        required: false,
+        hint: 'Path to client private key (required for mtls scheme)',
+      },
+      {
+        key: 'signing_secret',
+        label: 'Push Signing Secret',
+        type: 'password',
+        required: false,
+        hint: 'HMAC secret for verifying push notifications from this peer',
+      },
+    ],
+  },
 }
 
 const DATABASE_SERVER_FIELDS = new Set(['host', 'port', 'username', 'password'])
@@ -171,6 +246,12 @@ export function validateConnectionField(
       return `${spec.label} must be a valid URL`
     }
   }
+  if (spec.type === 'select') {
+    const trimmed = value.trim()
+    if (trimmed && spec.options && !spec.options.includes(trimmed)) {
+      return `${spec.label} must be one of: ${spec.options.join(', ')}`
+    }
+  }
   if (spec.type === 'number' && value.trim()) {
     const n = Number(value)
     if (!Number.isFinite(n)) {
@@ -178,6 +259,41 @@ export function validateConnectionField(
     }
   }
   return null
+}
+
+/** Required credential fields per A2A auth scheme. */
+const A2A_SCHEME_REQUIRED_FIELDS: Record<string, readonly string[]> = {
+  api_key: ['api_key'],
+  bearer: ['access_token'],
+  oauth2: ['client_id', 'client_secret'],
+  mtls: ['cert_path', 'key_path'],
+  none: [],
+}
+
+/**
+ * Validate A2A peer credentials based on the selected auth scheme.
+ *
+ * Returns a map of field key -> error message for missing required
+ * fields, or an empty object if all required fields are present.
+ */
+export function validateA2APeerCredentials(
+  authScheme: string,
+  credentials: Record<string, string>,
+): Record<string, string> {
+  const scheme = authScheme || 'api_key'
+  const errors: Record<string, string> = {}
+  if (!(scheme in A2A_SCHEME_REQUIRED_FIELDS)) {
+    errors._scheme = `Unsupported auth scheme: ${scheme}`
+    return errors
+  }
+  // scheme is validated above; the non-null assertion is safe.
+  const required: readonly string[] = A2A_SCHEME_REQUIRED_FIELDS[scheme]!
+  for (const field of required) {
+    if (!credentials[field]?.trim()) {
+      errors[field] = `Required for ${scheme} auth scheme`
+    }
+  }
+  return errors
 }
 
 export function validateConnectionName(name: string): string | null {

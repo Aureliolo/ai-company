@@ -747,7 +747,7 @@ def _build_lifecycle(  # noqa: PLR0913, PLR0915, C901
                     exc_info=True,
                 )
 
-    async def on_shutdown() -> None:  # noqa: C901
+    async def on_shutdown() -> None:  # noqa: C901, PLR0912
         nonlocal _ticket_cleanup_task, _auto_wired_dispatcher
         nonlocal _health_prober, _training_memory_backend
         # Disconnect training memory backend if auto-wired.
@@ -839,6 +839,17 @@ def _build_lifecycle(  # noqa: PLR0913, PLR0915, C901
                 app_state.notification_dispatcher.close(),
                 API_APP_SHUTDOWN,
                 "Failed to stop notification dispatcher",
+            )
+        # Close A2A outbound HTTP client if wired.
+        try:
+            a2a_client_obj = app_state._a2a_client  # noqa: SLF001
+            if a2a_client_obj is not None and hasattr(a2a_client_obj, "aclose"):
+                await a2a_client_obj.aclose()
+        except Exception:
+            logger.warning(
+                API_APP_SHUTDOWN,
+                error="Failed to close A2A client",
+                exc_info=True,
             )
 
     return [on_startup], [on_shutdown]
@@ -1510,7 +1521,10 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
         backup_service,
     )
     plugins: list[ChannelsPlugin] = [channels_plugin]
-    middleware = _build_middleware(api_config)
+    middleware = _build_middleware(
+        api_config,
+        a2a_enabled=effective_config.a2a.enabled,
+    )
 
     # Integration controllers add ~20 routes (~0.7s of Litestar
     # registration per create_app). Skip them entirely when the
@@ -1589,11 +1603,82 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
                 continue
             ready.append(controller_cls)
         integration_controllers = tuple(ready)
+
+    # ── A2A gateway auto-wire ─────────────────────────────────────
+    a2a_controllers: tuple[type[Controller], ...] = ()
+    a2a_root_controllers: tuple[type[Controller], ...] = ()
+    if effective_config.a2a.enabled:
+        try:
+            from synthorg.a2a.agent_card import (  # noqa: PLC0415
+                AgentCardBuilder,
+            )
+            from synthorg.a2a.models import A2AAuthSchemeInfo  # noqa: PLC0415
+            from synthorg.a2a.well_known import (  # noqa: PLC0415
+                WellKnownAgentCardController,
+            )
+
+            auth_schemes = (
+                A2AAuthSchemeInfo(
+                    scheme=str(
+                        effective_config.a2a.auth.inbound_scheme,
+                    ),
+                ),
+            )
+            card_builder = AgentCardBuilder(
+                default_auth_schemes=auth_schemes,
+            )
+            app_state.set_a2a_card_builder(card_builder)
+            a2a_root_controllers = (WellKnownAgentCardController,)
+
+            # Outbound client + JSON-RPC gateway need the connection
+            # catalog and integrations enabled.
+            if effective_config.integrations.enabled and connection_catalog is not None:
+                import httpx  # noqa: PLC0415
+
+                from synthorg.a2a.client import A2AClient  # noqa: PLC0415
+                from synthorg.a2a.gateway import (  # noqa: PLC0415
+                    A2AGatewayController,
+                )
+                from synthorg.a2a.peer_registry import (  # noqa: PLC0415
+                    PeerRegistry,
+                )
+
+                peer_registry = PeerRegistry()
+                a2a_http_client = httpx.AsyncClient(timeout=30.0)
+                from synthorg.tools.network_validator import (  # noqa: PLC0415
+                    NetworkPolicy,
+                )
+
+                a2a_network_policy = NetworkPolicy()
+                a2a_client = A2AClient(
+                    connection_catalog,
+                    network_validator=a2a_network_policy,
+                    http_client=a2a_http_client,
+                )
+
+                app_state.set_a2a_peer_registry(peer_registry)
+                app_state.set_a2a_client(a2a_client)
+                a2a_controllers = (A2AGatewayController,)
+
+            logger.info(
+                API_SERVICE_AUTO_WIRED,
+                service="a2a_gateway",
+            )
+        except MemoryError, RecursionError:
+            raise
+        except Exception:
+            logger.warning(
+                API_APP_STARTUP,
+                error="A2A gateway auto-wire failed (non-fatal)",
+                exc_info=True,
+            )
+
     api_router = Router(
         path=api_config.api_prefix,
         route_handlers=[
             *BASE_CONTROLLERS,
             *integration_controllers,
+            *a2a_controllers,
             ws_handler,
         ],
         guards=[require_password_changed],
@@ -1641,7 +1726,7 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
         shutdown = []
 
     return Litestar(
-        route_handlers=[api_router],
+        route_handlers=[api_router, *a2a_root_controllers],
         # Disable Litestar's built-in logging config to preserve the
         # structlog multi-file-sink pipeline set up by
         # _bootstrap_app_logging() above.  Without this, Litestar calls
@@ -1780,6 +1865,8 @@ def _build_auth_exclude_paths(
     auth: AuthConfig,
     prefix: str,
     ws_path: str,
+    *,
+    a2a_enabled: bool = False,
 ) -> tuple[str, ...]:
     """Compute auth middleware exclude paths with fail-safe defaults."""
     setup_status_path = f"^{prefix}/setup/status$"
@@ -1811,10 +1898,21 @@ def _build_auth_exclude_paths(
         exclude_paths = (*exclude_paths, ws_path)
     if oauth_callback_path not in exclude_paths:
         exclude_paths = (*exclude_paths, oauth_callback_path)
+    if a2a_enabled:
+        a2a_gateway_path = f"^{prefix}/a2a"
+        well_known_path = r"^/\.well-known"
+        if a2a_gateway_path not in exclude_paths:
+            exclude_paths = (*exclude_paths, a2a_gateway_path)
+        if well_known_path not in exclude_paths:
+            exclude_paths = (*exclude_paths, well_known_path)
     return exclude_paths
 
 
-def _build_middleware(api_config: ApiConfig) -> list[Middleware]:
+def _build_middleware(
+    api_config: ApiConfig,
+    *,
+    a2a_enabled: bool = False,
+) -> list[Middleware]:
     """Build the middleware stack from configuration.
 
     Two rate-limit tiers are stacked around the auth middleware:
@@ -1866,6 +1964,7 @@ def _build_middleware(api_config: ApiConfig) -> list[Middleware]:
         api_config.auth,
         prefix,
         ws_path,
+        a2a_enabled=a2a_enabled,
     )
     auth = api_config.auth.model_copy(
         update={"exclude_paths": exclude_paths},
