@@ -16,6 +16,7 @@ import {
 } from '@/components/ui/dialog'
 import { InputField } from '@/components/ui/input-field'
 import { SelectField } from '@/components/ui/select-field'
+import { validateA2APeerCredentials } from './connection-type-fields'
 import { cn } from '@/lib/utils'
 import { useConnectionsStore } from '@/stores/connections'
 import {
@@ -185,6 +186,14 @@ export function ConnectionFormModal({
           form.credentials[field.key] ?? '',
           dialect,
         )
+      }
+    }
+    // A2A peer: scheme-aware credential validation.
+    if (form.type === 'a2a_peer' && mode === 'create') {
+      const scheme = form.credentials.auth_scheme ?? 'api_key'
+      const schemeErrors = validateA2APeerCredentials(scheme, form.credentials)
+      for (const [key, msg] of Object.entries(schemeErrors)) {
+        if (!nextErrors[key]) nextErrors[key] = msg
       }
     }
     setErrors(nextErrors)

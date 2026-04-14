@@ -261,13 +261,6 @@ class TestMappingBoundary:
         assert msg.parts[0].data["result"] == "ok"
 
     @pytest.mark.unit
-    def test_question_maps_to_agent_role(self) -> None:
-        """QUESTION message type maps to agent (not user) role."""
-        msg = _make_message(msg_type=MessageType.QUESTION)
-        a2a = to_a2a(msg)
-        assert a2a.role == A2AMessageRole.AGENT
-
-    @pytest.mark.unit
     def test_module_has_logger(self) -> None:
         """message_mapper module has the required logger."""
         from synthorg.a2a import message_mapper
@@ -275,42 +268,61 @@ class TestMappingBoundary:
         assert hasattr(message_mapper, "logger")
 
     @pytest.mark.unit
-    def test_round_trip_preserves_message_type(self) -> None:
+    @pytest.mark.parametrize(
+        ("msg_type", "expected_metadata"),
+        [
+            (MessageType.TASK_UPDATE, "task_update"),
+            (MessageType.DELEGATION, "delegation"),
+            (MessageType.QUESTION, "question"),
+        ],
+    )
+    def test_round_trip_preserves_message_type(
+        self,
+        msg_type: MessageType,
+        expected_metadata: str,
+    ) -> None:
         """Message type survives A2A round-trip via metadata."""
-        msg = _make_message(msg_type=MessageType.TASK_UPDATE)
+        msg = _make_message(msg_type=msg_type)
         a2a = to_a2a(msg)
+        assert a2a.metadata.get("orig_message_type") == expected_metadata
 
-        # Metadata should carry original type
-        assert a2a.metadata.get("orig_message_type") == "task_update"
-
-        # Round-trip back restores TASK_UPDATE (not DELEGATION)
         restored = from_a2a(
             a2a,
             channel="test",
             sender="s",
             recipient="r",
         )
-        assert restored.type == MessageType.TASK_UPDATE
+        assert restored.type == msg_type
 
     @pytest.mark.unit
-    def test_round_trip_delegation_preserved(self) -> None:
-        """DELEGATION type round-trips correctly."""
-        msg = _make_message(msg_type=MessageType.DELEGATION)
-        a2a = to_a2a(msg)
-        restored = from_a2a(
-            a2a,
-            channel="test",
-            sender="s",
-            recipient="r",
-        )
-        assert restored.type == MessageType.DELEGATION
-
-    @pytest.mark.unit
-    def test_from_a2a_without_metadata_uses_heuristic(self) -> None:
-        """External messages without metadata use role-based heuristic."""
+    @pytest.mark.parametrize(
+        ("role", "metadata", "expected_type"),
+        [
+            (A2AMessageRole.AGENT, {}, MessageType.TASK_UPDATE),
+            (A2AMessageRole.USER, {}, MessageType.DELEGATION),
+            (
+                A2AMessageRole.AGENT,
+                {"orig_message_type": "invalid_value"},
+                MessageType.TASK_UPDATE,
+            ),
+            (
+                A2AMessageRole.USER,
+                {"orig_message_type": "bogus"},
+                MessageType.DELEGATION,
+            ),
+        ],
+    )
+    def test_from_a2a_heuristic_fallback(
+        self,
+        role: A2AMessageRole,
+        metadata: dict[str, str],
+        expected_type: MessageType,
+    ) -> None:
+        """from_a2a falls back to role heuristic for missing/invalid metadata."""
         a2a = A2AMessage(
-            role=A2AMessageRole.AGENT,
+            role=role,
             parts=(A2ATextPart(text="hi"),),
+            metadata=metadata,
         )
         msg = from_a2a(
             a2a,
@@ -318,21 +330,4 @@ class TestMappingBoundary:
             sender="ext",
             recipient="int",
         )
-        # No metadata -> heuristic: agent -> TASK_UPDATE
-        assert msg.type == MessageType.TASK_UPDATE
-
-    @pytest.mark.unit
-    def test_invalid_metadata_falls_back_to_heuristic(self) -> None:
-        """Invalid orig_message_type falls back to role heuristic."""
-        a2a = A2AMessage(
-            role=A2AMessageRole.AGENT,
-            parts=(A2ATextPart(text="hi"),),
-            metadata={"orig_message_type": "invalid_value"},
-        )
-        msg = from_a2a(
-            a2a,
-            channel="test",
-            sender="ext",
-            recipient="int",
-        )
-        assert msg.type == MessageType.TASK_UPDATE
+        assert msg.type == expected_type

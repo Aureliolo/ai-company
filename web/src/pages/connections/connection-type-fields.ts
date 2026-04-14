@@ -147,6 +147,8 @@ export const CONNECTION_TYPE_FIELDS: Record<ConnectionType, ConnectionTypeSpec> 
         placeholder: 'https://peer.example.com',
         hint: 'Base URL of the external A2A endpoint',
       },
+    ],
+    credentialFields: [
       {
         key: 'auth_scheme',
         label: 'Auth Scheme',
@@ -155,8 +157,6 @@ export const CONNECTION_TYPE_FIELDS: Record<ConnectionType, ConnectionTypeSpec> 
         options: ['api_key', 'bearer', 'oauth2', 'mtls', 'none'],
         hint: 'Authentication scheme for this peer',
       },
-    ],
-    credentialFields: [
       {
         key: 'api_key',
         label: 'API Key',
