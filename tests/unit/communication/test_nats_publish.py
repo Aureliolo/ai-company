@@ -5,6 +5,8 @@ publishing by mocking the JetStream context. No live NATS
 connection required.
 """
 
+# mypy: disable-error-code="union-attr,method-assign"
+
 import asyncio
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
