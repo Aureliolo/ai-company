@@ -74,6 +74,9 @@ class PerAgentStrategy:
         # Release the lock while creating (create_fn may be slow).
         handle = await create_fn()
 
+        loser: ContainerHandle | None = None
+        loser_destroy: Callable[[ContainerHandle], Awaitable[None]] | None = None
+
         async with self._lock:
             # Re-check: a concurrent acquire may have won the race.
             if owner_id in self._containers:
@@ -85,30 +88,33 @@ class PerAgentStrategy:
                     reused=True,
                 )
                 self._last_used[owner_id] = monotonic()
-                # Destroy the losing handle outside the lock.
-                destroy_fn = self._destroy_fns.get(owner_id)
-                if destroy_fn is not None:
-                    try:
-                        await destroy_fn(handle)
-                    except Exception:
-                        logger.warning(
-                            SANDBOX_LIFECYCLE_DESTROY_FAILED,
-                            strategy="per-agent",
-                            owner_id=owner_id,
-                            container_id=handle.container_id,
-                        )
-                return existing
+                loser = handle
+                loser_destroy = self._destroy_fns.get(owner_id)
+            else:
+                existing = None
+                self._containers[owner_id] = handle
+                self._last_used[owner_id] = monotonic()
+                logger.info(
+                    SANDBOX_LIFECYCLE_ACQUIRE,
+                    strategy="per-agent",
+                    owner_id=owner_id,
+                    reused=False,
+                    container_id=handle.container_id,
+                )
 
-            self._containers[owner_id] = handle
-            self._last_used[owner_id] = monotonic()
-            logger.info(
-                SANDBOX_LIFECYCLE_ACQUIRE,
-                strategy="per-agent",
-                owner_id=owner_id,
-                reused=False,
-                container_id=handle.container_id,
-            )
-            return handle
+        # Destroy the losing handle outside the lock.
+        if loser is not None and loser_destroy is not None:
+            try:
+                await loser_destroy(loser)
+            except Exception:
+                logger.warning(
+                    SANDBOX_LIFECYCLE_DESTROY_FAILED,
+                    strategy="per-agent",
+                    owner_id=owner_id,
+                    container_id=loser.container_id,
+                )
+
+        return existing if existing is not None else handle
 
     async def release(
         self,
@@ -123,6 +129,7 @@ class PerAgentStrategy:
 
             self._cancel_timer(owner_id)
             self._destroy_fns[owner_id] = destroy_fn
+            self._last_used[owner_id] = monotonic()
             self._reset_idle_timer(owner_id)
             logger.info(
                 SANDBOX_LIFECYCLE_RELEASE,
