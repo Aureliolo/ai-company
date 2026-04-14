@@ -53,20 +53,31 @@ runs:
 
     - name: Build base image
       shell: bash
+      env:
+        APKO_YAML: ${{ inputs.apko-yaml }}
+        IMAGE_NAME: ${{ inputs.image-name }}
       run: |
-        apko build ${{ inputs.apko-yaml }} \
-          ghcr.io/aureliolo/synthorg-${{ inputs.image-name }}-base:sha-${GITHUB_SHA::7} \
-          ${{ inputs.image-name }}-base.tar
+        TAG="sha-${GITHUB_SHA::7}"
+        apko build "${APKO_YAML}" \
+          "ghcr.io/aureliolo/synthorg-${IMAGE_NAME}-base:${TAG}" \
+          "${IMAGE_NAME}-base.tar"
 
     - name: Load image for scanning
       shell: bash
+      env:
+        IMAGE_NAME: ${{ inputs.image-name }}
       run: |
-        docker load -i ${{ inputs.image-name }}-base.tar
-        docker tag "ghcr.io/aureliolo/synthorg-${{ inputs.image-name }}-base:sha-${GITHUB_SHA::7}-amd64" "ghcr.io/aureliolo/synthorg-${{ inputs.image-name }}-base:sha-${GITHUB_SHA::7}" 2>/dev/null || true
+        TAG="sha-${GITHUB_SHA::7}"
+        docker load -i "${IMAGE_NAME}-base.tar"
+        docker tag "ghcr.io/aureliolo/synthorg-${IMAGE_NAME}-base:${TAG}-amd64" "ghcr.io/aureliolo/synthorg-${IMAGE_NAME}-base:${TAG}" 2>/dev/null || true
 
     - name: Report image size
       shell: bash
-      run: scripts/report-image-size.sh "ghcr.io/aureliolo/synthorg-${{ inputs.image-name }}-base:sha-${GITHUB_SHA::7}" "${{ inputs.image-name }} Base"
+      env:
+        IMAGE_NAME: ${{ inputs.image-name }}
+      run: |
+        TAG="sha-${GITHUB_SHA::7}"
+        scripts/report-image-size.sh "ghcr.io/aureliolo/synthorg-${IMAGE_NAME}-base:${TAG}" "${IMAGE_NAME} Base"
 
     - name: Upload base image artifact (PR only)
       if: github.event_name == 'pull_request'
@@ -94,9 +105,12 @@ runs:
 
     - name: Security scans (parallel)
       shell: bash
+      env:
+        IMAGE_NAME: ${{ inputs.image-name }}
       run: |
-        IMAGE_REF="ghcr.io/aureliolo/synthorg-${{ inputs.image-name }}-base:sha-${GITHUB_SHA::7}"
-        trivy image "${IMAGE_REF}" --format json --output trivy-${{ inputs.image-name }}-base.json \
+        TAG="sha-${GITHUB_SHA::7}"
+        IMAGE_REF="ghcr.io/aureliolo/synthorg-${IMAGE_NAME}-base:${TAG}"
+        trivy image "${IMAGE_REF}" --format json --output "trivy-${IMAGE_NAME}-base.json" \
           --exit-code 0 --severity CRITICAL,HIGH --ignorefile .github/.trivyignore.yaml &
         TRIVY_PID=$!
 
@@ -117,13 +131,15 @@ runs:
 
     - name: Evaluate Trivy results
       shell: bash
-      run: scripts/evaluate-scan.sh trivy-${{ inputs.image-name }}-base.json "${{ inputs.image-name }} Base"
+      env:
+        IMAGE_NAME: ${{ inputs.image-name }}
+      run: scripts/evaluate-scan.sh "trivy-${IMAGE_NAME}-base.json" "${IMAGE_NAME} Base"
 
     - name: Trivy SARIF scan
       if: always()
       uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # v0.35.0
       with:
-        image-ref: ghcr.io/aureliolo/synthorg-${{ inputs.image-name }}-base:sha-${{ github.sha }}
+        image-ref: ghcr.io/aureliolo/synthorg-${{ inputs.image-name }}-base:${{ steps.image-ref.outputs.tag }}
         format: sarif
         output: trivy-${{ inputs.image-name }}-base.sarif
         exit-code: "0"
@@ -141,9 +157,11 @@ runs:
       if: github.event_name != 'pull_request'
       id: push
       shell: bash
+      env:
+        IMAGE_NAME: ${{ inputs.image-name }}
       run: |
         TAG="sha-${GITHUB_SHA::7}"
-        REPO="ghcr.io/aureliolo/synthorg-${{ inputs.image-name }}-base"
+        REPO="ghcr.io/aureliolo/synthorg-${IMAGE_NAME}-base"
         docker push "${REPO}:${TAG}-amd64"
         docker push "${REPO}:${TAG}-arm64"
         docker manifest create "${REPO}:${TAG}" \
@@ -160,11 +178,12 @@ runs:
       if: github.event_name != 'pull_request'
       shell: bash
       env:
+        IMAGE_NAME: ${{ inputs.image-name }}
         DIGEST: ${{ steps.push.outputs.digest }}
       run: |
         if [ -z "$DIGEST" ]; then echo "::error::No digest"; exit 1; fi
         set -o pipefail
-        if ! cosign sign --yes ghcr.io/aureliolo/synthorg-${{ inputs.image-name }}-base@${DIGEST} 2>&1 | tee /tmp/cosign-out; then
+        if ! cosign sign --yes "ghcr.io/aureliolo/synthorg-${IMAGE_NAME}-base@${DIGEST}" 2>&1 | tee /tmp/cosign-out; then
           if grep -q 'createLogEntryConflict' /tmp/cosign-out; then
             echo "::notice::Image already signed -- skipping"
           else cat /tmp/cosign-out; exit 1; fi

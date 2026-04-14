@@ -2,7 +2,7 @@
 
 import json
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
@@ -98,6 +98,91 @@ class TestRun:
             config_file,
         ):
             assert _run() == 1
+
+    def test_successful_stage_returns_0(self, tmp_path: Path) -> None:
+        config_file = tmp_path / "config.json"
+        config_file.write_text(
+            json.dumps(
+                {
+                    "stage": "generating_data",
+                    "source_dir": "/data",
+                    "output_dir": "/checkpoints",
+                }
+            ),
+            encoding="utf-8",
+        )
+        mock_dispatch = AsyncMock()
+        with (
+            patch(
+                "synthorg.memory.embedding.fine_tune_runner._CONFIG_PATH",
+                config_file,
+            ),
+            patch(
+                "synthorg.memory.embedding.fine_tune_runner._dispatch_stage",
+                mock_dispatch,
+            ),
+        ):
+            assert _run() == 0
+        mock_dispatch.assert_awaited_once()
+
+    def test_stage_exception_returns_1(self, tmp_path: Path) -> None:
+        config_file = tmp_path / "config.json"
+        config_file.write_text(
+            json.dumps({"stage": "generating_data"}),
+            encoding="utf-8",
+        )
+        mock_dispatch = AsyncMock(side_effect=ValueError("bad config"))
+        with (
+            patch(
+                "synthorg.memory.embedding.fine_tune_runner._CONFIG_PATH",
+                config_file,
+            ),
+            patch(
+                "synthorg.memory.embedding.fine_tune_runner._dispatch_stage",
+                mock_dispatch,
+            ),
+        ):
+            assert _run() == 1
+
+    def test_memory_error_propagates(self, tmp_path: Path) -> None:
+        config_file = tmp_path / "config.json"
+        config_file.write_text(
+            json.dumps({"stage": "generating_data"}),
+            encoding="utf-8",
+        )
+        mock_dispatch = AsyncMock(side_effect=MemoryError("OOM"))
+        with (
+            patch(
+                "synthorg.memory.embedding.fine_tune_runner._CONFIG_PATH",
+                config_file,
+            ),
+            patch(
+                "synthorg.memory.embedding.fine_tune_runner._dispatch_stage",
+                mock_dispatch,
+            ),
+            pytest.raises(MemoryError),
+        ):
+            _run()
+
+    def test_recursion_error_propagates(self, tmp_path: Path) -> None:
+        config_file = tmp_path / "config.json"
+        config_file.write_text(
+            json.dumps({"stage": "generating_data"}),
+            encoding="utf-8",
+        )
+        mock_dispatch = AsyncMock(side_effect=RecursionError())
+        with (
+            patch(
+                "synthorg.memory.embedding.fine_tune_runner._CONFIG_PATH",
+                config_file,
+            ),
+            patch(
+                "synthorg.memory.embedding.fine_tune_runner._dispatch_stage",
+                mock_dispatch,
+            ),
+            pytest.raises(RecursionError),
+        ):
+            _run()
 
     def test_missing_stage_key_returns_1(self, tmp_path: Path) -> None:
         config_file = tmp_path / "config.json"

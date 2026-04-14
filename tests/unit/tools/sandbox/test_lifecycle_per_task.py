@@ -137,3 +137,48 @@ class TestPerTaskCleanup:
 
         await strategy.cleanup_all(destroy_fn=destroy_fn)
         assert destroyed == []
+
+    async def test_cleanup_survives_destroy_failure(self) -> None:
+        """cleanup_all continues if one destroy_fn raises."""
+        strategy = PerTaskStrategy()
+        destroyed: list[str] = []
+
+        async def make(cid: str) -> ContainerHandle:
+            return _make_handle(cid)
+
+        async def destroy_fn(h: ContainerHandle) -> None:
+            if h.container_id == "c1":
+                msg = "docker daemon gone"
+                raise RuntimeError(msg)
+            destroyed.append(h.container_id)
+
+        await strategy.acquire(
+            owner_id="t1",
+            create_fn=lambda: make("c1"),
+        )
+        await strategy.acquire(
+            owner_id="t2",
+            create_fn=lambda: make("c2"),
+        )
+        await strategy.cleanup_all(destroy_fn=destroy_fn)
+        assert "c2" in destroyed
+
+
+class TestPerTaskDoubleRelease:
+    """Edge cases around release semantics."""
+
+    async def test_double_release_noop(self) -> None:
+        """Second release for same owner is a no-op."""
+        strategy = PerTaskStrategy()
+        destroyed: list[str] = []
+
+        async def create_fn() -> ContainerHandle:
+            return _make_handle("double-rel")
+
+        async def destroy_fn(h: ContainerHandle) -> None:
+            destroyed.append(h.container_id)
+
+        await strategy.acquire(owner_id="t1", create_fn=create_fn)
+        await strategy.release(owner_id="t1", destroy_fn=destroy_fn)
+        await strategy.release(owner_id="t1", destroy_fn=destroy_fn)
+        assert destroyed == ["double-rel"]

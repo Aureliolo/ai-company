@@ -12,6 +12,7 @@ from synthorg.observability import get_logger
 from synthorg.observability.events.sandbox import (
     SANDBOX_LIFECYCLE_ACQUIRE,
     SANDBOX_LIFECYCLE_CLEANUP,
+    SANDBOX_LIFECYCLE_DESTROY_FAILED,
     SANDBOX_LIFECYCLE_RELEASE,
 )
 
@@ -107,7 +108,7 @@ class PerTaskStrategy:
                 await destroy_fn(handle)
             except Exception:
                 logger.warning(
-                    "sandbox.lifecycle.destroy_failed",
+                    SANDBOX_LIFECYCLE_DESTROY_FAILED,
                     strategy="per-task",
                     container_id=handle.container_id,
                 )

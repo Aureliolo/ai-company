@@ -14,17 +14,19 @@ pytestmark = pytest.mark.unit
 class TestCreateLifecycleStrategy:
     """Factory dispatches to correct strategy implementation."""
 
-    def test_per_agent(self) -> None:
-        config = SandboxLifecycleConfig(strategy="per-agent")
-        strategy = create_lifecycle_strategy(config)
-        assert isinstance(strategy, PerAgentStrategy)
-
-    def test_per_task(self) -> None:
-        config = SandboxLifecycleConfig(strategy="per-task")
-        strategy = create_lifecycle_strategy(config)
-        assert isinstance(strategy, PerTaskStrategy)
-
-    def test_per_call(self) -> None:
-        config = SandboxLifecycleConfig(strategy="per-call")
-        strategy = create_lifecycle_strategy(config)
-        assert isinstance(strategy, PerCallStrategy)
+    @pytest.mark.parametrize(
+        ("strategy", "expected_cls"),
+        [
+            ("per-agent", PerAgentStrategy),
+            ("per-task", PerTaskStrategy),
+            ("per-call", PerCallStrategy),
+        ],
+    )
+    def test_valid_strategies(
+        self,
+        strategy: str,
+        expected_cls: type,
+    ) -> None:
+        config = SandboxLifecycleConfig(strategy=strategy)  # type: ignore[arg-type]
+        result = create_lifecycle_strategy(config)
+        assert isinstance(result, expected_cls)

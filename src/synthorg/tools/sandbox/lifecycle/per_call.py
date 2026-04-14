@@ -32,13 +32,15 @@ class PerCallStrategy:
         create_fn: Callable[[], Awaitable[ContainerHandle]],
     ) -> ContainerHandle:
         """Create a fresh container (no reuse)."""
+        handle = await create_fn()
         logger.info(
             SANDBOX_LIFECYCLE_ACQUIRE,
             strategy="per-call",
             owner_id=owner_id,
             reused=False,
+            container_id=handle.container_id,
         )
-        return await create_fn()
+        return handle
 
     async def release(
         self,

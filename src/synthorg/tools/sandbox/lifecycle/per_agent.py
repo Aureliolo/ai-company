@@ -14,6 +14,7 @@ from synthorg.observability import get_logger
 from synthorg.observability.events.sandbox import (
     SANDBOX_LIFECYCLE_ACQUIRE,
     SANDBOX_LIFECYCLE_CLEANUP,
+    SANDBOX_LIFECYCLE_DESTROY_FAILED,
     SANDBOX_LIFECYCLE_GRACE_EXPIRED,
     SANDBOX_LIFECYCLE_RELEASE,
 )
@@ -63,6 +64,7 @@ class PerAgentStrategy:
                     reused=True,
                 )
                 self._last_used[owner_id] = monotonic()
+                self._reset_idle_timer(owner_id)
                 return self._containers[owner_id]
 
         # Release the lock while creating (create_fn may be slow).
@@ -78,10 +80,12 @@ class PerAgentStrategy:
                     reused=True,
                 )
                 self._last_used[owner_id] = monotonic()
+                self._reset_idle_timer(owner_id)
                 return self._containers[owner_id]
 
             self._containers[owner_id] = handle
             self._last_used[owner_id] = monotonic()
+            self._reset_idle_timer(owner_id)
             logger.info(
                 SANDBOX_LIFECYCLE_ACQUIRE,
                 strategy="per-agent",
@@ -129,7 +133,7 @@ class PerAgentStrategy:
                         await destroy_fn(handle)
                     except Exception:
                         logger.warning(
-                            "sandbox.lifecycle.destroy_failed",
+                            SANDBOX_LIFECYCLE_DESTROY_FAILED,
                             strategy="per-agent",
                             owner_id=owner_id,
                             container_id=handle.container_id,
@@ -172,7 +176,7 @@ class PerAgentStrategy:
                 await destroy_fn(handle)
             except Exception:
                 logger.warning(
-                    "sandbox.lifecycle.destroy_failed",
+                    SANDBOX_LIFECYCLE_DESTROY_FAILED,
                     strategy="per-agent",
                     container_id=handle.container_id,
                 )
@@ -229,7 +233,7 @@ class PerAgentStrategy:
                     await destroy_fn(handle)
                 except Exception:
                     logger.warning(
-                        "sandbox.lifecycle.destroy_failed",
+                        SANDBOX_LIFECYCLE_DESTROY_FAILED,
                         strategy="per-agent",
                         owner_id=owner_id,
                     )

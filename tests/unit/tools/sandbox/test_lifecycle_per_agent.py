@@ -205,3 +205,102 @@ class TestPerAgentCleanup:
 
         await strategy.cleanup_all(destroy_fn=destroy_fn)
         assert destroyed == []
+
+    async def test_cleanup_survives_destroy_failure(self) -> None:
+        """cleanup_all continues if one destroy_fn raises."""
+        strategy = _make_strategy()
+
+        async def make(cid: str) -> ContainerHandle:
+            return _make_handle(cid)
+
+        destroyed: list[str] = []
+
+        async def destroy_fn(h: ContainerHandle) -> None:
+            if h.container_id == "c1":
+                msg = "docker daemon gone"
+                raise RuntimeError(msg)
+            destroyed.append(h.container_id)
+
+        await strategy.acquire(
+            owner_id="a1",
+            create_fn=lambda: make("c1"),
+        )
+        await strategy.acquire(
+            owner_id="a2",
+            create_fn=lambda: make("c2"),
+        )
+        await strategy.cleanup_all(destroy_fn=destroy_fn)
+        assert "c2" in destroyed
+
+
+class TestPerAgentIdleTimeout:
+    """Idle timeout enforcement via _max_idle."""
+
+    async def test_idle_container_destroyed(self) -> None:
+        """Container destroyed after idle timeout (no release needed)."""
+        strategy = _make_strategy(grace=10.0, max_idle=0.15)
+        destroyed: list[str] = []
+
+        async def create_fn() -> ContainerHandle:
+            return _make_handle("idle-test")
+
+        async def destroy_fn(h: ContainerHandle) -> None:
+            destroyed.append(h.container_id)
+
+        # Store a destroy_fn so the idle timer can use it.
+        strategy._destroy_fns["a1"] = destroy_fn
+        await strategy.acquire(owner_id="a1", create_fn=create_fn)
+        # Don't release -- just let it sit idle.
+        await asyncio.sleep(0.3)
+        assert "idle-test" in destroyed
+
+    async def test_zero_max_idle_disables_timer(self) -> None:
+        """max_idle=0 means no idle eviction."""
+        strategy = _make_strategy(grace=10.0, max_idle=0.0)
+
+        async def create_fn() -> ContainerHandle:
+            return _make_handle("no-idle")
+
+        async def destroy_fn(h: ContainerHandle) -> None:
+            pass
+
+        await strategy.acquire(owner_id="a1", create_fn=create_fn)
+        # No idle timer should be started; container stays.
+        await asyncio.sleep(0.05)
+        # Verify container is still tracked (acquire returns same).
+        h2 = await strategy.acquire(owner_id="a1", create_fn=create_fn)
+        assert h2.container_id == "no-idle"
+        await strategy.cleanup_all(destroy_fn=destroy_fn)
+
+
+class TestPerAgentGraceDestroyFailure:
+    """Grace-period expiry handles destroy_fn errors gracefully."""
+
+    async def test_grace_expire_survives_destroy_failure(self) -> None:
+        strategy = _make_strategy(grace=0.05)
+
+        async def create_fn() -> ContainerHandle:
+            return _make_handle("fail-destroy")
+
+        async def destroy_fn(h: ContainerHandle) -> None:
+            msg = "container already removed"
+            raise RuntimeError(msg)
+
+        await strategy.acquire(owner_id="a1", create_fn=create_fn)
+        await strategy.release(
+            owner_id="a1",
+            destroy_fn=destroy_fn,
+        )
+        # Grace expires, destroy fails, but no crash.
+        await asyncio.sleep(0.15)
+        # Container should be forgotten even though destroy failed.
+        calls: list[int] = []
+
+        async def new_create() -> ContainerHandle:
+            calls.append(1)
+            return _make_handle("replacement")
+
+        h = await strategy.acquire(owner_id="a1", create_fn=new_create)
+        assert h.container_id == "replacement"
+        assert len(calls) == 1
+        await strategy.cleanup_all(destroy_fn=destroy_fn)

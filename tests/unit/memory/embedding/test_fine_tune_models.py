@@ -10,6 +10,7 @@ from synthorg.memory.embedding.fine_tune import FineTuneStage
 from synthorg.memory.embedding.fine_tune_models import (
     CheckpointRecord,
     EvalMetrics,
+    FineTuneExecutionConfig,
     FineTuneRequest,
     FineTuneRun,
     FineTuneRunConfig,
@@ -375,3 +376,67 @@ class TestFineTuneRequestExtensions:
     def test_invalid_validation_split_rejected(self) -> None:
         with pytest.raises(ValidationError):
             FineTuneRequest(source_dir="/docs", validation_split=1.0)
+
+
+class TestFineTuneExecutionConfig:
+    """FineTuneExecutionConfig model validation."""
+
+    def test_defaults(self) -> None:
+        config = FineTuneExecutionConfig()
+        assert config.backend == "in-process"
+        assert config.image is None
+        assert config.gpu_enabled is False
+        assert config.memory_limit == "8g"
+        assert config.timeout_seconds == 7200.0
+
+    def test_frozen(self) -> None:
+        config = FineTuneExecutionConfig()
+        with pytest.raises(ValidationError):
+            config.backend = "docker"  # type: ignore[misc]
+
+    def test_docker_backend_requires_image(self) -> None:
+        with pytest.raises(ValidationError, match="image is required"):
+            FineTuneExecutionConfig(backend="docker")
+
+    def test_docker_backend_with_image(self) -> None:
+        config = FineTuneExecutionConfig(
+            backend="docker",
+            image="ghcr.io/aureliolo/synthorg-fine-tune:latest",
+        )
+        assert config.backend == "docker"
+        assert config.image is not None
+
+    def test_in_process_ignores_image(self) -> None:
+        config = FineTuneExecutionConfig(
+            backend="in-process",
+            image="some-image:tag",
+        )
+        assert config.backend == "in-process"
+
+    def test_blank_memory_limit_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="memory_limit"):
+            FineTuneExecutionConfig(memory_limit="")
+
+    def test_whitespace_memory_limit_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="memory_limit"):
+            FineTuneExecutionConfig(memory_limit="   ")
+
+    def test_nan_timeout_rejected(self) -> None:
+        with pytest.raises(ValidationError):
+            FineTuneExecutionConfig(timeout_seconds=float("nan"))
+
+    def test_zero_timeout_rejected(self) -> None:
+        with pytest.raises(ValidationError):
+            FineTuneExecutionConfig(timeout_seconds=0.0)
+
+    def test_gpu_enabled(self) -> None:
+        config = FineTuneExecutionConfig(
+            backend="docker",
+            image="test:latest",
+            gpu_enabled=True,
+        )
+        assert config.gpu_enabled is True
+
+    def test_invalid_backend_rejected(self) -> None:
+        with pytest.raises(ValidationError):
+            FineTuneExecutionConfig(backend="kubernetes")  # type: ignore[call-arg]
