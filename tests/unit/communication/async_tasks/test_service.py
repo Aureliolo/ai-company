@@ -9,6 +9,7 @@ from synthorg.communication.async_tasks.models import (
     TaskSpec,
 )
 from synthorg.communication.async_tasks.service import AsyncTaskService
+from synthorg.communication.enums import MessageType
 from synthorg.core.enums import TaskStatus, TaskType
 from synthorg.core.task import Task
 
@@ -85,46 +86,29 @@ class TestAsyncTaskServiceStart:
 
 @pytest.mark.unit
 class TestAsyncTaskServiceCheck:
-    async def test_check_running(self) -> None:
+    @pytest.mark.parametrize(
+        ("engine_status", "expected"),
+        [
+            (TaskStatus.IN_PROGRESS, AsyncTaskStatus.RUNNING),
+            (TaskStatus.COMPLETED, AsyncTaskStatus.COMPLETED),
+            (TaskStatus.FAILED, AsyncTaskStatus.FAILED),
+            (TaskStatus.CANCELLED, AsyncTaskStatus.CANCELLED),
+            (TaskStatus.CREATED, AsyncTaskStatus.PENDING),
+        ],
+        ids=["running", "completed", "failed", "cancelled", "pending"],
+    )
+    async def test_status_mapping(
+        self,
+        engine_status: TaskStatus,
+        expected: AsyncTaskStatus,
+    ) -> None:
         service, engine, _bus = _make_service()
-        engine.get_task.return_value = _make_task(
-            status=TaskStatus.IN_PROGRESS,
-        )
+        task_kwargs: dict[str, object] = {"status": engine_status}
+        if engine_status == TaskStatus.CREATED:
+            task_kwargs["assigned_to"] = None
+        engine.get_task.return_value = _make_task(**task_kwargs)
         status = await service.check_async_task("task-100")
-        assert status == AsyncTaskStatus.RUNNING
-
-    async def test_check_completed(self) -> None:
-        service, engine, _bus = _make_service()
-        engine.get_task.return_value = _make_task(
-            status=TaskStatus.COMPLETED,
-        )
-        status = await service.check_async_task("task-100")
-        assert status == AsyncTaskStatus.COMPLETED
-
-    async def test_check_failed(self) -> None:
-        service, engine, _bus = _make_service()
-        engine.get_task.return_value = _make_task(
-            status=TaskStatus.FAILED,
-        )
-        status = await service.check_async_task("task-100")
-        assert status == AsyncTaskStatus.FAILED
-
-    async def test_check_cancelled(self) -> None:
-        service, engine, _bus = _make_service()
-        engine.get_task.return_value = _make_task(
-            status=TaskStatus.CANCELLED,
-        )
-        status = await service.check_async_task("task-100")
-        assert status == AsyncTaskStatus.CANCELLED
-
-    async def test_check_created_is_pending(self) -> None:
-        service, engine, _bus = _make_service()
-        engine.get_task.return_value = _make_task(
-            status=TaskStatus.CREATED,
-            assigned_to=None,
-        )
-        status = await service.check_async_task("task-100")
-        assert status == AsyncTaskStatus.PENDING
+        assert status == expected
 
     async def test_check_not_found_raises(self) -> None:
         service, engine, _bus = _make_service()
@@ -147,6 +131,13 @@ class TestAsyncTaskServiceUpdate:
         )
         assert status == AsyncTaskStatus.RUNNING
         bus.send_direct.assert_called_once()
+        call_kwargs = bus.send_direct.call_args
+        sent_message = (
+            call_kwargs.args[0] if call_kwargs.args else call_kwargs.kwargs["message"]
+        )
+        assert call_kwargs.kwargs["recipient"] == "worker-1"
+        assert sent_message.type == MessageType.CONTEXT_INJECTION
+        assert sent_message.parts[0].text == "Focus on section 3"
 
 
 @pytest.mark.unit

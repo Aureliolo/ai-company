@@ -79,3 +79,15 @@ class TestNormalizeUrl:
     def test_duplicate_query_params_preserved(self) -> None:
         result = normalize_url("http://example.com/?a=1&a=2")
         assert result == "http://example.com?a=1&a=2"
+
+    def test_ipv6_bracketed_host(self) -> None:
+        result = normalize_url("http://[2001:db8::1]/path?x=1")
+        assert result == "http://[2001:db8::1]/path?x=1"
+
+    def test_ipv6_strips_default_port(self) -> None:
+        result = normalize_url("https://[::1]:443/api")
+        assert result == "https://[::1]/api"
+
+    def test_credentials_stripped(self) -> None:
+        result = normalize_url("https://user:pass@example.com/path")
+        assert result == "https://example.com/path"

@@ -126,7 +126,7 @@ class SystemPrompt(BaseModel):
 # ── Public API ───────────────────────────────────────────────────
 
 
-def build_system_prompt(  # noqa: PLR0913, C901
+def build_system_prompt(  # noqa: PLR0913, C901, PLR0912
     *,
     agent: AgentIdentity,
     role: Role | None = None,
@@ -297,8 +297,25 @@ def build_system_prompt(  # noqa: PLR0913, C901
 
     # Inject async task state section (survives trimming -- appended
     # after the main render since it must never be trimmed away).
-    if async_task_state is not None and async_task_state.records:
-        result = _inject_async_task_section(result, async_task_state, estimator)
+    try:
+        if async_task_state is not None and async_task_state.records:
+            result = _inject_async_task_section(
+                result,
+                async_task_state,
+                estimator,
+            )
+    except MemoryError, RecursionError:
+        raise
+    except Exception as exc:
+        logger.exception(
+            PROMPT_BUILD_ERROR,
+            agent_id=str(agent.id),
+            agent_name=agent.name,
+            error=str(exc),
+        )
+        detail = sanitize_message(str(exc))
+        msg = f"Error injecting async task state for agent '{agent.name}': {detail}"
+        raise PromptBuildError(msg) from exc
 
     return _log_and_return(agent, result)
 

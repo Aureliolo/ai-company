@@ -49,15 +49,14 @@ class TestAsyncTaskSupervisorFlow:
         bus = AsyncMock()
         service = AsyncTaskService(task_engine=engine, message_bus=bus)
 
+        task_mocks = [
+            _make_task(task_id=f"task-{i}", status=TaskStatus.CREATED) for i in range(3)
+        ]
+        engine.create_task.side_effect = task_mocks
+        engine.transition_task.side_effect = [(m, None) for m in task_mocks]
+
         task_ids: list[str] = []
         for i in range(3):
-            task_mock = _make_task(
-                task_id=f"task-{i}",
-                status=TaskStatus.CREATED,
-            )
-            engine.create_task.return_value = task_mock
-            engine.transition_task.return_value = task_mock
-
             spec = TaskSpec(
                 title=f"Research topic {i}",
                 description=f"Investigate topic {i} in depth",

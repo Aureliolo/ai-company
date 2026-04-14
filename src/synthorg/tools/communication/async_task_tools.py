@@ -96,6 +96,7 @@ class StartAsyncTaskTool(BaseTool):
         *,
         service: AsyncTaskService,
         supervisor_id: str = "supervisor",
+        supervisor_task_id: str = "default",
     ) -> None:
         super().__init__(
             name="start_async_task",
@@ -105,6 +106,7 @@ class StartAsyncTaskTool(BaseTool):
         )
         self._service = service
         self._supervisor_id = supervisor_id
+        self._supervisor_task_id = supervisor_task_id
 
     async def execute(
         self,
@@ -117,6 +119,7 @@ class StartAsyncTaskTool(BaseTool):
                 title=arguments["title"],
                 description=arguments["description"],
                 agent_id=arguments["agent_id"],
+                parent_task_id=self._supervisor_task_id,
             )
             task_id = await self._service.start_async_task(
                 supervisor_id=self._supervisor_id,

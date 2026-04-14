@@ -162,6 +162,12 @@ class AsyncTaskStateChannel(BaseModel):
         new_records: list[AsyncTaskRecord] = []
         for r in self.records:
             if r.task_id == task_id:
+                if updated_at < r.created_at:
+                    msg = (
+                        f"updated_at ({updated_at}) must be >= "
+                        f"created_at ({r.created_at})"
+                    )
+                    raise ValueError(msg)
                 new_records.append(
                     r.model_copy(
                         update={

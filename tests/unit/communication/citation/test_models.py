@@ -45,17 +45,10 @@ class TestCitation:
         with pytest.raises(ValidationError):
             self._make_citation(number=-1)
 
-    def test_accessed_via_tool(self) -> None:
-        c = self._make_citation(accessed_via="tool")
-        assert c.accessed_via == "tool"
-
-    def test_accessed_via_memory(self) -> None:
-        c = self._make_citation(accessed_via="memory")
-        assert c.accessed_via == "memory"
-
-    def test_accessed_via_file(self) -> None:
-        c = self._make_citation(accessed_via="file")
-        assert c.accessed_via == "file"
+    @pytest.mark.parametrize("via", ["tool", "memory", "file"])
+    def test_accessed_via_valid(self, via: str) -> None:
+        c = self._make_citation(accessed_via=via)
+        assert c.accessed_via == via
 
     def test_accessed_via_invalid_rejected(self) -> None:
         with pytest.raises(ValidationError):

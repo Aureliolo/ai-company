@@ -30,6 +30,16 @@ from synthorg.observability.events.async_task import (
 logger = get_logger(__name__)
 
 # Map internal TaskStatus to supervisor-facing AsyncTaskStatus.
+_TERMINAL_STATUSES: frozenset[TaskStatus] = frozenset(
+    {
+        TaskStatus.COMPLETED,
+        TaskStatus.FAILED,
+        TaskStatus.CANCELLED,
+        TaskStatus.REJECTED,
+        TaskStatus.INTERRUPTED,
+    }
+)
+
 _STATUS_MAP: dict[TaskStatus, AsyncTaskStatus] = {
     TaskStatus.CREATED: AsyncTaskStatus.PENDING,
     TaskStatus.ASSIGNED: AsyncTaskStatus.PENDING,
@@ -89,6 +99,7 @@ class AsyncTaskService:
             project="default",
             created_by=supervisor_id,
         )
+        task = None
         try:
             task = await self._engine.create_task(
                 data,
@@ -108,6 +119,20 @@ class AsyncTaskService:
                 supervisor_id=supervisor_id,
                 title=task_spec.title,
             )
+            if task is not None:
+                try:
+                    await self._engine.cancel_task(
+                        task.id,
+                        requested_by=supervisor_id,
+                        reason="assignment_failed",
+                    )
+                except Exception:
+                    logger.warning(
+                        ASYNC_TASK_START_FAILED,
+                        task_id=task.id,
+                        error="rollback cancel also failed",
+                        exc_info=True,
+                    )
             raise
 
         logger.info(
@@ -165,6 +190,18 @@ class AsyncTaskService:
         task = await self._engine.get_task(task_id)
         if task is None:
             msg = f"Async task {task_id} not found"
+            raise LookupError(msg)
+
+        if task.status in _TERMINAL_STATUSES:
+            msg = (
+                f"Cannot update async task {task_id}: "
+                f"task is in terminal state {task.status.value}"
+            )
+            logger.warning(
+                ASYNC_TASK_UPDATED,
+                task_id=task_id,
+                error=msg,
+            )
             raise LookupError(msg)
 
         recipient = task.assigned_to

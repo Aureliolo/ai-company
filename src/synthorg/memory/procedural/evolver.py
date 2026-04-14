@@ -6,6 +6,7 @@ access to org memory. All proposals are emitted as ``ApprovalItem``
 entries for human approval.
 """
 
+import json
 from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
@@ -285,8 +286,8 @@ class AutonomousSkillEvolver:
                 "cycle_id": cycle_id,
                 "pattern_id": pattern.pattern_id,
                 "scope": ProceduralMemoryScope.ORG.value,
-                "supersedes": ",".join(proposal.supersedes)
+                "supersedes": json.dumps(list(proposal.supersedes))
                 if proposal.supersedes
-                else "",
+                else "[]",
             },
         )

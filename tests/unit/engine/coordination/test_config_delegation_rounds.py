@@ -20,17 +20,14 @@ class TestMaxDelegationRounds:
         config = CoordinationConfig(max_delegation_rounds=1)
         assert config.max_delegation_rounds == 1
 
-    def test_below_minimum_rejected(self) -> None:
+    @pytest.mark.parametrize("value", [0, 21], ids=["below_min", "above_max"])
+    def test_invalid_boundary_rejected(self, value: int) -> None:
         with pytest.raises(ValidationError):
-            CoordinationConfig(max_delegation_rounds=0)
+            CoordinationConfig(max_delegation_rounds=value)
 
     def test_maximum_is_20(self) -> None:
         config = CoordinationConfig(max_delegation_rounds=20)
         assert config.max_delegation_rounds == 20
-
-    def test_above_maximum_rejected(self) -> None:
-        with pytest.raises(ValidationError):
-            CoordinationConfig(max_delegation_rounds=21)
 
     def test_frozen(self) -> None:
         config = CoordinationConfig()
