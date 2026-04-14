@@ -133,6 +133,37 @@ export const CONNECTION_TYPE_FIELDS: Record<ConnectionType, ConnectionTypeSpec> 
       { key: 'token_url', label: 'Token URL', type: 'url', required: true },
     ],
   },
+  a2a_peer: {
+    label: 'A2A Peer',
+    description: 'Federate with an external A2A-compatible agent system.',
+    defaultAuthMethod: 'api_key',
+    topLevelFields: [
+      {
+        key: 'base_url',
+        label: 'Peer URL',
+        type: 'url',
+        required: true,
+        placeholder: 'https://peer.example.com',
+        hint: 'Base URL of the external A2A endpoint',
+      },
+    ],
+    credentialFields: [
+      {
+        key: 'api_key',
+        label: 'API Key',
+        type: 'password',
+        required: true,
+        hint: 'Shared secret for authenticating with this peer',
+      },
+      {
+        key: 'signing_secret',
+        label: 'Push Signing Secret',
+        type: 'password',
+        required: false,
+        hint: 'HMAC secret for verifying push notifications from this peer',
+      },
+    ],
+  },
 }
 
 const DATABASE_SERVER_FIELDS = new Set(['host', 'port', 'username', 'password'])

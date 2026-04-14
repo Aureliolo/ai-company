@@ -1589,11 +1589,72 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
                 continue
             ready.append(controller_cls)
         integration_controllers = tuple(ready)
+
+    # ── A2A gateway auto-wire ─────────────────────────────────────
+    a2a_controllers: tuple[type[Controller], ...] = ()
+    a2a_root_controllers: tuple[type[Controller], ...] = ()
+    if (
+        effective_config.a2a.enabled
+        and effective_config.integrations.enabled
+        and connection_catalog is not None
+    ):
+        try:
+            from synthorg.a2a.agent_card import (  # noqa: PLC0415
+                AgentCardBuilder,
+            )
+            from synthorg.a2a.client import A2AClient  # noqa: PLC0415
+            from synthorg.a2a.gateway import (  # noqa: PLC0415
+                A2AGatewayController,
+            )
+            from synthorg.a2a.models import A2AAuthScheme  # noqa: PLC0415
+            from synthorg.a2a.peer_registry import (  # noqa: PLC0415
+                PeerRegistry,
+            )
+            from synthorg.a2a.well_known import (  # noqa: PLC0415
+                WellKnownAgentCardController,
+            )
+
+            auth_schemes = (
+                A2AAuthScheme(
+                    scheme=str(
+                        effective_config.a2a.auth.inbound_scheme,
+                    ),
+                ),
+            )
+            card_builder = AgentCardBuilder(
+                default_auth_schemes=auth_schemes,
+            )
+            peer_registry = PeerRegistry()
+            a2a_client = A2AClient(
+                connection_catalog,
+            )
+
+            app_state.set_a2a_card_builder(card_builder)
+            app_state.set_a2a_peer_registry(peer_registry)
+            app_state.set_a2a_client(a2a_client)
+
+            a2a_controllers = (A2AGatewayController,)
+            a2a_root_controllers = (WellKnownAgentCardController,)
+
+            logger.info(
+                API_SERVICE_AUTO_WIRED,
+                service="a2a_gateway",
+            )
+        except MemoryError, RecursionError:
+            raise
+        except Exception:
+            logger.warning(
+                API_APP_STARTUP,
+                error="A2A gateway auto-wire failed (non-fatal)",
+                exc_info=True,
+            )
+
     api_router = Router(
         path=api_config.api_prefix,
         route_handlers=[
             *BASE_CONTROLLERS,
             *integration_controllers,
+            *a2a_controllers,
             ws_handler,
         ],
         guards=[require_password_changed],
@@ -1641,7 +1702,7 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
         shutdown = []
 
     return Litestar(
-        route_handlers=[api_router],
+        route_handlers=[api_router, *a2a_root_controllers],
         # Disable Litestar's built-in logging config to preserve the
         # structlog multi-file-sink pipeline set up by
         # _bootstrap_app_logging() above.  Without this, Litestar calls
