@@ -15,9 +15,9 @@ import json
 from collections.abc import Mapping  # noqa: TC003
 from datetime import UTC, datetime
 from pathlib import Path  # noqa: TC003
-from typing import Any
+from typing import Any, Self
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.observability import get_logger
@@ -92,6 +92,18 @@ class ToolIntegrityReport(BaseModel):
         description="Tool name to current SHA-256 hash",
     )
     checked_at: datetime = Field(description="UTC timestamp of the check")
+
+    @model_validator(mode="after")
+    def _deep_copy_hashes(self) -> Self:
+        """Deep-copy current_hashes to prevent external mutation."""
+        import copy as _copy  # noqa: PLC0415
+
+        object.__setattr__(
+            self,
+            "current_hashes",
+            _copy.deepcopy(self.current_hashes),
+        )
+        return self
 
 
 def compute_tool_hash(tool_def: Any) -> str:

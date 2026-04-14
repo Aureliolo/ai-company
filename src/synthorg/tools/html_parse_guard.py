@@ -138,10 +138,12 @@ class HTMLParseGuard:
             return self._sanitize_html(raw)
         except MemoryError, RecursionError:
             raise
-        except Exception:
+        except Exception as exc:
             logger.warning(
                 TOOL_HTML_PARSE_ERROR,
-                error="HTML parse failed, returning original content",
+                error=str(exc),
+                error_type=type(exc).__name__,
+                content_length=len(raw),
                 exc_info=True,
             )
             return _passthrough_result(raw)

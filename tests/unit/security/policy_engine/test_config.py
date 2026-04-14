@@ -24,8 +24,16 @@ class TestSecurityPolicyConfig:
         with pytest.raises(Exception):  # noqa: B017, PT011
             config.engine = "cedar"  # type: ignore[misc]
 
-    def test_cedar_engine(self) -> None:
-        config = SecurityPolicyConfig(engine="cedar")
+    def test_cedar_engine_requires_policy_files(self) -> None:
+        with pytest.raises(ValueError, match="policy_files"):
+            SecurityPolicyConfig(engine="cedar")
+
+    def test_cedar_engine_with_files(self, tmp_path: object) -> None:
+        from pathlib import Path
+
+        p = Path(str(tmp_path)) / "policy.cedar"
+        p.write_text("permit(principal, action, resource);")
+        config = SecurityPolicyConfig(engine="cedar", policy_files=(p,))
         assert config.engine == "cedar"
 
     def test_invalid_engine_rejected(self) -> None:
@@ -46,7 +54,7 @@ class TestBuildPolicyEngine:
         engine = build_policy_engine(config)
         assert engine is None
 
-    def test_cedar_without_files_raises(self) -> None:
-        config = SecurityPolicyConfig(engine="cedar", policy_files=())
+    def test_cedar_without_files_raises_at_config(self) -> None:
+        """Cedar without policy_files is rejected at config construction."""
         with pytest.raises(ValueError, match="policy_files"):
-            build_policy_engine(config)
+            SecurityPolicyConfig(engine="cedar", policy_files=())

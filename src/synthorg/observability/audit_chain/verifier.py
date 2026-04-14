@@ -1,6 +1,8 @@
 """AuditChainVerifier -- verify hash chain and EvidencePackage signatures."""
 
-from pydantic import BaseModel, ConfigDict, Field
+from typing import Self
+
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.observability import get_logger
 from synthorg.observability.audit_chain.chain import HashChain  # noqa: TC001
@@ -34,6 +36,17 @@ class ChainVerificationResult(BaseModel):
         default=None,
         description="Position of first broken link",
     )
+
+    @model_validator(mode="after")
+    def _validate_consistency(self) -> Self:
+        """Ensure break position aligns with validity."""
+        if self.valid and self.first_break_position is not None:
+            msg = "first_break_position must be None when valid=True"
+            raise ValueError(msg)
+        if not self.valid and self.first_break_position is None:
+            msg = "first_break_position required when valid=False"
+            raise ValueError(msg)
+        return self
 
 
 class AuditChainVerifier:

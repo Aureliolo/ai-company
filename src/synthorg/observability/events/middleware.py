@@ -4,6 +4,8 @@ Constants for structured logging of agent middleware, coordination
 middleware, S1 constraint, and #1257 constraint lifecycle events.
 """
 
+from typing import Final
+
 # ── Agent middleware lifecycle ─────────────────────────────────────
 
 MIDDLEWARE_CHAIN_BUILT: str = "middleware.agent_chain.built"
@@ -104,11 +106,11 @@ MIDDLEWARE_DUPLICATE_CHAIN: str = "middleware.chain.duplicate"
 
 # ── Semantic drift detector events ──────────────────────────────
 
-MIDDLEWARE_SEMANTIC_DRIFT_DETECTED: str = "middleware.semantic_drift.detected"
+MIDDLEWARE_SEMANTIC_DRIFT_DETECTED: Final[str] = "middleware.semantic_drift.detected"
 """Semantic drift detected between model output and task criteria."""
 
-MIDDLEWARE_SEMANTIC_DRIFT_SKIPPED: str = "middleware.semantic_drift.skipped"
+MIDDLEWARE_SEMANTIC_DRIFT_SKIPPED: Final[str] = "middleware.semantic_drift.skipped"
 """Semantic drift check skipped (missing acceptance criteria)."""
 
-MIDDLEWARE_SEMANTIC_DRIFT_ERROR: str = "middleware.semantic_drift.error"
+MIDDLEWARE_SEMANTIC_DRIFT_ERROR: Final[str] = "middleware.semantic_drift.error"
 """Semantic drift computation failed (fail-soft)."""

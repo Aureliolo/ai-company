@@ -1,9 +1,10 @@
 """AuditChainSink -- logging handler that signs and chains security events."""
 
-import asyncio
 import json
 import logging
 import threading
+from concurrent.futures import ThreadPoolExecutor
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 from synthorg.observability.audit_chain.chain import HashChain
@@ -17,12 +18,20 @@ if TYPE_CHECKING:
 
 _logger = logging.getLogger(__name__)
 
+# Dedicated thread pool for async-to-sync bridging.  A single worker
+# avoids contention and keeps chain appends sequential.
+_SIGNING_EXECUTOR = ThreadPoolExecutor(max_workers=1, thread_name_prefix="audit-sign")
+
 
 class AuditChainSink(logging.Handler):
     """Logging handler that signs security events and appends to a hash chain.
 
     Only processes events whose message starts with ``"security."``.
     Thread-safe via a lock around chain mutation.
+
+    Uses a dedicated thread pool to bridge async signing into the
+    synchronous ``emit()`` method, avoiding the ``run_until_complete``
+    deadlock that occurs when called from within an existing event loop.
 
     Args:
         signer: Signing backend (ML-DSA-65 or equivalent).
@@ -64,7 +73,6 @@ class AuditChainSink(logging.Handler):
             return
 
         try:
-            # Serialize record to canonical JSON.
             data = json.dumps(
                 {
                     "event": msg,
@@ -76,12 +84,19 @@ class AuditChainSink(logging.Handler):
                 ensure_ascii=True,
             ).encode("utf-8")
 
-            # Sign and chain are async -- bridge from sync emit.
-            loop = self._get_or_create_loop()
-            signed = loop.run_until_complete(self._signer.sign(data))
-            timestamp = loop.run_until_complete(
-                self._timestamp_provider.get_timestamp(),
+            # Bridge async signing into sync emit via a dedicated
+            # thread pool.  This avoids the run_until_complete
+            # deadlock that occurs when emit() is called from within
+            # an existing event loop (the normal case in async apps).
+            import asyncio  # noqa: PLC0415
+
+            future = _SIGNING_EXECUTOR.submit(
+                asyncio.run,
+                self._signer.sign(data),
             )
+            signed = future.result(timeout=5.0)
+
+            timestamp = datetime.now(UTC)
 
             with self._lock:
                 self._chain.append(
@@ -93,17 +108,7 @@ class AuditChainSink(logging.Handler):
         except MemoryError, RecursionError:
             raise
         except Exception:
-            # Best-effort: never crash the logging pipeline.
-            _logger.debug(
-                "audit_chain.emit_error",
+            _logger.error(
+                "security.audit_chain.emit_error",
                 exc_info=True,
             )
-
-    @staticmethod
-    def _get_or_create_loop() -> asyncio.AbstractEventLoop:
-        """Get the current event loop or create a new one."""
-        try:
-            loop = asyncio.get_running_loop()
-        except RuntimeError:
-            loop = asyncio.new_event_loop()
-        return loop

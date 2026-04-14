@@ -1,9 +1,9 @@
 """SecurityPolicyConfig and factory for PolicyEngine construction."""
 
 from pathlib import Path  # noqa: TC003
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, Literal, Self
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.observability import get_logger
 from synthorg.observability.events.security import (
@@ -46,6 +46,14 @@ class SecurityPolicyConfig(BaseModel):
         description="Deny on evaluation errors if True",
     )
 
+    @model_validator(mode="after")
+    def _validate_cedar_requirements(self) -> Self:
+        """Ensure cedar engine has policy files."""
+        if self.engine == "cedar" and not self.policy_files:
+            msg = "engine='cedar' requires at least one entry in policy_files"
+            raise ValueError(msg)
+        return self
+
 
 def build_policy_engine(
     config: SecurityPolicyConfig,
@@ -68,13 +76,7 @@ def build_policy_engine(
         return None
 
     if config.engine == "cedar":
-        if not config.policy_files:
-            msg = (
-                "SecurityPolicyConfig.engine='cedar' requires at least "
-                "one entry in policy_files"
-            )
-            raise ValueError(msg)
-
+        # policy_files requirement already validated by config model.
         policy_texts: list[str] = []
         for path in config.policy_files:
             try:

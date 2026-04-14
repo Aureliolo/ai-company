@@ -86,7 +86,26 @@ class PolicyGateMiddleware(BaseAgentMiddleware):
             },
         )
 
-        decision = await self._engine.evaluate(request)
+        try:
+            decision = await self._engine.evaluate(request)
+        except MemoryError, RecursionError:
+            raise
+        except Exception:
+            from synthorg.observability.events.security import (  # noqa: PLC0415
+                SECURITY_POLICY_ENGINE_ERROR,
+            )
+
+            logger.error(
+                SECURITY_POLICY_ENGINE_ERROR,
+                tool_name=tool_name,
+                principal=str(ctx.agent_id),
+                exc_info=True,
+            )
+            # Fail-open: proceed to tool call on evaluation error.
+            # CedarPolicyEngine handles fail_closed internally; this
+            # catches errors outside the engine (e.g. request
+            # construction, serialization).
+            return await call(ctx)
 
         if not decision.allow:
             if self._evaluation_mode == "enforce":
