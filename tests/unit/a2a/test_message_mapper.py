@@ -101,18 +101,23 @@ class TestToA2A:
         assert isinstance(a2a.parts[2], A2ATextPart)
 
     @pytest.mark.unit
-    def test_delegation_maps_to_user_role(self) -> None:
-        """DELEGATION message type maps to user role."""
-        msg = _make_message(msg_type=MessageType.DELEGATION)
+    @pytest.mark.parametrize(
+        ("msg_type", "expected_role"),
+        [
+            (MessageType.DELEGATION, A2AMessageRole.USER),
+            (MessageType.TASK_UPDATE, A2AMessageRole.AGENT),
+            (MessageType.QUESTION, A2AMessageRole.AGENT),
+        ],
+    )
+    def test_message_type_to_role(
+        self,
+        msg_type: MessageType,
+        expected_role: A2AMessageRole,
+    ) -> None:
+        """Message types map to the correct A2A role."""
+        msg = _make_message(msg_type=msg_type)
         a2a = to_a2a(msg)
-        assert a2a.role == A2AMessageRole.USER
-
-    @pytest.mark.unit
-    def test_task_update_maps_to_agent_role(self) -> None:
-        """TASK_UPDATE message type maps to agent role."""
-        msg = _make_message(msg_type=MessageType.TASK_UPDATE)
-        a2a = to_a2a(msg)
-        assert a2a.role == A2AMessageRole.AGENT
+        assert a2a.role == expected_role
 
 
 class TestFromA2A:
@@ -184,7 +189,7 @@ class TestFromA2A:
 
     @pytest.mark.unit
     def test_data_part_round_trip(self) -> None:
-        """DataPart survives A2A round-trip."""
+        """DataPart survives A2A round-trip with data preserved."""
         a2a = A2AMessage(
             role=A2AMessageRole.AGENT,
             parts=(A2ADataPart(data={"result": [1, 2, 3]}),),
@@ -196,10 +201,11 @@ class TestFromA2A:
             recipient="r",
         )
         assert isinstance(msg.parts[0], DataPart)
+        assert msg.parts[0].data["result"] == (1, 2, 3)
 
     @pytest.mark.unit
     def test_file_part_round_trip(self) -> None:
-        """FilePart survives A2A round-trip."""
+        """FilePart survives A2A round-trip with fields preserved."""
         a2a = A2AMessage(
             role=A2AMessageRole.AGENT,
             parts=(
@@ -217,6 +223,7 @@ class TestFromA2A:
         )
         assert isinstance(msg.parts[0], FilePart)
         assert msg.parts[0].uri == "https://example.com/file.txt"
+        assert msg.parts[0].mime_type == "text/plain"
 
 
 class TestMappingBoundary:

@@ -113,8 +113,9 @@ class TestAgentCardBuilder:
             "authority",
             "budget",
             "hiring_date",
-            "seniority",
-            "autonomy",
+            "level",
+            "autonomy_level",
+            "strategic_output_mode",
             "tools",
         }
         assert not forbidden_keys & set(card_data.keys())

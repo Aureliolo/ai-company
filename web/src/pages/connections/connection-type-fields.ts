@@ -280,8 +280,12 @@ export function validateA2APeerCredentials(
   credentials: Record<string, string>,
 ): Record<string, string> {
   const scheme = authScheme || 'api_key'
-  const required = A2A_SCHEME_REQUIRED_FIELDS[scheme] ?? A2A_SCHEME_REQUIRED_FIELDS.api_key
   const errors: Record<string, string> = {}
+  if (!(scheme in A2A_SCHEME_REQUIRED_FIELDS)) {
+    errors._scheme = `Unsupported auth scheme: ${scheme}`
+    return errors
+  }
+  const required: readonly string[] = A2A_SCHEME_REQUIRED_FIELDS[scheme] ?? []
   for (const field of required) {
     if (!credentials[field]?.trim()) {
       errors[field] = `Required for ${scheme} auth scheme`

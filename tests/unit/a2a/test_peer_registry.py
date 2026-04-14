@@ -90,8 +90,15 @@ class TestPeerRegistry:
         card = _make_card()
         await reg.register("peer-a", card)
 
+        # get() returns the stored object directly (no per-read copy).
+        # If register() deep-copied, stored object identity differs.
         retrieved = await reg.get("peer-a")
         assert retrieved is not card
+
+        # Also verify via the internal backing store.
+        stored = reg._peers.get("peer-a")
+        assert stored is not card
+        assert stored is retrieved  # get() returns the stored ref
 
     @pytest.mark.unit
     async def test_backing_store_is_immutable(self) -> None:
