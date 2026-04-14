@@ -84,14 +84,18 @@ func NewImageRef(name, tag string) ImageRef {
 }
 
 // BuildImageRefs creates ImageRef values for the standard SynthOrg images.
-// If sandbox is false, the sandbox image is excluded.
-func BuildImageRefs(tag string, sandbox bool) []ImageRef {
+// If sandbox is false, the sandbox and sidecar images are excluded.
+// If fineTuning is true, the fine-tune image is included.
+func BuildImageRefs(tag string, sandbox bool, fineTuning bool) []ImageRef {
 	refs := []ImageRef{
 		NewImageRef("backend", tag),
 		NewImageRef("web", tag),
 	}
 	if sandbox {
-		refs = append(refs, NewImageRef("sandbox", tag))
+		refs = append(refs, NewImageRef("sandbox", tag), NewImageRef("sidecar", tag))
+	}
+	if fineTuning {
+		refs = append(refs, NewImageRef("fine-tune", tag))
 	}
 	return refs
 }

@@ -578,6 +578,7 @@ class DockerSandbox:
         env_overrides: Mapping[str, str] | None = None,
         timeout: float | None = None,  # noqa: ASYNC109
         category: str = "",
+        owner_id: str | None = None,  # noqa: ARG002
     ) -> SandboxResult:
         """Execute a command inside a Docker container.
 
@@ -589,6 +590,7 @@ class DockerSandbox:
             timeout: Seconds before the container is killed. Clamped
                 to ``config.timeout_seconds`` if larger.
             category: Tool category for per-category runtime selection.
+            owner_id: Lifecycle owner (agent ID, task ID, or ``None``).
 
         Returns:
             A ``SandboxResult`` with captured output and exit status.

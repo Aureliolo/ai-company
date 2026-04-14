@@ -12,6 +12,7 @@ from synthorg.observability.events.config import (
     CONFIG_ENV_VAR_RESOLVED,
     CONFIG_VALIDATION_FAILED,
 )
+from synthorg.tools.sandbox.lifecycle.config import SandboxLifecycleConfig
 from synthorg.tools.sandbox.network_presets import PRESETS
 from synthorg.tools.sandbox.policy import SandboxPolicy  # noqa: TC001
 
@@ -25,6 +26,8 @@ _SANDBOX_IMAGE_ENV_VAR = "SYNTHORG_SANDBOX_IMAGE"
 _FALLBACK_SANDBOX_IMAGE = "ghcr.io/aureliolo/synthorg-sandbox:latest"
 _SIDECAR_IMAGE_ENV_VAR = "SYNTHORG_SIDECAR_IMAGE"
 _FALLBACK_SIDECAR_IMAGE = "ghcr.io/aureliolo/synthorg-sidecar:latest"
+_FINE_TUNE_IMAGE_ENV_VAR = "SYNTHORG_FINE_TUNE_IMAGE"
+_FALLBACK_FINE_TUNE_IMAGE = "ghcr.io/aureliolo/synthorg-fine-tune:latest"
 
 
 def _default_sandbox_image() -> str:
@@ -177,6 +180,13 @@ class DockerSandboxConfig(BaseModel):
             "Structured 4-domain policy overlay (filesystem, network, "
             "process, inference).  Consumed by the sandbox execution "
             "layer to apply domain-specific constraints at runtime."
+        ),
+    )
+    lifecycle: SandboxLifecycleConfig = Field(
+        default_factory=SandboxLifecycleConfig,
+        description=(
+            "Container lifecycle strategy (per-agent, per-task, or "
+            "per-call).  Controls container reuse across tool calls."
         ),
     )
 

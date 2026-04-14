@@ -76,15 +76,15 @@ func TestNewImageRef(t *testing.T) {
 }
 
 func TestBuildImageRefsWithSandbox(t *testing.T) {
-	refs := BuildImageRefs("0.3.0", true)
-	if len(refs) != 3 {
-		t.Fatalf("got %d refs, want 3", len(refs))
+	refs := BuildImageRefs("0.3.0", true, false)
+	if len(refs) != 4 {
+		t.Fatalf("got %d refs, want 4", len(refs))
 	}
 	names := make([]string, len(refs))
 	for i, r := range refs {
 		names[i] = r.Name()
 	}
-	want := []string{"backend", "web", "sandbox"}
+	want := []string{"backend", "web", "sandbox", "sidecar"}
 	for i, w := range want {
 		if names[i] != w {
 			t.Errorf("refs[%d].Name() = %q, want %q", i, names[i], w)
@@ -93,13 +93,33 @@ func TestBuildImageRefsWithSandbox(t *testing.T) {
 }
 
 func TestBuildImageRefsWithoutSandbox(t *testing.T) {
-	refs := BuildImageRefs("0.3.0", false)
+	refs := BuildImageRefs("0.3.0", false, false)
 	if len(refs) != 2 {
 		t.Fatalf("got %d refs, want 2", len(refs))
 	}
 	for _, r := range refs {
 		if r.Name() == "sandbox" {
 			t.Error("sandbox should not be included when disabled")
+		}
+		if r.Name() == "sidecar" {
+			t.Error("sidecar should not be included when sandbox disabled")
+		}
+	}
+}
+
+func TestBuildImageRefsWithFineTuning(t *testing.T) {
+	refs := BuildImageRefs("0.3.0", true, true)
+	if len(refs) != 5 {
+		t.Fatalf("got %d refs, want 5", len(refs))
+	}
+	names := make([]string, len(refs))
+	for i, r := range refs {
+		names[i] = r.Name()
+	}
+	want := []string{"backend", "web", "sandbox", "sidecar", "fine-tune"}
+	for i, w := range want {
+		if names[i] != w {
+			t.Errorf("refs[%d].Name() = %q, want %q", i, names[i], w)
 		}
 	}
 }

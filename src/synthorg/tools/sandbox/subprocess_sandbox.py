@@ -488,7 +488,7 @@ class SubprocessSandbox:
             )
             return b"", b"[sandbox] process did not terminate after kill"
 
-    async def execute(
+    async def execute(  # noqa: PLR0913
         self,
         *,
         command: str,
@@ -496,6 +496,7 @@ class SubprocessSandbox:
         cwd: Path | None = None,
         env_overrides: Mapping[str, str] | None = None,
         timeout: float | None = None,  # noqa: ASYNC109
+        owner_id: str | None = None,  # noqa: ARG002
     ) -> SandboxResult:
         """Execute a command in the sandbox.
 
@@ -505,6 +506,7 @@ class SubprocessSandbox:
             cwd: Working directory (defaults to workspace root).
             env_overrides: Extra env vars applied on top of filtered env.
             timeout: Seconds before the process is killed.
+            owner_id: Lifecycle owner (ignored by subprocess backend).
 
         Returns:
             A ``SandboxResult`` with captured output and exit status.

@@ -376,7 +376,7 @@ func verifyAndPinImages(ctx context.Context, _ *cobra.Command, state config.Stat
 	verifyCtx, cancel := context.WithTimeout(ctx, 120*time.Second)
 	defer cancel()
 	results, err := verify.VerifyImages(verifyCtx, verify.VerifyOptions{
-		Images: verify.BuildImageRefs(state.ImageTag, state.Sandbox),
+		Images: verify.BuildImageRefs(state.ImageTag, state.Sandbox, state.FineTuning),
 		Output: &buf,
 	})
 	if err != nil {

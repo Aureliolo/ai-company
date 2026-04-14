@@ -49,6 +49,9 @@ type State struct {
 
 	// Telemetry (opt-in anonymous product telemetry, default false).
 	TelemetryOptIn bool `json:"telemetry_opt_in"`
+
+	// Fine-tuning (requires sandbox/Docker for container execution).
+	FineTuning bool `json:"fine_tuning"`
 }
 
 // DefaultState returns a State with sensible defaults for the interactive init

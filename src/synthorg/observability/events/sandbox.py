@@ -39,3 +39,7 @@ SANDBOX_CONTAINER_LOGS_COLLECTED: Final[str] = "sandbox.container.logs.collected
 SANDBOX_CONTAINER_LOGS_MALFORMED: Final[str] = "sandbox.container.logs.malformed"
 SANDBOX_CONTAINER_LOGS_SHIPPED: Final[str] = "sandbox.container.logs.shipped"
 SANDBOX_CONTAINER_LOGS_SHIP_FAILED: Final[str] = "sandbox.container.logs.ship.failed"
+SANDBOX_LIFECYCLE_ACQUIRE: Final[str] = "sandbox.lifecycle.acquire"
+SANDBOX_LIFECYCLE_RELEASE: Final[str] = "sandbox.lifecycle.release"
+SANDBOX_LIFECYCLE_GRACE_EXPIRED: Final[str] = "sandbox.lifecycle.grace.expired"
+SANDBOX_LIFECYCLE_CLEANUP: Final[str] = "sandbox.lifecycle.cleanup"

@@ -35,7 +35,7 @@ const (
 
 // ImageNames returns the canonical set of SynthOrg service image suffixes.
 // Returns a new slice each call to prevent callers from mutating the list.
-func ImageNames() []string { return []string{"backend", "web", "sandbox"} }
+func ImageNames() []string { return []string{"backend", "web", "sandbox", "sidecar"} }
 
 // BuildVerifier creates a Sigstore verifier using the public good trusted
 // root. The verifier requires SCTs, transparency log entries, and integrated
