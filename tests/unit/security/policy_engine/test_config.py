@@ -1,6 +1,7 @@
 """Tests for SecurityPolicyConfig and factory."""
 
 import pytest
+from pydantic import ValidationError
 
 from synthorg.security.policy_engine.config import (
     SecurityPolicyConfig,
@@ -21,7 +22,7 @@ class TestSecurityPolicyConfig:
 
     def test_frozen(self) -> None:
         config = SecurityPolicyConfig()
-        with pytest.raises(Exception):  # noqa: B017, PT011
+        with pytest.raises(ValidationError):
             config.engine = "cedar"  # type: ignore[misc]
 
     def test_cedar_engine_requires_policy_files(self) -> None:

@@ -5,6 +5,7 @@ when thresholds are crossed.  Actual worktree removal is delegated
 to the workspace manager -- this module only signals.
 """
 
+import asyncio
 from pathlib import Path  # noqa: TC003
 from typing import Literal
 
@@ -59,7 +60,10 @@ def _compute_dir_size_bytes(path: Path) -> int:
             except OSError:
                 continue
     except OSError:
-        pass
+        logger.debug(
+            "workspace.dir_traversal_error",
+            path=str(path),
+        )
     return total
 
 
@@ -86,7 +90,7 @@ class DiskQuotaWatcher:
         Returns:
             Status with usage, limit, and ok/warning/exceeded.
         """
-        size_bytes = _compute_dir_size_bytes(path)
+        size_bytes = await asyncio.to_thread(_compute_dir_size_bytes, path)
         usage_gb = size_bytes / _BYTES_PER_GB
         limit_gb = self._config.max_disk_gb_per_worktree
         warning_gb = limit_gb * self._config.cleanup_warning_threshold
@@ -131,7 +135,35 @@ class DiskQuotaWatcher:
         Returns:
             Tuple of statuses for each path.
         """
-        statuses: list[DiskQuotaStatus] = []
-        for path in worktree_paths:
-            statuses.append(await self.check_worktree(path))  # noqa: PERF401
+
+        async def _safe_check(p: Path) -> DiskQuotaStatus:
+            try:
+                return await self.check_worktree(p)
+            except MemoryError, RecursionError:
+                raise
+            except Exception:
+                logger.warning(
+                    "workspace.disk_quota_check_error",
+                    path=str(p),
+                    exc_info=True,
+                )
+                return DiskQuotaStatus(
+                    path=p,
+                    usage_gb=0.0,
+                    limit_gb=self._config.max_disk_gb_per_worktree,
+                    status="ok",
+                )
+
+        statuses: list[DiskQuotaStatus] = [
+            DiskQuotaStatus(
+                path=p,
+                usage_gb=0.0,
+                limit_gb=self._config.max_disk_gb_per_worktree,
+                status="ok",
+            )
+            for p in worktree_paths
+        ]
+        async with asyncio.TaskGroup() as tg:
+            tasks = [tg.create_task(_safe_check(p)) for p in worktree_paths]
+        statuses = [t.result() for t in tasks]
         return tuple(statuses)

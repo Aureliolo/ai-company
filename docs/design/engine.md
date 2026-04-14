@@ -1761,7 +1761,11 @@ Protocol: `AgentMiddleware` (`engine/middleware/protocol.py`). Six async hooks i
 
 Composition: `before_*` left-to-right, `after_*` right-to-left, `wrap_*` onion-style (each wraps the next). Exceptions propagate to the classification pipeline.
 
-Default chain: `checkpoint_resume`, `delegation_chain_hash`, `authority_deference`, `sanitize_message`, `security_interceptor`, `approval_gate`, `assumption_violation`, `classification`, `cost_recording`.
+Default chain: `checkpoint_resume`, `delegation_chain_hash`, `authority_deference`, `sanitize_message`, `security_interceptor`, `policy_gate`, `approval_gate`, `assumption_violation`, `classification`, `cost_recording`.
+
+**Optional middleware** (registered in `_AGENT_OPT_IN`, must be enabled explicitly):
+
+- `SemanticDriftDetector` (`after_model` slot) -- compares model output against task acceptance criteria using cosine similarity. Opt-in via `CompanyConfig.security.semantic_drift_enabled`. Fail-soft: logs warnings but never blocks.
 
 ### Coordination Middleware
 

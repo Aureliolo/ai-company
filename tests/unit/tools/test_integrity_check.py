@@ -7,6 +7,7 @@ from unittest.mock import MagicMock
 import pytest
 from hypothesis import given, settings
 from hypothesis import strategies as st
+from pydantic import ValidationError
 
 from synthorg.tools.integrity_check import (
     ToolIntegrityCheckConfig,
@@ -48,7 +49,7 @@ class TestToolIntegrityCheckConfig:
 
     def test_frozen(self) -> None:
         config = ToolIntegrityCheckConfig()
-        with pytest.raises(Exception):  # noqa: B017, PT011
+        with pytest.raises(ValidationError):
             config.enabled = False  # type: ignore[misc]
 
     def test_custom_values(self, tmp_path: Path) -> None:
@@ -122,7 +123,7 @@ class TestToolIntegrityViolation:
             actual_hash="b" * 64,
         )
         assert violation.tool_name == "test_tool"
-        with pytest.raises(Exception):  # noqa: B017, PT011
+        with pytest.raises(ValidationError):
             violation.tool_name = "x"  # type: ignore[misc]
 
 

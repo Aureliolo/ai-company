@@ -33,7 +33,6 @@ class PolicyGateMiddleware(BaseAgentMiddleware):
     Args:
         policy_engine: Policy engine instance, or ``None`` to disable.
         evaluation_mode: ``"enforce"`` or ``"log_only"``.
-        fail_closed: Passed through to the engine for error handling.
     """
 
     def __init__(
@@ -41,13 +40,11 @@ class PolicyGateMiddleware(BaseAgentMiddleware):
         *,
         policy_engine: PolicyEngine | None = None,
         evaluation_mode: str = "log_only",
-        fail_closed: bool = False,
         **_kwargs: object,
     ) -> None:
         super().__init__(name="policy_gate")
         self._engine = policy_engine
         self._evaluation_mode = evaluation_mode
-        self._fail_closed = fail_closed
 
     async def wrap_tool_call(
         self,

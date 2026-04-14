@@ -8,6 +8,7 @@ Opt-in: registered in ``_AGENT_OPT_IN``, must be added to the
 middleware chain explicitly.
 """
 
+import threading
 from typing import TYPE_CHECKING
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -30,6 +31,7 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 _SKIPPED_LOGGED: set[str] = set()
+_SKIPPED_LOCK = threading.Lock()
 
 
 class SemanticDriftConfig(BaseModel):
@@ -105,8 +107,11 @@ class SemanticDriftDetector(BaseAgentMiddleware):
         criteria = getattr(ctx.task, "acceptance_criteria", None)
         if not criteria:
             task_key = str(ctx.task_id)
-            if task_key not in _SKIPPED_LOGGED:
-                _SKIPPED_LOGGED.add(task_key)
+            with _SKIPPED_LOCK:
+                already_logged = task_key in _SKIPPED_LOGGED
+                if not already_logged:
+                    _SKIPPED_LOGGED.add(task_key)
+            if not already_logged:
                 logger.debug(
                     MIDDLEWARE_SEMANTIC_DRIFT_SKIPPED,
                     task_id=str(ctx.task_id),
@@ -128,7 +133,7 @@ class SemanticDriftDetector(BaseAgentMiddleware):
                     similarity=similarity,
                     threshold=self._config.threshold,
                 )
-                ctx.with_metadata("semantic_drift_score", similarity)
+                ctx = ctx.with_metadata("semantic_drift_score", similarity)
 
         except MemoryError, RecursionError:
             raise

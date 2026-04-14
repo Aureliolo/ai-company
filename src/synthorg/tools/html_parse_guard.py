@@ -32,7 +32,51 @@ _HIDDEN_STYLE_PATTERNS = (
 )
 
 # Tags to strip entirely (content and all).
-_STRIP_TAGS = frozenset({"script", "style", "noscript"})
+_STRIP_TAGS = frozenset(
+    {
+        "script",
+        "style",
+        "noscript",
+        "iframe",
+        "object",
+        "embed",
+        "applet",
+    }
+)
+
+# Event handler attributes to strip from all elements.
+_EVENT_HANDLER_PREFIXES = frozenset(
+    {
+        "onclick",
+        "ondblclick",
+        "onmousedown",
+        "onmouseup",
+        "onmouseover",
+        "onmousemove",
+        "onmouseout",
+        "onkeypress",
+        "onkeydown",
+        "onkeyup",
+        "onfocus",
+        "onblur",
+        "onsubmit",
+        "onreset",
+        "onselect",
+        "onchange",
+        "onload",
+        "onerror",
+        "onresize",
+        "onscroll",
+        "onunload",
+        "onabort",
+        "oninput",
+        "oncontextmenu",
+        "ondrag",
+        "ondrop",
+        "onpaste",
+        "formaction",
+    }
+)
 
 
 class HTMLParseGuardConfig(BaseModel):
@@ -153,12 +197,10 @@ class HTMLParseGuard:
         from lxml import html as lxml_html  # noqa: PLC0415
 
         doc = lxml_html.fromstring(raw)
+        # Capture original text before stripping (single parse).
+        original_text = doc.text_content().strip()  # type: ignore[attr-defined]
         stripped_count = self._strip_dangerous_elements(doc)
         cleaned_text = doc.text_content().strip()  # type: ignore[attr-defined]
-
-        # Compute gap ratio against the original.
-        original_doc = lxml_html.fromstring(raw)
-        original_text = original_doc.text_content().strip()  # type: ignore[attr-defined]
         gap_ratio = self._compute_gap_ratio(original_text, cleaned_text)
         gap_detected = gap_ratio > self._config.gap_threshold_ratio
 
@@ -179,6 +221,19 @@ class HTMLParseGuard:
         )
 
     @staticmethod
+    def _strip_event_handlers(doc: Any) -> int:
+        """Strip event handler attributes from all elements."""
+        stripped = 0
+        for element in doc.iter():
+            if not hasattr(element, "tag") or not isinstance(element.tag, str):
+                continue
+            for attr in list(element.attrib):
+                if attr.lower() in _EVENT_HANDLER_PREFIXES:
+                    del element.attrib[attr]
+                    stripped += 1
+        return stripped
+
+    @staticmethod
     def _strip_dangerous_elements(doc: Any) -> int:
         """Strip scripts, styles, comments, and hidden elements.
 
@@ -195,6 +250,13 @@ class HTMLParseGuard:
 
         for comment in doc.iter(etree.Comment):
             comment.drop_tree()
+
+        # Strip SVG script injection vectors.
+        for element in doc.iter("{http://www.w3.org/2000/svg}script"):
+            element.drop_tree()
+            stripped += 1
+
+        stripped += HTMLParseGuard._strip_event_handlers(doc)
 
         elements_to_drop: list[object] = []
         for element in doc.iter():
@@ -216,7 +278,6 @@ class HTMLParseGuard:
     @staticmethod
     def _compute_gap_ratio(original: str, cleaned: str) -> float:
         """Compute the ratio of hidden content to total content."""
-        original_len = len(original) if original else 1
+        original_len = len(original) or 1
         hidden_len = max(0, original_len - len(cleaned))
-        ratio = hidden_len / original_len if original_len > 0 else 0.0
-        return min(ratio, 1.0)
+        return min(hidden_len / original_len, 1.0)

@@ -6,6 +6,7 @@ Defines ``SecurityConfig`` (the top-level security configuration),
 """
 
 from enum import StrEnum
+from typing import Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -159,7 +160,7 @@ class SecurityPolicyRule(BaseModel):
     enabled: bool = True
 
     @model_validator(mode="after")
-    def _check_action_type_format(self) -> SecurityPolicyRule:
+    def _check_action_type_format(self) -> Self:
         """Validate that action_types entries use ``category:action`` format.
 
         Requires exactly one colon with non-empty, non-whitespace

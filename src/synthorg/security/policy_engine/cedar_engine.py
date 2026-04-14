@@ -28,7 +28,6 @@ class CedarPolicyEngine:
 
     Args:
         policy_texts: Cedar policy source strings.
-        schema_text: Optional Cedar schema JSON string.
         fail_closed: If ``True``, return deny on evaluation errors.
     """
 
@@ -36,11 +35,9 @@ class CedarPolicyEngine:
         self,
         policy_texts: tuple[str, ...],
         *,
-        schema_text: str | None = None,
         fail_closed: bool = False,
     ) -> None:
         self._policies = "\n".join(policy_texts)
-        self._schema = schema_text
         self._fail_closed = fail_closed
 
     @property
@@ -67,10 +64,16 @@ class CedarPolicyEngine:
             resource=request.resource,
         )
 
+        # Escape double quotes in entity UIDs to prevent Cedar
+        # syntax injection.
+        principal = str(request.principal).replace('"', '\\"')
+        action = str(request.action_type).replace('"', '\\"')
+        resource = str(request.resource).replace('"', '\\"')
+
         cedar_request = {
-            "principal": f'Principal::"{request.principal}"',
-            "action": f'Action::"{request.action_type}"',
-            "resource": f'Resource::"{request.resource}"',
+            "principal": f'Principal::"{principal}"',
+            "action": f'Action::"{action}"',
+            "resource": f'Resource::"{resource}"',
             "context": dict(request.context),
         }
 

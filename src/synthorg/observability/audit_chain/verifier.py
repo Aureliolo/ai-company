@@ -5,7 +5,7 @@ from typing import Self
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.observability import get_logger
-from synthorg.observability.audit_chain.chain import HashChain  # noqa: TC001
+from synthorg.observability.audit_chain.chain import HashChain
 from synthorg.observability.audit_chain.protocol import AuditChainSigner  # noqa: TC001
 from synthorg.observability.events.security import (
     SECURITY_AUDIT_CHAIN_BREAK_DETECTED,
@@ -85,7 +85,7 @@ class AuditChainVerifier:
         # Check hash continuity.
         if not chain.verify_integrity():
             # Find the first break.
-            expected_prev = "genesis"
+            expected_prev = chain.initial_hash
             for entry in entries:
                 if entry.previous_hash != expected_prev:
                     logger.error(
@@ -99,10 +99,30 @@ class AuditChainVerifier:
                         entries_checked=entry.position,
                         first_break_position=entry.position,
                     )
-                import hashlib  # noqa: PLC0415
+                expected_prev = HashChain._link_hash(  # noqa: SLF001
+                    expected_prev,
+                    entry.event_hash,
+                    entry.signature,
+                    entry.timestamp,
+                )
 
-                chain_input = f"{expected_prev}:{entry.event_hash}".encode()
-                expected_prev = hashlib.sha256(chain_input).hexdigest()
+        # Verify each entry's signature against its canonical payload.
+        for entry in entries:
+            sig_valid = await self._signer.verify(
+                entry.canonical_payload,
+                entry.signature,
+            )
+            if not sig_valid:
+                logger.error(
+                    SECURITY_AUDIT_CHAIN_BREAK_DETECTED,
+                    position=entry.position,
+                    reason="signature_invalid",
+                )
+                return ChainVerificationResult(
+                    valid=False,
+                    entries_checked=entry.position,
+                    first_break_position=entry.position,
+                )
 
         logger.debug(
             SECURITY_AUDIT_CHAIN_VERIFY_COMPLETE,
@@ -127,9 +147,13 @@ class AuditChainVerifier:
         if not getattr(pkg, "is_fully_signed", False):
             return False
 
+        canonical = getattr(pkg, "canonical_bytes", None)
+        if canonical is None:
+            canonical = getattr(pkg, "signed_bytes", b"")
+
         for sig in getattr(pkg, "signatures", ()):
             valid = await self._signer.verify(
-                b"",  # Placeholder -- real impl needs original data.
+                canonical,
                 sig.signature_bytes,
             )
             if not valid:

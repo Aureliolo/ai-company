@@ -3,6 +3,7 @@
 from pathlib import Path
 
 import pytest
+from pydantic import ValidationError
 
 from synthorg.engine.workspace.config import PlannerWorktreesConfig
 from synthorg.engine.workspace.disk_quota import (
@@ -85,7 +86,7 @@ class TestDiskQuotaStatus:
             limit_gb=5.0,
             status="ok",
         )
-        with pytest.raises(Exception):  # noqa: B017, PT011
+        with pytest.raises(ValidationError):
             status.status = "warning"  # type: ignore[misc]
 
 
@@ -170,7 +171,7 @@ class TestDiskQuotaWatcher:
 
 @pytest.mark.integration
 class TestWorktreeIdCollisionRegression:
-    """Regression test for claude-code #41010.
+    """Regression for sub-agent ID collision (#41010).
 
     Spawning a sub-agent with an ID that collides with the parent
     worktree name must NOT delete the parent's working directory.

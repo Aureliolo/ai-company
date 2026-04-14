@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock
 import pytest
 from hypothesis import given, settings
 from hypothesis import strategies as st
+from pydantic import ValidationError
 
 from synthorg.observability.audit_chain.chain import HashChain
 from synthorg.observability.audit_chain.config import AuditChainConfig
@@ -56,7 +57,7 @@ class TestAuditChainConfig:
 
     def test_frozen(self) -> None:
         config = AuditChainConfig()
-        with pytest.raises(Exception):  # noqa: B017, PT011
+        with pytest.raises(ValidationError):
             config.enabled = True  # type: ignore[misc]
 
 
@@ -84,7 +85,7 @@ class TestSignedPayload:
             signer_id="signer-1",
             signed_at=datetime.now(UTC),
         )
-        with pytest.raises(Exception):  # noqa: B017, PT011
+        with pytest.raises(ValidationError):
             payload.algorithm = "ed25519"  # type: ignore[misc]
 
 

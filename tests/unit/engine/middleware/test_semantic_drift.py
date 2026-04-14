@@ -1,6 +1,5 @@
 """Tests for SemanticDriftDetector middleware."""
 
-import math
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -47,8 +46,10 @@ class TestSemanticDriftConfig:
         assert config.embedding_model is None
 
     def test_frozen(self) -> None:
+        from pydantic import ValidationError
+
         config = SemanticDriftConfig()
-        with pytest.raises(Exception):  # noqa: B017, PT011
+        with pytest.raises(ValidationError):
             config.enabled = True  # type: ignore[misc]
 
     def test_threshold_bounds(self) -> None:
@@ -111,7 +112,10 @@ class TestSemanticDriftDetector:
         result = await detector.wrap_model_call(ctx, call)
         assert result == expected
         # Metadata should have been annotated.
-        ctx.with_metadata.assert_called()
+        ctx.with_metadata.assert_called_once_with(
+            "semantic_drift_score",
+            0.1,
+        )
 
     async def test_no_drift_no_annotation(self) -> None:
         """When similarity is above threshold, no annotation."""
@@ -163,11 +167,9 @@ class TestSemanticDriftProperties:
     """Property-based tests for SemanticDriftDetector."""
 
     @given(
-        threshold=st.floats(min_value=0.0, max_value=1.0),
+        threshold=st.floats(min_value=0.0, max_value=1.0, allow_nan=False),
     )
     @settings(max_examples=50)
     def test_config_accepts_valid_threshold(self, threshold: float) -> None:
-        if math.isnan(threshold):
-            return
         config = SemanticDriftConfig(threshold=threshold)
         assert 0.0 <= config.threshold <= 1.0

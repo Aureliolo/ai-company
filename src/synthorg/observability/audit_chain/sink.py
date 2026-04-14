@@ -7,7 +7,11 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
+from synthorg.observability import get_logger
 from synthorg.observability.audit_chain.chain import HashChain
+from synthorg.observability.events.security import (
+    SECURITY_AUDIT_CHAIN_SIGNED,
+)
 
 if TYPE_CHECKING:
     from synthorg.observability.audit_chain.config import AuditChainConfig
@@ -16,7 +20,7 @@ if TYPE_CHECKING:
         TimestampProvider,
     )
 
-_logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 # Dedicated thread pool for async-to-sync bridging.  A single worker
 # avoids contention and keeps chain appends sequential.
@@ -57,8 +61,13 @@ class AuditChainSink(logging.Handler):
 
     @property
     def chain(self) -> HashChain:
-        """Read-only access to the underlying hash chain."""
-        return self._chain
+        """Read-only snapshot of the chain's entries.
+
+        Returns a new ``HashChain`` populated with a copy of the
+        current entries so callers cannot mutate the live chain.
+        """
+        with self._lock:
+            return self._chain.snapshot()
 
     def emit(self, record: logging.LogRecord) -> None:
         """Process a log record, signing security events.
@@ -96,7 +105,17 @@ class AuditChainSink(logging.Handler):
             )
             signed = future.result(timeout=5.0)
 
-            timestamp = datetime.now(UTC)
+            # Use the injected timestamp provider when available.
+            if self._timestamp_provider is not None:
+                import asyncio  # noqa: PLC0415 -- reuse import above
+
+                ts_future = _SIGNING_EXECUTOR.submit(
+                    asyncio.run,
+                    self._timestamp_provider.get_timestamp(),
+                )
+                timestamp = ts_future.result(timeout=5.0)
+            else:
+                timestamp = datetime.now(UTC)
 
             with self._lock:
                 self._chain.append(
@@ -108,7 +127,8 @@ class AuditChainSink(logging.Handler):
         except MemoryError, RecursionError:
             raise
         except Exception:
-            _logger.error(
-                "security.audit_chain.emit_error",
+            logger.error(
+                SECURITY_AUDIT_CHAIN_SIGNED,
+                event="emit_error",
                 exc_info=True,
             )

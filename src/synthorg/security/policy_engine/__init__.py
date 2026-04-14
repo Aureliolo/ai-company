@@ -9,6 +9,7 @@ Public API:
 - ``build_policy_engine`` factory
 """
 
+from synthorg.security.policy_engine.cedar_engine import CedarPolicyEngine
 from synthorg.security.policy_engine.config import (
     SecurityPolicyConfig,
     build_policy_engine,

@@ -68,8 +68,14 @@ class ToolIntegrityViolation(BaseModel):
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     tool_name: NotBlankStr = Field(description="Tool with mismatch")
-    expected_hash: str = Field(description="Prior recorded hash")
-    actual_hash: str = Field(description="Current computed hash")
+    expected_hash: NotBlankStr = Field(
+        description="Prior recorded hash",
+        pattern=r"^[0-9a-f]{64}$",
+    )
+    actual_hash: NotBlankStr = Field(
+        description="Current computed hash",
+        pattern=r"^[0-9a-f]{64}$",
+    )
 
 
 class ToolIntegrityReport(BaseModel):
@@ -142,8 +148,11 @@ class ToolIntegrityChecker:
     def __init__(
         self,
         prior_hashes: Mapping[str, str] | None = None,
+        *,
+        fail_on_violation: bool = False,
     ) -> None:
         self._prior = dict(prior_hashes) if prior_hashes else {}
+        self._fail_on_violation = fail_on_violation
 
     def check(self, tools: tuple[Any, ...]) -> ToolIntegrityReport:
         """Check tool definitions and return an integrity report.
@@ -188,6 +197,10 @@ class ToolIntegrityChecker:
             current_hashes=current_hashes,
             checked_at=datetime.now(UTC),
         )
+
+        if violations and self._fail_on_violation:
+            msg = f"Tool registry integrity violated: {len(violations)} tool(s) changed"
+            raise RuntimeError(msg)
 
         logger.debug(
             TOOL_REGISTRY_INTEGRITY_CHECK_COMPLETE,

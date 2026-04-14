@@ -1,6 +1,8 @@
 """Policy engine domain models."""
 
 import copy
+from collections.abc import Mapping  # noqa: TC003
+from types import MappingProxyType
 from typing import Any, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -32,15 +34,19 @@ class PolicyActionRequest(BaseModel):
     resource: NotBlankStr = Field(
         description="Target of the action",
     )
-    context: dict[str, Any] = Field(
+    context: Mapping[str, Any] = Field(
         default_factory=dict,
         description="Additional evaluation context",
     )
 
     @model_validator(mode="after")
     def _deep_copy_context(self) -> Self:
-        """Deep-copy context to prevent external mutation."""
-        object.__setattr__(self, "context", copy.deepcopy(self.context))
+        """Deep-copy and freeze context to prevent external mutation."""
+        object.__setattr__(
+            self,
+            "context",
+            MappingProxyType(copy.deepcopy(dict(self.context))),
+        )
         return self
 
 

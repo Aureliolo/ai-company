@@ -1369,8 +1369,9 @@ feedback arrives.
 
 A pluggable runtime pre-execution gate that evaluates structured action requests
 (tool invocations, delegations, approval executions) against loaded policy
-definitions *before* the action runs. This complements the existing post-hoc
-`security/rules/` rule engine which fires on completed events.
+definitions *before* the action runs. This complements the existing
+`security/rules/` preventive rule engine, which already evaluates actions
+before tool execution, by adding a structured policy-as-code decision layer.
 
 **Cedar adapter** (primary): uses `cedarpy` for stateless embedded evaluation.
 Policies are loaded from files at company boot. No external process needed.
@@ -1420,6 +1421,7 @@ handler protocol -- no changes to event producers.
 | `backend` | `"asqav"` | Signing backend |
 | `tsa_url` | `None` | RFC 3161 TSA endpoint (None = local clock) |
 | `signing_key_path` | `None` | Path to signing key |
+| `chain_storage_path` | `None` | Path for chain persistence |
 
 **Module**: `src/synthorg/observability/audit_chain/`
 
@@ -1434,7 +1436,7 @@ official OWASP documentation.
 | ASI | Risk | Coverage | Primary Modules |
 |-----|------|----------|----------------|
 | ASI01 | Agent Goal Hijack | Partial | `security/rules/` (credential/path detectors), `engine/classification/` (semantic detectors), `HTMLParseGuard` (tool output sanitization), `SemanticDriftDetector` (middleware) |
-| ASI02 | Tool Misuse and Exploitation | Covered | `PolicyEngine` (Cedar pre-exec gate), `security/rules/` (post-hoc rule engine), `tools/sandbox/` (Docker/subprocess isolation), `ApprovalGate` |
+| ASI02 | Tool Misuse and Exploitation | Covered | `PolicyEngine` (Cedar pre-exec gate), `security/rules/` (preventive rule engine), `tools/sandbox/` (Docker/subprocess isolation), `ApprovalGate` |
 | ASI03 | Identity and Privilege Abuse | Covered | Progressive trust (`security/trust/`), 4 autonomy levels, `AuthorityDeferenceGuard`, `ApprovalGate`, delegation budget, `ToolPermissionChecker` |
 | ASI04 | Agentic Supply Chain Vulnerabilities | Partial | `ToolRegistryIntegrityCheck` (boot-time hash verification), pip-audit/npm-audit/Trivy in CI, cosign signatures, SLSA provenance. **Gap**: no runtime plugin integrity verification beyond boot-time hash. |
 | ASI05 | Unexpected Code Execution (RCE) | Covered | `tools/sandbox/` (Docker with ephemeral containers, subprocess with env filtering), gVisor runtime for high-risk categories (`code_execution`, `terminal`), `SandboxCredentialManager`, workspace boundary enforcement |

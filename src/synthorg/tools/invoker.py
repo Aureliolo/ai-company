@@ -130,6 +130,13 @@ class ToolInvoker:
 
         self._pending_escalations: list[EscalationInfo] = []
 
+        # Cached HTML parse guard (stateless, reusable).
+        from synthorg.tools.html_parse_guard import (  # noqa: PLC0415
+            HTMLParseGuard,
+        )
+
+        self._html_guard = HTMLParseGuard()
+
     @property
     def registry(self) -> ToolRegistry:
         """Read-only access to the underlying tool registry."""
@@ -1000,12 +1007,8 @@ class ToolInvoker:
         """
         if result.is_error or not result.content:
             return result
-        from synthorg.tools.html_parse_guard import (  # noqa: PLC0415
-            HTMLParseGuard,
-        )
 
-        guard = HTMLParseGuard()
-        sanitized = guard.sanitize(result.content)
+        sanitized = self._html_guard.sanitize(result.content)
         if sanitized.cleaned == result.content:
             return result
         metadata = dict(result.metadata)

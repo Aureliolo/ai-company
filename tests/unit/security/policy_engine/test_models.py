@@ -3,6 +3,7 @@
 import pytest
 from hypothesis import given, settings
 from hypothesis import strategies as st
+from pydantic import ValidationError
 
 from synthorg.security.policy_engine.models import (
     PolicyActionRequest,
@@ -31,7 +32,7 @@ class TestPolicyActionRequest:
             principal="agent-001",
             resource="read_file",
         )
-        with pytest.raises(Exception):  # noqa: B017, PT011
+        with pytest.raises(ValidationError):
             req.action_type = "delegation"  # type: ignore[misc]
 
     def test_blank_action_type_rejected(self) -> None:
@@ -104,7 +105,7 @@ class TestPolicyDecision:
             reason="ok",
             latency_ms=0.1,
         )
-        with pytest.raises(Exception):  # noqa: B017, PT011
+        with pytest.raises(ValidationError):
             decision.allow = False  # type: ignore[misc]
 
     def test_blank_reason_rejected(self) -> None:

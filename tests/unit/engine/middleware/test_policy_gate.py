@@ -55,7 +55,6 @@ class TestPolicyGateMiddleware:
         mw = PolicyGateMiddleware(
             policy_engine=engine,
             evaluation_mode="enforce",
-            fail_closed=False,
         )
         ctx = _make_ctx()
         expected = ToolCallResult(
@@ -73,7 +72,6 @@ class TestPolicyGateMiddleware:
         mw = PolicyGateMiddleware(
             policy_engine=engine,
             evaluation_mode="enforce",
-            fail_closed=False,
         )
         ctx = _make_ctx()
         call = AsyncMock()
@@ -88,7 +86,6 @@ class TestPolicyGateMiddleware:
         mw = PolicyGateMiddleware(
             policy_engine=engine,
             evaluation_mode="log_only",
-            fail_closed=False,
         )
         ctx = _make_ctx()
         expected = ToolCallResult(
@@ -99,14 +96,13 @@ class TestPolicyGateMiddleware:
 
         result = await mw.wrap_tool_call(ctx, call)
         assert result == expected
-        call.assert_awaited_once()
+        call.assert_awaited_once_with(ctx)
 
     async def test_name_property(self) -> None:
         engine = _make_allow_engine()
         mw = PolicyGateMiddleware(
             policy_engine=engine,
             evaluation_mode="enforce",
-            fail_closed=False,
         )
         assert mw.name == "policy_gate"
 
@@ -115,7 +111,6 @@ class TestPolicyGateMiddleware:
         mw = PolicyGateMiddleware(
             policy_engine=None,
             evaluation_mode="enforce",
-            fail_closed=False,
         )
         ctx = _make_ctx()
         expected = ToolCallResult(
@@ -126,3 +121,4 @@ class TestPolicyGateMiddleware:
 
         result = await mw.wrap_tool_call(ctx, call)
         assert result == expected
+        call.assert_awaited_once_with(ctx)

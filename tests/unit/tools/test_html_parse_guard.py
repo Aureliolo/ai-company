@@ -3,6 +3,7 @@
 import pytest
 from hypothesis import given, settings
 from hypothesis import strategies as st
+from pydantic import ValidationError
 
 from synthorg.tools.html_parse_guard import (
     HTMLParseGuard,
@@ -22,7 +23,7 @@ class TestHTMLParseGuardConfig:
 
     def test_frozen(self) -> None:
         config = HTMLParseGuardConfig()
-        with pytest.raises(Exception):  # noqa: B017, PT011
+        with pytest.raises(ValidationError):
             config.enabled = False  # type: ignore[misc]
 
     def test_custom_threshold(self) -> None:
@@ -49,7 +50,7 @@ class TestHTMLSanitizeResult:
         )
         assert result.cleaned == "hello"
         assert result.gap_detected is False
-        with pytest.raises(Exception):  # noqa: B017, PT011
+        with pytest.raises(ValidationError):
             result.cleaned = "x"  # type: ignore[misc]
 
 
