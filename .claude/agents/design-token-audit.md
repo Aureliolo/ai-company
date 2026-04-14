@@ -63,4 +63,4 @@ Only report violations with HIGH confidence. Do not flag:
 - Tailwind bridge: `web/src/styles/global.css` (`@theme inline` block)
 - Motion presets: `web/src/lib/motion.ts`
 - Animation hook: `web/src/hooks/useAnimationPreset.ts`
-- Design spec: `docs/design/brand-and-ux.md`
+- Design spec: `docs/design/index.md` (and relevant linked pages: agents, organization, communication, engine, memory, operations)

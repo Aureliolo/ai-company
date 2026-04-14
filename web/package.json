@@ -48,7 +48,7 @@
     "d3-force": "3.0.0",
     "js-yaml": "4.1.1",
     "lucide-react": "1.8.0",
-    "motion": "^12.38.0",
+    "motion": "12.38.0",
     "react": "19.2.5",
     "react-dom": "19.2.5",
     "react-router": "7.14.1",

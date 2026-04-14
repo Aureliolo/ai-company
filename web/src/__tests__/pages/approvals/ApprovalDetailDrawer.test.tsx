@@ -38,6 +38,7 @@ vi.mock('motion/react', async () => {
     ...actual,
     AnimatePresence: MockAnimatePresence,
     motion: {
+      ...actual.motion,
       div: MockDiv,
       aside: MockAside,
     },

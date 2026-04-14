@@ -91,7 +91,7 @@ HARDCODED_FONT_RE = re.compile(
 
 # Motion inline transition durations (should use lib/motion presets).
 # Uses re.DOTALL so [^}]* spans newlines in multiline transition objects.
-HARDCODED_FM_DURATION_RE = re.compile(
+HARDCODED_MOTION_DURATION_RE = re.compile(
     r"""(?x)
     # Variant object exit/animate transitions: exit: { ..., transition: { duration: N } }
     transition\s*:\s*\{[^}]*\bduration\s*:\s*[\d.]+
@@ -103,10 +103,10 @@ HARDCODED_FM_DURATION_RE = re.compile(
 )
 
 # Files where inline Motion durations are intentional (relative paths).
-_FM_DURATION_SKIP_PATHS: set[str] = {
+_MOTION_DURATION_SKIP_PATHS: set[str] = {
     "web/src/lib/motion.ts",
     "web/src/hooks/useAnimationPreset.ts",
-    "web/src/pages/settings/ThemePreview.tsx",
+    "web/src/pages/setup/ThemePreview.tsx",
 }
 
 # ── Files to skip ────────────────────────────────────────────────────
@@ -237,7 +237,7 @@ def check_hardcoded_fonts(
     return warnings
 
 
-def check_hardcoded_framer_transitions(
+def check_hardcoded_motion_transitions(
     content: str,
     file_path: Path,
     project_root: Path,
@@ -249,7 +249,7 @@ def check_hardcoded_framer_transitions(
     ``useAnimationPreset()`` hook instead of inline duration values.
     """
     rel_str = file_path.relative_to(project_root).as_posix()
-    if rel_str in _FM_DURATION_SKIP_PATHS:
+    if rel_str in _MOTION_DURATION_SKIP_PATHS:
         return []
     if ".stories." in file_path.name:
         return []
@@ -268,7 +268,7 @@ def check_hardcoded_framer_transitions(
     )
 
     # Run regex on masked content so multiline transition objects are caught.
-    for m in HARDCODED_FM_DURATION_RE.finditer(stripped):
+    for m in HARDCODED_MOTION_DURATION_RE.finditer(stripped):
         line_num = stripped[: m.start()].count("\n") + 1
         col = m.start() - stripped.rfind("\n", 0, m.start()) - 1
         original_line = lines[line_num - 1]
@@ -473,7 +473,7 @@ def check_file(file_path: Path, project_root: Path) -> list[str]:
     all_warnings.extend(check_hardcoded_colors(content, file_path, project_root))
     all_warnings.extend(check_hardcoded_fonts(content, file_path, project_root))
     all_warnings.extend(
-        check_hardcoded_framer_transitions(content, file_path, project_root),
+        check_hardcoded_motion_transitions(content, file_path, project_root),
     )
     all_warnings.extend(check_missing_story(file_path, project_root))
     all_warnings.extend(check_duplicate_patterns(content, file_path, project_root))
