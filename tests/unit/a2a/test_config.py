@@ -298,3 +298,15 @@ class TestA2APeerAuthenticator:
 
         auth = A2APeerAuthenticator()
         assert auth.connection_type == ConnectionType.A2A_PEER
+
+    @pytest.mark.unit
+    def test_unsupported_scheme_raises(self) -> None:
+        """Unsupported auth scheme raises."""
+        from synthorg.integrations.connections.types.a2a_peer import (
+            A2APeerAuthenticator,
+        )
+        from synthorg.integrations.errors import InvalidConnectionAuthError
+
+        auth = A2APeerAuthenticator()
+        with pytest.raises(InvalidConnectionAuthError, match="Unsupported"):
+            auth.validate_credentials({"auth_scheme": "kerberos"})

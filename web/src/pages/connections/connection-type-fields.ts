@@ -246,6 +246,11 @@ export function validateConnectionField(
       return `${spec.label} must be a valid URL`
     }
   }
+  if (spec.type === 'select' && value.trim()) {
+    if (spec.options && !spec.options.includes(value)) {
+      return `${spec.label} must be one of: ${spec.options.join(', ')}`
+    }
+  }
   if (spec.type === 'number' && value.trim()) {
     const n = Number(value)
     if (!Number.isFinite(n)) {
@@ -253,6 +258,36 @@ export function validateConnectionField(
     }
   }
   return null
+}
+
+/** Required credential fields per A2A auth scheme. */
+const A2A_SCHEME_REQUIRED_FIELDS: Record<string, readonly string[]> = {
+  api_key: ['api_key'],
+  bearer: ['access_token'],
+  oauth2: ['client_id', 'client_secret'],
+  mtls: ['cert_path', 'key_path'],
+  none: [],
+}
+
+/**
+ * Validate A2A peer credentials based on the selected auth scheme.
+ *
+ * Returns a map of field key -> error message for missing required
+ * fields, or an empty object if all required fields are present.
+ */
+export function validateA2APeerCredentials(
+  authScheme: string,
+  credentials: Record<string, string>,
+): Record<string, string> {
+  const scheme = authScheme || 'api_key'
+  const required = A2A_SCHEME_REQUIRED_FIELDS[scheme] ?? A2A_SCHEME_REQUIRED_FIELDS.api_key
+  const errors: Record<string, string> = {}
+  for (const field of required) {
+    if (!credentials[field]?.trim()) {
+      errors[field] = `Required for ${scheme} auth scheme`
+    }
+  }
+  return errors
 }
 
 export function validateConnectionName(name: string): string | null {

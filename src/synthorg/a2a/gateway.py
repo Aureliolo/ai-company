@@ -1,9 +1,9 @@
 """A2A JSON-RPC 2.0 gateway controller.
 
 Handles inbound A2A requests dispatched by method name:
-``message/send``, ``message/stream``, ``tasks/get``,
-``tasks/cancel``.  All inbound requests are validated against
-the peer allowlist and connection catalog credentials.
+``message/send``, ``tasks/get``, ``tasks/cancel``.  All inbound
+requests are validated against the peer allowlist and connection
+catalog credentials.
 """
 
 import json

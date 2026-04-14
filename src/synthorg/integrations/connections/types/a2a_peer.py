@@ -15,8 +15,9 @@ _SCHEME_REQUIRED_FIELDS: dict[str, tuple[str, ...]] = {
     "bearer": ("access_token",),
     "oauth2": ("client_id", "client_secret"),
     "mtls": ("cert_path", "key_path"),
-    "none": (),
 }
+
+_VALID_SCHEMES = frozenset((*_SCHEME_REQUIRED_FIELDS, "none"))
 
 
 class A2APeerAuthenticator:
@@ -39,7 +40,13 @@ class A2APeerAuthenticator:
     ) -> None:
         """Validate credentials based on the declared auth scheme."""
         scheme = credentials.get("auth_scheme", "api_key")
-        required = _SCHEME_REQUIRED_FIELDS.get(scheme, ("api_key",))
+        if scheme not in _VALID_SCHEMES:
+            msg = (
+                f"Unsupported A2A auth scheme '{scheme}'. "
+                f"Valid schemes: {', '.join(sorted(_VALID_SCHEMES))}"
+            )
+            raise InvalidConnectionAuthError(msg)
+        required = _SCHEME_REQUIRED_FIELDS.get(scheme, ())
         for field in required:
             value = credentials.get(field)
             if not isinstance(value, str) or not value.strip():

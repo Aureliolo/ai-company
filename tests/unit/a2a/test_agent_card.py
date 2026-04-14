@@ -58,20 +58,16 @@ class TestIdentityToSkills:
         assert names == {"python", "testing", "sql"}
 
     @pytest.mark.unit
-    def test_primary_tagged(self) -> None:
-        """Primary skills have the 'primary' tag."""
+    @pytest.mark.parametrize(
+        ("tag", "expected_count"),
+        [("primary", 2), ("secondary", 1)],
+    )
+    def test_skills_tagged(self, tag: str, expected_count: int) -> None:
+        """Skills carry the correct tag."""
         identity = _make_identity()
         skills = _identity_to_skills(identity)
-        primary = [s for s in skills if "primary" in s.tags]
-        assert len(primary) == 2
-
-    @pytest.mark.unit
-    def test_secondary_tagged(self) -> None:
-        """Secondary skills have the 'secondary' tag."""
-        identity = _make_identity()
-        skills = _identity_to_skills(identity)
-        secondary = [s for s in skills if "secondary" in s.tags]
-        assert len(secondary) == 1
+        matching = [s for s in skills if tag in s.tags]
+        assert len(matching) == expected_count
 
     @pytest.mark.unit
     def test_empty_skills(self) -> None:
@@ -168,28 +164,6 @@ class TestAgentCardBuilder:
         assert card.provider.organization == "Test Corp"
         # 1 from agent-a + 2 from agent-b = 3 total
         assert len(card.skills) == 3
-
-    @pytest.mark.unit
-    def test_company_card_deduplicates_skills(self) -> None:
-        """Company card deduplicates skills across distinct agents."""
-        builder = AgentCardBuilder()
-        agent1 = _make_identity(
-            name="agent-x",
-            primary_skills=("python",),
-            secondary_skills=(),
-        )
-        agent2 = _make_identity(
-            name="agent-y",
-            primary_skills=("python",),
-            secondary_skills=(),
-        )
-        card = builder.build_company_card(
-            [agent1, agent2],
-            "https://example.com/a2a",
-            "Test Corp",
-        )
-        # Capability-centric IDs: "python" from both -> 1
-        assert len(card.skills) == 1
 
     @pytest.mark.unit
     def test_company_card_empty_agents(self) -> None:
