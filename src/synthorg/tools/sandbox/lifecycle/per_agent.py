@@ -16,6 +16,7 @@ from synthorg.observability.events.sandbox import (
     SANDBOX_LIFECYCLE_CLEANUP,
     SANDBOX_LIFECYCLE_DESTROY_FAILED,
     SANDBOX_LIFECYCLE_GRACE_EXPIRED,
+    SANDBOX_LIFECYCLE_IDLE_EXPIRED,
     SANDBOX_LIFECYCLE_RELEASE,
 )
 
@@ -137,6 +138,10 @@ class PerAgentStrategy:
                     handle = self._containers.pop(owner_id, None)
                     self._last_used.pop(owner_id, None)
                     self._timers.pop(owner_id, None)
+                    self._destroy_fns.pop(owner_id, None)
+                    idle = self._idle_timers.pop(owner_id, None)
+                    if idle is not None and not idle.done():
+                        idle.cancel()
                 if handle is not None:
                     logger.info(
                         SANDBOX_LIFECYCLE_GRACE_EXPIRED,
@@ -238,10 +243,9 @@ class PerAgentStrategy:
                 destroy_fn = self._destroy_fns.pop(owner_id, None)
             if handle is not None and destroy_fn is not None:
                 logger.info(
-                    SANDBOX_LIFECYCLE_GRACE_EXPIRED,
+                    SANDBOX_LIFECYCLE_IDLE_EXPIRED,
                     strategy="per-agent",
                     owner_id=owner_id,
-                    reason="idle-timeout",
                     container_id=handle.container_id,
                 )
                 try:
