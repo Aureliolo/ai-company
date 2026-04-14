@@ -4,6 +4,7 @@ Collects execution trajectories and identifies patterns that appear
 across multiple distinct agents, enabling org-scope skill proposals.
 """
 
+import json
 from collections import defaultdict
 from typing import Literal, Self
 from uuid import uuid4
@@ -12,6 +13,10 @@ from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validato
 
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.observability import get_logger
+from synthorg.observability.events.skill_evolver import (
+    TRAJECTORY_AGGREGATE_COMPLETE,
+    TRAJECTORY_AGGREGATE_EMPTY,
+)
 
 logger = get_logger(__name__)
 
@@ -99,7 +104,7 @@ def _group_key(trajectory: AggregatedTrajectory) -> str:
     """
     if trajectory.outcome == "failure" and trajectory.error_category:
         return f"failure:{trajectory.error_category}"
-    return f"success:{','.join(trajectory.tool_calls)}"
+    return f"success:{json.dumps(list(trajectory.tool_calls))}"
 
 
 class TrajectoryAggregator:
@@ -115,6 +120,11 @@ class TrajectoryAggregator:
     __slots__ = ("_min_agents", "last_skipped_count")
 
     def __init__(self, *, min_agents_for_pattern: int = 3) -> None:
+        if min_agents_for_pattern <= 0:
+            msg = (
+                f"min_agents_for_pattern must be positive, got {min_agents_for_pattern}"
+            )
+            raise ValueError(msg)
         self._min_agents = min_agents_for_pattern
         self.last_skipped_count: int = 0
 
@@ -133,7 +143,7 @@ class TrajectoryAggregator:
         """
         if not trajectories:
             self.last_skipped_count = 0
-            logger.debug("trajectory.aggregate.empty_input")
+            logger.debug(TRAJECTORY_AGGREGATE_EMPTY)
             return ()
 
         groups: dict[str, list[AggregatedTrajectory]] = defaultdict(list)
@@ -167,7 +177,7 @@ class TrajectoryAggregator:
         self.last_skipped_count = skipped
         patterns.sort(key=lambda p: p.occurrence_count, reverse=True)
         logger.debug(
-            "trajectory.aggregate.complete",
+            TRAJECTORY_AGGREGATE_COMPLETE,
             groups=len(groups),
             patterns=len(patterns),
             skipped=skipped,

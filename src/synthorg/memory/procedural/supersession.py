@@ -12,6 +12,11 @@ from pydantic import BaseModel, ConfigDict, Field
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.memory.procedural.models import ProceduralMemoryProposal  # noqa: TC001
 from synthorg.observability import get_logger
+from synthorg.observability.events.skill_evolver import (
+    SUPERSESSION_CONFLICT,
+    SUPERSESSION_FULL,
+    SUPERSESSION_PARTIAL,
+)
 
 logger = get_logger(__name__)
 
@@ -130,7 +135,7 @@ def evaluate_supersession(
         and action_similarity < _OVERLAP_THRESHOLD
     ):
         logger.info(
-            "supersession.conflict",
+            SUPERSESSION_CONFLICT,
             candidate_id=candidate_id,
             existing_id=existing_id,
             condition_similarity=f"{condition_similarity:.0%}",
@@ -155,7 +160,7 @@ def evaluate_supersession(
         and candidate.confidence > existing.confidence
     ):
         logger.info(
-            "supersession.full",
+            SUPERSESSION_FULL,
             candidate_id=candidate_id,
             existing_id=existing_id,
             condition_coverage=f"{condition_coverage:.0%}",
@@ -174,7 +179,7 @@ def evaluate_supersession(
 
     # PARTIAL: everything else
     logger.debug(
-        "supersession.partial",
+        SUPERSESSION_PARTIAL,
         candidate_id=candidate_id,
         existing_id=existing_id,
         condition_similarity=f"{condition_similarity:.0%}",
