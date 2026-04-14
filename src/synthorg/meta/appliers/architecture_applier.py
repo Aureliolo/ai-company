@@ -51,7 +51,7 @@ class ArchitectureApplier:
                 proposal_id=str(proposal.id),
             )
             return ApplyResult(success=True, changes_applied=count)
-        except Exception as exc:
+        except Exception:
             logger.exception(
                 META_APPLY_FAILED,
                 altitude="architecture",
@@ -59,7 +59,7 @@ class ArchitectureApplier:
             )
             return ApplyResult(
                 success=False,
-                error_message=str(exc),
+                error_message="Architecture apply failed. Check logs.",
                 changes_applied=0,
             )
 

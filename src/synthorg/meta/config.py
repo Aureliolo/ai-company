@@ -101,7 +101,8 @@ class PromptTuningConfig(BaseModel):
     """Configuration for prompt tuning strategy behavior.
 
     Attributes:
-        default_evolution_mode: Default interaction mode with #243.
+        default_evolution_mode: Default interaction mode with
+            the per-agent evolution system.
         allowed_modes: Which evolution modes are available.
     """
 

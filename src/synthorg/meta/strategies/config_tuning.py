@@ -190,12 +190,12 @@ class ConfigTuningStrategy:
                 operations=(
                     RollbackOperation(
                         operation_type="revert_config",
-                        target=("task_engine.auto_loop.budget_downgrade_threshold"),
+                        target="task_engine.auto_loop.budget_downgrade_threshold",
                         previous_value=0.85,
                         description="Revert downgrade threshold",
                     ),
                 ),
-                validation_check=("budget_downgrade_threshold equals 0.85"),
+                validation_check="budget_downgrade_threshold equals 0.85",
             ),
             confidence=0.65,
             source_rule="success_rate_drop",
@@ -318,7 +318,7 @@ class ConfigTuningStrategy:
             ),
             config_changes=(
                 ConfigChange(
-                    path=("coordination.auto_select.sas_success_rate_threshold"),
+                    path="coordination.auto_select.sas_success_rate_threshold",
                     old_value=0.7,
                     new_value=0.8,
                     description=(
@@ -330,12 +330,12 @@ class ConfigTuningStrategy:
                 operations=(
                     RollbackOperation(
                         operation_type="revert_config",
-                        target=("coordination.auto_select.sas_success_rate_threshold"),
+                        target="coordination.auto_select.sas_success_rate_threshold",
                         previous_value=0.7,
                         description="Revert SAS threshold to 0.7",
                     ),
                 ),
-                validation_check=("sas_success_rate_threshold equals 0.7"),
+                validation_check="sas_success_rate_threshold equals 0.7",
             ),
             confidence=0.7,
             source_rule="coordination_overhead",

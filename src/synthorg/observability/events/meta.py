@@ -39,6 +39,11 @@ META_ROLLOUT_COMPLETED: Final[str] = "meta.rollout.completed"
 META_ROLLOUT_REGRESSION_DETECTED: Final[str] = "meta.rollout.regression_detected"
 META_ROLLOUT_FAILED: Final[str] = "meta.rollout.failed"
 
+# -- Regression events --------------------------------------------------
+
+META_REGRESSION_THRESHOLD_BREACH: Final[str] = "meta.regression.threshold_breach"
+META_REGRESSION_STATISTICAL: Final[str] = "meta.regression.statistical"
+
 # -- Rollback events ----------------------------------------------------
 
 META_ROLLBACK_STARTED: Final[str] = "meta.rollback.started"
@@ -50,6 +55,10 @@ META_ROLLBACK_FAILED: Final[str] = "meta.rollback.failed"
 META_APPLY_STARTED: Final[str] = "meta.apply.started"
 META_APPLY_COMPLETED: Final[str] = "meta.apply.completed"
 META_APPLY_FAILED: Final[str] = "meta.apply.failed"
+
+# -- Factory/config events ----------------------------------------------
+
+META_RULE_EVALUATION_FAILED: Final[str] = "meta.rule.evaluation_failed"
 
 # -- Factory/config events ----------------------------------------------
 

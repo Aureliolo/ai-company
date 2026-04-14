@@ -51,7 +51,7 @@ class PromptApplier:
                 proposal_id=str(proposal.id),
             )
             return ApplyResult(success=True, changes_applied=count)
-        except Exception as exc:
+        except Exception:
             logger.exception(
                 META_APPLY_FAILED,
                 altitude="prompt_tuning",
@@ -59,7 +59,7 @@ class PromptApplier:
             )
             return ApplyResult(
                 success=False,
-                error_message=str(exc),
+                error_message="Prompt apply failed. Check logs.",
                 changes_applied=0,
             )
 

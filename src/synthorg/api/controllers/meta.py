@@ -5,6 +5,7 @@ from typing import Any
 from litestar import Controller, get, post
 
 from synthorg.api.dto import ApiResponse
+from synthorg.api.guards import require_org_mutation, require_read_access
 from synthorg.meta.config import SelfImprovementConfig
 from synthorg.meta.mcp.server import get_server_config
 from synthorg.meta.mcp.tools import get_tool_definitions
@@ -23,6 +24,7 @@ class MetaController(Controller):
 
     path = "/api/meta"
     tags = ["meta"]  # noqa: RUF012
+    guards = [require_read_access]  # noqa: RUF012
 
     @get("/config")
     async def get_config(self) -> ApiResponse[dict[str, Any]]:
@@ -91,7 +93,7 @@ class MetaController(Controller):
             data=get_server_config(),
         )
 
-    @post("/cycle")
+    @post("/cycle", guards=[require_org_mutation()])
     async def trigger_cycle(
         self,
     ) -> ApiResponse[dict[str, Any]]:

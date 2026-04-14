@@ -21,6 +21,7 @@ from synthorg.meta.models import (
 from synthorg.observability import get_logger
 from synthorg.observability.events.meta import (
     META_SIGNAL_AGGREGATION_COMPLETED,
+    META_SIGNAL_AGGREGATION_FAILED,
     META_SIGNAL_AGGREGATION_STARTED,
 )
 
@@ -136,7 +137,7 @@ class SnapshotBuilder:
                 raise
             except Exception:
                 logger.exception(
-                    "meta.signals.aggregation_failed",
+                    META_SIGNAL_AGGREGATION_FAILED,
                     domain=name,
                 )
 

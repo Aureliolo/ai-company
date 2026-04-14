@@ -12,13 +12,14 @@ from synthorg.meta.models import (
     RuleSeverity,
 )
 from synthorg.observability import get_logger
+from synthorg.observability.events.meta import (
+    META_RULE_EVALUATED,
+    META_RULE_EVALUATION_FAILED,
+    META_RULE_FIRED,
+)
 
 if TYPE_CHECKING:
     from synthorg.meta.protocol import SignalRule
-from synthorg.observability.events.meta import (
-    META_RULE_EVALUATED,
-    META_RULE_FIRED,
-)
 
 logger = get_logger(__name__)
 
@@ -79,7 +80,7 @@ class RuleEngine:
                     matches.append(match)
             except Exception:
                 logger.exception(
-                    "meta.rule.evaluation_failed",
+                    META_RULE_EVALUATION_FAILED,
                     rule=rule.name,
                 )
 

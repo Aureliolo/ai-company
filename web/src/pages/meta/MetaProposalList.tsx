@@ -1,8 +1,17 @@
 import { EmptyState } from '@/components/ui/empty-state'
 import { Brain } from 'lucide-react'
 
+/** Minimal proposal shape for display purposes. */
+interface ProposalSummary {
+  id: string
+  title: string
+  altitude: string
+  status: string
+  confidence: number
+}
+
 interface MetaProposalListProps {
-  proposals: unknown[]
+  proposals: ProposalSummary[]
 }
 
 export function MetaProposalList({ proposals }: MetaProposalListProps) {
@@ -16,10 +25,8 @@ export function MetaProposalList({ proposals }: MetaProposalListProps) {
     )
   }
 
-  // Placeholder: real implementation renders proposal cards with
-  // approve/reject actions, rationale, rollback plan, etc.
   return (
-    <div className="space-y-3">
+    <div className="space-y-section-gap">
       <p className="text-sm text-muted-foreground">
         {proposals.length} proposal(s) pending review
       </p>

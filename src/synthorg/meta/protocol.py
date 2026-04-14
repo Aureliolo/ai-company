@@ -51,7 +51,7 @@ class SignalAggregator(Protocol):
             until: End of the observation window (UTC).
 
         Returns:
-            Structured summary dict (domain-specific).
+            Domain-specific typed summary model.
         """
         ...
 

@@ -4,6 +4,7 @@ Rejects proposals when the submission rate exceeds the configured
 limit within the configured window.
 """
 
+import asyncio
 from collections import deque
 from datetime import UTC, datetime, timedelta
 
@@ -40,6 +41,7 @@ class RateLimitGuard:
         self._max_proposals = max_proposals
         self._window = timedelta(hours=window_hours)
         self._timestamps: deque[datetime] = deque()
+        self._lock = asyncio.Lock()
 
     @property
     def name(self) -> str:
@@ -58,6 +60,14 @@ class RateLimitGuard:
         Returns:
             Guard result with PASSED or REJECTED verdict.
         """
+        async with self._lock:
+            return await self._evaluate_locked(proposal)
+
+    async def _evaluate_locked(
+        self,
+        proposal: ImprovementProposal,
+    ) -> GuardResult:
+        """Rate limit check under lock (no concurrent mutation)."""
         now = datetime.now(UTC)
         cutoff = now - self._window
 

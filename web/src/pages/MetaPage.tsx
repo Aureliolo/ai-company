@@ -14,7 +14,7 @@ export default function MetaPage() {
   // Placeholder: real implementation wires up useMetaData() hook.
   const loading = false
   const enabled = false
-  const proposals: unknown[] = []
+  const proposals: { id: string; title: string; altitude: string; status: string; confidence: number }[] = []
 
   if (!enabled) {
     return (

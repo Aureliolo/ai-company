@@ -263,6 +263,18 @@ class ImprovementProposal(BaseModel):
     observation_window_hours: int = Field(default=48, ge=1)
 
     @model_validator(mode="after")
+    def _validate_decision_consistency(self) -> Self:
+        """Ensure decided_at/decided_by/decision_reason are all-or-nothing."""
+        decided = (self.decided_at, self.decided_by, self.decision_reason)
+        if any(decided) and not all(decided):
+            msg = (
+                "decided_at, decided_by, and decision_reason "
+                "must all be set or all be None"
+            )
+            raise ValueError(msg)
+        return self
+
+    @model_validator(mode="after")
     def _validate_changes_match_altitude(self) -> Self:
         """Ensure at least one change exists for the declared altitude."""
         if self.altitude == ProposalAltitude.CONFIG_TUNING and not self.config_changes:
@@ -467,6 +479,12 @@ class RegressionResult(BaseModel):
             if self.baseline_value is None or self.current_value is None:
                 msg = "threshold breaches must include baseline and current values"
                 raise ValueError(msg)
+        if (
+            self.verdict == RegressionVerdict.STATISTICAL_REGRESSION
+            and self.p_value is None
+        ):
+            msg = "statistical regressions must include p_value"
+            raise ValueError(msg)
         return self
 
 

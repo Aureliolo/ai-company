@@ -53,7 +53,7 @@ class ConfigApplier:
                 proposal_id=str(proposal.id),
             )
             return ApplyResult(success=True, changes_applied=count)
-        except Exception as exc:
+        except Exception:
             logger.exception(
                 META_APPLY_FAILED,
                 altitude="config_tuning",
@@ -61,7 +61,7 @@ class ConfigApplier:
             )
             return ApplyResult(
                 success=False,
-                error_message=str(exc),
+                error_message="Config apply failed. Check logs for details.",
                 changes_applied=0,
             )
 

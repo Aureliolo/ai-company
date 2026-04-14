@@ -18,6 +18,10 @@ from synthorg.meta.rollout.regression.threshold import (
     ThresholdDetector,
 )
 from synthorg.observability import get_logger
+from synthorg.observability.events.meta import (
+    META_REGRESSION_STATISTICAL,
+    META_REGRESSION_THRESHOLD_BREACH,
+)
 
 logger = get_logger(__name__)
 
@@ -76,7 +80,7 @@ class TieredRegressionDetector:
         )
         if l1_result.verdict == RegressionVerdict.THRESHOLD_BREACH:
             logger.warning(
-                "meta.regression.threshold_breach",
+                META_REGRESSION_THRESHOLD_BREACH,
                 metric=l1_result.breached_metric,
                 baseline=l1_result.baseline_value,
                 current=l1_result.current_value,
@@ -91,7 +95,7 @@ class TieredRegressionDetector:
         )
         if l2_result.verdict == RegressionVerdict.STATISTICAL_REGRESSION:
             logger.warning(
-                "meta.regression.statistical",
+                META_REGRESSION_STATISTICAL,
                 metric=l2_result.breached_metric,
                 p_value=l2_result.p_value,
             )

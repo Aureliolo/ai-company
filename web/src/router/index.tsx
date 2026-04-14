@@ -15,6 +15,7 @@ const BudgetPage = lazy(() => import('@/pages/BudgetPage'))
 const BudgetForecastPage = lazy(() => import('@/pages/BudgetForecastPage'))
 const ApprovalsPage = lazy(() => import('@/pages/ApprovalsPage'))
 const ScalingPage = lazy(() => import('@/pages/ScalingPage'))
+const MetaPage = lazy(() => import('@/pages/MetaPage'))
 const AgentsPage = lazy(() => import('@/pages/AgentsPage'))
 const AgentDetailPage = lazy(() => import('@/pages/AgentDetailPage'))
 const MessagesPage = lazy(() => import('@/pages/MessagesPage'))
@@ -120,6 +121,7 @@ export const router = createBrowserRouter([
               { path: 'budget/forecast', element: <BudgetForecastPage /> },
               { path: 'approvals', element: <ApprovalsPage /> },
               { path: 'scaling', element: <ScalingPage /> },
+              { path: 'meta', element: <MetaPage /> },
               { path: 'agents', element: <AgentsPage /> },
               { path: 'agents/:agentId', element: <AgentDetailPage /> },
               { path: 'messages', element: <MessagesPage /> },
