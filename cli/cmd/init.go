@@ -497,7 +497,7 @@ func runSetupFormWithOverrides(cmd *cobra.Command, resolvedDataDir string) (setu
 				Value(&a.fineTuning),
 		))
 		if err := fineTuneForm.Run(); err != nil {
-			return a, err
+			return a, fmt.Errorf("fine-tuning form: %w", err)
 		}
 	}
 

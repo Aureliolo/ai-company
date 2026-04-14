@@ -105,10 +105,14 @@ class PerAgentStrategy:
         )
 
     async def cleanup_all(self) -> None:
-        """Cancel all timers and forget all containers."""
-        for task in self._timers.values():
-            task.cancel()
+        """Cancel all timers, await completion, and forget all containers."""
+        tasks_to_cancel = list(self._timers.values())
         self._timers.clear()
+
+        for task in tasks_to_cancel:
+            task.cancel()
+        if tasks_to_cancel:
+            await asyncio.gather(*tasks_to_cancel, return_exceptions=True)
 
         count = len(self._containers)
         self._containers.clear()

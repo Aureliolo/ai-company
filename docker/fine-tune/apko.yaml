@@ -17,6 +17,7 @@ contents:
     - python-3.14
     - libstdc++
     - glibc
+    - openblas
 
 accounts:
   groups:

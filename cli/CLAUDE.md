@@ -66,6 +66,7 @@ No corresponding flag -- settable via env var or `config set`:
 | `SYNTHORG_AUTO_PULL` | Auto-accept container image pulls |
 | `SYNTHORG_AUTO_RESTART` | Auto-restart containers after update |
 | `SYNTHORG_TELEMETRY` | Enable anonymous product telemetry (true/false) |
+| `SYNTHORG_FINE_TUNE_IMAGE` | Override fine-tune container image digest (set by CLI verification) |
 
 ## Exit Codes
 

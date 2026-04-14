@@ -412,12 +412,16 @@ class PreflightResult(BaseModel):
 class FineTuneExecutionConfig(BaseModel):
     """Configuration for fine-tune pipeline execution backend.
 
+    All numeric fields must be finite (no NaN or Inf).
+
     Attributes:
         backend: Execution backend -- ``"in-process"`` (default, lazy
             torch import) or ``"docker"`` (dedicated container).
         image: Container image for the ``"docker"`` backend.  Resolved
-            from ``SYNTHORG_FINE_TUNE_IMAGE`` at runtime.
-        gpu_enabled: Request GPU passthrough on the container.
+            from ``SYNTHORG_FINE_TUNE_IMAGE`` at runtime.  Required
+            when ``backend="docker"``, ignored for ``"in-process"``.
+        gpu_enabled: Request GPU passthrough on the container.  Only
+            applies to ``backend="docker"``; ignored for in-process.
         memory_limit: Container memory limit (Docker format).
         timeout_seconds: Maximum wall-clock time for a single stage.
     """
@@ -425,7 +429,15 @@ class FineTuneExecutionConfig(BaseModel):
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     backend: Literal["in-process", "docker"] = "in-process"
-    image: str = ""
+    image: NotBlankStr | None = None
     gpu_enabled: bool = False
     memory_limit: str = "8g"
     timeout_seconds: float = Field(default=7200.0, gt=0)
+
+    @model_validator(mode="after")
+    def _validate_docker_requires_image(self) -> Self:
+        """Ensure image is set when backend is docker."""
+        if self.backend == "docker" and not self.image:
+            msg = "image is required when backend='docker'"
+            raise ValueError(msg)
+        return self

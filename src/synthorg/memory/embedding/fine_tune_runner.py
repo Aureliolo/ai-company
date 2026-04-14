@@ -65,17 +65,20 @@ def _run() -> int:
 
     # Cooperative cancellation via SIGTERM (docker stop).
     token = CancellationToken()
-    signal.signal(signal.SIGTERM, lambda *_: token.cancel())
+    prev_handler = signal.signal(signal.SIGTERM, lambda *_: token.cancel())
 
-    print(f"STAGE_START:{stage_name}", flush=True)  # noqa: T201
     try:
-        asyncio.run(_dispatch_stage(stage, config, token))
-    except Exception as exc:
-        print(f"ERROR: {stage_name} failed: {exc}", file=sys.stderr)  # noqa: T201
-        return 1
+        print(f"STAGE_START:{stage_name}", flush=True)  # noqa: T201
+        try:
+            asyncio.run(_dispatch_stage(stage, config, token))
+        except Exception as exc:
+            print(f"ERROR: {stage_name} failed: {exc}", file=sys.stderr)  # noqa: T201
+            return 1
 
-    print(f"STAGE_COMPLETE:{stage_name}", flush=True)  # noqa: T201
-    return 0
+        print(f"STAGE_COMPLETE:{stage_name}", flush=True)  # noqa: T201
+        return 0
+    finally:
+        signal.signal(signal.SIGTERM, prev_handler)
 
 
 async def _dispatch_stage(

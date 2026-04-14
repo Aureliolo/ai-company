@@ -12,7 +12,7 @@ class ContainerHandle:
     """Opaque handle to a running sandbox container and its optional sidecar.
 
     Attributes:
-        container_id: Docker container ID for the sandbox.
+        container_id: Docker container ID for the sandbox (must be non-empty).
         sidecar_id: Docker container ID for the network sidecar, or ``None``
             when no sidecar was created.
         network_mode: Docker network mode for commands executing in this
@@ -22,6 +22,12 @@ class ContainerHandle:
     container_id: str
     sidecar_id: str | None = None
     network_mode: str = "none"
+
+    def __post_init__(self) -> None:
+        """Validate invariants at construction time."""
+        if not self.container_id or self.container_id.isspace():
+            msg = "container_id must be non-empty"
+            raise ValueError(msg)
 
 
 @runtime_checkable
