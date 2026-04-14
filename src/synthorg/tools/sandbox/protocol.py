@@ -22,7 +22,7 @@ class SandboxBackend(Protocol):
     Subprocess and Docker are built-in backends.
     """
 
-    async def execute(
+    async def execute(  # noqa: PLR0913
         self,
         *,
         command: str,
@@ -30,6 +30,7 @@ class SandboxBackend(Protocol):
         cwd: Path | None = None,
         env_overrides: Mapping[str, str] | None = None,
         timeout: float | None = None,  # noqa: ASYNC109
+        owner_id: NotBlankStr | None = None,
     ) -> SandboxResult:
         """Execute a command in the sandbox.
 
@@ -40,6 +41,10 @@ class SandboxBackend(Protocol):
             env_overrides: Extra environment variables for the sandbox.
             timeout: Seconds before the process is killed. Falls back
                 to the backend's default timeout if ``None``.
+            owner_id: Lifecycle owner identifier (agent ID, task ID, or
+                ``None`` for per-call semantics).  Must be non-blank
+                when provided.  Used by the Docker backend's lifecycle
+                strategy to decide container reuse.
 
         Returns:
             A ``SandboxResult`` with captured output and exit status.

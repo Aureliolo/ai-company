@@ -1,0 +1,198 @@
+name: Build apko base image
+description: Build, scan, sign, and attest an apko-composed base image
+
+inputs:
+  image-name:
+    description: "Image name suffix (e.g. backend, sandbox, sidecar, fine-tune)"
+    required: true
+  apko-yaml:
+    description: "Path to apko.yaml relative to repo root"
+    required: true
+  apko-version:
+    description: "apko version to install"
+    required: true
+    default: "v1.2.3"
+  trivy-version:
+    description: "Trivy version"
+    required: true
+  grype-version:
+    description: "Grype version"
+    required: true
+  ghcr-token:
+    description: "GITHUB_TOKEN for GHCR"
+    required: true
+
+outputs:
+  digest:
+    description: "Pushed image digest (empty on PR builds)"
+    value: ${{ steps.push.outputs.digest }}
+  tag:
+    description: "Image tag (sha-based)"
+    value: ${{ steps.image-ref.outputs.tag }}
+
+runs:
+  using: composite
+  steps:
+    - name: Set up apko
+      uses: ./.github/actions/setup-apko
+      with:
+        version: ${{ inputs.apko-version }}
+
+    - name: Log in to GHCR
+      if: github.event_name != 'pull_request'
+      uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121 # v4.1.0
+      with:
+        registry: ghcr.io
+        username: ${{ github.actor }}
+        password: ${{ inputs.ghcr-token }}
+
+    - name: Compute image tag
+      id: image-ref
+      shell: bash
+      run: echo "tag=sha-${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+
+    - name: Build base image
+      shell: bash
+      env:
+        APKO_YAML: ${{ inputs.apko-yaml }}
+        IMAGE_NAME: ${{ inputs.image-name }}
+      run: |
+        TAG="sha-${GITHUB_SHA::7}"
+        apko build "${APKO_YAML}" \
+          "ghcr.io/aureliolo/synthorg-${IMAGE_NAME}-base:${TAG}" \
+          "${IMAGE_NAME}-base.tar"
+
+    - name: Load image for scanning
+      shell: bash
+      env:
+        IMAGE_NAME: ${{ inputs.image-name }}
+      run: |
+        TAG="sha-${GITHUB_SHA::7}"
+        docker load -i "${IMAGE_NAME}-base.tar"
+        docker tag "ghcr.io/aureliolo/synthorg-${IMAGE_NAME}-base:${TAG}-amd64" "ghcr.io/aureliolo/synthorg-${IMAGE_NAME}-base:${TAG}" 2>/dev/null || true
+
+    - name: Report image size
+      shell: bash
+      env:
+        IMAGE_NAME: ${{ inputs.image-name }}
+      run: |
+        TAG="sha-${GITHUB_SHA::7}"
+        scripts/report-image-size.sh "ghcr.io/aureliolo/synthorg-${IMAGE_NAME}-base:${TAG}" "${IMAGE_NAME} Base"
+
+    - name: Upload base image artifact (PR only)
+      if: github.event_name == 'pull_request'
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      with: # zizmor: ignore[template-injection] -- inputs.image-name is action input, not shell
+        name: ${{ inputs.image-name }}-base-image
+        path: ${{ inputs.image-name }}-base.tar
+        retention-days: 1
+
+    - name: Install security scanners
+      shell: bash
+      env:
+        TRIVY_VERSION: ${{ inputs.trivy-version }}
+        GRYPE_VERSION: ${{ inputs.grype-version }}
+      run: |
+        curl -sfL --retry 3 --retry-delay 5 "https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz" -o "/tmp/trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz"
+        curl -sfL --retry 3 --retry-delay 5 "https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/trivy_${TRIVY_VERSION}_checksums.txt" -o /tmp/trivy_checksums.txt
+        (cd /tmp && grep "trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz" trivy_checksums.txt | sha256sum -c -)
+        tar -xzf "/tmp/trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz" -C /usr/local/bin trivy
+
+        curl -sfL --retry 3 --retry-delay 5 "https://github.com/anchore/grype/releases/download/v${GRYPE_VERSION}/grype_${GRYPE_VERSION}_linux_amd64.tar.gz" -o "/tmp/grype_${GRYPE_VERSION}_linux_amd64.tar.gz"
+        curl -sfL --retry 3 --retry-delay 5 "https://github.com/anchore/grype/releases/download/v${GRYPE_VERSION}/grype_${GRYPE_VERSION}_checksums.txt" -o /tmp/grype_checksums.txt
+        (cd /tmp && grep "grype_${GRYPE_VERSION}_linux_amd64.tar.gz" grype_checksums.txt | sha256sum -c -)
+        tar -xzf "/tmp/grype_${GRYPE_VERSION}_linux_amd64.tar.gz" -C /usr/local/bin grype
+
+    - name: Security scans (parallel)
+      shell: bash
+      env:
+        IMAGE_NAME: ${{ inputs.image-name }}
+      run: |
+        TAG="sha-${GITHUB_SHA::7}"
+        IMAGE_REF="ghcr.io/aureliolo/synthorg-${IMAGE_NAME}-base:${TAG}"
+        trivy image "${IMAGE_REF}" --format json --output "trivy-${IMAGE_NAME}-base.json" \
+          --exit-code 0 --severity CRITICAL,HIGH --ignorefile .github/.trivyignore.yaml &
+        TRIVY_PID=$!
+
+        grype "${IMAGE_REF}" --fail-on critical -c .github/.grype.yaml &
+        GRYPE_PID=$!
+
+        TRIVY_RC=0; wait "$TRIVY_PID" || TRIVY_RC=$?
+        GRYPE_RC=0; wait "$GRYPE_PID" || GRYPE_RC=$?
+
+        if [ "$TRIVY_RC" -ne 0 ]; then
+          echo "::error::Trivy scan failed (exit code ${TRIVY_RC})"
+          exit 1
+        fi
+        if [ "$GRYPE_RC" -ne 0 ]; then
+          echo "::error::Grype scan found critical vulnerabilities"
+          exit 1
+        fi
+
+    - name: Evaluate Trivy results
+      shell: bash
+      env:
+        IMAGE_NAME: ${{ inputs.image-name }}
+      run: scripts/evaluate-scan.sh "trivy-${IMAGE_NAME}-base.json" "${IMAGE_NAME} Base"
+
+    - name: Trivy SARIF scan
+      if: always()
+      uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # v0.35.0
+      with: # zizmor: ignore[template-injection]
+        image-ref: ghcr.io/aureliolo/synthorg-${{ inputs.image-name }}-base:${{ steps.image-ref.outputs.tag }}
+        format: sarif
+        output: trivy-${{ inputs.image-name }}-base.sarif
+        exit-code: "0"
+        severity: CRITICAL,HIGH
+        trivyignores: .github/.trivyignore.yaml
+
+    - name: Upload SARIF to GitHub Security
+      if: always()
+      uses: github/codeql-action/upload-sarif@c10b8064de6f491fea524254123dbe5e09572f13 # v4.35.1
+      with: # zizmor: ignore[template-injection]
+        sarif_file: trivy-${{ inputs.image-name }}-base.sarif
+        category: trivy-${{ inputs.image-name }}-base
+
+    - name: Push base image (multi-arch manifest)
+      if: github.event_name != 'pull_request'
+      id: push
+      shell: bash
+      env:
+        IMAGE_NAME: ${{ inputs.image-name }}
+      run: |
+        TAG="sha-${GITHUB_SHA::7}"
+        REPO="ghcr.io/aureliolo/synthorg-${IMAGE_NAME}-base"
+        docker push "${REPO}:${TAG}-amd64"
+        docker push "${REPO}:${TAG}-arm64"
+        docker manifest create "${REPO}:${TAG}" \
+          "${REPO}:${TAG}-amd64" \
+          "${REPO}:${TAG}-arm64"
+        DIGEST=$(docker manifest push "${REPO}:${TAG}")
+        echo "digest=${DIGEST}" >> "$GITHUB_OUTPUT"
+
+    - name: Install cosign
+      if: github.event_name != 'pull_request'
+      uses: sigstore/cosign-installer@cad07c2e89fa2edd6e2d7bab4c1aa38e53f76003 # v4.1.1
+
+    - name: Sign image
+      if: github.event_name != 'pull_request'
+      shell: bash
+      env:
+        IMAGE_NAME: ${{ inputs.image-name }}
+        DIGEST: ${{ steps.push.outputs.digest }}
+      run: |
+        if [ -z "$DIGEST" ]; then echo "::error::No digest"; exit 1; fi
+        set -o pipefail
+        if ! cosign sign --yes "ghcr.io/aureliolo/synthorg-${IMAGE_NAME}-base@${DIGEST}" 2>&1 | tee /tmp/cosign-out; then
+          if grep -q 'createLogEntryConflict' /tmp/cosign-out; then
+            echo "::notice::Image already signed -- skipping"
+          else cat /tmp/cosign-out; exit 1; fi
+        fi
+
+    - name: Attest build provenance (SLSA Level 3)
+      if: github.event_name != 'pull_request'
+      uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32 # v4.1.0
+      with: # zizmor: ignore[template-injection]
+        subject-name: ghcr.io/aureliolo/synthorg-${{ inputs.image-name }}-base
+        subject-digest: ${{ steps.push.outputs.digest }}
+        push-to-registry: true

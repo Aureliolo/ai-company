@@ -264,6 +264,7 @@ type setupAnswers struct {
 	channel            string // optional override (empty = default "stable")
 	imageTag           string // optional override (empty = use CLI version)
 	telemetryOptIn     bool
+	fineTuning         bool // enable fine-tuning pipeline (requires sandbox/Docker)
 }
 
 // validateInitFlags checks that provided CLI flag values are valid before
@@ -382,11 +383,12 @@ func buildAnswersFromFlags(dataDir string) setupAnswers {
 	if postgresPort == 0 {
 		postgresPort = defaults.PostgresPort
 	}
+	sandboxEnabled := initSandbox == "true"
 	a := setupAnswers{
 		dir:                dataDir,
 		backendPortStr:     strconv.Itoa(initBackendPort),
 		webPortStr:         strconv.Itoa(initWebPort),
-		sandbox:            initSandbox == "true",
+		sandbox:            sandboxEnabled,
 		dockerSock:         defaultDockerSock(),
 		logLevel:           initLogLevel,
 		persistenceBackend: persistenceBackend,
@@ -455,6 +457,42 @@ func runSetupFormWithOverrides(cmd *cobra.Command, resolvedDataDir string) (setu
 
 	if err := form.Run(); err != nil {
 		return a, err
+	}
+
+	// Warn when sandbox is disabled -- agents lose all code execution.
+	if !a.sandbox {
+		errOut := ui.NewUIWithOptions(cmd.ErrOrStderr(), GetGlobalOpts(cmd.Context()).UIOptions())
+		errOut.Warn("Without sandbox, agents cannot execute code, run shell commands, " +
+			"or use file-system tools. These capabilities will be unavailable.")
+		var confirmDisabled bool
+		confirmForm := huh.NewForm(huh.NewGroup(
+			huh.NewConfirm().
+				Title("Continue without sandbox?").
+				Affirmative("Yes").
+				Negative("No").
+				Value(&confirmDisabled),
+		))
+		if err := confirmForm.Run(); err != nil {
+			return a, err
+		}
+		if !confirmDisabled {
+			return a, fmt.Errorf("setup cancelled")
+		}
+	}
+
+	// Fine-tuning question (only when sandbox enabled -- requires Docker).
+	if a.sandbox {
+		fineTuneForm := huh.NewForm(huh.NewGroup(
+			huh.NewConfirm().
+				Title("Enable embedding fine-tuning?").
+				Description("Improves memory quality. Requires a large image (~4GB).").
+				Affirmative("Yes").
+				Negative("No").
+				Value(&a.fineTuning),
+		))
+		if err := fineTuneForm.Run(); err != nil {
+			return a, fmt.Errorf("fine-tuning form: %w", err)
+		}
 	}
 
 	// Show the bus backend picker after the main form when it was not
@@ -591,6 +629,7 @@ func buildState(a setupAnswers) (config.State, error) {
 		PostgresPort:       postgresPort,
 		PostgresPassword:   postgresPassword,
 		TelemetryOptIn:     a.telemetryOptIn,
+		FineTuning:         a.fineTuning,
 	}, nil
 }
 

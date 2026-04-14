@@ -44,6 +44,8 @@ jobs:
     outputs:
       backend: ${{ steps.filter.outputs.backend }}
       sandbox: ${{ steps.filter.outputs.sandbox }}
+      sidecar: ${{ steps.filter.outputs.sidecar }}
+      fine-tune: ${{ steps.filter.outputs.fine-tune }}
       web: ${{ steps.filter.outputs.web }}
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
@@ -58,9 +60,22 @@ jobs:
               - 'src/**'
               - 'pyproject.toml'
               - 'uv.lock'
+              - '.dockerignore'
               - '.github/workflows/docker.yml'
             sandbox:
               - 'docker/sandbox/**'
+              - '.dockerignore'
+              - '.github/workflows/docker.yml'
+            sidecar:
+              - 'docker/sidecar/**'
+              - '.dockerignore'
+              - '.github/workflows/docker.yml'
+            fine-tune:
+              - 'docker/fine-tune/**'
+              - 'src/synthorg/memory/embedding/**'
+              - 'pyproject.toml'
+              - 'uv.lock'
+              - '.dockerignore'
               - '.github/workflows/docker.yml'
             web:
               - 'docker/web/**'
@@ -134,7 +149,7 @@ jobs:
           done
 
   # =========================================================================
-  # apko base images -- Wolfi-composed bases for backend + sandbox
+  # apko base images -- Wolfi-composed bases (all use build-apko-base action)
   # =========================================================================
   build-backend-base:
     name: Build Backend Base (apko)
@@ -149,129 +164,22 @@ jobs:
       packages: write
       id-token: write
       attestations: write
+      security-events: write
     outputs:
-      digest: ${{ steps.push.outputs.digest }}
-      tag: ${{ steps.image-ref.outputs.tag }}
+      digest: ${{ steps.build.outputs.digest }}
+      tag: ${{ steps.build.outputs.tag }}
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
           persist-credentials: false
-
-      - name: Set up apko
-        uses: ./.github/actions/setup-apko
+      - id: build
+        uses: ./.github/actions/build-apko-base
         with:
-          # renovate: datasource=github-releases depName=chainguard-dev/apko
-          version: v1.2.3
-
-      - name: Log in to GHCR
-        if: github.event_name != 'pull_request'
-        uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121 # v4.1.0
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Compute image tag
-        id: image-ref
-        run: echo "tag=sha-${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
-
-      - name: Build base image
-        run: |
-          apko build docker/backend/apko.yaml \
-            ghcr.io/aureliolo/synthorg-backend-base:sha-${GITHUB_SHA::7} \
-            backend-base.tar
-
-      - name: Load image for scanning
-        run: |
-          docker load -i backend-base.tar
-          docker tag "ghcr.io/aureliolo/synthorg-backend-base:sha-${GITHUB_SHA::7}-amd64" "ghcr.io/aureliolo/synthorg-backend-base:sha-${GITHUB_SHA::7}" 2>/dev/null || true
-
-      - name: Report image size
-        run: scripts/report-image-size.sh "ghcr.io/aureliolo/synthorg-backend-base:sha-${GITHUB_SHA::7}" "Backend Base"
-
-      - name: Upload base image artifact (PR only)
-        if: github.event_name == 'pull_request'
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: backend-base-image
-          path: backend-base.tar
-          retention-days: 1
-
-      - name: Install security scanners
-        run: |
-          curl -sfL --retry 3 --retry-delay 5 "https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz" -o "/tmp/trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz"
-          curl -sfL --retry 3 --retry-delay 5 "https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/trivy_${TRIVY_VERSION}_checksums.txt" -o /tmp/trivy_checksums.txt
-          (cd /tmp && grep "trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz" trivy_checksums.txt | sha256sum -c -)
-          tar -xzf "/tmp/trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz" -C /usr/local/bin trivy
-
-          curl -sfL --retry 3 --retry-delay 5 "https://github.com/anchore/grype/releases/download/v${GRYPE_VERSION}/grype_${GRYPE_VERSION}_linux_amd64.tar.gz" -o "/tmp/grype_${GRYPE_VERSION}_linux_amd64.tar.gz"
-          curl -sfL --retry 3 --retry-delay 5 "https://github.com/anchore/grype/releases/download/v${GRYPE_VERSION}/grype_${GRYPE_VERSION}_checksums.txt" -o /tmp/grype_checksums.txt
-          (cd /tmp && grep "grype_${GRYPE_VERSION}_linux_amd64.tar.gz" grype_checksums.txt | sha256sum -c -)
-          tar -xzf "/tmp/grype_${GRYPE_VERSION}_linux_amd64.tar.gz" -C /usr/local/bin grype
-
-      - name: Security scans (parallel)
-        run: |
-          IMAGE_REF="ghcr.io/aureliolo/synthorg-backend-base:sha-${GITHUB_SHA::7}"
-          trivy image "${IMAGE_REF}" --format json --output trivy-backend-base.json \
-            --exit-code 0 --severity CRITICAL,HIGH --ignorefile .github/.trivyignore.yaml &
-          TRIVY_PID=$!
-
-          grype "${IMAGE_REF}" --fail-on critical -c .github/.grype.yaml &
-          GRYPE_PID=$!
-
-          TRIVY_RC=0; wait "$TRIVY_PID" || TRIVY_RC=$?
-          GRYPE_RC=0; wait "$GRYPE_PID" || GRYPE_RC=$?
-
-          if [ "$TRIVY_RC" -ne 0 ]; then
-            echo "::error::Trivy scan failed (exit code ${TRIVY_RC})"
-            exit 1
-          fi
-          if [ "$GRYPE_RC" -ne 0 ]; then
-            echo "::error::Grype scan found critical vulnerabilities"
-            exit 1
-          fi
-
-      - name: Evaluate Trivy results
-        run: scripts/evaluate-scan.sh trivy-backend-base.json "Backend Base"
-
-      - name: Push base image (multi-arch manifest)
-        if: github.event_name != 'pull_request'
-        id: push
-        run: |
-          TAG="sha-${GITHUB_SHA::7}"
-          REPO="ghcr.io/aureliolo/synthorg-backend-base"
-          docker push "${REPO}:${TAG}-amd64"
-          docker push "${REPO}:${TAG}-arm64"
-          docker manifest create "${REPO}:${TAG}" \
-            "${REPO}:${TAG}-amd64" \
-            "${REPO}:${TAG}-arm64"
-          DIGEST=$(docker manifest push "${REPO}:${TAG}")
-          echo "digest=${DIGEST}" >> "$GITHUB_OUTPUT"
-
-      - name: Install cosign
-        if: github.event_name != 'pull_request'
-        uses: sigstore/cosign-installer@cad07c2e89fa2edd6e2d7bab4c1aa38e53f76003 # v4.1.1
-
-      - name: Sign image
-        if: github.event_name != 'pull_request'
-        env:
-          DIGEST: ${{ steps.push.outputs.digest }}
-        run: |
-          if [ -z "$DIGEST" ]; then echo "::error::No digest"; exit 1; fi
-          set -o pipefail
-          if ! cosign sign --yes ghcr.io/aureliolo/synthorg-backend-base@${DIGEST} 2>&1 | tee /tmp/cosign-out; then
-            if grep -q 'createLogEntryConflict' /tmp/cosign-out; then
-              echo "::notice::Image already signed -- skipping"
-            else cat /tmp/cosign-out; exit 1; fi
-          fi
-
-      - name: Attest build provenance (SLSA Level 3)
-        if: github.event_name != 'pull_request'
-        uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32 # v4.1.0
-        with:
-          subject-name: ghcr.io/aureliolo/synthorg-backend-base
-          subject-digest: ${{ steps.push.outputs.digest }}
-          push-to-registry: true
+          image-name: backend
+          apko-yaml: docker/backend/apko.yaml
+          trivy-version: ${{ env.TRIVY_VERSION }}
+          grype-version: ${{ env.GRYPE_VERSION }}
+          ghcr-token: ${{ secrets.GITHUB_TOKEN }}
 
   build-sandbox-base:
     name: Build Sandbox Base (apko)
@@ -286,129 +194,82 @@ jobs:
       packages: write
       id-token: write
       attestations: write
+      security-events: write
     outputs:
-      digest: ${{ steps.push.outputs.digest }}
-      tag: ${{ steps.image-ref.outputs.tag }}
+      digest: ${{ steps.build.outputs.digest }}
+      tag: ${{ steps.build.outputs.tag }}
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
           persist-credentials: false
-
-      - name: Set up apko
-        uses: ./.github/actions/setup-apko
+      - id: build
+        uses: ./.github/actions/build-apko-base
         with:
-          # renovate: datasource=github-releases depName=chainguard-dev/apko
-          version: v1.2.3
+          image-name: sandbox
+          apko-yaml: docker/sandbox/apko.yaml
+          trivy-version: ${{ env.TRIVY_VERSION }}
+          grype-version: ${{ env.GRYPE_VERSION }}
+          ghcr-token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Log in to GHCR
-        if: github.event_name != 'pull_request'
-        uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121 # v4.1.0
+  build-sidecar-base:
+    name: Build Sidecar Base (apko)
+    needs: [version, changes, validate-compose]
+    if: >-
+      !cancelled() && needs.version.result == 'success' &&
+      (needs.changes.result == 'skipped' || needs.changes.outputs.sidecar == 'true')
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
+      security-events: write
+    outputs:
+      digest: ${{ steps.build.outputs.digest }}
+      tag: ${{ steps.build.outputs.tag }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Compute image tag
-        id: image-ref
-        run: echo "tag=sha-${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
-
-      - name: Build base image
-        run: |
-          apko build docker/sandbox/apko.yaml \
-            ghcr.io/aureliolo/synthorg-sandbox-base:sha-${GITHUB_SHA::7} \
-            sandbox-base.tar
-
-      - name: Load image for scanning
-        run: |
-          docker load -i sandbox-base.tar
-          docker tag "ghcr.io/aureliolo/synthorg-sandbox-base:sha-${GITHUB_SHA::7}-amd64" "ghcr.io/aureliolo/synthorg-sandbox-base:sha-${GITHUB_SHA::7}" 2>/dev/null || true
-
-      - name: Report image size
-        run: scripts/report-image-size.sh "ghcr.io/aureliolo/synthorg-sandbox-base:sha-${GITHUB_SHA::7}" "Sandbox Base"
-
-      - name: Upload base image artifact (PR only)
-        if: github.event_name == 'pull_request'
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+          persist-credentials: false
+      - id: build
+        uses: ./.github/actions/build-apko-base
         with:
-          name: sandbox-base-image
-          path: sandbox-base.tar
-          retention-days: 1
+          image-name: sidecar
+          apko-yaml: docker/sidecar/apko.yaml
+          trivy-version: ${{ env.TRIVY_VERSION }}
+          grype-version: ${{ env.GRYPE_VERSION }}
+          ghcr-token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Install security scanners
-        run: |
-          curl -sfL --retry 3 --retry-delay 5 "https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz" -o "/tmp/trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz"
-          curl -sfL --retry 3 --retry-delay 5 "https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/trivy_${TRIVY_VERSION}_checksums.txt" -o /tmp/trivy_checksums.txt
-          (cd /tmp && grep "trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz" trivy_checksums.txt | sha256sum -c -)
-          tar -xzf "/tmp/trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz" -C /usr/local/bin trivy
-
-          curl -sfL --retry 3 --retry-delay 5 "https://github.com/anchore/grype/releases/download/v${GRYPE_VERSION}/grype_${GRYPE_VERSION}_linux_amd64.tar.gz" -o "/tmp/grype_${GRYPE_VERSION}_linux_amd64.tar.gz"
-          curl -sfL --retry 3 --retry-delay 5 "https://github.com/anchore/grype/releases/download/v${GRYPE_VERSION}/grype_${GRYPE_VERSION}_checksums.txt" -o /tmp/grype_checksums.txt
-          (cd /tmp && grep "grype_${GRYPE_VERSION}_linux_amd64.tar.gz" grype_checksums.txt | sha256sum -c -)
-          tar -xzf "/tmp/grype_${GRYPE_VERSION}_linux_amd64.tar.gz" -C /usr/local/bin grype
-
-      - name: Security scans (parallel)
-        run: |
-          IMAGE_REF="ghcr.io/aureliolo/synthorg-sandbox-base:sha-${GITHUB_SHA::7}"
-          trivy image "${IMAGE_REF}" --format json --output trivy-sandbox-base.json \
-            --exit-code 0 --severity CRITICAL,HIGH --ignorefile .github/.trivyignore.yaml &
-          TRIVY_PID=$!
-
-          grype "${IMAGE_REF}" --fail-on critical -c .github/.grype.yaml &
-          GRYPE_PID=$!
-
-          TRIVY_RC=0; wait "$TRIVY_PID" || TRIVY_RC=$?
-          GRYPE_RC=0; wait "$GRYPE_PID" || GRYPE_RC=$?
-
-          if [ "$TRIVY_RC" -ne 0 ]; then
-            echo "::error::Trivy scan failed (exit code ${TRIVY_RC})"
-            exit 1
-          fi
-          if [ "$GRYPE_RC" -ne 0 ]; then
-            echo "::error::Grype scan found critical vulnerabilities"
-            exit 1
-          fi
-
-      - name: Evaluate Trivy results
-        run: scripts/evaluate-scan.sh trivy-sandbox-base.json "Sandbox Base"
-
-      - name: Push base image
-        if: github.event_name != 'pull_request'
-        id: push
-        run: |
-          TAG="sha-${GITHUB_SHA::7}"
-          REPO="ghcr.io/aureliolo/synthorg-sandbox-base"
-          docker push "${REPO}:${TAG}-amd64"
-          docker push "${REPO}:${TAG}-arm64"
-          docker manifest create "${REPO}:${TAG}" \
-            "${REPO}:${TAG}-amd64" \
-            "${REPO}:${TAG}-arm64"
-          DIGEST=$(docker manifest push "${REPO}:${TAG}")
-          echo "digest=${DIGEST}" >> "$GITHUB_OUTPUT"
-
-      - name: Install cosign
-        if: github.event_name != 'pull_request'
-        uses: sigstore/cosign-installer@cad07c2e89fa2edd6e2d7bab4c1aa38e53f76003 # v4.1.1
-
-      - name: Sign image
-        if: github.event_name != 'pull_request'
-        env:
-          DIGEST: ${{ steps.push.outputs.digest }}
-        run: |
-          if [ -z "$DIGEST" ]; then echo "::error::No digest"; exit 1; fi
-          set -o pipefail
-          if ! cosign sign --yes ghcr.io/aureliolo/synthorg-sandbox-base@${DIGEST} 2>&1 | tee /tmp/cosign-out; then
-            if grep -q 'createLogEntryConflict' /tmp/cosign-out; then
-              echo "::notice::Image already signed -- skipping"
-            else cat /tmp/cosign-out; exit 1; fi
-          fi
-
-      - name: Attest build provenance (SLSA Level 3)
-        if: github.event_name != 'pull_request'
-        uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32 # v4.1.0
+  build-fine-tune-base:
+    name: Build Fine-Tune Base (apko)
+    needs: [version, changes, validate-compose]
+    if: >-
+      !cancelled() && needs.version.result == 'success' &&
+      (needs.changes.result == 'skipped' || needs.changes.outputs.fine-tune == 'true')
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
+      security-events: write
+    outputs:
+      digest: ${{ steps.build.outputs.digest }}
+      tag: ${{ steps.build.outputs.tag }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
-          subject-name: ghcr.io/aureliolo/synthorg-sandbox-base
-          subject-digest: ${{ steps.push.outputs.digest }}
-          push-to-registry: true
+          persist-credentials: false
+      - id: build
+        uses: ./.github/actions/build-apko-base
+        with:
+          image-name: fine-tune
+          apko-yaml: docker/fine-tune/apko.yaml
+          trivy-version: ${{ env.TRIVY_VERSION }}
+          grype-version: ${{ env.GRYPE_VERSION }}
+          ghcr-token: ${{ secrets.GITHUB_TOKEN }}
 
   # =========================================================================
   # Application images -- thin Dockerfile wrappers over apko bases
@@ -427,6 +288,7 @@ jobs:
       packages: write
       id-token: write
       attestations: write
+      security-events: write
     outputs:
       digest: ${{ steps.push.outputs.digest }}
     steps:
@@ -525,6 +387,24 @@ jobs:
           name: trivy-backend-report
           path: trivy-backend.json
           retention-days: 30
+
+      - name: Trivy SARIF scan (backend)
+        if: always()
+        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # v0.35.0
+        with:
+          image-ref: ${{ steps.scan-ref.outputs.ref }}
+          format: sarif
+          output: trivy-backend.sarif
+          exit-code: "0"
+          severity: CRITICAL,HIGH
+          trivyignores: .github/.trivyignore.yaml
+
+      - name: Upload SARIF to GitHub Security (backend)
+        if: always()
+        uses: github/codeql-action/upload-sarif@c10b8064de6f491fea524254123dbe5e09572f13 # v4.35.1
+        with:
+          sarif_file: trivy-backend.sarif
+          category: trivy-backend
 
       - name: Grype scan
         id: grype-backend
@@ -717,6 +597,7 @@ jobs:
       packages: write
       id-token: write
       attestations: write
+      security-events: write
     outputs:
       digest: ${{ steps.push.outputs.digest }}
     steps:
@@ -777,6 +658,24 @@ jobs:
 
       - name: Evaluate Trivy results
         run: scripts/evaluate-scan.sh --verbose trivy-web.json "Web"
+
+      - name: Trivy SARIF scan (web)
+        if: always()
+        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # v0.35.0
+        with:
+          image-ref: ${{ steps.scan-ref.outputs.ref }}
+          format: sarif
+          output: trivy-web.sarif
+          exit-code: "0"
+          severity: CRITICAL,HIGH
+          trivyignores: .github/.trivyignore.yaml
+
+      - name: Upload SARIF to GitHub Security (web)
+        if: always()
+        uses: github/codeql-action/upload-sarif@c10b8064de6f491fea524254123dbe5e09572f13 # v4.35.1
+        with:
+          sarif_file: trivy-web.sarif
+          category: trivy-web
 
       - name: Grype scan
         uses: anchore/scan-action@e1165082ffb1fe366ebaf02d8526e7c4989ea9d2 # v7.4.0
@@ -888,6 +787,7 @@ jobs:
       packages: write
       id-token: write
       attestations: write
+      security-events: write
     outputs:
       digest: ${{ steps.push.outputs.digest }}
     steps:
@@ -988,6 +888,24 @@ jobs:
           path: trivy-sandbox.json
           retention-days: 30
 
+      - name: Trivy SARIF scan (sandbox)
+        if: always()
+        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # v0.35.0
+        with:
+          image-ref: ${{ steps.scan-ref.outputs.ref }}
+          format: sarif
+          output: trivy-sandbox.sarif
+          exit-code: "0"
+          severity: CRITICAL,HIGH
+          trivyignores: .github/.trivyignore.yaml
+
+      - name: Upload SARIF to GitHub Security (sandbox)
+        if: always()
+        uses: github/codeql-action/upload-sarif@c10b8064de6f491fea524254123dbe5e09572f13 # v4.35.1
+        with:
+          sarif_file: trivy-sandbox.sarif
+          category: trivy-sandbox
+
       - name: Grype scan
         id: grype-sandbox
         uses: anchore/scan-action@e1165082ffb1fe366ebaf02d8526e7c4989ea9d2 # v7.4.0
@@ -1080,16 +998,456 @@ jobs:
           path: sbom-sandbox.cdx.json
           retention-days: 30
 
+  build-sidecar:
+    name: Build Sidecar
+    needs: [version, build-sidecar-base]
+    if: >-
+      !cancelled() &&
+      needs.version.result == 'success' &&
+      needs.build-sidecar-base.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
+      security-events: write
+    outputs:
+      digest: ${{ steps.push.outputs.digest }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
+
+      - name: Set up QEMU (ARM64 emulation)
+        if: github.event_name != 'pull_request'
+        uses: docker/setup-qemu-action@ce360397dd3f832beb865e1373c09c0e9f86d70a # v4.0.0
+        with:
+          platforms: arm64
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd # v4.0.0
+        with:
+          driver: ${{ github.event_name == 'pull_request' && 'docker' || 'docker-container' }}
+          cache-binary: false
+
+      - name: Download base image artifact (PR only)
+        if: github.event_name == 'pull_request'
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: sidecar-base-image
+          path: /tmp
+
+      - name: Load base image (PR only)
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_TAG: ${{ needs.build-sidecar-base.outputs.tag }}
+        run: |
+          docker load -i /tmp/sidecar-base.tar
+          docker tag "ghcr.io/aureliolo/synthorg-sidecar-base:${BASE_TAG}-amd64" "ghcr.io/aureliolo/synthorg-sidecar-base:${BASE_TAG}"
+
+      - name: Log in to GHCR
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121 # v4.1.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@030e881283bb7a6894de51c315a6bfe6a94e05cf # v6.0.0
+        with:
+          images: ghcr.io/aureliolo/synthorg-sidecar
+          tags: |
+            type=raw,value=${{ needs.version.outputs.app_version }},enable=${{ startsWith(github.ref, 'refs/tags/v') && !contains(github.ref, '-dev.') }}
+            type=semver,pattern={{version}},enable=${{ startsWith(github.ref, 'refs/tags/v') }}
+            type=semver,pattern={{major}}.{{minor}},enable=${{ startsWith(github.ref, 'refs/tags/v') && !contains(github.ref, '-dev.') }}
+            type=raw,value=dev,enable=${{ startsWith(github.ref, 'refs/tags/v') && contains(github.ref, '-dev.') }}
+            type=sha,prefix=sha-
+
+      - name: Build image
+        uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f # v7.1.0
+        with:
+          context: .
+          file: docker/sidecar/Dockerfile
+          push: false
+          load: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            BASE_IMAGE=${{ needs.build-sidecar-base.outputs.digest != '' && format('ghcr.io/aureliolo/synthorg-sidecar-base@{0}', needs.build-sidecar-base.outputs.digest) || format('ghcr.io/aureliolo/synthorg-sidecar-base:{0}', needs.build-sidecar-base.outputs.tag) }}
+          cache-from: ${{ github.event_name != 'pull_request' && 'type=gha' || '' }}
+          cache-to: ${{ github.event_name != 'pull_request' && 'type=gha,mode=max' || '' }}
+          platforms: linux/amd64
+
+      - name: Compute scan image ref
+        id: scan-ref
+        run: echo "ref=ghcr.io/aureliolo/synthorg-sidecar:sha-${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+
+      - name: Report image size
+        run: scripts/report-image-size.sh "${{ steps.scan-ref.outputs.ref }}" "Sidecar"
+
+      - name: Trivy scan
+        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # v0.35.0
+        with:
+          image-ref: ${{ steps.scan-ref.outputs.ref }}
+          format: json
+          output: trivy-sidecar.json
+          exit-code: "0"
+          severity: CRITICAL,HIGH
+          trivyignores: .github/.trivyignore.yaml
+
+      - name: Evaluate Trivy results
+        run: scripts/evaluate-scan.sh --verbose trivy-sidecar.json "Sidecar"
+
+      - name: Upload Trivy report (sidecar)
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: trivy-sidecar-report
+          path: trivy-sidecar.json
+          retention-days: 30
+
+      - name: Trivy SARIF scan (sidecar)
+        if: always()
+        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # v0.35.0
+        with:
+          image-ref: ${{ steps.scan-ref.outputs.ref }}
+          format: sarif
+          output: trivy-sidecar.sarif
+          exit-code: "0"
+          severity: CRITICAL,HIGH
+          trivyignores: .github/.trivyignore.yaml
+
+      - name: Upload SARIF to GitHub Security (sidecar)
+        if: always()
+        uses: github/codeql-action/upload-sarif@c10b8064de6f491fea524254123dbe5e09572f13 # v4.35.1
+        with:
+          sarif_file: trivy-sidecar.sarif
+          category: trivy-sidecar
+
+      - name: Grype scan
+        id: grype-sidecar
+        uses: anchore/scan-action@e1165082ffb1fe366ebaf02d8526e7c4989ea9d2 # v7.4.0
+        with:
+          image: ${{ steps.scan-ref.outputs.ref }}
+          fail-build: true
+          severity-cutoff: critical
+          config: .github/.grype.yaml
+
+      - name: Grype table (diagnosis on failure)
+        if: failure() && steps.grype-sidecar.outcome == 'failure'
+        uses: anchore/scan-action@e1165082ffb1fe366ebaf02d8526e7c4989ea9d2 # v7.4.0
+        with:
+          image: ${{ steps.scan-ref.outputs.ref }}
+          fail-build: false
+          severity-cutoff: critical
+          output-format: table
+          config: .github/.grype.yaml
+
+      # CIS Docker Benchmark -- sidecar runs as root (NET_ADMIN required for
+      # iptables DNAT). Root-user checks will flag; this is expected and
+      # mitigated by cap_drop + cap_add:NET_ADMIN + read_only rootfs.
+      - name: CIS Docker Benchmark (sidecar)
+        continue-on-error: true
+        run: scripts/cis-scan.sh "${{ steps.scan-ref.outputs.ref }}"
+
+      - name: Push image
+        if: github.event_name != 'pull_request'
+        id: push
+        uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f # v7.1.0
+        with:
+          context: .
+          file: docker/sidecar/Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            BASE_IMAGE=${{ needs.build-sidecar-base.outputs.digest != '' && format('ghcr.io/aureliolo/synthorg-sidecar-base@{0}', needs.build-sidecar-base.outputs.digest) || format('ghcr.io/aureliolo/synthorg-sidecar-base:{0}', needs.build-sidecar-base.outputs.tag) }}
+          cache-from: type=gha
+          platforms: linux/amd64,linux/arm64
+          sbom: true
+          provenance: true
+
+      - name: Install cosign
+        if: github.event_name != 'pull_request'
+        uses: sigstore/cosign-installer@cad07c2e89fa2edd6e2d7bab4c1aa38e53f76003 # v4.1.1
+
+      - name: Sign image
+        if: github.event_name != 'pull_request'
+        env:
+          DIGEST: ${{ steps.push.outputs.digest }}
+        run: |
+          if [ -z "$DIGEST" ]; then
+            echo "::error::Push step did not produce a digest -- cannot sign image"
+            exit 1
+          fi
+          set -o pipefail
+          if ! cosign sign --yes ghcr.io/aureliolo/synthorg-sidecar@${DIGEST} 2>&1 | tee /tmp/cosign-out; then
+            if grep -q 'createLogEntryConflict' /tmp/cosign-out; then
+              echo "::notice::Image already signed in transparency log -- skipping"
+            else
+              cat /tmp/cosign-out
+              exit 1
+            fi
+          fi
+
+      - name: Attest build provenance (SLSA Level 3)
+        if: github.event_name != 'pull_request'
+        uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32 # v4.1.0
+        with:
+          subject-name: ghcr.io/aureliolo/synthorg-sidecar
+          subject-digest: ${{ steps.push.outputs.digest }}
+          push-to-registry: true
+
+      - name: Generate SBOM
+        if: github.event_name != 'pull_request'
+        uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
+        with:
+          image: ghcr.io/aureliolo/synthorg-sidecar@${{ steps.push.outputs.digest }}
+          format: cyclonedx-json
+          output-file: sbom-sidecar.cdx.json
+
+      - name: Upload SBOM artifact
+        if: github.event_name != 'pull_request'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: sbom-sidecar
+          path: sbom-sidecar.cdx.json
+          retention-days: 30
+
+  build-fine-tune:
+    name: Build Fine-Tune
+    needs: [version, build-fine-tune-base]
+    if: >-
+      !cancelled() &&
+      needs.version.result == 'success' &&
+      needs.build-fine-tune-base.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
+      security-events: write
+    outputs:
+      digest: ${{ steps.push.outputs.digest }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
+
+      - name: Set up QEMU (ARM64 emulation)
+        if: github.event_name != 'pull_request'
+        uses: docker/setup-qemu-action@ce360397dd3f832beb865e1373c09c0e9f86d70a # v4.0.0
+        with:
+          platforms: arm64
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd # v4.0.0
+        with:
+          driver: ${{ github.event_name == 'pull_request' && 'docker' || 'docker-container' }}
+          cache-binary: false
+
+      - name: Download base image artifact (PR only)
+        if: github.event_name == 'pull_request'
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: fine-tune-base-image
+          path: /tmp
+
+      - name: Load base image (PR only)
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_TAG: ${{ needs.build-fine-tune-base.outputs.tag }}
+        run: |
+          docker load -i /tmp/fine-tune-base.tar
+          docker tag "ghcr.io/aureliolo/synthorg-fine-tune-base:${BASE_TAG}-amd64" "ghcr.io/aureliolo/synthorg-fine-tune-base:${BASE_TAG}"
+
+      - name: Log in to GHCR
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121 # v4.1.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@030e881283bb7a6894de51c315a6bfe6a94e05cf # v6.0.0
+        with:
+          images: ghcr.io/aureliolo/synthorg-fine-tune
+          tags: |
+            type=raw,value=${{ needs.version.outputs.app_version }},enable=${{ startsWith(github.ref, 'refs/tags/v') && !contains(github.ref, '-dev.') }}
+            type=semver,pattern={{version}},enable=${{ startsWith(github.ref, 'refs/tags/v') }}
+            type=semver,pattern={{major}}.{{minor}},enable=${{ startsWith(github.ref, 'refs/tags/v') && !contains(github.ref, '-dev.') }}
+            type=raw,value=dev,enable=${{ startsWith(github.ref, 'refs/tags/v') && contains(github.ref, '-dev.') }}
+            type=sha,prefix=sha-
+
+      - name: Build image
+        uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f # v7.1.0
+        with:
+          context: .
+          file: docker/fine-tune/Dockerfile
+          push: false
+          load: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            BASE_IMAGE=${{ needs.build-fine-tune-base.outputs.digest != '' && format('ghcr.io/aureliolo/synthorg-fine-tune-base@{0}', needs.build-fine-tune-base.outputs.digest) || format('ghcr.io/aureliolo/synthorg-fine-tune-base:{0}', needs.build-fine-tune-base.outputs.tag) }}
+          cache-from: ${{ github.event_name != 'pull_request' && 'type=gha' || '' }}
+          cache-to: ${{ github.event_name != 'pull_request' && 'type=gha,mode=max' || '' }}
+          platforms: linux/amd64
+
+      - name: Compute scan image ref
+        id: scan-ref
+        run: echo "ref=ghcr.io/aureliolo/synthorg-fine-tune:sha-${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+
+      - name: Report image size
+        run: scripts/report-image-size.sh "${{ steps.scan-ref.outputs.ref }}" "Fine-Tune"
+
+      - name: Trivy scan
+        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # v0.35.0
+        with:
+          image-ref: ${{ steps.scan-ref.outputs.ref }}
+          format: json
+          output: trivy-fine-tune.json
+          exit-code: "0"
+          severity: CRITICAL,HIGH
+          trivyignores: .github/.trivyignore.yaml
+
+      - name: Evaluate Trivy results
+        run: scripts/evaluate-scan.sh --verbose trivy-fine-tune.json "Fine-Tune"
+
+      - name: Upload Trivy report (fine-tune)
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: trivy-fine-tune-report
+          path: trivy-fine-tune.json
+          retention-days: 30
+
+      - name: Trivy SARIF scan (fine-tune)
+        if: always()
+        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # v0.35.0
+        with:
+          image-ref: ${{ steps.scan-ref.outputs.ref }}
+          format: sarif
+          output: trivy-fine-tune.sarif
+          exit-code: "0"
+          severity: CRITICAL,HIGH
+          trivyignores: .github/.trivyignore.yaml
+
+      - name: Upload SARIF to GitHub Security (fine-tune)
+        if: always()
+        uses: github/codeql-action/upload-sarif@c10b8064de6f491fea524254123dbe5e09572f13 # v4.35.1
+        with:
+          sarif_file: trivy-fine-tune.sarif
+          category: trivy-fine-tune
+
+      - name: Grype scan
+        id: grype-fine-tune
+        uses: anchore/scan-action@e1165082ffb1fe366ebaf02d8526e7c4989ea9d2 # v7.4.0
+        with:
+          image: ${{ steps.scan-ref.outputs.ref }}
+          fail-build: true
+          severity-cutoff: critical
+          config: .github/.grype.yaml
+
+      - name: Grype table (diagnosis on failure)
+        if: failure() && steps.grype-fine-tune.outcome == 'failure'
+        uses: anchore/scan-action@e1165082ffb1fe366ebaf02d8526e7c4989ea9d2 # v7.4.0
+        with:
+          image: ${{ steps.scan-ref.outputs.ref }}
+          fail-build: false
+          severity-cutoff: critical
+          output-format: table
+          config: .github/.grype.yaml
+
+      # CIS Docker Benchmark -- fine-tune runs as non-root (UID 10003).
+      - name: CIS Docker Benchmark (fine-tune)
+        continue-on-error: true
+        run: scripts/cis-scan.sh "${{ steps.scan-ref.outputs.ref }}"
+
+      - name: Push image
+        if: github.event_name != 'pull_request'
+        id: push
+        uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f # v7.1.0
+        with:
+          context: .
+          file: docker/fine-tune/Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            BASE_IMAGE=${{ needs.build-fine-tune-base.outputs.digest != '' && format('ghcr.io/aureliolo/synthorg-fine-tune-base@{0}', needs.build-fine-tune-base.outputs.digest) || format('ghcr.io/aureliolo/synthorg-fine-tune-base:{0}', needs.build-fine-tune-base.outputs.tag) }}
+          cache-from: type=gha
+          platforms: linux/amd64,linux/arm64
+          sbom: true
+          provenance: true
+
+      - name: Install cosign
+        if: github.event_name != 'pull_request'
+        uses: sigstore/cosign-installer@cad07c2e89fa2edd6e2d7bab4c1aa38e53f76003 # v4.1.1
+
+      - name: Sign image
+        if: github.event_name != 'pull_request'
+        env:
+          DIGEST: ${{ steps.push.outputs.digest }}
+        run: |
+          if [ -z "$DIGEST" ]; then
+            echo "::error::Push step did not produce a digest -- cannot sign image"
+            exit 1
+          fi
+          set -o pipefail
+          if ! cosign sign --yes ghcr.io/aureliolo/synthorg-fine-tune@${DIGEST} 2>&1 | tee /tmp/cosign-out; then
+            if grep -q 'createLogEntryConflict' /tmp/cosign-out; then
+              echo "::notice::Image already signed in transparency log -- skipping"
+            else
+              cat /tmp/cosign-out
+              exit 1
+            fi
+          fi
+
+      - name: Attest build provenance (SLSA Level 3)
+        if: github.event_name != 'pull_request'
+        uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32 # v4.1.0
+        with:
+          subject-name: ghcr.io/aureliolo/synthorg-fine-tune
+          subject-digest: ${{ steps.push.outputs.digest }}
+          push-to-registry: true
+
+      - name: Generate SBOM
+        if: github.event_name != 'pull_request'
+        uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
+        with:
+          image: ghcr.io/aureliolo/synthorg-fine-tune@${{ steps.push.outputs.digest }}
+          format: cyclonedx-json
+          output-file: sbom-fine-tune.cdx.json
+
+      - name: Upload SBOM artifact
+        if: github.event_name != 'pull_request'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: sbom-fine-tune
+          path: sbom-fine-tune.cdx.json
+          retention-days: 30
+
   # Append container image references to the GitHub Release (version tags only)
   update-release:
     name: Update Release Notes
-    needs: [version, build-backend-base, build-sandbox-base, build-backend, build-web, build-sandbox]
+    needs: [version, build-backend-base, build-sandbox-base, build-sidecar-base, build-fine-tune-base, build-backend, build-web, build-sandbox, build-sidecar, build-fine-tune]
     if: >-
       startsWith(github.ref, 'refs/tags/v') && github.event_name != 'pull_request' &&
       !cancelled() &&
       needs.build-backend.result == 'success' &&
       needs.build-web.result == 'success' &&
-      needs.build-sandbox.result == 'success'
+      needs.build-sandbox.result == 'success' &&
+      needs.build-sidecar.result == 'success' &&
+      needs.build-fine-tune.result == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -1110,12 +1468,14 @@ jobs:
           BACKEND_DIGEST: ${{ needs.build-backend.outputs.digest }}
           WEB_DIGEST: ${{ needs.build-web.outputs.digest }}
           SANDBOX_DIGEST: ${{ needs.build-sandbox.outputs.digest }}
+          SIDECAR_DIGEST: ${{ needs.build-sidecar.outputs.digest }}
+          FINE_TUNE_DIGEST: ${{ needs.build-fine-tune.outputs.digest }}
         run: |
           set -euo pipefail
 
           # Validate required inputs
-          if [ -z "$TAG" ] || [ -z "$BACKEND_DIGEST" ] || [ -z "$WEB_DIGEST" ] || [ -z "$SANDBOX_DIGEST" ]; then
-            echo "::error::Missing required values: TAG='$TAG' BACKEND_DIGEST='$BACKEND_DIGEST' WEB_DIGEST='$WEB_DIGEST' SANDBOX_DIGEST='$SANDBOX_DIGEST'"
+          if [ -z "$TAG" ] || [ -z "$BACKEND_DIGEST" ] || [ -z "$WEB_DIGEST" ] || [ -z "$SANDBOX_DIGEST" ] || [ -z "$SIDECAR_DIGEST" ]; then
+            echo "::error::Missing required values: TAG='$TAG' BACKEND_DIGEST='$BACKEND_DIGEST' WEB_DIGEST='$WEB_DIGEST' SANDBOX_DIGEST='$SANDBOX_DIGEST' SIDECAR_DIGEST='$SIDECAR_DIGEST'"
             exit 1
           fi
 
@@ -1139,45 +1499,61 @@ jobs:
 
           ## Container Images
 
-          | Image | Pull |
-          |-------|------|
+          All images are signed with [cosign](https://docs.sigstore.dev/cosign/overview/) (keyless via GitHub OIDC), attested with [SLSA Level 3](https://slsa.dev/spec/v1.0/levels) build provenance, and include CycloneDX SBOMs.
+
+          ### Pull
+
+          | Image | Command |
+          |-------|---------|
           | Backend | `docker pull ghcr.io/aureliolo/synthorg-backend:VERSION_PH` |
           | Web | `docker pull ghcr.io/aureliolo/synthorg-web:VERSION_PH` |
           | Sandbox | `docker pull ghcr.io/aureliolo/synthorg-sandbox:VERSION_PH` |
+          | Sidecar | `docker pull ghcr.io/aureliolo/synthorg-sidecar:VERSION_PH` |
+          | Fine-Tune | `docker pull ghcr.io/aureliolo/synthorg-fine-tune:VERSION_PH` |
 
-          **Digests** (for pinning):
-          - Backend: `ghcr.io/aureliolo/synthorg-backend@BACKEND_DIGEST_PH`
-          - Web: `ghcr.io/aureliolo/synthorg-web@WEB_DIGEST_PH`
-          - Sandbox: `ghcr.io/aureliolo/synthorg-sandbox@SANDBOX_DIGEST_PH`
+          ### Digest Pins
 
-          <!-- CONTAINER_VERIFICATION_DATA
+          Pin to these digests in production for reproducible deployments:
+
+          | Image | Digest |
+          |-------|--------|
+          | Backend | `BACKEND_DIGEST_PH` |
+          | Web | `WEB_DIGEST_PH` |
+          | Sandbox | `SANDBOX_DIGEST_PH` |
+          | Sidecar | `SIDECAR_DIGEST_PH` |
+          | Fine-Tune | `FINE_TUNE_DIGEST_PH` |
+
+          ### Supply Chain
+
+          <details>
+          <summary>Verify signatures (cosign)</summary>
+
           ```bash
-          cosign verify ghcr.io/aureliolo/synthorg-backend@BACKEND_DIGEST_PH \
-            --certificate-identity-regexp='github\.com/Aureliolo/synthorg' \
-            --certificate-oidc-issuer='https://token.actions.githubusercontent.com'
-
-          cosign verify ghcr.io/aureliolo/synthorg-web@WEB_DIGEST_PH \
-            --certificate-identity-regexp='github\.com/Aureliolo/synthorg' \
-            --certificate-oidc-issuer='https://token.actions.githubusercontent.com'
-
-          cosign verify ghcr.io/aureliolo/synthorg-sandbox@SANDBOX_DIGEST_PH \
+          # Verify any image -- replace IMAGE and DIGEST:
+          cosign verify ghcr.io/aureliolo/synthorg-IMAGE@DIGEST \
             --certificate-identity-regexp='github\.com/Aureliolo/synthorg' \
             --certificate-oidc-issuer='https://token.actions.githubusercontent.com'
           ```
+          </details>
+
+          <details>
+          <summary>Verify SLSA provenance (gh CLI)</summary>
 
           ```bash
           gh attestation verify oci://ghcr.io/aureliolo/synthorg-backend@BACKEND_DIGEST_PH -R Aureliolo/synthorg
           gh attestation verify oci://ghcr.io/aureliolo/synthorg-web@WEB_DIGEST_PH -R Aureliolo/synthorg
           gh attestation verify oci://ghcr.io/aureliolo/synthorg-sandbox@SANDBOX_DIGEST_PH -R Aureliolo/synthorg
+          gh attestation verify oci://ghcr.io/aureliolo/synthorg-sidecar@SIDECAR_DIGEST_PH -R Aureliolo/synthorg
+          gh attestation verify oci://ghcr.io/aureliolo/synthorg-fine-tune@FINE_TUNE_DIGEST_PH -R Aureliolo/synthorg
           ```
-          CONTAINER_VERIFICATION_DATA -->
+          </details>
 
-          <!-- CONTAINER_SBOM_DATA
-          Container image SBOMs (CycloneDX JSON):
-          - \`sbom-backend.cdx.json\`
-          - \`sbom-web.cdx.json\`
-          - \`sbom-sandbox.cdx.json\`
-          CONTAINER_SBOM_DATA -->
+          <details>
+          <summary>SBOMs (CycloneDX JSON)</summary>
+
+          Attached to this release as artifacts:
+          \`sbom-backend.cdx.json\` | \`sbom-web.cdx.json\` | \`sbom-sandbox.cdx.json\` | \`sbom-sidecar.cdx.json\` | \`sbom-fine-tune.cdx.json\`
+          </details>
           BLOCK
           )
           # Substitute placeholders (strip leading 'v' from tag for image tags)
@@ -1185,6 +1561,8 @@ jobs:
           IMAGES=${IMAGES//BACKEND_DIGEST_PH/$BACKEND_DIGEST}
           IMAGES=${IMAGES//WEB_DIGEST_PH/$WEB_DIGEST}
           IMAGES=${IMAGES//SANDBOX_DIGEST_PH/$SANDBOX_DIGEST}
+          IMAGES=${IMAGES//SIDECAR_DIGEST_PH/$SIDECAR_DIGEST}
+          IMAGES=${IMAGES//FINE_TUNE_DIGEST_PH/${FINE_TUNE_DIGEST:-unavailable}}
 
           # Upload container SBOMs to the draft release
           if ls sboms/sbom-*.cdx.json 1>/dev/null 2>&1; then

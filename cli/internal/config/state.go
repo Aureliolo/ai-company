@@ -49,6 +49,9 @@ type State struct {
 
 	// Telemetry (opt-in anonymous product telemetry, default false).
 	TelemetryOptIn bool `json:"telemetry_opt_in"`
+
+	// Fine-tuning (requires sandbox/Docker for container execution).
+	FineTuning bool `json:"fine_tuning"`
 }
 
 // DefaultState returns a State with sensible defaults for the interactive init
@@ -277,6 +280,9 @@ func (s State) validate() error {
 		if len(s.PostgresPassword) < 32 {
 			return fmt.Errorf("postgres_password must be at least 32 characters, got %d", len(s.PostgresPassword))
 		}
+	}
+	if s.FineTuning && !s.Sandbox {
+		return fmt.Errorf("fine_tuning requires sandbox to be enabled")
 	}
 	for name, digest := range s.VerifiedDigests {
 		if !isValidDigestFormat(digest) {

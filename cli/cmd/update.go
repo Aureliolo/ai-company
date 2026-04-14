@@ -600,7 +600,7 @@ func verifyAndPinForUpdate(ctx context.Context, state config.State, tag, safeDir
 	defer cancel()
 	var buf bytes.Buffer
 	results, err := verify.VerifyImages(verifyCtx, verify.VerifyOptions{
-		Images: verify.BuildImageRefs(tag, state.Sandbox),
+		Images: verify.BuildImageRefs(tag, state.Sandbox, state.FineTuning),
 		Output: &buf,
 	})
 	if err != nil {

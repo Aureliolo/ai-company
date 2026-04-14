@@ -84,6 +84,9 @@ services:
       SYNTHORG_SANDBOX_IMAGE: {{yamlStr (sandboxImageRef .ImageTag)}}
       SYNTHORG_SIDECAR_IMAGE: {{yamlStr (sidecarImageRef .ImageTag)}}
 {{- end}}
+{{- if and .Sandbox .FineTuning}}
+      SYNTHORG_FINE_TUNE_IMAGE: {{yamlStr (fineTuneImageRef .ImageTag)}}
+{{- end}}
 {{- if .JWTSecret}}
       SYNTHORG_JWT_SECRET: {{yamlStr .JWTSecret}}
 {{- end}}

@@ -1,0 +1,62 @@
+# SynthOrg fine-tune base image -- Wolfi, composed by apko.
+# Produces: ghcr.io/aureliolo/synthorg-fine-tune-base
+# Consumed by: docker/fine-tune/Dockerfile (thin FROM wrapper).
+#
+# Provides Python 3.14 runtime and math/BLAS libraries for the
+# embedding fine-tuning pipeline (torch, sentence-transformers).
+# UID 10003 must not collide with sandbox (10001) or sidecar (10002).
+
+contents:
+  repositories:
+    - https://packages.wolfi.dev/os
+  keyring:
+    - https://packages.wolfi.dev/os/wolfi-signing.rsa.pub
+  packages:
+    - wolfi-baselayout
+    - ca-certificates-bundle
+    - python-3.14
+    - libstdc++
+    - glibc
+    - openblas
+
+accounts:
+  groups:
+    - groupname: fine-tune
+      gid: 10003
+  users:
+    - username: fine-tune
+      uid: 10003
+      gid: 10003
+  run-as: "10003"
+
+paths:
+  - path: /tmp
+    type: directory
+    uid: 10003
+    gid: 10003
+    permissions: 0o1777
+  - path: /data
+    type: directory
+    uid: 10003
+    gid: 10003
+    permissions: 0o755
+  - path: /checkpoints
+    type: directory
+    uid: 10003
+    gid: 10003
+    permissions: 0o755
+
+environment:
+  PATH: /usr/bin:/bin
+
+archs:
+  - x86_64
+  - aarch64
+
+annotations:
+  org.opencontainers.image.title: synthorg-fine-tune-base
+  org.opencontainers.image.description: Wolfi-based apko-composed base for synthorg-fine-tune
+  org.opencontainers.image.url: https://github.com/Aureliolo/synthorg
+  org.opencontainers.image.source: https://github.com/Aureliolo/synthorg
+  org.opencontainers.image.licenses: BUSL-1.1
+  org.opencontainers.image.vendor: Aureliolo

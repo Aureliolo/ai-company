@@ -3216,6 +3216,10 @@ docs = [
     { name = "mkdocstrings", extra = ["python"] },
     { name = "zensical" },
 ]
+fine-tune = [
+    { name = "sentence-transformers" },
+    { name = "torch" },
+]
 test = [
     { name = "hypothesis" },
     { name = "nats-py" },
@@ -3299,6 +3303,10 @@ docs = [
     { name = "mkdocs-d2-plugin", specifier = "==1.7.0" },
     { name = "mkdocstrings", extras = ["python"], specifier = "==1.0.3" },
     { name = "zensical", specifier = "==0.0.33" },
+]
+fine-tune = [
+    { name = "sentence-transformers", specifier = "==5.4.1" },
+    { name = "torch", specifier = "==2.11.0" },
 ]
 test = [
     { name = "hypothesis", specifier = "==6.152.0" },

@@ -778,6 +778,29 @@ redaction.  Configuration lives on `LogConfig.container_log_shipping`
     execute within the agent's isolated pod. The `SandboxBackend` protocol makes this
     transition seamless.
 
+#### Sandbox Lifecycle Strategies
+
+Container lifecycle isolation -- when to create, reuse, or destroy sandbox containers
+-- is configurable via the pluggable `SandboxLifecycleStrategy` protocol
+(`src/synthorg/tools/sandbox/lifecycle/protocol.py`). Three built-in strategies control
+the trade-off between resource efficiency and isolation:
+
+| Strategy | Behaviour | Use case |
+|----------|-----------|----------|
+| `per-agent` (default) | One persistent container per agent; destroyed after a configurable grace period (default 30s) when the agent stops | Development, trusted environments |
+| `per-task` | New container per task; destroyed immediately on task completion | Production, medium isolation |
+| `per-call` | New container per tool invocation; destroyed immediately (current ephemeral behaviour) | High-security, maximum isolation |
+
+Strategy selection via `sandboxing.docker.lifecycle.strategy` in `SandboxingConfig`.
+The sidecar container shares the sandbox container's lifetime (created and destroyed
+together, since they share a network namespace).
+
+> **Status**: The lifecycle protocol, config, factory, and three strategy
+> implementations are complete. Integration into `DockerSandbox.execute()` is
+> in progress -- the `owner_id` parameter is accepted and the config field is
+> wired, but the Docker backend does not yet dispatch to the lifecycle strategy.
+> Until wired, all executions use the current per-call ephemeral behaviour.
+
 ### Git Clone SSRF Prevention
 
 The `git_clone` tool validates clone URLs against SSRF attacks via hostname/IP
@@ -1840,9 +1863,12 @@ Backup settings live in the `backup` namespace with runtime editability via `Bac
 
 ## Container Runtime
 
-SynthOrg ships as three container images to `ghcr.io/aureliolo/synthorg-{backend,web,sandbox}`.
-The CLI orchestrates them via Docker Compose, verifies their signatures before starting,
-and pre-pulls the sandbox image on demand.
+SynthOrg ships as five container images to `ghcr.io/aureliolo/synthorg-{backend,web,sandbox,sidecar,fine-tune}`.
+The **backend** and **web** images are managed as Docker Compose services by the CLI.
+The **sandbox**, **sidecar**, and **fine-tune** images are not Compose services -- the
+CLI pre-pulls sandbox when requested, and the backend spawns sandbox/sidecar/fine-tune
+containers on demand via the Docker API. The CLI verifies cosign signatures for all
+enabled images (both Compose-managed and on-demand) before starting.
 
 ### Images we publish
 
@@ -1852,6 +1878,7 @@ and pre-pulls the sandbox image on demand.
 | `web` | React SPA and built docs, served by **Caddy** | Pure apko (no Dockerfile); composes `caddy` + `ca-certificates-bundle` + melange-built `synthorg-web-assets` apk + `/etc/synthorg/Caddyfile` |
 | `sandbox` | Ephemeral agent code execution image spawned on demand by the backend | apko-composed Wolfi base (`docker/sandbox/apko.yaml`) with `busybox` and `git`; fully rootless (UID 10001, cap_drop: ALL). Network enforcement handled by a separate sidecar proxy container |
 | `sidecar` | Transparent network proxy sidecar for sandbox containers | apko-composed Wolfi base (`docker/sidecar/apko.yaml`) with `iptables` and `busybox`; Go binary providing dual-layer DNS + DNAT enforcement of `allowed_hosts` |
+| `fine-tune` | Ephemeral embedding fine-tuning container spawned on demand by the backend for offline pipeline stages | apko-composed Wolfi base (`docker/fine-tune/apko.yaml`) with Python 3.14 + openblas; thin `docker/fine-tune/Dockerfile` layers torch, sentence-transformers, and the pipeline runner on top |
 
 Each published image is signed with **cosign keyless** via GitHub OIDC in
 `.github/workflows/docker.yml` and attested with **SLSA Level 3 provenance**.
@@ -1880,7 +1907,7 @@ Reconciliation mechanisms:
 | Mechanism | Target | Cadence |
 |-----------|--------|---------|
 | Renovate (Docker ecosystem + digest pinning) | Thin Dockerfile `FROM` lines (apko-base digest) | Daily |
-| `apko lock --update` cron (`.github/workflows/apko-lock.yml`) | `docker/*/apko.lock.json` (backend, sandbox, sidecar, web) | Weekly (Mon 06:00 UTC) |
+| `apko lock --update` cron (`.github/workflows/apko-lock.yml`) | `docker/*/apko.lock.json` (backend, sandbox, sidecar, fine-tune, web) | Weekly (Mon 06:00 UTC) |
 
 ### Image verification at launch
 

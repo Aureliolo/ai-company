@@ -380,6 +380,17 @@ The pipeline requires no manual annotation and runs on a single GPU.
 checkpoint path as the model identifier passed to the Mem0 SDK. The embedding
 provider must serve the fine-tuned model under this identifier.
 
+**Container execution:** when `FineTuneExecutionConfig.backend` is `"docker"`, each
+pipeline stage runs inside an ephemeral `synthorg-fine-tune` container spawned by the
+backend via the Docker API. The container reads stage configuration from
+`/etc/fine-tune/config.json`, executes the pipeline function, and emits structured
+progress markers (`STAGE_START:`, `STAGE_COMPLETE:`) on stdout. The orchestrator will
+parse these markers from container logs for progress reporting (orchestrator integration
+is planned -- the runner and markers are implemented). Source data is mounted at `/data`
+(read-only), checkpoints written to `/checkpoints` (read-write). GPU passthrough is
+available via `gpu_enabled=True`. The in-process fallback (`backend="in-process"`) is
+preserved for non-Docker deployments where torch is installed directly.
+
 ```python
 class EmbeddingFineTuneConfig(BaseModel):
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
