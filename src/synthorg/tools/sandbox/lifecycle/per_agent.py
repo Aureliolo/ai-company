@@ -55,6 +55,10 @@ class PerAgentStrategy:
         """Return an existing container or create a new one."""
         async with self._lock:
             self._cancel_timer(owner_id)
+            # Cancel idle timer -- container is now checked out.
+            old_idle = self._idle_timers.pop(owner_id, None)
+            if old_idle is not None and not old_idle.done():
+                old_idle.cancel()
 
             if owner_id in self._containers:
                 logger.info(
@@ -64,7 +68,6 @@ class PerAgentStrategy:
                     reused=True,
                 )
                 self._last_used[owner_id] = monotonic()
-                self._reset_idle_timer(owner_id)
                 return self._containers[owner_id]
 
         # Release the lock while creating (create_fn may be slow).
@@ -73,6 +76,7 @@ class PerAgentStrategy:
         async with self._lock:
             # Re-check: a concurrent acquire may have won the race.
             if owner_id in self._containers:
+                existing = self._containers[owner_id]
                 logger.info(
                     SANDBOX_LIFECYCLE_ACQUIRE,
                     strategy="per-agent",
@@ -80,12 +84,22 @@ class PerAgentStrategy:
                     reused=True,
                 )
                 self._last_used[owner_id] = monotonic()
-                self._reset_idle_timer(owner_id)
-                return self._containers[owner_id]
+                # Destroy the losing handle outside the lock.
+                destroy_fn = self._destroy_fns.get(owner_id)
+                if destroy_fn is not None:
+                    try:
+                        await destroy_fn(handle)
+                    except Exception:
+                        logger.warning(
+                            SANDBOX_LIFECYCLE_DESTROY_FAILED,
+                            strategy="per-agent",
+                            owner_id=owner_id,
+                            container_id=handle.container_id,
+                        )
+                return existing
 
             self._containers[owner_id] = handle
             self._last_used[owner_id] = monotonic()
-            self._reset_idle_timer(owner_id)
             logger.info(
                 SANDBOX_LIFECYCLE_ACQUIRE,
                 strategy="per-agent",
@@ -108,6 +122,7 @@ class PerAgentStrategy:
 
             self._cancel_timer(owner_id)
             self._destroy_fns[owner_id] = destroy_fn
+            self._reset_idle_timer(owner_id)
             logger.info(
                 SANDBOX_LIFECYCLE_RELEASE,
                 strategy="per-agent",

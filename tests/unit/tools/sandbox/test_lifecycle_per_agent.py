@@ -236,8 +236,8 @@ class TestPerAgentCleanup:
 class TestPerAgentIdleTimeout:
     """Idle timeout enforcement via _max_idle."""
 
-    async def test_idle_container_destroyed(self) -> None:
-        """Container destroyed after idle timeout (no release needed)."""
+    async def test_idle_container_destroyed_after_release(self) -> None:
+        """Container destroyed by idle timer after release."""
         strategy = _make_strategy(grace=10.0, max_idle=0.15)
         destroyed: list[str] = []
 
@@ -247,10 +247,9 @@ class TestPerAgentIdleTimeout:
         async def destroy_fn(h: ContainerHandle) -> None:
             destroyed.append(h.container_id)
 
-        # Store a destroy_fn so the idle timer can use it.
-        strategy._destroy_fns["a1"] = destroy_fn
         await strategy.acquire(owner_id="a1", create_fn=create_fn)
-        # Don't release -- just let it sit idle.
+        await strategy.release(owner_id="a1", destroy_fn=destroy_fn)
+        # Idle timer armed on release. Wait for it to fire.
         await asyncio.sleep(0.3)
         assert "idle-test" in destroyed
 

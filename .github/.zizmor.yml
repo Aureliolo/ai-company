@@ -16,9 +16,6 @@ rules:
       # steps.scan-ref.outputs.ref is set by echo in the same job (not
       # user-controllable). zizmor flags it at Low confidence.
       - docker.yml
-      # inputs.image-name in with: blocks passes to action inputs (not
-      # shell). All run: block usages go through env vars.
-      - build-apko-base/action.yml
 
   artipacked:
     ignore:

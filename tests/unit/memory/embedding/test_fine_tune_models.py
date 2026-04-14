@@ -378,6 +378,7 @@ class TestFineTuneRequestExtensions:
             FineTuneRequest(source_dir="/docs", validation_split=1.0)
 
 
+@pytest.mark.unit
 class TestFineTuneExecutionConfig:
     """FineTuneExecutionConfig model validation."""
 

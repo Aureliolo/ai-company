@@ -99,7 +99,11 @@ class TestRun:
         ):
             assert _run() == 1
 
-    def test_successful_stage_returns_0(self, tmp_path: Path) -> None:
+    def test_successful_stage_returns_0(
+        self,
+        tmp_path: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
         config_file = tmp_path / "config.json"
         config_file.write_text(
             json.dumps(
@@ -124,6 +128,9 @@ class TestRun:
         ):
             assert _run() == 0
         mock_dispatch.assert_awaited_once()
+        captured = capsys.readouterr()
+        assert "STAGE_START:generating_data" in captured.out
+        assert "STAGE_COMPLETE:generating_data" in captured.out
 
     def test_stage_exception_returns_1(self, tmp_path: Path) -> None:
         config_file = tmp_path / "config.json"
