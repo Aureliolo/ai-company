@@ -157,11 +157,12 @@ adversarial inputs cause tools to be invoked with harmful parameters.
 **Gap**: No verification that tool definitions haven't been modified
 since the last known-good state.
 
-**New mitigation**: `ToolRegistryIntegrityCheck`
+**New mitigation**: `ToolIntegrityChecker`
 (`src/synthorg/tools/integrity_check.py`) computes SHA-256 hashes of
 each `ToolDefinition` at boot and compares against recorded hashes.
 Mismatches trigger `TOOL_REGISTRY_INTEGRITY_VIOLATION` at ERROR.
-Configurable: `fail_on_violation=True` blocks startup.
+Configurable: `fail_on_violation=True` raises `RuntimeError` to block
+startup.
 
 **Residual risk**: Boot-time verification doesn't detect runtime
 tool definition mutation (frozen Pydantic models prevent this at
