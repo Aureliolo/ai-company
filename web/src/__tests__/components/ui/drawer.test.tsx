@@ -39,13 +39,6 @@ describe('Drawer', () => {
     expect(screen.getByText('Drawer content')).toBeInTheDocument()
   })
 
-  it('renders as a modal dialog', () => {
-    render(<Drawer open={true} onClose={() => {}} title="Test">Content</Drawer>)
-    // Modality (focus trap, inert siblings) is Base UI's responsibility.
-    // We verify the public contract: dialog role is present.
-    expect(screen.getByRole('dialog')).toBeInTheDocument()
-  })
-
   it('has accessible name matching title', () => {
     render(<Drawer open={true} onClose={() => {}} title="Compare">Content</Drawer>)
     expect(screen.getByRole('dialog', { name: 'Compare' })).toBeInTheDocument()

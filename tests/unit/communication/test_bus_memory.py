@@ -821,12 +821,14 @@ class TestIdleSummary:
 class TestPublishBatch:
     """Tests for InMemoryMessageBus.publish_batch()."""
 
+    @pytest.mark.unit
     async def test_empty_batch_is_noop(self) -> None:
         bus = InMemoryMessageBus(config=_make_config(channels=("#test",)))
         await bus.start()
         await bus.publish_batch([])
         await bus.stop()
 
+    @pytest.mark.unit
     async def test_single_message(self) -> None:
         bus = InMemoryMessageBus(config=_make_config(channels=("#test",)))
         await bus.start()
@@ -839,6 +841,7 @@ class TestPublishBatch:
         assert envelope.message.parts[0].text == "solo"  # type: ignore[union-attr]
         await bus.stop()
 
+    @pytest.mark.unit
     async def test_multiple_messages_in_order(self) -> None:
         bus = InMemoryMessageBus(config=_make_config(channels=("#test",)))
         await bus.start()
@@ -854,6 +857,7 @@ class TestPublishBatch:
             assert envelope.message.parts[0].text == f"msg-{i}"  # type: ignore[union-attr]
         await bus.stop()
 
+    @pytest.mark.unit
     async def test_ttl_accepted_but_ignored(self) -> None:
         """ttl_seconds is accepted for protocol conformance."""
         bus = InMemoryMessageBus(config=_make_config(channels=("#test",)))
@@ -867,6 +871,7 @@ class TestPublishBatch:
         assert envelope.message.parts[0].text == "with-ttl"  # type: ignore[union-attr]
         await bus.stop()
 
+    @pytest.mark.unit
     async def test_partial_failure_stops_on_first_error(self) -> None:
         """If one message fails, remaining are not attempted."""
         bus = InMemoryMessageBus(config=_make_config(channels=("#test",)))
@@ -884,6 +889,7 @@ class TestPublishBatch:
         assert envelope.message.parts[0].text == "good"  # type: ignore[union-attr]
         await bus.stop()
 
+    @pytest.mark.unit
     async def test_not_running_raises(self) -> None:
         bus = InMemoryMessageBus(config=_make_config(channels=("#test",)))
         msg = _make_message(channel="#test")
@@ -898,6 +904,7 @@ class TestPublishBatch:
 class TestTTLProtocolConformance:
     """Verify ttl_seconds is accepted on publish/send_direct."""
 
+    @pytest.mark.unit
     async def test_publish_accepts_ttl(self) -> None:
         bus = InMemoryMessageBus(config=_make_config(channels=("#test",)))
         await bus.start()
@@ -910,6 +917,7 @@ class TestTTLProtocolConformance:
         assert envelope is not None
         await bus.stop()
 
+    @pytest.mark.unit
     async def test_send_direct_accepts_ttl(self) -> None:
         bus = InMemoryMessageBus(config=_make_config())
         await bus.start()
