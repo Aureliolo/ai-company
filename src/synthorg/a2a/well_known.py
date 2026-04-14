@@ -10,6 +10,7 @@ only mounted when ``a2a.enabled = True``.
 """
 
 import asyncio
+import hashlib
 import time
 from typing import Any
 
@@ -27,23 +28,27 @@ from synthorg.observability.events.a2a import (
 
 logger = get_logger(__name__)
 
-# Module-level cache with lock for async safety.
-_card_cache: dict[str, tuple[dict[str, Any], float]] = {}
+# Module-level cache: (card_data, expires_at, fingerprint).
+_card_cache: dict[str, tuple[dict[str, Any], float, str]] = {}
 _cache_lock = asyncio.Lock()
 
 
 async def _get_cached_card(
     cache_key: str,
     ttl: int,
+    *,
+    fingerprint: str = "",
 ) -> dict[str, Any] | None:
     """Return cached card data if still valid.
 
     Args:
-        cache_key: Cache key (agent id or "__company__").
+        cache_key: Cache key (scoped by host + agent/company).
         ttl: Cache TTL in seconds (0 disables caching).
+        fingerprint: Identity fingerprint -- when provided, the
+            cached entry is invalidated if the fingerprint changed.
 
     Returns:
-        Cached card dict or None if expired/missing.
+        Cached card dict or None if expired/missing/stale.
     """
     if ttl <= 0:
         return None
@@ -51,8 +56,11 @@ async def _get_cached_card(
         entry = _card_cache.get(cache_key)
         if entry is None:
             return None
-        card_data, expires_at = entry
+        card_data, expires_at, stored_fp = entry
         if time.monotonic() > expires_at:
+            del _card_cache[cache_key]
+            return None
+        if fingerprint and stored_fp != fingerprint:
             del _card_cache[cache_key]
             return None
         return card_data
@@ -62,13 +70,16 @@ async def _put_cached_card(
     cache_key: str,
     card_data: dict[str, Any],
     ttl: int,
+    *,
+    fingerprint: str = "",
 ) -> None:
-    """Store card data in cache with TTL.
+    """Store card data in cache with TTL and fingerprint.
 
     Args:
         cache_key: Cache key.
         card_data: Serialized card dict.
         ttl: TTL in seconds (0 skips caching).
+        fingerprint: Identity fingerprint for staleness detection.
     """
     if ttl <= 0:
         return
@@ -76,6 +87,7 @@ async def _put_cached_card(
         _card_cache[cache_key] = (
             card_data,
             time.monotonic() + ttl,
+            fingerprint,
         )
 
 
@@ -105,6 +117,8 @@ class WellKnownAgentCardController(Controller):
 
         host_base = str(request.base_url).rstrip("/")
         company_cache_key = f"__company__:{host_base}"
+        # Fingerprint not checked on read for company card (requires
+        # listing all agents); TTL-based expiry is the primary guard.
         cached = await _get_cached_card(company_cache_key, ttl)
         if cached is not None:
             logger.debug(
@@ -136,8 +150,19 @@ class WellKnownAgentCardController(Controller):
                 company_name=str(app_state.config.company_name),
             )
             card_data = card.model_dump()
+            # Fingerprint: sorted identity IDs for staleness detection.
+            id_fp = hashlib.sha256(
+                ",".join(
+                    sorted(str(i.id) for i in identities),
+                ).encode(),
+            ).hexdigest()[:16]
             cache_key = f"__company__:{base_url}"
-            await _put_cached_card(cache_key, card_data, ttl)
+            await _put_cached_card(
+                cache_key,
+                card_data,
+                ttl,
+                fingerprint=id_fp,
+            )
         except MemoryError, RecursionError:
             raise
         except Exception:
@@ -238,7 +263,16 @@ class WellKnownAgentCardController(Controller):
                 base_url=f"{host_base}/api/v1/a2a",
             )
             card_data = card.model_dump()
-            await _put_cached_card(agent_cache_key, card_data, ttl)
+            # Fingerprint: identity name + role + skills for staleness.
+            agent_fp = hashlib.sha256(
+                f"{identity.name}:{identity.role}:{identity.skills}".encode(),
+            ).hexdigest()[:16]
+            await _put_cached_card(
+                agent_cache_key,
+                card_data,
+                ttl,
+                fingerprint=agent_fp,
+            )
         except MemoryError, RecursionError:
             raise
         except Exception:

@@ -117,7 +117,7 @@ class A2AGatewayController(Controller):
         ),
         status_code=200,
     )
-    async def handle_jsonrpc(
+    async def handle_jsonrpc(  # noqa: PLR0911
         self,
         state: State,
         request: Request[Any, Any, Any],
@@ -141,7 +141,22 @@ class A2AGatewayController(Controller):
                 status_code=415,
             )
 
-        # Read and validate body size
+        # Pre-check Content-Length before buffering the body.
+        content_length_str = request.headers.get("content-length", "")
+        if content_length_str.isdigit():
+            declared_size = int(content_length_str)
+            if declared_size > a2a_config.max_request_body_bytes:
+                return Response(
+                    content=_error_response(
+                        None,
+                        A2A_PAYLOAD_TOO_LARGE,
+                        "Request body exceeds maximum size",
+                    ),
+                    media_type="application/json",
+                    status_code=413,
+                )
+
+        # Read and validate actual body size
         body = await request.body()
         if not validate_payload_size(
             body,
@@ -206,6 +221,22 @@ class A2AGatewayController(Controller):
                 ),
                 media_type="application/json",
                 status_code=403,
+            )
+
+        # Verify peer credentials against the connection catalog.
+        if not await _verify_peer_credentials(
+            app_state,
+            request,
+            peer_name,
+        ):
+            return Response(
+                content=_error_response(
+                    request_id,
+                    A2A_AUTH_REQUIRED,
+                    "Invalid peer credentials",
+                ),
+                media_type="application/json",
+                status_code=401,
             )
 
         return await _dispatch_method(
@@ -328,6 +359,81 @@ async def _dispatch_method(
             media_type="application/json",
             status_code=500,
         )
+
+
+async def _verify_peer_credentials(  # noqa: PLR0911
+    app_state: Any,
+    request: Request[Any, Any, Any],
+    peer_name: str,
+) -> bool:
+    """Verify the peer's credentials against the connection catalog.
+
+    Looks up the peer's stored API key and compares it to the
+    ``Authorization`` or ``X-API-Key`` header from the request.
+    Returns ``True`` when credentials match or when no connection
+    catalog is available (graceful degradation -- allowlist is
+    still enforced).
+
+    Args:
+        app_state: Application state container.
+        request: Inbound HTTP request.
+        peer_name: Declared peer name from header.
+
+    Returns:
+        ``True`` if credentials are valid or catalog unavailable.
+    """
+    try:
+        catalog = app_state._connection_catalog  # noqa: SLF001
+        if catalog is None:
+            return True
+        credentials = await catalog.get_credentials(peer_name)
+        if not credentials:
+            return True
+
+        scheme = credentials.get("auth_scheme", "api_key")
+        if scheme == "api_key":
+            stored_key = credentials.get("api_key", "")
+            request_key = request.headers.get("x-api-key", "") or request.headers.get(
+                "authorization", ""
+            ).removeprefix("Bearer ")
+            if stored_key and not request_key:
+                logger.warning(
+                    A2A_INBOUND_AUTH_FAILED,
+                    peer_name=peer_name,
+                    reason="missing credentials in request",
+                )
+                return False
+            if stored_key and request_key != stored_key:
+                logger.warning(
+                    A2A_INBOUND_AUTH_FAILED,
+                    peer_name=peer_name,
+                    reason="credential mismatch",
+                )
+                return False
+        elif scheme in ("bearer", "oauth2"):
+            stored_token = credentials.get("access_token", "")
+            auth_header = request.headers.get("authorization", "")
+            request_token = auth_header.removeprefix("Bearer ").strip()
+            if stored_token and request_token != stored_token:
+                logger.warning(
+                    A2A_INBOUND_AUTH_FAILED,
+                    peer_name=peer_name,
+                    reason="token mismatch",
+                )
+                return False
+        # mTLS/none: no header-level check needed
+    except MemoryError, RecursionError:
+        raise
+    except Exception:
+        logger.warning(
+            A2A_INBOUND_AUTH_FAILED,
+            peer_name=peer_name,
+            reason="credential verification failed",
+            exc_info=True,
+        )
+        return True  # Graceful degradation: allowlist still enforced
+
+    return True
 
 
 def _extract_peer_name(
@@ -581,50 +687,6 @@ async def _handle_tasks_cancel(
     return {
         "id": cancelled.id,
         "state": to_a2a(cancelled.status).value,
-    }
-
-
-async def _handle_message_stream(
-    app_state: Any,
-    rpc_request: JsonRpcRequest,
-    peer_name: str,
-) -> dict[str, Any]:
-    """Handle ``message/stream`` -- SSE streaming placeholder.
-
-    Full SSE streaming requires a streaming response which is
-    handled separately.  This handler acknowledges the stream
-    subscription request.
-
-    Args:
-        app_state: Application state container.
-        rpc_request: Parsed JSON-RPC request.
-        peer_name: Authenticated peer name.
-
-    Returns:
-        Stream acknowledgement dict.
-    """
-    task_id = rpc_request.params.get("id")
-    if not task_id or not isinstance(task_id, str):
-        raise _A2AMethodError(
-            JSONRPC_INVALID_PARAMS,
-            "Missing or invalid 'id' parameter",
-        )
-
-    task_engine = _require_task_engine(app_state)
-    task = await task_engine.get(task_id)
-    if task is None:
-        raise _A2AMethodError(
-            A2A_TASK_NOT_FOUND,
-            "Task not found",
-            http_status=404,
-        )
-
-    _validate_task_ownership(task, peer_name)
-
-    return {
-        "id": task_id,
-        "state": "streaming",
-        "stream_url": f"/api/v1/a2a/stream/{task_id}",
     }
 
 

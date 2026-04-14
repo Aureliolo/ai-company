@@ -113,13 +113,14 @@ class TestA2APushVerifier:
         verifier = A2APushVerifier(clock_skew_seconds=60)
         body = b"data"
         secret = "test-secret"
-        sig = _sign(body, secret)
+        ts = str(time.time() - 120)
+        sig = _sign(body, secret, timestamp=ts)
 
         result = await verifier.verify(
             body=body,
             headers={
                 "x-a2a-signature": sig,
-                "x-a2a-timestamp": str(time.time() - 120),
+                "x-a2a-timestamp": ts,
             },
             secret=secret,
         )

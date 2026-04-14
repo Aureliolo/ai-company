@@ -157,19 +157,24 @@ class TestAgentCardBuilder:
 
     @pytest.mark.unit
     def test_company_card_deduplicates_skills(self) -> None:
-        """Company card deduplicates skills by ID."""
+        """Company card deduplicates skills across distinct agents."""
         builder = AgentCardBuilder()
-        # Same agent listed twice
-        agent = _make_identity(
+        agent1 = _make_identity(
+            name="agent-x",
+            primary_skills=("python",),
+            secondary_skills=(),
+        )
+        agent2 = _make_identity(
+            name="agent-y",
             primary_skills=("python",),
             secondary_skills=(),
         )
         card = builder.build_company_card(
-            [agent, agent],
+            [agent1, agent2],
             "https://example.com/a2a",
             "Test Corp",
         )
-        # Same agent id -> same skill ids -> deduplicated
+        # Capability-centric IDs: "python" from both -> 1
         assert len(card.skills) == 1
 
     @pytest.mark.unit

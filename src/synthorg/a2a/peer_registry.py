@@ -8,6 +8,7 @@ federation.
 
 import asyncio
 import copy
+from types import MappingProxyType
 
 from synthorg.a2a.models import (
     A2AAgentCard,  # noqa: TC001 -- runtime for type annotation
@@ -31,7 +32,7 @@ class PeerRegistry:
     __slots__ = ("_lock", "_peers")
 
     def __init__(self) -> None:
-        self._peers: dict[str, A2AAgentCard] = {}
+        self._peers: MappingProxyType[str, A2AAgentCard] = MappingProxyType({})
         self._lock = asyncio.Lock()
 
     async def register(
@@ -50,7 +51,9 @@ class PeerRegistry:
         """
         key = peer_name.lower()
         async with self._lock:
-            self._peers[key] = copy.deepcopy(card)
+            new_peers = dict(self._peers)
+            new_peers[key] = copy.deepcopy(card)
+            self._peers = MappingProxyType(new_peers)
         logger.info(
             A2A_PEER_REGISTERED,
             peer_name=peer_name,
@@ -81,7 +84,9 @@ class PeerRegistry:
         """
         key = peer_name.lower()
         async with self._lock:
-            removed = self._peers.pop(key, None)
+            new_peers = dict(self._peers)
+            removed = new_peers.pop(key, None)
+            self._peers = MappingProxyType(new_peers)
         if removed is not None:
             logger.info(A2A_PEER_REMOVED, peer_name=peer_name)
             return True

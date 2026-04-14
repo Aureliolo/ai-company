@@ -91,7 +91,11 @@ def to_a2a(message: Message) -> A2AMessage:
         else A2AMessageRole.AGENT
     )
     parts = tuple(_internal_part_to_a2a(p) for p in message.parts)
-    return A2AMessage(role=role, parts=parts)
+    return A2AMessage(
+        role=role,
+        parts=parts,
+        metadata={"orig_message_type": message.type.value},
+    )
 
 
 def from_a2a(
@@ -112,11 +116,24 @@ def from_a2a(
     Returns:
         Internal message.
     """
-    msg_type = (
-        MessageType.DELEGATION
-        if a2a_msg.role == A2AMessageRole.USER
-        else MessageType.TASK_UPDATE
-    )
+    # Restore original MessageType from metadata when available;
+    # fall back to role-based heuristic for external messages.
+    orig_type = a2a_msg.metadata.get("orig_message_type", "")
+    if orig_type:
+        try:
+            msg_type = MessageType(orig_type)
+        except ValueError:
+            msg_type = (
+                MessageType.DELEGATION
+                if a2a_msg.role == A2AMessageRole.USER
+                else MessageType.TASK_UPDATE
+            )
+    else:
+        msg_type = (
+            MessageType.DELEGATION
+            if a2a_msg.role == A2AMessageRole.USER
+            else MessageType.TASK_UPDATE
+        )
     parts = tuple(_a2a_part_to_internal(p) for p in a2a_msg.parts)
     return Message(
         id=uuid4(),
