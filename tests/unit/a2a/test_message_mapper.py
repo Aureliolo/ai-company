@@ -25,11 +25,11 @@ from synthorg.communication.message import (
 def _make_message(
     *,
     msg_type: MessageType = MessageType.TASK_UPDATE,
-    parts: tuple[TextPart | DataPart | FilePart | UriPart, ...] = (
-        TextPart(text="hello"),
-    ),
+    parts: tuple[TextPart | DataPart | FilePart | UriPart, ...] | None = None,
 ) -> Message:
     """Create a minimal internal Message for testing."""
+    if parts is None:
+        parts = (TextPart(text="hello"),)
     return Message(
         timestamp=datetime.now(UTC),
         sender="agent-a",
@@ -44,36 +44,38 @@ class TestToA2A:
     """Internal Message -> A2AMessage."""
 
     @pytest.mark.unit
-    def test_text_part(self) -> None:
-        """TextPart maps to A2ATextPart."""
-        msg = _make_message(parts=(TextPart(text="hello"),))
-        a2a = to_a2a(msg)
-        assert len(a2a.parts) == 1
-        assert isinstance(a2a.parts[0], A2ATextPart)
-        assert a2a.parts[0].text == "hello"
-
-    @pytest.mark.unit
-    def test_data_part(self) -> None:
-        """DataPart maps to A2ADataPart."""
-        part = DataPart(data={"key": "value"})  # type: ignore[arg-type]
+    @pytest.mark.parametrize(
+        ("part", "expected_cls", "attr", "expected_val"),
+        [
+            (TextPart(text="hello"), A2ATextPart, "text", "hello"),
+            (
+                DataPart(data={"key": "value"}),  # type: ignore[arg-type]
+                A2ADataPart,
+                "data",
+                {"key": "value"},
+            ),
+            (
+                FilePart(uri="https://example.com/f.pdf", mime_type="application/pdf"),
+                A2AFilePart,
+                "uri",
+                "https://example.com/f.pdf",
+            ),
+        ],
+        ids=["text", "data", "file"],
+    )
+    def test_part_mapping(
+        self,
+        part: TextPart | DataPart | FilePart,
+        expected_cls: type,
+        attr: str,
+        expected_val: object,
+    ) -> None:
+        """Each internal part type maps to the correct A2A part."""
         msg = _make_message(parts=(part,))
         a2a = to_a2a(msg)
         assert len(a2a.parts) == 1
-        assert isinstance(a2a.parts[0], A2ADataPart)
-        assert a2a.parts[0].data == {"key": "value"}
-
-    @pytest.mark.unit
-    def test_file_part(self) -> None:
-        """FilePart maps to A2AFilePart."""
-        part = FilePart(
-            uri="https://example.com/f.pdf",
-            mime_type="application/pdf",
-        )
-        msg = _make_message(parts=(part,))
-        a2a = to_a2a(msg)
-        assert len(a2a.parts) == 1
-        assert isinstance(a2a.parts[0], A2AFilePart)
-        assert a2a.parts[0].uri == "https://example.com/f.pdf"
+        assert isinstance(a2a.parts[0], expected_cls)
+        assert getattr(a2a.parts[0], attr) == expected_val
 
     @pytest.mark.unit
     def test_uri_part_to_text(self) -> None:

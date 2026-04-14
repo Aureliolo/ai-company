@@ -193,7 +193,8 @@ export function ConnectionFormModal({
       const scheme = form.credentials.auth_scheme ?? 'api_key'
       const schemeErrors = validateA2APeerCredentials(scheme, form.credentials)
       for (const [key, msg] of Object.entries(schemeErrors)) {
-        if (!nextErrors[key]) nextErrors[key] = msg
+        const errorKey = key === '_scheme' ? 'auth_scheme' : key
+        if (!nextErrors[errorKey]) nextErrors[errorKey] = msg
       }
     }
     setErrors(nextErrors)
