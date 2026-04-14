@@ -1,5 +1,5 @@
 import * as fc from 'fast-check'
-import type { Variants } from 'framer-motion'
+import type { Variants } from 'motion/react'
 import {
   badgeBounce,
   cardEntrance,

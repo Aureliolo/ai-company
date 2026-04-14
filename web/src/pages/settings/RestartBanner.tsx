@@ -1,4 +1,4 @@
-import { AnimatePresence, motion } from 'framer-motion'
+import { AnimatePresence, motion } from 'motion/react'
 import { springDefault } from '@/lib/motion'
 import { AlertTriangle, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'

@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { AnimatePresence, motion } from 'framer-motion'
+import { AnimatePresence, motion } from 'motion/react'
 import { springDefault } from '@/lib/motion'
 import { Loader2, Save, Undo2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'

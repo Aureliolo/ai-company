@@ -1,4 +1,4 @@
-import { motion } from 'framer-motion'
+import { motion } from 'motion/react'
 import { cn, type AgentRuntimeStatus, type SemanticColor, getStatusColor } from '@/lib/utils'
 import { useStatusTransition } from '@/hooks/useStatusTransition'
 

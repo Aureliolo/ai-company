@@ -1,8 +1,8 @@
 # Web Dashboard
 
-React 19 + shadcn/ui + Base UI + Tailwind CSS 4 + Framer Motion + Zustand
+React 19 + shadcn/ui + Base UI + Tailwind CSS 4 + Motion + Zustand
 
-`App.tsx` wraps the app in `<CSPProvider nonce={getCspNonce()}>` + `<MotionConfig nonce>` so every inline `<style>` tag injected by Base UI and Framer Motion carries the per-request CSP nonce. See `docs/security.md` → CSP Nonce Infrastructure for the full flow. Base UI's `render` prop is the polymorphism primitive used throughout the dashboard; the local `<Slot>` helper in `components/ui/slot.tsx` uses `@base-ui/react/merge-props` to support the `<Button asChild>` ergonomic (the only component that uses this helper -- all other primitives use Base UI's native `render` prop directly).
+`App.tsx` wraps the app in `<CSPProvider nonce={getCspNonce()}>` + `<MotionConfig nonce>` so every inline `<style>` tag injected by Base UI and Motion carries the per-request CSP nonce. See `docs/security.md` → CSP Nonce Infrastructure for the full flow. Base UI's `render` prop is the polymorphism primitive used throughout the dashboard; the local `<Slot>` helper in `components/ui/slot.tsx` uses `@base-ui/react/merge-props` to support the `<Button asChild>` ergonomic (the only component that uses this helper -- all other primitives use Base UI's native `render` prop directly).
 
 ## Quick Commands
 
@@ -28,7 +28,7 @@ web/src/
   api/            # Axios client, endpoint modules (23 domains), shared types
   components/     # React components: ui/ (shadcn primitives + SynthOrg core components), layout/ (app shell, sidebar with external link support, status bar); feature dirs added as pages are built
   hooks/          # React hooks (auth, login lockout, WebSocket, polling, optimistic updates, command palette, flash effects, status transitions, page data composition, count animation, auto-scroll, roving tabindex, breakpoint detection, update tracking, animation presets, settings dirty state, settings keyboard shortcuts, communication edges, artifact/project data composition, useWorkflowsData)
-  lib/            # Utilities (cn() class merging, semantic color mappers), Framer Motion presets, CSP nonce reader, structured logger factory
+  lib/            # Utilities (cn() class merging, semantic color mappers), Motion presets, CSP nonce reader, structured logger factory
   mocks/          # MSW request handlers for Storybook API mocking (handlers/)
   pages/          # Lazy-loaded page components (one per route); page-scoped sub-components in pages/<page-name>/ subdirs (e.g. tasks/, org-edit/, settings/, workflows/, fine-tuning/)
   router/         # React Router config, route constants (incl. DOCUMENTATION -- external, not SPA-routed), auth/setup guards
@@ -72,7 +72,7 @@ web/src/
 | `ConfirmDialog` | `@/components/ui/confirm-dialog` | Confirmation modal (Base UI AlertDialog) with `default` / `destructive` variants and `loading` state |
 | `CommandPalette` | `@/components/ui/command-palette` | Global Cmd+K search (cmdk-base + Base UI Dialog + React Router) -- mount once in AppLayout, register commands via `useCommandPalette` hook |
 | `InlineEdit` | `@/components/ui/inline-edit` | Click-to-edit text with Enter/Escape, validation, optimistic save with rollback |
-| `AnimatedPresence` | `@/components/ui/animated-presence` | Page transition wrapper (Framer Motion AnimatePresence keyed by route) |
+| `AnimatedPresence` | `@/components/ui/animated-presence` | Page transition wrapper (Motion AnimatePresence keyed by route) |
 | `StaggerGroup` / `StaggerItem` | `@/components/ui/stagger-group` | Card entrance stagger container with configurable delay |
 | `Drawer` | `@/components/ui/drawer` | Slide-in panel (`side` prop: left or right, default right) with overlay, spring animation, focus trap, Escape-to-close, optional header (`title`), `ariaLabel` for accessible name (one of `title` or `ariaLabel` required), and `contentClassName` override |
 | `InputField` | `@/components/ui/input-field` | Labeled text input with error/hint display, optional multiline textarea mode |
@@ -134,7 +134,7 @@ When a new shared component is needed (not covered by the inventory above):
 A PostToolUse hook (`scripts/check_web_design_system.py`) runs automatically on every Edit/Write to `web/src/` files. It catches:
 - Hardcoded hex colors and rgba values
 - Hardcoded font-family declarations
-- Hardcoded Framer Motion transition durations (should use `@/lib/motion` presets)
+- Hardcoded Motion transition durations (should use `@/lib/motion` presets)
 - New components without Storybook stories
 - Duplicate patterns that should use existing shared components
 - Complex `.map()` blocks that should be extracted
@@ -151,7 +151,7 @@ The dashboard's primitive layer is [Base UI](https://base-ui.com).  `components.
 | `CSPProvider` | **Adopted** | Wired in `App.tsx` alongside `MotionConfig` for end-to-end nonce propagation. |
 | `merge-props` | **Adopted** | Powers the local `<Slot>` helper in `components/ui/slot.tsx` (preserves the `asChild` ergonomic for `<Button>`). |
 | `Toast` | **Not adopted** | Our custom `components/ui/toast.tsx` is a Zustand-backed queue that integrates with the rest of the state stack; Base UI's Toast doesn't couple to external stores. |
-| `Drawer` | **Not adopted** | Our custom `components/ui/drawer.tsx` is Framer Motion-based and uses the `@/lib/motion` design-token presets enforced by the PostToolUse hook. Switching would break the motion-token enforcement. |
+| `Drawer` | **Not adopted** | Our custom `components/ui/drawer.tsx` is Motion-based and uses the `@/lib/motion` design-token presets enforced by the PostToolUse hook. Switching would break the motion-token enforcement. |
 | `Meter` | **Not adopted** | `ProgressGauge` already emits `role="meter"` + `aria-valuenow`/`valuemin`/`valuemax`. Base UI's Meter is a raw primitive without the styled circular/linear variants we need. |
 | `Select` | **Not adopted** | `SelectField` is a native `<select>` -- we intentionally keep the native mobile picker for iOS/Android UX. Replacing with a custom dropdown would lose that. |
 | `Combobox`, `Autocomplete` | **Not adopted (for now)** | No current typeahead call sites in the dashboard that would benefit. Re-evaluate when filterable selects become a feature requirement. |

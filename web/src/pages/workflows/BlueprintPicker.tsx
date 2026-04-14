@@ -1,5 +1,5 @@
 import { useEffect } from 'react'
-import { motion } from 'framer-motion'
+import { motion } from 'motion/react'
 import { FileCode2 } from 'lucide-react'
 import { Skeleton } from '@/components/ui/skeleton'
 import { StatPill } from '@/components/ui/stat-pill'

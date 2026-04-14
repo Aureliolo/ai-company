@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { motion, AnimatePresence } from 'framer-motion'
+import { motion, AnimatePresence } from 'motion/react'
 import { cn } from '@/lib/utils'
 import { MetricCard } from '@/components/ui/metric-card'
 import { AgentCard } from '@/components/ui/agent-card'

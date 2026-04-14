@@ -1,6 +1,6 @@
 import { memo } from 'react'
 import { BaseEdge, type Edge, type EdgeProps } from '@xyflow/react'
-import { useReducedMotion } from 'framer-motion'
+import { useReducedMotion } from 'motion/react'
 
 export interface HierarchyEdgeData {
   /** When omitted or false, the edge renders as a static line. */

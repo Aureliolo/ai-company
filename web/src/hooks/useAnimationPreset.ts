@@ -1,5 +1,5 @@
 import { useMemo } from 'react'
-import type { Transition } from 'framer-motion'
+import type { Transition } from 'motion/react'
 import {
   springDefault,
   springBouncy,

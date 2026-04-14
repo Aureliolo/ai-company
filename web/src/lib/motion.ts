@@ -1,5 +1,5 @@
 /**
- * Framer Motion animation presets for the SynthOrg dashboard.
+ * Motion animation presets for the SynthOrg dashboard.
  *
  * Import these constants instead of hardcoding animation values in components.
  * See docs/design/ux-guidelines.md (Animation Language section) for the full animation language.
@@ -19,7 +19,7 @@
  * ```
  */
 
-import type { Transition, Variants } from "framer-motion";
+import type { Transition, Variants } from "motion/react";
 
 // ---------------------------------------------------------------------------
 // Spring presets
@@ -123,7 +123,7 @@ export const cardEntrance: Variants = {
 /**
  * Parent container that staggers children by 30ms.
  *
- * Note: Framer Motion does not enforce a stagger cap. Consuming components
+ * Note: Motion does not enforce a stagger cap. Consuming components
  * should limit visible stagger to ~10 items (300ms) to avoid long entrance
  * sequences -- e.g. by paginating or virtualizing beyond that threshold.
  */
@@ -169,7 +169,7 @@ export const pageEnter: Variants = {
  * Flash effect for real-time value updates.
  *
  * Three-phase animation: flash (200ms) -> hold (100ms) -> fade (300ms).
- * Apply via CSS `@keyframes` or inline style -- not a Framer Motion variant,
+ * Apply via CSS `@keyframes` or inline style -- not a Motion variant,
  * because the flash triggers on data change, not mount/unmount.
  *
  * Recommended CSS implementation (actual keyframe is `so-status-flash` in `design-tokens.css`):
@@ -298,7 +298,7 @@ export const reducedMotionInstant: Transition = {
  * Check if the user prefers reduced motion (point-in-time snapshot).
  *
  * For reactive detection that responds to OS preference changes mid-session,
- * use Framer Motion's built-in `useReducedMotion()` hook or write a custom
+ * use Motion's built-in `useReducedMotion()` hook or write a custom
  * hook with `matchMedia("(prefers-reduced-motion: reduce)")` + change listener.
  *
  * This utility is for non-React contexts (e.g. SSR branching, one-time checks):

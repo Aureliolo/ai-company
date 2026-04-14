@@ -1,4 +1,4 @@
-import { AnimatePresence, motion } from 'framer-motion'
+import { AnimatePresence, motion } from 'motion/react'
 import { ChevronDown } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { springGentle, tweenFast } from '@/lib/motion'

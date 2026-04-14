@@ -1,5 +1,5 @@
 import { CSPProvider } from '@base-ui/react/csp-provider'
-import { MotionConfig } from 'framer-motion'
+import { MotionConfig } from 'motion/react'
 import { AppRouter } from '@/router'
 import { getCspNonce } from '@/lib/csp'
 

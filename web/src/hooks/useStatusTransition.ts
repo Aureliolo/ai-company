@@ -1,5 +1,5 @@
 import { useMemo } from 'react'
-import type { Transition } from 'framer-motion'
+import type { Transition } from 'motion/react'
 import { statusColorTransition } from '@/lib/motion'
 import type { AgentRuntimeStatus } from '@/lib/utils'
 import { getStatusColor } from '@/lib/utils'

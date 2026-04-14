@@ -89,7 +89,7 @@ HARDCODED_FONT_RE = re.compile(
     """,
 )
 
-# Framer Motion inline transition durations (should use lib/motion presets).
+# Motion inline transition durations (should use lib/motion presets).
 # Uses re.DOTALL so [^}]* spans newlines in multiline transition objects.
 HARDCODED_FM_DURATION_RE = re.compile(
     r"""(?x)
@@ -102,7 +102,7 @@ HARDCODED_FM_DURATION_RE = re.compile(
     re.DOTALL,
 )
 
-# Files where inline Framer Motion durations are intentional (relative paths).
+# Files where inline Motion durations are intentional (relative paths).
 _FM_DURATION_SKIP_PATHS: set[str] = {
     "web/src/lib/motion.ts",
     "web/src/hooks/useAnimationPreset.ts",
@@ -242,7 +242,7 @@ def check_hardcoded_framer_transitions(
     file_path: Path,
     project_root: Path,
 ) -> list[str]:
-    """Find hardcoded Framer Motion transition durations.
+    """Find hardcoded Motion transition durations.
 
     Components should use presets from ``lib/motion.ts`` (e.g.
     ``tweenDefault``, ``tweenFast``, ``tweenExitFast``) or the
@@ -278,7 +278,7 @@ def check_hardcoded_framer_transitions(
         if _is_in_comment_context(original_line, col):
             continue
         warnings.append(
-            f"  {rel_path}:{line_num}: Hardcoded Framer Motion duration "
+            f"  {rel_path}:{line_num}: Hardcoded Motion duration "
             f"-- use a preset from `@/lib/motion` or "
             f"`useAnimationPreset()` hook.\n"
             f"    {line_text}"

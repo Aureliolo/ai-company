@@ -11,7 +11,7 @@ import {
   type DragEndEvent,
   type DragStartEvent,
 } from '@dnd-kit/core'
-import { AnimatePresence } from 'framer-motion'
+import { AnimatePresence } from 'motion/react'
 import { getErrorMessage } from '@/utils/errors'
 import { AlertTriangle, WifiOff } from 'lucide-react'
 import { ErrorBoundary } from '@/components/ui/error-boundary'

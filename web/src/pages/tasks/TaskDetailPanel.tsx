@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { motion } from 'framer-motion'
+import { motion } from 'motion/react'
 import { X, Loader2, Calendar, GitBranch, User, Tag, Layers } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
