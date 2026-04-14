@@ -41,6 +41,8 @@ class PerAgentStrategy:
         self._containers: dict[str, ContainerHandle] = {}
         self._last_used: dict[str, float] = {}
         self._timers: dict[str, asyncio.Task[None]] = {}
+        self._idle_timers: dict[str, asyncio.Task[None]] = {}
+        self._destroy_fns: dict[str, Callable[[ContainerHandle], Awaitable[None]]] = {}
         self._lock = asyncio.Lock()
 
     async def acquire(
@@ -67,6 +69,17 @@ class PerAgentStrategy:
         handle = await create_fn()
 
         async with self._lock:
+            # Re-check: a concurrent acquire may have won the race.
+            if owner_id in self._containers:
+                logger.info(
+                    SANDBOX_LIFECYCLE_ACQUIRE,
+                    strategy="per-agent",
+                    owner_id=owner_id,
+                    reused=True,
+                )
+                self._last_used[owner_id] = monotonic()
+                return self._containers[owner_id]
+
             self._containers[owner_id] = handle
             self._last_used[owner_id] = monotonic()
             logger.info(
@@ -90,6 +103,7 @@ class PerAgentStrategy:
                 return
 
             self._cancel_timer(owner_id)
+            self._destroy_fns[owner_id] = destroy_fn
             logger.info(
                 SANDBOX_LIFECYCLE_RELEASE,
                 strategy="per-agent",
@@ -133,14 +147,18 @@ class PerAgentStrategy:
     ) -> None:
         """Cancel all timers, destroy all containers."""
         async with self._lock:
-            tasks_to_cancel = list(self._timers.values())
+            all_tasks = list(self._timers.values()) + list(
+                self._idle_timers.values(),
+            )
             self._timers.clear()
+            self._idle_timers.clear()
+            self._destroy_fns.clear()
 
-            for task in tasks_to_cancel:
+            for task in all_tasks:
                 task.cancel()
-            if tasks_to_cancel:
+            if all_tasks:
                 await asyncio.gather(
-                    *tasks_to_cancel,
+                    *all_tasks,
                     return_exceptions=True,
                 )
 
@@ -174,3 +192,49 @@ class PerAgentStrategy:
         timer = self._timers.pop(owner_id, None)
         if timer is not None and not timer.done():
             timer.cancel()
+
+    def _reset_idle_timer(self, owner_id: str) -> None:
+        """Start or restart the idle timeout timer (must hold ``_lock``)."""
+        old = self._idle_timers.pop(owner_id, None)
+        if old is not None and not old.done():
+            old.cancel()
+        if self._max_idle <= 0:
+            return
+
+        async def _idle_expire() -> None:
+            while True:
+                async with self._lock:
+                    last = self._last_used.get(owner_id)
+                    if last is None or owner_id not in self._containers:
+                        return
+                    remaining = self._max_idle - (monotonic() - last)
+                if remaining <= 0:
+                    break
+                await asyncio.sleep(remaining)
+            # Idle timeout reached -- destroy.
+            async with self._lock:
+                handle = self._containers.pop(owner_id, None)
+                self._last_used.pop(owner_id, None)
+                self._idle_timers.pop(owner_id, None)
+                destroy_fn = self._destroy_fns.pop(owner_id, None)
+            if handle is not None and destroy_fn is not None:
+                logger.info(
+                    SANDBOX_LIFECYCLE_GRACE_EXPIRED,
+                    strategy="per-agent",
+                    owner_id=owner_id,
+                    reason="idle-timeout",
+                    container_id=handle.container_id,
+                )
+                try:
+                    await destroy_fn(handle)
+                except Exception:
+                    logger.warning(
+                        "sandbox.lifecycle.destroy_failed",
+                        strategy="per-agent",
+                        owner_id=owner_id,
+                    )
+
+        self._idle_timers[owner_id] = asyncio.create_task(
+            _idle_expire(),
+            name=f"sandbox-idle-{owner_id}",
+        )

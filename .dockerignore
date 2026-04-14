@@ -11,7 +11,9 @@
 .gitignore
 
 # Docker configs (Dockerfiles read via -f, not from context)
+# Sidecar is un-excluded because its Dockerfile copies Go source from docker/sidecar/.
 docker/
+!docker/sidecar/
 
 # Tests
 tests/

@@ -99,6 +99,8 @@ def _run() -> int:
         print(f"STAGE_START:{stage_name}", flush=True)  # noqa: T201
         try:
             asyncio.run(_dispatch_stage(stage, config, token))
+        except MemoryError, RecursionError:
+            raise
         except Exception as exc:
             print(f"ERROR: {stage_name} failed: {exc}", file=sys.stderr)  # noqa: T201
             return 1

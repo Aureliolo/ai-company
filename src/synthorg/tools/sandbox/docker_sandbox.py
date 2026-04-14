@@ -260,6 +260,7 @@ class DockerSandbox:
         env_overrides: Mapping[str, str] | None,
         category: str = "",
         network_mode: str | None = None,
+        owner_id: str | None = None,
     ) -> dict[str, Any]:
         """Build the Docker container creation config.
 
@@ -271,6 +272,7 @@ class DockerSandbox:
             category: Tool category for runtime resolution.
             network_mode: Override the default network mode. Used to
                 set ``container:<sidecar_id>`` when sidecar
+            owner_id: Lifecycle owner for container labeling.
                 enforcement is active.
 
         Returns:
@@ -295,11 +297,15 @@ class DockerSandbox:
         host_config = self._build_host_config(category=category)
         if network_mode is not None:
             host_config["NetworkMode"] = network_mode
+        labels: dict[str, str] = {"synthorg.sandbox": "true"}
+        if owner_id is not None:
+            labels["synthorg.sandbox.owner_id"] = owner_id
         container_config: dict[str, Any] = {
             "Image": self._config.image,
             "Cmd": [command, *args],
             "WorkingDir": container_cwd,
             "Env": env_list,
+            "Labels": labels,
             "HostConfig": host_config,
             "AttachStdout": True,
             "AttachStderr": True,
@@ -578,7 +584,7 @@ class DockerSandbox:
         env_overrides: Mapping[str, str] | None = None,
         timeout: float | None = None,  # noqa: ASYNC109
         category: str = "",
-        owner_id: str | None = None,  # noqa: ARG002
+        owner_id: str | None = None,
     ) -> SandboxResult:
         """Execute a command inside a Docker container.
 
@@ -626,6 +632,7 @@ class DockerSandbox:
             env_overrides=env_overrides,
             timeout=effective_timeout,
             category=category,
+            owner_id=owner_id,
         )
 
     async def _run_container(  # noqa: C901, PLR0912, PLR0913, PLR0915
@@ -638,6 +645,7 @@ class DockerSandbox:
         env_overrides: Mapping[str, str] | None,
         timeout: float,  # noqa: ASYNC109
         category: str = "",
+        owner_id: str | None = None,
     ) -> SandboxResult:
         """Create, start, and wait for a container.
 
@@ -649,6 +657,8 @@ class DockerSandbox:
             env_overrides: Environment variables.
             timeout: Timeout in seconds.
             category: Tool category for runtime resolution.
+            owner_id: Lifecycle owner for container labeling and
+                lifecycle strategy dispatch.
 
         Returns:
             A ``SandboxResult`` with captured output and exit status.
@@ -695,6 +705,7 @@ class DockerSandbox:
             env_overrides=env_overrides,
             category=category,
             network_mode=network_mode,
+            owner_id=owner_id,
         )
 
         try:

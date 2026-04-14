@@ -51,6 +51,16 @@ class PerTaskStrategy:
         handle = await create_fn()
 
         async with self._lock:
+            # Re-check: a concurrent acquire may have won the race.
+            if owner_id in self._containers:
+                logger.info(
+                    SANDBOX_LIFECYCLE_ACQUIRE,
+                    strategy="per-task",
+                    owner_id=owner_id,
+                    reused=True,
+                )
+                return self._containers[owner_id]
+
             self._containers[owner_id] = handle
             logger.info(
                 SANDBOX_LIFECYCLE_ACQUIRE,

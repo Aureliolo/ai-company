@@ -281,6 +281,9 @@ func (s State) validate() error {
 			return fmt.Errorf("postgres_password must be at least 32 characters, got %d", len(s.PostgresPassword))
 		}
 	}
+	if s.FineTuning && !s.Sandbox {
+		return fmt.Errorf("fine_tuning requires sandbox to be enabled")
+	}
 	for name, digest := range s.VerifiedDigests {
 		if !isValidDigestFormat(digest) {
 			return fmt.Errorf("invalid verified_digests[%q]: %q is not a valid sha256 digest", name, digest)

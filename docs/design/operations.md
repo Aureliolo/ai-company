@@ -1864,8 +1864,11 @@ Backup settings live in the `backup` namespace with runtime editability via `Bac
 ## Container Runtime
 
 SynthOrg ships as five container images to `ghcr.io/aureliolo/synthorg-{backend,web,sandbox,sidecar,fine-tune}`.
-The CLI orchestrates them via Docker Compose, verifies their signatures before starting,
-and pre-pulls the sandbox image on demand.
+The **backend** and **web** images are managed as Docker Compose services by the CLI.
+The **sandbox**, **sidecar**, and **fine-tune** images are not Compose services -- the
+CLI pre-pulls sandbox when requested, and the backend spawns sandbox/sidecar/fine-tune
+containers on demand via the Docker API. The CLI verifies cosign signatures for all
+enabled images (both Compose-managed and on-demand) before starting.
 
 ### Images we publish
 

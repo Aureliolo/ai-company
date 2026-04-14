@@ -25,6 +25,12 @@ class ContainerHandle:
     sidecar_id: NotBlankStr | None = None
     network_mode: str = "none"
 
+    def __post_init__(self) -> None:
+        """Validate invariants at construction time."""
+        if not self.container_id or self.container_id.isspace():
+            msg = "container_id must be non-empty"
+            raise ValueError(msg)
+
 
 @runtime_checkable
 class SandboxLifecycleStrategy(Protocol):
