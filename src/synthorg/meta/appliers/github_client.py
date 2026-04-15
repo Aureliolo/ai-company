@@ -15,6 +15,7 @@ from synthorg.observability import get_logger
 from synthorg.observability.events.meta import (
     META_CODE_BRANCH_CREATED,
     META_CODE_FILE_WRITTEN,
+    META_CODE_GITHUB_API_FAILED,
     META_CODE_PR_CREATED,
 )
 
@@ -130,7 +131,7 @@ class HttpGitHubClient:
                 message,
                 modify=change.operation == CodeOperation.MODIFY,
             )
-        logger.debug(
+        logger.info(
             META_CODE_FILE_WRITTEN,
             operation=change.operation.value,
             file_path=change.file_path,
@@ -186,8 +187,12 @@ class HttpGitHubClient:
         resp = await self._client.delete(
             f"/repos/{self._repo}/git/refs/heads/{name}",
         )
-        # 422 = branch already deleted or never existed -- not an error.
-        if resp.status_code != 422:  # noqa: PLR2004
+        if resp.status_code == 422:  # noqa: PLR2004
+            # Only suppress "reference does not exist" -- other 422s
+            # (e.g. protected branch) should still raise.
+            if not _is_missing_ref(resp):
+                _check_response(resp, f"delete branch '{name}'")
+        else:
             _check_response(resp, f"delete branch '{name}'")
 
     # -- Private helpers ---------------------------------------------------
@@ -260,6 +265,28 @@ class HttpGitHubClient:
         _check_response(resp, f"delete file '{path}'")
 
 
+def _is_missing_ref(resp: httpx.Response) -> bool:
+    """Check if a 422 response indicates a missing git reference.
+
+    Args:
+        resp: The 422 response from GitHub.
+
+    Returns:
+        True if the error is "Reference does not exist".
+    """
+    try:
+        data = resp.json()
+    except ValueError, TypeError:
+        return False
+    msg = data.get("message", "")
+    if "Reference does not exist" in msg:
+        return True
+    for err in data.get("errors", []):
+        if isinstance(err, dict) and err.get("code") == "missing":
+            return True
+    return False
+
+
 def _check_response(resp: httpx.Response, action: str) -> None:
     """Raise RuntimeError on non-2xx responses.
 
@@ -275,7 +302,7 @@ def _check_response(resp: httpx.Response, action: str) -> None:
     body = resp.text[:500] if resp.text else "(empty)"
     msg = f"GitHub API failed to {action}: {resp.status_code} {body}"
     logger.error(
-        "meta.code.github_api_failed",
+        META_CODE_GITHUB_API_FAILED,
         action=action,
         status_code=resp.status_code,
         response_body=body,

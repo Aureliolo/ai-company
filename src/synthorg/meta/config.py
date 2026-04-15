@@ -196,6 +196,13 @@ class CodeModificationConfig(BaseModel):
         default=NotBlankStr("main"),
         description="Default branch to create feature branches from",
     )
+    project_root: NotBlankStr | None = Field(
+        default=None,
+        description=(
+            "Absolute path to the project checkout. "
+            "Defaults to the process working directory when None."
+        ),
+    )
     ci_timeout_seconds: int = Field(default=300, ge=30, le=600)
     api_timeout_seconds: int = Field(
         default=30,

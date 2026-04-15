@@ -57,6 +57,11 @@ class CodeApplier:
         self._ci_validator = ci_validator
         self._github = github_client
         self._config = code_modification_config
+        self._project_root = (
+            Path(str(code_modification_config.project_root))
+            if code_modification_config.project_root
+            else None
+        )
 
     @property
     def altitude(self) -> ProposalAltitude:
@@ -78,7 +83,7 @@ class CodeApplier:
         error = _check_proposal_shape(proposal)
         if error is not None:
             return error
-        project_root = Path.cwd()
+        project_root = self._project_root or Path.cwd()
         branch = f"{self._config.branch_prefix}/{str(proposal.id)[:8]}"
         try:
             return await self._apply_pipeline(
@@ -252,7 +257,7 @@ class CodeApplier:
         error = _check_proposal_shape(proposal)
         if error is not None:
             return error
-        project_root = Path.cwd()
+        project_root = self._project_root or Path.cwd()
         errors: list[str] = []
 
         resolved_root = project_root.resolve()
