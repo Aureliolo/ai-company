@@ -12,7 +12,7 @@ from synthorg.api.controllers.custom_rules import (
     UpdateCustomRuleRequest,
     _build_preview_snapshot,
     _metric_to_dict,
-    _rule_to_dict,
+    rule_to_dict,
 )
 from synthorg.meta.models import ProposalAltitude, RuleSeverity
 from synthorg.meta.rules.custom import (
@@ -121,9 +121,9 @@ class TestPreviewRuleRequest:
 
 
 class TestSerializationHelpers:
-    """Test _rule_to_dict and _metric_to_dict."""
+    """Test rule_to_dict and _metric_to_dict."""
 
-    def test_rule_to_dict(self) -> None:
+    def testrule_to_dict(self) -> None:
         now = datetime.now(UTC)
         defn = CustomRuleDefinition(
             id=uuid4(),
@@ -140,7 +140,7 @@ class TestSerializationHelpers:
             created_at=now,
             updated_at=now,
         )
-        d = _rule_to_dict(defn)
+        d = rule_to_dict(defn)
         assert d["name"] == "test"
         assert d["comparator"] == "gt"
         assert d["severity"] == "info"

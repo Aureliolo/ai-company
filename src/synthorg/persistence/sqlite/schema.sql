@@ -939,12 +939,12 @@ CREATE INDEX idx_training_results_agent
 
 CREATE TABLE custom_rules (
     id TEXT NOT NULL PRIMARY KEY CHECK(length(id) > 0),
-    name TEXT NOT NULL CHECK(length(name) > 0),
-    description TEXT NOT NULL DEFAULT '',
-    metric_path TEXT NOT NULL CHECK(length(metric_path) > 0),
-    comparator TEXT NOT NULL CHECK(length(comparator) > 0),
+    name TEXT NOT NULL CHECK(length(trim(name)) > 0),
+    description TEXT NOT NULL CHECK(length(trim(description)) > 0),
+    metric_path TEXT NOT NULL CHECK(length(trim(metric_path)) > 0),
+    comparator TEXT NOT NULL CHECK(length(trim(comparator)) > 0),
     threshold REAL NOT NULL,
-    severity TEXT NOT NULL CHECK(length(severity) > 0),
+    severity TEXT NOT NULL CHECK(length(trim(severity)) > 0),
     target_altitudes TEXT NOT NULL,  -- JSON array of altitude strings
     enabled INTEGER NOT NULL DEFAULT 1,
     created_at TEXT NOT NULL CHECK(

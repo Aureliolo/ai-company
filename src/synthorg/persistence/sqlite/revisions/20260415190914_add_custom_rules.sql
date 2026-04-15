@@ -2,7 +2,7 @@
 CREATE TABLE `custom_rules` (
   `id` text NOT NULL,
   `name` text NOT NULL,
-  `description` text NOT NULL DEFAULT '',
+  `description` text NOT NULL,
   `metric_path` text NOT NULL,
   `comparator` text NOT NULL,
   `threshold` real NOT NULL,
@@ -13,10 +13,11 @@ CREATE TABLE `custom_rules` (
   `updated_at` text NOT NULL,
   PRIMARY KEY (`id`),
   CHECK (length(id) > 0),
-  CHECK (length(name) > 0),
-  CHECK (length(metric_path) > 0),
-  CHECK (length(comparator) > 0),
-  CHECK (length(severity) > 0),
+  CHECK (length(trim(name)) > 0),
+  CHECK (length(trim(description)) > 0),
+  CHECK (length(trim(metric_path)) > 0),
+  CHECK (length(trim(comparator)) > 0),
+  CHECK (length(trim(severity)) > 0),
   CHECK (
         created_at LIKE '%+00:00' OR created_at LIKE '%Z'
     ),

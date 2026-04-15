@@ -122,7 +122,7 @@ class PreviewRuleRequest(BaseModel):
 # ── Helpers ───────────────────────────────────────────────────────
 
 
-def _rule_to_dict(rule: CustomRuleDefinition) -> dict[str, Any]:
+def rule_to_dict(rule: CustomRuleDefinition) -> dict[str, Any]:
     """Serialize a CustomRuleDefinition for API response."""
     return {
         "id": str(rule.id),
@@ -180,7 +180,7 @@ class CustomRuleController(Controller):
         repo = state.app_state.persistence.custom_rules
         rules = await repo.list_rules()
         return ApiResponse[list[dict[str, Any]]](
-            data=[_rule_to_dict(r) for r in rules],
+            data=[rule_to_dict(r) for r in rules],
         )
 
     @get("/{rule_id:str}")
@@ -203,7 +203,7 @@ class CustomRuleController(Controller):
         if rule is None:
             msg = f"Custom rule {rule_id} not found"
             raise NotFoundException(msg)
-        return ApiResponse[dict[str, Any]](data=_rule_to_dict(rule))
+        return ApiResponse[dict[str, Any]](data=rule_to_dict(rule))
 
     @post("/", guards=[require_write_access], status_code=201)
     async def create_rule(
@@ -246,7 +246,7 @@ class CustomRuleController(Controller):
             rule_name=definition.name,
         )
         return ApiResponse[dict[str, Any]](
-            data=_rule_to_dict(definition),
+            data=rule_to_dict(definition),
         )
 
     @patch("/{rule_id:str}", guards=[require_write_access])
@@ -288,7 +288,7 @@ class CustomRuleController(Controller):
             rule_name=updated.name,
         )
         return ApiResponse[dict[str, Any]](
-            data=_rule_to_dict(updated),
+            data=rule_to_dict(updated),
         )
 
     @delete(
@@ -350,7 +350,7 @@ class CustomRuleController(Controller):
             enabled=toggled.enabled,
         )
         return ApiResponse[dict[str, Any]](
-            data=_rule_to_dict(toggled),
+            data=rule_to_dict(toggled),
         )
 
     @get("/metrics")

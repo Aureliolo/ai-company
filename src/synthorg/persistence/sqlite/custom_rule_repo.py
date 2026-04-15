@@ -51,7 +51,11 @@ def _row_to_definition(row: Row) -> CustomRuleDefinition:
     except (json.JSONDecodeError, ValueError, TypeError, KeyError) as exc:
         row_id = str(row[0]) if row else "<unknown>"
         msg = f"Failed to parse custom rule row {row_id!r}: {exc}"
-        logger.exception(msg, row_id=row_id, error=str(exc))
+        logger.exception(
+            META_CUSTOM_RULE_FETCH_FAILED,
+            row_id=row_id,
+            error=msg,
+        )
         raise QueryError(msg) from exc
 
 

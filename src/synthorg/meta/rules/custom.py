@@ -11,13 +11,13 @@ domain, bounds, unit, nullability).
 
 import operator as _operator
 from enum import StrEnum
+from types import MappingProxyType
 from typing import TYPE_CHECKING, Any, Literal
-
-if TYPE_CHECKING:
-    from collections.abc import Callable
 from uuid import UUID, uuid4
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from synthorg.persistence.custom_rule_repo import CustomRuleRepository
 
 from pydantic import (
@@ -63,23 +63,27 @@ class Comparator(StrEnum):
         return _COMPARATOR_SYMBOLS[self]
 
 
-_COMPARATOR_OPS = {
-    Comparator.LT: _operator.lt,
-    Comparator.LE: _operator.le,
-    Comparator.GT: _operator.gt,
-    Comparator.GE: _operator.ge,
-    Comparator.EQ: _operator.eq,
-    Comparator.NE: _operator.ne,
-}
+_COMPARATOR_OPS = MappingProxyType(
+    {
+        Comparator.LT: _operator.lt,
+        Comparator.LE: _operator.le,
+        Comparator.GT: _operator.gt,
+        Comparator.GE: _operator.ge,
+        Comparator.EQ: _operator.eq,
+        Comparator.NE: _operator.ne,
+    }
+)
 
-_COMPARATOR_SYMBOLS = {
-    Comparator.LT: "<",
-    Comparator.LE: "<=",
-    Comparator.GT: ">",
-    Comparator.GE: ">=",
-    Comparator.EQ: "==",
-    Comparator.NE: "!=",
-}
+_COMPARATOR_SYMBOLS = MappingProxyType(
+    {
+        Comparator.LT: "<",
+        Comparator.LE: "<=",
+        Comparator.GT: ">",
+        Comparator.GE: ">=",
+        Comparator.EQ: "==",
+        Comparator.NE: "!=",
+    }
+)
 
 
 # ── MetricDescriptor ─────────────────────────────────────────────

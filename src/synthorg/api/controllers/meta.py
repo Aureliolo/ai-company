@@ -6,7 +6,7 @@ from litestar import Controller, get, post
 from litestar.datastructures import State  # noqa: TC002
 from litestar.exceptions import NotFoundException
 
-from synthorg.api.controllers.custom_rules import _rule_to_dict
+from synthorg.api.controllers.custom_rules import rule_to_dict
 from synthorg.api.dto import ApiResponse
 from synthorg.api.guards import require_org_mutation, require_read_access
 from synthorg.meta.config import SelfImprovementConfig
@@ -80,7 +80,7 @@ class MetaController(Controller):
                 error=str(exc),
             )
         else:
-            rule_list.extend({**_rule_to_dict(cr), "type": "custom"} for cr in custom)
+            rule_list.extend({**rule_to_dict(cr), "type": "custom"} for cr in custom)
         return ApiResponse[list[dict[str, Any]]](data=rule_list)
 
     @get("/mcp/tools")

@@ -906,7 +906,12 @@ class PostgresPersistenceBackend:
                 the Postgres backend yet.
         """
         msg = "custom_rules repository not yet ported to Postgres"
-        logger.warning(msg)
+        logger.warning(
+            PERSISTENCE_BACKEND_NOT_CONNECTED,
+            repository="custom_rules",
+            backend="postgres",
+            error=msg,
+        )
         raise NotImplementedError(msg)
 
     async def get_setting(self, key: NotBlankStr) -> str | None:
