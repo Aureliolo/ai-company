@@ -1,0 +1,14 @@
+name: CIS Docker Benchmark
+description: Run CIS Docker Benchmark v1.6.0 compliance check against a container image
+
+inputs:
+  image-ref:
+    description: "Full image reference to scan (e.g. ghcr.io/aureliolo/synthorg-backend:sha-abc1234)"
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: CIS Docker Benchmark
+      shell: bash
+      run: scripts/cis-scan.sh "${{ inputs.image-ref }}"

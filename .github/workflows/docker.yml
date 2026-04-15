@@ -402,7 +402,9 @@ jobs:
           category: trivy-backend
 
       - name: CIS Docker Benchmark (backend)
-        run: scripts/cis-scan.sh "${{ steps.scan-ref.outputs.ref }}"
+        uses: ./.github/actions/cis-scan
+        with:
+          image-ref: ${{ steps.scan-ref.outputs.ref }}
 
       # Push only after scans pass -- prevents publishing vulnerable images.
       # NOTE: This is a separate build invocation from the scan step. GHA cache
@@ -650,6 +652,11 @@ jobs:
           sarif_file: trivy-web.sarif
           category: trivy-web
 
+      - name: CIS Docker Benchmark (web)
+        uses: ./.github/actions/cis-scan
+        with:
+          image-ref: ${{ steps.scan-ref.outputs.ref }}
+
       - name: Push web image (multi-arch manifest)
         if: github.event_name != 'pull_request'
         id: push
@@ -872,7 +879,9 @@ jobs:
           category: trivy-sandbox
 
       - name: CIS Docker Benchmark (sandbox)
-        run: scripts/cis-scan.sh "${{ steps.scan-ref.outputs.ref }}"
+        uses: ./.github/actions/cis-scan
+        with:
+          image-ref: ${{ steps.scan-ref.outputs.ref }}
 
       # Push only after scans pass -- prevents publishing vulnerable images.
       # NOTE: Separate build invocation; GHA cache ensures deterministic layers,
@@ -1072,7 +1081,9 @@ jobs:
           category: trivy-sidecar
 
       - name: CIS Docker Benchmark (sidecar)
-        run: scripts/cis-scan.sh "${{ steps.scan-ref.outputs.ref }}"
+        uses: ./.github/actions/cis-scan
+        with:
+          image-ref: ${{ steps.scan-ref.outputs.ref }}
 
       - name: Push image
         if: github.event_name != 'pull_request'
@@ -1265,7 +1276,9 @@ jobs:
           category: trivy-fine-tune
 
       - name: CIS Docker Benchmark (fine-tune)
-        run: scripts/cis-scan.sh "${{ steps.scan-ref.outputs.ref }}"
+        uses: ./.github/actions/cis-scan
+        with:
+          image-ref: ${{ steps.scan-ref.outputs.ref }}
 
       - name: Push image
         if: github.event_name != 'pull_request'
