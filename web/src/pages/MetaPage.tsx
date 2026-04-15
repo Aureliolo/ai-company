@@ -1,4 +1,4 @@
-import { Brain, RefreshCw, Settings2, Shield } from 'lucide-react'
+import { Brain, FlaskConical, RefreshCw, Settings2, Shield } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import { EmptyState } from '@/components/ui/empty-state'
@@ -6,6 +6,7 @@ import { ErrorBoundary } from '@/components/ui/error-boundary'
 import { MetricCard } from '@/components/ui/metric-card'
 import { SectionCard } from '@/components/ui/section-card'
 
+import { MetaABTestView, type ABTestSummary } from './meta/MetaABTestView'
 import { MetaProposalList, type ProposalSummary } from './meta/MetaProposalList'
 import { MetaRuleStatus } from './meta/MetaRuleStatus'
 import { MetaSignalOverview } from './meta/MetaSignalOverview'
@@ -15,6 +16,7 @@ export default function MetaPage() {
   const loading = false
   const enabled = false
   const proposals: ProposalSummary[] = []
+  const abTests: ABTestSummary[] = []
 
   if (!enabled) {
     return (
@@ -61,6 +63,10 @@ export default function MetaPage() {
             <MetaRuleStatus />
           </SectionCard>
         </div>
+
+        <SectionCard title="A/B Tests" icon={FlaskConical}>
+          <MetaABTestView tests={abTests} />
+        </SectionCard>
 
         <SectionCard title="Improvement Proposals" icon={Brain}>
           <MetaProposalList proposals={proposals} />

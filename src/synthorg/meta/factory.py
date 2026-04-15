@@ -19,6 +19,7 @@ from synthorg.meta.guards.rate_limit import RateLimitGuard
 from synthorg.meta.guards.rollback_plan import RollbackPlanGuard
 from synthorg.meta.guards.scope_check import ScopeCheckGuard
 from synthorg.meta.models import ProposalAltitude
+from synthorg.meta.rollout.ab_test import ABTestRollout
 from synthorg.meta.rollout.before_after import BeforeAfterRollout
 from synthorg.meta.rollout.canary import CanarySubsetRollout
 from synthorg.meta.rollout.regression.composite import (
@@ -159,19 +160,34 @@ def build_regression_detector() -> TieredRegressionDetector:
     return TieredRegressionDetector()
 
 
-def build_rollout_strategies() -> Mapping[
-    str, BeforeAfterRollout | CanarySubsetRollout
-]:
+def build_rollout_strategies(
+    config: SelfImprovementConfig | None = None,
+) -> Mapping[str, BeforeAfterRollout | CanarySubsetRollout | ABTestRollout]:
     """Build available rollout strategies.
+
+    Args:
+        config: Self-improvement configuration. When provided,
+            A/B test strategy uses its rollout.ab_test settings.
 
     Returns:
         Read-only mapping of strategy name to rollout strategy.
     """
+    ab_cfg = config.rollout.ab_test if config else None
     return MappingProxyType(
         deepcopy(
             {
                 "before_after": BeforeAfterRollout(),
                 "canary": CanarySubsetRollout(),
+                "ab_test": ABTestRollout(
+                    control_fraction=(ab_cfg.control_fraction if ab_cfg else 0.5),
+                    min_agents_per_group=(ab_cfg.min_agents_per_group if ab_cfg else 5),
+                    min_observations_per_group=(
+                        ab_cfg.min_observations_per_group if ab_cfg else 10
+                    ),
+                    improvement_threshold=(
+                        ab_cfg.improvement_threshold if ab_cfg else 0.15
+                    ),
+                ),
             }
         )
     )

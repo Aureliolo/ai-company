@@ -143,8 +143,10 @@ class TestBuildRegressionDetector:
 class TestBuildRolloutStrategies:
     """Rollout strategy factory tests."""
 
-    def test_builds_2_strategies(self) -> None:
+    def test_builds_3_strategies(self) -> None:
         strategies = build_rollout_strategies()
-        assert len(strategies) == 2
-        assert "before_after" in strategies
-        assert "canary" in strategies
+        assert set(strategies.keys()) == {
+            "before_after",
+            "canary",
+            "ab_test",
+        }

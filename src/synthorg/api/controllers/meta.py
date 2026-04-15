@@ -3,6 +3,7 @@
 from typing import Any
 
 from litestar import Controller, get, post
+from litestar.exceptions import NotFoundException
 
 from synthorg.api.dto import ApiResponse
 from synthorg.api.guards import require_org_mutation, require_read_access
@@ -95,6 +96,36 @@ class MetaController(Controller):
         return ApiResponse[dict[str, object]](
             data=get_server_config(),
         )
+
+    @get("/ab-tests")
+    async def list_ab_tests(
+        self,
+    ) -> ApiResponse[list[dict[str, Any]]]:
+        """List active A/B tests with status and current metrics.
+
+        Returns:
+            List of active A/B test summaries.
+        """
+        # TODO: wire to actual A/B test state once observation
+        # loop and persistence are implemented.
+        return ApiResponse[list[dict[str, Any]]](data=[])
+
+    @get("/ab-tests/{proposal_id:str}")
+    async def get_ab_test_detail(
+        self,
+        proposal_id: str,
+    ) -> ApiResponse[dict[str, Any]]:
+        """Get detailed A/B test status for a specific proposal.
+
+        Args:
+            proposal_id: UUID of the proposal under A/B test.
+
+        Returns:
+            A/B test detail including group metrics and verdict.
+        """
+        # TODO: wire to actual A/B test state.
+        msg = f"No active A/B test for proposal {proposal_id}"
+        raise NotFoundException(msg)
 
     @post("/cycle", guards=[require_org_mutation()])
     async def trigger_cycle(
