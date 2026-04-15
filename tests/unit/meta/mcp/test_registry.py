@@ -24,25 +24,28 @@ class TestMCPToolDef:
         assert tool.capability == "test:read"
         assert tool.handler_key == "synthorg_test_get"
 
-    def test_rejects_blank_name(self) -> None:
-        with pytest.raises(ValidationError):
-            make_tool(name="")
-
-    def test_rejects_blank_description(self) -> None:
-        with pytest.raises(ValidationError):
-            make_tool(description="")
-
-    def test_rejects_whitespace_name(self) -> None:
-        with pytest.raises(ValidationError):
-            make_tool(name="   ")
-
-    def test_rejects_name_without_prefix(self) -> None:
-        with pytest.raises(ValidationError, match="synthorg_"):
-            make_tool(name="invalid_name")
-
-    def test_rejects_bad_capability_format(self) -> None:
-        with pytest.raises(ValidationError, match="domain:action"):
-            make_tool(capability="no_colon")
+    @pytest.mark.parametrize(
+        ("overrides", "match"),
+        [
+            ({"name": ""}, None),
+            ({"name": "   "}, None),
+            ({"name": "invalid_name"}, "synthorg_"),
+            ({"description": ""}, None),
+            ({"capability": "no_colon"}, "domain:action"),
+        ],
+        ids=[
+            "blank-name",
+            "whitespace-name",
+            "name-without-prefix",
+            "blank-description",
+            "bad-capability-format",
+        ],
+    )
+    def test_rejects_invalid_fields(
+        self, overrides: dict[str, str], match: str | None
+    ) -> None:
+        with pytest.raises(ValidationError, match=match):
+            make_tool(**overrides)
 
 
 class TestDomainToolRegistry:
