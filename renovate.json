@@ -18,8 +18,8 @@
   "prHourlyLimit": 5,
   "packageRules": [
     {
-      "description": "Python dependencies (uv + pre-commit)",
-      "matchManagers": ["uv", "pre-commit"],
+      "description": "Python dependencies (pep621 + pre-commit)",
+      "matchManagers": ["pep621", "pre-commit"],
       "groupName": "Python dependencies",
       "groupSlug": "python",
       "additionalBranchPrefix": "",
@@ -108,6 +108,10 @@
       "enabled": false
     }
   ],
+  "lockFileMaintenance": {
+    "enabled": true,
+    "schedule": ["before 7am on monday"]
+  },
   "customManagers": [
     {
       "customType": "regex",
