@@ -1,5 +1,62 @@
 # Changelog
 
+## [0.6.8](https://github.com/Aureliolo/synthorg/compare/v0.6.7...v0.6.8) (2026-04-15)
+
+
+### Features
+
+* A2A external gateway implementation ([#1335](https://github.com/Aureliolo/synthorg/issues/1335)) ([d96c712](https://github.com/Aureliolo/synthorg/commit/d96c712eebc65985e42f3551987ba63292722298)), closes [#1164](https://github.com/Aureliolo/synthorg/issues/1164)
+* async task protocol with citation tracking + cross-agent skill pool ([#1312](https://github.com/Aureliolo/synthorg/issues/1312)) ([13125fd](https://github.com/Aureliolo/synthorg/commit/13125fd054f199dccb4f3c5c84029abe36bbce81)), closes [#1264](https://github.com/Aureliolo/synthorg/issues/1264) [#1246](https://github.com/Aureliolo/synthorg/issues/1246)
+* **communication:** AG-UI event stream + Evidence Package schema ([#1294](https://github.com/Aureliolo/synthorg/issues/1294)) ([3baa1b9](https://github.com/Aureliolo/synthorg/commit/3baa1b917b2382edd08f354eefb74093dab3dd56)), closes [#1263](https://github.com/Aureliolo/synthorg/issues/1263)
+* container supply chain alignment -- full image parity, fine-tune image, sandbox lifecycle, CLI UX ([#1337](https://github.com/Aureliolo/synthorg/issues/1337)) ([01a5709](https://github.com/Aureliolo/synthorg/commit/01a57090a2e259e8ef7fe34622f4f95c5785e172)), closes [#1336](https://github.com/Aureliolo/synthorg/issues/1336)
+* **engine:** brain/hands/session decoupling + stateless session recovery ([#1292](https://github.com/Aureliolo/synthorg/issues/1292)) ([7a484d8](https://github.com/Aureliolo/synthorg/commit/7a484d86db7a90fe8dd98bc2aa346810f84f6c1e)), closes [#1261](https://github.com/Aureliolo/synthorg/issues/1261)
+* **hr/eval:** close trace-eval-pattern-fix loop with behavior tagging ([#1301](https://github.com/Aureliolo/synthorg/issues/1301)) ([933c406](https://github.com/Aureliolo/synthorg/commit/933c406052f4c1c2f6cf4947cbfaac7bf8c48fac)), closes [#1265](https://github.com/Aureliolo/synthorg/issues/1265)
+* implement self-improving company meta-loop ([#255](https://github.com/Aureliolo/synthorg/issues/255)) ([#1345](https://github.com/Aureliolo/synthorg/issues/1345)) ([d1bb15d](https://github.com/Aureliolo/synthorg/commit/d1bb15d4c0464d8e15cbf680c68db94f17f2255f))
+* persist training plans and wire TrainingService into AppState ([#1293](https://github.com/Aureliolo/synthorg/issues/1293)) ([da9a3e2](https://github.com/Aureliolo/synthorg/commit/da9a3e26927b2d4eb369fcb44d4b895a93a8c1ed)), closes [#1242](https://github.com/Aureliolo/synthorg/issues/1242)
+* progressive L1/L2/L3 tool disclosure ([#1245](https://github.com/Aureliolo/synthorg/issues/1245)) ([#1300](https://github.com/Aureliolo/synthorg/issues/1300)) ([2f60736](https://github.com/Aureliolo/synthorg/commit/2f60736f502edb17e2727bcfed39f212b4cf0cee))
+* **security:** policy engine + OWASP coverage audit + threat model + quantum-safe audit trail ([#1314](https://github.com/Aureliolo/synthorg/issues/1314)) ([a0966a6](https://github.com/Aureliolo/synthorg/commit/a0966a668449f41419834776717569bd8b8f012c)), closes [#1268](https://github.com/Aureliolo/synthorg/issues/1268)
+* ship sandbox/sidecar container logs to observability stack + NATS 2.12 review ([#1313](https://github.com/Aureliolo/synthorg/issues/1313)) ([9e5f16a](https://github.com/Aureliolo/synthorg/commit/9e5f16a5d79fb3f7f58a3f5e1728911fe73beed0)), closes [#1303](https://github.com/Aureliolo/synthorg/issues/1303) [#1298](https://github.com/Aureliolo/synthorg/issues/1298)
+* sidecar network proxy for fully rootless sandbox ([#1302](https://github.com/Aureliolo/synthorg/issues/1302)) ([ddcf815](https://github.com/Aureliolo/synthorg/commit/ddcf8155d4014be0f9e2d65ff08b2e6877bcb458)), closes [#1287](https://github.com/Aureliolo/synthorg/issues/1287)
+
+
+### Bug Fixes
+
+* **ci:** prevent transitive skip propagation in Docker workflow ([#1296](https://github.com/Aureliolo/synthorg/issues/1296)) ([2313326](https://github.com/Aureliolo/synthorg/commit/231332604080fd3a35e513376276646560dabfb1))
+* **deps:** update dependency litellm to v1.83.7 ([#1318](https://github.com/Aureliolo/synthorg/issues/1318)) ([1bab6da](https://github.com/Aureliolo/synthorg/commit/1bab6da8d5d718ef1781ef6832a8810db38ed2bb))
+* **deps:** update dependency packaging to v26.1 ([#1349](https://github.com/Aureliolo/synthorg/issues/1349)) ([66f2084](https://github.com/Aureliolo/synthorg/commit/66f20843f539026c55a47c4b21b597c3944e9775))
+* **deps:** update dependency sentence-transformers to v5.4.1 ([#1333](https://github.com/Aureliolo/synthorg/issues/1333)) ([7ce917d](https://github.com/Aureliolo/synthorg/commit/7ce917da50150dea17b7e156e1e5229290ae31c5))
+* migrate deprecated Renovate config to v43+ syntax ([#1305](https://github.com/Aureliolo/synthorg/issues/1305)) ([62306d8](https://github.com/Aureliolo/synthorg/commit/62306d83b67f9c7ecea24572453354293a907f9c)), closes [#1304](https://github.com/Aureliolo/synthorg/issues/1304)
+* use pep621 manager and enable lock file maintenance in Renovate ([#1351](https://github.com/Aureliolo/synthorg/issues/1351)) ([71af17c](https://github.com/Aureliolo/synthorg/commit/71af17c87d65b1e78df0cb20027742469ba0eed4))
+
+
+### CI/CD
+
+* harden Docker pipeline -- drop Grype, non-root sidecar, HTTP healthchecks, CIS enforcement ([#1350](https://github.com/Aureliolo/synthorg/issues/1350)) ([ec289c5](https://github.com/Aureliolo/synthorg/commit/ec289c51c5c945b586e84971090117cb202585c7))
+* replace Dependabot with Renovate + CI adaptations ([#1299](https://github.com/Aureliolo/synthorg/issues/1299)) ([ef67700](https://github.com/Aureliolo/synthorg/commit/ef67700510e80ef4b0bd0b4bf0d9283acdb7dba8)), closes [#1291](https://github.com/Aureliolo/synthorg/issues/1291)
+* Update CI tool dependencies ([#1320](https://github.com/Aureliolo/synthorg/issues/1320)) ([d0175ac](https://github.com/Aureliolo/synthorg/commit/d0175acf93d40663563d4b1f28bb35aab977f0cf))
+* Update CI tool dependencies (major) ([#1322](https://github.com/Aureliolo/synthorg/issues/1322)) ([2a806b4](https://github.com/Aureliolo/synthorg/commit/2a806b48d8b752928596aea518f116fc91a8b59d))
+
+
+### Maintenance
+
+* bump follow-redirects from 1.15.11 to 1.16.0 in /web in the npm_and_yarn group across 1 directory ([#1323](https://github.com/Aureliolo/synthorg/issues/1323)) ([bf5c708](https://github.com/Aureliolo/synthorg/commit/bf5c708415c2088a8e3e8fea3b687febcb7a1c25))
+* bump Renovate prHourlyLimit to 5 ([#1317](https://github.com/Aureliolo/synthorg/issues/1317)) ([59f2376](https://github.com/Aureliolo/synthorg/commit/59f2376cdc314ec2731ca50a585a60a55c132616))
+* **deps:** update dependency hypothesis to v6.151.14 ([#1316](https://github.com/Aureliolo/synthorg/issues/1316)) ([3cfcbdc](https://github.com/Aureliolo/synthorg/commit/3cfcbdc6e15dbf208b18e318401529e227ac5c9d))
+* **deps:** update dependency hypothesis to v6.152.0 ([#1338](https://github.com/Aureliolo/synthorg/issues/1338)) ([a847526](https://github.com/Aureliolo/synthorg/commit/a84752606605a8e8f5c8ab30f4533d595f79c813))
+* **deps:** update dependency hypothesis to v6.152.1 ([#1348](https://github.com/Aureliolo/synthorg/issues/1348)) ([39627c2](https://github.com/Aureliolo/synthorg/commit/39627c24441772065caa99f3ab59d72461baacaf))
+* **deps:** update dependency zensical to v0.0.33 ([#1329](https://github.com/Aureliolo/synthorg/issues/1329)) ([9b5c159](https://github.com/Aureliolo/synthorg/commit/9b5c1599ba64d1b399ba7f7d7864541773f7325f))
+* disable Renovate pinning of requires-python ([#1327](https://github.com/Aureliolo/synthorg/issues/1327)) ([e37bb6c](https://github.com/Aureliolo/synthorg/commit/e37bb6cfa0bf919393305fbe8c9b367ad4b9148f))
+* enable Renovate pre-commit manager ([#1307](https://github.com/Aureliolo/synthorg/issues/1307)) ([2d99cad](https://github.com/Aureliolo/synthorg/commit/2d99cad44b55b30da50d2a2b0f76e36567ecd8fb))
+* ignore cli/testdata/ in Renovate (golden files, not real configs) ([#1330](https://github.com/Aureliolo/synthorg/issues/1330)) ([7ca3c8e](https://github.com/Aureliolo/synthorg/commit/7ca3c8e54003d6cf9e73b44a8c99470b2f043098))
+* major dependency upgrades (Charm v2 + framer-motion to motion) ([#1332](https://github.com/Aureliolo/synthorg/issues/1332)) ([66b1e5a](https://github.com/Aureliolo/synthorg/commit/66b1e5ab45ef88a7bfbb3dce617c3a30da4dc7e7))
+* Pin dependencies ([#1310](https://github.com/Aureliolo/synthorg/issues/1310)) ([63cddd5](https://github.com/Aureliolo/synthorg/commit/63cddd5579c69abaca8ca47501f433e4b7539465))
+* Update CLI dependencies ([#1315](https://github.com/Aureliolo/synthorg/issues/1315)) ([479f9e2](https://github.com/Aureliolo/synthorg/commit/479f9e2f527d524fcd419b558fd5a0d97b2b7217))
+* Update Container dependencies ([#1319](https://github.com/Aureliolo/synthorg/issues/1319)) ([eb4d1a9](https://github.com/Aureliolo/synthorg/commit/eb4d1a9a35370391699ce46f55a8ee3a79540e54))
+* Update dependency goreleaser/goreleaser to v2.15.3 ([#1346](https://github.com/Aureliolo/synthorg/issues/1346)) ([da874da](https://github.com/Aureliolo/synthorg/commit/da874da8944062d017ac45b749ce3de96ffe56e0))
+* Update nats Docker tag to v2.12.7 ([#1347](https://github.com/Aureliolo/synthorg/issues/1347)) ([422b554](https://github.com/Aureliolo/synthorg/commit/422b5542c461cd1bbd8b38f86c247081272c0ca2))
+* Update Web dependencies ([#1324](https://github.com/Aureliolo/synthorg/issues/1324)) ([d1b0183](https://github.com/Aureliolo/synthorg/commit/d1b018326c0fae801856419f573c25bd0da203aa))
+* **web:** adopt Base UI Drawer + feat: NATS 2.11/2.12 TTL and batch publishes ([#1334](https://github.com/Aureliolo/synthorg/issues/1334)) ([f2afde1](https://github.com/Aureliolo/synthorg/commit/f2afde174c741c05e86c4083431fabca4e32a539)), closes [#1326](https://github.com/Aureliolo/synthorg/issues/1326) [#1308](https://github.com/Aureliolo/synthorg/issues/1308)
+
 ## [0.6.7](https://github.com/Aureliolo/synthorg/compare/v0.6.6...v0.6.7) (2026-04-13)
 
 
