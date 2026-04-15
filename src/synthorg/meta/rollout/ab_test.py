@@ -57,6 +57,7 @@ class ABTestRollout:
         *,
         control_fraction: float = 0.5,
         min_agents_per_group: int = 5,
+        min_observations_per_group: int = 10,
         improvement_threshold: float = 0.15,
         comparator: ABTestComparator | None = None,
     ) -> None:
@@ -69,6 +70,7 @@ class ABTestRollout:
         self._control_fraction = control_fraction
         self._min_agents_per_group = min_agents_per_group
         self._comparator = comparator or ABTestComparator(
+            min_observations=min_observations_per_group,
             improvement_threshold=improvement_threshold,
         )
 

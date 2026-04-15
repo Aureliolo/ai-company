@@ -181,6 +181,9 @@ def build_rollout_strategies(
                 "ab_test": ABTestRollout(
                     control_fraction=(ab_cfg.control_fraction if ab_cfg else 0.5),
                     min_agents_per_group=(ab_cfg.min_agents_per_group if ab_cfg else 5),
+                    min_observations_per_group=(
+                        ab_cfg.min_observations_per_group if ab_cfg else 10
+                    ),
                     improvement_threshold=(
                         ab_cfg.improvement_threshold if ab_cfg else 0.15
                     ),
