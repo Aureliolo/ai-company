@@ -5,20 +5,23 @@ Covers MCP catalog, OAuth, clients, artifacts, and ontology.
 
 from typing import TYPE_CHECKING
 
-from synthorg.meta.mcp.tool_builder import admin_tool, read_tool, write_tool
+from synthorg.meta.mcp.tool_builder import (
+    PAGINATION_PROPERTIES,
+    admin_tool,
+    read_tool,
+    write_tool,
+)
 
 if TYPE_CHECKING:
     from synthorg.meta.mcp.registry import MCPToolDef
 
-_PAGINATION = {
-    "offset": {"type": "integer", "description": "Pagination offset", "default": 0},
-    "limit": {"type": "integer", "description": "Page size", "default": 50},
-}
-
 INTEGRATION_TOOLS: tuple[MCPToolDef, ...] = (
     # --- MCP catalog ---
     read_tool(
-        "mcp_catalog", "list", "List available MCP server catalog entries.", _PAGINATION
+        "mcp_catalog",
+        "list",
+        "List available MCP server catalog entries.",
+        PAGINATION_PROPERTIES,
     ),
     read_tool(
         "mcp_catalog",
@@ -78,7 +81,7 @@ INTEGRATION_TOOLS: tuple[MCPToolDef, ...] = (
         required=("provider",),
     ),
     # --- Clients ---
-    read_tool("clients", "list", "List API clients.", _PAGINATION),
+    read_tool("clients", "list", "List API clients.", PAGINATION_PROPERTIES),
     read_tool(
         "clients",
         "get",
@@ -124,7 +127,7 @@ INTEGRATION_TOOLS: tuple[MCPToolDef, ...] = (
             "task_id": {"type": "string", "description": "Filter by task"},
             "created_by": {"type": "string", "description": "Filter by creator"},
             "type": {"type": "string", "description": "Filter by artifact type"},
-            **_PAGINATION,
+            **PAGINATION_PROPERTIES,
         },
     ),
     read_tool(
@@ -157,7 +160,9 @@ INTEGRATION_TOOLS: tuple[MCPToolDef, ...] = (
         required=("artifact_id",),
     ),
     # --- Ontology ---
-    read_tool("ontology", "list_entities", "List ontology entities.", _PAGINATION),
+    read_tool(
+        "ontology", "list_entities", "List ontology entities.", PAGINATION_PROPERTIES
+    ),
     read_tool(
         "ontology",
         "get_entity",

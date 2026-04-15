@@ -1,6 +1,7 @@
 """Unit tests for MCP tool builder helpers."""
 
 import pytest
+from pydantic import ValidationError
 
 from synthorg.meta.mcp.tool_builder import (
     admin_tool,
@@ -103,3 +104,31 @@ class TestAdminTool:
     def test_name_convention(self) -> None:
         t = admin_tool("backup", "create", "Create backup")
         assert t.name == "synthorg_backup_create"
+
+
+class TestToolDefValidation:
+    """Tests for invalid inputs that should be rejected by validators."""
+
+    def test_uppercase_domain_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="synthorg_"):
+            tool_def("Tasks", "list", "List tasks")
+
+    def test_uppercase_action_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="synthorg_"):
+            tool_def("tasks", "List", "List tasks")
+
+    def test_empty_domain_rejected(self) -> None:
+        with pytest.raises(ValidationError):
+            tool_def("", "list", "List tasks")
+
+    def test_empty_action_rejected(self) -> None:
+        with pytest.raises(ValidationError):
+            tool_def("tasks", "", "List tasks")
+
+    def test_domain_with_spaces_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="synthorg_"):
+            tool_def("my tasks", "list", "List tasks")
+
+    def test_domain_starting_with_digit_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="synthorg_"):
+            tool_def("1tasks", "list", "List tasks")

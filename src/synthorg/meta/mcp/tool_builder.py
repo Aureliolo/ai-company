@@ -9,6 +9,23 @@ from typing import Any
 
 from synthorg.meta.mcp.registry import MCPToolDef
 
+PAGINATION_PROPERTIES: dict[str, Any] = {
+    "offset": {
+        "type": "integer",
+        "description": "Pagination offset",
+        "default": 0,
+        "minimum": 0,
+    },
+    "limit": {
+        "type": "integer",
+        "description": "Page size",
+        "default": 50,
+        "minimum": 1,
+        "maximum": 1000,
+    },
+}
+"""Shared pagination schema with bounds for all domain list tools."""
+
 
 def _make_parameters(
     properties: dict[str, Any] | None = None,
@@ -50,7 +67,8 @@ def tool_def(  # noqa: PLR0913
         description: Human-readable tool description.
         properties: JSON Schema properties for parameters.
         required: Required parameter names.
-        capability_action: Capability action tag (``"read"`` or ``"write"``).
+        capability_action: Capability action tag (``"read"``, ``"write"``,
+            or ``"admin"``).
 
     Returns:
         Frozen ``MCPToolDef`` instance.

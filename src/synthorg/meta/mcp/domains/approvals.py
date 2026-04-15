@@ -2,15 +2,14 @@
 
 from typing import TYPE_CHECKING
 
-from synthorg.meta.mcp.tool_builder import read_tool, write_tool
+from synthorg.meta.mcp.tool_builder import (
+    PAGINATION_PROPERTIES,
+    read_tool,
+    write_tool,
+)
 
 if TYPE_CHECKING:
     from synthorg.meta.mcp.registry import MCPToolDef
-
-_PAGINATION = {
-    "offset": {"type": "integer", "description": "Pagination offset", "default": 0},
-    "limit": {"type": "integer", "description": "Page size", "default": 50},
-}
 
 APPROVAL_TOOLS: tuple[MCPToolDef, ...] = (
     read_tool(
@@ -21,7 +20,7 @@ APPROVAL_TOOLS: tuple[MCPToolDef, ...] = (
             "status": {"type": "string", "description": "Filter by approval status"},
             "risk_level": {"type": "string", "description": "Filter by risk level"},
             "action_type": {"type": "string", "description": "Filter by action type"},
-            **_PAGINATION,
+            **PAGINATION_PROPERTIES,
         },
     ),
     read_tool(

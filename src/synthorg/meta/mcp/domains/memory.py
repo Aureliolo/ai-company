@@ -5,15 +5,10 @@ Covers memory admin controller (fine-tuning, checkpoints, embedder).
 
 from typing import TYPE_CHECKING
 
-from synthorg.meta.mcp.tool_builder import admin_tool, read_tool
+from synthorg.meta.mcp.tool_builder import PAGINATION_PROPERTIES, admin_tool, read_tool
 
 if TYPE_CHECKING:
     from synthorg.meta.mcp.registry import MCPToolDef
-
-_PAGINATION = {
-    "offset": {"type": "integer", "description": "Pagination offset", "default": 0},
-    "limit": {"type": "integer", "description": "Page size", "default": 50},
-}
 
 MEMORY_TOOLS: tuple[MCPToolDef, ...] = (
     # --- Fine-tuning ---
@@ -50,7 +45,12 @@ MEMORY_TOOLS: tuple[MCPToolDef, ...] = (
         },
     ),
     # --- Checkpoints ---
-    read_tool("memory", "list_checkpoints", "List fine-tune checkpoints.", _PAGINATION),
+    read_tool(
+        "memory",
+        "list_checkpoints",
+        "List fine-tune checkpoints.",
+        PAGINATION_PROPERTIES,
+    ),
     admin_tool(
         "memory",
         "deploy_checkpoint",
@@ -79,7 +79,9 @@ MEMORY_TOOLS: tuple[MCPToolDef, ...] = (
         required=("checkpoint_id",),
     ),
     # --- Runs ---
-    read_tool("memory", "list_runs", "List fine-tune pipeline runs.", _PAGINATION),
+    read_tool(
+        "memory", "list_runs", "List fine-tune pipeline runs.", PAGINATION_PROPERTIES
+    ),
     # --- Embedder ---
     read_tool(
         "memory",

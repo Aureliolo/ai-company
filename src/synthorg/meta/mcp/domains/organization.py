@@ -5,15 +5,10 @@ Covers company, company versions, departments, teams, and role versions.
 
 from typing import TYPE_CHECKING
 
-from synthorg.meta.mcp.tool_builder import read_tool, write_tool
+from synthorg.meta.mcp.tool_builder import PAGINATION_PROPERTIES, read_tool, write_tool
 
 if TYPE_CHECKING:
     from synthorg.meta.mcp.registry import MCPToolDef
-
-_PAGINATION = {
-    "offset": {"type": "integer", "description": "Pagination offset", "default": 0},
-    "limit": {"type": "integer", "description": "Page size", "default": 50},
-}
 
 ORGANIZATION_TOOLS: tuple[MCPToolDef, ...] = (
     # --- Company ---
@@ -42,7 +37,10 @@ ORGANIZATION_TOOLS: tuple[MCPToolDef, ...] = (
     ),
     # --- Company versions ---
     read_tool(
-        "company_versions", "list", "List company configuration versions.", _PAGINATION
+        "company_versions",
+        "list",
+        "List company configuration versions.",
+        PAGINATION_PROPERTIES,
     ),
     read_tool(
         "company_versions",
@@ -54,7 +52,12 @@ ORGANIZATION_TOOLS: tuple[MCPToolDef, ...] = (
         required=("version_num",),
     ),
     # --- Departments ---
-    read_tool("departments", "list", "List departments with pagination.", _PAGINATION),
+    read_tool(
+        "departments",
+        "list",
+        "List departments with pagination.",
+        PAGINATION_PROPERTIES,
+    ),
     read_tool(
         "departments",
         "get",
@@ -103,7 +106,7 @@ ORGANIZATION_TOOLS: tuple[MCPToolDef, ...] = (
         required=("name",),
     ),
     # --- Teams ---
-    read_tool("teams", "list", "List teams with pagination.", _PAGINATION),
+    read_tool("teams", "list", "List teams with pagination.", PAGINATION_PROPERTIES),
     read_tool(
         "teams",
         "get",
@@ -149,7 +152,7 @@ ORGANIZATION_TOOLS: tuple[MCPToolDef, ...] = (
         "List role configuration versions.",
         {
             "role_name": {"type": "string", "description": "Role name"},
-            **_PAGINATION,
+            **PAGINATION_PROPERTIES,
         },
         required=("role_name",),
     ),

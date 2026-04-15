@@ -7,21 +7,21 @@ infrastructure controllers.
 
 from typing import TYPE_CHECKING
 
-from synthorg.meta.mcp.tool_builder import admin_tool, read_tool, write_tool
+from synthorg.meta.mcp.tool_builder import (
+    PAGINATION_PROPERTIES,
+    admin_tool,
+    read_tool,
+    write_tool,
+)
 
 if TYPE_CHECKING:
     from synthorg.meta.mcp.registry import MCPToolDef
-
-_PAGINATION = {
-    "offset": {"type": "integer", "description": "Pagination offset", "default": 0},
-    "limit": {"type": "integer", "description": "Page size", "default": 50},
-}
 
 INFRASTRUCTURE_TOOLS: tuple[MCPToolDef, ...] = (
     # --- Health ---
     read_tool("health", "check", "Get service health status."),
     # --- Settings ---
-    read_tool("settings", "list", "List all settings.", _PAGINATION),
+    read_tool("settings", "list", "List all settings.", PAGINATION_PROPERTIES),
     read_tool(
         "settings",
         "get",
@@ -121,7 +121,7 @@ INFRASTRUCTURE_TOOLS: tuple[MCPToolDef, ...] = (
             "verdict": {"type": "string", "description": "Filter by verdict"},
             "since": {"type": "string", "description": "Start datetime (ISO 8601)"},
             "until": {"type": "string", "description": "End datetime (ISO 8601)"},
-            **_PAGINATION,
+            **PAGINATION_PROPERTIES,
         },
     ),
     # --- Events ---
@@ -131,11 +131,11 @@ INFRASTRUCTURE_TOOLS: tuple[MCPToolDef, ...] = (
         "List system events.",
         {
             "event_type": {"type": "string", "description": "Filter by event type"},
-            **_PAGINATION,
+            **PAGINATION_PROPERTIES,
         },
     ),
     # --- Users ---
-    read_tool("users", "list", "List users.", _PAGINATION),
+    read_tool("users", "list", "List users.", PAGINATION_PROPERTIES),
     read_tool(
         "users",
         "get",
@@ -175,7 +175,7 @@ INFRASTRUCTURE_TOOLS: tuple[MCPToolDef, ...] = (
         required=("user_id",),
     ),
     # --- Projects ---
-    read_tool("projects", "list", "List projects.", _PAGINATION),
+    read_tool("projects", "list", "List projects.", PAGINATION_PROPERTIES),
     read_tool(
         "projects",
         "get",
@@ -215,7 +215,7 @@ INFRASTRUCTURE_TOOLS: tuple[MCPToolDef, ...] = (
         required=("project_id",),
     ),
     # --- Requests ---
-    read_tool("requests", "list", "List agent requests.", _PAGINATION),
+    read_tool("requests", "list", "List agent requests.", PAGINATION_PROPERTIES),
     read_tool(
         "requests",
         "get",
@@ -246,7 +246,7 @@ INFRASTRUCTURE_TOOLS: tuple[MCPToolDef, ...] = (
         },
     ),
     # --- Simulations ---
-    read_tool("simulations", "list", "List simulation runs.", _PAGINATION),
+    read_tool("simulations", "list", "List simulation runs.", PAGINATION_PROPERTIES),
     read_tool(
         "simulations",
         "get",
@@ -267,7 +267,12 @@ INFRASTRUCTURE_TOOLS: tuple[MCPToolDef, ...] = (
         required=("scenario",),
     ),
     # --- Template packs ---
-    read_tool("template_packs", "list", "List available template packs.", _PAGINATION),
+    read_tool(
+        "template_packs",
+        "list",
+        "List available template packs.",
+        PAGINATION_PROPERTIES,
+    ),
     read_tool(
         "template_packs",
         "get",

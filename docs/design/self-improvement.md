@@ -196,7 +196,7 @@ self_improvement:
 
 ## Follow-up Issues
 
-1. ~~Full API-as-MCP server~~ -- completed in #1339 (204 tools, 15 domains, capability-based scoping)
+1. ~~Full API-as-MCP server~~ -- completed via #1353 (issue #1339; 204 tools, 15 domains, capability-based scoping)
 2. Product-level improvement (framework code modification proposals)
 3. Cross-deployment analytics (anonymized multi-org patterns)
 4. Chief of Staff advanced capabilities (memory-based learning, proactive alerts)

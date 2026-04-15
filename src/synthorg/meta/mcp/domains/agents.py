@@ -5,21 +5,23 @@ Covers agents, personalities, and training controllers.
 
 from typing import TYPE_CHECKING
 
-from synthorg.meta.mcp.tool_builder import admin_tool, read_tool, write_tool
+from synthorg.meta.mcp.tool_builder import (
+    PAGINATION_PROPERTIES,
+    admin_tool,
+    read_tool,
+    write_tool,
+)
 
 if TYPE_CHECKING:
     from synthorg.meta.mcp.registry import MCPToolDef
-
-_PAGINATION = {
-    "offset": {"type": "integer", "description": "Pagination offset", "default": 0},
-    "limit": {"type": "integer", "description": "Page size", "default": 50},
-}
 
 _AGENT_NAME = {"agent_name": {"type": "string", "description": "Agent name"}}
 
 AGENT_TOOLS: tuple[MCPToolDef, ...] = (
     # --- Agent CRUD ---
-    read_tool("agents", "list", "List all agents with pagination.", _PAGINATION),
+    read_tool(
+        "agents", "list", "List all agents with pagination.", PAGINATION_PROPERTIES
+    ),
     read_tool(
         "agents",
         "get",
@@ -69,7 +71,7 @@ AGENT_TOOLS: tuple[MCPToolDef, ...] = (
         "Get agent activity feed.",
         {
             **_AGENT_NAME,
-            **_PAGINATION,
+            **PAGINATION_PROPERTIES,
         },
         required=("agent_name",),
     ),
@@ -92,7 +94,7 @@ AGENT_TOOLS: tuple[MCPToolDef, ...] = (
         "personalities",
         "list",
         "List available personality configurations.",
-        _PAGINATION,
+        PAGINATION_PROPERTIES,
     ),
     read_tool(
         "personalities",
@@ -104,7 +106,9 @@ AGENT_TOOLS: tuple[MCPToolDef, ...] = (
         required=("name",),
     ),
     # --- Training ---
-    read_tool("training", "list_sessions", "List training sessions.", _PAGINATION),
+    read_tool(
+        "training", "list_sessions", "List training sessions.", PAGINATION_PROPERTIES
+    ),
     read_tool(
         "training",
         "get_session",

@@ -59,7 +59,7 @@ class TestBuildHandlerMap:
     def test_no_duplicate_keys(self) -> None:
         # build_handler_map raises ValueError on duplicates
         handlers = build_handler_map()
-        assert isinstance(handlers, dict)
+        assert len(handlers) > 0  # MappingProxyType wraps the dict
 
     def test_handler_count_matches_tool_count(self) -> None:
         """Every tool should have a matching handler."""

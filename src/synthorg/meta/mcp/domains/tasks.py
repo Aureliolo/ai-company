@@ -5,15 +5,14 @@ Covers tasks and activities controllers.
 
 from typing import TYPE_CHECKING
 
-from synthorg.meta.mcp.tool_builder import read_tool, write_tool
+from synthorg.meta.mcp.tool_builder import (
+    PAGINATION_PROPERTIES,
+    read_tool,
+    write_tool,
+)
 
 if TYPE_CHECKING:
     from synthorg.meta.mcp.registry import MCPToolDef
-
-_PAGINATION = {
-    "offset": {"type": "integer", "description": "Pagination offset", "default": 0},
-    "limit": {"type": "integer", "description": "Page size", "default": 50},
-}
 
 TASK_TOOLS: tuple[MCPToolDef, ...] = (
     # --- Task CRUD ---
@@ -28,7 +27,7 @@ TASK_TOOLS: tuple[MCPToolDef, ...] = (
                 "description": "Filter by assigned agent",
             },
             "project": {"type": "string", "description": "Filter by project"},
-            **_PAGINATION,
+            **PAGINATION_PROPERTIES,
         },
     ),
     read_tool(
@@ -103,7 +102,7 @@ TASK_TOOLS: tuple[MCPToolDef, ...] = (
                 "type": "integer",
                 "description": "Lookback hours (24/48/168)",
             },
-            **_PAGINATION,
+            **PAGINATION_PROPERTIES,
         },
     ),
 )

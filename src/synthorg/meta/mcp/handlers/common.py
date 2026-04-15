@@ -15,21 +15,6 @@ from synthorg.observability.events.mcp import (
 logger = get_logger(__name__)
 
 
-def _serialize(obj: object) -> str:
-    """Serialize an object to JSON string.
-
-    Handles common types: dicts, lists, Pydantic models, UUIDs,
-    datetimes, and enums.
-
-    Args:
-        obj: Object to serialize.
-
-    Returns:
-        JSON string.
-    """
-    return json.dumps(obj, default=str)
-
-
 def make_placeholder_handler(tool_name: str) -> Any:
     """Create a placeholder handler that returns a not-implemented message.
 

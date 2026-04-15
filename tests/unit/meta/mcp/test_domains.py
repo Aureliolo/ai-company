@@ -158,24 +158,27 @@ class TestWorkflowDomain:
         assert "synthorg_workflow_executions_start" in names
 
 
+# Minimum tool counts per domain -- derived from the number of API
+# controller endpoints in each domain.  These are floor values (new
+# tools may be added, but existing ones must not be removed).
 @pytest.mark.parametrize(
     ("domain_tools", "expected_min"),
     [
-        (SIGNAL_MCP_TOOLS, 9),
-        (AGENT_TOOLS, 15),
-        (TASK_TOOLS, 8),
-        (WORKFLOW_TOOLS, 15),
-        (APPROVAL_TOOLS, 5),
-        (BUDGET_TOOLS, 5),
-        (ORGANIZATION_TOOLS, 15),
-        (COORDINATION_TOOLS, 8),
-        (ANALYTICS_TOOLS, 7),
-        (MEMORY_TOOLS, 10),
-        (QUALITY_TOOLS, 8),
-        (META_TOOLS, 5),
-        (COMMUNICATION_TOOLS, 18),
-        (INTEGRATION_TOOLS, 18),
-        (INFRASTRUCTURE_TOOLS, 35),
+        (SIGNAL_MCP_TOOLS, 9),  # 8 read + 1 write (submit_proposal)
+        (AGENT_TOOLS, 15),  # identity, personality, training, etc.
+        (TASK_TOOLS, 8),  # tasks + activities CRUD
+        (WORKFLOW_TOOLS, 15),  # workflows, subworkflows, executions, versions
+        (APPROVAL_TOOLS, 5),  # approval lifecycle
+        (BUDGET_TOOLS, 5),  # overview, limits, forecast
+        (ORGANIZATION_TOOLS, 15),  # company, depts, teams
+        (COORDINATION_TOOLS, 8),  # metrics, scaling, ceremony
+        (ANALYTICS_TOOLS, 7),  # metrics, reports, dashboards
+        (MEMORY_TOOLS, 10),  # fine-tune, checkpoints, search
+        (QUALITY_TOOLS, 8),  # reviews, evaluations, config
+        (META_TOOLS, 5),  # self-improvement, proposals
+        (COMMUNICATION_TOOLS, 18),  # messaging, meetings, webhooks
+        (INTEGRATION_TOOLS, 18),  # MCP catalog, OAuth, clients
+        (INFRASTRUCTURE_TOOLS, 35),  # health, settings, providers
     ],
     ids=[
         "signals",

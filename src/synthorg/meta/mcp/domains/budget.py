@@ -5,15 +5,10 @@ Covers budget config, cost records, and budget config versions.
 
 from typing import TYPE_CHECKING
 
-from synthorg.meta.mcp.tool_builder import read_tool
+from synthorg.meta.mcp.tool_builder import PAGINATION_PROPERTIES, read_tool
 
 if TYPE_CHECKING:
     from synthorg.meta.mcp.registry import MCPToolDef
-
-_PAGINATION = {
-    "offset": {"type": "integer", "description": "Pagination offset", "default": 0},
-    "limit": {"type": "integer", "description": "Page size", "default": 50},
-}
 
 BUDGET_TOOLS: tuple[MCPToolDef, ...] = (
     read_tool("budget", "get_config", "Get the current budget configuration."),
@@ -24,7 +19,7 @@ BUDGET_TOOLS: tuple[MCPToolDef, ...] = (
         {
             "agent_id": {"type": "string", "description": "Filter by agent ID"},
             "task_id": {"type": "string", "description": "Filter by task ID"},
-            **_PAGINATION,
+            **PAGINATION_PROPERTIES,
         },
     ),
     read_tool(
@@ -38,7 +33,10 @@ BUDGET_TOOLS: tuple[MCPToolDef, ...] = (
     ),
     # --- Budget config versions ---
     read_tool(
-        "budget_versions", "list", "List budget configuration versions.", _PAGINATION
+        "budget_versions",
+        "list",
+        "List budget configuration versions.",
+        PAGINATION_PROPERTIES,
     ),
     read_tool(
         "budget_versions",

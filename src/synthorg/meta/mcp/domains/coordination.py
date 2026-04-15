@@ -5,15 +5,10 @@ Covers coordination, coordination metrics, and scaling.
 
 from typing import TYPE_CHECKING
 
-from synthorg.meta.mcp.tool_builder import read_tool, write_tool
+from synthorg.meta.mcp.tool_builder import PAGINATION_PROPERTIES, read_tool, write_tool
 
 if TYPE_CHECKING:
     from synthorg.meta.mcp.registry import MCPToolDef
-
-_PAGINATION = {
-    "offset": {"type": "integer", "description": "Pagination offset", "default": 0},
-    "limit": {"type": "integer", "description": "Page size", "default": 50},
-}
 
 COORDINATION_TOOLS: tuple[MCPToolDef, ...] = (
     # --- Task coordination ---
@@ -37,11 +32,13 @@ COORDINATION_TOOLS: tuple[MCPToolDef, ...] = (
             "agent_id": {"type": "string", "description": "Filter by agent"},
             "since": {"type": "string", "description": "Start datetime (ISO 8601)"},
             "until": {"type": "string", "description": "End datetime (ISO 8601)"},
-            **_PAGINATION,
+            **PAGINATION_PROPERTIES,
         },
     ),
     # --- Scaling ---
-    read_tool("scaling", "list_decisions", "List scaling decisions.", _PAGINATION),
+    read_tool(
+        "scaling", "list_decisions", "List scaling decisions.", PAGINATION_PROPERTIES
+    ),
     read_tool(
         "scaling",
         "get_decision",

@@ -1,7 +1,8 @@
 """Signal domain MCP tools.
 
-Re-exports the 9 existing signal tools from ``synthorg.meta.mcp.tools``
-as ``MCPToolDef`` instances for the unified registry.
+Defines 9 signal tools as ``MCPToolDef`` instances for the unified
+registry, covering org health snapshots, performance, budget,
+coordination, scaling, errors, evolution, proposals, and submission.
 """
 
 from typing import TYPE_CHECKING

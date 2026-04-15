@@ -5,15 +5,15 @@ Covers messages, meetings, connections, webhooks, and tunnel.
 
 from typing import TYPE_CHECKING
 
-from synthorg.meta.mcp.tool_builder import admin_tool, read_tool, write_tool
+from synthorg.meta.mcp.tool_builder import (
+    PAGINATION_PROPERTIES,
+    admin_tool,
+    read_tool,
+    write_tool,
+)
 
 if TYPE_CHECKING:
     from synthorg.meta.mcp.registry import MCPToolDef
-
-_PAGINATION = {
-    "offset": {"type": "integer", "description": "Pagination offset", "default": 0},
-    "limit": {"type": "integer", "description": "Page size", "default": 50},
-}
 
 COMMUNICATION_TOOLS: tuple[MCPToolDef, ...] = (
     # --- Messages ---
@@ -24,7 +24,7 @@ COMMUNICATION_TOOLS: tuple[MCPToolDef, ...] = (
         {
             "channel": {"type": "string", "description": "Filter by channel"},
             "sender": {"type": "string", "description": "Filter by sender"},
-            **_PAGINATION,
+            **PAGINATION_PROPERTIES,
         },
     ),
     read_tool(
@@ -57,7 +57,7 @@ COMMUNICATION_TOOLS: tuple[MCPToolDef, ...] = (
         required=("message_id",),
     ),
     # --- Meetings ---
-    read_tool("meetings", "list", "List meeting records.", _PAGINATION),
+    read_tool("meetings", "list", "List meeting records.", PAGINATION_PROPERTIES),
     read_tool(
         "meetings",
         "get",
@@ -141,7 +141,7 @@ COMMUNICATION_TOOLS: tuple[MCPToolDef, ...] = (
         required=("name",),
     ),
     # --- Webhooks ---
-    read_tool("webhooks", "list", "List registered webhooks.", _PAGINATION),
+    read_tool("webhooks", "list", "List registered webhooks.", PAGINATION_PROPERTIES),
     read_tool(
         "webhooks",
         "get",

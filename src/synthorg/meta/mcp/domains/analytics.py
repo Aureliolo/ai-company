@@ -5,15 +5,14 @@ Covers analytics, metrics, and reports controllers.
 
 from typing import TYPE_CHECKING
 
-from synthorg.meta.mcp.tool_builder import read_tool
+from synthorg.meta.mcp.tool_builder import (
+    PAGINATION_PROPERTIES,
+    read_tool,
+    write_tool,
+)
 
 if TYPE_CHECKING:
     from synthorg.meta.mcp.registry import MCPToolDef
-
-_PAGINATION = {
-    "offset": {"type": "integer", "description": "Pagination offset", "default": 0},
-    "limit": {"type": "integer", "description": "Page size", "default": 50},
-}
 
 ANALYTICS_TOOLS: tuple[MCPToolDef, ...] = (
     # --- Analytics ---
@@ -55,7 +54,7 @@ ANALYTICS_TOOLS: tuple[MCPToolDef, ...] = (
         },
     ),
     # --- Reports ---
-    read_tool("reports", "list", "List generated reports.", _PAGINATION),
+    read_tool("reports", "list", "List generated reports.", PAGINATION_PROPERTIES),
     read_tool(
         "reports",
         "get",
@@ -65,7 +64,7 @@ ANALYTICS_TOOLS: tuple[MCPToolDef, ...] = (
         },
         required=("report_id",),
     ),
-    read_tool(
+    write_tool(
         "reports",
         "generate",
         "Generate a new report.",

@@ -5,6 +5,7 @@ registered handler functions, with structured error mapping.
 """
 
 import json
+from copy import deepcopy
 from typing import TYPE_CHECKING, Any, Protocol
 
 from synthorg.observability import get_logger
@@ -80,8 +81,9 @@ class MCPToolInvoker:
         All error conditions (tool not found, handler not found,
         handler exception) are caught, logged, and converted to
         ``ToolExecutionResult`` with ``is_error=True``.  The method
-        never raises application exceptions to the caller.
-        ``MemoryError`` and ``RecursionError`` are re-raised.
+        converts all application-level exceptions into error results
+        so callers never see them.  System-critical exceptions
+        (``MemoryError``, ``RecursionError``) are re-raised.
 
         Args:
             tool_name: Name of the MCP tool to invoke.
@@ -130,7 +132,7 @@ class MCPToolInvoker:
         try:
             result = await handler(
                 app_state=app_state,
-                arguments=arguments,
+                arguments=deepcopy(arguments),
             )
         except MemoryError, RecursionError:
             raise
@@ -141,6 +143,7 @@ class MCPToolInvoker:
                 tool_name=tool_name,
                 error=str(exc),
                 error_type=error_type,
+                exc_info=exc,
             )
             return ToolExecutionResult(
                 content=json.dumps({"error": error_type, "detail": str(exc)}),

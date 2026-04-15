@@ -4,6 +4,7 @@ Imports all domain handler modules and builds a unified handler map
 keyed by tool name (matching ``MCPToolDef.handler_key``).
 """
 
+from types import MappingProxyType
 from typing import TYPE_CHECKING, Any
 
 from synthorg.meta.mcp.handlers.agents import AGENT_HANDLERS
@@ -25,6 +26,8 @@ from synthorg.observability import get_logger
 from synthorg.observability.events.mcp import MCP_HANDLERS_BUILT
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping
+
     from synthorg.meta.mcp.invoker import ToolHandler
 
 logger = get_logger(__name__)
@@ -48,11 +51,11 @@ _ALL_HANDLER_MAPS: tuple[dict[str, Any], ...] = (
 )
 
 
-def build_handler_map() -> dict[str, ToolHandler]:
+def build_handler_map() -> Mapping[str, ToolHandler]:
     """Build a unified handler map from all domain handler modules.
 
     Returns:
-        Dict mapping handler keys to handler functions.
+        Read-only mapping of handler keys to handler functions.
 
     Raises:
         ValueError: If duplicate handler keys are found.
@@ -61,11 +64,14 @@ def build_handler_map() -> dict[str, ToolHandler]:
     for handler_map in _ALL_HANDLER_MAPS:
         for key, handler in handler_map.items():
             if key in handlers:
-                msg = f"Duplicate handler key: {key!r}"
+                msg = (
+                    f"Duplicate handler key {key!r} -- check domain "
+                    f"handler modules for conflicting registrations"
+                )
                 raise ValueError(msg)
             handlers[key] = handler
     logger.debug(
         MCP_HANDLERS_BUILT,
         handler_count=len(handlers),
     )
-    return handlers
+    return MappingProxyType(handlers)

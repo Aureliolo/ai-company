@@ -91,6 +91,7 @@ class ToolPermissionsFactory(ModelFactory[ToolPermissions]):
     __model__ = ToolPermissions
     allowed = ()
     denied = ()
+    mcp_capabilities = ()
 
 
 class AgentIdentityFactory(ModelFactory[AgentIdentity]):

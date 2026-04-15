@@ -5,19 +5,18 @@ Covers workflows, subworkflows, workflow executions, and workflow versions.
 
 from typing import TYPE_CHECKING
 
-from synthorg.meta.mcp.tool_builder import read_tool, write_tool
+from synthorg.meta.mcp.tool_builder import (
+    PAGINATION_PROPERTIES,
+    read_tool,
+    write_tool,
+)
 
 if TYPE_CHECKING:
     from synthorg.meta.mcp.registry import MCPToolDef
 
-_PAGINATION = {
-    "offset": {"type": "integer", "description": "Pagination offset", "default": 0},
-    "limit": {"type": "integer", "description": "Page size", "default": 50},
-}
-
 WORKFLOW_TOOLS: tuple[MCPToolDef, ...] = (
     # --- Workflow CRUD ---
-    read_tool("workflows", "list", "List workflow definitions.", _PAGINATION),
+    read_tool("workflows", "list", "List workflow definitions.", PAGINATION_PROPERTIES),
     read_tool(
         "workflows",
         "get",
@@ -72,7 +71,7 @@ WORKFLOW_TOOLS: tuple[MCPToolDef, ...] = (
         "List subworkflows for a workflow.",
         {
             "workflow_id": {"type": "string", "description": "Parent workflow UUID"},
-            **_PAGINATION,
+            **PAGINATION_PROPERTIES,
         },
         required=("workflow_id",),
     ),
@@ -113,7 +112,7 @@ WORKFLOW_TOOLS: tuple[MCPToolDef, ...] = (
         {
             "workflow_id": {"type": "string", "description": "Filter by workflow"},
             "status": {"type": "string", "description": "Filter by execution status"},
-            **_PAGINATION,
+            **PAGINATION_PROPERTIES,
         },
     ),
     read_tool(
@@ -151,7 +150,7 @@ WORKFLOW_TOOLS: tuple[MCPToolDef, ...] = (
         "List versions of a workflow.",
         {
             "workflow_id": {"type": "string", "description": "Workflow UUID"},
-            **_PAGINATION,
+            **PAGINATION_PROPERTIES,
         },
         required=("workflow_id",),
     ),

@@ -5,15 +5,10 @@ Covers quality, reviews, and evaluation config versions.
 
 from typing import TYPE_CHECKING
 
-from synthorg.meta.mcp.tool_builder import read_tool, write_tool
+from synthorg.meta.mcp.tool_builder import PAGINATION_PROPERTIES, read_tool, write_tool
 
 if TYPE_CHECKING:
     from synthorg.meta.mcp.registry import MCPToolDef
-
-_PAGINATION = {
-    "offset": {"type": "integer", "description": "Pagination offset", "default": 0},
-    "limit": {"type": "integer", "description": "Page size", "default": 50},
-}
 
 QUALITY_TOOLS: tuple[MCPToolDef, ...] = (
     # --- Quality ---
@@ -33,7 +28,7 @@ QUALITY_TOOLS: tuple[MCPToolDef, ...] = (
         "List quality score records.",
         {
             "agent_name": {"type": "string", "description": "Filter by agent"},
-            **_PAGINATION,
+            **PAGINATION_PROPERTIES,
         },
     ),
     # --- Reviews ---
@@ -44,7 +39,7 @@ QUALITY_TOOLS: tuple[MCPToolDef, ...] = (
         {
             "task_id": {"type": "string", "description": "Filter by task"},
             "reviewer": {"type": "string", "description": "Filter by reviewer"},
-            **_PAGINATION,
+            **PAGINATION_PROPERTIES,
         },
     ),
     read_tool(
@@ -79,7 +74,10 @@ QUALITY_TOOLS: tuple[MCPToolDef, ...] = (
     ),
     # --- Evaluation config versions ---
     read_tool(
-        "evaluation_versions", "list", "List evaluation config versions.", _PAGINATION
+        "evaluation_versions",
+        "list",
+        "List evaluation config versions.",
+        PAGINATION_PROPERTIES,
     ),
     read_tool(
         "evaluation_versions",

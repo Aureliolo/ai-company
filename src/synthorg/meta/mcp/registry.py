@@ -5,6 +5,7 @@ Provides the ``MCPToolDef`` frozen model for describing MCP tools and
 with freeze-on-read semantics.
 """
 
+import re
 from copy import deepcopy
 from types import MappingProxyType
 from typing import Any, Self
@@ -42,19 +43,34 @@ class MCPToolDef(BaseModel):
     capability: NotBlankStr = Field(description="Capability tag (domain:action)")
     handler_key: NotBlankStr = Field(description="Handler registry key")
 
+    _NAME_RE = re.compile(r"^synthorg_[a-z][a-z0-9_]*_[a-z][a-z0-9_]*$")
+    _CAPABILITY_RE = re.compile(r"^[a-z][a-z0-9_]*:[a-z][a-z0-9_]*$")
+
+    @model_validator(mode="after")
+    def _deepcopy_parameters(self) -> Self:
+        """Deep-copy parameters at construction to prevent shared mutable state."""
+        object.__setattr__(self, "parameters", deepcopy(self.parameters))
+        return self
+
     @model_validator(mode="after")
     def _validate_name_prefix(self) -> Self:
-        """Enforce ``synthorg_`` naming convention."""
-        if not self.name.startswith("synthorg_"):
-            msg = f"Tool name must start with 'synthorg_': {self.name!r}"
+        """Enforce ``synthorg_{domain}_{action}`` naming convention."""
+        if not self._NAME_RE.match(self.name):
+            msg = (
+                f"Tool name must match 'synthorg_{{domain}}_{{action}}' "
+                f"(lowercase alphanumeric + underscores): {self.name!r}"
+            )
             raise ValueError(msg)
         return self
 
     @model_validator(mode="after")
     def _validate_capability_format(self) -> Self:
         """Enforce ``domain:action`` capability format."""
-        if ":" not in self.capability or self.capability.count(":") != 1:
-            msg = f"Capability must be 'domain:action' format: {self.capability!r}"
+        if not self._CAPABILITY_RE.match(self.capability):
+            msg = (
+                f"Capability must match 'domain:action' "
+                f"(lowercase alphanumeric + underscores): {self.capability!r}"
+            )
             raise ValueError(msg)
         return self
 
@@ -64,7 +80,7 @@ class DomainToolRegistry:
 
     Tools are registered during startup via ``register`` / ``register_many``.
     After all domains have registered, call ``freeze`` to prevent further
-    mutations.  Read methods (``get``, ``get_all``, ``filter_by_capabilities``)
+    mutations.  Read methods (``get``, ``get_all``, ``get_names``, etc.)
     auto-freeze on first call if not already frozen.
 
     Examples:
@@ -103,6 +119,11 @@ class DomainToolRegistry:
         """
         if self._frozen:
             msg = "Cannot register tools after registry is frozen"
+            logger.warning(
+                MCP_REGISTRY_FROZEN,
+                tool_name=tool.name,
+                error=msg,
+            )
             raise RuntimeError(msg)
         if tool.name in self._tools:
             logger.warning(

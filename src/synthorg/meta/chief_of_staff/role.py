@@ -46,7 +46,6 @@ MCP_CAPABILITIES = (
     "analytics:read",
     "agents:read",
     "coordination:read",
-    "scaling:read",
     "budget:read",
     "quality:read",
     "meta:*",
