@@ -19,6 +19,7 @@ from synthorg.meta.guards.rate_limit import RateLimitGuard
 from synthorg.meta.guards.rollback_plan import RollbackPlanGuard
 from synthorg.meta.guards.scope_check import ScopeCheckGuard
 from synthorg.meta.models import ProposalAltitude
+from synthorg.meta.rollout.ab_test import ABTestRollout
 from synthorg.meta.rollout.before_after import BeforeAfterRollout
 from synthorg.meta.rollout.canary import CanarySubsetRollout
 from synthorg.meta.rollout.regression.composite import (
@@ -160,7 +161,7 @@ def build_regression_detector() -> TieredRegressionDetector:
 
 
 def build_rollout_strategies() -> Mapping[
-    str, BeforeAfterRollout | CanarySubsetRollout
+    str, BeforeAfterRollout | CanarySubsetRollout | ABTestRollout
 ]:
     """Build available rollout strategies.
 
@@ -172,6 +173,7 @@ def build_rollout_strategies() -> Mapping[
             {
                 "before_after": BeforeAfterRollout(),
                 "canary": CanarySubsetRollout(),
+                "ab_test": ABTestRollout(),
             }
         )
     )

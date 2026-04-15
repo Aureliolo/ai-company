@@ -30,6 +30,23 @@ class RuleConfig(BaseModel):
     custom_rule_modules: tuple[NotBlankStr, ...] = ()
 
 
+class ABTestConfig(BaseModel):
+    """Configuration for A/B test rollout behavior.
+
+    Attributes:
+        control_fraction: Fraction of agents in the control group.
+        min_agents_per_group: Minimum agents required per group.
+        min_observations_per_group: Minimum metric samples per group
+            before statistical comparison is allowed.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+
+    control_fraction: float = Field(default=0.5, gt=0.0, lt=1.0)
+    min_agents_per_group: int = Field(default=5, ge=2)
+    min_observations_per_group: int = Field(default=10, ge=2)
+
+
 class RolloutConfig(BaseModel):
     """Configuration for proposal rollout behavior.
 
@@ -38,6 +55,7 @@ class RolloutConfig(BaseModel):
         observation_window_hours: Post-apply observation window.
         regression_check_interval_hours: How often to check for
             regression during the observation window.
+        ab_test: A/B test-specific configuration.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
@@ -45,6 +63,7 @@ class RolloutConfig(BaseModel):
     default_strategy: RolloutStrategyType = RolloutStrategyType.BEFORE_AFTER
     observation_window_hours: int = Field(default=48, ge=1)
     regression_check_interval_hours: int = Field(default=4, ge=1)
+    ab_test: ABTestConfig = Field(default_factory=ABTestConfig)
 
     @model_validator(mode="after")
     def _validate_interval_within_window(self) -> Self:

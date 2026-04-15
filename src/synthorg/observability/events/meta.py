@@ -44,6 +44,15 @@ META_ROLLOUT_FAILED: Final[str] = "meta.rollout.failed"
 META_REGRESSION_THRESHOLD_BREACH: Final[str] = "meta.regression.threshold_breach"
 META_REGRESSION_STATISTICAL: Final[str] = "meta.regression.statistical"
 
+# -- A/B test events ----------------------------------------------------
+
+META_ABTEST_GROUPS_ASSIGNED: Final[str] = "meta.abtest.groups_assigned"
+META_ABTEST_OBSERVATION_STARTED: Final[str] = "meta.abtest.observation_started"
+META_ABTEST_CHECKPOINT: Final[str] = "meta.abtest.checkpoint"
+META_ABTEST_WINNER_DECLARED: Final[str] = "meta.abtest.winner_declared"
+META_ABTEST_INCONCLUSIVE: Final[str] = "meta.abtest.inconclusive"
+META_ABTEST_TREATMENT_REGRESSED: Final[str] = "meta.abtest.treatment_regressed"
+
 # -- Rollback events ----------------------------------------------------
 
 META_ROLLBACK_STARTED: Final[str] = "meta.rollback.started"

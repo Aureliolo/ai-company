@@ -96,6 +96,41 @@ class MetaController(Controller):
             data=get_server_config(),
         )
 
+    @get("/ab-tests")
+    async def list_ab_tests(
+        self,
+    ) -> ApiResponse[list[dict[str, Any]]]:
+        """List active A/B tests with status and current metrics.
+
+        Returns:
+            List of active A/B test summaries.
+        """
+        # TODO: wire to actual A/B test state once observation
+        # loop and persistence are implemented.
+        return ApiResponse[list[dict[str, Any]]](data=[])
+
+    @get("/ab-tests/{proposal_id:str}")
+    async def get_ab_test_detail(
+        self,
+        proposal_id: str,
+    ) -> ApiResponse[dict[str, Any]]:
+        """Get detailed A/B test status for a specific proposal.
+
+        Args:
+            proposal_id: UUID of the proposal under A/B test.
+
+        Returns:
+            A/B test detail including group metrics and verdict.
+        """
+        # TODO: wire to actual A/B test state.
+        return ApiResponse[dict[str, Any]](
+            data={
+                "proposal_id": proposal_id,
+                "status": "not_found",
+                "message": "No active A/B test for this proposal",
+            },
+        )
+
     @post("/cycle", guards=[require_org_mutation()])
     async def trigger_cycle(
         self,

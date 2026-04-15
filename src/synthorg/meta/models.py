@@ -49,6 +49,7 @@ class RolloutStrategyType(StrEnum):
 
     BEFORE_AFTER = "before_after"
     CANARY = "canary"
+    AB_TEST = "ab_test"
 
 
 class EvolutionMode(StrEnum):
@@ -81,6 +82,7 @@ class RolloutOutcome(StrEnum):
     REGRESSED = "regressed"
     ROLLED_BACK = "rolled_back"
     FAILED = "failed"
+    INCONCLUSIVE = "inconclusive"
 
 
 class RegressionVerdict(StrEnum):
