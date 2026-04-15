@@ -1,0 +1,48 @@
+"""Infrastructure domain handlers."""
+
+from synthorg.meta.mcp.handlers.common import make_handlers_for_tools
+
+INFRASTRUCTURE_HANDLERS: dict[str, object] = make_handlers_for_tools(
+    (
+        "synthorg_health_check",
+        "synthorg_settings_list",
+        "synthorg_settings_get",
+        "synthorg_settings_update",
+        "synthorg_settings_delete",
+        "synthorg_providers_list",
+        "synthorg_providers_get",
+        "synthorg_providers_get_health",
+        "synthorg_providers_test_connection",
+        "synthorg_backup_create",
+        "synthorg_backup_list",
+        "synthorg_backup_get",
+        "synthorg_backup_delete",
+        "synthorg_backup_restore",
+        "synthorg_audit_list",
+        "synthorg_events_list",
+        "synthorg_users_list",
+        "synthorg_users_get",
+        "synthorg_users_create",
+        "synthorg_users_update",
+        "synthorg_users_delete",
+        "synthorg_projects_list",
+        "synthorg_projects_get",
+        "synthorg_projects_create",
+        "synthorg_projects_update",
+        "synthorg_projects_delete",
+        "synthorg_requests_list",
+        "synthorg_requests_get",
+        "synthorg_requests_create",
+        "synthorg_setup_get_status",
+        "synthorg_setup_initialize",
+        "synthorg_simulations_list",
+        "synthorg_simulations_get",
+        "synthorg_simulations_create",
+        "synthorg_template_packs_list",
+        "synthorg_template_packs_get",
+        "synthorg_template_packs_install",
+        "synthorg_template_packs_uninstall",
+        "synthorg_integration_health_get_all",
+        "synthorg_integration_health_get",
+    )
+)

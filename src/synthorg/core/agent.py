@@ -301,6 +301,9 @@ class ToolPermissions(BaseModel):
             are available.
         allowed: Explicitly allowed tool names.
         denied: Explicitly denied tool names.
+        mcp_capabilities: MCP capability patterns controlling which
+            internal MCP tools the agent can see.  Supports wildcards
+            (e.g. ``"tasks:*"``, ``"*:read"``, ``"*"``).
         sub_constraints: Optional per-agent sub-constraints overriding
             the access level defaults.  When ``None``, the checker
             resolves defaults from the access level.
@@ -319,6 +322,10 @@ class ToolPermissions(BaseModel):
     denied: tuple[NotBlankStr, ...] = Field(
         default=(),
         description="Explicitly denied tools",
+    )
+    mcp_capabilities: tuple[str, ...] = Field(
+        default=(),
+        description="MCP capability patterns (e.g. 'tasks:read', 'agents:*')",
     )
     sub_constraints: ToolSubConstraints | None = Field(
         default=None,

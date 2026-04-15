@@ -1,52 +1,44 @@
-"""Unit tests for meta-loop MCP signal tools."""
+"""Unit tests for the unified MCP API server."""
 
 import pytest
 
 from synthorg.meta.mcp.server import (
     SERVER_NAME,
+    get_registry,
     get_server_config,
-)
-from synthorg.meta.mcp.tools import (
-    SIGNAL_TOOLS,
-    TOOL_PREFIX,
-    get_tool_definitions,
+    reset_singletons,
 )
 
 pytestmark = pytest.mark.unit
 
 
-class TestMCPTools:
-    """MCP tool definition tests."""
-
-    def test_tool_definitions_not_empty(self) -> None:
-        tools = get_tool_definitions()
-        assert len(tools) > 0
-
-    def test_all_tools_have_required_fields(self) -> None:
-        for tool in SIGNAL_TOOLS:
-            assert "name" in tool
-            assert "description" in tool
-            assert "parameters" in tool
-            assert tool["name"].startswith(TOOL_PREFIX)
-
-    def test_tool_names_unique(self) -> None:
-        names = [t["name"] for t in SIGNAL_TOOLS]
-        assert len(names) == len(set(names))
-
-    def test_nine_tools_defined(self) -> None:
-        assert len(SIGNAL_TOOLS) == 9
+@pytest.fixture(autouse=True)
+def _reset_server_singletons() -> None:
+    """Reset server singletons between tests."""
+    reset_singletons()
 
 
-class TestMCPServer:
-    """MCP server config tests."""
+class TestUnifiedServer:
+    """Unified synthorg-api server tests."""
 
     def test_server_name(self) -> None:
-        assert SERVER_NAME == "synthorg-signals"
+        assert SERVER_NAME == "synthorg-api"
 
     def test_server_config_structure(self) -> None:
         config = get_server_config()
         assert config["name"] == SERVER_NAME
         assert config["transport"] == "stdio"
-        assert config["enabled"] is False
+        assert config["enabled"] is True
         assert isinstance(config["enabled_tools"], list)
-        assert config["tool_count"] == 9
+        assert config["tool_count"] >= 200
+        assert config["tool_prefix"] == "synthorg"
+
+    def test_registry_frozen(self) -> None:
+        registry = get_registry()
+        assert registry.frozen is True
+        assert registry.tool_count >= 200
+
+    def test_all_tool_names_start_with_prefix(self) -> None:
+        config = get_server_config()
+        for name in config["enabled_tools"]:
+            assert name.startswith("synthorg_")

@@ -25,7 +25,7 @@ REQUIRED_SKILLS = (
     "pattern_recognition",
 )
 
-# MCP tools the Chief of Staff has access to.
+# MCP tools the Chief of Staff has access to (legacy name-based).
 TOOL_ACCESS = (
     f"{TOOL_PREFIX}_get_org_snapshot",
     f"{TOOL_PREFIX}_get_performance",
@@ -36,6 +36,20 @@ TOOL_ACCESS = (
     f"{TOOL_PREFIX}_get_evolution_outcomes",
     f"{TOOL_PREFIX}_get_proposals",
     f"{TOOL_PREFIX}_submit_proposal",
+)
+
+# MCP capability patterns for the unified synthorg-api server.
+# These are used by MCPToolScoper to filter the full tool catalog
+# to only the tools the Chief of Staff needs.
+MCP_CAPABILITIES = (
+    "signals:*",
+    "analytics:read",
+    "agents:read",
+    "coordination:read",
+    "scaling:read",
+    "budget:read",
+    "quality:read",
+    "meta:*",
 )
 
 
@@ -55,5 +69,6 @@ def get_role_definition() -> dict[str, object]:
         "required_skills": REQUIRED_SKILLS,
         "authority_level": "vp",
         "tool_access": TOOL_ACCESS,
+        "mcp_capabilities": MCP_CAPABILITIES,
         "system_prompt_template": None,  # Uses prompts.py templates.
     }
