@@ -16,6 +16,8 @@ on:
       - ".github/workflows/docker.yml"
       - ".github/actions/build-apko-base/**"
       - ".github/actions/cis-scan/**"
+      - ".github/actions/setup-apko/**"
+      - ".github/actions/setup-python-uv/**"
       - "scripts/cis-scan.sh"
       - "docs/**"
       - "mkdocs.yml"
@@ -65,6 +67,7 @@ jobs:
               - '.github/workflows/docker.yml'
               - '.github/actions/build-apko-base/**'
               - '.github/actions/cis-scan/**'
+              - '.github/actions/setup-apko/**'
               - 'scripts/cis-scan.sh'
             sandbox:
               - 'docker/sandbox/**'
@@ -72,6 +75,7 @@ jobs:
               - '.github/workflows/docker.yml'
               - '.github/actions/build-apko-base/**'
               - '.github/actions/cis-scan/**'
+              - '.github/actions/setup-apko/**'
               - 'scripts/cis-scan.sh'
             sidecar:
               - 'docker/sidecar/**'
@@ -79,6 +83,7 @@ jobs:
               - '.github/workflows/docker.yml'
               - '.github/actions/build-apko-base/**'
               - '.github/actions/cis-scan/**'
+              - '.github/actions/setup-apko/**'
               - 'scripts/cis-scan.sh'
             fine-tune:
               - 'docker/fine-tune/**'
@@ -89,6 +94,7 @@ jobs:
               - '.github/workflows/docker.yml'
               - '.github/actions/build-apko-base/**'
               - '.github/actions/cis-scan/**'
+              - '.github/actions/setup-apko/**'
               - 'scripts/cis-scan.sh'
             web:
               - 'docker/web/**'
@@ -100,6 +106,8 @@ jobs:
               - '.github/workflows/docker.yml'
               - '.github/actions/build-apko-base/**'
               - '.github/actions/cis-scan/**'
+              - '.github/actions/setup-apko/**'
+              - '.github/actions/setup-python-uv/**'
               - 'scripts/cis-scan.sh'
 
   # Extract app version from pyproject.toml (single source of truth)
