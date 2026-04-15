@@ -155,14 +155,14 @@ class TestABTestEnums:
     """Verify enum values exist."""
 
     def test_group_values(self) -> None:
-        assert ABTestGroup.CONTROL == "control"
-        assert ABTestGroup.TREATMENT == "treatment"
+        assert ABTestGroup.CONTROL.value == "control"
+        assert ABTestGroup.TREATMENT.value == "treatment"
 
     def test_verdict_values(self) -> None:
-        assert ABTestVerdict.TREATMENT_WINS == "treatment_wins"
-        assert ABTestVerdict.CONTROL_WINS == "control_wins"
-        assert ABTestVerdict.INCONCLUSIVE == "inconclusive"
-        assert ABTestVerdict.TREATMENT_REGRESSED == "treatment_regressed"
+        assert ABTestVerdict.TREATMENT_WINS.value == "treatment_wins"
+        assert ABTestVerdict.CONTROL_WINS.value == "control_wins"
+        assert ABTestVerdict.INCONCLUSIVE.value == "inconclusive"
+        assert ABTestVerdict.TREATMENT_REGRESSED.value == "treatment_regressed"
 
 
 # -- RolloutStrategyType.AB_TEST ------------------------------------------
@@ -172,7 +172,7 @@ class TestRolloutStrategyTypeABTest:
     """Verify AB_TEST enum added to RolloutStrategyType."""
 
     def test_ab_test_value(self) -> None:
-        assert RolloutStrategyType.AB_TEST == "ab_test"
+        assert RolloutStrategyType.AB_TEST.value == "ab_test"
 
     def test_ab_test_in_members(self) -> None:
         assert "AB_TEST" in RolloutStrategyType.__members__
@@ -185,7 +185,7 @@ class TestRolloutOutcomeInconclusive:
     """Verify INCONCLUSIVE enum added to RolloutOutcome."""
 
     def test_inconclusive_value(self) -> None:
-        assert RolloutOutcome.INCONCLUSIVE == "inconclusive"
+        assert RolloutOutcome.INCONCLUSIVE.value == "inconclusive"
 
 
 # -- GroupAssignment model -------------------------------------------------
