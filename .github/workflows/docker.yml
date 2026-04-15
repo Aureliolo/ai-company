@@ -63,14 +63,20 @@ jobs:
               - 'uv.lock'
               - '.dockerignore'
               - '.github/workflows/docker.yml'
+              - '.github/actions/cis-scan/**'
+              - 'scripts/cis-scan.sh'
             sandbox:
               - 'docker/sandbox/**'
               - '.dockerignore'
               - '.github/workflows/docker.yml'
+              - '.github/actions/cis-scan/**'
+              - 'scripts/cis-scan.sh'
             sidecar:
               - 'docker/sidecar/**'
               - '.dockerignore'
               - '.github/workflows/docker.yml'
+              - '.github/actions/cis-scan/**'
+              - 'scripts/cis-scan.sh'
             fine-tune:
               - 'docker/fine-tune/**'
               - 'src/synthorg/memory/embedding/**'
@@ -78,6 +84,8 @@ jobs:
               - 'uv.lock'
               - '.dockerignore'
               - '.github/workflows/docker.yml'
+              - '.github/actions/cis-scan/**'
+              - 'scripts/cis-scan.sh'
             web:
               - 'docker/web/**'
               - 'web/**'
@@ -86,6 +94,8 @@ jobs:
               - 'scripts/export_openapi.py'
               - 'src/synthorg/api/**'
               - '.github/workflows/docker.yml'
+              - '.github/actions/cis-scan/**'
+              - 'scripts/cis-scan.sh'
 
   # Extract app version from pyproject.toml (single source of truth)
   version:
