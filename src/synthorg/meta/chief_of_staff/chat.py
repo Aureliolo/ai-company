@@ -97,6 +97,7 @@ class ChiefOfStaffChat:
             proposal_rationale=proposal.rationale.signal_summary,
             proposal_confidence=f"{proposal.confidence:.2f}",
             rule_name=proposal.source_rule or "manual",
+            # Severity is a rule match property, not carried on proposals.
             rule_severity="N/A",
             signal_context=_format_snapshot(snapshot),
             approval_context=approval_ctx,

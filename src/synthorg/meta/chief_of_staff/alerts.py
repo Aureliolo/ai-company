@@ -126,7 +126,12 @@ class LoggingAlertSink:
         Args:
             alert: The alert to log.
         """
-        level = "error" if alert.severity is RuleSeverity.CRITICAL else "warning"
+        level_map: dict[RuleSeverity, str] = {
+            RuleSeverity.INFO: "info",
+            RuleSeverity.WARNING: "warning",
+            RuleSeverity.CRITICAL: "error",
+        }
+        level = level_map.get(alert.severity, "warning")
         getattr(logger, level)(
             COS_ALERT_EMITTED,
             alert_id=str(alert.id),

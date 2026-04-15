@@ -120,6 +120,9 @@ class MemoryBackendOutcomeStore:
                     NotBlankStr(f"rule:{rule_name}"),
                     NotBlankStr(f"altitude:{altitude.value}"),
                 ),
+                # Cap at 1000 most recent entries to bound memory.
+                # Sufficient for confidence learning; older outcomes
+                # contribute negligible weight to EMA/Bayesian models.
                 limit=1000,
             ),
         )

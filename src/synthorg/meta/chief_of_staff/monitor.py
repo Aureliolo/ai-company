@@ -50,6 +50,9 @@ class OrgInflectionMonitor:
         sinks: tuple[OrgInflectionSink, ...],
         check_interval_minutes: int = 15,
     ) -> None:
+        if check_interval_minutes < 1:
+            msg = f"check_interval_minutes must be >= 1, got {check_interval_minutes}"
+            raise ValueError(msg)
         self._detector = detector
         self._builder = snapshot_builder
         self._sinks = sinks

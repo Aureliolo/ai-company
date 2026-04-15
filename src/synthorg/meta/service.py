@@ -121,23 +121,31 @@ class SelfImprovementService:
         all_proposals = await self._dispatch_strategies(snapshot, matches)
 
         # Step 2.5: Adjust confidence via historical learning.
-        # Wrapped in try/except so optional learning never aborts
-        # the core improvement cycle.
+        # Uses return_exceptions=True so a single failed adjustment
+        # does not discard results from successful adjustments.
         if self._confidence_adjuster is not None and self._outcome_store is not None:
-            try:
-                all_proposals = list(
-                    await asyncio.gather(
-                        *(
-                            self._confidence_adjuster.adjust(
-                                p,
-                                self._outcome_store,
-                            )
-                            for p in all_proposals
-                        ),
-                    ),
-                )
-            except Exception:
-                logger.exception(COS_OUTCOME_RECORD_FAILED)
+            results = await asyncio.gather(
+                *(
+                    self._confidence_adjuster.adjust(
+                        p,
+                        self._outcome_store,
+                    )
+                    for p in all_proposals
+                ),
+                return_exceptions=True,
+            )
+            adjusted: list[ImprovementProposal] = []
+            for original, result in zip(all_proposals, results, strict=True):
+                if isinstance(result, BaseException):
+                    logger.warning(
+                        COS_OUTCOME_RECORD_FAILED,
+                        proposal_id=str(original.id),
+                        reason="confidence_adjustment_failed",
+                    )
+                    adjusted.append(original)
+                else:
+                    adjusted.append(result)
+            all_proposals = adjusted
 
         # Step 3: Filter through guard chain.
         approved: list[ImprovementProposal] = []
