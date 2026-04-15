@@ -57,6 +57,16 @@ class TestDomainToolRegistry:
         assert retrieved == tool
         assert retrieved is not tool  # deep copy, not same object
 
+    def test_get_returns_mutation_safe_copy(self) -> None:
+        """Mutating get() result must not affect registry state."""
+        registry = DomainToolRegistry()
+        registry.register(make_tool())
+        registry.freeze()
+        retrieved = registry.get("synthorg_test_get")
+        retrieved.parameters["injected"] = "bad"
+        fresh = registry.get("synthorg_test_get")
+        assert "injected" not in fresh.parameters
+
     def test_register_many(self) -> None:
         registry = DomainToolRegistry()
         t1 = make_tool("synthorg_tasks_list")

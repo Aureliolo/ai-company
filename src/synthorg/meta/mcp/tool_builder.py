@@ -8,6 +8,9 @@ type, enforcing the ``synthorg_{domain}_{action}`` naming convention.
 from typing import Any
 
 from synthorg.meta.mcp.registry import MCPToolDef
+from synthorg.observability import get_logger
+
+logger = get_logger(__name__)
 
 PAGINATION_PROPERTIES: dict[str, Any] = {
     "offset": {
@@ -48,6 +51,11 @@ def _make_parameters(
             msg = (
                 f"required keys {sorted(unknown)} not declared "
                 f"in properties {sorted(resolved)}"
+            )
+            logger.warning(
+                "mcp.tool_builder.invalid_required",
+                unknown_keys=sorted(unknown),
+                properties=sorted(resolved),
             )
             raise ValueError(msg)
     schema: dict[str, Any] = {

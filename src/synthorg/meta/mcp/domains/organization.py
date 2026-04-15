@@ -48,7 +48,11 @@ ORGANIZATION_TOOLS: tuple[MCPToolDef, ...] = (
         "get",
         "Get a specific company config version.",
         {
-            "version_num": {"type": "integer", "description": "Version number"},
+            "version_num": {
+                "type": "integer",
+                "description": "Version number",
+                "minimum": 1,
+            },
         },
         required=("version_num",),
     ),
@@ -163,7 +167,11 @@ ORGANIZATION_TOOLS: tuple[MCPToolDef, ...] = (
         "Get a specific role version.",
         {
             "role_name": {"type": "string", "description": "Role name"},
-            "version_num": {"type": "integer", "description": "Version number"},
+            "version_num": {
+                "type": "integer",
+                "description": "Version number",
+                "minimum": 1,
+            },
         },
         required=("role_name", "version_num"),
     ),

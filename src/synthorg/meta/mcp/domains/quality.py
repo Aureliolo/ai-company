@@ -57,7 +57,12 @@ QUALITY_TOOLS: tuple[MCPToolDef, ...] = (
         "Create a task review.",
         {
             "task_id": {"type": "string", "description": "Task being reviewed"},
-            "score": {"type": "number", "description": "Review score (0-1)"},
+            "score": {
+                "type": "number",
+                "description": "Review score (0-1)",
+                "minimum": 0,
+                "maximum": 1,
+            },
             "feedback": {"type": "string", "description": "Review feedback"},
         },
         required=("task_id", "score"),
