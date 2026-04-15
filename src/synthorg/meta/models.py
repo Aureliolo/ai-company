@@ -656,7 +656,7 @@ class RegressionResult(BaseModel):
 # Moved to signal_models.py to keep models.py under 800 lines.
 # All names remain importable from synthorg.meta.models via __all__.
 
-from synthorg.meta.signal_models import (  # noqa: E402, F401
+from synthorg.meta.signal_models import (  # noqa: E402
     ErrorCategorySummary,
     EvolutionOutcomeSummary,
     MetricSummary,
@@ -672,8 +672,45 @@ from synthorg.meta.signal_models import (  # noqa: E402, F401
     TrendDirection,
 )
 
-
-# All names remain importable from this module -- signal models are
-# re-exported above.  No __all__ restriction so both the original
-# models.py surface and the re-exported signal types are available
-# to ``from synthorg.meta.models import *`` consumers.
+__all__ = [
+    # Core models
+    "ApplyResult",
+    "ArchitectureChange",
+    "CIValidationResult",
+    "CodeChange",
+    # Enums
+    "CodeOperation",
+    "ConfigChange",
+    # Re-exported signal models
+    "ErrorCategorySummary",
+    "EvolutionMode",
+    "EvolutionOutcomeSummary",
+    "GuardResult",
+    "GuardVerdict",
+    "ImprovementProposal",
+    "MetricSummary",
+    "OrgBudgetSummary",
+    "OrgCoordinationSummary",
+    "OrgErrorSummary",
+    "OrgEvolutionSummary",
+    "OrgPerformanceSummary",
+    "OrgScalingSummary",
+    "OrgSignalSnapshot",
+    "OrgTelemetrySummary",
+    "PromptChange",
+    "ProposalAltitude",
+    "ProposalRationale",
+    "ProposalStatus",
+    "RegressionResult",
+    "RegressionThresholds",
+    "RegressionVerdict",
+    "RollbackOperation",
+    "RollbackPlan",
+    "RolloutOutcome",
+    "RolloutResult",
+    "RolloutStrategyType",
+    "RuleMatch",
+    "RuleSeverity",
+    "ScalingDecisionSummary",
+    "TrendDirection",
+]
