@@ -37,6 +37,7 @@ from synthorg.observability.events.meta import (
     META_CYCLE_NO_TRIGGERS,
     META_CYCLE_STARTED,
     META_PROPOSAL_GUARD_REJECTED,
+    META_ROLLOUT_PRECONDITION_FAILED,
 )
 
 if TYPE_CHECKING:
@@ -120,10 +121,14 @@ class SelfImprovementService:
 
         # Step 2.5: Adjust confidence via historical learning.
         if self._confidence_adjuster is not None and self._outcome_store is not None:
-            all_proposals = [
-                await self._confidence_adjuster.adjust(p, self._outcome_store)
-                for p in all_proposals
-            ]
+            all_proposals = list(
+                await asyncio.gather(
+                    *(
+                        self._confidence_adjuster.adjust(p, self._outcome_store)
+                        for p in all_proposals
+                    ),
+                ),
+            )
 
         # Step 3: Filter through guard chain.
         approved: list[ImprovementProposal] = []
@@ -164,24 +169,39 @@ class SelfImprovementService:
             Rollout result.
         """
         if proposal.status is not ProposalStatus.APPROVED:
+            logger.error(
+                META_ROLLOUT_PRECONDITION_FAILED,
+                proposal_id=str(proposal.id),
+                reason="not_approved",
+                status=proposal.status.value,
+            )
             msg = (
                 f"Proposal {proposal.id} must be approved before "
                 f"rollout; current status is {proposal.status.value}"
             )
-            logger.error(msg, proposal_id=str(proposal.id))
             raise ValueError(msg)
 
         applier = self._appliers.get(proposal.altitude)
         if applier is None:
+            logger.error(
+                META_ROLLOUT_PRECONDITION_FAILED,
+                proposal_id=str(proposal.id),
+                reason="no_applier",
+                altitude=proposal.altitude.value,
+            )
             msg = f"No applier for altitude {proposal.altitude}"
-            logger.error(msg, altitude=proposal.altitude.value)
             raise ValueError(msg)
 
         strategy_name = proposal.rollout_strategy.value
         rollout = self._rollout_strategies.get(strategy_name)
         if rollout is None:
+            logger.error(
+                META_ROLLOUT_PRECONDITION_FAILED,
+                proposal_id=str(proposal.id),
+                reason="no_strategy",
+                strategy=strategy_name,
+            )
             msg = f"No rollout strategy '{strategy_name}'"
-            logger.error(msg, strategy=strategy_name)
             raise ValueError(msg)
 
         return await rollout.execute(
@@ -273,6 +293,9 @@ class SelfImprovementService:
         try:
             await self._outcome_store.record_outcome(outcome)
         except Exception:
+            # Intentionally not re-raised: outcome recording failure
+            # must not block the approval flow.  The error is logged
+            # at ERROR level (via .exception) for operator visibility.
             logger.exception(
                 COS_OUTCOME_RECORD_FAILED,
                 proposal_id=str(proposal.id),

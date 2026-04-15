@@ -83,12 +83,15 @@ class ProactiveAlertService:
             emitted_at=datetime.now(UTC),
         )
 
+        failed_sinks: list[str] = []
+
         async def _emit(sink: AlertSink) -> None:
             try:
                 await sink.on_alert(alert)
             except MemoryError, RecursionError:
                 raise
             except Exception:
+                failed_sinks.append(type(sink).__name__)
                 logger.exception(
                     COS_ALERT_EMITTED,
                     alert_id=str(alert.id),
@@ -99,11 +102,14 @@ class ProactiveAlertService:
         async with asyncio.TaskGroup() as tg:
             for sink in self._sinks:
                 tg.create_task(_emit(sink))
+        delivered = len(self._sinks) - len(failed_sinks)
         logger.info(
             COS_ALERT_EMITTED,
             alert_id=str(alert.id),
             severity=alert.severity.value,
             metric=inflection.metric_name,
+            delivered=delivered,
+            failed=len(failed_sinks),
         )
 
 

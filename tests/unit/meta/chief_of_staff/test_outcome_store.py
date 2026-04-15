@@ -159,6 +159,75 @@ class TestGetStats:
         )
         assert stats is None
 
+    async def test_corrupted_entries_skipped(self) -> None:
+        """Deserialization failures are skipped; valid entries counted."""
+        backend = await _connected_backend()
+        store = MemoryBackendOutcomeStore(
+            backend=backend,
+            agent_id=_AGENT_ID,
+            min_outcomes=1,
+        )
+        # Record 3 valid outcomes.
+        for _ in range(3):
+            await store.record_outcome(_make_outcome(decision="approved"))
+        # Inject a corrupted entry directly via the backend.
+        from synthorg.core.enums import MemoryCategory
+        from synthorg.memory.models import MemoryStoreRequest
+
+        await backend.store(
+            _AGENT_ID,
+            MemoryStoreRequest(
+                category=MemoryCategory.EPISODIC,
+                namespace="chief_of_staff",
+                content="NOT VALID JSON",
+                metadata={
+                    "tags": (
+                        NotBlankStr("rule:quality_declining"),
+                        NotBlankStr("altitude:config_tuning"),
+                    )
+                },
+            ),
+        )
+        stats = await store.get_stats(
+            NotBlankStr("quality_declining"),
+            ProposalAltitude.CONFIG_TUNING,
+        )
+        # Only the 3 valid entries should be counted.
+        assert stats is not None
+        assert stats.total_proposals == 3
+        assert stats.approved_count == 3
+
+    async def test_all_corrupted_returns_none(self) -> None:
+        """If all entries fail deserialization, returns None."""
+        backend = await _connected_backend()
+        store = MemoryBackendOutcomeStore(
+            backend=backend,
+            agent_id=_AGENT_ID,
+            min_outcomes=1,
+        )
+        from synthorg.core.enums import MemoryCategory
+        from synthorg.memory.models import MemoryStoreRequest
+
+        await backend.store(
+            _AGENT_ID,
+            MemoryStoreRequest(
+                category=MemoryCategory.EPISODIC,
+                namespace="chief_of_staff",
+                content="CORRUPT DATA",
+                metadata={
+                    "tags": (
+                        NotBlankStr("rule:quality_declining"),
+                        NotBlankStr("altitude:config_tuning"),
+                    )
+                },
+            ),
+        )
+        stats = await store.get_stats(
+            NotBlankStr("quality_declining"),
+            ProposalAltitude.CONFIG_TUNING,
+        )
+        assert stats is None
+
 
 class TestRecentOutcomes:
     """MemoryBackendOutcomeStore.recent_outcomes tests."""

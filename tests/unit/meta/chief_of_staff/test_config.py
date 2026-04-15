@@ -5,6 +5,7 @@ from pydantic import ValidationError
 
 from synthorg.meta.chief_of_staff.config import ChiefOfStaffConfig
 from synthorg.meta.config import SelfImprovementConfig
+from synthorg.meta.models import RuleSeverity
 
 pytestmark = pytest.mark.unit
 
@@ -36,7 +37,7 @@ class TestChiefOfStaffConfig:
 
     def test_default_severity_threshold(self) -> None:
         cfg = ChiefOfStaffConfig()
-        assert cfg.inflection_severity_threshold == "warning"
+        assert cfg.inflection_severity_threshold is RuleSeverity.WARNING
 
     def test_default_chat_model(self) -> None:
         cfg = ChiefOfStaffConfig()

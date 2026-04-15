@@ -10,6 +10,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 from synthorg.core.types import NotBlankStr
+from synthorg.meta.models import RuleSeverity
 
 
 class ChiefOfStaffConfig(BaseModel):
@@ -54,11 +55,7 @@ class ChiefOfStaffConfig(BaseModel):
 
     alerts_enabled: bool = False
     inflection_check_interval_minutes: int = Field(default=15, ge=5)
-    inflection_severity_threshold: Literal[
-        "info",
-        "warning",
-        "critical",
-    ] = "warning"
+    inflection_severity_threshold: RuleSeverity = RuleSeverity.WARNING
 
     # ── Chat ──────────────────────────────────────────────────────
 

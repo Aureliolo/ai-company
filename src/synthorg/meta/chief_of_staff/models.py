@@ -133,10 +133,17 @@ class OrgInflection(BaseModel):
     @computed_field  # type: ignore[prop-decorator]
     @property
     def change_ratio(self) -> float:
-        """Absolute fractional change from old to new value."""
-        if self.old_value == 0.0:
-            return float("inf") if self.new_value != 0.0 else 0.0
-        return abs(self.new_value - self.old_value) / abs(self.old_value)
+        """Absolute fractional change from old to new value.
+
+        Uses symmetric relative change to handle zero baselines
+        without producing infinity.
+        """
+        if self.old_value == 0.0 and self.new_value == 0.0:
+            return 0.0
+        return abs(self.new_value - self.old_value) / max(
+            abs(self.old_value),
+            abs(self.new_value),
+        )
 
 
 # ── Proactive alerts ──────────────────────────────────────────────
@@ -182,13 +189,12 @@ class Alert(BaseModel):
 class ChatQuery(BaseModel):
     """Input to the Chief of Staff chat interface.
 
-    At least one of ``question``, ``proposal_id``, or ``alert_id``
-    must be provided. ``proposal_id`` routes to proposal explanation;
-    ``alert_id`` routes to alert explanation; bare ``question``
-    triggers free-form signal Q&A.
+    ``question`` is always required. ``proposal_id`` routes to
+    proposal explanation; ``alert_id`` routes to alert explanation;
+    a bare ``question`` triggers free-form signal Q&A.
 
     Attributes:
-        question: User's natural language question.
+        question: User's natural language question (required).
         proposal_id: Proposal to explain (optional).
         alert_id: Alert to explain (optional).
     """

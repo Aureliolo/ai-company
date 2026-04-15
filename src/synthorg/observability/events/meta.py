@@ -34,6 +34,7 @@ META_PROPOSAL_REJECTED: Final[str] = "meta.proposal.rejected"
 
 # -- Rollout events -----------------------------------------------------
 
+META_ROLLOUT_PRECONDITION_FAILED: Final[str] = "meta.rollout.precondition_failed"
 META_ROLLOUT_STARTED: Final[str] = "meta.rollout.started"
 META_ROLLOUT_COMPLETED: Final[str] = "meta.rollout.completed"
 META_ROLLOUT_REGRESSION_DETECTED: Final[str] = "meta.rollout.regression_detected"

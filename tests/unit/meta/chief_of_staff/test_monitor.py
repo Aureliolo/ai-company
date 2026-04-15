@@ -126,7 +126,10 @@ class TestOrgInflectionMonitor:
         )
         await monitor._tick()
         await monitor._tick()
-        detector.detect.assert_called_once()
+        detector.detect.assert_called_once_with(
+            previous=snap1,
+            current=snap2,
+        )
 
     async def test_inflection_emitted_to_sinks(self) -> None:
         snap1 = _snap(quality=7.5)

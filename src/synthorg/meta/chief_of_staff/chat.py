@@ -112,7 +112,9 @@ class ChiefOfStaffChat:
 
         Args:
             alert: The alert to explain.
-            snapshot: Current signal snapshot for context.
+            snapshot: Accepted for API consistency with
+                ``explain_proposal``; not used because the alert
+                already carries its own signal context.
 
         Returns:
             Natural language explanation.
@@ -150,9 +152,18 @@ class ChiefOfStaffChat:
             query_type="free_form",
             question=query.question[:100],
         )
+        recent_context = "No recent proposals or alerts."
+        if self._outcome_store is not None:
+            recent = await self._outcome_store.recent_outcomes(limit=5)
+            if recent:
+                lines = [
+                    f"- {o.title} ({o.decision}, {o.decided_at:%Y-%m-%d})"
+                    for o in recent
+                ]
+                recent_context = "Recent outcomes:\n" + "\n".join(lines)
         prompt = CHAT_QUERY_PROMPT.format(
             snapshot_summary=_format_snapshot(snapshot),
-            recent_context="No recent proposals or alerts.",
+            recent_context=recent_context,
             user_question=query.question,
         )
         return await self._call_llm(prompt, sources=())

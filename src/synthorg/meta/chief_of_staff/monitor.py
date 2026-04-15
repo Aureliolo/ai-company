@@ -8,7 +8,7 @@ consumers.
 
 import asyncio
 import contextlib
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 
 from synthorg.observability import get_logger
@@ -75,6 +75,7 @@ class OrgInflectionMonitor:
         with contextlib.suppress(asyncio.CancelledError):
             await self._task
         self._task = None
+        self._last_snapshot = None
         logger.info(COS_MONITOR_STOPPED)
 
     async def _loop(self) -> None:
@@ -93,12 +94,7 @@ class OrgInflectionMonitor:
     async def _tick(self) -> None:
         """Single monitoring tick."""
         now = datetime.now(UTC)
-        since = datetime(
-            now.year,
-            now.month,
-            now.day,
-            tzinfo=UTC,
-        )
+        since = now - timedelta(seconds=self._interval_s)
         current = await self._builder.build(since=since, until=now)
         if self._last_snapshot is None:
             self._last_snapshot = current

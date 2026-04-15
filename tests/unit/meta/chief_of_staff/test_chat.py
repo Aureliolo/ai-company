@@ -123,14 +123,23 @@ class TestExplainProposal:
         result = await chat.explain_proposal(_proposal(), _snap())
         assert result.answer == "Quality is declining because..."
 
-    async def test_calls_provider(self) -> None:
+    async def test_calls_provider_with_config(self) -> None:
         provider = _mock_provider()
-        chat = ChiefOfStaffChat(
-            provider=provider,
-            config=ChiefOfStaffConfig(),
+        config = ChiefOfStaffConfig(
+            chat_model="example-small-001",
+            chat_temperature=0.5,
+            chat_max_tokens=1500,
         )
+        chat = ChiefOfStaffChat(provider=provider, config=config)
         await chat.explain_proposal(_proposal(), _snap())
         provider.complete.assert_called_once()
+        call_args = provider.complete.call_args
+        # model is the second positional arg
+        assert call_args.args[1] == "example-small-001"
+        # config is a keyword arg with temperature and max_tokens
+        completion_config = call_args.kwargs["config"]
+        assert completion_config.temperature == pytest.approx(0.5)
+        assert completion_config.max_tokens == 1500
 
     async def test_includes_sources(self) -> None:
         provider = _mock_provider()

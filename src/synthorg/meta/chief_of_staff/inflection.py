@@ -128,10 +128,11 @@ class OrgInflectionDetector:
         """Check a single metric for significant change."""
         if old_val == 0.0 and new_val == 0.0:
             return None
-        if old_val == 0.0:
-            ratio = abs(new_val) / _EPSILON
-        else:
-            ratio = abs(new_val - old_val) / max(abs(old_val), _EPSILON)
+        ratio = abs(new_val - old_val) / max(
+            abs(old_val),
+            abs(new_val),
+            _EPSILON,
+        )
         if ratio < self._warning:
             return None
         severity = (

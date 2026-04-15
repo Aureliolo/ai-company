@@ -99,6 +99,7 @@ See `web/CLAUDE.md` for the full component inventory, design token rules, and po
 - **Pluggable subsystems**: new cross-cutting subsystems (e.g. classification detectors, context loaders, notification sinks, retention policies, verification graders) follow a protocol + strategy + factory + config discriminator pattern. Define a `Protocol` interface, ship concrete strategies that implement it, register them in a factory keyed by a config discriminator, and plumb the active selection through frozen config. Ship safe defaults so the behaviour is opt-in, never a silent regression. Canonical examples:
   - `engine/classification/protocol.py` (`Detector`, `ScopedContextLoader`, `ClassificationSink`) + `budget/coordination_config.py` dispatcher
   - `engine/quality/decomposer_protocol.py` (`CriteriaDecomposer`) + `engine/quality/grader_protocol.py` (`RubricGrader`) + `engine/quality/verification_factory.py` + `engine/quality/verification_config.py`
+  - `meta/chief_of_staff/protocol.py` (`OutcomeStore`, `ConfidenceAdjuster`, `OrgInflectionSink`, `AlertSink`) + `meta/chief_of_staff/config.py` discriminator + `meta/factory.py::build_confidence_adjuster()`
 - **Line length**: 88 characters (ruff)
 - **Functions**: < 50 lines, files < 800 lines
 - **Errors**: handle explicitly, never silently swallow

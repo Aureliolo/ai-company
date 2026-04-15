@@ -2,9 +2,14 @@
 
 import pytest
 
+from synthorg.meta.chief_of_staff.learning import (
+    BayesianConfidenceAdjuster,
+    ExponentialMovingAverageAdjuster,
+)
 from synthorg.meta.config import SelfImprovementConfig
 from synthorg.meta.factory import (
     build_appliers,
+    build_confidence_adjuster,
     build_guards,
     build_regression_detector,
     build_rollout_strategies,
@@ -138,6 +143,34 @@ class TestBuildRegressionDetector:
     def test_builds_tiered_detector(self) -> None:
         detector = build_regression_detector()
         assert detector.name == "tiered"
+
+
+class TestBuildConfidenceAdjuster:
+    """Confidence adjuster factory tests."""
+
+    def test_default_builds_ema(self) -> None:
+        config = SelfImprovementConfig()
+        adjuster = build_confidence_adjuster(config)
+        assert isinstance(adjuster, ExponentialMovingAverageAdjuster)
+        assert adjuster.name == "ema"
+
+    def test_ema_passes_alpha(self) -> None:
+        from synthorg.meta.chief_of_staff.config import ChiefOfStaffConfig
+
+        cos_cfg = ChiefOfStaffConfig(adjuster_strategy="ema", ema_alpha=0.3)
+        config = SelfImprovementConfig(chief_of_staff=cos_cfg)
+        adjuster = build_confidence_adjuster(config)
+        assert isinstance(adjuster, ExponentialMovingAverageAdjuster)
+        assert adjuster._alpha == pytest.approx(0.3)
+
+    def test_bayesian_strategy(self) -> None:
+        from synthorg.meta.chief_of_staff.config import ChiefOfStaffConfig
+
+        cos_cfg = ChiefOfStaffConfig(adjuster_strategy="bayesian")
+        config = SelfImprovementConfig(chief_of_staff=cos_cfg)
+        adjuster = build_confidence_adjuster(config)
+        assert isinstance(adjuster, BayesianConfidenceAdjuster)
+        assert adjuster.name == "bayesian"
 
 
 class TestBuildRolloutStrategies:

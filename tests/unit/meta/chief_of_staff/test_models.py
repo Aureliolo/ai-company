@@ -187,7 +187,8 @@ class TestOrgInflection:
 
     def test_change_ratio_old_zero_new_nonzero(self) -> None:
         inf = self._make(old_value=0.0, new_value=0.5)
-        assert inf.change_ratio == float("inf")
+        # Symmetric formula: |0.5-0| / max(|0|, |0.5|) = 1.0
+        assert inf.change_ratio == pytest.approx(1.0)
 
     def test_change_ratio_both_zero(self) -> None:
         inf = self._make(old_value=0.0, new_value=0.0)

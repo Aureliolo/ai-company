@@ -112,26 +112,53 @@ async def _store_with_outcomes(
 # ── EMA Adjuster ──────────────────────────────────────────────────
 
 
+@pytest.mark.parametrize(
+    "adjuster_factory",
+    [
+        pytest.param(ExponentialMovingAverageAdjuster, id="ema"),
+        pytest.param(BayesianConfidenceAdjuster, id="bayesian"),
+    ],
+)
+class TestAdjusterCommon:
+    """Tests shared between both adjuster strategies."""
+
+    async def test_no_source_rule_returns_unchanged(
+        self,
+        adjuster_factory: type,
+    ) -> None:
+        store = await _store_with_outcomes(approved=5)
+        adjuster = adjuster_factory()
+        proposal = _make_proposal(source_rule=None, confidence=0.6)
+        result = await adjuster.adjust(proposal, store)
+        assert result.confidence == pytest.approx(0.6)
+
+    async def test_no_history_returns_unchanged(
+        self,
+        adjuster_factory: type,
+    ) -> None:
+        store = await _store_with_outcomes(min_outcomes=3)
+        adjuster = adjuster_factory()
+        proposal = _make_proposal(confidence=0.6)
+        result = await adjuster.adjust(proposal, store)
+        assert result.confidence == pytest.approx(0.6)
+
+    async def test_returns_new_instance(
+        self,
+        adjuster_factory: type,
+    ) -> None:
+        store = await _store_with_outcomes(approved=5, rejected=5)
+        adjuster = adjuster_factory()
+        proposal = _make_proposal()
+        result = await adjuster.adjust(proposal, store)
+        assert result is not proposal
+
+
 class TestEMAConfidenceAdjuster:
     """ExponentialMovingAverageAdjuster tests."""
 
     def test_name(self) -> None:
         adjuster = ExponentialMovingAverageAdjuster()
         assert adjuster.name == "ema"
-
-    async def test_no_source_rule_returns_unchanged(self) -> None:
-        store = await _store_with_outcomes(approved=5)
-        adjuster = ExponentialMovingAverageAdjuster()
-        proposal = _make_proposal(source_rule=None, confidence=0.6)
-        result = await adjuster.adjust(proposal, store)
-        assert result.confidence == pytest.approx(0.6)
-
-    async def test_no_history_returns_unchanged(self) -> None:
-        store = await _store_with_outcomes(min_outcomes=3)
-        adjuster = ExponentialMovingAverageAdjuster()
-        proposal = _make_proposal(confidence=0.6)
-        result = await adjuster.adjust(proposal, store)
-        assert result.confidence == pytest.approx(0.6)
 
     async def test_high_approval_boosts(self) -> None:
         store = await _store_with_outcomes(approved=8, rejected=2)
@@ -177,13 +204,6 @@ class TestEMAConfidenceAdjuster:
         result = await adjuster.adjust(proposal, store)
         assert result.confidence == pytest.approx(1.0)
 
-    async def test_returns_new_instance(self) -> None:
-        store = await _store_with_outcomes(approved=5, rejected=5)
-        adjuster = ExponentialMovingAverageAdjuster()
-        proposal = _make_proposal()
-        result = await adjuster.adjust(proposal, store)
-        assert result is not proposal
-
 
 # ── Bayesian Adjuster ─────────────────────────────────────────────
 
@@ -194,20 +214,6 @@ class TestBayesianConfidenceAdjuster:
     def test_name(self) -> None:
         adjuster = BayesianConfidenceAdjuster()
         assert adjuster.name == "bayesian"
-
-    async def test_no_source_rule_returns_unchanged(self) -> None:
-        store = await _store_with_outcomes(approved=5)
-        adjuster = BayesianConfidenceAdjuster()
-        proposal = _make_proposal(source_rule=None, confidence=0.6)
-        result = await adjuster.adjust(proposal, store)
-        assert result.confidence == pytest.approx(0.6)
-
-    async def test_no_history_returns_unchanged(self) -> None:
-        store = await _store_with_outcomes(min_outcomes=3)
-        adjuster = BayesianConfidenceAdjuster()
-        proposal = _make_proposal(confidence=0.6)
-        result = await adjuster.adjust(proposal, store)
-        assert result.confidence == pytest.approx(0.6)
 
     async def test_high_approval_boosts(self) -> None:
         store = await _store_with_outcomes(approved=8, rejected=2)
@@ -245,10 +251,3 @@ class TestBayesianConfidenceAdjuster:
         proposal = _make_proposal(confidence=1.0)
         result = await adjuster.adjust(proposal, store)
         assert 0.0 <= result.confidence <= 1.0
-
-    async def test_returns_new_instance(self) -> None:
-        store = await _store_with_outcomes(approved=5, rejected=5)
-        adjuster = BayesianConfidenceAdjuster()
-        proposal = _make_proposal()
-        result = await adjuster.adjust(proposal, store)
-        assert result is not proposal

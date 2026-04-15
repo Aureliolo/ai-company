@@ -123,8 +123,6 @@ class MemoryBackendOutcomeStore:
                 limit=1000,
             ),
         )
-        if len(entries) < self._min_outcomes:
-            return None
         approved = 0
         rejected = 0
         latest_at = datetime.min.replace(tzinfo=UTC)
@@ -143,10 +141,13 @@ class MemoryBackendOutcomeStore:
             else:
                 rejected += 1
             latest_at = max(latest_at, outcome.decided_at)
+        total = approved + rejected
+        if total < self._min_outcomes:
+            return None
         return OutcomeStats(
             rule_name=rule_name,
             altitude=altitude,
-            total_proposals=approved + rejected,
+            total_proposals=total,
             approved_count=approved,
             rejected_count=rejected,
             last_updated=latest_at,
