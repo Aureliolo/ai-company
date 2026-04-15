@@ -38,6 +38,8 @@ class ABTestConfig(BaseModel):
         min_agents_per_group: Minimum agents required per group.
         min_observations_per_group: Minimum metric samples per group
             before statistical comparison is allowed.
+        improvement_threshold: Minimum improvement ratio to
+            declare treatment as winner.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)

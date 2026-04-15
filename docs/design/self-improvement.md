@@ -164,6 +164,7 @@ self_improvement:
       control_fraction: 0.5
       min_agents_per_group: 5
       min_observations_per_group: 10
+      improvement_threshold: 0.15
   regression:
     quality_drop_threshold: 0.10
     cost_increase_threshold: 0.20
