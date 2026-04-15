@@ -81,9 +81,15 @@ src/synthorg/meta/
     architecture_applier.py -- Role/workflow creation
     prompt_applier.py  -- Constitutional principle injection
 
-  mcp/                 -- MCP signal server (first slice of API-as-MCP)
-    server.py          -- Server registration
-    tools.py           -- 9 tool definitions
+  mcp/                 -- Unified MCP API server with capability-based scoping
+    server.py          -- Server singleton lifecycle
+    tools.py           -- Legacy 9 signal tool definitions
+    registry.py        -- MCPToolDef model + DomainToolRegistry
+    scoping.py         -- MCPToolScoper (wildcard capability matching)
+    invoker.py         -- MCPToolInvoker (handler dispatch + error mapping)
+    tool_builder.py    -- read_tool / write_tool / admin_tool builders
+    domains/           -- 15 domain tool definition modules (~204 tools)
+    handlers/          -- 15 domain handler modules + common factory
 
   chief_of_staff/      -- Interactive agent role
     role.py            -- CustomRole definition
@@ -190,7 +196,7 @@ self_improvement:
 
 ## Follow-up Issues
 
-1. Full API-as-MCP server (extend signal MCP to wrap all API endpoints)
+1. ~~Full API-as-MCP server~~ -- completed in #1339 (204 tools, 15 domains, capability-based scoping)
 2. Product-level improvement (framework code modification proposals)
 3. Cross-deployment analytics (anonymized multi-org patterns)
 4. Chief of Staff advanced capabilities (memory-based learning, proactive alerts)

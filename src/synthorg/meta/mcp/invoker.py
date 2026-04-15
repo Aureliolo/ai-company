@@ -77,13 +77,20 @@ class MCPToolInvoker:
     ) -> ToolExecutionResult:
         """Dispatch a tool invocation to its handler.
 
+        All error conditions (tool not found, handler not found,
+        handler exception) are caught, logged, and converted to
+        ``ToolExecutionResult`` with ``is_error=True``.  The method
+        never raises application exceptions to the caller.
+        ``MemoryError`` and ``RecursionError`` are re-raised.
+
         Args:
             tool_name: Name of the MCP tool to invoke.
             arguments: Tool call arguments.
             app_state: Application state for service access.
 
         Returns:
-            ``ToolExecutionResult`` with the handler's output or error.
+            ``ToolExecutionResult`` with the handler's JSON output
+            (on success) or a JSON error object (on failure).
         """
         logger.debug(
             MCP_SERVER_INVOKE_START,
@@ -117,12 +124,16 @@ class MCPToolInvoker:
                 is_error=True,
             )
 
-        # Invoke handler.
+        # Invoke handler.  Re-raise MemoryError/RecursionError
+        # (system-critical) and let application exceptions map to
+        # error results.
         try:
             result = await handler(
                 app_state=app_state,
                 arguments=arguments,
             )
+        except MemoryError, RecursionError:
+            raise
         except Exception as exc:
             error_type = type(exc).__name__
             logger.warning(

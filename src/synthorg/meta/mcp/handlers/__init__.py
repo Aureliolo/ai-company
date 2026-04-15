@@ -22,6 +22,7 @@ from synthorg.meta.mcp.handlers.signals import SIGNAL_HANDLERS
 from synthorg.meta.mcp.handlers.tasks import TASK_HANDLERS
 from synthorg.meta.mcp.handlers.workflows import WORKFLOW_HANDLERS
 from synthorg.observability import get_logger
+from synthorg.observability.events.mcp import MCP_HANDLERS_BUILT
 
 if TYPE_CHECKING:
     from synthorg.meta.mcp.invoker import ToolHandler
@@ -64,7 +65,7 @@ def build_handler_map() -> dict[str, ToolHandler]:
                 raise ValueError(msg)
             handlers[key] = handler
     logger.debug(
-        "mcp.handlers.built",
+        MCP_HANDLERS_BUILT,
         handler_count=len(handlers),
     )
     return handlers

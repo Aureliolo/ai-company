@@ -21,6 +21,7 @@ from synthorg.meta.mcp.domains.tasks import TASK_TOOLS
 from synthorg.meta.mcp.domains.workflows import WORKFLOW_TOOLS
 from synthorg.meta.mcp.registry import DomainToolRegistry, MCPToolDef
 from synthorg.observability import get_logger
+from synthorg.observability.events.mcp import MCP_REGISTRY_BUILT
 
 logger = get_logger(__name__)
 
@@ -54,7 +55,7 @@ def build_full_registry() -> DomainToolRegistry:
         registry.register_many(domain_tools)
     registry.freeze()
     logger.debug(
-        "mcp.registry.built",
+        MCP_REGISTRY_BUILT,
         tool_count=registry.tool_count,
         domain_count=len(ALL_DOMAIN_TOOLS),
     )

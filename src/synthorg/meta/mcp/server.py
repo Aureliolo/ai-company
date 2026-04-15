@@ -30,6 +30,9 @@ SERVER_DESCRIPTION = (
 TOOL_PREFIX = "synthorg"
 
 # Module-level singletons (built on first access).
+# These are initialized during single-threaded application startup
+# (via Litestar lifespan).  Not thread-safe for concurrent first-call
+# races; if that becomes a requirement, guard with threading.Lock.
 _registry: DomainToolRegistry | None = None
 _scoper: MCPToolScoper | None = None
 _invoker: MCPToolInvoker | None = None

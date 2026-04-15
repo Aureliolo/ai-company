@@ -1,6 +1,7 @@
 """Unit tests for MCP tool registry."""
 
 import pytest
+from pydantic import ValidationError
 
 from synthorg.meta.mcp.registry import DomainToolRegistry, MCPToolDef
 
@@ -25,7 +26,7 @@ class TestMCPToolDef:
 
     def test_frozen_model(self) -> None:
         tool = _make_tool()
-        with pytest.raises(Exception):  # noqa: B017, PT011
+        with pytest.raises(ValidationError):
             tool.name = "changed"  # type: ignore[misc]
 
     def test_required_fields(self) -> None:
@@ -36,16 +37,24 @@ class TestMCPToolDef:
         assert tool.handler_key == "synthorg_test_get"
 
     def test_rejects_blank_name(self) -> None:
-        with pytest.raises(Exception):  # noqa: B017, PT011
+        with pytest.raises(ValidationError):
             _make_tool(name="")
 
     def test_rejects_blank_description(self) -> None:
-        with pytest.raises(Exception):  # noqa: B017, PT011
+        with pytest.raises(ValidationError):
             _make_tool(description="")
 
     def test_rejects_whitespace_name(self) -> None:
-        with pytest.raises(Exception):  # noqa: B017, PT011
+        with pytest.raises(ValidationError):
             _make_tool(name="   ")
+
+    def test_rejects_name_without_prefix(self) -> None:
+        with pytest.raises(ValidationError, match="synthorg_"):
+            _make_tool(name="invalid_name")
+
+    def test_rejects_bad_capability_format(self) -> None:
+        with pytest.raises(ValidationError, match="domain:action"):
+            _make_tool(capability="no_colon")
 
 
 class TestDomainToolRegistry:
@@ -137,7 +146,7 @@ class TestDomainToolRegistry:
         mapping = registry.as_mapping()
         assert "synthorg_test_get" in mapping
         with pytest.raises(TypeError):
-            mapping["new"] = _make_tool("new")  # type: ignore[index]
+            mapping["new"] = _make_tool("synthorg_new_tool")  # type: ignore[index]
 
     def test_tool_count(self) -> None:
         registry = DomainToolRegistry()

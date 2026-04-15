@@ -31,12 +31,12 @@ class MCPToolScoper:
     - ``"*:read"`` -- read actions across all domains
     - ``"*"`` -- everything (admin)
 
-    Resolution order for a given tool:
+    Resolution order for a given tool (first match wins):
 
-    1. If tool name is in ``denied`` -- **excluded**
-    2. If tool name is in ``allowed`` -- **included**
-    3. If tool capability matches any pattern in ``mcp_capabilities`` -- **included**
-    4. Otherwise -- **excluded**
+    1. If tool name is in ``denied`` -- **excluded immediately**
+    2. Else, if tool name is in ``allowed`` -- **included immediately**
+    3. Else, if tool capability matches any ``mcp_capabilities`` pattern -- **included**
+    4. Otherwise (no match) -- **excluded**
 
     Args:
         registry: The domain tool registry to filter from.

@@ -189,3 +189,25 @@ class TestMCPToolScoper:
             denied=("SYNTHORG_TASKS_LIST",),
         )
         assert len(result) == 0
+
+    def test_nonexistent_tool_in_allowed_ignored(self) -> None:
+        t1 = _make_tool("synthorg_tasks_list", "tasks:read")
+        registry = _registry_with(t1)
+        scoper = MCPToolScoper(registry)
+
+        result = scoper.visible_tools(
+            (),
+            allowed=("synthorg_phantom_tool",),
+        )
+        assert len(result) == 0
+
+    def test_nonexistent_tool_in_denied_ignored(self) -> None:
+        t1 = _make_tool("synthorg_tasks_list", "tasks:read")
+        registry = _registry_with(t1)
+        scoper = MCPToolScoper(registry)
+
+        result = scoper.visible_tools(
+            ("tasks:read",),
+            denied=("synthorg_phantom_tool",),
+        )
+        assert len(result) == 1

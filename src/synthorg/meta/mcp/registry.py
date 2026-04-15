@@ -7,9 +7,9 @@ with freeze-on-read semantics.
 
 from copy import deepcopy
 from types import MappingProxyType
-from typing import Any
+from typing import Any, Self
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.observability import get_logger
@@ -41,6 +41,22 @@ class MCPToolDef(BaseModel):
     parameters: dict[str, Any] = Field(description="JSON Schema for parameters")
     capability: NotBlankStr = Field(description="Capability tag (domain:action)")
     handler_key: NotBlankStr = Field(description="Handler registry key")
+
+    @model_validator(mode="after")
+    def _validate_name_prefix(self) -> Self:
+        """Enforce ``synthorg_`` naming convention."""
+        if not self.name.startswith("synthorg_"):
+            msg = f"Tool name must start with 'synthorg_': {self.name!r}"
+            raise ValueError(msg)
+        return self
+
+    @model_validator(mode="after")
+    def _validate_capability_format(self) -> Self:
+        """Enforce ``domain:action`` capability format."""
+        if ":" not in self.capability or self.capability.count(":") != 1:
+            msg = f"Capability must be 'domain:action' format: {self.capability!r}"
+            raise ValueError(msg)
+        return self
 
 
 class DomainToolRegistry:
