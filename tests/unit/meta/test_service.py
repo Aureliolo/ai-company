@@ -107,8 +107,9 @@ class TestSelfImprovementService:
         # Coordination cost ratio targets both config_tuning and arch.
         result = await svc.run_cycle(_snap(coord_ratio=0.5))
         assert result, "expected at least one proposal for coord_ratio=0.5"
-        for p in result:
-            assert p.altitude != ProposalAltitude.ARCHITECTURE
+        altitudes = {p.altitude for p in result}
+        assert ProposalAltitude.CONFIG_TUNING in altitudes
+        assert ProposalAltitude.ARCHITECTURE not in altitudes
 
     async def test_rollout_execution(self) -> None:
         svc = self._svc()
