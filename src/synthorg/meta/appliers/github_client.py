@@ -184,7 +184,8 @@ class HttpGitHubClient:
             f"/repos/{self._repo}/git/ref/heads/{branch}",
         )
         _check_response(resp, f"get SHA for branch '{branch}'")
-        return resp.json()["object"]["sha"]
+        sha: str = resp.json()["object"]["sha"]
+        return sha
 
     async def _get_file_sha(
         self,
@@ -197,7 +198,8 @@ class HttpGitHubClient:
             params={"ref": branch},
         )
         _check_response(resp, f"get SHA for file '{path}'")
-        return resp.json()["sha"]
+        sha: str = resp.json()["sha"]
+        return sha
 
     async def _create_or_update_file(
         self,
