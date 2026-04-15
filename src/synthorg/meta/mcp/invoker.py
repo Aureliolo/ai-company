@@ -1,0 +1,162 @@
+"""MCP tool invocation dispatcher.
+
+Provides ``MCPToolInvoker`` which dispatches MCP tool calls to
+registered handler functions, with structured error mapping.
+"""
+
+import json
+from copy import deepcopy
+from typing import TYPE_CHECKING, Any, Protocol
+
+from synthorg.observability import get_logger
+from synthorg.observability.events.mcp import (
+    MCP_SERVER_INVOKE_FAILED,
+    MCP_SERVER_INVOKE_START,
+    MCP_SERVER_INVOKE_SUCCESS,
+)
+from synthorg.tools.base import ToolExecutionResult
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping
+
+    from synthorg.meta.mcp.registry import DomainToolRegistry
+
+logger = get_logger(__name__)
+
+
+class ToolHandler(Protocol):
+    """Protocol for MCP tool handler functions.
+
+    Handlers receive the application state and parsed arguments,
+    returning a JSON-serialized string result.
+    """
+
+    async def __call__(
+        self,
+        *,
+        app_state: Any,
+        arguments: dict[str, Any],
+    ) -> str:
+        """Execute the tool logic.
+
+        Args:
+            app_state: Application state providing service access.
+            arguments: Parsed tool arguments from the MCP call.
+
+        Returns:
+            JSON-serialized result string.
+        """
+        ...
+
+
+class MCPToolInvoker:
+    """Dispatches MCP tool invocations to registered handlers.
+
+    Looks up the handler by the tool's ``handler_key`` in the registry,
+    invokes it with ``app_state`` and ``arguments``, and maps exceptions
+    to ``ToolExecutionResult`` with ``is_error=True``.
+
+    Args:
+        registry: Domain tool registry for handler key lookup.
+        handlers: Mapping of handler keys to handler functions.
+    """
+
+    def __init__(
+        self,
+        registry: DomainToolRegistry,
+        handlers: Mapping[str, ToolHandler],
+    ) -> None:
+        self._registry = registry
+        self._handlers = handlers
+
+    async def invoke(
+        self,
+        tool_name: str,
+        arguments: dict[str, Any],
+        *,
+        app_state: Any,
+    ) -> ToolExecutionResult:
+        """Dispatch a tool invocation to its handler.
+
+        All error conditions (tool not found, handler not found,
+        handler exception) are caught, logged, and converted to
+        ``ToolExecutionResult`` with ``is_error=True``.  The method
+        converts all application-level exceptions into error results
+        so callers never see them.  System-critical exceptions
+        (``MemoryError``, ``RecursionError``) are re-raised.
+
+        Args:
+            tool_name: Name of the MCP tool to invoke.
+            arguments: Tool call arguments.
+            app_state: Application state for service access.
+
+        Returns:
+            ``ToolExecutionResult`` with the handler's JSON output
+            (on success) or a JSON error object (on failure).
+        """
+        logger.debug(
+            MCP_SERVER_INVOKE_START,
+            tool_name=tool_name,
+        )
+
+        # Look up tool definition.
+        try:
+            tool_def = self._registry.get(tool_name)
+        except KeyError:
+            logger.warning(
+                MCP_SERVER_INVOKE_FAILED,
+                tool_name=tool_name,
+                error="tool not found",
+            )
+            return ToolExecutionResult(
+                content=json.dumps({"error": f"Unknown tool: {tool_name}"}),
+                is_error=True,
+            )
+
+        # Look up handler.
+        handler = self._handlers.get(tool_def.handler_key)
+        if handler is None:
+            logger.warning(
+                MCP_SERVER_INVOKE_FAILED,
+                tool_name=tool_name,
+                error="handler not found",
+            )
+            return ToolExecutionResult(
+                content=json.dumps({"error": f"No handler for tool: {tool_name}"}),
+                is_error=True,
+            )
+
+        # Invoke handler.  Re-raise MemoryError/RecursionError
+        # (system-critical) and let application exceptions map to
+        # error results.
+        try:
+            result = await handler(
+                app_state=app_state,
+                arguments=deepcopy(arguments),
+            )
+        except MemoryError, RecursionError:
+            raise
+        except Exception as exc:
+            error_type = type(exc).__name__
+            logger.warning(
+                MCP_SERVER_INVOKE_FAILED,
+                tool_name=tool_name,
+                error=str(exc),
+                error_type=error_type,
+                exc_info=exc,
+            )
+            return ToolExecutionResult(
+                content=json.dumps(
+                    {
+                        "error": error_type,
+                        "tool": tool_name,
+                    }
+                ),
+                is_error=True,
+            )
+
+        logger.debug(
+            MCP_SERVER_INVOKE_SUCCESS,
+            tool_name=tool_name,
+        )
+        return ToolExecutionResult(content=result)

@@ -1,5 +1,6 @@
 """Agent identity and configuration models."""
 
+import re
 from datetime import date  # noqa: TC003 -- required at runtime by Pydantic
 from typing import Self
 from uuid import UUID, uuid4
@@ -301,6 +302,9 @@ class ToolPermissions(BaseModel):
             are available.
         allowed: Explicitly allowed tool names.
         denied: Explicitly denied tool names.
+        mcp_capabilities: MCP capability patterns controlling which
+            internal MCP tools the agent can see.  Supports wildcards
+            (e.g. ``"tasks:*"``, ``"*:read"``, ``"*"``).
         sub_constraints: Optional per-agent sub-constraints overriding
             the access level defaults.  When ``None``, the checker
             resolves defaults from the access level.
@@ -319,6 +323,10 @@ class ToolPermissions(BaseModel):
     denied: tuple[NotBlankStr, ...] = Field(
         default=(),
         description="Explicitly denied tools",
+    )
+    mcp_capabilities: tuple[NotBlankStr, ...] = Field(
+        default=(),
+        description="MCP capability patterns (e.g. 'tasks:read', 'agents:*')",
     )
     sub_constraints: ToolSubConstraints | None = Field(
         default=None,
@@ -344,6 +352,31 @@ class ToolPermissions(BaseModel):
                 reason=msg,
             )
             raise ValueError(msg)
+        return self
+
+    @model_validator(mode="after")
+    def _validate_mcp_capability_format(self) -> Self:
+        """Validate MCP capability pattern format.
+
+        Accepted formats: ``"domain:action"``, ``"domain:*"``,
+        ``"*:action"``, ``"*"``.  Components must be lowercase
+        alphanumeric with underscores.
+        """
+        pattern = re.compile(r"^(?:\*|[a-z][a-z0-9_]*):(?:\*|[a-z][a-z0-9_]*)$|^\*$")
+        for cap in self.mcp_capabilities:
+            if not pattern.match(cap.strip().casefold()):
+                msg = (
+                    f"Invalid MCP capability pattern: {cap!r}. "
+                    f"Expected 'domain:action', 'domain:*', '*:action', or '*'"
+                )
+                logger.warning(
+                    CONFIG_VALIDATION_FAILED,
+                    model="ToolPermissions",
+                    field="mcp_capabilities",
+                    pattern=cap,
+                    reason=msg,
+                )
+                raise ValueError(msg)
         return self
 
 
@@ -433,6 +466,12 @@ class AgentIdentity(BaseModel):
             msg = (
                 "JUNIOR agents cannot have FULL autonomy -- "
                 "maximum is SEMI (DESIGN_SPEC D6)"
+            )
+            logger.warning(
+                CONFIG_VALIDATION_FAILED,
+                model="AgentIdentity",
+                field="autonomy_level/level",
+                reason=msg,
             )
             raise ValueError(msg)
         return self
