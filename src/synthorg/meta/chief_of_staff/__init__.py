@@ -1,1 +1,1 @@
-"""Chief of Staff agent role and prompt templates."""
+"""Chief of Staff agent role, prompt templates, and advanced capabilities."""

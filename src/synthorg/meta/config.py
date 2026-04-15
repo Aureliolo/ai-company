@@ -10,6 +10,7 @@ from typing import Literal, Self
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.core.types import NotBlankStr
+from synthorg.meta.chief_of_staff.config import ChiefOfStaffConfig
 from synthorg.meta.models import EvolutionMode, RolloutStrategyType
 from synthorg.observability import get_logger
 
@@ -175,6 +176,8 @@ class SelfImprovementConfig(BaseModel):
         guards: Guard chain configuration.
         rules: Rule engine configuration.
         prompt_tuning: Prompt tuning strategy configuration.
+        chief_of_staff: Chief of Staff advanced capabilities
+            (learning, alerts, chat).
         analysis_model: LLM model identifier for proposal analysis.
         analysis_temperature: Sampling temperature for analysis.
         analysis_max_tokens: Token budget for analysis responses.
@@ -196,6 +199,10 @@ class SelfImprovementConfig(BaseModel):
     rules: RuleConfig = Field(default_factory=RuleConfig)
     prompt_tuning: PromptTuningConfig = Field(
         default_factory=PromptTuningConfig,
+    )
+
+    chief_of_staff: ChiefOfStaffConfig = Field(
+        default_factory=ChiefOfStaffConfig,
     )
 
     analysis_model: NotBlankStr = Field(

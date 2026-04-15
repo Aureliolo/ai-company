@@ -1,14 +1,23 @@
 """Self-improvement service orchestrator.
 
 Central service that ties together signal aggregation, rule
-evaluation, strategy dispatch, guard chain, and rollout execution.
+evaluation, strategy dispatch, guard chain, rollout execution,
+and Chief of Staff confidence learning.
 """
 
 import asyncio
 from typing import TYPE_CHECKING
 
+from synthorg.core.types import NotBlankStr
+from synthorg.meta.chief_of_staff.events import (
+    COS_LEARNING_ENABLED,
+    COS_OUTCOME_RECORD_FAILED,
+)
+from synthorg.meta.chief_of_staff.models import ProposalOutcome
+from synthorg.meta.chief_of_staff.outcome_store import MemoryBackendOutcomeStore
 from synthorg.meta.factory import (
     build_appliers,
+    build_confidence_adjuster,
     build_guards,
     build_regression_detector,
     build_rollout_strategies,
@@ -31,6 +40,8 @@ from synthorg.observability.events.meta import (
 )
 
 if TYPE_CHECKING:
+    from synthorg.memory.protocol import MemoryBackend
+    from synthorg.meta.chief_of_staff.protocol import ConfidenceAdjuster
     from synthorg.meta.config import SelfImprovementConfig
     from synthorg.meta.models import RuleMatch
     from synthorg.meta.protocol import ImprovementStrategy
@@ -43,14 +54,21 @@ class SelfImprovementService:
 
     1. Evaluates signal snapshot against rules.
     2. Dispatches to strategies for matching altitudes.
-    3. Runs proposals through the guard chain.
-    4. Returns proposals that passed all guards (ready for approval).
+    3. Adjusts proposal confidence via historical learning.
+    4. Runs proposals through the guard chain.
+    5. Returns proposals that passed all guards (ready for approval).
 
     Args:
         config: Self-improvement configuration.
+        memory_backend: Memory backend for outcome learning.
     """
 
-    def __init__(self, *, config: SelfImprovementConfig) -> None:
+    def __init__(
+        self,
+        *,
+        config: SelfImprovementConfig,
+        memory_backend: MemoryBackend | None = None,
+    ) -> None:
         self._config = config
         self._rule_engine = build_rule_engine(config)
         self._strategies = build_strategies(config)
@@ -58,6 +76,21 @@ class SelfImprovementService:
         self._appliers = build_appliers()
         self._detector = build_regression_detector()
         self._rollout_strategies = build_rollout_strategies()
+
+        # Chief of Staff learning.
+        self._outcome_store: MemoryBackendOutcomeStore | None = None
+        self._confidence_adjuster: ConfidenceAdjuster | None = None
+        if config.chief_of_staff.learning_enabled and memory_backend is not None:
+            self._outcome_store = MemoryBackendOutcomeStore(
+                backend=memory_backend,
+                agent_id=NotBlankStr("chief-of-staff"),
+                min_outcomes=config.chief_of_staff.min_outcomes,
+            )
+            self._confidence_adjuster = build_confidence_adjuster(config)
+            logger.info(
+                COS_LEARNING_ENABLED,
+                strategy=config.chief_of_staff.adjuster_strategy,
+            )
 
     async def run_cycle(
         self,
@@ -84,6 +117,13 @@ class SelfImprovementService:
 
         # Step 2: Generate proposals from strategies (parallel).
         all_proposals = await self._dispatch_strategies(snapshot, matches)
+
+        # Step 2.5: Adjust confidence via historical learning.
+        if self._confidence_adjuster is not None and self._outcome_store is not None:
+            all_proposals = [
+                await self._confidence_adjuster.adjust(p, self._outcome_store)
+                for p in all_proposals
+            ]
 
         # Step 3: Filter through guard chain.
         approved: list[ImprovementProposal] = []
@@ -182,3 +222,47 @@ class SelfImprovementService:
                 results.extend(task.result())
 
         return results
+
+    async def record_decision(
+        self,
+        proposal: ImprovementProposal,
+    ) -> None:
+        """Record a decided proposal as an outcome for learning.
+
+        Called by the approval API after a human approves or
+        rejects a proposal. Silently returns if learning is
+        disabled or the proposal lacks decision fields.
+
+        Args:
+            proposal: The decided proposal.
+        """
+        if self._outcome_store is None:
+            return
+        if proposal.decided_at is None or proposal.decided_by is None:
+            return
+        if proposal.status not in (
+            ProposalStatus.APPROVED,
+            ProposalStatus.REJECTED,
+        ):
+            return
+        decision = (
+            "approved" if proposal.status is ProposalStatus.APPROVED else "rejected"
+        )
+        outcome = ProposalOutcome(
+            proposal_id=proposal.id,
+            title=proposal.title,
+            altitude=proposal.altitude,
+            source_rule=proposal.source_rule,
+            decision=decision,
+            confidence_at_decision=proposal.confidence,
+            decided_at=proposal.decided_at,
+            decided_by=proposal.decided_by,
+            decision_reason=proposal.decision_reason,
+        )
+        try:
+            await self._outcome_store.record_outcome(outcome)
+        except Exception:
+            logger.exception(
+                COS_OUTCOME_RECORD_FAILED,
+                proposal_id=str(proposal.id),
+            )

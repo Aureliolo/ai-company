@@ -2,7 +2,9 @@
 
 Conservative baseline prompts for the Chief of Staff agent's
 analysis pipeline. These prompts are used for signal analysis,
-proposal generation, and regression explanation.
+proposal generation, regression explanation, and natural
+language explanations of proposals, alerts, and signal
+interactions.
 """
 
 # Signal analysis prompt template.
@@ -95,4 +97,107 @@ Changes: {proposal_changes}
 
 Explain what likely caused the regression and recommend
 whether to rollback or adjust the change.
+"""
+
+# ── Advanced capability prompts ───────────────────────────────────
+
+# Proposal explanation prompt template.
+PROPOSAL_EXPLANATION_PROMPT = """\
+You are the Chief of Staff explaining an improvement proposal.
+
+## Proposal
+
+Title: {proposal_title}
+Description: {proposal_description}
+Rationale: {proposal_rationale}
+Confidence: {proposal_confidence}
+
+## Triggered Rule
+
+Rule: {rule_name}
+Severity: {rule_severity}
+
+## Current Signal Context
+
+{signal_context}
+
+## Historical Approval Context
+
+{approval_context}
+
+## Instructions
+
+Explain in plain language:
+1. What problem this proposal addresses
+2. Why the rule fired (what signals indicated the issue)
+3. What change is proposed and why it should help
+4. How to verify if it worked
+
+Be conversational and concise. Cite specific signal values.
+"""
+
+# Alert explanation prompt template.
+ALERT_EXPLANATION_PROMPT = """\
+You are the Chief of Staff explaining a sudden alert.
+
+## Alert Details
+
+Type: {alert_type}
+Severity: {alert_severity}
+Affected Domains: {affected_domains}
+
+## What Changed
+
+{signal_context}
+
+## Instructions
+
+Explain:
+1. What changed and how significantly
+2. Which parts of the organization are affected
+3. Likely root causes based on the signal data
+4. Recommended immediate actions (if any)
+
+Be direct and actionable.
+"""
+
+# Signal correlation prompt template.
+SIGNAL_CORRELATION_PROMPT = """\
+Analyze cross-domain signal correlations in the org snapshot.
+
+## Snapshot Context
+
+{snapshot_summary}
+
+## Instructions
+
+Identify:
+1. Which domains are showing coordinated changes
+2. Likely causal relationships between domain changes
+3. Second-order effects worth monitoring
+
+Return a structured analysis in plain language.
+"""
+
+# Free-form chat query prompt template.
+CHAT_QUERY_PROMPT = """\
+You are the Chief of Staff assistant. Answer questions about
+organizational signals, proposals, and alerts.
+
+## Current Org State
+
+{snapshot_summary}
+
+## Recent Context
+
+{recent_context}
+
+## User Question
+
+{user_question}
+
+## Instructions
+
+Answer based on the data provided. If uncertain, say so.
+Be specific and cite which signals support your answer.
 """

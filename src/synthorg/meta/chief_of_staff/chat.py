@@ -1,0 +1,225 @@
+"""Chief of Staff chat interface for natural language explanations.
+
+Provides LLM-powered explanations of proposals, alerts, and
+free-form signal questions. Uses ``CompletionProvider`` for
+LLM calls (retry + rate limiting handled by the provider).
+"""
+
+from typing import TYPE_CHECKING
+
+from synthorg.meta.chief_of_staff.events import (
+    COS_CHAT_FAILED,
+    COS_CHAT_QUERY,
+    COS_CHAT_RESPONSE,
+)
+from synthorg.meta.chief_of_staff.models import (
+    Alert,
+    ChatQuery,
+    ChatResponse,
+)
+from synthorg.meta.chief_of_staff.prompts import (
+    ALERT_EXPLANATION_PROMPT,
+    CHAT_QUERY_PROMPT,
+    PROPOSAL_EXPLANATION_PROMPT,
+)
+from synthorg.observability import get_logger
+from synthorg.providers.enums import MessageRole
+from synthorg.providers.models import ChatMessage, CompletionConfig
+
+if TYPE_CHECKING:
+    from synthorg.meta.chief_of_staff.config import ChiefOfStaffConfig
+    from synthorg.meta.chief_of_staff.protocol import OutcomeStore
+    from synthorg.meta.models import ImprovementProposal, OrgSignalSnapshot
+    from synthorg.providers.protocol import CompletionProvider
+
+logger = get_logger(__name__)
+
+
+class ChiefOfStaffChat:
+    """Natural language interface for proposal/alert explanations.
+
+    Formats context from proposals, alerts, and signal snapshots
+    into prompt templates and calls an LLM for conversational
+    explanations.
+
+    Args:
+        provider: LLM completion provider.
+        config: Chief of Staff configuration.
+        outcome_store: Outcome store for historical context (optional).
+    """
+
+    def __init__(
+        self,
+        *,
+        provider: CompletionProvider,
+        config: ChiefOfStaffConfig,
+        outcome_store: OutcomeStore | None = None,
+    ) -> None:
+        self._provider = provider
+        self._config = config
+        self._outcome_store = outcome_store
+
+    async def explain_proposal(
+        self,
+        proposal: ImprovementProposal,
+        snapshot: OrgSignalSnapshot,
+    ) -> ChatResponse:
+        """Explain why a proposal was generated.
+
+        Args:
+            proposal: The proposal to explain.
+            snapshot: Current signal snapshot for context.
+
+        Returns:
+            Natural language explanation.
+        """
+        logger.info(
+            COS_CHAT_QUERY,
+            query_type="proposal_explanation",
+            proposal_id=str(proposal.id),
+        )
+        approval_ctx = "No historical data available."
+        if self._outcome_store is not None and proposal.source_rule is not None:
+            stats = await self._outcome_store.get_stats(
+                proposal.source_rule,
+                proposal.altitude,
+            )
+            if stats is not None:
+                approval_ctx = (
+                    f"Historical approval rate for rule "
+                    f"'{stats.rule_name}': {stats.approval_rate:.0%} "
+                    f"({stats.approved_count}/{stats.total_proposals} "
+                    f"proposals approved)"
+                )
+        prompt = PROPOSAL_EXPLANATION_PROMPT.format(
+            proposal_title=proposal.title,
+            proposal_description=proposal.description,
+            proposal_rationale=proposal.rationale.signal_summary,
+            proposal_confidence=f"{proposal.confidence:.2f}",
+            rule_name=proposal.source_rule or "manual",
+            rule_severity="N/A",
+            signal_context=_format_snapshot(snapshot),
+            approval_context=approval_ctx,
+        )
+        return await self._call_llm(prompt, sources=("performance", "budget"))
+
+    async def explain_alert(
+        self,
+        alert: Alert,
+        snapshot: OrgSignalSnapshot,  # noqa: ARG002
+    ) -> ChatResponse:
+        """Explain what triggered an alert.
+
+        Args:
+            alert: The alert to explain.
+            snapshot: Current signal snapshot for context.
+
+        Returns:
+            Natural language explanation.
+        """
+        logger.info(
+            COS_CHAT_QUERY,
+            query_type="alert_explanation",
+            alert_id=str(alert.id),
+        )
+        prompt = ALERT_EXPLANATION_PROMPT.format(
+            alert_type=alert.alert_type,
+            alert_severity=alert.severity.value,
+            affected_domains=", ".join(alert.affected_domains),
+            signal_context=_format_signal_context(alert.signal_context),
+        )
+        sources = tuple(alert.affected_domains)
+        return await self._call_llm(prompt, sources=sources)
+
+    async def ask(
+        self,
+        query: ChatQuery,
+        snapshot: OrgSignalSnapshot,
+    ) -> ChatResponse:
+        """Answer a free-form question about signals/proposals.
+
+        Args:
+            query: The user's question.
+            snapshot: Current signal snapshot for context.
+
+        Returns:
+            Natural language response.
+        """
+        logger.info(
+            COS_CHAT_QUERY,
+            query_type="free_form",
+            question=query.question[:100],
+        )
+        prompt = CHAT_QUERY_PROMPT.format(
+            snapshot_summary=_format_snapshot(snapshot),
+            recent_context="No recent proposals or alerts.",
+            user_question=query.question,
+        )
+        return await self._call_llm(prompt, sources=())
+
+    async def _call_llm(
+        self,
+        prompt: str,
+        *,
+        sources: tuple[str, ...],
+    ) -> ChatResponse:
+        """Call the LLM and wrap the response.
+
+        Args:
+            prompt: Formatted prompt string.
+            sources: Signal domains referenced.
+
+        Returns:
+            Wrapped ChatResponse.
+        """
+        messages = [ChatMessage(role=MessageRole.USER, content=prompt)]
+        config = CompletionConfig(
+            temperature=self._config.chat_temperature,
+            max_tokens=self._config.chat_max_tokens,
+        )
+        try:
+            response = await self._provider.complete(
+                messages,
+                self._config.chat_model,
+                config=config,
+            )
+        except Exception:
+            logger.exception(COS_CHAT_FAILED)
+            raise
+        answer = response.content or "Unable to generate explanation."
+        result = ChatResponse(
+            answer=answer,
+            sources=tuple(sources),
+        )
+        logger.info(
+            COS_CHAT_RESPONSE,
+            answer_length=len(answer),
+            sources=list(sources),
+        )
+        return result
+
+
+def _format_snapshot(snapshot: OrgSignalSnapshot) -> str:
+    """Format a snapshot into a readable summary string."""
+    perf = snapshot.performance
+    budget = snapshot.budget
+    coord = snapshot.coordination
+    lines = [
+        f"Quality: {perf.avg_quality_score:.1f}/10",
+        f"Success Rate: {perf.avg_success_rate:.0%}",
+        f"Collaboration: {perf.avg_collaboration_score:.1f}/10",
+        f"Active Agents: {perf.agent_count}",
+        f"Total Spend: ${budget.total_spend_usd:.2f}",
+        f"Orchestration Overhead: {budget.orchestration_overhead:.2f}",
+        f"Error Findings: {snapshot.errors.total_findings}",
+    ]
+    if coord.coordination_overhead_pct is not None:
+        lines.append(
+            f"Coordination Overhead: {coord.coordination_overhead_pct:.0%}",
+        )
+    return "\n".join(lines)
+
+
+def _format_signal_context(ctx: dict[str, object]) -> str:
+    """Format a signal context dict into readable lines."""
+    return "\n".join(f"{k}: {v}" for k, v in ctx.items())

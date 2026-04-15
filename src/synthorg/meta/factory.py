@@ -14,6 +14,10 @@ from synthorg.meta.appliers.architecture_applier import (
 )
 from synthorg.meta.appliers.config_applier import ConfigApplier
 from synthorg.meta.appliers.prompt_applier import PromptApplier
+from synthorg.meta.chief_of_staff.learning import (
+    BayesianConfidenceAdjuster,
+    ExponentialMovingAverageAdjuster,
+)
 from synthorg.meta.guards.approval_gate import ApprovalGateGuard
 from synthorg.meta.guards.rate_limit import RateLimitGuard
 from synthorg.meta.guards.rollback_plan import RollbackPlanGuard
@@ -41,6 +45,7 @@ from synthorg.observability.events.meta import (
 if TYPE_CHECKING:
     from collections.abc import Mapping
 
+    from synthorg.meta.chief_of_staff.protocol import ConfidenceAdjuster
     from synthorg.meta.config import SelfImprovementConfig
     from synthorg.meta.protocol import (
         ImprovementStrategy,
@@ -158,6 +163,25 @@ def build_regression_detector() -> TieredRegressionDetector:
         Configured TieredRegressionDetector.
     """
     return TieredRegressionDetector()
+
+
+def build_confidence_adjuster(
+    config: SelfImprovementConfig,
+) -> ConfidenceAdjuster:
+    """Build a confidence adjuster strategy from config.
+
+    Args:
+        config: Self-improvement configuration.
+
+    Returns:
+        Configured confidence adjuster.
+    """
+    strategy = config.chief_of_staff.adjuster_strategy
+    if strategy == "ema":
+        return ExponentialMovingAverageAdjuster(
+            alpha=config.chief_of_staff.ema_alpha,
+        )
+    return BayesianConfidenceAdjuster()
 
 
 def build_rollout_strategies(

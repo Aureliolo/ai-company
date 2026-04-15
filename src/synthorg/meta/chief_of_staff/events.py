@@ -1,0 +1,39 @@
+"""Chief of Staff event constants for structured logging.
+
+Constants follow the ``chief_of_staff.<subject>.<action>`` naming
+convention and are passed as the first argument to structured log calls.
+"""
+
+from typing import Final
+
+# -- Outcome recording --------------------------------------------------
+
+COS_OUTCOME_RECORDED: Final[str] = "chief_of_staff.outcome.recorded"
+COS_OUTCOME_RECORD_FAILED: Final[str] = "chief_of_staff.outcome.record_failed"
+
+# -- Confidence adjustment ----------------------------------------------
+
+COS_CONFIDENCE_ADJUSTED: Final[str] = "chief_of_staff.confidence.adjusted"
+COS_CONFIDENCE_NO_HISTORY: Final[str] = "chief_of_staff.confidence.no_history"
+
+# -- Learning lifecycle -------------------------------------------------
+
+COS_LEARNING_ENABLED: Final[str] = "chief_of_staff.learning.enabled"
+
+# -- Org inflection detection -------------------------------------------
+
+COS_INFLECTION_DETECTED: Final[str] = "chief_of_staff.inflection.detected"
+COS_INFLECTION_CHECK_FAILED: Final[str] = "chief_of_staff.inflection.check_failed"
+
+# -- Proactive alerts ---------------------------------------------------
+
+COS_ALERT_EMITTED: Final[str] = "chief_of_staff.alert.emitted"
+COS_ALERT_SUPPRESSED: Final[str] = "chief_of_staff.alert.suppressed"
+COS_MONITOR_STARTED: Final[str] = "chief_of_staff.monitor.started"
+COS_MONITOR_STOPPED: Final[str] = "chief_of_staff.monitor.stopped"
+
+# -- Chat ---------------------------------------------------------------
+
+COS_CHAT_QUERY: Final[str] = "chief_of_staff.chat.query"
+COS_CHAT_RESPONSE: Final[str] = "chief_of_staff.chat.response"
+COS_CHAT_FAILED: Final[str] = "chief_of_staff.chat.failed"
