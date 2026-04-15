@@ -2,10 +2,13 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { motion } from 'motion/react'
 
 import { InputField } from '@/components/ui/input-field'
+import { createLogger } from '@/lib/logger'
 import { useCustomRulesStore } from '@/stores/custom-rules'
 import { getErrorMessage } from '@/utils/errors'
 import { cardEntrance } from '@/lib/motion'
 import type { Comparator, PreviewResult } from '@/api/endpoints/custom-rules'
+
+const log = createLogger('rule-preview-panel')
 
 const COMPARATOR_SYMBOLS: Record<string, string> = {
   lt: '<',
@@ -49,6 +52,7 @@ export function RulePreviewPanel({
         })
         setResult(res)
       } catch (err) {
+        log.error('Preview evaluation failed', err)
         setError(getErrorMessage(err))
         setResult(null)
       }

@@ -73,7 +73,7 @@ export function RuleListItem({
           </Button>
         )}
         <ToggleField
-          label=""
+          label={`Toggle ${rule.name}`}
           checked={rule.enabled}
           onChange={() => onToggle?.(rule.name, rule.id)}
           disabled={toggleDisabled}

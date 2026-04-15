@@ -14,7 +14,7 @@ class TestMetaControllerRoutes:
     """Verify MetaController route definitions."""
 
     def test_controller_path(self) -> None:
-        assert MetaController.path == "/api/meta"
+        assert MetaController.path == "/meta"
 
     def test_has_config_endpoint(self) -> None:
         methods = [name for name in dir(MetaController) if not name.startswith("_")]

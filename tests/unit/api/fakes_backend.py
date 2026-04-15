@@ -309,6 +309,17 @@ class FakeCustomRuleRepository:
         self._rules: dict[str, CustomRuleDefinition] = {}
 
     async def save(self, rule: CustomRuleDefinition) -> None:
+        from synthorg.persistence.errors import (
+            ConstraintViolationError,
+        )
+
+        for existing in self._rules.values():
+            if existing.name == rule.name and existing.id != rule.id:
+                msg = f"Custom rule name '{rule.name}' already exists"
+                raise ConstraintViolationError(
+                    msg,
+                    constraint="custom_rules_name_unique",
+                )
         self._rules[str(rule.id)] = rule
 
     async def get(

@@ -66,7 +66,15 @@ export function RulesDrawer({
   const handleBuilderClose = useCallback(async () => {
     setView('list')
     setEditRule(null)
-    await onRefresh()
+    try {
+      await onRefresh()
+    } catch (err) {
+      useToastStore.getState().add({
+        variant: 'error',
+        title: 'Failed to refresh rules',
+        description: getErrorMessage(err),
+      })
+    }
   }, [onRefresh])
 
   const handleToggle = useCallback(

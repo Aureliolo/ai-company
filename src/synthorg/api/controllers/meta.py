@@ -24,7 +24,7 @@ class MetaController(Controller):
     triggers and proposal approval/rejection.
     """
 
-    path = "/api/meta"
+    path = "/meta"
     tags = ["meta"]  # noqa: RUF012
     guards = [require_read_access]  # noqa: RUF012
 

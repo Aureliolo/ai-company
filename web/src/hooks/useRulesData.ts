@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 
 import {
   listAllRules,
@@ -62,9 +62,13 @@ export function useRulesData(): UseRulesDataReturn {
     ])
   }, [fetchMergedRules])
 
+  // Stable ref to avoid re-triggering the initial fetch effect.
+  const refreshRef = useRef(refresh)
+  refreshRef.current = refresh
+
   useEffect(() => {
-    void refresh()
-  }, [refresh])
+    void refreshRef.current()
+  }, [])
 
   const loading = customLoading || mergedLoading
   const error = customError ?? mergedError

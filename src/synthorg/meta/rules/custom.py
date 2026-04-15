@@ -11,8 +11,11 @@ domain, bounds, unit, nullability).
 
 import operator as _operator
 from enum import StrEnum
-from typing import Any, Literal
+from typing import TYPE_CHECKING, Any, Literal
 from uuid import UUID, uuid4
+
+if TYPE_CHECKING:
+    from synthorg.persistence.custom_rule_repo import CustomRuleRepository
 
 from pydantic import (
     AwareDatetime,
@@ -453,7 +456,7 @@ class DeclarativeRule:
 
 
 async def load_custom_rules(
-    repo: Any,
+    repo: CustomRuleRepository,
 ) -> tuple[DeclarativeRule, ...]:
     """Load enabled custom rules from persistence as DeclarativeRules.
 

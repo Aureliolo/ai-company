@@ -37,6 +37,11 @@ from synthorg.meta.rules.custom import (
     MetricDescriptor,
 )
 from synthorg.observability import get_logger
+from synthorg.observability.events.meta import (
+    META_CUSTOM_RULE_CREATED,
+    META_CUSTOM_RULE_DELETED,
+    META_CUSTOM_RULE_TOGGLED,
+)
 from synthorg.persistence.errors import ConstraintViolationError
 
 logger = get_logger(__name__)
@@ -156,7 +161,7 @@ class CustomRuleController(Controller):
     All endpoints are under ``/api/meta/custom-rules``.
     """
 
-    path = "/api/meta/custom-rules"
+    path = "/meta/custom-rules"
     tags = ["meta"]  # noqa: RUF012
     guards = [require_read_access]  # noqa: RUF012
 
@@ -238,7 +243,7 @@ class CustomRuleController(Controller):
                 status_code=409,
             ) from exc
         logger.info(
-            "meta.custom_rule.created",
+            META_CUSTOM_RULE_CREATED,
             rule_id=str(definition.id),
             rule_name=definition.name,
         )
@@ -308,7 +313,7 @@ class CustomRuleController(Controller):
             msg = f"Custom rule {rule_id} not found"
             raise NotFoundException(msg)
         logger.info(
-            "meta.custom_rule.deleted",
+            META_CUSTOM_RULE_DELETED,
             rule_id=rule_id,
         )
 
@@ -340,7 +345,7 @@ class CustomRuleController(Controller):
         )
         await repo.save(toggled)
         logger.info(
-            "meta.custom_rule.toggled",
+            META_CUSTOM_RULE_TOGGLED,
             rule_id=rule_id,
             enabled=toggled.enabled,
         )

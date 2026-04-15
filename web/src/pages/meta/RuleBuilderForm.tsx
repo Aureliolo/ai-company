@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 
+import { createLogger } from '@/lib/logger'
 import { Button } from '@/components/ui/button'
 import { InputField } from '@/components/ui/input-field'
 import { SelectField } from '@/components/ui/select-field'
@@ -18,6 +19,8 @@ import type {
 } from '@/api/endpoints/custom-rules'
 
 import { RulePreviewPanel } from './RulePreviewPanel'
+
+const log = createLogger('rule-builder-form')
 
 const COMPARATOR_OPTIONS: { value: Comparator; label: string }[] = [
   { value: 'lt', label: '<' },
@@ -130,7 +133,10 @@ export function RuleBuilderForm({ editRule, metrics, onClose }: RuleBuilderFormP
       next.target_altitudes = 'Select at least one altitude'
     }
     setErrors(next)
-    if (Object.keys(next).length > 0) return
+    if (Object.keys(next).length > 0) {
+      log.debug('Rule form validation failed', next)
+      return
+    }
 
     const data: CreateCustomRuleRequest = {
       name: form.name.trim(),

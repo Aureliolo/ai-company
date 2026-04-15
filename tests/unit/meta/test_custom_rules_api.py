@@ -33,7 +33,7 @@ class TestCustomRuleControllerRoutes:
     """Verify CustomRuleController route definitions."""
 
     def test_controller_path(self) -> None:
-        assert CustomRuleController.path == "/api/meta/custom-rules"
+        assert CustomRuleController.path == "/meta/custom-rules"
 
     def test_has_list_endpoint(self) -> None:
         methods = [
