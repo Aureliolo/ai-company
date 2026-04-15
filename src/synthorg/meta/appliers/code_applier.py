@@ -249,34 +249,15 @@ class CodeApplier:
         project_root = Path.cwd()
         errors: list[str] = []
 
+        resolved_root = project_root.resolve()
         for change in proposal.code_changes:
             file_path = project_root / change.file_path
-            if change.operation == CodeOperation.MODIFY:
-                if not file_path.exists():
-                    errors.append(
-                        f"MODIFY target does not exist: {change.file_path}",
-                    )
-                else:
-                    current = file_path.read_text(encoding="utf-8")
-                    if current != change.old_content:
-                        errors.append(
-                            f"MODIFY target changed since proposal: {change.file_path}",
-                        )
-            elif change.operation == CodeOperation.DELETE:
-                if not file_path.exists():
-                    errors.append(
-                        f"DELETE target does not exist: {change.file_path}",
-                    )
-                else:
-                    current = file_path.read_text(encoding="utf-8")
-                    if current != change.old_content:
-                        errors.append(
-                            f"DELETE target changed since proposal: {change.file_path}",
-                        )
-            elif change.operation == CodeOperation.CREATE and file_path.exists():
+            if not _is_within(file_path, resolved_root):
                 errors.append(
-                    f"CREATE target already exists: {change.file_path}",
+                    f"Path escapes project root: {change.file_path}",
                 )
+                continue
+            _validate_change_preconditions(change, file_path, errors)
 
         if errors:
             return ApplyResult(
@@ -310,8 +291,12 @@ class CodeApplier:
         """
         changed: list[str] = []
         applied: list[CodeChange] = []
+        resolved_root = project_root.resolve()
         for change in changes:
             file_path = project_root / change.file_path
+            if not _is_within(file_path, resolved_root):
+                msg = f"Path escapes project root: {change.file_path}"
+                raise RuntimeError(msg)
             try:
                 _apply_single_change(change, file_path)
             except MemoryError, RecursionError:
@@ -348,8 +333,11 @@ class CodeApplier:
                 doesn't match expectations (used in outer exception
                 handler where applied set is unknown).
         """
+        resolved_root = project_root.resolve()
         for change in changes:
             path = project_root / change.file_path
+            if not _is_within(path, resolved_root):
+                continue
             try:
                 _revert_single_change(change, path, defensive=defensive)
             except OSError:
@@ -399,6 +387,63 @@ def _apply_single_change(change: CodeChange, file_path: Path) -> None:
         file_path.unlink()
 
 
+def _validate_change_preconditions(
+    change: CodeChange,
+    file_path: Path,
+    errors: list[str],
+) -> None:
+    """Check filesystem preconditions for a single code change.
+
+    Args:
+        change: The code change to validate.
+        file_path: Resolved absolute path.
+        errors: Mutable list to append error descriptions to.
+    """
+    if change.operation == CodeOperation.MODIFY:
+        if not file_path.exists():
+            errors.append(
+                f"MODIFY target does not exist: {change.file_path}",
+            )
+        else:
+            current = file_path.read_text(encoding="utf-8")
+            if current != change.old_content:
+                errors.append(
+                    f"MODIFY target changed since proposal: {change.file_path}",
+                )
+    elif change.operation == CodeOperation.DELETE:
+        if not file_path.exists():
+            errors.append(
+                f"DELETE target does not exist: {change.file_path}",
+            )
+        else:
+            current = file_path.read_text(encoding="utf-8")
+            if current != change.old_content:
+                errors.append(
+                    f"DELETE target changed since proposal: {change.file_path}",
+                )
+    elif change.operation == CodeOperation.CREATE and file_path.exists():
+        errors.append(
+            f"CREATE target already exists: {change.file_path}",
+        )
+
+
+def _is_within(candidate: Path, root: Path) -> bool:
+    """Check that candidate resolves to a path inside root.
+
+    Args:
+        candidate: Path to validate.
+        root: Already-resolved project root.
+
+    Returns:
+        True if candidate is a descendant of root.
+    """
+    try:
+        candidate.resolve().relative_to(root)
+    except ValueError:
+        return False
+    return True
+
+
 def _revert_single_change(
     change: CodeChange,
     path: Path,
@@ -410,15 +455,21 @@ def _revert_single_change(
     Args:
         change: The code change to undo.
         path: Absolute file path.
-        defensive: Skip revert if file state is unexpected.
+        defensive: Skip revert if file state doesn't indicate the
+            change was applied (prevents overwriting untouched files).
     """
     if change.operation == CodeOperation.CREATE:
         if defensive and not path.exists():
             return
         path.unlink(missing_ok=True)
     elif change.operation == CodeOperation.MODIFY:
-        if defensive and not path.exists():
-            return
+        if defensive:
+            if not path.exists():
+                return
+            # Only revert if content matches new_content (was applied).
+            current = path.read_text(encoding="utf-8")
+            if current != change.new_content:
+                return
         path.write_text(change.old_content, encoding="utf-8")
     elif change.operation == CodeOperation.DELETE:
         if defensive and path.exists():

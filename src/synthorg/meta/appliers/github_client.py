@@ -6,7 +6,7 @@ making this safe to run inside Docker containers.
 """
 
 import base64
-from typing import Any
+from typing import Any, Self
 
 import httpx
 
@@ -67,6 +67,20 @@ class HttpGitHubClient:
                 timeout=self._timeout,
             )
         return self.__client
+
+    async def aclose(self) -> None:
+        """Close the underlying httpx client if it was created."""
+        if self.__client is not None:
+            await self.__client.aclose()
+            self.__client = None
+
+    async def __aenter__(self) -> Self:
+        """Support ``async with`` usage."""
+        return self
+
+    async def __aexit__(self, *exc: object) -> None:
+        """Close on context manager exit."""
+        await self.aclose()
 
     async def create_branch(self, name: str) -> None:
         """Create a branch from the default branch HEAD.
