@@ -1,5 +1,7 @@
 """Unit tests for the unified MCP API server."""
 
+from collections.abc import Iterator
+
 import pytest
 
 from synthorg.meta.mcp.server import (
@@ -13,7 +15,7 @@ pytestmark = pytest.mark.unit
 
 
 @pytest.fixture(autouse=True)
-def _reset_server_singletons():
+def _reset_server_singletons() -> Iterator[None]:
     """Reset server singletons before and after each test."""
     reset_singletons()
     yield
