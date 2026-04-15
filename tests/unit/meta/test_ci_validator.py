@@ -13,7 +13,11 @@ from synthorg.meta.validation.ci_validator import (
 pytestmark = pytest.mark.unit
 
 
-def _mock_subprocess(returncode: int = 0, stdout: bytes = b"", stderr: bytes = b""):
+def _mock_subprocess(
+    returncode: int = 0,
+    stdout: bytes = b"",
+    stderr: bytes = b"",
+) -> AsyncMock:
     """Create a mock subprocess that returns the given code."""
     proc = AsyncMock()
     proc.returncode = returncode
@@ -50,7 +54,7 @@ class TestLocalCIValidator:
         )
         call_count = 0
 
-        async def counting_create(*args, **kwargs):
+        async def counting_create(*args: object, **kwargs: object) -> AsyncMock:
             nonlocal call_count
             call_count += 1
             return fail_proc
@@ -81,7 +85,7 @@ class TestLocalCIValidator:
         )
         calls = [pass_proc, fail_proc]
 
-        async def sequential_create(*args, **kwargs):
+        async def sequential_create(*args: object, **kwargs: object) -> AsyncMock:
             return calls.pop(0)
 
         with patch(
@@ -102,10 +106,10 @@ class TestLocalCIValidator:
     async def test_timeout_captured(self) -> None:
         validator = LocalCIValidator(timeout_seconds=1)
 
-        async def timeout_create(*args, **kwargs):
+        async def timeout_create(*args: object, **kwargs: object) -> AsyncMock:
             proc = AsyncMock()
 
-            async def slow_communicate():
+            async def slow_communicate() -> None:
                 raise TimeoutError
 
             proc.communicate = slow_communicate
@@ -126,7 +130,7 @@ class TestLocalCIValidator:
     async def test_command_not_found(self) -> None:
         validator = LocalCIValidator(timeout_seconds=10)
 
-        async def fnf_create(*args, **kwargs):
+        async def fnf_create(*args: object, **kwargs: object) -> None:
             raise FileNotFoundError
 
         with patch(

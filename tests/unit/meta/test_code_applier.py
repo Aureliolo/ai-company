@@ -98,7 +98,7 @@ def _mock_ci_validator(
     return ci
 
 
-def _mock_git_success():
+def _mock_git_success() -> AsyncMock:
     """Mock subprocess that always succeeds."""
     proc = AsyncMock()
     proc.returncode = 0
@@ -106,7 +106,7 @@ def _mock_git_success():
     return proc
 
 
-def _mock_gh_pr_create():
+def _mock_gh_pr_create() -> AsyncMock:
     """Mock subprocess for gh pr create returning a URL."""
     proc = AsyncMock()
     proc.returncode = 0
@@ -136,7 +136,7 @@ class TestCodeApplier:
 
         call_index = 0
 
-        async def mock_create(*args, **kwargs):
+        async def mock_create(*args: object, **kwargs: object) -> AsyncMock:
             nonlocal call_index
             call_index += 1
             cmd = args
@@ -178,7 +178,7 @@ class TestCodeApplier:
         )
         proposal = _code_proposal()
 
-        async def mock_create(*args, **kwargs):
+        async def mock_create(*args: object, **kwargs: object) -> AsyncMock:
             return _mock_git_success()
 
         with (
