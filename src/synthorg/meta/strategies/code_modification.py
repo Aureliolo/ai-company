@@ -160,6 +160,8 @@ class CodeModificationStrategy:
 
         try:
             response = await self._call_llm(prompt)
+        except MemoryError, RecursionError:
+            raise
         except Exception:
             logger.exception(
                 META_CODE_GEN_FAILED,
@@ -310,8 +312,14 @@ class CodeModificationStrategy:
             return ()
 
         changes: list[CodeChange] = []
-        for item in data:
+        for idx, item in enumerate(data):
             if not isinstance(item, dict):
+                logger.warning(
+                    META_CODE_GEN_PARSE_FAILED,
+                    rule=rule_name,
+                    reason="non_dict_item",
+                    index=idx,
+                )
                 continue
             try:
                 change = CodeChange(
@@ -325,13 +333,24 @@ class CodeModificationStrategy:
                     reasoning=item.get("reasoning", ""),
                 )
                 changes.append(change)
-            except ValueError, TypeError:
+            except (ValueError, TypeError) as exc:
                 logger.warning(
                     META_CODE_GEN_PARSE_FAILED,
                     rule=rule_name,
                     reason="invalid_change_item",
+                    index=idx,
+                    error=str(exc),
                 )
                 continue
+
+        if changes and len(changes) < len(data):
+            logger.info(
+                META_CODE_GEN_COMPLETED,
+                rule=rule_name,
+                reason="partial_parse",
+                valid_count=len(changes),
+                total_count=len(data),
+            )
 
         return tuple(changes)
 

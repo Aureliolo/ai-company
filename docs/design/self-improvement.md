@@ -20,7 +20,7 @@ flowchart TD
 
     signals --> SNAP[OrgSignalSnapshot]
     SNAP --> RE[Rule Engine<br/>9 built-in rules]
-    RE -->|rules fire| STRAT[Strategies<br/>Config / Architecture / Prompt]
+    RE -->|rules fire| STRAT[Strategies<br/>Config / Architecture / Prompt / Code]
     STRAT --> GUARD[Guard Chain<br/>Scope / Rollback / Rate / Approval]
     GUARD -->|all pass| QUEUE[Approval Queue<br/>Human Review]
     QUEUE -->|approved| ROLLOUT[Rollout<br/>Before-After / Canary]
@@ -33,8 +33,9 @@ flowchart TD
 
 ```text
 src/synthorg/meta/
-  models.py            -- ImprovementProposal, RollbackPlan, OrgSignalSnapshot, etc.
-  protocol.py          -- SignalAggregator, ImprovementStrategy, ProposalGuard, etc.
+  models.py            -- ImprovementProposal, RollbackPlan, CodeChange, etc.
+  signal_models.py     -- OrgSignalSnapshot, signal domain summaries
+  protocol.py          -- SignalAggregator, ImprovementStrategy, ProposalGuard, CIValidator
   config.py            -- SelfImprovementConfig (frozen, safe defaults)
   service.py           -- SelfImprovementService orchestrator
   factory.py           -- Component construction from config
@@ -48,6 +49,7 @@ src/synthorg/meta/
     config_tuning.py   -- Config field changes
     architecture.py    -- Structural changes (roles, workflows)
     prompt_tuning.py   -- Org-wide constitutional principles
+    code_modification.py -- Framework code changes (LLM-generated)
 
   signals/             -- Signal aggregation from existing subsystems
     performance.py     -- PerformanceTracker wrapper
@@ -81,6 +83,11 @@ src/synthorg/meta/
     config_applier.py  -- RootConfig reconstruction
     architecture_applier.py -- Role/workflow creation
     prompt_applier.py  -- Constitutional principle injection
+    code_applier.py    -- Git branch + CI validation + draft PR
+
+  validation/          -- CI and scope validation for code modifications
+    scope_validator.py -- Path allowlist/denylist enforcement
+    ci_validator.py    -- Local ruff + mypy + pytest runner
 
   mcp/                 -- Unified MCP API server with capability-based scoping
     server.py          -- Server singleton lifecycle
@@ -113,8 +120,8 @@ src/synthorg/meta/
 | Meta-analyst | Interactive Chief of Staff agent | Company metaphor, conversational UX, evolvable via #243 |
 | Signal access | MCP tools | First slice of API-as-MCP; agents use native tool interface |
 | Proposal generation | Rule-first hybrid | Rules detect (cheap, auditable); LLM synthesizes (creative, scoped) |
-| Altitudes | Config + Architecture + Prompt | All pluggable, config enabled by default, others opt-in |
-| Scope | Deployment-level only | Product-level improvement is a separate future issue |
+| Altitudes | Config + Architecture + Prompt + Code | All pluggable, config enabled by default, others opt-in |
+| Scope | Deployment + product level | Code modification altitude for framework improvements |
 | Rollout | Before/after default, canary + A/B test opt-in | Per-proposal choice; A/B uses group assignment + statistical comparison |
 | Regression | Tiered: threshold + statistical | Layer 1 for catastrophic, Layer 2 for subtle degradation |
 | Signals consumed | All 7 domains | Performance, budget, coordination, scaling, errors, evolution, telemetry |
@@ -168,6 +175,7 @@ self_improvement:
   chief_of_staff_enabled: false     # Agent persona (opt-in)
   config_tuning_enabled: true       # Config changes (on when enabled)
   architecture_proposals_enabled: false  # Structural changes (opt-in)
+  code_modification_enabled: false  # Framework code changes (opt-in)
   prompt_tuning_enabled: false      # Prompt policies (opt-in)
   schedule:
     cycle_interval_hours: 168       # Weekly
@@ -207,7 +215,7 @@ self_improvement:
 ## Follow-up Issues
 
 1. ~~Full API-as-MCP server~~ -- completed via #1353 (issue #1339; 204 tools, 15 domains, capability-based scoping)
-2. Product-level improvement (framework code modification proposals)
+2. ~~Product-level improvement~~ -- completed via #1340 (CODE_MODIFICATION altitude, LLM code gen, CI validation, draft PR creation)
 3. Cross-deployment analytics (anonymized multi-org patterns)
 4. ~~Chief of Staff advanced capabilities~~ -- completed via #1342 (outcome learning, proactive alerts, NL chat)
 5. ~~Custom rule authoring UI (visual rule builder)~~ -- shipped in v0.6.5 (#1343 / PR #1355)

@@ -285,3 +285,80 @@ class TestCodeApplier:
             result = await applier.dry_run(proposal)
         assert not result.success
         assert "CREATE target already exists" in (result.error_message or "")
+
+    async def test_apply_git_checkout_failure(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        ci = _mock_ci_validator(_ci_pass())
+        applier = CodeApplier(
+            ci_validator=ci,
+            code_modification_config=CodeModificationConfig(),
+        )
+        proposal = _code_proposal()
+
+        fail_proc = AsyncMock()
+        fail_proc.returncode = 1
+        fail_proc.communicate = AsyncMock(
+            return_value=(b"", b"branch already exists"),
+        )
+
+        async def fail_create(*args: object, **kwargs: object) -> AsyncMock:
+            return fail_proc
+
+        with (
+            patch(
+                "synthorg.meta.appliers.code_applier.asyncio.create_subprocess_exec",
+                side_effect=fail_create,
+            ),
+            patch(
+                "synthorg.meta.appliers.code_applier.Path.cwd",
+                return_value=tmp_path,
+            ),
+        ):
+            result = await applier.apply(proposal)
+
+        assert not result.success
+        assert "Code apply failed" in (result.error_message or "")
+
+    async def test_apply_pr_creation_failure(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        ci = _mock_ci_validator(_ci_pass())
+        applier = CodeApplier(
+            ci_validator=ci,
+            code_modification_config=CodeModificationConfig(),
+        )
+        proposal = _code_proposal()
+        call_count = 0
+
+        async def mock_create(*args: object, **kwargs: object) -> AsyncMock:
+            nonlocal call_count
+            call_count += 1
+            cmd = args
+            if cmd[0] == "gh":
+                proc = AsyncMock()
+                proc.returncode = 1
+                proc.communicate = AsyncMock(
+                    return_value=(b"", b"auth required"),
+                )
+                return proc
+            return _mock_git_success()
+
+        with (
+            patch(
+                "synthorg.meta.appliers.code_applier.asyncio.create_subprocess_exec",
+                side_effect=mock_create,
+            ),
+            patch(
+                "synthorg.meta.appliers.code_applier.Path.cwd",
+                return_value=tmp_path,
+            ),
+        ):
+            strategies_dir = tmp_path / "src" / "synthorg" / "meta" / "strategies"
+            strategies_dir.mkdir(parents=True)
+            result = await applier.apply(proposal)
+
+        assert not result.success
+        assert "Code apply failed" in (result.error_message or "")

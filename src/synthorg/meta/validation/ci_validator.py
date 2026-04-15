@@ -182,6 +182,7 @@ class LocalCIValidator:
         Returns:
             True if the subprocess exited with code 0.
         """
+        proc: asyncio.subprocess.Process | None = None
         try:
             proc = await asyncio.create_subprocess_exec(
                 *cmd,
@@ -197,17 +198,28 @@ class LocalCIValidator:
                 output = (
                     stdout.decode(errors="replace") + stderr.decode(errors="replace")
                 ).strip()
-                # Truncate to avoid huge error messages.
                 if len(output) > _MAX_ERROR_OUTPUT_LENGTH:
                     output = output[:_MAX_ERROR_OUTPUT_LENGTH] + "... (truncated)"
                 errors.append(f"{step_name}: {output}")
                 return False
             return True  # noqa: TRY300
         except TimeoutError:
-            errors.append(f"{step_name}: timed out after {self._timeout}s")
+            if proc is not None:
+                proc.kill()
+                await proc.wait()
+            errors.append(
+                f"{step_name}: timed out after {self._timeout}s",
+            )
             return False
+        except asyncio.CancelledError:
+            if proc is not None:
+                proc.kill()
+                await proc.wait()
+            raise
         except FileNotFoundError:
-            errors.append(f"{step_name}: command not found: {cmd[0]}")
+            errors.append(
+                f"{step_name}: command not found: {cmd[0]}",
+            )
             return False
 
 

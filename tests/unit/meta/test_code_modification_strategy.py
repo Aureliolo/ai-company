@@ -334,3 +334,65 @@ class TestCodeModificationStrategy:
         )
         assert len(proposals) == 1
         assert len(proposals[0].code_changes) == 1
+
+    async def test_partial_parse_keeps_valid_items(self) -> None:
+        response = json.dumps(
+            [
+                {
+                    "file_path": "src/synthorg/meta/strategies/good.py",
+                    "operation": "create",
+                    "new_content": "good",
+                    "description": "d",
+                    "reasoning": "r",
+                },
+                {
+                    "file_path": "",
+                    "operation": "invalid_op",
+                    "description": "d",
+                    "reasoning": "r",
+                },
+            ]
+        )
+        s = CodeModificationStrategy(
+            config=_DEFAULT_CONFIG,
+            provider=_mock_provider(response),
+            scope_validator=_scope_validator(),
+        )
+        rules = (_rule(),)
+        proposals = await s.propose(
+            snapshot=_snap(),
+            triggered_rules=rules,
+        )
+        assert len(proposals) == 1
+        assert len(proposals[0].code_changes) == 1
+
+    async def test_all_items_invalid_produces_no_proposal(
+        self,
+    ) -> None:
+        response = json.dumps([{"not_a": "valid change"}, 42])
+        s = CodeModificationStrategy(
+            config=_DEFAULT_CONFIG,
+            provider=_mock_provider(response),
+            scope_validator=_scope_validator(),
+        )
+        rules = (_rule(),)
+        proposals = await s.propose(
+            snapshot=_snap(),
+            triggered_rules=rules,
+        )
+        assert len(proposals) == 0
+
+    async def test_memory_error_propagates(self) -> None:
+        provider = AsyncMock()
+        provider.complete = AsyncMock(side_effect=MemoryError)
+        s = CodeModificationStrategy(
+            config=_DEFAULT_CONFIG,
+            provider=provider,
+            scope_validator=_scope_validator(),
+        )
+        rules = (_rule(),)
+        with pytest.raises(MemoryError):
+            await s.propose(
+                snapshot=_snap(),
+                triggered_rules=rules,
+            )
