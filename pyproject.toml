@@ -64,7 +64,7 @@ test = [
     "pytest-xdist==3.8.0",
     "polyfactory==3.3.0",
     "respx==0.23.1",
-    "hypothesis==6.152.0",
+    "hypothesis==6.152.1",
     # Distributed runtime: dev envs always have these so mypy can type-check
     # bus/nats.py and workers/ without needing the optional extra installed.
     # Runtime users opt in via `pip install synthorg[distributed]`.
