@@ -12,6 +12,20 @@ from synthorg.meta.validation.ci_validator import (
 
 pytestmark = pytest.mark.unit
 
+_FAKE_FILES = ("src/synthorg/meta/strategies/new.py",)
+_FAKE_TESTS = ["tests/unit/meta/test_new.py"]
+
+# Common patches for tests that exercise the subprocess pipeline.
+# These bypass file-existence checks since we use fake paths.
+_BYPASS_FILE_CHECK = patch(
+    "synthorg.meta.validation.ci_validator._existing_py_files",
+    return_value=list(_FAKE_FILES),
+)
+_BYPASS_TEST_DISCOVERY = patch(
+    "synthorg.meta.validation.ci_validator._discover_test_files",
+    return_value=list(_FAKE_TESTS),
+)
+
 
 def _mock_subprocess(
     returncode: int = 0,
@@ -31,13 +45,17 @@ class TestLocalCIValidator:
     async def test_all_steps_pass(self) -> None:
         validator = LocalCIValidator(timeout_seconds=10)
         mock_proc = _mock_subprocess(returncode=0)
-        with patch(
-            "synthorg.meta.validation.ci_validator.asyncio.create_subprocess_exec",
-            return_value=mock_proc,
+        with (
+            patch(
+                "synthorg.meta.validation.ci_validator.asyncio.create_subprocess_exec",
+                return_value=mock_proc,
+            ),
+            _BYPASS_FILE_CHECK,
+            _BYPASS_TEST_DISCOVERY,
         ):
             result = await validator.validate(
                 project_root=Path("/fake/root"),
-                changed_files=("src/synthorg/meta/strategies/new.py",),
+                changed_files=_FAKE_FILES,
             )
         assert result.passed
         assert result.lint_passed
@@ -59,13 +77,17 @@ class TestLocalCIValidator:
             call_count += 1
             return fail_proc
 
-        with patch(
-            "synthorg.meta.validation.ci_validator.asyncio.create_subprocess_exec",
-            side_effect=counting_create,
+        with (
+            patch(
+                "synthorg.meta.validation.ci_validator.asyncio.create_subprocess_exec",
+                side_effect=counting_create,
+            ),
+            _BYPASS_FILE_CHECK,
+            _BYPASS_TEST_DISCOVERY,
         ):
             result = await validator.validate(
                 project_root=Path("/fake/root"),
-                changed_files=("src/synthorg/meta/strategies/new.py",),
+                changed_files=_FAKE_FILES,
             )
         assert not result.passed
         assert not result.lint_passed
@@ -88,13 +110,17 @@ class TestLocalCIValidator:
         async def sequential_create(*args: object, **kwargs: object) -> AsyncMock:
             return calls.pop(0)
 
-        with patch(
-            "synthorg.meta.validation.ci_validator.asyncio.create_subprocess_exec",
-            side_effect=sequential_create,
+        with (
+            patch(
+                "synthorg.meta.validation.ci_validator.asyncio.create_subprocess_exec",
+                side_effect=sequential_create,
+            ),
+            _BYPASS_FILE_CHECK,
+            _BYPASS_TEST_DISCOVERY,
         ):
             result = await validator.validate(
                 project_root=Path("/fake/root"),
-                changed_files=("src/synthorg/meta/strategies/new.py",),
+                changed_files=_FAKE_FILES,
             )
         assert not result.passed
         assert result.lint_passed
@@ -115,13 +141,17 @@ class TestLocalCIValidator:
             proc.communicate = slow_communicate
             return proc
 
-        with patch(
-            "synthorg.meta.validation.ci_validator.asyncio.create_subprocess_exec",
-            side_effect=timeout_create,
+        with (
+            patch(
+                "synthorg.meta.validation.ci_validator.asyncio.create_subprocess_exec",
+                side_effect=timeout_create,
+            ),
+            _BYPASS_FILE_CHECK,
+            _BYPASS_TEST_DISCOVERY,
         ):
             result = await validator.validate(
                 project_root=Path("/fake/root"),
-                changed_files=("src/synthorg/meta/strategies/new.py",),
+                changed_files=_FAKE_FILES,
             )
         assert not result.passed
         assert not result.lint_passed
@@ -133,16 +163,43 @@ class TestLocalCIValidator:
         async def fnf_create(*args: object, **kwargs: object) -> None:
             raise FileNotFoundError
 
-        with patch(
-            "synthorg.meta.validation.ci_validator.asyncio.create_subprocess_exec",
-            side_effect=fnf_create,
+        with (
+            patch(
+                "synthorg.meta.validation.ci_validator.asyncio.create_subprocess_exec",
+                side_effect=fnf_create,
+            ),
+            _BYPASS_FILE_CHECK,
+            _BYPASS_TEST_DISCOVERY,
         ):
             result = await validator.validate(
                 project_root=Path("/fake/root"),
-                changed_files=("src/synthorg/meta/strategies/new.py",),
+                changed_files=_FAKE_FILES,
             )
         assert not result.passed
         assert "command not found" in result.errors[0]
+
+    async def test_no_test_files_fails_closed(self) -> None:
+        """When no test files are discovered, CI must fail."""
+        validator = LocalCIValidator(timeout_seconds=10)
+        mock_proc = _mock_subprocess(returncode=0)
+        with (
+            patch(
+                "synthorg.meta.validation.ci_validator.asyncio.create_subprocess_exec",
+                return_value=mock_proc,
+            ),
+            _BYPASS_FILE_CHECK,
+            patch(
+                "synthorg.meta.validation.ci_validator._discover_test_files",
+                return_value=[],
+            ),
+        ):
+            result = await validator.validate(
+                project_root=Path("/fake/root"),
+                changed_files=_FAKE_FILES,
+            )
+        assert not result.passed
+        assert not result.tests_passed
+        assert any("no matching test files" in e for e in result.errors)
 
 
 class TestDiscoverTestFiles:

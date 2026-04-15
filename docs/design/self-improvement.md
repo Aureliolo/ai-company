@@ -175,8 +175,8 @@ self_improvement:
   chief_of_staff_enabled: false     # Agent persona (opt-in)
   config_tuning_enabled: true       # Config changes (on when enabled)
   architecture_proposals_enabled: false  # Structural changes (opt-in)
-  code_modification_enabled: false  # Framework code changes (opt-in)
   prompt_tuning_enabled: false      # Prompt policies (opt-in)
+  code_modification_enabled: false  # Framework code changes (opt-in)
   schedule:
     cycle_interval_hours: 168       # Weekly
     inflection_trigger_enabled: true

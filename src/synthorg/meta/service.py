@@ -65,8 +65,9 @@ class SelfImprovementService:
     Args:
         config: Self-improvement configuration.
         memory_backend: Memory backend for outcome learning.
-        provider: Completion provider for LLM-based strategies
-            (required when code_modification_enabled is True).
+        provider: Completion provider for LLM-based strategies.
+            When code_modification_enabled is True but provider is
+            None, the code modification strategy is silently skipped.
     """
 
     def __init__(

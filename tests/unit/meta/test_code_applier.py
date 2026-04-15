@@ -134,11 +134,7 @@ class TestCodeApplier:
         )
         proposal = _code_proposal()
 
-        call_index = 0
-
         async def mock_create(*args: object, **kwargs: object) -> AsyncMock:
-            nonlocal call_index
-            call_index += 1
             cmd = args
             # gh pr create call
             if cmd[0] == "gh":
@@ -331,11 +327,8 @@ class TestCodeApplier:
             code_modification_config=CodeModificationConfig(),
         )
         proposal = _code_proposal()
-        call_count = 0
 
         async def mock_create(*args: object, **kwargs: object) -> AsyncMock:
-            nonlocal call_count
-            call_count += 1
             cmd = args
             if cmd[0] == "gh":
                 proc = AsyncMock()

@@ -6,10 +6,10 @@ the framework.
 """
 
 from fnmatch import fnmatch
+from pathlib import PurePosixPath
 from typing import TYPE_CHECKING
 
 from synthorg.observability import get_logger
-from synthorg.observability.events.meta import META_CODE_SCOPE_VIOLATION
 
 if TYPE_CHECKING:
     from synthorg.meta.models import CodeChange
@@ -41,6 +41,9 @@ class ScopeValidator:
     def is_path_allowed(self, file_path: str) -> bool:
         """Check if a single file path is within scope.
 
+        Rejects paths that contain traversal components (``..``)
+        or that resolve to an absolute path outside the project.
+
         Args:
             file_path: Relative path from project root.
 
@@ -48,6 +51,10 @@ class ScopeValidator:
             True if the path is allowed, False otherwise.
         """
         normalized = file_path.replace("\\", "/")
+        # Reject path traversal and absolute paths.
+        resolved = PurePosixPath(normalized)
+        if resolved.is_absolute() or ".." in resolved.parts:
+            return False
         for pattern in self._forbidden:
             if fnmatch(normalized, pattern):
                 return False
@@ -73,9 +80,4 @@ class ScopeValidator:
                     f"allowed scope for code modifications"
                 )
                 violations.append(violation)
-                logger.warning(
-                    META_CODE_SCOPE_VIOLATION,
-                    file_path=change.file_path,
-                    operation=change.operation.value,
-                )
         return tuple(violations)

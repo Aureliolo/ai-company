@@ -192,7 +192,17 @@ class CodeModificationConfig(BaseModel):
     branch_prefix: NotBlankStr = Field(
         default=NotBlankStr("meta/code-mod"),
     )
+    base_branch: NotBlankStr = Field(
+        default=NotBlankStr("main"),
+        description="Default branch to create feature branches from",
+    )
     ci_timeout_seconds: int = Field(default=300, ge=30, le=600)
+    git_timeout_seconds: int = Field(
+        default=120,
+        ge=30,
+        le=600,
+        description="Timeout for git and gh CLI subprocess calls",
+    )
 
 
 class SelfImprovementConfig(BaseModel):

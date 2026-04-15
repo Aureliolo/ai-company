@@ -6,6 +6,7 @@ patterns and rule context.
 """
 
 import json
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
@@ -166,6 +167,7 @@ class CodeModificationStrategy:
             logger.exception(
                 META_CODE_GEN_FAILED,
                 rule=rule_match.rule_name,
+                reason="provider_error",
             )
             return None
 
@@ -208,9 +210,10 @@ class CodeModificationStrategy:
             change_count=len(changes),
         )
 
-        branch_name = f"{self._code_config.branch_prefix}/{rule_match.rule_name}"
+        proposal_id = uuid4()
+        branch_name = f"{self._code_config.branch_prefix}/{str(proposal_id)[:8]}"
         return ImprovementProposal(
-            id=uuid4(),
+            id=proposal_id,
             altitude=ProposalAltitude.CODE_MODIFICATION,
             title=f"Code improvement for {rule_match.rule_name}",
             description=(
@@ -293,55 +296,11 @@ class CodeModificationStrategy:
         Returns:
             Tuple of parsed CodeChange models (empty on parse failure).
         """
-        try:
-            data = json.loads(response)
-        except json.JSONDecodeError:
-            logger.warning(
-                META_CODE_GEN_PARSE_FAILED,
-                rule=rule_name,
-                reason="invalid_json",
-            )
+        data = _parse_json_array(response, rule_name)
+        if data is None:
             return ()
 
-        if not isinstance(data, list):
-            logger.warning(
-                META_CODE_GEN_PARSE_FAILED,
-                rule=rule_name,
-                reason="not_a_list",
-            )
-            return ()
-
-        changes: list[CodeChange] = []
-        for idx, item in enumerate(data):
-            if not isinstance(item, dict):
-                logger.warning(
-                    META_CODE_GEN_PARSE_FAILED,
-                    rule=rule_name,
-                    reason="non_dict_item",
-                    index=idx,
-                )
-                continue
-            try:
-                change = CodeChange(
-                    file_path=item.get("file_path", ""),
-                    operation=CodeOperation(
-                        item.get("operation", ""),
-                    ),
-                    old_content=item.get("old_content", ""),
-                    new_content=item.get("new_content", ""),
-                    description=item.get("description", ""),
-                    reasoning=item.get("reasoning", ""),
-                )
-                changes.append(change)
-            except (ValueError, TypeError) as exc:
-                logger.warning(
-                    META_CODE_GEN_PARSE_FAILED,
-                    rule=rule_name,
-                    reason="invalid_change_item",
-                    index=idx,
-                    error=str(exc),
-                )
-                continue
+        changes = _parse_items(data, rule_name)
 
         if changes and len(changes) < len(data):
             logger.info(
@@ -370,6 +329,7 @@ class CodeModificationStrategy:
         """
         perf = snapshot.performance
         budget = snapshot.budget
+        manifest = _build_file_manifest(self._code_config.allowed_paths)
         return (
             f"Signal pattern detected: {rule_match.rule_name}\n"
             f"Severity: {rule_match.severity.value}\n"
@@ -387,9 +347,133 @@ class CodeModificationStrategy:
             f"Allowed modification paths: "
             f"{', '.join(self._code_config.allowed_paths)}\n"
             f"\n"
+            f"{manifest}\n"
+            f"\n"
             f"Propose concrete code changes to improve the framework "
-            f"and address this signal pattern."
+            f"and address this signal pattern. For MODIFY or DELETE "
+            f"operations, old_content must match the current file."
         )
+
+
+def _parse_json_array(
+    response: str,
+    rule_name: str,
+) -> list[dict[str, Any]] | None:
+    """Parse and validate the LLM response as a JSON array.
+
+    Args:
+        response: Raw LLM response text.
+        rule_name: Rule name for logging context.
+
+    Returns:
+        Parsed list of dicts, or None on failure.
+    """
+    try:
+        data = json.loads(response)
+    except json.JSONDecodeError:
+        logger.warning(
+            META_CODE_GEN_PARSE_FAILED,
+            rule=rule_name,
+            reason="invalid_json",
+        )
+        return None
+
+    if not isinstance(data, list):
+        logger.warning(
+            META_CODE_GEN_PARSE_FAILED,
+            rule=rule_name,
+            reason="not_a_list",
+        )
+        return None
+    return data
+
+
+def _parse_items(
+    data: list[dict[str, Any]],
+    rule_name: str,
+) -> list[CodeChange]:
+    """Parse individual items from the JSON array into CodeChange models.
+
+    Args:
+        data: List of dicts from LLM response.
+        rule_name: Rule name for logging context.
+
+    Returns:
+        List of successfully parsed CodeChange models.
+    """
+    changes: list[CodeChange] = []
+    for idx, item in enumerate(data):
+        if not isinstance(item, dict):
+            logger.warning(
+                META_CODE_GEN_PARSE_FAILED,
+                rule=rule_name,
+                reason="non_dict_item",
+                index=idx,
+            )
+            continue
+        try:
+            change = CodeChange(
+                file_path=item.get("file_path", ""),
+                operation=CodeOperation(item.get("operation", "")),
+                old_content=item.get("old_content", ""),
+                new_content=item.get("new_content", ""),
+                description=item.get("description", ""),
+                reasoning=item.get("reasoning", ""),
+            )
+            changes.append(change)
+        except (ValueError, TypeError) as exc:
+            logger.warning(
+                META_CODE_GEN_PARSE_FAILED,
+                rule=rule_name,
+                reason="invalid_change_item",
+                index=idx,
+                error=str(exc),
+            )
+            continue
+    return changes
+
+
+_MAX_MANIFEST_CHARS = 4000
+
+
+def _build_file_manifest(
+    allowed_paths: tuple[str, ...],
+) -> str:
+    """Build a manifest of existing files in allowed paths.
+
+    Scans each allowed glob pattern directory and lists existing
+    Python files so the LLM has context for MODIFY/DELETE operations.
+
+    Args:
+        allowed_paths: Glob patterns for allowed file paths.
+
+    Returns:
+        Human-readable manifest string.
+    """
+    cwd = Path.cwd()
+    files: list[str] = []
+    for pattern in allowed_paths:
+        parent = Path(pattern.rsplit("/", 1)[0]) if "/" in pattern else Path()
+        target = cwd / parent
+        if not target.is_dir():
+            continue
+        for py_file in sorted(target.glob("*.py")):
+            rel = py_file.relative_to(cwd)
+            files.append(str(rel).replace("\\", "/"))
+
+    if not files:
+        return "Existing files in allowed paths: (none found)"
+
+    lines = ["Existing files in allowed paths:"]
+    total = 0
+    for f in files:
+        entry = f"- {f}"
+        total += len(entry)
+        if total > _MAX_MANIFEST_CHARS:
+            lines.append(f"... ({len(files) - len(lines) + 1} more)")
+            break
+        lines.append(entry)
+    return "\n".join(lines)
 
 
 def _summarize_context(ctx: dict[str, Any]) -> str:

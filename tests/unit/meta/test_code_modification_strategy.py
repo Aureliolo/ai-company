@@ -292,7 +292,8 @@ class TestCodeModificationStrategy:
         plan = proposals[0].rollback_plan
         assert len(plan.operations) == 1
         assert plan.operations[0].operation_type == "revert_branch"
-        assert "quality_declining" in plan.operations[0].target
+        # Branch name uses proposal ID, not rule name.
+        assert plan.operations[0].target.startswith("meta/code-mod/")
 
     async def test_max_files_per_proposal_enforced(self) -> None:
         from synthorg.meta.config import CodeModificationConfig

@@ -95,10 +95,11 @@ class CodeApplier:
                     altitude="code_modification",
                     proposal_id=str(proposal.id),
                     reason="cleanup_failed",
+                    branch=branch,
                 )
             return ApplyResult(
                 success=False,
-                error_message=("Code apply failed. Check logs for details."),
+                error_message="Code apply failed. Check logs for details.",
                 changes_applied=0,
             )
 
@@ -135,9 +136,17 @@ class CodeApplier:
             project_root,
         )
 
+        # Exclude deleted paths from CI validation -- ruff/mypy fail
+        # on non-existent files.  All paths are still staged by git.
+        delete_paths = {
+            c.file_path
+            for c in proposal.code_changes
+            if c.operation == CodeOperation.DELETE
+        }
+        ci_files = tuple(f for f in changed_files if f not in delete_paths)
         ci_result = await self._ci_validator.validate(
             project_root=project_root,
-            changed_files=tuple(changed_files),
+            changed_files=ci_files,
         )
         if not ci_result.passed:
             logger.warning(
@@ -217,8 +226,8 @@ class CodeApplier:
     ) -> ApplyResult:
         """Validate code changes without applying.
 
-        Checks file path scope, operation consistency, and
-        target file existence for modify/delete operations.
+        Checks operation consistency and target file existence
+        for modify/delete operations.
 
         Args:
             proposal: The proposal to validate.
@@ -264,23 +273,20 @@ class CodeApplier:
 
         Returns:
             List of relative file paths that were changed.
+
+        Raises:
+            RuntimeError: If a file write or delete fails.
         """
         changed: list[str] = []
         for change in changes:
             file_path = project_root / change.file_path
-            if change.operation == CodeOperation.CREATE:
-                file_path.parent.mkdir(parents=True, exist_ok=True)
-                file_path.write_text(
-                    change.new_content,
-                    encoding="utf-8",
-                )
-            elif change.operation == CodeOperation.MODIFY:
-                file_path.write_text(
-                    change.new_content,
-                    encoding="utf-8",
-                )
-            elif change.operation == CodeOperation.DELETE:
-                file_path.unlink(missing_ok=True)
+            try:
+                self._apply_single_change(change, file_path)
+            except MemoryError, RecursionError:
+                raise
+            except OSError as exc:
+                msg = f"{change.operation.value} failed for '{change.file_path}': {exc}"
+                raise RuntimeError(msg) from exc
             changed.append(change.file_path)
             logger.debug(
                 META_CODE_FILE_WRITTEN,
@@ -288,6 +294,25 @@ class CodeApplier:
                 file_path=change.file_path,
             )
         return changed
+
+    @staticmethod
+    def _apply_single_change(
+        change: CodeChange,
+        file_path: Path,
+    ) -> None:
+        """Write a single code change to disk.
+
+        Args:
+            change: The code change descriptor.
+            file_path: Absolute path to write.
+        """
+        if change.operation == CodeOperation.CREATE:
+            file_path.parent.mkdir(parents=True, exist_ok=True)
+            file_path.write_text(change.new_content, encoding="utf-8")
+        elif change.operation == CodeOperation.MODIFY:
+            file_path.write_text(change.new_content, encoding="utf-8")
+        elif change.operation == CodeOperation.DELETE:
+            file_path.unlink(missing_ok=True)
 
     async def _create_pr(
         self,
@@ -305,6 +330,7 @@ class CodeApplier:
         Returns:
             PR URL string.
         """
+        timeout = self._config.git_timeout_seconds
         proc = await asyncio.create_subprocess_exec(
             "gh",
             "pr",
@@ -331,7 +357,15 @@ class CodeApplier:
             stderr=asyncio.subprocess.PIPE,
         )
         try:
-            stdout, stderr = await proc.communicate()
+            stdout, stderr = await asyncio.wait_for(
+                proc.communicate(),
+                timeout=timeout,
+            )
+        except TimeoutError:
+            proc.kill()
+            await proc.wait()
+            msg = f"gh pr create timed out after {timeout}s"
+            raise RuntimeError(msg) from None
         except asyncio.CancelledError:
             proc.kill()
             await proc.wait()
@@ -362,6 +396,7 @@ class CodeApplier:
         Raises:
             RuntimeError: If git command fails.
         """
+        timeout = self._config.git_timeout_seconds
         proc = await asyncio.create_subprocess_exec(
             "git",
             *args,
@@ -370,7 +405,15 @@ class CodeApplier:
             stderr=asyncio.subprocess.PIPE,
         )
         try:
-            _, stderr = await proc.communicate()
+            _, stderr = await asyncio.wait_for(
+                proc.communicate(),
+                timeout=timeout,
+            )
+        except TimeoutError:
+            proc.kill()
+            await proc.wait()
+            msg = f"git {args[0]} timed out after {timeout}s"
+            raise RuntimeError(msg) from None
         except asyncio.CancelledError:
             proc.kill()
             await proc.wait()
@@ -384,11 +427,17 @@ class CodeApplier:
         branch: str,
         cwd: Path,
     ) -> None:
-        """Switch back to main and delete the branch.
+        """Discard generated edits and switch back to the base branch.
+
+        Resets the working tree so dirty files created by
+        ``_write_changes`` are not carried onto the base branch.
 
         Args:
             branch: Branch name to delete.
             cwd: Working directory.
         """
-        await self._run_git("checkout", "main", cwd=cwd)
+        base = str(self._config.base_branch)
+        await self._run_git("reset", "--hard", cwd=cwd)
+        await self._run_git("clean", "-fd", cwd=cwd)
+        await self._run_git("checkout", base, cwd=cwd)
         await self._run_git("branch", "-D", branch, cwd=cwd)

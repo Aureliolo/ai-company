@@ -109,7 +109,10 @@ class LocalCIValidator:
         errors: list[str],
     ) -> bool:
         """Run ruff check on changed files."""
-        cmd = ["uv", "run", "ruff", "check", *changed_files]
+        py_files = _existing_py_files(project_root, changed_files)
+        if not py_files:
+            return True
+        cmd = ["uv", "run", "ruff", "check", *py_files]
         return await self._run_subprocess(
             cmd,
             project_root,
@@ -124,7 +127,10 @@ class LocalCIValidator:
         errors: list[str],
     ) -> bool:
         """Run mypy on changed files."""
-        cmd = ["uv", "run", "mypy", *changed_files]
+        py_files = _existing_py_files(project_root, changed_files)
+        if not py_files:
+            return True
+        cmd = ["uv", "run", "mypy", *py_files]
         return await self._run_subprocess(
             cmd,
             project_root,
@@ -143,8 +149,17 @@ class LocalCIValidator:
         # corresponding test file in the tests/ directory.
         test_files = _discover_test_files(project_root, changed_files)
         if not test_files:
-            # No test files to run -- pass by default.
-            return True
+            # Fail closed: generated code without matching tests must
+            # not pass the CI gate silently.
+            logger.warning(
+                META_CI_VALIDATION_FAILED,
+                reason="no_test_files_discovered",
+                changed_file_count=len(changed_files),
+            )
+            errors.append(
+                "tests: no matching test files discovered for changed files",
+            )
+            return False
         cmd = [
             "uv",
             "run",
@@ -194,15 +209,13 @@ class LocalCIValidator:
                 proc.communicate(),
                 timeout=self._timeout,
             )
-            if proc.returncode != 0:
-                output = (
-                    stdout.decode(errors="replace") + stderr.decode(errors="replace")
-                ).strip()
-                if len(output) > _MAX_ERROR_OUTPUT_LENGTH:
-                    output = output[:_MAX_ERROR_OUTPUT_LENGTH] + "... (truncated)"
-                errors.append(f"{step_name}: {output}")
-                return False
-            return True  # noqa: TRY300
+            return _check_returncode(
+                proc,
+                stdout,
+                stderr,
+                step_name,
+                errors,
+            )
         except TimeoutError:
             if proc is not None:
                 proc.kill()
@@ -221,6 +234,54 @@ class LocalCIValidator:
                 f"{step_name}: command not found: {cmd[0]}",
             )
             return False
+
+
+def _check_returncode(
+    proc: asyncio.subprocess.Process,
+    stdout: bytes,
+    stderr: bytes,
+    step_name: str,
+    errors: list[str],
+) -> bool:
+    """Check subprocess exit code and capture errors.
+
+    Args:
+        proc: Completed subprocess.
+        stdout: Captured stdout bytes.
+        stderr: Captured stderr bytes.
+        step_name: Human-readable step name for error messages.
+        errors: Mutable list to append error descriptions to.
+
+    Returns:
+        True if the subprocess exited with code 0.
+    """
+    if proc.returncode != 0:
+        output = (
+            stdout.decode(errors="replace") + stderr.decode(errors="replace")
+        ).strip()
+        if len(output) > _MAX_ERROR_OUTPUT_LENGTH:
+            output = output[:_MAX_ERROR_OUTPUT_LENGTH] + "... (truncated)"
+        errors.append(f"{step_name}: {output}")
+        return False
+    return True
+
+
+def _existing_py_files(
+    project_root: Path,
+    changed_files: tuple[str, ...],
+) -> list[str]:
+    """Filter changed files to existing Python files.
+
+    Args:
+        project_root: Absolute path to the project root.
+        changed_files: Relative paths of changed files.
+
+    Returns:
+        List of changed .py files that exist on disk.
+    """
+    return [
+        f for f in changed_files if f.endswith(".py") and (project_root / f).exists()
+    ]
 
 
 def _discover_test_files(
