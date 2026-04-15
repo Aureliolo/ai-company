@@ -194,7 +194,7 @@ class TestAlert:
             "emitted_at": _NOW,
         }
         defaults.update(overrides)
-        return Alert(**defaults)  # type: ignore[arg-type]
+        return Alert(**defaults)
 
     def test_auto_id(self) -> None:
         alert = self._make()

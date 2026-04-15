@@ -6,7 +6,7 @@ and Chief of Staff confidence learning.
 """
 
 import asyncio
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 
 from synthorg.core.types import NotBlankStr
 from synthorg.meta.chief_of_staff.events import (
@@ -245,7 +245,7 @@ class SelfImprovementService:
             ProposalStatus.REJECTED,
         ):
             return
-        decision = (
+        decision: Literal["approved", "rejected"] = (
             "approved" if proposal.status is ProposalStatus.APPROVED else "rejected"
         )
         outcome = ProposalOutcome(
