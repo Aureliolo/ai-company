@@ -135,8 +135,12 @@ class SelfImprovementService:
                 return_exceptions=True,
             )
             adjusted: list[ImprovementProposal] = []
-            for original, result in zip(all_proposals, results, strict=True):
-                if isinstance(result, BaseException):
+            for original, adj_result in zip(
+                all_proposals,
+                results,
+                strict=True,
+            ):
+                if isinstance(adj_result, BaseException):
                     logger.warning(
                         COS_OUTCOME_RECORD_FAILED,
                         proposal_id=str(original.id),
@@ -144,7 +148,7 @@ class SelfImprovementService:
                     )
                     adjusted.append(original)
                 else:
-                    adjusted.append(result)
+                    adjusted.append(adj_result)
             all_proposals = adjusted
 
         # Step 3: Filter through guard chain.
