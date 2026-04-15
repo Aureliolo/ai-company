@@ -497,7 +497,10 @@ func runInteractiveInit(_ *cobra.Command, opts *GlobalOpts) (*interactiveResult,
 	if err != nil {
 		return nil, fmt.Errorf("setup: %w", err)
 	}
-	final := result.(setupTUI)
+	final, ok := result.(setupTUI)
+	if !ok {
+		return nil, fmt.Errorf("unexpected model type from TUI: %T", result)
+	}
 	if final.cancelled {
 		return nil, nil
 	}
@@ -515,7 +518,14 @@ func runInteractiveInit(_ *cobra.Command, opts *GlobalOpts) (*interactiveResult,
 
 	var pgPort int
 	if persist == "postgres" {
-		pgPort, _ = strconv.Atoi(strings.TrimSpace(final.postgresPort.Value()))
+		raw := strings.TrimSpace(final.postgresPort.Value())
+		if raw != "" {
+			p, err := strconv.Atoi(raw)
+			if err != nil {
+				return nil, fmt.Errorf("invalid postgres port %q: %w", raw, err)
+			}
+			pgPort = p
+		}
 		if pgPort == 0 {
 			pgPort = defaults.PostgresPort
 		}
@@ -524,7 +534,14 @@ func runInteractiveInit(_ *cobra.Command, opts *GlobalOpts) (*interactiveResult,
 	// Override NATS port in state after build if user changed it.
 	var natsPort int
 	if bus == "nats" {
-		natsPort, _ = strconv.Atoi(strings.TrimSpace(final.natsPort.Value()))
+		raw := strings.TrimSpace(final.natsPort.Value())
+		if raw != "" {
+			p, err := strconv.Atoi(raw)
+			if err != nil {
+				return nil, fmt.Errorf("invalid nats port %q: %w", raw, err)
+			}
+			natsPort = p
+		}
 	}
 
 	return &interactiveResult{
