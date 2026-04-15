@@ -76,6 +76,6 @@ USER 10003
 
 # The runner starts an HTTP health server on port 15002.
 HEALTHCHECK --interval=10s --timeout=3s --retries=3 --start-period=30s \
-    CMD ["/app/.venv/bin/python", "-c", "import urllib.request,sys; r=urllib.request.urlopen('http://127.0.0.1:15002/healthz'); sys.exit(0 if r.status==200 else 1)"]
+    CMD ["/app/.venv/bin/python", "-c", "import urllib.request,sys; r=urllib.request.urlopen('http://127.0.0.1:15002/healthz',timeout=2); sys.exit(0 if r.status==200 else 1)"]
 
 ENTRYPOINT ["/app/.venv/bin/python", "-m", "synthorg.memory.embedding.fine_tune_runner"]

@@ -1,14 +1,26 @@
 """Tests for fine-tune pipeline container entrypoint."""
 
 import json
+from collections.abc import Iterator
 from pathlib import Path
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from synthorg.memory.embedding.fine_tune_runner import _load_config, _run
 
 pytestmark = pytest.mark.unit
+
+
+@pytest.fixture(autouse=True)
+def _mock_health_server() -> Iterator[None]:
+    """Prevent real port binding in tests."""
+    mock_server = MagicMock()
+    with patch(
+        "synthorg.memory.embedding.fine_tune_runner._start_health_server",
+        return_value=mock_server,
+    ):
+        yield
 
 
 class TestLoadConfig:

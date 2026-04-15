@@ -251,19 +251,18 @@ Resource limits (`deploy.resources.limits`) cap memory, CPU, and PIDs per contai
 | Node.js | Renovate | Daily updates via lockfile (`/web`, `/site`, `/.github`) |
 | GitHub Actions | Renovate | Daily updates, pinned by commit SHA |
 | Pre-commit hooks | Renovate | Daily updates, version-pinned `rev:` tags |
-| CI binary tools | Renovate | Daily updates via regex managers (Trivy, Grype, Gitleaks, D2, apko) |
+| CI binary tools | Renovate | Daily updates via regex managers (Trivy, Gitleaks, D2, apko) |
 | License | `dependency-review-action` | Permissive-only allowlist (MIT, Apache-2.0, BSD, ISC, etc.) |
 | Supply chain | Socket.dev | GitHub App -- detects typosquatting, malware, suspicious ownership changes |
 
 ### Container Scanning
 
-Every container image is scanned by **two independent tools** before push:
+Every container image is scanned before push:
 
 - **Trivy** -- CRITICAL = hard fail, HIGH = warn-only (`.trivyignore.yaml` for vetted CVEs)
-- **Grype** -- critical severity cutoff (`.grype.yaml` for overrides)
-- **CIS Docker Benchmark** -- `trivy image --compliance docker-cis-1.6.0` run against all three images (informational; will become enforced once baseline is clean)
+- **CIS Docker Benchmark** -- `trivy image --compliance docker-cis-1.6.0` run against all images (enforced -- any FAIL blocks the build)
 
-Images are **only pushed to GHCR after both vulnerability scanners pass**.
+Images are **only pushed to GHCR after vulnerability scans and CIS benchmark pass**.
 
 ### Signed Artifacts
 
@@ -325,7 +324,7 @@ Pre-push hooks run **mypy type checking** and **unit tests** as a fast gate.
 | **zizmor** | GitHub Actions workflow security | On push/PR |
 | **ZAP DAST** | Dynamic API scan against OpenAPI spec | On push to main + weekly |
 | **OSSF Scorecard** | Supply chain maturity scoring | Weekly + on push |
-| **Trivy + Grype** | Container vulnerability scanning | On image build |
+| **Trivy** | Container vulnerability scanning + CIS compliance | On image build |
 | **Socket.dev** | Supply chain attack detection | On PR |
 | **dependency-review** | License + vulnerability review | On PR |
 

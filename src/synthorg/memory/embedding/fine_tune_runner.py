@@ -80,14 +80,14 @@ def _load_config() -> dict[str, Any] | None:
 class _HealthHandler(http.server.BaseHTTPRequestHandler):
     """Minimal health check handler for the fine-tune container."""
 
-    _start_time = time.monotonic()
+    _start_time: float = 0.0  # Set by _start_health_server before serving.
 
     def do_GET(self) -> None:
         if self.path == "/healthz":
             body = json.dumps(
                 {
                     "status": "healthy",
-                    "uptime": int(time.monotonic() - self._start_time),
+                    "uptime_seconds": int(time.monotonic() - self._start_time),
                 }
             )
             self.send_response(200)
@@ -101,16 +101,35 @@ class _HealthHandler(http.server.BaseHTTPRequestHandler):
         pass  # Suppress access logs.
 
 
-def _start_health_server() -> http.server.HTTPServer:
+def _start_health_server() -> http.server.HTTPServer | None:
     """Start an HTTP health server on a daemon thread.
 
     Returns:
-        The server instance (call ``shutdown()`` to stop).
+        The server instance, or ``None`` if the port is unavailable.
     """
-    server = http.server.HTTPServer(("127.0.0.1", _HEALTH_PORT), _HealthHandler)
+    try:
+        server = http.server.HTTPServer(("0.0.0.0", _HEALTH_PORT), _HealthHandler)  # noqa: S104
+    except OSError:
+        logger.warning(
+            "health_server_bind_failed",
+            port=_HEALTH_PORT,
+            msg="Health server could not bind; continuing without health endpoint",
+        )
+        return None
+    _HealthHandler._start_time = time.monotonic()  # noqa: SLF001
     t = threading.Thread(target=server.serve_forever, daemon=True)
     t.start()
+    logger.info("health_server_started", port=_HEALTH_PORT)
     return server
+
+
+def _shutdown_health_server(server: http.server.HTTPServer | None) -> None:
+    """Shut down and close the health server if it was started."""
+    if server is None:
+        return
+    server.shutdown()
+    server.server_close()
+    logger.info("health_server_stopped", port=_HEALTH_PORT)
 
 
 def _run() -> int:
@@ -119,7 +138,7 @@ def _run() -> int:
 
     config = _load_config()
     if config is None:
-        health_server.shutdown()
+        _shutdown_health_server(health_server)
         return 1
 
     stage_name = config.get("stage", "")
@@ -128,10 +147,12 @@ def _run() -> int:
         stage = FineTuneStage(stage_name)
     except ValueError:
         print(f"ERROR: unknown stage {stage_name!r}", file=sys.stderr)  # noqa: T201
+        _shutdown_health_server(health_server)
         return 1
 
     if stage not in _EXECUTABLE_STAGES:
         print(f"ERROR: stage {stage_name!r} is not executable", file=sys.stderr)  # noqa: T201
+        _shutdown_health_server(health_server)
         return 1
 
     # Cooperative cancellation via SIGTERM (docker stop).
@@ -152,7 +173,7 @@ def _run() -> int:
         return 0
     finally:
         signal.signal(signal.SIGTERM, prev_handler)
-        health_server.shutdown()
+        _shutdown_health_server(health_server)
 
 
 async def _dispatch_stage(

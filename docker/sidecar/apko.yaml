@@ -25,14 +25,10 @@ accounts:
     - username: sidecar
       uid: 10002
       gid: 10002
-  # Root is required for the full sidecar lifetime: iptables DNAT rules
-  # are installed at startup, and SO_ORIGINAL_DST getsockopt on
-  # redirected connections requires NET_ADMIN (held by root). The
-  # container runtime restricts with cap_drop: ALL + cap_add: NET_ADMIN +
-  # read_only rootfs. UID 10002 (sidecar) is reserved for future
-  # privilege-drop after startup if NET_ADMIN can be retained via
-  # ambient capabilities.
-  run-as: "0"
+  # Non-root: iptables DNAT + SO_ORIGINAL_DST require CAP_NET_ADMIN,
+  # not UID 0. The container runtime grants NET_ADMIN via cap_add
+  # (cap_drop: ALL + cap_add: NET_ADMIN + read_only rootfs).
+  run-as: "10002"
 
 paths:
   - path: /tmp

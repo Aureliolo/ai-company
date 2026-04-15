@@ -14,6 +14,7 @@
 # Sidecar is un-excluded because its Dockerfile copies Go source from docker/sidecar/.
 docker/
 !docker/sidecar/
+!docker/sandbox/healthz.py
 
 # Tests
 tests/

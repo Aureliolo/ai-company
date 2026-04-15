@@ -15,6 +15,10 @@ inputs:
   trivy-version:
     description: "Trivy version"
     required: true
+  architectures:
+    description: "Comma-separated list of architectures to push (e.g. amd64,arm64)"
+    required: false
+    default: "amd64,arm64"
   ghcr-token:
     description: "GITHUB_TOKEN for GHCR"
     required: true
@@ -134,14 +138,17 @@ runs:
       shell: bash
       env:
         IMAGE_NAME: ${{ inputs.image-name }}
+        ARCHITECTURES: ${{ inputs.architectures }}
       run: |
         TAG="sha-${GITHUB_SHA::7}"
         REPO="ghcr.io/aureliolo/synthorg-${IMAGE_NAME}-base"
-        docker push "${REPO}:${TAG}-amd64"
-        docker push "${REPO}:${TAG}-arm64"
-        docker manifest create "${REPO}:${TAG}" \
-          "${REPO}:${TAG}-amd64" \
-          "${REPO}:${TAG}-arm64"
+        IFS=',' read -ra ARCHS <<< "${ARCHITECTURES}"
+        MANIFEST_ARGS=()
+        for arch in "${ARCHS[@]}"; do
+          docker push "${REPO}:${TAG}-${arch}"
+          MANIFEST_ARGS+=("${REPO}:${TAG}-${arch}")
+        done
+        docker manifest create "${REPO}:${TAG}" "${MANIFEST_ARGS[@]}"
         DIGEST=$(docker manifest push "${REPO}:${TAG}")
         echo "digest=${DIGEST}" >> "$GITHUB_OUTPUT"
 

@@ -1878,7 +1878,7 @@ enabled images (both Compose-managed and on-demand) before starting.
 | `web` | React SPA and built docs, served by **Caddy** | Pure apko (no Dockerfile); composes `caddy` + `ca-certificates-bundle` + melange-built `synthorg-web-assets` apk + `/etc/synthorg/Caddyfile` |
 | `sandbox` | Ephemeral agent code execution image spawned on demand by the backend | apko-composed Wolfi base (`docker/sandbox/apko.yaml`) with `busybox` and `git`; fully rootless (UID 10001, cap_drop: ALL). Network enforcement handled by a separate sidecar proxy container |
 | `sidecar` | Transparent network proxy sidecar for sandbox containers | apko-composed Wolfi base (`docker/sidecar/apko.yaml`) with `iptables` and `busybox`; Go binary providing dual-layer DNS + DNAT enforcement of `allowed_hosts` |
-| `fine-tune` | Ephemeral embedding fine-tuning container spawned on demand by the backend for offline pipeline stages | apko-composed Wolfi base (`docker/fine-tune/apko.yaml`) with Python 3.14 + openblas; thin `docker/fine-tune/Dockerfile` layers torch, sentence-transformers, and the pipeline runner on top |
+| `fine-tune` | Ephemeral embedding fine-tuning container spawned on demand by the backend for offline pipeline stages (**amd64 only** -- GPU workloads require x86_64; the CLI init wizard hides the option on non-amd64) | apko-composed Wolfi base (`docker/fine-tune/apko.yaml`) with Python 3.14 + openblas; thin `docker/fine-tune/Dockerfile` layers torch, sentence-transformers, and the pipeline runner on top |
 
 Each published image is signed with **cosign keyless** via GitHub OIDC in
 `.github/workflows/docker.yml` and attested with **SLSA Level 3 provenance**.

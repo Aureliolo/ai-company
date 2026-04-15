@@ -494,8 +494,6 @@ func runSetupFormWithOverrides(cmd *cobra.Command, resolvedDataDir string) (setu
 		if err := fineTuneForm.Run(); err != nil {
 			return a, fmt.Errorf("fine-tuning form: %w", err)
 		}
-	} else if a.sandbox && runtime.GOARCH != "amd64" {
-		a.fineTuning = false
 	}
 
 	// Show the bus backend picker after the main form when it was not

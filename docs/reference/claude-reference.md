@@ -85,9 +85,9 @@ data/             # Shared data files (competitors.yaml for comparison page)
 - **Jobs**: lint (ruff) + type-check (mypy) + test (pytest + coverage) + python-audit (pip-audit) + dockerfile-lint (hadolint) + dashboard (lint/type-check/test with `--detect-async-leaks`/build/storybook-build/audit) run in parallel -> ci-pass gate
 - **Pages**: `pages.yml` -- version extraction from `pyproject.toml`, OpenAPI export, comparison page generation, Astro + Zensical docs build, GitHub Pages deploy on push to main
 - **PR Preview**: `pages-preview.yml` -- Cloudflare Pages deploy per PR (`pr-<number>.synthorg-pr-preview.pages.dev`), cleanup on PR close
-- **Docker**: `docker.yml` -- build + Trivy/Grype scan + push to GHCR + cosign sign + SLSA L3 provenance. CVE triage: `.github/.trivyignore.yaml`, `.github/.grype.yaml`
+- **Docker**: `docker.yml` -- build + Trivy scan + CIS benchmark + push to GHCR + cosign sign + SLSA L3 provenance. CVE triage: `.github/.trivyignore.yaml`
 - **CLI**: `cli.yml` -- Go lint/test/build (cross-compile) + govulncheck + fuzz. GoReleaser release on `v*` tags with cosign signing + SLSA provenance
-- **Renovate**: daily dependency updates via Mend GitHub App. 5 domain groups (Python, Web, CLI, Container, CI tools), no auto-merge. Regex managers handle binary tool versions (Trivy, Grype, Gitleaks, D2, apko), go install pins (govulncheck), and action version inputs (golangci-lint, GoReleaser). Config: `renovate.json`. Use `/review-dep-pr` before merging
+- **Renovate**: daily dependency updates via Mend GitHub App. 5 domain groups (Python, Web, CLI, Container, CI tools), no auto-merge. Regex managers handle binary tool versions (Trivy, Gitleaks, D2, apko), go install pins (govulncheck), and action version inputs (golangci-lint, GoReleaser). Config: `renovate.json`. Use `/review-dep-pr` before merging
 - **Security scanning**: gitleaks (push/PR + weekly), zizmor (workflow analysis), OSSF Scorecard (weekly), Socket.dev (PR supply chain), ZAP DAST (weekly + manual, rules: `.github/zap-rules.tsv`)
 - **Coverage**: Codecov (best-effort, CI not gated on availability)
 - **Dependency review**: `dependency-review.yml` -- license allow-list (permissive + weak-copyleft), per-package GPL exemptions for dev-only tool deps (golangci-lint), PR comment summaries
