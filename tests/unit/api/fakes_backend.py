@@ -301,6 +301,44 @@ class FakeTrainingResultRepository:
         return max(agent_results, key=lambda r: r.completed_at)
 
 
+class FakeCustomRuleRepository:
+    """In-memory fake for ``CustomRuleRepository``."""
+
+    def __init__(self) -> None:
+        self._rules: dict[str, object] = {}
+
+    async def save(self, rule: object) -> None:
+        rule_id = str(getattr(rule, "id", ""))
+        self._rules[rule_id] = rule
+
+    async def get(self, rule_id: str) -> object | None:
+        return self._rules.get(rule_id)
+
+    async def get_by_name(self, name: str) -> object | None:
+        for r in self._rules.values():
+            if getattr(r, "name", None) == name:
+                return r
+        return None
+
+    async def list_rules(
+        self,
+        *,
+        enabled_only: bool = False,
+    ) -> tuple[object, ...]:
+        rules = list(self._rules.values())
+        if enabled_only:
+            rules = [r for r in rules if getattr(r, "enabled", True)]
+        return tuple(
+            sorted(rules, key=lambda r: getattr(r, "name", "")),
+        )
+
+    async def delete(self, rule_id: str) -> bool:
+        if rule_id in self._rules:
+            del self._rules[rule_id]
+            return True
+        return False
+
+
 class FakePersistenceBackend:
     """In-memory persistence backend for tests."""
 
@@ -339,6 +377,7 @@ class FakePersistenceBackend:
         self._settings_repo = FakeSettingsRepository()
         self._training_plans_repo = FakeTrainingPlanRepository()
         self._training_results_repo = FakeTrainingResultRepository()
+        self._custom_rules_repo = FakeCustomRuleRepository()
         self._connections_stub = StubConnectionRepository()
         self._connection_secrets_stub = StubConnectionSecretRepository()
         self._oauth_states_stub = StubOAuthStateRepository()
@@ -541,6 +580,11 @@ class FakePersistenceBackend:
     def training_results(self) -> FakeTrainingResultRepository:
         """Fake training result repository."""
         return self._training_results_repo
+
+    @property
+    def custom_rules(self) -> FakeCustomRuleRepository:
+        """Fake custom rule repository."""
+        return self._custom_rules_repo
 
     async def get_setting(self, key: str) -> str | None:
         return self._settings.get(key)

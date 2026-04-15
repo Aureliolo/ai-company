@@ -895,6 +895,15 @@ class PostgresPersistenceBackend:
             "training_results",
         )
 
+    @property
+    def custom_rules(self) -> Any:
+        """Repository for custom signal rule persistence.
+
+        Not yet implemented for Postgres.
+        """
+        msg = "custom_rules repository not yet ported to Postgres"
+        raise NotImplementedError(msg)
+
     async def get_setting(self, key: NotBlankStr) -> str | None:
         """Retrieve a setting value by key from the ``_system`` namespace.
 

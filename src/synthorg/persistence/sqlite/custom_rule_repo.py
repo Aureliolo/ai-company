@@ -2,6 +2,8 @@
 
 import json
 import sqlite3
+from datetime import datetime
+from uuid import UUID
 
 import aiosqlite  # noqa: TC002
 from aiosqlite import Row  # noqa: TC002
@@ -29,7 +31,7 @@ def _row_to_definition(row: Row) -> CustomRuleDefinition:
     """Convert a database row to a CustomRuleDefinition."""
     altitudes_raw: list[str] = json.loads(str(row[7]))
     return CustomRuleDefinition(
-        id=str(row[0]),
+        id=UUID(str(row[0])),
         name=str(row[1]),
         description=str(row[2]),
         metric_path=str(row[3]),
@@ -38,8 +40,8 @@ def _row_to_definition(row: Row) -> CustomRuleDefinition:
         severity=RuleSeverity(str(row[6])),
         target_altitudes=tuple(ProposalAltitude(a) for a in altitudes_raw),
         enabled=bool(row[8]),
-        created_at=str(row[9]),
-        updated_at=str(row[10]),
+        created_at=datetime.fromisoformat(str(row[9])),
+        updated_at=datetime.fromisoformat(str(row[10])),
     )
 
 

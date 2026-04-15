@@ -134,12 +134,12 @@ class TestComparator:
     """Tests for the Comparator enum."""
 
     def test_values(self) -> None:
-        assert Comparator.LT == "lt"
-        assert Comparator.LE == "le"
-        assert Comparator.GT == "gt"
-        assert Comparator.GE == "ge"
-        assert Comparator.EQ == "eq"
-        assert Comparator.NE == "ne"
+        assert Comparator.LT.value == "lt"
+        assert Comparator.LE.value == "le"
+        assert Comparator.GT.value == "gt"
+        assert Comparator.GE.value == "ge"
+        assert Comparator.EQ.value == "eq"
+        assert Comparator.NE.value == "ne"
 
     def test_all_members(self) -> None:
         assert len(Comparator) == 6
