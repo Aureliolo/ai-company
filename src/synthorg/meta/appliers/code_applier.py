@@ -256,11 +256,23 @@ class CodeApplier:
                     errors.append(
                         f"MODIFY target does not exist: {change.file_path}",
                     )
+                else:
+                    current = file_path.read_text(encoding="utf-8")
+                    if current != change.old_content:
+                        errors.append(
+                            f"MODIFY target changed since proposal: {change.file_path}",
+                        )
             elif change.operation == CodeOperation.DELETE:
                 if not file_path.exists():
                     errors.append(
                         f"DELETE target does not exist: {change.file_path}",
                     )
+                else:
+                    current = file_path.read_text(encoding="utf-8")
+                    if current != change.old_content:
+                        errors.append(
+                            f"DELETE target changed since proposal: {change.file_path}",
+                        )
             elif change.operation == CodeOperation.CREATE and file_path.exists():
                 errors.append(
                     f"CREATE target already exists: {change.file_path}",
