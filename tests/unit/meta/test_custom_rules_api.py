@@ -177,44 +177,28 @@ class TestSerializationHelpers:
 class TestBuildPreviewSnapshot:
     """Test _build_preview_snapshot utility."""
 
-    def test_performance_metric(self) -> None:
-        snap = _build_preview_snapshot(
-            "performance.avg_quality_score",
-            3.5,
-        )
-        val = resolve_metric(snap, "performance.avg_quality_score")
-        assert val == 3.5
-
-    def test_budget_integer_metric(self) -> None:
-        snap = _build_preview_snapshot(
-            "budget.days_until_exhausted",
-            7.0,
-        )
-        val = resolve_metric(snap, "budget.days_until_exhausted")
-        assert val == 7
-        assert isinstance(val, int)
-
-    def test_coordination_nullable_metric(self) -> None:
-        snap = _build_preview_snapshot(
-            "coordination.coordination_overhead_pct",
-            45.0,
-        )
-        val = resolve_metric(
-            snap,
-            "coordination.coordination_overhead_pct",
-        )
-        assert val == 45.0
-
-    def test_errors_metric(self) -> None:
-        snap = _build_preview_snapshot("errors.total_findings", 15.0)
-        val = resolve_metric(snap, "errors.total_findings")
-        assert val == 15
-        assert isinstance(val, int)
-
-    def test_telemetry_metric(self) -> None:
-        snap = _build_preview_snapshot("telemetry.event_count", 200.0)
-        val = resolve_metric(snap, "telemetry.event_count")
-        assert val == 200
+    @pytest.mark.parametrize(
+        ("metric_path", "sample_input", "expected_value", "expected_type"),
+        [
+            ("performance.avg_quality_score", 3.5, 3.5, None),
+            ("budget.days_until_exhausted", 7.0, 7, int),
+            ("coordination.coordination_overhead_pct", 45.0, 45.0, None),
+            ("errors.total_findings", 15.0, 15, int),
+            ("telemetry.event_count", 200.0, 200, int),
+        ],
+    )
+    def test_domain_metric(
+        self,
+        metric_path: str,
+        sample_input: float,
+        expected_value: float | int,
+        expected_type: type | None,
+    ) -> None:
+        snap = _build_preview_snapshot(metric_path, sample_input)
+        val = resolve_metric(snap, metric_path)
+        assert val == expected_value
+        if expected_type is not None:
+            assert isinstance(val, expected_type)
 
     @pytest.mark.parametrize(
         "metric_path",
