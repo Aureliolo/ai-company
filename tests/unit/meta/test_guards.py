@@ -79,6 +79,26 @@ def _config_proposal(
             rollback_plan=_rollback(),
             confidence=0.8,
         )
+    if altitude == ProposalAltitude.CODE_MODIFICATION:
+        from synthorg.meta.models import CodeChange, CodeOperation
+
+        return ImprovementProposal(
+            altitude=altitude,
+            title="test",
+            description="test",
+            rationale=_rationale(),
+            code_changes=(
+                CodeChange(
+                    file_path="src/x.py",
+                    operation=CodeOperation.CREATE,
+                    new_content="content",
+                    description="d",
+                    reasoning="r",
+                ),
+            ),
+            rollback_plan=_rollback(),
+            confidence=0.8,
+        )
     # PROMPT_TUNING
     from synthorg.meta.models import PromptChange
 
@@ -132,6 +152,30 @@ class TestScopeCheckGuard:
         )
         guard = ScopeCheckGuard(config=cfg)
         result = await guard.evaluate(_config_proposal(ProposalAltitude.PROMPT_TUNING))
+        assert result.verdict == GuardVerdict.PASSED
+
+    async def test_code_modification_disabled_rejects(self) -> None:
+        cfg = SelfImprovementConfig(
+            enabled=True,
+            code_modification_enabled=False,
+        )
+        guard = ScopeCheckGuard(config=cfg)
+        result = await guard.evaluate(
+            _config_proposal(ProposalAltitude.CODE_MODIFICATION),
+        )
+        assert result.verdict == GuardVerdict.REJECTED
+        assert result.reason is not None
+        assert "code_modification" in result.reason
+
+    async def test_code_modification_enabled_passes(self) -> None:
+        cfg = SelfImprovementConfig(
+            enabled=True,
+            code_modification_enabled=True,
+        )
+        guard = ScopeCheckGuard(config=cfg)
+        result = await guard.evaluate(
+            _config_proposal(ProposalAltitude.CODE_MODIFICATION),
+        )
         assert result.verdict == GuardVerdict.PASSED
 
 

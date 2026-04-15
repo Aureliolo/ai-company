@@ -25,6 +25,7 @@ _ALTITUDE_RISK = {
     ProposalAltitude.CONFIG_TUNING: "medium",
     ProposalAltitude.ARCHITECTURE: "high",
     ProposalAltitude.PROMPT_TUNING: "medium",
+    ProposalAltitude.CODE_MODIFICATION: "critical",
 }
 
 

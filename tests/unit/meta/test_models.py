@@ -9,6 +9,9 @@ from pydantic import ValidationError
 from synthorg.meta.models import (
     ApplyResult,
     ArchitectureChange,
+    CIValidationResult,
+    CodeChange,
+    CodeOperation,
     ConfigChange,
     ErrorCategorySummary,
     EvolutionMode,
@@ -140,6 +143,12 @@ class TestEnums:
         assert ProposalAltitude.CONFIG_TUNING.value == "config_tuning"
         assert ProposalAltitude.ARCHITECTURE.value == "architecture"
         assert ProposalAltitude.PROMPT_TUNING.value == "prompt_tuning"
+        assert ProposalAltitude.CODE_MODIFICATION.value == "code_modification"
+
+    def test_code_operation_values(self) -> None:
+        assert CodeOperation.CREATE.value == "create"
+        assert CodeOperation.MODIFY.value == "modify"
+        assert CodeOperation.DELETE.value == "delete"
 
     def test_proposal_status_values(self) -> None:
         assert ProposalStatus.PENDING.value == "pending"
@@ -661,3 +670,243 @@ class TestPromptChange:
             description="Testing focus for engineers",
         )
         assert c.evolution_mode == EvolutionMode.OVERRIDE
+
+
+class TestCodeChange:
+    """CodeChange model tests."""
+
+    def test_valid_create(self) -> None:
+        c = CodeChange(
+            file_path="src/synthorg/meta/strategies/new_algo.py",
+            operation=CodeOperation.CREATE,
+            new_content="class NewAlgo:\n    pass\n",
+            description="Add new algorithm",
+            reasoning="Quality declining needs better approach",
+        )
+        assert c.operation == CodeOperation.CREATE
+        assert c.old_content == ""
+
+    def test_valid_modify(self) -> None:
+        c = CodeChange(
+            file_path="src/synthorg/meta/guards/scope_check.py",
+            operation=CodeOperation.MODIFY,
+            old_content="original content",
+            new_content="modified content",
+            description="Improve scope check",
+            reasoning="Reduce false positives",
+        )
+        assert c.operation == CodeOperation.MODIFY
+
+    def test_valid_delete(self) -> None:
+        c = CodeChange(
+            file_path="src/synthorg/meta/strategies/deprecated.py",
+            operation=CodeOperation.DELETE,
+            old_content="old code to preserve for rollback",
+            description="Remove deprecated strategy",
+            reasoning="No longer triggered by any rule",
+        )
+        assert c.new_content == ""
+
+    def test_create_with_old_content_rejected(self) -> None:
+        with pytest.raises(ValidationError, match=r"create.*empty old_content"):
+            CodeChange(
+                file_path="src/x.py",
+                operation=CodeOperation.CREATE,
+                old_content="should not be here",
+                new_content="new stuff",
+                description="d",
+                reasoning="r",
+            )
+
+    def test_create_without_new_content_rejected(self) -> None:
+        with pytest.raises(ValidationError, match=r"create.*non-empty new_content"):
+            CodeChange(
+                file_path="src/x.py",
+                operation=CodeOperation.CREATE,
+                description="d",
+                reasoning="r",
+            )
+
+    def test_modify_without_old_content_rejected(self) -> None:
+        with pytest.raises(ValidationError, match=r"modify.*non-empty old_content"):
+            CodeChange(
+                file_path="src/x.py",
+                operation=CodeOperation.MODIFY,
+                new_content="new stuff",
+                description="d",
+                reasoning="r",
+            )
+
+    def test_modify_without_new_content_rejected(self) -> None:
+        with pytest.raises(ValidationError, match=r"modify.*non-empty new_content"):
+            CodeChange(
+                file_path="src/x.py",
+                operation=CodeOperation.MODIFY,
+                old_content="old stuff",
+                description="d",
+                reasoning="r",
+            )
+
+    def test_modify_identical_content_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="must change the content"):
+            CodeChange(
+                file_path="src/x.py",
+                operation=CodeOperation.MODIFY,
+                old_content="same",
+                new_content="same",
+                description="d",
+                reasoning="r",
+            )
+
+    def test_delete_with_new_content_rejected(self) -> None:
+        with pytest.raises(ValidationError, match=r"delete.*empty new_content"):
+            CodeChange(
+                file_path="src/x.py",
+                operation=CodeOperation.DELETE,
+                old_content="old",
+                new_content="should not be here",
+                description="d",
+                reasoning="r",
+            )
+
+    def test_delete_without_old_content_rejected(self) -> None:
+        with pytest.raises(ValidationError, match=r"delete.*non-empty old_content"):
+            CodeChange(
+                file_path="src/x.py",
+                operation=CodeOperation.DELETE,
+                description="d",
+                reasoning="r",
+            )
+
+    def test_frozen(self) -> None:
+        c = CodeChange(
+            file_path="src/x.py",
+            operation=CodeOperation.CREATE,
+            new_content="content",
+            description="d",
+            reasoning="r",
+        )
+        with pytest.raises(ValidationError):
+            c.file_path = "other"  # type: ignore[misc]
+
+
+# ── Code modification altitude validation ─────────────────────────
+
+
+class TestCodeModificationProposal:
+    """ImprovementProposal validation for CODE_MODIFICATION altitude."""
+
+    def test_valid_code_modification_proposal(self) -> None:
+        proposal = _make_config_proposal(
+            altitude=ProposalAltitude.CODE_MODIFICATION,
+            config_changes=(),
+            code_changes=(
+                CodeChange(
+                    file_path="src/synthorg/meta/strategies/new.py",
+                    operation=CodeOperation.CREATE,
+                    new_content="class New:\n    pass\n",
+                    description="Add new strategy",
+                    reasoning="Quality declining",
+                ),
+            ),
+        )
+        assert proposal.altitude == ProposalAltitude.CODE_MODIFICATION
+        assert proposal.change_count == 1
+
+    def test_code_modification_without_code_changes_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="code_change"):
+            _make_config_proposal(
+                altitude=ProposalAltitude.CODE_MODIFICATION,
+                config_changes=(),
+                code_changes=(),
+            )
+
+    def test_code_modification_with_config_changes_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="code_change"):
+            _make_config_proposal(
+                altitude=ProposalAltitude.CODE_MODIFICATION,
+                code_changes=(
+                    CodeChange(
+                        file_path="src/x.py",
+                        operation=CodeOperation.CREATE,
+                        new_content="content",
+                        description="d",
+                        reasoning="r",
+                    ),
+                ),
+            )
+
+    def test_config_with_code_changes_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="config_tuning"):
+            _make_config_proposal(
+                code_changes=(
+                    CodeChange(
+                        file_path="src/x.py",
+                        operation=CodeOperation.CREATE,
+                        new_content="content",
+                        description="d",
+                        reasoning="r",
+                    ),
+                ),
+            )
+
+
+# ── CIValidationResult ────────────────────────────────────────────
+
+
+class TestCIValidationResult:
+    """CIValidationResult model tests."""
+
+    def test_all_passed(self) -> None:
+        r = CIValidationResult(
+            passed=True,
+            lint_passed=True,
+            typecheck_passed=True,
+            tests_passed=True,
+            duration_seconds=12.5,
+        )
+        assert r.passed
+        assert r.errors == ()
+
+    def test_lint_failed(self) -> None:
+        r = CIValidationResult(
+            passed=False,
+            lint_passed=False,
+            typecheck_passed=True,
+            tests_passed=True,
+            errors=("ruff: E501 line too long",),
+            duration_seconds=3.0,
+        )
+        assert not r.passed
+        assert len(r.errors) == 1
+
+    def test_failure_without_errors_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="at least one error"):
+            CIValidationResult(
+                passed=False,
+                lint_passed=False,
+                typecheck_passed=True,
+                tests_passed=True,
+                duration_seconds=1.0,
+            )
+
+    def test_passed_with_failed_subcheck_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="sub-check failed"):
+            CIValidationResult(
+                passed=True,
+                lint_passed=True,
+                typecheck_passed=False,
+                tests_passed=True,
+                duration_seconds=1.0,
+            )
+
+    def test_frozen(self) -> None:
+        r = CIValidationResult(
+            passed=True,
+            lint_passed=True,
+            typecheck_passed=True,
+            tests_passed=True,
+            duration_seconds=1.0,
+        )
+        with pytest.raises(ValidationError):
+            r.passed = False  # type: ignore[misc]

@@ -11,8 +11,10 @@ from synthorg.core.types import NotBlankStr  # noqa: TC001
 
 if TYPE_CHECKING:
     from datetime import datetime
+    from pathlib import Path
 from synthorg.meta.models import (
     ApplyResult,  # noqa: TC001
+    CIValidationResult,  # noqa: TC001
     GuardResult,  # noqa: TC001
     ImprovementProposal,  # noqa: TC001
     OrgBudgetSummary,  # noqa: TC001
@@ -265,5 +267,31 @@ class RegressionDetector(Protocol):
 
         Returns:
             Regression result with verdict and details.
+        """
+        ...
+
+
+@runtime_checkable
+class CIValidator(Protocol):
+    """Validates proposed code changes against CI checks.
+
+    Implementations run lint, type-check, and test commands
+    against the changed files and report aggregate results.
+    """
+
+    async def validate(
+        self,
+        *,
+        project_root: Path,
+        changed_files: tuple[str, ...],
+    ) -> CIValidationResult:
+        """Run CI validation against changed files.
+
+        Args:
+            project_root: Absolute path to the project root.
+            changed_files: Relative paths of files that changed.
+
+        Returns:
+            CI validation result with per-step outcomes.
         """
         ...

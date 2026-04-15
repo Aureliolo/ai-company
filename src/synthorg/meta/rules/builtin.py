@@ -47,10 +47,11 @@ class QualityDecliningRule:
 
     @property
     def target_altitudes(self) -> tuple[ProposalAltitude, ...]:
-        """Suggests config tuning and prompt tuning."""
+        """Suggests config tuning, prompt tuning, and code modification."""
         return (
             ProposalAltitude.CONFIG_TUNING,
             ProposalAltitude.PROMPT_TUNING,
+            ProposalAltitude.CODE_MODIFICATION,
         )
 
     def evaluate(self, snapshot: OrgSignalSnapshot) -> RuleMatch | None:
@@ -426,10 +427,11 @@ class ErrorSpikeRule:
 
     @property
     def target_altitudes(self) -> tuple[ProposalAltitude, ...]:
-        """Suggests config tuning and prompt tuning."""
+        """Suggests config tuning, prompt tuning, and code modification."""
         return (
             ProposalAltitude.CONFIG_TUNING,
             ProposalAltitude.PROMPT_TUNING,
+            ProposalAltitude.CODE_MODIFICATION,
         )
 
     def evaluate(self, snapshot: OrgSignalSnapshot) -> RuleMatch | None:

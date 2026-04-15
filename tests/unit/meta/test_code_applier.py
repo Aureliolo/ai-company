@@ -1,0 +1,287 @@
+"""Unit tests for code modification applier."""
+
+from pathlib import Path
+from unittest.mock import AsyncMock, patch
+
+import pytest
+
+from synthorg.meta.appliers.code_applier import CodeApplier
+from synthorg.meta.config import CodeModificationConfig
+from synthorg.meta.models import (
+    CIValidationResult,
+    CodeChange,
+    CodeOperation,
+    ImprovementProposal,
+    ProposalAltitude,
+    ProposalRationale,
+    RollbackOperation,
+    RollbackPlan,
+)
+
+pytestmark = pytest.mark.unit
+
+
+def _rationale() -> ProposalRationale:
+    return ProposalRationale(
+        signal_summary="test",
+        pattern_detected="test",
+        expected_impact="test",
+        confidence_reasoning="test",
+    )
+
+
+def _rollback() -> RollbackPlan:
+    return RollbackPlan(
+        operations=(
+            RollbackOperation(
+                operation_type="revert_branch",
+                target="meta/code-mod/test",
+                description="revert",
+            ),
+        ),
+        validation_check="branch deleted",
+    )
+
+
+def _code_proposal(
+    *,
+    changes: tuple[CodeChange, ...] | None = None,
+) -> ImprovementProposal:
+    if changes is None:
+        changes = (
+            CodeChange(
+                file_path="src/synthorg/meta/strategies/new.py",
+                operation=CodeOperation.CREATE,
+                new_content="class New:\n    pass\n",
+                description="Add new strategy",
+                reasoning="Quality declining",
+            ),
+        )
+    return ImprovementProposal(
+        altitude=ProposalAltitude.CODE_MODIFICATION,
+        title="Test code proposal",
+        description="Test description",
+        rationale=_rationale(),
+        code_changes=changes,
+        rollback_plan=_rollback(),
+        confidence=0.6,
+        source_rule="quality_declining",
+    )
+
+
+def _ci_pass() -> CIValidationResult:
+    return CIValidationResult(
+        passed=True,
+        lint_passed=True,
+        typecheck_passed=True,
+        tests_passed=True,
+        duration_seconds=5.0,
+    )
+
+
+def _ci_fail() -> CIValidationResult:
+    return CIValidationResult(
+        passed=False,
+        lint_passed=False,
+        typecheck_passed=True,
+        tests_passed=True,
+        errors=("lint: E501 line too long",),
+        duration_seconds=2.0,
+    )
+
+
+def _mock_ci_validator(
+    result: CIValidationResult | None = None,
+) -> AsyncMock:
+    ci = AsyncMock()
+    ci.validate = AsyncMock(return_value=result or _ci_pass())
+    return ci
+
+
+def _mock_git_success():
+    """Mock subprocess that always succeeds."""
+    proc = AsyncMock()
+    proc.returncode = 0
+    proc.communicate = AsyncMock(return_value=(b"", b""))
+    return proc
+
+
+def _mock_gh_pr_create():
+    """Mock subprocess for gh pr create returning a URL."""
+    proc = AsyncMock()
+    proc.returncode = 0
+    proc.communicate = AsyncMock(
+        return_value=(b"https://github.com/test/repo/pull/99\n", b""),
+    )
+    return proc
+
+
+class TestCodeApplier:
+    """Code applier tests."""
+
+    def test_altitude(self) -> None:
+        applier = CodeApplier(
+            ci_validator=_mock_ci_validator(),
+            code_modification_config=CodeModificationConfig(),
+        )
+        assert applier.altitude == ProposalAltitude.CODE_MODIFICATION
+
+    async def test_apply_success(self, tmp_path: Path) -> None:
+        ci = _mock_ci_validator(_ci_pass())
+        applier = CodeApplier(
+            ci_validator=ci,
+            code_modification_config=CodeModificationConfig(),
+        )
+        proposal = _code_proposal()
+
+        call_index = 0
+
+        async def mock_create(*args, **kwargs):
+            nonlocal call_index
+            call_index += 1
+            cmd = args
+            # gh pr create call
+            if cmd[0] == "gh":
+                return _mock_gh_pr_create()
+            return _mock_git_success()
+
+        with (
+            patch(
+                "synthorg.meta.appliers.code_applier.asyncio.create_subprocess_exec",
+                side_effect=mock_create,
+            ),
+            patch(
+                "synthorg.meta.appliers.code_applier.Path.cwd",
+                return_value=tmp_path,
+            ),
+        ):
+            # Create the target directory for file writes.
+            strategies_dir = tmp_path / "src" / "synthorg" / "meta" / "strategies"
+            strategies_dir.mkdir(parents=True)
+            result = await applier.apply(proposal)
+
+        assert result.success
+        assert result.changes_applied == 1
+        # Verify file was written.
+        written = strategies_dir / "new.py"
+        assert written.exists()
+        assert "class New" in written.read_text()
+
+    async def test_apply_ci_failure_cleans_up(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        ci = _mock_ci_validator(_ci_fail())
+        applier = CodeApplier(
+            ci_validator=ci,
+            code_modification_config=CodeModificationConfig(),
+        )
+        proposal = _code_proposal()
+
+        async def mock_create(*args, **kwargs):
+            return _mock_git_success()
+
+        with (
+            patch(
+                "synthorg.meta.appliers.code_applier.asyncio.create_subprocess_exec",
+                side_effect=mock_create,
+            ),
+            patch(
+                "synthorg.meta.appliers.code_applier.Path.cwd",
+                return_value=tmp_path,
+            ),
+        ):
+            strategies_dir = tmp_path / "src" / "synthorg" / "meta" / "strategies"
+            strategies_dir.mkdir(parents=True)
+            result = await applier.apply(proposal)
+
+        assert not result.success
+        assert result.changes_applied == 0
+        assert "CI validation failed" in (result.error_message or "")
+
+    async def test_dry_run_create_valid(self, tmp_path: Path) -> None:
+        applier = CodeApplier(
+            ci_validator=_mock_ci_validator(),
+            code_modification_config=CodeModificationConfig(),
+        )
+        proposal = _code_proposal()
+        with patch(
+            "synthorg.meta.appliers.code_applier.Path.cwd",
+            return_value=tmp_path,
+        ):
+            result = await applier.dry_run(proposal)
+        assert result.success
+        assert result.changes_applied == 1
+
+    async def test_dry_run_modify_missing_file(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        changes = (
+            CodeChange(
+                file_path="src/synthorg/meta/strategies/missing.py",
+                operation=CodeOperation.MODIFY,
+                old_content="old",
+                new_content="new",
+                description="modify",
+                reasoning="r",
+            ),
+        )
+        applier = CodeApplier(
+            ci_validator=_mock_ci_validator(),
+            code_modification_config=CodeModificationConfig(),
+        )
+        proposal = _code_proposal(changes=changes)
+        with patch(
+            "synthorg.meta.appliers.code_applier.Path.cwd",
+            return_value=tmp_path,
+        ):
+            result = await applier.dry_run(proposal)
+        assert not result.success
+        assert "MODIFY target does not exist" in (result.error_message or "")
+
+    async def test_dry_run_delete_missing_file(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        changes = (
+            CodeChange(
+                file_path="src/synthorg/meta/strategies/gone.py",
+                operation=CodeOperation.DELETE,
+                old_content="old content",
+                description="delete",
+                reasoning="r",
+            ),
+        )
+        applier = CodeApplier(
+            ci_validator=_mock_ci_validator(),
+            code_modification_config=CodeModificationConfig(),
+        )
+        proposal = _code_proposal(changes=changes)
+        with patch(
+            "synthorg.meta.appliers.code_applier.Path.cwd",
+            return_value=tmp_path,
+        ):
+            result = await applier.dry_run(proposal)
+        assert not result.success
+        assert "DELETE target does not exist" in (result.error_message or "")
+
+    async def test_dry_run_create_already_exists(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        target = tmp_path / "src" / "synthorg" / "meta" / "strategies"
+        target.mkdir(parents=True)
+        (target / "new.py").write_text("existing")
+        applier = CodeApplier(
+            ci_validator=_mock_ci_validator(),
+            code_modification_config=CodeModificationConfig(),
+        )
+        proposal = _code_proposal()
+        with patch(
+            "synthorg.meta.appliers.code_applier.Path.cwd",
+            return_value=tmp_path,
+        ):
+            result = await applier.dry_run(proposal)
+        assert not result.success
+        assert "CREATE target already exists" in (result.error_message or "")

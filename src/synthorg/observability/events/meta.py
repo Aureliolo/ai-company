@@ -85,3 +85,16 @@ META_CUSTOM_RULE_DELETE_FAILED: Final[str] = "meta.custom_rule.delete_failed"
 META_CUSTOM_RULE_CREATED: Final[str] = "meta.custom_rule.created"
 META_CUSTOM_RULE_UPDATED: Final[str] = "meta.custom_rule.updated"
 META_CUSTOM_RULE_TOGGLED: Final[str] = "meta.custom_rule.toggled"
+
+# -- Code modification events ----------------------------------------------
+
+META_CODE_GEN_STARTED: Final[str] = "meta.code_gen.started"
+META_CODE_GEN_COMPLETED: Final[str] = "meta.code_gen.completed"
+META_CODE_GEN_FAILED: Final[str] = "meta.code_gen.failed"
+META_CODE_GEN_PARSE_FAILED: Final[str] = "meta.code_gen.parse_failed"
+META_CI_VALIDATION_STARTED: Final[str] = "meta.ci_validation.started"
+META_CI_VALIDATION_PASSED: Final[str] = "meta.ci_validation.passed"
+META_CI_VALIDATION_FAILED: Final[str] = "meta.ci_validation.failed"
+META_CODE_BRANCH_CREATED: Final[str] = "meta.code.branch_created"
+META_CODE_PR_CREATED: Final[str] = "meta.code.pr_created"
+META_CODE_SCOPE_VIOLATION: Final[str] = "meta.code.scope_violation"

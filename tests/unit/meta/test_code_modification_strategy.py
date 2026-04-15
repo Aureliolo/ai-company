@@ -1,0 +1,336 @@
+"""Unit tests for code modification improvement strategy."""
+
+import json
+from unittest.mock import AsyncMock
+
+import pytest
+
+from synthorg.meta.config import SelfImprovementConfig
+from synthorg.meta.models import (
+    OrgBudgetSummary,
+    OrgCoordinationSummary,
+    OrgErrorSummary,
+    OrgEvolutionSummary,
+    OrgPerformanceSummary,
+    OrgScalingSummary,
+    OrgSignalSnapshot,
+    OrgTelemetrySummary,
+    ProposalAltitude,
+    RuleMatch,
+    RuleSeverity,
+)
+from synthorg.meta.strategies.code_modification import (
+    CodeModificationStrategy,
+)
+from synthorg.meta.validation.scope_validator import ScopeValidator
+
+pytestmark = pytest.mark.unit
+
+_DEFAULT_CONFIG = SelfImprovementConfig(
+    enabled=True,
+    code_modification_enabled=True,
+)
+
+
+def _snap() -> OrgSignalSnapshot:
+    return OrgSignalSnapshot(
+        performance=OrgPerformanceSummary(
+            avg_quality_score=4.0,
+            avg_success_rate=0.6,
+            avg_collaboration_score=5.0,
+            agent_count=10,
+        ),
+        budget=OrgBudgetSummary(
+            total_spend_usd=150.0,
+            productive_ratio=0.5,
+            coordination_ratio=0.45,
+            system_ratio=0.05,
+            forecast_confidence=0.8,
+            orchestration_overhead=0.9,
+        ),
+        coordination=OrgCoordinationSummary(),
+        scaling=OrgScalingSummary(),
+        errors=OrgErrorSummary(total_findings=15),
+        evolution=OrgEvolutionSummary(),
+        telemetry=OrgTelemetrySummary(),
+    )
+
+
+def _rule(
+    name: str = "quality_declining",
+    altitudes: tuple[ProposalAltitude, ...] = (ProposalAltitude.CODE_MODIFICATION,),
+    ctx: dict[str, object] | None = None,
+) -> RuleMatch:
+    return RuleMatch(
+        rule_name=name,
+        severity=RuleSeverity.WARNING,
+        description=f"Test rule {name}",
+        signal_context=ctx or {},
+        suggested_altitudes=altitudes,
+    )
+
+
+def _scope_validator() -> ScopeValidator:
+    return ScopeValidator(
+        allowed_paths=("src/synthorg/meta/strategies/*",),
+        forbidden_paths=("src/synthorg/auth/*",),
+    )
+
+
+def _valid_llm_response() -> str:
+    """A well-formed LLM response with one create change."""
+    return json.dumps(
+        [
+            {
+                "file_path": "src/synthorg/meta/strategies/improved_algo.py",
+                "operation": "create",
+                "old_content": "",
+                "new_content": "class ImprovedAlgo:\n    pass\n",
+                "description": "Add improved algorithm",
+                "reasoning": "Quality declining needs better approach",
+            },
+        ]
+    )
+
+
+def _mock_provider(response_content: str | None = None) -> AsyncMock:
+    """Create a mock provider that returns the given content."""
+    provider = AsyncMock()
+    mock_response = AsyncMock()
+    mock_response.content = response_content
+    provider.complete = AsyncMock(return_value=mock_response)
+    return provider
+
+
+class TestCodeModificationStrategy:
+    """Code modification strategy tests."""
+
+    def test_altitude(self) -> None:
+        s = CodeModificationStrategy(
+            config=_DEFAULT_CONFIG,
+            provider=_mock_provider(),
+            scope_validator=_scope_validator(),
+        )
+        assert s.altitude == ProposalAltitude.CODE_MODIFICATION
+
+    async def test_generates_proposal_from_valid_response(self) -> None:
+        provider = _mock_provider(_valid_llm_response())
+        s = CodeModificationStrategy(
+            config=_DEFAULT_CONFIG,
+            provider=provider,
+            scope_validator=_scope_validator(),
+        )
+        rules = (_rule(),)
+        proposals = await s.propose(
+            snapshot=_snap(),
+            triggered_rules=rules,
+        )
+        assert len(proposals) == 1
+        assert proposals[0].altitude == ProposalAltitude.CODE_MODIFICATION
+        assert proposals[0].source_rule == "quality_declining"
+        assert len(proposals[0].code_changes) == 1
+        assert proposals[0].code_changes[0].operation.value == "create"
+
+    async def test_ignores_non_code_modification_rules(self) -> None:
+        s = CodeModificationStrategy(
+            config=_DEFAULT_CONFIG,
+            provider=_mock_provider(),
+            scope_validator=_scope_validator(),
+        )
+        rules = (_rule(altitudes=(ProposalAltitude.CONFIG_TUNING,)),)
+        proposals = await s.propose(
+            snapshot=_snap(),
+            triggered_rules=rules,
+        )
+        assert len(proposals) == 0
+
+    async def test_empty_llm_response_produces_no_proposal(self) -> None:
+        s = CodeModificationStrategy(
+            config=_DEFAULT_CONFIG,
+            provider=_mock_provider(None),
+            scope_validator=_scope_validator(),
+        )
+        rules = (_rule(),)
+        proposals = await s.propose(
+            snapshot=_snap(),
+            triggered_rules=rules,
+        )
+        assert len(proposals) == 0
+
+    async def test_invalid_json_produces_no_proposal(self) -> None:
+        s = CodeModificationStrategy(
+            config=_DEFAULT_CONFIG,
+            provider=_mock_provider("not json at all"),
+            scope_validator=_scope_validator(),
+        )
+        rules = (_rule(),)
+        proposals = await s.propose(
+            snapshot=_snap(),
+            triggered_rules=rules,
+        )
+        assert len(proposals) == 0
+
+    async def test_non_list_json_produces_no_proposal(self) -> None:
+        s = CodeModificationStrategy(
+            config=_DEFAULT_CONFIG,
+            provider=_mock_provider('{"not": "a list"}'),
+            scope_validator=_scope_validator(),
+        )
+        rules = (_rule(),)
+        proposals = await s.propose(
+            snapshot=_snap(),
+            triggered_rules=rules,
+        )
+        assert len(proposals) == 0
+
+    async def test_scope_violation_filters_changes(self) -> None:
+        response = json.dumps(
+            [
+                {
+                    "file_path": "src/synthorg/auth/bad.py",
+                    "operation": "create",
+                    "new_content": "bad code",
+                    "description": "d",
+                    "reasoning": "r",
+                },
+            ]
+        )
+        s = CodeModificationStrategy(
+            config=_DEFAULT_CONFIG,
+            provider=_mock_provider(response),
+            scope_validator=_scope_validator(),
+        )
+        rules = (_rule(),)
+        proposals = await s.propose(
+            snapshot=_snap(),
+            triggered_rules=rules,
+        )
+        assert len(proposals) == 0
+
+    async def test_partial_scope_violation_keeps_valid(self) -> None:
+        response = json.dumps(
+            [
+                {
+                    "file_path": "src/synthorg/meta/strategies/good.py",
+                    "operation": "create",
+                    "new_content": "good code",
+                    "description": "d",
+                    "reasoning": "r",
+                },
+                {
+                    "file_path": "src/synthorg/auth/bad.py",
+                    "operation": "create",
+                    "new_content": "bad code",
+                    "description": "d",
+                    "reasoning": "r",
+                },
+            ]
+        )
+        s = CodeModificationStrategy(
+            config=_DEFAULT_CONFIG,
+            provider=_mock_provider(response),
+            scope_validator=_scope_validator(),
+        )
+        rules = (_rule(),)
+        proposals = await s.propose(
+            snapshot=_snap(),
+            triggered_rules=rules,
+        )
+        assert len(proposals) == 1
+        assert len(proposals[0].code_changes) == 1
+        assert "good.py" in proposals[0].code_changes[0].file_path
+
+    async def test_provider_exception_produces_no_proposal(self) -> None:
+        provider = AsyncMock()
+        provider.complete = AsyncMock(
+            side_effect=RuntimeError("provider error"),
+        )
+        s = CodeModificationStrategy(
+            config=_DEFAULT_CONFIG,
+            provider=provider,
+            scope_validator=_scope_validator(),
+        )
+        rules = (_rule(),)
+        proposals = await s.propose(
+            snapshot=_snap(),
+            triggered_rules=rules,
+        )
+        assert len(proposals) == 0
+
+    async def test_multiple_rules_produce_multiple_proposals(
+        self,
+    ) -> None:
+        provider = _mock_provider(_valid_llm_response())
+        s = CodeModificationStrategy(
+            config=_DEFAULT_CONFIG,
+            provider=provider,
+            scope_validator=_scope_validator(),
+        )
+        rules = (
+            _rule("quality_declining"),
+            _rule("error_spike", ctx={"total_findings": 15}),
+        )
+        proposals = await s.propose(
+            snapshot=_snap(),
+            triggered_rules=rules,
+        )
+        assert len(proposals) == 2
+
+    async def test_rollback_plan_structure(self) -> None:
+        provider = _mock_provider(_valid_llm_response())
+        s = CodeModificationStrategy(
+            config=_DEFAULT_CONFIG,
+            provider=provider,
+            scope_validator=_scope_validator(),
+        )
+        rules = (_rule(),)
+        proposals = await s.propose(
+            snapshot=_snap(),
+            triggered_rules=rules,
+        )
+        assert len(proposals) == 1
+        plan = proposals[0].rollback_plan
+        assert len(plan.operations) == 1
+        assert plan.operations[0].operation_type == "revert_branch"
+        assert "quality_declining" in plan.operations[0].target
+
+    async def test_max_files_per_proposal_enforced(self) -> None:
+        from synthorg.meta.config import CodeModificationConfig
+
+        cfg = SelfImprovementConfig(
+            enabled=True,
+            code_modification_enabled=True,
+            code_modification=CodeModificationConfig(
+                max_files_per_proposal=1,
+            ),
+        )
+        response = json.dumps(
+            [
+                {
+                    "file_path": "src/synthorg/meta/strategies/a.py",
+                    "operation": "create",
+                    "new_content": "a",
+                    "description": "d",
+                    "reasoning": "r",
+                },
+                {
+                    "file_path": "src/synthorg/meta/strategies/b.py",
+                    "operation": "create",
+                    "new_content": "b",
+                    "description": "d",
+                    "reasoning": "r",
+                },
+            ]
+        )
+        s = CodeModificationStrategy(
+            config=cfg,
+            provider=_mock_provider(response),
+            scope_validator=_scope_validator(),
+        )
+        rules = (_rule(),)
+        proposals = await s.propose(
+            snapshot=_snap(),
+            triggered_rules=rules,
+        )
+        assert len(proposals) == 1
+        assert len(proposals[0].code_changes) == 1

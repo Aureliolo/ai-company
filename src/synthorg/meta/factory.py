@@ -36,6 +36,7 @@ from synthorg.meta.strategies.architecture import (
 )
 from synthorg.meta.strategies.config_tuning import ConfigTuningStrategy
 from synthorg.meta.strategies.prompt_tuning import PromptTuningStrategy
+from synthorg.meta.validation.scope_validator import ScopeValidator
 from synthorg.observability import get_logger
 from synthorg.observability.events.meta import (
     META_CONFIG_LOADED,
@@ -52,6 +53,7 @@ if TYPE_CHECKING:
         ProposalApplier,
         ProposalGuard,
     )
+    from synthorg.providers.base import BaseCompletionProvider
 
 logger = get_logger(__name__)
 
@@ -83,11 +85,15 @@ def build_rule_engine(
 
 def build_strategies(
     config: SelfImprovementConfig,
+    *,
+    provider: BaseCompletionProvider | None = None,
 ) -> tuple[ImprovementStrategy, ...]:
     """Build enabled improvement strategies.
 
     Args:
         config: Self-improvement configuration.
+        provider: Completion provider for LLM-based strategies
+            (required when code_modification_enabled is True).
 
     Returns:
         Tuple of enabled strategies.
@@ -111,6 +117,37 @@ def build_strategies(
             META_STRATEGY_REGISTERED,
             altitude="prompt_tuning",
         )
+    if config.code_modification_enabled:
+        if provider is None:
+            logger.warning(
+                META_STRATEGY_REGISTERED,
+                altitude="code_modification",
+                reason="skipped_no_provider",
+            )
+        else:
+            from synthorg.meta.strategies.code_modification import (  # noqa: PLC0415
+                CodeModificationStrategy,
+            )
+
+            scope_validator = ScopeValidator(
+                allowed_paths=tuple(
+                    config.code_modification.allowed_paths,
+                ),
+                forbidden_paths=tuple(
+                    config.code_modification.forbidden_paths,
+                ),
+            )
+            strategies.append(
+                CodeModificationStrategy(
+                    config=config,
+                    provider=provider,
+                    scope_validator=scope_validator,
+                ),
+            )
+            logger.debug(
+                META_STRATEGY_REGISTERED,
+                altitude="code_modification",
+            )
     return tuple(strategies)
 
 
@@ -139,21 +176,37 @@ def build_guards(
     )
 
 
-def build_appliers() -> Mapping[ProposalAltitude, ProposalApplier]:
+def build_appliers(
+    config: SelfImprovementConfig | None = None,
+) -> Mapping[ProposalAltitude, ProposalApplier]:
     """Build proposal appliers for each altitude.
+
+    Args:
+        config: Self-improvement configuration. When provided
+            and code_modification_enabled, includes the CodeApplier.
 
     Returns:
         Read-only mapping of altitude to applier.
     """
-    return MappingProxyType(
-        deepcopy(
-            {
-                ProposalAltitude.CONFIG_TUNING: ConfigApplier(),
-                ProposalAltitude.ARCHITECTURE: ArchitectureApplier(),
-                ProposalAltitude.PROMPT_TUNING: PromptApplier(),
-            }
+    appliers: dict[ProposalAltitude, ProposalApplier] = {
+        ProposalAltitude.CONFIG_TUNING: ConfigApplier(),
+        ProposalAltitude.ARCHITECTURE: ArchitectureApplier(),
+        ProposalAltitude.PROMPT_TUNING: PromptApplier(),
+    }
+    if config is not None and config.code_modification_enabled:
+        from synthorg.meta.appliers.code_applier import CodeApplier  # noqa: PLC0415
+        from synthorg.meta.validation.ci_validator import (  # noqa: PLC0415
+            LocalCIValidator,
         )
-    )
+
+        ci_validator = LocalCIValidator(
+            timeout_seconds=config.code_modification.ci_timeout_seconds,
+        )
+        appliers[ProposalAltitude.CODE_MODIFICATION] = CodeApplier(
+            ci_validator=ci_validator,
+            code_modification_config=config.code_modification,
+        )
+    return MappingProxyType(deepcopy(appliers))
 
 
 def build_regression_detector() -> TieredRegressionDetector:

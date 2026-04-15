@@ -48,6 +48,7 @@ if TYPE_CHECKING:
     from synthorg.meta.config import SelfImprovementConfig
     from synthorg.meta.models import RuleMatch
     from synthorg.meta.protocol import ImprovementStrategy
+    from synthorg.providers.base import BaseCompletionProvider
 
 logger = get_logger(__name__)
 
@@ -64,6 +65,8 @@ class SelfImprovementService:
     Args:
         config: Self-improvement configuration.
         memory_backend: Memory backend for outcome learning.
+        provider: Completion provider for LLM-based strategies
+            (required when code_modification_enabled is True).
     """
 
     def __init__(
@@ -71,12 +74,13 @@ class SelfImprovementService:
         *,
         config: SelfImprovementConfig,
         memory_backend: MemoryBackend | None = None,
+        provider: BaseCompletionProvider | None = None,
     ) -> None:
         self._config = config
         self._rule_engine = build_rule_engine(config)
-        self._strategies = build_strategies(config)
+        self._strategies = build_strategies(config, provider=provider)
         self._guards = build_guards(config)
-        self._appliers = build_appliers()
+        self._appliers = build_appliers(config)
         self._detector = build_regression_detector()
         self._rollout_strategies = build_rollout_strategies()
 

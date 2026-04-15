@@ -151,13 +151,57 @@ class PromptTuningConfig(BaseModel):
     )
 
 
+class CodeModificationConfig(BaseModel):
+    """Configuration for code modification strategy behavior.
+
+    Controls which source paths the strategy may propose changes to,
+    the LLM model used for code generation, and CI validation settings.
+
+    Attributes:
+        allowed_paths: Glob patterns for paths the strategy may modify.
+        forbidden_paths: Glob patterns for paths the strategy must not
+            touch (security, auth, compliance).
+        llm_model: LLM model identifier for code generation.
+        temperature: Sampling temperature (lower = more deterministic).
+        max_tokens: Token budget for code generation responses.
+        max_files_per_proposal: Maximum files changed per proposal.
+        branch_prefix: Git branch prefix for generated branches.
+        ci_timeout_seconds: Timeout for CI validation subprocess calls.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+
+    allowed_paths: tuple[NotBlankStr, ...] = (
+        NotBlankStr("src/synthorg/meta/strategies/*"),
+        NotBlankStr("src/synthorg/meta/guards/*"),
+        NotBlankStr("src/synthorg/meta/rules/*"),
+        NotBlankStr("src/synthorg/meta/signals/*"),
+    )
+    forbidden_paths: tuple[NotBlankStr, ...] = (
+        NotBlankStr("src/synthorg/core/security/*"),
+        NotBlankStr("src/synthorg/auth/*"),
+        NotBlankStr("src/synthorg/api/middleware/*"),
+    )
+    llm_model: NotBlankStr = Field(
+        default=NotBlankStr("example-large-001"),
+        description="Model for code generation LLM calls",
+    )
+    temperature: float = Field(default=0.2, ge=0.0, le=1.0)
+    max_tokens: int = Field(default=8000, ge=100)
+    max_files_per_proposal: int = Field(default=5, ge=1, le=20)
+    branch_prefix: NotBlankStr = Field(
+        default=NotBlankStr("meta/code-mod"),
+    )
+    ci_timeout_seconds: int = Field(default=300, ge=30, le=600)
+
+
 class SelfImprovementConfig(BaseModel):
     """Top-level configuration for the self-improving company meta-loop.
 
     Safe defaults:
     - Feature: disabled (opt-in)
     - Chief of Staff agent: disabled (opt-in)
-    - Altitudes: config_tuning ON when enabled; architecture + prompt OFF
+    - Altitudes: config_tuning ON when enabled; architecture + prompt + code OFF
     - Guards: all enabled, approval gate mandatory
     - Rollout: before/after default, 48h observation window
     - Regression: tiered (threshold + statistical)
@@ -170,12 +214,14 @@ class SelfImprovementConfig(BaseModel):
         config_tuning_enabled: Enable config tuning proposals.
         architecture_proposals_enabled: Enable architecture proposals.
         prompt_tuning_enabled: Enable prompt tuning proposals.
+        code_modification_enabled: Enable code modification proposals.
         schedule: Cycle scheduling configuration.
         rollout: Rollout behavior configuration.
         regression: Regression detection thresholds.
         guards: Guard chain configuration.
         rules: Rule engine configuration.
         prompt_tuning: Prompt tuning strategy configuration.
+        code_modification: Code modification strategy configuration.
         chief_of_staff: Chief of Staff advanced capabilities
             (learning, alerts, chat).
         analysis_model: LLM model identifier for proposal analysis.
@@ -191,6 +237,7 @@ class SelfImprovementConfig(BaseModel):
     config_tuning_enabled: bool = True
     architecture_proposals_enabled: bool = False
     prompt_tuning_enabled: bool = False
+    code_modification_enabled: bool = False
 
     schedule: ScheduleConfig = Field(default_factory=ScheduleConfig)
     rollout: RolloutConfig = Field(default_factory=RolloutConfig)
@@ -199,6 +246,9 @@ class SelfImprovementConfig(BaseModel):
     rules: RuleConfig = Field(default_factory=RuleConfig)
     prompt_tuning: PromptTuningConfig = Field(
         default_factory=PromptTuningConfig,
+    )
+    code_modification: CodeModificationConfig = Field(
+        default_factory=CodeModificationConfig,
     )
 
     chief_of_staff: ChiefOfStaffConfig = Field(

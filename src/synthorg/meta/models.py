@@ -30,6 +30,7 @@ class ProposalAltitude(StrEnum):
     CONFIG_TUNING = "config_tuning"
     ARCHITECTURE = "architecture"
     PROMPT_TUNING = "prompt_tuning"
+    CODE_MODIFICATION = "code_modification"
 
 
 class ProposalStatus(StrEnum):
@@ -66,6 +67,14 @@ class RuleSeverity(StrEnum):
     INFO = "info"
     WARNING = "warning"
     CRITICAL = "critical"
+
+
+class CodeOperation(StrEnum):
+    """Type of source file change in a code modification proposal."""
+
+    CREATE = "create"
+    MODIFY = "modify"
+    DELETE = "delete"
 
 
 class GuardVerdict(StrEnum):
@@ -189,6 +198,76 @@ class PromptChange(BaseModel):
     description: NotBlankStr
 
 
+class CodeChange(BaseModel):
+    """A proposed change to a framework source file.
+
+    Uses full file content rather than line-level diffs: LLMs produce
+    complete content reliably, framework files are < 800 lines by
+    convention, and git shows the actual diff on the PR.
+
+    Attributes:
+        file_path: Relative path from project root.
+        operation: Type of file change (create, modify, delete).
+        old_content: Current file content (empty for create; captured
+            at proposal time for rollback on modify/delete).
+        new_content: Proposed file content (empty for delete).
+        description: What this change does.
+        reasoning: Why this change improves the system.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+
+    file_path: NotBlankStr
+    operation: CodeOperation
+    old_content: str = ""
+    new_content: str = ""
+    description: NotBlankStr
+    reasoning: NotBlankStr
+
+    @model_validator(mode="after")
+    def _validate_content_for_operation(self) -> Self:
+        """Ensure content fields match the operation type."""
+        _CODE_CHANGE_VALIDATORS[self.operation](self)
+        return self
+
+
+def _validate_create(change: CodeChange) -> None:
+    if change.old_content:
+        msg = "create operations must have empty old_content"
+        raise ValueError(msg)
+    if not change.new_content:
+        msg = "create operations must have non-empty new_content"
+        raise ValueError(msg)
+
+
+def _validate_modify(change: CodeChange) -> None:
+    if not change.old_content:
+        msg = "modify operations must have non-empty old_content"
+        raise ValueError(msg)
+    if not change.new_content:
+        msg = "modify operations must have non-empty new_content"
+        raise ValueError(msg)
+    if change.old_content == change.new_content:
+        msg = "modify operations must change the content"
+        raise ValueError(msg)
+
+
+def _validate_delete(change: CodeChange) -> None:
+    if not change.old_content:
+        msg = "delete operations must have non-empty old_content"
+        raise ValueError(msg)
+    if change.new_content:
+        msg = "delete operations must have empty new_content"
+        raise ValueError(msg)
+
+
+_CODE_CHANGE_VALIDATORS = {
+    CodeOperation.CREATE: _validate_create,
+    CodeOperation.MODIFY: _validate_modify,
+    CodeOperation.DELETE: _validate_delete,
+}
+
+
 # ── Proposal rationale ─────────────────────────────────────────────
 
 
@@ -229,6 +308,7 @@ class ImprovementProposal(BaseModel):
         config_changes: Config field changes (config_tuning altitude).
         architecture_changes: Structural changes (architecture altitude).
         prompt_changes: Prompt policy changes (prompt_tuning altitude).
+        code_changes: Source file changes (code_modification altitude).
         rollback_plan: Concrete rollback plan.
         rollout_strategy: How to deploy the change.
         confidence: Strategy's confidence in this proposal (0-1).
@@ -251,6 +331,7 @@ class ImprovementProposal(BaseModel):
     config_changes: tuple[ConfigChange, ...] = ()
     architecture_changes: tuple[ArchitectureChange, ...] = ()
     prompt_changes: tuple[PromptChange, ...] = ()
+    code_changes: tuple[CodeChange, ...] = ()
     rollback_plan: RollbackPlan
     rollout_strategy: RolloutStrategyType = RolloutStrategyType.BEFORE_AFTER
     confidence: float = Field(ge=0.0, le=1.0)
@@ -287,20 +368,38 @@ class ImprovementProposal(BaseModel):
     @model_validator(mode="after")
     def _validate_changes_match_altitude(self) -> Self:
         """Ensure only the declared altitude carries changes."""
+        other_code = self.code_changes
         if self.altitude == ProposalAltitude.CONFIG_TUNING and (
-            not self.config_changes or self.architecture_changes or self.prompt_changes
+            not self.config_changes
+            or self.architecture_changes
+            or self.prompt_changes
+            or other_code
         ):
             msg = "config_tuning proposals must contain only config_changes"
             raise ValueError(msg)
         if self.altitude == ProposalAltitude.ARCHITECTURE and (
-            not self.architecture_changes or self.config_changes or self.prompt_changes
+            not self.architecture_changes
+            or self.config_changes
+            or self.prompt_changes
+            or other_code
         ):
             msg = "architecture proposals must contain only architecture_changes"
             raise ValueError(msg)
         if self.altitude == ProposalAltitude.PROMPT_TUNING and (
-            not self.prompt_changes or self.config_changes or self.architecture_changes
+            not self.prompt_changes
+            or self.config_changes
+            or self.architecture_changes
+            or other_code
         ):
             msg = "prompt_tuning proposals must contain only prompt_changes"
+            raise ValueError(msg)
+        if self.altitude == ProposalAltitude.CODE_MODIFICATION and (
+            not self.code_changes
+            or self.config_changes
+            or self.architecture_changes
+            or self.prompt_changes
+        ):
+            msg = "code_modification proposals must contain only code_changes"
             raise ValueError(msg)
         return self
 
@@ -312,6 +411,7 @@ class ImprovementProposal(BaseModel):
             len(self.config_changes)
             + len(self.architecture_changes)
             + len(self.prompt_changes)
+            + len(self.code_changes)
         )
 
 
@@ -435,6 +535,49 @@ class ApplyResult(BaseModel):
         """Failed applies must include an error message."""
         if not self.success and not self.error_message:
             msg = "failed apply results must include an error_message"
+            raise ValueError(msg)
+        return self
+
+
+# ── CI validation result ──────────────────────────────────────────
+
+
+class CIValidationResult(BaseModel):
+    """Outcome of running CI checks against proposed code changes.
+
+    Attributes:
+        passed: Whether all checks passed.
+        lint_passed: Whether ruff lint passed.
+        typecheck_passed: Whether mypy type-check passed.
+        tests_passed: Whether pytest tests passed.
+        errors: Error descriptions from failed steps.
+        duration_seconds: Total wall-clock time for validation.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+
+    passed: bool
+    lint_passed: bool
+    typecheck_passed: bool
+    tests_passed: bool
+    errors: tuple[NotBlankStr, ...] = ()
+    duration_seconds: float = Field(ge=0.0)
+
+    @model_validator(mode="after")
+    def _validate_failure_has_errors(self) -> Self:
+        """Failed validations must include at least one error."""
+        if not self.passed and not self.errors:
+            msg = "failed CI validations must include at least one error"
+            raise ValueError(msg)
+        return self
+
+    @model_validator(mode="after")
+    def _validate_passed_consistent(self) -> Self:
+        """Passed must be True only if all sub-checks passed."""
+        if self.passed and not (
+            self.lint_passed and self.typecheck_passed and self.tests_passed
+        ):
+            msg = "passed cannot be True when any sub-check failed"
             raise ValueError(msg)
         return self
 

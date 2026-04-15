@@ -79,7 +79,7 @@ class TestBuildStrategies:
         assert len(strategies) == 1
         assert strategies[0].altitude == ProposalAltitude.CONFIG_TUNING
 
-    def test_all_strategies_enabled(self) -> None:
+    def test_all_deployment_strategies_enabled(self) -> None:
         cfg = SelfImprovementConfig(
             enabled=True,
             config_tuning_enabled=True,
@@ -94,6 +94,27 @@ class TestBuildStrategies:
             ProposalAltitude.ARCHITECTURE,
             ProposalAltitude.PROMPT_TUNING,
         }
+
+    def test_code_modification_without_provider_skipped(self) -> None:
+        cfg = SelfImprovementConfig(
+            enabled=True,
+            code_modification_enabled=True,
+        )
+        strategies = build_strategies(cfg, provider=None)
+        altitudes = {s.altitude for s in strategies}
+        assert ProposalAltitude.CODE_MODIFICATION not in altitudes
+
+    def test_code_modification_with_provider_included(self) -> None:
+        from unittest.mock import AsyncMock
+
+        cfg = SelfImprovementConfig(
+            enabled=True,
+            code_modification_enabled=True,
+        )
+        provider = AsyncMock()
+        strategies = build_strategies(cfg, provider=provider)
+        altitudes = {s.altitude for s in strategies}
+        assert ProposalAltitude.CODE_MODIFICATION in altitudes
 
     def test_none_enabled(self) -> None:
         cfg = SelfImprovementConfig(
@@ -129,12 +150,30 @@ class TestBuildGuards:
 class TestBuildAppliers:
     """Applier factory tests."""
 
-    def test_builds_3_appliers(self) -> None:
+    def test_builds_3_appliers_without_config(self) -> None:
         appliers = build_appliers()
         assert len(appliers) == 3
         assert ProposalAltitude.CONFIG_TUNING in appliers
         assert ProposalAltitude.ARCHITECTURE in appliers
         assert ProposalAltitude.PROMPT_TUNING in appliers
+
+    def test_builds_3_appliers_with_code_mod_disabled(self) -> None:
+        cfg = SelfImprovementConfig(
+            enabled=True,
+            code_modification_enabled=False,
+        )
+        appliers = build_appliers(cfg)
+        assert len(appliers) == 3
+        assert ProposalAltitude.CODE_MODIFICATION not in appliers
+
+    def test_builds_4_appliers_with_code_mod_enabled(self) -> None:
+        cfg = SelfImprovementConfig(
+            enabled=True,
+            code_modification_enabled=True,
+        )
+        appliers = build_appliers(cfg)
+        assert len(appliers) == 4
+        assert ProposalAltitude.CODE_MODIFICATION in appliers
 
 
 class TestBuildRegressionDetector:
