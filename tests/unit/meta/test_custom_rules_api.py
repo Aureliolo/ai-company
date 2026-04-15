@@ -123,7 +123,7 @@ class TestPreviewRuleRequest:
 class TestSerializationHelpers:
     """Test rule_to_dict and _metric_to_dict."""
 
-    def testrule_to_dict(self) -> None:
+    def test_rule_to_dict(self) -> None:
         now = datetime.now(UTC)
         defn = CustomRuleDefinition(
             id=uuid4(),
