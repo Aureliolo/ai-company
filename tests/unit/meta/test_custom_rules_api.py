@@ -36,22 +36,33 @@ class TestCustomRuleControllerRoutes:
         assert CustomRuleController.path == "/meta/custom-rules"
 
     @pytest.mark.parametrize(
-        "method_name",
+        ("method_name", "expected_path", "expected_method"),
         [
-            "list_rules",
-            "get_rule",
-            "create_rule",
-            "update_rule",
-            "delete_rule",
-            "toggle_rule",
-            "list_metrics",
-            "preview_rule",
+            ("list_rules", "/", "GET"),
+            ("get_rule", "/{rule_id:str}", "GET"),
+            ("create_rule", "/", "POST"),
+            ("update_rule", "/{rule_id:str}", "PATCH"),
+            ("delete_rule", "/{rule_id:str}", "DELETE"),
+            ("toggle_rule", "/{rule_id:str}/toggle", "POST"),
+            ("list_metrics", "/metrics", "GET"),
+            ("preview_rule", "/preview", "POST"),
         ],
     )
-    def test_has_endpoint(self, method_name: str) -> None:
+    def test_has_endpoint(
+        self,
+        method_name: str,
+        expected_path: str,
+        expected_method: str,
+    ) -> None:
         handler = getattr(CustomRuleController, method_name, None)
         assert handler is not None, f"Missing handler: {method_name}"
-        assert callable(handler)
+        assert expected_path in handler.paths, (
+            f"{method_name}: expected path {expected_path!r}, got {handler.paths}"
+        )
+        assert expected_method in handler.http_methods, (
+            f"{method_name}: expected method {expected_method!r}, "
+            f"got {handler.http_methods}"
+        )
 
 
 # ── Request DTOs ──────────────────────────────────────────────────
@@ -225,7 +236,19 @@ class TestBuildPreviewSnapshot:
 class TestPreviewEvaluation:
     """Test that preview evaluation works end-to-end."""
 
-    def test_preview_fires(self) -> None:
+    @pytest.mark.parametrize(
+        ("sample_value", "should_fire"),
+        [
+            (3.0, True),
+            (7.0, False),
+        ],
+    )
+    def test_preview_evaluation(
+        self,
+        sample_value: float,
+        *,
+        should_fire: bool,
+    ) -> None:
         now = datetime.now(UTC)
         defn = CustomRuleDefinition(
             name="preview",
@@ -241,29 +264,11 @@ class TestPreviewEvaluation:
         rule = DeclarativeRule(defn)
         snap = _build_preview_snapshot(
             "performance.avg_quality_score",
-            3.0,
+            sample_value,
         )
         match = rule.evaluate(snap)
-        assert match is not None
-        assert match.signal_context["metric_value"] == 3.0
-
-    def test_preview_does_not_fire(self) -> None:
-        now = datetime.now(UTC)
-        defn = CustomRuleDefinition(
-            name="preview",
-            description="Preview rule",
-            metric_path="performance.avg_quality_score",
-            comparator=Comparator.LT,
-            threshold=5.0,
-            severity=RuleSeverity.INFO,
-            target_altitudes=(ProposalAltitude.CONFIG_TUNING,),
-            created_at=now,
-            updated_at=now,
-        )
-        rule = DeclarativeRule(defn)
-        snap = _build_preview_snapshot(
-            "performance.avg_quality_score",
-            7.0,
-        )
-        match = rule.evaluate(snap)
-        assert match is None
+        if should_fire:
+            assert match is not None
+            assert match.signal_context["metric_value"] == sample_value
+        else:
+            assert match is None
