@@ -63,18 +63,21 @@ jobs:
               - 'uv.lock'
               - '.dockerignore'
               - '.github/workflows/docker.yml'
+              - '.github/actions/build-apko-base/**'
               - '.github/actions/cis-scan/**'
               - 'scripts/cis-scan.sh'
             sandbox:
               - 'docker/sandbox/**'
               - '.dockerignore'
               - '.github/workflows/docker.yml'
+              - '.github/actions/build-apko-base/**'
               - '.github/actions/cis-scan/**'
               - 'scripts/cis-scan.sh'
             sidecar:
               - 'docker/sidecar/**'
               - '.dockerignore'
               - '.github/workflows/docker.yml'
+              - '.github/actions/build-apko-base/**'
               - '.github/actions/cis-scan/**'
               - 'scripts/cis-scan.sh'
             fine-tune:
@@ -84,6 +87,7 @@ jobs:
               - 'uv.lock'
               - '.dockerignore'
               - '.github/workflows/docker.yml'
+              - '.github/actions/build-apko-base/**'
               - '.github/actions/cis-scan/**'
               - 'scripts/cis-scan.sh'
             web:
@@ -94,6 +98,7 @@ jobs:
               - 'scripts/export_openapi.py'
               - 'src/synthorg/api/**'
               - '.github/workflows/docker.yml'
+              - '.github/actions/build-apko-base/**'
               - '.github/actions/cis-scan/**'
               - 'scripts/cis-scan.sh'
 
