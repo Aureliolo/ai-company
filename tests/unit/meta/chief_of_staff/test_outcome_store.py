@@ -172,7 +172,7 @@ class TestGetStats:
             await store.record_outcome(_make_outcome(decision="approved"))
         # Inject a corrupted entry directly via the backend.
         from synthorg.core.enums import MemoryCategory
-        from synthorg.memory.models import MemoryStoreRequest
+        from synthorg.memory.models import MemoryMetadata, MemoryStoreRequest
 
         await backend.store(
             _AGENT_ID,
@@ -180,12 +180,12 @@ class TestGetStats:
                 category=MemoryCategory.EPISODIC,
                 namespace="chief_of_staff",
                 content="NOT VALID JSON",
-                metadata={
-                    "tags": (
+                metadata=MemoryMetadata(
+                    tags=(
                         NotBlankStr("rule:quality_declining"),
                         NotBlankStr("altitude:config_tuning"),
-                    )
-                },
+                    ),
+                ),
             ),
         )
         stats = await store.get_stats(
@@ -206,7 +206,7 @@ class TestGetStats:
             min_outcomes=1,
         )
         from synthorg.core.enums import MemoryCategory
-        from synthorg.memory.models import MemoryStoreRequest
+        from synthorg.memory.models import MemoryMetadata, MemoryStoreRequest
 
         await backend.store(
             _AGENT_ID,
@@ -214,12 +214,12 @@ class TestGetStats:
                 category=MemoryCategory.EPISODIC,
                 namespace="chief_of_staff",
                 content="CORRUPT DATA",
-                metadata={
-                    "tags": (
+                metadata=MemoryMetadata(
+                    tags=(
                         NotBlankStr("rule:quality_declining"),
                         NotBlankStr("altitude:config_tuning"),
-                    )
-                },
+                    ),
+                ),
             ),
         )
         stats = await store.get_stats(
