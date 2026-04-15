@@ -51,7 +51,6 @@ environment:
 
 archs:
   - x86_64
-  - aarch64
 
 annotations:
   org.opencontainers.image.title: synthorg-fine-tune-base

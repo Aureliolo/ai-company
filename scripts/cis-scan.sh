@@ -4,7 +4,7 @@
 # Usage: scripts/cis-scan.sh <image-ref>
 #
 # Requires trivy on PATH (installed by trivy-action or manually).
-# Exits 1 if trivy is not available (workflow uses continue-on-error: true).
+# Exits 1 if any CIS control has FAIL status.
 
 set -euo pipefail
 
@@ -15,4 +15,10 @@ if ! command -v trivy >/dev/null 2>&1; then
   exit 1
 fi
 
-trivy image --compliance docker-cis-1.6.0 --format table "$IMAGE_REF"
+OUTPUT=$(trivy image --compliance docker-cis-1.6.0 --format table "$IMAGE_REF" 2>&1)
+echo "$OUTPUT"
+
+if echo "$OUTPUT" | grep -q "FAIL"; then
+  echo "::error::CIS Docker Benchmark found failures -- see table above"
+  exit 1
+fi

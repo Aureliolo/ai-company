@@ -29,7 +29,7 @@ vulnerabilities:
       progs/infocmp.c). Only triggers when running infocmp -i on crafted
       terminfo entry. Sandbox never invokes infocmp -- ncurses is a
       transitive dep of Python/git. Fixed in ncurses 6.5 patch 20251213
-      but Debian Trixie ships 6.5+20250216-2. Grype rates CRITICAL but
+      but Debian Trixie ships 6.5+20250216-2. Trivy rates CRITICAL but
       EPSS < 0.1% and Debian marks unimportant. Risk accepted: sandbox
       is ephemeral, network-isolated via iptables, runs as non-root
       (UID 10001).

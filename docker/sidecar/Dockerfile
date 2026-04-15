@@ -29,11 +29,10 @@ LABEL org.opencontainers.image.title="synthorg-sidecar" \
 
 COPY --from=builder /build/sidecar /usr/local/bin/sidecar
 
-# Sidecar requires root to set up iptables DNAT rules at startup.
-# Container runtime restricts with cap_drop: ALL + cap_add: NET_ADMIN +
-# read_only rootfs. The sandbox container has zero capabilities.
-# hadolint ignore=DL3002
-USER 0
+# Non-root: iptables + SO_ORIGINAL_DST require CAP_NET_ADMIN, not UID 0.
+# Container runtime grants NET_ADMIN via cap_add (cap_drop: ALL +
+# cap_add: NET_ADMIN + read_only rootfs).
+USER 10002
 
 HEALTHCHECK --interval=2s --timeout=2s --retries=3 --start-period=2s \
     CMD wget -qO- http://localhost:15000/healthz || exit 1

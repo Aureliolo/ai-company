@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
 )
@@ -283,6 +284,9 @@ func (s State) validate() error {
 	}
 	if s.FineTuning && !s.Sandbox {
 		return fmt.Errorf("fine_tuning requires sandbox to be enabled")
+	}
+	if s.FineTuning && runtime.GOARCH != "amd64" {
+		return fmt.Errorf("fine_tuning requires x86_64 (amd64) architecture; the fine-tune image is not available for %s", runtime.GOARCH)
 	}
 	for name, digest := range s.VerifiedDigests {
 		if !isValidDigestFormat(digest) {

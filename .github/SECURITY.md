@@ -50,7 +50,6 @@ This project is designed to handle LLM API keys, sandboxed code execution, and a
 ### Container & Infrastructure Security
 
 - **Trivy** scans container images (CRITICAL = hard fail, HIGH = warn-only)
-- **Grype** scans container images (critical severity cutoff)
 - **Cosign** keyless image signing for supply-chain integrity (GHCR)
 - **Hadolint** lints all Dockerfiles (backend, web, sandbox) in CI + pre-commit hook
 - **Chainguard Python** distroless runtime (non-root, CIS Docker Benchmark v1.6.0 hardened)
