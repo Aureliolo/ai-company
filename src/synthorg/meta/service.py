@@ -31,6 +31,7 @@ from synthorg.observability import get_logger
 from synthorg.observability.events.chief_of_staff import (
     COS_LEARNING_ENABLED,
     COS_OUTCOME_RECORD_FAILED,
+    COS_OUTCOME_SKIPPED,
 )
 from synthorg.observability.events.meta import (
     META_CYCLE_COMPLETED,
@@ -120,15 +121,23 @@ class SelfImprovementService:
         all_proposals = await self._dispatch_strategies(snapshot, matches)
 
         # Step 2.5: Adjust confidence via historical learning.
+        # Wrapped in try/except so optional learning never aborts
+        # the core improvement cycle.
         if self._confidence_adjuster is not None and self._outcome_store is not None:
-            all_proposals = list(
-                await asyncio.gather(
-                    *(
-                        self._confidence_adjuster.adjust(p, self._outcome_store)
-                        for p in all_proposals
+            try:
+                all_proposals = list(
+                    await asyncio.gather(
+                        *(
+                            self._confidence_adjuster.adjust(
+                                p,
+                                self._outcome_store,
+                            )
+                            for p in all_proposals
+                        ),
                     ),
-                ),
-            )
+                )
+            except Exception:
+                logger.exception(COS_OUTCOME_RECORD_FAILED)
 
         # Step 3: Filter through guard chain.
         approved: list[ImprovementProposal] = []
@@ -260,7 +269,7 @@ class SelfImprovementService:
             return
         if proposal.decided_at is None or proposal.decided_by is None:
             logger.debug(
-                COS_OUTCOME_RECORD_FAILED,
+                COS_OUTCOME_SKIPPED,
                 proposal_id=str(proposal.id),
                 reason="missing_decision_context",
             )
@@ -270,7 +279,7 @@ class SelfImprovementService:
             ProposalStatus.REJECTED,
         ):
             logger.debug(
-                COS_OUTCOME_RECORD_FAILED,
+                COS_OUTCOME_SKIPPED,
                 proposal_id=str(proposal.id),
                 reason="non_terminal_status",
                 status=proposal.status.value,

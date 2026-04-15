@@ -181,7 +181,10 @@ def build_confidence_adjuster(
         return ExponentialMovingAverageAdjuster(
             alpha=config.chief_of_staff.ema_alpha,
         )
-    return BayesianConfidenceAdjuster()
+    if strategy == "bayesian":
+        return BayesianConfidenceAdjuster()
+    msg = f"Unknown adjuster strategy: '{strategy}'"
+    raise ValueError(msg)
 
 
 def build_rollout_strategies(

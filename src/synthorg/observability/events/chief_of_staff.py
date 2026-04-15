@@ -10,6 +10,7 @@ from typing import Final
 
 COS_OUTCOME_RECORDED: Final[str] = "chief_of_staff.outcome.recorded"
 COS_OUTCOME_RECORD_FAILED: Final[str] = "chief_of_staff.outcome.record_failed"
+COS_OUTCOME_SKIPPED: Final[str] = "chief_of_staff.outcome.skipped"
 
 # -- Confidence adjustment ----------------------------------------------
 

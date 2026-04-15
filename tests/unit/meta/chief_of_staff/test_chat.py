@@ -234,15 +234,31 @@ class TestPromptTemplates:
     """Verify prompt templates have required placeholders."""
 
     def test_proposal_explanation_placeholders(self) -> None:
-        assert "{proposal_title}" in PROPOSAL_EXPLANATION_PROMPT
-        assert "{signal_context}" in PROPOSAL_EXPLANATION_PROMPT
-        assert "{approval_context}" in PROPOSAL_EXPLANATION_PROMPT
+        for placeholder in (
+            "{proposal_title}",
+            "{proposal_description}",
+            "{proposal_rationale}",
+            "{proposal_confidence}",
+            "{rule_name}",
+            "{rule_severity}",
+            "{signal_context}",
+            "{approval_context}",
+        ):
+            assert placeholder in PROPOSAL_EXPLANATION_PROMPT, placeholder
 
     def test_alert_explanation_placeholders(self) -> None:
-        assert "{alert_type}" in ALERT_EXPLANATION_PROMPT
-        assert "{alert_severity}" in ALERT_EXPLANATION_PROMPT
-        assert "{signal_context}" in ALERT_EXPLANATION_PROMPT
+        for placeholder in (
+            "{alert_type}",
+            "{alert_severity}",
+            "{affected_domains}",
+            "{signal_context}",
+        ):
+            assert placeholder in ALERT_EXPLANATION_PROMPT, placeholder
 
     def test_chat_query_placeholders(self) -> None:
-        assert "{user_question}" in CHAT_QUERY_PROMPT
-        assert "{snapshot_summary}" in CHAT_QUERY_PROMPT
+        for placeholder in (
+            "{user_question}",
+            "{snapshot_summary}",
+            "{recent_context}",
+        ):
+            assert placeholder in CHAT_QUERY_PROMPT, placeholder

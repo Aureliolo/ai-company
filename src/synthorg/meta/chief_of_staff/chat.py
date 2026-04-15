@@ -150,7 +150,9 @@ class ChiefOfStaffChat:
         logger.info(
             COS_CHAT_QUERY,
             query_type="free_form",
-            question=query.question[:100],
+            question_length=len(query.question),
+            has_proposal_id=query.proposal_id is not None,
+            has_alert_id=query.alert_id is not None,
         )
         recent_context = "No recent proposals or alerts."
         if self._outcome_store is not None:
@@ -197,7 +199,7 @@ class ChiefOfStaffChat:
         except Exception:
             logger.exception(COS_CHAT_FAILED)
             raise
-        answer = response.content
+        answer = (response.content or "").strip()
         if not answer:
             logger.warning(
                 COS_CHAT_FAILED,
