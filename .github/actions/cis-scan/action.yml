@@ -11,4 +11,6 @@ runs:
   steps:
     - name: CIS Docker Benchmark
       shell: bash
-      run: scripts/cis-scan.sh "${{ inputs.image-ref }}"
+      env:
+        IMAGE_REF: ${{ inputs.image-ref }}
+      run: scripts/cis-scan.sh "${IMAGE_REF}"
