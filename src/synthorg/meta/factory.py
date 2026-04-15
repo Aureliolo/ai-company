@@ -194,18 +194,38 @@ def build_appliers(
         ProposalAltitude.PROMPT_TUNING: PromptApplier(),
     }
     if config is not None and config.code_modification_enabled:
-        from synthorg.meta.appliers.code_applier import CodeApplier  # noqa: PLC0415
-        from synthorg.meta.validation.ci_validator import (  # noqa: PLC0415
-            LocalCIValidator,
-        )
+        code_cfg = config.code_modification
+        if code_cfg.github_token is None or code_cfg.github_repo is None:
+            logger.warning(
+                META_STRATEGY_REGISTERED,
+                altitude="code_modification_applier",
+                reason="skipped_no_github_credentials",
+            )
+        else:
+            from synthorg.meta.appliers.code_applier import (  # noqa: PLC0415
+                CodeApplier,
+            )
+            from synthorg.meta.appliers.github_client import (  # noqa: PLC0415
+                HttpGitHubClient,
+            )
+            from synthorg.meta.validation.ci_validator import (  # noqa: PLC0415
+                LocalCIValidator,
+            )
 
-        ci_validator = LocalCIValidator(
-            timeout_seconds=config.code_modification.ci_timeout_seconds,
-        )
-        appliers[ProposalAltitude.CODE_MODIFICATION] = CodeApplier(
-            ci_validator=ci_validator,
-            code_modification_config=config.code_modification,
-        )
+            ci_validator = LocalCIValidator(
+                timeout_seconds=code_cfg.ci_timeout_seconds,
+            )
+            github_client = HttpGitHubClient(
+                token=str(code_cfg.github_token),
+                repo=str(code_cfg.github_repo),
+                base_branch=str(code_cfg.base_branch),
+                timeout=code_cfg.api_timeout_seconds,
+            )
+            appliers[ProposalAltitude.CODE_MODIFICATION] = CodeApplier(
+                ci_validator=ci_validator,
+                github_client=github_client,
+                code_modification_config=code_cfg,
+            )
     return MappingProxyType(deepcopy(appliers))
 
 

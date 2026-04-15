@@ -98,22 +98,16 @@ def _mock_ci_validator(
     return ci
 
 
-def _mock_git_success() -> AsyncMock:
-    """Mock subprocess that always succeeds."""
-    proc = AsyncMock()
-    proc.returncode = 0
-    proc.communicate = AsyncMock(return_value=(b"", b""))
-    return proc
-
-
-def _mock_gh_pr_create() -> AsyncMock:
-    """Mock subprocess for gh pr create returning a URL."""
-    proc = AsyncMock()
-    proc.returncode = 0
-    proc.communicate = AsyncMock(
-        return_value=(b"https://github.com/test/repo/pull/99\n", b""),
+def _mock_github_client() -> AsyncMock:
+    """Mock GitHubAPI that succeeds on all operations."""
+    gh = AsyncMock()
+    gh.create_branch = AsyncMock()
+    gh.push_change = AsyncMock()
+    gh.create_draft_pr = AsyncMock(
+        return_value="https://github.com/test/repo/pull/99",
     )
-    return proc
+    gh.delete_branch = AsyncMock()
+    return gh
 
 
 class TestCodeApplier:
@@ -122,70 +116,55 @@ class TestCodeApplier:
     def test_altitude(self) -> None:
         applier = CodeApplier(
             ci_validator=_mock_ci_validator(),
+            github_client=_mock_github_client(),
             code_modification_config=CodeModificationConfig(),
         )
         assert applier.altitude == ProposalAltitude.CODE_MODIFICATION
 
     async def test_apply_success(self, tmp_path: Path) -> None:
         ci = _mock_ci_validator(_ci_pass())
+        gh = _mock_github_client()
         applier = CodeApplier(
             ci_validator=ci,
+            github_client=gh,
             code_modification_config=CodeModificationConfig(),
         )
         proposal = _code_proposal()
 
-        async def mock_create(*args: object, **kwargs: object) -> AsyncMock:
-            cmd = args
-            # gh pr create call
-            if cmd[0] == "gh":
-                return _mock_gh_pr_create()
-            return _mock_git_success()
-
-        with (
-            patch(
-                "synthorg.meta.appliers.code_applier.asyncio.create_subprocess_exec",
-                side_effect=mock_create,
-            ),
-            patch(
-                "synthorg.meta.appliers.code_applier.Path.cwd",
-                return_value=tmp_path,
-            ),
+        with patch(
+            "synthorg.meta.appliers.code_applier.Path.cwd",
+            return_value=tmp_path,
         ):
-            # Create the target directory for file writes.
             strategies_dir = tmp_path / "src" / "synthorg" / "meta" / "strategies"
             strategies_dir.mkdir(parents=True)
             result = await applier.apply(proposal)
 
         assert result.success
         assert result.changes_applied == 1
-        # Verify file was written.
+        # GitHub API was called.
+        gh.create_branch.assert_awaited_once()
+        gh.push_change.assert_awaited_once()
+        gh.create_draft_pr.assert_awaited_once()
+        # Local file was reverted after push.
         written = strategies_dir / "new.py"
-        assert written.exists()
-        assert "class New" in written.read_text()
+        assert not written.exists()
 
-    async def test_apply_ci_failure_cleans_up(
+    async def test_apply_ci_failure_reverts_local(
         self,
         tmp_path: Path,
     ) -> None:
         ci = _mock_ci_validator(_ci_fail())
+        gh = _mock_github_client()
         applier = CodeApplier(
             ci_validator=ci,
+            github_client=gh,
             code_modification_config=CodeModificationConfig(),
         )
         proposal = _code_proposal()
 
-        async def mock_create(*args: object, **kwargs: object) -> AsyncMock:
-            return _mock_git_success()
-
-        with (
-            patch(
-                "synthorg.meta.appliers.code_applier.asyncio.create_subprocess_exec",
-                side_effect=mock_create,
-            ),
-            patch(
-                "synthorg.meta.appliers.code_applier.Path.cwd",
-                return_value=tmp_path,
-            ),
+        with patch(
+            "synthorg.meta.appliers.code_applier.Path.cwd",
+            return_value=tmp_path,
         ):
             strategies_dir = tmp_path / "src" / "synthorg" / "meta" / "strategies"
             strategies_dir.mkdir(parents=True)
@@ -194,10 +173,72 @@ class TestCodeApplier:
         assert not result.success
         assert result.changes_applied == 0
         assert "CI validation failed" in (result.error_message or "")
+        # GitHub API was NOT called (CI failed).
+        gh.create_branch.assert_not_awaited()
+        # Local file was reverted.
+        written = strategies_dir / "new.py"
+        assert not written.exists()
+
+    async def test_apply_github_failure_cleans_up(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        ci = _mock_ci_validator(_ci_pass())
+        gh = _mock_github_client()
+        gh.create_branch = AsyncMock(
+            side_effect=RuntimeError("GitHub API failed"),
+        )
+        applier = CodeApplier(
+            ci_validator=ci,
+            github_client=gh,
+            code_modification_config=CodeModificationConfig(),
+        )
+        proposal = _code_proposal()
+
+        with patch(
+            "synthorg.meta.appliers.code_applier.Path.cwd",
+            return_value=tmp_path,
+        ):
+            strategies_dir = tmp_path / "src" / "synthorg" / "meta" / "strategies"
+            strategies_dir.mkdir(parents=True)
+            result = await applier.apply(proposal)
+
+        assert not result.success
+        assert "Code apply failed" in (result.error_message or "")
+        # Cleanup was attempted.
+        gh.delete_branch.assert_awaited_once()
+
+    async def test_apply_pr_creation_failure(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        ci = _mock_ci_validator(_ci_pass())
+        gh = _mock_github_client()
+        gh.create_draft_pr = AsyncMock(
+            side_effect=RuntimeError("auth required"),
+        )
+        applier = CodeApplier(
+            ci_validator=ci,
+            github_client=gh,
+            code_modification_config=CodeModificationConfig(),
+        )
+        proposal = _code_proposal()
+
+        with patch(
+            "synthorg.meta.appliers.code_applier.Path.cwd",
+            return_value=tmp_path,
+        ):
+            strategies_dir = tmp_path / "src" / "synthorg" / "meta" / "strategies"
+            strategies_dir.mkdir(parents=True)
+            result = await applier.apply(proposal)
+
+        assert not result.success
+        assert "Code apply failed" in (result.error_message or "")
 
     async def test_dry_run_create_valid(self, tmp_path: Path) -> None:
         applier = CodeApplier(
             ci_validator=_mock_ci_validator(),
+            github_client=_mock_github_client(),
             code_modification_config=CodeModificationConfig(),
         )
         proposal = _code_proposal()
@@ -225,6 +266,7 @@ class TestCodeApplier:
         )
         applier = CodeApplier(
             ci_validator=_mock_ci_validator(),
+            github_client=_mock_github_client(),
             code_modification_config=CodeModificationConfig(),
         )
         proposal = _code_proposal(changes=changes)
@@ -251,6 +293,7 @@ class TestCodeApplier:
         )
         applier = CodeApplier(
             ci_validator=_mock_ci_validator(),
+            github_client=_mock_github_client(),
             code_modification_config=CodeModificationConfig(),
         )
         proposal = _code_proposal(changes=changes)
@@ -271,6 +314,7 @@ class TestCodeApplier:
         (target / "new.py").write_text("existing")
         applier = CodeApplier(
             ci_validator=_mock_ci_validator(),
+            github_client=_mock_github_client(),
             code_modification_config=CodeModificationConfig(),
         )
         proposal = _code_proposal()
@@ -281,77 +325,3 @@ class TestCodeApplier:
             result = await applier.dry_run(proposal)
         assert not result.success
         assert "CREATE target already exists" in (result.error_message or "")
-
-    async def test_apply_git_checkout_failure(
-        self,
-        tmp_path: Path,
-    ) -> None:
-        ci = _mock_ci_validator(_ci_pass())
-        applier = CodeApplier(
-            ci_validator=ci,
-            code_modification_config=CodeModificationConfig(),
-        )
-        proposal = _code_proposal()
-
-        fail_proc = AsyncMock()
-        fail_proc.returncode = 1
-        fail_proc.communicate = AsyncMock(
-            return_value=(b"", b"branch already exists"),
-        )
-
-        async def fail_create(*args: object, **kwargs: object) -> AsyncMock:
-            return fail_proc
-
-        with (
-            patch(
-                "synthorg.meta.appliers.code_applier.asyncio.create_subprocess_exec",
-                side_effect=fail_create,
-            ),
-            patch(
-                "synthorg.meta.appliers.code_applier.Path.cwd",
-                return_value=tmp_path,
-            ),
-        ):
-            result = await applier.apply(proposal)
-
-        assert not result.success
-        assert "Code apply failed" in (result.error_message or "")
-
-    async def test_apply_pr_creation_failure(
-        self,
-        tmp_path: Path,
-    ) -> None:
-        ci = _mock_ci_validator(_ci_pass())
-        applier = CodeApplier(
-            ci_validator=ci,
-            code_modification_config=CodeModificationConfig(),
-        )
-        proposal = _code_proposal()
-
-        async def mock_create(*args: object, **kwargs: object) -> AsyncMock:
-            cmd = args
-            if cmd[0] == "gh":
-                proc = AsyncMock()
-                proc.returncode = 1
-                proc.communicate = AsyncMock(
-                    return_value=(b"", b"auth required"),
-                )
-                return proc
-            return _mock_git_success()
-
-        with (
-            patch(
-                "synthorg.meta.appliers.code_applier.asyncio.create_subprocess_exec",
-                side_effect=mock_create,
-            ),
-            patch(
-                "synthorg.meta.appliers.code_applier.Path.cwd",
-                return_value=tmp_path,
-            ),
-        ):
-            strategies_dir = tmp_path / "src" / "synthorg" / "meta" / "strategies"
-            strategies_dir.mkdir(parents=True)
-            result = await applier.apply(proposal)
-
-        assert not result.success
-        assert "Code apply failed" in (result.error_message or "")

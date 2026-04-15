@@ -1,16 +1,19 @@
 """Code applier.
 
 Applies approved code modification proposals by writing files
-to a git branch, running CI validation, and creating a draft PR
-for human review.
+locally for CI validation, then pushing via the GitHub REST API
+and creating a draft PR for human review.
+
+No local ``git`` or ``gh`` CLI is required -- all remote operations
+use the GitHub API, making this safe to run inside containers.
 """
 
-import asyncio
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 from synthorg.meta.models import (
     ApplyResult,
+    CIValidationResult,
     CodeOperation,
     ImprovementProposal,
     ProposalAltitude,
@@ -20,15 +23,13 @@ from synthorg.observability.events.meta import (
     META_APPLY_COMPLETED,
     META_APPLY_FAILED,
     META_CI_VALIDATION_FAILED,
-    META_CODE_BRANCH_CREATED,
     META_CODE_FILE_WRITTEN,
-    META_CODE_PR_CREATED,
 )
 
 if TYPE_CHECKING:
     from synthorg.meta.config import CodeModificationConfig
     from synthorg.meta.models import CodeChange
-    from synthorg.meta.protocol import CIValidator
+    from synthorg.meta.protocol import CIValidator, GitHubAPI
 
 logger = get_logger(__name__)
 
@@ -36,12 +37,13 @@ logger = get_logger(__name__)
 class CodeApplier:
     """Applies code modification proposals.
 
-    Creates a git branch, writes proposed file changes, runs CI
-    validation, and creates a draft PR. Does NOT auto-merge --
-    human review is mandatory.
+    Writes proposed changes locally for CI validation, then pushes
+    them to GitHub via the REST API and opens a draft PR.
+    Does NOT auto-merge -- human review is mandatory.
 
     Args:
         ci_validator: CI validator for lint/type-check/test checks.
+        github_client: GitHub API client for branch/file/PR operations.
         code_modification_config: Code modification settings.
     """
 
@@ -49,9 +51,11 @@ class CodeApplier:
         self,
         *,
         ci_validator: CIValidator,
+        github_client: GitHubAPI,
         code_modification_config: CodeModificationConfig,
     ) -> None:
         self._ci_validator = ci_validator
+        self._github = github_client
         self._config = code_modification_config
 
     @property
@@ -63,7 +67,7 @@ class CodeApplier:
         self,
         proposal: ImprovementProposal,
     ) -> ApplyResult:
-        """Apply code changes: branch, write, CI, commit, PR.
+        """Apply code changes: local CI, then push via GitHub API.
 
         Args:
             proposal: The approved code modification proposal.
@@ -87,8 +91,12 @@ class CodeApplier:
                 altitude="code_modification",
                 proposal_id=str(proposal.id),
             )
+            self._revert_local_changes(
+                proposal.code_changes,
+                project_root,
+            )
             try:
-                await self._cleanup_branch(branch, project_root)
+                await self._github.delete_branch(branch)
             except Exception:
                 logger.exception(
                     META_APPLY_FAILED,
@@ -109,7 +117,13 @@ class CodeApplier:
         branch: str,
         project_root: Path,
     ) -> ApplyResult:
-        """Execute the apply pipeline: branch, write, CI, commit, PR.
+        """Execute the apply pipeline.
+
+        1. Write files locally for CI validation.
+        2. Run lint / type-check / tests.
+        3. Push changes to GitHub via API.
+        4. Create a draft PR.
+        5. Revert local file changes.
 
         Args:
             proposal: The approved proposal.
@@ -119,25 +133,70 @@ class CodeApplier:
         Returns:
             Result indicating success or failure.
         """
-        await self._run_git(
-            "checkout",
-            "-b",
-            branch,
-            cwd=project_root,
-        )
-        logger.info(
-            META_CODE_BRANCH_CREATED,
-            branch=branch,
-            proposal_id=str(proposal.id),
-        )
-
-        changed_files = await self._write_changes(
+        # -- Local CI gate ------------------------------------------------
+        changed_files = self._write_changes(
             proposal.code_changes,
             project_root,
         )
+        try:
+            ci_result = await self._run_ci(
+                proposal,
+                changed_files,
+                project_root,
+            )
+        finally:
+            # Always revert local edits regardless of CI outcome.
+            self._revert_local_changes(
+                proposal.code_changes,
+                project_root,
+            )
+        if not ci_result.passed:
+            return ApplyResult(
+                success=False,
+                error_message=(f"CI validation failed: {'; '.join(ci_result.errors)}"),
+                changes_applied=0,
+            )
 
-        # Exclude deleted paths from CI validation -- ruff/mypy fail
-        # on non-existent files.  All paths are still staged by git.
+        # -- Remote push via GitHub API -----------------------------------
+        await self._github.create_branch(branch)
+        await self._push_changes_via_api(
+            branch,
+            proposal,
+        )
+        pr_url = await self._github.create_draft_pr(
+            head=branch,
+            title=proposal.title,
+            body=_build_pr_body(proposal),
+        )
+
+        count = len(proposal.code_changes)
+        logger.info(
+            META_APPLY_COMPLETED,
+            altitude="code_modification",
+            changes=count,
+            proposal_id=str(proposal.id),
+            branch=branch,
+            pr_url=pr_url,
+        )
+        return ApplyResult(success=True, changes_applied=count)
+
+    async def _run_ci(
+        self,
+        proposal: ImprovementProposal,
+        changed_files: list[str],
+        project_root: Path,
+    ) -> CIValidationResult:
+        """Run CI validation against locally written files.
+
+        Args:
+            proposal: The proposal being validated.
+            changed_files: Relative paths of changed files.
+            project_root: Absolute path to project root.
+
+        Returns:
+            CI validation result.
+        """
+        # Exclude deleted paths -- ruff/mypy fail on missing files.
         delete_paths = {
             c.file_path
             for c in proposal.code_changes
@@ -154,71 +213,25 @@ class CodeApplier:
                 proposal_id=str(proposal.id),
                 errors=list(ci_result.errors),
             )
-            await self._cleanup_branch(branch, project_root)
-            return ApplyResult(
-                success=False,
-                error_message=(f"CI validation failed: {'; '.join(ci_result.errors)}"),
-                changes_applied=0,
-            )
+        return ci_result
 
-        await self._commit_and_push(
-            changed_files,
-            proposal,
-            branch,
-            project_root,
-        )
-        pr_url = await self._create_pr(
-            branch,
-            proposal,
-            project_root,
-        )
-
-        count = len(proposal.code_changes)
-        logger.info(
-            META_APPLY_COMPLETED,
-            altitude="code_modification",
-            changes=count,
-            proposal_id=str(proposal.id),
-            branch=branch,
-            pr_url=pr_url,
-        )
-        return ApplyResult(success=True, changes_applied=count)
-
-    async def _commit_and_push(
+    async def _push_changes_via_api(
         self,
-        changed_files: list[str],
-        proposal: ImprovementProposal,
         branch: str,
-        project_root: Path,
+        proposal: ImprovementProposal,
     ) -> None:
-        """Stage, commit, and push changes.
+        """Push all file changes to GitHub via the REST API.
 
         Args:
-            changed_files: Relative paths of changed files.
-            proposal: The proposal being applied.
-            branch: Git branch name.
-            project_root: Absolute path to project root.
+            branch: Target branch name.
+            proposal: The proposal whose code changes to push.
         """
-        await self._run_git(
-            "add",
-            *changed_files,
-            cwd=project_root,
-        )
-        await self._run_git(
-            "commit",
-            "-m",
-            f"feat: {proposal.title}\n\n"
-            f"Auto-generated by meta-loop code modification.\n"
-            f"Proposal: {proposal.id}",
-            cwd=project_root,
-        )
-        await self._run_git(
-            "push",
-            "-u",
-            "origin",
-            branch,
-            cwd=project_root,
-        )
+        for change in proposal.code_changes:
+            await self._github.push_change(
+                branch=branch,
+                change=change,
+                message=(f"feat: {change.description}\n\nProposal: {proposal.id}"),
+            )
 
     async def dry_run(
         self,
@@ -242,12 +255,18 @@ class CodeApplier:
             file_path = project_root / change.file_path
             if change.operation == CodeOperation.MODIFY:
                 if not file_path.exists():
-                    errors.append(f"MODIFY target does not exist: {change.file_path}")
+                    errors.append(
+                        f"MODIFY target does not exist: {change.file_path}",
+                    )
             elif change.operation == CodeOperation.DELETE:
                 if not file_path.exists():
-                    errors.append(f"DELETE target does not exist: {change.file_path}")
+                    errors.append(
+                        f"DELETE target does not exist: {change.file_path}",
+                    )
             elif change.operation == CodeOperation.CREATE and file_path.exists():
-                errors.append(f"CREATE target already exists: {change.file_path}")
+                errors.append(
+                    f"CREATE target already exists: {change.file_path}",
+                )
 
         if errors:
             return ApplyResult(
@@ -260,12 +279,12 @@ class CodeApplier:
             changes_applied=len(proposal.code_changes),
         )
 
-    async def _write_changes(
-        self,
+    @staticmethod
+    def _write_changes(
         changes: tuple[CodeChange, ...],
         project_root: Path,
     ) -> list[str]:
-        """Write code changes to disk.
+        """Write code changes to disk for local CI validation.
 
         Args:
             changes: Code changes to apply.
@@ -281,7 +300,7 @@ class CodeApplier:
         for change in changes:
             file_path = project_root / change.file_path
             try:
-                self._apply_single_change(change, file_path)
+                _apply_single_change(change, file_path)
             except MemoryError, RecursionError:
                 raise
             except OSError as exc:
@@ -296,148 +315,79 @@ class CodeApplier:
         return changed
 
     @staticmethod
-    def _apply_single_change(
-        change: CodeChange,
-        file_path: Path,
+    def _revert_local_changes(
+        changes: tuple[CodeChange, ...],
+        project_root: Path,
     ) -> None:
-        """Write a single code change to disk.
+        """Revert locally written file changes.
+
+        For each change, restores the file to its pre-proposal state:
+        CREATE -> delete the file, MODIFY -> restore old_content,
+        DELETE -> recreate with old_content.
 
         Args:
-            change: The code change descriptor.
-            file_path: Absolute path to write.
+            changes: The code changes to revert.
+            project_root: Absolute path to project root.
         """
-        if change.operation == CodeOperation.CREATE:
-            file_path.parent.mkdir(parents=True, exist_ok=True)
-            file_path.write_text(change.new_content, encoding="utf-8")
-        elif change.operation == CodeOperation.MODIFY:
-            file_path.write_text(change.new_content, encoding="utf-8")
-        elif change.operation == CodeOperation.DELETE:
-            file_path.unlink(missing_ok=True)
+        for change in changes:
+            path = project_root / change.file_path
+            try:
+                if change.operation == CodeOperation.CREATE:
+                    path.unlink(missing_ok=True)
+                elif change.operation == CodeOperation.MODIFY:
+                    path.write_text(
+                        change.old_content,
+                        encoding="utf-8",
+                    )
+                elif change.operation == CodeOperation.DELETE:
+                    path.parent.mkdir(parents=True, exist_ok=True)
+                    path.write_text(
+                        change.old_content,
+                        encoding="utf-8",
+                    )
+            except OSError:
+                logger.warning(
+                    META_APPLY_FAILED,
+                    reason="local_revert_failed",
+                    file_path=change.file_path,
+                )
 
-    async def _create_pr(
-        self,
-        branch: str,
-        proposal: ImprovementProposal,
-        cwd: Path,
-    ) -> str:
-        """Create a draft PR via gh CLI.
 
-        Args:
-            branch: Branch name.
-            proposal: The proposal being applied.
-            cwd: Working directory.
+def _apply_single_change(change: CodeChange, file_path: Path) -> None:
+    """Write a single code change to disk.
 
-        Returns:
-            PR URL string.
-        """
-        timeout = self._config.git_timeout_seconds
-        proc = await asyncio.create_subprocess_exec(
-            "gh",
-            "pr",
-            "create",
-            "--draft",
-            "--title",
-            proposal.title,
-            "--body",
-            f"## Meta-Loop Code Modification\n\n"
-            f"**Proposal ID**: {proposal.id}\n"
-            f"**Source Rule**: {proposal.source_rule}\n"
-            f"**Confidence**: {proposal.confidence:.0%}\n\n"
-            f"### Rationale\n\n"
-            f"{proposal.rationale.signal_summary}\n\n"
-            f"### Changes\n\n"
-            f"{proposal.description}\n\n"
-            f"---\n"
-            f"*Auto-generated by the self-improvement meta-loop. "
-            f"Human review required before merge.*",
-            "--head",
-            branch,
-            cwd=cwd,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-        )
-        try:
-            stdout, stderr = await asyncio.wait_for(
-                proc.communicate(),
-                timeout=timeout,
-            )
-        except TimeoutError:
-            proc.kill()
-            await proc.wait()
-            msg = f"gh pr create timed out after {timeout}s"
-            raise RuntimeError(msg) from None
-        except asyncio.CancelledError:
-            proc.kill()
-            await proc.wait()
-            raise
-        if proc.returncode != 0:
-            stderr_text = stderr.decode(errors="replace").strip()
-            msg = f"gh pr create failed: {stderr_text}"
-            raise RuntimeError(msg)
-        pr_url = stdout.decode().strip()
-        logger.info(
-            META_CODE_PR_CREATED,
-            proposal_id=str(proposal.id),
-            pr_url=pr_url,
-        )
-        return pr_url
+    Args:
+        change: The code change descriptor.
+        file_path: Absolute path to write.
+    """
+    if change.operation == CodeOperation.CREATE:
+        file_path.parent.mkdir(parents=True, exist_ok=True)
+        file_path.write_text(change.new_content, encoding="utf-8")
+    elif change.operation == CodeOperation.MODIFY:
+        file_path.write_text(change.new_content, encoding="utf-8")
+    elif change.operation == CodeOperation.DELETE:
+        file_path.unlink(missing_ok=True)
 
-    async def _run_git(
-        self,
-        *args: str,
-        cwd: Path,
-    ) -> None:
-        """Run a git command.
 
-        Args:
-            *args: Git subcommand and arguments.
-            cwd: Working directory.
+def _build_pr_body(proposal: ImprovementProposal) -> str:
+    """Build the PR body from a proposal.
 
-        Raises:
-            RuntimeError: If git command fails.
-        """
-        timeout = self._config.git_timeout_seconds
-        proc = await asyncio.create_subprocess_exec(
-            "git",
-            *args,
-            cwd=cwd,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-        )
-        try:
-            _, stderr = await asyncio.wait_for(
-                proc.communicate(),
-                timeout=timeout,
-            )
-        except TimeoutError:
-            proc.kill()
-            await proc.wait()
-            msg = f"git {args[0]} timed out after {timeout}s"
-            raise RuntimeError(msg) from None
-        except asyncio.CancelledError:
-            proc.kill()
-            await proc.wait()
-            raise
-        if proc.returncode != 0:
-            msg = f"git {args[0]} failed: {stderr.decode(errors='replace').strip()}"
-            raise RuntimeError(msg)
+    Args:
+        proposal: The proposal to describe.
 
-    async def _cleanup_branch(
-        self,
-        branch: str,
-        cwd: Path,
-    ) -> None:
-        """Discard generated edits and switch back to the base branch.
-
-        Resets the working tree so dirty files created by
-        ``_write_changes`` are not carried onto the base branch.
-
-        Args:
-            branch: Branch name to delete.
-            cwd: Working directory.
-        """
-        base = str(self._config.base_branch)
-        await self._run_git("reset", "--hard", cwd=cwd)
-        await self._run_git("clean", "-fd", cwd=cwd)
-        await self._run_git("checkout", base, cwd=cwd)
-        await self._run_git("branch", "-D", branch, cwd=cwd)
+    Returns:
+        Markdown-formatted PR body.
+    """
+    return (
+        f"## Meta-Loop Code Modification\n\n"
+        f"**Proposal ID**: {proposal.id}\n"
+        f"**Source Rule**: {proposal.source_rule}\n"
+        f"**Confidence**: {proposal.confidence:.0%}\n\n"
+        f"### Rationale\n\n"
+        f"{proposal.rationale.signal_summary}\n\n"
+        f"### Changes\n\n"
+        f"{proposal.description}\n\n"
+        f"---\n"
+        f"*Auto-generated by the self-improvement meta-loop. "
+        f"Human review required before merge.*"
+    )

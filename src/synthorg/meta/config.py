@@ -197,11 +197,25 @@ class CodeModificationConfig(BaseModel):
         description="Default branch to create feature branches from",
     )
     ci_timeout_seconds: int = Field(default=300, ge=30, le=600)
-    git_timeout_seconds: int = Field(
-        default=120,
-        ge=30,
-        le=600,
-        description="Timeout for git and gh CLI subprocess calls",
+    api_timeout_seconds: int = Field(
+        default=30,
+        ge=5,
+        le=120,
+        description="Timeout for GitHub API HTTP requests",
+    )
+    github_token: NotBlankStr | None = Field(
+        default=None,
+        description=(
+            "GitHub PAT or app installation token for API calls. "
+            "Required when code_modification_enabled is True."
+        ),
+    )
+    github_repo: NotBlankStr | None = Field(
+        default=None,
+        description=(
+            "GitHub repository in owner/repo format. "
+            "Required when code_modification_enabled is True."
+        ),
     )
 
 

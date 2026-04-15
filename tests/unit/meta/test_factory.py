@@ -166,10 +166,26 @@ class TestBuildAppliers:
         assert len(appliers) == 3
         assert ProposalAltitude.CODE_MODIFICATION not in appliers
 
-    def test_builds_4_appliers_with_code_mod_enabled(self) -> None:
+    def test_builds_3_appliers_with_code_mod_no_creds(self) -> None:
         cfg = SelfImprovementConfig(
             enabled=True,
             code_modification_enabled=True,
+        )
+        appliers = build_appliers(cfg)
+        # No github_token/repo -> code applier skipped.
+        assert len(appliers) == 3
+        assert ProposalAltitude.CODE_MODIFICATION not in appliers
+
+    def test_builds_4_appliers_with_code_mod_and_creds(self) -> None:
+        from synthorg.meta.config import CodeModificationConfig
+
+        cfg = SelfImprovementConfig(
+            enabled=True,
+            code_modification_enabled=True,
+            code_modification=CodeModificationConfig(
+                github_token="test-token",
+                github_repo="test/repo",
+            ),
         )
         appliers = build_appliers(cfg)
         assert len(appliers) == 4

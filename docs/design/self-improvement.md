@@ -83,7 +83,8 @@ src/synthorg/meta/
     config_applier.py  -- RootConfig reconstruction
     architecture_applier.py -- Role/workflow creation
     prompt_applier.py  -- Constitutional principle injection
-    code_applier.py    -- Git branch + CI validation + draft PR
+    code_applier.py    -- Local CI + GitHub API push + draft PR
+    github_client.py   -- GitHub REST API client (httpx, no git CLI)
 
   validation/          -- CI and scope validation for code modifications
     scope_validator.py -- Path allowlist/denylist enforcement
