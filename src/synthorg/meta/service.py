@@ -83,17 +83,23 @@ class SelfImprovementService:
         # Chief of Staff learning.
         self._outcome_store: MemoryBackendOutcomeStore | None = None
         self._confidence_adjuster: ConfidenceAdjuster | None = None
-        if config.chief_of_staff.learning_enabled and memory_backend is not None:
-            self._outcome_store = MemoryBackendOutcomeStore(
-                backend=memory_backend,
-                agent_id=NotBlankStr("chief-of-staff"),
-                min_outcomes=config.chief_of_staff.min_outcomes,
-            )
-            self._confidence_adjuster = build_confidence_adjuster(config)
-            logger.info(
-                COS_LEARNING_ENABLED,
-                strategy=config.chief_of_staff.adjuster_strategy,
-            )
+        if config.chief_of_staff.learning_enabled:
+            if memory_backend is None:
+                logger.warning(
+                    COS_OUTCOME_RECORD_FAILED,
+                    reason="learning_enabled_but_no_memory_backend",
+                )
+            else:
+                self._outcome_store = MemoryBackendOutcomeStore(
+                    backend=memory_backend,
+                    agent_id=NotBlankStr("chief-of-staff"),
+                    min_outcomes=config.chief_of_staff.min_outcomes,
+                )
+                self._confidence_adjuster = build_confidence_adjuster(config)
+                logger.info(
+                    COS_LEARNING_ENABLED,
+                    strategy=config.chief_of_staff.adjuster_strategy,
+                )
 
     async def run_cycle(
         self,
@@ -280,7 +286,7 @@ class SelfImprovementService:
         if self._outcome_store is None:
             return
         if proposal.decided_at is None or proposal.decided_by is None:
-            logger.debug(
+            logger.info(
                 COS_OUTCOME_SKIPPED,
                 proposal_id=str(proposal.id),
                 reason="missing_decision_context",
@@ -290,7 +296,7 @@ class SelfImprovementService:
             ProposalStatus.APPROVED,
             ProposalStatus.REJECTED,
         ):
-            logger.debug(
+            logger.info(
                 COS_OUTCOME_SKIPPED,
                 proposal_id=str(proposal.id),
                 reason="non_terminal_status",
