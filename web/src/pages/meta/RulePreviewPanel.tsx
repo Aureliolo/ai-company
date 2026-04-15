@@ -64,9 +64,10 @@ export function RulePreviewPanel({
     if (!metricPath || !comparator) return
     const parsed = parseFloat(sampleValue)
     if (debounceRef.current) clearTimeout(debounceRef.current)
-    if (!Number.isFinite(parsed)) {
+    if (!Number.isFinite(parsed) || !Number.isFinite(threshold)) {
       debounceRef.current = setTimeout(() => {
         setResult(null)
+        setError(null)
       }, 0)
       return () => {
         if (debounceRef.current) clearTimeout(debounceRef.current)
@@ -82,7 +83,7 @@ export function RulePreviewPanel({
 
   if (!metricPath || !comparator) {
     return (
-      <div className="rounded-lg border border-border bg-card/50 p-3 text-body-sm text-muted-foreground">
+      <div className="rounded-lg border border-border bg-card/50 p-card text-body-sm text-muted-foreground">
         Select a metric and comparator to preview rule behavior.
       </div>
     )
@@ -95,7 +96,7 @@ export function RulePreviewPanel({
       variants={cardEntrance}
       initial="initial"
       animate="animate"
-      className="space-y-3 rounded-lg border border-border bg-card/50 p-3"
+      className="space-y-3 rounded-lg border border-border bg-card/50 p-card"
     >
       <p className="text-body-sm text-muted-foreground">
         Fire when{' '}
@@ -124,8 +125,8 @@ export function RulePreviewPanel({
           aria-live="polite"
           className={
             result.would_fire
-              ? 'rounded-md border border-warning/30 bg-warning/5 p-2 text-body-sm text-warning'
-              : 'rounded-md border border-success/30 bg-success/5 p-2 text-body-sm text-success'
+              ? 'rounded-md border border-warning/30 bg-warning/5 p-card text-body-sm text-warning'
+              : 'rounded-md border border-success/30 bg-success/5 p-card text-body-sm text-success'
           }
         >
           {result.would_fire

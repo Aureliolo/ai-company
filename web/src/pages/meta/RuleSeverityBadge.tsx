@@ -20,7 +20,7 @@ interface RuleSeverityBadgeProps {
 }
 
 export function RuleSeverityBadge({ severity, className }: RuleSeverityBadgeProps) {
-  const key = (severity in SEVERITY_STYLES ? severity : 'info') as Severity
+  const key = (Object.hasOwn(SEVERITY_STYLES, severity) ? severity : 'info') as Severity
   return (
     <span
       className={cn(

@@ -5,6 +5,7 @@ from datetime import UTC, datetime
 from uuid import uuid4
 
 import pytest
+from pydantic import ValidationError
 
 from synthorg.meta.models import (
     OrgBudgetSummary,
@@ -190,7 +191,7 @@ class TestMetricDescriptor:
             unit="USD",
             nullable=False,
         )
-        with pytest.raises(Exception):  # noqa: B017, PT011
+        with pytest.raises(ValidationError, match="frozen"):
             md.path = "other"  # type: ignore[misc]
 
 
@@ -215,7 +216,7 @@ class TestCustomRuleDefinition:
 
     def test_frozen(self) -> None:
         defn = _make_definition()
-        with pytest.raises(Exception):  # noqa: B017, PT011
+        with pytest.raises(ValidationError, match="frozen"):
             defn.name = "changed"  # type: ignore[misc]
 
 

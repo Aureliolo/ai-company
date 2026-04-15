@@ -12,6 +12,8 @@ import { getErrorMessage } from '@/utils/errors'
 
 const log = createLogger('rules-data')
 
+let _mergedRequestToken = 0
+
 export interface UseRulesDataReturn {
   /** All rules (built-in + custom) from /api/meta/rules. */
   allRules: readonly RuleListItem[]
@@ -35,22 +37,28 @@ export function useRulesData(): UseRulesDataReturn {
   const customLoading = useCustomRulesStore((s) => s.loading)
   const customError = useCustomRulesStore((s) => s.error)
   const metricsLoading = useCustomRulesStore((s) => s.metricsLoading)
+  const metricsError = useCustomRulesStore((s) => s.metricsError)
 
   const [allRules, setAllRules] = useState<readonly RuleListItem[]>([])
   const [mergedLoading, setMergedLoading] = useState(false)
   const [mergedError, setMergedError] = useState<string | null>(null)
 
   const fetchMergedRules = useCallback(async () => {
+    const token = ++_mergedRequestToken
     setMergedLoading(true)
     setMergedError(null)
     try {
       const rules = await listAllRules()
+      if (token !== _mergedRequestToken) return // eslint-disable-line security/detect-possible-timing-attacks
       setAllRules(rules)
     } catch (err) {
+      if (token !== _mergedRequestToken) return // eslint-disable-line security/detect-possible-timing-attacks
       log.error('Failed to fetch merged rules', err)
       setMergedError(getErrorMessage(err))
     } finally {
-      setMergedLoading(false)
+      if (token === _mergedRequestToken) { // eslint-disable-line security/detect-possible-timing-attacks
+        setMergedLoading(false)
+      }
     }
   }, [])
 
@@ -71,7 +79,7 @@ export function useRulesData(): UseRulesDataReturn {
   }, [])
 
   const loading = customLoading || mergedLoading
-  const error = customError ?? mergedError
+  const error = customError ?? mergedError ?? metricsError
 
   return {
     allRules,

@@ -24,7 +24,7 @@ export function RuleListItem({
   const isCustom = rule.type === 'custom'
 
   return (
-    <div className="flex items-center justify-between gap-3 rounded-lg border border-border bg-card p-3">
+    <div className="flex items-center justify-between gap-3 rounded-lg border border-border bg-card p-card">
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
           <span className="truncate text-sm font-medium text-foreground">
@@ -76,7 +76,7 @@ export function RuleListItem({
           label={`Toggle ${rule.name}`}
           checked={rule.enabled}
           onChange={() => onToggle?.(rule.name, rule.id)}
-          disabled={toggleDisabled}
+          disabled={toggleDisabled || !isCustom}
         />
       </div>
     </div>

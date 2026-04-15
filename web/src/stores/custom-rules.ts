@@ -120,20 +120,30 @@ export const useCustomRulesStore = create<CustomRulesState>()((set) => ({
   },
 
   deleteRule: async (id) => {
-    await deleteCustomRule(id)
-    set((state) => ({
-      rules: state.rules.filter((r) => r.id !== id),
-    }))
+    try {
+      await deleteCustomRule(id)
+      set((state) => ({
+        rules: state.rules.filter((r) => r.id !== id),
+      }))
+    } catch (err) {
+      log.error('Failed to delete rule', err)
+      throw err
+    }
   },
 
   toggleRule: async (id) => {
-    const toggled = await toggleCustomRule(id)
-    set((state) => ({
-      rules: state.rules.map((r) =>
-        r.id === id ? toggled : r,
-      ),
-    }))
-    return toggled
+    try {
+      const toggled = await toggleCustomRule(id)
+      set((state) => ({
+        rules: state.rules.map((r) =>
+          r.id === id ? toggled : r,
+        ),
+      }))
+      return toggled
+    } catch (err) {
+      log.error('Failed to toggle rule', err)
+      throw err
+    }
   },
 
   previewRule: async (data) => {

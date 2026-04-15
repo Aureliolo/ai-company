@@ -900,8 +900,13 @@ class PostgresPersistenceBackend:
         """Repository for custom signal rule persistence.
 
         Not yet implemented for Postgres.
+
+        Raises:
+            NotImplementedError: Custom rules are not supported by
+                the Postgres backend yet.
         """
         msg = "custom_rules repository not yet ported to Postgres"
+        logger.warning(msg)
         raise NotImplementedError(msg)
 
     async def get_setting(self, key: NotBlankStr) -> str | None:

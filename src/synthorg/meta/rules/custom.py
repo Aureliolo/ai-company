@@ -12,6 +12,9 @@ domain, bounds, unit, nullability).
 import operator as _operator
 from enum import StrEnum
 from typing import TYPE_CHECKING, Any, Literal
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 from uuid import UUID, uuid4
 
 if TYPE_CHECKING:
@@ -51,7 +54,7 @@ class Comparator(StrEnum):
     EQ = "eq"
     NE = "ne"
 
-    def to_operator(self) -> Any:
+    def to_operator(self) -> Callable[[float | int, float | int], bool]:
         """Return the stdlib ``operator`` function for this comparator."""
         return _COMPARATOR_OPS[self]
 

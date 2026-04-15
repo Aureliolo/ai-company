@@ -119,6 +119,8 @@ export function RulesDrawer({
   const handleDrawerClose = useCallback(() => {
     setView('list')
     setEditRule(null)
+    setDeleteTarget(null)
+    setDeleting(false)
     onClose()
   }, [onClose])
 

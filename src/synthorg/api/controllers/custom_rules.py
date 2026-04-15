@@ -10,7 +10,7 @@ from typing import Any
 
 from litestar import Controller, delete, get, patch, post
 from litestar.datastructures import State  # noqa: TC002
-from litestar.exceptions import NotFoundException
+from litestar.exceptions import ClientException, NotFoundException
 from litestar.status_codes import HTTP_204_NO_CONTENT
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -41,6 +41,7 @@ from synthorg.observability.events.meta import (
     META_CUSTOM_RULE_CREATED,
     META_CUSTOM_RULE_DELETED,
     META_CUSTOM_RULE_TOGGLED,
+    META_CUSTOM_RULE_UPDATED,
 )
 from synthorg.persistence.errors import ConstraintViolationError
 
@@ -158,7 +159,8 @@ def _metric_to_dict(metric: MetricDescriptor) -> dict[str, Any]:
 class CustomRuleController(Controller):
     """CRUD endpoints for custom declarative signal rules.
 
-    All endpoints are under ``/api/meta/custom-rules``.
+    All endpoints are under ``/meta/custom-rules`` (the app router
+    adds the ``/api/v1`` prefix).
     """
 
     path = "/meta/custom-rules"
@@ -234,10 +236,6 @@ class CustomRuleController(Controller):
         try:
             await repo.save(definition)
         except ConstraintViolationError as exc:
-            from litestar.exceptions import (  # noqa: PLC0415
-                ClientException,
-            )
-
             raise ClientException(
                 detail=str(exc),
                 status_code=409,
@@ -275,18 +273,20 @@ class CustomRuleController(Controller):
             raise NotFoundException(msg)
         updates = data.model_dump(exclude_none=True)
         updates["updated_at"] = datetime.now(UTC)
-        updated = existing.model_copy(update=updates)
+        merged = {**existing.model_dump(), **updates}
+        updated = CustomRuleDefinition.model_validate(merged)
         try:
             await repo.save(updated)
         except ConstraintViolationError as exc:
-            from litestar.exceptions import (  # noqa: PLC0415
-                ClientException,
-            )
-
             raise ClientException(
                 detail=str(exc),
                 status_code=409,
             ) from exc
+        logger.info(
+            META_CUSTOM_RULE_UPDATED,
+            rule_id=rule_id,
+            rule_name=updated.name,
+        )
         return ApiResponse[dict[str, Any]](
             data=_rule_to_dict(updated),
         )
@@ -416,7 +416,7 @@ class CustomRuleController(Controller):
 def _build_preview_snapshot(
     metric_path: str,
     sample_value: float,
-) -> Any:
+) -> OrgSignalSnapshot:
     """Build a minimal OrgSignalSnapshot with one metric set.
 
     All other fields use safe defaults (zeros/empty).
@@ -455,7 +455,13 @@ def _build_preview_snapshot(
         "evolution": evolution_kwargs,
         "telemetry": telemetry_kwargs,
     }
-    target = lookup.get(domain, {})
+    target = lookup.get(domain)
+    if target is None:
+        msg = (
+            f"Internal error: metric domain '{domain}' "
+            "not handled in preview snapshot builder"
+        )
+        raise ValueError(msg)
     # Convert to int for integer fields.
     registry_entry = next(
         (m for m in METRIC_REGISTRY if m.path == metric_path),

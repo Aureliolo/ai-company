@@ -42,6 +42,7 @@ src/synthorg/meta/
   rules/               -- Signal pattern detection
     engine.py          -- RuleEngine (evaluates rules, sorts by severity)
     builtin.py         -- 9 built-in rules with configurable thresholds
+    custom.py          -- Declarative custom rules (CustomRuleDefinition, DeclarativeRule, METRIC_REGISTRY, Comparator)
 
   strategies/          -- Proposal generation
     config_tuning.py   -- Config field changes
@@ -209,4 +210,4 @@ self_improvement:
 2. Product-level improvement (framework code modification proposals)
 3. Cross-deployment analytics (anonymized multi-org patterns)
 4. ~~Chief of Staff advanced capabilities~~ -- completed via #1342 (outcome learning, proactive alerts, NL chat)
-5. Custom rule authoring UI (visual rule builder)
+5. ~~Custom rule authoring UI (visual rule builder)~~ -- shipped in v0.6.5 (#1343 / PR #1355)

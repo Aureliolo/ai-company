@@ -35,53 +35,23 @@ class TestCustomRuleControllerRoutes:
     def test_controller_path(self) -> None:
         assert CustomRuleController.path == "/meta/custom-rules"
 
-    def test_has_list_endpoint(self) -> None:
-        methods = [
-            name for name in dir(CustomRuleController) if not name.startswith("_")
-        ]
-        assert "list_rules" in methods
-
-    def test_has_get_endpoint(self) -> None:
-        methods = [
-            name for name in dir(CustomRuleController) if not name.startswith("_")
-        ]
-        assert "get_rule" in methods
-
-    def test_has_create_endpoint(self) -> None:
-        methods = [
-            name for name in dir(CustomRuleController) if not name.startswith("_")
-        ]
-        assert "create_rule" in methods
-
-    def test_has_update_endpoint(self) -> None:
-        methods = [
-            name for name in dir(CustomRuleController) if not name.startswith("_")
-        ]
-        assert "update_rule" in methods
-
-    def test_has_delete_endpoint(self) -> None:
-        methods = [
-            name for name in dir(CustomRuleController) if not name.startswith("_")
-        ]
-        assert "delete_rule" in methods
-
-    def test_has_toggle_endpoint(self) -> None:
-        methods = [
-            name for name in dir(CustomRuleController) if not name.startswith("_")
-        ]
-        assert "toggle_rule" in methods
-
-    def test_has_metrics_endpoint(self) -> None:
-        methods = [
-            name for name in dir(CustomRuleController) if not name.startswith("_")
-        ]
-        assert "list_metrics" in methods
-
-    def test_has_preview_endpoint(self) -> None:
-        methods = [
-            name for name in dir(CustomRuleController) if not name.startswith("_")
-        ]
-        assert "preview_rule" in methods
+    @pytest.mark.parametrize(
+        "method_name",
+        [
+            "list_rules",
+            "get_rule",
+            "create_rule",
+            "update_rule",
+            "delete_rule",
+            "toggle_rule",
+            "list_metrics",
+            "preview_rule",
+        ],
+    )
+    def test_has_endpoint(self, method_name: str) -> None:
+        handler = getattr(CustomRuleController, method_name, None)
+        assert handler is not None, f"Missing handler: {method_name}"
+        assert callable(handler)
 
 
 # ── Request DTOs ──────────────────────────────────────────────────

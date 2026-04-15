@@ -28,21 +28,31 @@ logger = get_logger(__name__)
 
 
 def _row_to_definition(row: Row) -> CustomRuleDefinition:
-    """Convert a database row to a CustomRuleDefinition."""
-    altitudes_raw: list[str] = json.loads(str(row[7]))
-    return CustomRuleDefinition(
-        id=UUID(str(row[0])),
-        name=str(row[1]),
-        description=str(row[2]),
-        metric_path=str(row[3]),
-        comparator=Comparator(str(row[4])),
-        threshold=float(str(row[5])),
-        severity=RuleSeverity(str(row[6])),
-        target_altitudes=tuple(ProposalAltitude(a) for a in altitudes_raw),
-        enabled=bool(row[8]),
-        created_at=datetime.fromisoformat(str(row[9])),
-        updated_at=datetime.fromisoformat(str(row[10])),
-    )
+    """Convert a database row to a CustomRuleDefinition.
+
+    Raises:
+        QueryError: If the row contains corrupt or unparseable data.
+    """
+    try:
+        altitudes_raw: list[str] = json.loads(str(row[7]))
+        return CustomRuleDefinition(
+            id=UUID(str(row[0])),
+            name=str(row[1]),
+            description=str(row[2]),
+            metric_path=str(row[3]),
+            comparator=Comparator(str(row[4])),
+            threshold=float(str(row[5])),
+            severity=RuleSeverity(str(row[6])),
+            target_altitudes=tuple(ProposalAltitude(a) for a in altitudes_raw),
+            enabled=bool(row[8]),
+            created_at=datetime.fromisoformat(str(row[9])),
+            updated_at=datetime.fromisoformat(str(row[10])),
+        )
+    except (json.JSONDecodeError, ValueError, TypeError, KeyError) as exc:
+        row_id = str(row[0]) if row else "<unknown>"
+        msg = f"Failed to parse custom rule row {row_id!r}: {exc}"
+        logger.exception(msg, row_id=row_id, error=str(exc))
+        raise QueryError(msg) from exc
 
 
 class SQLiteCustomRuleRepository:
@@ -106,19 +116,31 @@ ON CONFLICT(id) DO UPDATE SET
             )
             await self._db.commit()
         except sqlite3.IntegrityError as exc:
+            await self._db.rollback()
             err_msg = str(exc).lower()
             if "unique" in err_msg and "name" in err_msg:
                 msg = f"Custom rule name '{rule.name}' already exists"
+                logger.warning(
+                    META_CUSTOM_RULE_SAVE_FAILED,
+                    rule_name=rule.name,
+                    error=msg,
+                )
                 raise ConstraintViolationError(
                     msg,
-                    constraint="custom_rules_name_unique",
+                    constraint="custom_rules_name",
                 ) from exc
             msg = f"Constraint violation saving custom rule {rule.name!r}"
+            logger.warning(
+                META_CUSTOM_RULE_SAVE_FAILED,
+                rule_name=rule.name,
+                error=msg,
+            )
             raise ConstraintViolationError(
                 msg,
                 constraint="custom_rules_unknown",
             ) from exc
         except sqlite3.Error as exc:
+            await self._db.rollback()
             msg = f"Failed to save custom rule {rule.name!r}"
             logger.exception(
                 META_CUSTOM_RULE_SAVE_FAILED,
@@ -273,6 +295,7 @@ ON CONFLICT(id) DO UPDATE SET
                 deleted = cursor.rowcount > 0
             await self._db.commit()
         except sqlite3.Error as exc:
+            await self._db.rollback()
             msg = f"Failed to delete custom rule {rule_id!r}"
             logger.exception(
                 META_CUSTOM_RULE_DELETE_FAILED,

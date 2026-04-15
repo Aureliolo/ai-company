@@ -35,7 +35,7 @@ export function MetaRuleStatus() {
 
   return (
     <>
-      <div className="space-y-3">
+      <div className="space-y-section-gap">
         <div className="flex items-center justify-between">
           <div>
             <p className="text-sm text-foreground">

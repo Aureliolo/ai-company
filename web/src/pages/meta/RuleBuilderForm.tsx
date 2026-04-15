@@ -43,6 +43,28 @@ const ALTITUDE_OPTIONS: { value: ProposalAltitude; label: string }[] = [
   { value: 'prompt_tuning', label: 'Prompt Tuning' },
 ]
 
+function AltitudeOptionRow({
+  option,
+  checked,
+  onToggle,
+}: {
+  option: { value: ProposalAltitude; label: string }
+  checked: boolean
+  onToggle: (checked: boolean) => void
+}) {
+  return (
+    <label className="flex items-center gap-2 text-body-sm text-foreground">
+      <input
+        type="checkbox"
+        checked={checked}
+        onChange={(e) => onToggle(e.target.checked)}
+        className="accent-accent"
+      />
+      {option.label}
+    </label>
+  )
+}
+
 interface FormState {
   name: string
   description: string
@@ -259,26 +281,17 @@ export function RuleBuilderForm({ editRule, metrics, onClose }: RuleBuilderFormP
         )}
         <div className="flex flex-col gap-1">
           {ALTITUDE_OPTIONS.map((opt) => (
-            <label
+            <AltitudeOptionRow
               key={opt.value}
-              className="flex items-center gap-2 text-body-sm text-foreground"
-            >
-              <input
-                type="checkbox"
-                checked={form.target_altitudes.has(opt.value)}
-                onChange={(e) => {
-                  const next = new Set(form.target_altitudes)
-                  if (e.target.checked) {
-                    next.add(opt.value)
-                  } else {
-                    next.delete(opt.value)
-                  }
-                  updateField('target_altitudes', next)
-                }}
-                className="accent-accent"
-              />
-              {opt.label}
-            </label>
+              option={opt}
+              checked={form.target_altitudes.has(opt.value)}
+              onToggle={(checked) => {
+                const next = new Set(form.target_altitudes)
+                if (checked) next.add(opt.value)
+                else next.delete(opt.value)
+                updateField('target_altitudes', next)
+              }}
+            />
           ))}
         </div>
       </fieldset>

@@ -6,12 +6,15 @@ from litestar import Controller, get, post
 from litestar.datastructures import State  # noqa: TC002
 from litestar.exceptions import NotFoundException
 
+from synthorg.api.controllers.custom_rules import _rule_to_dict
 from synthorg.api.dto import ApiResponse
 from synthorg.api.guards import require_org_mutation, require_read_access
 from synthorg.meta.config import SelfImprovementConfig
 from synthorg.meta.mcp.server import get_server_config
 from synthorg.meta.mcp.tools import get_tool_definitions
 from synthorg.observability import get_logger
+from synthorg.observability.events.meta import META_CUSTOM_RULE_LIST_FAILED
+from synthorg.persistence.errors import QueryError
 
 logger = get_logger(__name__)
 
@@ -69,22 +72,15 @@ class MetaController(Controller):
         ]
         # Append custom rules from persistence.
         repo = state.app_state.persistence.custom_rules
-        custom = await repo.list_rules()
-        rule_list.extend(
-            {
-                "name": cr.name,
-                "enabled": cr.enabled,
-                "target_altitudes": [a.value for a in cr.target_altitudes],
-                "type": "custom",
-                "id": str(cr.id),
-                "description": cr.description,
-                "metric_path": cr.metric_path,
-                "comparator": cr.comparator.value,
-                "threshold": cr.threshold,
-                "severity": cr.severity.value,
-            }
-            for cr in custom
-        )
+        try:
+            custom = await repo.list_rules()
+        except (QueryError, NotImplementedError) as exc:
+            logger.warning(
+                META_CUSTOM_RULE_LIST_FAILED,
+                error=str(exc),
+            )
+        else:
+            rule_list.extend({**_rule_to_dict(cr), "type": "custom"} for cr in custom)
         return ApiResponse[list[dict[str, Any]]](data=rule_list)
 
     @get("/mcp/tools")
