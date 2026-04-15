@@ -62,7 +62,7 @@ class ProactiveAlertService:
             inflection.severity,
             0,
         ) < _SEVERITY_ORDER.get(self._threshold, 1):
-            logger.debug(
+            logger.info(
                 COS_ALERT_SUPPRESSED,
                 metric=inflection.metric_name,
                 severity=inflection.severity.value,

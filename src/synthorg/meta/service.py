@@ -29,6 +29,7 @@ from synthorg.meta.models import (
 )
 from synthorg.observability import get_logger
 from synthorg.observability.events.chief_of_staff import (
+    COS_CONFIDENCE_ADJUSTMENT_FAILED,
     COS_LEARNING_ENABLED,
     COS_OUTCOME_RECORD_FAILED,
     COS_OUTCOME_SKIPPED,
@@ -142,9 +143,8 @@ class SelfImprovementService:
             ):
                 if isinstance(adj_result, BaseException):
                     logger.warning(
-                        COS_OUTCOME_RECORD_FAILED,
+                        COS_CONFIDENCE_ADJUSTMENT_FAILED,
                         proposal_id=str(original.id),
-                        reason="confidence_adjustment_failed",
                     )
                     adjusted.append(original)
                 else:

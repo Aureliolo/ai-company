@@ -157,7 +157,14 @@ class ChiefOfStaffChat:
         )
         recent_context = "No recent proposals or alerts."
         if self._outcome_store is not None:
-            recent = await self._outcome_store.recent_outcomes(limit=5)
+            try:
+                recent = await self._outcome_store.recent_outcomes(limit=5)
+            except Exception:
+                logger.warning(
+                    COS_CHAT_FAILED,
+                    reason="outcome_store_read_failed",
+                )
+                recent = ()
             if recent:
                 lines = [
                     f"- {o.title} ({o.decision}, {o.decided_at:%Y-%m-%d})"

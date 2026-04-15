@@ -15,6 +15,9 @@ COS_OUTCOME_SKIPPED: Final[str] = "chief_of_staff.outcome.skipped"
 # -- Confidence adjustment ----------------------------------------------
 
 COS_CONFIDENCE_ADJUSTED: Final[str] = "chief_of_staff.confidence.adjusted"
+COS_CONFIDENCE_ADJUSTMENT_FAILED: Final[str] = (
+    "chief_of_staff.confidence.adjustment_failed"
+)
 COS_CONFIDENCE_NO_HISTORY: Final[str] = "chief_of_staff.confidence.no_history"
 
 # -- Learning lifecycle -------------------------------------------------

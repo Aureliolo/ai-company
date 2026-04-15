@@ -14,6 +14,7 @@ from typing import TYPE_CHECKING
 from synthorg.observability import get_logger
 from synthorg.observability.events.chief_of_staff import (
     COS_INFLECTION_CHECK_FAILED,
+    COS_INFLECTION_DETECTED,
     COS_MONITOR_STARTED,
     COS_MONITOR_STOPPED,
 )
@@ -108,6 +109,13 @@ class OrgInflectionMonitor:
         )
         self._last_snapshot = current
         for inflection in inflections:
+            logger.info(
+                COS_INFLECTION_DETECTED,
+                metric=inflection.metric_name,
+                severity=inflection.severity.value,
+                old_value=inflection.old_value,
+                new_value=inflection.new_value,
+            )
             await self._emit_to_sinks(inflection)
 
     async def _emit_to_sinks(self, inflection: OrgInflection) -> None:
