@@ -160,7 +160,11 @@ WORKFLOW_TOOLS: tuple[MCPToolDef, ...] = (
         "Get a specific workflow version.",
         {
             "workflow_id": {"type": "string", "description": "Workflow UUID"},
-            "version_num": {"type": "integer", "description": "Version number"},
+            "version_num": {
+                "type": "integer",
+                "description": "Version number",
+                "minimum": 1,
+            },
         },
         required=("workflow_id", "version_num"),
     ),

@@ -38,6 +38,7 @@ class TestUnifiedServer:
         tool_count = config["tool_count"]
         assert isinstance(tool_count, int)
         assert tool_count >= 200
+        assert len(tool_names) == tool_count
         assert config["tool_prefix"] == "synthorg"
 
     def test_registry_frozen(self) -> None:
