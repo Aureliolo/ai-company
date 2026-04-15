@@ -5,16 +5,17 @@ from the monitor and converts them to ``Alert`` objects when
 severity meets the configured threshold.
 """
 
+import asyncio
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
-from synthorg.meta.chief_of_staff.events import (
-    COS_ALERT_EMITTED,
-    COS_ALERT_SUPPRESSED,
-)
 from synthorg.meta.chief_of_staff.models import Alert, OrgInflection
 from synthorg.meta.models import RuleSeverity
 from synthorg.observability import get_logger
+from synthorg.observability.events.chief_of_staff import (
+    COS_ALERT_EMITTED,
+    COS_ALERT_SUPPRESSED,
+)
 
 if TYPE_CHECKING:
     from synthorg.meta.chief_of_staff.protocol import AlertSink
@@ -81,8 +82,23 @@ class ProactiveAlertService:
             },
             emitted_at=datetime.now(UTC),
         )
-        for sink in self._sinks:
-            await sink.on_alert(alert)
+
+        async def _emit(sink: AlertSink) -> None:
+            try:
+                await sink.on_alert(alert)
+            except MemoryError, RecursionError:
+                raise
+            except Exception:
+                logger.exception(
+                    COS_ALERT_EMITTED,
+                    alert_id=str(alert.id),
+                    sink=type(sink).__name__,
+                    status="sink_failed",
+                )
+
+        async with asyncio.TaskGroup() as tg:
+            for sink in self._sinks:
+                tg.create_task(_emit(sink))
         logger.info(
             COS_ALERT_EMITTED,
             alert_id=str(alert.id),

@@ -11,12 +11,12 @@ from typing import TYPE_CHECKING
 from synthorg.core.enums import MemoryCategory
 from synthorg.core.types import NotBlankStr
 from synthorg.memory.models import MemoryMetadata, MemoryQuery, MemoryStoreRequest
-from synthorg.meta.chief_of_staff.events import (
+from synthorg.meta.chief_of_staff.models import OutcomeStats, ProposalOutcome
+from synthorg.observability import get_logger
+from synthorg.observability.events.chief_of_staff import (
     COS_OUTCOME_RECORD_FAILED,
     COS_OUTCOME_RECORDED,
 )
-from synthorg.meta.chief_of_staff.models import OutcomeStats, ProposalOutcome
-from synthorg.observability import get_logger
 
 if TYPE_CHECKING:
     from synthorg.memory.protocol import MemoryBackend
@@ -129,7 +129,15 @@ class MemoryBackendOutcomeStore:
         rejected = 0
         latest_at = datetime.min.replace(tzinfo=UTC)
         for entry in entries:
-            outcome = ProposalOutcome.model_validate_json(entry.content)
+            try:
+                outcome = ProposalOutcome.model_validate_json(entry.content)
+            except Exception:
+                logger.warning(
+                    COS_OUTCOME_RECORD_FAILED,
+                    memory_id=entry.id,
+                    reason="deserialization_failed",
+                )
+                continue
             if outcome.decision == "approved":
                 approved += 1
             else:
@@ -175,7 +183,19 @@ class MemoryBackendOutcomeStore:
                 limit=limit,
             ),
         )
-        return tuple(ProposalOutcome.model_validate_json(e.content) for e in entries)
+        results: list[ProposalOutcome] = []
+        for entry in entries:
+            try:
+                results.append(
+                    ProposalOutcome.model_validate_json(entry.content),
+                )
+            except Exception:
+                logger.warning(
+                    COS_OUTCOME_RECORD_FAILED,
+                    memory_id=entry.id,
+                    reason="deserialization_failed",
+                )
+        return tuple(results)
 
     @staticmethod
     def _build_tags(outcome: ProposalOutcome) -> tuple[NotBlankStr, ...]:

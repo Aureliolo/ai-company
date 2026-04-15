@@ -117,11 +117,19 @@ class TestOutcomeStats:
         assert stats.approval_rate == pytest.approx(0.8)
 
     def test_approval_rate_zero(self) -> None:
-        stats = self._make(total_proposals=5, approved_count=0)
+        stats = self._make(
+            total_proposals=5,
+            approved_count=0,
+            rejected_count=5,
+        )
         assert stats.approval_rate == pytest.approx(0.0)
 
     def test_approval_rate_all_approved(self) -> None:
-        stats = self._make(total_proposals=5, approved_count=5)
+        stats = self._make(
+            total_proposals=5,
+            approved_count=5,
+            rejected_count=0,
+        )
         assert stats.approval_rate == pytest.approx(1.0)
 
     def test_frozen(self) -> None:
@@ -132,6 +140,22 @@ class TestOutcomeStats:
     def test_total_must_be_positive(self) -> None:
         with pytest.raises(ValidationError):
             self._make(total_proposals=0)
+
+    def test_counts_must_sum_to_total(self) -> None:
+        with pytest.raises(ValidationError, match="approved_count"):
+            self._make(
+                total_proposals=10,
+                approved_count=3,
+                rejected_count=4,
+            )
+
+    def test_counts_sum_correctly(self) -> None:
+        stats = self._make(
+            total_proposals=7,
+            approved_count=3,
+            rejected_count=4,
+        )
+        assert stats.total_proposals == 7
 
 
 # ── OrgInflection ─────────────────────────────────────────────────

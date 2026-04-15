@@ -9,10 +9,6 @@ import asyncio
 from typing import TYPE_CHECKING, Literal
 
 from synthorg.core.types import NotBlankStr
-from synthorg.meta.chief_of_staff.events import (
-    COS_LEARNING_ENABLED,
-    COS_OUTCOME_RECORD_FAILED,
-)
 from synthorg.meta.chief_of_staff.models import ProposalOutcome
 from synthorg.meta.chief_of_staff.outcome_store import MemoryBackendOutcomeStore
 from synthorg.meta.factory import (
@@ -32,6 +28,10 @@ from synthorg.meta.models import (
     RolloutResult,
 )
 from synthorg.observability import get_logger
+from synthorg.observability.events.chief_of_staff import (
+    COS_LEARNING_ENABLED,
+    COS_OUTCOME_RECORD_FAILED,
+)
 from synthorg.observability.events.meta import (
     META_CYCLE_COMPLETED,
     META_CYCLE_NO_TRIGGERS,
@@ -239,11 +239,22 @@ class SelfImprovementService:
         if self._outcome_store is None:
             return
         if proposal.decided_at is None or proposal.decided_by is None:
+            logger.debug(
+                COS_OUTCOME_RECORD_FAILED,
+                proposal_id=str(proposal.id),
+                reason="missing_decision_context",
+            )
             return
         if proposal.status not in (
             ProposalStatus.APPROVED,
             ProposalStatus.REJECTED,
         ):
+            logger.debug(
+                COS_OUTCOME_RECORD_FAILED,
+                proposal_id=str(proposal.id),
+                reason="non_terminal_status",
+                status=proposal.status.value,
+            )
             return
         decision: Literal["approved", "rejected"] = (
             "approved" if proposal.status is ProposalStatus.APPROVED else "rejected"

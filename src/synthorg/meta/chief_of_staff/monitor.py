@@ -11,15 +11,16 @@ import contextlib
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
-from synthorg.meta.chief_of_staff.events import (
+from synthorg.observability import get_logger
+from synthorg.observability.events.chief_of_staff import (
     COS_INFLECTION_CHECK_FAILED,
     COS_MONITOR_STARTED,
     COS_MONITOR_STOPPED,
 )
-from synthorg.observability import get_logger
 
 if TYPE_CHECKING:
     from synthorg.meta.chief_of_staff.inflection import OrgInflectionDetector
+    from synthorg.meta.chief_of_staff.models import OrgInflection
     from synthorg.meta.chief_of_staff.protocol import OrgInflectionSink
     from synthorg.meta.models import OrgSignalSnapshot
     from synthorg.meta.signals.snapshot import SnapshotBuilder
@@ -108,13 +109,22 @@ class OrgInflectionMonitor:
         )
         self._last_snapshot = current
         for inflection in inflections:
+            await self._emit_to_sinks(inflection)
+
+    async def _emit_to_sinks(self, inflection: OrgInflection) -> None:
+        """Emit an inflection to all sinks in parallel."""
+
+        async def _emit(sink: OrgInflectionSink) -> None:
+            try:
+                await sink.on_inflection(inflection)
+            except MemoryError, RecursionError:
+                raise
+            except Exception:
+                logger.exception(
+                    COS_INFLECTION_CHECK_FAILED,
+                    sink=type(sink).__name__,
+                )
+
+        async with asyncio.TaskGroup() as tg:
             for sink in self._sinks:
-                try:
-                    await sink.on_inflection(inflection)
-                except MemoryError, RecursionError:
-                    raise
-                except Exception:
-                    logger.exception(
-                        COS_INFLECTION_CHECK_FAILED,
-                        sink=type(sink).__name__,
-                    )
+                tg.create_task(_emit(sink))

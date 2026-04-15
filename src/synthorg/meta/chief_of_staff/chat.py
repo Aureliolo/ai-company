@@ -7,11 +7,6 @@ LLM calls (retry + rate limiting handled by the provider).
 
 from typing import TYPE_CHECKING
 
-from synthorg.meta.chief_of_staff.events import (
-    COS_CHAT_FAILED,
-    COS_CHAT_QUERY,
-    COS_CHAT_RESPONSE,
-)
 from synthorg.meta.chief_of_staff.models import (
     Alert,
     ChatQuery,
@@ -23,6 +18,11 @@ from synthorg.meta.chief_of_staff.prompts import (
     PROPOSAL_EXPLANATION_PROMPT,
 )
 from synthorg.observability import get_logger
+from synthorg.observability.events.chief_of_staff import (
+    COS_CHAT_FAILED,
+    COS_CHAT_QUERY,
+    COS_CHAT_RESPONSE,
+)
 from synthorg.providers.enums import MessageRole
 from synthorg.providers.models import ChatMessage, CompletionConfig
 
@@ -186,7 +186,13 @@ class ChiefOfStaffChat:
         except Exception:
             logger.exception(COS_CHAT_FAILED)
             raise
-        answer = response.content or "Unable to generate explanation."
+        answer = response.content
+        if not answer:
+            logger.warning(
+                COS_CHAT_FAILED,
+                reason="provider_returned_empty_content",
+            )
+            answer = "Unable to generate explanation."
         result = ChatResponse(
             answer=answer,
             sources=tuple(sources),

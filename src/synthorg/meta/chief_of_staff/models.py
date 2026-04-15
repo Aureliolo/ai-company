@@ -6,7 +6,7 @@ that flow through the CoS learning and monitoring pipelines.
 """
 
 from copy import deepcopy
-from typing import Any, Literal
+from typing import Any, Literal, Self
 from uuid import UUID, uuid4
 
 from pydantic import (
@@ -15,6 +15,7 @@ from pydantic import (
     ConfigDict,
     Field,
     computed_field,
+    model_validator,
 )
 
 from synthorg.core.types import NotBlankStr  # noqa: TC001
@@ -77,6 +78,18 @@ class OutcomeStats(BaseModel):
     approved_count: int = Field(ge=0)
     rejected_count: int = Field(ge=0)
     last_updated: AwareDatetime
+
+    @model_validator(mode="after")
+    def _validate_counts_sum(self) -> Self:
+        """Ensure approved + rejected equals total."""
+        if self.approved_count + self.rejected_count != self.total_proposals:
+            msg = (
+                f"approved_count ({self.approved_count}) + "
+                f"rejected_count ({self.rejected_count}) != "
+                f"total_proposals ({self.total_proposals})"
+            )
+            raise ValueError(msg)
+        return self
 
     @computed_field  # type: ignore[prop-decorator]
     @property

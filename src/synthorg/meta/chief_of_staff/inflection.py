@@ -8,10 +8,10 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 from synthorg.core.types import NotBlankStr
-from synthorg.meta.chief_of_staff.events import COS_INFLECTION_DETECTED
 from synthorg.meta.chief_of_staff.models import OrgInflection
 from synthorg.meta.models import OrgSignalSnapshot, RuleSeverity
 from synthorg.observability import get_logger
+from synthorg.observability.events.chief_of_staff import COS_INFLECTION_DETECTED
 
 if TYPE_CHECKING:
     from collections.abc import Callable

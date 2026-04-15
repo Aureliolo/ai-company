@@ -91,9 +91,18 @@ src/synthorg/meta/
     domains/           -- 15 domain tool definition modules (~204 tools)
     handlers/          -- 15 domain handler modules + common factory
 
-  chief_of_staff/      -- Interactive agent role
+  chief_of_staff/      -- Interactive agent role + advanced capabilities
     role.py            -- CustomRole definition
-    prompts.py         -- Analysis prompt templates
+    prompts.py         -- Analysis + explanation prompt templates
+    config.py          -- ChiefOfStaffConfig (learning, alerts, chat)
+    models.py          -- ProposalOutcome, OutcomeStats, OrgInflection, Alert, ChatQuery/Response
+    protocol.py        -- OutcomeStore, ConfidenceAdjuster, OrgInflectionSink, AlertSink
+    outcome_store.py   -- MemoryBackendOutcomeStore (episodic memory persistence)
+    learning.py        -- EMA + Bayesian confidence adjusters
+    inflection.py      -- OrgInflectionDetector (snapshot comparison)
+    monitor.py         -- OrgInflectionMonitor (async background loop)
+    alerts.py          -- ProactiveAlertService + LoggingAlertSink
+    chat.py            -- ChiefOfStaffChat (LLM-powered explanations)
 ```
 
 ## Design Decisions
@@ -199,5 +208,5 @@ self_improvement:
 1. ~~Full API-as-MCP server~~ -- completed via #1353 (issue #1339; 204 tools, 15 domains, capability-based scoping)
 2. Product-level improvement (framework code modification proposals)
 3. Cross-deployment analytics (anonymized multi-org patterns)
-4. Chief of Staff advanced capabilities (memory-based learning, proactive alerts)
+4. ~~Chief of Staff advanced capabilities~~ -- completed via #1342 (outcome learning, proactive alerts, NL chat)
 5. Custom rule authoring UI (visual rule builder)

@@ -10,11 +10,11 @@ with historical approval rates from the outcome store:
 from typing import TYPE_CHECKING
 
 from synthorg.core.types import NotBlankStr
-from synthorg.meta.chief_of_staff.events import (
+from synthorg.observability import get_logger
+from synthorg.observability.events.chief_of_staff import (
     COS_CONFIDENCE_ADJUSTED,
     COS_CONFIDENCE_NO_HISTORY,
 )
-from synthorg.observability import get_logger
 
 if TYPE_CHECKING:
     from synthorg.meta.chief_of_staff.protocol import OutcomeStore
