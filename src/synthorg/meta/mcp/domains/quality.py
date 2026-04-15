@@ -89,7 +89,11 @@ QUALITY_TOOLS: tuple[MCPToolDef, ...] = (
         "get",
         "Get a specific evaluation config version.",
         {
-            "version_num": {"type": "integer", "description": "Version number"},
+            "version_num": {
+                "type": "integer",
+                "description": "Version number",
+                "minimum": 1,
+            },
         },
         required=("version_num",),
     ),

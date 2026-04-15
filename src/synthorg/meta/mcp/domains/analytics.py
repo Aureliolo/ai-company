@@ -51,8 +51,16 @@ ANALYTICS_TOOLS: tuple[MCPToolDef, ...] = (
         "Get historical metrics.",
         {
             "metric_name": {"type": "string", "description": "Metric name"},
-            "since": {"type": "string", "description": "Start datetime (ISO 8601)"},
-            "until": {"type": "string", "description": "End datetime (ISO 8601)"},
+            "since": {
+                "type": "string",
+                "description": "Start datetime (ISO 8601)",
+                "format": "date-time",
+            },
+            "until": {
+                "type": "string",
+                "description": "End datetime (ISO 8601)",
+                "format": "date-time",
+            },
         },
     ),
     # --- Reports ---

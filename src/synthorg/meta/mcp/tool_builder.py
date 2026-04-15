@@ -9,6 +9,7 @@ from typing import Any
 
 from synthorg.meta.mcp.registry import MCPToolDef
 from synthorg.observability import get_logger
+from synthorg.observability.events.mcp import MCP_TOOL_BUILDER_INVALID_REQUIRED
 
 logger = get_logger(__name__)
 
@@ -53,7 +54,7 @@ def _make_parameters(
                 f"in properties {sorted(resolved)}"
             )
             logger.warning(
-                "mcp.tool_builder.invalid_required",
+                MCP_TOOL_BUILDER_INVALID_REQUIRED,
                 unknown_keys=sorted(unknown),
                 properties=sorted(resolved),
             )

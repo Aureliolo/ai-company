@@ -44,7 +44,7 @@ WORKFLOW_TOOLS: tuple[MCPToolDef, ...] = (
             "workflow_id": {"type": "string", "description": "Workflow UUID"},
             "updates": {"type": "object", "description": "Fields to update"},
         },
-        required=("workflow_id",),
+        required=("workflow_id", "updates"),
     ),
     write_tool(
         "workflows",

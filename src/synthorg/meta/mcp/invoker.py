@@ -146,7 +146,12 @@ class MCPToolInvoker:
                 exc_info=exc,
             )
             return ToolExecutionResult(
-                content=json.dumps({"error": error_type, "detail": str(exc)}),
+                content=json.dumps(
+                    {
+                        "error": error_type,
+                        "tool": tool_name,
+                    }
+                ),
                 is_error=True,
             )
 

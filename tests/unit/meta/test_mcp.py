@@ -13,8 +13,10 @@ pytestmark = pytest.mark.unit
 
 
 @pytest.fixture(autouse=True)
-def _reset_server_singletons() -> None:
-    """Reset server singletons between tests."""
+def _reset_server_singletons():
+    """Reset server singletons before and after each test."""
+    reset_singletons()
+    yield
     reset_singletons()
 
 

@@ -68,6 +68,11 @@ def build_handler_map() -> Mapping[str, ToolHandler]:
                     f"Duplicate handler key {key!r} -- check domain "
                     f"handler modules for conflicting registrations"
                 )
+                logger.error(
+                    MCP_HANDLERS_BUILT,
+                    error=msg,
+                    duplicate_key=key,
+                )
                 raise ValueError(msg)
             handlers[key] = handler
     logger.debug(

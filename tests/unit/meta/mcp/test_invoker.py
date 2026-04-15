@@ -59,7 +59,8 @@ class TestMCPToolInvoker:
         assert result.is_error is True
         body = json.loads(result.content)
         assert body["error"] == "ValueError"
-        assert "something broke" in body["detail"]
+        assert body["tool"] == "synthorg_test_get"
+        assert "detail" not in body  # raw exc text not exposed
 
     async def test_invoke_passes_arguments(self) -> None:
         tool = make_tool()
