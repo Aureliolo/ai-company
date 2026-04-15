@@ -11,6 +11,7 @@ from pydantic import AwareDatetime
 
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.training.models import TrainingPlan, TrainingPlanStatus, TrainingResult
+from synthorg.meta.rules.custom import CustomRuleDefinition
 from synthorg.persistence.errors import DuplicateRecordError
 from synthorg.persistence.integration_stubs import (
     StubConnectionRepository,
@@ -305,18 +306,23 @@ class FakeCustomRuleRepository:
     """In-memory fake for ``CustomRuleRepository``."""
 
     def __init__(self) -> None:
-        self._rules: dict[str, object] = {}
+        self._rules: dict[str, CustomRuleDefinition] = {}
 
-    async def save(self, rule: object) -> None:
-        rule_id = str(getattr(rule, "id", ""))
-        self._rules[rule_id] = rule
+    async def save(self, rule: CustomRuleDefinition) -> None:
+        self._rules[str(rule.id)] = rule
 
-    async def get(self, rule_id: str) -> object | None:
-        return self._rules.get(rule_id)
+    async def get(
+        self,
+        rule_id: NotBlankStr,
+    ) -> CustomRuleDefinition | None:
+        return self._rules.get(str(rule_id))
 
-    async def get_by_name(self, name: str) -> object | None:
+    async def get_by_name(
+        self,
+        name: NotBlankStr,
+    ) -> CustomRuleDefinition | None:
         for r in self._rules.values():
-            if getattr(r, "name", None) == name:
+            if r.name == name:
                 return r
         return None
 
@@ -324,17 +330,16 @@ class FakeCustomRuleRepository:
         self,
         *,
         enabled_only: bool = False,
-    ) -> tuple[object, ...]:
+    ) -> tuple[CustomRuleDefinition, ...]:
         rules = list(self._rules.values())
         if enabled_only:
-            rules = [r for r in rules if getattr(r, "enabled", True)]
-        return tuple(
-            sorted(rules, key=lambda r: getattr(r, "name", "")),
-        )
+            rules = [r for r in rules if r.enabled]
+        return tuple(sorted(rules, key=lambda r: r.name))
 
-    async def delete(self, rule_id: str) -> bool:
-        if rule_id in self._rules:
-            del self._rules[rule_id]
+    async def delete(self, rule_id: NotBlankStr) -> bool:
+        key = str(rule_id)
+        if key in self._rules:
+            del self._rules[key]
             return True
         return False
 

@@ -638,6 +638,10 @@ class _FakeBackend:
     def training_results(self) -> Any:
         return _FakeTrainingResultRepository()
 
+    @property
+    def custom_rules(self) -> Any:
+        return None
+
     async def get_setting(self, key: str) -> str | None:
         return None
 
