@@ -80,12 +80,6 @@ class ABTestRollout:
     ) -> RolloutResult:
         """Execute A/B test rollout.
 
-        1. Assign agents to control/treatment deterministically.
-        2. Check minimum group sizes.
-        3. Apply proposal to treatment group.
-        4. Compare group metrics via comparator.
-        5. Map verdict to RolloutOutcome.
-
         Args:
             proposal: The approved proposal.
             applier: Applier for the proposal's altitude.
@@ -102,24 +96,12 @@ class ABTestRollout:
             control_fraction=self._control_fraction,
         )
 
-        # Assign groups (placeholder agent list; real impl gets from org).
-        agent_ids = tuple(f"agent-{i}" for i in range(10))
-        assignment = self.assign_groups(
-            agent_ids,
-            proposal.id,
+        assignment = _assign_and_validate(
+            proposal,
             self._control_fraction,
+            self._min_agents_per_group,
         )
-        logger.info(
-            META_ABTEST_GROUPS_ASSIGNED,
-            control_count=len(assignment.control_agent_ids),
-            treatment_count=len(assignment.treatment_agent_ids),
-        )
-
-        # Check minimum group sizes.
-        if (
-            len(assignment.control_agent_ids) < self._min_agents_per_group
-            or len(assignment.treatment_agent_ids) < self._min_agents_per_group
-        ):
+        if assignment is None:
             return RolloutResult(
                 proposal_id=proposal.id,
                 outcome=RolloutOutcome.INCONCLUSIVE,
@@ -127,30 +109,25 @@ class ABTestRollout:
                 details="insufficient agents for A/B test groups",
             )
 
-        # Apply proposal to treatment group.
-        apply_result = await applier.apply(proposal)
-        if not apply_result.success:
-            logger.warning(
-                META_ROLLOUT_FAILED,
-                strategy="ab_test",
-                proposal_id=str(proposal.id),
-                error=apply_result.error_message,
-            )
-            return RolloutResult(
-                proposal_id=proposal.id,
-                outcome=RolloutOutcome.FAILED,
-                observation_hours_elapsed=0.0,
-                details=apply_result.error_message,
-            )
+        result = await _apply_to_treatment(proposal, applier)
+        if result is not None:
+            return result
 
+        return await self._compare_and_conclude(proposal, assignment)
+
+    async def _compare_and_conclude(
+        self,
+        proposal: ImprovementProposal,
+        assignment: GroupAssignment,
+    ) -> RolloutResult:
+        """Collect metrics and compare groups."""
         logger.info(
             META_ABTEST_OBSERVATION_STARTED,
             proposal_id=str(proposal.id),
             observation_hours=proposal.observation_window_hours,
         )
 
-        # Placeholder: collect group metrics and compare.
-        # Real impl would observe over observation_window_hours.
+        # Placeholder: real impl observes over observation_window_hours.
         comparison = await self._comparator.compare(
             control=_stub_group_metrics(
                 ABTestGroup.CONTROL,
@@ -163,7 +140,6 @@ class ABTestRollout:
             thresholds=RegressionThresholds(),
         )
 
-        # Map A/B verdict to RolloutOutcome.
         outcome, verdict = _map_verdict(comparison.verdict)
         logger.info(
             META_ROLLOUT_COMPLETED,
@@ -222,6 +198,58 @@ class ABTestRollout:
         )
 
 
+def _assign_and_validate(
+    proposal: ImprovementProposal,
+    control_fraction: float,
+    min_agents: int,
+) -> GroupAssignment | None:
+    """Assign groups and validate minimum sizes.
+
+    Returns None if either group is too small.
+    """
+    # Placeholder agent list; real impl gets from org.
+    agent_ids = tuple(f"agent-{i}" for i in range(10))
+    assignment = ABTestRollout.assign_groups(
+        agent_ids,
+        proposal.id,
+        control_fraction,
+    )
+    logger.info(
+        META_ABTEST_GROUPS_ASSIGNED,
+        control_count=len(assignment.control_agent_ids),
+        treatment_count=len(assignment.treatment_agent_ids),
+    )
+
+    if (
+        len(assignment.control_agent_ids) < min_agents
+        or len(assignment.treatment_agent_ids) < min_agents
+    ):
+        return None
+    return assignment
+
+
+async def _apply_to_treatment(
+    proposal: ImprovementProposal,
+    applier: ProposalApplier,
+) -> RolloutResult | None:
+    """Apply proposal to treatment group. Returns result on failure."""
+    apply_result = await applier.apply(proposal)
+    if not apply_result.success:
+        logger.warning(
+            META_ROLLOUT_FAILED,
+            strategy="ab_test",
+            proposal_id=str(proposal.id),
+            error=apply_result.error_message,
+        )
+        return RolloutResult(
+            proposal_id=proposal.id,
+            outcome=RolloutOutcome.FAILED,
+            observation_hours_elapsed=0.0,
+            details=apply_result.error_message,
+        )
+    return None
+
+
 def _stub_group_metrics(
     group: ABTestGroup,
     agent_count: int,
@@ -247,12 +275,10 @@ def _map_verdict(
     """Map ABTestVerdict to RolloutOutcome + RegressionVerdict."""
     if verdict == ABTestVerdict.TREATMENT_WINS:
         return RolloutOutcome.SUCCESS, RegressionVerdict.NO_REGRESSION
-    if verdict == ABTestVerdict.TREATMENT_REGRESSED:
-        return (
-            RolloutOutcome.REGRESSED,
-            RegressionVerdict.STATISTICAL_REGRESSION,
-        )
-    if verdict == ABTestVerdict.CONTROL_WINS:
+    if verdict in (
+        ABTestVerdict.TREATMENT_REGRESSED,
+        ABTestVerdict.CONTROL_WINS,
+    ):
         return (
             RolloutOutcome.REGRESSED,
             RegressionVerdict.STATISTICAL_REGRESSION,

@@ -402,6 +402,50 @@ class TestAssignGroups:
 class TestABTestComparator:
     """Group metric comparison logic."""
 
+    async def test_zero_observations_both_groups(self) -> None:
+        comparator = ABTestComparator(min_observations=10)
+        result = await comparator.compare(
+            control=_group_metrics(
+                ABTestGroup.CONTROL,
+                observations=0,
+            ),
+            treatment=_group_metrics(
+                ABTestGroup.TREATMENT,
+                observations=0,
+            ),
+            thresholds=_thresholds(),
+        )
+        assert result.verdict == ABTestVerdict.INCONCLUSIVE
+
+    async def test_multiple_regressions(self) -> None:
+        comparator = ABTestComparator(min_observations=5)
+        result = await comparator.compare(
+            control=_group_metrics(
+                ABTestGroup.CONTROL,
+                quality=8.0,
+                success=0.90,
+                spend=100.0,
+                observations=20,
+            ),
+            treatment=_group_metrics(
+                ABTestGroup.TREATMENT,
+                quality=5.0,
+                success=0.65,
+                spend=150.0,
+                observations=20,
+            ),
+            thresholds=RegressionThresholds(
+                quality_drop=0.10,
+                success_rate_drop=0.10,
+                cost_increase=0.20,
+            ),
+        )
+        assert result.verdict == ABTestVerdict.TREATMENT_REGRESSED
+        assert len(result.regressed_metrics) == 3
+        assert "quality" in result.regressed_metrics
+        assert "success_rate" in result.regressed_metrics
+        assert "cost" in result.regressed_metrics
+
     async def test_insufficient_observations(self) -> None:
         comparator = ABTestComparator(min_observations=10)
         result = await comparator.compare(
@@ -597,3 +641,54 @@ class TestABTestRollout:
     async def test_configurable_fraction(self) -> None:
         rollout = ABTestRollout(control_fraction=0.3)
         assert rollout._control_fraction == 0.3
+
+
+# -- GroupAssignment disjoint validator ------------------------------------
+
+
+class TestGroupAssignmentDisjoint:
+    """Disjoint partition validation."""
+
+    def test_overlapping_groups_rejected(self) -> None:
+        with pytest.raises(ValueError, match="disjoint"):
+            GroupAssignment(
+                proposal_id=uuid4(),
+                control_agent_ids=("agent-1", "agent-2"),
+                treatment_agent_ids=("agent-2", "agent-3"),
+                control_fraction=0.5,
+            )
+
+    def test_disjoint_groups_accepted(self) -> None:
+        assignment = GroupAssignment(
+            proposal_id=uuid4(),
+            control_agent_ids=("agent-1", "agent-2"),
+            treatment_agent_ids=("agent-3", "agent-4"),
+            control_fraction=0.5,
+        )
+        assert len(assignment.control_agent_ids) == 2
+
+
+# -- ABTestComparison statistic bounds ------------------------------------
+
+
+class TestABTestComparisonBounds:
+    """Statistical field bounds validation."""
+
+    def test_p_value_out_of_range_rejected(self) -> None:
+        with pytest.raises(ValueError, match="p_value"):
+            ABTestComparison(
+                verdict=ABTestVerdict.TREATMENT_WINS,
+                control_metrics=_group_metrics(ABTestGroup.CONTROL),
+                treatment_metrics=_group_metrics(ABTestGroup.TREATMENT),
+                effect_size=0.5,
+                p_value=1.5,
+            )
+
+    def test_negative_effect_size_rejected(self) -> None:
+        with pytest.raises(ValueError, match="effect_size"):
+            ABTestComparison(
+                verdict=ABTestVerdict.INCONCLUSIVE,
+                control_metrics=_group_metrics(ABTestGroup.CONTROL),
+                treatment_metrics=_group_metrics(ABTestGroup.TREATMENT),
+                effect_size=-0.1,
+            )

@@ -51,6 +51,17 @@ class GroupAssignment(BaseModel):
         default_factory=lambda: datetime.now(UTC),
     )
 
+    @model_validator(mode="after")
+    def _validate_disjoint_groups(self) -> Self:
+        """Control and treatment groups must not overlap."""
+        overlap = set(self.control_agent_ids) & set(
+            self.treatment_agent_ids,
+        )
+        if overlap:
+            msg = "control and treatment groups must be disjoint"
+            raise ValueError(msg)
+        return self
+
 
 class GroupMetrics(BaseModel):
     """Aggregated metrics for a single A/B test group.
@@ -121,5 +132,16 @@ class ABTestComparison(BaseModel):
             self.effect_size is None or self.p_value is None
         ):
             msg = "treatment wins must include effect_size and p_value"
+            raise ValueError(msg)
+        return self
+
+    @model_validator(mode="after")
+    def _validate_statistic_bounds(self) -> Self:
+        """Statistical fields must be in valid ranges."""
+        if self.p_value is not None and not 0.0 <= self.p_value <= 1.0:
+            msg = "p_value must be in [0.0, 1.0]"
+            raise ValueError(msg)
+        if self.effect_size is not None and self.effect_size < 0.0:
+            msg = "effect_size must be non-negative"
             raise ValueError(msg)
         return self

@@ -67,6 +67,9 @@ src/synthorg/meta/
   rollout/             -- Staged deployment
     before_after.py    -- Whole-org with observation window
     canary.py          -- Canary subset with expansion
+    ab_test.py         -- A/B test group assignment and observation
+    ab_comparator.py   -- Control vs treatment comparison logic
+    ab_models.py       -- GroupAssignment, ABTestVerdict, metrics models
     rollback.py        -- Rollback plan executor
     regression/        -- Tiered detection
       threshold.py     -- Layer 1: instant circuit-breaker
@@ -96,7 +99,7 @@ src/synthorg/meta/
 | Proposal generation | Rule-first hybrid | Rules detect (cheap, auditable); LLM synthesizes (creative, scoped) |
 | Altitudes | Config + Architecture + Prompt | All pluggable, config enabled by default, others opt-in |
 | Scope | Deployment-level only | Product-level improvement is a separate future issue |
-| Rollout | Before/after default, canary opt-in | Per-proposal choice; configurable observation window |
+| Rollout | Before/after default, canary + A/B test opt-in | Per-proposal choice; A/B uses group assignment + statistical comparison |
 | Regression | Tiered: threshold + statistical | Layer 1 for catastrophic, Layer 2 for subtle degradation |
 | Signals consumed | All 7 domains | Performance, budget, coordination, scaling, errors, evolution, telemetry |
 | Evolution boundary | Org-wide default; override + advisory alternatives | Clear separation from per-agent #243 |
@@ -157,6 +160,10 @@ self_improvement:
     default_strategy: before_after
     observation_window_hours: 48
     regression_check_interval_hours: 4
+    ab_test:
+      control_fraction: 0.5
+      min_agents_per_group: 5
+      min_observations_per_group: 10
   regression:
     quality_drop_threshold: 0.10
     cost_increase_threshold: 0.20
@@ -187,4 +194,3 @@ self_improvement:
 3. Cross-deployment analytics (anonymized multi-org patterns)
 4. Chief of Staff advanced capabilities (memory-based learning, proactive alerts)
 5. Custom rule authoring UI (visual rule builder)
-6. A/B testing rollout strategy (parallel config evaluation)

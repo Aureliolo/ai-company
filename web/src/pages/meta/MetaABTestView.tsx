@@ -1,4 +1,7 @@
+import { motion } from 'motion/react'
+
 import { cn } from '@/lib/utils'
+import { tweenDefault } from '@/lib/motion'
 import { EmptyState } from '@/components/ui/empty-state'
 import { MetricCard } from '@/components/ui/metric-card'
 import { FlaskConical } from 'lucide-react'
@@ -103,9 +106,10 @@ function ABTestCard({ test }: { test: ABTestSummary }) {
       </div>
 
       <div className="mb-4 h-1.5 w-full rounded-full bg-muted">
-        <div
-          className="h-full rounded-full bg-accent transition-all"
-          style={{ width: `${progress}%` }}
+        <motion.div
+          className="h-full rounded-full bg-accent"
+          animate={{ width: `${progress}%` }}
+          transition={tweenDefault}
         />
       </div>
 
