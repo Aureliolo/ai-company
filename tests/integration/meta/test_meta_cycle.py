@@ -118,8 +118,16 @@ class TestMetaCycleIntegration:
             if p.source_rule == "quality_declining"
             and p.altitude == ProposalAltitude.CONFIG_TUNING
         )
+        # TODO: Route through real ApprovalStore once wired.
+        # For now, simulate approval via model_copy since
+        # the approval gate is a placeholder.
         approved = proposal.model_copy(
-            update={"status": ProposalStatus.APPROVED},
+            update={
+                "status": ProposalStatus.APPROVED,
+                "decided_at": proposal.proposed_at,
+                "decided_by": "test-approver",
+                "decision_reason": "Integration test approval",
+            },
         )
         result = await svc.execute_rollout(approved)
         assert result.outcome == RolloutOutcome.SUCCESS

@@ -114,7 +114,12 @@ class TestSelfImprovementService:
         proposals = await svc.run_cycle(_snap(quality=4.0))
         assert len(proposals) >= 1
         approved = proposals[0].model_copy(
-            update={"status": ProposalStatus.APPROVED},
+            update={
+                "status": ProposalStatus.APPROVED,
+                "decided_at": proposals[0].proposed_at,
+                "decided_by": "test-approver",
+                "decision_reason": "Unit test approval",
+            },
         )
         rollout_result = await svc.execute_rollout(approved)
         assert rollout_result.outcome == RolloutOutcome.SUCCESS
