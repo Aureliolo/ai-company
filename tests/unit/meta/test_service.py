@@ -81,7 +81,7 @@ class TestSelfImprovementService:
         assert len(result) == 1
         assert all(p.altitude == ProposalAltitude.CONFIG_TUNING for p in result)
 
-    async def test_budget_overrun_produces_critical(self) -> None:
+    async def test_budget_overrun_produces_proposal(self) -> None:
         svc = self._svc()
         result = await svc.run_cycle(_snap(days_left=7))
         assert len(result) == 1
