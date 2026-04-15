@@ -285,3 +285,18 @@ class SelfImprovementConfig(BaseModel):
     )
     analysis_temperature: float = Field(default=0.3, ge=0.0, le=2.0)
     analysis_max_tokens: int = Field(default=4000, ge=100)
+
+    @model_validator(mode="after")
+    def _validate_code_modification_requirements(self) -> Self:
+        """Require GitHub settings when code modification is enabled."""
+        if not self.code_modification_enabled:
+            return self
+        missing: list[str] = []
+        if self.code_modification.github_token is None:
+            missing.append("code_modification.github_token")
+        if self.code_modification.github_repo is None:
+            missing.append("code_modification.github_repo")
+        if missing:
+            msg = "code_modification_enabled requires: " + ", ".join(missing)
+            raise ValueError(msg)
+        return self

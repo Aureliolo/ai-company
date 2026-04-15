@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from synthorg.meta.config import SelfImprovementConfig
+from synthorg.meta.config import CodeModificationConfig, SelfImprovementConfig
 from synthorg.meta.models import (
     OrgBudgetSummary,
     OrgCoordinationSummary,
@@ -29,6 +29,10 @@ pytestmark = pytest.mark.unit
 _DEFAULT_CONFIG = SelfImprovementConfig(
     enabled=True,
     code_modification_enabled=True,
+    code_modification=CodeModificationConfig(
+        github_token="test-token",
+        github_repo="test/repo",
+    ),
 )
 
 
@@ -296,13 +300,13 @@ class TestCodeModificationStrategy:
         assert plan.operations[0].target.startswith("meta/code-mod/")
 
     async def test_max_files_per_proposal_enforced(self) -> None:
-        from synthorg.meta.config import CodeModificationConfig
-
         cfg = SelfImprovementConfig(
             enabled=True,
             code_modification_enabled=True,
             code_modification=CodeModificationConfig(
                 max_files_per_proposal=1,
+                github_token="test-token",
+                github_repo="test/repo",
             ),
         )
         response = json.dumps(

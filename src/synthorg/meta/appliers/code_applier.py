@@ -94,6 +94,7 @@ class CodeApplier:
             self._revert_local_changes(
                 proposal.code_changes,
                 project_root,
+                defensive=True,
             )
             try:
                 await self._github.delete_branch(branch)
@@ -134,7 +135,7 @@ class CodeApplier:
             Result indicating success or failure.
         """
         # -- Local CI gate ------------------------------------------------
-        changed_files = self._write_changes(
+        changed_files, applied = self._write_changes(
             proposal.code_changes,
             project_root,
         )
@@ -145,11 +146,8 @@ class CodeApplier:
                 project_root,
             )
         finally:
-            # Always revert local edits regardless of CI outcome.
-            self._revert_local_changes(
-                proposal.code_changes,
-                project_root,
-            )
+            # Revert only the changes that were actually written.
+            self._revert_local_changes(applied, project_root)
         if not ci_result.passed:
             return ApplyResult(
                 success=False,
@@ -283,7 +281,7 @@ class CodeApplier:
     def _write_changes(
         changes: tuple[CodeChange, ...],
         project_root: Path,
-    ) -> list[str]:
+    ) -> tuple[list[str], tuple[CodeChange, ...]]:
         """Write code changes to disk for local CI validation.
 
         Args:
@@ -291,33 +289,39 @@ class CodeApplier:
             project_root: Absolute path to project root.
 
         Returns:
-            List of relative file paths that were changed.
+            Tuple of (relative file paths, applied CodeChange objects).
+            On partial failure the applied tuple contains only the
+            changes that were successfully written before the error.
 
         Raises:
             RuntimeError: If a file write or delete fails.
         """
         changed: list[str] = []
+        applied: list[CodeChange] = []
         for change in changes:
             file_path = project_root / change.file_path
             try:
                 _apply_single_change(change, file_path)
             except MemoryError, RecursionError:
                 raise
-            except OSError as exc:
+            except (OSError, RuntimeError) as exc:
                 msg = f"{change.operation.value} failed for '{change.file_path}': {exc}"
                 raise RuntimeError(msg) from exc
+            applied.append(change)
             changed.append(change.file_path)
             logger.debug(
                 META_CODE_FILE_WRITTEN,
                 operation=change.operation.value,
                 file_path=change.file_path,
             )
-        return changed
+        return changed, tuple(applied)
 
     @staticmethod
     def _revert_local_changes(
         changes: tuple[CodeChange, ...],
         project_root: Path,
+        *,
+        defensive: bool = False,
     ) -> None:
         """Revert locally written file changes.
 
@@ -328,23 +332,14 @@ class CodeApplier:
         Args:
             changes: The code changes to revert.
             project_root: Absolute path to project root.
+            defensive: If True, skip reverts where the file state
+                doesn't match expectations (used in outer exception
+                handler where applied set is unknown).
         """
         for change in changes:
             path = project_root / change.file_path
             try:
-                if change.operation == CodeOperation.CREATE:
-                    path.unlink(missing_ok=True)
-                elif change.operation == CodeOperation.MODIFY:
-                    path.write_text(
-                        change.old_content,
-                        encoding="utf-8",
-                    )
-                elif change.operation == CodeOperation.DELETE:
-                    path.parent.mkdir(parents=True, exist_ok=True)
-                    path.write_text(
-                        change.old_content,
-                        encoding="utf-8",
-                    )
+                _revert_single_change(change, path, defensive=defensive)
             except OSError:
                 logger.warning(
                     META_APPLY_FAILED,
@@ -390,6 +385,34 @@ def _apply_single_change(change: CodeChange, file_path: Path) -> None:
             msg = f"DELETE target changed since proposal generation: {change.file_path}"
             raise RuntimeError(msg)
         file_path.unlink()
+
+
+def _revert_single_change(
+    change: CodeChange,
+    path: Path,
+    *,
+    defensive: bool,
+) -> None:
+    """Revert a single local file change.
+
+    Args:
+        change: The code change to undo.
+        path: Absolute file path.
+        defensive: Skip revert if file state is unexpected.
+    """
+    if change.operation == CodeOperation.CREATE:
+        if defensive and not path.exists():
+            return
+        path.unlink(missing_ok=True)
+    elif change.operation == CodeOperation.MODIFY:
+        if defensive and not path.exists():
+            return
+        path.write_text(change.old_content, encoding="utf-8")
+    elif change.operation == CodeOperation.DELETE:
+        if defensive and path.exists():
+            return
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(change.old_content, encoding="utf-8")
 
 
 def _build_pr_body(proposal: ImprovementProposal) -> str:

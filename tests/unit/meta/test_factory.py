@@ -1,6 +1,7 @@
 """Unit tests for meta-loop factory module."""
 
 import pytest
+from pydantic import ValidationError
 
 from synthorg.meta.chief_of_staff.learning import (
     BayesianConfidenceAdjuster,
@@ -96,9 +97,15 @@ class TestBuildStrategies:
         }
 
     def test_code_modification_without_provider_skipped(self) -> None:
+        from synthorg.meta.config import CodeModificationConfig
+
         cfg = SelfImprovementConfig(
             enabled=True,
             code_modification_enabled=True,
+            code_modification=CodeModificationConfig(
+                github_token="test-token",
+                github_repo="test/repo",
+            ),
         )
         strategies = build_strategies(cfg, provider=None)
         altitudes = {s.altitude for s in strategies}
@@ -107,9 +114,15 @@ class TestBuildStrategies:
     def test_code_modification_with_provider_included(self) -> None:
         from unittest.mock import AsyncMock
 
+        from synthorg.meta.config import CodeModificationConfig
+
         cfg = SelfImprovementConfig(
             enabled=True,
             code_modification_enabled=True,
+            code_modification=CodeModificationConfig(
+                github_token="test-token",
+                github_repo="test/repo",
+            ),
         )
         provider = AsyncMock()
         strategies = build_strategies(cfg, provider=provider)
@@ -166,15 +179,15 @@ class TestBuildAppliers:
         assert len(appliers) == 3
         assert ProposalAltitude.CODE_MODIFICATION not in appliers
 
-    def test_builds_3_appliers_with_code_mod_no_creds(self) -> None:
-        cfg = SelfImprovementConfig(
-            enabled=True,
-            code_modification_enabled=True,
-        )
-        appliers = build_appliers(cfg)
-        # No github_token/repo -> code applier skipped.
-        assert len(appliers) == 3
-        assert ProposalAltitude.CODE_MODIFICATION not in appliers
+    def test_code_mod_enabled_without_creds_rejects(self) -> None:
+        with pytest.raises(
+            ValidationError,
+            match="code_modification_enabled requires",
+        ):
+            SelfImprovementConfig(
+                enabled=True,
+                code_modification_enabled=True,
+            )
 
     def test_builds_4_appliers_with_code_mod_and_creds(self) -> None:
         from synthorg.meta.config import CodeModificationConfig

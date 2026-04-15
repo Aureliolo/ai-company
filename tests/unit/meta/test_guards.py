@@ -168,9 +168,15 @@ class TestScopeCheckGuard:
         assert "code_modification" in result.reason
 
     async def test_code_modification_enabled_passes(self) -> None:
+        from synthorg.meta.config import CodeModificationConfig
+
         cfg = SelfImprovementConfig(
             enabled=True,
             code_modification_enabled=True,
+            code_modification=CodeModificationConfig(
+                github_token="test-token",
+                github_repo="test/repo",
+            ),
         )
         guard = ScopeCheckGuard(config=cfg)
         result = await guard.evaluate(

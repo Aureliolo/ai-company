@@ -219,10 +219,7 @@ class HttpGitHubClient:
             "branch": branch,
         }
         if modify:
-            payload["sha"] = await self._get_file_sha(
-                self._base_branch,
-                path,
-            )
+            payload["sha"] = await self._get_file_sha(branch, path)
         resp = await self._client.put(
             f"/repos/{self._repo}/contents/{path}",
             json=payload,
@@ -236,7 +233,7 @@ class HttpGitHubClient:
         message: str,
     ) -> None:
         """Delete a file from a branch."""
-        sha = await self._get_file_sha(self._base_branch, path)
+        sha = await self._get_file_sha(branch, path)
         resp = await self._client.request(
             "DELETE",
             f"/repos/{self._repo}/contents/{path}",
@@ -263,4 +260,10 @@ def _check_response(resp: httpx.Response, action: str) -> None:
         return
     body = resp.text[:500] if resp.text else "(empty)"
     msg = f"GitHub API failed to {action}: {resp.status_code} {body}"
+    logger.error(
+        "meta.code.github_api_failed",
+        action=action,
+        status_code=resp.status_code,
+        response_body=body,
+    )
     raise RuntimeError(msg)

@@ -9,7 +9,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from synthorg.meta.config import SelfImprovementConfig
+from synthorg.meta.config import CodeModificationConfig, SelfImprovementConfig
 from synthorg.meta.models import (
     OrgBudgetSummary,
     OrgCoordinationSummary,
@@ -25,6 +25,11 @@ from synthorg.meta.models import (
 from synthorg.meta.service import SelfImprovementService
 
 pytestmark = pytest.mark.integration
+
+_CODE_MOD_CFG = CodeModificationConfig(
+    github_token="test-token",
+    github_repo="test/repo",
+)
 
 
 def _snap(
@@ -97,6 +102,7 @@ class TestCodeModificationCycleIntegration:
                 enabled=True,
                 config_tuning_enabled=True,
                 code_modification_enabled=True,
+                code_modification=_CODE_MOD_CFG,
             ),
             provider=provider,
         )
@@ -140,6 +146,7 @@ class TestCodeModificationCycleIntegration:
                 config_tuning_enabled=False,
                 prompt_tuning_enabled=False,
                 code_modification_enabled=True,
+                code_modification=_CODE_MOD_CFG,
             ),
             provider=provider,
         )
@@ -159,6 +166,7 @@ class TestCodeModificationCycleIntegration:
             config=SelfImprovementConfig(
                 enabled=True,
                 code_modification_enabled=True,
+                code_modification=_CODE_MOD_CFG,
             ),
             provider=provider,
         )
