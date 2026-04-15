@@ -75,6 +75,9 @@ class CodeApplier:
         Returns:
             Result indicating success or failure.
         """
+        error = _check_proposal_shape(proposal)
+        if error is not None:
+            return error
         project_root = Path.cwd()
         branch = f"{self._config.branch_prefix}/{str(proposal.id)[:8]}"
         try:
@@ -246,6 +249,9 @@ class CodeApplier:
         Returns:
             Result indicating whether apply would succeed.
         """
+        error = _check_proposal_shape(proposal)
+        if error is not None:
+            return error
         project_root = Path.cwd()
         errors: list[str] = []
 
@@ -302,6 +308,13 @@ class CodeApplier:
             except MemoryError, RecursionError:
                 raise
             except (OSError, RuntimeError) as exc:
+                logger.warning(
+                    META_APPLY_FAILED,
+                    reason="file_write_failed",
+                    operation=change.operation.value,
+                    file_path=change.file_path,
+                    error=str(exc),
+                )
                 msg = f"{change.operation.value} failed for '{change.file_path}': {exc}"
                 raise RuntimeError(msg) from exc
             applied.append(change)
@@ -385,6 +398,34 @@ def _apply_single_change(change: CodeChange, file_path: Path) -> None:
             msg = f"DELETE target changed since proposal generation: {change.file_path}"
             raise RuntimeError(msg)
         file_path.unlink()
+
+
+def _check_proposal_shape(
+    proposal: ImprovementProposal,
+) -> ApplyResult | None:
+    """Reject proposals with wrong altitude or no changes.
+
+    Args:
+        proposal: The proposal to validate.
+
+    Returns:
+        A failure ApplyResult if invalid, or None if OK.
+    """
+    if proposal.altitude != ProposalAltitude.CODE_MODIFICATION:
+        return ApplyResult(
+            success=False,
+            error_message=(
+                f"Expected CODE_MODIFICATION altitude, got {proposal.altitude.value}"
+            ),
+            changes_applied=0,
+        )
+    if not proposal.code_changes:
+        return ApplyResult(
+            success=False,
+            error_message="Proposal has no code changes",
+            changes_applied=0,
+        )
+    return None
 
 
 def _validate_change_preconditions(
