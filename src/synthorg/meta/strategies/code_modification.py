@@ -358,7 +358,7 @@ class CodeModificationStrategy:
 def _parse_json_array(
     response: str,
     rule_name: str,
-) -> list[dict[str, Any]] | None:
+) -> list[Any] | None:
     """Parse and validate the LLM response as a JSON array.
 
     Args:
@@ -389,13 +389,13 @@ def _parse_json_array(
 
 
 def _parse_items(
-    data: list[dict[str, Any]],
+    data: list[Any],
     rule_name: str,
 ) -> list[CodeChange]:
     """Parse individual items from the JSON array into CodeChange models.
 
     Args:
-        data: List of dicts from LLM response.
+        data: List of items from LLM response (expected dicts).
         rule_name: Rule name for logging context.
 
     Returns:
