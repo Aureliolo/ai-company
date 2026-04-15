@@ -1,6 +1,6 @@
 # Self-Improving Company
 
-The self-improvement meta-loop observes company-wide signals from 7 existing subsystems and produces deployment-level improvement proposals through a rule-first hybrid pipeline with mandatory human approval.
+The self-improvement meta-loop observes company-wide signals from 7 existing subsystems and produces deployment and product-level improvement proposals through a rule-first hybrid pipeline with mandatory human approval.
 
 ## Architecture Overview
 

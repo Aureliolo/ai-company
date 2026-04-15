@@ -891,7 +891,7 @@ class TestCIValidationResult:
             )
 
     def test_passed_with_failed_subcheck_rejected(self) -> None:
-        with pytest.raises(ValidationError, match="sub-check failed"):
+        with pytest.raises(ValidationError, match="conjunction of all sub-checks"):
             CIValidationResult(
                 passed=True,
                 lint_passed=True,

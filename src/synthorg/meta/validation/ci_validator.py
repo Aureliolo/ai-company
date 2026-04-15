@@ -234,6 +234,9 @@ class LocalCIValidator:
                 f"{step_name}: command not found: {cmd[0]}",
             )
             return False
+        except OSError as exc:
+            errors.append(f"{step_name}: subprocess error: {exc}")
+            return False
 
 
 def _check_returncode(

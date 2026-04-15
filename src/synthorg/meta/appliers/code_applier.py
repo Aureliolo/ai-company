@@ -354,19 +354,42 @@ class CodeApplier:
 
 
 def _apply_single_change(change: CodeChange, file_path: Path) -> None:
-    """Write a single code change to disk.
+    """Write a single code change to disk with precondition checks.
+
+    Validates filesystem state before mutating to avoid clobbering
+    files that changed since proposal generation.
 
     Args:
         change: The code change descriptor.
         file_path: Absolute path to write.
+
+    Raises:
+        RuntimeError: If preconditions are violated.
     """
     if change.operation == CodeOperation.CREATE:
+        if file_path.exists():
+            msg = f"CREATE target already exists: {change.file_path}"
+            raise RuntimeError(msg)
         file_path.parent.mkdir(parents=True, exist_ok=True)
         file_path.write_text(change.new_content, encoding="utf-8")
     elif change.operation == CodeOperation.MODIFY:
+        if not file_path.exists():
+            msg = f"MODIFY target does not exist: {change.file_path}"
+            raise RuntimeError(msg)
+        current = file_path.read_text(encoding="utf-8")
+        if current != change.old_content:
+            msg = f"MODIFY target changed since proposal generation: {change.file_path}"
+            raise RuntimeError(msg)
         file_path.write_text(change.new_content, encoding="utf-8")
     elif change.operation == CodeOperation.DELETE:
-        file_path.unlink(missing_ok=True)
+        if not file_path.exists():
+            msg = f"DELETE target does not exist: {change.file_path}"
+            raise RuntimeError(msg)
+        current = file_path.read_text(encoding="utf-8")
+        if current != change.old_content:
+            msg = f"DELETE target changed since proposal generation: {change.file_path}"
+            raise RuntimeError(msg)
+        file_path.unlink()
 
 
 def _build_pr_body(proposal: ImprovementProposal) -> str:

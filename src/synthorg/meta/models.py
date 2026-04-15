@@ -564,20 +564,17 @@ class CIValidationResult(BaseModel):
     duration_seconds: float = Field(ge=0.0)
 
     @model_validator(mode="after")
-    def _validate_failure_has_errors(self) -> Self:
-        """Failed validations must include at least one error."""
+    def _validate_passed_consistent(self) -> Self:
+        """Passed must exactly match the conjunction of sub-checks."""
+        all_ok = self.lint_passed and self.typecheck_passed and self.tests_passed
+        if self.passed != all_ok:
+            msg = "passed must equal the conjunction of all sub-checks"
+            raise ValueError(msg)
+        if self.passed and self.errors:
+            msg = "passed CI validations must not include errors"
+            raise ValueError(msg)
         if not self.passed and not self.errors:
             msg = "failed CI validations must include at least one error"
-            raise ValueError(msg)
-        return self
-
-    @model_validator(mode="after")
-    def _validate_passed_consistent(self) -> Self:
-        """Passed must be True only if all sub-checks passed."""
-        if self.passed and not (
-            self.lint_passed and self.typecheck_passed and self.tests_passed
-        ):
-            msg = "passed cannot be True when any sub-check failed"
             raise ValueError(msg)
         return self
 
