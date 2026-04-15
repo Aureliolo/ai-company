@@ -178,41 +178,20 @@ func (wc *wipeContext) confirmAndWipe() error {
 		wc.out.HintNextStep("Backup skipped. Data cannot be recovered after wipe.")
 	}
 
-	startAfter, err := wc.promptStartAfterWipe()
-	if err != nil {
-		return err
-	}
-
-	manualStart := wc.shouldPrompt() && startAfter && !wc.state.AutoStartAfterWipe
-	if startAfter {
-		if err := wc.startContainers(); err != nil {
-			wc.errOut.Warn(fmt.Sprintf("Could not restart containers: %v", err))
-			startAfter = false // fall through to manual-start hint
-			manualStart = false
-		}
+	// Remove the data directory (config, compose.yml, state.json).
+	// This returns the system to a clean state -- only the CLI binary
+	// remains. Users must run 'synthorg init' to set up again.
+	sp2 := wc.out.StartSpinner("Removing data directory...")
+	if err := os.RemoveAll(wc.safeDir); err != nil {
+		sp2.Warn(fmt.Sprintf("Could not remove data directory: %v", err))
+		wc.errOut.HintError(fmt.Sprintf("Manually delete %s to complete the wipe.", wc.safeDir))
+	} else {
+		sp2.Success("Data directory removed")
 	}
 
 	wc.out.Blank()
-	if startAfter {
-		wc.out.Success("Factory reset complete")
-	} else {
-		wc.out.Success("Factory reset complete (containers not restarted)")
-	}
-
-	if manualStart {
-		wc.out.HintTip("Run 'synthorg config set auto_start_after_wipe true' to auto-start after future wipes.")
-	}
-
-	if startAfter {
-		setupURL := fmt.Sprintf("http://localhost:%d/setup", wc.state.WebPort)
-		wc.out.HintNextStep(fmt.Sprintf("Opening %s", setupURL))
-		if err := openBrowser(wc.ctx, setupURL); err != nil {
-			wc.errOut.Warn(fmt.Sprintf("Could not open browser: %v", err))
-			wc.errOut.HintNextStep(fmt.Sprintf("Open %s manually in your browser.", setupURL))
-		}
-	} else {
-		wc.out.HintNextStep("Run 'synthorg start' when you're ready to set up again.")
-	}
+	wc.out.Success("Wipe complete -- back to clean state")
+	wc.out.HintNextStep("Run 'synthorg init' to set up again.")
 
 	return nil
 }
@@ -663,30 +642,6 @@ func (wc *wipeContext) askContinueWithoutBackup(title string) error {
 // promptStartAfterWipe asks whether to start containers after the wipe.
 // Ctrl-C is treated as "No" because the wipe has already completed.
 // Respects auto_start_after_wipe config key.
-func (wc *wipeContext) promptStartAfterWipe() (bool, error) {
-	if !wc.shouldPrompt() {
-		return true, nil // --yes or non-interactive: default yes
-	}
-	if wc.state.AutoStartAfterWipe {
-		return true, nil // config auto-accept
-	}
-	startAfter := true
-	err := wc.runForm(huh.NewForm(huh.NewGroup(
-		huh.NewConfirm().
-			Title("Start containers now?").
-			Description("Opens the setup wizard for a fresh start.").
-			Affirmative("Yes").
-			Negative("No").
-			Value(&startAfter),
-	)))
-	if err != nil {
-		if isUserAbort(err) {
-			return false, nil // wipe already done, treat Ctrl-C as "No"
-		}
-		return false, fmt.Errorf("start-after-wipe prompt: %w", err)
-	}
-	return startAfter, nil
-}
 
 // isEmptyPS returns true if docker compose ps output indicates no containers.
 // Handles both JSON array format (Compose v2.21+) and NDJSON (older versions).

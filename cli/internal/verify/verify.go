@@ -69,8 +69,9 @@ type VerifyResult struct {
 
 // VerifyOptions configures the image verification behavior.
 type VerifyOptions struct {
-	Images []ImageRef
-	Output io.Writer // user-visible progress output
+	Images   []ImageRef
+	Output   io.Writer                       // user-visible progress output
+	OnResult func(index int, r VerifyResult) // called after each image completes
 }
 
 // NewImageRef creates an ImageRef for a SynthOrg service image.
@@ -149,12 +150,15 @@ func VerifyImages(ctx context.Context, opts VerifyOptions) ([]VerifyResult, erro
 	}
 
 	results := make([]VerifyResult, 0, len(opts.Images))
-	for _, img := range opts.Images {
+	for i, img := range opts.Images {
 		result, err := verifyOneImage(ctx, img, sev, certID, w)
 		if err != nil {
 			return nil, fmt.Errorf("verifying %s: %w", img, err)
 		}
 		results = append(results, result)
+		if opts.OnResult != nil {
+			opts.OnResult(i, result)
+		}
 	}
 	return results, nil
 }

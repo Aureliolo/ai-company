@@ -53,7 +53,8 @@
     },
     {
       "description": "Container dependencies (Docker images, Compose, apko)",
-      "matchManagers": ["dockerfile", "docker-compose"],
+      "matchManagers": ["dockerfile", "docker-compose", "custom.regex"],
+      "matchDepPatterns": ["dhi\\.io/.*", "busybox", "postgres", "nats"],
       "groupName": "Container dependencies",
       "groupSlug": "container",
       "commitMessagePrefix": "chore:",
@@ -142,6 +143,36 @@
       ],
       "datasourceTemplate": "github-releases",
       "versioningTemplate": "semver"
+    },
+    {
+      "customType": "regex",
+      "description": "DHI images in compose template (image: dhi.io/name:tag@sha256:...)",
+      "managerFilePatterns": ["/compose\\.yml\\.tmpl$/", "/docker/compose\\.yml$/"],
+      "matchStrings": [
+        "image:\\s+(?<depName>dhi\\.io/[^:]+):(?<currentValue>[^@]+)@(?<currentDigest>sha256:[a-f0-9]+)"
+      ],
+      "datasourceTemplate": "docker",
+      "versioningTemplate": "docker"
+    },
+    {
+      "customType": "regex",
+      "description": "Busybox sidecar in compose files",
+      "managerFilePatterns": ["/compose\\.yml\\.tmpl$/", "/docker/compose\\.yml$/"],
+      "matchStrings": [
+        "image:\\s+(?<depName>busybox):(?<currentValue>[^@]+)@(?<currentDigest>sha256:[a-f0-9]+)"
+      ],
+      "datasourceTemplate": "docker",
+      "versioningTemplate": "docker"
+    },
+    {
+      "customType": "regex",
+      "description": "DHI pinned index digests in Go verify code",
+      "managerFilePatterns": ["/cli/internal/verify/dhi\\.go$/"],
+      "matchStrings": [
+        "// renovate: datasource=docker depName=(?<depName>[^\\s]+)\\n\\s+\"[^:]+:(?<currentValue>[^\"]+)\":\\s+\"(?<currentDigest>sha256:[a-f0-9]+)\""
+      ],
+      "datasourceTemplate": "docker",
+      "versioningTemplate": "docker"
     }
   ]
 }

@@ -273,8 +273,8 @@ func TestPostgresLifecycle_InitGeneratesWritableState(t *testing.T) {
 	if !strings.Contains(composeYAML, "postgres:") {
 		t.Error("compose.yml should contain postgres service")
 	}
-	if !strings.Contains(composeYAML, "postgres:18-alpine") {
-		t.Error("compose.yml should pin postgres:18-alpine")
+	if !strings.Contains(composeYAML, "dhi.io/postgres:18-debian13") {
+		t.Error("compose.yml should use DHI postgres image")
 	}
 	if !strings.Contains(composeYAML, "synthorg-pgdata") {
 		t.Error("compose.yml should declare synthorg-pgdata volume")

@@ -21,13 +21,18 @@ import (
 )
 
 // Color palette for CLI styling.
+//
+// True-color hex values that share DNA with the web dashboard's "Warm Ops"
+// brand (soft blue #38bdf8, semantic state colors) while being optimized
+// for terminal rendering. Lipgloss downgrades automatically on 256-color
+// and 16-color terminals.
 var (
-	colorBrand   = lipgloss.Color("99")  // purple
-	colorSuccess = lipgloss.Color("42")  // green
-	colorWarn    = lipgloss.Color("214") // orange
-	colorError   = lipgloss.Color("196") // red
-	colorMuted   = lipgloss.Color("245") // gray
-	colorLabel   = lipgloss.Color("43")  // cyan
+	colorBrand   = lipgloss.Color("#818cf8") // indigo-400 (midpoint of logo gradient)
+	colorSuccess = lipgloss.Color("#34d399") // emerald-400
+	colorWarn    = lipgloss.Color("#fbbf24") // amber-400
+	colorError   = lipgloss.Color("#f87171") // red-400
+	colorMuted   = lipgloss.Color("#9ca3af") // gray-400
+	colorLabel   = lipgloss.Color("#38bdf8") // sky-400 (web dashboard accent)
 )
 
 // Unicode icons for styled output.
@@ -140,6 +145,14 @@ func NewUIWithOptions(w io.Writer, opts Options) *UI {
 // Writer returns the underlying writer for direct output.
 func (u *UI) Writer() io.Writer { return u.w }
 
+// BrandText returns text styled in brand color for embedding in messages.
+func (u *UI) BrandText(s string) string {
+	if u.plain {
+		return s
+	}
+	return u.brandBold.Render(s)
+}
+
 // IsTTY reports whether the underlying writer is a terminal.
 func (u *UI) IsTTY() bool { return u.isTTY }
 
@@ -157,18 +170,40 @@ func (u *UI) icon(unicode, plain string) string {
 	return unicode
 }
 
-// Logo renders the SynthOrg Unicode logo in brand color with a version tag.
+// Logo renders the SynthOrg gradient banner with a version tag.
+// The banner uses a 6-line block-letter wordmark with a blue-to-purple
+// gradient (one color per row). Plain mode falls back to the legacy
+// box-drawing banner in a single brand color.
 func (u *UI) Logo(version string) {
 	if u.quiet {
 		return
 	}
+	ver := stripControl(version)
 	if u.plain {
-		_, _ = fmt.Fprintf(u.w, "SynthOrg %s\n\n", stripControl(version))
+		_, _ = fmt.Fprintf(u.w, "SynthOrg %s\n\n", ver)
 		return
 	}
-	art := u.brandBold.Render(logo)
-	ver := u.muted.Render(stripControl(version))
-	_, _ = fmt.Fprintf(u.w, "%s  %s\n\n", art, ver)
+	for i, line := range LogoLines {
+		style := lipgloss.NewStyle().Foreground(lipgloss.Color(LogoGradientHex[i])).Bold(true)
+		_, _ = fmt.Fprintf(u.w, "  %s\n", style.Render(line))
+	}
+	_, _ = fmt.Fprintf(u.w, "  %s\n\n", u.muted.Render("v"+ver))
+}
+
+// LogoCompact renders a single-line brand wordmark for commands that
+// don't warrant the full banner (start, stop, status, etc.).
+func (u *UI) LogoCompact(version string) {
+	if u.quiet {
+		return
+	}
+	ver := stripControl(version)
+	if u.plain {
+		_, _ = fmt.Fprintf(u.w, "SynthOrg %s\n\n", ver)
+		return
+	}
+	_, _ = fmt.Fprintf(u.w, "  %s %s\n\n",
+		u.brandBold.Render(logoCompact),
+		u.muted.Render("v"+ver))
 }
 
 // printLine prints a styled icon followed by a styled message.

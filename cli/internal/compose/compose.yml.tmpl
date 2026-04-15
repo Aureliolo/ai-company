@@ -4,7 +4,8 @@
 services:
 {{- if postgresEnabled}}
   postgres:
-    image: postgres:18-alpine
+    # renovate: datasource=docker depName=dhi.io/postgres
+    image: dhi.io/postgres:18-debian13@sha256:e2f2beada5e76f69453d5533153909f875b48fb021f092df73e182b8325ff2d3
     ports:
       - "{{.PostgresPort}}:5432"
     volumes:
@@ -14,7 +15,6 @@ services:
       POSTGRES_USER: synthorg
       POSTGRES_PASSWORD: {{yamlStr .PostgresPassword}}
       PGDATA: /var/lib/postgresql/data/pgdata
-    user: "70:70"
     security_opt:
       - no-new-privileges:true
     cap_drop:
@@ -32,10 +32,10 @@ services:
           pids: 128
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U synthorg -d synthorg"]
-      interval: 10s
+      interval: 5s
       timeout: 3s
-      retries: 5
-      start_period: 10s
+      retries: 10
+      start_period: 30s
     logging:
       driver: json-file
       options:
@@ -154,18 +154,16 @@ services:
         max-file: "3"
 {{- if distributedEnabled}}
 
-  # NATS JetStream service (distributed runtime).
-  # Port layout: 3000 web / 3001 backend / 3002 reserved for DB / 3003 NATS client.
-  # Monitoring endpoint (8222) is intentionally not mapped; use
-  # `docker compose exec nats wget -qO- localhost:8222/varz` if needed.
+  # DHI NATS: distroless, runs as nonroot (65532). Healthcheck via sidecar
+  # because there is no shell or HTTP client inside the distroless image.
   nats:
-    image: nats:2.10-alpine
+    # renovate: datasource=docker depName=dhi.io/nats
+    image: dhi.io/nats:2.12-debian13@sha256:89f40ed3ce7f69ad0af95c264368d3de41d72de604c97e7f1f8bd57d3a2b617f
     command: ["-js", "-sd", "/data", "-m", "8222"]
     ports:
       - "{{.NatsClientPort}}:4222"
     volumes:
       - synthorg-nats-data:/data
-    user: "1000:1000"
     security_opt:
       - no-new-privileges:true
     cap_drop:
@@ -180,12 +178,28 @@ services:
           memory: 256M
           cpus: "0.5"
           pids: 64
+  nats-healthcheck:
+    # renovate: datasource=docker depName=busybox
+    image: busybox:1.37-musl@sha256:19b646668802469d968a05342a601e78da4322a414a7c09b1c9ee25165042138
+    network_mode: "service:nats"
+    depends_on:
+      - nats
     healthcheck:
-      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8222/healthz"]
+      test: ["CMD", "wget", "-qO-", "http://localhost:8222/healthz"]
       interval: 10s
       timeout: 3s
       retries: 3
       start_period: 5s
+    entrypoint: ["sleep", "infinity"]
+    read_only: true
+    cap_drop:
+      - ALL
+    deploy:
+      resources:
+        limits:
+          memory: 8M
+          cpus: "0.05"
+          pids: 4
     logging:
       driver: json-file
       options:

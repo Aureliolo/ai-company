@@ -559,7 +559,7 @@ func pullAndPersist(ctx context.Context, cmd *cobra.Command, info docker.Info, s
 		return state, err
 	}
 
-	if err := pullServicesLive(ctx, info, safeDir, state, out); err != nil {
+	if _, err := pullAllImages(ctx, info, safeDir, state, out); err != nil {
 		rollback()
 		return state, err
 	}

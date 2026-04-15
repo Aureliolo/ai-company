@@ -196,10 +196,10 @@ func TestBox(t *testing.T) {
 		t.Error("Box missing second line")
 	}
 	// Check box-drawing characters.
-	if !strings.Contains(out, "\u250c") { // top-left corner
+	if !strings.Contains(out, "\u256d") { // rounded top-left corner
 		t.Error("Box missing top-left corner")
 	}
-	if !strings.Contains(out, "\u2514") { // bottom-left corner
+	if !strings.Contains(out, "\u2570") { // rounded bottom-left corner
 		t.Error("Box missing bottom-left corner")
 	}
 	if !strings.Contains(out, "\u2502") { // vertical line

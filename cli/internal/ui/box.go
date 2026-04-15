@@ -57,8 +57,8 @@ func (u *UI) renderBoxTop(title string, titleW, innerW int) {
 		return
 	}
 	const (
-		tl = "\u250c"
-		tr = "\u2510"
+		tl = "\u256d" // rounded top-left ╭
+		tr = "\u256e" // rounded top-right ╮
 		hz = "\u2500"
 	)
 	top := fmt.Sprintf("  %s %s %s%s",
@@ -91,8 +91,8 @@ func (u *UI) renderBoxBottom(innerW int) {
 		return
 	}
 	const (
-		bl = "\u2514"
-		br = "\u2518"
+		bl = "\u2570" // rounded bottom-left ╰
+		br = "\u256f" // rounded bottom-right ╯
 		hz = "\u2500"
 	)
 	_, _ = fmt.Fprintf(u.w, "  %s%s\n",

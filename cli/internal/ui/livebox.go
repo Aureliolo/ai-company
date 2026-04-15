@@ -53,14 +53,15 @@ func (u *UI) NewLiveBox(title string, labels []string) *LiveBox {
 	}
 
 	// Compute inner width from the widest possible line content.
-	// Format: "  <label>  <status>" -- status is at most a few chars.
+	// Use a generous status width to account for multi-part status
+	// strings like "sig ✓  slsa ✓" that are wider than a single icon.
 	maxContentW := 0
-	icon := IconSuccess
+	maxStatus := "sig " + IconSuccess + "  slsa " + IconSuccess
 	if u.plain {
-		icon = PlainIconSuccess
+		maxStatus = "sig " + PlainIconSuccess + "  slsa " + PlainIconSuccess
 	}
 	for _, line := range lines {
-		w := lipgloss.Width(fmt.Sprintf("  %-*s %s", maxLabelW, line.label, icon))
+		w := lipgloss.Width(fmt.Sprintf("  %-*s %s", maxLabelW, line.label, maxStatus))
 		if w > maxContentW {
 			maxContentW = w
 		}
@@ -220,8 +221,14 @@ func (lb *LiveBox) redraw(contentLines []string) {
 		return
 	}
 	moveUp := len(lb.lines) + 1 // content lines + bottom border
+
+	// Hide cursor during redraw to prevent flicker on Windows Terminal.
+	_, _ = fmt.Fprint(lb.ui.w, "\033[?25l")
 	_, _ = fmt.Fprintf(lb.ui.w, "\033[%dA", moveUp)
 
 	lb.ui.renderBoxContent(contentLines, lb.innerW)
 	lb.ui.renderBoxBottom(lb.innerW)
+
+	// Restore cursor visibility.
+	_, _ = fmt.Fprint(lb.ui.w, "\033[?25h")
 }

@@ -11,35 +11,49 @@ $Repo = "Aureliolo/synthorg"
 $BinaryName = "synthorg.exe"
 $InstallDir = if ($env:INSTALL_DIR) { $env:INSTALL_DIR } else { Join-Path $env:LOCALAPPDATA "synthorg\bin" }
 
+# --- Colors (ANSI true-color, matches CLI palette) ---
+
+$NoColor = $env:NO_COLOR -or (-not [System.Console]::IsOutputRedirected -eq $false)
+if (-not $NoColor) {
+    $C_Blue    = "`e[38;2;56;189;248m"
+    $C_Green   = "`e[38;2;52;211;153m"
+    $C_Red     = "`e[38;2;248;113;113m"
+    $C_Dim     = "`e[2m"
+    $C_Bold    = "`e[1m"
+    $C_Reset   = "`e[0m"
+} else {
+    $C_Blue = ""; $C_Green = ""; $C_Red = ""; $C_Dim = ""; $C_Bold = ""; $C_Reset = ""
+}
+
+function Step($N, $Total, $Msg) { Write-Host "${C_Blue}[${N}/${Total}]${C_Reset} ${Msg}" }
+function Fail($Msg) { Write-Host "${C_Red}error: ${Msg}${C_Reset}"; exit 1 }
+
+$Total = 4
+
 # --- Resolve version ---
 
 if (-not $env:SYNTHORG_VERSION) {
-    Write-Host "Fetching latest release..."
+    Step 1 $Total "Fetching latest release..."
     $Release = Invoke-RestMethod -Uri "https://api.github.com/repos/$Repo/releases/latest"
     $Version = $Release.tag_name
 } else {
+    Step 1 $Total "Using specified version..."
     $Version = $env:SYNTHORG_VERSION
 }
 
 # Validate version string to prevent injection.
 if ($Version -notmatch '^v\d+\.\d+\.\d+(-[a-zA-Z0-9.]+)?$') {
-    Write-Error "Invalid version string: $Version"
-    exit 1
+    Fail "invalid version string: $Version"
 }
 
-Write-Host "Installing SynthOrg CLI $Version..."
+Write-Host "  ${C_Dim}Platform:${C_Reset} windows/$WinArch  ${C_Dim}Version:${C_Reset} $Version"
 
 # --- Detect architecture ---
-# Primary: .NET RuntimeInformation (PowerShell 5.1+ with .NET 4.7.1+).
-# Fallback: PROCESSOR_ARCHITECTURE env var (always available on Windows).
-# The RuntimeInformation API can return $null on older .NET runtimes or
-# certain system configurations (see #521).
 
 $OsArch = $null
 try {
     $OsArch = [System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture
 } catch {
-    # Type not available - fall through to env var detection.
     Write-Verbose "RuntimeInformation unavailable; using PROCESSOR_ARCHITECTURE fallback."
 }
 
@@ -47,16 +61,14 @@ if ($null -ne $OsArch) {
     $WinArch = switch ($OsArch) {
         ([System.Runtime.InteropServices.Architecture]::X64)   { "amd64" }
         ([System.Runtime.InteropServices.Architecture]::Arm64) { "arm64" }
-        default { Write-Error "Unsupported architecture: $OsArch"; exit 1 }
+        default { Fail "unsupported architecture: $OsArch" }
     }
 } else {
-    # PROCESSOR_ARCHITEW6432 is set when running 32-bit PowerShell on 64-bit
-    # Windows (WOW64). It contains the real OS architecture.
     $ArchEnv = if ($env:PROCESSOR_ARCHITEW6432) { $env:PROCESSOR_ARCHITEW6432 } else { $env:PROCESSOR_ARCHITECTURE }
     $WinArch = switch ($ArchEnv) {
         "AMD64" { "amd64" }
         "ARM64" { "arm64" }
-        default { Write-Error "Unsupported architecture: $ArchEnv"; exit 1 }
+        default { Fail "unsupported architecture: $ArchEnv" }
     }
 }
 
@@ -70,32 +82,32 @@ $TmpDir = Join-Path $env:TEMP "synthorg-install-$(Get-Random)"
 New-Item -ItemType Directory -Path $TmpDir -Force | Out-Null
 
 try {
-    Write-Host "Downloading $DownloadUrl..."
+    Step 2 $Total "Downloading..."
     Invoke-WebRequest -Uri $DownloadUrl -OutFile (Join-Path $TmpDir $ArchiveName)
     Invoke-WebRequest -Uri $ChecksumsUrl -OutFile (Join-Path $TmpDir "checksums.txt")
 
     # --- Verify checksum ---
 
-    Write-Host "Verifying checksum..."
+    Step 3 $Total "Verifying checksum..."
     $line = Get-Content (Join-Path $TmpDir "checksums.txt") | Where-Object { ($_ -split '\s+')[1] -eq $ArchiveName }
     $ExpectedHash = ($line -split '\s+')[0].Trim().ToLower()
 
     if (-not $ExpectedHash) {
-        throw "No checksum found for $ArchiveName. Aborting."
+        Fail "no checksum found for $ArchiveName"
     }
 
     $ActualHash = (Get-FileHash -Path (Join-Path $TmpDir $ArchiveName) -Algorithm SHA256).Hash.ToLower()
 
     if ($ExpectedHash -ne $ActualHash) {
-        throw "Checksum mismatch: expected $ExpectedHash, got $ActualHash"
+        Write-Host "  ${C_Red}Expected: $ExpectedHash${C_Reset}"
+        Write-Host "  ${C_Red}Actual:   $ActualHash${C_Reset}"
+        Fail "checksum mismatch"
     }
 
     # --- Extract and install ---
 
-    Write-Host "Extracting..."
+    Step 4 $Total "Installing to $InstallDir..."
     Expand-Archive -Path (Join-Path $TmpDir $ArchiveName) -DestinationPath $TmpDir -Force
-
-    Write-Host "Installing to $InstallDir..."
     New-Item -ItemType Directory -Path $InstallDir -Force | Out-Null
     Move-Item -Path (Join-Path $TmpDir $BinaryName) -Destination (Join-Path $InstallDir $BinaryName) -Force
 
@@ -106,16 +118,19 @@ try {
     if ($UserPathEntries -notcontains $NormalizedInstallDir) {
         $NewUserPath = if ($UserPath) { "$UserPath;$InstallDir" } else { $InstallDir }
         [Environment]::SetEnvironmentVariable("PATH", $NewUserPath, "User")
-        Write-Host "Added $InstallDir to user PATH."
     }
     $ProcessPathEntries = ($env:PATH -split ';') | ForEach-Object { $_.TrimEnd('\') } | Where-Object { $_ }
     if ($ProcessPathEntries -notcontains $NormalizedInstallDir) {
         $env:PATH = "$env:PATH;$InstallDir"
     }
 
-    & (Join-Path $InstallDir $BinaryName) version
+    # --- Done ---
+
     Write-Host ""
-    Write-Host "SynthOrg CLI installed successfully. Run 'synthorg init' to get started."
+    Write-Host "${C_Green}SynthOrg CLI installed${C_Reset} ${C_Dim}($Version)${C_Reset}"
+    Write-Host ""
+    Write-Host "  ${C_Blue}Next:${C_Reset} ${C_Bold}synthorg init${C_Reset}"
+    Write-Host ""
 } finally {
     Remove-Item -Path $TmpDir -Recurse -Force -ErrorAction SilentlyContinue
 }

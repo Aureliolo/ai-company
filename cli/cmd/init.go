@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 
+	tea "charm.land/bubbletea/v2"
 	"charm.land/huh/v2"
 	"github.com/Aureliolo/synthorg/cli/internal/compose"
 	"github.com/Aureliolo/synthorg/cli/internal/config"
@@ -79,12 +80,66 @@ func runInit(cmd *cobra.Command, _ []string) error {
 		// Non-interactive: all required flags provided.
 		answers = buildAnswersFromFlags(opts.DataDir)
 	case isInteractive():
-		out.Logo(version.Version)
-		var err error
-		answers, err = runSetupFormWithOverrides(cmd, opts.DataDir)
+		result, err := runInteractiveInit(cmd, opts)
 		if err != nil {
 			return err
 		}
+		if result == nil {
+			return nil // user cancelled
+		}
+		answers = result.answers
+
+		state, err := buildState(answers)
+		if err != nil {
+			return err
+		}
+
+		// Apply NATS port override from TUI.
+		if result.natsPort > 0 {
+			state.NatsClientPort = result.natsPort
+		}
+
+		// Handle re-init secret preservation.
+		if existing := config.StatePath(state.DataDir); fileExists(existing) {
+			oldState, loadErr := config.Load(state.DataDir)
+			if loadErr != nil {
+				return fmt.Errorf("existing config unreadable: %w", loadErr)
+			}
+			if oldState.SettingsKey != "" {
+				state.SettingsKey = oldState.SettingsKey
+			}
+			if err := preservePostgresFromOldState(cmd, &state, oldState); err != nil {
+				return err
+			}
+		}
+
+		safeDir, err := writeInitFiles(state)
+		if err != nil {
+			return err
+		}
+		state.DataDir = safeDir
+
+		// Print post-init output using shared summary renderer.
+		out.Logo(version.Version)
+		out.Success("SynthOrg initialized")
+		out.Blank()
+
+		out.Box("Configuration", summaryLines(buildSummaryFromState(state)))
+
+		out.Blank()
+		out.Warn("Keep compose.yml and config.json private -- they contain your secrets.")
+		hintAfterInit(out, state)
+
+		if result.startNow {
+			out.Blank()
+			_ = os.Setenv("SYNTHORG_NO_LOGO", "1")
+			cmd.Root().SetArgs([]string{"start"})
+			return cmd.Root().Execute()
+		}
+		out.Blank()
+		out.Section("Next: synthorg start")
+		return nil
+
 	default:
 		return fmt.Errorf("synthorg init requires an interactive terminal (or provide all flags: --backend-port, --web-port, --sandbox, --log-level)")
 	}
@@ -94,7 +149,7 @@ func runInit(cmd *cobra.Command, _ []string) error {
 		return err
 	}
 
-	// Handle re-init over existing config (secrets change, needs confirmation).
+	// Non-interactive: handle re-init.
 	if existing := config.StatePath(state.DataDir); fileExists(existing) {
 		proceed, err := handleReinit(cmd, &state, opts)
 		if err != nil {
@@ -109,10 +164,57 @@ func runInit(cmd *cobra.Command, _ []string) error {
 	if err != nil {
 		return err
 	}
+	state.DataDir = safeDir
 
-	printInitSuccess(out, safeDir)
+	out.Blank()
+	out.Success("SynthOrg initialized")
+	out.Blank()
+	data := buildSummaryFromState(state)
+	out.Box("Configuration", summaryLines(data))
+	out.Blank()
+	out.Warn("Keep compose.yml and config.json private -- they contain your secrets.")
 	hintAfterInit(out, state)
+	out.Blank()
+	out.Section("Next: synthorg start")
 	return nil
+}
+
+// buildSummaryFromState creates a summaryData from a config.State for
+// the non-interactive output path (shares rendering with the TUI).
+func buildSummaryFromState(state config.State) summaryData {
+	d := summaryData{
+		dataDir:     state.DataDir,
+		backendPort: strconv.Itoa(state.BackendPort),
+		webPort:     strconv.Itoa(state.WebPort),
+	}
+	if state.PersistenceBackend == "postgres" {
+		d.dbMode = "postgresql"
+		d.dbPort = strconv.Itoa(state.PostgresPort)
+	} else {
+		d.dbMode = "sqlite"
+	}
+	if state.BusBackend == "nats" {
+		d.busMode = "nats"
+		d.busPort = strconv.Itoa(state.NatsClientPort)
+	} else {
+		d.busMode = "internal"
+	}
+	if state.FineTuning {
+		d.fineTuning = "enabled"
+	} else {
+		d.fineTuning = "disabled"
+	}
+	if state.Sandbox {
+		d.sandbox = "enabled"
+	} else {
+		d.sandbox = "disabled"
+	}
+	if state.TelemetryOptIn {
+		d.telemetry = "enabled"
+	} else {
+		d.telemetry = "disabled"
+	}
+	return d
 }
 
 // hintAfterInit emits contextual guidance after a successful init.
@@ -239,16 +341,6 @@ func confirmReinit(cmd *cobra.Command, oldState config.State, opts *GlobalOpts) 
 	return &key, nil
 }
 
-func printInitSuccess(out *ui.UI, dataDir string) {
-	out.Blank()
-	out.Success("SynthOrg initialized")
-	out.KeyValue("Data dir", dataDir)
-	out.KeyValue("Compose file", filepath.Join(dataDir, "compose.yml"))
-	out.KeyValue("Config", config.StatePath(dataDir))
-	out.Warn("Keep compose.yml and config.json private -- they contain your secrets.")
-	out.HintNextStep("Run 'synthorg start' to launch.")
-}
-
 // setupAnswers holds raw form input before validation.
 type setupAnswers struct {
 	dir                string
@@ -337,37 +429,6 @@ func validateInitFlags(dataDir string) error {
 	return nil
 }
 
-// applyFlagOverrides pre-fills the setup answers with any CLI flag values that were set.
-func applyFlagOverrides(a *setupAnswers) {
-	if initBackendPort > 0 {
-		a.backendPortStr = strconv.Itoa(initBackendPort)
-	}
-	if initWebPort > 0 {
-		a.webPortStr = strconv.Itoa(initWebPort)
-	}
-	if initSandbox != "" {
-		a.sandbox = initSandbox == "true"
-	}
-	if initLogLevel != "" {
-		a.logLevel = initLogLevel
-	}
-	if initChannel != "" {
-		a.channel = initChannel
-	}
-	if initImageTag != "" {
-		a.imageTag = initImageTag
-	}
-	if initBusBackend != "" {
-		a.busBackend = initBusBackend
-	}
-	if initPersistenceBackend != "" {
-		a.persistenceBackend = initPersistenceBackend
-	}
-	if initPostgresPort > 0 {
-		a.postgresPort = initPostgresPort
-	}
-}
-
 // buildAnswersFromFlags constructs setupAnswers from CLI flags for non-interactive mode.
 func buildAnswersFromFlags(dataDir string) setupAnswers {
 	defaults := config.DefaultState()
@@ -403,131 +464,87 @@ func buildAnswersFromFlags(dataDir string) setupAnswers {
 
 // runSetupFormWithOverrides runs the interactive form with any CLI flag values
 // pre-filled as defaults.
-func runSetupFormWithOverrides(cmd *cobra.Command, resolvedDataDir string) (setupAnswers, error) {
-	defaults := config.DefaultState()
-	dir := defaults.DataDir
-	if resolvedDataDir != "" {
-		dir = resolvedDataDir
-	}
-	a := setupAnswers{
-		dir:                dir,
-		backendPortStr:     fmt.Sprintf("%d", defaults.BackendPort),
-		webPortStr:         fmt.Sprintf("%d", defaults.WebPort),
-		sandbox:            defaults.Sandbox,
-		dockerSock:         defaultDockerSock(),
-		logLevel:           defaults.LogLevel,
-		persistenceBackend: defaults.PersistenceBackend,
-		memoryBackend:      defaults.MemoryBackend,
-		busBackend:         defaults.BusBackend,
-		postgresPort:       defaults.PostgresPort,
-	}
-
-	applyFlagOverrides(&a)
-
-	form := huh.NewForm(
-		huh.NewGroup(
-			huh.NewInput().Title("Data directory").
-				Description("Where SynthOrg stores its data").Value(&a.dir),
-			huh.NewInput().Title("Backend API port").
-				Description("Port for the REST/WebSocket API").Value(&a.backendPortStr),
-			huh.NewInput().Title("Web dashboard port").
-				Description("Port for the web UI").Value(&a.webPortStr),
-			huh.NewConfirm().Title("Enable agent code sandbox?").
-				Description("Mounts Docker socket for sandboxed code execution").Value(&a.sandbox),
-		),
-		huh.NewGroup(
-			huh.NewInput().Title("Docker socket path").Value(&a.dockerSock),
-		).WithHideFunc(func() bool { return !a.sandbox }),
-		huh.NewGroup(
-			huh.NewNote().Title("Backends").
-				Description(fmt.Sprintf(
-					"Persistence: %s · Memory: %s\n(More options coming soon)",
-					a.persistenceBackend, a.memoryBackend,
-				)),
-		),
-		huh.NewGroup(
-			huh.NewConfirm().Title("Help improve SynthOrg?").
-				Description(
-					"Send anonymous usage data (agent count, feature usage, error rates).\n"+
-						"We NEVER collect API keys, chat content, or personal data.\n"+
-						"You can change this later: synthorg config set telemetry_opt_in false",
-				).Value(&a.telemetryOptIn),
-		),
-	)
-
-	if err := form.Run(); err != nil {
-		return a, err
-	}
-
-	// Warn when sandbox is disabled -- agents lose all code execution.
-	if !a.sandbox {
-		errOut := ui.NewUIWithOptions(cmd.ErrOrStderr(), GetGlobalOpts(cmd.Context()).UIOptions())
-		errOut.Warn("Without sandbox, agents cannot execute code, run shell commands, " +
-			"or use file-system tools. These capabilities will be unavailable.")
-		var confirmDisabled bool
-		confirmForm := huh.NewForm(huh.NewGroup(
-			huh.NewConfirm().
-				Title("Continue without sandbox?").
-				Affirmative("Yes").
-				Negative("No").
-				Value(&confirmDisabled),
-		))
-		if err := confirmForm.Run(); err != nil {
-			return a, err
-		}
-		if !confirmDisabled {
-			return a, fmt.Errorf("setup cancelled")
-		}
-	}
-
-	// Fine-tuning question (only when sandbox enabled on amd64 -- the
-	// fine-tune image ships x86_64 only because GPU workloads require it).
-	if a.sandbox && runtime.GOARCH == "amd64" {
-		fineTuneForm := huh.NewForm(huh.NewGroup(
-			huh.NewConfirm().
-				Title("Enable embedding fine-tuning?").
-				Description("Improves memory quality. Requires a large image (~4GB).").
-				Affirmative("Yes").
-				Negative("No").
-				Value(&a.fineTuning),
-		))
-		if err := fineTuneForm.Run(); err != nil {
-			return a, fmt.Errorf("fine-tuning form: %w", err)
-		}
-	}
-
-	// Show the bus backend picker after the main form when it was not
-	// provided via flag. Separate from the main form so the caller can
-	// see the full trade-off card for each backend without cluttering
-	// the port/sandbox flow above.
-	if initBusBackend == "" {
-		picked, err := pickBusBackend(cmd)
-		if err != nil {
-			return a, err
-		}
-		a.busBackend = picked
-	}
-
-	return a, nil
+type interactiveResult struct {
+	answers  setupAnswers
+	startNow bool
+	natsPort int // override for NATS port from TUI
 }
 
-// pickBusBackend runs the interactive bus backend picker (or returns
-// the default when --yes / non-TTY / --bus-backend is set).
-func pickBusBackend(cmd *cobra.Command) (string, error) {
-	opts := GetGlobalOpts(cmd.Context())
-	cfg := ui.PickOneConfig{
-		Yes:    opts.Yes,
-		Quiet:  opts.Quiet,
-		Plain:  opts.Plain,
-		Stdin:  cmd.InOrStdin(),
-		Stdout: cmd.OutOrStdout(),
+func runInteractiveInit(_ *cobra.Command, opts *GlobalOpts) (*interactiveResult, error) {
+	defaults := config.DefaultState()
+	dir := defaults.DataDir
+	if opts.DataDir != "" {
+		dir = opts.DataDir
 	}
-	return ui.PickOne(
-		"Message bus backend",
-		"The in-process queue is faster and has zero setup. NATS JetStream adds a container but survives crashes and supports multi-process workers. See docs/design/distributed-runtime.md for the full trade-off.",
-		ui.BusBackends,
-		cfg,
+
+	model := newSetupTUI(
+		dir,
+		fmt.Sprintf("%d", defaults.BackendPort),
+		fmt.Sprintf("%d", defaults.WebPort),
+		version.Version,
+		defaults.Sandbox,
 	)
+
+	// Check if re-init is needed.
+	if existing := config.StatePath(dir); fileExists(existing) {
+		model.needReinit = true
+		model.reinitPath = existing
+		model.phase = phaseReinit
+		model.focus = fReinitOverwrite
+	}
+
+	result, err := tea.NewProgram(model).Run()
+	if err != nil {
+		return nil, fmt.Errorf("setup: %w", err)
+	}
+	final := result.(setupTUI)
+	if final.cancelled {
+		return nil, nil
+	}
+
+	busBackends := []string{"internal", "nats"}
+	bus := "internal"
+	if final.busBackend >= 0 && final.busBackend < len(busBackends) {
+		bus = busBackends[final.busBackend]
+	}
+
+	persist := "sqlite"
+	if final.persistence == 1 {
+		persist = "postgres"
+	}
+
+	var pgPort int
+	if persist == "postgres" {
+		pgPort, _ = strconv.Atoi(strings.TrimSpace(final.postgresPort.Value()))
+		if pgPort == 0 {
+			pgPort = defaults.PostgresPort
+		}
+	}
+
+	// Override NATS port in state after build if user changed it.
+	var natsPort int
+	if bus == "nats" {
+		natsPort, _ = strconv.Atoi(strings.TrimSpace(final.natsPort.Value()))
+	}
+
+	return &interactiveResult{
+		answers: setupAnswers{
+			dir:                final.dataDir.Value(),
+			backendPortStr:     final.backendPort.Value(),
+			webPortStr:         final.webPort.Value(),
+			sandbox:            final.sandbox,
+			dockerSock:         defaultDockerSock(),
+			logLevel:           defaults.LogLevel,
+			persistenceBackend: persist,
+			memoryBackend:      defaults.MemoryBackend,
+			busBackend:         bus,
+			postgresPort:       pgPort,
+			telemetryOptIn:     final.telemetry,
+			fineTuning:         final.fineTuning,
+		},
+		startNow: final.startNow,
+		natsPort: natsPort,
+	}, nil
 }
 
 func buildState(a setupAnswers) (config.State, error) {
@@ -627,6 +644,7 @@ func buildState(a setupAnswers) (config.State, error) {
 		PersistenceBackend: a.persistenceBackend,
 		MemoryBackend:      a.memoryBackend,
 		BusBackend:         busBackend,
+		NatsClientPort:     config.DefaultState().NatsClientPort,
 		PostgresPort:       postgresPort,
 		PostgresPassword:   postgresPassword,
 		TelemetryOptIn:     a.telemetryOptIn,
