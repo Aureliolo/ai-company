@@ -52,6 +52,9 @@ from synthorg.persistence.sqlite.checkpoint_repo import (
 from synthorg.persistence.sqlite.circuit_breaker_repo import (
     SQLiteCircuitBreakerStateRepository,
 )
+from synthorg.persistence.sqlite.custom_rule_repo import (
+    SQLiteCustomRuleRepository,
+)
 from synthorg.persistence.sqlite.decision_repo import (
     SQLiteDecisionRepository,
 )
@@ -175,6 +178,7 @@ class SQLitePersistenceBackend:
         )
         self._training_plans: SQLiteTrainingPlanRepository | None = None
         self._training_results: SQLiteTrainingResultRepository | None = None
+        self._custom_rules: SQLiteCustomRuleRepository | None = None
         self._connections_stub = StubConnectionRepository()
         self._connection_secrets_stub = StubConnectionSecretRepository()
         self._oauth_states_stub = StubOAuthStateRepository()
@@ -216,6 +220,7 @@ class SQLitePersistenceBackend:
         self._project_cost_aggregates = None
         self._training_plans = None
         self._training_results = None
+        self._custom_rules = None
 
     async def connect(self) -> None:
         """Open the SQLite database and configure WAL mode."""
@@ -363,6 +368,7 @@ class SQLitePersistenceBackend:
         )
         self._training_plans = SQLiteTrainingPlanRepository(self._db)
         self._training_results = SQLiteTrainingResultRepository(self._db)
+        self._custom_rules = SQLiteCustomRuleRepository(self._db)
 
     async def _cleanup_failed_connect(self, exc: sqlite3.Error | OSError) -> None:
         """Log failure, close partial connection, and raise.
@@ -713,6 +719,14 @@ class SQLitePersistenceBackend:
         return self._require_connected(
             self._training_results,
             "training_results",
+        )
+
+    @property
+    def custom_rules(self) -> SQLiteCustomRuleRepository:
+        """Repository for custom signal rule persistence."""
+        return self._require_connected(
+            self._custom_rules,
+            "custom_rules",
         )
 
     async def get_setting(self, key: NotBlankStr) -> str | None:

@@ -71,3 +71,14 @@ META_RULE_EVALUATION_FAILED: Final[str] = "meta.rule.evaluation_failed"
 
 META_CONFIG_LOADED: Final[str] = "meta.config.loaded"
 META_STRATEGY_REGISTERED: Final[str] = "meta.strategy.registered"
+
+# -- Custom rule CRUD events -----------------------------------------------
+
+META_CUSTOM_RULE_SAVED: Final[str] = "meta.custom_rule.saved"
+META_CUSTOM_RULE_SAVE_FAILED: Final[str] = "meta.custom_rule.save_failed"
+META_CUSTOM_RULE_FETCHED: Final[str] = "meta.custom_rule.fetched"
+META_CUSTOM_RULE_FETCH_FAILED: Final[str] = "meta.custom_rule.fetch_failed"
+META_CUSTOM_RULE_LISTED: Final[str] = "meta.custom_rule.listed"
+META_CUSTOM_RULE_LIST_FAILED: Final[str] = "meta.custom_rule.list_failed"
+META_CUSTOM_RULE_DELETED: Final[str] = "meta.custom_rule.deleted"
+META_CUSTOM_RULE_DELETE_FAILED: Final[str] = "meta.custom_rule.delete_failed"

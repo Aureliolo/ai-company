@@ -934,3 +934,19 @@ CREATE UNIQUE INDEX idx_training_results_plan
     ON training_results(plan_id);
 CREATE INDEX idx_training_results_agent
     ON training_results(new_agent_id, completed_at DESC);
+
+-- ── Custom signal rules ─────────────────────────────────────────
+
+CREATE TABLE custom_rules (
+    id TEXT NOT NULL PRIMARY KEY,
+    name TEXT NOT NULL UNIQUE,
+    description TEXT NOT NULL,
+    metric_path TEXT NOT NULL,
+    comparator TEXT NOT NULL,
+    threshold REAL NOT NULL,
+    severity TEXT NOT NULL,
+    target_altitudes TEXT NOT NULL,  -- JSON array of altitude strings
+    enabled INTEGER NOT NULL DEFAULT 1,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);

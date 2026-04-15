@@ -3,6 +3,7 @@
 from typing import Any
 
 from litestar import Controller, get, post
+from litestar.datastructures import State  # noqa: TC002
 from litestar.exceptions import NotFoundException
 
 from synthorg.api.dto import ApiResponse
@@ -42,11 +43,14 @@ class MetaController(Controller):
         )
 
     @get("/rules")
-    async def list_rules(self) -> ApiResponse[list[dict[str, Any]]]:
-        """List configured signal rules with enabled status.
+    async def list_rules(
+        self,
+        state: State,
+    ) -> ApiResponse[list[dict[str, Any]]]:
+        """List all signal rules (built-in + custom) with status.
 
         Returns:
-            List of rule names and their enabled status.
+            List of rule names, enabled status, and type.
         """
         from synthorg.meta.rules.builtin import default_rules  # noqa: PLC0415
 
@@ -54,14 +58,33 @@ class MetaController(Controller):
         # TODO: inject runtime config via Litestar DI.
         config = SelfImprovementConfig()
         disabled = set(config.rules.disabled_rules)
-        rule_list = [
+        rule_list: list[dict[str, Any]] = [
             {
                 "name": r.name,
                 "enabled": r.name not in disabled,
                 "target_altitudes": [a.value for a in r.target_altitudes],
+                "type": "builtin",
             }
             for r in rules
         ]
+        # Append custom rules from persistence.
+        repo = state.app_state.persistence.custom_rules
+        custom = await repo.list_rules()
+        rule_list.extend(
+            {
+                "name": cr.name,
+                "enabled": cr.enabled,
+                "target_altitudes": [a.value for a in cr.target_altitudes],
+                "type": "custom",
+                "id": str(cr.id),
+                "description": cr.description,
+                "metric_path": cr.metric_path,
+                "comparator": cr.comparator.value,
+                "threshold": cr.threshold,
+                "severity": cr.severity.value,
+            }
+            for cr in custom
+        )
         return ApiResponse[list[dict[str, Any]]](data=rule_list)
 
     @get("/mcp/tools")

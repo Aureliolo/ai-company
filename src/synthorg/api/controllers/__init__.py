@@ -29,6 +29,7 @@ from synthorg.api.controllers.coordination import CoordinationController
 from synthorg.api.controllers.coordination_metrics import (
     CoordinationMetricsController,
 )
+from synthorg.api.controllers.custom_rules import CustomRuleController
 from synthorg.api.controllers.departments import DepartmentController
 from synthorg.api.controllers.evaluation_config_versions import (
     EvaluationConfigVersionController,
@@ -45,6 +46,7 @@ from synthorg.api.controllers.mcp_catalog import MCPCatalogController
 from synthorg.api.controllers.meetings import MeetingController
 from synthorg.api.controllers.memory import MemoryAdminController
 from synthorg.api.controllers.messages import MessageController
+from synthorg.api.controllers.meta import MetaController
 from synthorg.api.controllers.metrics import MetricsController
 from synthorg.api.controllers.oauth import OAuthController
 from synthorg.api.controllers.ontology import OntologyController
@@ -134,6 +136,8 @@ BASE_CONTROLLERS: tuple[type[Controller], ...] = (
     ReviewController,
     ScalingController,
     TrainingController,
+    MetaController,
+    CustomRuleController,
 )
 
 # Integration subsystem controllers. Registered only when
@@ -178,6 +182,7 @@ __all__ = [
     "Controller",
     "CoordinationController",
     "CoordinationMetricsController",
+    "CustomRuleController",
     "DepartmentController",
     "EvaluationConfigVersionController",
     "EventStreamController",
@@ -188,6 +193,7 @@ __all__ = [
     "MeetingController",
     "MemoryAdminController",
     "MessageController",
+    "MetaController",
     "MetricsController",
     "OAuthController",
     "OntologyController",

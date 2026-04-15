@@ -23,6 +23,9 @@ from synthorg.hr.persistence_protocol import (
 from synthorg.persistence.circuit_breaker_repo import (
     CircuitBreakerStateRepository,  # noqa: TC001
 )
+from synthorg.persistence.custom_rule_repo import (
+    CustomRuleRepository,  # noqa: TC001
+)
 from synthorg.persistence.preset_repository import (
     PersonalityPresetRepository,  # noqa: TC001
 )
@@ -126,6 +129,7 @@ class PersistenceBackend(Protocol):
             persistence.
         training_plans: Repository for training plan persistence.
         training_results: Repository for training result persistence.
+        custom_rules: Repository for custom signal rule persistence.
     """
 
     async def connect(self) -> None:
@@ -363,6 +367,11 @@ class PersistenceBackend(Protocol):
     @property
     def training_results(self) -> TrainingResultRepository:
         """Repository for training result persistence."""
+        ...
+
+    @property
+    def custom_rules(self) -> CustomRuleRepository:
+        """Repository for custom signal rule persistence."""
         ...
 
     async def get_setting(self, key: NotBlankStr) -> str | None:
