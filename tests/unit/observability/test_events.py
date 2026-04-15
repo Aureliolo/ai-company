@@ -189,6 +189,7 @@ class TestEventConstants:
             "behavior_tagging",
             "budget",
             "cfo",
+            "chief_of_staff",
             "citation",
             "classification",
             "client",
