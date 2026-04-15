@@ -181,9 +181,6 @@ func startContainers(cmd *cobra.Command, ctx context.Context, state config.State
 					if r.SigDigest != "" {
 						state.VerifiedDigests["dhi:"+r.Image+":signature"] = r.SigDigest
 					}
-					if r.RekorLogIndex >= 0 {
-						state.VerifiedDigests["dhi:"+r.Image+":rekor"] = fmt.Sprintf("%d", r.RekorLogIndex)
-					}
 				}
 				_ = config.Save(state)
 			}
@@ -289,6 +286,7 @@ func pullAllImages(ctx context.Context, info docker.Info, safeDir string, state 
 			name: "fine-tune",
 			ref:  verify.FormatImageRef("fine-tune", refreshed.ImageTag, refreshed.VerifiedDigests["fine-tune"]),
 		})
+		out.Warn("Fine-tune image is large (~5 GB) -- first pull may take a few minutes")
 	}
 
 	// Show all pulls in one LiveBox.

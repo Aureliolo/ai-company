@@ -9,16 +9,19 @@ services:
     ports:
       - "{{.PostgresPort}}:5432"
     volumes:
-      - synthorg-pgdata:/var/lib/postgresql/data
+      - synthorg-pgdata:/var/lib/postgresql
     environment:
       POSTGRES_DB: synthorg
       POSTGRES_USER: synthorg
       POSTGRES_PASSWORD: {{yamlStr .PostgresPassword}}
-      PGDATA: /var/lib/postgresql/data/pgdata
-    security_opt:
-      - no-new-privileges:true
     cap_drop:
       - ALL
+    cap_add:
+      - CHOWN
+      - DAC_OVERRIDE
+      - FOWNER
+      - SETGID
+      - SETUID
     read_only: true
     tmpfs:
       - /tmp:noexec,nosuid,nodev,size=64m
@@ -31,7 +34,7 @@ services:
           cpus: "1.0"
           pids: 128
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U synthorg -d synthorg"]
+      test: ["CMD", "pg_isready", "-U", "synthorg", "-d", "synthorg"]
       interval: 5s
       timeout: 3s
       retries: 10
@@ -42,6 +45,21 @@ services:
         max-size: "10m"
         max-file: "3"
 {{- end}}
+
+  # Init container: ensure the data volume is owned by the app user (65532).
+  # Docker creates named volumes as root; this runs once on first start.
+  data-init:
+    # renovate: datasource=docker depName=busybox
+    image: busybox:1.37-musl@sha256:19b646668802469d968a05342a601e78da4322a414a7c09b1c9ee25165042138
+    volumes:
+      - synthorg-data:/data
+    command: ["sh", "-c", "mkdir -p /data/logs /data/memory && chown -R 65532:65532 /data"]
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - DAC_OVERRIDE
+      - FOWNER
 
   backend:
     image: {{digestPin "backend" "ghcr.io/aureliolo/synthorg-backend" .ImageTag}}
@@ -56,8 +74,10 @@ services:
       # contain socket-level privilege. Only enable in trusted hosts.
       - "{{.DockerSock}}:/var/run/docker.sock"
 {{- end}}
-{{- if postgresEnabled}}
     depends_on:
+      data-init:
+        condition: service_completed_successfully
+{{- if postgresEnabled}}
       postgres:
         condition: service_healthy
 {{- end}}
@@ -181,15 +201,15 @@ services:
   nats-healthcheck:
     # renovate: datasource=docker depName=busybox
     image: busybox:1.37-musl@sha256:19b646668802469d968a05342a601e78da4322a414a7c09b1c9ee25165042138
-    network_mode: "service:nats"
     depends_on:
-      - nats
+      nats:
+        condition: service_started
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:8222/healthz"]
+      test: ["CMD", "wget", "-qO-", "http://nats:8222/healthz"]
       interval: 10s
       timeout: 3s
       retries: 3
-      start_period: 5s
+      start_period: 10s
     entrypoint: ["sleep", "infinity"]
     read_only: true
     cap_drop:

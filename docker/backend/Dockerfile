@@ -69,6 +69,10 @@ COPY --from=builder --chown=65532:65532 /app/.venv /app/.venv
 COPY --from=builder --chown=65532:65532 /app/src /app/src
 COPY --chown=65532:65532 pyproject.toml uv.lock /app/
 
+# Pre-create the data directory with correct ownership so Docker
+# initialises fresh volumes with uid/gid 65532 instead of root.
+RUN mkdir -p /data/logs /data/memory && chown -R 65532:65532 /data
+
 ENV PATH="/app/.venv/bin:$PATH" \
     PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \

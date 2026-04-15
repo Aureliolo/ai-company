@@ -5,6 +5,59 @@ x-logging: &logging
     max-file: "3"
 
 services:
+  postgres:
+    # renovate: datasource=docker depName=dhi.io/postgres
+    image: dhi.io/postgres:18-debian13@sha256:e2f2beada5e76f69453d5533153909f875b48fb021f092df73e182b8325ff2d3
+    ports:
+      - "${POSTGRES_PORT:-3002}:5432"
+    volumes:
+      - synthorg-pgdata:/var/lib/postgresql
+    environment:
+      POSTGRES_DB: synthorg
+      POSTGRES_USER: synthorg
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}"
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - DAC_OVERRIDE
+      - FOWNER
+      - SETGID
+      - SETUID
+    read_only: true
+    tmpfs:
+      - /tmp:noexec,nosuid,nodev,size=64m
+      - /run/postgresql:noexec,nosuid,nodev,size=8m
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: "1.0"
+          pids: 128
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "synthorg", "-d", "synthorg"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 30s
+    logging: *logging
+
+  # Init container: ensure the data volume is owned by the app user (65532).
+  # Docker creates named volumes as root; this runs once on first start.
+  data-init:
+    # renovate: datasource=docker depName=busybox
+    image: busybox:1.37-musl@sha256:19b646668802469d968a05342a601e78da4322a414a7c09b1c9ee25165042138
+    volumes:
+      - synthorg-data:/data
+    command: ["sh", "-c", "mkdir -p /data/logs /data/memory && chown -R 65532:65532 /data"]
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - DAC_OVERRIDE
+      - FOWNER
+
   backend:
     build:
       context: ..
@@ -13,19 +66,25 @@ services:
       - "${BACKEND_PORT:-3001}:3001"
     volumes:
       - synthorg-data:/data
+    depends_on:
+      data-init:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
     env_file: .env
     environment:
       SYNTHORG_HOST: "${SYNTHORG_HOST:-0.0.0.0}"
       SYNTHORG_PORT: "${SYNTHORG_PORT:-3001}"
-      SYNTHORG_DB_PATH: "/data/synthorg.db"
+      SYNTHORG_DATABASE_URL: "postgresql://synthorg:${POSTGRES_PASSWORD}@postgres:5432/synthorg"
       SYNTHORG_MEMORY_DIR: "/data/memory"
+      SYNTHORG_PERSISTENCE_BACKEND: "postgres"
+      SYNTHORG_BUS_BACKEND: "${SYNTHORG_BUS_BACKEND:-nats}"
+      SYNTHORG_NATS_URL: "${SYNTHORG_NATS_URL:-nats://nats:4222}"
       SYNTHORG_LOG_DIR: "${SYNTHORG_LOG_DIR:-/data/logs}"
       SYNTHORG_LOG_LEVEL: "${SYNTHORG_LOG_LEVEL:-info}"
       MEM0_TELEMETRY: "${MEM0_TELEMETRY:-false}"
       UVICORN_HOST: "${SYNTHORG_HOST:-0.0.0.0}"
       UVICORN_PORT: "${SYNTHORG_PORT:-3001}"
-      SYNTHORG_BUS_BACKEND: "${SYNTHORG_BUS_BACKEND:-internal}"
-      SYNTHORG_NATS_URL: "${SYNTHORG_NATS_URL:-nats://nats:4222}"
     user: "65532:65532"
     security_opt:
       - no-new-privileges:true
@@ -43,14 +102,38 @@ services:
           pids: 256
     logging: *logging
 
+  web:
+    image: ghcr.io/aureliolo/synthorg-web:${SYNTHORG_IMAGE_TAG:-latest}
+    ports:
+      - "${WEB_PORT:-3000}:8080"
+    depends_on:
+      backend:
+        condition: service_healthy
+    user: "65532:65532"
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    read_only: true
+    tmpfs:
+      - /tmp:noexec,nosuid,nodev,size=16m
+      - /config/caddy:noexec,nosuid,nodev,size=8m
+      - /data/caddy:noexec,nosuid,nodev,size=16m
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+          cpus: "0.5"
+          pids: 64
+    logging: *logging
+
   # DHI NATS JetStream (distributed message bus + task queue).
-  # Opt in with `docker compose --profile distributed up`.
   # DHI image is distroless (no shell/wget) -- healthcheck via sidecar.
   nats:
     # renovate: datasource=docker depName=dhi.io/nats
     image: dhi.io/nats:2.12-debian13@sha256:89f40ed3ce7f69ad0af95c264368d3de41d72de604c97e7f1f8bd57d3a2b617f
-    profiles: ["distributed"]
-    command: ["-js", "-sd", "/data", "-m", "8222", "--max_payload", "4MB"]
+    command: ["-js", "-sd", "/data", "-m", "8222"]
     ports:
       - "${NATS_CLIENT_PORT:-3003}:4222"
     volumes:
@@ -72,20 +155,19 @@ services:
     logging: *logging
 
   # Healthcheck sidecar for distroless NATS (no shell/wget inside).
-  # Shares NATS network namespace and probes the monitoring endpoint.
+  # Probes NATS monitoring endpoint via Docker network DNS.
   nats-healthcheck:
     # renovate: datasource=docker depName=busybox
     image: busybox:1.37-musl@sha256:19b646668802469d968a05342a601e78da4322a414a7c09b1c9ee25165042138
-    profiles: ["distributed"]
-    network_mode: "service:nats"
     depends_on:
-      - nats
+      nats:
+        condition: service_started
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:8222/healthz"]
+      test: ["CMD", "wget", "-qO-", "http://nats:8222/healthz"]
       interval: 10s
       timeout: 3s
       retries: 3
-      start_period: 5s
+      start_period: 10s
     entrypoint: ["sleep", "infinity"]
     read_only: true
     cap_drop:
@@ -120,36 +202,11 @@ services:
   #         cpus: "4.0"
   #   logging: *logging
 
-  web:
-    image: ghcr.io/aureliolo/synthorg-web:${SYNTHORG_IMAGE_TAG:-latest}
-    ports:
-      - "${WEB_PORT:-3000}:8080"
-    depends_on:
-      backend:
-        condition: service_healthy
-    user: "65532:65532"
-    security_opt:
-      - no-new-privileges:true
-    cap_drop:
-      - ALL
-    read_only: true
-    tmpfs:
-      - /tmp:noexec,nosuid,nodev,size=16m
-      - /config/caddy:noexec,nosuid,nodev,size=8m
-      - /data/caddy:noexec,nosuid,nodev,size=16m
-    restart: unless-stopped
-    deploy:
-      resources:
-        limits:
-          memory: 256M
-          cpus: "0.5"
-          pids: 64
-    logging: *logging
-
 networks:
   default:
     name: synthorg-net
 
 volumes:
   synthorg-data:
+  synthorg-pgdata:
   synthorg-nats-data:
