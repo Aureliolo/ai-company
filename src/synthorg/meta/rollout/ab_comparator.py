@@ -24,8 +24,6 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
-_IMPROVEMENT_THRESHOLD = 0.15
-
 
 class ABTestComparator:
     """Compares control vs treatment group metrics.
@@ -41,10 +39,18 @@ class ABTestComparator:
     Args:
         min_observations: Minimum metric samples per group
             before comparison is meaningful.
+        improvement_threshold: Minimum improvement ratio to
+            declare treatment as winner.
     """
 
-    def __init__(self, *, min_observations: int = 10) -> None:
+    def __init__(
+        self,
+        *,
+        min_observations: int = 10,
+        improvement_threshold: float = 0.15,
+    ) -> None:
         self._min_observations = min_observations
+        self._improvement_threshold = improvement_threshold
 
     async def compare(
         self,
@@ -63,68 +69,130 @@ class ABTestComparator:
         Returns:
             Comparison result with verdict, effect size, and p-value.
         """
-        # Insufficient data -- cannot draw conclusions.
-        if (
-            control.observation_count < self._min_observations
-            or treatment.observation_count < self._min_observations
+        if _insufficient_observations(
+            control,
+            treatment,
+            self._min_observations,
         ):
-            logger.info(
-                META_ABTEST_INCONCLUSIVE,
-                reason="insufficient_observations",
-                control_obs=control.observation_count,
-                treatment_obs=treatment.observation_count,
-                min_required=self._min_observations,
-            )
-            return ABTestComparison(
-                verdict=ABTestVerdict.INCONCLUSIVE,
-                control_metrics=control,
-                treatment_metrics=treatment,
+            return _build_insufficient_result(
+                control,
+                treatment,
+                self._min_observations,
             )
 
-        # Layer 1: Check for treatment regression on each metric.
         regressed = _check_regressions(control, treatment, thresholds)
         if regressed:
-            logger.warning(
-                META_ABTEST_TREATMENT_REGRESSED,
-                regressed_metrics=list(regressed),
-            )
-            return ABTestComparison(
-                verdict=ABTestVerdict.TREATMENT_REGRESSED,
-                control_metrics=control,
-                treatment_metrics=treatment,
-                regressed_metrics=tuple(regressed),
+            return _build_regression_result(
+                control,
+                treatment,
+                regressed,
             )
 
-        # Layer 2: Check for treatment improvement.
         effect, p_value = _compute_effect(control, treatment)
-        if effect > _IMPROVEMENT_THRESHOLD:
-            logger.info(
-                META_ABTEST_WINNER_DECLARED,
-                winner="treatment",
-                effect_size=effect,
-                p_value=p_value,
-            )
-            return ABTestComparison(
-                verdict=ABTestVerdict.TREATMENT_WINS,
-                control_metrics=control,
-                treatment_metrics=treatment,
-                effect_size=effect,
-                p_value=p_value,
+        if effect > self._improvement_threshold:
+            return _build_winner_result(
+                control,
+                treatment,
+                effect,
+                p_value,
             )
 
-        # No significant difference.
-        logger.info(
-            META_ABTEST_INCONCLUSIVE,
-            reason="no_significant_difference",
-            effect_size=effect,
+        return _build_no_difference_result(
+            control,
+            treatment,
+            effect,
+            p_value,
         )
-        return ABTestComparison(
-            verdict=ABTestVerdict.INCONCLUSIVE,
-            control_metrics=control,
-            treatment_metrics=treatment,
-            effect_size=effect,
-            p_value=p_value,
-        )
+
+
+def _insufficient_observations(
+    control: GroupMetrics,
+    treatment: GroupMetrics,
+    min_obs: int,
+) -> bool:
+    """Check if either group has fewer observations than required."""
+    return control.observation_count < min_obs or treatment.observation_count < min_obs
+
+
+def _build_insufficient_result(
+    control: GroupMetrics,
+    treatment: GroupMetrics,
+    min_obs: int,
+) -> ABTestComparison:
+    """Build INCONCLUSIVE result for insufficient observations."""
+    logger.info(
+        META_ABTEST_INCONCLUSIVE,
+        reason="insufficient_observations",
+        control_obs=control.observation_count,
+        treatment_obs=treatment.observation_count,
+        min_required=min_obs,
+    )
+    return ABTestComparison(
+        verdict=ABTestVerdict.INCONCLUSIVE,
+        control_metrics=control,
+        treatment_metrics=treatment,
+    )
+
+
+def _build_regression_result(
+    control: GroupMetrics,
+    treatment: GroupMetrics,
+    regressed: list[str],
+) -> ABTestComparison:
+    """Build TREATMENT_REGRESSED result."""
+    logger.warning(
+        META_ABTEST_TREATMENT_REGRESSED,
+        regressed_metrics=list(regressed),
+    )
+    return ABTestComparison(
+        verdict=ABTestVerdict.TREATMENT_REGRESSED,
+        control_metrics=control,
+        treatment_metrics=treatment,
+        regressed_metrics=tuple(regressed),
+    )
+
+
+def _build_winner_result(
+    control: GroupMetrics,
+    treatment: GroupMetrics,
+    effect: float,
+    p_value: float,
+) -> ABTestComparison:
+    """Build TREATMENT_WINS result."""
+    logger.info(
+        META_ABTEST_WINNER_DECLARED,
+        winner="treatment",
+        effect_size=effect,
+        p_value=p_value,
+    )
+    return ABTestComparison(
+        verdict=ABTestVerdict.TREATMENT_WINS,
+        control_metrics=control,
+        treatment_metrics=treatment,
+        effect_size=effect,
+        p_value=p_value,
+    )
+
+
+def _build_no_difference_result(
+    control: GroupMetrics,
+    treatment: GroupMetrics,
+    effect: float,
+    p_value: float,
+) -> ABTestComparison:
+    """Build INCONCLUSIVE result for no significant difference."""
+    logger.info(
+        META_ABTEST_INCONCLUSIVE,
+        reason="no_significant_difference",
+        effect_size=effect,
+    )
+    return ABTestComparison(
+        verdict=ABTestVerdict.INCONCLUSIVE,
+        control_metrics=control,
+        treatment_metrics=treatment,
+        effect_size=effect,
+        p_value=p_value,
+    )
 
 
 def _check_regressions(
@@ -152,7 +220,10 @@ def _check_regressions(
             regressed.append("success_rate")
 
     # Cost increase (higher is worse).
-    if control.total_spend_usd > 0.0:
+    if control.total_spend_usd == 0.0:
+        if treatment.total_spend_usd > 0.0:
+            regressed.append("cost")
+    else:
         increase = (
             treatment.total_spend_usd - control.total_spend_usd
         ) / control.total_spend_usd

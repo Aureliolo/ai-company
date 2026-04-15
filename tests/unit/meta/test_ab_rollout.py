@@ -251,6 +251,10 @@ class TestGroupMetrics:
         with pytest.raises(ValueError, match="less than or equal"):
             _group_metrics(ABTestGroup.CONTROL, success=1.1)
 
+    def test_observations_without_agents_rejected(self) -> None:
+        with pytest.raises(ValueError, match="observation_count"):
+            _group_metrics(ABTestGroup.CONTROL, agents=0, observations=5)
+
 
 # -- ABTestComparison model -----------------------------------------------
 
@@ -299,6 +303,24 @@ class TestABTestComparison:
         )
         assert c.verdict == ABTestVerdict.INCONCLUSIVE
 
+    def test_control_wins_requires_stats(self) -> None:
+        with pytest.raises(ValueError, match="winner verdicts"):
+            ABTestComparison(
+                verdict=ABTestVerdict.CONTROL_WINS,
+                control_metrics=_group_metrics(ABTestGroup.CONTROL),
+                treatment_metrics=_group_metrics(ABTestGroup.TREATMENT),
+            )
+
+    def test_control_wins_with_stats(self) -> None:
+        c = ABTestComparison(
+            verdict=ABTestVerdict.CONTROL_WINS,
+            control_metrics=_group_metrics(ABTestGroup.CONTROL),
+            treatment_metrics=_group_metrics(ABTestGroup.TREATMENT),
+            effect_size=0.3,
+            p_value=0.04,
+        )
+        assert c.verdict == ABTestVerdict.CONTROL_WINS
+
 
 # -- ABTestConfig ----------------------------------------------------------
 
@@ -336,6 +358,16 @@ class TestABTestConfig:
     def test_min_observations_floor(self) -> None:
         with pytest.raises(ValueError, match="greater than or equal"):
             ABTestConfig(min_observations_per_group=1)
+
+    def test_improvement_threshold_default(self) -> None:
+        cfg = ABTestConfig()
+        assert cfg.improvement_threshold == 0.15
+
+    def test_improvement_threshold_bounds(self) -> None:
+        with pytest.raises(ValueError, match="greater than 0"):
+            ABTestConfig(improvement_threshold=0.0)
+        with pytest.raises(ValueError, match="less than or equal"):
+            ABTestConfig(improvement_threshold=1.5)
 
 
 # -- ABTestRollout.assign_groups -------------------------------------------
@@ -461,59 +493,44 @@ class TestABTestComparator:
         )
         assert result.verdict == ABTestVerdict.INCONCLUSIVE
 
-    async def test_treatment_regressed_quality(self) -> None:
+    @pytest.mark.parametrize(
+        ("ctrl", "treat", "thresholds", "metric_key"),
+        [
+            (
+                _group_metrics(ABTestGroup.CONTROL, quality=8.0, observations=20),
+                _group_metrics(ABTestGroup.TREATMENT, quality=5.0, observations=20),
+                RegressionThresholds(quality_drop=0.10),
+                "quality",
+            ),
+            (
+                _group_metrics(ABTestGroup.CONTROL, success=0.90, observations=20),
+                _group_metrics(ABTestGroup.TREATMENT, success=0.70, observations=20),
+                RegressionThresholds(success_rate_drop=0.10),
+                "success_rate",
+            ),
+            (
+                _group_metrics(ABTestGroup.CONTROL, spend=100.0, observations=20),
+                _group_metrics(ABTestGroup.TREATMENT, spend=130.0, observations=20),
+                RegressionThresholds(cost_increase=0.20),
+                "cost",
+            ),
+        ],
+    )
+    async def test_treatment_regressed_single_metric(
+        self,
+        ctrl: GroupMetrics,
+        treat: GroupMetrics,
+        thresholds: RegressionThresholds,
+        metric_key: str,
+    ) -> None:
         comparator = ABTestComparator(min_observations=5)
         result = await comparator.compare(
-            control=_group_metrics(
-                ABTestGroup.CONTROL,
-                quality=8.0,
-                observations=20,
-            ),
-            treatment=_group_metrics(
-                ABTestGroup.TREATMENT,
-                quality=5.0,
-                observations=20,
-            ),
-            thresholds=RegressionThresholds(quality_drop=0.10),
+            control=ctrl,
+            treatment=treat,
+            thresholds=thresholds,
         )
         assert result.verdict == ABTestVerdict.TREATMENT_REGRESSED
-        assert "quality" in result.regressed_metrics
-
-    async def test_treatment_regressed_success_rate(self) -> None:
-        comparator = ABTestComparator(min_observations=5)
-        result = await comparator.compare(
-            control=_group_metrics(
-                ABTestGroup.CONTROL,
-                success=0.90,
-                observations=20,
-            ),
-            treatment=_group_metrics(
-                ABTestGroup.TREATMENT,
-                success=0.70,
-                observations=20,
-            ),
-            thresholds=RegressionThresholds(success_rate_drop=0.10),
-        )
-        assert result.verdict == ABTestVerdict.TREATMENT_REGRESSED
-        assert "success_rate" in result.regressed_metrics
-
-    async def test_treatment_regressed_cost(self) -> None:
-        comparator = ABTestComparator(min_observations=5)
-        result = await comparator.compare(
-            control=_group_metrics(
-                ABTestGroup.CONTROL,
-                spend=100.0,
-                observations=20,
-            ),
-            treatment=_group_metrics(
-                ABTestGroup.TREATMENT,
-                spend=130.0,
-                observations=20,
-            ),
-            thresholds=RegressionThresholds(cost_increase=0.20),
-        )
-        assert result.verdict == ABTestVerdict.TREATMENT_REGRESSED
-        assert "cost" in result.regressed_metrics
+        assert metric_key in result.regressed_metrics
 
     async def test_treatment_wins(self) -> None:
         comparator = ABTestComparator(min_observations=5)
@@ -570,11 +587,9 @@ class TestABTestComparator:
             ),
             thresholds=_thresholds(),
         )
-        # Should not crash; zero baseline skips ratio check.
-        assert result.verdict in (
-            ABTestVerdict.TREATMENT_WINS,
-            ABTestVerdict.INCONCLUSIVE,
-        )
+        # Zero baseline skips ratio check; effect is 0.0 (below
+        # threshold), so verdict must be INCONCLUSIVE.
+        assert result.verdict == ABTestVerdict.INCONCLUSIVE
 
 
 # -- ABTestRollout ---------------------------------------------------------
@@ -598,6 +613,10 @@ class TestABTestRollout:
     def test_invalid_control_fraction_negative(self) -> None:
         with pytest.raises(ValueError, match="control_fraction"):
             ABTestRollout(control_fraction=-0.5)
+
+    def test_invalid_min_agents_zero(self) -> None:
+        with pytest.raises(ValueError, match="min_agents_per_group"):
+            ABTestRollout(min_agents_per_group=0)
 
     async def test_successful_execute(self) -> None:
         rollout = ABTestRollout(

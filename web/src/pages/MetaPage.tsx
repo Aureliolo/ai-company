@@ -64,11 +64,9 @@ export default function MetaPage() {
           </SectionCard>
         </div>
 
-        {abTests.length > 0 && (
-          <SectionCard title="A/B Tests" icon={FlaskConical}>
-            <MetaABTestView tests={abTests} />
-          </SectionCard>
-        )}
+        <SectionCard title="A/B Tests" icon={FlaskConical}>
+          <MetaABTestView tests={abTests} />
+        </SectionCard>
 
         <SectionCard title="Improvement Proposals" icon={Brain}>
           <MetaProposalList proposals={proposals} />

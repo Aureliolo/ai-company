@@ -145,7 +145,8 @@ class TestBuildRolloutStrategies:
 
     def test_builds_3_strategies(self) -> None:
         strategies = build_rollout_strategies()
-        assert len(strategies) == 3
-        assert "before_after" in strategies
-        assert "canary" in strategies
-        assert "ab_test" in strategies
+        assert set(strategies.keys()) == {
+            "before_after",
+            "canary",
+            "ab_test",
+        }

@@ -57,14 +57,20 @@ class ABTestRollout:
         *,
         control_fraction: float = 0.5,
         min_agents_per_group: int = 5,
+        improvement_threshold: float = 0.15,
         comparator: ABTestComparator | None = None,
     ) -> None:
         if control_fraction <= 0.0 or control_fraction >= 1.0:
             msg = "control_fraction must be in the range (0, 1) exclusive."
             raise ValueError(msg)
+        if min_agents_per_group < 1:
+            msg = "min_agents_per_group must be >= 1."
+            raise ValueError(msg)
         self._control_fraction = control_fraction
         self._min_agents_per_group = min_agents_per_group
-        self._comparator = comparator or ABTestComparator()
+        self._comparator = comparator or ABTestComparator(
+            improvement_threshold=improvement_threshold,
+        )
 
     @property
     def name(self) -> str:
@@ -216,6 +222,7 @@ def _assign_and_validate(
     )
     logger.info(
         META_ABTEST_GROUPS_ASSIGNED,
+        proposal_id=str(proposal.id),
         control_count=len(assignment.control_agent_ids),
         treatment_count=len(assignment.treatment_agent_ids),
     )

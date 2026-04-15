@@ -140,7 +140,7 @@ All thresholds are configurable via constructor arguments.
 3. **Strategy dispatch**: Matching strategies generate proposals (rule-first hybrid)
 4. **Guard chain**: Sequential evaluation (scope, rollback plan, rate limit, approval gate)
 5. **Human approval**: Proposals queue in `ApprovalStore` for mandatory review
-6. **Rollout**: Before/after comparison or canary subset (per proposal)
+6. **Rollout**: Before/after comparison, canary subset, or A/B test (per proposal)
 7. **Regression detection**: Tiered (threshold circuit-breaker + statistical significance)
 8. **Auto-rollback**: On regression, `RollbackExecutor` applies the rollback plan
 

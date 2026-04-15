@@ -88,6 +88,14 @@ class GroupMetrics(BaseModel):
         default_factory=lambda: datetime.now(UTC),
     )
 
+    @model_validator(mode="after")
+    def _validate_observations_require_agents(self) -> Self:
+        """Observations require at least one agent."""
+        if self.observation_count > 0 and self.agent_count == 0:
+            msg = "observation_count > 0 requires agent_count > 0"
+            raise ValueError(msg)
+        return self
+
 
 class ABTestComparison(BaseModel):
     """Result of comparing control vs treatment group metrics.
@@ -96,8 +104,10 @@ class ABTestComparison(BaseModel):
         verdict: Outcome of the comparison.
         control_metrics: Metrics from the control group.
         treatment_metrics: Metrics from the treatment group.
-        effect_size: Cohen's d estimate (None if insufficient data).
-        p_value: Statistical significance (None if insufficient data).
+        effect_size: Normalized improvement ratio proxy
+            (None if insufficient data).
+        p_value: Statistical significance proxy
+            (None if insufficient data).
         regressed_metrics: Names of metrics where treatment was worse.
         compared_at: When the comparison was performed.
     """
@@ -127,11 +137,12 @@ class ABTestComparison(BaseModel):
 
     @model_validator(mode="after")
     def _validate_winner_has_stats(self) -> Self:
-        """Treatment wins must include effect_size and p_value."""
-        if self.verdict == ABTestVerdict.TREATMENT_WINS and (
-            self.effect_size is None or self.p_value is None
-        ):
-            msg = "treatment wins must include effect_size and p_value"
+        """Winner verdicts must include effect_size and p_value."""
+        if self.verdict in (
+            ABTestVerdict.TREATMENT_WINS,
+            ABTestVerdict.CONTROL_WINS,
+        ) and (self.effect_size is None or self.p_value is None):
+            msg = "winner verdicts must include effect_size and p_value"
             raise ValueError(msg)
         return self
 

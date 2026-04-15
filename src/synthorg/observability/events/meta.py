@@ -48,7 +48,6 @@ META_REGRESSION_STATISTICAL: Final[str] = "meta.regression.statistical"
 
 META_ABTEST_GROUPS_ASSIGNED: Final[str] = "meta.abtest.groups_assigned"
 META_ABTEST_OBSERVATION_STARTED: Final[str] = "meta.abtest.observation_started"
-META_ABTEST_CHECKPOINT: Final[str] = "meta.abtest.checkpoint"
 META_ABTEST_WINNER_DECLARED: Final[str] = "meta.abtest.winner_declared"
 META_ABTEST_INCONCLUSIVE: Final[str] = "meta.abtest.inconclusive"
 META_ABTEST_TREATMENT_REGRESSED: Final[str] = "meta.abtest.treatment_regressed"

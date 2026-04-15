@@ -105,7 +105,14 @@ function ABTestCard({ test }: { test: ABTestSummary }) {
         )}
       </div>
 
-      <div className="mb-4 h-1.5 w-full rounded-full bg-muted">
+      <div
+        className="mb-4 h-1.5 w-full rounded-full bg-muted"
+        role="progressbar"
+        aria-valuenow={Math.round(progress)}
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-label={`Observation progress: ${test.observationHoursElapsed.toFixed(1)}h of ${test.observationHoursTotal}h`}
+      >
         <motion.div
           className="h-full rounded-full bg-accent"
           animate={{ width: `${progress}%` }}

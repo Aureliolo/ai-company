@@ -45,6 +45,7 @@ class ABTestConfig(BaseModel):
     control_fraction: float = Field(default=0.5, gt=0.0, lt=1.0)
     min_agents_per_group: int = Field(default=5, ge=2)
     min_observations_per_group: int = Field(default=10, ge=2)
+    improvement_threshold: float = Field(default=0.15, gt=0.0, le=1.0)
 
 
 class RolloutConfig(BaseModel):
