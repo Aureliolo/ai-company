@@ -89,7 +89,7 @@ COMMUNICATION_TOOLS: tuple[MCPToolDef, ...] = (
             "meeting_id": {"type": "string", "description": "Meeting UUID"},
             "updates": {"type": "object", "description": "Fields to update"},
         },
-        required=("meeting_id",),
+        required=("meeting_id", "updates"),
     ),
     write_tool(
         "meetings",
@@ -173,7 +173,7 @@ COMMUNICATION_TOOLS: tuple[MCPToolDef, ...] = (
             "webhook_id": {"type": "string", "description": "Webhook UUID"},
             "updates": {"type": "object", "description": "Fields to update"},
         },
-        required=("webhook_id",),
+        required=("webhook_id", "updates"),
     ),
     admin_tool(
         "webhooks",

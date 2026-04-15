@@ -53,7 +53,9 @@ class TestDomainToolRegistry:
         tool = make_tool()
         registry.register(tool)
         registry.freeze()
-        assert registry.get("synthorg_test_get") is tool
+        retrieved = registry.get("synthorg_test_get")
+        assert retrieved == tool
+        assert retrieved is not tool  # deep copy, not same object
 
     def test_register_many(self) -> None:
         registry = DomainToolRegistry()

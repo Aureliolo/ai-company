@@ -43,7 +43,11 @@ BUDGET_TOOLS: tuple[MCPToolDef, ...] = (
         "get",
         "Get a specific budget config version.",
         {
-            "version_num": {"type": "integer", "description": "Version number (>= 1)"},
+            "version_num": {
+                "type": "integer",
+                "description": "Version number",
+                "minimum": 1,
+            },
         },
         required=("version_num",),
     ),

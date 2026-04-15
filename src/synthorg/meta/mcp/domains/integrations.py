@@ -148,7 +148,7 @@ INTEGRATION_TOOLS: tuple[MCPToolDef, ...] = (
             "type": {"type": "string", "description": "Artifact type"},
             "content": {"type": "string", "description": "Artifact content"},
         },
-        required=("type",),
+        required=("type", "content"),
     ),
     write_tool(
         "artifacts",

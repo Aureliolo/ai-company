@@ -23,6 +23,7 @@ SIGNAL_MCP_TOOLS: tuple[MCPToolDef, ...] = (
                 "type": "integer",
                 "description": "Lookback window in days",
                 "default": 7,
+                "minimum": 1,
             }
         },
     ),
@@ -36,6 +37,7 @@ SIGNAL_MCP_TOOLS: tuple[MCPToolDef, ...] = (
                 "type": "integer",
                 "description": "Lookback window in days",
                 "default": 7,
+                "minimum": 1,
             }
         },
     ),
@@ -91,6 +93,7 @@ SIGNAL_MCP_TOOLS: tuple[MCPToolDef, ...] = (
                     "What triggered this submission (manual, scheduled, inflection)"
                 ),
                 "default": "manual",
+                "enum": ["manual", "scheduled", "inflection"],
             },
         },
     ),

@@ -38,6 +38,8 @@ ANALYTICS_TOOLS: tuple[MCPToolDef, ...] = (
                 "type": "integer",
                 "description": "Forecast horizon in days (1-90)",
                 "default": 30,
+                "minimum": 1,
+                "maximum": 90,
             },
         },
     ),

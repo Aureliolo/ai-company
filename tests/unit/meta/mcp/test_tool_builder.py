@@ -109,26 +109,35 @@ class TestAdminTool:
 class TestToolDefValidation:
     """Tests for invalid inputs that should be rejected by validators."""
 
-    def test_uppercase_domain_rejected(self) -> None:
-        with pytest.raises(ValidationError, match="synthorg_"):
-            tool_def("Tasks", "list", "List tasks")
-
-    def test_uppercase_action_rejected(self) -> None:
-        with pytest.raises(ValidationError, match="synthorg_"):
-            tool_def("tasks", "List", "List tasks")
-
-    def test_empty_domain_rejected(self) -> None:
+    @pytest.mark.parametrize(
+        ("domain", "action", "desc"),
+        [
+            ("Tasks", "list", "uppercase domain"),
+            ("tasks", "List", "uppercase action"),
+            ("", "list", "empty domain"),
+            ("tasks", "", "empty action"),
+            ("my tasks", "list", "domain with spaces"),
+            ("1tasks", "list", "domain starting with digit"),
+        ],
+        ids=[
+            "uppercase-domain",
+            "uppercase-action",
+            "empty-domain",
+            "empty-action",
+            "space-in-domain",
+            "digit-start-domain",
+        ],
+    )
+    def test_invalid_name_rejected(self, domain: str, action: str, desc: str) -> None:
         with pytest.raises(ValidationError):
-            tool_def("", "list", "List tasks")
+            tool_def(domain, action, f"Tool with {desc}")
 
-    def test_empty_action_rejected(self) -> None:
-        with pytest.raises(ValidationError):
-            tool_def("tasks", "", "List tasks")
-
-    def test_domain_with_spaces_rejected(self) -> None:
-        with pytest.raises(ValidationError, match="synthorg_"):
-            tool_def("my tasks", "list", "List tasks")
-
-    def test_domain_starting_with_digit_rejected(self) -> None:
-        with pytest.raises(ValidationError, match="synthorg_"):
-            tool_def("1tasks", "list", "List tasks")
+    def test_required_keys_must_exist_in_properties(self) -> None:
+        with pytest.raises(ValueError, match="required keys"):
+            tool_def(
+                "tasks",
+                "get",
+                "Get task",
+                {"task_id": {"type": "string"}},
+                required=("task_id", "nonexistent"),
+            )

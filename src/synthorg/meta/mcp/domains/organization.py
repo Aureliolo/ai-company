@@ -20,6 +20,7 @@ ORGANIZATION_TOOLS: tuple[MCPToolDef, ...] = (
         {
             "updates": {"type": "object", "description": "Fields to update"},
         },
+        required=("updates",),
     ),
     read_tool("company", "list_departments", "List departments in the company."),
     write_tool(
@@ -85,7 +86,7 @@ ORGANIZATION_TOOLS: tuple[MCPToolDef, ...] = (
             "name": {"type": "string", "description": "Department name"},
             "updates": {"type": "object", "description": "Fields to update"},
         },
-        required=("name",),
+        required=("name", "updates"),
     ),
     write_tool(
         "departments",
@@ -124,7 +125,7 @@ ORGANIZATION_TOOLS: tuple[MCPToolDef, ...] = (
             "name": {"type": "string", "description": "Team name"},
             "department": {"type": "string", "description": "Parent department"},
         },
-        required=("name",),
+        required=("name", "department"),
     ),
     write_tool(
         "teams",
@@ -134,7 +135,7 @@ ORGANIZATION_TOOLS: tuple[MCPToolDef, ...] = (
             "team_id": {"type": "string", "description": "Team UUID"},
             "updates": {"type": "object", "description": "Fields to update"},
         },
-        required=("team_id",),
+        required=("team_id", "updates"),
     ),
     write_tool(
         "teams",

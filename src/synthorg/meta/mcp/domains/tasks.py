@@ -59,7 +59,7 @@ TASK_TOOLS: tuple[MCPToolDef, ...] = (
             "task_id": {"type": "string", "description": "Task UUID"},
             "updates": {"type": "object", "description": "Fields to update"},
         },
-        required=("task_id",),
+        required=("task_id", "updates"),
     ),
     write_tool(
         "tasks",
@@ -101,6 +101,7 @@ TASK_TOOLS: tuple[MCPToolDef, ...] = (
             "last_n_hours": {
                 "type": "integer",
                 "description": "Lookback hours (24/48/168)",
+                "enum": [24, 48, 168],
             },
             **PAGINATION_PROPERTIES,
         },

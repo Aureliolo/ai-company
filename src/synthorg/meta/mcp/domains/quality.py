@@ -70,7 +70,7 @@ QUALITY_TOOLS: tuple[MCPToolDef, ...] = (
             "review_id": {"type": "string", "description": "Review UUID"},
             "updates": {"type": "object", "description": "Fields to update"},
         },
-        required=("review_id",),
+        required=("review_id", "updates"),
     ),
     # --- Evaluation config versions ---
     read_tool(

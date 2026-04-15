@@ -41,9 +41,18 @@ def _make_parameters(
     Returns:
         JSON Schema dict.
     """
+    resolved = properties or {}
+    if required:
+        unknown = set(required) - set(resolved)
+        if unknown:
+            msg = (
+                f"required keys {sorted(unknown)} not declared "
+                f"in properties {sorted(resolved)}"
+            )
+            raise ValueError(msg)
     schema: dict[str, Any] = {
         "type": "object",
-        "properties": properties or {},
+        "properties": resolved,
     }
     if required:
         schema["required"] = list(required)

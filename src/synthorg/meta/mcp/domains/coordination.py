@@ -20,7 +20,7 @@ COORDINATION_TOOLS: tuple[MCPToolDef, ...] = (
             "task_id": {"type": "string", "description": "Task UUID"},
             "strategy": {"type": "string", "description": "Coordination strategy"},
         },
-        required=("task_id",),
+        required=("task_id", "strategy"),
     ),
     # --- Coordination metrics ---
     read_tool(
@@ -30,8 +30,16 @@ COORDINATION_TOOLS: tuple[MCPToolDef, ...] = (
         {
             "task_id": {"type": "string", "description": "Filter by task"},
             "agent_id": {"type": "string", "description": "Filter by agent"},
-            "since": {"type": "string", "description": "Start datetime (ISO 8601)"},
-            "until": {"type": "string", "description": "End datetime (ISO 8601)"},
+            "since": {
+                "type": "string",
+                "description": "Start datetime (ISO 8601)",
+                "format": "date-time",
+            },
+            "until": {
+                "type": "string",
+                "description": "End datetime (ISO 8601)",
+                "format": "date-time",
+            },
             **PAGINATION_PROPERTIES,
         },
     ),
@@ -59,6 +67,7 @@ COORDINATION_TOOLS: tuple[MCPToolDef, ...] = (
                 "description": "Reason for triggering scaling",
             },
         },
+        required=("reason",),
     ),
     # --- Ceremony policy ---
     read_tool("ceremony_policy", "get", "Get the project-level ceremony policy."),

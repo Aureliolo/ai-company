@@ -48,7 +48,7 @@ AGENT_TOOLS: tuple[MCPToolDef, ...] = (
             "agent_name": {"type": "string", "description": "Agent name"},
             "updates": {"type": "object", "description": "Fields to update"},
         },
-        required=("agent_name",),
+        required=("agent_name", "updates"),
     ),
     write_tool(
         "agents",
@@ -143,7 +143,11 @@ AGENT_TOOLS: tuple[MCPToolDef, ...] = (
         "Update autonomy level for an agent.",
         {
             "agent_id": {"type": "string", "description": "Agent ID"},
-            "level": {"type": "string", "description": "New autonomy level"},
+            "level": {
+                "type": "string",
+                "description": "New autonomy level",
+                "enum": ["NONE", "LIMITED", "SEMI", "FULL"],
+            },
         },
         required=("agent_id", "level"),
     ),

@@ -174,26 +174,31 @@ class DomainToolRegistry:
     def get(self, name: str) -> MCPToolDef:
         """Look up a tool by name.
 
+        Returns a deep copy so callers cannot mutate registry state.
+
         Args:
             name: Tool name.
 
         Returns:
-            The matching tool definition.
+            Deep-copied tool definition.
 
         Raises:
             KeyError: If no tool with that name exists.
         """
         self._ensure_frozen()
-        return self._tools[name]
+        return self._tools[name].model_copy(deep=True)
 
     def get_all(self) -> tuple[MCPToolDef, ...]:
         """Return all registered tool definitions sorted by name.
 
         Returns:
-            Sorted tuple of all tool definitions.
+            Sorted tuple of deep-copied tool definitions.
         """
         self._ensure_frozen()
-        return tuple(sorted(self._tools.values(), key=lambda t: t.name))
+        return tuple(
+            t.model_copy(deep=True)
+            for t in sorted(self._tools.values(), key=lambda t: t.name)
+        )
 
     def get_tool_definitions(self) -> tuple[dict[str, Any], ...]:
         """Return all tools as plain dicts (for MCP protocol serialization).
@@ -224,10 +229,12 @@ class DomainToolRegistry:
         return tuple(sorted(self._tools))
 
     def as_mapping(self) -> MappingProxyType[str, MCPToolDef]:
-        """Return a read-only mapping of tool name to definition.
+        """Return a read-only mapping of deep-copied tool definitions.
 
         Returns:
-            Frozen mapping proxy.
+            Frozen mapping proxy with deep-copied values.
         """
         self._ensure_frozen()
-        return MappingProxyType(dict(self._tools))
+        return MappingProxyType(
+            {k: v.model_copy(deep=True) for k, v in self._tools.items()}
+        )

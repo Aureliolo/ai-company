@@ -163,7 +163,7 @@ INFRASTRUCTURE_TOOLS: tuple[MCPToolDef, ...] = (
             "user_id": {"type": "string", "description": "User UUID"},
             "updates": {"type": "object", "description": "Fields to update"},
         },
-        required=("user_id",),
+        required=("user_id", "updates"),
     ),
     admin_tool(
         "users",
@@ -203,7 +203,7 @@ INFRASTRUCTURE_TOOLS: tuple[MCPToolDef, ...] = (
             "project_id": {"type": "string", "description": "Project UUID"},
             "updates": {"type": "object", "description": "Fields to update"},
         },
-        required=("project_id",),
+        required=("project_id", "updates"),
     ),
     write_tool(
         "projects",
