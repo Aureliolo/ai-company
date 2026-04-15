@@ -7,7 +7,7 @@ enabled altitudes and disabled rules.
 
 from copy import deepcopy
 from types import MappingProxyType
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, assert_never
 
 from synthorg.meta.appliers.architecture_applier import (
     ArchitectureApplier,
@@ -183,8 +183,7 @@ def build_confidence_adjuster(
         )
     if strategy == "bayesian":
         return BayesianConfidenceAdjuster()
-    msg = f"Unknown adjuster strategy: '{strategy}'"
-    raise ValueError(msg)
+    assert_never(strategy)
 
 
 def build_rollout_strategies(
