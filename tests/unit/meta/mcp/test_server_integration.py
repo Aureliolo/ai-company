@@ -63,7 +63,9 @@ class TestChiefOfStaffScoping:
     def test_cos_role_definition_has_mcp_capabilities(self) -> None:
         role_def = get_role_definition()
         assert "mcp_capabilities" in role_def
-        assert len(role_def["mcp_capabilities"]) > 0
+        caps = role_def["mcp_capabilities"]
+        assert isinstance(caps, tuple)
+        assert len(caps) > 0
 
 
 class TestAgentScoping:

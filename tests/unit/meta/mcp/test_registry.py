@@ -9,7 +9,7 @@ pytestmark = pytest.mark.unit
 
 def _make_tool(name: str = "synthorg_test_get", **overrides: object) -> MCPToolDef:
     """Create a test tool definition with sensible defaults."""
-    defaults = {
+    defaults: dict[str, object] = {
         "name": name,
         "description": "A test tool",
         "parameters": {"type": "object", "properties": {}},

@@ -29,8 +29,11 @@ class TestUnifiedServer:
         assert config["name"] == SERVER_NAME
         assert config["transport"] == "stdio"
         assert config["enabled"] is True
-        assert isinstance(config["enabled_tools"], list)
-        assert config["tool_count"] >= 200
+        tool_names = config["enabled_tools"]
+        assert isinstance(tool_names, list)
+        tool_count = config["tool_count"]
+        assert isinstance(tool_count, int)
+        assert tool_count >= 200
         assert config["tool_prefix"] == "synthorg"
 
     def test_registry_frozen(self) -> None:
@@ -40,5 +43,8 @@ class TestUnifiedServer:
 
     def test_all_tool_names_start_with_prefix(self) -> None:
         config = get_server_config()
-        for name in config["enabled_tools"]:
+        tool_names = config["enabled_tools"]
+        assert isinstance(tool_names, list)
+        for name in tool_names:
+            assert isinstance(name, str)
             assert name.startswith("synthorg_")
