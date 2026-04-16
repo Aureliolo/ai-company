@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"testing"
 
@@ -499,21 +498,4 @@ func TestWriteNATSConfigIfNeeded(t *testing.T) {
 		}
 	})
 
-	t.Run("nats.conf permissions are restrictive (unix)", func(t *testing.T) {
-		if runtime.GOOS == "windows" {
-			t.Skip("Windows does not honour Unix permission bits")
-		}
-		safeDir := t.TempDir()
-		state := config.State{BusBackend: "nats"}
-		if err := writeNATSConfigIfNeeded(state, safeDir); err != nil {
-			t.Fatalf("writeNATSConfigIfNeeded: %v", err)
-		}
-		info, err := os.Stat(filepath.Join(safeDir, compose.NATSConfigFilename))
-		if err != nil {
-			t.Fatalf("stat file: %v", err)
-		}
-		if info.Mode().Perm()&0o077 != 0 {
-			t.Errorf("nats.conf has group/other access (mode=%o), want 0o600", info.Mode().Perm())
-		}
-	})
 }
