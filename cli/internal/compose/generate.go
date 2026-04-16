@@ -104,7 +104,18 @@ func ParamsFromState(s config.State) (Params, error) {
 		return Params{}, fmt.Errorf("resolving tunables: %w", err)
 	}
 
+	// Only honour cached pins when we are still on the canonical default
+	// deployment. For a custom registry/repo/tag, the trust path (SAN
+	// regex + pinned digest map + verified_digests cache) is bound to
+	// the defaults, so any cached pin refers to a DIFFERENT image than
+	// the one we are about to render -- emitting it would produce
+	// `newregistry/newprefix-backend@sha256:OLD_DEFAULT_DIGEST`, which
+	// either 404s at pull time or pulls a mismatched image. Null out
+	// both the SynthOrg (DigestPins) and DHI (PostgresDigest/
+	// NATSDigest) pins in that case and let Generate render repo:tag
+	// references under SkipVerify.
 	var pgDigest, natsDigest string
+	var digestPins map[string]string
 	if !tun.CustomRegistry {
 		pgKey := tun.DHIRegistry + "/postgres:" + tun.PostgresImageTag
 		natsKey := tun.DHIRegistry + "/nats:" + tun.NATSImageTag
@@ -114,6 +125,7 @@ func ParamsFromState(s config.State) (Params, error) {
 		if d, ok := verify.DHIPinnedIndexDigest(natsKey); ok {
 			natsDigest = d
 		}
+		digestPins = s.VerifiedDigests
 	}
 
 	return Params{
@@ -144,6 +156,7 @@ func ParamsFromState(s config.State) (Params, error) {
 		NATSDigest:            natsDigest,
 		NATSURL:               tun.DefaultNATSURL,
 		DisableDefaultDHIPins: tun.CustomRegistry,
+		DigestPins:            digestPins,
 	}, nil
 }
 
@@ -219,18 +232,23 @@ func applyComposeDefaults(p *Params) {
 		p.NATSURL = config.DefaultNATSURLValue
 	}
 
-	// Autofill pinned digests when the caller is on the default
-	// registry and tags AND has not explicitly disabled autofill via
-	// DisableDefaultDHIPins. A custom registry/repo invocation sets
-	// DisableDefaultDHIPins=true even when the DHI bits still look
-	// default, because the trust path (SAN regex + pinned digest map)
-	// is bound to the ENTIRE default deployment -- not just DHI. Without
-	// this gate, customizing only registry_host would still produce
-	// digest-pinned DHI refs and break the trust-transfer contract.
-	onDefaultRegistry := p.DHIRegistry == config.DefaultDHIRegistry &&
-		p.PostgresImageTag == config.DefaultPostgresImageTag &&
-		p.NATSImageTag == config.DefaultNATSImageTag
-	if onDefaultRegistry && !p.DisableDefaultDHIPins {
+	// Autofill pinned digests ONLY when every registry/repo/tag field
+	// still matches the compiled-in default. The trust path (SAN regex
+	// + pinned digest map) is bound to the ENTIRE default deployment,
+	// so any single overridden field -- including RegistryHost or
+	// ImageRepoPrefix that don't even feed the DHI keys -- transfers
+	// trust to the operator and invalidates the pin. We check all five
+	// identity-bearing fields AND the explicit DisableDefaultDHIPins
+	// flag (set by ParamsFromState when tun.CustomRegistry) so a caller
+	// that builds Params by hand and sets only RegistryHost cannot
+	// accidentally inherit the pinned DHI refs.
+	trustTransferred := p.DisableDefaultDHIPins ||
+		p.RegistryHost != config.DefaultRegistryHost ||
+		p.ImageRepoPrefix != config.DefaultImageRepoPrefix ||
+		p.DHIRegistry != config.DefaultDHIRegistry ||
+		p.PostgresImageTag != config.DefaultPostgresImageTag ||
+		p.NATSImageTag != config.DefaultNATSImageTag
+	if !trustTransferred {
 		if p.PostgresDigest == "" {
 			pgKey := p.DHIRegistry + "/postgres:" + p.PostgresImageTag
 			if d, ok := verify.DHIPinnedIndexDigest(pgKey); ok {

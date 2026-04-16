@@ -268,7 +268,11 @@ func doctorFixCompose(state config.State, safeDir string) error {
 	if err != nil {
 		return fmt.Errorf("building compose params: %w", err)
 	}
-	params.DigestPins = state.VerifiedDigests
+	// ParamsFromState decides DigestPins based on the resolved
+	// tunables (only honoured when on the default registry). Overriding
+	// here would reintroduce the bug CodeRabbit flagged: `doctor --fix`
+	// could regenerate a custom-registry compose file with stale
+	// default-registry digest pins.
 	generated, err := compose.Generate(params)
 	if err != nil {
 		return fmt.Errorf("generating compose: %w", err)

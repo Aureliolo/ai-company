@@ -556,7 +556,10 @@ func regenerateCompose(state config.State) error {
 	if err != nil {
 		return fmt.Errorf("building compose params: %w", err)
 	}
-	params.DigestPins = state.VerifiedDigests
+	// ParamsFromState already sets DigestPins to state.VerifiedDigests
+	// when the deployment is on the default (trusted) registry, and
+	// leaves it nil when a custom-registry trust transfer is in effect.
+	// Do not override that decision here.
 	generated, err := compose.Generate(params)
 	if err != nil {
 		return fmt.Errorf("regenerating compose: %w", err)

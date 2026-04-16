@@ -77,6 +77,17 @@ func runWorkerStart(cmd *cobra.Command, _ []string) error {
 	if err := validateNatsURL(workerStartNatsURL); err != nil {
 		return err
 	}
+	// Validate the stream prefix up front so an explicit --stream-prefix
+	// with bad characters is rejected here rather than deep inside the
+	// worker pool. The tunable path already runs through the same regex
+	// via config.ResolveTunables, but an explicit flag skips that check
+	// and would otherwise end up as an env var on the backend process.
+	if !config.IsValidStreamPrefix(workerStartStreamPrefix) {
+		return fmt.Errorf(
+			"invalid --stream-prefix %q: must match [A-Z0-9][A-Z0-9_-]*",
+			workerStartStreamPrefix,
+		)
+	}
 	if err := validateContainerName(workerStartContainer); err != nil {
 		return err
 	}

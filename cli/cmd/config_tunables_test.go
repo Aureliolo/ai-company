@@ -66,16 +66,19 @@ func TestTunableKeys_SetUnsetRoundTrip(t *testing.T) {
 				t.Fatalf("resetConfigValue(%s): %v", tk.Key, err)
 			}
 			// After reset, get returns the compiled-in default, not the
-			// user-supplied value.
+			// user-supplied value. Every entry in tunableKeys deliberately
+			// uses a test value that differs from the compiled-in default
+			// (verified in the tunableKeys fixture), so equality here can
+			// only mean `resetConfigValue` failed to clear state. No
+			// exclusions: if a future test value drifts to equal the
+			// default, this will flag the fixture rather than silently
+			// lose coverage.
 			after := configGetValue(state, tk.Key)
 			if after == "" {
 				t.Errorf("configGetValue after unset returned empty string; expected compiled-in default")
 			}
-			if after == got && tk.Key != "postgres_image_tag" && tk.Key != "nats_image_tag" {
-				// A user-supplied value that happens to equal the default
-				// would trigger this. None of our test values do, so the
-				// equal case should only occur if reset is broken.
-				t.Errorf("configGetValue after unset (%q) matches post-set value (%q); reset did not clear state", after, got)
+			if after == got {
+				t.Errorf("configGetValue after unset (%q) matches post-set value (%q); reset did not clear state (or test value equals default)", after, got)
 			}
 		})
 	}

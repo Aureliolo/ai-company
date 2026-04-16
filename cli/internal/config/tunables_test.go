@@ -169,6 +169,10 @@ func TestParseBytes(t *testing.T) {
 		{"1B", 1, false},
 		{"", 0, true},
 		{"-1", 0, true},
+		{"0", 0, true},
+		{"0B", 0, true},
+		{".5B", 0, true},                 // sub-byte truncates to 0
+		{".000000000000000001", 0, true}, // extreme fraction truncates to 0
 		{"1XB", 0, true},
 		{"abc", 0, true},
 		// Overflow: value larger than int64 capacity. Must be rejected
@@ -200,6 +204,39 @@ func TestParseBytes(t *testing.T) {
 			}
 		})
 	}
+}
+
+// FuzzParseBytes keeps the overflow, ceiling, and float-rounding
+// defenses covered far more thoroughly than a growing table of
+// TestParseBytes cases. For every accepted input, the parser MUST
+// return a strictly-positive int64 <= MaxBytesCeiling; anything else
+// means a defense regressed. The corpus seeds a mix of the existing
+// happy-path and failure-path cases so the fuzzer has something to
+// mutate from.
+func FuzzParseBytes(f *testing.F) {
+	seeds := []string{
+		"", "0", "1", "1024",
+		"1KiB", "1kib", "1kb", "256MiB", "1.5MiB", "1GiB", "1GB", "1B",
+		"-1", "1XB", "abc",
+		"999999999999GiB", "9999999999999999999",
+		"2GiB", "9223372036854775808",
+		" ", "1 ", " 1",
+	}
+	for _, s := range seeds {
+		f.Add(s)
+	}
+	f.Fuzz(func(t *testing.T, s string) {
+		got, err := ParseBytes(s)
+		if err != nil {
+			return
+		}
+		if got <= 0 {
+			t.Fatalf("ParseBytes(%q) = %d: accepted value must be > 0", s, got)
+		}
+		if got > MaxBytesCeiling {
+			t.Fatalf("ParseBytes(%q) = %d: exceeds MaxBytesCeiling %d", s, got, MaxBytesCeiling)
+		}
+	})
 }
 
 func TestIsValidRegistryHost(t *testing.T) {

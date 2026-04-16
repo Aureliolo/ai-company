@@ -270,8 +270,12 @@ func ParseBytes(s string) (int64, error) {
 	if err != nil {
 		return 0, fmt.Errorf("parse number %q: %w", numPart, err)
 	}
-	if n < 0 {
-		return 0, fmt.Errorf("negative size %v", n)
+	if n <= 0 {
+		// Per CLAUDE.md tunable-value spec: byte sizes reject negative
+		// AND zero values. Tunables that feed io.LimitReader or HTTP
+		// response-size caps would disable the protection entirely at
+		// zero, so the contract is "strictly positive".
+		return 0, fmt.Errorf("non-positive size %v", n)
 	}
 	var mult float64
 	switch unit {
@@ -304,5 +308,13 @@ func ParseBytes(s string) (int64, error) {
 	if product > float64(MaxBytesCeiling) {
 		return 0, fmt.Errorf("size %s exceeds ceiling %d bytes (1 GiB)", s, MaxBytesCeiling)
 	}
-	return int64(product), nil
+	result := int64(product)
+	if result <= 0 {
+		// Sub-byte fractions (e.g. "0.5B", ".000001KiB") truncate to 0
+		// after the cast even though the pre-cast float is > 0. That
+		// would silently disable any downstream io.LimitReader cap, so
+		// reject anything that cannot represent at least one byte.
+		return 0, fmt.Errorf("size %s resolves to non-positive byte count", s)
+	}
+	return result, nil
 }
