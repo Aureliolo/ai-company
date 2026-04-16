@@ -3,8 +3,9 @@
 
 services:
 
-  # Init container: ensure the data volume is owned by the app user (65532).
-  # Docker creates named volumes as root; this runs once on first start.
+  # Init container: chown named volumes to the correct non-root UID per service.
+  # Fresh Docker named volumes are root-owned; DHI images run as non-root and
+  # cannot self-chown, so this one-shot container sets ownership on first start.
   data-init:
     # renovate: datasource=docker depName=busybox
     image: busybox:1.37-musl@sha256:19b646668802469d968a05342a601e78da4322a414a7c09b1c9ee25165042138

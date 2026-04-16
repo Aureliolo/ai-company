@@ -20,6 +20,10 @@ services:
     environment:
       SYNTHORG_BUS_BACKEND: "nats"
       SYNTHORG_NATS_URL: "${SYNTHORG_NATS_URL:-nats://nats:4222}"
+    # The `nats` service is a DHI distroless image with no shell/wget, so its
+    # healthcheck lives on the `nats-healthcheck` sidecar. Depending directly
+    # on `nats: service_healthy` would hang forever because Compose cannot
+    # satisfy `service_healthy` for a service without a healthcheck.
     depends_on:
-      nats:
+      nats-healthcheck:
         condition: service_healthy

@@ -123,12 +123,22 @@ The CLI orchestrates two persistence backends:
 | `sqlite` (default) | `--persistence-backend sqlite` | n/a (in-process) | `synthorg-data` | Single-node, development, small deployments |
 | `postgres` | `--persistence-backend postgres` | `3002` (default, override with `--postgres-port`) | `synthorg-pgdata` | Multi-instance, production, high concurrency |
 
+### Volume ownership (`data-init`)
+
+Every generated `compose.yml` includes a `data-init` helper container (busybox) that runs once before the stateful services start. Its job is to chown each named volume to the UID of the non-root user that will own it:
+
+- `synthorg-data` -> `65532:65532` (backend / distroless nonroot)
+- `synthorg-pgdata` -> `70:70` with mode `0700` (DHI postgres user; `initdb` requires exclusive 0700 or it aborts with "permissions should be u=rwx (0700) or u=rwx,g=rx (0750)") -- only mounted when `--persistence-backend postgres`
+- `synthorg-nats-data` -> `65532:65532` (DHI nats `nonroot` user) -- only mounted when `--bus-backend nats`
+
+Fresh Docker named volumes are owned by `root:root` at creation, and DHI images run as non-root with no capability to self-chown, so this one-shot container is required for every backend selection to avoid permission errors. The `postgres` and `nats` services both declare `depends_on: data-init: condition: service_completed_successfully` to block on the chown before starting.
+
 ### Postgres orchestration
 
 When `--persistence-backend postgres` is selected, `synthorg init`:
 
 1. Adds a `dhi.io/postgres:18-debian13` DHI (Docker Hardened Image) service to the generated `compose.yml` (read-only rootfs, minimal capabilities via `cap_add`, `pg_isready` healthcheck, named volume `synthorg-pgdata`).
-2. Adds a `data-init` helper container (busybox) that ensures the `synthorg-data` volume is owned by the non-root backend user (`65532:65532`) on first start, preventing permission errors.
+2. Extends the `data-init` helper (see above) to also chown `synthorg-pgdata` to `70:70` with mode `0700`.
 3. Generates a 32-byte URL-safe random password via `crypto/rand` and persists it to `config.json` (`postgres_password`). Re-init preserves the existing password to avoid breaking the running container.
 4. Wires `SYNTHORG_DATABASE_URL=postgresql://synthorg:<password>@postgres:5432/synthorg` into the backend container's environment. The SQLite-only `SYNTHORG_DB_PATH` variable is omitted.
 5. Declares `depends_on: postgres: condition: service_healthy` on the backend service so backend startup blocks until Postgres accepts connections.
