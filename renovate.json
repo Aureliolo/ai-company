@@ -56,18 +56,21 @@
       "labels": ["dependencies", "type:chore", "scope:cli"]
     },
     {
-      "description": "Container dependencies (Docker images, Compose, apko)",
-      "matchManagers": ["dockerfile", "docker-compose", "custom.regex"],
+      "description": "Container dependencies (all Dockerfile and Docker Compose images)",
+      "matchManagers": ["dockerfile", "docker-compose"],
       "groupName": "Container dependencies",
       "groupSlug": "container",
       "commitMessagePrefix": "chore:",
-      "labels": ["dependencies", "type:chore", "scope:docker"],
-      "matchDepNames": [
-        "/dhi\\.io/.*/",
-        "/busybox/",
-        "/postgres/",
-        "/nats/"
-      ]
+      "labels": ["dependencies", "type:chore", "scope:docker"]
+    },
+    {
+      "description": "Container dependencies (compose template images via custom regex)",
+      "matchManagers": ["custom.regex"],
+      "matchDepNames": ["/dhi\\.io/.*/", "/busybox/", "/postgres/", "/nats/"],
+      "groupName": "Container dependencies",
+      "groupSlug": "container",
+      "commitMessagePrefix": "chore:",
+      "labels": ["dependencies", "type:chore", "scope:docker"]
     },
     {
       "description": "CI tool dependencies (Actions SHAs + binary tools)",
@@ -94,6 +97,34 @@
       "groupSlug": "container",
       "commitMessagePrefix": "chore:",
       "labels": ["dependencies", "type:chore", "scope:docker"]
+    },
+    {
+      "description": "Route Python lock file maintenance into Python group",
+      "matchUpdateTypes": ["lockFileMaintenance"],
+      "matchManagers": ["pep621", "pre-commit"],
+      "groupName": "Python dependencies",
+      "groupSlug": "python",
+      "additionalBranchPrefix": "",
+      "commitMessagePrefix": "chore:",
+      "labels": ["dependencies", "type:chore"]
+    },
+    {
+      "description": "Route npm lock file maintenance into Web group",
+      "matchUpdateTypes": ["lockFileMaintenance"],
+      "matchManagers": ["npm"],
+      "groupName": "Web dependencies",
+      "groupSlug": "web",
+      "commitMessagePrefix": "chore:",
+      "labels": ["dependencies", "type:chore", "scope:web"]
+    },
+    {
+      "description": "Route Go lock file maintenance into CLI group",
+      "matchUpdateTypes": ["lockFileMaintenance"],
+      "matchManagers": ["gomod"],
+      "groupName": "CLI dependencies",
+      "groupSlug": "cli",
+      "commitMessagePrefix": "chore:",
+      "labels": ["dependencies", "type:chore", "scope:cli"]
     },
     {
       "description": "Do not pin requires-python -- it is a compatibility range, not a dependency",
