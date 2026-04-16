@@ -30,6 +30,9 @@ interface ChartDataPoint {
   projected?: number
 }
 
+// Recharts margin requires numeric values. Mirrors --so-space-2 (8px).
+const CHART_MARGIN = { top: 8, right: 8, bottom: 0, left: 0 } as const
+
 function parseChartDate(dateStr: string): Date {
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateStr)
   if (!match) return new Date(dateStr)
@@ -137,7 +140,7 @@ export function SpendBurnChart({
               "width(-1) height(-1)" warning -- see BudgetBurnChart.tsx
               for the full explanation. */}
           <ResponsiveContainer width="100%" height="100%" initialDimension={{ width: 1, height: 1 }}>
-            <AreaChart data={chartData} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
+            <AreaChart data={chartData} margin={CHART_MARGIN}>
               <CartesianGrid
                 strokeDasharray="3 3"
                 stroke="var(--so-border)"
@@ -145,12 +148,12 @@ export function SpendBurnChart({
               />
               <XAxis
                 dataKey="label"
-                tick={{ fontSize: 10, fill: 'var(--so-text-muted)' }}
+                tick={{ fontSize: 'var(--so-text-micro)', fill: 'var(--so-text-muted)' }}
                 axisLine={{ stroke: 'var(--so-border)' }}
                 tickLine={false}
               />
               <YAxis
-                tick={{ fontSize: 10, fill: 'var(--so-text-muted)' }}
+                tick={{ fontSize: 'var(--so-text-micro)', fill: 'var(--so-text-muted)' }}
                 axisLine={false}
                 tickLine={false}
                 tickFormatter={(v: number) => formatCurrency(v, currency)}
@@ -163,11 +166,11 @@ export function SpendBurnChart({
                   y={budgetTotal}
                   stroke="var(--so-danger)"
                   strokeDasharray="4 4"
-                  strokeWidth={1}
+                  strokeWidth="var(--so-stroke-hairline)"
                   label={{
                     value: 'Budget',
                     position: 'right',
-                    fontSize: 10,
+                    fontSize: 'var(--so-text-micro)',
                     fill: 'var(--so-danger)',
                   }}
                 />
@@ -178,11 +181,11 @@ export function SpendBurnChart({
                   y={(budgetTotal * alerts.warn_at) / 100}
                   stroke="var(--so-warning)"
                   strokeDasharray="4 4"
-                  strokeWidth={1}
+                  strokeWidth="var(--so-stroke-hairline)"
                   label={{
                     value: `Warn (${alerts.warn_at}%)`,
                     position: 'right',
-                    fontSize: 10,
+                    fontSize: 'var(--so-text-micro)',
                     fill: 'var(--so-warning)',
                   }}
                 />
@@ -193,11 +196,11 @@ export function SpendBurnChart({
                   y={(budgetTotal * alerts.critical_at) / 100}
                   stroke="var(--so-danger)"
                   strokeDasharray="2 2"
-                  strokeWidth={1}
+                  strokeWidth="var(--so-stroke-hairline)"
                   label={{
                     value: `Critical (${alerts.critical_at}%)`,
                     position: 'right',
-                    fontSize: 10,
+                    fontSize: 'var(--so-text-micro)',
                     fill: 'var(--so-danger)',
                   }}
                 />
@@ -207,22 +210,22 @@ export function SpendBurnChart({
                 x={todayLabel}
                 stroke="var(--so-text-muted)"
                 strokeDasharray="3 3"
-                strokeWidth={1}
+                strokeWidth="var(--so-stroke-hairline)"
                 label={{
                   value: 'Today',
                   position: 'top',
-                  fontSize: 10,
+                  fontSize: 'var(--so-text-micro)',
                   fill: 'var(--so-text-muted)',
                 }}
               />
 
               <defs>
                 <linearGradient id="spendActualFill" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="var(--so-accent)" stopOpacity={0.3} />
+                  <stop offset="0%" stopColor="var(--so-accent)" stopOpacity="var(--so-chart-fill-opacity-strong)" />
                   <stop offset="100%" stopColor="var(--so-accent)" stopOpacity={0} />
                 </linearGradient>
                 <linearGradient id="spendForecastFill" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="var(--so-warning)" stopOpacity={0.15} />
+                  <stop offset="0%" stopColor="var(--so-warning)" stopOpacity="var(--so-chart-fill-opacity-subtle)" />
                   <stop offset="100%" stopColor="var(--so-warning)" stopOpacity={0} />
                 </linearGradient>
               </defs>
@@ -232,7 +235,7 @@ export function SpendBurnChart({
                 dataKey="actual"
                 stroke="var(--so-accent)"
                 fill="url(#spendActualFill)"
-                strokeWidth={1.5}
+                strokeWidth="var(--so-stroke-thin)"
                 dot={false}
                 connectNulls={false}
               />
@@ -242,7 +245,7 @@ export function SpendBurnChart({
                   dataKey="projected"
                   stroke="var(--so-warning)"
                   fill="url(#spendForecastFill)"
-                  strokeWidth={1.5}
+                  strokeWidth="var(--so-stroke-thin)"
                   strokeDasharray="4 4"
                   dot={false}
                   connectNulls={false}

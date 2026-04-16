@@ -766,14 +766,14 @@ function OrgChartInner() {
               bgColor="var(--so-minimap-bg)"
               maskColor="var(--so-minimap-mask)"
               maskStrokeColor="var(--so-minimap-stroke)"
-              maskStrokeWidth={1.5}
+              maskStrokeWidth="var(--so-stroke-thin)"
               style={{
                 width: 260,
                 height: 200,
                 resize: 'both',
                 overflow: 'hidden',
                 border: '1px solid var(--so-minimap-border)',
-                borderRadius: '10px',
+                borderRadius: 'var(--so-radius-xl)',
                 boxShadow: 'var(--so-minimap-shadow)',
               }}
               nodeColor={(n) => {
@@ -782,7 +782,7 @@ function OrgChartInner() {
                 return 'var(--so-minimap-node-agent)'
               }}
               nodeStrokeColor={(n) => (n.type === 'department' ? 'var(--so-minimap-stroke)' : 'transparent')}
-              nodeStrokeWidth={1.5}
+              nodeStrokeWidth="var(--so-stroke-thin)"
               nodeBorderRadius={4}
             />
           )}

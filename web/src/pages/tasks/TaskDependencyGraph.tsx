@@ -47,9 +47,9 @@ function buildGraph(tasks: Task[]): { nodes: Node[]; edges: Edge[] } {
       style: {
         borderColor: cssColor,
         borderWidth: 2,
-        borderRadius: 8,
-        padding: '8px 12px',
-        fontSize: 12,
+        borderRadius: 'var(--so-radius-lg)',
+        padding: 'var(--so-space-2) var(--so-space-3)',
+        fontSize: 'var(--so-text-compact)',
         maxWidth: 240,
         background: 'var(--so-card)',
         color: 'var(--so-foreground)',
@@ -66,9 +66,9 @@ function buildGraph(tasks: Task[]): { nodes: Node[]; edges: Edge[] } {
           source: depId,
           target: task.id,
           markerEnd: { type: MarkerType.ArrowClosed, width: 16, height: 16 },
-          style: { stroke: 'var(--so-border-bright)', strokeWidth: 1.5 },
+          style: { stroke: 'var(--so-border-bright)', strokeWidth: 'var(--so-stroke-thin)' },
           label: `${getTaskStatusLabel(taskMap.get(depId)!.status)}`,
-          labelStyle: { fontSize: 9, fill: 'var(--so-text-muted)' },
+          labelStyle: { fontSize: 'var(--so-text-micro)', fill: 'var(--so-text-muted)' },
         })
       }
     }
