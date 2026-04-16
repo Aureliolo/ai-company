@@ -122,7 +122,7 @@
       "description": "Binary tool version env vars in CI workflows (Trivy, Grype, Gitleaks, D2, apko)",
       "managerFilePatterns": ["/\\.github/.*\\.ya?ml$/"],
       "matchStrings": [
-        "# renovate: datasource=github-releases depName=(?<depName>[^\\s]+)\\n\\s+[A-Z_]+_VERSION:\\s*[\"']?(?<currentValue>[^\"'\\s]+)[\"']?"
+        "# renovate: datasource=github-releases depName=(?<depName>[^\\s]+)\\n\\s+[A-Z0-9_]+_VERSION:\\s*[\"']?(?<currentValue>[^\"'\\s]+)[\"']?"
       ],
       "datasourceTemplate": "github-releases",
       "versioningTemplate": "semver"
