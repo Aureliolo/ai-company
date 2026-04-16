@@ -64,8 +64,13 @@ func refreshCompose(cmd *cobra.Command, state config.State, force bool) (bool, e
 // recoverMissingCompose generates compose.yml from the template during
 // recovery mode when the file is absent.
 func recoverMissingCompose(out io.Writer, composePath string, state config.State, safeDir string) (bool, error) {
-	params := compose.ParamsFromState(state)
-	params.DigestPins = state.VerifiedDigests
+	params, err := compose.ParamsFromState(state)
+	if err != nil {
+		return false, fmt.Errorf("building compose params during recovery: %w", err)
+	}
+	// ParamsFromState already populates DigestPins from state.VerifiedDigests
+	// when the deployment is on the default (trusted) registry and
+	// leaves it nil for custom-registry trust transfers. Do not override.
 	generated, genErr := compose.Generate(params)
 	if genErr != nil {
 		return false, fmt.Errorf("generating compose.yml during recovery: %w", genErr)
@@ -86,6 +91,7 @@ func isUpdateBoilerplateOnly(existing, fresh []byte) bool {
 	if len(oldLines) != len(newLines) {
 		return false
 	}
+	pattern := imageLinePattern()
 	for i := range oldLines {
 		if oldLines[i] == newLines[i] {
 			continue
@@ -96,9 +102,10 @@ func isUpdateBoilerplateOnly(existing, fresh []byte) bool {
 			continue
 		}
 		// Allow image reference differences for the same service.
-		oldSub := imageLinePattern.FindStringSubmatch(oldLines[i])
-		newSub := imageLinePattern.FindStringSubmatch(newLines[i])
-		if len(oldSub) >= 3 && len(newSub) >= 3 && oldSub[2] == newSub[2] {
+		// Pattern captures: [1]=prefix, [2]=service name, [3]=trailer.
+		oldSub := pattern.FindStringSubmatch(oldLines[i])
+		newSub := pattern.FindStringSubmatch(newLines[i])
+		if len(oldSub) >= 4 && len(newSub) >= 4 && oldSub[2] == newSub[2] {
 			continue
 		}
 		return false
@@ -117,8 +124,13 @@ func loadAndGenerate(composePath string, state config.State) ([]byte, []byte, er
 		return nil, nil, fmt.Errorf("reading existing compose: %w", err)
 	}
 
-	params := compose.ParamsFromState(state)
-	params.DigestPins = state.VerifiedDigests
+	params, err := compose.ParamsFromState(state)
+	if err != nil {
+		return nil, nil, fmt.Errorf("building compose params: %w", err)
+	}
+	// ParamsFromState already populates DigestPins from state.VerifiedDigests
+	// when the deployment is on the default (trusted) registry and
+	// leaves it nil for custom-registry trust transfers. Do not override.
 	fresh, err := compose.Generate(params)
 	if err != nil {
 		return nil, nil, fmt.Errorf("generating compose from template: %w", err)
@@ -223,13 +235,28 @@ func writeOrPatchCompose(state config.State, digestPins map[string]string, safeD
 	return patchComposeImageRefs(state.ImageTag, digestPins, state.Sandbox, safeDir)
 }
 
-// imageLinePattern matches Docker image references in compose YAML.
+// imageLinePattern returns the regex that matches Docker image references
+// for synthorg services in compose YAML. The repo prefix is built from the
+// currently configured tunable (images.RepoPrefix()) rather than hardcoded
+// to ghcr.io/aureliolo/synthorg- so custom-registry deployments continue to
+// match the lines they generated. Rebuilding the regex per call keeps the
+// matcher in sync when tunables are reconfigured between invocations.
+//
 // Handles both digest-pinned (repo@sha256:...) and tag-based (repo:tag).
-// The pattern anchors after the service name with an optional [:@] suffix
-// to avoid matching extended repo names (e.g. synthorg-backend-fips).
-var imageLinePattern = regexp.MustCompile(
-	`(\s+image:\s+)ghcr\.io/aureliolo/synthorg-(backend|web|sandbox)(?:[:@]\S+)?`,
-)
+// Anchors to the full compose line (with `(?m)^...$`) and captures the
+// trailing whitespace/comment so the service name token must be followed
+// by either a tag/digest separator or end-of-line. Without that anchor,
+// `image: ghcr.io/aureliolo/synthorg-backend-fips:tag` would match at
+// `synthorg-backend` and leave `-fips:tag` behind, corrupting the ref.
+// RE2 (Go's regexp) does not support lookahead, so we use anchors + a
+// captured trailer instead.
+func imageLinePattern() *regexp.Regexp {
+	return regexp.MustCompile(
+		`(?m)^([ \t]*image:\s+)` +
+			regexp.QuoteMeta(images.RepoPrefix()) +
+			`(backend|web|sandbox)(?:[:@]\S+)?([ \t]*(?:#[^\r\n]*)?)$`,
+	)
+}
 
 // patchComposeImageRefs updates only the image references in an existing
 // compose.yml without regenerating from the template. This preserves the
@@ -246,20 +273,22 @@ func patchComposeImageRefs(tag string, digestPins map[string]string, sandboxEnab
 	}
 
 	replaced := make(map[string]bool)
-	patched := imageLinePattern.ReplaceAllStringFunc(string(existing), func(match string) string {
-		sub := imageLinePattern.FindStringSubmatch(match)
-		if len(sub) < 3 {
+	pattern := imageLinePattern()
+	patched := pattern.ReplaceAllStringFunc(string(existing), func(match string) string {
+		sub := pattern.FindStringSubmatch(match)
+		if len(sub) < 4 {
 			return match
 		}
-		prefix := sub[1] // e.g. "    image: "
-		name := sub[2]   // e.g. "backend"
-		repo := images.RepoPrefix + name
+		prefix := sub[1]  // e.g. "    image: "
+		name := sub[2]    // e.g. "backend"
+		trailer := sub[3] // e.g. "" or "  # comment"
+		repo := images.RepoPrefix() + name
 		replaced[name] = true
 
 		if d, ok := digestPins[name]; ok && d != "" {
-			return prefix + repo + "@" + d
+			return prefix + repo + "@" + d + trailer
 		}
-		return prefix + repo + ":" + tag
+		return prefix + repo + ":" + tag + trailer
 	})
 
 	if len(replaced) == 0 {

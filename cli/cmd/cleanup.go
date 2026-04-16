@@ -50,7 +50,7 @@ func validateCleanupFlags() error {
 
 func runCleanup(cmd *cobra.Command, _ []string) error {
 	if err := validateCleanupFlags(); err != nil {
-		return err
+		return fmt.Errorf("validating cleanup flags: %w", err)
 	}
 
 	ctx := cmd.Context()
@@ -65,7 +65,7 @@ func runCleanup(cmd *cobra.Command, _ []string) error {
 
 	info, err := docker.Detect(ctx)
 	if err != nil {
-		return err
+		return fmt.Errorf("detecting docker: %w", err)
 	}
 
 	var old []oldImage
@@ -108,7 +108,7 @@ func runCleanup(cmd *cobra.Command, _ []string) error {
 
 	removedAny, err := confirmAndCleanup(ctx, cmd, info, out, old)
 	if err != nil {
-		return err
+		return fmt.Errorf("confirming cleanup: %w", err)
 	}
 
 	// Hint about auto-cleanup when images were removed and flag is not enabled.

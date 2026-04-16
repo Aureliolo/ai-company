@@ -10,9 +10,15 @@ import (
 	"github.com/Aureliolo/synthorg/cli/internal/verify"
 )
 
-// RepoPrefix is the full GHCR repository prefix for all SynthOrg images
-// (e.g. "ghcr.io/aureliolo/synthorg-").
-const RepoPrefix = verify.RegistryHost + "/" + verify.ImageRepoPrefix
+// RepoPrefix is the full registry repository prefix for all SynthOrg images
+// (e.g. "ghcr.io/aureliolo/synthorg-"). Derived from verify.RegistryHost +
+// verify.ImageRepoPrefix, which are configurable tunables populated once
+// at program start by verify.Configure. Read without locking because the
+// configure call runs in root.go PersistentPreRunE before any command
+// handler uses this value.
+func RepoPrefix() string {
+	return verify.RegistryHost + "/" + verify.ImageRepoPrefix
+}
 
 // ServiceNames returns the canonical SynthOrg service names.
 // The sandbox service is included only when sandbox is true.
@@ -28,7 +34,7 @@ func ServiceNames(sandbox bool) []string {
 // digest-pinned reference (repo@sha256:...). Otherwise returns a
 // tag-based reference (repo:tag).
 func RefForService(svc, imageTag string, verifiedDigests map[string]string) string {
-	repo := RepoPrefix + svc
+	repo := RepoPrefix() + svc
 	if d, ok := verifiedDigests[svc]; ok && d != "" {
 		return repo + "@" + d
 	}
@@ -47,7 +53,7 @@ type LocalImage struct {
 // ServiceName extracts the short service name (e.g. "backend") from
 // the full repository path.
 func (img LocalImage) ServiceName() string {
-	return strings.TrimPrefix(img.Repository, RepoPrefix)
+	return strings.TrimPrefix(img.Repository, RepoPrefix())
 }
 
 // ListLocal lists all SynthOrg images present in the local Docker daemon.
@@ -79,7 +85,7 @@ func parseImageList(raw string) []LocalImage {
 			continue
 		}
 		repo := parts[0]
-		if !strings.HasPrefix(repo, RepoPrefix) {
+		if !strings.HasPrefix(repo, RepoPrefix()) {
 			continue
 		}
 		result = append(result, LocalImage{
@@ -95,10 +101,30 @@ func parseImageList(raw string) []LocalImage {
 
 // InspectID returns the Docker image ID for the given image reference.
 // Works with both digest-pinned (@sha256:...) and tag-based (:tag) references.
+//
+// Returns ("", nil) when the image simply does not exist locally (docker
+// reports "No such image"). This lets callers distinguish the expected
+// "not pulled yet" state from genuine failures like a dead daemon; any
+// other inspect error is returned with context preserved via %w.
 func InspectID(ctx context.Context, dockerPath, ref string) (string, error) {
 	out, err := docker.RunCmd(ctx, dockerPath, "image", "inspect", ref, "--format", "{{.ID}}")
 	if err != nil {
+		if isImageNotFoundErr(err) {
+			return "", nil
+		}
 		return "", err
 	}
 	return strings.TrimSpace(out), nil
+}
+
+// isImageNotFoundErr reports whether err is docker's "No such image"
+// response. Matched via the stderr string because docker CLI does not
+// surface a structured error code for this case.
+func isImageNotFoundErr(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := err.Error()
+	return strings.Contains(msg, "No such image") ||
+		strings.Contains(msg, "no such image")
 }

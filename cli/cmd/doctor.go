@@ -97,7 +97,7 @@ func doctorCheckEnabled(name string) bool {
 
 func runDoctor(cmd *cobra.Command, _ []string) error {
 	if err := validateDoctorFlags(); err != nil {
-		return err
+		return fmt.Errorf("validating doctor flags: %w", err)
 	}
 
 	ctx := cmd.Context()
@@ -115,7 +115,7 @@ func runDoctor(cmd *cobra.Command, _ []string) error {
 
 	safeDir, err := safeStateDir(state)
 	if err != nil {
-		return err
+		return fmt.Errorf("resolving data directory: %w", err)
 	}
 	saveDiagnosticFile(out, safeDir, report)
 	_, _ = fmt.Fprintln(out.Writer())
@@ -264,8 +264,15 @@ func doctorAutoFix(ctx context.Context, _ *cobra.Command, out, errOut *ui.UI, st
 
 // doctorFixCompose regenerates compose.yml from the embedded template.
 func doctorFixCompose(state config.State, safeDir string) error {
-	params := compose.ParamsFromState(state)
-	params.DigestPins = state.VerifiedDigests
+	params, err := compose.ParamsFromState(state)
+	if err != nil {
+		return fmt.Errorf("building compose params: %w", err)
+	}
+	// ParamsFromState decides DigestPins based on the resolved
+	// tunables (only honoured when on the default registry). Overriding
+	// here would reintroduce the bug CodeRabbit flagged: `doctor --fix`
+	// could regenerate a custom-registry compose file with stale
+	// default-registry digest pins.
 	generated, err := compose.Generate(params)
 	if err != nil {
 		return fmt.Errorf("generating compose: %w", err)

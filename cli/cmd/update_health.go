@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"path/filepath"
-	"strings"
 	"time"
 
 	"charm.land/huh/v2"
@@ -19,16 +18,31 @@ import (
 // actual Docker/filesystem state (e.g. after a partial uninstall). Returns
 // (abort, recovered, error): abort=true if the user declined recovery,
 // recovered=true if recovery was chosen (caller should force refresh).
+//
+// Missing container images are treated as a "needs pull" signal rather
+// than a corruption warning: update's normal flow will pull them, so we
+// set recovered=true to force the pull (bypassing the early-exit when
+// state.ImageTag already matches target) without surfacing a scary
+// "installation incomplete" prompt. Only genuine corruption (missing
+// config.json, missing compose.yml, missing JWT/settings key) raises
+// the warning and prompts the user to recover.
 func checkInstallationHealth(cmd *cobra.Command, state config.State) (bool, bool, error) {
-	issues := detectInstallationIssues(cmd.Context(), state)
-	if len(issues) == 0 {
+	corruption, needsPull := detectInstallationIssues(cmd.Context(), state)
+
+	if len(corruption) == 0 && !needsPull {
 		return false, false, nil
+	}
+
+	if len(corruption) == 0 {
+		// Only missing images -- silently force-refresh; update's
+		// pull step handles this as the normal first-run path.
+		return false, true, nil
 	}
 
 	opts := GetGlobalOpts(cmd.Context())
 	out := ui.NewUIWithOptions(cmd.OutOrStdout(), opts.UIOptions())
 	out.Warn("Installation appears incomplete:")
-	for _, issue := range issues {
+	for _, issue := range corruption {
 		_, _ = fmt.Fprintf(cmd.OutOrStdout(), "  - %s\n", issue)
 	}
 
@@ -43,25 +57,27 @@ func checkInstallationHealth(cmd *cobra.Command, state config.State) (bool, bool
 }
 
 // detectInstallationIssues checks config, secrets, compose, and Docker
-// images for inconsistencies. Returns a list of human-readable issues.
-func detectInstallationIssues(ctx context.Context, state config.State) []string {
-	var issues []string
-
+// images. Returns (corruption, needsPull) where corruption is
+// human-readable messages for genuinely broken state that requires user
+// acknowledgment, and needsPull is true when one or more service images
+// are missing locally (expected state before the first `synthorg start`
+// or after enabling a new service like sandbox).
+func detectInstallationIssues(ctx context.Context, state config.State) (corruption []string, needsPull bool) {
 	if !fileExists(config.StatePath(state.DataDir)) {
-		issues = append(issues, "config.json is missing (no previous init)")
+		corruption = append(corruption, "config.json is missing (no previous init)")
 	}
 	if state.JWTSecret == "" {
-		issues = append(issues, "JWT secret is not configured")
+		corruption = append(corruption, "JWT secret is not configured")
 	}
 	if state.SettingsKey == "" {
-		issues = append(issues, "settings encryption key is not configured")
+		corruption = append(corruption, "settings encryption key is not configured")
 	}
 
 	safeDir, err := safeStateDir(state)
 	if err != nil {
-		issues = append(issues, fmt.Sprintf("data directory path issue: %v", err))
+		corruption = append(corruption, fmt.Sprintf("data directory path issue: %v", err))
 	} else if !fileExists(filepath.Join(safeDir, "compose.yml")) {
-		issues = append(issues, "compose.yml is missing")
+		corruption = append(corruption, "compose.yml is missing")
 	}
 
 	if state.ImageTag != "" {
@@ -75,13 +91,12 @@ func detectInstallationIssues(ctx context.Context, state config.State) []string 
 		info, dockerErr := docker.Detect(healthCtx)
 		if dockerErr == nil {
 			if missing := detectMissingImages(healthCtx, info, state); len(missing) > 0 {
-				issues = append(issues, fmt.Sprintf("container images missing locally for version %s: %s",
-					state.ImageTag, strings.Join(missing, ", ")))
+				needsPull = true
 			}
 		}
 	}
 
-	return issues
+	return corruption, needsPull
 }
 
 // promptHealthRecover asks the user whether to recover or run init.
@@ -119,20 +134,26 @@ func promptHealthRecover(cmd *cobra.Command) (bool, error) {
 // digest-pinned (@sha256:...) and tag-based (:tag) references.
 //
 // Precondition: caller must have verified Docker is reachable (e.g. via
-// docker.Detect). Only inspect errors that occur while the context is still
-// valid are treated as missing images; context cancellation or timeout errors
-// are ignored to avoid false positives.
+// docker.Detect). Context cancellation or daemon errors are ignored to
+// avoid false positives; only an empty InspectID result (the documented
+// "image not present locally" signal) counts as missing.
 func detectMissingImages(ctx context.Context, info docker.Info, state config.State) []string {
 	var missing []string
 	for _, svc := range images.ServiceNames(state.Sandbox) {
 		ref := images.RefForService(svc, state.ImageTag, state.VerifiedDigests)
-		_, err := images.InspectID(ctx, info.DockerPath, ref)
+		id, err := images.InspectID(ctx, info.DockerPath, ref)
 		if err != nil {
 			if ctx.Err() != nil {
 				// Context expired or cancelled -- can't reliably determine
 				// image state, so don't report as missing.
 				return missing
 			}
+			// Daemon or inspect error -- treat as indeterminate rather
+			// than missing. We only want to flag images docker explicitly
+			// reports as absent.
+			continue
+		}
+		if id == "" {
 			missing = append(missing, svc)
 		}
 	}

@@ -9,14 +9,13 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/Aureliolo/synthorg/cli/internal/config"
 	"github.com/Aureliolo/synthorg/cli/internal/ui"
 	"github.com/spf13/cobra"
 )
 
 const (
 	defaultWorkerCount = 4
-	defaultNatsURL     = "nats://nats:4222"
-	defaultStreamPfx   = "SYNTHORG"
 )
 
 var (
@@ -46,11 +45,14 @@ the in-network DNS name ` + "`nats`" + `; override with --nats-url for external 
 }
 
 func init() {
+	// Flag defaults for --nats-url and --stream-prefix are the compiled-in
+	// baseline so `--help` is stable. The resolved env/config defaults are
+	// substituted inside runWorkerStart when the user omits the flag.
 	workerStartCmd.Flags().IntVar(&workerStartCount, "workers", defaultWorkerCount,
 		"number of concurrent workers in the pool (default 4)")
-	workerStartCmd.Flags().StringVar(&workerStartNatsURL, "nats-url", defaultNatsURL,
+	workerStartCmd.Flags().StringVar(&workerStartNatsURL, "nats-url", config.DefaultNATSURLValue,
 		"NATS server URL reachable from inside the backend container")
-	workerStartCmd.Flags().StringVar(&workerStartStreamPrefix, "stream-prefix", defaultStreamPfx,
+	workerStartCmd.Flags().StringVar(&workerStartStreamPrefix, "stream-prefix", config.DefaultNATSStreamPrefixValue,
 		"JetStream stream name prefix")
 	workerStartCmd.Flags().StringVar(&workerStartContainer, "container", "",
 		"backend container name (default: synthorg-backend)")
@@ -61,11 +63,30 @@ func runWorkerStart(cmd *cobra.Command, _ []string) error {
 	opts := GetGlobalOpts(cmd.Context())
 	out := ui.NewUIWithOptions(cmd.OutOrStdout(), opts.UIOptions())
 
+	// Precedence: explicit flag > env/config (via Tunables) > flag default.
+	if !cmd.Flags().Changed("nats-url") {
+		workerStartNatsURL = opts.Tunables.DefaultNATSURL
+	}
+	if !cmd.Flags().Changed("stream-prefix") {
+		workerStartStreamPrefix = opts.Tunables.DefaultNATSStreamPrefix
+	}
+
 	if workerStartCount <= 0 {
 		return fmt.Errorf("--workers must be > 0, got %d", workerStartCount)
 	}
 	if err := validateNatsURL(workerStartNatsURL); err != nil {
 		return err
+	}
+	// Validate the stream prefix up front so an explicit --stream-prefix
+	// with bad characters is rejected here rather than deep inside the
+	// worker pool. The tunable path already runs through the same regex
+	// via config.ResolveTunables, but an explicit flag skips that check
+	// and would otherwise end up as an env var on the backend process.
+	if !config.IsValidStreamPrefix(workerStartStreamPrefix) {
+		return fmt.Errorf(
+			"invalid --stream-prefix %q: must match [A-Z0-9][A-Z0-9_-]*",
+			workerStartStreamPrefix,
+		)
 	}
 	if err := validateContainerName(workerStartContainer); err != nil {
 		return err

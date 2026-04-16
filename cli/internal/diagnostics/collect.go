@@ -17,6 +17,7 @@ import (
 
 	"github.com/Aureliolo/synthorg/cli/internal/config"
 	"github.com/Aureliolo/synthorg/cli/internal/docker"
+	"github.com/Aureliolo/synthorg/cli/internal/health"
 	"github.com/Aureliolo/synthorg/cli/internal/images"
 	"github.com/Aureliolo/synthorg/cli/internal/version"
 	"go.yaml.in/yaml/v3"
@@ -107,14 +108,13 @@ func collectDocker(ctx context.Context, r *Report, safeDir string, pathErr error
 
 func collectHealth(ctx context.Context, r *Report, backendPort int) {
 	healthURL := fmt.Sprintf("http://localhost:%d/api/v1/health", backendPort)
-	client := &http.Client{Timeout: 5 * time.Second}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, healthURL, nil)
 	if err != nil {
 		r.HealthStatus = "unreachable"
 		r.Errors = append(r.Errors, fmt.Sprintf("health request: %v", err))
 		return
 	}
-	resp, err := client.Do(req)
+	resp, err := health.HTTPClient().Do(req)
 	if err != nil {
 		r.HealthStatus = "unreachable"
 		r.Errors = append(r.Errors, fmt.Sprintf("health: %v", err))
@@ -314,10 +314,13 @@ func checkImages(ctx context.Context, dockerPath, imageTag string, sandbox bool,
 		if image == "" {
 			image = images.RefForService(name, imageTag, verifiedDigests)
 		}
-		_, err := images.InspectID(ctx, dockerPath, image)
-		if err != nil {
+		id, err := images.InspectID(ctx, dockerPath, image)
+		switch {
+		case err != nil:
 			status = append(status, fmt.Sprintf("%s: inspect failed: %v", image, err))
-		} else {
+		case id == "":
+			status = append(status, fmt.Sprintf("%s: not pulled", image))
+		default:
 			status = append(status, fmt.Sprintf("%s: available", image))
 		}
 	}
@@ -364,13 +367,14 @@ func parseComposeImageRefs(composePath string) map[string]string {
 		return refs
 	}
 
+	prefix := images.RepoPrefix()
 	for svcName, svc := range cf.Services {
-		if !strings.HasPrefix(svc.Image, images.RepoPrefix) {
+		if !strings.HasPrefix(svc.Image, prefix) {
 			continue
 		}
 		// Validate structural format: must contain a tag (:) or digest (@)
 		// separator after the prefix to be a well-formed image reference.
-		suffix := svc.Image[len(images.RepoPrefix):]
+		suffix := svc.Image[len(prefix):]
 		if !strings.Contains(suffix, ":") && !strings.Contains(suffix, "@") {
 			continue
 		}

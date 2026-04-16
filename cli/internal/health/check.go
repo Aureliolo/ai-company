@@ -52,7 +52,27 @@ func WaitForHealthy(ctx context.Context, url string, timeout, interval, initialD
 }
 
 // healthClient is used for individual health check requests with a timeout.
+// Set by Configure; defaults to 5s. Also exposed via HTTPClient() so other
+// packages (cmd/status.go, diagnostics) reuse the same configured client
+// instead of instantiating their own 5-second clients.
 var healthClient = &http.Client{Timeout: 5 * time.Second}
+
+// Configure applies the resolved health check timeout. Called exactly
+// once from root.go PersistentPreRunE.
+//
+// The assignment is unconditional so Configure is deterministic across
+// repeated calls (tests reset by passing the default from
+// config.DefaultTunables().HealthCheckTimeout). A zero timeout here is a
+// programmer error, not a no-op request -- validation belongs in
+// config.ResolveTunables which refuses non-positive durations.
+func Configure(timeout time.Duration) {
+	healthClient = &http.Client{Timeout: timeout}
+}
+
+// HTTPClient returns the shared HTTP client configured for health and
+// lightweight diagnostic requests. The client has a bounded timeout; do
+// not reuse it for long-running downloads.
+func HTTPClient() *http.Client { return healthClient }
 
 func checkOnce(ctx context.Context, url string) error {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)

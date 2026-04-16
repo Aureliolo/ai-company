@@ -601,9 +601,11 @@ func TestBackupRestore_InvalidID(t *testing.T) {
 }
 
 func TestBackupRestore_MissingConfirm(t *testing.T) {
-	// No server needed -- validation happens before API call.
-	// Port 0 signals no real server (conventional for no-network tests).
-	dir := writeTestConfig(t, 0)
+	// No server needed -- --confirm flag validation happens before any
+	// API call. Use an unreachable port (not port 0, which fails
+	// config.State validation now that applyTunables surfaces load
+	// errors); --confirm is rejected before the network dial anyway.
+	dir := writeTestConfig(t, 19999)
 
 	out, err := runBackupCmd(t, dir, "restore", "abcdef012345")
 	if err == nil {

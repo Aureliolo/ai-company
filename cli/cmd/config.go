@@ -20,11 +20,22 @@ import (
 
 // supportedConfigKeys is the single source of truth for `config set` key names.
 var supportedConfigKeys = []string{
+	"attestation_http_timeout",
 	"auto_apply_compose", "auto_cleanup", "auto_pull", "auto_restart",
 	"auto_start_after_wipe", "auto_update_cli",
-	"backend_port", "channel", "color", "docker_sock",
-	"hints", "image_tag", "log_level", "output",
-	"sandbox", "telemetry_opt_in", "timestamps", "web_port",
+	"backend_port",
+	"backup_create_timeout", "backup_restore_timeout",
+	"channel", "color",
+	"default_nats_stream_prefix", "default_nats_url",
+	"dhi_registry", "docker_sock",
+	"health_check_timeout",
+	"hints", "image_repo_prefix", "image_tag", "log_level",
+	"max_api_response_bytes", "max_archive_entry_bytes", "max_binary_bytes",
+	"nats_image_tag", "output", "postgres_image_tag",
+	"registry_host", "sandbox",
+	"self_update_api_timeout", "self_update_http_timeout",
+	"telemetry_opt_in", "timestamps",
+	"tuf_fetch_timeout", "web_port",
 }
 
 var configCmd = &cobra.Command{
@@ -74,7 +85,10 @@ Supported keys:
   sandbox               Sandbox enabled
   telemetry_opt_in      Anonymous product telemetry opt-in
   timestamps            Timestamp display mode
-  web_port              Web dashboard port`,
+  web_port              Web dashboard port
+
+Plus 17 runtime tunables (registry host, image tags, timeouts, size
+limits, NATS defaults). See cli/CLAUDE.md for the full list.`,
 	Args:              cobra.ExactArgs(1),
 	RunE:              runConfigGet,
 	ValidArgsFunction: completeConfigGetKeys,
@@ -105,8 +119,16 @@ Supported keys:
   timestamps             Timestamp format: "relative" or "iso8601"
   web_port               Web dashboard port: 1-65535
 
+Plus 17 runtime tunables (registry_host, image_repo_prefix, dhi_registry,
+postgres_image_tag, nats_image_tag, default_nats_url,
+default_nats_stream_prefix, backup_create_timeout, backup_restore_timeout,
+health_check_timeout, self_update_http_timeout, self_update_api_timeout,
+tuf_fetch_timeout, attestation_http_timeout, max_api_response_bytes,
+max_binary_bytes, max_archive_entry_bytes). See cli/CLAUDE.md for formats.
+
 Keys that affect Docker compose (backend_port, web_port, sandbox, docker_sock,
-image_tag, log_level, telemetry_opt_in) trigger automatic compose.yml regeneration.`,
+image_tag, log_level, telemetry_opt_in, and the registry/NATS tunables)
+trigger automatic compose.yml regeneration.`,
 	Args:              cobra.ExactArgs(2),
 	RunE:              runConfigSet,
 	ValidArgsFunction: completeConfigSetKeys,
@@ -226,12 +248,23 @@ func displayOrDefault(value, fallback string) string {
 // gettableConfigKeys lists all keys supported by `config get`.
 // Keep in sync with the Long help text on configGetCmd.
 var gettableConfigKeys = []string{
+	"attestation_http_timeout",
 	"auto_apply_compose", "auto_cleanup", "auto_pull", "auto_restart",
 	"auto_start_after_wipe", "auto_update_cli",
-	"backend_port", "channel", "color", "docker_sock",
-	"hints", "image_tag", "log_level", "memory_backend",
-	"output", "persistence_backend", "sandbox", "telemetry_opt_in",
-	"timestamps", "web_port",
+	"backend_port",
+	"backup_create_timeout", "backup_restore_timeout",
+	"channel", "color",
+	"default_nats_stream_prefix", "default_nats_url",
+	"dhi_registry", "docker_sock",
+	"health_check_timeout",
+	"hints", "image_repo_prefix", "image_tag", "log_level",
+	"max_api_response_bytes", "max_archive_entry_bytes", "max_binary_bytes",
+	"memory_backend", "nats_image_tag", "output",
+	"persistence_backend", "postgres_image_tag",
+	"registry_host", "sandbox",
+	"self_update_api_timeout", "self_update_http_timeout",
+	"telemetry_opt_in", "timestamps",
+	"tuf_fetch_timeout", "web_port",
 }
 
 func completeConfigGetKeys(_ *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) {
@@ -295,8 +328,8 @@ func runConfigSet(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("applying config value: %w", err)
 	}
 
-	if key == "image_tag" {
-		state.VerifiedDigests = nil // old pins are for the previous tag
+	if invalidatesVerifiedDigests(key) {
+		state.VerifiedDigests = nil // old pins are bound to the previous registry/prefix/tags
 	}
 	if composeAffectingKeys[key] {
 		if err := regenerateCompose(state); err != nil {
@@ -414,6 +447,9 @@ func applyConfigValue(state *config.State, key, value string) error {
 	case "web_port":
 		return setPort(value, "web_port", state.BackendPort, &state.WebPort)
 	default:
+		if handled, err := applyTunableConfigValue(state, key, value); handled {
+			return err
+		}
 		return fmt.Errorf("unknown config key %q (supported: %s)", key, strings.Join(supportedConfigKeys, ", "))
 	}
 	return nil
@@ -461,11 +497,43 @@ func maskSecret(s string) string {
 	return "****"
 }
 
+// invalidatesVerifiedDigests reports whether changing the given config key
+// must invalidate the cached verified-digest map (state.VerifiedDigests).
+// The cache maps image reference -> verified digest, and those references
+// are bound to the tuple (registry_host, image_repo_prefix) for SynthOrg
+// images and (dhi_registry, postgres_image_tag | nats_image_tag) for the
+// DHI third-party images. Changing any of those keys, or image_tag itself,
+// makes every cached pin point at a different image than the one originally
+// verified -- regenerateCompose would otherwise emit an old trusted digest
+// for a new untrusted target.
+func invalidatesVerifiedDigests(key string) bool {
+	switch key {
+	case "image_tag",
+		"registry_host",
+		"image_repo_prefix",
+		"dhi_registry",
+		"postgres_image_tag",
+		"nats_image_tag":
+		return true
+	default:
+		return false
+	}
+}
+
 // composeAffectingKeys lists config keys that require compose.yml regeneration.
+// Registry and image tag tunables are included because they flow into the
+// generated compose.yml through ParamsFromState.
 var composeAffectingKeys = map[string]bool{
 	"backend_port": true, "web_port": true, "sandbox": true,
 	"docker_sock": true, "image_tag": true, "log_level": true,
-	"telemetry_opt_in": true,
+	"telemetry_opt_in":           true,
+	"registry_host":              true,
+	"image_repo_prefix":          true,
+	"dhi_registry":               true,
+	"postgres_image_tag":         true,
+	"nats_image_tag":             true,
+	"default_nats_url":           true,
+	"default_nats_stream_prefix": true,
 }
 
 // regenerateCompose regenerates compose.yml from the current state.
@@ -484,8 +552,14 @@ func regenerateCompose(state config.State) error {
 		return nil
 	}
 
-	params := compose.ParamsFromState(state)
-	params.DigestPins = state.VerifiedDigests
+	params, err := compose.ParamsFromState(state)
+	if err != nil {
+		return fmt.Errorf("building compose params: %w", err)
+	}
+	// ParamsFromState already sets DigestPins to state.VerifiedDigests
+	// when the deployment is on the default (trusted) registry, and
+	// leaves it nil when a custom-registry trust transfer is in effect.
+	// Do not override that decision here.
 	generated, err := compose.Generate(params)
 	if err != nil {
 		return fmt.Errorf("regenerating compose: %w", err)
@@ -513,7 +587,7 @@ func runConfigUnset(cmd *cobra.Command, args []string) error {
 	if key == "web_port" && state.WebPort == state.BackendPort {
 		return fmt.Errorf("default web_port %d conflicts with current backend_port %d", state.WebPort, state.BackendPort)
 	}
-	if key == "image_tag" {
+	if invalidatesVerifiedDigests(key) {
 		state.VerifiedDigests = nil
 	}
 
@@ -574,6 +648,9 @@ func resetConfigValue(state *config.State, key string) error {
 	case "web_port":
 		state.WebPort = defaults.WebPort
 	default:
+		if resetTunableConfigValue(state, key) {
+			return nil
+		}
 		return fmt.Errorf("unknown config key %q (supported: %s)", key, strings.Join(supportedConfigKeys, ", "))
 	}
 	return nil
@@ -608,7 +685,7 @@ func envVarForKey(key string) string {
 	case "telemetry_opt_in":
 		return EnvTelemetry
 	default:
-		return ""
+		return tunableEnvVarForKey(key)
 	}
 }
 
@@ -696,6 +773,9 @@ func configGetValue(state config.State, key string) string {
 	case "web_port":
 		return strconv.Itoa(state.WebPort)
 	default:
+		if val, ok := tunableConfigGetValue(state, key); ok {
+			return val
+		}
 		return ""
 	}
 }

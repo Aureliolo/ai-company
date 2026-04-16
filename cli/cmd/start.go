@@ -601,7 +601,10 @@ func thirdPartyImages(state config.State) []thirdPartyImage {
 // Uses atomic write (temp file + rename) to prevent a partial write from
 // corrupting the compose file if the process is interrupted.
 func writeDigestPinnedCompose(state config.State, digestPins map[string]string, safeDir string) error {
-	params := compose.ParamsFromState(state)
+	params, err := compose.ParamsFromState(state)
+	if err != nil {
+		return fmt.Errorf("building compose params: %w", err)
+	}
 	params.DigestPins = digestPins
 
 	composeYAML, err := compose.Generate(params)

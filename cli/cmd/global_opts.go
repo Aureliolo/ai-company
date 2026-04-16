@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 
+	"github.com/Aureliolo/synthorg/cli/internal/config"
 	"github.com/Aureliolo/synthorg/cli/internal/ui"
 )
 
@@ -18,6 +19,13 @@ type GlobalOpts struct {
 	JSON       bool   // machine-readable JSON on stdout
 	Yes        bool   // auto-accept all interactive prompts
 	Hints      string // hint mode: always/auto/never
+
+	// Tunables are the resolved registry/timeout/size-limit values
+	// populated once in PersistentPreRunE (env > state > default).
+	// Command handlers read these to seed flag defaults and to thread
+	// values to helper packages that were already Configure()d at the
+	// same moment.
+	Tunables config.Tunables
 }
 
 // UIOptions returns ui.Options derived from the global options.
@@ -59,7 +67,7 @@ func GetGlobalOpts(ctx context.Context) *GlobalOpts {
 	if opts, ok := ctx.Value(globalOptsKey{}).(*GlobalOpts); ok {
 		return opts
 	}
-	return &GlobalOpts{Hints: "auto"}
+	return &GlobalOpts{Hints: "auto", Tunables: config.DefaultTunables()}
 }
 
 // validHintsMode reports whether h is a recognized hints mode.

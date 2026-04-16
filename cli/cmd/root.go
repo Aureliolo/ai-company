@@ -11,7 +11,10 @@ import (
 	"strings"
 
 	"github.com/Aureliolo/synthorg/cli/internal/config"
+	"github.com/Aureliolo/synthorg/cli/internal/health"
+	"github.com/Aureliolo/synthorg/cli/internal/selfupdate"
 	"github.com/Aureliolo/synthorg/cli/internal/ui"
+	"github.com/Aureliolo/synthorg/cli/internal/verify"
 	"github.com/spf13/cobra"
 )
 
@@ -100,6 +103,7 @@ func setupGlobalOpts(cmd *cobra.Command) error {
 		JSON:       flagJSON,
 		Yes:        yes,
 		Hints:      "auto",
+		Tunables:   config.DefaultTunables(),
 	}
 
 	applyConfigOverrides(opts)
@@ -108,7 +112,112 @@ func setupGlobalOpts(cmd *cobra.Command) error {
 		return fmt.Errorf("invalid hints mode %q: must be always, auto, or never", opts.Hints)
 	}
 
+	if err := applyTunables(cmd, opts); err != nil {
+		// Recovery commands must stay callable even when config.json is
+		// unreadable or fails validation -- otherwise the user has no
+		// way to repair a broken config without hand-editing the file
+		// they would normally fix via the CLI.
+		if isRecoveryCommand(cmd) {
+			_, _ = fmt.Fprintf(cmd.ErrOrStderr(),
+				"Warning: tunable resolution failed (%v); continuing with defaults for recovery command.\n", err)
+			opts.Tunables = config.DefaultTunables()
+		} else {
+			return err
+		}
+	}
+
 	cmd.SetContext(SetGlobalOpts(cmd.Context(), opts))
+	return nil
+}
+
+// isRecoveryCommand reports whether cmd is one of the commands that must
+// stay usable when config.json is broken. These commands exist precisely
+// to repair, inspect, or erase the install, so refusing to run them
+// because the file they are meant to fix/remove is invalid would leave
+// the user stranded with no in-CLI path out.
+//
+// Included:
+//   - config edit/path/show + bare `config`: needed to repair a bad file
+//   - doctor: diagnoses the exact breakage
+//   - version, help: pure informational, must never depend on state
+//   - init: replaces/creates the config from scratch
+//   - wipe, uninstall: tear down the install even when config is garbage
+func isRecoveryCommand(cmd *cobra.Command) bool {
+	switch cmd.CommandPath() {
+	case "synthorg config edit",
+		"synthorg config path",
+		"synthorg config show",
+		"synthorg config",
+		"synthorg doctor",
+		"synthorg version",
+		"synthorg help",
+		"synthorg init",
+		"synthorg wipe",
+		"synthorg uninstall":
+		return true
+	}
+	return false
+}
+
+// applyTunables resolves the effective tunable values (env > state >
+// default) and seeds every consumer package that reads them from a
+// package-level variable. Consumers are Configure()d exactly once per
+// CLI invocation so later goroutines can read without locking.
+//
+// When the resolved tunables point at a custom registry or image tag
+// (CustomRegistry=true) this function also forces SkipVerify and emits
+// a loud one-shot warning. The pinned DHI digests and the sigstore SAN
+// regex are both bound to the default registry+tags, so image signature
+// and SLSA provenance verification cannot succeed against a user-chosen
+// deployment target. The operator explicitly opted into that deployment
+// by setting the override, so the CLI does not refuse to run; it simply
+// transfers trust to the operator and makes the trade-off visible.
+func applyTunables(cmd *cobra.Command, opts *GlobalOpts) error {
+	// config.Load already returns a DefaultState (not an error) when the
+	// file is absent, so any error here is a real failure (corrupted
+	// JSON, permission denied, validation failure, invalid path). Fail
+	// fast so persisted overrides and trust-transfer detection are
+	// never silently dropped by swallowing this error.
+	state, err := config.Load(opts.DataDir)
+	if err != nil {
+		return fmt.Errorf("loading config: %w", err)
+	}
+	tun, err := config.ResolveTunables(state)
+	if err != nil {
+		return fmt.Errorf("resolving tunables: %w", err)
+	}
+	opts.Tunables = tun
+
+	verify.Configure(
+		tun.RegistryHost, tun.ImageRepoPrefix,
+		tun.DHIRegistry, tun.PostgresImageTag, tun.NATSImageTag,
+		tun.TUFFetchTimeout, tun.AttestationHTTPTimeout,
+	)
+	selfupdate.Configure(
+		tun.MaxAPIResponseBytes, tun.MaxBinaryBytes, tun.MaxArchiveEntryBytes,
+		tun.SelfUpdateHTTPTimeout, tun.SelfUpdateAPITimeout, tun.TUFFetchTimeout,
+	)
+	health.Configure(tun.HealthCheckTimeout)
+
+	if tun.CustomRegistry {
+		opts.SkipVerify = true
+		// Safety-critical warnings ignore --quiet / --json. The operator
+		// opted into a custom registry by setting the override, and the
+		// trust model demands a durable audit trail: a silent skip here
+		// would let a scripted pipeline pull unsigned images without any
+		// record. Write the warning with minimal UI options (no colour,
+		// no spinners) so scripts that parse stderr still see it.
+		warnOpts := opts.UIOptions()
+		warnOpts.Quiet = false
+		warnOpts.JSON = false
+		warnOut := ui.NewUIWithOptions(cmd.ErrOrStderr(), warnOpts)
+		warnOut.Warn(
+			"Custom registry detected (registry_host/image_repo_prefix/dhi_registry/" +
+				"postgres_image_tag/nats_image_tag differs from default). Image signature " +
+				"and SLSA provenance verification are DISABLED -- you are responsible for " +
+				"the trust of this deployment. Unset the override or run " +
+				"'synthorg config unset <key>' to restore verification.")
+	}
 	return nil
 }
 

@@ -310,7 +310,10 @@ func TestPostgresLifecycle_InitGeneratesWritableState(t *testing.T) {
 
 	// Verify we can regenerate compose.yml from the persisted state
 	// (simulates `synthorg start` reading the state and rendering compose).
-	params := compose.ParamsFromState(persisted)
+	params, err := compose.ParamsFromState(persisted)
+	if err != nil {
+		t.Fatalf("ParamsFromState: %v", err)
+	}
 	regenerated, err := compose.Generate(params)
 	if err != nil {
 		t.Fatalf("regenerate compose: %v", err)
@@ -425,7 +428,10 @@ func TestPostgresLifecycle_ReinitPreservesCustomPostgresPort(t *testing.T) {
 	if err != nil {
 		t.Fatalf("config.Load: %v", err)
 	}
-	params := compose.ParamsFromState(persisted)
+	params, err := compose.ParamsFromState(persisted)
+	if err != nil {
+		t.Fatalf("ParamsFromState: %v", err)
+	}
 	regenerated, err := compose.Generate(params)
 	if err != nil {
 		t.Fatalf("regenerate compose: %v", err)

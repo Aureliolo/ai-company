@@ -174,7 +174,7 @@ func listNonCurrentImages(ctx context.Context, errOut io.Writer, info docker.Inf
 func buildImageDisplay(repo, tag, digest, size, id string) string {
 	// Strip the full image prefix and re-add "synthorg-" for readable display
 	// (e.g. "synthorg-backend:0.4.6" instead of the full GHCR path).
-	short := "synthorg-" + strings.TrimPrefix(repo, images.RepoPrefix)
+	short := "synthorg-" + strings.TrimPrefix(repo, images.RepoPrefix())
 
 	label := short
 	switch {
@@ -198,20 +198,40 @@ func buildImageDisplay(repo, tag, digest, size, id string) string {
 // collectCurrentImageIDs resolves Docker image IDs for the services at the
 // current version. Uses docker image inspect which works with both
 // digest-pinned (@sha256:...) and tag-based (:tag) references.
-// Returns an error if any service ID cannot be resolved (to avoid
-// accidentally deleting current images).
+//
+// Services whose image is not present locally (first pull, or a service
+// newly added to the install such as sandbox being enabled after init)
+// are silently skipped: auto-cleanup has nothing to delete for them.
+// Genuine inspect failures (daemon errors, permission issues) are still
+// surfaced so callers do not proceed to delete the wrong images.
+//
+// Under a custom-registry trust transfer, state.VerifiedDigests still
+// holds digests verified against the DEFAULT registry, so using them
+// here would produce refs for the wrong image (stale @sha256 pointing
+// at the old deployment). Mirror the same pinning rule compose uses:
+// honour VerifiedDigests only when the deployment is still on the
+// canonical default. When the tunables resolution itself fails -- which
+// means the caller has malformed state/env -- treat it as a custom
+// deployment (no pins) rather than crashing auto-cleanup outright.
 func collectCurrentImageIDs(ctx context.Context, info docker.Info, state config.State) (map[string]bool, error) {
 	services := images.ServiceNames(state.Sandbox)
 
+	var verifiedDigests map[string]string
+	if tun, err := config.ResolveTunables(state); err == nil && !tun.CustomRegistry {
+		verifiedDigests = state.VerifiedDigests
+	}
+
 	currentIDs := make(map[string]bool, len(services))
 	for _, svc := range services {
-		ref := images.RefForService(svc, state.ImageTag, state.VerifiedDigests)
+		ref := images.RefForService(svc, state.ImageTag, verifiedDigests)
 		id, err := images.InspectID(ctx, info.DockerPath, ref)
 		if err != nil {
 			return nil, fmt.Errorf("resolving image ID for %s: %w", svc, err)
 		}
 		if id == "" {
-			return nil, fmt.Errorf("no image ID found for %s (image may not be pulled)", svc)
+			// Image not pulled yet (InspectID returns "" on "No such
+			// image"). Nothing to clean up -- skip silently.
+			continue
 		}
 		// Store both the full ID (sha256:...) and the short 12-char ID.
 		// docker images --format {{.ID}} returns short IDs, while

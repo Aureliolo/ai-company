@@ -36,9 +36,20 @@ const (
 
 	// DHIPublicKeyFingerprint is the SHA-256 of the embedded key.
 	DHIPublicKeyFingerprint = "1d02bbccf149283ae6288d96264dcad3fb23ee1911d90324a48eab28e4cb8a5f"
+)
 
-	// dhiRegistry is the DHI image registry.
-	dhiRegistry = "dhi.io"
+// dhiRegistry is the DHI image registry. Set via Configure; defaults to
+// "dhi.io". Overriding it invalidates the dhiPinnedIndexDigests lookup
+// because digests are keyed on "dhi.io/postgres:..." etc., so consumers
+// must skip verification when this differs from the default.
+var dhiRegistry = "dhi.io"
+
+// postgresImageTag / natsImageTag are the third-party image tags. Used
+// both for pre-flight auth checks and for consumers (compose template)
+// that need to reference the exact image without duplicating the string.
+var (
+	postgresImageTag = "18-debian13"
+	natsImageTag     = "2.12-debian13"
 )
 
 // dhiEmbeddedPublicKeyPEM is Docker's DHI cosign public key (ECDSA P-256).
@@ -580,7 +591,7 @@ const (
 // DHI images require authentication -- a free Docker Hub account is
 // sufficient. Returns a clear error with instructions if not logged in.
 func checkDHIAuth(ctx context.Context) error {
-	ref, err := name.NewTag("dhi.io/nats:2.12-debian13")
+	ref, err := name.NewTag(dhiRegistry + "/nats:" + natsImageTag)
 	if err != nil {
 		return fmt.Errorf("internal: parsing test ref: %w", err)
 	}
