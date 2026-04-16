@@ -10,6 +10,9 @@ services:
       - "{{.PostgresPort}}:5432"
     volumes:
       - synthorg-pgdata:/var/lib/postgresql/data
+    depends_on:
+      data-init:
+        condition: service_completed_successfully
     environment:
       PGDATA: /var/lib/postgresql/data
       POSTGRES_DB: synthorg
@@ -47,8 +50,9 @@ services:
         max-file: "3"
 {{- end}}
 
-  # Init container: ensure the data volume is owned by the app user (65532).
-  # Docker creates named volumes as root; this runs once on first start.
+  # Init container: chown named volumes to the correct non-root UID per service.
+  # Fresh Docker named volumes are root-owned; DHI images run as non-root and
+  # cannot self-chown, so this one-shot container sets ownership on first start.
   data-init:
     # renovate: datasource=docker depName=busybox
     image: busybox:1.37-musl@sha256:19b646668802469d968a05342a601e78da4322a414a7c09b1c9ee25165042138
@@ -57,7 +61,10 @@ services:
 {{- if postgresEnabled}}
       - synthorg-pgdata:/pgdata
 {{- end}}
-    command: ["sh", "-c", "set -e; mkdir -p /data/logs /data/memory; chown -R 65532:65532 /data{{if postgresEnabled}}; chown -R 65532:65532 /pgdata{{end}}"]
+{{- if distributedEnabled}}
+      - synthorg-nats-data:/nats-data
+{{- end}}
+    command: ["sh", "-c", "set -e; mkdir -p /data/logs /data/memory; chown -R 65532:65532 /data{{if postgresEnabled}}; chown -R 70:70 /pgdata; chmod 0700 /pgdata{{end}}{{if distributedEnabled}}; chown -R 65532:65532 /nats-data{{end}}"]
     cap_drop:
       - ALL
     cap_add:
@@ -188,6 +195,9 @@ services:
       - "{{.NatsClientPort}}:4222"
     volumes:
       - synthorg-nats-data:/data
+    depends_on:
+      data-init:
+        condition: service_completed_successfully
     user: "65532:65532"
     security_opt:
       - no-new-privileges:true

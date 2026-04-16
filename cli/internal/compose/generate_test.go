@@ -531,3 +531,117 @@ func compareGolden(t *testing.T, name string, actual []byte) {
 		t.Errorf("output differs from golden file %s\nRun with UPDATE_GOLDEN=1 to update", name)
 	}
 }
+
+// TestGenerateDataInitOwnershipPostgres verifies that when postgres is enabled,
+// data-init chowns the pgdata volume to UID 70 (DHI postgres user) -- not the
+// backend UID 65532 -- and applies mode 0700 so initdb can chmod on first run.
+// Regression guard for the "postgres container stuck Restarting" bug where
+// pgdata was chowned to 65532 and initdb failed with "could not change
+// permissions of directory".
+func TestGenerateDataInitOwnershipPostgres(t *testing.T) {
+	t.Parallel()
+	p := Params{
+		CLIVersion:         "dev",
+		ImageTag:           "latest",
+		BackendPort:        3001,
+		WebPort:            3000,
+		LogLevel:           "info",
+		PersistenceBackend: "postgres",
+		MemoryBackend:      "mem0",
+		BusBackend:         "internal",
+		PostgresPort:       3002,
+		PostgresPassword:   "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+	}
+	out, err := Generate(p)
+	if err != nil {
+		t.Fatalf("Generate: %v", err)
+	}
+	yaml := string(out)
+
+	assertContains(t, yaml, "- synthorg-pgdata:/pgdata")
+	assertContains(t, yaml, "chown -R 70:70 /pgdata")
+	assertContains(t, yaml, "chmod 0700 /pgdata")
+
+	// Postgres must gate on data-init so it never starts before the chown
+	// commits. Without this guard we re-introduce the startup race.
+	postgresBlock := extractServiceBlock(t, yaml, "postgres")
+	if !strings.Contains(postgresBlock, "depends_on:") ||
+		!strings.Contains(postgresBlock, "data-init:") ||
+		!strings.Contains(postgresBlock, "service_completed_successfully") {
+		t.Errorf("postgres service must depend_on data-init: service_completed_successfully\ngot:\n%s", postgresBlock)
+	}
+
+	// Nats-data must NOT appear when distributed is disabled.
+	if strings.Contains(yaml, "synthorg-nats-data") {
+		t.Error("synthorg-nats-data must not appear when bus_backend is internal")
+	}
+}
+
+// TestGenerateDataInitOwnershipDistributed verifies that when the distributed
+// (nats) bus backend is enabled, data-init chowns the nats volume to 65532 and
+// nats depends on data-init completing. Regression guard for the latent bug
+// where fresh nats-data volumes were left root-owned and nats (running as
+// UID 65532) could not write JetStream state.
+func TestGenerateDataInitOwnershipDistributed(t *testing.T) {
+	t.Parallel()
+	p := Params{
+		CLIVersion:         "dev",
+		ImageTag:           "latest",
+		BackendPort:        3001,
+		WebPort:            3000,
+		NatsClientPort:     3003,
+		LogLevel:           "info",
+		PersistenceBackend: "sqlite",
+		MemoryBackend:      "mem0",
+		BusBackend:         "nats",
+	}
+	out, err := Generate(p)
+	if err != nil {
+		t.Fatalf("Generate: %v", err)
+	}
+	yaml := string(out)
+
+	assertContains(t, yaml, "- synthorg-nats-data:/nats-data")
+	assertContains(t, yaml, "chown -R 65532:65532 /nats-data")
+
+	natsBlock := extractServiceBlock(t, yaml, "nats")
+	if !strings.Contains(natsBlock, "depends_on:") ||
+		!strings.Contains(natsBlock, "data-init:") ||
+		!strings.Contains(natsBlock, "service_completed_successfully") {
+		t.Errorf("nats service must depend_on data-init: service_completed_successfully\ngot:\n%s", natsBlock)
+	}
+
+	// Pgdata must NOT appear when persistence is sqlite.
+	if strings.Contains(yaml, "synthorg-pgdata") {
+		t.Error("synthorg-pgdata must not appear when persistence_backend is sqlite")
+	}
+}
+
+// extractServiceBlock returns the YAML block for a named top-level service,
+// bounded by the next service declaration or the end of the services section.
+func extractServiceBlock(t *testing.T, yaml, name string) string {
+	t.Helper()
+	header := "\n  " + name + ":\n"
+	start := strings.Index(yaml, header)
+	if start < 0 {
+		t.Fatalf("service %q not found in generated yaml", name)
+	}
+	rest := yaml[start+1:]
+	// Next top-level block starts with "\n  <word>:" at the same 2-space indent.
+	// Scan line by line until we find one.
+	lines := strings.Split(rest, "\n")
+	end := len(lines)
+	for i := 1; i < len(lines); i++ {
+		line := lines[i]
+		if len(line) >= 3 && line[0] == ' ' && line[1] == ' ' && line[2] != ' ' {
+			// sibling service or networks:/volumes: at top level
+			end = i
+			break
+		}
+		if strings.HasPrefix(line, "networks:") || strings.HasPrefix(line, "volumes:") {
+			end = i
+			break
+		}
+	}
+	return strings.Join(lines[:end], "\n")
+}

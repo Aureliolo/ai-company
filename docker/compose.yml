@@ -12,6 +12,9 @@ services:
       - "${POSTGRES_PORT:-3002}:5432"
     volumes:
       - synthorg-pgdata:/var/lib/postgresql/data
+    depends_on:
+      data-init:
+        condition: service_completed_successfully
     environment:
       PGDATA: /var/lib/postgresql/data
       POSTGRES_DB: synthorg
@@ -44,15 +47,19 @@ services:
       start_period: 30s
     logging: *logging
 
-  # Init container: ensure the data volume is owned by the app user (65532).
-  # Docker creates named volumes as root; this runs once on first start.
+  # Init container: chown named volumes to the correct non-root UID per service.
+  # Fresh Docker named volumes are root-owned; DHI images run as non-root and
+  # cannot self-chown, so this one-shot container sets ownership on first start.
+  #   /data      -> 65532 (backend)    /pgdata -> 70 (postgres)
+  #   /nats-data -> 65532 (nats)
   data-init:
     # renovate: datasource=docker depName=busybox
     image: busybox:1.37-musl@sha256:19b646668802469d968a05342a601e78da4322a414a7c09b1c9ee25165042138
     volumes:
       - synthorg-data:/data
       - synthorg-pgdata:/pgdata
-    command: ["sh", "-c", "set -e; mkdir -p /data/logs /data/memory; chown -R 65532:65532 /data; chown -R 65532:65532 /pgdata"]
+      - synthorg-nats-data:/nats-data
+    command: ["sh", "-c", "set -e; mkdir -p /data/logs /data/memory; chown -R 65532:65532 /data; chown -R 70:70 /pgdata; chmod 0700 /pgdata; chown -R 65532:65532 /nats-data"]
     cap_drop:
       - ALL
     cap_add:
@@ -140,6 +147,9 @@ services:
       - "${NATS_CLIENT_PORT:-3003}:4222"
     volumes:
       - synthorg-nats-data:/data
+    depends_on:
+      data-init:
+        condition: service_completed_successfully
     user: "65532:65532"
     security_opt:
       - no-new-privileges:true
@@ -187,6 +197,12 @@ services:
 
   # Fine-tuning sidecar (~4 GB, PyTorch + sentence-transformers).
   # Uncomment to enable embedding fine-tuning. Requires local GPU.
+  #
+  # Runs as UID 10003 -- a dedicated non-root user for security isolation
+  # from sandbox (10001), sidecar (10002), and backend (65532). The shared
+  # /data volume is owned by 65532; group_add=65532 gives this container
+  # read access to any group-readable files backend writes (so the mount
+  # keeps working even if backend tightens world-read bits to 640).
   # fine-tune:
   #   image: ghcr.io/aureliolo/synthorg-fine-tune:${SYNTHORG_IMAGE_TAG:-latest}
   #   volumes:
@@ -195,6 +211,8 @@ services:
   #     backend:
   #       condition: service_healthy
   #   user: "10003:10003"
+  #   group_add:
+  #     - "65532"
   #   security_opt:
   #     - no-new-privileges:true
   #   cap_drop:
