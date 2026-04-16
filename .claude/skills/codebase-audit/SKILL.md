@@ -26,10 +26,10 @@ Launch 58 specialized agents to audit the entire codebase (or a targeted scope),
 | Argument | Directories | Agent Waves |
 |----------|-------------|-------------|
 | `full` (default) | All | All 10 waves (58 agents) |
-| `src/` | `src/synthorg/`, `tests/` | Waves 1-5, 7, 9 (Python-focused) |
-| `web/` | `web/src/` | Wave 8 + relevant from 2-3 |
-| `cli/` | `cli/` | Wave 10 only |
-| `docs/` | `docs/`, `site/` | Wave 4 (TODOs) + spec drift from Wave 9 |
+| `src/` | `src/synthorg/`, `tests/` | 01-08, 11-16, 20-45, 51-54 |
+| `web/` | `web/src/` | 09-10, 15, 17-19, 33, 36, 46-50 |
+| `cli/` | `cli/` | 22, 33, 55-58 |
+| `docs/` | `docs/`, `site/` | 22, 25, 54 |
 
 Flags:
 - `--report-only` -- skip issue creation, findings files only
@@ -58,12 +58,17 @@ Read these files to build context injected into EVERY agent prompt:
 7. `docs/DESIGN_SPEC.md` -- spec index
 8. Existing open issues: `gh issue list --state open --limit 200 --json number,title,labels`
 
-Produce an **Architecture Brief** (~300 words) covering:
+Produce an **Architecture Brief** (~400 words) covering:
 - Logging: `get_logger(__name__)`, structlog, event constants in `observability/events/`, structured kwargs
 - Wiring: `auto_wire.py` phases, controller registration, factory pattern
 - Frontend: router structure, Zustand stores, API layer
-- Conventions: immutability, frozen Pydantic, `NotBlankStr`, vendor-agnostic naming, error hierarchy
-- Testing: markers, xdist, async auto mode, Hypothesis
+- Conventions: immutability, frozen Pydantic, `NotBlankStr`, vendor-agnostic naming
+- Error hierarchy: custom exceptions inherit from project base, RFC 9457 responses
+- Providers: all LLM calls through `BaseCompletionProvider` (auto-retry, rate limit)
+- Pluggable subsystems: Protocol + concrete implementations + factory + config discriminator
+- Database: SQLite + Postgres dual-backend, Atlas migrations in `persistence/*/revisions/`
+- Async: `asyncio.TaskGroup` preferred, never bare `create_task`
+- Testing: markers, xdist, async auto mode, Hypothesis profiles
 
 This brief is a string variable reused in all agent prompts below.
 
@@ -232,9 +237,10 @@ File: `_audit/findings/05-missing-error-logging.md`
 Project convention: "All error paths must log at WARNING or ERROR with context
 before raising."
 
-Search src/synthorg/ for `raise` statements that are NOT preceded (within the
-same function, within ~10 lines above) by a logger.warning() or logger.error()
-call.
+Search src/synthorg/ for `raise` statements that are NOT preceded by a
+logger.warning() or logger.error() call anywhere in the same function before
+the raise. If a function has multiple raises, each must have its own preceding
+log call or be inside an except block that already logged.
 
 Exceptions to skip:
 - `raise` inside `__init__` for validation errors (Pydantic handles these)
@@ -258,6 +264,11 @@ Focus on these domains where state machines matter:
 - engine/workflow/ (workflow execution state changes)
 - workers/ (worker claim/dispatch state)
 - security/autonomy/ (autonomy level changes)
+- api/ (request lifecycle, startup/shutdown phases)
+- notifications/ (delivery state changes)
+- persistence/ (connection state, transaction state)
+- backup/ (backup job state)
+If you find state machines in other modules, include them too.
 
 For each domain, find where status/state fields are modified and check if
 there's an INFO-level log call nearby. Missing transitions are severity=medium.
@@ -292,7 +303,8 @@ File: `_audit/findings/08-unwired-api-controllers.md`
 ```
 Check api/controllers/ for controller classes not registered in auto_wire.py
 or app.py. Also check for route handler methods that exist but are not mapped
-to any HTTP route. Severity: high (unreachable code).
+to any HTTP route. Do NOT check frontend-to-backend connectivity (Agent 15
+owns that). Severity: high (unreachable code).
 ```
 
 **Agent 09 -- unwired-web-stores** (sonnet)
@@ -306,9 +318,9 @@ zero pages or components, it's dead. Severity: medium.
 **Agent 10 -- unwired-web-pages** (sonnet)
 File: `_audit/findings/10-unwired-web-pages.md`
 ```
-Check every page component in web/src/pages/. Cross-reference with
-web/src/router/routes.ts. Pages not in the router are unreachable.
-Severity: medium.
+Find all .tsx files in web/src/pages/ that are NOT imported by any other file
+(not by routes.ts, not by another page as a nested layout). Pages with no
+route AND no parent import are unreachable. Severity: medium.
 ```
 
 **Agent 11 -- unwired-settings** (sonnet)
@@ -363,7 +375,8 @@ File: `_audit/findings/16-unused-python-exports.md`
 ```
 Find public functions and classes in src/synthorg/ that are not imported by
 any other module, not re-exported in __init__.py, and not referenced in tests/.
-Focus on non-trivial code (skip dataclass fields, enum members). Severity: medium.
+Exclude: __init__ methods, property descriptors, __repr__/__str__, metaclass
+methods, enum members, Pydantic field definitions. Severity: medium.
 ```
 
 **Agent 17 -- unused-web-components** (sonnet)
@@ -394,6 +407,7 @@ File: `_audit/findings/20-unused-dto-fields.md`
 Compare DTO classes in api/dto*.py with frontend TypeScript types in
 web/src/types/. Flag fields present in backend DTOs but absent from frontend
 types (or vice versa). This suggests unused serialization. Severity: low.
+Only runs for `full` or `src/` scope (requires both backend and frontend).
 ```
 
 **Agent 21 -- orphan-test-helpers** (sonnet)
@@ -475,8 +489,9 @@ Severity: high for data-mutating endpoints, medium for read-only.
 **Agent 30 -- unsafe-deserialization** (haiku)
 File: `_audit/findings/30-unsafe-deserialization.md`
 ```
-Grep for yaml.load() without SafeLoader, pickle.loads, eval(), exec(),
-compile() with user input. Severity: critical.
+Flag ANY use of yaml.load (even with Loader parameter -- verify SafeLoader),
+pickle.loads, eval(), exec(). Flag compile() ONLY if the argument contains a
+variable or function parameter (not a string literal). Severity: critical.
 ```
 
 **Agent 31 -- hardcoded-secrets** (haiku)
@@ -740,7 +755,8 @@ After all 58 audit agents complete, launch validation agents to verify findings.
 
 1. Read all 58 finding files from `_audit/findings/`
 2. Collect all critical + high severity findings into a validation queue
-3. Split the queue into batches of ~12 findings each
+3. If queue exceeds 50 findings, prioritize by clustering related findings (same file/module)
+4. Split the queue into batches of ~12 findings each
 4. Launch one **sonnet** validation agent per batch (in parallel, `run_in_background: true`)
 
 ### Validation Agent Prompt
@@ -771,7 +787,7 @@ Findings to validate:
 ### After Validation
 
 1. Read all `validate-batch-*.md` files
-2. Remove FALSE_POSITIVE findings from the audit files (edit in place)
+2. Delete FALSE_POSITIVE findings entirely from the audit files (edit in place)
 3. Mark INTENTIONAL findings as excluded (keep in file but prefix with `[INTENTIONAL]`)
 4. Report: "Validated N findings. Removed M false positives (X%)."
 
@@ -804,8 +820,8 @@ After validation, read all finding files and build `_audit/INDEX.md`:
 
 ## By Wave
 
-| Wave | Findings | Top Issue |
-|------|----------|-----------|
+| Wave | Findings | Top Issue (highest severity finding) |
+|------|----------|--------------------------------------|
 | 1. Observability | N | ... |
 | 2. Wiring | N | ... |
 | ... | ... | ... |
@@ -819,7 +835,9 @@ After validation, read all finding files and build `_audit/INDEX.md`:
 
 ## Zero-Finding Categories
 
-These agents found nothing (may warrant deeper investigation):
+These agents found no issues. Review the agent prompt to understand what was
+checked -- this may indicate code quality in that area, or the search pattern
+may not match the codebase's conventions:
 - ...
 
 ## Finding Files
