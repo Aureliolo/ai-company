@@ -132,8 +132,16 @@ func setupGlobalOpts(cmd *cobra.Command) error {
 
 // isRecoveryCommand reports whether cmd is one of the commands that must
 // stay usable when config.json is broken. These commands exist precisely
-// to repair or inspect the config, so refusing to run them because the
-// file they are meant to fix is invalid would leave the user stranded.
+// to repair, inspect, or erase the install, so refusing to run them
+// because the file they are meant to fix/remove is invalid would leave
+// the user stranded with no in-CLI path out.
+//
+// Included:
+//   - config edit/path/show + bare `config`: needed to repair a bad file
+//   - doctor: diagnoses the exact breakage
+//   - version, help: pure informational, must never depend on state
+//   - init: replaces/creates the config from scratch
+//   - wipe, uninstall: tear down the install even when config is garbage
 func isRecoveryCommand(cmd *cobra.Command) bool {
 	switch cmd.CommandPath() {
 	case "synthorg config edit",
@@ -142,7 +150,10 @@ func isRecoveryCommand(cmd *cobra.Command) bool {
 		"synthorg config",
 		"synthorg doctor",
 		"synthorg version",
-		"synthorg help":
+		"synthorg help",
+		"synthorg init",
+		"synthorg wipe",
+		"synthorg uninstall":
 		return true
 	}
 	return false
