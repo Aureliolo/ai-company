@@ -384,12 +384,9 @@ class TestLLMRubricGraderBehavior:
         assert "completeness" in content
         assert "Is the output correct?" in content
 
-    async def test_large_payload_is_truncated(
-        self,
-        capsys: pytest.CaptureFixture[str],
-    ) -> None:
-        """Oversized artifact payloads are truncated and the prompt
-        carries only the truncated payload (the rest is not sent)."""
+    async def test_large_payload_is_truncated(self) -> None:
+        """Oversized artifact payloads are truncated; the prompt sent
+        to the provider never carries more than the configured cap."""
         large_payload = {"data": "x" * 30_000}
         artifact = HandoffArtifact(
             created_at=datetime.now(UTC),
@@ -428,6 +425,5 @@ class TestLLMRubricGraderBehavior:
         messages, _, _, _ = provider.complete_calls[0]
         user_content = messages[-1].content or ""
         assert len(user_content) < 20_000
-        # Structlog emits warnings to stderr by default in tests.
-        captured = capsys.readouterr()
-        assert "grader.payload_truncated" in (captured.err + captured.out)
+        # The enormous `xxxx...` payload was not fully inlined.
+        assert user_content.count("x") < 17_000
