@@ -1,3 +1,6 @@
+# Audit artifacts
+_audit/
+
 # Python
 __pycache__/
 *.py[cod]
