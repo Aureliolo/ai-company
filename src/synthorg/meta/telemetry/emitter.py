@@ -179,13 +179,16 @@ class HttpAnalyticsEmitter:
             )
 
     async def _periodic_flush(self) -> None:
-        """Background loop that flushes on interval."""
+        """Background loop that flushes on interval.
+
+        Runs until ``close()`` sets ``_closed`` and cancels this
+        task. The cancellation interrupts the sleep, so no
+        post-sleep guard is needed.
+        """
         while not self._closed:
             await asyncio.sleep(
                 self._analytics_config.flush_interval_seconds,
             )
-            if self._closed:
-                break
             await self.flush()
 
     async def _enqueue(self, event: AnonymizedOutcomeEvent) -> None:

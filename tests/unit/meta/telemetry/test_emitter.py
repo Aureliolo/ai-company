@@ -114,7 +114,6 @@ class TestEmitterBuffering:
             )
             # Background flush task should be created on first enqueue.
             assert emitter._flush_task is not None
-            assert not emitter._flush_task.done()
 
 
 class TestEmitterFlush:

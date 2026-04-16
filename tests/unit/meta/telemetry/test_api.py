@@ -1,5 +1,7 @@
 """Unit tests for the cross-deployment analytics API controller."""
 
+from collections.abc import Generator
+
 import pytest
 
 from synthorg.api.controllers.meta_analytics import (
@@ -16,7 +18,7 @@ pytestmark = pytest.mark.unit
 
 
 @pytest.fixture(autouse=True)
-def _reset_analytics_controller():
+def _reset_analytics_controller() -> Generator[None]:
     """Reset module-level globals after each test."""
     yield
     configure_analytics_controller(None, None)
