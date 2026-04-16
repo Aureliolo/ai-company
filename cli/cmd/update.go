@@ -559,7 +559,12 @@ func pullAndPersist(ctx context.Context, cmd *cobra.Command, info docker.Info, s
 		return state, err
 	}
 
-	if _, err := pullAllImages(ctx, info, safeDir, state, out); err != nil {
+	// Use newly verified digest pins for the pull so standalone images
+	// (sandbox, sidecar, fine-tune) resolve to pinned references.
+	pullState := state
+	pullState.ImageTag = tag
+	pullState.VerifiedDigests = digestPins
+	if _, err := pullAllImages(ctx, info, safeDir, pullState, out); err != nil {
 		rollback()
 		return state, err
 	}

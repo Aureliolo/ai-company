@@ -1,13 +1,12 @@
 // Package verify: DHI (Docker Hardened Images) verification.
 //
 // DHI images at dhi.io are signed with Docker's cosign key (ECDSA P-256).
-// Attestations (SLSA provenance, SBOMs) are stored in Docker Scout's
-// registry at registry.scout.docker.com, discoverable via OCI referrers
-// on the platform-specific manifest digest.
+// Attestations (SLSA provenance) are discoverable via OCI referrers on
+// the platform-specific manifest digest at dhi.io.
 //
-// The embedded public key is pinned by SHA-256 fingerprint. If Docker
-// rotates the key, signature verification fails naturally and a CLI
-// update ships the new key.
+// The embedded public key is pinned by SHA-256 fingerprint and validated
+// at parse time. If Docker rotates the key, fingerprint verification
+// fails and a CLI update ships the new key.
 package verify
 
 import (
@@ -367,7 +366,10 @@ func verifyCosignDHISignature(ctx context.Context, repo string, sigDesc v1.Descr
 	}
 
 	// Verify the signature's subject is the attestation we verified.
-	if sigManifest.Subject != nil && sigManifest.Subject.Digest.String() != attDigest {
+	if sigManifest.Subject == nil {
+		return -1, fmt.Errorf("signature has no subject field")
+	}
+	if sigManifest.Subject.Digest.String() != attDigest {
 		return -1, fmt.Errorf("signature subject %s does not match attestation %s",
 			sigManifest.Subject.Digest.String()[:16], attDigest[:16])
 	}
@@ -419,7 +421,10 @@ func verifyCosignDHISignature(ctx context.Context, repo string, sigDesc v1.Descr
 		// Verify the Rekor transparency log entry.
 		bundleJSON := sigManifest.Layers[i].Annotations["dev.sigstore.cosign/bundle"]
 		if bundleJSON == "" {
-			// Signature is valid but no Rekor bundle -- accept with index -1.
+			// Signature is cryptographically valid but no Rekor bundle
+			// is attached. Accept with index -1 (no transparency log
+			// entry). This trades auditability for compatibility with
+			// signatures that predate Rekor or are signed offline.
 			return -1, nil
 		}
 		logIndex, err := verifyRekorBundle(bundleJSON, payloadHash[:], pubKey)
@@ -439,7 +444,13 @@ func verifyCosignDHISignature(ctx context.Context, repo string, sigDesc v1.Descr
 // signature we just verified:
 //   - The logged public key matches our embedded DHI key
 //   - The logged data hash matches the simplesigning payload hash
-//   - The logged signature matches the one in the annotation
+//
+// Note: SignedEntryTimestamp (SET) verification is not implemented.
+// The SET provides tamper-evidence by committing the entry to a tree
+// snapshot signed by Rekor's key. Full SET verification would require
+// embedding Rekor's public key and validating the inclusion proof.
+// The current checks confirm the entry references the correct key and
+// payload, but do not cryptographically prove the entry was logged.
 //
 // Returns the Rekor log index for audit purposes.
 func verifyRekorBundle(bundleJSON string, payloadHash []byte, pubKey *ecdsa.PublicKey) (int64, error) {
@@ -569,7 +580,7 @@ const (
 // DHI images require authentication -- a free Docker Hub account is
 // sufficient. Returns a clear error with instructions if not logged in.
 func checkDHIAuth(ctx context.Context) error {
-	ref, err := name.NewTag("dhi.io/nats:2")
+	ref, err := name.NewTag("dhi.io/nats:2.12-debian13")
 	if err != nil {
 		return fmt.Errorf("internal: parsing test ref: %w", err)
 	}
@@ -620,5 +631,14 @@ func parseDHIPublicKey(pemBytes []byte) (*ecdsa.PublicKey, error) {
 	if !ok {
 		return nil, fmt.Errorf("expected ECDSA key, got %T", pub)
 	}
+
+	// Validate the key's SHA-256 fingerprint against the pinned value
+	// to detect accidental or malicious key substitution. The fingerprint
+	// is computed over the full PEM encoding (including headers).
+	actualFP := fmt.Sprintf("%x", sha256.Sum256(pemBytes))
+	if actualFP != DHIPublicKeyFingerprint {
+		return nil, fmt.Errorf("DHI key fingerprint mismatch: got %s, want %s", actualFP[:16], DHIPublicKeyFingerprint[:16])
+	}
+
 	return ecKey, nil
 }

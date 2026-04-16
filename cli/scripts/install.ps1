@@ -26,7 +26,7 @@ if (-not $NoColor) {
 }
 
 function Step($N, $Total, $Msg) { Write-Host "${C_Blue}[${N}/${Total}]${C_Reset} ${Msg}" }
-function Fail($Msg) { Write-Host "${C_Red}error: ${Msg}${C_Reset}"; exit 1 }
+function Fail($Msg) { [Console]::Error.WriteLine("${C_Red}error: ${Msg}${C_Reset}"); exit 1 }
 
 $Total = 4
 
@@ -45,8 +45,6 @@ if (-not $env:SYNTHORG_VERSION) {
 if ($Version -notmatch '^v\d+\.\d+\.\d+(-[a-zA-Z0-9.]+)?$') {
     Fail "invalid version string: $Version"
 }
-
-Write-Host "  ${C_Dim}Platform:${C_Reset} windows/$WinArch  ${C_Dim}Version:${C_Reset} $Version"
 
 # --- Detect architecture ---
 
@@ -72,6 +70,8 @@ if ($null -ne $OsArch) {
     }
 }
 
+Write-Host "  ${C_Dim}Platform:${C_Reset} windows/$WinArch  ${C_Dim}Version:${C_Reset} $Version"
+
 # --- Download ---
 
 $ArchiveName = "synthorg_windows_$WinArch.zip"
@@ -89,12 +89,14 @@ try {
     # --- Verify checksum ---
 
     Step 3 $Total "Verifying checksum..."
-    $line = Get-Content (Join-Path $TmpDir "checksums.txt") | Where-Object { ($_ -split '\s+')[1] -eq $ArchiveName }
-    $ExpectedHash = ($line -split '\s+')[0].Trim().ToLower()
+    $line = Get-Content (Join-Path $TmpDir "checksums.txt") |
+        Where-Object { ($_ -split '\s+')[1] -eq $ArchiveName } |
+        Select-Object -First 1
 
-    if (-not $ExpectedHash) {
+    if (-not $line) {
         Fail "no checksum found for $ArchiveName"
     }
+    $ExpectedHash = ($line -split '\s+')[0].Trim().ToLower()
 
     $ActualHash = (Get-FileHash -Path (Join-Path $TmpDir $ArchiveName) -Algorithm SHA256).Hash.ToLower()
 

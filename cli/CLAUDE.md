@@ -93,7 +93,7 @@ No corresponding flag -- settable via env var or `config set`:
 | `path` | Print the config file path |
 | `edit` | Open config file in $VISUAL/$EDITOR |
 
-Settable keys: `auto_apply_compose`, `auto_cleanup`, `auto_pull`, `auto_restart`, `auto_start_after_wipe`, `auto_update_cli`, `backend_port`, `channel`, `color`, `docker_sock`, `fine_tuning`, `hints`, `image_tag`, `log_level`, `output`, `sandbox`, `telemetry_opt_in`, `timestamps`, `web_port`. Keys that affect Docker compose (`backend_port`, `web_port`, `sandbox`, `docker_sock`, `fine_tuning`, `image_tag`, `log_level`, `telemetry_opt_in`) trigger automatic `compose.yml` regeneration.
+Settable keys: `auto_apply_compose`, `auto_cleanup`, `auto_pull`, `auto_restart`, `auto_update_cli`, `backend_port`, `channel`, `color`, `docker_sock`, `fine_tuning`, `hints`, `image_tag`, `log_level`, `output`, `sandbox`, `telemetry_opt_in`, `timestamps`, `web_port`. Keys that affect Docker compose (`backend_port`, `web_port`, `sandbox`, `docker_sock`, `fine_tuning`, `image_tag`, `log_level`, `telemetry_opt_in`) trigger automatic `compose.yml` regeneration.
 
 ## Per-Command Flags
 

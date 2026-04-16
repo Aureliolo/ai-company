@@ -172,8 +172,7 @@ func (u *UI) icon(unicode, plain string) string {
 
 // Logo renders the SynthOrg gradient banner with a version tag.
 // The banner uses a 6-line block-letter wordmark with a blue-to-purple
-// gradient (one color per row). Plain mode falls back to the legacy
-// box-drawing banner in a single brand color.
+// gradient (one color per row). Plain mode prints "SynthOrg <version>".
 func (u *UI) Logo(version string) {
 	if u.quiet {
 		return

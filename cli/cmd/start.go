@@ -154,7 +154,11 @@ func startContainers(cmd *cobra.Command, ctx context.Context, state config.State
 					return err
 				}
 				// Reload state since verifyAndPinImages saved it.
-				state, _ = config.Load(GetGlobalOpts(ctx).DataDir)
+				reloaded, reloadErr := config.Load(GetGlobalOpts(ctx).DataDir)
+				if reloadErr != nil {
+					return fmt.Errorf("reloading config after verification: %w", reloadErr)
+				}
+				state = reloaded
 			}
 
 			// DHI images: check cache independently.
@@ -182,7 +186,9 @@ func startContainers(cmd *cobra.Command, ctx context.Context, state config.State
 						state.VerifiedDigests["dhi:"+r.Image+":signature"] = r.SigDigest
 					}
 				}
-				_ = config.Save(state)
+				if err := config.Save(state); err != nil {
+					errOut.Warn(fmt.Sprintf("Could not cache DHI verification results: %v", err))
+				}
 			}
 		}
 
@@ -489,15 +495,15 @@ func hasSynthOrgDigests(state config.State) bool {
 // match the current index pins baked into the binary. When Renovate
 // bumps a pin, the cache misses and re-verification triggers.
 func hasDHIDigests(state config.State) bool {
-	for _, ref := range thirdPartyImages(state) {
-		if !strings.HasPrefix(ref, "dhi.io/") {
+	for _, tp := range thirdPartyImages(state) {
+		if !strings.HasPrefix(tp.Image, "dhi.io/") {
 			continue
 		}
-		cached, ok := state.VerifiedDigests["dhi:"+ref]
+		cached, ok := state.VerifiedDigests["dhi:"+tp.Image]
 		if !ok {
 			return false
 		}
-		current, pinOK := verify.DHIPinnedIndexDigest(ref)
+		current, pinOK := verify.DHIPinnedIndexDigest(tp.Image)
 		if !pinOK || cached != current {
 			return false
 		}
@@ -516,14 +522,11 @@ func renderCachedSynthOrgBox(out *ui.UI, state config.State) {
 
 func renderCachedDHIBox(out *ui.UI, state config.State) {
 	var lines []string
-	for _, ref := range thirdPartyImages(state) {
-		if !strings.HasPrefix(ref, "dhi.io/") {
+	for _, tp := range thirdPartyImages(state) {
+		if !strings.HasPrefix(tp.Image, "dhi.io/") {
 			continue
 		}
-		shortName := ref
-		if parts := strings.SplitN(ref, "/", 2); len(parts) == 2 {
-			shortName = strings.SplitN(parts[1], ":", 2)[0]
-		}
+		shortName := tp.Name
 		lines = append(lines, fmt.Sprintf("  %-12s sig %s  slsa %s", shortName, ui.IconSuccess, ui.IconSuccess))
 	}
 	if len(lines) > 0 {
@@ -535,32 +538,25 @@ func renderCachedDHIBox(out *ui.UI, state config.State) {
 // third-party DHI images using Docker's embedded public key. Called
 // BEFORE pulling to prevent MITM.
 func verifyDHIImages(ctx context.Context, _ docker.Info, state config.State, out, _ *ui.UI) ([]verify.DHIVerifyResult, error) {
-	images := thirdPartyImages(state)
 	var dhiRefs []string
-	for _, ref := range images {
-		if strings.HasPrefix(ref, "dhi.io/") {
-			dhiRefs = append(dhiRefs, ref)
+	var labels []string
+	for _, tp := range thirdPartyImages(state) {
+		if strings.HasPrefix(tp.Image, "dhi.io/") {
+			dhiRefs = append(dhiRefs, tp.Image)
+			labels = append(labels, tp.Name)
 		}
 	}
 	if len(dhiRefs) == 0 {
 		return nil, nil
 	}
 
-	// Build labels for the LiveBox.
-	labels := make([]string, len(dhiRefs))
-	for i, ref := range dhiRefs {
-		if parts := strings.SplitN(ref, "/", 2); len(parts) == 2 {
-			labels[i] = strings.SplitN(parts[1], ":", 2)[0]
-		} else {
-			labels[i] = ref
-		}
-	}
-
 	lb := out.NewLiveBox("Verify DHI Images", labels)
 	defer lb.Finish()
 
-	// Verify each image concurrently, updating the LiveBox per-image.
-	results, err := verify.VerifyDHIImages(ctx, dhiRefs)
+	// Verify each image with a timeout to prevent hanging on network issues.
+	dhiCtx, dhiCancel := context.WithTimeout(ctx, 120*time.Second)
+	defer dhiCancel()
+	results, err := verify.VerifyDHIImages(dhiCtx, dhiRefs)
 
 	// Update LiveBox lines from results.
 	for i, r := range results {
@@ -578,16 +574,23 @@ func verifyDHIImages(ctx context.Context, _ docker.Info, state config.State, out
 	return results, err
 }
 
+// thirdPartyImage pairs a service name with its image reference.
+type thirdPartyImage struct {
+	Name  string
+	Image string
+}
+
 // thirdPartyImages returns the image references of third-party (non-SynthOrg)
-// containers that need digest pinning, based on config.
-func thirdPartyImages(state config.State) map[string]string {
-	images := make(map[string]string)
+// containers that need digest pinning, based on config. Returns a slice for
+// deterministic iteration order in UI rendering and verification.
+func thirdPartyImages(state config.State) []thirdPartyImage {
+	var images []thirdPartyImage
 	if state.PersistenceBackend == "postgres" {
-		images["postgres"] = "dhi.io/postgres:18-debian13"
+		images = append(images, thirdPartyImage{"postgres", "dhi.io/postgres:18-debian13"})
 	}
 	if state.BusBackend == "nats" {
-		images["nats"] = "dhi.io/nats:2.12-debian13"
-		images["nats-healthcheck"] = "busybox:1.37-musl"
+		images = append(images, thirdPartyImage{"nats", "dhi.io/nats:2.12-debian13"})
+		images = append(images, thirdPartyImage{"nats-healthcheck", "busybox:1.37-musl"})
 	}
 	return images
 }

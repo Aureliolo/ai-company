@@ -99,8 +99,14 @@ func runInit(cmd *cobra.Command, _ []string) error {
 			state.NatsClientPort = result.natsPort
 		}
 
-		// Handle re-init secret preservation.
+		// Handle re-init secret preservation. Check the final dataDir
+		// (which the user may have changed in the TUI) for an existing
+		// config. The TUI's reinit phase only checks the initial dir.
 		if existing := config.StatePath(state.DataDir); fileExists(existing) {
+			if !result.answers.reinitConfirmed {
+				errOut := ui.NewUIWithOptions(cmd.ErrOrStderr(), GetGlobalOpts(cmd.Context()).UIOptions())
+				errOut.Warn(fmt.Sprintf("Existing configuration found at %s -- secrets will be regenerated.", existing))
+			}
 			oldState, loadErr := config.Load(state.DataDir)
 			if loadErr != nil {
 				return fmt.Errorf("existing config unreadable: %w", loadErr)
@@ -357,6 +363,7 @@ type setupAnswers struct {
 	imageTag           string // optional override (empty = use CLI version)
 	telemetryOptIn     bool
 	fineTuning         bool // enable fine-tuning pipeline (requires sandbox/Docker)
+	reinitConfirmed    bool // TUI reinit phase was shown and user confirmed
 }
 
 // validateInitFlags checks that provided CLI flag values are valid before
@@ -477,13 +484,43 @@ func runInteractiveInit(_ *cobra.Command, opts *GlobalOpts) (*interactiveResult,
 		dir = opts.DataDir
 	}
 
+	backendPort := fmt.Sprintf("%d", defaults.BackendPort)
+	if initBackendPort > 0 {
+		backendPort = fmt.Sprintf("%d", initBackendPort)
+	}
+	webPort := fmt.Sprintf("%d", defaults.WebPort)
+	if initWebPort > 0 {
+		webPort = fmt.Sprintf("%d", initWebPort)
+	}
+	sandbox := defaults.Sandbox
+	if initSandbox != "" {
+		sandbox = initSandbox == "true"
+	}
+
 	model := newSetupTUI(
 		dir,
-		fmt.Sprintf("%d", defaults.BackendPort),
-		fmt.Sprintf("%d", defaults.WebPort),
+		backendPort,
+		webPort,
 		version.Version,
-		defaults.Sandbox,
+		sandbox,
 	)
+
+	// Apply additional flag overrides to the TUI model.
+	switch initBusBackend {
+	case "nats":
+		model.busBackend = 1
+	case "internal":
+		model.busBackend = 0
+	}
+	switch initPersistenceBackend {
+	case "postgres":
+		model.persistence = 1
+	case "sqlite":
+		model.persistence = 0
+	}
+	if initPostgresPort > 0 {
+		model.postgresPort.SetValue(fmt.Sprintf("%d", initPostgresPort))
+	}
 
 	// Check if re-init is needed.
 	if existing := config.StatePath(dir); fileExists(existing) {
@@ -524,6 +561,9 @@ func runInteractiveInit(_ *cobra.Command, opts *GlobalOpts) (*interactiveResult,
 			if err != nil {
 				return nil, fmt.Errorf("invalid postgres port %q: %w", raw, err)
 			}
+			if p < 1 || p > 65535 {
+				return nil, fmt.Errorf("invalid postgres port %d: must be 1-65535", p)
+			}
 			pgPort = p
 		}
 		if pgPort == 0 {
@@ -539,6 +579,9 @@ func runInteractiveInit(_ *cobra.Command, opts *GlobalOpts) (*interactiveResult,
 			p, err := strconv.Atoi(raw)
 			if err != nil {
 				return nil, fmt.Errorf("invalid nats port %q: %w", raw, err)
+			}
+			if p < 1 || p > 65535 {
+				return nil, fmt.Errorf("invalid nats port %d: must be 1-65535", p)
 			}
 			natsPort = p
 		}
@@ -558,6 +601,7 @@ func runInteractiveInit(_ *cobra.Command, opts *GlobalOpts) (*interactiveResult,
 			postgresPort:       pgPort,
 			telemetryOptIn:     final.telemetry,
 			fineTuning:         final.fineTuning,
+			reinitConfirmed:    final.needReinit && !final.cancelled,
 		},
 		startNow: final.startNow,
 		natsPort: natsPort,

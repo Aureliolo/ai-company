@@ -157,7 +157,7 @@ jobs:
 
       - name: Validate compose files
         run: |
-          touch docker/.env
+          echo "POSTGRES_PASSWORD=ci-validation-dummy" > docker/.env
           docker compose -f docker/compose.yml config --quiet
           docker compose -f docker/compose.yml -f docker/compose.distributed.yml --profile distributed config --quiet
           docker compose -f docker/compose.yml -f docker/compose.override.yml config --quiet

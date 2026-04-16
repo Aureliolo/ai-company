@@ -48,15 +48,16 @@ var (
 var wipeCmd = &cobra.Command{
 	Use:   "wipe",
 	Short: "Factory-reset: wipe all data with optional backup and restart",
-	Long: `Destroy all SynthOrg data (database, memory, settings) and start
-with a clean slate. You are prompted at each step:
+	Long: `Destroy all SynthOrg data (database, memory, settings) and return
+to a clean state. You are prompted at each step:
 
   1. Whether to create a backup (default: yes)
   2. Whether to start containers for the backup (if needed)
   3. Where to save the backup archive (if backing up)
   4. Whether to overwrite if the backup file already exists
   5. Final confirmation before wiping
-  6. Whether to start containers after the wipe (default: yes)
+
+After wiping, run 'synthorg init' to set up again.
 
 Requires an interactive terminal.`,
 	Example: `  synthorg wipe                # interactive factory reset with backup
