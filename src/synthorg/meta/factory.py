@@ -11,9 +11,16 @@ from typing import TYPE_CHECKING, assert_never
 
 from synthorg.meta.appliers.architecture_applier import (
     ArchitectureApplier,
+    ArchitectureApplierContext,
 )
-from synthorg.meta.appliers.config_applier import ConfigApplier
-from synthorg.meta.appliers.prompt_applier import PromptApplier
+from synthorg.meta.appliers.config_applier import (
+    ConfigApplier,
+    ConfigProvider,
+)
+from synthorg.meta.appliers.prompt_applier import (
+    PromptApplier,
+    PromptApplierContext,
+)
 from synthorg.meta.chief_of_staff.learning import (
     BayesianConfidenceAdjuster,
     ExponentialMovingAverageAdjuster,
@@ -178,20 +185,38 @@ def build_guards(
 
 def build_appliers(
     config: SelfImprovementConfig | None = None,
+    *,
+    config_provider: ConfigProvider | None = None,
+    prompt_context: PromptApplierContext | None = None,
+    architecture_context: ArchitectureApplierContext | None = None,
 ) -> Mapping[ProposalAltitude, ProposalApplier]:
     """Build proposal appliers for each altitude.
 
     Args:
         config: Self-improvement configuration. When provided
-            and code_modification_enabled, includes the CodeApplier.
+            and ``code_modification_enabled``, includes the
+            ``CodeApplier``.
+        config_provider: Zero-arg callable returning the current
+            ``RootConfig``.  Required for ``ConfigApplier.dry_run``
+            to validate changes; callers that do not provide it get
+            an applier whose ``dry_run`` returns an explicit error.
+        prompt_context: Read-only view of prompt-scope targets.
+            Required for ``PromptApplier.dry_run``.
+        architecture_context: Read-only view of role / department /
+            workflow registries.  Required for
+            ``ArchitectureApplier.dry_run``.
 
     Returns:
         Read-only mapping of altitude to applier.
     """
     appliers: dict[ProposalAltitude, ProposalApplier] = {
-        ProposalAltitude.CONFIG_TUNING: ConfigApplier(),
-        ProposalAltitude.ARCHITECTURE: ArchitectureApplier(),
-        ProposalAltitude.PROMPT_TUNING: PromptApplier(),
+        ProposalAltitude.CONFIG_TUNING: ConfigApplier(
+            config_provider=config_provider,
+        ),
+        ProposalAltitude.ARCHITECTURE: ArchitectureApplier(
+            context=architecture_context,
+        ),
+        ProposalAltitude.PROMPT_TUNING: PromptApplier(context=prompt_context),
     }
     if config is not None and config.code_modification_enabled:
         code_cfg = config.code_modification

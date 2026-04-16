@@ -65,6 +65,12 @@ META_APPLY_STARTED: Final[str] = "meta.apply.started"
 META_APPLY_COMPLETED: Final[str] = "meta.apply.completed"
 META_APPLY_FAILED: Final[str] = "meta.apply.failed"
 
+# -- Dry-run events -----------------------------------------------------
+
+META_DRY_RUN_STARTED: Final[str] = "meta.dry_run.started"
+META_DRY_RUN_COMPLETED: Final[str] = "meta.dry_run.completed"
+META_DRY_RUN_FAILED: Final[str] = "meta.dry_run.failed"
+
 # -- Rule/factory/config events -----------------------------------------
 
 META_RULE_EVALUATION_FAILED: Final[str] = "meta.rule.evaluation_failed"
