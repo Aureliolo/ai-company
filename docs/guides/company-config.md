@@ -605,6 +605,65 @@ SynthOrg enforces the following cross-field validation rules at load time:
 
 ---
 
+## Agent Evolution Guards
+
+The `evolution.guards` section controls the adaptation-guard chain that
+vets every proposed agent identity change before it is persisted.
+Guards run in order and the first rejection short-circuits the chain.
+
+```yaml
+evolution:
+  guards:
+    review_gate: true               # human review for risky adaptations
+    rollback: true                  # regression-triggered rollback
+    rollback_window_tasks: 20       # tasks monitored post-adaptation
+    rollback_regression_threshold: 0.1
+    rate_limit: true                # per-agent daily cap
+    rate_limit_per_day: 3
+    shadow_evaluation: null         # null disables; object enables
+```
+
+### `shadow_evaluation` -- shadow eval guard
+
+Runs the adapted agent and the baseline agent side-by-side on a probe
+task suite and only approves the proposal when the adapted agent does
+not regress beyond the configured tolerances.  Leaving it `null`
+disables the guard.
+
+| Field | Type | Default | Notes |
+|-------|------|---------|-------|
+| `task_provider` | `"configured" \| "recent_history"` | `"configured"` | Probe source strategy |
+| `probe_tasks` | `list[Task]` | `[]` | Required when `task_provider=configured`; must be empty for `recent_history` |
+| `sample_size` | `int` (1-100) | `5` | Upper bound on tasks executed per run |
+| `timeout_per_task_seconds` | `float` (>0) | `60.0` | Hard timeout per probe task |
+| `score_regression_tolerance` | `float` (0-1) | `0.05` | Acceptable drop in mean quality score |
+| `pass_rate_regression_tolerance` | `float` (0-1) | `0.10` | Acceptable fractional drop in pass rate |
+| `evaluator_agent_id` | `NotBlankStr` | `"shadow-evaluator"` | Identifier attached to shadow-eval telemetry |
+
+```yaml
+evolution:
+  guards:
+    shadow_evaluation:
+      task_provider: configured
+      probe_tasks:
+        - id: "probe-001"
+          title: "Summarize a support ticket"
+          # ... full Task definition
+      sample_size: 5
+      timeout_per_task_seconds: 60.0
+      score_regression_tolerance: 0.05
+      pass_rate_regression_tolerance: 0.10
+      evaluator_agent_id: shadow-evaluator
+```
+
+When the guard is enabled the orchestrator must also inject a
+`ShadowAgentRunner` (and a `TaskSampler` when `task_provider=recent_history`)
+into `build_evolution_service`; missing dependencies raise
+`ValueError` at startup and emit the `evolution.shadow.misconfigured`
+event.
+
+---
+
 ## See Also
 
 - [Agent Roles & Hierarchy](agents.md) -- detailed agent configuration

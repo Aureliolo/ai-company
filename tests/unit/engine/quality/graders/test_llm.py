@@ -424,6 +424,65 @@ class TestLLMRubricGraderBehavior:
         # Prompt payload was capped at 16K chars, not the full 30K.
         messages, _, _, _ = provider.complete_calls[0]
         user_content = messages[-1].content or ""
-        assert len(user_content) < 20_000
-        # The enormous `xxxx...` payload was not fully inlined.
-        assert user_content.count("x") < 17_000
+        # Enforce the declared 16KB payload cap on the inlined artifact.
+        assert user_content.count("x") <= 16_000
+        # The prompt tells the LLM the payload was truncated so it can
+        # fall back to REFER rather than guess.
+        assert "truncated" in user_content.lower()
+
+
+@pytest.mark.unit
+class TestLLMRubricGraderInvalidGrades:
+    """Malformed per-criterion grade values must downgrade to REFER."""
+
+    async def test_nan_grade_returns_refer(self) -> None:
+        response = _response(
+            {
+                "per_criterion_grades": {
+                    "correctness": float("nan"),
+                    "completeness": 0.9,
+                },
+                "verdict": "pass",
+                "confidence": 0.9,
+                "findings": [],
+            }
+        )
+        provider = ScriptedProvider(response=response)
+        grader = LLMRubricGrader(
+            provider=provider,
+            model_id="test-medium-001",
+        )
+        result = await grader.grade(
+            artifact=_artifact(),
+            rubric=_rubric(),
+            probes=_probes(),
+            generator_agent_id="agent-generator",
+            evaluator_agent_id="agent-evaluator",
+        )
+        assert result.verdict == VerificationVerdict.REFER
+
+    async def test_inf_grade_returns_refer(self) -> None:
+        response = _response(
+            {
+                "per_criterion_grades": {
+                    "correctness": float("inf"),
+                    "completeness": 0.9,
+                },
+                "verdict": "pass",
+                "confidence": 0.9,
+                "findings": [],
+            }
+        )
+        provider = ScriptedProvider(response=response)
+        grader = LLMRubricGrader(
+            provider=provider,
+            model_id="test-medium-001",
+        )
+        result = await grader.grade(
+            artifact=_artifact(),
+            rubric=_rubric(),
+            probes=_probes(),
+            generator_agent_id="agent-generator",
+            evaluator_agent_id="agent-evaluator",
+        )
+        assert result.verdict == VerificationVerdict.REFER

@@ -234,3 +234,66 @@ class TestLLMCriteriaDecomposerBehavior:
         user_content = messages[-1].content or ""
         assert "criterion one" in user_content
         assert "criterion two" in user_content
+
+
+@pytest.mark.unit
+class TestLLMCriteriaDecomposerEdgeCases:
+    """Edge cases around probe filtering and criteria truncation."""
+
+    async def test_single_criterion_with_no_valid_probes_raises(self) -> None:
+        """If the LLM returns only out-of-range indices for a single
+        criterion the decomposer must raise rather than silently return
+        an empty probe tuple."""
+        response = _build_response(
+            {
+                "probes": [
+                    {"source_criterion_index": 99, "probe_text": "bad idx"},
+                    {"source_criterion_index": -1, "probe_text": "bad idx"},
+                ]
+            }
+        )
+        provider = ScriptedProvider(response=response)
+        decomposer = LLMCriteriaDecomposer(
+            provider=provider,
+            model_id="test-medium-001",
+        )
+        with pytest.raises(LLMDecompositionError):
+            await decomposer.decompose(
+                (AcceptanceCriterion(description="only criterion"),),
+                task_id="task-001",
+                agent_id="agent-001",
+            )
+
+    async def test_oversized_criteria_prompt_truncates_descriptions(
+        self,
+    ) -> None:
+        """Very large criterion descriptions are trimmed before JSON
+        encoding so the envelope remains syntactically valid."""
+        giant = "A" * 20_000
+        response = _build_response(
+            {
+                "probes": [
+                    {"source_criterion_index": 0, "probe_text": "p?"},
+                ]
+            }
+        )
+        provider = ScriptedProvider(response=response)
+        decomposer = LLMCriteriaDecomposer(
+            provider=provider,
+            model_id="test-medium-001",
+        )
+        probes = await decomposer.decompose(
+            (AcceptanceCriterion(description=giant),),
+            task_id="task-001",
+            agent_id="agent-001",
+        )
+        assert len(probes) == 1
+        messages, _, _, _ = provider.complete_calls[0]
+        user_content = messages[-1].content or ""
+        assert len(user_content) <= 8_000
+        # Envelope is still valid JSON.
+        import json as _json
+
+        payload = _json.loads(user_content)
+        assert "instructions" in payload
+        assert payload["criteria"][0]["index"] == 0

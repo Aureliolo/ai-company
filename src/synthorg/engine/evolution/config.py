@@ -5,9 +5,9 @@ Defines frozen Pydantic config models for each pluggable axis
 with safe defaults matching the issue specification.
 """
 
-from typing import Literal
+from typing import Literal, Self
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.core.task import Task  # noqa: TC001
 from synthorg.core.types import NotBlankStr  # noqa: TC001
@@ -109,8 +109,9 @@ class ShadowEvaluationConfig(BaseModel):
             expressed as a fraction of the baseline rate.  When baseline
             pass rate is zero the adapted pass rate must also be zero
             (otherwise we have no signal either way and reject).
-        evaluator_agent_id: Identifier recorded on the decision when the
-            guard produces a verdict.
+        evaluator_agent_id: Identifier attached to shadow-eval telemetry
+            events so operators can distinguish shadow verdicts from
+            real-guard verdicts in dashboards.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
@@ -148,8 +149,24 @@ class ShadowEvaluationConfig(BaseModel):
     )
     evaluator_agent_id: NotBlankStr = Field(
         default="shadow-evaluator",
-        description="Agent id recorded on the decision",
+        description="Agent id recorded in shadow-eval telemetry",
     )
+
+    @model_validator(mode="after")
+    def _check_provider_consistency(self) -> Self:
+        """Reject configs whose ``probe_tasks`` contradicts ``task_provider``."""
+        if self.task_provider == "configured" and not self.probe_tasks:
+            msg = (
+                "task_provider='configured' requires at least one entry in probe_tasks"
+            )
+            raise ValueError(msg)
+        if self.task_provider == "recent_history" and self.probe_tasks:
+            msg = (
+                "task_provider='recent_history' must not set probe_tasks; "
+                "tasks come from the history sampler instead"
+            )
+            raise ValueError(msg)
+        return self
 
 
 class GuardConfig(BaseModel):

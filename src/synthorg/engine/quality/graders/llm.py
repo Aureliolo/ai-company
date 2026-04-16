@@ -25,6 +25,7 @@ from synthorg.engine.quality.verification import (
 )
 from synthorg.observability import get_logger
 from synthorg.observability.events.verification import (
+    VERIFICATION_GRADER_CONFIG_INVALID,
     VERIFICATION_GRADER_PAYLOAD_TRUNCATED,
     VERIFICATION_GRADER_RESPONSE_INVALID,
     VERIFICATION_GRADING_COMPLETED,
@@ -111,6 +112,11 @@ class LLMRubricGrader:
         if min_confidence_override is not None and not (
             0.0 <= min_confidence_override <= 1.0
         ):
+            logger.error(
+                VERIFICATION_GRADER_CONFIG_INVALID,
+                min_confidence_override=min_confidence_override,
+                reason="out of [0, 1] range",
+            )
             msg = "min_confidence_override must be in [0, 1]"
             raise ValueError(msg)
         self._provider = provider
@@ -249,7 +255,8 @@ class LLMRubricGrader:
         """Render rubric, calibration, probes, and payload as a JSON envelope."""
         payload_text = json.dumps(dict(artifact.payload), ensure_ascii=False)
         original_len = len(payload_text)
-        if original_len > _MAX_PAYLOAD_CHARS:
+        payload_truncated = original_len > _MAX_PAYLOAD_CHARS
+        if payload_truncated:
             logger.warning(
                 VERIFICATION_GRADER_PAYLOAD_TRUNCATED,
                 rubric_name=rubric.name,
@@ -308,6 +315,16 @@ class LLMRubricGrader:
                 "'name' field).  The overall verdict must be 'pass' only "
                 "when the weighted evidence supports it; otherwise 'fail' "
                 "or 'refer'.  Confidence reflects your certainty."
+                + (
+                    (
+                        f"  Note: the artifact payload was truncated from "
+                        f"{original_len} to {_MAX_PAYLOAD_CHARS} characters; "
+                        "if the visible payload is insufficient to decide, "
+                        "return 'refer' rather than guessing."
+                    )
+                    if payload_truncated
+                    else ""
+                )
             ),
         }
         return json.dumps(envelope, ensure_ascii=False)

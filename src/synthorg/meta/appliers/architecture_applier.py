@@ -421,6 +421,10 @@ def _validate_remove_role(
 ) -> list[str]:
     errors: list[str] = []
     name = change.target_name
+    if change.payload:
+        errors.append(
+            f"remove_role: payload must be empty; got keys {sorted(change.payload)!r}"
+        )
     if name in pending.removed_roles:
         errors.append(f"remove_role: duplicate target_name {name!r} in proposal")
     elif not context.has_role(name):
@@ -442,6 +446,11 @@ def _validate_remove_department(
 ) -> list[str]:
     errors: list[str] = []
     name = change.target_name
+    if change.payload:
+        errors.append(
+            "remove_department: payload must be empty; "
+            f"got keys {sorted(change.payload)!r}"
+        )
     if name in pending.removed_departments:
         errors.append(f"remove_department: duplicate target_name {name!r} in proposal")
     elif not context.has_department(name):

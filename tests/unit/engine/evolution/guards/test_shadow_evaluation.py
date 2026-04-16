@@ -291,16 +291,40 @@ class TestShadowEvaluationGuardRejection:
         assert "pass rate dropped" in decision.reason
 
     async def test_rejects_empty_suite(self) -> None:
+        """Guard must reject when the task provider returns an empty tuple.
+
+        Uses an ``_EmptyTaskProvider`` because the cross-field validator
+        on ``ShadowEvaluationConfig`` prevents constructing a
+        ``task_provider='configured'`` config with empty
+        ``probe_tasks``; the runtime empty-suite path still needs
+        coverage for the ``recent_history`` branch.
+        """
+
+        class _EmptyTaskProvider:
+            @property
+            def name(self) -> str:
+                return "empty"
+
+            async def sample(
+                self,
+                *,
+                agent_id: str,
+                sample_size: int,
+            ) -> tuple[Task, ...]:
+                return ()
+
         runner = _ScriptedRunner(
             _baseline_better_scripts(
                 baseline_quality=0.9,
                 adapted_quality=0.9,
             )
         )
-        guard = _build_guard(
-            config=_config(probe_tasks=()),
+        config = _config()
+        guard = ShadowEvaluationGuard(
+            config=config,
+            task_provider=_EmptyTaskProvider(),
             runner=runner,
-            identity=_make_identity(),
+            identity_store=_FakeIdentityStore(identity=_make_identity()),
         )
         decision = await guard.evaluate(_make_proposal())
         assert decision.approved is False
@@ -477,7 +501,6 @@ class TestShadowEvaluationGuardResilience:
         """A runner that exceeds ``timeout_per_task_seconds`` is treated
         as a failed adapted task -- the guard enforces its own timeout
         via ``asyncio.timeout`` so a misbehaving runner cannot hang."""
-        import asyncio as _asyncio
 
         async def _slow_runner_run(
             *,
@@ -488,7 +511,7 @@ class TestShadowEvaluationGuardResilience:
         ) -> ShadowTaskOutcome:
             if proposal is not None:
                 # Adapted side "hangs" deliberately -- guard timeout must fire.
-                await _asyncio.sleep(10.0)
+                await asyncio.sleep(10.0)
             return ShadowTaskOutcome(success=True, quality_score=0.9)
 
         class _SlowRunner:
@@ -565,3 +588,137 @@ def _flatten_exceptions(exc: BaseException) -> list[BaseException]:
             out.extend(_flatten_exceptions(inner))
         return out
     return [exc]
+
+
+@pytest.mark.unit
+class TestShadowEvaluationGuardBoundaries:
+    """Exercise the tolerance comparisons at their exact boundaries."""
+
+    async def _run_with_scores(  # noqa: PLR0913
+        self,
+        *,
+        baseline_score: float,
+        adapted_score: float,
+        baseline_pass: bool,
+        adapted_pass: bool,
+        score_tol: float,
+        pass_rate_tol: float,
+    ) -> bool:
+        def _fn(
+            adapted: bool,
+            proposal: AdaptationProposal | None,
+            task: Task,
+        ) -> ShadowTaskOutcome:
+            if adapted:
+                return ShadowTaskOutcome(
+                    success=adapted_pass,
+                    quality_score=adapted_score,
+                )
+            return ShadowTaskOutcome(
+                success=baseline_pass,
+                quality_score=baseline_score,
+            )
+
+        runner = _ScriptedRunner(_fn)
+        config = ShadowEvaluationConfig(
+            probe_tasks=(_make_task("probe-1"),),
+            sample_size=1,
+            score_regression_tolerance=score_tol,
+            pass_rate_regression_tolerance=pass_rate_tol,
+        )
+        guard = _build_guard(
+            config=config,
+            runner=runner,
+            identity=_make_identity(),
+        )
+        return (await guard.evaluate(_make_proposal())).approved
+
+    async def test_score_regression_exactly_at_tolerance_approves(self) -> None:
+        # Exact binary fractions: 0.5 - 0.25 = 0.25 (no fp drift),
+        # tolerance 0.25, delta > tolerance -> False, so approve.
+        approved = await self._run_with_scores(
+            baseline_score=0.5,
+            adapted_score=0.25,
+            baseline_pass=True,
+            adapted_pass=True,
+            score_tol=0.25,
+            pass_rate_tol=0.0,
+        )
+        assert approved is True
+
+    async def test_score_regression_just_over_tolerance_rejects(self) -> None:
+        # delta 0.375 > tolerance 0.25 -> reject.
+        approved = await self._run_with_scores(
+            baseline_score=0.5,
+            adapted_score=0.125,
+            baseline_pass=True,
+            adapted_pass=True,
+            score_tol=0.25,
+            pass_rate_tol=0.0,
+        )
+        assert approved is False
+
+    async def test_pass_rate_regression_exactly_at_budget_approves(self) -> None:
+        # Single task: baseline passes, adapted passes -> delta=0, budget=0
+        approved = await self._run_with_scores(
+            baseline_score=0.5,
+            adapted_score=0.5,
+            baseline_pass=True,
+            adapted_pass=True,
+            score_tol=0.25,
+            pass_rate_tol=0.10,
+        )
+        assert approved is True
+
+
+@pytest.mark.unit
+class TestRecentTaskHistoryProvider:
+    """Edge cases for the ``recent_history`` strategy."""
+
+    async def test_empty_history_rejects_proposal(self) -> None:
+        from synthorg.engine.evolution.guards.shadow_providers import (
+            RecentTaskHistoryProvider,
+        )
+
+        async def _empty_sampler(
+            agent_id: str,
+            sample_size: int,
+        ) -> tuple[Task, ...]:
+            return ()
+
+        config = ShadowEvaluationConfig(
+            task_provider="recent_history",
+            sample_size=5,
+        )
+        runner = _ScriptedRunner(
+            lambda adapted, proposal, task: ShadowTaskOutcome(
+                success=True, quality_score=0.9
+            )
+        )
+        guard = ShadowEvaluationGuard(
+            config=config,
+            task_provider=RecentTaskHistoryProvider(sampler=_empty_sampler),
+            runner=runner,
+            identity_store=_FakeIdentityStore(identity=_make_identity()),
+        )
+        decision = await guard.evaluate(_make_proposal())
+        assert decision.approved is False
+        assert "probe task suite is empty" in decision.reason
+
+    async def test_sampler_result_is_deep_copied(self) -> None:
+        """Mutations on sampled tasks must not leak to the sampler's store."""
+        from synthorg.engine.evolution.guards.shadow_providers import (
+            RecentTaskHistoryProvider,
+        )
+
+        original = _make_task("probe-immutable")
+
+        async def _sampler(
+            agent_id: str,
+            sample_size: int,
+        ) -> tuple[Task, ...]:
+            return (original,)
+
+        provider = RecentTaskHistoryProvider(sampler=_sampler)
+        sampled = await provider.sample(agent_id="agent-1", sample_size=1)
+        assert sampled[0] is not original

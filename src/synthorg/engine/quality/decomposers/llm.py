@@ -19,6 +19,7 @@ from synthorg.engine.quality.verification import AtomicProbe
 from synthorg.observability import get_logger
 from synthorg.observability.events.verification import (
     VERIFICATION_CRITERIA_DECOMPOSED,
+    VERIFICATION_DECOMPOSER_CRITERIA_TRUNCATED,
     VERIFICATION_DECOMPOSER_PROBE_REJECTED,
     VERIFICATION_DECOMPOSER_RESPONSE_INVALID,
 )
@@ -217,24 +218,73 @@ class LLMCriteriaDecomposer:
         self,
         criteria: tuple[AcceptanceCriterion, ...],
     ) -> str:
-        """Render criteria as an indexed list inside a JSON envelope."""
-        payload = {
-            "criteria": [
-                {"index": i, "description": c.description}
-                for i, c in enumerate(criteria)
-            ],
-            "max_probes_per_criterion": self._max_probes_per_criterion,
-            "instructions": (
-                "Call emit_atomic_probes with one array of probe "
-                "objects.  Each probe references a criterion by its "
-                "zero-based index and asks one yes/no question.  Emit "
-                "at least one probe per criterion and at most "
-                f"{self._max_probes_per_criterion} probes per criterion."
-            ),
-        }
-        text = json.dumps(payload, ensure_ascii=False)
+        """Render criteria as an indexed list inside a JSON envelope.
+
+        Individual criterion descriptions are truncated before JSON
+        encoding so the resulting envelope is always syntactically
+        valid, instructions are always preserved, and the final size
+        fits ``_MAX_PROMPT_CRITERIA_CHARS``.  When truncation happens a
+        ``VERIFICATION_DECOMPOSER_CRITERIA_TRUNCATED`` warning is logged
+        so operators can spot runaway criteria lengths.
+        """
+        instructions = (
+            "Call emit_atomic_probes with one array of probe "
+            "objects.  Each probe references a criterion by its "
+            "zero-based index and asks one yes/no question.  Emit "
+            "at least one probe per criterion and at most "
+            f"{self._max_probes_per_criterion} probes per criterion."
+        )
+        descriptions = [c.description for c in criteria]
+        truncated_descriptions: list[str] = list(descriptions)
+
+        def _encode(descs: list[str]) -> str:
+            payload = {
+                "criteria": [
+                    {"index": i, "description": d} for i, d in enumerate(descs)
+                ],
+                "max_probes_per_criterion": self._max_probes_per_criterion,
+                "instructions": instructions,
+            }
+            return json.dumps(payload, ensure_ascii=False)
+
+        text = _encode(truncated_descriptions)
         if len(text) > _MAX_PROMPT_CRITERIA_CHARS:
-            text = text[:_MAX_PROMPT_CRITERIA_CHARS]
+            overflow = len(text) - _MAX_PROMPT_CRITERIA_CHARS
+            # Proportionally trim each description; keep at least a
+            # short stub so the criterion is still identifiable.
+            total_desc_chars = sum(len(d) for d in truncated_descriptions) or 1
+            per_desc_cuts = [
+                max(0, round(len(d) * overflow / total_desc_chars))
+                for d in truncated_descriptions
+            ]
+            truncated_descriptions = [
+                (d[: max(16, len(d) - cut)] if cut else d)
+                for d, cut in zip(truncated_descriptions, per_desc_cuts, strict=True)
+            ]
+            text = _encode(truncated_descriptions)
+            # Final safety net: if proportional trimming still overshoots
+            # (e.g. tiny criteria), truncate the serialized text while
+            # keeping valid JSON by re-encoding a cut payload.
+            if len(text) > _MAX_PROMPT_CRITERIA_CHARS:
+                truncated_descriptions = [
+                    d[: max(16, len(d) // 2)] for d in truncated_descriptions
+                ]
+                text = _encode(truncated_descriptions)
+            truncated_indices = [
+                i
+                for i, (orig, new) in enumerate(
+                    zip(descriptions, truncated_descriptions, strict=True)
+                )
+                if orig != new
+            ]
+            logger.warning(
+                VERIFICATION_DECOMPOSER_CRITERIA_TRUNCATED,
+                decomposer=self.name,
+                original_chars=len("".join(descriptions)),
+                final_prompt_chars=len(text),
+                max_prompt_chars=_MAX_PROMPT_CRITERIA_CHARS,
+                truncated_criteria_indices=tuple(truncated_indices),
+            )
         return text
 
     def _materialize_probes(

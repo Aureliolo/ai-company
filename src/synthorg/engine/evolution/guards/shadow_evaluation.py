@@ -25,7 +25,7 @@ shadow eval cannot approve into the void.
 import asyncio
 import statistics
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
 from synthorg.engine.evolution.guards.shadow_protocol import ShadowTaskOutcome
 from synthorg.engine.evolution.models import (
@@ -58,6 +58,9 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 
+_PASS_RATE_EPSILON: Final[float] = 1e-9
+
+
 @dataclass(frozen=True, slots=True)
 class _ShadowAggregate:
     """Immutable aggregate stats from one side (baseline or adapted)."""
@@ -67,6 +70,22 @@ class _ShadowAggregate:
     pass_rate: float
     score_mean: float | None
     errors: tuple[str, ...]
+
+    def __post_init__(self) -> None:
+        """Assert the stored ``pass_rate`` matches the derived ratio."""
+        if self.total < 0 or self.success_count < 0:
+            msg = "total and success_count must be non-negative"
+            raise ValueError(msg)
+        if self.success_count > self.total:
+            msg = "success_count cannot exceed total"
+            raise ValueError(msg)
+        expected = self.success_count / self.total if self.total else 0.0
+        if abs(self.pass_rate - expected) > _PASS_RATE_EPSILON:
+            msg = (
+                f"pass_rate {self.pass_rate} inconsistent with "
+                f"{self.success_count}/{self.total}"
+            )
+            raise ValueError(msg)
 
     @classmethod
     def from_outcomes(
@@ -139,6 +158,7 @@ class ShadowEvaluationGuard:
             agent_id=proposal.agent_id,
             axis=proposal.axis.value,
             guard_name=self.name,
+            evaluator_agent_id=self._config.evaluator_agent_id,
         )
 
         tasks = await self._task_provider.sample(
@@ -200,6 +220,7 @@ class ShadowEvaluationGuard:
             baseline_score=baseline_stats.score_mean,
             adapted_score=adapted_stats.score_mean,
             guard_name=self.name,
+            evaluator_agent_id=self._config.evaluator_agent_id,
         )
         if regression_reason is not None:
             return self._reject(
@@ -306,6 +327,7 @@ class ShadowEvaluationGuard:
                     pass_label=label,
                     task_id=task.id,
                     error=error_msg,
+                    error_type="exception",
                 )
                 return ShadowTaskOutcome(
                     success=False,
@@ -313,14 +335,12 @@ class ShadowEvaluationGuard:
                     error=error_msg,
                 )
 
-        outcomes: list[ShadowTaskOutcome] = []
         async with asyncio.TaskGroup() as tg:
             coros = [tg.create_task(_one(t)) for t in tasks]
-            # Collect inside the TaskGroup context so ordering with the
-            # group's internal join is explicit and robust against
-            # future refactors.
-        outcomes.extend(c.result() for c in coros)
-        return tuple(outcomes)
+        # The ``TaskGroup`` exit has joined all tasks above, so every
+        # ``coros[i]`` is guaranteed done here; results stay in creation
+        # order.
+        return tuple(c.result() for c in coros)
 
     def _find_regression(
         self,

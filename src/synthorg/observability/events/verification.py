@@ -34,3 +34,7 @@ VERIFICATION_DECOMPOSER_PROBE_REJECTED: Final[str] = (
 VERIFICATION_GRADER_PAYLOAD_TRUNCATED: Final[str] = (
     "verification.grader.payload_truncated"
 )
+VERIFICATION_DECOMPOSER_CRITERIA_TRUNCATED: Final[str] = (
+    "verification.decomposer.criteria_truncated"
+)
+VERIFICATION_GRADER_CONFIG_INVALID: Final[str] = "verification.grader.config_invalid"

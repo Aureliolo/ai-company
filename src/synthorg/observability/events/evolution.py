@@ -62,6 +62,7 @@ EVOLUTION_SHADOW_REGRESSION: Final[str] = "evolution.shadow.regression"
 EVOLUTION_SHADOW_TASK_FAILED: Final[str] = "evolution.shadow.task_failed"
 EVOLUTION_SHADOW_EMPTY_SUITE: Final[str] = "evolution.shadow.empty_suite"
 EVOLUTION_SHADOW_INCONCLUSIVE: Final[str] = "evolution.shadow.inconclusive"
+EVOLUTION_SHADOW_MISCONFIGURED: Final[str] = "evolution.shadow.misconfigured"
 
 # ── Factory/config errors ──────────────────────────────────────
 

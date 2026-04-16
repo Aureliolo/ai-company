@@ -662,3 +662,64 @@ class TestArchitectureApplier:
         assert not result.success
         assert "required_skills[1]" in (result.error_message or "")
         assert "must be a string" in (result.error_message or "")
+
+    async def test_dry_run_remove_role_rejects_payload(self) -> None:
+        """remove_role must not carry payload keys."""
+        applier = ArchitectureApplier(
+            context=_FakeArchContext(roles=frozenset({"old-role"})),
+        )
+        proposal = _proposal_architecture(
+            _arch(
+                "remove_role",
+                "old-role",
+                payload={"description": "leftover"},
+            ),
+        )
+        result = await applier.dry_run(proposal)
+        assert not result.success
+        assert "remove_role: payload must be empty" in (result.error_message or "")
+
+    async def test_dry_run_remove_department_rejects_payload(self) -> None:
+        """remove_department must not carry payload keys."""
+        applier = ArchitectureApplier(
+            context=_FakeArchContext(departments=frozenset({"old-dept"})),
+        )
+        proposal = _proposal_architecture(
+            _arch(
+                "remove_department",
+                "old-dept",
+                payload={"reason": "cleanup"},
+            ),
+        )
+        result = await applier.dry_run(proposal)
+        assert not result.success
+        assert "remove_department: payload must be empty" in (
+            result.error_message or ""
+        )
+
+    async def test_dry_run_collects_multiple_errors_in_one_pass(
+        self,
+    ) -> None:
+        """A proposal with multiple independent violations surfaces
+        every error in one dry-run pass so operators can fix them all
+        without iterating."""
+        applier = ArchitectureApplier(
+            context=_FakeArchContext(roles=frozenset({"existing"})),
+        )
+        proposal = _proposal_architecture(
+            _arch(
+                "create_role",
+                "existing",  # collides with existing role
+                payload={
+                    "description": "x" * 3_000,  # exceeds 2000-char cap
+                    "required_skills": [
+                        "x" * 200,  # exceeds 80-char cap
+                    ],
+                },
+            ),
+        )
+        result = await applier.dry_run(proposal)
+        assert not result.success
+        message = result.error_message or ""
+        assert "already exists" in message
+        assert "exceeds" in message

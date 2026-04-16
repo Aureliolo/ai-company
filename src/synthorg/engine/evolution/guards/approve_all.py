@@ -30,6 +30,8 @@ class ApproveAllGuard:
             EVOLUTION_GUARDS_PASSED,
             proposal_id=str(proposal.id),
             guard_name=self.name,
+            auto_approved=True,
+            fallback_reason="no_guards_configured",
         )
         return AdaptationDecision(
             proposal_id=proposal.id,

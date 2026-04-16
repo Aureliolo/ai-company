@@ -287,10 +287,20 @@ def _build_shadow_guard(
     shadow_task_sampler: TaskSampler | None,
 ) -> AdaptationGuard:
     """Wire a real ShadowEvaluationGuard; raise if dependencies are missing."""
+    from synthorg.observability.events.evolution import (  # noqa: PLC0415
+        EVOLUTION_SHADOW_MISCONFIGURED,
+    )
+
     if shadow_runner is None:
         msg = (
             "shadow_evaluation is enabled but shadow_runner was not "
             "provided to build_evolution_service()"
+        )
+        logger.error(
+            EVOLUTION_SHADOW_MISCONFIGURED,
+            missing="shadow_runner",
+            task_provider=config.task_provider,
+            evaluator_agent_id=config.evaluator_agent_id,
         )
         raise ValueError(msg)
 
@@ -312,6 +322,12 @@ def _build_shadow_guard(
                 "shadow_task_sampler was not provided to "
                 "build_evolution_service()"
             )
+            logger.error(
+                EVOLUTION_SHADOW_MISCONFIGURED,
+                missing="shadow_task_sampler",
+                task_provider=config.task_provider,
+                evaluator_agent_id=config.evaluator_agent_id,
+            )
             raise ValueError(msg)
         task_provider = RecentTaskHistoryProvider(sampler=shadow_task_sampler)
     else:
@@ -319,6 +335,12 @@ def _build_shadow_guard(
         msg = (  # type: ignore[unreachable]
             f"Unknown shadow task provider {config.task_provider!r}; "
             "expected 'configured' or 'recent_history'"
+        )
+        logger.error(
+            EVOLUTION_SHADOW_MISCONFIGURED,
+            reason="unknown_task_provider",
+            task_provider=config.task_provider,
+            evaluator_agent_id=config.evaluator_agent_id,
         )
         raise ValueError(msg)
 

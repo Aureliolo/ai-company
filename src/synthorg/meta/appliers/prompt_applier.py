@@ -223,16 +223,22 @@ def _validate_prompt_change(
         )
 
     text = change.principle_text
-    if len(text) < _PRINCIPLE_MIN_CHARS:
+    normalized = " ".join(text.strip().lower().split())
+    # Length bounds run against the normalized content so excessive
+    # whitespace cannot slip past ``_PRINCIPLE_MIN_CHARS`` nor shadow the
+    # cap while collapsing down to the same canonical form used for
+    # duplicate detection.
+    if len(normalized) < _PRINCIPLE_MIN_CHARS:
         errors.append(
-            f"principle_text too short (len={len(text)} < {_PRINCIPLE_MIN_CHARS})"
+            f"principle_text too short (normalized len={len(normalized)} "
+            f"< {_PRINCIPLE_MIN_CHARS})"
         )
-    if len(text) > _PRINCIPLE_MAX_CHARS:
+    if len(normalized) > _PRINCIPLE_MAX_CHARS:
         errors.append(
-            f"principle_text too long (len={len(text)} > {_PRINCIPLE_MAX_CHARS})"
+            f"principle_text too long (normalized len={len(normalized)} "
+            f"> {_PRINCIPLE_MAX_CHARS})"
         )
 
-    normalized = " ".join(text.strip().lower().split())
     in_proposal = seen_texts.setdefault(scope, set())
     if normalized in in_proposal:
         errors.append(f"Duplicate principle_text in proposal at scope {scope!r}")

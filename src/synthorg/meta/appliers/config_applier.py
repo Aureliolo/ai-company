@@ -108,17 +108,24 @@ class ConfigApplier:
                 changes_applied=0,
             )
 
-    async def dry_run(
+    async def dry_run(  # noqa: C901
         self,
         proposal: ImprovementProposal,
     ) -> ApplyResult:
         """Validate config changes without applying.
 
-        Parses each ``ConfigChange.path`` as a dotted path, applies the
-        diffs to a deep-copy of ``RootConfig.model_dump()``, and
-        re-validates via ``RootConfig.model_validate``.  This catches
-        unknown paths, type mismatches, range violations, and
-        cross-field validators in a single pass.
+        For each ``ConfigChange.path`` this parses the dotted segments,
+        walks ``RootConfig`` down to the target leaf field, and runs
+        ``TypeAdapter`` validation on the proposed value (preserving the
+        field's ``Annotated`` metadata so ``NotBlankStr`` /
+        ``ge`` / ``le`` / Literal constraints all fire).  Unknown paths,
+        type mismatches, and per-field constraint violations are all
+        surfaced in a single pass without mutating any config state.
+
+        Cross-field (``@model_validator``) rules on ``RootConfig`` are
+        NOT re-run; those can only be validated by a full round-trip
+        which is currently incompatible with ``extra='forbid'`` on the
+        root model -- follow-up work if we need that guarantee.
 
         Args:
             proposal: The proposal to validate.
@@ -153,7 +160,17 @@ class ConfigApplier:
                 error_message="Proposal has no config changes",
             )
 
-        root_config = self._config_provider()
+        try:
+            root_config = self._config_provider()
+        except MemoryError, RecursionError:
+            raise
+        except Exception as exc:
+            return self._fail(
+                proposal,
+                error_message=(
+                    f"config_provider raised {type(exc).__name__}: {str(exc)[:200]}"
+                ),
+            )
 
         errors: list[str] = []
         for change in proposal.config_changes:

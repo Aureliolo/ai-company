@@ -5,6 +5,7 @@ LLM grader tests.  Keeping a single shared implementation prevents
 silent drift between the two suites.
 """
 
+import copy
 from collections.abc import AsyncIterator
 from typing import Any
 
@@ -94,7 +95,7 @@ class ScriptedProvider:
         """
         self._response = response
         self._error = error
-        self._capabilities = capabilities or TEST_CAPABILITIES
+        self._capabilities = copy.deepcopy(capabilities or TEST_CAPABILITIES)
         self.complete_calls: list[
             tuple[
                 list[ChatMessage],
@@ -113,7 +114,16 @@ class ScriptedProvider:
         config: CompletionConfig | None = None,
     ) -> CompletionResponse:
         """Record the call and return the configured response or raise."""
-        self.complete_calls.append((messages, model, tools, config))
+        # Snapshot mutable inputs so later mutation by callers or retries
+        # cannot rewrite recorded history.
+        self.complete_calls.append(
+            (
+                copy.deepcopy(messages),
+                model,
+                copy.deepcopy(tools),
+                copy.deepcopy(config),
+            )
+        )
         if self._error is not None:
             raise self._error
         if self._response is None:
