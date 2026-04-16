@@ -10,9 +10,15 @@ import (
 	"github.com/Aureliolo/synthorg/cli/internal/verify"
 )
 
-// RepoPrefix is the full GHCR repository prefix for all SynthOrg images
-// (e.g. "ghcr.io/aureliolo/synthorg-").
-const RepoPrefix = verify.RegistryHost + "/" + verify.ImageRepoPrefix
+// RepoPrefix is the full registry repository prefix for all SynthOrg images
+// (e.g. "ghcr.io/aureliolo/synthorg-"). Derived from verify.RegistryHost +
+// verify.ImageRepoPrefix, which are configurable tunables populated once
+// at program start by verify.Configure. Read without locking because the
+// configure call runs in root.go PersistentPreRunE before any command
+// handler uses this value.
+func RepoPrefix() string {
+	return verify.RegistryHost + "/" + verify.ImageRepoPrefix
+}
 
 // ServiceNames returns the canonical SynthOrg service names.
 // The sandbox service is included only when sandbox is true.
@@ -28,7 +34,7 @@ func ServiceNames(sandbox bool) []string {
 // digest-pinned reference (repo@sha256:...). Otherwise returns a
 // tag-based reference (repo:tag).
 func RefForService(svc, imageTag string, verifiedDigests map[string]string) string {
-	repo := RepoPrefix + svc
+	repo := RepoPrefix() + svc
 	if d, ok := verifiedDigests[svc]; ok && d != "" {
 		return repo + "@" + d
 	}
@@ -47,7 +53,7 @@ type LocalImage struct {
 // ServiceName extracts the short service name (e.g. "backend") from
 // the full repository path.
 func (img LocalImage) ServiceName() string {
-	return strings.TrimPrefix(img.Repository, RepoPrefix)
+	return strings.TrimPrefix(img.Repository, RepoPrefix())
 }
 
 // ListLocal lists all SynthOrg images present in the local Docker daemon.
@@ -79,7 +85,7 @@ func parseImageList(raw string) []LocalImage {
 			continue
 		}
 		repo := parts[0]
-		if !strings.HasPrefix(repo, RepoPrefix) {
+		if !strings.HasPrefix(repo, RepoPrefix()) {
 			continue
 		}
 		result = append(result, LocalImage{

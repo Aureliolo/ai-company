@@ -24,9 +24,11 @@ const (
 	// expectedSANRegex matches the CLI release workflow identity for this repo.
 	// Only accepts signatures from the cli.yml workflow on semver tag pushes.
 	expectedSANRegex = `^https://github\.com/Aureliolo/synthorg/\.github/workflows/cli\.yml@refs/tags/v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.\-]+)?(\+[0-9A-Za-z.\-]+)?$`
-	// tufFetchTimeout bounds the TUF metadata fetch for the trusted root.
-	tufFetchTimeout = 30 * time.Second
 )
+
+// tufFetchTimeout bounds the TUF metadata fetch for the trusted root. Set
+// by Configure; defaults to 30s.
+var tufFetchTimeout = 30 * time.Second
 
 // verifySigstoreBundle verifies the Sigstore bundle for checksums.txt.
 // It checks that:

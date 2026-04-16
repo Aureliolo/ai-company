@@ -174,7 +174,7 @@ func listNonCurrentImages(ctx context.Context, errOut io.Writer, info docker.Inf
 func buildImageDisplay(repo, tag, digest, size, id string) string {
 	// Strip the full image prefix and re-add "synthorg-" for readable display
 	// (e.g. "synthorg-backend:0.4.6" instead of the full GHCR path).
-	short := "synthorg-" + strings.TrimPrefix(repo, images.RepoPrefix)
+	short := "synthorg-" + strings.TrimPrefix(repo, images.RepoPrefix())
 
 	label := short
 	switch {

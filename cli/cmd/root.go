@@ -11,7 +11,10 @@ import (
 	"strings"
 
 	"github.com/Aureliolo/synthorg/cli/internal/config"
+	"github.com/Aureliolo/synthorg/cli/internal/health"
+	"github.com/Aureliolo/synthorg/cli/internal/selfupdate"
 	"github.com/Aureliolo/synthorg/cli/internal/ui"
+	"github.com/Aureliolo/synthorg/cli/internal/verify"
 	"github.com/spf13/cobra"
 )
 
@@ -100,6 +103,7 @@ func setupGlobalOpts(cmd *cobra.Command) error {
 		JSON:       flagJSON,
 		Yes:        yes,
 		Hints:      "auto",
+		Tunables:   config.DefaultTunables(),
 	}
 
 	applyConfigOverrides(opts)
@@ -108,7 +112,36 @@ func setupGlobalOpts(cmd *cobra.Command) error {
 		return fmt.Errorf("invalid hints mode %q: must be always, auto, or never", opts.Hints)
 	}
 
+	if err := applyTunables(opts); err != nil {
+		return err
+	}
+
 	cmd.SetContext(SetGlobalOpts(cmd.Context(), opts))
+	return nil
+}
+
+// applyTunables resolves the effective tunable values (env > state >
+// default) and seeds every consumer package that reads them from a
+// package-level variable. Consumers are Configure()d exactly once per
+// CLI invocation so later goroutines can read without locking.
+func applyTunables(opts *GlobalOpts) error {
+	state, _ := config.Load(opts.DataDir)
+	tun, err := config.ResolveTunables(state)
+	if err != nil {
+		return fmt.Errorf("resolving tunables: %w", err)
+	}
+	opts.Tunables = tun
+
+	verify.Configure(
+		tun.RegistryHost, tun.ImageRepoPrefix,
+		tun.DHIRegistry, tun.PostgresImageTag, tun.NATSImageTag,
+		tun.TUFFetchTimeout, tun.AttestationHTTPTimeout,
+	)
+	selfupdate.Configure(
+		tun.MaxAPIResponseBytes, tun.MaxBinaryBytes, tun.MaxArchiveEntryBytes,
+		tun.SelfUpdateHTTPTimeout, tun.SelfUpdateAPITimeout, tun.TUFFetchTimeout,
+	)
+	health.Configure(tun.HealthCheckTimeout)
 	return nil
 }
 

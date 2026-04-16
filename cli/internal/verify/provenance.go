@@ -30,13 +30,14 @@ const (
 	// for the API), not derived from the image registry prefix.
 	githubAttestationOwnerRepo = "Aureliolo/synthorg"
 
-	// attestationHTTPTimeout bounds individual HTTP requests to the GitHub API.
-	attestationHTTPTimeout = 30 * time.Second
-
 	// maxAttestationResponseBytes caps the GitHub attestation API response
 	// to prevent memory exhaustion from malicious or oversized responses.
 	maxAttestationResponseBytes = 5 << 20 // 5MB
 )
+
+// attestationHTTPTimeout bounds individual HTTP requests to the GitHub API.
+// Set by Configure; defaults to 30s.
+var attestationHTTPTimeout = 30 * time.Second
 
 // ErrNoProvenanceAttestations indicates that no SLSA provenance attestations
 // were found for an image via the GitHub attestation API. This is distinct

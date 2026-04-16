@@ -5,7 +5,7 @@ services:
 {{- if postgresEnabled}}
   postgres:
     # renovate: datasource=docker depName=dhi.io/postgres
-    image: dhi.io/postgres:18-debian13@sha256:e2f2beada5e76f69453d5533153909f875b48fb021f092df73e182b8325ff2d3
+    image: {{.DHIRegistry}}/postgres:{{.PostgresImageTag}}{{if .PostgresDigest}}@{{.PostgresDigest}}{{end}}
     ports:
       - "{{.PostgresPort}}:5432"
     volumes:
@@ -73,7 +73,7 @@ services:
       - FOWNER
 
   backend:
-    image: {{digestPin "backend" "ghcr.io/aureliolo/synthorg-backend" .ImageTag}}
+    image: {{digestPin "backend" (printf "%s/%sbackend" .RegistryHost .ImageRepoPrefix) .ImageTag}}
     ports:
       - "{{.BackendPort}}:3001"
     volumes:
@@ -105,7 +105,7 @@ services:
       SYNTHORG_MEMORY_BACKEND: {{yamlStr .MemoryBackend}}
       SYNTHORG_BUS_BACKEND: {{yamlStr .BusBackend}}
 {{- if distributedEnabled}}
-      SYNTHORG_NATS_URL: "nats://nats:4222"
+      SYNTHORG_NATS_URL: {{yamlStr .NATSURL}}
 {{- end}}
       SYNTHORG_LOG_DIR: "/data/logs"
       MEM0_TELEMETRY: "false"
@@ -155,7 +155,7 @@ services:
     # Healthcheck defined in Dockerfile -- do not override here.
 
   web:
-    image: {{digestPin "web" "ghcr.io/aureliolo/synthorg-web" .ImageTag}}
+    image: {{digestPin "web" (printf "%s/%sweb" .RegistryHost .ImageRepoPrefix) .ImageTag}}
     ports:
       - "{{.WebPort}}:8080"
     depends_on:
@@ -189,7 +189,7 @@ services:
   # because there is no shell or HTTP client inside the distroless image.
   nats:
     # renovate: datasource=docker depName=dhi.io/nats
-    image: dhi.io/nats:2.12-debian13@sha256:4aa385a11a8d89266a726403dacd2f7d5000f66bdb5e91411571fc2688da1e2a
+    image: {{.DHIRegistry}}/nats:{{.NATSImageTag}}{{if .NATSDigest}}@{{.NATSDigest}}{{end}}
     command: ["-js", "-sd", "/data", "-m", "8222", "--max_payload", "4MB"]
     ports:
       - "{{.NatsClientPort}}:4222"

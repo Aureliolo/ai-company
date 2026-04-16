@@ -52,9 +52,30 @@ type Params struct {
 	PostgresPassword   string
 	DigestPins         map[string]string // image name suffix → digest (e.g. "backend" → "sha256:abc...")
 	FineTuning         bool
+
+	// Registry and image tag tunables resolved at generation time.
+	// RegistryHost + ImageRepoPrefix form the prefix for the backend/web
+	// images; DHIRegistry + Postgres/NATS tags name the third-party
+	// services. PostgresDigest / NATSDigest are the pinned multi-arch
+	// index digests when the default (trusted) DHI images are in use;
+	// empty when custom registry/tags are in play (no known digest, so
+	// the compose file renders repo:tag without a pin).
+	RegistryHost     string
+	ImageRepoPrefix  string
+	DHIRegistry      string
+	PostgresImageTag string
+	NATSImageTag     string
+	PostgresDigest   string
+	NATSDigest       string
+	NATSURL          string
 }
 
-// ParamsFromState creates Params from a persisted State.
+// ParamsFromState creates Params from a persisted State. Tunable
+// registry/tag fields are resolved via config.ResolveTunables so the
+// compose output reflects both persisted state and env overrides. The
+// pinned DHI digests are looked up only when the user stayed on default
+// registry/tags (CustomRegistry=false); a custom deployment produces a
+// digest-free reference and relies on SkipVerify instead.
 func ParamsFromState(s config.State) Params {
 	busBackend := s.BusBackend
 	if busBackend == "" {
@@ -64,6 +85,28 @@ func ParamsFromState(s config.State) Params {
 	if natsPort == 0 {
 		natsPort = 3003
 	}
+
+	tun, err := config.ResolveTunables(s)
+	if err != nil {
+		// ResolveTunables failures mean invalid user input; render with
+		// compiled-in defaults and let Generate's validateParams surface
+		// the real problem (the template otherwise depends on non-empty
+		// RegistryHost etc.).
+		tun = config.DefaultTunables()
+	}
+
+	var pgDigest, natsDigest string
+	if !tun.CustomRegistry {
+		pgKey := tun.DHIRegistry + "/postgres:" + tun.PostgresImageTag
+		natsKey := tun.DHIRegistry + "/nats:" + tun.NATSImageTag
+		if d, ok := verify.DHIPinnedIndexDigest(pgKey); ok {
+			pgDigest = d
+		}
+		if d, ok := verify.DHIPinnedIndexDigest(natsKey); ok {
+			natsDigest = d
+		}
+	}
+
 	return Params{
 		CLIVersion:         version.Version,
 		ImageTag:           s.ImageTag,
@@ -83,6 +126,14 @@ func ParamsFromState(s config.State) Params {
 		PostgresPort:       s.PostgresPort,
 		PostgresPassword:   s.PostgresPassword,
 		FineTuning:         s.FineTuning,
+		RegistryHost:       tun.RegistryHost,
+		ImageRepoPrefix:    tun.ImageRepoPrefix,
+		DHIRegistry:        tun.DHIRegistry,
+		PostgresImageTag:   tun.PostgresImageTag,
+		NATSImageTag:       tun.NATSImageTag,
+		PostgresDigest:     pgDigest,
+		NATSDigest:         natsDigest,
+		NATSURL:            tun.DefaultNATSURL,
 	}
 }
 
@@ -99,7 +150,14 @@ func (p Params) DistributedEnabled() bool {
 
 // Generate renders the compose template with the given parameters.
 // It validates all string parameters before rendering to prevent YAML injection.
+//
+// Params fields added for registry/tag configurability are populated
+// with compiled-in defaults when the caller supplied empty strings, so
+// existing callers that build a Params literal continue to produce the
+// canonical SynthOrg compose output without having to name every new
+// field.
 func Generate(p Params) ([]byte, error) {
+	applyComposeDefaults(&p)
 	if err := validateParams(p); err != nil {
 		return nil, fmt.Errorf("validating params: %w", err)
 	}
@@ -124,6 +182,54 @@ func Generate(p Params) ([]byte, error) {
 		return nil, fmt.Errorf("executing template: %w", err)
 	}
 	return buf.Bytes(), nil
+}
+
+// applyComposeDefaults populates empty tunable fields with their
+// compiled-in defaults and fills in the pinned DHI digests when the
+// caller is running on the default registry/tags. The goal is to keep
+// direct Params literals simple while still allowing callers (CLI
+// commands building Params via ParamsFromState) to override any field.
+func applyComposeDefaults(p *Params) {
+	if p.RegistryHost == "" {
+		p.RegistryHost = config.DefaultRegistryHost
+	}
+	if p.ImageRepoPrefix == "" {
+		p.ImageRepoPrefix = config.DefaultImageRepoPrefix
+	}
+	if p.DHIRegistry == "" {
+		p.DHIRegistry = config.DefaultDHIRegistry
+	}
+	if p.PostgresImageTag == "" {
+		p.PostgresImageTag = config.DefaultPostgresImageTag
+	}
+	if p.NATSImageTag == "" {
+		p.NATSImageTag = config.DefaultNATSImageTag
+	}
+	if p.NATSURL == "" {
+		p.NATSURL = config.DefaultNATSURLValue
+	}
+
+	// Autofill pinned digests when the caller is on the default
+	// registry and tags. A call site that passes a custom registry
+	// must explicitly supply the digest (or leave it empty for an
+	// unpinned reference + SkipVerify). This mirrors ParamsFromState.
+	onDefaultRegistry := p.DHIRegistry == config.DefaultDHIRegistry &&
+		p.PostgresImageTag == config.DefaultPostgresImageTag &&
+		p.NATSImageTag == config.DefaultNATSImageTag
+	if onDefaultRegistry {
+		if p.PostgresDigest == "" {
+			pgKey := p.DHIRegistry + "/postgres:" + p.PostgresImageTag
+			if d, ok := verify.DHIPinnedIndexDigest(pgKey); ok {
+				p.PostgresDigest = d
+			}
+		}
+		if p.NATSDigest == "" {
+			natsKey := p.DHIRegistry + "/nats:" + p.NATSImageTag
+			if d, ok := verify.DHIPinnedIndexDigest(natsKey); ok {
+				p.NATSDigest = d
+			}
+		}
+	}
 }
 
 // validateParams checks all template parameters for safe values.

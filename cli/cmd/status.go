@@ -14,6 +14,7 @@ import (
 
 	"github.com/Aureliolo/synthorg/cli/internal/config"
 	"github.com/Aureliolo/synthorg/cli/internal/docker"
+	"github.com/Aureliolo/synthorg/cli/internal/health"
 	"github.com/Aureliolo/synthorg/cli/internal/ui"
 	"github.com/Aureliolo/synthorg/cli/internal/version"
 	"github.com/spf13/cobra"
@@ -414,12 +415,11 @@ func printHealthStatus(ctx context.Context, out *ui.UI, state config.State, json
 
 func fetchHealth(ctx context.Context, port int) ([]byte, int, error) {
 	healthURL := fmt.Sprintf("http://localhost:%d/api/v1/health", port)
-	client := &http.Client{Timeout: 5 * time.Second}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, healthURL, nil)
 	if err != nil {
 		return nil, 0, fmt.Errorf("health check error: %w", err)
 	}
-	resp, err := client.Do(req)
+	resp, err := health.HTTPClient().Do(req)
 	if err != nil {
 		return nil, 0, fmt.Errorf("backend unreachable: %w", err)
 	}

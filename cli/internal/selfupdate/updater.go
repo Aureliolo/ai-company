@@ -34,10 +34,15 @@ const (
 
 	// expectedURLPrefix validates that asset download URLs point to the expected domain.
 	expectedURLPrefix = "https://github.com/" + repoSlug + "/releases/download/"
+)
 
-	maxAPIResponseBytes  = 1 * 1024 * 1024   // 1 MiB for API/checksums
-	maxBinaryBytes       = 256 * 1024 * 1024 // 256 MiB for binary archives
-	maxArchiveEntryBytes = 128 * 1024 * 1024 // 128 MiB per archive entry
+// Tunable size + timeout limits. Set by Configure; read without locking
+// because Configure runs exactly once in root.go PersistentPreRunE before
+// any self-update operation starts.
+var (
+	maxAPIResponseBytes  int64 = 1 * 1024 * 1024   // 1 MiB for API/checksums
+	maxBinaryBytes       int64 = 256 * 1024 * 1024 // 256 MiB for binary archives
+	maxArchiveEntryBytes int64 = 128 * 1024 * 1024 // 128 MiB per archive entry
 
 	httpTimeout = 5 * time.Minute
 	apiTimeout  = 30 * time.Second

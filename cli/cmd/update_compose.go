@@ -253,7 +253,7 @@ func patchComposeImageRefs(tag string, digestPins map[string]string, sandboxEnab
 		}
 		prefix := sub[1] // e.g. "    image: "
 		name := sub[2]   // e.g. "backend"
-		repo := images.RepoPrefix + name
+		repo := images.RepoPrefix() + name
 		replaced[name] = true
 
 		if d, ok := digestPins[name]; ok && d != "" {

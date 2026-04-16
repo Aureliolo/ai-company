@@ -8,8 +8,8 @@ import (
 func TestRepoPrefix(t *testing.T) {
 	t.Parallel()
 
-	if RepoPrefix != "ghcr.io/aureliolo/synthorg-" {
-		t.Errorf("RepoPrefix = %q, want %q", RepoPrefix, "ghcr.io/aureliolo/synthorg-")
+	if RepoPrefix() != "ghcr.io/aureliolo/synthorg-" {
+		t.Errorf("RepoPrefix() = %q, want %q", RepoPrefix(), "ghcr.io/aureliolo/synthorg-")
 	}
 }
 
@@ -248,7 +248,7 @@ func FuzzRefForService(f *testing.F) {
 		}
 		got := RefForService(svc, tag, digests)
 
-		wantPrefix := RepoPrefix + svc
+		wantPrefix := RepoPrefix() + svc
 		if !strings.HasPrefix(got, wantPrefix) {
 			t.Errorf("RefForService(%q, ...) = %q, missing prefix %q", svc, got, wantPrefix)
 		}
@@ -279,7 +279,7 @@ func FuzzParseImageList(f *testing.F) {
 	f.Fuzz(func(t *testing.T, raw string) {
 		imgs := parseImageList(raw)
 		for _, img := range imgs {
-			if !strings.HasPrefix(img.Repository, RepoPrefix) {
+			if !strings.HasPrefix(img.Repository, RepoPrefix()) {
 				t.Errorf("parsed image with non-synthorg repo: %q", img.Repository)
 			}
 		}

@@ -356,12 +356,20 @@ func runBackupCreate(cmd *cobra.Command, _ []string) error {
 	ctx := cmd.Context()
 	opts := GetGlobalOpts(ctx)
 
-	timeout, err := time.ParseDuration(backupCreateTimeout)
+	// Flag default is intentionally a literal so `--help` shows the
+	// compile-time baseline; the env/config override is applied here
+	// when the user did not pass --timeout explicitly. Precedence:
+	// explicit flag > env/config (resolved into Tunables) > literal default.
+	timeoutStr := backupCreateTimeout
+	if !cmd.Flags().Changed("timeout") {
+		timeoutStr = opts.Tunables.BackupCreateTimeout.String()
+	}
+	timeout, err := time.ParseDuration(timeoutStr)
 	if err != nil {
-		return fmt.Errorf("invalid --timeout %q: %w", backupCreateTimeout, err)
+		return fmt.Errorf("invalid --timeout %q: %w", timeoutStr, err)
 	}
 	if timeout <= 0 {
-		return fmt.Errorf("invalid --timeout %q: must be > 0", backupCreateTimeout)
+		return fmt.Errorf("invalid --timeout %q: must be > 0", timeoutStr)
 	}
 
 	state, err := config.Load(opts.DataDir)
@@ -536,12 +544,16 @@ func runBackupRestore(cmd *cobra.Command, args []string) error {
 		return NewExitError(ExitUsage, errors.New("--confirm flag is required"))
 	}
 
-	timeout, parseErr := time.ParseDuration(backupRestoreTimeout)
+	timeoutStr := backupRestoreTimeout
+	if !cmd.Flags().Changed("timeout") {
+		timeoutStr = opts.Tunables.BackupRestoreTimeout.String()
+	}
+	timeout, parseErr := time.ParseDuration(timeoutStr)
 	if parseErr != nil {
-		return fmt.Errorf("invalid --timeout %q: %w", backupRestoreTimeout, parseErr)
+		return fmt.Errorf("invalid --timeout %q: %w", timeoutStr, parseErr)
 	}
 	if timeout <= 0 {
-		return fmt.Errorf("invalid --timeout %q: must be > 0", backupRestoreTimeout)
+		return fmt.Errorf("invalid --timeout %q: must be > 0", timeoutStr)
 	}
 
 	state, err := config.Load(opts.DataDir)
