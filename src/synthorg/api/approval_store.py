@@ -1,12 +1,14 @@
-"""In-memory approval store.
+"""Approval store with optional SQLite persistence.
 
 Provides async CRUD operations for ``ApprovalItem`` instances.
-Designed to be attached to ``AppState``. A persistence-backed
-implementation is planned.
+Designed to be attached to ``AppState``.  When a
+``SQLiteApprovalRepository`` is provided, mutations are persisted
+to the database while the in-memory dict serves as a read cache.
 """
 
 from collections.abc import Callable  # noqa: TC003
 from datetime import UTC, datetime
+from typing import TYPE_CHECKING
 
 from synthorg.api.errors import ConflictError
 from synthorg.core.approval import ApprovalItem  # noqa: TC001
@@ -22,23 +24,37 @@ from synthorg.observability.events.api import (
     API_RESOURCE_NOT_FOUND,
 )
 
+if TYPE_CHECKING:
+    from synthorg.persistence.sqlite.approval_repo import (
+        SQLiteApprovalRepository,
+    )
+
 logger = get_logger(__name__)
 
 
 class ApprovalStore:
-    """In-memory store for approval items.
+    """Approval store with in-memory cache and optional SQLite persistence.
 
     Uses a plain ``dict`` for O(1) lookups by ID.  Thread-safety is
     not needed because Litestar runs on a single event loop.
+
+    When ``repo`` is provided, all mutations are persisted to the
+    database.  The in-memory dict serves as a read-through cache.
+
+    Args:
+        on_expire: Optional callback for expired items.
+        repo: Optional SQLite repository for persistence.
     """
 
     def __init__(
         self,
         *,
         on_expire: Callable[[ApprovalItem], None] | None = None,
+        repo: SQLiteApprovalRepository | None = None,
     ) -> None:
         self._items: dict[str, ApprovalItem] = {}
         self._on_expire = on_expire
+        self._repo = repo
 
     def clear(self) -> None:
         """Reset all approval items for test isolation."""
@@ -64,6 +80,8 @@ class ApprovalStore:
             )
             raise ConflictError(msg)
         self._items[item.id] = item
+        if self._repo is not None:
+            await self._repo.save(item)
 
     async def get(self, approval_id: str) -> ApprovalItem | None:
         """Get an approval item by ID, applying lazy expiration.
@@ -127,6 +145,8 @@ class ApprovalStore:
             )
             return None
         self._items[item.id] = item
+        if self._repo is not None:
+            await self._repo.save(item)
         return item
 
     async def save_if_pending(
@@ -153,6 +173,8 @@ class ApprovalStore:
         if current.status != ApprovalStatus.PENDING:
             return None
         self._items[item.id] = item
+        if self._repo is not None:
+            await self._repo.save(item)
         return item
 
     def _check_expiration(self, item: ApprovalItem) -> ApprovalItem:

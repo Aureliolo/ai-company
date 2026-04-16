@@ -5,6 +5,7 @@ Layer 1 fires instantly for catastrophic regression.
 Layer 2 fires after the observation window for subtle degradation.
 """
 
+from synthorg.core.types import NotBlankStr
 from synthorg.meta.models import (
     OrgSignalSnapshot,
     RegressionResult,
@@ -48,9 +49,9 @@ class TieredRegressionDetector:
         self._statistical = statistical_detector or StatisticalDetector()
 
     @property
-    def name(self) -> str:
+    def name(self) -> NotBlankStr:
         """Detector name."""
-        return "tiered"
+        return NotBlankStr("tiered")
 
     async def check(
         self,

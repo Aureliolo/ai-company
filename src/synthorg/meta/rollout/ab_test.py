@@ -8,6 +8,7 @@ group metrics statistically to declare a winner.
 import hashlib
 from typing import TYPE_CHECKING
 
+from synthorg.core.types import NotBlankStr
 from synthorg.meta.models import (
     ImprovementProposal,
     RegressionThresholds,
@@ -75,9 +76,9 @@ class ABTestRollout:
         )
 
     @property
-    def name(self) -> str:
+    def name(self) -> NotBlankStr:
         """Strategy name."""
-        return "ab_test"
+        return NotBlankStr("ab_test")
 
     async def execute(
         self,

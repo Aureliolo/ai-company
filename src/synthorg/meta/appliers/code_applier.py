@@ -165,15 +165,31 @@ class CodeApplier:
 
         # -- Remote push via GitHub API -----------------------------------
         await self._github.create_branch(branch)
-        await self._push_changes_via_api(
-            branch,
-            proposal,
-        )
-        pr_url = await self._github.create_draft_pr(
-            head=branch,
-            title=proposal.title,
-            body=_build_pr_body(proposal),
-        )
+        try:
+            await self._push_changes_via_api(
+                branch,
+                proposal,
+            )
+            pr_url = await self._github.create_draft_pr(
+                head=branch,
+                title=proposal.title,
+                body=_build_pr_body(proposal),
+            )
+        except MemoryError, RecursionError:
+            raise
+        except Exception:
+            # Partial push left an orphaned branch -- clean up.
+            try:
+                await self._github.delete_branch(branch)
+            except Exception:
+                logger.exception(
+                    META_APPLY_FAILED,
+                    altitude="code_modification",
+                    proposal_id=str(proposal.id),
+                    reason="branch_cleanup_after_push_failed",
+                    branch=branch,
+                )
+            raise
 
         count = len(proposal.code_changes)
         logger.info(

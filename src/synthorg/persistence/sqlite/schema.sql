@@ -955,3 +955,29 @@ CREATE TABLE custom_rules (
     )
 );
 CREATE UNIQUE INDEX custom_rules_name ON custom_rules (name);
+
+-- Approvals (meta-loop human review queue)
+CREATE TABLE approvals (
+    id TEXT NOT NULL PRIMARY KEY CHECK(length(id) > 0),
+    action_type TEXT NOT NULL CHECK(length(trim(action_type)) > 0),
+    title TEXT NOT NULL CHECK(length(trim(title)) > 0),
+    description TEXT NOT NULL,
+    requested_by TEXT NOT NULL CHECK(length(trim(requested_by)) > 0),
+    risk_level TEXT NOT NULL DEFAULT 'medium' CHECK(
+        risk_level IN ('low', 'medium', 'high', 'critical')
+    ),
+    status TEXT NOT NULL DEFAULT 'pending' CHECK(
+        status IN ('pending', 'approved', 'rejected', 'expired')
+    ),
+    created_at TEXT NOT NULL CHECK(
+        created_at LIKE '%+00:00' OR created_at LIKE '%Z'
+    ),
+    expires_at TEXT,
+    decided_at TEXT,
+    decided_by TEXT,
+    decision_reason TEXT,
+    task_id TEXT,
+    metadata TEXT NOT NULL DEFAULT '{}'
+);
+CREATE INDEX idx_approvals_status ON approvals(status);
+CREATE INDEX idx_approvals_action_type ON approvals(action_type);

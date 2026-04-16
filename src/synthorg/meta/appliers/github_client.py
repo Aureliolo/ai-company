@@ -6,6 +6,7 @@ making this safe to run inside Docker containers.
 """
 
 import base64
+import re
 from typing import Any, Self
 
 import httpx
@@ -18,6 +19,34 @@ from synthorg.observability.events.meta import (
     META_CODE_GITHUB_API_FAILED,
     META_CODE_PR_CREATED,
 )
+
+# ── Custom exception types ───────────────────────────────────────
+
+
+class GitHubAPIError(Exception):
+    """Raised on non-auth GitHub API failures.
+
+    Attributes:
+        status_code: HTTP status code from the response.
+        action: Human-readable description of the attempted action.
+        body: Sanitized response body snippet.
+    """
+
+    def __init__(self, *, status_code: int, action: str, body: str) -> None:
+        self.status_code = status_code
+        self.action = action
+        self.body = body
+        super().__init__(
+            f"GitHub API failed to {action}: {status_code} {body}",
+        )
+
+
+class GitHubAuthError(GitHubAPIError):
+    """Raised on 401/403 GitHub API responses.
+
+    Indicates invalid, expired, or insufficiently scoped credentials.
+    """
+
 
 logger = get_logger(__name__)
 
@@ -90,7 +119,8 @@ class HttpGitHubClient:
             name: Branch name to create.
 
         Raises:
-            RuntimeError: If the API call fails.
+            GitHubAuthError: On 401/403 responses.
+            GitHubAPIError: On other API failures.
         """
         sha = await self._get_branch_sha(self._base_branch)
         resp = await self._client.post(
@@ -119,7 +149,8 @@ class HttpGitHubClient:
             message: Commit message.
 
         Raises:
-            RuntimeError: If the API call fails.
+            GitHubAuthError: On 401/403 responses.
+            GitHubAPIError: On other API failures.
         """
         if change.operation == CodeOperation.DELETE:
             await self._delete_file(branch, change.file_path, message)
@@ -155,7 +186,8 @@ class HttpGitHubClient:
             URL of the created PR.
 
         Raises:
-            RuntimeError: If the API call fails.
+            GitHubAuthError: On 401/403 responses.
+            GitHubAPIError: On other API failures.
         """
         resp = await self._client.post(
             f"/repos/{self._repo}/pulls",
@@ -175,6 +207,16 @@ class HttpGitHubClient:
         )
         return pr_url
 
+    async def verify_token(self) -> None:
+        """Verify the GitHub token by calling ``GET /user``.
+
+        Raises:
+            GitHubAuthError: If the token is invalid or expired (401/403).
+            GitHubAPIError: On other API failures.
+        """
+        resp = await self._client.get("/user")
+        _check_response(resp, "verify GitHub token")
+
     async def delete_branch(self, name: str) -> None:
         """Delete a remote branch.
 
@@ -182,7 +224,7 @@ class HttpGitHubClient:
             name: Branch name to delete.
 
         Raises:
-            RuntimeError: If the API call fails.
+            GitHubAPIError: If the API call fails.
         """
         resp = await self._client.delete(
             f"/repos/{self._repo}/git/refs/heads/{name}",
@@ -265,6 +307,34 @@ class HttpGitHubClient:
         _check_response(resp, f"delete file '{path}'")
 
 
+# ── Sanitization ─────────────────────────────────────────────────
+
+_TOKEN_PATTERNS = re.compile(
+    r"Bearer\s+[^\s\"]+|"
+    r"ghp_[a-zA-Z0-9]+|"
+    r"gho_[a-zA-Z0-9]+|"
+    r"github_pat_[a-zA-Z0-9_]+|"
+    r"Authorization:\s*[^\n]+|"
+    r"token\s+[^\s\"]+",
+    re.IGNORECASE,
+)
+
+
+def _sanitize_response_body(text: str) -> str:
+    """Strip secrets from a GitHub API response body before logging.
+
+    Args:
+        text: Raw response text (truncated).
+
+    Returns:
+        Text with token-like patterns replaced by ``[REDACTED]``.
+    """
+    return _TOKEN_PATTERNS.sub("[REDACTED]", text)
+
+
+# ── Response helpers ─────────────────────────────────────────────
+
+
 def _is_missing_ref(resp: httpx.Response) -> bool:
     """Check if a 422 response indicates a missing git reference.
 
@@ -288,23 +358,34 @@ def _is_missing_ref(resp: httpx.Response) -> bool:
 
 
 def _check_response(resp: httpx.Response, action: str) -> None:
-    """Raise RuntimeError on non-2xx responses.
+    """Raise on non-2xx responses with sanitized error details.
 
     Args:
         resp: The httpx response.
         action: Human-readable action description for the error message.
 
     Raises:
-        RuntimeError: If the response status is not 2xx.
+        GitHubAuthError: On 401/403 responses.
+        GitHubAPIError: On other non-2xx responses.
     """
     if resp.is_success:
         return
-    body = resp.text[:500] if resp.text else "(empty)"
-    msg = f"GitHub API failed to {action}: {resp.status_code} {body}"
+    raw = resp.text[:500] if resp.text else "(empty)"
+    body = _sanitize_response_body(raw)
     logger.error(
         META_CODE_GITHUB_API_FAILED,
         action=action,
         status_code=resp.status_code,
         response_body=body,
     )
-    raise RuntimeError(msg)
+    if resp.status_code in {401, 403}:
+        raise GitHubAuthError(
+            status_code=resp.status_code,
+            action=action,
+            body=body,
+        )
+    raise GitHubAPIError(
+        status_code=resp.status_code,
+        action=action,
+        body=body,
+    )

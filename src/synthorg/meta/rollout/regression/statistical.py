@@ -4,6 +4,7 @@ Uses Welch's t-test after the observation window to detect
 statistically significant degradation.
 """
 
+from synthorg.core.types import NotBlankStr
 from synthorg.meta.models import (
     OrgSignalSnapshot,
     RegressionResult,
@@ -32,9 +33,9 @@ class StatisticalDetector:
         self._min_data_points = min_data_points
 
     @property
-    def name(self) -> str:
+    def name(self) -> NotBlankStr:
         """Detector name."""
-        return "statistical"
+        return NotBlankStr("statistical")
 
     async def check(
         self,

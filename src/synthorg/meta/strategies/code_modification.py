@@ -189,20 +189,17 @@ class CodeModificationStrategy:
         if len(changes) > max_files:
             changes = changes[:max_files]
 
-        # Validate scope.
+        # Validate scope -- fail-closed: reject entire proposal on
+        # ANY scope violation.  Do not filter-and-continue.
         violations = self._scope_validator.validate_changes(changes)
         if violations:
-            logger.warning(
+            logger.error(
                 META_CODE_SCOPE_VIOLATION,
                 rule=rule_match.rule_name,
                 violations=list(violations),
+                change_count=len(changes),
             )
-            # Filter out violating changes.
-            changes = tuple(
-                c for c in changes if self._scope_validator.is_path_allowed(c.file_path)
-            )
-            if not changes:
-                return None
+            return None
 
         logger.info(
             META_CODE_GEN_COMPLETED,

@@ -332,6 +332,15 @@ class GitHubAPI(Protocol):
         """
         ...
 
+    async def verify_token(self) -> None:
+        """Verify that the configured token is valid.
+
+        Raises:
+            GitHubAuthError: If the token is invalid or expired.
+            GitHubAPIError: On other API failures.
+        """
+        ...
+
 
 @runtime_checkable
 class CIValidator(Protocol):

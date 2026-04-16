@@ -14,6 +14,7 @@ from synthorg.meta.models import (
     OrgTelemetrySummary,
     ProposalAltitude,
     ProposalStatus,
+    RegressionVerdict,
     RolloutOutcome,
 )
 from synthorg.meta.service import SelfImprovementService
@@ -124,4 +125,53 @@ class TestSelfImprovementService:
             },
         )
         rollout_result = await svc.execute_rollout(approved)
+        assert rollout_result.outcome == RolloutOutcome.SUCCESS
+
+    async def test_rollout_detects_regression(self) -> None:
+        """When baseline/current are provided and quality drops,
+        execute_rollout returns REGRESSED outcome."""
+        svc = self._svc()
+        proposals = await svc.run_cycle(_snap(quality=4.0))
+        assert len(proposals) >= 1
+        approved = proposals[0].model_copy(
+            update={
+                "status": ProposalStatus.APPROVED,
+                "decided_at": proposals[0].proposed_at,
+                "decided_by": "test-approver",
+                "decision_reason": "Unit test approval",
+            },
+        )
+        baseline = _snap(quality=8.0, success=0.95)
+        # Significant quality drop from 8.0 to 4.0 (50% drop,
+        # well above the default 10% threshold).
+        current = _snap(quality=4.0, success=0.5)
+        rollout_result = await svc.execute_rollout(
+            approved,
+            baseline=baseline,
+            current=current,
+        )
+        assert rollout_result.outcome == RolloutOutcome.REGRESSED
+        assert rollout_result.regression_verdict is not None
+        assert rollout_result.regression_verdict != RegressionVerdict.NO_REGRESSION
+
+    async def test_rollout_no_regression_with_good_snapshots(self) -> None:
+        """When baseline/current show no degradation, outcome stays SUCCESS."""
+        svc = self._svc()
+        proposals = await svc.run_cycle(_snap(quality=4.0))
+        assert len(proposals) >= 1
+        approved = proposals[0].model_copy(
+            update={
+                "status": ProposalStatus.APPROVED,
+                "decided_at": proposals[0].proposed_at,
+                "decided_by": "test-approver",
+                "decision_reason": "Unit test approval",
+            },
+        )
+        baseline = _snap(quality=7.0, success=0.85)
+        current = _snap(quality=7.5, success=0.87)
+        rollout_result = await svc.execute_rollout(
+            approved,
+            baseline=baseline,
+            current=current,
+        )
         assert rollout_result.outcome == RolloutOutcome.SUCCESS

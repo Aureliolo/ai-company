@@ -7,6 +7,7 @@ for degradation during the observation window.
 
 from typing import TYPE_CHECKING
 
+from synthorg.core.types import NotBlankStr
 from synthorg.meta.models import (
     ImprovementProposal,
     RegressionVerdict,
@@ -38,9 +39,9 @@ class BeforeAfterRollout:
     """
 
     @property
-    def name(self) -> str:
+    def name(self) -> NotBlankStr:
         """Strategy name."""
-        return "before_after"
+        return NotBlankStr("before_after")
 
     async def execute(
         self,
