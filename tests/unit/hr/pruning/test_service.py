@@ -1,7 +1,7 @@
 """Tests for PruningService."""
 
 from datetime import UTC, datetime, timedelta
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
@@ -318,16 +318,26 @@ class TestPruningCycle:
             approval_store=approval_store,
         )
 
-        # First cycle creates approval.
-        job1 = await service.run_pruning_cycle(now=NOW)
-        assert job1.approval_requests_created == 1
+        # Pin wall-clock to NOW so the lazy-expiration check inside
+        # ApprovalStore._check_expiration sees the same time as the
+        # pruning cycle.  Without this, real datetime.now(UTC) may
+        # exceed expires_at and silently expire the first approval.
+        with patch(
+            "synthorg.api.approval_store.datetime",
+            wraps=datetime,
+        ) as mock_dt:
+            mock_dt.now.return_value = NOW
 
-        # Second cycle should skip (pending approval already exists).
-        job2 = await service.run_pruning_cycle(now=NOW)
-        assert job2.approval_requests_created == 0
+            # First cycle creates approval.
+            job1 = await service.run_pruning_cycle(now=NOW)
+            assert job1.approval_requests_created == 1
 
-        items = await approval_store.list_items(action_type="hr:prune")
-        assert len(items) == 1
+            # Second cycle should skip (pending approval already exists).
+            job2 = await service.run_pruning_cycle(now=NOW)
+            assert job2.approval_requests_created == 0
+
+            items = await approval_store.list_items(action_type="hr:prune")
+            assert len(items) == 1
 
     async def test_cycle_aggregates_errors_without_stopping(
         self,
