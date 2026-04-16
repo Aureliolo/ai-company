@@ -328,8 +328,8 @@ func runConfigSet(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("applying config value: %w", err)
 	}
 
-	if key == "image_tag" {
-		state.VerifiedDigests = nil // old pins are for the previous tag
+	if invalidatesVerifiedDigests(key) {
+		state.VerifiedDigests = nil // old pins are bound to the previous registry/prefix/tags
 	}
 	if composeAffectingKeys[key] {
 		if err := regenerateCompose(state); err != nil {
@@ -497,6 +497,29 @@ func maskSecret(s string) string {
 	return "****"
 }
 
+// invalidatesVerifiedDigests reports whether changing the given config key
+// must invalidate the cached verified-digest map (state.VerifiedDigests).
+// The cache maps image reference -> verified digest, and those references
+// are bound to the tuple (registry_host, image_repo_prefix) for SynthOrg
+// images and (dhi_registry, postgres_image_tag | nats_image_tag) for the
+// DHI third-party images. Changing any of those keys, or image_tag itself,
+// makes every cached pin point at a different image than the one originally
+// verified -- regenerateCompose would otherwise emit an old trusted digest
+// for a new untrusted target.
+func invalidatesVerifiedDigests(key string) bool {
+	switch key {
+	case "image_tag",
+		"registry_host",
+		"image_repo_prefix",
+		"dhi_registry",
+		"postgres_image_tag",
+		"nats_image_tag":
+		return true
+	default:
+		return false
+	}
+}
+
 // composeAffectingKeys lists config keys that require compose.yml regeneration.
 // Registry and image tag tunables are included because they flow into the
 // generated compose.yml through ParamsFromState.
@@ -529,7 +552,10 @@ func regenerateCompose(state config.State) error {
 		return nil
 	}
 
-	params := compose.ParamsFromState(state)
+	params, err := compose.ParamsFromState(state)
+	if err != nil {
+		return fmt.Errorf("building compose params: %w", err)
+	}
 	params.DigestPins = state.VerifiedDigests
 	generated, err := compose.Generate(params)
 	if err != nil {
@@ -558,7 +584,7 @@ func runConfigUnset(cmd *cobra.Command, args []string) error {
 	if key == "web_port" && state.WebPort == state.BackendPort {
 		return fmt.Errorf("default web_port %d conflicts with current backend_port %d", state.WebPort, state.BackendPort)
 	}
-	if key == "image_tag" {
+	if invalidatesVerifiedDigests(key) {
 		state.VerifiedDigests = nil
 	}
 

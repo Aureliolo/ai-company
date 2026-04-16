@@ -58,11 +58,15 @@ func WaitForHealthy(ctx context.Context, url string, timeout, interval, initialD
 var healthClient = &http.Client{Timeout: 5 * time.Second}
 
 // Configure applies the resolved health check timeout. Called exactly
-// once from root.go PersistentPreRunE. Safe to call more than once.
+// once from root.go PersistentPreRunE.
+//
+// The assignment is unconditional so Configure is deterministic across
+// repeated calls (tests reset by passing the default from
+// config.DefaultTunables().HealthCheckTimeout). A zero timeout here is a
+// programmer error, not a no-op request -- validation belongs in
+// config.ResolveTunables which refuses non-positive durations.
 func Configure(timeout time.Duration) {
-	if timeout > 0 {
-		healthClient = &http.Client{Timeout: timeout}
-	}
+	healthClient = &http.Client{Timeout: timeout}
 }
 
 // HTTPClient returns the shared HTTP client configured for health and

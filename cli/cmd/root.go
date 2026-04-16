@@ -134,7 +134,15 @@ func setupGlobalOpts(cmd *cobra.Command) error {
 // by setting the override, so the CLI does not refuse to run; it simply
 // transfers trust to the operator and makes the trade-off visible.
 func applyTunables(cmd *cobra.Command, opts *GlobalOpts) error {
-	state, _ := config.Load(opts.DataDir)
+	// config.Load already returns a DefaultState (not an error) when the
+	// file is absent, so any error here is a real failure (corrupted
+	// JSON, permission denied, validation failure, invalid path). Fail
+	// fast so persisted overrides and trust-transfer detection are
+	// never silently dropped by swallowing this error.
+	state, err := config.Load(opts.DataDir)
+	if err != nil {
+		return fmt.Errorf("loading config: %w", err)
+	}
 	tun, err := config.ResolveTunables(state)
 	if err != nil {
 		return fmt.Errorf("resolving tunables: %w", err)

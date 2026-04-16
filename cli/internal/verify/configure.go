@@ -4,34 +4,27 @@ import "time"
 
 // Configure applies the resolved tunables to this package's registry and
 // timeout variables. Called exactly once from root.go PersistentPreRunE
-// before any command handler consumes these values. Safe to call more
-// than once (e.g. in tests) but not thread-safe against concurrent reads.
+// before any command handler consumes these values.
+//
+// Assignments are unconditional: every parameter overwrites the
+// corresponding package variable. This makes Configure deterministic
+// across repeated calls (e.g. in tests) -- passing empty strings / zero
+// durations resets the package to those values rather than leaking the
+// previous override. Callers that want defaults should pass the values
+// from config.DefaultTunables(); callers that want a clean reset (tests)
+// can do the same. Not thread-safe against concurrent reads.
 func Configure(
 	registryHost, imageRepoPrefix,
 	dhiReg, postgresTag, natsTag string,
 	tufFetch, attestationHTTP time.Duration,
 ) {
-	if registryHost != "" {
-		RegistryHost = registryHost
-	}
-	if imageRepoPrefix != "" {
-		ImageRepoPrefix = imageRepoPrefix
-	}
-	if dhiReg != "" {
-		dhiRegistry = dhiReg
-	}
-	if postgresTag != "" {
-		postgresImageTag = postgresTag
-	}
-	if natsTag != "" {
-		natsImageTag = natsTag
-	}
-	if tufFetch > 0 {
-		TUFFetchTimeout = tufFetch
-	}
-	if attestationHTTP > 0 {
-		attestationHTTPTimeout = attestationHTTP
-	}
+	RegistryHost = registryHost
+	ImageRepoPrefix = imageRepoPrefix
+	dhiRegistry = dhiReg
+	postgresImageTag = postgresTag
+	natsImageTag = natsTag
+	TUFFetchTimeout = tufFetch
+	attestationHTTPTimeout = attestationHTTP
 }
 
 // DHIRegistry returns the configured DHI registry hostname. Exposed so

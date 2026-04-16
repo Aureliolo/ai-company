@@ -10,9 +10,11 @@ import (
 // with no subcommand renders the help text (exit 0) instead of silently
 // succeeding without doing anything -- the behaviour the audit flagged.
 func TestWorkerCmd_BareInvocationPrintsHelp(t *testing.T) {
-	// Isolate from package-level workerCmd state: copy the command and
-	// its subcommand tree so other tests running in parallel do not
-	// observe mutated output buffers.
+	// This test reuses the package-level rootCmd (root := rootCmd is a
+	// pointer copy, not a clone) and resets its output/error writers and
+	// args for this invocation. Do NOT t.Parallel() this test or the
+	// sibling below: concurrent writes to rootCmd's shared buffers would
+	// race.
 	root := rootCmd
 	out, errOut := &bytes.Buffer{}, &bytes.Buffer{}
 	root.SetOut(out)

@@ -76,7 +76,12 @@ type Params struct {
 // pinned DHI digests are looked up only when the user stayed on default
 // registry/tags (CustomRegistry=false); a custom deployment produces a
 // digest-free reference and relies on SkipVerify instead.
-func ParamsFromState(s config.State) Params {
+//
+// Returns an error when ResolveTunables rejects the input (invalid env
+// or persisted state) so compose generation fails deterministically
+// rather than silently emitting a compose.yml built from compiled-in
+// defaults that masks the user's broken override.
+func ParamsFromState(s config.State) (Params, error) {
 	busBackend := s.BusBackend
 	if busBackend == "" {
 		busBackend = "internal"
@@ -88,11 +93,7 @@ func ParamsFromState(s config.State) Params {
 
 	tun, err := config.ResolveTunables(s)
 	if err != nil {
-		// ResolveTunables failures mean invalid user input; render with
-		// compiled-in defaults and let Generate's validateParams surface
-		// the real problem (the template otherwise depends on non-empty
-		// RegistryHost etc.).
-		tun = config.DefaultTunables()
+		return Params{}, fmt.Errorf("resolving tunables: %w", err)
 	}
 
 	var pgDigest, natsDigest string
@@ -134,7 +135,7 @@ func ParamsFromState(s config.State) Params {
 		PostgresDigest:     pgDigest,
 		NATSDigest:         natsDigest,
 		NATSURL:            tun.DefaultNATSURL,
-	}
+	}, nil
 }
 
 // PostgresEnabled reports whether the Postgres persistence backend is active.

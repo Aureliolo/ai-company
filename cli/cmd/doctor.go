@@ -264,7 +264,10 @@ func doctorAutoFix(ctx context.Context, _ *cobra.Command, out, errOut *ui.UI, st
 
 // doctorFixCompose regenerates compose.yml from the embedded template.
 func doctorFixCompose(state config.State, safeDir string) error {
-	params := compose.ParamsFromState(state)
+	params, err := compose.ParamsFromState(state)
+	if err != nil {
+		return fmt.Errorf("building compose params: %w", err)
+	}
 	params.DigestPins = state.VerifiedDigests
 	generated, err := compose.Generate(params)
 	if err != nil {

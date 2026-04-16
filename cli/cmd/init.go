@@ -725,7 +725,10 @@ func writeInitFiles(state config.State) (string, error) {
 		return "", fmt.Errorf("creating data directory: %w", err)
 	}
 
-	params := compose.ParamsFromState(state)
+	params, err := compose.ParamsFromState(state)
+	if err != nil {
+		return "", fmt.Errorf("building compose params: %w", err)
+	}
 	composeYAML, err := compose.Generate(params)
 	if err != nil {
 		return "", fmt.Errorf("generating compose file: %w", err)

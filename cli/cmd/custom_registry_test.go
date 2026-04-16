@@ -2,6 +2,8 @@ package cmd
 
 import (
 	"bytes"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -49,7 +51,7 @@ func withDefaultTunables(t *testing.T) {
 func TestApplyTunables_DefaultRegistryKeepsVerification(t *testing.T) {
 	withDefaultTunables(t)
 	c, errBuf := newTestCmd()
-	opts := &GlobalOpts{Hints: "auto"}
+	opts := &GlobalOpts{Hints: "auto", DataDir: t.TempDir()}
 
 	if err := applyTunables(c, opts); err != nil {
 		t.Fatalf("applyTunables: %v", err)
@@ -70,7 +72,7 @@ func TestApplyTunables_CustomRegistryDisablesVerification(t *testing.T) {
 
 	withDefaultTunables(t)
 	c, errBuf := newTestCmd()
-	opts := &GlobalOpts{Hints: "auto"}
+	opts := &GlobalOpts{Hints: "auto", DataDir: t.TempDir()}
 
 	if err := applyTunables(c, opts); err != nil {
 		t.Fatalf("applyTunables: %v", err)
@@ -91,7 +93,7 @@ func TestApplyTunables_CustomRegistryWarningIgnoresQuiet(t *testing.T) {
 
 	withDefaultTunables(t)
 	c, errBuf := newTestCmd()
-	opts := &GlobalOpts{Hints: "auto", Quiet: true}
+	opts := &GlobalOpts{Hints: "auto", Quiet: true, DataDir: t.TempDir()}
 
 	if err := applyTunables(c, opts); err != nil {
 		t.Fatalf("applyTunables: %v", err)
@@ -111,7 +113,7 @@ func TestApplyTunables_CustomRegistryWarningIgnoresJSON(t *testing.T) {
 
 	withDefaultTunables(t)
 	c, errBuf := newTestCmd()
-	opts := &GlobalOpts{Hints: "auto", JSON: true}
+	opts := &GlobalOpts{Hints: "auto", JSON: true, DataDir: t.TempDir()}
 
 	if err := applyTunables(c, opts); err != nil {
 		t.Fatalf("applyTunables: %v", err)
@@ -121,5 +123,29 @@ func TestApplyTunables_CustomRegistryWarningIgnoresJSON(t *testing.T) {
 	}
 	if !strings.Contains(errBuf.String(), "DISABLED") {
 		t.Errorf("--json must not suppress trust-transfer warning; stderr = %q", errBuf.String())
+	}
+}
+
+// TestApplyTunables_CorruptConfigFailsFast guards the contract that a
+// malformed config.json on disk is a hard error from applyTunables --
+// not a silent fallback to zero-value state. Silent fallback would drop
+// persisted overrides and CustomRegistry detection, which is the exact
+// class of bug Copilot + Gemini flagged on this PR.
+func TestApplyTunables_CorruptConfigFailsFast(t *testing.T) {
+	withDefaultTunables(t)
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "config.json"), []byte("{not valid json"), 0o600); err != nil {
+		t.Fatalf("writing corrupt config: %v", err)
+	}
+
+	c, _ := newTestCmd()
+	opts := &GlobalOpts{Hints: "auto", DataDir: dir}
+
+	err := applyTunables(c, opts)
+	if err == nil {
+		t.Fatal("applyTunables: want error for corrupt config.json, got nil")
+	}
+	if !strings.Contains(err.Error(), "loading config") {
+		t.Errorf("error %q should mention 'loading config'", err.Error())
 	}
 }

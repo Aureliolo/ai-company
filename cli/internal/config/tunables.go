@@ -2,7 +2,6 @@ package config
 
 import (
 	"fmt"
-	"math"
 	"os"
 	"strconv"
 	"strings"
@@ -290,18 +289,17 @@ func ParseBytes(s string) (int64, error) {
 	default:
 		return 0, fmt.Errorf("unknown unit %q", unit)
 	}
-	// Reject values that would overflow int64 or exceed the runtime
-	// ceiling. Compare in float64 space BEFORE the cast so a value like
-	// "999999999999GiB" does not silently wrap to a negative int64.
-	// math.MaxInt64 is 9.223e18 which is exactly representable by
-	// float64 up to unit spacing, so the comparison is conservative.
+	// Reject values that exceed the runtime ceiling while still in
+	// float64 space, BEFORE the cast to int64. Comparing against
+	// MaxBytesCeiling (1 GiB) rather than math.MaxInt64 avoids float64
+	// rounding edge cases near int64 limits: float64(math.MaxInt64)
+	// rounds up to 2^63, so a product equal to 2^63 passes the
+	// float64 check and then yields math.MinInt64 after the cast on
+	// amd64. MaxBytesCeiling is exactly representable in float64, so
+	// no rounding ambiguity exists at the boundary.
 	product := n * mult
-	if product > float64(math.MaxInt64) {
-		return 0, fmt.Errorf("size %s overflows int64", s)
-	}
-	result := int64(product)
-	if result > MaxBytesCeiling {
+	if product > float64(MaxBytesCeiling) {
 		return 0, fmt.Errorf("size %s exceeds ceiling %d bytes (1 GiB)", s, MaxBytesCeiling)
 	}
-	return result, nil
+	return int64(product), nil
 }

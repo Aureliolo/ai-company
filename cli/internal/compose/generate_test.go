@@ -467,7 +467,10 @@ func TestParamsFromState(t *testing.T) {
 		MemoryBackend:      "mem0",
 		BusBackend:         "internal",
 	}
-	p := ParamsFromState(s)
+	p, err := ParamsFromState(s)
+	if err != nil {
+		t.Fatalf("ParamsFromState: %v", err)
+	}
 
 	if p.ImageTag != "v1.0.0" {
 		t.Errorf("ImageTag = %q, want v1.0.0", p.ImageTag)
@@ -498,6 +501,24 @@ func TestParamsFromState(t *testing.T) {
 	}
 	if p.BusBackend != "internal" {
 		t.Errorf("BusBackend = %q, want internal", p.BusBackend)
+	}
+}
+
+// TestParamsFromState_InvalidTunableReturnsError guards the contract
+// that invalid user input (bad env or persisted state) causes
+// ParamsFromState to fail fast instead of silently falling back to
+// compiled-in defaults. A silent fallback would emit a compose.yml
+// built from defaults that masks the broken override.
+func TestParamsFromState_InvalidTunableReturnsError(t *testing.T) {
+	t.Setenv("SYNTHORG_DEFAULT_NATS_URL", "http://not-a-nats-scheme") // rejected by ValidateNATSURL
+	s := config.State{
+		ImageTag:    "v1.0.0",
+		BackendPort: 3001,
+		WebPort:     3000,
+		LogLevel:    "info",
+	}
+	if _, err := ParamsFromState(s); err == nil {
+		t.Fatal("ParamsFromState: want error for invalid SYNTHORG_DEFAULT_NATS_URL, got nil")
 	}
 }
 

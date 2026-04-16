@@ -177,6 +177,11 @@ func TestParseBytes(t *testing.T) {
 		{"9999999999999999999", 0, true},
 		// Ceiling: 2 GiB exceeds the 1 GiB runtime ceiling.
 		{"2GiB", 0, true},
+		// Regression for the int64-rounding edge case: a numeric input
+		// that rounds to float64(math.MaxInt64) (= 2^63) must NOT be
+		// silently cast to math.MinInt64 on amd64. It must be rejected
+		// by the in-float-space ceiling check well before any cast.
+		{"9223372036854775808", 0, true},
 	}
 	for _, tc := range cases {
 		t.Run(tc.in, func(t *testing.T) {
@@ -228,20 +233,17 @@ func TestIsValidImageRepoPrefix(t *testing.T) {
 }
 
 func TestIsValidStreamPrefix(t *testing.T) {
-	good := []string{"SYNTHORG", "MY_PREFIX", "A", "A-B"}
+	// Regex: ^[A-Z0-9][A-Z0-9_\-]*$. A leading digit is allowed ("1LEADING"),
+	// but ANY lowercase letter rejects the whole string even if prefixed by
+	// a digit ("1LEADING-ok-actually" has "ok-actually" → invalid).
+	good := []string{"SYNTHORG", "MY_PREFIX", "A", "A-B", "1LEADING"}
 	bad := []string{"", "lower", "1LEADING-ok-actually", "has space"}
 	for _, p := range good {
 		if !IsValidStreamPrefix(p) {
 			t.Errorf("IsValidStreamPrefix(%q) = false; want true", p)
 		}
 	}
-	// Note "1LEADING-ok-actually" IS valid by our regex (digit first is allowed).
-	for _, p := range bad[:1] {
-		if IsValidStreamPrefix(p) {
-			t.Errorf("IsValidStreamPrefix(%q) = true; want false", p)
-		}
-	}
-	for _, p := range bad[1:] {
+	for _, p := range bad {
 		if IsValidStreamPrefix(p) {
 			t.Errorf("IsValidStreamPrefix(%q) = true; want false", p)
 		}
