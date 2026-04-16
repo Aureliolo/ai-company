@@ -47,6 +47,9 @@ EPISTEMIC_PATTERNS: tuple[re.Pattern[str], ...] = (
 # or newline followed by optional whitespace.
 _SENTENCE_SPLIT = re.compile(r"[.?!]\s+|\n+")
 
+# Separator emitted between preserved sentences in the extraction output.
+_SENTENCE_SEPARATOR = "; "
+
 # Complexity levels that use the low-threshold (>= 1 marker).
 _HIGH_COMPLEXITY = frozenset({Complexity.COMPLEX, Complexity.EPIC})
 
@@ -122,7 +125,7 @@ def extract_marker_sentences(
         if not stripped:
             continue
         if any(p.search(stripped) for p in EPISTEMIC_PATTERNS):
-            sep_len = 2 if marker_sentences else 0
+            sep_len = len(_SENTENCE_SEPARATOR) if marker_sentences else 0
             if total_len + sep_len + len(stripped) > max_chars:
                 # If this is the first sentence and it exceeds max_chars,
                 # include a truncated version rather than returning empty.
@@ -135,4 +138,4 @@ def extract_marker_sentences(
     if not marker_sentences:
         return ""
 
-    return "; ".join(marker_sentences)
+    return _SENTENCE_SEPARATOR.join(marker_sentences)

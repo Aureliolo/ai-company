@@ -8,6 +8,7 @@ least-negative wins.
 
 import math
 from collections import Counter
+from typing import Final
 
 from synthorg.engine.trajectory.models import (
     CandidateResult,
@@ -22,6 +23,12 @@ from synthorg.observability.events.trajectory import (
 )
 
 logger = get_logger(__name__)
+
+# Verbalized confidence is expressed as a percentage in [0, 100];
+# dividing by this scale yields a probability in [0, 1] for log-space VC.
+_CONFIDENCE_PERCENT_SCALE: Final[float] = 100.0
+# Floor assigned to zero/negative confidence after the log-space transform.
+_NEGATIVE_CONFIDENCE_FLOOR: Final[float] = -100.0
 
 
 class TrajectoryScorer:
@@ -214,7 +221,7 @@ def _compute_vc_score(candidate: CandidateResult) -> float:
             TRAJECTORY_CANDIDATE_SCORED,
             candidate_index=candidate.candidate_index,
             vc=vc,
-            reason="zero or negative VC, flooring to -100.0",
+            reason=(f"zero or negative VC, flooring to {_NEGATIVE_CONFIDENCE_FLOOR}"),
         )
-        return -100.0  # Floor for zero/negative confidence.
-    return math.log(vc / 100.0)
+        return _NEGATIVE_CONFIDENCE_FLOOR
+    return math.log(vc / _CONFIDENCE_PERCENT_SCALE)

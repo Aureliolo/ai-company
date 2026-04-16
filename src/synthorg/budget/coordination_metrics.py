@@ -8,7 +8,7 @@ gap, token/speedup ratio, and message overhead.
 
 import math
 import statistics
-from typing import TYPE_CHECKING, Self
+from typing import TYPE_CHECKING, Final, Self
 
 from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
 
@@ -22,6 +22,10 @@ if TYPE_CHECKING:
     from collections.abc import Sequence
 
 logger = get_logger(__name__)
+
+# Amdahl "90% of max speedup" coefficient: S(n) >= 0.9 * S_max solves to
+# n >= 9p/(1-p), so the coefficient is 9.
+_AMDAHL_90PCT_COEFFICIENT: Final[float] = 9.0
 
 
 class CoordinationEfficiency(BaseModel):
@@ -204,7 +208,7 @@ class AmdahlCeiling(BaseModel):
         p = self.parallelizable_fraction
         if p <= 0:
             return 1
-        n = 9.0 * p / (1.0 - p)
+        n = _AMDAHL_90PCT_COEFFICIENT * p / (1.0 - p)
         return max(1, math.ceil(n))
 
 

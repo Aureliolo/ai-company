@@ -7,6 +7,7 @@ All endpoints require CEO or the internal SYSTEM role
 import asyncio
 import contextlib
 import json
+from typing import Final
 
 from litestar import Controller, delete, get, post
 from litestar.datastructures import State  # noqa: TC002
@@ -36,6 +37,20 @@ from synthorg.observability.events.memory import (
 )
 
 logger = get_logger(__name__)
+
+# Fine-tune preflight: batch-size recommendation table by available VRAM.
+# Tiers are checked in descending order; first threshold whose VRAM ceiling
+# is reached wins.  CPU-only / sub-threshold falls back to _DEFAULT_BATCH_SIZE.
+_DEFAULT_BATCH_SIZE: Final[int] = 16
+_BATCH_SIZE_BY_VRAM_GB: Final[tuple[tuple[float, int], ...]] = (
+    (40.0, 128),
+    (16.0, 64),
+    (8.0, 32),
+)
+
+# Fine-tune preflight: document-count thresholds for the source corpus.
+_MIN_DOCS_REQUIRED: Final[int] = 10
+_MIN_DOCS_RECOMMENDED: Final[int] = 50
 
 
 class ActiveEmbedderResponse(BaseModel):
@@ -469,17 +484,21 @@ def _check_documents(source_dir: str) -> PreflightCheck:
             message="Source directory not found",
         )
     count = sum(1 for ext in ("*.txt", "*.md", "*.rst") for _ in src.rglob(ext))
-    if count < 10:  # noqa: PLR2004
+    if count < _MIN_DOCS_REQUIRED:
         return PreflightCheck(
             name="documents",
             status="fail",
-            message=f"Too few documents ({count}), minimum 10 required",
+            message=(
+                f"Too few documents ({count}), minimum {_MIN_DOCS_REQUIRED} required"
+            ),
         )
-    if count < 50:  # noqa: PLR2004
+    if count < _MIN_DOCS_RECOMMENDED:
         return PreflightCheck(
             name="documents",
             status="warn",
-            message=f"Low document count ({count}), 50+ recommended",
+            message=(
+                f"Low document count ({count}), {_MIN_DOCS_RECOMMENDED}+ recommended"
+            ),
         )
     return PreflightCheck(
         name="documents",
@@ -564,16 +583,13 @@ def _recommend_batch_size() -> int | None:
         import torch  # noqa: PLC0415
 
         if not torch.cuda.is_available():
-            return 16
+            return _DEFAULT_BATCH_SIZE
         props = torch.cuda.get_device_properties(0)
         vram_gb = props.total_memory / (1024**3)
-        if vram_gb >= 40:  # noqa: PLR2004
-            return 128
-        if vram_gb >= 16:  # noqa: PLR2004
-            return 64
-        if vram_gb >= 8:  # noqa: PLR2004
-            return 32
-        return 16  # noqa: TRY300
+        for threshold_gb, batch_size in _BATCH_SIZE_BY_VRAM_GB:
+            if vram_gb >= threshold_gb:
+                return batch_size
+        return _DEFAULT_BATCH_SIZE  # noqa: TRY300
     except MemoryError, RecursionError:
         raise
     except Exception as exc:

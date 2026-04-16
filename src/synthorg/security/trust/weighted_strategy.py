@@ -4,7 +4,7 @@ Computes a single trust score from weighted performance factors
 and promotes/demotes based on configurable thresholds.
 """
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
 from synthorg.core.enums import ToolAccessLevel  # noqa: TC001
 from synthorg.observability import get_logger
@@ -21,6 +21,10 @@ if TYPE_CHECKING:
     from synthorg.security.trust.config import TrustConfig, TrustThreshold
 
 logger = get_logger(__name__)
+
+# Placeholder human-feedback factor: completed-task count divided by this
+# ceiling (capped at 1.0). 100 completed tasks saturates the factor.
+_TASK_VOLUME_SATURATION: Final[float] = 100.0
 
 
 class WeightedTrustStrategy:
@@ -144,12 +148,15 @@ class WeightedTrustStrategy:
                 error_factor = 1.0 - (window.tasks_failed / window.data_point_count)
                 break
 
-        # Task volume ratio (tasks completed / 100, capped at 1.0)
-        # -- placeholder for human feedback until that signal is available
+        # Task volume ratio (tasks completed / _TASK_VOLUME_SATURATION,
+        # capped at 1.0) -- placeholder for human feedback until that
+        # signal is available.
         feedback_factor = 0.0
         for window in snapshot.windows:
             if window.tasks_completed > 0:
-                feedback_factor = min(window.tasks_completed / 100.0, 1.0)
+                feedback_factor = min(
+                    window.tasks_completed / _TASK_VOLUME_SATURATION, 1.0
+                )
                 break
 
         score = (

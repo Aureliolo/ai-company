@@ -84,6 +84,9 @@ _NANO_CPUS_MULTIPLIER: Final[int] = 1_000_000_000
 _CONTAINER_WORKSPACE: Final[str] = "/workspace"
 _STOP_TIMEOUT_SECONDS: Final[int] = 5
 _DRIVE_SEPARATOR_PARTS: Final[int] = 2
+# Cap structured-log stderr captures so a stream of binary output from
+# inside a container cannot blow up our logging pipeline.
+_MAX_STDERR_LOG_CHARS: Final[int] = 200
 
 
 def _to_posix_bind_path(path: Path) -> str:
@@ -950,7 +953,6 @@ class DockerSandbox:
         stderr: str,
     ) -> None:
         """Log the execution outcome at the appropriate level."""
-        max_stderr_log = 200
         if returncode != 0:
             logger.warning(
                 DOCKER_EXECUTE_FAILED,
@@ -958,7 +960,7 @@ class DockerSandbox:
                 args=args,
                 returncode=returncode,
                 stderr_length=len(stderr),
-                stderr_head=stderr[:max_stderr_log],
+                stderr_head=stderr[:_MAX_STDERR_LOG_CHARS],
             )
         else:
             logger.debug(

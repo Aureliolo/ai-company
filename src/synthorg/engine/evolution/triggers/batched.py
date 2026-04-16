@@ -6,7 +6,7 @@ for an agent. Default interval is one day (86400 seconds).
 
 import asyncio
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
 from synthorg.observability import get_logger
 from synthorg.observability.events.evolution import (
@@ -19,6 +19,8 @@ if TYPE_CHECKING:
     from synthorg.engine.evolution.protocols import EvolutionContext
 
 logger = get_logger(__name__)
+
+_SECONDS_PER_DAY: Final[int] = 86_400
 
 
 class BatchedTrigger:
@@ -34,7 +36,7 @@ class BatchedTrigger:
     def __init__(
         self,
         *,
-        interval_seconds: int = 86400,
+        interval_seconds: int = _SECONDS_PER_DAY,
     ) -> None:
         self._interval = max(1, interval_seconds)
         self._last_run: dict[str, datetime] = {}
