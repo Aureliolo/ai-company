@@ -6,6 +6,9 @@
     "helpers:pinGitHubActionDigests",
     "docker:pinDigests"
   ],
+  "registryAliases": {
+    "dhi.io": "dhi.io"
+  },
   "pre-commit": {
     "enabled": true
   },
