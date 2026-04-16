@@ -11,7 +11,17 @@ from synthorg.observability import get_logger
 
 if TYPE_CHECKING:
     from synthorg.core.agent import AgentIdentity
-    from synthorg.engine.evolution.config import EvolutionConfig
+    from synthorg.engine.evolution.config import (
+        EvolutionConfig,
+        ShadowEvaluationConfig,
+    )
+    from synthorg.engine.evolution.guards.shadow_protocol import (
+        ShadowAgentRunner,
+        ShadowTaskProvider,
+    )
+    from synthorg.engine.evolution.guards.shadow_providers import (
+        TaskSampler,
+    )
     from synthorg.engine.evolution.protocols import (
         AdaptationAdapter,
         AdaptationGuard,
@@ -39,6 +49,8 @@ def build_evolution_service(  # noqa: PLR0913
     tracker: PerformanceTracker,
     memory_backend: MemoryBackend | None = None,
     provider: CompletionProvider | None = None,
+    shadow_runner: ShadowAgentRunner | None = None,
+    shadow_task_sampler: TaskSampler | None = None,
 ) -> EvolutionService:
     """Build a fully wired ``EvolutionService`` from configuration.
 
@@ -49,9 +61,19 @@ def build_evolution_service(  # noqa: PLR0913
         tracker: Performance tracker.
         memory_backend: Memory backend (optional).
         provider: LLM completion provider (for proposers).
+        shadow_runner: Required when ``config.guards.shadow_evaluation`` is
+            set; executes a single probe task against an identity and
+            proposal.  In production this wraps ``AgentEngine.run``.
+        shadow_task_sampler: Required when shadow evaluation is enabled
+            *and* ``task_provider == "recent_history"``.  Returns recent
+            completed tasks for the agent.
 
     Returns:
         Configured evolution service.
+
+    Raises:
+        ValueError: If shadow evaluation is enabled without the required
+            dependencies.
     """
     from synthorg.engine.evolution.service import (  # noqa: PLC0415
         EvolutionService,
@@ -65,7 +87,12 @@ def build_evolution_service(  # noqa: PLR0913
 
     trigger = _build_trigger(config, tracker=tracker)
     proposer = _build_proposer(config, provider=provider)
-    guard = _build_guard(config, identity_store=identity_store)
+    guard = _build_guard(
+        config,
+        identity_store=identity_store,
+        shadow_runner=shadow_runner,
+        shadow_task_sampler=shadow_task_sampler,
+    )
     adapters = _build_adapters(
         config,
         identity_store=identity_store,
@@ -191,9 +218,11 @@ def _build_proposer(
 def _build_guard(
     config: EvolutionConfig,
     *,
-    identity_store: IdentityVersionStore,  # noqa: ARG001
+    identity_store: IdentityVersionStore,
+    shadow_runner: ShadowAgentRunner | None,
+    shadow_task_sampler: TaskSampler | None,
 ) -> AdaptationGuard:
-    """Build guard from config."""
+    """Build guard chain from config."""
     guards: list[AdaptationGuard] = []
     guard_cfg = config.guards
 
@@ -223,21 +252,22 @@ def _build_guard(
             )
         )
 
-    if guard_cfg.shadow_evaluation:
-        from synthorg.engine.evolution.guards.shadow_evaluation import (  # noqa: PLC0415
-            ShadowEvaluationGuard,
+    if guard_cfg.shadow_evaluation is not None:
+        guards.append(
+            _build_shadow_guard(
+                config=guard_cfg.shadow_evaluation,
+                identity_store=identity_store,
+                shadow_runner=shadow_runner,
+                shadow_task_sampler=shadow_task_sampler,
+            )
         )
-
-        guards.append(ShadowEvaluationGuard())
 
     if not guards:
-        # Safe fallback: auto-approves all proposals when no guards configured.
-        # ShadowEvaluationGuard is a stub that always approves.
-        from synthorg.engine.evolution.guards.shadow_evaluation import (  # noqa: PLC0415
-            ShadowEvaluationGuard,
+        from synthorg.engine.evolution.guards.approve_all import (  # noqa: PLC0415
+            ApproveAllGuard,
         )
 
-        return ShadowEvaluationGuard()
+        return ApproveAllGuard()
 
     if len(guards) == 1:
         return guards[0]
@@ -247,6 +277,57 @@ def _build_guard(
     )
 
     return CompositeGuard(guards=tuple(guards))
+
+
+def _build_shadow_guard(
+    *,
+    config: ShadowEvaluationConfig,
+    identity_store: IdentityVersionStore,
+    shadow_runner: ShadowAgentRunner | None,
+    shadow_task_sampler: TaskSampler | None,
+) -> AdaptationGuard:
+    """Wire a real ShadowEvaluationGuard; raise if dependencies are missing."""
+    if shadow_runner is None:
+        msg = (
+            "shadow_evaluation is enabled but shadow_runner was not "
+            "provided to build_evolution_service()"
+        )
+        raise ValueError(msg)
+
+    from synthorg.engine.evolution.guards.shadow_evaluation import (  # noqa: PLC0415
+        ShadowEvaluationGuard,
+    )
+    from synthorg.engine.evolution.guards.shadow_providers import (  # noqa: PLC0415
+        ConfiguredShadowTaskProvider,
+        RecentTaskHistoryProvider,
+    )
+
+    task_provider: ShadowTaskProvider
+    if config.task_provider == "configured":
+        task_provider = ConfiguredShadowTaskProvider(config=config)
+    elif config.task_provider == "recent_history":
+        if shadow_task_sampler is None:
+            msg = (
+                "shadow_evaluation.task_provider='recent_history' but "
+                "shadow_task_sampler was not provided to "
+                "build_evolution_service()"
+            )
+            raise ValueError(msg)
+        task_provider = RecentTaskHistoryProvider(sampler=shadow_task_sampler)
+    else:
+        # Reachable only if Literal is tampered (model_copy).
+        msg = (  # type: ignore[unreachable]
+            f"Unknown shadow task provider {config.task_provider!r}; "
+            "expected 'configured' or 'recent_history'"
+        )
+        raise ValueError(msg)
+
+    return ShadowEvaluationGuard(
+        config=config,
+        task_provider=task_provider,
+        runner=shadow_runner,
+        identity_store=identity_store,
+    )
 
 
 def _build_adapters(

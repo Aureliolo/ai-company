@@ -9,6 +9,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from synthorg.core.task import Task  # noqa: TC001
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.engine.identity.store.config import (
     IdentityStoreConfig,
@@ -86,6 +87,71 @@ class AdapterConfig(BaseModel):
     prompt_template: bool = True
 
 
+class ShadowEvaluationConfig(BaseModel):
+    """Configuration for the shadow evaluation guard.
+
+    Shadow evaluation runs the adapted agent against a probe task suite
+    and compares the outcome to a baseline run before approving the
+    proposal.  The operator configures the task source, per-task
+    timeout, and the regression tolerances.
+
+    Attributes:
+        task_provider: Which task-source strategy to use.  ``configured``
+            reads ``probe_tasks``; ``recent_history`` delegates to the
+            optional ``RecentTaskHistoryProvider`` wired at build time.
+        probe_tasks: Curated sample tasks used by ``configured`` provider.
+        sample_size: Upper bound on tasks actually executed per run.
+        timeout_per_task_seconds: Hard time budget for each probe run.
+        score_regression_tolerance: Acceptable drop in mean quality
+            score (``baseline_mean - adapted_mean``); values above this
+            reject the proposal.
+        pass_rate_regression_tolerance: Acceptable drop in pass rate,
+            expressed as a fraction of the baseline rate.  When baseline
+            pass rate is zero the adapted pass rate must also be zero
+            (otherwise we have no signal either way and reject).
+        evaluator_agent_id: Identifier recorded on the decision when the
+            guard produces a verdict.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+
+    task_provider: Literal["configured", "recent_history"] = Field(
+        default="configured",
+        description="Which task-source strategy to use",
+    )
+    probe_tasks: tuple[Task, ...] = Field(
+        default=(),
+        description="Curated sample tasks (used by configured provider)",
+    )
+    sample_size: int = Field(
+        default=5,
+        ge=1,
+        le=100,
+        description="Maximum tasks executed per shadow run",
+    )
+    timeout_per_task_seconds: float = Field(
+        default=60.0,
+        gt=0.0,
+        description="Hard timeout per probe task",
+    )
+    score_regression_tolerance: float = Field(
+        default=0.05,
+        ge=0.0,
+        le=1.0,
+        description="Acceptable drop in mean quality score",
+    )
+    pass_rate_regression_tolerance: float = Field(
+        default=0.10,
+        ge=0.0,
+        le=1.0,
+        description="Acceptable fractional drop in pass rate",
+    )
+    evaluator_agent_id: NotBlankStr = Field(
+        default="shadow-evaluator",
+        description="Agent id recorded on the decision",
+    )
+
+
 class GuardConfig(BaseModel):
     """Configuration for evolution guards.
 
@@ -96,7 +162,8 @@ class GuardConfig(BaseModel):
         rollback_regression_threshold: Quality drop triggering rollback.
         rate_limit: Enable per-agent rate limiting.
         rate_limit_per_day: Max adaptations per agent per day.
-        shadow_evaluation: Enable shadow evaluation (opt-in, stub).
+        shadow_evaluation: Shadow evaluation config.  ``None`` disables
+            the guard; set a ``ShadowEvaluationConfig`` to enable.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
@@ -107,7 +174,10 @@ class GuardConfig(BaseModel):
     rollback_regression_threshold: float = Field(default=0.1, ge=0.0, le=1.0)
     rate_limit: bool = True
     rate_limit_per_day: int = Field(default=3, ge=1)
-    shadow_evaluation: bool = False
+    shadow_evaluation: ShadowEvaluationConfig | None = Field(
+        default=None,
+        description="Shadow evaluation config (None disables the guard)",
+    )
 
 
 class MemoryEvolutionConfig(BaseModel):

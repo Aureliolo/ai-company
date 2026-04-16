@@ -54,6 +54,15 @@ EVOLUTION_CONTEXT_BUILD_FAILED: Final[str] = "evolution.context.build_failed"
 EVOLUTION_CONTEXT_SNAPSHOT_FAILED: Final[str] = "evolution.context.snapshot_failed"
 EVOLUTION_CONTEXT_MEMORY_FAILED: Final[str] = "evolution.context.memory_failed"
 
+# ── Shadow evaluation events ───────────────────────────────────
+
+EVOLUTION_SHADOW_STARTED: Final[str] = "evolution.shadow.started"
+EVOLUTION_SHADOW_COMPLETED: Final[str] = "evolution.shadow.completed"
+EVOLUTION_SHADOW_REGRESSION: Final[str] = "evolution.shadow.regression"
+EVOLUTION_SHADOW_TASK_FAILED: Final[str] = "evolution.shadow.task_failed"
+EVOLUTION_SHADOW_EMPTY_SUITE: Final[str] = "evolution.shadow.empty_suite"
+EVOLUTION_SHADOW_INCONCLUSIVE: Final[str] = "evolution.shadow.inconclusive"
+
 # ── Factory/config errors ──────────────────────────────────────
 
 EVOLUTION_INVALID_STORE_TYPE: Final[str] = "evolution.store.invalid_type"

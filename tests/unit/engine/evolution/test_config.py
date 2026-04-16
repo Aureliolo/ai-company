@@ -26,7 +26,7 @@ class TestEvolutionConfigDefaults:
         assert config.guards.review_gate is True
         assert config.guards.rollback is True
         assert config.guards.rate_limit is True
-        assert config.guards.shadow_evaluation is False
+        assert config.guards.shadow_evaluation is None
         assert config.identity_store.type == "append_only"
 
     @pytest.mark.unit
