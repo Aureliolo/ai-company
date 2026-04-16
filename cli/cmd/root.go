@@ -154,15 +154,22 @@ func applyTunables(cmd *cobra.Command, opts *GlobalOpts) error {
 
 	if tun.CustomRegistry {
 		opts.SkipVerify = true
-		if !opts.Quiet {
-			warnOut := ui.NewUIWithOptions(cmd.ErrOrStderr(), opts.UIOptions())
-			warnOut.Warn(
-				"Custom registry detected (registry_host/image_repo_prefix/dhi_registry/" +
-					"postgres_image_tag/nats_image_tag differs from default). Image signature " +
-					"and SLSA provenance verification are DISABLED -- you are responsible for " +
-					"the trust of this deployment. Unset the override or run " +
-					"'synthorg config unset <key>' to restore verification.")
-		}
+		// Safety-critical warnings ignore --quiet / --json. The operator
+		// opted into a custom registry by setting the override, and the
+		// trust model demands a durable audit trail: a silent skip here
+		// would let a scripted pipeline pull unsigned images without any
+		// record. Write the warning with minimal UI options (no colour,
+		// no spinners) so scripts that parse stderr still see it.
+		warnOpts := opts.UIOptions()
+		warnOpts.Quiet = false
+		warnOpts.JSON = false
+		warnOut := ui.NewUIWithOptions(cmd.ErrOrStderr(), warnOpts)
+		warnOut.Warn(
+			"Custom registry detected (registry_host/image_repo_prefix/dhi_registry/" +
+				"postgres_image_tag/nats_image_tag differs from default). Image signature " +
+				"and SLSA provenance verification are DISABLED -- you are responsible for " +
+				"the trust of this deployment. Unset the override or run " +
+				"'synthorg config unset <key>' to restore verification.")
 	}
 	return nil
 }

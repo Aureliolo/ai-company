@@ -348,6 +348,13 @@ func (s State) validate() error {
 		if len(s.PostgresPassword) < 32 {
 			return fmt.Errorf("postgres_password must be at least 32 characters, got %d", len(s.PostgresPassword))
 		}
+		// Reject NUL/CR/LF/TAB. The password is interpolated into the
+		// Postgres DSN, written to the compose.yml env block, and
+		// forwarded to docker -- a stray newline could split the DSN or
+		// produce a YAML value that deserializes to something else.
+		if strings.ContainsAny(s.PostgresPassword, "\x00\n\r\t") {
+			return fmt.Errorf("postgres_password must not contain control characters (NUL, CR, LF, TAB)")
+		}
 	}
 	if s.FineTuning && !s.Sandbox {
 		return fmt.Errorf("fine_tuning requires sandbox to be enabled")

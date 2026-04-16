@@ -237,6 +237,34 @@ func validateParams(p Params) error {
 	if !imageTagPattern.MatchString(p.ImageTag) {
 		return fmt.Errorf("invalid image tag %q: must match %s", p.ImageTag, imageTagPattern.String())
 	}
+	// Third-party tags flow from Tunables (env/state) straight into the
+	// Postgres/NATS image references in compose.yml. ResolveTunables
+	// already validates them at load time, but validateParams is the
+	// last gate before string interpolation so we re-check here for
+	// defense-in-depth -- a caller who bypassed ResolveTunables (e.g. a
+	// test that builds Params by hand) must not be able to inject
+	// colons or semicolons into the generated YAML.
+	if !imageTagPattern.MatchString(p.PostgresImageTag) {
+		return fmt.Errorf("invalid postgres image tag %q: must match %s", p.PostgresImageTag, imageTagPattern.String())
+	}
+	if !imageTagPattern.MatchString(p.NATSImageTag) {
+		return fmt.Errorf("invalid nats image tag %q: must match %s", p.NATSImageTag, imageTagPattern.String())
+	}
+	// Registry hosts flow into the generated image reference prefix. A
+	// malformed host (spaces, shell metacharacters) would produce a YAML
+	// line that docker-compose rejects; reject early with a clearer error.
+	if !config.IsValidRegistryHost(p.RegistryHost) {
+		return fmt.Errorf("invalid registry host %q", p.RegistryHost)
+	}
+	if !config.IsValidRegistryHost(p.DHIRegistry) {
+		return fmt.Errorf("invalid dhi registry %q", p.DHIRegistry)
+	}
+	if !config.IsValidImageRepoPrefix(p.ImageRepoPrefix) {
+		return fmt.Errorf("invalid image repo prefix %q", p.ImageRepoPrefix)
+	}
+	if err := config.ValidateNATSURL(p.NATSURL); err != nil {
+		return fmt.Errorf("invalid NATS URL %q: %w", p.NATSURL, err)
+	}
 	if p.LogLevel != "" && !allowedLogLevels[p.LogLevel] {
 		return fmt.Errorf("invalid log level %q: must be one of debug, info, warn, error", p.LogLevel)
 	}

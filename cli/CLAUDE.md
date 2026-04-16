@@ -103,8 +103,8 @@ No corresponding flag -- settable via env var or `config set`:
 | Subcommand | Description |
 |------------|-------------|
 | `show` | Display all current settings (default when no subcommand) |
-| `get <key>` | Get a single config value (20 gettable keys) |
-| `set <key> <value>` | Set a config value (19 settable keys, compose-affecting keys trigger regeneration) |
+| `get <key>` | Get a single config value (37 gettable keys) |
+| `set <key> <value>` | Set a config value (35 settable keys, compose-affecting keys trigger regeneration) |
 | `unset <key>` | Reset a key to its default value |
 | `list` | Show all keys with resolved value and source (env/config/default) |
 | `path` | Print the config file path |
@@ -112,7 +112,16 @@ No corresponding flag -- settable via env var or `config set`:
 
 Settable keys: `auto_apply_compose`, `auto_cleanup`, `auto_pull`, `auto_restart`, `auto_update_cli`, `backend_port`, `channel`, `color`, `docker_sock`, `fine_tuning`, `hints`, `image_tag`, `log_level`, `output`, `sandbox`, `telemetry_opt_in`, `timestamps`, `web_port`, plus the tunables: `registry_host`, `image_repo_prefix`, `dhi_registry`, `postgres_image_tag`, `nats_image_tag`, `default_nats_url`, `default_nats_stream_prefix`, `backup_create_timeout`, `backup_restore_timeout`, `health_check_timeout`, `self_update_http_timeout`, `self_update_api_timeout`, `tuf_fetch_timeout`, `attestation_http_timeout`, `max_api_response_bytes`, `max_binary_bytes`, `max_archive_entry_bytes`. Keys that affect Docker compose (`backend_port`, `web_port`, `sandbox`, `docker_sock`, `fine_tuning`, `image_tag`, `log_level`, `telemetry_opt_in`, `registry_host`, `image_repo_prefix`, `dhi_registry`, `postgres_image_tag`, `nats_image_tag`, `default_nats_url`, `default_nats_stream_prefix`) trigger automatic `compose.yml` regeneration.
 
-Overriding any of `registry_host`, `image_repo_prefix`, `dhi_registry`, `postgres_image_tag`, or `nats_image_tag` transfers trust to the operator: the CLI disables image signature and SLSA provenance verification on that invocation and writes a one-shot warning to stderr (suppressed under `--quiet`). The pinned SAN regex and DHI digest map are bound to the default values, so verification cannot succeed against a custom deployment target.
+Overriding any of `registry_host`, `image_repo_prefix`, `dhi_registry`, `postgres_image_tag`, or `nats_image_tag` transfers trust to the operator: the CLI disables image signature and SLSA provenance verification **for that invocation only** and writes a one-shot warning to stderr on **every** invocation where the override is active. The warning is **not** suppressed under `--quiet` or `--json` -- a safety-critical notice must appear in the audit trail of every scripted run. The pinned SAN regex and DHI digest map are bound to the default values, so verification cannot succeed against a custom deployment target.
+
+### Tunable value formats
+
+- **Durations**: Go `time.ParseDuration` format. Examples: `30s`, `5m`, `1h`, `500ms`. Values must be strictly positive.
+- **Byte sizes**: plain integers (`1048576` = 1 MiB) or suffixed values. IEC binary suffixes: `B`, `KiB`, `MiB`, `GiB` (powers of 1024). SI decimal suffixes: `KB`, `MB`, `GB` (powers of 1000). Case-insensitive. Rejected: negative, zero, or values exceeding the 1 GiB runtime ceiling.
+- **Registry hosts**: DNS hostname, optionally with `:port`. Matches `[a-zA-Z0-9][a-zA-Z0-9.-]*(:[0-9]+)?`.
+- **Image tags**: Docker tag grammar. Matches `[a-zA-Z0-9][a-zA-Z0-9._-]*`.
+- **NATS URLs**: must use `nats://`, `tls://`, or `nats+tls://` scheme and include a host.
+- **NATS stream prefix**: uppercase alphanumerics with `_` or `-`. Matches `[A-Z0-9][A-Z0-9_-]*`.
 
 ## Per-Command Flags
 

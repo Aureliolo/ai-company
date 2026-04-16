@@ -5,6 +5,10 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Aureliolo/synthorg/cli/internal/config"
+	"github.com/Aureliolo/synthorg/cli/internal/health"
+	"github.com/Aureliolo/synthorg/cli/internal/selfupdate"
+	"github.com/Aureliolo/synthorg/cli/internal/verify"
 	"github.com/spf13/cobra"
 )
 
@@ -19,7 +23,31 @@ func newTestCmd() (*cobra.Command, *bytes.Buffer) {
 	return c, errBuf
 }
 
+// withDefaultTunables registers a t.Cleanup that restores verify,
+// selfupdate, and health package-level state to their compiled-in
+// defaults at test end. applyTunables() mutates those vars, and without
+// this reset later tests in the same process observe the bleed-through
+// and fail non-deterministically (e.g. patchComposeImageRefs expects
+// the default ghcr.io registry after a test that set a custom one).
+func withDefaultTunables(t *testing.T) {
+	t.Helper()
+	d := config.DefaultTunables()
+	t.Cleanup(func() {
+		verify.Configure(
+			d.RegistryHost, d.ImageRepoPrefix,
+			d.DHIRegistry, d.PostgresImageTag, d.NATSImageTag,
+			d.TUFFetchTimeout, d.AttestationHTTPTimeout,
+		)
+		selfupdate.Configure(
+			d.MaxAPIResponseBytes, d.MaxBinaryBytes, d.MaxArchiveEntryBytes,
+			d.SelfUpdateHTTPTimeout, d.SelfUpdateAPITimeout, d.TUFFetchTimeout,
+		)
+		health.Configure(d.HealthCheckTimeout)
+	})
+}
+
 func TestApplyTunables_DefaultRegistryKeepsVerification(t *testing.T) {
+	withDefaultTunables(t)
 	c, errBuf := newTestCmd()
 	opts := &GlobalOpts{Hints: "auto"}
 
@@ -40,6 +68,7 @@ func TestApplyTunables_DefaultRegistryKeepsVerification(t *testing.T) {
 func TestApplyTunables_CustomRegistryDisablesVerification(t *testing.T) {
 	t.Setenv("SYNTHORG_REGISTRY_HOST", "my.registry.example")
 
+	withDefaultTunables(t)
 	c, errBuf := newTestCmd()
 	opts := &GlobalOpts{Hints: "auto"}
 
@@ -57,9 +86,10 @@ func TestApplyTunables_CustomRegistryDisablesVerification(t *testing.T) {
 	}
 }
 
-func TestApplyTunables_CustomRegistryQuietSuppressesWarning(t *testing.T) {
+func TestApplyTunables_CustomRegistryWarningIgnoresQuiet(t *testing.T) {
 	t.Setenv("SYNTHORG_DHI_REGISTRY", "private.docker.example")
 
+	withDefaultTunables(t)
 	c, errBuf := newTestCmd()
 	opts := &GlobalOpts{Hints: "auto", Quiet: true}
 
@@ -69,7 +99,27 @@ func TestApplyTunables_CustomRegistryQuietSuppressesWarning(t *testing.T) {
 	if !opts.SkipVerify {
 		t.Error("SkipVerify = false on custom registry; want true even when --quiet")
 	}
-	if strings.Contains(errBuf.String(), "DISABLED") {
-		t.Errorf("--quiet should suppress trust-transfer warning; stderr = %q", errBuf.String())
+	// Safety-critical warning MUST fire even under --quiet so that
+	// scripted pipelines cannot silently disable verification.
+	if !strings.Contains(errBuf.String(), "DISABLED") {
+		t.Errorf("--quiet must not suppress trust-transfer warning; stderr = %q", errBuf.String())
+	}
+}
+
+func TestApplyTunables_CustomRegistryWarningIgnoresJSON(t *testing.T) {
+	t.Setenv("SYNTHORG_REGISTRY_HOST", "my.registry.example")
+
+	withDefaultTunables(t)
+	c, errBuf := newTestCmd()
+	opts := &GlobalOpts{Hints: "auto", JSON: true}
+
+	if err := applyTunables(c, opts); err != nil {
+		t.Fatalf("applyTunables: %v", err)
+	}
+	if !opts.SkipVerify {
+		t.Error("SkipVerify = false on custom registry; want true")
+	}
+	if !strings.Contains(errBuf.String(), "DISABLED") {
+		t.Errorf("--json must not suppress trust-transfer warning; stderr = %q", errBuf.String())
 	}
 }

@@ -171,6 +171,12 @@ func TestParseBytes(t *testing.T) {
 		{"-1", 0, true},
 		{"1XB", 0, true},
 		{"abc", 0, true},
+		// Overflow: value larger than int64 capacity. Must be rejected
+		// safely (not silently wrapped to a negative int64).
+		{"999999999999GiB", 0, true},
+		{"9999999999999999999", 0, true},
+		// Ceiling: 2 GiB exceeds the 1 GiB runtime ceiling.
+		{"2GiB", 0, true},
 	}
 	for _, tc := range cases {
 		t.Run(tc.in, func(t *testing.T) {

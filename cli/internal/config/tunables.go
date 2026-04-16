@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"math"
 	"os"
 	"strconv"
 	"strings"
@@ -240,16 +241,22 @@ func resolveBytes(envName string, stateValue, def int64) (int64, error) {
 
 // ParseBytes parses a human-readable byte count. Accepts plain integers
 // ("1048576"), IEC binary suffixes (B, KiB, MiB, GiB), and SI decimal
-// suffixes (KB, MB, GB). Case-insensitive. Rejects negative values.
+// suffixes (KB, MB, GB). Case-insensitive. Rejects negative values and
+// inputs large enough to overflow int64 (computed safely without silently
+// wrapping around negative).
 func ParseBytes(s string) (int64, error) {
 	s = strings.TrimSpace(s)
 	if s == "" {
 		return 0, fmt.Errorf("empty value")
 	}
 	// Split trailing alphabetic suffix from the leading numeric part.
+	// Only digits and a single decimal point may appear; a leading '-'
+	// or any other character fails parsing (rather than producing a
+	// negative number that would be rejected later -- catching it here
+	// produces a clearer error and avoids float edge cases).
 	cut := len(s)
 	for i, r := range s {
-		if (r >= '0' && r <= '9') || r == '.' || r == '-' {
+		if (r >= '0' && r <= '9') || r == '.' {
 			continue
 		}
 		cut = i
@@ -283,5 +290,18 @@ func ParseBytes(s string) (int64, error) {
 	default:
 		return 0, fmt.Errorf("unknown unit %q", unit)
 	}
-	return int64(n * mult), nil
+	// Reject values that would overflow int64 or exceed the runtime
+	// ceiling. Compare in float64 space BEFORE the cast so a value like
+	// "999999999999GiB" does not silently wrap to a negative int64.
+	// math.MaxInt64 is 9.223e18 which is exactly representable by
+	// float64 up to unit spacing, so the comparison is conservative.
+	product := n * mult
+	if product > float64(math.MaxInt64) {
+		return 0, fmt.Errorf("size %s overflows int64", s)
+	}
+	result := int64(product)
+	if result > MaxBytesCeiling {
+		return 0, fmt.Errorf("size %s exceeds ceiling %d bytes (1 GiB)", s, MaxBytesCeiling)
+	}
+	return result, nil
 }
