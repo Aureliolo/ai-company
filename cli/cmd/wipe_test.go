@@ -304,12 +304,10 @@ func TestRemoveDataDirExceptSelf_BinaryOutsideDataDir(t *testing.T) {
 }
 
 func TestRemoveDataDirExceptSelf_BinaryInsideDataDir(t *testing.T) {
-	// Build a fake "data dir" that contains the path os.Executable
-	// returns -- by symlinking/parenting around the real binary.
-	// Easier: stage a sibling file and verify the helper used by
-	// uninstall (removeAllExcept) preserves files-it-should-keep when
-	// invoked the same way the wipe path invokes it. This mirrors the
-	// post-skip layout without requiring binary path forgery.
+	// Drive the full removeDataDirExceptSelf code path via its testable
+	// inner helper (removeDataDirExceptBinary), so the os.Executable
+	// ->EvalSymlinks->filepath.Rel branch selection is actually
+	// exercised instead of stubbed by calling removeAllExcept directly.
 	dataDir := t.TempDir()
 	keep := filepath.Join(dataDir, "bin", "synthorg-fake.exe")
 	if err := os.MkdirAll(filepath.Dir(keep), 0o700); err != nil {
@@ -330,12 +328,8 @@ func TestRemoveDataDirExceptSelf_BinaryInsideDataDir(t *testing.T) {
 		t.Fatalf("seed log: %v", err)
 	}
 
-	// Use the shared primitive directly with the synthetic kept path,
-	// since removeDataDirExceptSelf hard-codes os.Executable for its
-	// kept-path target. removeAllExcept is the function that does the
-	// actual work and is what we need to lock down here.
-	if err := removeAllExcept(dataDir, keep); err != nil {
-		t.Fatalf("removeAllExcept: %v", err)
+	if err := removeDataDirExceptBinary(dataDir, keep); err != nil {
+		t.Fatalf("removeDataDirExceptBinary: %v", err)
 	}
 	if _, err := os.Stat(keep); err != nil {
 		t.Errorf("kept binary should still exist: %v", err)
@@ -345,6 +339,30 @@ func TestRemoveDataDirExceptSelf_BinaryInsideDataDir(t *testing.T) {
 	}
 	if _, err := os.Stat(logsFile); !errors.Is(err, os.ErrNotExist) {
 		t.Errorf("logs file should be removed, got err=%v", err)
+	}
+}
+
+func TestRemoveDataDirExceptBinary_BinaryOutsideDataDir(t *testing.T) {
+	// When the binary path is NOT under dataDir, removeDataDirExceptBinary
+	// must behave identically to os.RemoveAll(dataDir).
+	dataDir := t.TempDir()
+	otherDir := t.TempDir()
+	selfPath := filepath.Join(otherDir, "synthorg-fake.exe")
+	if err := os.WriteFile(selfPath, []byte("binary"), 0o755); err != nil {
+		t.Fatalf("seed binary: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dataDir, "config.json"), []byte("{}"), 0o600); err != nil {
+		t.Fatalf("seed config: %v", err)
+	}
+
+	if err := removeDataDirExceptBinary(dataDir, selfPath); err != nil {
+		t.Fatalf("removeDataDirExceptBinary: %v", err)
+	}
+	if _, err := os.Stat(dataDir); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("data dir should be gone, got err=%v", err)
+	}
+	if _, err := os.Stat(selfPath); err != nil {
+		t.Errorf("binary outside data dir should still exist: %v", err)
 	}
 }
 

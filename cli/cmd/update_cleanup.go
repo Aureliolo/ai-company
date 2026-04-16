@@ -241,7 +241,7 @@ func collectCurrentImageIDs(ctx context.Context, info docker.Info, state config.
 		ref := images.RefForService(svc, state.ImageTag, verifiedDigests)
 		id, err := images.InspectID(ctx, info.DockerPath, ref)
 		if err != nil {
-			if isNoSuchImageError(err) {
+			if images.IsImageNotFoundErr(err) {
 				return nil, fmt.Errorf("resolving %s: %w", svc, errImageNotLocal)
 			}
 			return nil, fmt.Errorf("resolving image ID for %s: %w", svc, err)

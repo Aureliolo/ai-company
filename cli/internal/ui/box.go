@@ -71,7 +71,7 @@ func (u *UI) boxWithTitleStyle(title string, lines []string, titleStyle lipgloss
 	innerW := max(maxContentW, titleW+2, 18)
 
 	u.renderBoxTopStyled(safeTitle, titleW, innerW, titleStyle)
-	u.renderBoxContent(sanitized, innerW)
+	u.renderBoxContentStyled(sanitized, innerW, titleStyle)
 	u.renderBoxBottomStyled(innerW, titleStyle)
 }
 
@@ -103,8 +103,18 @@ func (u *UI) renderBoxTopStyled(title string, titleW, innerW int, titleStyle lip
 	_, _ = fmt.Fprintln(u.w, top)
 }
 
-// renderBoxContent prints the content lines with vertical borders.
+// renderBoxContent prints the content lines with muted vertical borders.
+// Used by the default Box() variant where title + chrome share the brand
+// style and content borders stay subdued.
 func (u *UI) renderBoxContent(lines []string, innerW int) {
+	u.renderBoxContentStyled(lines, innerW, u.muted)
+}
+
+// renderBoxContentStyled prints content lines with vertical borders drawn
+// in the supplied style. Used by BoxError/BoxWarn/BoxSuccess so the whole
+// frame (top, sides, bottom) reads as a single coloured unit rather than
+// a red title on grey chrome.
+func (u *UI) renderBoxContentStyled(lines []string, innerW int, borderStyle lipgloss.Style) {
 	for _, line := range lines {
 		pad := max(innerW-lipgloss.Width(line), 0)
 		if u.plain {
@@ -112,8 +122,8 @@ func (u *UI) renderBoxContent(lines []string, innerW int) {
 		} else {
 			const vt = "\u2502"
 			_, _ = fmt.Fprintf(u.w, "  %s %s%s %s\n",
-				u.muted.Render(vt), line,
-				strings.Repeat(" ", pad), u.muted.Render(vt))
+				borderStyle.Render(vt), line,
+				strings.Repeat(" ", pad), borderStyle.Render(vt))
 		}
 	}
 }

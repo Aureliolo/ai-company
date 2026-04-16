@@ -272,7 +272,7 @@ def _postgres_config_from_url(db_url: str) -> PostgresConfig:
         ssl_kwargs["ssl_mode"] = ssl_override
 
     return PostgresConfig(
-        host=parsed.hostname,
+        host=unquote(parsed.hostname),
         port=parsed.port or 5432,
         database=unquote(database),
         username=unquote(parsed.username),
@@ -1250,9 +1250,9 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
             # path, so default artifact storage to /data (the standard
             # data volume in the CLI compose template) when not set.
             if artifact_storage is None:
-                artifact_dir_str = (
-                    os.environ.get("SYNTHORG_ARTIFACT_DIR") or "/data"
-                ).strip()
+                artifact_dir_str = os.environ.get("SYNTHORG_ARTIFACT_DIR", "").strip()
+                if not artifact_dir_str:
+                    artifact_dir_str = "/data"
                 artifact_storage = FileSystemArtifactStorage(
                     data_dir=Path(artifact_dir_str),
                 )

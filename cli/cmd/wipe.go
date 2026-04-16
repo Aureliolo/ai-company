@@ -243,12 +243,21 @@ func selfPathInside(dataDir string) bool {
 // produces the same observable outcome as a plain RemoveAll while
 // keeping a single, platform-agnostic implementation.
 func removeDataDirExceptSelf(dataDir string) error {
-	dataDirClean := filepath.Clean(dataDir)
-
 	selfPath, err := os.Executable()
 	if err != nil {
-		return os.RemoveAll(dataDirClean)
+		return os.RemoveAll(filepath.Clean(dataDir))
 	}
+	return removeDataDirExceptBinary(dataDir, selfPath)
+}
+
+// removeDataDirExceptBinary is the testable core of
+// removeDataDirExceptSelf: given the path to the binary-to-preserve,
+// wipe everything under dataDir except that binary (and its ancestor
+// dirs). Split out so tests can exercise the inside-data-dir branch
+// without needing to forge os.Executable's return value.
+func removeDataDirExceptBinary(dataDir, selfPath string) error {
+	dataDirClean := filepath.Clean(dataDir)
+
 	if resolved, rErr := filepath.EvalSymlinks(selfPath); rErr == nil {
 		selfPath = resolved
 	}

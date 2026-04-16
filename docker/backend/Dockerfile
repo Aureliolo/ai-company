@@ -65,15 +65,58 @@ RUN mkdir -p /data/logs /data/memory && chown -R 65532:65532 /data
 USER build
 
 # ---------------------------------------------------------------------------
-# Atlas CLI: required by the Postgres backend's migrate() path. The
-# upstream binary at /atlas is a fully static ELF (verified via
-# `ldd /atlas` -> "Not a valid dynamic program"), so it has no
-# interpreter or libc dependency and runs unmodified on the apko Wolfi
-# distroless runtime. Pinned by tag + digest; renovate keeps the digest
-# fresh on the same tag stream.
+# Atlas CLI: required by the Postgres backend's migrate() path. We
+# download the static binary directly from Atlas's release CDN rather
+# than basing a stage on arigaio/atlas:* because the Docker image tags
+# are not consistently rebuilt when upstream ships Go stdlib security
+# patches. Pinning to a versioned URL plus per-arch SHA256 keeps the
+# build reproducible and renovate-trackable.
+#
+# Renovate bumps `ATLAS_VERSION` via the `github-releases` datasource
+# (see `customManagers` in renovate.json) when ariga/atlas tags a new
+# release. After that bump, update both ATLAS_SHA256_* values by
+# running `curl -sL <url> | sha256sum` against the new versioned URLs
+# and committing alongside the version bump. Go stdlib CVEs waived in
+# .github/.trivyignore.yaml with a short expiration so they are
+# auto-revisited when upstream ships v1.3.0.
 # ---------------------------------------------------------------------------
-# renovate: datasource=docker depName=arigaio/atlas
-FROM arigaio/atlas:1.2.0-community-alpine@sha256:424b2f7ccd42f3b4addb30f6e37a188a4325d4829fc8961951d02d342c9c6abb AS atlas
+FROM debian:13.2-slim@sha256:7e490910eea2861b9664577a96b54ce68ea3e02ce7f51d89cb0103a6f9c213e0 AS atlas
+
+# renovate: datasource=github-releases depName=ariga/atlas
+ARG ATLAS_VERSION=v1.2.0
+ARG ATLAS_SHA256_AMD64=19a1f09eaa5469011d2cfb07cd8bdcaa5bb39fbf7c31bd63a60ba9d9aa7f562d
+ARG ATLAS_SHA256_ARM64=8f7f89dd977a85ffe9be66fe157ce462a03036ef67a229ce8a39c3b1856e53f9
+ARG TARGETARCH
+
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+
+# DL3008: pinning apt package versions in a throwaway builder stage that
+#         never ships to the final image adds maintenance cost without
+#         security benefit -- the Atlas binary itself is pinned by
+#         per-arch SHA256 below, which is the actual trust boundary.
+# hadolint ignore=DL3008
+RUN set -euo pipefail; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends ca-certificates curl file; \
+    rm -rf /var/lib/apt/lists/*; \
+    case "${TARGETARCH:-amd64}" in \
+        amd64) ATLAS_SHA256="${ATLAS_SHA256_AMD64}" ;; \
+        arm64) ATLAS_SHA256="${ATLAS_SHA256_ARM64}" ;; \
+        *) echo "Unsupported TARGETARCH=${TARGETARCH}" >&2; exit 1 ;; \
+    esac; \
+    curl -fsSL --retry 3 \
+        "https://release.ariga.io/atlas/atlas-community-linux-${TARGETARCH:-amd64}-${ATLAS_VERSION}" \
+        -o /atlas; \
+    echo "${ATLAS_SHA256}  /atlas" | sha256sum -c -; \
+    chmod +x /atlas; \
+    if ldd /atlas 2>&1 | grep -Eq 'ld-linux|libc\.so|=> /'; then \
+        echo "ERROR: /atlas is dynamically linked; incompatible with the distroless runtime." >&2; \
+        exit 1; \
+    fi; \
+    file /atlas | grep -q "statically linked" || { \
+        echo "ERROR: /atlas is not statically linked per file(1)." >&2; \
+        exit 1; \
+    }
 
 # ---------------------------------------------------------------------------
 # Stage 2 -- Runtime (apko-composed Wolfi base: no shell, no package manager)

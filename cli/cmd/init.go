@@ -766,7 +766,7 @@ func writeNATSConfigIfNeeded(state config.State, safeDir string) error {
 		}
 		return nil
 	}
-	if err := os.WriteFile(confPath, []byte(compose.NATSConfigContent), 0o600); err != nil {
+	if err := atomicWriteFile(confPath, []byte(compose.NATSConfigContent), safeDir); err != nil {
 		return fmt.Errorf("writing nats.conf: %w", err)
 	}
 	return nil

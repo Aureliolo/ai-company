@@ -85,6 +85,9 @@ services:
       SYNTHORG_HOST: "${SYNTHORG_HOST:-0.0.0.0}"
       SYNTHORG_PORT: "${SYNTHORG_PORT:-3001}"
       SYNTHORG_DATABASE_URL: "postgresql://synthorg:${POSTGRES_PASSWORD}@postgres:5432/synthorg"
+      # Local docker-network postgres runs plaintext inside the bridge.
+      # For production, override to `verify-full` with proper certs.
+      SYNTHORG_POSTGRES_SSL_MODE: "disable"
       SYNTHORG_MEMORY_DIR: "/data/memory"
       SYNTHORG_PERSISTENCE_BACKEND: "postgres"
       SYNTHORG_BUS_BACKEND: "${SYNTHORG_BUS_BACKEND:-nats}"

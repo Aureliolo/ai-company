@@ -123,7 +123,7 @@ func parseImageList(raw string) []LocalImage {
 func InspectID(ctx context.Context, dockerPath, ref string) (string, error) {
 	out, err := docker.RunCmd(ctx, dockerPath, "image", "inspect", ref, "--format", "{{.ID}}")
 	if err != nil {
-		if isImageNotFoundErr(err) {
+		if IsImageNotFoundErr(err) {
 			return "", nil
 		}
 		return "", err
@@ -131,10 +131,10 @@ func InspectID(ctx context.Context, dockerPath, ref string) (string, error) {
 	return strings.TrimSpace(out), nil
 }
 
-// isImageNotFoundErr reports whether err is docker's "No such image"
+// IsImageNotFoundErr reports whether err is docker's "No such image"
 // response. Matched via the stderr string because docker CLI does not
 // surface a structured error code for this case.
-func isImageNotFoundErr(err error) bool {
+func IsImageNotFoundErr(err error) bool {
 	if err == nil {
 		return false
 	}

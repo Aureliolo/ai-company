@@ -327,6 +327,7 @@ type statusSnapshot struct {
 	persistenceWired  bool
 	messageBusWired   bool
 	expectsPersistent bool
+	expectsMessageBus bool
 }
 
 // statusLevel encodes the overall verdict for the top banner. Order
@@ -355,6 +356,7 @@ func gatherStatusSnapshot(ctx context.Context, info docker.Info, safeDir string,
 	snap := statusSnapshot{
 		servicesFilterEmpty: statusServices == "",
 		expectsPersistent:   state.PersistenceBackend != "",
+		expectsMessageBus:   state.BusBackend == "nats",
 	}
 
 	psOut, err := docker.ComposeExecOutput(ctx, info, safeDir, "ps", "--format", "json")
@@ -413,7 +415,7 @@ func computeVerdict(snap statusSnapshot) statusVerdict {
 			restarting++
 		}
 	}
-	if total == 0 && snap.containerErr == nil {
+	if total == 0 && snap.containerErr == nil && snap.servicesFilterEmpty {
 		if v.level < statusLevelCritical {
 			v.level = statusLevelCritical
 		}
@@ -453,7 +455,7 @@ func computeVerdict(snap statusSnapshot) statusVerdict {
 			v.issues = append(v.issues, "persistence backend not wired (controllers will return 503)")
 			v.hints = append(v.hints, "Backend env or DB URL is wrong: check synthorg logs backend for 'persistence' warnings")
 		}
-		if !snap.messageBusWired {
+		if snap.expectsMessageBus && !snap.messageBusWired {
 			if v.level < statusLevelDegraded {
 				v.level = statusLevelDegraded
 			}

@@ -169,12 +169,29 @@ When `--persistence-backend postgres` is selected, `synthorg init`:
 2. Extends the `data-init` helper (see above) to also chown `synthorg-pgdata` to `70:70` with mode `0700`.
 3. Generates a 32-byte URL-safe random password via `crypto/rand` and persists it to `config.json` (`postgres_password`). Re-init preserves the existing password to avoid breaking the running container.
 4. Wires `SYNTHORG_DATABASE_URL=postgresql://synthorg:<password>@postgres:5432/synthorg` into the backend container's environment. The SQLite-only `SYNTHORG_DB_PATH` variable is omitted.
-5. Declares `depends_on: postgres: condition: service_healthy` on the backend service so backend startup blocks until Postgres accepts connections.
+5. Sets `SYNTHORG_POSTGRES_SSL_MODE=disable` on the backend because the local DHI postgres inside the docker bridge runs plaintext. Override to `verify-full` for production deployments where TLS terminates at Postgres with trusted certs.
+6. Declares `depends_on: postgres: condition: service_healthy` on the backend service so backend startup blocks until Postgres accepts connections.
+
+Backend auto-wire precedence (`src/synthorg/api/app.py`): when both `SYNTHORG_DATABASE_URL` and `SYNTHORG_DB_PATH` are present, `SYNTHORG_DATABASE_URL` wins and Postgres is initialized; the SQLite path is ignored. A malformed URL raises loudly at startup rather than silently falling back to a no-persistence install.
 
 **Interactive mode (TUI)** defaults to PostgreSQL + NATS; **non-interactive mode** defaults to SQLite + internal bus. Use `--persistence-backend sqlite` / `--bus-backend internal` in flags to override.
 
-`synthorg start` brings up Postgres first (via compose ordering), then the backend applies Atlas migrations on connection. `synthorg stop` preserves `synthorg-pgdata` unless `--volumes` is passed. `synthorg status --wide` reports Postgres container health plus the `synthorg-pgdata` volume size.
+`synthorg start` brings up Postgres first (via compose ordering), then the backend applies Atlas migrations on connection. The Atlas CLI binary is downloaded at image-build time from `release.ariga.io/atlas/atlas-community-linux-${TARGETARCH}-latest` with a per-arch SHA256 lock pinned in `docker/backend/Dockerfile` (ATLAS_SHA256_AMD64 / ATLAS_SHA256_ARM64). This matches what the CI `ariga/setup-atlas` action resolves and ensures security rebuilds of Atlas (patched Go stdlib) are picked up when the lock is updated. The static binary is copied into the distroless runtime at `/usr/local/bin/atlas` so `persistence.migrate()` can shell out without needing a package manager. `synthorg stop` preserves `synthorg-pgdata` unless `--volumes` is passed. `synthorg status --wide` reports Postgres container health plus the `synthorg-pgdata` volume size.
 
 DHI images are verified before pulling via cosign ECDSA signature + SLSA v1 provenance attestation + Rekor transparency log. Verification results are cached in `config.json` (`verified_digests`) and invalidated when Renovate bumps the pinned index digest.
 
 Port layout: `3000` web / `3001` backend / `3002` postgres / `3003` NATS client. `generate.go` validates port collisions: web vs backend always; postgres vs web/backend/NATS when postgres enabled; NATS vs web/backend when distributed bus mode is active.
+
+### NATS configuration file
+
+When `--bus-backend nats` is selected, `synthorg init` writes `nats.conf` next to the generated `compose.yml` and the NATS service bind-mounts it at `/etc/nats/nats.conf` (read-only). The canonical config content lives in `cli/internal/compose/nats_config.go` (`NATSConfigContent`) and currently sets `max_payload: 16MB` -- sized for full LLM agent outputs and meeting transcripts while staying well under NATS's 64MB ceiling. The helper `writeNATSConfigIfNeeded` keeps the file in sync on every compose write (init, start's digest pin rewrite, `config set`, update's compose refresh) and removes a stale `nats.conf` when switching back to the internal bus.
+
+### Status banner verdict levels
+
+`synthorg status` renders a top-of-screen verdict banner computed by `computeVerdict()` in `cli/cmd/status.go`:
+
+- `OK` -- collapses to a single green "All systems operational" line; the happy path stays compact.
+- `DEGRADED` -- amber box listing recoverable issues (e.g., a service restarting, or distributed bus expected but not wired).
+- `CRITICAL` -- red box for unrecoverable state (e.g., backend unreachable, persistence not wired when expected, any container unhealthy).
+
+Escalation rules: `CRITICAL` wins over `DEGRADED`, and signals are gated on install expectations -- a default internal-bus install is not flagged `DEGRADED` merely because the backend's health response omits `message_bus` (only `--bus-backend nats` installs expect one). An unmatched `--services` filter reports `OK`, not `CRITICAL`, because `renderContainersSection` already explains "No containers match requested services".

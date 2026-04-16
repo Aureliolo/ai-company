@@ -136,6 +136,18 @@ class TestPostgresConfigFromURL:
         cfg = _postgres_config_from_url("postgresql://u:p%40ss%2F1@h/db")
         assert cfg.password.get_secret_value() == "p@ss/1"
 
+    def test_url_encoded_username_is_decoded(self) -> None:
+        cfg = _postgres_config_from_url(
+            "postgresql://u%40domain:pw@h/db",
+        )
+        assert cfg.username == "u@domain"
+
+    def test_url_encoded_hostname_is_decoded(self) -> None:
+        cfg = _postgres_config_from_url(
+            "postgresql://u:p@db%2Eexample:5432/synthorg",
+        )
+        assert cfg.host == "db.example"
+
     def test_ssl_mode_override_from_env(
         self,
         monkeypatch: pytest.MonkeyPatch,

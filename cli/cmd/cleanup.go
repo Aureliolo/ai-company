@@ -208,15 +208,3 @@ func isImageInUse(err error) bool {
 		strings.Contains(msg, "dependent child images") ||
 		strings.Contains(msg, "image is referenced")
 }
-
-// isNoSuchImageError reports whether a docker error indicates the target
-// image is simply not present in the local daemon. Expected during an
-// upgrade whose previous version was never fully pulled.
-func isNoSuchImageError(err error) bool {
-	if err == nil {
-		return false
-	}
-	msg := err.Error()
-	return strings.Contains(msg, "No such image") ||
-		strings.Contains(msg, "no such image")
-}
