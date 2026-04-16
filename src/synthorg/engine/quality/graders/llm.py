@@ -92,6 +92,28 @@ _MAX_PAYLOAD_CHARS: Final[int] = 16_000
 _DEFAULT_MAX_TOKENS: Final[int] = 2048
 
 
+def _build_instructions(
+    *,
+    payload_truncated: bool,
+    original_len: int,
+) -> str:
+    """Render the final instruction block, adding a truncation notice."""
+    base = (
+        "Call emit_rubric_verdict exactly once.  Provide a grade "
+        "for every rubric criterion by name (use the criterion "
+        "'name' field).  The overall verdict must be 'pass' only "
+        "when the weighted evidence supports it; otherwise 'fail' "
+        "or 'refer'.  Confidence reflects your certainty."
+    )
+    if not payload_truncated:
+        return base
+    return (
+        base + f"  Note: the artifact payload was truncated from {original_len} "
+        f"to {_MAX_PAYLOAD_CHARS} characters; if the visible payload is "
+        "insufficient to decide, return 'refer' rather than guessing."
+    )
+
+
 class LLMRubricGrader:
     """Grade handoff artifacts against rubrics via a provider tool call.
 
@@ -160,84 +182,37 @@ class LLMRubricGrader:
             probe_count=len(probes),
         )
 
-        tool = ToolDefinition(
-            name=_GRADER_TOOL_NAME,
-            description=_GRADER_TOOL_DESCRIPTION,
-            parameters_schema=_GRADER_TOOL_SCHEMA,
-        )
-        try:
-            user_prompt = self._build_user_prompt(
-                artifact=artifact,
-                rubric=rubric,
-                probes=probes,
-            )
-            messages = [
-                ChatMessage(
-                    role=MessageRole.SYSTEM,
-                    content=_GRADER_SYSTEM_PROMPT,
-                ),
-                ChatMessage(role=MessageRole.USER, content=user_prompt),
-            ]
-            response = await self._provider.complete(
-                messages=messages,
-                model=self._model_id,
-                tools=[tool],
-                config=CompletionConfig(
-                    temperature=0.0,
-                    max_tokens=_DEFAULT_MAX_TOKENS,
-                ),
-            )
-        except MemoryError, RecursionError, RetryExhaustedError:
-            # Infrastructure errors propagate; callers route them to
-            # fallback chains rather than misinterpreting them as a
-            # grading verdict.
-            raise
-        except Exception:
-            logger.exception(
-                VERIFICATION_GRADER_FAILED,
-                rubric_name=rubric.name,
-                grader=self.name,
-                model_id=self._model_id,
-                tool_name=_GRADER_TOOL_NAME,
-                probe_count=len(probes),
-                generator_agent_id=generator_agent_id,
-                evaluator_agent_id=evaluator_agent_id,
-            )
-            raise
-
-        tool_call = next(
-            (tc for tc in response.tool_calls if tc.name == _GRADER_TOOL_NAME),
-            None,
-        )
-        if tool_call is None:
-            return self._refer(
-                rubric=rubric,
-                generator_agent_id=generator_agent_id,
-                evaluator_agent_id=evaluator_agent_id,
-                reason="no emit_rubric_verdict tool call in response",
-            )
-
-        parsed = self._parse_tool_arguments(
-            tool_call.arguments,
+        messages = self._build_messages(
+            artifact=artifact,
             rubric=rubric,
+            probes=probes,
         )
-        if isinstance(parsed, str):
+        response = await self._call_grader_tool(
+            messages=messages,
+            rubric=rubric,
+            probes=probes,
+            generator_agent_id=generator_agent_id,
+            evaluator_agent_id=evaluator_agent_id,
+        )
+
+        tool_call_or_reason = self._locate_tool_call(response)
+        if isinstance(tool_call_or_reason, str):
             return self._refer(
                 rubric=rubric,
                 generator_agent_id=generator_agent_id,
                 evaluator_agent_id=evaluator_agent_id,
-                reason=parsed,
+                reason=tool_call_or_reason,
             )
-        per_criterion_grades, verdict, confidence, findings = parsed
 
-        applied_min_conf = self._applied_min_confidence(rubric)
-        if confidence < applied_min_conf:
-            verdict = VerificationVerdict.REFER
-            findings = (
-                *findings,
-                f"Confidence {confidence:.2f} below minimum "
-                f"{applied_min_conf:.2f}; downgraded to REFER.",
+        interpreted = self._interpret_tool_call(tool_call_or_reason, rubric)
+        if isinstance(interpreted, str):
+            return self._refer(
+                rubric=rubric,
+                generator_agent_id=generator_agent_id,
+                evaluator_agent_id=evaluator_agent_id,
+                reason=interpreted,
             )
+        per_criterion_grades, verdict, confidence, findings = interpreted
 
         result = VerificationResult(
             verdict=verdict,
@@ -258,6 +233,129 @@ class LLMRubricGrader:
         )
         return result
 
+    def _build_messages(
+        self,
+        *,
+        artifact: HandoffArtifact,
+        rubric: VerificationRubric,
+        probes: tuple[AtomicProbe, ...],
+    ) -> list[ChatMessage]:
+        """Build the system + user message list for the grader call."""
+        user_prompt = self._build_user_prompt(
+            artifact=artifact,
+            rubric=rubric,
+            probes=probes,
+        )
+        return [
+            ChatMessage(role=MessageRole.SYSTEM, content=_GRADER_SYSTEM_PROMPT),
+            ChatMessage(role=MessageRole.USER, content=user_prompt),
+        ]
+
+    async def _call_grader_tool(
+        self,
+        *,
+        messages: list[ChatMessage],
+        rubric: VerificationRubric,
+        probes: tuple[AtomicProbe, ...],
+        generator_agent_id: NotBlankStr,
+        evaluator_agent_id: NotBlankStr,
+    ) -> Any:
+        """Invoke the provider with the grader tool; log/re-raise on failure.
+
+        Infrastructure errors propagate unchanged:
+
+        * ``MemoryError``/``RecursionError`` are fatal interpreter
+          signals and always re-raise.
+        * ``RetryExhaustedError`` logs a
+          ``VERIFICATION_GRADER_FAILED`` event with full grading
+          context then re-raises so the engine fallback chain takes
+          over.
+        * Any other exception also logs and re-raises.
+        """
+        tool = ToolDefinition(
+            name=_GRADER_TOOL_NAME,
+            description=_GRADER_TOOL_DESCRIPTION,
+            parameters_schema=_GRADER_TOOL_SCHEMA,
+        )
+        try:
+            return await self._provider.complete(
+                messages=messages,
+                model=self._model_id,
+                tools=[tool],
+                config=CompletionConfig(
+                    temperature=0.0,
+                    max_tokens=_DEFAULT_MAX_TOKENS,
+                ),
+            )
+        except MemoryError, RecursionError:
+            raise
+        except RetryExhaustedError:
+            logger.exception(
+                VERIFICATION_GRADER_FAILED,
+                rubric_name=rubric.name,
+                grader=self.name,
+                model_id=self._model_id,
+                tool_name=_GRADER_TOOL_NAME,
+                probe_count=len(probes),
+                generator_agent_id=generator_agent_id,
+                evaluator_agent_id=evaluator_agent_id,
+                error_type="retry_exhausted",
+            )
+            raise
+        except Exception:
+            logger.exception(
+                VERIFICATION_GRADER_FAILED,
+                rubric_name=rubric.name,
+                grader=self.name,
+                model_id=self._model_id,
+                tool_name=_GRADER_TOOL_NAME,
+                probe_count=len(probes),
+                generator_agent_id=generator_agent_id,
+                evaluator_agent_id=evaluator_agent_id,
+            )
+            raise
+
+    def _locate_tool_call(self, response: Any) -> Any:
+        """Return the sole ``emit_rubric_verdict`` tool call or a reason string."""
+        matches = [tc for tc in response.tool_calls if tc.name == _GRADER_TOOL_NAME]
+        if len(response.tool_calls) != 1 or len(matches) != 1:
+            return (
+                "ambiguous or unexpected tool_call(s) in response "
+                f"(total={len(response.tool_calls)}, matches={len(matches)})"
+            )
+        return matches[0]
+
+    def _interpret_tool_call(
+        self,
+        tool_call: Any,
+        rubric: VerificationRubric,
+    ) -> (
+        tuple[
+            Mapping[str, float],
+            VerificationVerdict,
+            float,
+            tuple[str, ...],
+        ]
+        | str
+    ):
+        """Parse tool arguments and apply the min-confidence downgrade."""
+        parsed = self._parse_tool_arguments(
+            tool_call.arguments,
+            rubric=rubric,
+        )
+        if isinstance(parsed, str):
+            return parsed
+        per_criterion_grades, verdict, confidence, findings = parsed
+        applied_min_conf = self._applied_min_confidence(rubric)
+        if confidence < applied_min_conf:
+            verdict = VerificationVerdict.REFER
+            findings = (
+                *findings,
+                f"Confidence {confidence:.2f} below minimum "
+                f"{applied_min_conf:.2f}; downgraded to REFER.",
+            )
+        return per_criterion_grades, verdict, confidence, findings
+
     def _applied_min_confidence(self, rubric: VerificationRubric) -> float:
         """Return the stricter of rubric min_confidence and override."""
         if self._min_confidence_override is None:
@@ -271,20 +369,31 @@ class LLMRubricGrader:
         rubric: VerificationRubric,
         probes: tuple[AtomicProbe, ...],
     ) -> str:
-        """Render rubric, calibration, probes, and payload as a JSON envelope."""
-        payload_text = json.dumps(dict(artifact.payload), ensure_ascii=False)
-        original_len = len(payload_text)
-        payload_truncated = original_len > _MAX_PAYLOAD_CHARS
-        if payload_truncated:
-            logger.warning(
-                VERIFICATION_GRADER_PAYLOAD_TRUNCATED,
-                rubric_name=rubric.name,
-                grader=self.name,
-                original_chars=original_len,
-                truncated_chars=_MAX_PAYLOAD_CHARS,
-            )
-            payload_text = payload_text[:_MAX_PAYLOAD_CHARS]
+        """Serialize the grader envelope to JSON."""
+        envelope = self._render_envelope(
+            artifact=artifact,
+            rubric=rubric,
+            probes=probes,
+        )
+        return json.dumps(envelope, ensure_ascii=False)
 
+    def _render_envelope(
+        self,
+        *,
+        artifact: HandoffArtifact,
+        rubric: VerificationRubric,
+        probes: tuple[AtomicProbe, ...],
+    ) -> dict[str, Any]:
+        """Render the prompt envelope (rubric / calibration / probes / artifact).
+
+        Handles oversize artifact payload truncation and emits the
+        ``VERIFICATION_GRADER_PAYLOAD_TRUNCATED`` warning so the LLM
+        can see (and ``refer`` on) truncated inputs.
+        """
+        payload_text, payload_truncated, original_len = self._prepare_payload_text(
+            artifact=artifact,
+            rubric=rubric,
+        )
         calibration = [
             {
                 "artifact_summary": ex.artifact_summary,
@@ -296,8 +405,7 @@ class LLMRubricGrader:
             }
             for ex in rubric.calibration_examples
         ]
-
-        envelope = {
+        return {
             "rubric": {
                 "name": rubric.name,
                 "min_confidence": rubric.min_confidence,
@@ -328,25 +436,32 @@ class LLMRubricGrader:
                 "artifact_refs": list(artifact.artifact_refs),
                 "payload": payload_text,
             },
-            "instructions": (
-                "Call emit_rubric_verdict exactly once.  Provide a grade "
-                "for every rubric criterion by name (use the criterion "
-                "'name' field).  The overall verdict must be 'pass' only "
-                "when the weighted evidence supports it; otherwise 'fail' "
-                "or 'refer'.  Confidence reflects your certainty."
-                + (
-                    (
-                        f"  Note: the artifact payload was truncated from "
-                        f"{original_len} to {_MAX_PAYLOAD_CHARS} characters; "
-                        "if the visible payload is insufficient to decide, "
-                        "return 'refer' rather than guessing."
-                    )
-                    if payload_truncated
-                    else ""
-                )
+            "instructions": _build_instructions(
+                payload_truncated=payload_truncated,
+                original_len=original_len,
             ),
         }
-        return json.dumps(envelope, ensure_ascii=False)
+
+    def _prepare_payload_text(
+        self,
+        *,
+        artifact: HandoffArtifact,
+        rubric: VerificationRubric,
+    ) -> tuple[str, bool, int]:
+        """Serialize + truncate the artifact payload; log when truncation fires."""
+        payload_text = json.dumps(dict(artifact.payload), ensure_ascii=False)
+        original_len = len(payload_text)
+        payload_truncated = original_len > _MAX_PAYLOAD_CHARS
+        if payload_truncated:
+            logger.warning(
+                VERIFICATION_GRADER_PAYLOAD_TRUNCATED,
+                rubric_name=rubric.name,
+                grader=self.name,
+                original_chars=original_len,
+                truncated_chars=_MAX_PAYLOAD_CHARS,
+            )
+            payload_text = payload_text[:_MAX_PAYLOAD_CHARS]
+        return payload_text, payload_truncated, original_len
 
     def _parse_tool_arguments(
         self,

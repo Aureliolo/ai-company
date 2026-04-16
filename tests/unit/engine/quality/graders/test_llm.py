@@ -247,7 +247,7 @@ class TestLLMRubricGraderBehavior:
         )
         assert result.verdict == VerificationVerdict.REFER
         assert result.confidence == 0.0
-        assert "no emit_rubric_verdict" in result.findings[0]
+        assert "ambiguous or unexpected tool_call" in result.findings[0]
 
     async def test_missing_criterion_returns_refer(self) -> None:
         response = _response(
@@ -435,6 +435,75 @@ class TestLLMRubricGraderBehavior:
 class TestLLMRubricGraderInvalidGrades:
     """Malformed per-criterion grade values must downgrade to REFER."""
 
+    async def test_multiple_tool_calls_returns_refer(self) -> None:
+        """Two matching tool calls in one response must fail closed."""
+        from synthorg.providers.enums import FinishReason
+        from synthorg.providers.models import (
+            CompletionResponse,
+            TokenUsage,
+            ToolCall,
+        )
+
+        args = {
+            "per_criterion_grades": {"correctness": 0.9, "completeness": 0.9},
+            "verdict": "pass",
+            "confidence": 0.9,
+            "findings": [],
+        }
+        response = CompletionResponse(
+            tool_calls=(
+                ToolCall(id="call-a", name="emit_rubric_verdict", arguments=args),
+                ToolCall(id="call-b", name="emit_rubric_verdict", arguments=args),
+            ),
+            finish_reason=FinishReason.TOOL_USE,
+            usage=TokenUsage(input_tokens=10, output_tokens=10, cost_usd=0.0),
+            model="test-medium-001",
+        )
+        provider = ScriptedProvider(response=response)
+        grader = LLMRubricGrader(
+            provider=provider,
+            model_id="test-medium-001",
+        )
+        result = await grader.grade(
+            artifact=_artifact(),
+            rubric=_rubric(),
+            probes=_probes(),
+            generator_agent_id="agent-generator",
+            evaluator_agent_id="agent-evaluator",
+        )
+        assert result.verdict == VerificationVerdict.REFER
+        assert "ambiguous" in result.findings[0]
+
+    async def test_unexpected_tool_call_returns_refer(self) -> None:
+        """Unrelated tool call in the response must fail closed."""
+        from synthorg.providers.enums import FinishReason
+        from synthorg.providers.models import (
+            CompletionResponse,
+            TokenUsage,
+            ToolCall,
+        )
+
+        response = CompletionResponse(
+            tool_calls=(ToolCall(id="call-x", name="some_other_tool", arguments={}),),
+            finish_reason=FinishReason.TOOL_USE,
+            usage=TokenUsage(input_tokens=10, output_tokens=10, cost_usd=0.0),
+            model="test-medium-001",
+        )
+        provider = ScriptedProvider(response=response)
+        grader = LLMRubricGrader(
+            provider=provider,
+            model_id="test-medium-001",
+        )
+        result = await grader.grade(
+            artifact=_artifact(),
+            rubric=_rubric(),
+            probes=_probes(),
+            generator_agent_id="agent-generator",
+            evaluator_agent_id="agent-evaluator",
+        )
+        assert result.verdict == VerificationVerdict.REFER
+        assert "unexpected" in result.findings[0]
+
     @pytest.mark.parametrize(
         "findings_value",
         [
@@ -475,7 +544,13 @@ class TestLLMRubricGraderInvalidGrades:
         assert result.verdict == VerificationVerdict.REFER
 
     async def test_provider_exception_is_logged_and_reraised(self) -> None:
-        """An arbitrary provider failure is logged at ERROR then re-raised."""
+        """An arbitrary provider failure logs ``VERIFICATION_GRADER_FAILED``
+        with grading context before re-raising."""
+        from structlog.testing import capture_logs
+
+        from synthorg.observability.events.verification import (
+            VERIFICATION_GRADER_FAILED,
+        )
 
         class _BoomError(Exception):
             pass
@@ -485,7 +560,7 @@ class TestLLMRubricGraderInvalidGrades:
             provider=provider,
             model_id="test-medium-001",
         )
-        with pytest.raises(_BoomError):
+        with capture_logs() as logs, pytest.raises(_BoomError):
             await grader.grade(
                 artifact=_artifact(),
                 rubric=_rubric(),
@@ -493,6 +568,16 @@ class TestLLMRubricGraderInvalidGrades:
                 generator_agent_id="agent-generator",
                 evaluator_agent_id="agent-evaluator",
             )
+        failures = [
+            entry for entry in logs if entry.get("event") == VERIFICATION_GRADER_FAILED
+        ]
+        assert failures, logs
+        record = failures[0]
+        assert record["rubric_name"] == "test-rubric"
+        assert record["grader"] == "llm"
+        assert record["model_id"] == "test-medium-001"
+        assert record["generator_agent_id"] == "agent-generator"
+        assert record["evaluator_agent_id"] == "agent-evaluator"
 
     @pytest.mark.parametrize(
         "non_finite_grade",

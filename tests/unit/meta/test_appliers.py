@@ -746,28 +746,31 @@ class TestArchitectureApplier:
         assert "already exists" in message
         assert "exceeds" in message
 
-    async def test_dry_run_authority_level_validation(self) -> None:
+    @pytest.mark.parametrize(
+        ("value", "expected"),
+        [
+            pytest.param(123, "must be a string", id="non_string"),
+            pytest.param("  ", "must not be blank", id="blank"),
+            pytest.param("x" * 200, "exceeds", id="too_long"),
+        ],
+    )
+    async def test_dry_run_authority_level_rejects(
+        self,
+        value: Any,
+        expected: str,
+    ) -> None:
         """Non-string, blank, and oversized authority_level are rejected."""
         applier = ArchitectureApplier(context=_FakeArchContext())
-
-        async def _assert_rejected(value: Any, match: str) -> None:
-            proposal = _proposal_architecture(
-                _arch(
-                    "create_role",
-                    "r1",
-                    payload={
-                        "description": "d",
-                        "authority_level": value,
-                    },
-                ),
-            )
-            result = await applier.dry_run(proposal)
-            assert not result.success
-            assert match in (result.error_message or "")
-
-        await _assert_rejected(123, "must be a string")
-        await _assert_rejected("  ", "must not be blank")
-        await _assert_rejected("x" * 200, "exceeds")
+        proposal = _proposal_architecture(
+            _arch(
+                "create_role",
+                "r1",
+                payload={"description": "d", "authority_level": value},
+            ),
+        )
+        result = await applier.dry_run(proposal)
+        assert not result.success
+        assert expected in (result.error_message or "")
 
     async def test_dry_run_authority_level_valid_string_passes(self) -> None:
         applier = ArchitectureApplier(context=_FakeArchContext())
@@ -781,30 +784,33 @@ class TestArchitectureApplier:
         result = await applier.dry_run(proposal)
         assert result.success, result.error_message
 
-    async def test_dry_run_tool_access_validation(self) -> None:
+    @pytest.mark.parametrize(
+        ("value", "expected"),
+        [
+            pytest.param("not-a-list", "must be a list or tuple", id="not_a_list"),
+            pytest.param(["ok", 7], "must be a string", id="non_string_entry"),
+            pytest.param(["ok", "  "], "must not be blank", id="blank_entry"),
+            pytest.param(["x" * 200], "exceeds", id="name_too_long"),
+            pytest.param(["ok"] * 200, "exceeds", id="too_many_tools"),
+        ],
+    )
+    async def test_dry_run_tool_access_rejects(
+        self,
+        value: Any,
+        expected: str,
+    ) -> None:
         """tool_access must be a list of non-blank bounded strings."""
         applier = ArchitectureApplier(context=_FakeArchContext())
-
-        async def _assert_rejected(value: Any, match: str) -> None:
-            proposal = _proposal_architecture(
-                _arch(
-                    "create_role",
-                    "r1",
-                    payload={
-                        "description": "d",
-                        "tool_access": value,
-                    },
-                ),
-            )
-            result = await applier.dry_run(proposal)
-            assert not result.success
-            assert match in (result.error_message or "")
-
-        await _assert_rejected("not-a-list", "must be a list or tuple")
-        await _assert_rejected(["ok", 7], "must be a string")
-        await _assert_rejected(["ok", "  "], "must not be blank")
-        await _assert_rejected(["x" * 200], "exceeds")
-        await _assert_rejected(["ok"] * 200, "exceeds")
+        proposal = _proposal_architecture(
+            _arch(
+                "create_role",
+                "r1",
+                payload={"description": "d", "tool_access": value},
+            ),
+        )
+        result = await applier.dry_run(proposal)
+        assert not result.success
+        assert expected in (result.error_message or "")
 
     async def test_dry_run_tool_access_valid_passes(self) -> None:
         applier = ArchitectureApplier(context=_FakeArchContext())
@@ -821,47 +827,59 @@ class TestArchitectureApplier:
         result = await applier.dry_run(proposal)
         assert result.success, result.error_message
 
-    async def test_dry_run_policies_validation(self) -> None:
+    @pytest.mark.parametrize(
+        ("value", "expected"),
+        [
+            pytest.param("not-a-list", "must be a list or tuple", id="not_a_list"),
+            pytest.param(["ok", 7], "must be a string", id="non_string_entry"),
+            pytest.param(["ok", "  "], "must not be blank", id="blank_entry"),
+            pytest.param(["x" * 1_000], "exceeds", id="policy_too_long"),
+            pytest.param(["ok"] * 200, "exceeds", id="too_many_policies"),
+        ],
+    )
+    async def test_dry_run_policies_rejects(
+        self,
+        value: Any,
+        expected: str,
+    ) -> None:
         """policies must be a list of non-blank bounded strings."""
         applier = ArchitectureApplier(context=_FakeArchContext())
+        proposal = _proposal_architecture(
+            _arch(
+                "create_department",
+                "d1",
+                payload={"policies": value},
+            ),
+        )
+        result = await applier.dry_run(proposal)
+        assert not result.success
+        assert expected in (result.error_message or "")
 
-        async def _assert_rejected(value: Any, match: str) -> None:
-            proposal = _proposal_architecture(
-                _arch(
-                    "create_department",
-                    "d1",
-                    payload={"policies": value},
-                ),
-            )
-            result = await applier.dry_run(proposal)
-            assert not result.success
-            assert match in (result.error_message or "")
-
-        await _assert_rejected("not-a-list", "must be a list or tuple")
-        await _assert_rejected(["ok", 7], "must be a string")
-        await _assert_rejected(["ok", "  "], "must not be blank")
-        await _assert_rejected(["x" * 1_000], "exceeds")
-        await _assert_rejected(["ok"] * 200, "exceeds")
-
-    async def test_dry_run_dept_head_type_validation(self) -> None:
+    @pytest.mark.parametrize(
+        ("value", "expected"),
+        [
+            pytest.param(123, "must be a string", id="non_string"),
+            pytest.param("  ", "must not be blank", id="blank"),
+            pytest.param("x" * 200, "exceeds", id="too_long"),
+        ],
+    )
+    async def test_dry_run_dept_head_rejects(
+        self,
+        value: Any,
+        expected: str,
+    ) -> None:
         """head must be a non-blank bounded string if provided."""
         applier = ArchitectureApplier(context=_FakeArchContext())
-
-        async def _assert_rejected(value: Any, match: str) -> None:
-            proposal = _proposal_architecture(
-                _arch(
-                    "create_department",
-                    "d1",
-                    payload={"head": value},
-                ),
-            )
-            result = await applier.dry_run(proposal)
-            assert not result.success
-            assert match in (result.error_message or "")
-
-        await _assert_rejected(123, "must be a string")
-        await _assert_rejected("  ", "must not be blank")
-        await _assert_rejected("x" * 200, "exceeds")
+        proposal = _proposal_architecture(
+            _arch(
+                "create_department",
+                "d1",
+                payload={"head": value},
+            ),
+        )
+        result = await applier.dry_run(proposal)
+        assert not result.success
+        assert expected in (result.error_message or "")
 
     async def test_dry_run_pending_department_blocks_removal(self) -> None:
         """A same-proposal ``create_role`` that references a department
@@ -934,6 +952,29 @@ class TestArchitectureApplier:
         result = await applier.dry_run(proposal)
         assert not result.success
         assert "scheduled for removal" in (result.error_message or "")
+
+    @pytest.mark.parametrize(
+        "blank_value",
+        ["", "   "],
+        ids=["empty", "whitespace"],
+    )
+    async def test_dry_run_create_role_rejects_blank_department(
+        self,
+        blank_value: str,
+    ) -> None:
+        """A blank ``department`` must fail dry_run rather than being
+        silently treated as omitted."""
+        applier = ArchitectureApplier(context=_FakeArchContext())
+        proposal = _proposal_architecture(
+            _arch(
+                "create_role",
+                "r1",
+                payload={"description": "d", "department": blank_value},
+            ),
+        )
+        result = await applier.dry_run(proposal)
+        assert not result.success
+        assert "must be a non-blank string" in (result.error_message or "")
 
     async def test_dry_run_context_exception_surfaces_as_validation_error(
         self,

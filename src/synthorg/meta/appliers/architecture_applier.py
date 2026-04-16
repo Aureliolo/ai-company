@@ -383,8 +383,8 @@ def _validate_role_department(
         return []
     if not isinstance(dept, str):
         return ["create_role: 'department' must be a string"]
-    if not dept:
-        return []
+    if not dept.strip():
+        return ["create_role: 'department' must be a non-blank string"]
     known_dept = context.has_department(dept) or dept in pending.new_departments
     removed = dept in pending.removed_departments
     if not known_dept or removed:
