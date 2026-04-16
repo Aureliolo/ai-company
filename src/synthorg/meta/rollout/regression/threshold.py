@@ -4,6 +4,7 @@ Fires instantly when any primary metric degrades beyond
 a configurable threshold compared to baseline.
 """
 
+from synthorg.core.types import NotBlankStr
 from synthorg.meta.models import (
     OrgSignalSnapshot,
     RegressionResult,
@@ -24,9 +25,9 @@ class ThresholdDetector:
     """
 
     @property
-    def name(self) -> str:
+    def name(self) -> NotBlankStr:
         """Detector name."""
-        return "threshold"
+        return NotBlankStr("threshold")
 
     async def check(
         self,

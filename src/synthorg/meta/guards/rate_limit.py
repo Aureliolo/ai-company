@@ -8,6 +8,7 @@ import asyncio
 from collections import deque
 from datetime import UTC, datetime, timedelta
 
+from synthorg.core.types import NotBlankStr
 from synthorg.meta.models import (
     GuardResult,
     GuardVerdict,
@@ -44,9 +45,9 @@ class RateLimitGuard:
         self._lock = asyncio.Lock()
 
     @property
-    def name(self) -> str:
+    def name(self) -> NotBlankStr:
         """Guard name."""
-        return "rate_limit"
+        return NotBlankStr("rate_limit")
 
     async def evaluate(
         self,

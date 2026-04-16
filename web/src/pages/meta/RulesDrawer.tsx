@@ -35,6 +35,7 @@ export function RulesDrawer({
   metrics,
   onRefresh,
 }: RulesDrawerProps) {
+  const addToast = useToastStore((s) => s.add)
   const [view, setView] = useState<DrawerView>('list')
   const [editRule, setEditRule] = useState<CustomRule | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null)
@@ -69,13 +70,13 @@ export function RulesDrawer({
     try {
       await onRefresh()
     } catch (err) {
-      useToastStore.getState().add({
+      addToast({
         variant: 'error',
         title: 'Failed to refresh rules',
         description: getErrorMessage(err),
       })
     }
-  }, [onRefresh])
+  }, [onRefresh, addToast])
 
   const handleToggle = useCallback(
     async (_name: string, id?: string) => {
@@ -84,14 +85,14 @@ export function RulesDrawer({
         await toggleRule(id)
         await onRefresh()
       } catch (err) {
-        useToastStore.getState().add({
+        addToast({
           variant: 'error',
           title: 'Failed to toggle rule',
           description: getErrorMessage(err),
         })
       }
     },
-    [toggleRule, onRefresh],
+    [toggleRule, onRefresh, addToast],
   )
 
   const handleDeleteConfirm = useCallback(async () => {
@@ -100,12 +101,12 @@ export function RulesDrawer({
     try {
       await deleteRule(deleteTarget)
       await onRefresh()
-      useToastStore.getState().add({
+      addToast({
         variant: 'success',
         title: 'Rule deleted',
       })
     } catch (err) {
-      useToastStore.getState().add({
+      addToast({
         variant: 'error',
         title: 'Failed to delete rule',
         description: getErrorMessage(err),
@@ -114,7 +115,7 @@ export function RulesDrawer({
       setDeleting(false)
       setDeleteTarget(null)
     }
-  }, [deleteTarget, deleteRule, onRefresh])
+  }, [deleteTarget, deleteRule, onRefresh, addToast])
 
   const handleDrawerClose = useCallback(() => {
     setView('list')

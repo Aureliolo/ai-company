@@ -211,7 +211,10 @@ class TestCodeModificationStrategy:
         )
         assert len(proposals) == 0
 
-    async def test_partial_scope_violation_keeps_valid(self) -> None:
+    async def test_partial_scope_violation_rejects_entire_proposal(
+        self,
+    ) -> None:
+        """Any scope violation rejects the entire proposal (fail-closed)."""
         response = json.dumps(
             [
                 {
@@ -240,9 +243,7 @@ class TestCodeModificationStrategy:
             snapshot=_snap(),
             triggered_rules=rules,
         )
-        assert len(proposals) == 1
-        assert len(proposals[0].code_changes) == 1
-        assert "good.py" in proposals[0].code_changes[0].file_path
+        assert len(proposals) == 0
 
     async def test_provider_exception_produces_no_proposal(self) -> None:
         provider = AsyncMock()

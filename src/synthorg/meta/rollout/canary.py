@@ -6,6 +6,7 @@ then expands to the full org on success.
 
 from typing import TYPE_CHECKING
 
+from synthorg.core.types import NotBlankStr
 from synthorg.meta.models import (
     ImprovementProposal,
     RegressionVerdict,
@@ -43,9 +44,9 @@ class CanarySubsetRollout:
         self._canary_fraction = canary_fraction
 
     @property
-    def name(self) -> str:
+    def name(self) -> NotBlankStr:
         """Strategy name."""
-        return "canary"
+        return NotBlankStr("canary")
 
     async def execute(
         self,

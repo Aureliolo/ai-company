@@ -7,6 +7,7 @@ the proposal in the approval queue.
 
 from typing import TYPE_CHECKING
 
+from synthorg.core.types import NotBlankStr
 from synthorg.meta.models import (
     GuardResult,
     GuardVerdict,
@@ -49,9 +50,9 @@ class ApprovalGateGuard:
         self._store = approval_store
 
     @property
-    def name(self) -> str:
+    def name(self) -> NotBlankStr:
         """Guard name."""
-        return "approval_gate"
+        return NotBlankStr("approval_gate")
 
     async def evaluate(
         self,

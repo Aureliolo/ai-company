@@ -24,7 +24,11 @@ from synthorg.meta.models import (
     GuardVerdict,
     ImprovementProposal,
     OrgSignalSnapshot,
+    ProposalAltitude,
     ProposalStatus,
+    RegressionThresholds,
+    RegressionVerdict,
+    RolloutOutcome,
     RolloutResult,
 )
 from synthorg.meta.rules.builtin import default_rules
@@ -40,11 +44,15 @@ from synthorg.observability.events.cross_deployment import (
     XDEPLOY_EVENT_EMIT_FAILED,
 )
 from synthorg.observability.events.meta import (
+    META_CODE_GITHUB_CREDS_INVALID,
+    META_CODE_GITHUB_CREDS_VALID,
     META_CYCLE_COMPLETED,
     META_CYCLE_NO_TRIGGERS,
     META_CYCLE_STARTED,
     META_PROPOSAL_GUARD_REJECTED,
     META_ROLLOUT_PRECONDITION_FAILED,
+    META_ROLLOUT_REGRESSION_DETECTED,
+    META_SERVICE_CLOSE_FAILED,
 )
 
 if TYPE_CHECKING:
@@ -52,7 +60,11 @@ if TYPE_CHECKING:
     from synthorg.meta.chief_of_staff.protocol import ConfidenceAdjuster
     from synthorg.meta.config import SelfImprovementConfig
     from synthorg.meta.models import RuleMatch
-    from synthorg.meta.protocol import ImprovementStrategy
+    from synthorg.meta.protocol import (
+        ImprovementStrategy,
+        ProposalApplier,
+        RolloutStrategy,
+    )
     from synthorg.meta.telemetry.protocol import AnalyticsEmitter
     from synthorg.providers.base import BaseCompletionProvider
 
@@ -89,7 +101,7 @@ class SelfImprovementService:
         self._guards = build_guards(config)
         self._appliers = build_appliers(config)
         self._detector = build_regression_detector()
-        self._rollout_strategies = build_rollout_strategies()
+        self._rollout_strategies = build_rollout_strategies(config)
 
         # Cross-deployment analytics emitter.
         builtin_names = frozenset(r.name for r in default_rules())
@@ -117,6 +129,39 @@ class SelfImprovementService:
                     COS_LEARNING_ENABLED,
                     strategy=config.chief_of_staff.adjuster_strategy,
                 )
+
+    async def validate_prerequisites(self) -> None:
+        """Validate startup prerequisites.
+
+        Verifies the GitHub token when code modification is enabled
+        by pinging the GitHub API.
+
+        Raises:
+            GitHubAuthError: If the GitHub token is invalid.
+            GitHubAPIError: On other GitHub API failures.
+        """
+        if not self._config.code_modification_enabled:
+            return
+        from synthorg.meta.appliers.code_applier import (  # noqa: PLC0415
+            CodeApplier,
+        )
+
+        applier = self._appliers.get(ProposalAltitude.CODE_MODIFICATION)
+        if applier is None or not isinstance(applier, CodeApplier):
+            return
+        from synthorg.meta.appliers.github_client import (  # noqa: PLC0415
+            GitHubAPIError,
+        )
+
+        try:
+            await applier.verify_github_token()
+        except GitHubAPIError:
+            logger.exception(
+                META_CODE_GITHUB_CREDS_INVALID,
+                reason="token_verification_failed",
+            )
+            raise
+        logger.info(META_CODE_GITHUB_CREDS_VALID)
 
     async def run_cycle(
         self,
@@ -200,18 +245,63 @@ class SelfImprovementService:
         )
         return tuple(approved)
 
+    def _build_regression_thresholds(self) -> RegressionThresholds:
+        """Build RegressionThresholds from the service config."""
+        rc = self._config.regression
+        return RegressionThresholds(
+            quality_drop=rc.quality_drop_threshold,
+            cost_increase=rc.cost_increase_threshold,
+            error_rate_increase=rc.error_rate_increase_threshold,
+            success_rate_drop=rc.success_rate_drop_threshold,
+        )
+
     async def execute_rollout(
         self,
         proposal: ImprovementProposal,
+        *,
+        baseline: OrgSignalSnapshot | None = None,
+        current: OrgSignalSnapshot | None = None,
     ) -> RolloutResult:
         """Execute a rollout for an approved proposal.
 
+        If ``baseline`` and ``current`` snapshots are provided, the
+        tiered regression detector is invoked after the rollout
+        completes.  On regression, the result is updated with the
+        detection verdict.
+
         Args:
             proposal: The human-approved proposal.
+            baseline: Signal snapshot taken before the rollout.
+            current: Signal snapshot taken after the observation
+                window completes.
 
         Returns:
-            Rollout result.
+            Rollout result (may include regression verdict).
         """
+        applier, rollout = self._validate_rollout_preconditions(proposal)
+        result = await rollout.execute(
+            proposal=proposal,
+            applier=applier,
+            detector=self._detector,
+        )
+        result = await self._post_rollout_regression_check(
+            result,
+            proposal,
+            baseline=baseline,
+            current=current,
+        )
+        if self._analytics_emitter is not None:
+            await self._analytics_emitter.emit_rollout(
+                result,
+                proposal=proposal,
+            )
+        return result
+
+    def _validate_rollout_preconditions(
+        self,
+        proposal: ImprovementProposal,
+    ) -> tuple[ProposalApplier, RolloutStrategy]:
+        """Validate proposal status, applier, and strategy exist."""
         if proposal.status is not ProposalStatus.APPROVED:
             logger.error(
                 META_ROLLOUT_PRECONDITION_FAILED,
@@ -224,7 +314,6 @@ class SelfImprovementService:
                 f"rollout; current status is {proposal.status.value}"
             )
             raise ValueError(msg)
-
         applier = self._appliers.get(proposal.altitude)
         if applier is None:
             logger.error(
@@ -235,7 +324,6 @@ class SelfImprovementService:
             )
             msg = f"No applier for altitude {proposal.altitude}"
             raise ValueError(msg)
-
         strategy_name = proposal.rollout_strategy.value
         rollout = self._rollout_strategies.get(strategy_name)
         if rollout is None:
@@ -247,22 +335,47 @@ class SelfImprovementService:
             )
             msg = f"No rollout strategy '{strategy_name}'"
             raise ValueError(msg)
+        return applier, rollout
 
-        result = await rollout.execute(
-            proposal=proposal,
-            applier=applier,
-            detector=self._detector,
+    async def _post_rollout_regression_check(
+        self,
+        result: RolloutResult,
+        proposal: ImprovementProposal,
+        *,
+        baseline: OrgSignalSnapshot | None,
+        current: OrgSignalSnapshot | None,
+    ) -> RolloutResult:
+        """Run tiered regression detection after a successful rollout."""
+        if (
+            baseline is None
+            or current is None
+            or result.outcome != RolloutOutcome.SUCCESS
+        ):
+            return result
+        thresholds = self._build_regression_thresholds()
+        regression = await self._detector.check(
+            baseline=baseline,
+            current=current,
+            thresholds=thresholds,
         )
-
-        # Emit anonymized rollout event for cross-deployment analytics.
-        # emit_rollout handles its own exceptions internally.
-        if self._analytics_emitter is not None:
-            await self._analytics_emitter.emit_rollout(
-                result,
-                proposal=proposal,
-            )
-
-        return result
+        if regression.verdict == RegressionVerdict.NO_REGRESSION:
+            return result
+        logger.warning(
+            META_ROLLOUT_REGRESSION_DETECTED,
+            proposal_id=str(proposal.id),
+            verdict=regression.verdict.value,
+            breached_metric=regression.breached_metric,
+        )
+        return result.model_copy(
+            update={
+                "outcome": RolloutOutcome.REGRESSED,
+                "regression_verdict": regression.verdict,
+                "details": (
+                    f"Regression detected: {regression.verdict.value}"
+                    f" on {regression.breached_metric or 'unknown'}"
+                ),
+            },
+        )
 
     async def _dispatch_strategies(
         self,
@@ -362,7 +475,18 @@ class SelfImprovementService:
             )
 
     async def close(self) -> None:
-        """Flush analytics emitter and release resources."""
+        """Flush analytics emitter, close appliers, and release resources."""
+        for applier in self._appliers.values():
+            close = getattr(applier, "aclose", None)
+            if close is not None:
+                try:
+                    await close()
+                except Exception:
+                    logger.exception(
+                        META_SERVICE_CLOSE_FAILED,
+                        reason="applier_close_failed",
+                        altitude=str(applier.altitude),
+                    )
         if self._analytics_emitter is not None:
             try:
                 await self._analytics_emitter.close()

@@ -68,6 +68,21 @@ class CodeApplier:
         """This applier handles code modification proposals."""
         return ProposalAltitude.CODE_MODIFICATION
 
+    async def verify_github_token(self) -> None:
+        """Verify that the configured GitHub token is valid.
+
+        Raises:
+            GitHubAuthError: On 401/403.
+            GitHubAPIError: On other failures.
+        """
+        await self._github.verify_token()
+
+    async def aclose(self) -> None:
+        """Close the underlying GitHub client if it supports it."""
+        close = getattr(self._github, "aclose", None)
+        if close is not None:
+            await close()
+
     async def apply(
         self,
         proposal: ImprovementProposal,
@@ -165,15 +180,31 @@ class CodeApplier:
 
         # -- Remote push via GitHub API -----------------------------------
         await self._github.create_branch(branch)
-        await self._push_changes_via_api(
-            branch,
-            proposal,
-        )
-        pr_url = await self._github.create_draft_pr(
-            head=branch,
-            title=proposal.title,
-            body=_build_pr_body(proposal),
-        )
+        try:
+            await self._push_changes_via_api(
+                branch,
+                proposal,
+            )
+            pr_url = await self._github.create_draft_pr(
+                head=branch,
+                title=proposal.title,
+                body=_build_pr_body(proposal),
+            )
+        except MemoryError, RecursionError:
+            raise
+        except Exception:
+            # Partial push left an orphaned branch -- clean up.
+            try:
+                await self._github.delete_branch(branch)
+            except Exception:
+                logger.exception(
+                    META_APPLY_FAILED,
+                    altitude="code_modification",
+                    proposal_id=str(proposal.id),
+                    reason="branch_cleanup_after_push_failed",
+                    branch=branch,
+                )
+            raise
 
         count = len(proposal.code_changes)
         logger.info(

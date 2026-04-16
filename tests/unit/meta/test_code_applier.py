@@ -6,6 +6,11 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from synthorg.meta.appliers.code_applier import CodeApplier
+from synthorg.meta.appliers.github_client import (
+    GitHubAPIError,
+    GitHubAuthError,
+    _sanitize_response_body,
+)
 from synthorg.meta.config import CodeModificationConfig
 from synthorg.meta.models import (
     CIValidationResult,
@@ -107,6 +112,8 @@ def _mock_github_client() -> AsyncMock:
         return_value="https://github.com/test/repo/pull/99",
     )
     gh.delete_branch = AsyncMock()
+    gh.verify_token = AsyncMock()
+    gh.aclose = AsyncMock()
     return gh
 
 
@@ -141,9 +148,12 @@ class TestCodeApplier:
 
         assert result.success
         assert result.changes_applied == 1
-        # GitHub API was called.
+        assert result.error_message is None
+        # GitHub API was called with proposal data.
         gh.create_branch.assert_awaited_once()
         gh.push_change.assert_awaited_once()
+        push_args = gh.push_change.call_args
+        assert push_args is not None
         gh.create_draft_pr.assert_awaited_once()
         # Local file was reverted after push.
         written = strategies_dir / "new.py"
@@ -325,3 +335,91 @@ class TestCodeApplier:
             result = await applier.dry_run(proposal)
         assert not result.success
         assert "CREATE target already exists" in (result.error_message or "")
+
+    async def test_partial_push_failure_cleans_up_branch(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        """Branch is deleted when push fails after some files pushed."""
+        ci = _mock_ci_validator(_ci_pass())
+        gh = _mock_github_client()
+        # Fail on the first push_change call.
+        gh.push_change = AsyncMock(
+            side_effect=GitHubAPIError(
+                status_code=500,
+                action="push file",
+                body="internal error",
+            ),
+        )
+        applier = CodeApplier(
+            ci_validator=ci,
+            github_client=gh,
+            code_modification_config=CodeModificationConfig(),
+        )
+        proposal = _code_proposal()
+
+        with patch(
+            "synthorg.meta.appliers.code_applier.Path.cwd",
+            return_value=tmp_path,
+        ):
+            strategies_dir = tmp_path / "src" / "synthorg" / "meta" / "strategies"
+            strategies_dir.mkdir(parents=True)
+            result = await applier.apply(proposal)
+
+        assert not result.success
+        # Branch was created then cleaned up after push failure.
+        gh.create_branch.assert_awaited_once()
+        gh.delete_branch.assert_awaited()
+
+
+class TestGitHubSanitization:
+    """Response body sanitization tests."""
+
+    def test_strips_bearer_token(self) -> None:
+        text = "Authorization: Bearer ghp_abc123 denied"
+        result = _sanitize_response_body(text)
+        assert "ghp_abc123" not in result
+        assert "[REDACTED]" in result
+
+    def test_strips_ghp_token(self) -> None:
+        text = "Token ghp_abc123XYZ456 is invalid"
+        result = _sanitize_response_body(text)
+        assert "ghp_abc123XYZ456" not in result
+        assert "[REDACTED]" in result
+
+    def test_strips_gho_token(self) -> None:
+        text = "Token gho_installation456 expired"
+        result = _sanitize_response_body(text)
+        assert "gho_installation456" not in result
+
+    def test_strips_github_pat(self) -> None:
+        text = "github_pat_abc_def123 unauthorized"
+        result = _sanitize_response_body(text)
+        assert "github_pat_abc_def123" not in result
+
+    def test_strips_authorization_header(self) -> None:
+        text = "Authorization: token secret_value\nnext line"
+        result = _sanitize_response_body(text)
+        assert "secret_value" not in result
+
+    def test_preserves_safe_content(self) -> None:
+        text = '{"message": "Not Found", "status": "404"}'
+        result = _sanitize_response_body(text)
+        assert result == text
+
+
+class TestGitHubExceptions:
+    """Custom exception type tests."""
+
+    def test_github_api_error_attributes(self) -> None:
+        err = GitHubAPIError(status_code=500, action="push", body="oops")
+        assert err.status_code == 500
+        assert err.action == "push"
+        assert err.body == "oops"
+        assert "500" in str(err)
+        assert "push" in str(err)
+
+    def test_github_auth_error_is_subclass(self) -> None:
+        err = GitHubAuthError(status_code=401, action="verify", body="bad")
+        assert isinstance(err, GitHubAPIError)
+        assert err.status_code == 401

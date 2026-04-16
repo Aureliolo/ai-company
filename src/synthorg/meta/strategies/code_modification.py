@@ -184,25 +184,24 @@ class CodeModificationStrategy:
         if not changes:
             return None
 
-        # Enforce file count limit.
-        max_files = self._code_config.max_files_per_proposal
-        if len(changes) > max_files:
-            changes = changes[:max_files]
-
-        # Validate scope.
+        # Validate scope on the FULL parsed set -- fail-closed: reject
+        # entire proposal on ANY scope violation, even if the offending
+        # entry would have been truncated by the file-count limit.
         violations = self._scope_validator.validate_changes(changes)
+
         if violations:
-            logger.warning(
+            logger.error(
                 META_CODE_SCOPE_VIOLATION,
                 rule=rule_match.rule_name,
                 violations=list(violations),
+                change_count=len(changes),
             )
-            # Filter out violating changes.
-            changes = tuple(
-                c for c in changes if self._scope_validator.is_path_allowed(c.file_path)
-            )
-            if not changes:
-                return None
+            return None
+
+        # Enforce file count limit only after scope validation succeeds.
+        max_files = self._code_config.max_files_per_proposal
+        if len(changes) > max_files:
+            changes = changes[:max_files]
 
         logger.info(
             META_CODE_GEN_COMPLETED,

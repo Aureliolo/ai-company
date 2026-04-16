@@ -108,6 +108,7 @@ interface RuleBuilderFormProps {
 
 export function RuleBuilderForm({ editRule, metrics, onClose }: RuleBuilderFormProps) {
   const isEdit = editRule !== null
+  const addToast = useToastStore((s) => s.add)
   const [form, setForm] = useState<FormState>(
     () => (editRule ? formFromRule(editRule) : INITIAL_FORM),
   )
@@ -174,13 +175,13 @@ export function RuleBuilderForm({ editRule, metrics, onClose }: RuleBuilderFormP
     try {
       if (isEdit && editRule) {
         await updateRule(editRule.id, data)
-        useToastStore.getState().add({
+        addToast({
           variant: 'success',
           title: 'Rule updated',
         })
       } else {
         await createRule(data)
-        useToastStore.getState().add({
+        addToast({
           variant: 'success',
           title: 'Rule created',
         })

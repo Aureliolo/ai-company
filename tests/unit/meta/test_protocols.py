@@ -4,6 +4,11 @@ from datetime import UTC, datetime
 
 import pytest
 
+from synthorg.meta.config import SelfImprovementConfig
+from synthorg.meta.guards.approval_gate import ApprovalGateGuard
+from synthorg.meta.guards.rate_limit import RateLimitGuard
+from synthorg.meta.guards.rollback_plan import RollbackPlanGuard
+from synthorg.meta.guards.scope_check import ScopeCheckGuard
 from synthorg.meta.models import (
     ApplyResult,
     GuardResult,
@@ -35,6 +40,12 @@ from synthorg.meta.protocol import (
     SignalAggregator,
     SignalRule,
 )
+from synthorg.meta.rollout.ab_test import ABTestRollout
+from synthorg.meta.rollout.before_after import BeforeAfterRollout
+from synthorg.meta.rollout.canary import CanarySubsetRollout
+from synthorg.meta.rollout.regression.composite import TieredRegressionDetector
+from synthorg.meta.rollout.regression.statistical import StatisticalDetector
+from synthorg.meta.rollout.regression.threshold import ThresholdDetector
 
 pytestmark = pytest.mark.unit
 
@@ -249,3 +260,64 @@ class TestRegressionDetectorProtocol:
 
     def test_isinstance_check(self) -> None:
         assert isinstance(StubRegressionDetector(), RegressionDetector)
+
+
+# ── NotBlankStr name compliance ──────────────────────────────────
+
+
+class TestGuardNameReturnsNotBlankStr:
+    """All guards must return NotBlankStr from their name property."""
+
+    @pytest.mark.parametrize(
+        "guard",
+        [
+            ApprovalGateGuard(),
+            RateLimitGuard(max_proposals=10, window_hours=24),
+            RollbackPlanGuard(),
+            ScopeCheckGuard(config=SelfImprovementConfig()),
+        ],
+        ids=["approval_gate", "rate_limit", "rollback_plan", "scope_check"],
+    )
+    def test_name_is_not_blank_str(self, guard: ProposalGuard) -> None:
+        name = guard.name
+        assert isinstance(name, str)
+        assert len(name) > 0
+        assert name.strip() == name
+
+
+class TestRolloutStrategyNameReturnsNotBlankStr:
+    """All rollout strategies must return NotBlankStr from name."""
+
+    @pytest.mark.parametrize(
+        "strategy",
+        [
+            BeforeAfterRollout(),
+            CanarySubsetRollout(),
+            ABTestRollout(),
+        ],
+        ids=["before_after", "canary", "ab_test"],
+    )
+    def test_name_is_not_blank_str(self, strategy: RolloutStrategy) -> None:
+        name = strategy.name
+        assert isinstance(name, str)
+        assert len(name) > 0
+        assert name.strip() == name
+
+
+class TestRegressionDetectorNameReturnsNotBlankStr:
+    """All regression detectors must return NotBlankStr from name."""
+
+    @pytest.mark.parametrize(
+        "detector",
+        [
+            TieredRegressionDetector(),
+            ThresholdDetector(),
+            StatisticalDetector(),
+        ],
+        ids=["tiered", "threshold", "statistical"],
+    )
+    def test_name_is_not_blank_str(self, detector: RegressionDetector) -> None:
+        name = detector.name
+        assert isinstance(name, str)
+        assert len(name) > 0
+        assert name.strip() == name

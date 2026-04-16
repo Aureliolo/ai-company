@@ -4,6 +4,7 @@ Rejects proposals that lack a valid rollback plan with at least
 one operation and a validation check.
 """
 
+from synthorg.core.types import NotBlankStr
 from synthorg.meta.models import (
     GuardResult,
     GuardVerdict,
@@ -22,9 +23,9 @@ class RollbackPlanGuard:
     """Rejects proposals without a valid rollback plan."""
 
     @property
-    def name(self) -> str:
+    def name(self) -> NotBlankStr:
         """Guard name."""
-        return "rollback_plan"
+        return NotBlankStr("rollback_plan")
 
     async def evaluate(
         self,
@@ -68,7 +69,7 @@ class RollbackPlanGuard:
                 reason=reason,
             )
 
-        logger.debug(
+        logger.info(
             META_PROPOSAL_GUARD_PASSED,
             guard=self.name,
             proposal_id=str(proposal.id),

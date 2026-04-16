@@ -5,16 +5,27 @@ from typing import Any
 from litestar import Controller, get, post
 from litestar.datastructures import State  # noqa: TC002
 from litestar.exceptions import NotFoundException
+from pydantic import BaseModel, ConfigDict, Field
 
 from synthorg.api.controllers.custom_rules import rule_to_dict
 from synthorg.api.dto import ApiResponse
 from synthorg.api.guards import require_org_mutation, require_read_access
+from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.meta.config import SelfImprovementConfig
 from synthorg.meta.mcp.server import get_server_config
 from synthorg.meta.mcp.tools import get_tool_definitions
 from synthorg.observability import get_logger
 from synthorg.observability.events.meta import META_CUSTOM_RULE_LIST_FAILED
 from synthorg.persistence.errors import QueryError
+
+
+class ChatRequest(BaseModel):
+    """Request body for the Chief of Staff chat endpoint."""
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+
+    question: NotBlankStr = Field(max_length=2000)
+
 
 logger = get_logger(__name__)
 
@@ -145,6 +156,96 @@ class MetaController(Controller):
         # TODO: wire to actual A/B test state.
         msg = f"No active A/B test for proposal {proposal_id}"
         raise NotFoundException(msg)
+
+    @get("/proposals")
+    async def list_proposals(
+        self,
+        state: State,
+    ) -> ApiResponse[list[dict[str, Any]]]:
+        """List improvement proposals from the approval store.
+
+        Returns proposals where action_type starts with ``meta.``.
+
+        Returns:
+            List of proposal summaries.
+        """
+        store = state.app_state.approval_store
+        all_items = await store.list_items()
+        proposals: list[dict[str, Any]] = [
+            {
+                "id": item.id,
+                "title": item.title,
+                "action_type": item.action_type,
+                "status": item.status.value,
+                "risk_level": item.risk_level.value,
+                "requested_by": item.requested_by,
+                "created_at": item.created_at.isoformat(),
+            }
+            for item in all_items
+            if item.action_type.startswith("meta.")
+        ]
+        return ApiResponse[list[dict[str, Any]]](data=proposals)
+
+    @get("/signals")
+    async def get_signals(
+        self,
+    ) -> ApiResponse[dict[str, Any]]:
+        """Get signal domain summaries.
+
+        Returns domain names with placeholder data -- real signal
+        aggregation runs during the improvement cycle, not on demand.
+
+        Returns:
+            Signal domain summaries.
+        """
+        config = SelfImprovementConfig()
+        domains = [
+            "performance",
+            "budget",
+            "coordination",
+            "scaling",
+            "errors",
+            "evolution",
+            "telemetry",
+        ]
+        return ApiResponse[dict[str, Any]](
+            data={
+                "enabled": config.enabled,
+                "domains": [{"name": d, "status": "available"} for d in domains],
+            },
+        )
+
+    # TODO: add per-endpoint rate limiting before wiring LLM
+    # provider (resource-intensive call needs throttling).
+    @post("/chat", guards=[require_org_mutation()])
+    async def chat(
+        self,
+        data: ChatRequest,  # noqa: ARG002
+    ) -> ApiResponse[dict[str, Any]]:
+        """Ask the Chief of Staff a question.
+
+        Routes to the ChiefOfStaffChat backend for LLM-powered
+        explanations of signals and proposals.
+
+        Args:
+            data: Chat request with question text.
+
+        Returns:
+            Chat response with answer, sources, and confidence.
+        """
+        # Placeholder: real implementation will inject
+        # ChiefOfStaffChat via DI once the service is wired.
+        return ApiResponse[dict[str, Any]](
+            data={
+                "answer": (
+                    "The Chief of Staff chat is not yet connected "
+                    "to a live LLM provider. This is a placeholder "
+                    "response."
+                ),
+                "sources": [],
+                "confidence": 0.0,
+            },
+        )
 
     @post("/cycle", guards=[require_org_mutation()])
     async def trigger_cycle(

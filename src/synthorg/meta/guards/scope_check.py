@@ -6,6 +6,7 @@ self-improvement configuration.
 
 from typing import TYPE_CHECKING
 
+from synthorg.core.types import NotBlankStr
 from synthorg.meta.models import (
     GuardResult,
     GuardVerdict,
@@ -35,9 +36,9 @@ class ScopeCheckGuard:
         self._config = config
 
     @property
-    def name(self) -> str:
+    def name(self) -> NotBlankStr:
         """Guard name."""
-        return "scope_check"
+        return NotBlankStr("scope_check")
 
     async def evaluate(
         self,
