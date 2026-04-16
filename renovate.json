@@ -9,6 +9,7 @@
   "registryAliases": {
     "dhi.io": "dhi.io"
   },
+  "configMigration": true,
   "pre-commit": {
     "enabled": true
   },
@@ -110,6 +111,20 @@
       "description": "Ignore test golden files -- not real compose configs",
       "matchFileNames": ["cli/testdata/**"],
       "enabled": false
+    },
+    {
+      "description": "Security updates bypass schedule and limits",
+      "matchCategories": ["security"],
+      "schedule": ["at any time"],
+      "dependencyDashboardApproval": false,
+      "minimumReleaseAge": null,
+      "prPriority": 10,
+      "labels": ["dependencies", "security"]
+    },
+    {
+      "description": "Wait 3 days before updating to avoid broken releases",
+      "matchDepPatterns": ["*"],
+      "minimumReleaseAge": "3 days"
     }
   ],
   "lockFileMaintenance": {
