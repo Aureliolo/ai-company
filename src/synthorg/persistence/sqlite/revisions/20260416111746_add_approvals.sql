@@ -33,3 +33,5 @@ CREATE TABLE `approvals` (
 CREATE INDEX `idx_approvals_status` ON `approvals` (`status`);
 -- Create index "idx_approvals_action_type" to table: "approvals"
 CREATE INDEX `idx_approvals_action_type` ON `approvals` (`action_type`);
+-- Create index "idx_approvals_risk_level" to table: "approvals"
+CREATE INDEX `idx_approvals_risk_level` ON `approvals` (`risk_level`);

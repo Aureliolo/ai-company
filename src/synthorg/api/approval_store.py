@@ -79,9 +79,9 @@ class ApprovalStore:
                 approval_id=item.id,
             )
             raise ConflictError(msg)
-        self._items[item.id] = item
         if self._repo is not None:
             await self._repo.save(item)
+        self._items[item.id] = item
 
     async def get(self, approval_id: str) -> ApprovalItem | None:
         """Get an approval item by ID, applying lazy expiration.
@@ -144,9 +144,9 @@ class ApprovalStore:
                 approval_id=item.id,
             )
             return None
-        self._items[item.id] = item
         if self._repo is not None:
             await self._repo.save(item)
+        self._items[item.id] = item
         return item
 
     async def save_if_pending(
@@ -172,9 +172,9 @@ class ApprovalStore:
         current = self._check_expiration(current)
         if current.status != ApprovalStatus.PENDING:
             return None
-        self._items[item.id] = item
         if self._repo is not None:
             await self._repo.save(item)
+        self._items[item.id] = item
         return item
 
     def _check_expiration(self, item: ApprovalItem) -> ApprovalItem:

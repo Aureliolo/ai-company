@@ -58,7 +58,14 @@ export const useMetaStore = create<MetaState>((set) => ({
     } catch (err) {
       const msg = getErrorMessage(err)
       log.error('Failed to fetch meta data', msg)
-      set({ error: msg, loading: false })
+      set({
+        config: null,
+        proposals: [],
+        abTests: [],
+        signals: null,
+        error: msg,
+        loading: false,
+      })
     }
   },
 

@@ -215,6 +215,8 @@ class MetaController(Controller):
             },
         )
 
+    # TODO: add per-endpoint rate limiting before wiring LLM
+    # provider (resource-intensive call needs throttling).
     @post("/chat", guards=[require_org_mutation()])
     async def chat(
         self,

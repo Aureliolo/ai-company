@@ -205,11 +205,13 @@ class SQLiteApprovalRepository:
         try:
             cursor = await self._db.execute(sql, params)
             rows = await cursor.fetchall()
+            items = tuple(_row_to_item(r) for r in rows)
+        except QueryError:
+            raise
         except Exception as exc:
             msg = f"Failed to list approvals: {exc}"
             logger.exception(API_APPROVAL_REPO_FAILED, error=msg)
             raise QueryError(msg) from exc
-        items = tuple(_row_to_item(r) for r in rows)
         logger.debug(API_APPROVAL_REPO_LISTED, count=len(items))
         return items
 

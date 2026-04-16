@@ -981,3 +981,4 @@ CREATE TABLE approvals (
 );
 CREATE INDEX idx_approvals_status ON approvals(status);
 CREATE INDEX idx_approvals_action_type ON approvals(action_type);
+CREATE INDEX idx_approvals_risk_level ON approvals(risk_level);

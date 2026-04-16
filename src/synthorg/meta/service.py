@@ -144,9 +144,13 @@ class SelfImprovementService:
         applier = self._appliers.get(ProposalAltitude.CODE_MODIFICATION)
         if applier is None or not isinstance(applier, CodeApplier):
             return
+        from synthorg.meta.appliers.github_client import (  # noqa: PLC0415
+            GitHubAPIError,
+        )
+
         try:
             await applier._github.verify_token()  # noqa: SLF001
-        except Exception:
+        except GitHubAPIError:
             logger.exception(
                 META_CODE_GITHUB_CREDS_INVALID,
                 reason="token_verification_failed",

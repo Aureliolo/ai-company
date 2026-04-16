@@ -5,9 +5,12 @@ import { MessageCircle, Send } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { EmptyState } from '@/components/ui/empty-state'
 import { InputField } from '@/components/ui/input-field'
+import { LiveRegion } from '@/components/ui/live-region'
+import { createLogger } from '@/lib/logger'
+import { cn } from '@/lib/utils'
 import { useMetaStore } from '@/stores/meta'
 
-let _msgId = 0
+const log = createLogger('meta-chat')
 
 interface ChatMessage {
   id: number
@@ -17,12 +20,61 @@ interface ChatMessage {
   confidence?: number
 }
 
+// ── Extracted sub-component ─────────────────────────────────────
+
+interface ChatInputAreaProps {
+  value: string
+  onChange: (value: string) => void
+  onSend: () => void
+  disabled: boolean
+  className?: string
+}
+
+function ChatInputArea({
+  value,
+  onChange,
+  onSend,
+  disabled,
+  className,
+}: ChatInputAreaProps) {
+  return (
+    <div className={cn('flex gap-2', className)}>
+      <div className="flex-1">
+        <InputField
+          label=""
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder="Ask about signals, proposals..."
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+              e.preventDefault()
+              onSend()
+            }
+          }}
+        />
+      </div>
+      <Button
+        size="sm"
+        onClick={onSend}
+        disabled={!value.trim() || disabled}
+      >
+        <Send className="h-4 w-4" />
+      </Button>
+    </div>
+  )
+}
+
+// ── Main component ──────────────────────────────────────────────
+
 export function MetaChat() {
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [input, setInput] = useState('')
   const chatLoading = useMetaStore((s) => s.chatLoading)
   const sendChat = useMetaStore((s) => s.sendChat)
   const scrollRef = useRef<HTMLDivElement>(null)
+  const msgIdRef = useRef(0)
+
+  const nextMsgId = useCallback(() => ++msgIdRef.current, [])
 
   const handleSend = useCallback(async () => {
     const question = input.trim()
@@ -31,7 +83,7 @@ export function MetaChat() {
     setInput('')
     setMessages((prev) => [
       ...prev,
-      { id: ++_msgId, role: 'user', content: question },
+      { id: nextMsgId(), role: 'user', content: question },
     ])
 
     try {
@@ -39,18 +91,22 @@ export function MetaChat() {
       setMessages((prev) => [
         ...prev,
         {
-          id: ++_msgId,
+          id: nextMsgId(),
           role: 'assistant',
           content: response.answer,
           sources: response.sources,
           confidence: response.confidence,
         },
       ])
-    } catch {
+    } catch (err) {
+      log.error(
+        'Chat send failed',
+        err instanceof Error ? err.message : String(err),
+      )
       setMessages((prev) => [
         ...prev,
         {
-          id: ++_msgId,
+          id: nextMsgId(),
           role: 'assistant',
           content: 'Failed to get a response. Please try again.',
         },
@@ -64,7 +120,12 @@ export function MetaChat() {
         behavior: 'smooth',
       })
     })
-  }, [input, chatLoading, sendChat])
+  }, [input, chatLoading, sendChat, nextMsgId])
+
+  const triggerSend = useCallback(
+    () => void handleSend(),
+    [handleSend],
+  )
 
   if (messages.length === 0 && !chatLoading) {
     return (
@@ -74,30 +135,12 @@ export function MetaChat() {
           title="Ask the Chief of Staff"
           description="Ask questions about signals, proposals, or the improvement pipeline."
         />
-        <div className="flex gap-2">
-          <div className="flex-1">
-            <InputField
-              label=""
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              placeholder="Ask about signals, proposals..."
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && !e.shiftKey) {
-                  e.preventDefault()
-                  void handleSend()
-                }
-              }}
-            />
-          </div>
-          <Button
-            size="sm"
-            onClick={() => void handleSend()}
-            disabled={!input.trim() || chatLoading}
-            className="mt-6"
-          >
-            <Send className="h-4 w-4" />
-          </Button>
-        </div>
+        <ChatInputArea
+          value={input}
+          onChange={setInput}
+          onSend={triggerSend}
+          disabled={chatLoading}
+        />
       </div>
     )
   }
@@ -108,53 +151,39 @@ export function MetaChat() {
         ref={scrollRef}
         className="max-h-80 space-y-3 overflow-y-auto rounded-md border border-border p-3"
       >
-        {messages.map((msg) => (
-          <div
-            key={msg.id}
-            className={`rounded-md p-3 text-sm ${
-              msg.role === 'user'
-                ? 'ml-8 bg-accent/10 text-foreground'
-                : 'mr-8 bg-card text-foreground'
-            }`}
-          >
-            <p className="whitespace-pre-wrap">{msg.content}</p>
-            {msg.sources && msg.sources.length > 0 && (
-              <p className="mt-1 text-xs text-muted-foreground">
-                Sources: {msg.sources.join(', ')}
-              </p>
-            )}
-          </div>
-        ))}
-        {chatLoading && (
-          <div className="mr-8 animate-pulse rounded-md bg-card p-3 text-sm text-muted-foreground">
-            Thinking...
-          </div>
-        )}
+        <LiveRegion politeness="polite">
+          {messages.map((msg) => (
+            <div
+              key={msg.id}
+              className={cn(
+                'rounded-md p-3 text-sm text-foreground',
+                msg.role === 'user'
+                  ? 'ml-8 bg-accent/10'
+                  : 'mr-8 bg-card',
+              )}
+            >
+              <p className="whitespace-pre-wrap">{msg.content}</p>
+              {msg.sources && msg.sources.length > 0 && (
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Sources: {msg.sources.join(', ')}
+                </p>
+              )}
+            </div>
+          ))}
+          {chatLoading && (
+            <div className="mr-8 animate-pulse rounded-md bg-card p-3 text-sm text-muted-foreground">
+              Thinking...
+            </div>
+          )}
+        </LiveRegion>
       </div>
 
-      <div className="flex gap-2">
-        <div className="flex-1">
-          <InputField
-            label=""
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            placeholder="Ask about signals, proposals..."
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault()
-                void handleSend()
-              }
-            }}
-          />
-        </div>
-        <Button
-          size="sm"
-          onClick={() => void handleSend()}
-          disabled={!input.trim() || chatLoading}
-        >
-          <Send className="h-4 w-4" />
-        </Button>
-      </div>
+      <ChatInputArea
+        value={input}
+        onChange={setInput}
+        onSend={triggerSend}
+        disabled={chatLoading}
+      />
     </div>
   )
 }
