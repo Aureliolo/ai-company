@@ -31,7 +31,6 @@ class NotificationCategory(StrEnum):
     APPROVAL = "approval"
     BUDGET = "budget"
     SECURITY = "security"
-    STAGNATION = "stagnation"
     SYSTEM = "system"
     AGENT = "agent"
     HEALTH = "health"

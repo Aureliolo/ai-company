@@ -18,9 +18,9 @@ class TestNotificationCategory:
         assert NotificationCategory.APPROVAL.value == "approval"
         assert NotificationCategory.BUDGET.value == "budget"
         assert NotificationCategory.SECURITY.value == "security"
-        assert NotificationCategory.STAGNATION.value == "stagnation"
         assert NotificationCategory.SYSTEM.value == "system"
         assert NotificationCategory.AGENT.value == "agent"
+        assert NotificationCategory.HEALTH.value == "health"
 
 
 @pytest.mark.unit
