@@ -1,5 +1,45 @@
 # Changelog
 
+## [0.6.9](https://github.com/Aureliolo/synthorg/compare/v0.6.8...v0.6.9) (2026-04-16)
+
+
+### Features
+
+* A/B testing rollout strategy for self-improvement proposals ([#1352](https://github.com/Aureliolo/synthorg/issues/1352)) ([e68d9ce](https://github.com/Aureliolo/synthorg/commit/e68d9ce7faa1682b818ac9dec598769bc7246b09)), closes [#1344](https://github.com/Aureliolo/synthorg/issues/1344)
+* Chief of Staff advanced capabilities (memory, proactive alerts, learning) ([#1356](https://github.com/Aureliolo/synthorg/issues/1356)) ([fee5771](https://github.com/Aureliolo/synthorg/commit/fee5771ad0fa37235a7d90ce3a61373d8bd24f5f)), closes [#1342](https://github.com/Aureliolo/synthorg/issues/1342)
+* CLI UX overhaul + DHI image verification + compose hardening ([#1359](https://github.com/Aureliolo/synthorg/issues/1359)) ([4e8f0a3](https://github.com/Aureliolo/synthorg/commit/4e8f0a39af3d82a3806ec4726a3c2474a5684441))
+* cross-deployment analytics for self-improvement patterns ([#1363](https://github.com/Aureliolo/synthorg/issues/1363)) ([d1f6198](https://github.com/Aureliolo/synthorg/commit/d1f61985a4f78b5ae8806a03eb7a5fddacbfd414)), closes [#1341](https://github.com/Aureliolo/synthorg/issues/1341)
+* custom rule authoring UI for self-improvement ([#1355](https://github.com/Aureliolo/synthorg/issues/1355)) ([859511b](https://github.com/Aureliolo/synthorg/commit/859511b7de91152d84a95438dc304e1b495d4ecb)), closes [#1343](https://github.com/Aureliolo/synthorg/issues/1343)
+* expose full SynthOrg API as MCP server with capability-based scoping ([#1353](https://github.com/Aureliolo/synthorg/issues/1353)) ([750d1cb](https://github.com/Aureliolo/synthorg/commit/750d1cb10f9c979f0c21469ffd0891bd80232077)), closes [#1339](https://github.com/Aureliolo/synthorg/issues/1339)
+* product-level self-improvement (framework code modification proposals) ([#1357](https://github.com/Aureliolo/synthorg/issues/1357)) ([6fec613](https://github.com/Aureliolo/synthorg/commit/6fec61380ecef6ea5a09c0a49c4ecf970d39f99e)), closes [#1340](https://github.com/Aureliolo/synthorg/issues/1340)
+* self-improvement meta-loop hardening + dashboard completion ([#1376](https://github.com/Aureliolo/synthorg/issues/1376)) ([5824442](https://github.com/Aureliolo/synthorg/commit/582444253af251d53e9ec9eb05644bae6368e64c)), closes [#1375](https://github.com/Aureliolo/synthorg/issues/1375) [#1213](https://github.com/Aureliolo/synthorg/issues/1213)
+
+
+### Bug Fixes
+
+* `[A-Z_]+` -&gt; `[A-Z0-9_]+` ([2b02524](https://github.com/Aureliolo/synthorg/commit/2b02524419d92d0a2b4999765d962c9586e00af1))
+* include digits in Renovate VERSION regex to detect D2_VERSION ([#1366](https://github.com/Aureliolo/synthorg/issues/1366)) ([2b02524](https://github.com/Aureliolo/synthorg/commit/2b02524419d92d0a2b4999765d962c9586e00af1))
+* resolve Renovate DHI registry lookup failures ([#1365](https://github.com/Aureliolo/synthorg/issues/1365)) ([57c14dd](https://github.com/Aureliolo/synthorg/commit/57c14ddbe2a67220d7d683f3c8d58539817c3aae))
+
+
+### CI/CD
+
+* Update github/codeql-action action to v4.35.2 ([#1362](https://github.com/Aureliolo/synthorg/issues/1362)) ([732b446](https://github.com/Aureliolo/synthorg/commit/732b446b2868a6ba9ce470c86e6a45414cf0a0b5))
+
+
+### Maintenance
+
+* add Renovate best practices (configMigration, minimumReleaseAge, security bypass) ([#1371](https://github.com/Aureliolo/synthorg/issues/1371)) ([665e761](https://github.com/Aureliolo/synthorg/commit/665e761feb8b3f985800f6e88fde11ecf2baa516))
+* **config:** migrate Renovate config ([#1372](https://github.com/Aureliolo/synthorg/issues/1372)) ([c26e465](https://github.com/Aureliolo/synthorg/commit/c26e4657c1991a3f3b513b928483824752b9cd91))
+* consolidate Renovate PR groups to eliminate overlaps ([#1374](https://github.com/Aureliolo/synthorg/issues/1374)) ([fa4e828](https://github.com/Aureliolo/synthorg/commit/fa4e8281e9bc7a45762331cc54c610fbffa31e15))
+* Lock file maintenance ([#1369](https://github.com/Aureliolo/synthorg/issues/1369)) ([cf32a25](https://github.com/Aureliolo/synthorg/commit/cf32a25137cee8b1323a5ae22b3e1fd17183c1a1))
+* Lock file maintenance ([#1370](https://github.com/Aureliolo/synthorg/issues/1370)) ([0ed0a40](https://github.com/Aureliolo/synthorg/commit/0ed0a40aff315245c2fab86cfc7c99f75dbd0862))
+* Lock file maintenance ([#1377](https://github.com/Aureliolo/synthorg/issues/1377)) ([5285332](https://github.com/Aureliolo/synthorg/commit/5285332f8fc56c9d834a9745ffadf56b41af1f4b))
+* remove redundant Renovate security/releaseAge rules ([#1373](https://github.com/Aureliolo/synthorg/issues/1373)) ([7948788](https://github.com/Aureliolo/synthorg/commit/79487888e0da448f47efd3796d7b3afd5fa28a52))
+* Update Container dependencies ([#1358](https://github.com/Aureliolo/synthorg/issues/1358)) ([7378d5b](https://github.com/Aureliolo/synthorg/commit/7378d5b8c5b87a45817d4c23fd15ad4eab3e6adc))
+* Update Python dependencies ([#1360](https://github.com/Aureliolo/synthorg/issues/1360)) ([d71eadb](https://github.com/Aureliolo/synthorg/commit/d71eadb81d5e1e2b9c6a17402e4a6a2faf695fc5))
+* Update Web dependencies ([#1361](https://github.com/Aureliolo/synthorg/issues/1361)) ([58fa19e](https://github.com/Aureliolo/synthorg/commit/58fa19e6b9e3ff39c51740d06b08235c956b40a2))
+
 ## [0.6.8](https://github.com/Aureliolo/synthorg/compare/v0.6.7...v0.6.8) (2026-04-15)
 
 
