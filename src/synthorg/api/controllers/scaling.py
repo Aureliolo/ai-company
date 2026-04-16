@@ -38,7 +38,7 @@ class ScalingStrategyResponse(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
-    name: str = Field(description="Strategy identifier")
+    name: NotBlankStr = Field(description="Strategy identifier")
     enabled: bool = Field(description="Whether this strategy is active")
     priority: int = Field(ge=0, description="Priority rank")
 
@@ -48,7 +48,7 @@ class ScalingSignalResponse(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
-    name: str = Field(description="Signal name")
+    name: NotBlankStr = Field(description="Signal name")
     value: float = Field(description="Current value")
     source: str = Field(description="Signal source")
     threshold: float | None = Field(
@@ -63,7 +63,7 @@ class ScalingDecisionResponse(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
-    id: str = Field(description="Decision identifier")
+    id: NotBlankStr = Field(description="Decision identifier")
     action_type: str = Field(description="Action type")
     source_strategy: str = Field(description="Strategy that proposed this")
     target_agent_id: str | None = Field(

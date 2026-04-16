@@ -28,7 +28,6 @@ template:
 
   agents:
     - role: "Security Engineer"
-      name: ""
       level: "senior"
       model:
         tier: "large"
@@ -37,7 +36,6 @@ template:
       personality_preset: "quality_guardian"
       department: "security"
     - role: "Security Operations"
-      name: ""
       level: "mid"
       model: "medium"
       personality_preset: "methodical_analyst"

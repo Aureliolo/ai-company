@@ -330,5 +330,5 @@ def _agent_key(agent: dict[str, Any]) -> tuple[str, str, str]:
     dept = agent.get("department")
     if not dept:
         dept = DEFAULT_MERGE_DEPARTMENT
-    merge_id = str(agent.get("merge_id", "")).lower()
+    merge_id = str(agent.get("merge_id") or "").lower()
     return (role, str(dept).lower(), merge_id)

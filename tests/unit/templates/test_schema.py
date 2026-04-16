@@ -72,7 +72,8 @@ class TestTemplateAgentConfig:
     def test_valid_minimal(self) -> None:
         a = TemplateAgentConfig(role="Backend Developer")
         assert a.role == "Backend Developer"
-        assert a.name == ""
+        assert a.name is None
+        assert a.merge_id is None
         assert a.level == SeniorityLevel.MID
         assert a.model == "medium"
         assert a.personality_preset is None

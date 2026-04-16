@@ -46,7 +46,6 @@ template:
 
   agents:
     - role: "CEO"
-      name: ""
       level: "c_suite"
       model:
         tier: "large"
@@ -56,7 +55,6 @@ template:
       department: "executive"
       strategic_output_mode: "advisor"
     - role: "Full-Stack Developer"
-      name: ""
       merge_id: "fullstack-senior"
       level: "senior"
       model: "medium"

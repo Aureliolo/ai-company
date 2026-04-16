@@ -29,13 +29,11 @@ template:
 
   agents:
     - role: "UX Designer"
-      name: ""
       level: "mid"
       model: "medium"
       personality_preset: "rapid_prototyper"
       department: "design"
     - role: "UX Researcher"
-      name: ""
       level: "mid"
       model: "small"
       personality_preset: "methodical_analyst"

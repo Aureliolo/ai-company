@@ -101,7 +101,6 @@ template:
       _remove: true
     # New engineering squad agents
     - role: "Software Architect"
-      name: ""
       level: "principal"
       model:
         tier: "large"
@@ -110,14 +109,12 @@ template:
       personality_preset: "systems_thinker"
       department: "engineering"
     - role: "Backend Developer"
-      name: ""
       merge_id: "backend-senior-1"
       level: "senior"
       model: "medium"
       personality_preset: "pragmatic_builder"
       department: "engineering"
     - role: "Backend Developer"
-      name: ""
       merge_id: "backend-mid"
       level: "mid"
       model:
@@ -126,7 +123,6 @@ template:
       personality_preset: "eager_learner"
       department: "engineering"
     - role: "Frontend Developer"
-      name: ""
       level: "mid"
       model:
         tier: "small"
@@ -134,19 +130,16 @@ template:
       personality_preset: "creative_innovator"
       department: "engineering"
     - role: "QA Lead"
-      name: ""
       level: "lead"
       model: "medium"
       personality_preset: "quality_guardian"
       department: "quality_assurance"
     - role: "QA Engineer"
-      name: ""
       level: "mid"
       model: "small"
       personality_preset: "methodical_analyst"
       department: "quality_assurance"
     - role: "DevOps/SRE Engineer"
-      name: ""
       level: "mid"
       model:
         tier: "medium"
@@ -154,7 +147,6 @@ template:
       personality_preset: "process_optimizer"
       department: "operations"
     - role: "Backend Developer"
-      name: ""
       merge_id: "backend-senior-2"
       level: "senior"
       model: "medium"

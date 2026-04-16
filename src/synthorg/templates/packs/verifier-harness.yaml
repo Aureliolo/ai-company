@@ -30,7 +30,6 @@ template:
 
   agents:
     - role: "Planner"
-      name: ""
       level: "senior"
       model:
         tier: "large"
@@ -39,7 +38,6 @@ template:
       personality_preset: "strategic_planner"
       department: "engineering"
     - role: "Generator"
-      name: ""
       level: "mid"
       model:
         tier: "medium"
@@ -48,7 +46,6 @@ template:
       personality_preset: "pragmatic_builder"
       department: "engineering"
     - role: "Evaluator"
-      name: ""
       level: "senior"
       model:
         tier: "medium"

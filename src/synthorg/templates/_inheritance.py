@@ -147,7 +147,7 @@ def deduplicate_merged_agent_names(merged: dict[str, Any]) -> dict[str, Any]:
     used: set[str] = set()
     new_agents: list[dict[str, Any]] = []
     for agent in agents:
-        name = agent.get("name", "")
+        name = agent.get("name") or ""
         if not name:
             new_agents.append(agent)
             continue

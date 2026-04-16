@@ -68,7 +68,6 @@ template:
   agents:
     # Override parent's Full-Stack Developer: change personality
     - role: "Full-Stack Developer"
-      name: ""
       merge_id: "fullstack-senior"
       level: "senior"
       model: "medium"
@@ -76,7 +75,6 @@ template:
       department: "engineering"
     # New agents
     - role: "CTO"
-      name: ""
       level: "c_suite"
       model:
         tier: "large"
@@ -86,7 +84,6 @@ template:
       department: "executive"
       strategic_output_mode: "advisor"
     - role: "Full-Stack Developer"
-      name: ""
       merge_id: "fullstack-mid"
       level: "mid"
       model:
@@ -95,7 +92,6 @@ template:
       personality_preset: "team_diplomat"
       department: "engineering"
     - role: "Product Manager"
-      name: ""
       level: "senior"
       model:
         tier: "medium"

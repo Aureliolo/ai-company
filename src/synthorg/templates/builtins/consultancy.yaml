@@ -57,7 +57,6 @@ template:
 
   agents:
     - role: "Software Architect"
-      name: ""
       level: "principal"
       model:
         tier: "large"
@@ -66,21 +65,18 @@ template:
       personality_preset: "systems_thinker"
       department: "consulting"
     - role: "Backend Developer"
-      name: ""
       merge_id: "backend-1"
       level: "senior"
       model: "medium"
       personality_preset: "pragmatic_builder"
       department: "consulting"
     - role: "Backend Developer"
-      name: ""
       merge_id: "backend-2"
       level: "senior"
       model: "medium"
       personality_preset: "code_craftsman"
       department: "consulting"
     - role: "Project Manager"
-      name: ""
       level: "senior"
       model:
         tier: "medium"
@@ -88,7 +84,6 @@ template:
       personality_preset: "client_advisor"
       department: "operations"
     - role: "Technical Writer"
-      name: ""
       level: "mid"
       model:
         tier: "small"

@@ -151,7 +151,6 @@ template:
   agents:
     # C-Suite (5)
     - role: "CEO"
-      name: ""
       level: "c_suite"
       model:
         tier: "large"
@@ -161,7 +160,6 @@ template:
       department: "executive"
       strategic_output_mode: "advisor"
     - role: "CTO"
-      name: ""
       level: "c_suite"
       model:
         tier: "large"
@@ -171,7 +169,6 @@ template:
       department: "executive"
       strategic_output_mode: "advisor"
     - role: "CFO"
-      name: ""
       level: "c_suite"
       model:
         tier: "large"
@@ -181,7 +178,6 @@ template:
       department: "executive"
       strategic_output_mode: "advisor"
     - role: "COO"
-      name: ""
       level: "c_suite"
       model:
         tier: "large"
@@ -191,7 +187,6 @@ template:
       department: "operations"
       strategic_output_mode: "advisor"
     - role: "CPO"
-      name: ""
       level: "c_suite"
       model:
         tier: "large"
@@ -202,7 +197,6 @@ template:
       strategic_output_mode: "advisor"
     # Product (2)
     - role: "Product Manager"
-      name: ""
       level: "senior"
       model:
         tier: "medium"
@@ -210,27 +204,23 @@ template:
       personality_preset: "strategic_planner"
       department: "product"
     - role: "Technical Writer"
-      name: ""
       level: "mid"
       model: "small"
       personality_preset: "technical_communicator"
       department: "product"
     # Design (2)
     - role: "UX Designer"
-      name: ""
       level: "mid"
       model: "medium"
       personality_preset: "user_advocate"
       department: "design"
     - role: "UX Researcher"
-      name: ""
       level: "mid"
       model: "medium"
       personality_preset: "independent_researcher"
       department: "design"
     # Engineering -- static (3)
     - role: "Software Architect"
-      name: ""
       level: "principal"
       model:
         tier: "large"
@@ -239,7 +229,6 @@ template:
       personality_preset: "systems_thinker"
       department: "engineering"
     - role: "DevOps/SRE Engineer"
-      name: ""
       level: "mid"
       model:
         tier: "medium"
@@ -247,7 +236,6 @@ template:
       personality_preset: "disciplined_executor"
       department: "engineering"
     - role: "Database Engineer"
-      name: ""
       level: "mid"
       model: "medium"
       personality_preset: "methodical_analyst"
@@ -255,7 +243,6 @@ template:
     # Engineering -- dynamic backend devs
 {% for i in range(num_backend_devs | default(3) | int) %}
     - role: "Backend Developer"
-      name: ""
       merge_id: "backend-{{ i }}"
 {% if i == 0 %}
       level: "senior"
@@ -273,7 +260,6 @@ template:
     # Engineering -- dynamic frontend devs
 {% for i in range(num_frontend_devs | default(2) | int) %}
     - role: "Frontend Developer"
-      name: ""
       merge_id: "frontend-{{ i }}"
 {% if i == 0 %}
       level: "senior"
@@ -290,39 +276,33 @@ template:
 {% endfor %}
     # Quality Assurance (3)
     - role: "QA Lead"
-      name: ""
       level: "lead"
       model: "medium"
       personality_preset: "quality_guardian"
       department: "quality_assurance"
     - role: "QA Engineer"
-      name: ""
       level: "mid"
       model: "small"
       personality_preset: "methodical_analyst"
       department: "quality_assurance"
     - role: "Automation Engineer"
-      name: ""
       level: "mid"
       model: "small"
       personality_preset: "disciplined_executor"
       department: "quality_assurance"
     # Data & Analytics (2)
     - role: "Data Analyst"
-      name: ""
       level: "mid"
       model: "medium"
       personality_preset: "data_driven_optimizer"
       department: "data_analytics"
     - role: "Data Engineer"
-      name: ""
       level: "mid"
       model: "medium"
       personality_preset: "pragmatic_builder"
       department: "data_analytics"
     # Operations (2)
     - role: "Project Manager"
-      name: ""
       level: "senior"
       model:
         tier: "medium"
@@ -330,7 +310,6 @@ template:
       personality_preset: "communication_bridge"
       department: "operations"
     - role: "Scrum Master"
-      name: ""
       level: "senior"
       model:
         tier: "medium"
@@ -339,20 +318,17 @@ template:
       department: "operations"
     # Security (2)
     - role: "Security Engineer"
-      name: ""
       level: "senior"
       model: "medium"
       personality_preset: "security_sentinel"
       department: "security"
     - role: "Security Operations"
-      name: ""
       level: "senior"
       model: "medium"
       personality_preset: "security_sentinel"
       department: "security"
     # Creative & Marketing (2)
     - role: "Content Writer"
-      name: ""
       level: "mid"
       model:
         tier: "small"
@@ -360,7 +336,6 @@ template:
       personality_preset: "creative_innovator"
       department: "creative_marketing"
     - role: "Brand Strategist"
-      name: ""
       level: "senior"
       model: "medium"
       personality_preset: "growth_hacker"

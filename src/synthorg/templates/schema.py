@@ -105,8 +105,8 @@ class TemplateAgentConfig(BaseModel):
 
     Attributes:
         role: Built-in role name (case-insensitive match to role catalog).
-        name: Agent name (may contain Jinja2 placeholders; empty triggers
-            auto-generation).
+        name: Agent name (may contain Jinja2 placeholders).  ``None``
+            triggers auto-generation during rendering.
         level: Seniority level override.
         model: Model tier alias (``"large"``, ``"medium"``, ``"small"``)
             or a structured ``ModelRequirement`` dict with ``tier``,
@@ -122,7 +122,8 @@ class TemplateAgentConfig(BaseModel):
         merge_id: Stable identity for inheritance merge.  When a
             template has multiple agents with the same ``(role,
             department)`` pair, ``merge_id`` disambiguates them so
-            child templates can target a specific agent.
+            child templates can target a specific agent.  ``None``
+            means no merge_id is set.
         remove: Merge directive -- when ``True``, removes matching
             parent agent during inheritance.
     """
@@ -130,7 +131,10 @@ class TemplateAgentConfig(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
 
     role: NotBlankStr = Field(description="Built-in role name")
-    name: str = Field(default="", description="Agent name (may have Jinja2 vars)")
+    name: NotBlankStr | None = Field(
+        default=None,
+        description="Agent name (may have Jinja2 vars); None triggers auto-generation",
+    )
     level: SeniorityLevel = Field(
         default=SeniorityLevel.MID,
         description="Seniority level",
@@ -173,9 +177,9 @@ class TemplateAgentConfig(BaseModel):
         default=None,
         description="Strategic output mode override for this agent",
     )
-    merge_id: str = Field(
-        default="",
-        description="Stable identity for inheritance merge",
+    merge_id: NotBlankStr | None = Field(
+        default=None,
+        description="Stable identity for inheritance merge; None means unset",
     )
     remove: bool = Field(
         default=False,
