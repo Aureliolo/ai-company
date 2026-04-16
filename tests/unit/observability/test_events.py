@@ -202,6 +202,7 @@ class TestEventConstants:
             "consolidation",
             "coordination",
             "correlation",
+            "cross_deployment",
             "decomposition",
             "degradation",
             "delegation",
