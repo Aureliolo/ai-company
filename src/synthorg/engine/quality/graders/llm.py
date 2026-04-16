@@ -31,6 +31,7 @@ from synthorg.observability.events.verification import (
     VERIFICATION_GRADER_RESPONSE_INVALID,
     VERIFICATION_GRADING_COMPLETED,
     VERIFICATION_GRADING_STARTED,
+    VERIFICATION_VERDICT_OVERRIDDEN_TO_REFER,
 )
 from synthorg.providers.enums import MessageRole
 from synthorg.providers.models import (
@@ -332,12 +333,35 @@ class LLMRubricGrader:
             raise
 
     def _locate_tool_call(self, response: Any) -> Any:
-        """Return the sole ``emit_rubric_verdict`` tool call or a reason string."""
-        matches = [tc for tc in response.tool_calls if tc.name == _GRADER_TOOL_NAME]
-        if len(response.tool_calls) != 1 or len(matches) != 1:
+        """Return the sole ``emit_rubric_verdict`` tool call or a reason string.
+
+        Validates the response shape defensively so a misbehaving
+        provider stub / bad payload fails closed to ``REFER`` with a
+        logged warning instead of crashing the grader.
+        """
+        tool_calls = getattr(response, "tool_calls", None)
+        if not isinstance(tool_calls, list | tuple):
+            logger.warning(
+                VERIFICATION_GRADER_RESPONSE_INVALID,
+                grader=self.name,
+                reason="tool_calls is not a list/tuple",
+                tool_calls_type=type(tool_calls).__name__,
+            )
+            return "tool_calls field missing or not iterable"
+        for index, tc in enumerate(tool_calls):
+            if not isinstance(getattr(tc, "name", None), str):
+                logger.warning(
+                    VERIFICATION_GRADER_RESPONSE_INVALID,
+                    grader=self.name,
+                    reason="tool_call entry has non-string .name",
+                    index=index,
+                )
+                return "tool_call entry missing string .name"
+        matches = [tc for tc in tool_calls if tc.name == _GRADER_TOOL_NAME]
+        if len(tool_calls) != 1 or len(matches) != 1:
             return (
                 "ambiguous or unexpected tool_call(s) in response "
-                f"(total={len(response.tool_calls)}, matches={len(matches)})"
+                f"(total={len(tool_calls)}, matches={len(matches)})"
             )
         return matches[0]
 
@@ -355,15 +379,33 @@ class LLMRubricGrader:
         | str
     ):
         """Parse tool arguments and apply the min-confidence downgrade."""
-        parsed = self._parse_tool_arguments(
-            tool_call.arguments,
-            rubric=rubric,
-        )
+        arguments = getattr(tool_call, "arguments", None)
+        if not isinstance(arguments, Mapping):
+            logger.warning(
+                VERIFICATION_GRADER_RESPONSE_INVALID,
+                grader=self.name,
+                reason="tool_call.arguments is not a mapping",
+                arguments_type=type(arguments).__name__,
+            )
+            return "tool_call.arguments is not a mapping"
+        parsed = self._parse_tool_arguments(arguments, rubric=rubric)
         if isinstance(parsed, str):
             return parsed
         per_criterion_grades, verdict, confidence, findings = parsed
         applied_min_conf = self._applied_min_confidence(rubric)
         if confidence < applied_min_conf:
+            # State transition: the parsed verdict is about to be
+            # downgraded to REFER.  Log at INFO so operators see the
+            # override in telemetry alongside the grading.completed
+            # event that follows.
+            logger.info(
+                VERIFICATION_VERDICT_OVERRIDDEN_TO_REFER,
+                grader=self.name,
+                rubric_name=rubric.name,
+                previous_verdict=verdict.value,
+                confidence=confidence,
+                applied_min_confidence=applied_min_conf,
+            )
             verdict = VerificationVerdict.REFER
             findings = (
                 *findings,

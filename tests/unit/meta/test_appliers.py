@@ -976,6 +976,48 @@ class TestArchitectureApplier:
         assert not result.success
         assert "must be a non-blank string" in (result.error_message or "")
 
+    async def test_dry_run_cancelled_create_role_releases_department_ref(
+        self,
+    ) -> None:
+        """A create_role followed by remove_role for the same name must
+        release its in-flight department reference so a later
+        remove_department for that dept is not falsely blocked."""
+        applier = ArchitectureApplier(
+            context=_FakeArchContext(departments=frozenset({"dept-a"})),
+        )
+        proposal = _proposal_architecture(
+            _arch(
+                "create_role",
+                "r1",
+                payload={"description": "d", "department": "dept-a"},
+            ),
+            _arch("remove_role", "r1"),
+            _arch("remove_department", "dept-a"),
+        )
+        result = await applier.dry_run(proposal)
+        assert result.success, result.error_message
+
+    async def test_dry_run_cancelled_create_dept_releases_role_head_ref(
+        self,
+    ) -> None:
+        """A create_department followed by remove_department must
+        release its in-flight role-head reference so a later
+        remove_role for that head is not falsely blocked."""
+        applier = ArchitectureApplier(
+            context=_FakeArchContext(roles=frozenset({"r1"})),
+        )
+        proposal = _proposal_architecture(
+            _arch(
+                "create_department",
+                "dept-a",
+                payload={"head": "r1"},
+            ),
+            _arch("remove_department", "dept-a"),
+            _arch("remove_role", "r1"),
+        )
+        result = await applier.dry_run(proposal)
+        assert result.success, result.error_message
+
     async def test_dry_run_context_exception_surfaces_as_validation_error(
         self,
     ) -> None:

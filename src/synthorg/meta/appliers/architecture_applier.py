@@ -103,11 +103,23 @@ class ArchitectureApplierContext(Protocol):
 class _PendingChanges:
     """In-proposal mutable accumulator for scheduled creates / removes.
 
-    Tracks in-flight references so the validator catches dangling-ref
-    pairs *within* the same proposal: a ``remove_department`` that
-    leaves behind a ``create_role`` pointing at it, or a
-    ``remove_role`` that leaves behind a ``create_department`` with
-    that role as its head.
+    Tracks in-flight references with provenance so the validator
+    catches dangling-ref pairs *within* the same proposal -- e.g. a
+    ``remove_department`` that would leave behind a ``create_role``
+    pointing at it, or a ``remove_role`` that would leave behind a
+    ``create_department`` with that role as its head.
+
+    References are stored as ``dict[str, set[str]]`` maps keyed by the
+    *referenced* id, with values holding the set of *referencing*
+    ids (the creates that introduced the reference).  When a
+    reference-introducing create is itself cancelled by a later
+    remove in the same proposal, the referencing id is dropped from
+    the value set so the downstream ``in_use`` check sees the
+    reference has actually gone away.
+
+    ``has_*`` helpers encapsulate the "is this referenced?" check so
+    call sites can't accidentally inspect an empty value set that
+    has not been garbage-collected yet.
     """
 
     __slots__ = (
@@ -124,11 +136,54 @@ class _PendingChanges:
         self.removed_roles: set[str] = set()
         self.new_departments: set[str] = set()
         self.removed_departments: set[str] = set()
-        # Departments referenced by in-proposal create_role payloads.
-        self.pending_department_refs: set[str] = set()
-        # Roles referenced as a ``head`` by in-proposal
-        # create_department payloads.
-        self.pending_role_refs: set[str] = set()
+        # dept_name -> {role_names that reference it}
+        self.pending_department_refs: dict[str, set[str]] = {}
+        # role_name -> {dept_names that reference it as head}
+        self.pending_role_refs: dict[str, set[str]] = {}
+
+    # -- Reference registration (create_* paths) ----------------
+
+    def add_department_ref(self, *, dept: str, from_role: str) -> None:
+        """Record that ``from_role`` references ``dept``."""
+        self.pending_department_refs.setdefault(dept, set()).add(from_role)
+
+    def add_role_ref(self, *, role: str, from_department: str) -> None:
+        """Record that ``from_department`` references ``role`` as head."""
+        self.pending_role_refs.setdefault(role, set()).add(from_department)
+
+    # -- Reference removal (remove_* paths) ---------------------
+
+    def drop_refs_from_role(self, role: str) -> None:
+        """Drop every dept ref that was introduced by creating ``role``."""
+        _prune_provenance(self.pending_department_refs, role)
+
+    def drop_refs_from_department(self, department: str) -> None:
+        """Drop every role ref that was introduced by creating ``department``."""
+        _prune_provenance(self.pending_role_refs, department)
+
+    # -- In-use queries -----------------------------------------
+
+    def has_department_refs(self, dept: str) -> bool:
+        """Return True when any *still-live* create_role points at ``dept``."""
+        return bool(self.pending_department_refs.get(dept))
+
+    def has_role_refs(self, role: str) -> bool:
+        """Return True when any *still-live* create_department heads at ``role``."""
+        return bool(self.pending_role_refs.get(role))
+
+
+def _prune_provenance(
+    refs: dict[str, set[str]],
+    referencer: str,
+) -> None:
+    """Drop *referencer* from every value set in *refs*, GC empty keys."""
+    empty: list[str] = []
+    for key, referencers in refs.items():
+        referencers.discard(referencer)
+        if not referencers:
+            empty.append(key)
+    for key in empty:
+        refs.pop(key, None)
 
 
 class ArchitectureApplier:
@@ -354,7 +409,7 @@ def _validate_create_role(
         pending.new_roles.add(name)
         dept = change.payload.get("department")
         if isinstance(dept, str) and dept:
-            pending.pending_department_refs.add(dept)
+            pending.add_department_ref(dept=dept, from_role=name)
     return errors
 
 
@@ -532,7 +587,7 @@ def _validate_create_department(
     if not errors:
         pending.new_departments.add(name)
         if head_name is not None:
-            pending.pending_role_refs.add(head_name)
+            pending.add_role_ref(role=head_name, from_department=name)
     return errors
 
 
@@ -569,12 +624,15 @@ def _validate_remove_role(
         errors.append(f"remove_role: duplicate target_name {name!r} in proposal")
     elif not (context.has_role(name) or name in pending.new_roles):
         errors.append(f"remove_role: role {name!r} does not exist")
-    elif context.role_in_use(name) or name in pending.pending_role_refs:
+    elif context.role_in_use(name) or pending.has_role_refs(name):
         errors.append(
             f"remove_role: role {name!r} still referenced by agents or departments"
         )
     if not errors:
         pending.removed_roles.add(name)
+        # A subsequent remove_department may need to see that this
+        # role is no longer introducing dept-ref provenance.
+        pending.drop_refs_from_role(name)
     return errors
 
 
@@ -595,8 +653,12 @@ def _validate_remove_department(
         errors.append(f"remove_department: duplicate target_name {name!r} in proposal")
     elif not (context.has_department(name) or name in pending.new_departments):
         errors.append(f"remove_department: department {name!r} does not exist")
-    elif context.department_in_use(name) or name in pending.pending_department_refs:
+    elif context.department_in_use(name) or pending.has_department_refs(name):
         errors.append(f"remove_department: department {name!r} still referenced")
     if not errors:
         pending.removed_departments.add(name)
+        # Clear any role-head refs that this department introduced so
+        # a subsequent remove_role for that head is not blocked by a
+        # stale reference.
+        pending.drop_refs_from_department(name)
     return errors
