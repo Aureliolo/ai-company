@@ -5,9 +5,7 @@ import { SelectField } from '@/components/ui/select-field'
 import { SegmentedControl } from '@/components/ui/segmented-control'
 import { Button } from '@/components/ui/button'
 import { useWorkflowsStore } from '@/stores/workflows'
-import { useToastStore } from '@/stores/toast'
 import { WORKFLOW_TYPES } from '@/utils/constants'
-import { getErrorMessage } from '@/utils/errors'
 import { formatLabel } from '@/utils/format'
 import { BlueprintPicker } from './BlueprintPicker'
 
@@ -45,7 +43,7 @@ export function WorkflowCreateDrawer({ open, onClose }: WorkflowCreateDrawerProp
   const [selectedBlueprint, setSelectedBlueprint] = useState<string | null>(null)
   const [form, setForm] = useState<FormState>(INITIAL_FORM)
   const [errors, setErrors] = useState<Partial<Record<keyof FormState, string>>>({})
-  const [submitError, setSubmitError] = useState<string | null>(null)
+  const [blueprintError, setBlueprintError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
 
   const blueprints = useWorkflowsStore((s) => s.blueprints)
@@ -53,12 +51,11 @@ export function WorkflowCreateDrawer({ open, onClose }: WorkflowCreateDrawerProp
   function updateField<K extends keyof FormState>(key: K, value: FormState[K]) {
     setForm((prev) => ({ ...prev, [key]: value }))
     setErrors((prev) => ({ ...prev, [key]: undefined }))
-    setSubmitError(null)
   }
 
   function handleBlueprintSelect(name: string | null) {
     setSelectedBlueprint(name)
-    setSubmitError(null)
+    setBlueprintError(null)
     if (name) {
       const bp = blueprints.find((b) => b.name === name)
       if (bp) {
@@ -74,7 +71,7 @@ export function WorkflowCreateDrawer({ open, onClose }: WorkflowCreateDrawerProp
 
   async function handleSubmit() {
     if (mode === 'blueprint' && !selectedBlueprint) {
-      setSubmitError('Select a template or switch to Blank mode')
+      setBlueprintError('Select a template or switch to Blank mode')
       return
     }
 
@@ -84,29 +81,21 @@ export function WorkflowCreateDrawer({ open, onClose }: WorkflowCreateDrawerProp
     if (Object.keys(next).length > 0) return
 
     setSubmitting(true)
-    try {
-      if (mode === 'blueprint') {
-        await useWorkflowsStore.getState().createFromBlueprint({
+    const created = mode === 'blueprint'
+      ? await useWorkflowsStore.getState().createFromBlueprint({
           blueprint_name: selectedBlueprint!,
           name: form.name.trim(),
           description: form.description.trim() || undefined,
         })
-      } else {
-        await useWorkflowsStore.getState().createWorkflow({
+      : await useWorkflowsStore.getState().createWorkflow({
           name: form.name.trim(),
           description: form.description.trim() || undefined,
           workflow_type: form.workflowType,
           nodes: [],
           edges: [],
         })
-      }
-      useToastStore.getState().add({ variant: 'success', title: 'Workflow created' })
-      handleClose()
-    } catch (err) {
-      setSubmitError(getErrorMessage(err))
-    } finally {
-      setSubmitting(false)
-    }
+    setSubmitting(false)
+    if (created) handleClose()
   }
 
   function handleClose() {
@@ -114,7 +103,7 @@ export function WorkflowCreateDrawer({ open, onClose }: WorkflowCreateDrawerProp
     setSelectedBlueprint(null)
     setForm(INITIAL_FORM)
     setErrors({})
-    setSubmitError(null)
+    setBlueprintError(null)
     onClose()
   }
 
@@ -124,7 +113,10 @@ export function WorkflowCreateDrawer({ open, onClose }: WorkflowCreateDrawerProp
         <SegmentedControl
           label="Creation mode"
           value={mode}
-          onChange={setMode}
+          onChange={(next) => {
+            setMode(next)
+            if (next !== 'blueprint') setBlueprintError(null)
+          }}
           options={MODE_OPTIONS}
           size="sm"
         />
@@ -161,9 +153,9 @@ export function WorkflowCreateDrawer({ open, onClose }: WorkflowCreateDrawerProp
           />
         )}
 
-        {submitError && (
+        {mode === 'blueprint' && blueprintError && (
           <div role="alert" aria-live="assertive" className="rounded-md border border-danger/30 bg-danger/5 p-card text-sm text-danger">
-            {submitError}
+            {blueprintError}
           </div>
         )}
 

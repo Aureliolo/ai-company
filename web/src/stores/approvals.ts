@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import * as approvalsApi from '@/api/endpoints/approvals'
+import { useToastStore } from '@/stores/toast'
 import { getErrorMessage } from '@/utils/errors'
 import { sanitizeForLog } from '@/utils/logging'
 import { createLogger } from '@/lib/logger'
@@ -28,8 +29,8 @@ interface ApprovalsState {
   // CRUD
   fetchApprovals: (filters?: ApprovalFilters) => Promise<void>
   fetchApproval: (id: string) => Promise<void>
-  approveOne: (id: string, data?: ApproveRequest) => Promise<ApprovalResponse>
-  rejectOne: (id: string, data: RejectRequest) => Promise<ApprovalResponse>
+  approveOne: (id: string, data?: ApproveRequest) => Promise<ApprovalResponse | null>
+  rejectOne: (id: string, data: RejectRequest) => Promise<ApprovalResponse | null>
 
   // Real-time
   handleWsEvent: (event: WsEvent) => void
@@ -105,6 +106,7 @@ export const useApprovalsStore = create<ApprovalsState>()((set, get) => ({
       set({ approvals: merged, total: result.total, loading: false, selectedIds: prunedSelected, selectedApproval: freshSelected })
     } catch (err) {
       if (seq !== listRequestSeq) return
+      log.warn('Failed to fetch approvals', sanitizeForLog(err))
       set({ loading: false, error: getErrorMessage(err) })
     }
   },
@@ -118,20 +120,49 @@ export const useApprovalsStore = create<ApprovalsState>()((set, get) => ({
       set({ selectedApproval: approval, loadingDetail: false, detailError: null })
     } catch (err) {
       if (seq !== detailRequestSeq) return // stale error
+      log.warn('Failed to fetch approval detail', sanitizeForLog(err))
       set({ loadingDetail: false, detailError: getErrorMessage(err) })
     }
   },
 
   approveOne: async (id, data) => {
-    const approval = await approvalsApi.approveApproval(id, data)
-    get().upsertApproval(approval)
-    return approval
+    try {
+      const approval = await approvalsApi.approveApproval(id, data)
+      get().upsertApproval(approval)
+      useToastStore.getState().add({
+        variant: 'success',
+        title: 'Approval granted',
+      })
+      return approval
+    } catch (err) {
+      log.error('Approve approval failed', sanitizeForLog(err))
+      useToastStore.getState().add({
+        variant: 'error',
+        title: 'Failed to approve',
+        description: getErrorMessage(err),
+      })
+      return null
+    }
   },
 
   rejectOne: async (id, data) => {
-    const approval = await approvalsApi.rejectApproval(id, data)
-    get().upsertApproval(approval)
-    return approval
+    try {
+      const approval = await approvalsApi.rejectApproval(id, data)
+      get().upsertApproval(approval)
+      useToastStore.getState().add({
+        variant: 'success',
+        title: 'Approval rejected',
+      })
+      return approval
+    } catch (err) {
+      log.error('Reject approval failed', sanitizeForLog(err))
+      useToastStore.getState().add({
+        variant: 'error',
+        title: 'Failed to reject',
+        description: getErrorMessage(err),
+      })
+      return null
+    }
   },
 
   handleWsEvent: (event) => {
@@ -302,7 +333,7 @@ export const useApprovalsStore = create<ApprovalsState>()((set, get) => ({
       } else {
         const rollback = rollbacks.get(id)
         if (rollback) rollback()
-        failedReasons.push(result.reason instanceof Error ? result.reason.message : String(result.reason))
+        failedReasons.push(getErrorMessage(result.reason))
         failed++
       }
     }
@@ -342,7 +373,7 @@ export const useApprovalsStore = create<ApprovalsState>()((set, get) => ({
       } else {
         const rollback = rollbacks.get(id)
         if (rollback) rollback()
-        failedReasons.push(result.reason instanceof Error ? result.reason.message : String(result.reason))
+        failedReasons.push(getErrorMessage(result.reason))
         failed++
       }
     }

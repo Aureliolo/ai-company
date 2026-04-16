@@ -161,7 +161,7 @@ class BudgetOverrunRule:
                 signal_context={
                     "days_until_exhausted": budget.days_until_exhausted,
                     "threshold": self._days_threshold,
-                    "total_spend": budget.total_spend_usd,
+                    "total_spend": budget.total_spend,
                 },
                 suggested_altitudes=self.target_altitudes,
             )

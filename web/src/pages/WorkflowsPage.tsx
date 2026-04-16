@@ -4,8 +4,6 @@ import { useNavigate } from 'react-router'
 import { ROUTES } from '@/router/routes'
 import { useWorkflowsData } from '@/hooks/useWorkflowsData'
 import { useWorkflowsStore } from '@/stores/workflows'
-import { useToastStore } from '@/stores/toast'
-import { getErrorMessage } from '@/utils/errors'
 import { Button } from '@/components/ui/button'
 import { SegmentedControl } from '@/components/ui/segmented-control'
 import { WorkflowsSkeleton } from './workflows/WorkflowsSkeleton'
@@ -25,7 +23,6 @@ export default function WorkflowsPage() {
   const [createOpen, setCreateOpen] = useState(false)
   const [viewMode, setViewMode] = useState<ViewMode>('grid')
   const navigate = useNavigate()
-  const addToast = useToastStore((s) => s.add)
   const {
     filteredWorkflows,
     totalWorkflows,
@@ -33,38 +30,29 @@ export default function WorkflowsPage() {
     error,
   } = useWorkflowsData()
 
-  const handleDelete = useCallback(
-    async (id: string) => {
-      try {
-        await useWorkflowsStore.getState().deleteWorkflow(id)
-        addToast({ variant: 'success', title: 'Workflow deleted' })
-      } catch (err) {
-        addToast({ variant: 'error', title: 'Delete failed', description: getErrorMessage(err) })
-      }
-    },
-    [addToast],
-  )
+  const handleDelete = useCallback(async (id: string) => {
+    // Store owns success/error UX (toast + surgical rollback on failure).
+    // Caller does not need to act on the boolean sentinel; WS updates drive
+    // the authoritative list state.
+    await useWorkflowsStore.getState().deleteWorkflow(id)
+  }, [])
 
   const handleDuplicate = useCallback(
     async (id: string) => {
-      try {
-        const workflows = useWorkflowsStore.getState().workflows
-        const source = workflows.find((w) => w.id === id)
-        if (!source) return
-        const created = await useWorkflowsStore.getState().createWorkflow({
-          name: `${source.name} (Copy)`,
-          description: source.description || undefined,
-          workflow_type: source.workflow_type,
-          nodes: source.nodes.map((n) => ({ ...n })),
-          edges: source.edges.map((e) => ({ ...e })),
-        })
-        addToast({ variant: 'success', title: 'Workflow duplicated' })
-        navigate(`${ROUTES.WORKFLOW_EDITOR}?id=${encodeURIComponent(created.id)}`)
-      } catch (err) {
-        addToast({ variant: 'error', title: 'Duplicate failed', description: getErrorMessage(err) })
-      }
+      const workflows = useWorkflowsStore.getState().workflows
+      const source = workflows.find((w) => w.id === id)
+      if (!source) return
+      const created = await useWorkflowsStore.getState().createWorkflow({
+        name: `${source.name} (Copy)`,
+        description: source.description || undefined,
+        workflow_type: source.workflow_type,
+        nodes: source.nodes.map((n) => ({ ...n })),
+        edges: source.edges.map((e) => ({ ...e })),
+      })
+      if (!created) return
+      navigate(`${ROUTES.WORKFLOW_EDITOR}?id=${encodeURIComponent(created.id)}`)
     },
-    [addToast, navigate],
+    [navigate],
   )
 
   if (loading && totalWorkflows === 0) {

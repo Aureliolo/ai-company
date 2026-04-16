@@ -73,6 +73,21 @@
   --so-radius-lg: 8px;
   --so-radius-xl: 12px;
 
+  /* -- Chart strokes (SVG stroke-width attribute, unitless) -- */
+  --so-stroke-hairline: 1;
+  --so-stroke-thin: 1.5;
+
+  /* -- Chart gradient fill opacities (SVG stop-opacity attribute) -- */
+  --so-chart-fill-opacity-strong: 0.3;
+  --so-chart-fill-opacity-subtle: 0.15;
+
+  /* -- Chart / edge stroke-dasharray patterns (SVG dash patterns) -- */
+  --so-dash-tight: 2 2;
+  --so-dash-compact: 3 3;
+  --so-dash-medium: 4 4;
+  --so-dash-loose: 6 3;
+  --so-dash-wide: 8 4;
+
   /* -- Shadows -- */
   --so-shadow-card: 0 2px 8px color-mix(in srgb, var(--so-bg-base) 25%, transparent);
   --so-shadow-card-hover: 0 4px 24px color-mix(in srgb, var(--so-accent) 8%, transparent);

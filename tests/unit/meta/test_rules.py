@@ -58,7 +58,7 @@ def _snap(  # noqa: PLR0913
             agent_count=agents,
         ),
         budget=OrgBudgetSummary(
-            total_spend_usd=spend,
+            total_spend=spend,
             productive_ratio=0.6,
             coordination_ratio=coord_ratio,
             system_ratio=0.1,

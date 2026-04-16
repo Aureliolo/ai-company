@@ -27,8 +27,8 @@ function ConditionalEdgeComponent(props: EdgeProps) {
         path={edgePath}
         style={{
           stroke: color,
-          strokeWidth: 1.5,
-          strokeDasharray: '6 3',
+          strokeWidth: 'var(--so-stroke-thin)',
+          strokeDasharray: 'var(--so-dash-loose)',
         }}
         markerEnd={props.markerEnd}
       />

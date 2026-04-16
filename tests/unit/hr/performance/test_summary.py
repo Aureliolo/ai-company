@@ -104,7 +104,7 @@ class TestExtractPerformanceSummary:
         assert summary.tasks_completed_total == 12
         assert summary.avg_completion_time_seconds == pytest.approx(90.0)
         assert summary.success_rate_percent == pytest.approx(80.0)
-        assert summary.cost_per_task_usd == pytest.approx(0.04)
+        assert summary.cost_per_task == pytest.approx(0.04)
         assert summary.quality_score == pytest.approx(7.5)
         assert summary.collaboration_score == pytest.approx(8.2)
         assert summary.trend_direction == TrendDirection.IMPROVING
@@ -122,7 +122,7 @@ class TestExtractPerformanceSummary:
         assert summary.tasks_completed_30d == 0
         assert summary.avg_completion_time_seconds is None
         assert summary.success_rate_percent is None
-        assert summary.cost_per_task_usd is None
+        assert summary.cost_per_task is None
         assert summary.quality_score is None
         assert summary.collaboration_score is None
         assert summary.trend_direction == TrendDirection.INSUFFICIENT_DATA
@@ -144,7 +144,7 @@ class TestExtractPerformanceSummary:
         assert summary.tasks_completed_30d == 0
         # Falls back to 7d window for metrics
         assert summary.success_rate_percent == pytest.approx(100.0)
-        assert summary.cost_per_task_usd == pytest.approx(0.10)
+        assert summary.cost_per_task == pytest.approx(0.10)
         assert summary.avg_completion_time_seconds == pytest.approx(60.0)
 
     def test_trend_prefers_success_rate(self) -> None:
@@ -203,7 +203,7 @@ class TestExtractPerformanceSummary:
         assert summary.tasks_completed_30d == 10
         assert summary.tasks_completed_total == 10
         assert summary.success_rate_percent == pytest.approx(83.0)
-        assert summary.cost_per_task_usd == pytest.approx(0.06)
+        assert summary.cost_per_task == pytest.approx(0.06)
         assert summary.avg_completion_time_seconds == pytest.approx(75.0)
 
     def test_7d_only_allows_zero_30d(self) -> None:

@@ -5,6 +5,7 @@ import {
   deleteSubworkflow as deleteSubworkflowApi,
 } from '@/api/endpoints/subworkflows'
 import { createLogger } from '@/lib/logger'
+import { useToastStore } from '@/stores/toast'
 import { getErrorMessage } from '@/utils/errors'
 import { sanitizeForLog } from '@/utils/logging'
 import type { SubworkflowSummary } from '@/api/types'
@@ -18,7 +19,7 @@ interface SubworkflowsState {
   searchQuery: string
 
   fetchSubworkflows: () => Promise<void>
-  deleteSubworkflow: (id: string, version: string) => Promise<void>
+  deleteSubworkflow: (id: string, version: string) => Promise<boolean>
   setSearchQuery: (q: string) => void
   updateFromWsEvent: () => void
 }
@@ -62,8 +63,23 @@ export const useSubworkflowsStore = create<SubworkflowsState>((set, get) => ({
   },
 
   async deleteSubworkflow(id: string, version: string) {
-    await deleteSubworkflowApi(id, version)
-    await get().fetchSubworkflows()
+    try {
+      await deleteSubworkflowApi(id, version)
+      await get().fetchSubworkflows()
+      useToastStore.getState().add({
+        variant: 'success',
+        title: 'Subworkflow deleted',
+      })
+      return true
+    } catch (err) {
+      log.error('Delete subworkflow failed', sanitizeForLog(err))
+      useToastStore.getState().add({
+        variant: 'error',
+        title: 'Failed to delete subworkflow',
+        description: getErrorMessage(err),
+      })
+      return false
+    }
   },
 
   setSearchQuery(q: string) {

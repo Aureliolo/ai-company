@@ -36,7 +36,7 @@ export interface ABTestGroupMetrics {
   observation_count: number
   avg_quality_score: number
   avg_success_rate: number
-  total_spend_usd: number
+  total_spend: number
 }
 
 export interface ABTestSummary {

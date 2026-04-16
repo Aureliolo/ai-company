@@ -34,7 +34,7 @@ def _perf_collab(s: OrgSignalSnapshot) -> float:
 
 
 def _budget_spend(s: OrgSignalSnapshot) -> float:
-    return s.budget.total_spend_usd
+    return s.budget.total_spend
 
 
 def _budget_orch(s: OrgSignalSnapshot) -> float:

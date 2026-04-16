@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { useApprovalsStore, _resetPendingTransitions } from '@/stores/approvals'
+import { useToastStore } from '@/stores/toast'
 import { makeApproval } from '../helpers/factories'
 import type { ApprovalResponse, WsEvent } from '@/api/types'
 
@@ -31,6 +32,7 @@ function resetStore() {
 
 beforeEach(() => {
   resetStore()
+  useToastStore.setState({ toasts: [] })
   vi.clearAllMocks()
 })
 
@@ -136,16 +138,23 @@ describe('approveOne', () => {
 
     const result = await useApprovalsStore.getState().approveOne('1', { comment: 'LGTM' })
 
-    expect(result.status).toBe('approved')
+    expect(result).not.toBeNull()
+    expect(result!.status).toBe('approved')
     expect(useApprovalsStore.getState().approvals[0]!.status).toBe('approved')
     expect(api.approveApproval).toHaveBeenCalledWith('1', { comment: 'LGTM' })
   })
 
-  it('propagates error when API fails', async () => {
+  it('returns null and emits an error toast when API fails', async () => {
     const api = await importApi()
     vi.mocked(api.approveApproval).mockRejectedValue(new Error('Server error'))
 
-    await expect(useApprovalsStore.getState().approveOne('1')).rejects.toThrow('Server error')
+    const result = await useApprovalsStore.getState().approveOne('1')
+    expect(result).toBeNull()
+    const toasts = useToastStore.getState().toasts
+    expect(toasts).toHaveLength(1)
+    expect(toasts[0]!.variant).toBe('error')
+    expect(toasts[0]!.title).toBe('Failed to approve')
+    expect(toasts[0]!.description).toBe('Server error')
   })
 })
 
@@ -161,15 +170,22 @@ describe('rejectOne', () => {
 
     const result = await useApprovalsStore.getState().rejectOne('1', { reason: 'Too risky' })
 
-    expect(result.status).toBe('rejected')
+    expect(result).not.toBeNull()
+    expect(result!.status).toBe('rejected')
     expect(api.rejectApproval).toHaveBeenCalledWith('1', { reason: 'Too risky' })
   })
 
-  it('propagates error when API fails', async () => {
+  it('returns null and emits an error toast when API fails', async () => {
     const api = await importApi()
     vi.mocked(api.rejectApproval).mockRejectedValue(new Error('Server error'))
 
-    await expect(useApprovalsStore.getState().rejectOne('1', { reason: 'x' })).rejects.toThrow('Server error')
+    const result = await useApprovalsStore.getState().rejectOne('1', { reason: 'x' })
+    expect(result).toBeNull()
+    const toasts = useToastStore.getState().toasts
+    expect(toasts).toHaveLength(1)
+    expect(toasts[0]!.variant).toBe('error')
+    expect(toasts[0]!.title).toBe('Failed to reject')
+    expect(toasts[0]!.description).toBe('Server error')
   })
 })
 

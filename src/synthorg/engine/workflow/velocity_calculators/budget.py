@@ -1,11 +1,13 @@
 """Budget velocity calculator -- points per currency unit consumed.
 
 Measures cost efficiency as story points delivered per unit of budget
-consumed.  Primary unit: ``pts/EUR``.
+consumed.  Primary unit: ``pts/<DEFAULT_CURRENCY>`` where
+``DEFAULT_CURRENCY`` is the configured display currency.
 """
 
 from typing import TYPE_CHECKING
 
+from synthorg.budget.currency import DEFAULT_CURRENCY
 from synthorg.engine.workflow.velocity_types import (
     VelocityCalcType,
     VelocityMetrics,
@@ -22,13 +24,14 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
-_UNIT: str = "pts/EUR"
+_UNIT: str = f"pts/{DEFAULT_CURRENCY}"
 
 
 class BudgetVelocityCalculator:
     """Velocity calculator measuring points per currency unit consumed.
 
-    Primary unit: ``pts/EUR`` (assumes the default display currency).
+    Primary unit: ``pts/<DEFAULT_CURRENCY>`` where ``DEFAULT_CURRENCY``
+    is the configured display currency.
 
     When ``budget_consumed`` is ``None`` or zero, ``primary_value``
     is 0.0 and only ``pts_per_sprint`` appears in secondary metrics.
@@ -39,13 +42,13 @@ class BudgetVelocityCalculator:
     __slots__ = ()
 
     def compute(self, record: VelocityRecord) -> VelocityMetrics:
-        """Compute points-per-EUR from a single velocity record.
+        """Compute points-per-currency from a single velocity record.
 
         Args:
             record: A completed sprint's velocity record.
 
         Returns:
-            Velocity metrics with ``pts/EUR`` as primary unit.
+            Velocity metrics with ``pts/<DEFAULT_CURRENCY>`` as primary unit.
         """
         budget = record.budget_consumed
         if budget is None or budget <= 0.0:
@@ -61,9 +64,9 @@ class BudgetVelocityCalculator:
                     "pts_per_sprint": record.story_points_completed,
                 },
             )
-        pts_per_eur = record.story_points_completed / budget
+        pts_per_currency = record.story_points_completed / budget
         return VelocityMetrics(
-            primary_value=pts_per_eur,
+            primary_value=pts_per_currency,
             primary_unit=_UNIT,
             secondary={
                 "pts_per_sprint": record.story_points_completed,
@@ -77,7 +80,7 @@ class BudgetVelocityCalculator:
         records: Sequence[VelocityRecord],
         window: int,
     ) -> VelocityMetrics:
-        """Compute rolling average of points-per-EUR.
+        """Compute rolling average of points-per-currency.
 
         Uses the last *window* records.  Records where
         ``budget_consumed`` is ``None`` or ``<= 0.0`` are excluded
@@ -126,5 +129,5 @@ class BudgetVelocityCalculator:
 
     @property
     def primary_unit(self) -> str:
-        """Return ``pts/EUR``."""
+        """Return ``pts/<DEFAULT_CURRENCY>`` using the configured currency."""
         return _UNIT

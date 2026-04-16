@@ -109,7 +109,7 @@ describe('CommunicationEdge', () => {
       </svg>,
     )
     const path = container.querySelector('[data-testid="edge-e-1"]') as HTMLElement
-    expect(path.style.strokeDasharray).toBe('8 4')
+    expect(path.style.strokeDasharray).toBe('var(--so-dash-wide)')
     expect(path.style.animation).toContain('linear infinite')
   })
 

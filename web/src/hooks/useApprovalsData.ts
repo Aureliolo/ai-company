@@ -24,8 +24,8 @@ export interface UseApprovalsDataReturn {
   wsConnected: boolean
   wsSetupError: string | null
   fetchApproval: (id: string) => Promise<void>
-  approveOne: (id: string, data?: ApproveRequest) => Promise<ApprovalResponse>
-  rejectOne: (id: string, data: RejectRequest) => Promise<ApprovalResponse>
+  approveOne: (id: string, data?: ApproveRequest) => Promise<ApprovalResponse | null>
+  rejectOne: (id: string, data: RejectRequest) => Promise<ApprovalResponse | null>
   optimisticApprove: (id: string) => () => void
   /** Optimistic reject with rollback -- available for consumers that collect reason inline. */
   optimisticReject: (id: string) => () => void
@@ -59,9 +59,9 @@ export function useApprovalsData(): UseApprovalsDataReturn {
   const batchApprove = useApprovalsStore((s) => s.batchApprove)
   const batchReject = useApprovalsStore((s) => s.batchReject)
 
-  // Initial data fetch
+  // Initial data fetch -- store owns error UX (list-read pattern: sets error state).
   useEffect(() => {
-    useApprovalsStore.getState().fetchApprovals({ limit: APPROVAL_FETCH_LIMIT })
+    void useApprovalsStore.getState().fetchApprovals({ limit: APPROVAL_FETCH_LIMIT })
   }, [])
 
   // Lightweight polling for approval refresh

@@ -66,7 +66,7 @@ function makePerformance(overrides: Partial<AgentPerformanceSummary> = {}): Agen
     tasks_completed_30d: 45,
     avg_completion_time_seconds: 3600,
     success_rate_percent: 94.0,
-    cost_per_task_usd: 0.35,
+    cost_per_task: 0.35,
     quality_score: 8.2,
     collaboration_score: 7.5,
     trend_direction: 'improving',
@@ -322,11 +322,10 @@ describe('formatCompletionTime', () => {
 // ── formatCostPerTask ──────────────────────────────────────
 
 describe('formatCostPerTask', () => {
-  it('formats cost in USD', () => {
+  it('formats cost in EUR', () => {
     const result = formatCostPerTask(0.35)
     expect(result).toContain('0.35')
-    // Uses Intl.NumberFormat with USD
-    expect(result).toMatch(/\$/)
+    expect(result).toMatch(/€/)
   })
 
   it('formats larger cost', () => {
@@ -384,7 +383,7 @@ describe('computePerformanceCards', () => {
     const cards = computePerformanceCards(makePerformance({
       avg_completion_time_seconds: null,
       success_rate_percent: null,
-      cost_per_task_usd: null,
+      cost_per_task: null,
     }))
     expect(cards).toHaveLength(4)
     const timeCard = cards.find((c) => c.label === 'AVG COMPLETION TIME')

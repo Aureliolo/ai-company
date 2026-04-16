@@ -29,6 +29,10 @@ interface ChartDataPoint {
   projected?: number
 }
 
+// Recharts margin requires numeric values. These mirror --so-space-5 (20px)
+// and --so-space-2 (8px) from design-tokens.css.
+const CHART_MARGIN = { top: 20, right: 8, bottom: 0, left: 0 } as const
+
 function buildChartData(
   trendData: readonly TrendDataPoint[],
   forecast: ForecastResponse | null,
@@ -136,20 +140,20 @@ export function BudgetBurnChart({ trendData, forecast, budgetTotal, budgetRemain
            * size on the next animation frame.
            */}
           <ResponsiveContainer width="100%" height="100%" initialDimension={{ width: 1, height: 1 }}>
-            <AreaChart data={chartData} margin={{ top: 20, right: 8, bottom: 0, left: 0 }}>
+            <AreaChart data={chartData} margin={CHART_MARGIN}>
               <CartesianGrid
-                strokeDasharray="3 3"
+                strokeDasharray="var(--so-dash-compact)"
                 stroke="var(--so-border)"
                 vertical={false}
               />
               <XAxis
                 dataKey="label"
-                tick={{ fontSize: 10, fill: 'var(--so-text-muted)' }}
+                tick={{ fontSize: 'var(--so-text-micro)', fill: 'var(--so-text-muted)' }}
                 axisLine={{ stroke: 'var(--so-border)' }}
                 tickLine={false}
               />
               <YAxis
-                tick={{ fontSize: 10, fill: 'var(--so-text-muted)' }}
+                tick={{ fontSize: 'var(--so-text-micro)', fill: 'var(--so-text-muted)' }}
                 axisLine={false}
                 tickLine={false}
                 tickFormatter={(v: number) => formatCurrencyCompact(v, currency)}
@@ -161,12 +165,12 @@ export function BudgetBurnChart({ trendData, forecast, budgetTotal, budgetRemain
                 <ReferenceLine
                   y={budgetTotal}
                   stroke="var(--so-danger)"
-                  strokeDasharray="4 4"
-                  strokeWidth={1}
+                  strokeDasharray="var(--so-dash-medium)"
+                  strokeWidth="var(--so-stroke-hairline)"
                   label={{
                     value: 'Budget',
                     position: 'right',
-                    fontSize: 10,
+                    fontSize: 'var(--so-text-micro)',
                     fill: 'var(--so-danger)',
                   }}
                 />
@@ -175,23 +179,23 @@ export function BudgetBurnChart({ trendData, forecast, budgetTotal, budgetRemain
               <ReferenceLine
                 x={todayLabel}
                 stroke="var(--so-text-muted)"
-                strokeDasharray="3 3"
-                strokeWidth={1}
+                strokeDasharray="var(--so-dash-compact)"
+                strokeWidth="var(--so-stroke-hairline)"
                 label={{
                   value: 'Today',
                   position: 'top',
-                  fontSize: 10,
+                  fontSize: 'var(--so-text-micro)',
                   fill: 'var(--so-text-muted)',
                 }}
               />
 
               <defs>
                 <linearGradient id="actualFill" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="var(--so-accent)" stopOpacity={0.3} />
+                  <stop offset="0%" stopColor="var(--so-accent)" stopOpacity="var(--so-chart-fill-opacity-strong)" />
                   <stop offset="100%" stopColor="var(--so-accent)" stopOpacity={0} />
                 </linearGradient>
                 <linearGradient id="forecastFill" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="var(--so-warning)" stopOpacity={0.15} />
+                  <stop offset="0%" stopColor="var(--so-warning)" stopOpacity="var(--so-chart-fill-opacity-subtle)" />
                   <stop offset="100%" stopColor="var(--so-warning)" stopOpacity={0} />
                 </linearGradient>
               </defs>
@@ -201,7 +205,7 @@ export function BudgetBurnChart({ trendData, forecast, budgetTotal, budgetRemain
                 dataKey="actual"
                 stroke="var(--so-accent)"
                 fill="url(#actualFill)"
-                strokeWidth={1.5}
+                strokeWidth="var(--so-stroke-thin)"
                 dot={false}
                 connectNulls={false}
               />
@@ -211,8 +215,8 @@ export function BudgetBurnChart({ trendData, forecast, budgetTotal, budgetRemain
                   dataKey="projected"
                   stroke="var(--so-warning)"
                   fill="url(#forecastFill)"
-                  strokeWidth={1.5}
-                  strokeDasharray="4 4"
+                  strokeWidth="var(--so-stroke-thin)"
+                  strokeDasharray="var(--so-dash-medium)"
                   dot={false}
                   connectNulls={false}
                 />

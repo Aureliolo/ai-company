@@ -18,7 +18,7 @@ const controlMetrics = {
   observation_count: 20,
   avg_quality_score: 7.5,
   avg_success_rate: 0.85,
-  total_spend_usd: 100.0,
+  total_spend: 100.0,
 }
 
 const treatmentMetrics = {
@@ -27,7 +27,7 @@ const treatmentMetrics = {
   observation_count: 20,
   avg_quality_score: 8.2,
   avg_success_rate: 0.91,
-  total_spend_usd: 95.0,
+  total_spend: 95.0,
 }
 
 const baseTest: ABTestSummary = {

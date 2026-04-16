@@ -1,8 +1,9 @@
 /**
  * Ontology page -- entity catalog + drift monitor.
  */
-import { AlertTriangle } from 'lucide-react'
+import { AlertTriangle, Shapes } from 'lucide-react'
 import { useOntologyData } from '@/hooks/useOntologyData'
+import { EmptyState } from '@/components/ui/empty-state'
 import { EntityCatalog } from './ontology/EntityCatalog'
 import { DriftMonitor } from './ontology/DriftMonitor'
 import { OntologySkeleton } from './ontology/OntologySkeleton'
@@ -24,20 +25,38 @@ export default function OntologyPage() {
     return <OntologySkeleton />
   }
 
+  const header = (
+    <div className="flex items-center justify-between">
+      <div>
+        <h1 className="text-lg font-semibold text-foreground">Ontology</h1>
+        <p className="text-sm text-muted-foreground">
+          Entity definitions, versioning, and semantic drift monitoring
+        </p>
+      </div>
+      <span className="text-sm text-muted-foreground">
+        {totalEntities} entities ({coreCount} core, {userCount} user)
+      </span>
+    </div>
+  )
+
+  // Truly-empty ontology (no data, no filters) -- skip both EntityCatalog
+  // and DriftMonitor and show a single page-level empty state.
+  if (totalEntities === 0 && !entitiesLoading && !entitiesError) {
+    return (
+      <div className="space-y-section-gap">
+        {header}
+        <EmptyState
+          icon={Shapes}
+          title="No entities registered"
+          description="Your ontology is empty. Entities appear once your agents register them or you define them via the API."
+        />
+      </div>
+    )
+  }
+
   return (
     <div className="space-y-section-gap">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-lg font-semibold text-foreground">Ontology</h1>
-          <p className="text-sm text-muted-foreground">
-            Entity definitions, versioning, and semantic drift monitoring
-          </p>
-        </div>
-        <span className="text-sm text-muted-foreground">
-          {totalEntities} entities ({coreCount} core, {userCount} user)
-        </span>
-      </div>
+      {header}
 
       {/* Error alert */}
       {entitiesError && (

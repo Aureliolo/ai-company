@@ -59,7 +59,7 @@ def _make_snapshot() -> OrgSignalSnapshot:
             agent_count=10,
         ),
         budget=OrgBudgetSummary(
-            total_spend_usd=150.0,
+            total_spend=150.0,
             productive_ratio=0.6,
             coordination_ratio=0.3,
             system_ratio=0.1,

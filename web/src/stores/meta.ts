@@ -13,7 +13,9 @@ import {
   type SignalsResponse,
 } from '@/api/endpoints/meta'
 import { createLogger } from '@/lib/logger'
+import { useToastStore } from '@/stores/toast'
 import { getErrorMessage } from '@/utils/errors'
+import { sanitizeForLog } from '@/utils/logging'
 
 const log = createLogger('meta')
 
@@ -33,7 +35,7 @@ interface MetaState {
   fetchAll: () => Promise<void>
   fetchProposals: () => Promise<void>
   fetchSignals: () => Promise<void>
-  sendChat: (question: string) => Promise<ChatResponse>
+  sendChat: (question: string) => Promise<ChatResponse | null>
 }
 
 export const useMetaStore = create<MetaState>((set) => ({
@@ -56,45 +58,55 @@ export const useMetaStore = create<MetaState>((set) => ({
       ])
       set({ config, proposals, abTests, signals, loading: false })
     } catch (err) {
-      const msg = getErrorMessage(err)
-      log.error('Failed to fetch meta data', msg)
+      log.error('Failed to fetch meta data', sanitizeForLog(err))
       set({
         config: null,
         proposals: [],
         abTests: [],
         signals: null,
-        error: msg,
+        error: getErrorMessage(err),
         loading: false,
       })
     }
   },
 
   fetchProposals: async () => {
+    set({ error: null })
     try {
       const proposals = await listProposals()
       set({ proposals })
     } catch (err) {
-      log.error('Failed to fetch proposals', getErrorMessage(err))
+      log.error('Failed to fetch proposals', sanitizeForLog(err))
+      set({ error: getErrorMessage(err) })
     }
   },
 
   fetchSignals: async () => {
+    set({ error: null })
     try {
       const signals = await getSignals()
       set({ signals })
     } catch (err) {
-      log.error('Failed to fetch signals', getErrorMessage(err))
+      log.error('Failed to fetch signals', sanitizeForLog(err))
+      set({ error: getErrorMessage(err) })
     }
   },
 
   sendChat: async (question: string) => {
-    set({ chatLoading: true })
+    set({ chatLoading: true, error: null })
     try {
       const response = await postChat(question)
       return response
     } catch (err) {
-      log.error('Chat request failed', getErrorMessage(err))
-      throw err
+      const msg = getErrorMessage(err)
+      log.error('Chat request failed', sanitizeForLog(err))
+      set({ error: msg })
+      useToastStore.getState().add({
+        variant: 'error',
+        title: 'Chat request failed',
+        description: msg,
+      })
+      return null
     } finally {
       set({ chatLoading: false })
     }

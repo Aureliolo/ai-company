@@ -66,7 +66,7 @@ function makePerformance(): AgentPerformanceSummary {
     tasks_completed_30d: 20,
     avg_completion_time_seconds: 1800,
     success_rate_percent: 90,
-    cost_per_task_usd: 0.25,
+    cost_per_task: 0.25,
     quality_score: 7.5,
     collaboration_score: 8.0,
     trend_direction: 'stable',

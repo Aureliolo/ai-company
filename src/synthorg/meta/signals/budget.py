@@ -20,7 +20,7 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 _EMPTY = OrgBudgetSummary(
-    total_spend_usd=0.0,
+    total_spend=0.0,
     productive_ratio=0.0,
     coordination_ratio=0.0,
     system_ratio=0.0,

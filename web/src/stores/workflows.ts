@@ -7,6 +7,7 @@ import {
   deleteWorkflow as deleteWorkflowApi,
 } from '@/api/endpoints/workflows'
 import { createLogger } from '@/lib/logger'
+import { useToastStore } from '@/stores/toast'
 import { getErrorMessage } from '@/utils/errors'
 import { sanitizeForLog } from '@/utils/logging'
 import type {
@@ -37,9 +38,9 @@ interface WorkflowsState {
   // Actions
   fetchWorkflows: () => Promise<void>
   loadBlueprints: () => Promise<void>
-  createWorkflow: (data: CreateWorkflowDefinitionRequest) => Promise<WorkflowDefinition>
-  createFromBlueprint: (data: CreateFromBlueprintRequest) => Promise<WorkflowDefinition>
-  deleteWorkflow: (id: string) => Promise<void>
+  createWorkflow: (data: CreateWorkflowDefinitionRequest) => Promise<WorkflowDefinition | null>
+  createFromBlueprint: (data: CreateFromBlueprintRequest) => Promise<WorkflowDefinition | null>
+  deleteWorkflow: (id: string) => Promise<boolean>
   setSearchQuery: (q: string) => void
   setWorkflowTypeFilter: (t: string | null) => void
   updateFromWsEvent: () => void
@@ -116,19 +117,47 @@ export const useWorkflowsStore = create<WorkflowsState>()((set) => ({
   },
 
   createWorkflow: async (data: CreateWorkflowDefinitionRequest) => {
-    const workflow = await createWorkflowApi(data)
-    upsertWorkflow(set, workflow)
-    return workflow
+    try {
+      const workflow = await createWorkflowApi(data)
+      upsertWorkflow(set, workflow)
+      useToastStore.getState().add({
+        variant: 'success',
+        title: `Workflow ${workflow.name} created`,
+      })
+      return workflow
+    } catch (err) {
+      log.error('Create workflow failed', sanitizeForLog(err))
+      useToastStore.getState().add({
+        variant: 'error',
+        title: 'Failed to create workflow',
+        description: getErrorMessage(err),
+      })
+      return null
+    }
   },
 
   createFromBlueprint: async (data: CreateFromBlueprintRequest) => {
-    const workflow = await createFromBlueprintApi(data)
-    upsertWorkflow(set, workflow)
-    return workflow
+    try {
+      const workflow = await createFromBlueprintApi(data)
+      upsertWorkflow(set, workflow)
+      useToastStore.getState().add({
+        variant: 'success',
+        title: `Workflow ${workflow.name} created from blueprint`,
+      })
+      return workflow
+    } catch (err) {
+      log.error('Create workflow from blueprint failed', sanitizeForLog(err))
+      useToastStore.getState().add({
+        variant: 'error',
+        title: 'Failed to create workflow from blueprint',
+        description: getErrorMessage(err),
+      })
+      return null
+    }
   },
 
   deleteWorkflow: async (id: string) => {
-    await deleteWorkflowApi(id)
+    const removed = useWorkflowsStore.getState().workflows.find((w) => w.id === id)
     set((state) => {
       const filtered = state.workflows.filter((w) => w.id !== id)
       return {
@@ -138,6 +167,33 @@ export const useWorkflowsStore = create<WorkflowsState>()((set) => ({
           : state.totalWorkflows,
       }
     })
+    try {
+      await deleteWorkflowApi(id)
+      useToastStore.getState().add({
+        variant: 'success',
+        title: 'Workflow deleted',
+      })
+      return true
+    } catch (err) {
+      log.error('Delete workflow failed', sanitizeForLog(err))
+      // Surgical rollback: re-insert just the removed workflow if it's still
+      // missing.  Avoids clobbering concurrent WS-triggered state updates.
+      if (removed) {
+        set((state) => {
+          if (state.workflows.some((w) => w.id === id)) return state
+          return {
+            workflows: [removed, ...state.workflows],
+            totalWorkflows: state.totalWorkflows + 1,
+          }
+        })
+      }
+      useToastStore.getState().add({
+        variant: 'error',
+        title: 'Failed to delete workflow',
+        description: getErrorMessage(err),
+      })
+      return false
+    }
   },
 
   setSearchQuery: (q) => set({ searchQuery: q }),

@@ -284,9 +284,7 @@ The following shared components live in `web/src/components/ui/` and form the bu
 | `useAnimationPreset()` | `hooks/useAnimationPreset.ts` | Returns animation config (`spring`, `tween`, `staggerDelay`, `enableLayout`) based on the user's theme animation preference. Components use this instead of directly referencing `lib/motion.ts` constants. |
 | `useCountAnimation()` | `hooks/useCountAnimation.ts` | Animated numeric value transitions for metric displays. Uses rAF with ease-out cubic and `prefers-reduced-motion` support. |
 | `useAutoScroll()` | `hooks/useAutoScroll.ts` | Auto-scroll container to bottom on new content, pausing when user scrolls away. Returns `{ isAutoScrolling, scrollToBottom }`. |
-| `useRovingTabIndex()` | `hooks/useRovingTabIndex.ts` | WAI-ARIA roving tabindex for arrow-key navigation in lists and grids. Supports vertical, horizontal, and grid orientations with loop/clamp. |
 | `useBreakpoint()` | `hooks/useBreakpoint.ts` | Reactive viewport breakpoint detection via matchMedia. Returns `{ breakpoint, isDesktop, isTablet, isMobile }`. |
-| `useJustUpdated()` | `hooks/useJustUpdated.ts` | Tracks recently-updated entity IDs with TTL and relative time strings for flash/highlight effects. |
 
 ### Types
 

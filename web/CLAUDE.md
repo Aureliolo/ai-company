@@ -47,6 +47,19 @@ web/src/
 - **Static messages**: pass dynamic/untrusted values as separate args (not interpolated into the message string) so they go through `sanitizeArg`
 - **Attacker-controlled fields** inside structured objects must be wrapped in `sanitizeForLog()` before embedding
 
+## Zustand Store Error Handling (MANDATORY)
+
+All Zustand store **mutation** actions (create/update/delete) MUST follow the `stores/connections/crud-actions.ts` pattern:
+
+1. Wrap the API call in `try`/`catch`.
+2. On success: update the store + emit a success toast via `useToastStore.getState().add({ variant: 'success', title: '...' })`.
+3. On failure: log via `log.error('...', sanitizeForLog(err))`, emit an error toast with `description: getErrorMessage(err)`, and **return a sentinel** (`null` for create/update returning an entity, `false` for delete returning a boolean).
+4. For optimistic mutations, capture `previous` state synchronously and restore it in the `catch` branch.
+
+**Callers MUST NOT wrap store mutation calls in `try`/`catch`** -- the store owns the error UX. Callers only need to null-check the sentinel to decide whether to navigate, dismiss a dialog, or run a rollback.
+
+**List reads** (`fetch*`) follow the same pattern for logging but set `error: string | null` on the store instead of toasting -- the UI surface (usually a page-level error banner) consumes the error state.
+
 ## Design System (MANDATORY)
 
 ### Component Reuse
@@ -100,9 +113,11 @@ web/src/
 ### Design Token Rules
 
 - **Colors**: use Tailwind semantic classes (`text-foreground`, `bg-card`, `text-accent`, `text-success`, `bg-danger`, etc.) or CSS variables (`var(--so-accent)`). NEVER hardcode hex values in `.tsx`/`.ts` files.
-- **Typography**: use `font-sans` or `font-mono` (maps to Geist tokens). NEVER set `fontFamily` directly.
+- **Typography**: use `font-sans` or `font-mono` (maps to Geist tokens). NEVER set `fontFamily` directly. For in-chart text size, use `var(--so-text-micro)`, `var(--so-text-compact)`, `var(--so-text-body-sm)`.
 - **Spacing**: use density-aware tokens (`p-card`, `gap-section-gap`, `gap-grid-gap`) or standard Tailwind spacing. NEVER hardcode pixel values for layout spacing.
 - **Shadows/Borders**: use token variables (`var(--so-shadow-card-hover)`, `border-border`, `border-bright`).
+- **Chart SVG attributes** (Recharts, xyflow, `<svg>`): use `var(--so-stroke-hairline)` (1) or `var(--so-stroke-thin)` (1.5) for `strokeWidth`; `var(--so-chart-fill-opacity-strong)` (0.3) or `var(--so-chart-fill-opacity-subtle)` (0.15) for `stopOpacity`; `var(--so-dash-tight)` / `--so-dash-compact` / `--so-dash-medium` / `--so-dash-loose` / `--so-dash-wide` for `strokeDasharray`. Modern browsers resolve CSS variables inside SVG presentation attributes. **Exception**: xyflow's `MiniMap` props (`maskStrokeWidth`, `nodeStrokeWidth`, `nodeBorderRadius`) and Recharts' `margin` prop are typed as `number` and reject CSS vars -- use numeric constants and a comment pointing to the token.
+- **Currency**: NEVER hardcode currency codes (`'EUR'`, `'USD'`) or symbols (`€`, `$`) in formatter calls. Import `DEFAULT_CURRENCY` from `@/utils/currencies` and pass it to `formatCurrency(value, DEFAULT_CURRENCY)` or read the runtime currency from the company/settings store where available.
 
 ### Creating New Components
 

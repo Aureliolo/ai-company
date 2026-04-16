@@ -23,7 +23,12 @@ from synthorg.persistence.postgres.backend import PostgresPersistenceBackend
 from synthorg.security.models import AuditEntry
 from tests.unit.persistence.conftest import make_task
 
-pytestmark = pytest.mark.integration
+pytestmark = [
+    pytest.mark.integration,
+    # Session-scoped TimescaleDB container startup can exceed the default
+    # 30s timeout on slow CI runners; the test body itself is fast.
+    pytest.mark.timeout(120),
+]
 
 
 async def _fetchone(

@@ -766,6 +766,8 @@ function OrgChartInner() {
               bgColor="var(--so-minimap-bg)"
               maskColor="var(--so-minimap-mask)"
               maskStrokeColor="var(--so-minimap-stroke)"
+              // xyflow MiniMap types these props as `number` and does not accept CSS vars.
+              // Values mirror --so-stroke-thin (1.5) and --so-radius-sm (4) from design-tokens.css.
               maskStrokeWidth={1.5}
               style={{
                 width: 260,
@@ -773,7 +775,7 @@ function OrgChartInner() {
                 resize: 'both',
                 overflow: 'hidden',
                 border: '1px solid var(--so-minimap-border)',
-                borderRadius: '10px',
+                borderRadius: 'var(--so-radius-xl)',
                 boxShadow: 'var(--so-minimap-shadow)',
               }}
               nodeColor={(n) => {

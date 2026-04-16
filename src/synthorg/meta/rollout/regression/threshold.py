@@ -63,8 +63,8 @@ class ThresholdDetector:
             ),
             (
                 "cost",
-                baseline.budget.total_spend_usd,
-                current.budget.total_spend_usd,
+                baseline.budget.total_spend,
+                current.budget.total_spend,
                 thresholds.cost_increase,
                 False,  # higher is worse
             ),

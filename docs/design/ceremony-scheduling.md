@@ -239,7 +239,7 @@ sprint:
 **Auto-transition**: when sprint budget is exhausted (100% consumed) or
 when a configured budget threshold is crossed.
 
-**Default velocity unit**: points per currency unit (`pts/EUR`).
+**Default velocity unit**: points per currency unit (`pts/<DEFAULT_CURRENCY>`, where `DEFAULT_CURRENCY` is defined in `src/synthorg/budget/currency.py` and can be overridden at runtime by the `budget.currency` setting).
 
 **Best for**: cost-conscious organizations where every agent action has a
 real dollar cost. Ensures ceremonies happen proportionally to spend.
@@ -448,7 +448,7 @@ class VelocityCalculator(Protocol):
 | `TaskDrivenVelocityCalculator` | `pts/task` | task_driven, throughput_adaptive |
 | `CalendarVelocityCalculator` | `pts/day` | calendar |
 | `MultiDimensionalVelocityCalculator` | `pts/sprint` (+ secondary) | hybrid |
-| `BudgetVelocityCalculator` | `pts/EUR` | budget_driven |
+| `BudgetVelocityCalculator` | `pts/<DEFAULT_CURRENCY>` | budget_driven |
 | `PointsPerSprintVelocityCalculator` | `pts/sprint` | event_driven, external_trigger, milestone_driven |
 
 ---
@@ -602,7 +602,7 @@ via `CeremonyPolicyConfig.velocity_calculator`.
 | calendar | `CALENDAR` | pts/day |
 | hybrid | `MULTI_DIMENSIONAL` | pts/sprint + secondary |
 | event_driven | `POINTS_PER_SPRINT` | pts/sprint |
-| budget_driven | `BUDGET` | pts/EUR |
+| budget_driven | `BUDGET` | pts/&lt;DEFAULT_CURRENCY&gt; |
 | throughput_adaptive | `TASK_DRIVEN` | pts/task + rate |
 | external_trigger | `POINTS_PER_SPRINT` | pts/sprint |
 | milestone_driven | `POINTS_PER_SPRINT` | pts/sprint |
@@ -714,7 +714,7 @@ Event constants in `synthorg.observability.events.workflow`:
 - `EventDrivenStrategy` -- reactive ceremony firing on engine events with configurable debounce
 - `PointsPerSprintVelocityCalculator` -- `pts/sprint` for event-driven and external-trigger strategies
 - `BudgetDrivenStrategy` -- ceremony firing at cost-consumption thresholds
-- `BudgetVelocityCalculator` -- `pts/EUR` with budget-weighted rolling averages
+- `BudgetVelocityCalculator` -- `pts/<DEFAULT_CURRENCY>` with budget-weighted rolling averages
 - Observability event constants (`SPRINT_CEREMONY_EVENT_DEBOUNCE_NOT_MET`, `SPRINT_CEREMONY_EVENT_COUNTER_INCREMENTED`, `SPRINT_CEREMONY_BUDGET_THRESHOLD_CROSSED`, `SPRINT_CEREMONY_BUDGET_THRESHOLD_ALREADY_FIRED`, `SPRINT_AUTO_TRANSITION_BUDGET`, `VELOCITY_BUDGET_NO_BUDGET_CONSUMED`)
 
 > **Note:** The `CeremonyScheduler` does not yet wire all lifecycle hooks (`on_task_added`, `on_task_blocked`, `on_budget_updated`, `on_external_event`). Until scheduler integration is complete, these strategies' event counters will not increment for those event types. Scheduler integration is tracked in follow-up work.
