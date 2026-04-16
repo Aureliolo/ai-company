@@ -3,6 +3,8 @@ package cmd
 import (
 	"os"
 	"strings"
+
+	"github.com/Aureliolo/synthorg/cli/internal/config"
 )
 
 // Environment variable names for SynthOrg CLI configuration.
@@ -22,6 +24,29 @@ const (
 	EnvTelemetry     = "SYNTHORG_TELEMETRY"
 	EnvQuiet         = "SYNTHORG_QUIET"
 	EnvYes           = "SYNTHORG_YES" // suppresses ALL interactive confirmation prompts
+)
+
+// Tunable env vars are declared in the config package to keep
+// ResolveTunables self-contained and avoid a cmd -> config -> cmd cycle.
+// Re-export them here so the cmd layer uses a single symbol namespace.
+const (
+	EnvRegistryHost           = config.EnvRegistryHost
+	EnvImageRepoPrefix        = config.EnvImageRepoPrefix
+	EnvDHIRegistry            = config.EnvDHIRegistry
+	EnvPostgresImageTag       = config.EnvPostgresImageTag
+	EnvNATSImageTag           = config.EnvNATSImageTag
+	EnvDefaultNATSURL         = config.EnvDefaultNATSURL
+	EnvDefaultNATSStreamPfx   = config.EnvDefaultNATSStreamPfx
+	EnvBackupCreateTimeout    = config.EnvBackupCreateTimeout
+	EnvBackupRestoreTimeout   = config.EnvBackupRestoreTimeout
+	EnvHealthCheckTimeout     = config.EnvHealthCheckTimeout
+	EnvSelfUpdateHTTPTimeout  = config.EnvSelfUpdateHTTPTimeout
+	EnvSelfUpdateAPITimeout   = config.EnvSelfUpdateAPITimeout
+	EnvTUFFetchTimeout        = config.EnvTUFFetchTimeout
+	EnvAttestationHTTPTimeout = config.EnvAttestationHTTPTimeout
+	EnvMaxAPIResponseBytes    = config.EnvMaxAPIResponseBytes
+	EnvMaxBinaryBytes         = config.EnvMaxBinaryBytes
+	EnvMaxArchiveEntryBytes   = config.EnvMaxArchiveEntryBytes
 )
 
 // envBool returns true if the named env var is set to a truthy value

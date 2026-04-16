@@ -4,11 +4,15 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"sort"
+	"strconv"
 	"strings"
+	"time"
 )
 
 const stateFileName = "config.json"
@@ -53,7 +57,65 @@ type State struct {
 
 	// Fine-tuning (requires sandbox/Docker for container execution).
 	FineTuning bool `json:"fine_tuning"`
+
+	// Registry + image tag overrides. Overriding any of these disables
+	// signature and provenance verification because the pinned identity
+	// policy (SAN regex) and DHI digest map are bound to the defaults.
+	// Empty values mean "use the compiled-in default".
+	RegistryHost     string `json:"registry_host,omitempty"`
+	ImageRepoPrefix  string `json:"image_repo_prefix,omitempty"`
+	DHIRegistry      string `json:"dhi_registry,omitempty"`
+	PostgresImageTag string `json:"postgres_image_tag,omitempty"`
+	NATSImageTag     string `json:"nats_image_tag,omitempty"`
+
+	// Default values for the `synthorg worker start` flags.
+	DefaultNATSURL          string `json:"default_nats_url,omitempty"`
+	DefaultNATSStreamPrefix string `json:"default_nats_stream_prefix,omitempty"`
+
+	// Timeout strings parsed by time.ParseDuration (e.g. "30s", "5m").
+	// Empty = use compiled-in default.
+	BackupCreateTimeout    string `json:"backup_create_timeout,omitempty"`
+	BackupRestoreTimeout   string `json:"backup_restore_timeout,omitempty"`
+	HealthCheckTimeout     string `json:"health_check_timeout,omitempty"`
+	SelfUpdateHTTPTimeout  string `json:"self_update_http_timeout,omitempty"`
+	SelfUpdateAPITimeout   string `json:"self_update_api_timeout,omitempty"`
+	TUFFetchTimeout        string `json:"tuf_fetch_timeout,omitempty"`
+	AttestationHTTPTimeout string `json:"attestation_http_timeout,omitempty"`
+
+	// Download size ceilings in bytes. Zero = use compiled-in default.
+	MaxAPIResponseBytes  int64 `json:"max_api_response_bytes,omitempty"`
+	MaxBinaryBytes       int64 `json:"max_binary_bytes,omitempty"`
+	MaxArchiveEntryBytes int64 `json:"max_archive_entry_bytes,omitempty"`
 }
+
+// Compiled-in default values for the tunables. Exposed so Tunables can detect
+// customisation (CustomRegistry = any registry/tag field differs from default).
+const (
+	DefaultRegistryHost     = "ghcr.io"
+	DefaultImageRepoPrefix  = "aureliolo/synthorg-"
+	DefaultDHIRegistry      = "dhi.io"
+	DefaultPostgresImageTag = "18-debian13"
+	DefaultNATSImageTag     = "2.12-debian13"
+
+	DefaultNATSURLValue          = "nats://nats:4222"
+	DefaultNATSStreamPrefixValue = "SYNTHORG"
+
+	DefaultBackupCreateTimeout    = 60 * time.Second
+	DefaultBackupRestoreTimeout   = 30 * time.Second
+	DefaultHealthCheckTimeout     = 5 * time.Second
+	DefaultSelfUpdateHTTPTimeout  = 5 * time.Minute
+	DefaultSelfUpdateAPITimeout   = 30 * time.Second
+	DefaultTUFFetchTimeout        = 30 * time.Second
+	DefaultAttestationHTTPTimeout = 30 * time.Second
+
+	DefaultMaxAPIResponseBytes  int64 = 1 * 1024 * 1024
+	DefaultMaxBinaryBytes       int64 = 256 * 1024 * 1024
+	DefaultMaxArchiveEntryBytes int64 = 128 * 1024 * 1024
+
+	// MaxBytesCeiling caps any user-provided size limit to prevent runaway
+	// allocations if someone sets a ridiculous value.
+	MaxBytesCeiling int64 = 1 * 1024 * 1024 * 1024
+)
 
 // DefaultState returns a State with sensible defaults for the interactive init
 // wizard. Note: Load applies a more conservative fallback (sandbox disabled)
@@ -62,6 +124,11 @@ type State struct {
 // Host port layout (contiguous with existing services):
 //
 //	3000 web / 3001 backend / 3002 postgres / 3003 NATS client.
+//
+// Tunable fields (registry, timeouts, size limits) are intentionally left
+// empty here; an empty value means "resolve to the compiled-in default at
+// read time" so users who never touched these fields do not accumulate
+// noise in their config.json.
 func DefaultState() State {
 	return State{
 		DataDir:            DataDir(),
@@ -291,6 +358,163 @@ func (s State) validate() error {
 	for name, digest := range s.VerifiedDigests {
 		if !isValidDigestFormat(digest) {
 			return fmt.Errorf("invalid verified_digests[%q]: %q is not a valid sha256 digest", name, digest)
+		}
+	}
+	if err := s.validateTunables(); err != nil {
+		return err
+	}
+	return nil
+}
+
+// validateTunables checks that the optional registry/tunable fields parse
+// and fall within sane ranges. Empty fields are treated as "use default"
+// and skipped.
+func (s State) validateTunables() error {
+	if s.RegistryHost != "" && !IsValidRegistryHost(s.RegistryHost) {
+		return fmt.Errorf("invalid registry_host %q: must be a DNS hostname (optionally with :port)", s.RegistryHost)
+	}
+	if s.DHIRegistry != "" && !IsValidRegistryHost(s.DHIRegistry) {
+		return fmt.Errorf("invalid dhi_registry %q: must be a DNS hostname (optionally with :port)", s.DHIRegistry)
+	}
+	if s.ImageRepoPrefix != "" && !IsValidImageRepoPrefix(s.ImageRepoPrefix) {
+		return fmt.Errorf("invalid image_repo_prefix %q: must match [a-z0-9][a-z0-9._/-]*", s.ImageRepoPrefix)
+	}
+	if s.PostgresImageTag != "" && !IsValidImageTag(s.PostgresImageTag) {
+		return fmt.Errorf("invalid postgres_image_tag %q: must match [a-zA-Z0-9][a-zA-Z0-9._-]*", s.PostgresImageTag)
+	}
+	if s.NATSImageTag != "" && !IsValidImageTag(s.NATSImageTag) {
+		return fmt.Errorf("invalid nats_image_tag %q: must match [a-zA-Z0-9][a-zA-Z0-9._-]*", s.NATSImageTag)
+	}
+	if s.DefaultNATSURL != "" {
+		if err := ValidateNATSURL(s.DefaultNATSURL); err != nil {
+			return fmt.Errorf("invalid default_nats_url: %w", err)
+		}
+	}
+	if s.DefaultNATSStreamPrefix != "" && !IsValidStreamPrefix(s.DefaultNATSStreamPrefix) {
+		return fmt.Errorf("invalid default_nats_stream_prefix %q: must match [A-Z0-9][A-Z0-9_-]*", s.DefaultNATSStreamPrefix)
+	}
+	durations := []struct {
+		name, value string
+	}{
+		{"backup_create_timeout", s.BackupCreateTimeout},
+		{"backup_restore_timeout", s.BackupRestoreTimeout},
+		{"health_check_timeout", s.HealthCheckTimeout},
+		{"self_update_http_timeout", s.SelfUpdateHTTPTimeout},
+		{"self_update_api_timeout", s.SelfUpdateAPITimeout},
+		{"tuf_fetch_timeout", s.TUFFetchTimeout},
+		{"attestation_http_timeout", s.AttestationHTTPTimeout},
+	}
+	for _, d := range durations {
+		if d.value == "" {
+			continue
+		}
+		parsed, err := time.ParseDuration(d.value)
+		if err != nil {
+			return fmt.Errorf("invalid %s %q: %w", d.name, d.value, err)
+		}
+		if parsed <= 0 {
+			return fmt.Errorf("invalid %s %q: must be > 0", d.name, d.value)
+		}
+	}
+	bytes := []struct {
+		name  string
+		value int64
+	}{
+		{"max_api_response_bytes", s.MaxAPIResponseBytes},
+		{"max_binary_bytes", s.MaxBinaryBytes},
+		{"max_archive_entry_bytes", s.MaxArchiveEntryBytes},
+	}
+	for _, b := range bytes {
+		if b.value == 0 {
+			continue
+		}
+		if b.value < 0 {
+			return fmt.Errorf("invalid %s %d: must be positive", b.name, b.value)
+		}
+		if b.value > MaxBytesCeiling {
+			return fmt.Errorf("invalid %s %d: exceeds ceiling %d (1 GiB)", b.name, b.value, MaxBytesCeiling)
+		}
+	}
+	return nil
+}
+
+var (
+	// registryHostRegex matches a DNS hostname (letters/digits/dots/hyphens)
+	// with an optional port suffix. Intentionally permissive: we rely on the
+	// container runtime to reject genuinely malformed refs when it tries to
+	// pull. We just want to catch obvious typos at config-set time.
+	registryHostRegex = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9.\-]*(:[0-9]+)?$`)
+
+	// imageRepoPrefixRegex matches a repository path prefix such as
+	// "aureliolo/synthorg-". Trailing slash or dash is allowed.
+	imageRepoPrefixRegex = regexp.MustCompile(`^[a-z0-9][a-z0-9._/\-]*$`)
+
+	// streamPrefixRegex matches NATS JetStream stream name prefixes.
+	streamPrefixRegex = regexp.MustCompile(`^[A-Z0-9][A-Z0-9_\-]*$`)
+)
+
+// IsValidRegistryHost reports whether host looks like a DNS hostname with
+// an optional port. Length is capped at 253 characters (DNS limit).
+func IsValidRegistryHost(host string) bool {
+	if host == "" || len(host) > 253 {
+		return false
+	}
+	if !registryHostRegex.MatchString(host) {
+		return false
+	}
+	if i := strings.LastIndex(host, ":"); i >= 0 {
+		port, err := strconv.Atoi(host[i+1:])
+		if err != nil || port < 1 || port > 65535 {
+			return false
+		}
+	}
+	return true
+}
+
+// IsValidImageRepoPrefix reports whether prefix is a plausible Docker
+// repository path prefix (lowercase alphanumerics plus ./-/_ and /).
+func IsValidImageRepoPrefix(prefix string) bool {
+	if prefix == "" || len(prefix) > 255 {
+		return false
+	}
+	return imageRepoPrefixRegex.MatchString(prefix)
+}
+
+// IsValidStreamPrefix reports whether s is a valid NATS JetStream stream
+// name prefix (uppercase ASCII + digits + _/-).
+func IsValidStreamPrefix(s string) bool {
+	if s == "" || len(s) > 64 {
+		return false
+	}
+	return streamPrefixRegex.MatchString(s)
+}
+
+// ValidateNATSURL rejects obviously malformed NATS URLs. Mirrors the
+// validation in cli/cmd/worker_start.go so the same rules apply whether
+// the URL comes from a flag or from persisted config.
+func ValidateNATSURL(raw string) error {
+	if raw == "" {
+		return fmt.Errorf("must not be empty")
+	}
+	parsed, err := url.Parse(raw)
+	if err != nil {
+		return fmt.Errorf("parse: %w", err)
+	}
+	switch parsed.Scheme {
+	case "nats", "tls", "nats+tls":
+	default:
+		return fmt.Errorf("scheme %q: must be nats://, tls://, or nats+tls://", parsed.Scheme)
+	}
+	if parsed.Hostname() == "" {
+		return fmt.Errorf("missing host")
+	}
+	if rawPort := parsed.Port(); rawPort != "" {
+		port, err := strconv.Atoi(rawPort)
+		if err != nil {
+			return fmt.Errorf("non-numeric port %q", rawPort)
+		}
+		if port < 1 || port > 65535 {
+			return fmt.Errorf("port %d out of range (must be 1-65535)", port)
 		}
 	}
 	return nil
