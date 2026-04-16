@@ -6,6 +6,22 @@ import type { RuleListItem as RuleListItemType } from '@/api/endpoints/custom-ru
 
 import { RuleSeverityBadge } from './RuleSeverityBadge'
 
+function EditButton({ ruleId, ruleName, onEdit }: { ruleId: string; ruleName: string; onEdit: (id: string) => void }) {
+  return (
+    <Button variant="ghost" size="sm" onClick={() => onEdit(ruleId)} aria-label={`Edit ${ruleName}`}>
+      <Pencil className="size-3.5" />
+    </Button>
+  )
+}
+
+function DeleteButton({ ruleId, ruleName, onDelete }: { ruleId: string; ruleName: string; onDelete: (id: string) => void }) {
+  return (
+    <Button variant="ghost" size="sm" onClick={() => onDelete(ruleId)} aria-label={`Delete ${ruleName}`}>
+      <Trash2 className="size-3.5 text-danger" />
+    </Button>
+  )
+}
+
 interface RuleListItemProps {
   rule: RuleListItemType
   onToggle?: (name: string, id?: string) => void
@@ -53,24 +69,10 @@ export function RuleListItem({
 
       <div className="flex shrink-0 items-center gap-1">
         {isCustom && onEdit && rule.id != null && (
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => onEdit(rule.id as string)}
-            aria-label={`Edit ${rule.name}`}
-          >
-            <Pencil className="size-3.5" />
-          </Button>
+          <EditButton ruleId={rule.id} ruleName={rule.name} onEdit={onEdit} />
         )}
         {isCustom && onDelete && rule.id != null && (
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => onDelete(rule.id as string)}
-            aria-label={`Delete ${rule.name}`}
-          >
-            <Trash2 className="size-3.5 text-danger" />
-          </Button>
+          <DeleteButton ruleId={rule.id} ruleName={rule.name} onDelete={onDelete} />
         )}
         <ToggleField
           label={`Toggle ${rule.name}`}

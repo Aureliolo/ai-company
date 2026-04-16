@@ -32,26 +32,26 @@ export interface SignalsResponse {
 
 export interface ABTestGroupMetrics {
   group: 'control' | 'treatment'
-  agentCount: number
-  observationCount: number
-  avgQualityScore: number
-  avgSuccessRate: number
-  totalSpendUsd: number
+  agent_count: number
+  observation_count: number
+  avg_quality_score: number
+  avg_success_rate: number
+  total_spend_usd: number
 }
 
 export interface ABTestSummary {
-  proposalId: string
-  proposalTitle: string
-  controlMetrics: ABTestGroupMetrics
-  treatmentMetrics: ABTestGroupMetrics
+  proposal_id: string
+  proposal_title: string
+  control_metrics: ABTestGroupMetrics
+  treatment_metrics: ABTestGroupMetrics
   verdict:
     | 'treatment_wins'
     | 'control_wins'
     | 'inconclusive'
     | 'treatment_regressed'
     | null
-  observationHoursElapsed: number
-  observationHoursTotal: number
+  observation_hours_elapsed: number
+  observation_hours_total: number
 }
 
 export interface MetaConfig {

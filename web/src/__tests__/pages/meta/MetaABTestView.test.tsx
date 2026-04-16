@@ -8,24 +8,24 @@ function makeGroupMetrics(
 ): ABTestGroupMetrics {
   return {
     group,
-    agentCount: 10,
-    observationCount: 20,
-    avgQualityScore: 7.5,
-    avgSuccessRate: 0.85,
-    totalSpendUsd: 100.0,
+    agent_count: 10,
+    observation_count: 20,
+    avg_quality_score: 7.5,
+    avg_success_rate: 0.85,
+    total_spend_usd: 100.0,
     ...overrides,
   }
 }
 
 function makeTest(overrides: Partial<ABTestSummary> = {}): ABTestSummary {
   return {
-    proposalId: '550e8400-e29b-41d4-a716-446655440000',
-    proposalTitle: 'Increase collaboration threshold',
-    controlMetrics: makeGroupMetrics('control'),
-    treatmentMetrics: makeGroupMetrics('treatment'),
+    proposal_id: '550e8400-e29b-41d4-a716-446655440000',
+    proposal_title: 'Increase collaboration threshold',
+    control_metrics: makeGroupMetrics('control'),
+    treatment_metrics: makeGroupMetrics('treatment'),
     verdict: null,
-    observationHoursElapsed: 24,
-    observationHoursTotal: 48,
+    observation_hours_elapsed: 24,
+    observation_hours_total: 48,
     ...overrides,
   }
 }

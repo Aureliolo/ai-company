@@ -15,7 +15,7 @@ CREATE TABLE `approvals` (
   `task_id` text NULL,
   `metadata` text NOT NULL DEFAULT '{}',
   PRIMARY KEY (`id`),
-  CONSTRAINT `0` FOREIGN KEY (`task_id`) REFERENCES `tasks` (`id`) ON UPDATE NO ACTION ON DELETE NO ACTION,
+  CONSTRAINT `fk_approvals_task_id` FOREIGN KEY (`task_id`) REFERENCES `tasks` (`id`) ON UPDATE NO ACTION ON DELETE NO ACTION,
   CHECK (length(trim(id)) > 0),
   CHECK (length(trim(action_type)) > 0),
   CHECK (length(trim(title)) > 0),
@@ -38,6 +38,9 @@ CREATE TABLE `approvals` (
   CHECK (
         (decided_at IS NULL AND decided_by IS NULL)
         OR (decided_at IS NOT NULL AND decided_by IS NOT NULL)
+    ),
+  CHECK (
+        status != 'rejected' OR (decision_reason IS NOT NULL AND length(trim(decision_reason)) > 0)
     )
 );
 -- Create index "idx_approvals_status" to table: "approvals"

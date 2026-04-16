@@ -9,6 +9,7 @@ from aiosqlite import Row
 
 from synthorg.core.approval import ApprovalItem
 from synthorg.core.enums import ApprovalRiskLevel, ApprovalStatus
+from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import (
     API_APPROVAL_REPO_DELETED,
@@ -156,7 +157,7 @@ class SQLiteApprovalRepository:
             status=item.status.value,
         )
 
-    async def get(self, approval_id: str) -> ApprovalItem | None:
+    async def get(self, approval_id: NotBlankStr | str) -> ApprovalItem | None:
         """Get an approval item by ID.
 
         Args:
@@ -197,7 +198,7 @@ class SQLiteApprovalRepository:
         *,
         status: ApprovalStatus | None = None,
         risk_level: ApprovalRiskLevel | None = None,
-        action_type: str | None = None,
+        action_type: NotBlankStr | str | None = None,
     ) -> tuple[ApprovalItem, ...]:
         """List approval items with optional filters.
 
@@ -242,7 +243,7 @@ class SQLiteApprovalRepository:
         logger.debug(API_APPROVAL_REPO_LISTED, count=len(items))
         return items
 
-    async def delete(self, approval_id: str) -> bool:
+    async def delete(self, approval_id: NotBlankStr | str) -> bool:
         """Delete an approval item by ID.
 
         Args:

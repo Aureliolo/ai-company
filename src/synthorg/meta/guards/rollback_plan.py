@@ -69,7 +69,7 @@ class RollbackPlanGuard:
                 reason=reason,
             )
 
-        logger.debug(
+        logger.info(
             META_PROPOSAL_GUARD_PASSED,
             guard=self.name,
             proposal_id=str(proposal.id),

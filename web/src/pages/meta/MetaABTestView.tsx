@@ -42,7 +42,7 @@ export function MetaABTestView({ tests }: MetaABTestViewProps) {
   return (
     <div className="space-y-section-gap">
       {tests.map((test) => (
-        <ABTestCard key={test.proposalId} test={test} />
+        <ABTestCard key={test.proposal_id} test={test} />
       ))}
     </div>
   )
@@ -50,9 +50,9 @@ export function MetaABTestView({ tests }: MetaABTestViewProps) {
 
 function ABTestCard({ test }: { test: ABTestSummary }) {
   const progress =
-    test.observationHoursTotal > 0
+    test.observation_hours_total > 0
       ? Math.min(
-          (test.observationHoursElapsed / test.observationHoursTotal) * 100,
+          (test.observation_hours_elapsed / test.observation_hours_total) * 100,
           100,
         )
       : 0
@@ -62,11 +62,11 @@ function ABTestCard({ test }: { test: ABTestSummary }) {
       <div className="mb-4 flex items-center justify-between">
         <div>
           <h3 className="text-sm font-medium text-foreground">
-            {test.proposalTitle}
+            {test.proposal_title}
           </h3>
           <p className="text-xs text-muted-foreground">
-            {test.observationHoursElapsed.toFixed(1)}h /{' '}
-            {test.observationHoursTotal}h observation
+            {test.observation_hours_elapsed.toFixed(1)}h /{' '}
+            {test.observation_hours_total}h observation
           </p>
         </div>
         {test.verdict && (
@@ -87,7 +87,7 @@ function ABTestCard({ test }: { test: ABTestSummary }) {
         aria-valuenow={Math.round(progress)}
         aria-valuemin={0}
         aria-valuemax={100}
-        aria-label={`Observation progress: ${test.observationHoursElapsed.toFixed(1)}h of ${test.observationHoursTotal}h`}
+        aria-label={`Observation progress: ${test.observation_hours_elapsed.toFixed(1)}h of ${test.observation_hours_total}h`}
       >
         <motion.div
           className="h-full rounded-full bg-accent"
@@ -99,40 +99,40 @@ function ABTestCard({ test }: { test: ABTestSummary }) {
       <div className="grid grid-cols-2 gap-grid-gap">
         <div>
           <p className="mb-2 text-xs font-medium text-muted-foreground">
-            Control ({test.controlMetrics.agentCount} agents)
+            Control ({test.control_metrics.agent_count} agents)
           </p>
           <div className="space-y-2">
             <MetricCard
               label="Quality"
-              value={test.controlMetrics.avgQualityScore}
+              value={test.control_metrics.avg_quality_score}
             />
             <MetricCard
               label="Success Rate"
-              value={`${(test.controlMetrics.avgSuccessRate * 100).toFixed(1)}%`}
+              value={`${(test.control_metrics.avg_success_rate * 100).toFixed(1)}%`}
             />
             <MetricCard
               label="Spend"
-              value={`$${test.controlMetrics.totalSpendUsd.toFixed(2)}`}
+              value={`$${test.control_metrics.total_spend_usd.toFixed(2)}`}
             />
           </div>
         </div>
 
         <div>
           <p className="mb-2 text-xs font-medium text-muted-foreground">
-            Treatment ({test.treatmentMetrics.agentCount} agents)
+            Treatment ({test.treatment_metrics.agent_count} agents)
           </p>
           <div className="space-y-2">
             <MetricCard
               label="Quality"
-              value={test.treatmentMetrics.avgQualityScore}
+              value={test.treatment_metrics.avg_quality_score}
             />
             <MetricCard
               label="Success Rate"
-              value={`${(test.treatmentMetrics.avgSuccessRate * 100).toFixed(1)}%`}
+              value={`${(test.treatment_metrics.avg_success_rate * 100).toFixed(1)}%`}
             />
             <MetricCard
               label="Spend"
-              value={`$${test.treatmentMetrics.totalSpendUsd.toFixed(2)}`}
+              value={`$${test.treatment_metrics.total_spend_usd.toFixed(2)}`}
             />
           </div>
         </div>

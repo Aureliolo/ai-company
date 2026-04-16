@@ -980,11 +980,14 @@ CREATE TABLE approvals (
     ),
     decided_by TEXT,
     decision_reason TEXT,
-    task_id TEXT REFERENCES tasks(id),
+    task_id TEXT CONSTRAINT fk_approvals_task_id REFERENCES tasks(id),
     metadata TEXT NOT NULL DEFAULT '{}',
     CHECK(
         (decided_at IS NULL AND decided_by IS NULL)
         OR (decided_at IS NOT NULL AND decided_by IS NOT NULL)
+    ),
+    CHECK(
+        status != 'rejected' OR (decision_reason IS NOT NULL AND length(trim(decision_reason)) > 0)
     )
 );
 CREATE INDEX idx_approvals_status ON approvals(status);

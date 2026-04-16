@@ -65,6 +65,10 @@ class ApprovalStore:
     async def add(self, item: ApprovalItem) -> None:
         """Add a new approval item.
 
+        Checks both the in-memory cache and the repository for
+        duplicates so restarts cannot silently overwrite persisted
+        items.
+
         Args:
             item: The approval item to store.
 
@@ -80,6 +84,16 @@ class ApprovalStore:
             )
             raise ConflictError(msg)
         if self._repo is not None:
+            existing = await self._repo.get(item.id)
+            if existing is not None:
+                self._items[existing.id] = existing
+                msg = f"Approval {item.id!r} already exists"
+                logger.warning(
+                    API_APPROVAL_CONFLICT,
+                    error="duplicate_in_repo",
+                    approval_id=item.id,
+                )
+                raise ConflictError(msg)
             await self._repo.save(item)
         self._items[item.id] = item
 
@@ -135,7 +149,18 @@ class ApprovalStore:
             )
             for item in repo_items:
                 self._items[item.id] = item
-            return tuple([await self._check_expiration(item) for item in repo_items])
+            # Re-filter after expiration: _check_expiration may
+            # transition PENDING -> EXPIRED, invalidating the
+            # original status filter from the repo query.
+            result: list[ApprovalItem] = []
+            for item in repo_items:
+                checked = await self._check_expiration(item)
+                if status is not None and checked.status != status:
+                    continue
+                if risk_level is not None and checked.risk_level != risk_level:
+                    continue
+                result.append(checked)
+            return tuple(result)
         checked_items: list[ApprovalItem] = []
         for stored in list(self._items.values()):
             checked = await self._check_expiration(stored)
@@ -151,12 +176,19 @@ class ApprovalStore:
     async def save(self, item: ApprovalItem) -> ApprovalItem | None:
         """Update an existing approval item.
 
+        Falls through to the repository on cache miss when a repo
+        is configured.
+
         Args:
             item: The updated approval item.
 
         Returns:
             The saved item, or ``None`` if the ID was not found.
         """
+        if item.id not in self._items and self._repo is not None:
+            existing = await self._repo.get(item.id)
+            if existing is not None:
+                self._items[existing.id] = existing
         if item.id not in self._items:
             logger.warning(
                 API_RESOURCE_NOT_FOUND,
@@ -189,6 +221,10 @@ class ApprovalStore:
               concurrent decision was made).
         """
         current = self._items.get(item.id)
+        if current is None and self._repo is not None:
+            current = await self._repo.get(item.id)
+            if current is not None:
+                self._items[current.id] = current
         if current is None:
             return None
         # Apply lazy expiration check before comparing status.
@@ -220,9 +256,9 @@ class ApprovalStore:
             expired = item.model_copy(
                 update={"status": ApprovalStatus.EXPIRED},
             )
-            self._items[item.id] = expired
             if self._repo is not None:
                 await self._repo.save(expired)
+            self._items[item.id] = expired
             logger.info(
                 API_APPROVAL_EXPIRED,
                 approval_id=item.id,
