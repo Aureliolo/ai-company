@@ -35,12 +35,40 @@ from synthorg.observability.events.verification import (
 )
 
 if TYPE_CHECKING:
-    from synthorg.core.types import ModelTier
+    from synthorg.core.types import ModelTier, NotBlankStr
     from synthorg.providers.protocol import CompletionProvider
 
 logger = get_logger(__name__)
 
-TierResolver = Callable[["ModelTier"], str]
+TierResolver = Callable[["ModelTier"], "NotBlankStr"]
+
+
+def _require_non_blank_model_id(
+    value: str,
+    *,
+    component: str,
+    tier: ModelTier,
+) -> NotBlankStr:
+    """Validate that a resolved model id is non-blank.
+
+    The ``TierResolver`` protocol promises a ``NotBlankStr`` but it is a
+    runtime callable -- untrusted callers may still return a blank
+    string.  Fail here with a clear message instead of letting Pydantic
+    raise from inside ``LLMCriteriaDecomposer`` / ``LLMRubricGrader``.
+    """
+    if not isinstance(value, str) or not value.strip():
+        msg = (
+            f"{component} tier_resolver returned a blank model id for "
+            f"tier {tier!r}; expected a non-blank string"
+        )
+        logger.error(
+            VERIFICATION_FACTORY_MISSING_PROVIDER,
+            component=component,
+            tier=str(tier),
+            reason="blank_model_id",
+        )
+        raise ValueError(msg)
+    return value
 
 
 def build_decomposer(
@@ -80,7 +108,11 @@ def build_decomposer(
                 "tier_resolver; pass both to build_decomposer()"
             )
             raise ValueError(msg)
-        model_id = tier_resolver(config.decomposer_model_tier)
+        model_id = _require_non_blank_model_id(
+            tier_resolver(config.decomposer_model_tier),
+            component="decomposer",
+            tier=config.decomposer_model_tier,
+        )
         return LLMCriteriaDecomposer(
             provider=provider,
             model_id=model_id,
@@ -136,7 +168,11 @@ def build_grader(
                 "tier_resolver; pass both to build_grader()"
             )
             raise ValueError(msg)
-        model_id = tier_resolver(config.grader_model_tier)
+        model_id = _require_non_blank_model_id(
+            tier_resolver(config.grader_model_tier),
+            component="grader",
+            tier=config.grader_model_tier,
+        )
         return LLMRubricGrader(
             provider=provider,
             model_id=model_id,

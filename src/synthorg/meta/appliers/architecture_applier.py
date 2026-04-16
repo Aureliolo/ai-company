@@ -61,6 +61,7 @@ _CREATE_DEPT_ALLOWED: Final[frozenset[str]] = frozenset({"head", "policies"})
 # these values.  The limits are deliberately generous -- they only catch
 # obvious abuse, not legitimate edge cases.
 _MAX_DESCRIPTION_CHARS: Final[int] = 2_000
+_MAX_ROLE_NAME_CHARS: Final[int] = 80
 _MAX_SKILL_NAME_CHARS: Final[int] = 80
 _MAX_SKILLS_PER_ROLE: Final[int] = 100
 _MAX_TOOL_NAME_CHARS: Final[int] = 80
@@ -462,8 +463,8 @@ def _validate_dept_head(value: Any) -> list[str]:
         return ["create_department: 'head' must be a string"]
     if not value.strip():
         return ["create_department: 'head' must not be blank"]
-    if len(value) > _MAX_SKILL_NAME_CHARS:
-        return [f"create_department: 'head' exceeds {_MAX_SKILL_NAME_CHARS} chars"]
+    if len(value) > _MAX_ROLE_NAME_CHARS:
+        return [f"create_department: 'head' exceeds {_MAX_ROLE_NAME_CHARS} chars"]
     return []
 
 

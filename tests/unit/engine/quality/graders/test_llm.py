@@ -435,37 +435,19 @@ class TestLLMRubricGraderBehavior:
 class TestLLMRubricGraderInvalidGrades:
     """Malformed per-criterion grade values must downgrade to REFER."""
 
-    async def test_nan_grade_returns_refer(self) -> None:
+    @pytest.mark.parametrize(
+        "non_finite_grade",
+        [float("nan"), float("inf"), float("-inf")],
+        ids=["nan", "+inf", "-inf"],
+    )
+    async def test_non_finite_grade_returns_refer(
+        self,
+        non_finite_grade: float,
+    ) -> None:
         response = _response(
             {
                 "per_criterion_grades": {
-                    "correctness": float("nan"),
-                    "completeness": 0.9,
-                },
-                "verdict": "pass",
-                "confidence": 0.9,
-                "findings": [],
-            }
-        )
-        provider = ScriptedProvider(response=response)
-        grader = LLMRubricGrader(
-            provider=provider,
-            model_id="test-medium-001",
-        )
-        result = await grader.grade(
-            artifact=_artifact(),
-            rubric=_rubric(),
-            probes=_probes(),
-            generator_agent_id="agent-generator",
-            evaluator_agent_id="agent-evaluator",
-        )
-        assert result.verdict == VerificationVerdict.REFER
-
-    async def test_inf_grade_returns_refer(self) -> None:
-        response = _response(
-            {
-                "per_criterion_grades": {
-                    "correctness": float("inf"),
+                    "correctness": non_finite_grade,
                     "completeness": 0.9,
                 },
                 "verdict": "pass",

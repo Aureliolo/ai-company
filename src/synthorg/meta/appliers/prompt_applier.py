@@ -159,14 +159,25 @@ class PromptApplier:
         context = self._context
 
         for change in proposal.prompt_changes:
-            errors.extend(
-                _validate_prompt_change(
-                    change,
-                    context=context,
-                    scopes_to_override=scopes_to_override,
-                    seen_texts=seen_texts,
+            try:
+                errors.extend(
+                    _validate_prompt_change(
+                        change,
+                        context=context,
+                        scopes_to_override=scopes_to_override,
+                        seen_texts=seen_texts,
+                    )
                 )
-            )
+            except MemoryError, RecursionError:
+                raise
+            except Exception as exc:
+                return self._fail(
+                    proposal,
+                    error_message=(
+                        f"dry run context failure: "
+                        f"{type(exc).__name__}: {str(exc)[:200]}"
+                    ),
+                )
 
         if errors:
             return self._fail(proposal, error_message="; ".join(errors))

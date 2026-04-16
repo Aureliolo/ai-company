@@ -73,6 +73,7 @@ _DECOMPOSER_SYSTEM_PROMPT: Final[str] = (
     "new requirements; every probe must trace to a given criterion."
 )
 _MAX_PROMPT_CRITERIA_CHARS: Final[int] = 8_000
+_MIN_CRITERION_DESC_CHARS: Final[int] = 16
 
 
 class LLMDecompositionError(RuntimeError):
@@ -149,27 +150,72 @@ class LLMCriteriaDecomposer:
             )
             return ()
 
+        tool, messages = self._prepare_tool_and_messages(criteria)
+        response = await self._invoke_provider(messages, tool)
+        raw_probes = self._extract_raw_probes(
+            response,
+            task_id=task_id,
+            agent_id=agent_id,
+        )
+        probes = self._materialize_probes(
+            raw_probes,
+            criteria=criteria,
+            task_id=task_id,
+            agent_id=agent_id,
+        )
+
+        logger.info(
+            VERIFICATION_CRITERIA_DECOMPOSED,
+            task_id=task_id,
+            agent_id=agent_id,
+            probe_count=len(probes),
+            decomposer=self.name,
+        )
+        return probes
+
+    def _prepare_tool_and_messages(
+        self,
+        criteria: tuple[AcceptanceCriterion, ...],
+    ) -> tuple[ToolDefinition, list[ChatMessage]]:
+        """Build the ``emit_atomic_probes`` tool + system/user messages."""
         tool = ToolDefinition(
             name=_DECOMPOSER_TOOL_NAME,
             description=_DECOMPOSER_TOOL_DESCRIPTION,
             parameters_schema=_DECOMPOSER_TOOL_SCHEMA,
         )
-        user_prompt = self._build_user_prompt(criteria)
         messages = [
             ChatMessage(
                 role=MessageRole.SYSTEM,
                 content=_DECOMPOSER_SYSTEM_PROMPT,
             ),
-            ChatMessage(role=MessageRole.USER, content=user_prompt),
+            ChatMessage(
+                role=MessageRole.USER,
+                content=self._build_user_prompt(criteria),
+            ),
         ]
+        return tool, messages
 
-        response = await self._provider.complete(
+    async def _invoke_provider(
+        self,
+        messages: list[ChatMessage],
+        tool: ToolDefinition,
+    ) -> Any:
+        """Invoke ``self._provider.complete`` with the decomposer config."""
+        return await self._provider.complete(
             messages=messages,
             model=self._model_id,
             tools=[tool],
             config=CompletionConfig(temperature=0.0, max_tokens=2048),
         )
 
+    def _extract_raw_probes(
+        self,
+        response: Any,
+        *,
+        task_id: NotBlankStr,
+        agent_id: NotBlankStr,
+    ) -> list[Any]:
+        """Pull the ``probes`` list from the tool-call response or raise."""
         tool_call = next(
             (tc for tc in response.tool_calls if tc.name == _DECOMPOSER_TOOL_NAME),
             None,
@@ -197,22 +243,7 @@ class LLMCriteriaDecomposer:
             )
             msg = "LLM decomposer response missing 'probes' list"
             raise LLMDecompositionError(msg)
-
-        probes = self._materialize_probes(
-            raw_probes,
-            criteria=criteria,
-            task_id=task_id,
-            agent_id=agent_id,
-        )
-
-        logger.info(
-            VERIFICATION_CRITERIA_DECOMPOSED,
-            task_id=task_id,
-            agent_id=agent_id,
-            probe_count=len(probes),
-            decomposer=self.name,
-        )
-        return probes
+        return raw_probes
 
     def _build_user_prompt(
         self,
@@ -248,43 +279,77 @@ class LLMCriteriaDecomposer:
             return json.dumps(payload, ensure_ascii=False)
 
         text = _encode(truncated_descriptions)
-        if len(text) > _MAX_PROMPT_CRITERIA_CHARS:
-            overflow = len(text) - _MAX_PROMPT_CRITERIA_CHARS
-            # Proportionally trim each description; keep at least a
-            # short stub so the criterion is still identifiable.
-            total_desc_chars = sum(len(d) for d in truncated_descriptions) or 1
-            per_desc_cuts = [
-                max(0, round(len(d) * overflow / total_desc_chars))
-                for d in truncated_descriptions
-            ]
-            truncated_descriptions = [
-                (d[: max(16, len(d) - cut)] if cut else d)
-                for d, cut in zip(truncated_descriptions, per_desc_cuts, strict=True)
-            ]
-            text = _encode(truncated_descriptions)
-            # Final safety net: if proportional trimming still overshoots
-            # (e.g. tiny criteria), truncate the serialized text while
-            # keeping valid JSON by re-encoding a cut payload.
-            if len(text) > _MAX_PROMPT_CRITERIA_CHARS:
-                truncated_descriptions = [
-                    d[: max(16, len(d) // 2)] for d in truncated_descriptions
-                ]
-                text = _encode(truncated_descriptions)
-            truncated_indices = [
-                i
-                for i, (orig, new) in enumerate(
-                    zip(descriptions, truncated_descriptions, strict=True)
-                )
-                if orig != new
-            ]
-            logger.warning(
-                VERIFICATION_DECOMPOSER_CRITERIA_TRUNCATED,
-                decomposer=self.name,
-                original_chars=len("".join(descriptions)),
-                final_prompt_chars=len(text),
-                max_prompt_chars=_MAX_PROMPT_CRITERIA_CHARS,
-                truncated_criteria_indices=tuple(truncated_indices),
+        if len(text) <= _MAX_PROMPT_CRITERIA_CHARS:
+            return text
+
+        # Proportionally trim each description; keep at least a short
+        # stub so every criterion remains identifiable.
+        overflow = len(text) - _MAX_PROMPT_CRITERIA_CHARS
+        total_desc_chars = sum(len(d) for d in truncated_descriptions) or 1
+        per_desc_cuts = [
+            max(0, round(len(d) * overflow / total_desc_chars))
+            for d in truncated_descriptions
+        ]
+        truncated_descriptions = [
+            (d[: max(_MIN_CRITERION_DESC_CHARS, len(d) - cut)] if cut else d)
+            for d, cut in zip(truncated_descriptions, per_desc_cuts, strict=True)
+        ]
+        text = _encode(truncated_descriptions)
+
+        # If proportional trimming still overshoots, iteratively shrink
+        # every description to fit the envelope.  Stop once each
+        # description has reached ``_MIN_CRITERION_DESC_CHARS`` -- if the
+        # payload is still oversized at that floor the prompt is
+        # irreducible and we surface an explicit error rather than
+        # returning oversized text.
+        while len(text) > _MAX_PROMPT_CRITERIA_CHARS:
+            at_minimum = all(
+                len(d) <= _MIN_CRITERION_DESC_CHARS for d in truncated_descriptions
             )
+            if at_minimum:
+                msg = (
+                    "LLM decomposer prompt cannot fit within "
+                    f"{_MAX_PROMPT_CRITERIA_CHARS} chars even after "
+                    "shrinking every criterion to "
+                    f"{_MIN_CRITERION_DESC_CHARS} chars "
+                    f"({len(criteria)} criteria)"
+                )
+                logger.error(
+                    VERIFICATION_DECOMPOSER_CRITERIA_TRUNCATED,
+                    decomposer=self.name,
+                    reason="irreducible prompt",
+                    criteria_count=len(criteria),
+                    final_prompt_chars=len(text),
+                    max_prompt_chars=_MAX_PROMPT_CRITERIA_CHARS,
+                )
+                raise LLMDecompositionError(msg)
+            remaining = max(
+                0,
+                _MAX_PROMPT_CRITERIA_CHARS
+                - (len(text) - sum(len(d) for d in truncated_descriptions)),
+            )
+            per_item_cap = max(
+                _MIN_CRITERION_DESC_CHARS,
+                remaining // max(1, len(truncated_descriptions)),
+            )
+            truncated_descriptions = [d[:per_item_cap] for d in truncated_descriptions]
+            text = _encode(truncated_descriptions)
+
+        truncated_indices = [
+            i
+            for i, (orig, new) in enumerate(
+                zip(descriptions, truncated_descriptions, strict=True)
+            )
+            if orig != new
+        ]
+        logger.warning(
+            VERIFICATION_DECOMPOSER_CRITERIA_TRUNCATED,
+            decomposer=self.name,
+            original_chars=len("".join(descriptions)),
+            final_prompt_chars=len(text),
+            max_prompt_chars=_MAX_PROMPT_CRITERIA_CHARS,
+            truncated_criteria_indices=tuple(truncated_indices),
+        )
         return text
 
     def _materialize_probes(

@@ -92,6 +92,9 @@ class TestFactory:
         )
         assert isinstance(d, LLMCriteriaDecomposer)
         assert d.name == "llm"
+        # VerificationConfig values must propagate into the decomposer.
+        assert d._max_probes_per_criterion == cfg.max_probes_per_criterion
+        assert d._model_id == _tier_resolver(cfg.decomposer_model_tier)
 
     def test_build_heuristic_grader(self) -> None:
         cfg = VerificationConfig(grader=GraderVariant.HEURISTIC)
@@ -121,6 +124,9 @@ class TestFactory:
         )
         assert isinstance(g, LLMRubricGrader)
         assert g.name == "llm"
+        # VerificationConfig values must propagate into the grader.
+        assert g._min_confidence_override == cfg.min_confidence_override
+        assert g._model_id == _tier_resolver(cfg.grader_model_tier)
 
     def test_each_build_produces_fresh_instance(self) -> None:
         cfg = VerificationConfig(decomposer=DecomposerVariant.IDENTITY)

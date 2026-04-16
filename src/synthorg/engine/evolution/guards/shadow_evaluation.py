@@ -310,7 +310,16 @@ class ShadowEvaluationGuard:
                         task=task,
                         timeout_seconds=timeout_seconds,
                     )
-            except MemoryError, RecursionError, RetryExhaustedError:
+            except (MemoryError, RecursionError, RetryExhaustedError) as exc:
+                logger.error(
+                    EVOLUTION_SHADOW_TASK_FAILED,
+                    proposal_id=proposal_id,
+                    pass_label=label,
+                    task_id=task.id,
+                    error=str(exc)[:200] or type(exc).__name__,
+                    error_type="infrastructure",
+                    exc_info=True,
+                )
                 raise
             except TimeoutError:
                 timeout_msg = f"timeout after {timeout_seconds:.1f}s"

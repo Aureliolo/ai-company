@@ -21,6 +21,9 @@ from synthorg.providers.models import (
     ToolDefinition,
 )
 
+# Shared capabilities fixture for LLM quality tests.  Kept deliberately
+# generic so decomposer and grader suites can both use it without
+# reaching for vendor-specific presets.
 TEST_CAPABILITIES = ModelCapabilities(
     model_id="test-medium-001",
     provider="test-provider",
@@ -34,7 +37,6 @@ TEST_CAPABILITIES = ModelCapabilities(
     cost_per_1k_input=0.001,
     cost_per_1k_output=0.002,
 )
-"""Shared capabilities fixture for LLM quality tests."""
 
 
 def build_tool_call_response(  # noqa: PLR0913
