@@ -112,6 +112,17 @@ src/synthorg/meta/
     monitor.py         -- OrgInflectionMonitor (async background loop)
     alerts.py          -- ProactiveAlertService + LoggingAlertSink
     chat.py            -- ChiefOfStaffChat (LLM-powered explanations)
+
+  telemetry/           -- Cross-deployment analytics (opt-in, anonymized)
+    config.py          -- CrossDeploymentAnalyticsConfig (disabled by default)
+    models.py          -- AnonymizedOutcomeEvent, EventBatch, AggregatedPattern, ThresholdRecommendation
+    protocol.py        -- AnalyticsEmitter, AnalyticsCollector, RecommendationProvider
+    anonymizer.py      -- Pure anonymization functions (strict allowlist)
+    emitter.py         -- HttpAnalyticsEmitter (async httpx, batching, retry)
+    collector.py       -- InMemoryAnalyticsCollector (event storage + pattern queries)
+    aggregator.py      -- PatternAggregator (cross-deployment pattern identification)
+    recommender.py     -- DefaultThresholdRecommender (pattern-to-threshold recommendations)
+    factory.py         -- Component construction from config
 ```
 
 ## Design Decisions

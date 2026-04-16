@@ -5,9 +5,9 @@ threshold recommendations. All models are frozen with
 ``allow_inf_nan=False``.
 """
 
-from typing import Literal
+from typing import Literal, Self
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 
@@ -57,6 +57,25 @@ class AnonymizedOutcomeEvent(BaseModel):
     enabled_altitudes: tuple[NotBlankStr, ...] = ()
     industry_tag: NotBlankStr | None = None
     sdk_version: NotBlankStr
+
+    @model_validator(mode="after")
+    def _validate_event_type_fields(self) -> Self:
+        """Enforce proposal_decision XOR rollout_result field presence."""
+        if self.event_type == "proposal_decision":
+            if self.decision is None:
+                msg = "proposal_decision events require decision"
+                raise ValueError(msg)
+            if self.rollout_outcome is not None:
+                msg = "proposal_decision cannot have rollout_outcome"
+                raise ValueError(msg)
+        elif self.event_type == "rollout_result":
+            if self.rollout_outcome is None:
+                msg = "rollout_result events require rollout_outcome"
+                raise ValueError(msg)
+            if self.decision is not None:
+                msg = "rollout_result cannot have decision"
+                raise ValueError(msg)
+        return self
 
 
 class EventBatch(BaseModel):

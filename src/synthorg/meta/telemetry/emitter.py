@@ -183,48 +183,76 @@ class HttpAnalyticsEmitter:
                     json=payload,
                     headers={"Content-Type": "application/json"},
                 )
-                if response.status_code < _CLIENT_ERROR_MIN:
-                    logger.info(
-                        XDEPLOY_BATCH_FLUSHED,
-                        event_count=len(events),
-                        status=response.status_code,
-                    )
-                    return
-                if _CLIENT_ERROR_MIN <= response.status_code < _SERVER_ERROR_MIN:
-                    logger.warning(
-                        XDEPLOY_BATCH_DROPPED,
-                        event_count=len(events),
-                        status=response.status_code,
-                    )
-                    return
-                # 5xx: retry.
-                if attempt < _MAX_RETRIES:
-                    delay = _BACKOFF_BASE_SECONDS * (2**attempt)
-                    logger.warning(
-                        XDEPLOY_BATCH_FLUSH_RETRYING,
-                        attempt=attempt + 1,
-                        status=response.status_code,
-                        delay_seconds=delay,
-                    )
-                    await asyncio.sleep(delay)
             except Exception:
-                if attempt < _MAX_RETRIES:
-                    delay = _BACKOFF_BASE_SECONDS * (2**attempt)
-                    logger.warning(
-                        XDEPLOY_BATCH_FLUSH_RETRYING,
-                        attempt=attempt + 1,
-                        delay_seconds=delay,
-                    )
-                    await asyncio.sleep(delay)
-                else:
-                    logger.exception(
-                        XDEPLOY_BATCH_FLUSH_FAILED,
-                        event_count=len(events),
-                    )
-                    return
+                await self._handle_send_error(attempt, len(events))
+                continue
+            if self._handle_response(response, attempt, len(events)):
+                return
 
         logger.error(
             XDEPLOY_BATCH_FLUSH_FAILED,
             event_count=len(events),
             retries_exhausted=True,
         )
+
+    def _handle_response(
+        self,
+        response: httpx.Response,
+        attempt: int,
+        event_count: int,
+    ) -> bool:
+        """Handle HTTP response. Returns True if processing is done."""
+        if response.status_code < _CLIENT_ERROR_MIN:
+            logger.info(
+                XDEPLOY_BATCH_FLUSHED,
+                event_count=event_count,
+                status=response.status_code,
+            )
+            return True
+        if _CLIENT_ERROR_MIN <= response.status_code < _SERVER_ERROR_MIN:
+            body = _safe_response_text(response)
+            logger.warning(
+                XDEPLOY_BATCH_DROPPED,
+                event_count=event_count,
+                status=response.status_code,
+                response_body=body,
+            )
+            return True
+        # 5xx: will retry if attempts remain.
+        if attempt < _MAX_RETRIES:
+            delay = _BACKOFF_BASE_SECONDS * (2**attempt)
+            logger.warning(
+                XDEPLOY_BATCH_FLUSH_RETRYING,
+                attempt=attempt + 1,
+                status=response.status_code,
+                delay_seconds=delay,
+            )
+        return False
+
+    async def _handle_send_error(
+        self,
+        attempt: int,
+        event_count: int,
+    ) -> None:
+        """Handle send exception with retry or final failure."""
+        if attempt < _MAX_RETRIES:
+            delay = _BACKOFF_BASE_SECONDS * (2**attempt)
+            logger.warning(
+                XDEPLOY_BATCH_FLUSH_RETRYING,
+                attempt=attempt + 1,
+                delay_seconds=delay,
+            )
+            await asyncio.sleep(delay)
+        else:
+            logger.exception(
+                XDEPLOY_BATCH_FLUSH_FAILED,
+                event_count=event_count,
+            )
+
+
+def _safe_response_text(response: httpx.Response) -> str:
+    """Safely extract response body text for logging."""
+    try:
+        return response.text[:500]
+    except Exception:
+        return "(unable to read response body)"

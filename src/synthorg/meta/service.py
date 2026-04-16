@@ -265,6 +265,8 @@ class SelfImprovementService:
                 logger.exception(
                     XDEPLOY_EVENT_EMIT_FAILED,
                     proposal_id=str(proposal.id),
+                    event_type="rollout_result",
+                    altitude=proposal.altitude.value,
                 )
 
         return result
@@ -371,9 +373,17 @@ class SelfImprovementService:
                 logger.exception(
                     XDEPLOY_EVENT_EMIT_FAILED,
                     proposal_id=str(proposal.id),
+                    event_type="proposal_decision",
+                    altitude=outcome.altitude.value,
                 )
 
     async def close(self) -> None:
         """Flush analytics emitter and release resources."""
         if self._analytics_emitter is not None:
-            await self._analytics_emitter.close()
+            try:
+                await self._analytics_emitter.close()
+            except Exception:
+                logger.exception(
+                    XDEPLOY_EVENT_EMIT_FAILED,
+                    reason="emitter_close_failed",
+                )

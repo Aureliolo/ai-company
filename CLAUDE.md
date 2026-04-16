@@ -100,6 +100,7 @@ See `web/CLAUDE.md` for the full component inventory, design token rules, and po
   - `engine/classification/protocol.py` (`Detector`, `ScopedContextLoader`, `ClassificationSink`) + `budget/coordination_config.py` dispatcher
   - `engine/quality/decomposer_protocol.py` (`CriteriaDecomposer`) + `engine/quality/grader_protocol.py` (`RubricGrader`) + `engine/quality/verification_factory.py` + `engine/quality/verification_config.py`
   - `meta/chief_of_staff/protocol.py` (`OutcomeStore`, `ConfidenceAdjuster`, `OrgInflectionSink`, `AlertSink`) + `meta/chief_of_staff/config.py` discriminator + `meta/factory.py::build_confidence_adjuster()`
+  - `meta/telemetry/protocol.py` (`AnalyticsEmitter`, `AnalyticsCollector`, `RecommendationProvider`) + `meta/telemetry/config.py` discriminator + `meta/telemetry/factory.py::build_analytics_emitter()`
 - **Line length**: 88 characters (ruff)
 - **Functions**: < 50 lines, files < 800 lines
 - **Errors**: handle explicitly, never silently swallow
