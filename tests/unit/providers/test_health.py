@@ -348,8 +348,8 @@ class TestGetAllSummaries:
     async def test_empty_tracker(self) -> None:
         tracker = ProviderHealthTracker()
         result = await tracker.get_all_summaries()
-        assert result == {}
         assert isinstance(result, MappingProxyType)
+        assert len(result) == 0
 
     async def test_returned_mapping_is_immutable(self) -> None:
         tracker = ProviderHealthTracker()
