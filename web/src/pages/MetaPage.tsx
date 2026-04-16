@@ -74,7 +74,7 @@ export default function MetaPage() {
     (p) => p.status === 'pending',
   ).length
   const activeRollouts = proposals.filter(
-    (p) => p.status === 'applying',
+    (p) => p.status === 'approved',
   ).length
 
   return (
@@ -125,9 +125,11 @@ export default function MetaPage() {
           <MetaProposalList proposals={proposals} />
         </SectionCard>
 
-        <SectionCard title="Chief of Staff" icon={MessageCircle}>
-          <MetaChat />
-        </SectionCard>
+        {config?.chief_of_staff_enabled && (
+          <SectionCard title="Chief of Staff" icon={MessageCircle}>
+            <MetaChat />
+          </SectionCard>
+        )}
       </div>
     </ErrorBoundary>
   )

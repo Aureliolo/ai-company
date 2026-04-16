@@ -65,6 +65,26 @@ function ChatInputArea({
   )
 }
 
+// ── Message bubble ──────────────────────────────────────────────
+
+function MessageBubble({ msg }: { msg: ChatMessage }) {
+  return (
+    <div
+      className={cn(
+        'rounded-md p-card text-sm text-foreground',
+        msg.role === 'user' ? 'ml-8 bg-accent/10' : 'mr-8 bg-card',
+      )}
+    >
+      <p className="whitespace-pre-wrap">{msg.content}</p>
+      {msg.sources && msg.sources.length > 0 && (
+        <p className="mt-1 text-xs text-muted-foreground">
+          Sources: {msg.sources.join(', ')}
+        </p>
+      )}
+    </div>
+  )
+}
+
 // ── Main component ──────────────────────────────────────────────
 
 export function MetaChat() {
@@ -154,22 +174,7 @@ export function MetaChat() {
       >
         <LiveRegion politeness="polite">
           {messages.map((msg) => (
-            <div
-              key={msg.id}
-              className={cn(
-                'rounded-md p-card text-sm text-foreground',
-                msg.role === 'user'
-                  ? 'ml-8 bg-accent/10'
-                  : 'mr-8 bg-card',
-              )}
-            >
-              <p className="whitespace-pre-wrap">{msg.content}</p>
-              {msg.sources && msg.sources.length > 0 && (
-                <p className="mt-1 text-xs text-muted-foreground">
-                  Sources: {msg.sources.join(', ')}
-                </p>
-              )}
-            </div>
+            <MessageBubble key={msg.id} msg={msg} />
           ))}
           {chatLoading && (
             <div className="mr-8 animate-pulse rounded-md bg-card p-card text-sm text-muted-foreground">

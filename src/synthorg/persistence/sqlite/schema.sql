@@ -958,7 +958,7 @@ CREATE UNIQUE INDEX custom_rules_name ON custom_rules (name);
 
 -- Approvals (meta-loop human review queue)
 CREATE TABLE approvals (
-    id TEXT NOT NULL PRIMARY KEY CHECK(length(id) > 0),
+    id TEXT NOT NULL PRIMARY KEY CHECK(length(trim(id)) > 0),
     action_type TEXT NOT NULL CHECK(length(trim(action_type)) > 0),
     title TEXT NOT NULL CHECK(length(trim(title)) > 0),
     description TEXT NOT NULL,

@@ -17,6 +17,28 @@ const STATUS_MAP: Record<string, AgentRuntimeStatus> = {
   applied: 'active',
   rolled_back: 'offline',
   regressed: 'error',
+  expired: 'offline',
+}
+
+function ProposalRow({ proposal }: { proposal: ProposalSummary }) {
+  return (
+    <div className="flex items-center justify-between rounded-md border border-border p-card">
+      <div className="flex items-center gap-3">
+        <StatusBadge status={STATUS_MAP[proposal.status] ?? 'idle'} />
+        <div>
+          <p className="text-sm font-medium text-foreground">
+            {proposal.title}
+          </p>
+          <p className="text-xs text-muted-foreground">
+            {proposal.action_type} -- {proposal.risk_level}
+          </p>
+        </div>
+      </div>
+      <span className="text-xs capitalize text-muted-foreground">
+        {proposal.status}
+      </span>
+    </div>
+  )
 }
 
 export function MetaProposalList({ proposals }: MetaProposalListProps) {
@@ -33,25 +55,7 @@ export function MetaProposalList({ proposals }: MetaProposalListProps) {
   return (
     <div className="space-y-2">
       {proposals.map((p) => (
-        <div
-          key={p.id}
-          className="flex items-center justify-between rounded-md border border-border p-card"
-        >
-          <div className="flex items-center gap-3">
-            <StatusBadge status={STATUS_MAP[p.status] ?? 'idle'} />
-            <div>
-              <p className="text-sm font-medium text-foreground">
-                {p.title}
-              </p>
-              <p className="text-xs text-muted-foreground">
-                {p.action_type} -- {p.risk_level}
-              </p>
-            </div>
-          </div>
-          <span className="text-xs capitalize text-muted-foreground">
-            {p.status}
-          </span>
-        </div>
+        <ProposalRow key={p.id} proposal={p} />
       ))}
     </div>
   )

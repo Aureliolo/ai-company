@@ -102,7 +102,7 @@ class ApprovalStore:
                 self._items[item.id] = item
         if item is None:
             return None
-        return self._check_expiration(item)
+        return await self._check_expiration(item)
 
     async def list_items(
         self,
@@ -135,18 +135,18 @@ class ApprovalStore:
             )
             for item in repo_items:
                 self._items[item.id] = item
-            return tuple(self._check_expiration(item) for item in repo_items)
-        result = []
+            return tuple([await self._check_expiration(item) for item in repo_items])
+        checked_items: list[ApprovalItem] = []
         for stored in list(self._items.values()):
-            checked = self._check_expiration(stored)
+            checked = await self._check_expiration(stored)
             if status is not None and checked.status != status:
                 continue
             if risk_level is not None and checked.risk_level != risk_level:
                 continue
             if action_type is not None and checked.action_type != action_type:
                 continue
-            result.append(checked)
-        return tuple(result)
+            checked_items.append(checked)
+        return tuple(checked_items)
 
     async def save(self, item: ApprovalItem) -> ApprovalItem | None:
         """Update an existing approval item.
@@ -192,7 +192,7 @@ class ApprovalStore:
         if current is None:
             return None
         # Apply lazy expiration check before comparing status.
-        current = self._check_expiration(current)
+        current = await self._check_expiration(current)
         if current.status != ApprovalStatus.PENDING:
             return None
         if self._repo is not None:
@@ -200,11 +200,11 @@ class ApprovalStore:
         self._items[item.id] = item
         return item
 
-    def _check_expiration(self, item: ApprovalItem) -> ApprovalItem:
+    async def _check_expiration(self, item: ApprovalItem) -> ApprovalItem:
         """Lazily expire a pending item past its ``expires_at``.
 
         If the item is PENDING and has expired, it is transitioned to
-        EXPIRED in the store and the updated item is returned.
+        EXPIRED in both the cache and the repository.
 
         Args:
             item: The item to check.
@@ -221,6 +221,8 @@ class ApprovalStore:
                 update={"status": ApprovalStatus.EXPIRED},
             )
             self._items[item.id] = expired
+            if self._repo is not None:
+                await self._repo.save(expired)
             logger.info(
                 API_APPROVAL_EXPIRED,
                 approval_id=item.id,

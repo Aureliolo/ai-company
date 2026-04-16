@@ -16,7 +16,7 @@ CREATE TABLE `approvals` (
   `metadata` text NOT NULL DEFAULT '{}',
   PRIMARY KEY (`id`),
   CONSTRAINT `0` FOREIGN KEY (`task_id`) REFERENCES `tasks` (`id`) ON UPDATE NO ACTION ON DELETE NO ACTION,
-  CHECK (length(id) > 0),
+  CHECK (length(trim(id)) > 0),
   CHECK (length(trim(action_type)) > 0),
   CHECK (length(trim(title)) > 0),
   CHECK (length(trim(requested_by)) > 0),

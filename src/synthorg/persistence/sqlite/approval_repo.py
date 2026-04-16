@@ -64,7 +64,10 @@ def _row_to_item(row: Row) -> ApprovalItem:
             metadata=metadata_raw,
         )
     except (json.JSONDecodeError, ValueError, TypeError, KeyError) as exc:
-        row_id = str(row["id"]) if row else "<unknown>"
+        try:
+            row_id = str(row["id"]) if row else "<unknown>"
+        except TypeError, KeyError:
+            row_id = "<unknown>"
         msg = f"Failed to parse approval row {row_id!r}: {exc}"
         logger.exception(API_APPROVAL_REPO_FAILED, row_id=row_id, error=msg)
         raise QueryError(msg) from exc
@@ -161,6 +164,9 @@ class SQLiteApprovalRepository:
 
         Returns:
             The approval item, or None if not found.
+
+        Raises:
+            QueryError: If the database query fails.
         """
         sql = """
             SELECT id, action_type, title, description, requested_by,
@@ -244,6 +250,9 @@ class SQLiteApprovalRepository:
 
         Returns:
             True if the item was deleted, False if not found.
+
+        Raises:
+            QueryError: If the database operation fails.
         """
         sql = "DELETE FROM approvals WHERE id = ?"
         try:
