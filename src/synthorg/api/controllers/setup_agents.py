@@ -136,7 +136,7 @@ def expand_template_agents(
 
 def match_and_assign_models(
     agents: list[dict[str, Any]],
-    providers: dict[str, Any],
+    providers: Mapping[str, Any],
 ) -> list[dict[str, Any]]:
     """Auto-assign models to template agents using the matching engine.
 
@@ -179,7 +179,7 @@ def match_and_assign_models(
 
 
 def _validate_provider_model_pair(
-    providers: dict[str, Any],
+    providers: Mapping[str, Any],
     provider_name: str,
     model_id: str,
 ) -> None:
@@ -212,7 +212,7 @@ def _validate_provider_model_pair(
 
 
 def validate_model_assignment(
-    providers: dict[str, Any],
+    providers: Mapping[str, Any],
     data: UpdateAgentModelRequest,
 ) -> None:
     """Validate provider and model for a model reassignment request.
@@ -229,7 +229,7 @@ def validate_model_assignment(
 
 
 def validate_provider_and_model(
-    providers: dict[str, Any],
+    providers: Mapping[str, Any],
     data: SetupAgentRequest,
 ) -> None:
     """Validate that the provider and model exist.

@@ -25,6 +25,8 @@ from .errors import (
 logger = get_logger(__name__)
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping
+
     from synthorg.config.schema import ProviderConfig
 
 
@@ -111,7 +113,7 @@ class ProviderRegistry:
     @classmethod
     def from_config(
         cls,
-        providers: dict[str, ProviderConfig],
+        providers: Mapping[str, ProviderConfig],
         *,
         factory_overrides: dict[str, object] | None = None,
     ) -> Self:

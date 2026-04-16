@@ -21,6 +21,8 @@ from synthorg.observability.events.template import (
 from synthorg.templates.model_requirements import ModelTier  # noqa: TC001
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping
+
     from synthorg.config.schema import ProviderModelConfig
     from synthorg.templates.model_requirements import ModelRequirement
 
@@ -141,7 +143,7 @@ def _resolve_agent_requirement(
 
 def match_all_agents(
     agents: list[dict[str, Any]],
-    providers: dict[str, Any],
+    providers: Mapping[str, Any],
 ) -> list[ModelMatch]:
     """Batch-match template agents to provider models.
 
