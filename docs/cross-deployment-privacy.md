@@ -79,7 +79,7 @@ Events are visible in the structured log output with event metadata (event type,
 
 ## Data Retention
 
-The default collector (`InMemoryAnalyticsCollector`) stores events **in memory only**. Data is lost on restart. There is no persistent storage in the default configuration.
+The default collector (`InMemoryAnalyticsCollector`) stores events **in memory only** with a bounded FIFO buffer (default: 100,000 events). When the cap is exceeded, the oldest events are evicted. Data is lost on restart. There is no persistent storage in the default configuration. The `max_events` capacity is configurable at construction time.
 
 ## Access Control
 

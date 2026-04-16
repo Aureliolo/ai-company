@@ -132,6 +132,7 @@ class AggregatedPattern(BaseModel):
         altitude: Proposal altitude.
         deployment_count: Unique deployments that observed this.
         total_events: Total events in this pattern group.
+        decision_count: Number of proposal_decision events.
         approval_rate: Cross-deployment approval rate (0-1).
         success_rate: Cross-deployment rollout success rate (0-1).
         avg_confidence: Mean confidence at decision time.
@@ -146,6 +147,7 @@ class AggregatedPattern(BaseModel):
     altitude: NotBlankStr
     deployment_count: int = Field(ge=1)
     total_events: int = Field(ge=1)
+    decision_count: int = Field(ge=0)
     approval_rate: float = Field(ge=0.0, le=1.0)
     success_rate: float = Field(ge=0.0, le=1.0)
     avg_confidence: float = Field(ge=0.0, le=1.0)

@@ -70,6 +70,7 @@ def aggregate_patterns(
                 altitude=NotBlankStr(altitude),
                 deployment_count=len(deployment_ids),
                 total_events=len(group_events),
+                decision_count=len(decisions),
                 approval_rate=approval_rate,
                 success_rate=success_rate,
                 avg_confidence=avg_confidence,

@@ -126,7 +126,7 @@ class DefaultThresholdRecommender:
         ):
             return self._recommend_relax(pattern, metric_name, current_default)
 
-        if pattern.approval_rate <= _LOW_APPROVAL_RATE:
+        if pattern.decision_count >= 1 and pattern.approval_rate <= _LOW_APPROVAL_RATE:
             return self._recommend_tighten(pattern, metric_name, current_default)
 
         return None

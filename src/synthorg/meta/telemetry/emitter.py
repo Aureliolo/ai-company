@@ -123,6 +123,8 @@ class HttpAnalyticsEmitter:
                 builtin_rule_names=self._builtin_rule_names,
             )
             await self._enqueue(event)
+        except MemoryError, RecursionError:
+            raise
         except Exception:
             logger.exception(XDEPLOY_EVENT_EMIT_FAILED, event_type="proposal_decision")
 
@@ -147,6 +149,8 @@ class HttpAnalyticsEmitter:
                 builtin_rule_names=self._builtin_rule_names,
             )
             await self._enqueue(event)
+        except MemoryError, RecursionError:
+            raise
         except Exception:
             logger.exception(XDEPLOY_EVENT_EMIT_FAILED, event_type="rollout_result")
 
@@ -192,7 +196,12 @@ class HttpAnalyticsEmitter:
             await self.flush()
 
     async def _enqueue(self, event: AnonymizedOutcomeEvent) -> None:
-        """Add event to buffer and maybe flush."""
+        """Add event to buffer and maybe flush.
+
+        Silently drops events after ``close()`` has been called.
+        """
+        if self._closed:
+            return
         await self._ensure_flush_task()
         should_flush = False
         async with self._lock:

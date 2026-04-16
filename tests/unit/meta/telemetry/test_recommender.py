@@ -179,7 +179,7 @@ class TestDefaultThresholdRecommender:
                     rollout_outcome="success",
                 ),
             )
-        # Pattern 2: quality_declining, 3 deployments, lower confidence.
+        # Pattern 2: quality_declining, 5 deployments, lower confidence.
         for i in range(5):
             events.append(
                 _make_event(
