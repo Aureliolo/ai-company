@@ -9,7 +9,11 @@ import math
 from collections import defaultdict
 from datetime import UTC, datetime, timedelta
 from enum import StrEnum
-from typing import Self
+from types import MappingProxyType
+from typing import TYPE_CHECKING, Self
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping
 
 from pydantic import (
     AwareDatetime,
@@ -299,14 +303,16 @@ class ProviderHealthTracker:
         self,
         *,
         now: datetime | None = None,
-    ) -> dict[str, ProviderHealthSummary]:
+    ) -> Mapping[str, ProviderHealthSummary]:
         """Build summaries for all known providers.
 
         Args:
             now: Reference time for the 24h window.
 
         Returns:
-            Mapping of provider name to health summary.
+            Immutable mapping of provider name to health summary,
+            wrapped in :class:`types.MappingProxyType` so callers
+            cannot mutate the aggregate view.
         """
         ref = now or datetime.now(UTC)
         cutoff = ref - timedelta(hours=_HEALTH_WINDOW_HOURS)
@@ -317,10 +323,12 @@ class ProviderHealthTracker:
             if cutoff <= r.timestamp <= ref:
                 by_provider[r.provider_name].append(r)
 
-        return {
-            name: _aggregate_records(records)
-            for name, records in sorted(by_provider.items())
-        }
+        return MappingProxyType(
+            {
+                name: _aggregate_records(records)
+                for name, records in sorted(by_provider.items())
+            }
+        )
 
     async def _snapshot(
         self,

@@ -2,6 +2,9 @@
 
 import asyncio
 import json as _json
+from collections.abc import (
+    Mapping,  # noqa: TC003  # Litestar inspects runtime return-type annotation
+)
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Annotated
 
@@ -188,7 +191,7 @@ class ProviderController(Controller):
     async def list_providers(
         self,
         state: State,
-    ) -> ApiResponse[dict[str, ProviderResponse]]:
+    ) -> ApiResponse[Mapping[str, ProviderResponse]]:
         """List all configured providers (secrets stripped)."""
         app_state: AppState = state.app_state
         providers = await app_state.config_resolver.get_provider_configs()

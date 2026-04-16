@@ -442,10 +442,10 @@ class TestGetProviderConfigs:
 
         assert "shape-safe" in result
 
-    async def test_fallback_returns_defensive_copy(
+    async def test_fallback_returns_immutable_mapping(
         self, mock_settings: AsyncMock
     ) -> None:
-        """Returned dict must be a copy -- mutating it must not affect config."""
+        """Returned mapping must be immutable so callers cannot leak state."""
         mock_settings.get.return_value = _make_value(
             "null",
             namespace=SettingNamespace.PROVIDERS,
@@ -458,7 +458,8 @@ class TestGetProviderConfigs:
             config=config,  # type: ignore[arg-type]
         )
         result = await resolver.get_provider_configs()
-        result["injected"] = FakeProviderConfig(driver="evil")  # type: ignore[assignment]
+        with pytest.raises(TypeError):
+            result["injected"] = FakeProviderConfig(driver="evil")  # type: ignore[index]
 
         fresh = await resolver.get_provider_configs()
         assert "injected" not in fresh

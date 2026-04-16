@@ -10,6 +10,7 @@ config models from individually resolved settings.
 import asyncio
 import json
 from enum import StrEnum
+from types import MappingProxyType
 from typing import TYPE_CHECKING, Any
 
 from synthorg.observability import get_logger
@@ -21,6 +22,8 @@ from synthorg.observability.events.settings import (
 from synthorg.settings.errors import SettingNotFoundError, SettingsEncryptionError
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping
+
     from pydantic import BaseModel
 
     from synthorg.api.config import ApiConfig
@@ -450,12 +453,18 @@ class ConfigResolver:
             self._config.departments,
         )
 
-    async def get_provider_configs(self) -> dict[str, ProviderConfig]:
+    async def get_provider_configs(self) -> Mapping[str, ProviderConfig]:
         """Resolve provider configurations from settings.
 
         Falls back to ``RootConfig.providers`` if the setting value
         is ``None``, contains invalid JSON, or fails schema validation.
         An explicit empty dict ``{}`` is a valid override.
+
+        The returned mapping is wrapped in :class:`types.MappingProxyType`
+        to prevent callers from mutating the resolver's view of provider
+        state.  Build a fresh ``dict`` via comprehension or unpacking
+        (e.g. ``{**providers, name: config}``) if a mutable copy is
+        needed.
 
         Raises:
             SettingNotFoundError: If the ``configs`` key is not
@@ -464,12 +473,13 @@ class ConfigResolver:
         """
         from synthorg.config.schema import ProviderConfig  # noqa: PLC0415
 
-        return await self._resolve_dict_setting(
+        configs = await self._resolve_dict_setting(
             "providers",
             "configs",
             ProviderConfig,
             dict(self._config.providers),
         )
+        return MappingProxyType(configs)
 
     async def get_budget_config(self) -> BudgetConfig:
         """Assemble a ``BudgetConfig`` from individually resolved settings.

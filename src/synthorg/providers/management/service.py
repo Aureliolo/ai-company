@@ -58,7 +58,7 @@ from synthorg.providers.registry import ProviderRegistry
 from synthorg.providers.url_utils import is_self_url, redact_url
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncIterator
+    from collections.abc import AsyncIterator, Mapping
 
     from synthorg.api.state import AppState
     from synthorg.config.schema import LocalModelParams, RootConfig
@@ -105,8 +105,13 @@ class ProviderManagementService:
             config_resolver=config_resolver,
         )
 
-    async def list_providers(self) -> dict[str, ProviderConfig]:
-        """List all configured providers keyed by name."""
+    async def list_providers(self) -> Mapping[str, ProviderConfig]:
+        """List all configured providers keyed by name.
+
+        Returns an immutable :class:`types.MappingProxyType` view;
+        build a fresh dict with ``{**providers, name: config}`` to
+        apply updates.
+        """
         return await self._config_resolver.get_provider_configs()
 
     async def get_provider(self, name: str) -> ProviderConfig:
