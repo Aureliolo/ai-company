@@ -52,7 +52,8 @@ def build_analytics_collector(
 ) -> InMemoryAnalyticsCollector | None:
     """Build an analytics collector from config.
 
-    Returns ``None`` if the collector role is not enabled.
+    Returns ``None`` if the collector role is not enabled or
+    if the master analytics switch is off.
 
     Args:
         config: Self-improvement configuration.
@@ -61,15 +62,24 @@ def build_analytics_collector(
         Configured collector or None.
     """
     analytics = config.cross_deployment_analytics
-    if not analytics.collector_enabled:
+    if not analytics.enabled or not analytics.collector_enabled:
         return None
     return InMemoryAnalyticsCollector()
 
 
-def build_recommender() -> DefaultThresholdRecommender:
-    """Build a threshold recommender.
+def build_recommender(
+    config: SelfImprovementConfig,
+) -> DefaultThresholdRecommender:
+    """Build a threshold recommender from config.
+
+    Args:
+        config: Self-improvement configuration.
 
     Returns:
-        Default recommender instance.
+        Configured recommender instance.
     """
-    return DefaultThresholdRecommender()
+    analytics = config.cross_deployment_analytics
+    return DefaultThresholdRecommender(
+        min_deployments=analytics.min_deployments_for_pattern,
+        min_observations=analytics.recommendation_min_observations,
+    )

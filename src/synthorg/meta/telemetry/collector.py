@@ -20,6 +20,9 @@ from synthorg.observability.events.cross_deployment import (
 logger = get_logger(__name__)
 
 
+_DEFAULT_MAX_EVENTS = 100_000
+
+
 class InMemoryAnalyticsCollector:
     """Stores anonymized events in memory and queries patterns.
 
@@ -27,11 +30,20 @@ class InMemoryAnalyticsCollector:
     suitable for pre-alpha and testing. Production backends can
     implement the ``AnalyticsCollector`` protocol with persistent
     storage.
+
+    Args:
+        max_events: Maximum events to retain. Oldest events are
+            discarded when the limit is reached (FIFO).
     """
 
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        *,
+        max_events: int = _DEFAULT_MAX_EVENTS,
+    ) -> None:
         self._events: list[AnonymizedOutcomeEvent] = []
         self._lock = asyncio.Lock()
+        self._max_events = max_events
 
     @property
     def event_count(self) -> int:
@@ -52,10 +64,15 @@ class InMemoryAnalyticsCollector:
         """
         async with self._lock:
             self._events.extend(events)
+            # Trim oldest events if capacity exceeded.
+            overflow = len(self._events) - self._max_events
+            if overflow > 0:
+                del self._events[:overflow]
+            total = len(self._events)
         logger.info(
             XDEPLOY_COLLECTOR_INGESTED,
             ingested=len(events),
-            total=len(self._events),
+            total=total,
         )
         return len(events)
 

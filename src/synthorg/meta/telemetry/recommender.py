@@ -23,7 +23,6 @@ logger = get_logger(__name__)
 _HIGH_APPROVAL_RATE = 0.7
 _HIGH_SUCCESS_RATE = 0.7
 _LOW_APPROVAL_RATE = 0.3
-_MIN_OBSERVATIONS_FOR_RECOMMENDATION = 10
 
 # Mapping of rule names to their configurable threshold fields
 # and current defaults. Used to generate concrete recommendations.
@@ -51,7 +50,22 @@ class DefaultThresholdRecommender:
       relaxing slightly.
     - Low approval rate: threshold may be too aggressive (fires
       often but humans reject). Recommend tightening.
+
+    Args:
+        min_deployments: Minimum unique deployments for pattern
+            inclusion (from config ``min_deployments_for_pattern``).
+        min_observations: Minimum events for recommendations
+            (from config ``recommendation_min_observations``).
     """
+
+    def __init__(
+        self,
+        *,
+        min_deployments: int = 3,
+        min_observations: int = 10,
+    ) -> None:
+        self._min_deployments = min_deployments
+        self._min_observations = min_observations
 
     async def get_recommendations(
         self,
@@ -66,7 +80,9 @@ class DefaultThresholdRecommender:
         Returns:
             Threshold recommendations sorted by confidence.
         """
-        patterns = await collector.query_patterns(min_deployments=3)
+        patterns = await collector.query_patterns(
+            min_deployments=self._min_deployments,
+        )
         recommendations: list[ThresholdRecommendation] = []
 
         for pattern in patterns:
@@ -100,7 +116,7 @@ class DefaultThresholdRecommender:
         if threshold_info is None:
             return None
         metric_name, current_default = threshold_info
-        has_enough = pattern.total_events >= _MIN_OBSERVATIONS_FOR_RECOMMENDATION
+        has_enough = pattern.total_events >= self._min_observations
         if not has_enough:
             return None
 

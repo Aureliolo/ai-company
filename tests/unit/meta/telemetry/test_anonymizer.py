@@ -434,8 +434,6 @@ class TestAnonymizeDecisionProperties:
         salt=st.text(min_size=1, max_size=50).filter(lambda s: s.strip()),
     )
     @settings(
-        max_examples=10,
-        derandomize=True,
         suppress_health_check=[HealthCheck.function_scoped_fixture],
     )
     def test_deployment_id_always_64_hex_chars(
@@ -466,8 +464,6 @@ class TestAnonymizeDecisionProperties:
         salt=st.text(min_size=1, max_size=50).filter(lambda s: s.strip()),
     )
     @settings(
-        max_examples=10,
-        derandomize=True,
         suppress_health_check=[HealthCheck.function_scoped_fixture],
     )
     def test_no_pii_in_serialized_output(

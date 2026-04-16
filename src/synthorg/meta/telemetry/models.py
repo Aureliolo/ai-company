@@ -5,11 +5,14 @@ threshold recommendations. All models are frozen with
 ``allow_inf_nan=False``.
 """
 
+import re
 from typing import Literal, Self
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from synthorg.core.types import NotBlankStr  # noqa: TC001
+
+_ISO_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
 
 class AnonymizedOutcomeEvent(BaseModel):
@@ -46,8 +49,18 @@ class AnonymizedOutcomeEvent(BaseModel):
     schema_version: Literal["1"] = "1"
     deployment_id: NotBlankStr
     event_type: Literal["proposal_decision", "rollout_result"]
-    timestamp: NotBlankStr
+    timestamp: NotBlankStr  # ISO 8601 date (YYYY-MM-DD)
     altitude: NotBlankStr
+
+    @field_validator("timestamp")
+    @classmethod
+    def _validate_timestamp_format(cls, v: str) -> str:
+        """Enforce ISO 8601 date format (YYYY-MM-DD)."""
+        if not _ISO_DATE_RE.match(v):
+            msg = f"timestamp must be ISO date (YYYY-MM-DD), got '{v}'"
+            raise ValueError(msg)
+        return v
+
     source_rule: NotBlankStr | None = None
     decision: Literal["approved", "rejected"] | None = None
     confidence: float | None = Field(default=None, ge=0.0, le=1.0)
@@ -68,12 +81,21 @@ class AnonymizedOutcomeEvent(BaseModel):
             if self.rollout_outcome is not None:
                 msg = "proposal_decision cannot have rollout_outcome"
                 raise ValueError(msg)
+            if self.regression_verdict is not None:
+                msg = "proposal_decision cannot have regression_verdict"
+                raise ValueError(msg)
+            if self.observation_hours is not None:
+                msg = "proposal_decision cannot have observation_hours"
+                raise ValueError(msg)
         elif self.event_type == "rollout_result":
             if self.rollout_outcome is None:
                 msg = "rollout_result events require rollout_outcome"
                 raise ValueError(msg)
             if self.decision is not None:
                 msg = "rollout_result cannot have decision"
+                raise ValueError(msg)
+            if self.confidence is not None:
+                msg = "rollout_result cannot have confidence"
                 raise ValueError(msg)
         return self
 
@@ -87,7 +109,7 @@ class EventBatch(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
-    events: tuple[AnonymizedOutcomeEvent, ...]
+    events: tuple[AnonymizedOutcomeEvent, ...] = Field(max_length=1000)
 
 
 class AggregatedPattern(BaseModel):

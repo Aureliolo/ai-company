@@ -2,10 +2,14 @@
 
 Buffers anonymized events and flushes them in batches to the
 configured collector endpoint. Flush triggers: batch size
-threshold or time interval. Retries on 5xx, drops on 4xx.
+threshold, time interval (periodic background task), or
+explicit ``flush()``/``close()`` call. Retries on 5xx with
+exponential backoff, drops on 4xx. 3xx redirects are treated
+as failures (POST may not have been stored).
 """
 
 import asyncio
+import contextlib
 import time
 from typing import TYPE_CHECKING
 
@@ -37,8 +41,11 @@ logger = get_logger(__name__)
 
 _MAX_RETRIES = 3
 _BACKOFF_BASE_SECONDS = 1.0
+_SUCCESS_MIN = 200
+_SUCCESS_MAX = 300
 _CLIENT_ERROR_MIN = 400
 _SERVER_ERROR_MIN = 500
+_LOG_BODY_MAX_LEN = 500
 
 
 class HttpAnalyticsEmitter:
@@ -46,7 +53,14 @@ class HttpAnalyticsEmitter:
 
     Events are buffered in memory and flushed when the batch size
     threshold is reached, the flush interval has elapsed, or
-    ``flush()``/``close()`` is called explicitly.
+    ``flush()``/``close()`` is called explicitly. A background
+    periodic task ensures buffered events are flushed even when
+    no new events arrive.
+
+    Lock invariants: ``_buffer`` and ``_last_flush_at`` are
+    protected by ``_lock``. ``_analytics_config``,
+    ``_builtin_rule_names``, and ``_client`` are immutable or
+    thread-safe and require no lock.
 
     Args:
         analytics_config: Cross-deployment analytics configuration.
@@ -68,6 +82,8 @@ class HttpAnalyticsEmitter:
         self._buffer: list[AnonymizedOutcomeEvent] = []
         self._lock = asyncio.Lock()
         self._last_flush_at = time.monotonic()
+        self._closed = False
+        self._flush_task: asyncio.Task[None] | None = None
         self._client = httpx.AsyncClient(
             timeout=httpx.Timeout(analytics_config.http_timeout_seconds),
         )
@@ -79,7 +95,12 @@ class HttpAnalyticsEmitter:
 
     @property
     def pending_count(self) -> int:
-        """Number of events buffered but not yet flushed."""
+        """Number of events buffered but not yet flushed.
+
+        Note: reads ``_buffer`` without the lock for simplicity.
+        Only intended for testing and diagnostics -- not for
+        production control flow decisions.
+        """
         return len(self._buffer)
 
     async def emit_decision(
@@ -141,12 +162,35 @@ class HttpAnalyticsEmitter:
 
     async def close(self) -> None:
         """Flush remaining events and close the HTTP client."""
+        self._closed = True
+        if self._flush_task is not None:
+            self._flush_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await self._flush_task
         await self.flush()
         await self._client.aclose()
         logger.info(XDEPLOY_EMITTER_CLOSED)
 
+    async def _ensure_flush_task(self) -> None:
+        """Start the periodic flush background task if not running."""
+        if self._flush_task is None or self._flush_task.done():
+            self._flush_task = asyncio.create_task(
+                self._periodic_flush(),
+            )
+
+    async def _periodic_flush(self) -> None:
+        """Background loop that flushes on interval."""
+        while not self._closed:
+            await asyncio.sleep(
+                self._analytics_config.flush_interval_seconds,
+            )
+            if self._closed:
+                break
+            await self.flush()
+
     async def _enqueue(self, event: AnonymizedOutcomeEvent) -> None:
         """Add event to buffer and maybe flush."""
+        await self._ensure_flush_task()
         should_flush = False
         async with self._lock:
             self._buffer.append(event)
@@ -155,10 +199,7 @@ class HttpAnalyticsEmitter:
                 event_type=event.event_type,
                 pending=len(self._buffer),
             )
-            if len(self._buffer) >= self._analytics_config.batch_size or (
-                time.monotonic() - self._last_flush_at
-                > self._analytics_config.flush_interval_seconds
-            ):
+            if len(self._buffer) >= self._analytics_config.batch_size:
                 should_flush = True
         if should_flush:
             await self.flush()
@@ -171,8 +212,11 @@ class HttpAnalyticsEmitter:
 
         Retries up to ``_MAX_RETRIES`` times on 5xx responses
         with exponential backoff. Drops the batch on 4xx.
+        Treats 3xx redirects as failures.
         """
-        assert self._analytics_config.collector_url is not None  # noqa: S101
+        if self._analytics_config.collector_url is None:
+            msg = "collector_url is required when analytics is enabled"
+            raise ValueError(msg)
         url = str(self._analytics_config.collector_url).rstrip("/") + "/events"
         payload = EventBatch(events=events).model_dump(mode="json")
 
@@ -188,6 +232,10 @@ class HttpAnalyticsEmitter:
                 continue
             if self._handle_response(response, attempt, len(events)):
                 return
+            # 5xx: sleep before retry (delay logged by _handle_response).
+            if attempt < _MAX_RETRIES:
+                delay = _BACKOFF_BASE_SECONDS * (2**attempt)
+                await asyncio.sleep(delay)
 
         logger.error(
             XDEPLOY_BATCH_FLUSH_FAILED,
@@ -202,7 +250,7 @@ class HttpAnalyticsEmitter:
         event_count: int,
     ) -> bool:
         """Handle HTTP response. Returns True if processing is done."""
-        if response.status_code < _CLIENT_ERROR_MIN:
+        if _SUCCESS_MIN <= response.status_code < _SUCCESS_MAX:
             logger.info(
                 XDEPLOY_BATCH_FLUSHED,
                 event_count=event_count,
@@ -218,14 +266,13 @@ class HttpAnalyticsEmitter:
                 response_body=body,
             )
             return True
+        # 3xx redirects: treat as failure (POST may not be stored).
         # 5xx: will retry if attempts remain.
         if attempt < _MAX_RETRIES:
-            delay = _BACKOFF_BASE_SECONDS * (2**attempt)
             logger.warning(
                 XDEPLOY_BATCH_FLUSH_RETRYING,
                 attempt=attempt + 1,
                 status=response.status_code,
-                delay_seconds=delay,
             )
         return False
 
@@ -253,6 +300,9 @@ class HttpAnalyticsEmitter:
 def _safe_response_text(response: httpx.Response) -> str:
     """Safely extract response body text for logging."""
     try:
-        return response.text[:500]
+        text = response.text
     except Exception:
         return "(unable to read response body)"
+    if len(text) > _LOG_BODY_MAX_LEN:
+        return text[: _LOG_BODY_MAX_LEN - 3] + "..."
+    return text

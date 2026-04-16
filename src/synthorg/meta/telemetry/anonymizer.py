@@ -47,7 +47,9 @@ def anonymize_decision(
     Returns:
         Anonymized event with ``event_type="proposal_decision"``.
     """
-    assert analytics_config.deployment_id_salt is not None  # noqa: S101
+    if analytics_config.deployment_id_salt is None:
+        msg = "deployment_id_salt is required for anonymization"
+        raise ValueError(msg)
     return AnonymizedOutcomeEvent(
         deployment_id=NotBlankStr(
             _compute_deployment_id(str(analytics_config.deployment_id_salt)),
@@ -93,7 +95,9 @@ def anonymize_rollout(
     Returns:
         Anonymized event with ``event_type="rollout_result"``.
     """
-    assert analytics_config.deployment_id_salt is not None  # noqa: S101
+    if analytics_config.deployment_id_salt is None:
+        msg = "deployment_id_salt is required for anonymization"
+        raise ValueError(msg)
     return AnonymizedOutcomeEvent(
         deployment_id=NotBlankStr(
             _compute_deployment_id(str(analytics_config.deployment_id_salt)),
@@ -123,14 +127,14 @@ def anonymize_rollout(
 
 
 def _compute_deployment_id(salt: str) -> str:
-    """Compute a salted SHA-256 hash for deployment identification.
+    """Compute a SHA-256 hash of the deployment salt.
 
     The hash is deterministic for a given salt, enabling
     cross-event correlation within a deployment without
-    exposing any reversible identifier.
+    exposing the salt value itself.
 
     Args:
-        salt: Deployment-specific salt string.
+        salt: Deployment-specific secret salt string.
 
     Returns:
         64-character lowercase hex SHA-256 digest.

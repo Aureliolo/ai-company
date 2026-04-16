@@ -1,6 +1,5 @@
 """Unit tests for the cross-deployment analytics emitter."""
 
-import time
 from unittest.mock import AsyncMock, patch
 
 import httpx
@@ -101,20 +100,21 @@ class TestEmitterBuffering:
             # batch_size=10, only 1 event, no flush.
             mock_send.assert_not_awaited()
 
-    async def test_time_threshold_triggers_flush(
+    async def test_periodic_flush_task_created(
         self,
         emitter: HttpAnalyticsEmitter,
         sample_outcome: ProposalOutcome,
         sample_proposal: ImprovementProposal,
     ) -> None:
-        with patch.object(emitter, "_send_batch", new_callable=AsyncMock) as mock_send:
-            # Force last_flush to be old.
-            emitter._last_flush_at = time.monotonic() - 100.0
+        with patch.object(emitter, "_send_batch", new_callable=AsyncMock):
+            assert emitter._flush_task is None
             await emitter.emit_decision(
                 sample_outcome,
                 proposal=sample_proposal,
             )
-            mock_send.assert_awaited_once()
+            # Background flush task should be created on first enqueue.
+            assert emitter._flush_task is not None
+            assert not emitter._flush_task.done()
 
 
 class TestEmitterFlush:
@@ -237,15 +237,25 @@ class TestEmitterHttpBehavior:
 
     async def test_emit_failure_does_not_raise(
         self,
-        emitter: HttpAnalyticsEmitter,
         sample_outcome: ProposalOutcome,
         sample_proposal: ImprovementProposal,
+        analytics_config: CrossDeploymentAnalyticsConfig,
+        self_improvement_config: SelfImprovementConfig,
     ) -> None:
         """Emission errors are logged, not raised."""
-        emitter._last_flush_at = time.monotonic() - 100.0
+        # Use batch_size=1 to trigger immediate flush on emit.
+        small = analytics_config.model_copy(update={"batch_size": 1})
+        si = self_improvement_config.model_copy(
+            update={"cross_deployment_analytics": small},
+        )
+        em = HttpAnalyticsEmitter(
+            analytics_config=small,
+            self_improvement_config=si,
+            builtin_rule_names=BUILTIN_RULE_NAMES,
+        )
         with (
             patch.object(
-                emitter._client,
+                em._client,
                 "post",
                 side_effect=httpx.ConnectError("connection refused"),
             ),
@@ -254,9 +264,10 @@ class TestEmitterHttpBehavior:
                 new_callable=AsyncMock,
             ),
         ):
-            # Must not raise.
-            await emitter.emit_decision(
+            # Must not raise despite HTTP failure.
+            await em.emit_decision(
                 sample_outcome,
                 proposal=sample_proposal,
             )
-            assert emitter.pending_count == 0
+            # Buffer cleared by flush attempt (events sent to _send_batch).
+            assert em.pending_count == 0

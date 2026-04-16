@@ -120,7 +120,7 @@ src/synthorg/meta/
     anonymizer.py      -- Pure anonymization functions (strict allowlist)
     emitter.py         -- HttpAnalyticsEmitter (async httpx, batching, retry)
     collector.py       -- InMemoryAnalyticsCollector (event storage + pattern queries)
-    aggregator.py      -- PatternAggregator (cross-deployment pattern identification)
+    aggregator.py      -- aggregate_patterns() (cross-deployment pattern identification)
     recommender.py     -- DefaultThresholdRecommender (pattern-to-threshold recommendations)
     factory.py         -- Component construction from config
 ```

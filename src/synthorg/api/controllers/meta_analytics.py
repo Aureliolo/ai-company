@@ -4,15 +4,18 @@ Provides endpoints for event ingestion (collector role),
 pattern querying, and threshold recommendations.
 """
 
-from typing import Any
-
 from litestar import Controller, get, post
+from litestar.params import Parameter
 
 from synthorg.api.dto import ApiResponse
 from synthorg.api.errors import ServiceUnavailableError
-from synthorg.api.guards import require_read_access
+from synthorg.api.guards import require_read_access, require_write_access
 from synthorg.meta.telemetry.collector import InMemoryAnalyticsCollector  # noqa: TC001
-from synthorg.meta.telemetry.models import EventBatch  # noqa: TC001
+from synthorg.meta.telemetry.models import (
+    AggregatedPattern,
+    EventBatch,
+    ThresholdRecommendation,
+)
 from synthorg.meta.telemetry.recommender import (
     DefaultThresholdRecommender,  # noqa: TC001
 )
@@ -62,7 +65,7 @@ class MetaAnalyticsController(Controller):
     tags = ["meta-analytics"]  # noqa: RUF012
     guards = [require_read_access]  # noqa: RUF012
 
-    @post("/events")
+    @post("/events", guards=[require_write_access])
     async def ingest_events(
         self,
         data: EventBatch,
@@ -70,6 +73,7 @@ class MetaAnalyticsController(Controller):
         """Ingest a batch of anonymized outcome events.
 
         Only available when ``collector_enabled=True``.
+        Requires write access.
 
         Args:
             data: Batch of anonymized events.
@@ -86,8 +90,8 @@ class MetaAnalyticsController(Controller):
     @get("/patterns")
     async def get_patterns(
         self,
-        min_deployments: int = 3,
-    ) -> ApiResponse[list[dict[str, Any]]]:
+        min_deployments: int = Parameter(default=3, ge=1, le=100),
+    ) -> ApiResponse[list[AggregatedPattern]]:
         """Query aggregated cross-deployment patterns.
 
         Args:
@@ -100,14 +104,14 @@ class MetaAnalyticsController(Controller):
         patterns = await collector.query_patterns(
             min_deployments=min_deployments,
         )
-        return ApiResponse[list[dict[str, Any]]](
-            data=[p.model_dump() for p in patterns],
+        return ApiResponse[list[AggregatedPattern]](
+            data=list(patterns),
         )
 
     @get("/recommendations")
     async def get_recommendations(
         self,
-    ) -> ApiResponse[list[dict[str, Any]]]:
+    ) -> ApiResponse[list[ThresholdRecommendation]]:
         """Get threshold recommendations from aggregated data.
 
         Returns:
@@ -115,10 +119,10 @@ class MetaAnalyticsController(Controller):
         """
         collector = _require_collector()
         if _recommender is None:
-            return ApiResponse[list[dict[str, Any]]](data=[])
+            return ApiResponse[list[ThresholdRecommendation]](data=[])
         recs = await _recommender.get_recommendations(
             collector=collector,
         )
-        return ApiResponse[list[dict[str, Any]]](
-            data=[r.model_dump() for r in recs],
+        return ApiResponse[list[ThresholdRecommendation]](
+            data=list(recs),
         )

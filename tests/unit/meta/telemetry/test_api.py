@@ -15,6 +15,13 @@ from synthorg.meta.telemetry.recommender import DefaultThresholdRecommender
 pytestmark = pytest.mark.unit
 
 
+@pytest.fixture(autouse=True)
+def _reset_analytics_controller():
+    """Reset module-level globals after each test."""
+    yield
+    configure_analytics_controller(None, None)
+
+
 def _make_event(
     deployment_id: str = "d-0",
     source_rule: str = "coordination_overhead",

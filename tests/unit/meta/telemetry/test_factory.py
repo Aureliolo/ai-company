@@ -65,5 +65,21 @@ class TestBuildRecommender:
     """Tests for build_recommender()."""
 
     def test_returns_recommender(self) -> None:
-        result = build_recommender()
+        config = SelfImprovementConfig()
+        result = build_recommender(config)
         assert isinstance(result, DefaultThresholdRecommender)
+
+    def test_uses_config_values(self) -> None:
+        analytics = CrossDeploymentAnalyticsConfig(
+            enabled=True,
+            collector_url=NotBlankStr("https://test.example"),
+            deployment_id_salt=NotBlankStr("test-salt"),
+            min_deployments_for_pattern=5,
+            recommendation_min_observations=20,
+        )
+        config = SelfImprovementConfig(
+            cross_deployment_analytics=analytics,
+        )
+        result = build_recommender(config)
+        assert result._min_deployments == 5
+        assert result._min_observations == 20

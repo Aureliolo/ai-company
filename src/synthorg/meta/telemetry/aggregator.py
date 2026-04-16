@@ -9,6 +9,9 @@ from collections import Counter, defaultdict
 
 from synthorg.core.types import NotBlankStr
 from synthorg.meta.telemetry.models import AggregatedPattern, AnonymizedOutcomeEvent
+from synthorg.observability import get_logger
+
+logger = get_logger(__name__)
 
 
 def aggregate_patterns(
@@ -34,9 +37,13 @@ def aggregate_patterns(
         return ()
 
     # Group events by (source_rule, altitude).
+    # Events without a source_rule are excluded -- no rule means
+    # no actionable threshold to recommend adjusting.
     groups: dict[tuple[str, str], list[AnonymizedOutcomeEvent]] = defaultdict(list)
     for event in events:
-        key = (event.source_rule or "_none_", event.altitude)
+        if event.source_rule is None:
+            continue
+        key = (event.source_rule, event.altitude)
         groups[key].append(event)
 
     patterns: list[AggregatedPattern] = []

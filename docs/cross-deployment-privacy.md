@@ -72,9 +72,9 @@ logging:
     synthorg.meta.telemetry: DEBUG
 ```
 
-Events are visible in the structured log output with event names:
-- `cross_deployment.event.queued` -- event buffered
-- `cross_deployment.batch.flushed` -- batch sent to collector
+Events are visible in the structured log output with event metadata (event type, queue depth, batch size, HTTP status). Note: the full serialized event payload is not logged -- only operational metadata is emitted for diagnostics. Event names:
+- `cross_deployment.event.queued` -- event buffered (logs event_type and pending count)
+- `cross_deployment.batch.flushed` -- batch sent to collector (logs event_count and HTTP status)
 
 ## Data Retention
 
@@ -82,7 +82,7 @@ The default collector (`InMemoryAnalyticsCollector`) stores events **in memory o
 
 ## Access Control
 
-The collector endpoint (`POST /api/meta/analytics/events`) is protected by the standard API authentication and authorization middleware. Only authenticated users with read access can query patterns and recommendations.
+The collector endpoint (`POST /api/meta/analytics/events`) requires **write access** and is protected by the standard API authentication and authorization middleware. Pattern and recommendation queries (`GET`) require read access.
 
 ## Collector Role
 

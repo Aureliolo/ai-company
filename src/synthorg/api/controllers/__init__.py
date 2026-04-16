@@ -47,6 +47,7 @@ from synthorg.api.controllers.meetings import MeetingController
 from synthorg.api.controllers.memory import MemoryAdminController
 from synthorg.api.controllers.messages import MessageController
 from synthorg.api.controllers.meta import MetaController
+from synthorg.api.controllers.meta_analytics import MetaAnalyticsController
 from synthorg.api.controllers.metrics import MetricsController
 from synthorg.api.controllers.oauth import OAuthController
 from synthorg.api.controllers.ontology import OntologyController
@@ -137,6 +138,7 @@ BASE_CONTROLLERS: tuple[type[Controller], ...] = (
     ScalingController,
     TrainingController,
     MetaController,
+    MetaAnalyticsController,
     CustomRuleController,
 )
 
@@ -193,6 +195,7 @@ __all__ = [
     "MeetingController",
     "MemoryAdminController",
     "MessageController",
+    "MetaAnalyticsController",
     "MetaController",
     "MetricsController",
     "OAuthController",
