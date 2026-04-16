@@ -46,7 +46,7 @@ func runStop(cmd *cobra.Command, _ []string) error {
 
 	safeDir, err := safeStateDir(state)
 	if err != nil {
-		return err
+		return fmt.Errorf("resolving data directory: %w", err)
 	}
 	composePath := filepath.Join(safeDir, "compose.yml")
 	if _, err := os.Stat(composePath); errors.Is(err, os.ErrNotExist) {
@@ -56,12 +56,12 @@ func runStop(cmd *cobra.Command, _ []string) error {
 
 	info, err := docker.Detect(ctx)
 	if err != nil {
-		return err
+		return fmt.Errorf("detecting docker: %w", err)
 	}
 
 	downArgs, err := buildDownArgs()
 	if err != nil {
-		return err
+		return fmt.Errorf("building docker compose down args: %w", err)
 	}
 
 	sp := out.StartSpinner("Stopping containers...")

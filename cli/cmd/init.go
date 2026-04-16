@@ -72,7 +72,7 @@ func runInit(cmd *cobra.Command, _ []string) error {
 	out := ui.NewUIWithOptions(cmd.OutOrStdout(), opts.UIOptions())
 
 	if err := validateInitFlags(opts.DataDir); err != nil {
-		return err
+		return fmt.Errorf("validating init flags: %w", err)
 	}
 	var answers setupAnswers
 	switch {
@@ -82,7 +82,7 @@ func runInit(cmd *cobra.Command, _ []string) error {
 	case isInteractive():
 		result, err := runInteractiveInit(cmd, opts)
 		if err != nil {
-			return err
+			return fmt.Errorf("running interactive setup: %w", err)
 		}
 		if result == nil {
 			return nil // user cancelled
@@ -91,7 +91,7 @@ func runInit(cmd *cobra.Command, _ []string) error {
 
 		state, err := buildState(answers)
 		if err != nil {
-			return err
+			return fmt.Errorf("building state from TUI: %w", err)
 		}
 
 		// Apply NATS port override from TUI.
@@ -115,13 +115,13 @@ func runInit(cmd *cobra.Command, _ []string) error {
 				state.SettingsKey = oldState.SettingsKey
 			}
 			if err := preservePostgresFromOldState(cmd, &state, oldState); err != nil {
-				return err
+				return fmt.Errorf("preserving postgres settings: %w", err)
 			}
 		}
 
 		safeDir, err := writeInitFiles(state)
 		if err != nil {
-			return err
+			return fmt.Errorf("writing init files: %w", err)
 		}
 		state.DataDir = safeDir
 
@@ -152,14 +152,14 @@ func runInit(cmd *cobra.Command, _ []string) error {
 
 	state, err := buildState(answers)
 	if err != nil {
-		return err
+		return fmt.Errorf("building state from flags: %w", err)
 	}
 
 	// Non-interactive: handle re-init.
 	if existing := config.StatePath(state.DataDir); fileExists(existing) {
 		proceed, err := handleReinit(cmd, &state, opts)
 		if err != nil {
-			return err
+			return fmt.Errorf("handling re-init: %w", err)
 		}
 		if !proceed {
 			return nil
@@ -168,7 +168,7 @@ func runInit(cmd *cobra.Command, _ []string) error {
 
 	safeDir, err := writeInitFiles(state)
 	if err != nil {
-		return err
+		return fmt.Errorf("writing init files: %w", err)
 	}
 	state.DataDir = safeDir
 

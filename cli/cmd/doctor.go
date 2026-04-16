@@ -97,7 +97,7 @@ func doctorCheckEnabled(name string) bool {
 
 func runDoctor(cmd *cobra.Command, _ []string) error {
 	if err := validateDoctorFlags(); err != nil {
-		return err
+		return fmt.Errorf("validating doctor flags: %w", err)
 	}
 
 	ctx := cmd.Context()
@@ -115,7 +115,7 @@ func runDoctor(cmd *cobra.Command, _ []string) error {
 
 	safeDir, err := safeStateDir(state)
 	if err != nil {
-		return err
+		return fmt.Errorf("resolving data directory: %w", err)
 	}
 	saveDiagnosticFile(out, safeDir, report)
 	_, _ = fmt.Fprintln(out.Writer())

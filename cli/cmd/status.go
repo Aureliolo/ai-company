@@ -91,7 +91,7 @@ func runStatus(cmd *cobra.Command, _ []string) error {
 	}
 
 	if err := runStatusOnce(cmd, state, opts); err != nil {
-		return err
+		return fmt.Errorf("running status check: %w", err)
 	}
 
 	out := ui.NewUIWithOptions(cmd.OutOrStdout(), opts.UIOptions())
@@ -112,7 +112,7 @@ func runStatusWatch(cmd *cobra.Command, state config.State, opts *GlobalOpts, in
 			_, _ = fmt.Fprintln(cmd.OutOrStdout(), "---")
 		}
 		if err := runStatusOnce(cmd, state, opts); err != nil {
-			return err
+			return fmt.Errorf("refreshing status: %w", err)
 		}
 
 		select {
@@ -131,7 +131,7 @@ func runStatusOnce(cmd *cobra.Command, state config.State, opts *GlobalOpts) err
 
 	safeDir, err := safeStateDir(state)
 	if err != nil {
-		return err
+		return fmt.Errorf("resolving data directory: %w", err)
 	}
 	composePath := filepath.Join(safeDir, "compose.yml")
 	if _, err := os.Stat(composePath); errors.Is(err, os.ErrNotExist) {

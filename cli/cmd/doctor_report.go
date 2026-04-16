@@ -40,7 +40,7 @@ func runDoctorReport(cmd *cobra.Command, _ []string) error {
 
 	safeDir, err := safeStateDir(state)
 	if err != nil {
-		return err
+		return fmt.Errorf("resolving data directory: %w", err)
 	}
 
 	// Save diagnostic report.

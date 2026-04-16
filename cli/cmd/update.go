@@ -72,7 +72,7 @@ func validateUpdateFlags() error {
 
 func runUpdate(cmd *cobra.Command, _ []string) error {
 	if err := validateUpdateFlags(); err != nil {
-		return err
+		return fmt.Errorf("validating update flags: %w", err)
 	}
 
 	// Load config early for auto-behavior flags and --check mode.
@@ -97,7 +97,7 @@ func runUpdate(cmd *cobra.Command, _ []string) error {
 		if err := updateCLI(cmd, state.AutoUpdateCLI); errors.Is(err, errReexec) {
 			return reexecUpdate(cmd)
 		} else if err != nil {
-			return err
+			return fmt.Errorf("updating CLI binary: %w", err)
 		}
 	}
 
@@ -108,7 +108,7 @@ func runUpdate(cmd *cobra.Command, _ []string) error {
 	}
 
 	if err := updateComposeAndImages(cmd); err != nil {
-		return err
+		return fmt.Errorf("updating compose and images: %w", err)
 	}
 	if updateImagesOnly {
 		out.HintGuidance("Run 'synthorg update --cli-only' to update the CLI binary separately.")
@@ -134,7 +134,7 @@ func updateComposeAndImages(cmd *cobra.Command) error {
 
 	applied, err := refreshCompose(cmd, state, recovered)
 	if err != nil {
-		return err
+		return fmt.Errorf("refreshing compose template: %w", err)
 	}
 	if !applied {
 		return handleDeclinedCompose(cmd, state, recovered)
@@ -194,7 +194,7 @@ func handleDeclinedCompose(cmd *cobra.Command, state config.State, recovered boo
 		false, false,
 	)
 	if err != nil {
-		return err
+		return fmt.Errorf("confirming compose apply: %w", err)
 	}
 	if !ok {
 		_, _ = fmt.Fprintln(cmd.OutOrStdout(), "Image update skipped. Run 'synthorg init' then 'synthorg update' when ready.")
@@ -218,7 +218,7 @@ func downloadAndApplyCLI(ctx context.Context, out *ui.UI, result selfupdate.Chec
 
 	ok, err := confirmUpdate(ctx, fmt.Sprintf("Update CLI from %s to %s?", result.CurrentVersion, result.LatestVersion), autoAccept)
 	if err != nil {
-		return err
+		return fmt.Errorf("confirming CLI update: %w", err)
 	}
 	if !ok {
 		return nil
@@ -420,7 +420,7 @@ func updateContainerImages(cmd *cobra.Command, state config.State, preserveCompo
 
 	safeDir, err := safeStateDir(state)
 	if err != nil {
-		return err
+		return fmt.Errorf("resolving data directory: %w", err)
 	}
 
 	// Check if container images already match the target version.
@@ -438,7 +438,7 @@ func updateContainerImages(cmd *cobra.Command, state config.State, preserveCompo
 	manualPull := !state.AutoPull
 	ok, err := confirmUpdate(ctx, fmt.Sprintf("Update container images from %s to %s?", state.ImageTag, tag), state.AutoPull)
 	if err != nil {
-		return err
+		return fmt.Errorf("confirming image update: %w", err)
 	}
 	if !ok {
 		return nil
@@ -448,11 +448,11 @@ func updateContainerImages(cmd *cobra.Command, state config.State, preserveCompo
 
 	updatedState, err := pullAndPersist(ctx, cmd, info, state, tag, safeDir, preserveCompose)
 	if err != nil {
-		return err
+		return fmt.Errorf("pulling updated images: %w", err)
 	}
 
 	if err := postPullActions(cmd, info, safeDir, state, updatedState, previousIDs); err != nil {
-		return err
+		return fmt.Errorf("running post-pull actions: %w", err)
 	}
 	if manualPull {
 		uiOut.HintTip("Run 'synthorg config set auto_pull true' to auto-accept image pulls.")
