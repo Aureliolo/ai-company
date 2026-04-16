@@ -722,3 +722,80 @@ class TestRecentTaskHistoryProvider:
         provider = RecentTaskHistoryProvider(sampler=_sampler)
         sampled = await provider.sample(agent_id="agent-1", sample_size=1)
         assert sampled[0] is not original
+
+    async def test_sample_size_zero_returns_empty(self) -> None:
+        """``sample_size=0`` short-circuits before calling the sampler."""
+        from synthorg.engine.evolution.guards.shadow_providers import (
+            ConfiguredShadowTaskProvider as _Configured,
+        )
+        from synthorg.engine.evolution.guards.shadow_providers import (
+            RecentTaskHistoryProvider,
+        )
+
+        sampler_called = False
+
+        async def _sampler(
+            agent_id: str,
+            sample_size: int,
+        ) -> tuple[Task, ...]:
+            nonlocal sampler_called
+            sampler_called = True
+            return ()
+
+        recent = RecentTaskHistoryProvider(sampler=_sampler)
+        assert await recent.sample(agent_id="a", sample_size=0) == ()
+        assert sampler_called is False
+
+        config = ShadowEvaluationConfig(
+            probe_tasks=(_make_task("probe-1"),),
+            sample_size=5,
+        )
+        configured = _Configured(config=config)
+        assert await configured.sample(agent_id="a", sample_size=0) == ()
+
+
+@pytest.mark.unit
+class TestShadowAggregateInvariants:
+    """``_ShadowAggregate.__post_init__`` rejects inconsistent stats."""
+
+    def test_negative_totals_rejected(self) -> None:
+        from synthorg.engine.evolution.guards.shadow_evaluation import (
+            _ShadowAggregate,
+        )
+
+        with pytest.raises(ValueError, match="non-negative"):
+            _ShadowAggregate(
+                total=-1,
+                success_count=0,
+                pass_rate=0.0,
+                score_mean=None,
+                errors=(),
+            )
+
+    def test_success_count_exceeds_total_rejected(self) -> None:
+        from synthorg.engine.evolution.guards.shadow_evaluation import (
+            _ShadowAggregate,
+        )
+
+        with pytest.raises(ValueError, match="exceed total"):
+            _ShadowAggregate(
+                total=3,
+                success_count=5,
+                pass_rate=5 / 3,
+                score_mean=None,
+                errors=(),
+            )
+
+    def test_pass_rate_inconsistent_rejected(self) -> None:
+        from synthorg.engine.evolution.guards.shadow_evaluation import (
+            _ShadowAggregate,
+        )
+
+        with pytest.raises(ValueError, match="inconsistent"):
+            _ShadowAggregate(
+                total=4,
+                success_count=2,
+                pass_rate=0.9,
+                score_mean=None,
+                errors=(),
+            )
